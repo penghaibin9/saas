@@ -13,9 +13,10 @@ import {
 import {
   normalizeDashboardData
 } from '../adapter/dashboard.adapter.js'
-import { ok, fail, DASHBOARD_ERROR_CODES } from './dashboard.contract.js'
+import { ok, fail, DASHBOARD_API_PATHS, DASHBOARD_ERROR_CODES } from './dashboard.contract.js'
 
 /** @typedef {import('./dashboard.contract.js').ApiResponse} ApiResponse */
+export const DASHBOARD_MOCK_ENDPOINTS = DASHBOARD_API_PATHS
 
 /**
  * GET /api/dashboard/overview
@@ -30,6 +31,94 @@ export async function fetchDashboardOverview(teacherId = 't-002') {
     return fail(
       DASHBOARD_ERROR_CODES.SERVER_ERROR,
       e instanceof Error ? e.message : '首页数据加载失败'
+    )
+  }
+}
+
+/**
+ * GET /api/dashboard/statistics
+ * @param {string} [teacherId]
+ */
+export async function fetchDashboardStatistics(teacherId = 't-002') {
+  try {
+    const raw = await loadDashboardRaw(teacherId)
+    const vm = normalizeDashboardData(raw)
+    return ok(vm.overviewMetrics)
+  } catch (e) {
+    return fail(
+      DASHBOARD_ERROR_CODES.MOCK_ERROR,
+      e instanceof Error ? e.message : '统计卡片加载失败'
+    )
+  }
+}
+
+/**
+ * GET /api/dashboard/trends
+ * @param {string} [teacherId]
+ */
+export async function fetchDashboardTrends(teacherId = 't-002') {
+  try {
+    const raw = await loadDashboardRaw(teacherId)
+    const vm = normalizeDashboardData(raw)
+    const trends = vm.overviewMetrics.map((m) => ({
+      trendId: m.metricId || m.id,
+      name: m.title,
+      value: m.value,
+      deltaText: m.trendLabel || m.trendText || '',
+      trend: m.trendType || 'flat'
+    }))
+    return ok(trends)
+  } catch (e) {
+    return fail(DASHBOARD_ERROR_CODES.MOCK_ERROR, e instanceof Error ? e.message : '趋势数据加载失败')
+  }
+}
+
+/**
+ * GET /api/dashboard/todos
+ * @param {string} [teacherId]
+ */
+export async function fetchDashboardTodos(teacherId = 't-002') {
+  try {
+    const raw = await loadDashboardRaw(teacherId)
+    const vm = normalizeDashboardData(raw)
+    return ok(vm.tasks)
+  } catch (e) {
+    return fail(DASHBOARD_ERROR_CODES.MOCK_ERROR, e instanceof Error ? e.message : '待办数据加载失败')
+  }
+}
+
+/**
+ * GET /api/dashboard/alerts
+ * @param {string} [teacherId]
+ */
+export async function fetchDashboardAlerts(teacherId = 't-002') {
+  try {
+    const raw = await loadDashboardRaw(teacherId)
+    const vm = normalizeDashboardData(raw)
+    return ok(vm.risks.filter((risk) => risk.status !== 'resolved'))
+  } catch (e) {
+    return fail(DASHBOARD_ERROR_CODES.MOCK_ERROR, e instanceof Error ? e.message : '预警数据加载失败')
+  }
+}
+
+/**
+ * GET /api/dashboard/quick-entries
+ * @param {string} [teacherId]
+ */
+export async function fetchDashboardQuickEntries(teacherId = 't-002') {
+  try {
+    const raw = await loadDashboardRaw(teacherId)
+    const vm = normalizeDashboardData(raw)
+    return ok([
+      { key: 'students', label: '学生总数', value: `${vm.students.length} 人` },
+      { key: 'todo', label: '待处理事项', value: `${vm.tasks.filter((t) => t.status !== 'done').length} 项` },
+      { key: 'risk', label: '风险预警', value: `${vm.risks.filter((r) => r.status !== 'resolved').length} 项` },
+      { key: 'logs', label: '处理留痕', value: `${vm.operationLogs.length} 条` }
+    ])
+  } catch (e) {
+    return fail(
+      DASHBOARD_ERROR_CODES.MOCK_ERROR,
+      e instanceof Error ? e.message : '快捷入口数据加载失败'
     )
   }
 }

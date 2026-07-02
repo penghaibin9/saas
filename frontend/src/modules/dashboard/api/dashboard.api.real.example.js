@@ -13,7 +13,8 @@ import {
 
 /** @typedef {import('./dashboard.contract.js').ApiResponse} ApiResponse */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+// 示例固定使用相对路径，避免引入新的环境变量依赖。
+const API_BASE = '/api'
 
 /**
  * 示例 HTTP 客户端（可替换为 axios / ofetch 等）

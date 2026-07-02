@@ -8,6 +8,11 @@
  */
 import {
   fetchDashboardOverview,
+  fetchDashboardStatistics,
+  fetchDashboardTrends,
+  fetchDashboardTodos,
+  fetchDashboardAlerts,
+  fetchDashboardQuickEntries,
   fetchDashboardRisks,
   remindRisk as apiRemindRisk,
   followUpRisk as apiFollowUpRisk,
@@ -17,6 +22,9 @@ import {
 } from '../api/dashboard.api.mock.js'
 import { unwrapResponse } from '../api/dashboard.contract.js'
 
+// P4.1 默认走 mock。接后端时仅替换本文件 import，并将此开关改为 true。
+const USE_REAL_EXAMPLE = false
+
 /** @typedef {Awaited<ReturnType<typeof fetchDashboardOverview>>['data']} DashboardOverviewRaw */
 
 /**
@@ -25,7 +33,55 @@ import { unwrapResponse } from '../api/dashboard.contract.js'
  * @returns {Promise<NonNullable<DashboardOverviewRaw>>}
  */
 export async function fetchDashboardRaw(teacherId = 't-002') {
+  if (USE_REAL_EXAMPLE) {
+    throw new Error('REAL_API_DISABLED')
+  }
   const response = await fetchDashboardOverview(teacherId)
+  return unwrapResponse(response)
+}
+
+/**
+ * 获取统计卡片（等价于 GET /api/dashboard/statistics）
+ * @param {string} [teacherId]
+ */
+export async function getDashboardStatistics(teacherId = 't-002') {
+  const response = await fetchDashboardStatistics(teacherId)
+  return unwrapResponse(response)
+}
+
+/**
+ * 获取趋势数据（等价于 GET /api/dashboard/trends）
+ * @param {string} [teacherId]
+ */
+export async function getDashboardTrends(teacherId = 't-002') {
+  const response = await fetchDashboardTrends(teacherId)
+  return unwrapResponse(response)
+}
+
+/**
+ * 获取待办事项（等价于 GET /api/dashboard/todos）
+ * @param {string} [teacherId]
+ */
+export async function getDashboardTodos(teacherId = 't-002') {
+  const response = await fetchDashboardTodos(teacherId)
+  return unwrapResponse(response)
+}
+
+/**
+ * 获取预警提醒（等价于 GET /api/dashboard/alerts）
+ * @param {string} [teacherId]
+ */
+export async function getDashboardAlerts(teacherId = 't-002') {
+  const response = await fetchDashboardAlerts(teacherId)
+  return unwrapResponse(response)
+}
+
+/**
+ * 获取快捷入口（等价于 GET /api/dashboard/quick-entries）
+ * @param {string} [teacherId]
+ */
+export async function getDashboardQuickEntries(teacherId = 't-002') {
+  const response = await fetchDashboardQuickEntries(teacherId)
   return unwrapResponse(response)
 }
 

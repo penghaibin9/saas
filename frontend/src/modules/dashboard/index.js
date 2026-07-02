@@ -1,6 +1,11 @@
 export { useDashboardStore, useHomeDashboardStore } from './store/dashboard.store.js'
 export {
   fetchDashboardRaw,
+  getDashboardStatistics,
+  getDashboardTrends,
+  getDashboardTodos,
+  getDashboardAlerts,
+  getDashboardQuickEntries,
   fetchRisks,
   fetchLogs,
   remindRisk,
