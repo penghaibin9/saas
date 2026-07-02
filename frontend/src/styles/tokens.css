@@ -169,4 +169,10 @@
   /* ========== 触控与安全区 ========== */
   --touch-target-min: 44px; /* 移动端按钮最小高度 */
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ========== 动效 ========== */
+  --motion-fast: 0.15s;
+  --motion-normal: 0.2s;
+  --motion-slow: 0.3s;
+  --ease-standard: ease;
 }

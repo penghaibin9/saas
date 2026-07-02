@@ -5,11 +5,14 @@
       <AppStatusTag :type="statusType" :label="status" />
     </div>
     <div class="app-lifecycle-stage-card__rate">
-      <span class="app-lifecycle-stage-card__value">{{ rate }}</span>
-      <span class="app-lifecycle-stage-card__unit">%</span>
+      <span class="app-lifecycle-stage-card__value">{{ displayRate }}</span>
+      <span v-if="rate != null" class="app-lifecycle-stage-card__unit">%</span>
     </div>
     <div class="app-lifecycle-stage-card__progress">
-      <div class="app-lifecycle-stage-card__bar" :style="{ width: `${Math.min(rate, 100)}%` }" />
+      <div
+        class="app-lifecycle-stage-card__bar"
+        :style="{ width: `${rate == null ? 0 : Math.min(rate, 100)}%` }"
+      />
     </div>
     <div class="app-lifecycle-stage-card__footer">
       <span v-if="riskCount > 0" class="app-lifecycle-stage-card__risk"
@@ -33,11 +36,16 @@ export default {
     name: { type: String, required: true },
     status: { type: String, required: true },
     statusType: { type: String, default: 'processing' },
-    rate: { type: Number, required: true },
+    rate: { type: Number, default: null },
     riskCount: { type: Number, default: 0 },
     actionLabel: { type: String, default: '查看' }
   },
-  emits: ['action']
+  emits: ['action'],
+  computed: {
+    displayRate() {
+      return this.rate == null ? '--' : this.rate
+    }
+  }
 }
 </script>
 
@@ -52,8 +60,8 @@ export default {
   flex-direction: column;
   gap: var(--space-2);
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
+    transform var(--motion-normal) var(--ease-standard),
+    box-shadow var(--motion-normal) var(--ease-standard);
   min-width: 0;
 }
 .app-lifecycle-stage-card:hover {
@@ -97,7 +105,7 @@ export default {
   height: 100%;
   background: var(--primary-600);
   border-radius: var(--radius-full);
-  transition: width 0.3s ease;
+  transition: width var(--motion-slow) var(--ease-standard);
 }
 .app-lifecycle-stage-card__footer {
   display: flex;
@@ -123,7 +131,7 @@ export default {
   color: var(--primary-600);
   font-size: var(--font-size-xs);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--motion-normal) var(--ease-standard);
 }
 .app-lifecycle-stage-card__action:hover {
   background: var(--primary-100);

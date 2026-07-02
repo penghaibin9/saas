@@ -30,7 +30,7 @@
               href="javascript:void(0)"
               @click="onSelect(item)"
             >
-              <span v-if="item.icon" class="bpl-menu__icon">{{ item.icon }}</span>
+              <AppIcon v-if="item.icon" :name="item.icon" class="bpl-menu__icon" />
               <span class="bpl-menu__label">{{ item.label }}</span>
               <span v-if="item.badge" class="bpl-menu__badge">{{ item.badge }}</span>
               <span v-if="item.disabled" class="bpl-menu__soon">即将上线</span>
@@ -53,6 +53,8 @@
 </template>
 
 <script>
+import { AppIcon } from '@/components/ui'
+
 /**
  * BasePortalLayout 门户壳基座
  * 依据 V2.1 §6.2：StudentPortalLayout 与 EnterprisePortalLayout 必须基于本组件复用，
@@ -73,6 +75,7 @@
  */
 export default {
   name: 'BasePortalLayout',
+  components: { AppIcon },
   props: {
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },

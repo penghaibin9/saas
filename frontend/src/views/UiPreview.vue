@@ -198,7 +198,7 @@ import {
 } from '@/components/dashboard'
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { useDashboardStore } from '@/modules/dashboard'
-import { metricAccent } from '@/modules/dashboard/adapter/dashboard.adapter.js'
+import { metricAccent } from '@/components/dashboard/presentation.js'
 import { toast } from '@/utils/toast'
 import '@/styles/dashboard.css'
 
@@ -235,42 +235,42 @@ export default {
     navMenus() {
       const d = this.dashboard
       return [
-        { key: 'overview', label: '产品概览', icon: '◫' },
-        { key: 'lifecycle', label: '阶段进度', icon: '◇' },
-        { key: 'kpi', label: '核心指标', icon: '◉' },
+        { key: 'overview', label: '产品概览', icon: 'overview' },
+        { key: 'lifecycle', label: '阶段进度', icon: 'lifecycle' },
+        { key: 'kpi', label: '核心指标', icon: 'kpi' },
         {
           key: 'risk-center',
           label: '风险预警',
-          icon: '△',
+          icon: 'risk',
           badge: d.activeRisks.length || undefined
         },
-        { key: 'workbench', label: '待办任务', icon: '✓', badge: d.activeTodoTotal || undefined },
+        { key: 'workbench', label: '待办任务', icon: 'workbench', badge: d.activeTodoTotal || undefined },
         {
           key: 'students',
           label: '重点关注学生',
-          icon: '◎',
+          icon: 'students',
           badge: d.focusStudentCount || undefined
         },
-        { key: 'topics', label: '专题明细', icon: '▤' },
-        { key: 'records', label: '处理记录', icon: '⌘' },
+        { key: 'topics', label: '专题明细', icon: 'topics' },
+        { key: 'records', label: '处理记录', icon: 'records' },
         {
           key: 'enrollment',
           label: '迎新管理',
-          icon: '◇',
+          icon: 'enrollment',
           disabled: true,
           disabledTip: '迎新管理即将上线'
         },
         {
           key: 'reports',
           label: '数据报表',
-          icon: '▤',
+          icon: 'reports',
           disabled: true,
           disabledTip: '数据报表即将上线'
         },
         {
           key: 'settings',
           label: '系统设置',
-          icon: '⚙',
+          icon: 'settings',
           disabled: true,
           disabledTip: '系统设置即将上线'
         }
