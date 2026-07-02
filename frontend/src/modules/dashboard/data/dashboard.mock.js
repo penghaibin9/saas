@@ -4,6 +4,7 @@
  */
 import * as db from '@/mocks/db'
 import { getPracticeTeachingOverview, getTeacherWorkbench } from '@/services/mock'
+import { isContinuousCheckinAbnormal } from '@/modules/dashboard/rules/dashboardRiskRules.js'
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 
@@ -12,17 +13,9 @@ function buildRiskDefinitions() {
   const onboard = db.internships.filter((i) => i.status === 'ONBOARD')
   const onboardIds = onboard.map((i) => i.studentId)
 
-  const streakStudents = onboardIds.filter((sid) => {
-    const recs = db.checkins
-      .filter((c) => c.studentId === sid && c.date <= db.TODAY)
-      .sort((a, b) => (a.date < b.date ? 1 : -1))
-    let n = 0
-    for (const r of recs) {
-      if (r.status === 'ABNORMAL' || r.status === 'MISSING') n++
-      else break
-    }
-    return n >= 3
-  })
+  const streakStudents = onboardIds.filter((sid) =>
+    isContinuousCheckinAbnormal(db.checkins, sid, db.TODAY)
+  )
 
   const missingReports = onboard.filter(
     (i) =>

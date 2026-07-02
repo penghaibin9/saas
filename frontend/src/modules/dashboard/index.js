@@ -13,7 +13,8 @@ export {
   buildRiskAlerts,
   buildTaskGroups,
   buildFocusStudents,
+  buildHighRiskStudents,
   buildLifecycleStages,
-  metricAccent,
   groupTasks
 } from './adapter/dashboard.adapter.js'
+export { metricAccent } from '@/components/dashboard/presentation.js'

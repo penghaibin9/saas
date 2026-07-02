@@ -13,7 +13,7 @@
 
 <script>
 import AppRiskAlertCard from './AppRiskAlertCard.vue'
-import { riskStatusCode, riskStatusLabel } from '@/modules/dashboard/adapter/dashboard.adapter.js'
+import { riskStatusCode, riskStatusLabel } from './presentation.js'
 
 export default {
   name: 'RiskAlertCard',

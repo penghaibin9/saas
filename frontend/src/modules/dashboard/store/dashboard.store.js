@@ -12,7 +12,7 @@ import {
   buildRiskAlerts,
   buildTaskGroups,
   buildFocusStudents,
-  filterHighRiskStudents,
+  buildHighRiskStudents,
   buildRiskHandleDetail,
   buildTaskHandleDetail,
   buildStudentHandleDetail,
@@ -26,7 +26,7 @@ import { toast } from '@/utils/toast'
  * state 边界：
  * - 原始数据：provider → adapter 初始化写入（students/risks/tasks/operationLogs 等）
  * - API 快照：overviewMetrics/gdMetrics/internshipMetrics/lifecycleBannerStages（接后端后仍由 init 写入）
- * - UI 会话态：selectedRiskId/selectedTaskId/drawerVisible/drawerContext/showAllRisks/resolvedStudentIds
+ * - UI 会话态：selectedRiskId/selectedTaskId/drawerVisible/drawerContext/showAllRisks
  * - 上下文：today（来自 API，供 taskGroups 截止时间比较）
  *
  * getters 边界：dashboardMetrics/taskCompletionMetric/riskAlerts/taskGroups 等均由 state 派生
@@ -72,10 +72,8 @@ export const useDashboardStore = defineStore('dashboard-home', {
     drawerVisible: false,
     drawerContext: null,
     showAllRisks: false,
-    /** UI 会话态 — 学生卡片「已跟进」标记（演示用，TODO: 接后端后改为 risk.status 驱动） */
-    resolvedStudentIds: [],
     /** 上下文 — 数据基准日，来自 provider，供 buildTaskGroups 比较 deadline */
-    today: '2026-07-02'
+    today: ''
   }),
 
   getters: {
@@ -88,10 +86,18 @@ export const useDashboardStore = defineStore('dashboard-home', {
 
     lifecycleStageCards: (s) => s.lifecycleStages,
 
-    highRiskStudents: (s) => filterHighRiskStudents(s.students),
-    highRiskCount: (s) => filterHighRiskStudents(s.students).length,
-    focusStudents: (s) => buildFocusStudents({ students: s.students }),
-    focusStudentCount: (s) => buildFocusStudents({ students: s.students }).length,
+    highRiskStudents(s) {
+      return buildHighRiskStudents({ students: s.students, risks: s.risks })
+    },
+    highRiskCount(s) {
+      return buildHighRiskStudents({ students: s.students, risks: s.risks }).length
+    },
+    focusStudents(s) {
+      return buildFocusStudents({ students: s.students, risks: s.risks })
+    },
+    focusStudentCount(s) {
+      return buildFocusStudents({ students: s.students, risks: s.risks }).length
+    },
 
     pendingRisks: (s) => s.risks.filter((r) => r.status === 'pending' || r.status === 'processing'),
     resolvedRisks: (s) => s.risks.filter((r) => r.status === 'resolved'),
@@ -200,7 +206,15 @@ export const useDashboardStore = defineStore('dashboard-home', {
       if (ctx.type === 'student') {
         const student = s.students.find((st) => st.studentId === ctx.id)
         if (!student) return null
-        return buildStudentHandleDetail(student, s.resolvedStudentIds.includes(student.studentId))
+        return buildStudentHandleDetail(
+          student,
+          s.risks.some(
+            (r) =>
+              r.studentId === student.studentId &&
+              r.status !== 'resolved' &&
+              r.status !== 'ignored'
+          )
+        )
       }
       return null
     },
@@ -437,21 +451,20 @@ export const useDashboardStore = defineStore('dashboard-home', {
           this.showToast('未找到对应学生', 'warning')
           return
         }
-        this.resolvedStudentIds.push(student.studentId)
-        const risk = this.risks.find(
-          (r) => r.studentId === student.studentId && r.status !== 'resolved'
+        const activeRisks = this.risks.filter(
+          (r) => r.studentId === student.studentId && r.status !== 'resolved' && r.status !== 'ignored'
         )
-        if (risk) {
+        activeRisks.forEach((risk) => {
           risk.status = 'resolved'
           risk.statusLabel = '已处理'
-        }
+        })
         this.appendOperationLog({
           action: `跟进学生：${student.name}`,
           target: student.name,
           result: '已跟进',
           status: 'done',
           studentId: student.studentId,
-          relatedRiskId: risk?.riskId
+          relatedRiskId: activeRisks[0]?.riskId
         })
       }
 
@@ -502,7 +515,7 @@ export const useDashboardStore = defineStore('dashboard-home', {
       if (!partial?.action) return
       const log = {
         recordId: `rec-${Date.now()}`,
-        time: formatNow(),
+        time: formatNow(this.today),
         operator: this.teacher.name || '当前用户',
         action: partial.action,
         target: partial.target || '',
@@ -533,8 +546,9 @@ export const useDashboardStore = defineStore('dashboard-home', {
 /** @deprecated 使用 useDashboardStore */
 export const useHomeDashboardStore = useDashboardStore
 
-function formatNow() {
+function formatNow(today) {
   const d = new Date()
   const p = (n) => String(n).padStart(2, '0')
-  return `2026-07-02 ${p(d.getHours())}:${p(d.getMinutes())}`
+  const base = today || d.toISOString().slice(0, 10)
+  return `${base} ${p(d.getHours())}:${p(d.getMinutes())}`
 }

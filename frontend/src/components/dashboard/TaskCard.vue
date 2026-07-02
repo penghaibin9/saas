@@ -13,7 +13,7 @@
 
 <script>
 import { AppTodoCard } from '@/components/common'
-import { taskStatusCode } from '@/modules/dashboard/adapter/dashboard.adapter.js'
+import { taskStatusCode } from './presentation.js'
 
 export default {
   name: 'TaskCard',

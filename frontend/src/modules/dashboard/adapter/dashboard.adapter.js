@@ -4,6 +4,8 @@
  */
 import { findTeacher } from '@/mocks/db'
 import { HIGH_RISK_LEVELS, FOCUS_RISK_LEVELS, LATEST_LOG_LIMIT } from '../types/dashboard.types.js'
+import { countContinuousCheckinAbnormalStudents } from '../rules/dashboardRiskRules.js'
+import { completionRateStatus } from '@/components/dashboard/presentation.js'
 
 const pct = (n, d) => (d === 0 ? 0 : Math.round((n / d) * 1000) / 10)
 
@@ -82,6 +84,7 @@ export function buildTaskCompletionMetric(tasks) {
   const rate = total ? pct(done, total) : 0
   const d = new Date()
   const p = (x) => String(x).padStart(2, '0')
+  const rateStatus = completionRateStatus(rate)
   return {
     metricId: 'pt-todo-completion',
     id: 'pt-todo-completion',
@@ -92,7 +95,7 @@ export function buildTaskCompletionMetric(tasks) {
     trendType: 'flat',
     trendQuality: 'neutral',
     trendLabel: '暂无对比数据',
-    status: 'neutral',
+    status: rateStatus,
     drillable: true,
     drillTarget: 'teacher-todos',
     updatedAt: `${p(d.getHours())}:${p(d.getMinutes())}`
@@ -115,7 +118,7 @@ export function buildDashboardMetrics(state) {
 
 /**
  * 根据 risks 聚合风险预警中心数据
- * @param {import('../types/dashboard.types.js').DashboardState} state
+ * ignored 为预留状态，当前无 ignoreRisk action，过滤逻辑与 resolved 相同处理
  */
 export function buildRiskAlerts(state) {
   return state.risks.filter((r) => r.status !== 'resolved' && r.status !== 'ignored')
@@ -138,11 +141,40 @@ export function buildTaskGroups(tasks, today) {
 export const groupTasks = buildTaskGroups
 
 /**
- * 根据 students 生成重点学生画像
- * @param {import('../types/dashboard.types.js').DashboardState} state
+ * 重点关注学生：仅含存在 activeRisk 且风险等级为 MEDIUM+ 的学生
+ * @param {{ students: import('../types/dashboard.types.js').Student[], risks: import('../types/dashboard.types.js').RiskEvent[] }} state
  */
 export function buildFocusStudents(state) {
-  return filterFocusStudents(state.students)
+  const active = buildRiskAlerts(state)
+  const focusIds = new Set(
+    active
+      .filter((r) => r.studentId && FOCUS_RISK_LEVELS.includes(r.riskLevel))
+      .map((r) => r.studentId)
+  )
+  return state.students.filter((s) => focusIds.has(s.studentId))
+}
+
+/**
+ * 高风险学生：仅含存在 activeRisk 且风险等级为 HIGH/CRITICAL 的学生
+ */
+export function buildHighRiskStudents(state) {
+  const active = buildRiskAlerts(state)
+  const highIds = new Set(
+    active
+      .filter((r) => r.studentId && HIGH_RISK_LEVELS.includes(r.riskLevel))
+      .map((r) => r.studentId)
+  )
+  return state.students.filter((s) => highIds.has(s.studentId))
+}
+
+/** @deprecated 使用 buildHighRiskStudents */
+export function filterHighRiskStudents(students) {
+  return students.filter((s) => HIGH_RISK_LEVELS.includes(s.riskLevel))
+}
+
+/** @deprecated 使用 buildFocusStudents */
+export function filterFocusStudents(students) {
+  return students.filter((s) => FOCUS_RISK_LEVELS.includes(s.riskLevel))
 }
 
 /**
@@ -155,48 +187,8 @@ export function buildLifecycleStages(raw, mode = 'cards') {
   return buildStageCards(raw)
 }
 
-export function filterHighRiskStudents(students) {
-  return students.filter((s) => HIGH_RISK_LEVELS.includes(s.riskLevel))
-}
-
-export function filterFocusStudents(students) {
-  return students.filter((s) => FOCUS_RISK_LEVELS.includes(s.riskLevel))
-}
-
-export function metricAccent(metric) {
-  const id = metric.metricId || metric.id
-  const warningIds = ['pt-teacher-todos', 'gd-midterm-pending', 'pt-todo-completion']
-  const riskIds = ['pt-risk', 'int-abnormal-streak', 'int-risk', 'gd-overdue']
-  if (warningIds.includes(id)) return 'warning'
-  if (riskIds.includes(id) || metric.trendQuality === 'bad' || metric.status === 'bad')
-    return 'risk'
-  if (metric.trendQuality === 'good' || metric.status === 'good') return 'success'
-  return 'primary'
-}
-
-export function taskStatusCode(status) {
-  const map = { todo: 'PENDING_HANDLE', doing: 'PENDING_REVIEW', done: 'COMPLETED' }
-  return map[status] || 'PENDING_HANDLE'
-}
-
-export function riskStatusCode(status) {
-  const map = {
-    pending: 'PENDING_HANDLE',
-    processing: 'REVIEWING',
-    resolved: 'COMPLETED',
-    ignored: 'ARCHIVED'
-  }
-  return map[status] || 'PENDING_HANDLE'
-}
-
-export function riskStatusLabel(risk) {
-  if (risk.status === 'resolved') return '已处理'
-  if (risk.status === 'processing') return '处理中'
-  return risk.statusLabel || '待处理'
-}
-
 /**
- * 构建抽屉展示详情
+ * 构建抽屉展示详情（返回领域 status，展示映射由 presentation.js 处理）
  * @param {import('../types/dashboard.types.js').RiskEvent} risk
  * @param {import('../types/dashboard.types.js').Student | null} student
  */
@@ -207,7 +199,7 @@ export function buildRiskHandleDetail(risk, student) {
     riskReason: student?.lastActivity || risk.reason,
     responsibleTeacher: risk.ownerTeacher,
     deadline: risk.deadline || student?.handleDeadline || '—',
-    status: riskStatusCode(risk.status),
+    status: risk.status,
     suggestions: risk.suggestions || student?.suggestions || DEFAULT_SUGGESTIONS
   }
 }
@@ -224,23 +216,23 @@ export function buildTaskHandleDetail(task, student, teacherName) {
     riskReason: task.description || task.title,
     responsibleTeacher: teacherName,
     deadline: task.deadline,
-    status: taskStatusCode(task.status),
+    status: task.status,
     suggestions: student?.suggestions || DEFAULT_SUGGESTIONS
   }
 }
 
 /**
  * @param {import('../types/dashboard.types.js').Student} student
- * @param {boolean} resolved
+ * @param {boolean} hasActiveRisk
  */
-export function buildStudentHandleDetail(student, resolved) {
+export function buildStudentHandleDetail(student, hasActiveRisk) {
   return {
     studentName: student.name,
     riskType: student.currentStage,
     riskReason: student.lastActivity || '—',
     responsibleTeacher: student.advisorName || '—',
     deadline: student.handleDeadline || '—',
-    status: resolved ? 'COMPLETED' : 'PENDING_HANDLE',
+    status: hasActiveRisk ? 'processing' : 'resolved',
     suggestions: student.suggestions || DEFAULT_SUGGESTIONS
   }
 }
@@ -269,9 +261,7 @@ function adaptStudents(rawStudents, internships) {
       advisorName: isFocus ? advisor?.name || '—' : undefined,
       enterpriseName: intern?.enterpriseName || intern?.company || '',
       lastActivity: s.lastActivity,
-      handleDeadline: HIGH_RISK_LEVELS.includes(s.riskLevel)
-        ? '2026-07-03 18:00'
-        : '2026-07-05 18:00',
+      handleDeadline: undefined,
       suggestions: isFocus ? [...DEFAULT_SUGGESTIONS] : undefined
     }
   })
@@ -375,11 +365,21 @@ function adaptDataQuality(raw) {
   }
 }
 
+function countActiveRisks(rawRisks, riskId) {
+  return (rawRisks || []).filter(
+    (r) => r.riskId === riskId && r.status !== 'resolved' && r.status !== 'ignored'
+  ).length
+}
+
 function buildBannerStages(raw) {
-  const { students, gdTasks, internships, employments } = raw
+  const { students, gdTasks, internships, employments, risks, checkins, today } = raw
   const onboard = internships.filter((i) => i.status === 'ONBOARD')
+  const onboardIds = onboard.map((i) => i.studentId)
   const enrolled = students.length
   const employmentFilled = employments.filter((e) => e.direction !== 'PENDING').length
+  const gdSubmitted = gdTasks.filter((t) => t.nodes.opening.submittedAt).length
+  const gdRate = gdTasks.length ? pct(gdSubmitted, gdTasks.length) : null
+  const streakCount = countContinuousCheckinAbnormalStudents(checkins, onboardIds, today)
 
   return [
     {
@@ -388,8 +388,8 @@ function buildBannerStages(raw) {
       name: '迎新完成',
       label: '迎新完成',
       status: 'done',
-      completionRate: 100,
-      rate: 100,
+      completionRate: enrolled ? 100 : null,
+      rate: enrolled ? 100 : null,
       riskCount: 0,
       detail: `${enrolled}/${enrolled} 人`,
       description: `${enrolled}/${enrolled} 人`
@@ -399,12 +399,14 @@ function buildBannerStages(raw) {
       key: 'academic',
       name: '在校学习',
       label: '在校学习',
-      status: 'done',
-      completionRate: 96,
-      rate: 96,
+      status: 'pending',
+      completionRate: null,
+      rate: null,
+      statusText: '暂无数据',
+      cardStatus: '暂无数据',
       riskCount: 0,
-      detail: '课程修读正常',
-      description: '课程修读正常'
+      detail: '暂无学籍修读口径',
+      description: '暂无学籍修读口径'
     },
     {
       stageId: 'banner-gd',
@@ -412,8 +414,8 @@ function buildBannerStages(raw) {
       name: '毕业设计进行中',
       label: '毕业设计进行中',
       status: 'active',
-      completionRate: pct(2, gdTasks.length),
-      rate: pct(2, gdTasks.length),
+      completionRate: gdRate,
+      rate: gdRate,
       riskCount: gdTasks.filter(
         (t) => !t.nodes.opening.submittedAt && t.nodes.opening.deadline < raw.today
       ).length,
@@ -428,7 +430,7 @@ function buildBannerStages(raw) {
       status: 'active',
       completionRate: pct(onboard.length, students.length),
       rate: pct(onboard.length, students.length),
-      riskCount: 0,
+      riskCount: streakCount,
       detail: `${onboard.length} 人在岗`,
       description: `${onboard.length} 人在岗`
     },
@@ -438,9 +440,11 @@ function buildBannerStages(raw) {
       name: '基础能力验证',
       label: '基础能力验证',
       status: 'pending',
-      completionRate: 72,
-      rate: 72,
-      riskCount: 1,
+      completionRate: null,
+      rate: null,
+      statusText: '暂无数据',
+      cardStatus: '暂无数据',
+      riskCount: countActiveRisks(risks, 'risk-foundation'),
       detail: '本学期试点',
       description: '本学期试点'
     },
@@ -467,6 +471,7 @@ function buildStageCards(raw) {
     employments,
     students,
     checkins,
+    risks,
     today,
     currentWeek
   } = raw
@@ -478,17 +483,10 @@ function buildStageCards(raw) {
   const gdOverdue = gdTasks.filter(
     (t) => !t.nodes.opening.submittedAt && t.nodes.opening.deadline < today
   )
-  const streakCount = onboardIds.filter((sid) => {
-    const recs = checkins
-      .filter((c) => c.studentId === sid && c.date <= today)
-      .sort((a, b) => (a.date < b.date ? 1 : -1))
-    let n = 0
-    for (const r of recs) {
-      if (r.status === 'ABNORMAL' || r.status === 'MISSING') n++
-      else break
-    }
-    return n >= 3
-  }).length
+  const gdSubmitted = gdTasks.filter((t) => t.nodes.opening.submittedAt).length
+  const gdRate = gdTasks.length ? pct(gdSubmitted, gdTasks.length) : null
+  const streakCount = countContinuousCheckinAbnormalStudents(checkins, onboardIds, today)
+  const internRate = onboard.length ? pct(weekSubmitted, onboard.length) : null
 
   return [
     {
@@ -511,11 +509,11 @@ function buildStageCards(raw) {
       key: 'academic',
       name: '课程修读完成率',
       label: '在校',
-      status: 'done',
-      cardStatus: '稳定运行',
-      statusType: 'success',
-      completionRate: 96,
-      rate: 96,
+      status: 'pending',
+      cardStatus: '暂无数据',
+      statusType: 'neutral',
+      completionRate: null,
+      rate: null,
       riskCount: 0,
       actionText: '学籍台账',
       actionLabel: '学籍台账',
@@ -529,8 +527,8 @@ function buildStageCards(raw) {
       status: 'active',
       cardStatus: '进行中',
       statusType: 'processing',
-      completionRate: 67,
-      rate: 67,
+      completionRate: gdRate,
+      rate: gdRate,
       riskCount: gdOverdue.length,
       actionText: '过程监测',
       actionLabel: '过程监测',
@@ -544,8 +542,8 @@ function buildStageCards(raw) {
       status: 'active',
       cardStatus: '进行中',
       statusType: 'processing',
-      completionRate: pct(weekSubmitted, onboard.length),
-      rate: pct(weekSubmitted, onboard.length),
+      completionRate: internRate,
+      rate: internRate,
       riskCount: streakCount,
       actionText: '实习看板',
       actionLabel: '实习看板',
@@ -557,11 +555,11 @@ function buildStageCards(raw) {
       name: '基础能力验证完成率',
       label: '验证',
       status: 'pending',
-      cardStatus: '试点运行',
-      statusType: 'warning',
-      completionRate: 72,
-      rate: 72,
-      riskCount: 1,
+      cardStatus: '暂无数据',
+      statusType: 'neutral',
+      completionRate: null,
+      rate: null,
+      riskCount: countActiveRisks(risks, 'risk-foundation'),
       actionText: '验证管理',
       actionLabel: '验证管理',
       description: ''
@@ -590,3 +588,11 @@ function buildStageCards(raw) {
 export function buildLatestOperationLogs(logs, limit = LATEST_LOG_LIMIT) {
   return logs.slice(0, limit)
 }
+
+/** @deprecated 请使用 @/components/dashboard/presentation.js */
+export {
+  metricAccent,
+  taskStatusCode,
+  riskStatusCode,
+  riskStatusLabel
+} from '@/components/dashboard/presentation.js'

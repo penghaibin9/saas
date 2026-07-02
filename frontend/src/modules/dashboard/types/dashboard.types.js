@@ -5,6 +5,7 @@
 
 /** @typedef {'LOW'|'MEDIUM'|'HIGH'|'CRITICAL'} RiskLevel */
 /** @typedef {'pending'|'processing'|'resolved'|'ignored'} RiskStatus */
+/** ignored：预留未来 ignoreRisk action，当前未启用 */
 /** @typedef {'todo'|'doing'|'done'} TaskStatus */
 /** @typedef {'high'|'medium'|'low'} TaskPriority */
 

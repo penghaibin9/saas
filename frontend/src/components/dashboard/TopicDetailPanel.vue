@@ -46,7 +46,7 @@
 
 <script>
 import MetricCard from './MetricCard.vue'
-import { metricAccent } from '@/modules/dashboard/adapter/dashboard.adapter.js'
+import { metricAccent } from './presentation.js'
 
 const TABS = [
   { key: 'internship', label: '岗位实习' },

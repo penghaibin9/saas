@@ -61,18 +61,10 @@ function trendOf(current, previous, goodWhen, formatDelta) {
   return { trendType, trendQuality, trendLabel }
 }
 
-/** 计算某学生截至 today 的连续异常打卡天数（ABNORMAL/MISSING 视为异常） */
-function abnormalStreak(checkins, studentId, today) {
-  const recs = checkins
-    .filter((c) => c.studentId === studentId && c.date <= today)
-    .sort((a, b) => (a.date < b.date ? 1 : -1))
-  let streak = 0
-  for (const r of recs) {
-    if (r.status === 'ABNORMAL' || r.status === 'MISSING') streak++
-    else break
-  }
-  return streak
-}
+/** 计算某学生截至 today 的连续异常打卡天数 */
+import {
+  isContinuousCheckinAbnormal
+} from '@/modules/dashboard/rules/dashboardRiskRules.js'
 
 /* ==================== 岗位实习指标 ==================== */
 export function aggregateInternshipMetrics({
@@ -109,7 +101,7 @@ export function aggregateInternshipMetrics({
   const lastWeekRate = currentWeek > 1 ? reportRate(currentWeek - 1) : null
 
   // 连续 3 天及以上打卡异常人数
-  const streakStudents = onboardIds.filter((sid) => abnormalStreak(checkins, sid, today) >= 3)
+  const streakStudents = onboardIds.filter((sid) => isContinuousCheckinAbnormal(checkins, sid, today))
 
   // 实习风险学生数（实习记录风险等级 HIGH / CRITICAL）
   const riskCount = onboard.filter((i) => ['HIGH', 'CRITICAL'].includes(i.riskLevel)).length
