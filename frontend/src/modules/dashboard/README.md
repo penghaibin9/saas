@@ -5,14 +5,29 @@
 ## 分层职责
 
 ```
-provider/          → 数据与变更 API 入口（当前 mock，未来 HTTP）
-data/              → mock 原始数据实现（仅 provider 引用）
+api/               → 接口契约、mock API、real API 示例（见 api/API-CONTRACT.md）
+provider/          → store 唯一数据入口（当前调用 api.mock）
+data/              → mock 原始数据实现（仅 api.mock 引用）
 adapter/           → 原始数据 → 领域模型转换与聚合计算
 types/             → JSDoc 领域类型定义
 store/             → Pinia 状态、getters、actions
 ```
 
-**页面与组件**只依赖 `store` 和 `types` 输出的结构，**不得**直接 `import` mock 或 provider。
+**页面与组件**只依赖 `store` 和 `types` 输出的结构，**不得**直接 `import` mock、api 或 provider。
+
+## 调用链（P4）
+
+```
+store
+  ↓ fetchDashboardRaw / remindRisk / followUpRisk / resolveRisk / completeTask
+provider/dashboard.provider.js
+  ↓
+api/dashboard.api.mock.js
+  ↓
+data/dashboard.mock.js
+```
+
+init 时：`provider → api.mock → mock 原始数据 → adapter.normalizeDashboardData → store state`
 
 ## 状态边界
 
@@ -40,10 +55,11 @@ completeTask:   → done + operationLog（不自动 resolveRisk）
 
 ## 接真实后端
 
-1. 在 `provider/dashboard.provider.js` 中将 mock 调用替换为 HTTP 请求。
+1. 在 `provider/dashboard.provider.js` 中将 `api/dashboard.api.mock.js` 替换为真实 HTTP 实现（参考 `api/dashboard.api.real.example.js`）。
 2. 在 `adapter/dashboard.adapter.js` 中调整字段映射。
-3. 如有新字段，先改 `types/dashboard.types.js`。
-4. **不要**修改 `UiPreview.vue` 与 dashboard 展示组件。
+3. 契约与错误码以 `api/API-CONTRACT.md` 为准。
+4. 如有新字段，先改 `types/dashboard.types.js`。
+5. **不要**修改 `UiPreview.vue` 与 dashboard 展示组件。
 
 ## 新增字段规范
 

@@ -1,6 +1,10 @@
 /**
  * Dashboard Adapter — 原始 mock/API 数据 → 领域 ViewModel
- * 接真实后端时仅修改本文件与 data provider。
+ *
+ * 接真实后端时：
+ * 1. 在 provider 中切换为 HTTP API（见 api/dashboard.api.real.example.js）
+ * 2. 仅在本文件调整字段映射（normalizeDashboardData 及子函数）
+ * 3. 页面与组件不得直接依赖后端原始字段，一律经 adapter 转换
  */
 import { findTeacher } from '@/mocks/db'
 import { HIGH_RISK_LEVELS, FOCUS_RISK_LEVELS, LATEST_LOG_LIMIT } from '../types/dashboard.types.js'
@@ -33,7 +37,9 @@ const RISK_TYPE_MAP = {
 }
 
 /**
- * 输入 mock 原始数据，输出统一 dashboard state
+ * 输入 API overview 原始 bundle，输出统一 dashboard state
+ *
+ * 契约见 api/API-CONTRACT.md §3.1：后端字段不一致时在此统一转换。
  * @param {Awaited<ReturnType<import('../data/dashboard.mock.js').fetchDashboardRaw>>} rawData
  * @returns {import('../types/dashboard.types.js').DashboardState & { teacher: import('../types/dashboard.types.js').TeacherProfile, taskCompletionMetric: import('../types/dashboard.types.js').DashboardMetric | null }}
  */

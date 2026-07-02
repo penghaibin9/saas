@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import {
   fetchDashboardRaw,
-  resolveRiskApiMock,
-  remindStudentApiMock,
-  completeTaskApiMock
+  resolveRisk as resolveRiskApi,
+  remindRisk as remindRiskApi,
+  followUpRisk as followUpRiskApi,
+  completeTask as completeTaskApi
 } from '../provider/dashboard.provider.js'
 import {
   normalizeDashboardData,
@@ -338,7 +339,7 @@ export const useDashboardStore = defineStore('dashboard-home', {
       }
 
       try {
-        await remindStudentApiMock(risk.riskId)
+        await remindRiskApi(risk.riskId, { operatorId: this.teacher.teacherId || 'current-user' })
       } catch {
         this.showToast('提醒发送失败，请稍后重试', 'warning')
         return
@@ -380,6 +381,16 @@ export const useDashboardStore = defineStore('dashboard-home', {
         return
       }
 
+      try {
+        await followUpRiskApi(id, {
+          content: content || '填写风险跟进记录',
+          operatorId: this.teacher.teacherId || 'current-user'
+        })
+      } catch {
+        this.showToast('跟进保存失败，请稍后重试', 'warning')
+        return
+      }
+
       if (risk.status === 'pending') {
         risk.status = 'processing'
         risk.statusLabel = '处理中'
@@ -415,7 +426,7 @@ export const useDashboardStore = defineStore('dashboard-home', {
         }
 
         try {
-          await resolveRiskApiMock(rid)
+          await resolveRiskApi(rid, { operatorId: this.teacher.teacherId || 'current-user' })
         } catch {
           this.showToast('风险处理失败，请稍后重试', 'warning')
           return
@@ -492,7 +503,7 @@ export const useDashboardStore = defineStore('dashboard-home', {
       }
 
       try {
-        await completeTaskApiMock(taskId)
+        await completeTaskApi(taskId, { operatorId: this.teacher.teacherId || 'current-user' })
       } catch {
         this.showToast('待办处理失败，请稍后重试', 'warning')
         return

@@ -1,8 +1,14 @@
 export { useDashboardStore, useHomeDashboardStore } from './store/dashboard.store.js'
 export {
   fetchDashboardRaw,
-  resolveRiskApiMock,
+  fetchRisks,
+  fetchLogs,
+  remindRisk,
+  followUpRisk,
+  resolveRisk,
+  completeTask,
   remindStudentApiMock,
+  resolveRiskApiMock,
   completeTaskApiMock
 } from './provider/dashboard.provider.js'
 export {
