@@ -1,0 +1,42 @@
+<view class="page">
+  <button class="btn" bindtap="openForm">＋ 我要上报</button>
+  <view class="card" style="margin-top:16rpx;background:#EFF6FF">
+    <view style="font-size:24rpx;color:#1e40af;line-height:1.7">实习投诉、异常情况、安全事件均可在此上报，学校将尽快处理并通知您进展。</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry">{{err}}</view>
+  <block wx:else>
+    <view class="card" wx:for="{{list}}" wx:key="id">
+      <view style="display:flex;justify-content:space-between;align-items:flex-start">
+        <view class="m" style="font-weight:600">{{item.title}}</view>
+        <text class="tag {{item.stClass}}">{{item.stText}}</text>
+      </view>
+      <view class="d" style="margin-top:8rpx">{{item.catText}} · {{item.create_time || ''}}</view>
+      <view wx:if="{{item.content}}" class="d" style="margin-top:8rpx">{{item.content}}</view>
+      <view wx:if="{{item.handle_remark}}" class="d" style="margin-top:8rpx;color:#16A34A">处理说明：{{item.handle_remark}}</view>
+    </view>
+    <view wx:if="{{!list.length}}" class="empty"><text class="ei">📋</text>暂无上报记录</view>
+  </block>
+</view>
+
+<view wx:if="{{showForm}}" class="mask" bindtap="closeForm">
+  <view class="sheet" catchtap="noop">
+    <view class="sheet-title">提交上报</view>
+    <view class="seg">
+      <view wx:for="{{['complaint','incident','safety']}}" wx:for-item="c" wx:key="*this" class="seg-i {{category===c?'on':''}}" data-v="{{c}}" bindtap="onCat">{{c==='complaint'?'投诉':c==='incident'?'异常':'安全'}}</view>
+    </view>
+    <text class="field-label">标题</text>
+    <input class="input" placeholder="简要描述问题" value="{{title}}" bindinput="onTitle" />
+    <text class="field-label">详细说明</text>
+    <textarea class="textarea" placeholder="请描述具体情况" value="{{content}}" bindinput="onContent"></textarea>
+    <text class="field-label">联系电话</text>
+    <input class="input" type="number" placeholder="便于学校联系您" value="{{phone}}" bindinput="onPhone" />
+    <text class="field-label">紧急程度</text>
+    <picker mode="selector" range="{{['一般','较急','紧急']}}" bindchange="onUrgency">
+      <view class="input">{{urgency===3?'紧急':urgency===2?'较急':'一般'}}</view>
+    </picker>
+    <button class="btn" loading="{{submitting}}" bindtap="submit">提交上报</button>
+    <button class="btn btn-o" bindtap="closeForm">取消</button>
+  </view>
+</view>

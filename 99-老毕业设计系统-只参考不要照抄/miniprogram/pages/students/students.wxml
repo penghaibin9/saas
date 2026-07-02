@@ -1,0 +1,79 @@
+<view class="page stu-page">
+  <view class="search-bar">
+    <view class="search-inner">
+      <text class="search-ic">🔍</text>
+      <input
+        class="search-input"
+        placeholder="搜索姓名 / 学号 / 手机 / 实习单位"
+        value="{{keyword}}"
+        bindinput="onSearchInput"
+        bindconfirm="onSearchConfirm"
+        confirm-type="search"
+      />
+      <text wx:if="{{keyword}}" class="search-clear" bindtap="onClearSearch">×</text>
+    </view>
+  </view>
+
+  <block wx:if="{{loading}}">
+    <view class="sk-card"><view class="sk sk-line" style="width:60%"></view><view class="sk sk-line" style="width:40%"></view></view>
+    <view class="sk-card"><view class="sk sk-line" style="width:55%"></view><view class="sk sk-line" style="width:35%"></view></view>
+  </block>
+
+  <view wx:elif="{{err}}" class="retry">
+    <view class="ei">⚠️</view>{{err}}
+    <button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="reload">重新加载</button>
+  </view>
+
+  <block wx:else>
+    <view class="chips">
+      <view class="chip {{filter === item.k ? 'on' : ''}}" wx:for="{{filters}}" wx:key="k" data-k="{{item.k}}" bindtap="setFilter">{{item.label}}</view>
+    </view>
+
+    <view class="stu-hd">
+      <text class="stu-count">共 {{total}} 人</text>
+      <text wx:if="{{keyword}}" class="stu-kw">「{{keyword}}」</text>
+      <text wx:if="{{list.length}}" class="stu-shown">已显示 {{list.length}} 条</text>
+    </view>
+
+    <view class="card" wx:if="{{shown.length}}">
+      <view
+        class="row row-tap stu-row"
+        wx:for="{{shown}}"
+        wx:key="student_id"
+        data-id="{{item.student_id}}"
+        data-name="{{item.student_name}}"
+        bindtap="tapStudent"
+        hover-class="tap-active"
+      >
+        <view class="stu-line">
+          <view class="avatar av-{{item.avIdx}}">{{item.avTxt}}</view>
+          <view class="stu-main">
+            <view class="m">{{item.student_name}} <text class="d">{{item.student_eeid}}</text>
+              <text class="tag {{t.c}}" style="margin-left:8rpx" wx:for="{{item.riskTags}}" wx:for-item="t" wx:key="t">{{t.t}}</text>
+            </view>
+            <view class="d">{{item.enterprise_name || '未分配企业'}}</view>
+          </view>
+        </view>
+        <view class="stu-meta">
+          <text>签到{{item.checkin_count}} · 周报{{item.weekly_count}} · 月报{{item.monthly_count}}</text>
+          <text class="stu-act">重置密码 ›</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:elif="{{list.length}}" class="empty card">
+      <text class="ei">🔍</text>当前筛选条件下暂无学生（已加载 {{list.length}} 条）
+    </view>
+
+    <view wx:elif="{{keyword}}" class="empty card">
+      <text class="ei">🔍</text>未找到「{{keyword}}」相关学生
+    </view>
+    <view wx:else class="empty card">
+      <text class="ei">👨‍🎓</text>暂无实习生
+    </view>
+
+    <view wx:if="{{loadingMore}}" class="stu-more">加载中…</view>
+    <view wx:elif="{{hasMore && list.length}}" class="stu-more muted">上拉加载更多</view>
+    <view wx:elif="{{list.length && !hasMore}}" class="stu-more muted">已加载全部</view>
+  </block>
+</view>

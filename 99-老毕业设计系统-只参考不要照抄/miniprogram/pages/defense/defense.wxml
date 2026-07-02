@@ -1,0 +1,47 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <block wx:else>
+    <view class="card" style="background:#EFF6FF">
+      <view style="font-size:26rpx;color:#1e40af;line-height:1.7">🎓 双盲评审：你只能看到并修改本人的打分，看不到其他评委分数与汇总成绩。</view>
+    </view>
+    <block wx:if="{{list.length}}">
+      <view class="card row" wx:for="{{list}}" wx:key="id" data-id="{{item.id}}" bindtap="openGroup">
+        <view>
+          <view class="m">{{item.name}}</view>
+          <view class="d">{{item.defense_date || ''}}{{item.location ? (' · ' + item.location) : ''}} · 学生 {{item.member_count}} 人</view>
+        </view>
+        <view style="text-align:right">
+          <text class="tag {{item.stClass}}">{{item.stText}}</text>
+          <view class="d" style="margin-top:6rpx">去评分 ›</view>
+        </view>
+      </view>
+    </block>
+    <view wx:else class="empty"><text class="ei">🎓</text>暂无你参与评审的答辩组</view>
+  </block>
+</view>
+
+<view wx:if="{{showSheet}}" class="mask" bindtap="closeSheet">
+  <view class="sheet" catchtap="noop">
+    <view wx:if="{{detailLoading}}" class="loading">加载中…</view>
+    <block wx:else>
+      <view class="sheet-title">{{group.name}} · 评分</view>
+      <view class="d" style="margin-bottom:16rpx">{{group.defense_date || ''}}{{group.location ? (' · ' + group.location) : ''}}</view>
+      <scroll-view scroll-y style="max-height:60vh">
+        <block wx:if="{{members.length}}">
+          <view class="card" wx:for="{{members}}" wx:key="student_id" style="margin:0 0 16rpx">
+            <view class="m">{{item.student_name}} <text class="d">{{item.student_eeid || ''}}</text></view>
+            <view wx:if="{{item.achievement_title}}" class="d" style="margin:6rpx 0">📄 {{item.achievement_title}}</view>
+            <view style="display:flex;gap:12rpx;align-items:center;margin-top:8rpx">
+              <input class="input" type="digit" placeholder="分数" style="flex:0 0 140rpx;margin:0" value="{{item.scoreInput}}" data-i="{{index}}" bindinput="onScore" />
+              <input class="input" placeholder="评语（可选）" style="flex:1;margin:0" value="{{item.commentInput}}" data-i="{{index}}" bindinput="onComment" />
+            </view>
+            <button class="btn btn-sm" style="margin:12rpx 0 0" data-i="{{index}}" bindtap="saveScore">保存评分</button>
+          </view>
+        </block>
+        <view wx:else class="empty"><text class="ei">📋</text>该组暂无答辩学生</view>
+      </scroll-view>
+      <button class="btn btn-o" bindtap="closeSheet">关闭</button>
+    </block>
+  </view>
+</view>

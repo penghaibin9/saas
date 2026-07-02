@@ -1,0 +1,85 @@
+<view class="page">
+  <button class="btn btn-o" bindtap="toApplications">📋 我的申请</button>
+
+  <block wx:if="{{loading}}">
+    <view class="sk-card"><view class="sk sk-line" style="width:60%"></view><view class="sk sk-line" style="width:40%"></view></view>
+    <view class="sk-card"><view class="sk sk-line" style="width:55%"></view><view class="sk sk-line" style="width:35%"></view></view>
+  </block>
+
+  <view wx:elif="{{err}}" class="retry">
+    <view class="ei">⚠️</view>{{err}}
+    <button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button>
+  </view>
+
+  <block wx:elif="{{list.length || recommend.length}}">
+    <view wx:if="{{recommend.length}}" class="sec-title" style="margin:8rpx 0 12rpx;font-weight:600;color:#1f6feb">⭐ 为你推荐</view>
+    <view class="card" wx:for="{{recommend}}" wx:for-item="rec" wx:key="id" data-item="{{rec}}" bindtap="openDetail" style="border-left:6rpx solid #1f6feb">
+      <view style="display:flex;justify-content:space-between;align-items:flex-start">
+        <view class="m" style="font-weight:600;font-size:30rpx">{{rec.title}}</view>
+        <text class="tag tag-g">匹配 {{rec.match_score}}</text>
+      </view>
+      <view class="d" style="margin-top:8rpx">{{rec.enterprise_name}}{{rec.location ? (' · ' + rec.location) : ''}}</view>
+      <view wx:if="{{rec.tagsText}}" class="d" style="margin-top:6rpx;color:#1f6feb">🎯 {{rec.tagsText}}</view>
+    </view>
+    <view wx:if="{{!hasTags}}" class="d" style="margin:4rpx 0 16rpx;color:#999;font-size:24rpx">💡 在「我的」中填写技能标签，可获得更精准的岗位推荐</view>
+
+    <view wx:if="{{recommend.length}}" class="sec-title" style="margin:16rpx 0 12rpx;font-weight:600">全部岗位</view>
+    <view class="card" wx:for="{{list}}" wx:key="id" data-item="{{item}}" bindtap="openDetail">
+      <view style="display:flex;justify-content:space-between;align-items:flex-start">
+        <view class="m" style="font-weight:600;font-size:30rpx">{{item.title}}</view>
+        <text class="tag tag-b">{{item.salary || '面议'}}</text>
+      </view>
+      <view class="d" style="margin-top:8rpx">{{item.enterprise_name}}{{item.location ? (' · ' + item.location) : ''}}</view>
+      <view wx:if="{{item.internTypeText || item.edu_req || item.major_req || item.headcount || item.to_regular}}" class="ptags">
+        <text wx:if="{{item.internTypeText}}" class="ptag">{{item.internTypeText}}</text>
+        <text wx:if="{{item.edu_req}}" class="ptag">{{item.edu_req}}</text>
+        <text wx:if="{{item.major_req}}" class="ptag">{{item.major_req}}</text>
+        <text wx:if="{{item.headcount}}" class="ptag">招{{item.headcount}}人</text>
+        <text wx:if="{{item.to_regular}}" class="ptag ptag-hot">可转正</text>
+      </view>
+      <view wx:if="{{item.welfareList.length}}" class="welfare">
+        <text wx:for="{{item.welfareList}}" wx:for-item="w" wx:key="*this" class="wchip">{{w}}</text>
+      </view>
+      <view style="margin-top:16rpx;display:flex;justify-content:space-between;align-items:center" catchtap="noop">
+        <text class="d" style="color:#999;font-size:22rpx">{{item.deadlineText ? ('截止 ' + item.deadlineText) : ''}}</text>
+        <view>
+          <text wx:if="{{item.appliedText}}" class="tag tag-m">{{item.appliedText}}</text>
+          <button wx:else class="btn btn-sm" style="margin:0" data-id="{{item.id}}" catchtap="apply">申请该岗位</button>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty"><text class="ei">💼</text>暂无在招岗位</view>
+</view>
+
+<view wx:if="{{showDetail}}" class="mask" bindtap="closeDetail">
+  <view class="sheet" catchtap="noop">
+    <view class="sheet-title">{{detail.title}}</view>
+    <view class="kv"><text class="k">企业</text><text>{{detail.enterprise_name || '-'}}</text></view>
+    <view class="kv"><text class="k">薪资</text><text>{{detail.salary || '面议'}}</text></view>
+    <view wx:if="{{detail.internTypeText}}" class="kv"><text class="k">实习类型</text><text>{{detail.internTypeText}}</text></view>
+    <view class="kv"><text class="k">地点</text><text>{{detail.location || '-'}}</text></view>
+    <view class="kv"><text class="k">招聘人数</text><text>{{detail.headcount || '-'}}</text></view>
+    <view wx:if="{{detail.edu_req}}" class="kv"><text class="k">学历要求</text><text>{{detail.edu_req}}</text></view>
+    <view wx:if="{{detail.major_req}}" class="kv"><text class="k">专业要求</text><text>{{detail.major_req}}</text></view>
+    <view wx:if="{{detail.work_time}}" class="kv"><text class="k">工作时间</text><text>{{detail.work_time}}</text></view>
+    <view class="kv"><text class="k">转正机会</text><text>{{detail.to_regular ? '有' : '无'}}</text></view>
+    <view wx:if="{{detail.deadlineText}}" class="kv"><text class="k">报名截止</text><text>{{detail.deadlineText}}</text></view>
+    <view wx:if="{{detail.welfareList.length}}" style="margin-top:18rpx">
+      <view class="k" style="font-size:26rpx;margin-bottom:10rpx">福利待遇</view>
+      <view class="welfare" style="margin-top:0"><text wx:for="{{detail.welfareList}}" wx:for-item="w" wx:key="*this" class="wchip">{{w}}</text></view>
+    </view>
+    <view wx:if="{{detail.description}}" style="margin-top:18rpx">
+      <view class="k" style="font-size:26rpx;margin-bottom:8rpx">岗位职责</view>
+      <view class="detail-body">{{detail.description}}</view>
+    </view>
+    <view wx:if="{{detail.requirement}}" style="margin-top:12rpx">
+      <view class="k" style="font-size:26rpx;margin-bottom:8rpx">任职要求</view>
+      <view class="detail-body">{{detail.requirement}}</view>
+    </view>
+    <button wx:if="{{!detail.appliedText}}" class="btn" data-id="{{detail.id}}" bindtap="apply">申请该岗位</button>
+    <view wx:else class="tag tag-m" style="display:block;text-align:center;padding:18rpx;margin-top:20rpx">{{detail.appliedText}}</view>
+    <button class="btn btn-o" bindtap="closeDetail">关闭</button>
+  </view>
+</view>

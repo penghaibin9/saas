@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>实习迎检数据大屏</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+:root{
+  --bg0:#040b1c;--bg1:#0a1838;--panel:rgba(13,32,68,.55);--panel-bd:rgba(64,140,255,.22);
+  --cyan:#22d3ee;--blue:#3b82f6;--green:#22c55e;--orange:#f59e0b;--red:#ef4444;--purple:#a855f7;
+  --txt:#e7f0ff;--txt2:#8fb0e0;--muted:#5e7bb0;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Noto Sans SC','Microsoft YaHei',sans-serif;background:radial-gradient(1200px 700px at 50% -10%,#0e2a5e 0%,var(--bg1) 40%,var(--bg0) 100%);color:var(--txt);height:100vh;display:flex;flex-direction:column}
+.scrn{flex:1;display:flex;flex-direction:column;padding:16px 20px;gap:14px;min-height:0}
+
+/* Header */
+.hd{display:flex;align-items:center;justify-content:space-between;height:54px;flex-shrink:0;border-bottom:1px solid var(--panel-bd);position:relative}
+.hd::after{content:"";position:absolute;left:25%;right:25%;bottom:-1px;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent)}
+.hd-title{font-size:26px;font-weight:700;letter-spacing:3px;background:linear-gradient(180deg,#fff,#7db8ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 18px rgba(34,211,238,.25)}
+.hd-side{display:flex;align-items:center;gap:18px;font-size:13px;color:var(--txt2)}
+.hd-clock{font-size:16px;font-variant-numeric:tabular-nums;color:var(--cyan)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);margin-right:5px;animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* KPI row */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;flex-shrink:0}
+.kpi{background:var(--panel);border:1px solid var(--panel-bd);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden;backdrop-filter:blur(4px)}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c,var(--cyan))}
+.kpi-val{font-size:34px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;color:var(--c,#fff);text-shadow:0 0 16px var(--cg,rgba(34,211,238,.3))}
+.kpi-val small{font-size:15px;font-weight:500;margin-left:2px}
+.kpi-label{font-size:13px;color:var(--txt2);margin-top:6px}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* Body grid */
+.body{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:14px;min-height:0}
+.panel{background:var(--panel);border:1px solid var(--panel-bd);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;min-height:0;backdrop-filter:blur(4px)}
+.panel-t{font-size:14px;font-weight:600;color:#bcd6ff;margin-bottom:8px;display:flex;align-items:center;gap:7px;flex-shrink:0}
+.panel-t::before{content:"";width:3px;height:13px;background:var(--cyan);border-radius:2px;box-shadow:0 0 6px var(--cyan)}
+.chart{flex:1;min-height:0}
+.span2{grid-column:span 2}
+
+/* Lists */
+.lst{flex:1;overflow:hidden;position:relative}
+.lst-scroll{position:absolute;inset:0;overflow-y:auto;scrollbar-width:none}
+.lst-scroll::-webkit-scrollbar{display:none}
+.row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(64,140,255,.1);font-size:13px}
+.row:hover{background:rgba(64,140,255,.08)}
+.tag{font-size:11px;padding:1px 7px;border-radius:4px;white-space:nowrap;font-weight:600}
+.tag-high{background:rgba(239,68,68,.18);color:#ff8585;border:1px solid rgba(239,68,68,.4)}
+.tag-mid{background:rgba(245,158,11,.18);color:#ffc55c;border:1px solid rgba(245,158,11,.4)}
+.tag-low{background:rgba(59,130,246,.18);color:#86b7ff;border:1px solid rgba(59,130,246,.4)}
+.r-name{font-weight:600;color:#dce9ff;min-width:60px}
+.r-msg{color:var(--txt2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r-meta{color:var(--muted);font-size:11px;white-space:nowrap}
+.empty{color:var(--muted);text-align:center;padding:30px;font-size:13px}
+
+/* Login overlay */
+.login{position:fixed;inset:0;background:rgba(4,11,28,.92);display:flex;align-items:center;justify-content:center;z-index:50}
+.login.hide{display:none}
+.login-box{background:var(--bg1);border:1px solid var(--panel-bd);border-radius:12px;padding:30px 34px;width:320px;box-shadow:0 0 50px rgba(34,211,238,.15)}
+.login-box h3{font-size:18px;margin-bottom:18px;text-align:center;color:#cfe3ff}
+.login-box input{width:100%;padding:10px 12px;margin-bottom:12px;background:rgba(255,255,255,.06);border:1px solid var(--panel-bd);border-radius:7px;color:#fff;font-size:14px;font-family:inherit}
+.login-box input:focus{outline:none;border-color:var(--cyan)}
+.login-box button{width:100%;padding:10px;background:linear-gradient(90deg,var(--blue),var(--cyan));border:none;border-radius:7px;color:#04122e;font-weight:700;font-size:14px;cursor:pointer}
+.login-err{color:#ff8585;font-size:12px;text-align:center;min-height:16px;margin-top:6px}
+.toolbtn{background:rgba(255,255,255,.06);border:1px solid var(--panel-bd);color:var(--txt2);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.toolbtn:hover{color:#fff;border-color:var(--cyan)}
+</style>
+</head>
+<body>
+<div class="scrn">
+  <div class="hd">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="hd-title" id="hd-title">实习迎检数据大屏</div>
+    </div>
+    <div class="hd-side">
+      <span><span class="dot"></span>实时数据 · 每30秒刷新</span>
+      <span id="updated">—</span>
+      <span class="hd-clock" id="clock">--:--:--</span>
+      <button class="toolbtn" onclick="toggleFull()">⛶ 全屏</button>
+      <button class="toolbtn" onclick="logout()">退出</button>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="body">
+    <div class="panel span2"><div class="panel-t">近14天打卡趋势</div><div class="chart" id="c-trend"></div></div>
+    <div class="panel"><div class="panel-t">申请状态分布</div><div class="chart" id="c-status"></div></div>
+    <div class="panel"><div class="panel-t">各学院实习规模</div><div class="chart" id="c-college"></div></div>
+    <div class="panel"><div class="panel-t">实习企业 Top（在册人数）</div><div class="chart" id="c-ent"></div></div>
+    <div class="panel">
+      <div class="panel-t" id="risk-title">风险预警名单</div>
+      <div class="lst"><div class="lst-scroll" id="risk-list"><div class="empty">加载中…</div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 登录浮层（无 token 时） -->
+<div class="login" id="login">
+  <div class="login-box">
+    <h3>登录以查看数据大屏</h3>
+    <input id="lg-user" placeholder="管理员账号" autocomplete="username">
+    <input id="lg-pass" type="password" placeholder="密码" autocomplete="current-password">
+    <button onclick="doLogin()">进 入 大 屏</button>
+    <div class="login-err" id="lg-err"></div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:3000/api';
+// token 优先取 URL hash(#token=...)，便于从管理平台一键跳转；否则取 localStorage
+let _token = (location.hash.match(/token=([^&]+)/)||[])[1] || localStorage.getItem('token') || '';
+if (_token) localStorage.setItem('token', _token);
+// 学校名可配置（多校通用）：?school=xxx 或 localStorage.screen_school；缺省不显示，避免硬编码某校
+(function(){
+  const q=new URLSearchParams(location.search).get('school');
+  if(q!==null){ try{ localStorage.setItem('screen_school', q); }catch(e){} }
+  const school=(q!==null?q:(localStorage.getItem('screen_school')||'')).trim();
+  const el=document.getElementById('hd-title');
+  if(el && school) el.textContent = school+' · 实习迎检数据大屏';
+})();
+let _charts = {};
+let _timer = null;
+
+async function GET(path){
+  const r = await fetch(API+path,{headers:_token?{Authorization:'Bearer '+_token}:{}});
+  if(r.status===401||r.status===403){ showLogin(); return null; }
+  return r.json();
+}
+
+// ─── Clock ───
+function tickClock(){
+  const d=new Date();
+  const p=n=>String(n).padStart(2,'0');
+  document.getElementById('clock').textContent=`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+setInterval(tickClock,1000); tickClock();
+
+// ─── Login ───
+function showLogin(){ document.getElementById('login').classList.remove('hide'); if(_timer)clearInterval(_timer); }
+function hideLogin(){ document.getElementById('login').classList.add('hide'); }
+async function doLogin(){
+  const u=document.getElementById('lg-user').value.trim(), p=document.getElementById('lg-pass').value;
+  const err=document.getElementById('lg-err'); err.textContent='';
+  try{
+    const r=await fetch(API+'/users/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const j=await r.json();
+    if(!j.success){ err.textContent=j.message||'登录失败'; return; }
+    if(j.data.user && j.data.user.role>2){ err.textContent='仅管理员可查看迎检大屏'; return; }
+    _token=j.data.token; localStorage.setItem('token',_token);
+    hideLogin(); start();
+  }catch(e){ err.textContent='无法连接服务器，请确认后端已启动'; }
+}
+document.getElementById('lg-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+function logout(){ _token=''; localStorage.removeItem('token'); showLogin(); }
+
+function toggleFull(){ if(!document.fullscreenElement)document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+
+// ─── Render ───
+// 点击 KPI 卡片下钻到管理端对应模块（新标签打开 /admin#<page>）
+function drill(page){ if(page) window.open('/admin#'+page,'_blank'); }
+function kpiCard(val,label,sub,color,glow,unit,nav){
+  const clickable = nav ? ` onclick="drill('${nav}')" style="--c:${color};--cg:${glow};cursor:pointer" title="点击查看明细"` : ` style="--c:${color};--cg:${glow}"`;
+  return `<div class="kpi"${clickable}><div class="kpi-val">${val}${unit?`<small>${unit}</small>`:''}</div><div class="kpi-label">${label}</div><div class="kpi-sub">${sub||''}</div></div>`;
+}
+function renderKpis(k){
+  const rateColor = r => r>=90?'var(--green)':r>=70?'var(--cyan)':r>=50?'var(--orange)':'var(--red)';
+  document.getElementById('kpis').innerHTML =
+    kpiCard(k.internCount,'在册实习人数',`合作企业 ${k.enterpriseCount} 家`,'#fff','rgba(255,255,255,.3)','',  'procmon') +
+    kpiCard(k.checkinRate,'今日打卡率',`打卡 ${k.todayCheckinStudents}/${k.internCount} 人`,rateColor(k.checkinRate),'rgba(34,211,238,.4)','%','procmon') +
+    kpiCard(k.onPostRate,'在岗率',`今日请假 ${k.todayLeaves} 人`,rateColor(k.onPostRate),'rgba(34,197,94,.4)','%','leavesadmin') +
+    kpiCard(k.incompleteCount,'过程未达标',`签到/周报/月报未满足计划`,k.incompleteCount>0?'var(--orange)':'var(--green)','rgba(245,158,11,.4)','','missing') +
+    kpiCard(k.riskStudents,'涉险学生',`高风险预警 ${k.riskHigh} 条`,k.riskHigh>0?'var(--red)':k.riskStudents>0?'var(--orange)':'var(--green)','rgba(239,68,68,.4)','','risk') +
+    kpiCard(k.todayCheckins,'今日打卡人次',`含同人多次打卡`,'var(--purple)','rgba(168,85,247,.4)','','procmon');
+}
+
+const AXIS = {axisLine:{lineStyle:{color:'rgba(120,170,240,.25)'}},axisLabel:{color:'#8fb0e0',fontSize:11},splitLine:{lineStyle:{color:'rgba(120,170,240,.08)'}},axisTick:{show:false}};
+function mk(id){ const el=document.getElementById(id); if(_charts[id])return _charts[id]; _charts[id]=echarts.init(el); return _charts[id]; }
+
+function renderCharts(c){
+  // 打卡趋势
+  const tr=c.checkinTrend||[];
+  mk('c-trend').setOption({
+    tooltip:{trigger:'axis'},grid:{top:18,right:18,bottom:24,left:36},
+    xAxis:{type:'category',data:tr.map(t=>(t.day||'').slice(5)),...AXIS},
+    yAxis:{type:'value',minInterval:1,...AXIS},
+    series:[{type:'line',smooth:true,data:tr.map(t=>t.cnt),symbol:'circle',symbolSize:6,
+      itemStyle:{color:'#22d3ee'},lineStyle:{color:'#22d3ee',width:2.5,shadowColor:'rgba(34,211,238,.5)',shadowBlur:10},
+      areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(34,211,238,.35)'},{offset:1,color:'rgba(34,211,238,0)'}])}}]
+  });
+  // 申请状态分布
+  const palette=['#f59e0b','#3b82f6','#ef4444','#22d3ee','#a855f7','#22c55e','#64748b'];
+  mk('c-status').setOption({
+    tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},
+    legend:{bottom:0,textStyle:{color:'#8fb0e0',fontSize:11},itemWidth:9,itemHeight:9},
+    series:[{type:'pie',radius:['40%','66%'],center:['50%','44%'],
+      data:(c.statusDist||[]).map((d,i)=>({name:d.name,value:d.value,itemStyle:{color:palette[i%palette.length]}})),
+      label:{color:'#cfe3ff',fontSize:11,formatter:'{b}\n{c}'},labelLine:{lineStyle:{color:'rgba(140,180,240,.4)'}}}]
+  });
+  // 学院规模
+  const cl=(c.collegeDist||[]).slice(0,8);
+  mk('c-college').setOption({
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:14,right:18,bottom:22,left:80},
+    xAxis:{type:'value',minInterval:1,...AXIS},
+    yAxis:{type:'category',data:cl.map(d=>d.name).reverse(),...AXIS,axisLabel:{color:'#8fb0e0',fontSize:11,width:72,overflow:'truncate'}},
+    series:[{type:'bar',data:cl.map(d=>d.cnt).reverse(),barWidth:'52%',
+      itemStyle:{borderRadius:[0,4,4,0],color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#1d4ed8'},{offset:1,color:'#22d3ee'}])}}]
+  });
+  // 企业 Top
+  const et=(c.enterpriseTop||[]).slice(0,8);
+  mk('c-ent').setOption({
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:14,right:18,bottom:22,left:90},
+    xAxis:{type:'value',minInterval:1,...AXIS},
+    yAxis:{type:'category',data:et.map(d=>d.name).reverse(),...AXIS,axisLabel:{color:'#8fb0e0',fontSize:11,width:82,overflow:'truncate'}},
+    series:[{type:'bar',data:et.map(d=>d.cnt).reverse(),barWidth:'52%',
+      itemStyle:{borderRadius:[0,4,4,0],color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#7c3aed'},{offset:1,color:'#22d3ee'}])}}]
+  });
+}
+
+function renderRisk(riskList,incompleteList){
+  const lvMap={high:['tag-high','高'],medium:['tag-mid','中'],low:['tag-low','低']};
+  let html='';
+  (riskList||[]).forEach(r=>{
+    const [cls,txt]=lvMap[r.level]||lvMap.low;
+    html+=`<div class="row"><span class="tag ${cls}">${txt}</span><span class="r-name">${r.student_name||'-'}</span><span class="r-msg">${r.message||''}</span><span class="r-meta">${r.enterprise_name||''}</span></div>`;
+  });
+  (incompleteList||[]).forEach(s=>{
+    const miss=[];
+    if(s.checkin_count<s.req_checkin)miss.push(`签到${s.checkin_count}/${s.req_checkin}`);
+    if(s.weekly_count<s.req_weekly)miss.push(`周报${s.weekly_count}/${s.req_weekly}`);
+    if(s.monthly_count<s.req_monthly)miss.push(`月报${s.monthly_count}/${s.req_monthly}`);
+    html+=`<div class="row"><span class="tag tag-mid">达标</span><span class="r-name">${s.student_name||'-'}</span><span class="r-msg">${miss.join(' · ')||'过程材料未达标'}</span><span class="r-meta">${s.enterprise_name||''}</span></div>`;
+  });
+  const total=(riskList||[]).length+(incompleteList||[]).length;
+  document.getElementById('risk-title').textContent=`风险预警 / 未达标名单（${total}）`;
+  document.getElementById('risk-list').innerHTML = total?html:'<div class="empty">✓ 暂无风险与未达标，实习过程良好</div>';
+}
+
+async function load(){
+  const res=await GET('/analytics/cockpit');
+  if(!res||!res.success) return;
+  const d=res.data;
+  renderKpis(d.kpi);
+  renderCharts(d.charts);
+  renderRisk(d.riskList,d.incompleteList);
+  document.getElementById('updated').textContent='更新于 '+(d.updatedAt||'').replace('T',' ').slice(11,19);
+}
+
+function start(){
+  hideLogin();
+  load();
+  if(_timer)clearInterval(_timer);
+  _timer=setInterval(load,30000);
+}
+window.addEventListener('resize',()=>{Object.values(_charts).forEach(c=>c.resize());});
+
+// 启动
+if(_token) start(); else showLogin();
+</script>
+</body>
+</html>

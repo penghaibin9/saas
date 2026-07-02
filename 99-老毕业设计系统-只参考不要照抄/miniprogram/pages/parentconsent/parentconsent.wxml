@@ -1,0 +1,30 @@
+<view class="page">
+  <block wx:if="{{!isTeacher}}">
+    <view class="card">
+      <view class="sec-t" style="margin-top:0">上传家长知情同意书</view>
+      <button class="btn btn-o" bindtap="chooseFile">{{fFile ? fFile.name : '选择 PDF/图片'}}</button>
+      <button class="btn" loading="{{uploading}}" bindtap="upload">提交审核</button>
+    </view>
+  </block>
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <view wx:else class="card">
+    <view class="sec-t" style="margin-top:0">{{isTeacher ? '待审核列表' : '我的提交记录'}}</view>
+    <block wx:if="{{list.length}}">
+      <view class="row" wx:for="{{list}}" wx:key="id">
+        <view>
+          <view class="m">{{isTeacher ? (item.student_name + ' · ' + item.student_eeid) : '家长知情书'}}</view>
+          <view class="d">{{item.dateText}}{{item.reject_reason ? (' · ' + item.reject_reason) : ''}}</view>
+        </view>
+        <view class="right">
+          <text class="tag {{item.statusClass}}">{{item.statusText}}</text>
+          <block wx:if="{{isTeacher && item.status === 0}}">
+            <button class="btn btn-sm" data-id="{{item.id}}" data-pass="1" bindtap="review">通过</button>
+            <button class="btn btn-sm btn-o" data-id="{{item.id}}" data-pass="0" bindtap="review">驳回</button>
+          </block>
+        </view>
+      </view>
+    </block>
+    <view wx:else class="empty"><text class="ei">👪</text>暂无记录</view>
+  </view>
+</view>

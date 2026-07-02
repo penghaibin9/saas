@@ -1,0 +1,58 @@
+<view class="page">
+  <button class="btn" bindtap="openForm">＋ 填写实习报告</button>
+
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+
+  <view wx:elif="{{err}}" class="retry">
+    <view class="ei">⚠️</view>{{err}}
+    <button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button>
+  </view>
+
+  <view wx:else class="card" style="margin-top:22rpx">
+    <view class="sec-t" style="margin-top:0">我的实习报告</view>
+    <block wx:if="{{list.length}}">
+      <view class="row" wx:for="{{list}}" wx:key="id" data-item="{{item}}" bindtap="openDetail">
+        <view>
+          <view class="m">{{item.title}}</view>
+          <view class="d">{{item.dateText}}{{item.teacher_score != null ? (' · 得分:' + item.teacher_score) : ''}}</view>
+        </view>
+        <view class="right"><text class="tag {{item.statusClass}}">{{item.statusText}}</text> <text style="color:#9AA7B8"> ›</text></view>
+      </view>
+    </block>
+    <view wx:else class="empty"><text class="ei">📄</text>还没有实习报告</view>
+  </view>
+</view>
+
+<!-- 填写报告 -->
+<view wx:if="{{showForm}}" class="mask" bindtap="closeForm">
+  <view class="sheet" catchtap="noop">
+    <view class="sheet-title">填写实习报告</view>
+    <text class="field-label">关联申请</text>
+    <picker mode="selector" range="{{apps}}" range-key="label" value="{{appIndex}}" bindchange="onApp">
+      <view class="input">{{apps[appIndex].label}}</view>
+    </picker>
+    <text class="field-label">报告标题</text>
+    <input class="input" placeholder="如：实习总结报告" value="{{fTitle}}" bindinput="onTitle" />
+    <text class="field-label">报告内容</text>
+    <textarea class="textarea" placeholder="实习经历、收获、总结…" value="{{fContent}}" bindinput="onContent" auto-height />
+    <text class="field-label">附件（可选，PDF/Word/ZIP）</text>
+    <view class="input" bindtap="chooseFile">{{fFile ? fFile.name : '点击选择文件'}}</view>
+    <view class="fld-err">{{fErr}}</view>
+    <button class="btn" loading="{{saving}}" bindtap="submitForm">提交</button>
+    <button class="btn btn-o" bindtap="closeForm">取消</button>
+  </view>
+</view>
+
+<!-- 报告详情 -->
+<view wx:if="{{showDetail}}" class="mask" bindtap="closeDetail">
+  <view class="sheet" catchtap="noop">
+    <view class="sheet-title">实习报告</view>
+    <view class="kv"><text class="k">标题</text><text>{{detail.title}}</text></view>
+    <view class="kv"><text class="k">状态</text><text>{{detail.statusText}}</text></view>
+    <view wx:if="{{detail.teacher_score != null}}" class="kv"><text class="k">教师评分</text><text>{{detail.teacher_score}}</text></view>
+    <view wx:if="{{detail.teacher_comment}}" class="kv"><text class="k">评语</text><text>{{detail.teacher_comment}}</text></view>
+    <view wx:if="{{detail.downloadPath}}" class="kv"><text class="k">附件</text><text class="link-a" data-path="{{detail.downloadPath}}" bindtap="openFile">下载查看</text></view>
+    <view class="detail-body">{{detail.content || '（无内容）'}}</view>
+    <button class="btn btn-o" bindtap="closeDetail">关闭</button>
+  </view>
+</view>

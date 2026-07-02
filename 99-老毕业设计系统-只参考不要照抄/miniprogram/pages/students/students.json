@@ -1,0 +1,6 @@
+{
+  "usingComponents": {},
+  "navigationBarTitleText": "我的实习生",
+  "enablePullDownRefresh": true,
+  "onReachBottomDistance": 80
+}

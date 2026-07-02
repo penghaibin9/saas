@@ -1,0 +1,39 @@
+<view class="page">
+  <button class="btn" bindtap="openForm">＋ 登记巡访记录</button>
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <view wx:else class="card">
+    <view class="sec-t" style="margin-top:0">巡访记录</view>
+    <block wx:if="{{list.length}}">
+      <view class="row" wx:for="{{list}}" wx:key="id">
+        <view>
+          <view class="m">{{item.student_name || '学生'}} · {{item.dateText}}</view>
+          <view class="d">{{item.location || ''}} {{item.content || ''}}</view>
+        </view>
+      </view>
+    </block>
+    <view wx:else class="empty"><text class="ei">🚗</text>暂无巡访记录</view>
+  </view>
+</view>
+
+<view wx:if="{{showForm}}" class="mask" bindtap="closeForm">
+  <view class="sheet" catchtap="noop">
+    <view class="sheet-title">登记教师巡访</view>
+    <text class="field-label">学生</text>
+    <picker mode="selector" range="{{students}}" range-key="real_name" value="{{stuIdx}}" bindchange="onStu">
+      <view class="input">{{students[stuIdx] ? students[stuIdx].real_name : '请选择'}}</view>
+    </picker>
+    <text class="field-label">巡访日期</text>
+    <picker mode="date" value="{{visitDate}}" bindchange="onDate">
+      <view class="input">{{visitDate || '选择日期'}}</view>
+    </picker>
+    <text class="field-label">地点</text>
+    <input class="input" value="{{location}}" bindinput="onLoc" placeholder="企业/现场" />
+    <text class="field-label">巡访内容</text>
+    <textarea class="textarea" value="{{content}}" bindinput="onContent" />
+    <text class="field-label">发现问题</text>
+    <textarea class="textarea" value="{{problems}}" bindinput="onProb" />
+    <button class="btn" loading="{{saving}}" bindtap="submit">保存</button>
+    <button class="btn btn-o" bindtap="closeForm">取消</button>
+  </view>
+</view>

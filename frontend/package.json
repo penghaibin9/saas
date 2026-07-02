@@ -1,0 +1,30 @@
+{
+  "name": "school-lifecycle-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "职校学生全生命周期 SaaS 平台 - 前端工程壳（UI-P1.5，无 UI 框架，遵循 V2.1 Final 冻结规范）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{js,vue,css}\""
+  },
+  "dependencies": {
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-vue": "^9.32.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "vite": "^6.0.7"
+  }
+}

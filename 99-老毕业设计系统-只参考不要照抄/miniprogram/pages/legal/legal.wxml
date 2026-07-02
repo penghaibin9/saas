@@ -1,0 +1,43 @@
+<view class="page">
+  <view class="tabs">
+    <view class="tab {{tab==='privacy'?'on':''}}" data-tab="privacy" bindtap="switchTab">隐私政策</view>
+    <view class="tab {{tab==='terms'?'on':''}}" data-tab="terms" bindtap="switchTab">用户协议</view>
+  </view>
+
+  <view wx:if="{{tab==='privacy'}}" class="card">
+    <view class="h1">隐私政策</view>
+    <view class="meta">生效日期：{{legalVersion}}</view>
+    <view class="p">运营者：{{operatorName}}</view>
+    <view class="h2">1. 我们处理的信息</view>
+    <view class="p">为完成学校毕业设计与岗位实习管理，我们处理学校统一提供的姓名、学号或工号、学院、专业、班级及账号信息；用户主动填写的手机号、邮箱、紧急联系人；以及用户提交的申请、周报、请假、成果、报告、成绩与评价。</view>
+    <view class="h2">2. 定位、照片和文件</view>
+    <view class="p">仅在你主动点击打卡时获取单次位置信息，用于判断是否处于实习单位签到范围，不在后台持续追踪。拍照和选择文件仅在你主动提交打卡佐证、周报、成果等材料时使用。</view>
+    <view class="h2">3. 使用和保存</view>
+    <view class="p">信息仅用于教学管理、过程监督、安全联系、考核归档和依法依规统计。保存期限由学校档案制度和项目合同确定，到期后删除、匿名化或移交学校。</view>
+    <view class="h2">4. 对外提供</view>
+    <view class="p">未经授权不会将个人信息用于营销。短信、微信订阅消息、对象存储、查重或 AI 能力启用时，运营者应另行告知相关服务商、用途和范围；法律另有规定的除外。</view>
+    <view class="h2">5. 你的权利</view>
+    <view class="p">你可以通过个人中心查阅、更正部分资料，并可联系学校申请复制、更正、删除或解释个人信息处理规则。涉及学籍、成绩和档案的信息按学校管理制度办理。</view>
+    <view class="h2">6. 未成年人保护</view>
+    <view class="p">未满十四周岁学生的信息处理应取得监护人同意；其他未成年学生的实习安排和材料处理按学校制度及法律要求执行。</view>
+    <view class="h2">7. 联系我们</view>
+    <view class="p">个人信息保护联系人：{{privacyContact}}</view>
+  </view>
+
+  <view wx:else class="card">
+    <view class="h1">用户协议</view>
+    <view class="meta">生效日期：{{legalVersion}}</view>
+    <view class="h2">1. 账号使用</view>
+    <view class="p">账号通常由学校统一开立。你应妥善保管密码，首次登录及时修改初始密码，不得转借账号或冒用他人身份。</view>
+    <view class="h2">2. 使用规范</view>
+    <view class="p">你应如实提交打卡、申请、周报、成果和其他材料，不得伪造定位、代打卡、上传违法侵权内容、攻击系统或绕过权限控制。</view>
+    <view class="h2">3. 内容和知识产权</view>
+    <view class="p">用户上传内容的权利归属依法律、学校制度及相关协议确定。平台仅为教学管理、评审、归档和授权展示而处理相关内容。</view>
+    <view class="h2">4. 服务变更</view>
+    <view class="p">因维护、升级、网络故障或不可抗力可能短暂停止服务。运营者将按与学校约定的服务标准响应和恢复。</view>
+    <view class="h2">5. 责任与申诉</view>
+    <view class="p">对考勤、审批、成绩或实习安排有异议时，应通过学校规定渠道申诉。平台记录用于辅助管理，不替代学校依法依规作出的最终决定。</view>
+    <view class="h2">6. 联系方式</view>
+    <view class="p">运营者：{{operatorName}}；联系信息：{{privacyContact}}</view>
+  </view>
+</view>

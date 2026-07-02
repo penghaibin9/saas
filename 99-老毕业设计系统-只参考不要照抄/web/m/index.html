@@ -1,0 +1,2741 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>实习管理 · 移动端</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0F2456" />
+<script>
+/* PWA：注册 Service Worker，支持离线打开与弱网离线打卡（失败入队、联网重放） */
+window.__checkinOfflineQueue = 0;
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'checkin-queue') {
+      window.__checkinOfflineQueue = e.data.remain;
+      window.dispatchEvent(new CustomEvent('checkin-queue', { detail: e.data.remain }));
+    }
+  });
+  window.addEventListener('online', () => {
+    if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: 'replay-checkin' });
+  });
+}
+</script>
+<style>
+:root{--blue:#0EA5E9;--teal:#0D9488;--orange:#F97316;--green:#16A34A;--red:#DC2626;--purple:#7C3AED;
+--bg:#F2F4F8;--card:#fff;--brand:#0F2456;--border:#E8EDF3;--t1:#0F172A;--t2:#5B6B82;--t3:#9AA7B8}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:"Microsoft YaHei","PingFang SC",-apple-system,"Segoe UI",sans-serif;background:#dfe4ec;color:var(--t1);font-size:15px;overscroll-behavior:none}
+/* 手机外框：桌面居中显示，手机上铺满 */
+#phone{max-width:430px;margin:0 auto;min-height:100vh;min-height:100dvh;background:var(--bg);position:relative;display:flex;flex-direction:column;box-shadow:0 0 30px rgba(0,0,0,.12)}
+@media(min-width:480px){#phone{margin:16px auto;min-height:calc(100vh - 32px);border-radius:28px;overflow:hidden}}
+/* 登录 */
+#login{position:absolute;inset:0;background:linear-gradient(160deg,#0F2456,#1B3A7A 60%,#0EA5E9);display:flex;flex-direction:column;justify-content:center;padding:32px 28px;color:#fff;z-index:30}
+#login h1{font-size:22px;margin-bottom:6px}#login p{font-size:13px;opacity:.7;margin-bottom:30px}
+#login input{width:100%;padding:13px 14px;border:0;border-radius:12px;margin-bottom:12px;font-size:15px}
+#login button{width:100%;min-height:48px;padding:14px;border:0;border-radius:12px;background:#fff;color:#0F2456;font-size:16px;font-weight:700}
+#loginErr{color:#FECACA;font-size:12px;min-height:18px;margin-bottom:6px}
+.login-hint{margin-top:16px;font-size:12px;opacity:.65;line-height:1.8}
+.demo-roles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.demo-roles button{min-height:42px;padding:9px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.28);color:#fff;font-size:13px}.demo-roles button:active{background:rgba(255,255,255,.25)}
+.network-bar{display:none;padding:7px 14px;background:#FFF7ED;color:#9A3412;border-bottom:1px solid #FED7AA;font-size:12px;text-align:center}.network-bar.show{display:block}.network-bar.online{background:#F0FDF4;color:#166534;border-color:#BBF7D0}
+/* 顶栏 */
+.top{background:var(--brand);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.top .ttl{font-size:17px;font-weight:600}
+.top .back{font-size:20px;background:none;border:0;color:#fff;width:28px;text-align:left}
+.top .bell{position:relative;background:none;border:0;color:#fff;font-size:18px}
+.dot{position:absolute;top:-2px;right:-2px;width:8px;height:8px;background:var(--red);border-radius:50%}
+/* 内容 */
+.body{flex:1;overflow-y:auto;padding:14px 14px 80px}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(15,23,42,.04)}
+.hello{background:linear-gradient(135deg,#0EA5E9,#0D9488);color:#fff}
+.hello .n{font-size:19px;font-weight:700}.hello .s{font-size:12px;opacity:.85;margin-top:4px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.metric{background:var(--card);border-radius:14px;padding:14px 8px;text-align:center}
+.metric .v{font-size:20px;font-weight:700}.metric .l{font-size:11px;color:var(--t3);margin-top:3px}
+.metric small{color:var(--t3);font-weight:400;font-size:12px}
+.qa{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;text-align:center}
+.qa a{display:block;padding:12px 4px;background:var(--card);border-radius:12px;font-size:12px;color:var(--t2);text-decoration:none}
+.qa .qi{font-size:22px;display:block;margin-bottom:5px}
+.fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.fgrid a{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 2px;border-radius:14px;text-decoration:none;position:relative;-webkit-tap-highlight-color:transparent}
+.fgrid a:active{background:var(--bg)}
+.fgrid .ic{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px}
+.fgrid .tl{font-size:11px;color:var(--t2);text-align:center;line-height:1.25}
+.fgrid .nb{position:absolute;top:6px;right:14px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;background:var(--red);color:#fff;font-size:10px;line-height:16px;text-align:center;font-weight:600;box-shadow:0 0 0 2px #fff}
+.ic-b{background:#E0F2FE}.ic-g{background:#DCFCE7}.ic-o{background:#FFEDD5}.ic-p{background:#EDE9FE}.ic-t{background:#CCFBF1}.ic-y{background:#FEF9C3}.ic-r{background:#FEE2E2}.ic-m{background:#EEF2F6}
+.hello-top{display:flex;justify-content:space-between;align-items:flex-start}
+.hello .bell{position:relative;font-size:20px;text-decoration:none;line-height:1}
+.hello .bell .nb{position:absolute;top:-6px;right:-8px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;background:#fff;color:var(--red);font-size:10px;line-height:16px;text-align:center;font-weight:700}
+.prog-card{padding:14px 16px}
+.prog-row{display:flex;align-items:center;gap:10px;margin-top:10px}
+.prog-row:first-child{margin-top:0}
+.prog-row .pl{font-size:12px;color:var(--t2);width:34px}
+.prog-bar{flex:1;height:8px;border-radius:6px;background:var(--bg);overflow:hidden}
+.prog-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#0EA5E9,#0D9488)}
+.prog-row .pv{font-size:12px;color:var(--t3);width:46px;text-align:right}
+.row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:0}
+.row .m{font-size:14px}.row .d{font-size:12px;color:var(--t3);margin-top:2px}
+.sec-t{font-size:13px;color:var(--t3);margin:6px 2px 8px}
+.tag{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px}
+.tag-g{background:#DCFCE7;color:#16A34A}.tag-y{background:#FEF9C3;color:#A16207}.tag-r{background:#FEE2E2;color:#DC2626}.tag-b{background:#E0F2FE;color:#0284C7}.tag-m{background:#EEF2F6;color:#64748B}
+.btn{display:block;width:100%;padding:13px;border:0;border-radius:12px;background:var(--blue);color:#fff;font-size:16px;font-weight:600;margin-top:10px}
+.btn-o{background:#fff;color:var(--blue);border:1px solid var(--blue)}
+.btn-sm{display:inline-block;width:auto;padding:6px 14px;font-size:13px;margin:0 0 0 8px}
+.btn-r{background:#fff;color:var(--red);border:1px solid #FCA5A5}
+.empty{text-align:center;color:var(--t3);padding:34px 0;font-size:13px}
+/* 大打卡按钮 */
+.punch{width:170px;height:170px;border-radius:50%;margin:18px auto;background:linear-gradient(135deg,#0EA5E9,#0D9488);color:#fff;border:0;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(14,165,233,.4)}
+.punch .big{font-size:20px;font-weight:700}.punch .sm{font-size:12px;opacity:.9;margin-top:4px}
+.punch.done{background:linear-gradient(135deg,#16A34A,#0D9488)}
+/* 底部 tab */
+.tabbar{position:sticky;bottom:0;display:flex;background:#fff;border-top:1px solid var(--border);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
+.tabbar button{flex:1;min-height:54px;background:none;border:0;padding:8px 0 9px;color:var(--t3);font-size:11px;touch-action:manipulation}
+.tabbar button .ti{font-size:21px;display:block;margin-bottom:2px}
+.tabbar button.on{color:var(--blue)}
+/* 底部弹层表单 */
+.sheet-mask{position:absolute;inset:0;background:rgba(15,23,42,.45);z-index:40;display:flex;align-items:flex-end}
+.sheet{background:#fff;width:100%;border-radius:18px 18px 0 0;padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);max-height:86%;overflow-y:auto}
+.sheet h3{font-size:16px;margin-bottom:14px;text-align:center}
+.sheet label{display:block;font-size:12px;color:var(--t2);margin:10px 0 4px}
+.sheet input,.sheet textarea,.sheet select{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;background:#F8FAFC}
+.sheet textarea{min-height:90px;resize:vertical}
+.toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(15,23,42,.85);color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;z-index:60;max-width:80%;text-align:center}
+.seg{display:flex;background:#EEF2F6;border-radius:10px;padding:3px;margin-bottom:12px}
+.seg button{flex:1;border:0;background:none;padding:8px;border-radius:8px;font-size:13px;color:var(--t2)}
+.seg button.on{background:#fff;color:var(--t1);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+#cmap{height:190px;border-radius:14px;overflow:hidden;margin-bottom:12px;z-index:1}
+.map-fallback{height:150px;border-radius:14px;background:#EEF2F6;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;color:var(--t3);font-size:13px;margin-bottom:12px}
+.tapable:active{background:#F4F7FA}
+.kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:14px}
+.kv:last-child{border-bottom:0}.kv .k{color:var(--t3)}
+.detail-body{font-size:14px;line-height:1.7;white-space:pre-wrap;background:#F8FAFC;border-radius:10px;padding:12px;margin-top:6px}
+.dist-ok{color:var(--green);font-weight:700}.dist-no{color:var(--red);font-weight:700}
+.leaflet-control-attribution{font-size:9px}
+/* 骨架屏 */
+.sk{background:linear-gradient(90deg,#eef2f6 25%,#e3e9f0 37%,#eef2f6 63%);background-size:400% 100%;animation:skl 1.3s ease infinite;border-radius:8px}
+@keyframes skl{0%{background-position:100% 50%}100%{background-position:0 50%}}
+.sk-card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px}
+.sk-line{height:13px;margin:8px 0}
+/* 页面淡入 */
+.body>*{animation:fade .26s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* 空状态 */
+.empty .ei{font-size:40px;display:block;margin-bottom:8px;opacity:.5}
+/* 加载失败重试 */
+.retry{text-align:center;padding:40px 16px;color:var(--t3)}
+.retry .ei{font-size:40px;display:block;margin-bottom:10px}
+.retry button{margin-top:14px;padding:9px 22px;border:1px solid var(--blue);background:#fff;color:var(--blue);border-radius:20px;font-size:14px}
+/* tab 角标 */
+.tabbar button{position:relative}
+.tabbar .badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:16px;height:16px;line-height:16px;padding:0 4px;background:var(--red);color:#fff;font-size:10px;border-radius:8px;text-align:center}
+/* 下拉刷新提示 */
+.ptr{text-align:center;font-size:12px;color:var(--t3);padding:6px 0;height:0;overflow:hidden;transition:height .2s}
+.ptr.on{height:26px}
+/* 链接按钮行 */
+.link-a{color:var(--blue);text-decoration:none}
+.spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.btn[disabled]{opacity:.6}
+.btn,.qa a,.fgrid a,.row.tapable,.top button{touch-action:manipulation}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid rgba(14,165,233,.35);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+.fld-err{color:var(--red);font-size:11px;margin-top:3px;min-height:14px}
+.gd-pill{display:inline-block;padding:3px 10px;border-radius:10px;background:#EEF2F6;color:var(--t2);font-size:12px;margin:0 6px 6px 0}
+</style>
+</head>
+<body>
+<div id="phone">
+  <div id="login">
+    <h1>实习管理平台</h1>
+    <p>移动端 · 学生 / 教师 / 企业</p>
+    <div id="loginErr" role="alert" aria-live="polite"></div>
+    <label for="u" style="position:absolute;left:-9999px">账号</label><input id="u" placeholder="账号 / 工号 / 学号" autocomplete="username" aria-required="true" />
+    <label for="p" style="position:absolute;left:-9999px">密码</label><input id="p" type="password" placeholder="请输入密码" autocomplete="current-password" aria-required="true" />
+    <button id="loginBtn" onclick="doLogin()">登 录</button>
+    <div class="demo-roles" aria-label="演示账号快速填充"><button type="button" onclick="fillDemo('demo_stu1')">学生演示账号</button><button type="button" onclick="fillDemo('demo_teacher')">教师演示账号</button></div>
+    <button type="button" onclick="clearLoginCache()" style="margin-top:10px;background:rgba(255,255,255,.15);color:#fff;font-size:14px">清除本地登录缓存</button>
+    <div class="login-hint">演示账号（密码均为 <b>demo1234</b>）：<br>学生 demo_stu1 · 教师 demo_teacher<br>管理员请用 PC 端 demo_admin<br><a class="link-a" href="enterprise.html">企业工作台 / 入驻 ›</a></div>
+  </div>
+
+  <div id="app" style="display:none;flex:1;flex-direction:column;min-height:0">
+    <div class="top">
+      <button class="back" id="backBtn" style="visibility:hidden" onclick="goBack()">‹</button>
+      <div class="ttl" id="title">首页</div>
+      <button class="bell" onclick="render('notifications')">🔔<span class="dot" id="bellDot" style="display:none"></span></button>
+    </div>
+    <div class="network-bar" id="networkBar" role="status" aria-live="polite"></div>
+    <div class="body" id="body"></div>
+    <div class="tabbar" id="tabbar"></div>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+let TOKEN = localStorage.getItem('m_token') || '';
+let USER = JSON.parse(localStorage.getItem('m_user') || 'null');
+let mineData = {};
+
+function updateNetworkState(isOnline, restored=false){
+  const bar=document.getElementById('networkBar'); if(!bar)return;
+  bar.className='network-bar show'+(isOnline?' online':'');
+  bar.textContent=isOnline?(restored?'网络已恢复，正在同步待处理数据…':'网络连接正常'):'当前处于离线状态；打卡会暂存，其他数据将在联网后刷新';
+  clearTimeout(updateNetworkState._timer);
+  if(isOnline) updateNetworkState._timer=setTimeout(()=>bar.classList.remove('show'),restored?2600:800);
+}
+window.addEventListener('offline',()=>updateNetworkState(false));
+window.addEventListener('online',()=>{updateNetworkState(true,true);if(curKey)render(curKey);});
+
+const AUTH_EXEMPT = ['/users/login', '/users/register'];
+function isAuthExempt(path) { return AUTH_EXEMPT.some(p => path === p || path.startsWith(p + '?')); }
+
+async function api(path, { method='GET', body, on401='logout' } = {}) {
+  const headers = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  let res;
+  try {
+    res = await fetch(API + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  } catch (e) {
+    throw new Error('网络连接失败，请检查网络后重试');
+  }
+  let json = null; try { json = await res.json(); } catch {}
+  if (res.status === 401 && !isAuthExempt(path)) {
+    if (on401 === 'return') return { status: 401, json };
+    toast('登录已过期，请重新登录'); logout(); throw new Error('登录已过期');
+  }
+  if (res.status === 403 && json && json.data && json.data.code === 'MUST_CHANGE_PASSWORD') {
+    forceChangePwd(); throw new Error('请先修改初始密码');
+  }
+  return { status: res.status, json };
+}
+const get = async p => { const r = await api(p); return r.json && r.json.data; };
+// multipart 上传（用于含附件的周报/成果/报告）。不手动设 Content-Type，交给浏览器带 boundary
+async function apiUpload(path, formData, method='POST'){
+  const headers = {}; if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  let res;
+  try { res = await fetch(API + path, { method, headers, body: formData }); }
+  catch(e){ throw new Error('网络连接失败，请检查网络后重试'); }
+  let json = null; try { json = await res.json(); } catch {}
+  if (res.status === 401) { toast('登录已过期，请重新登录'); logout(); throw new Error('登录已过期'); }
+  return { status: res.status, json };
+}
+async function openProtectedFile(url) {
+  let preview = null;
+  try {
+    const target = new URL(url, location.href);
+    if (!['http:', 'https:'].includes(target.protocol)) { toast('已阻止不安全的附件链接'); return; }
+    const isLocalProtected = target.origin === location.origin &&
+      (target.pathname.startsWith('/uploads/') || target.pathname.startsWith('/api/'));
+    if (!isLocalProtected) { window.open(target.href, '_blank', 'noopener'); return; }
+    preview = window.open('about:blank', '_blank');
+    if (preview) preview.opener = null;
+    const res = await fetch(target.href, { headers: TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {} });
+    if (res.status === 401) { if (preview) preview.close(); toast('登录已过期'); logout(); return; }
+    if (res.status === 403) { if (preview) preview.close(); toast('无权访问该附件'); return; }
+    if (!res.ok) { if (preview) preview.close(); toast('附件打开失败'); return; }
+    const objectUrl = URL.createObjectURL(await res.blob());
+    if (preview) preview.location.href = objectUrl;
+    else toast('浏览器阻止了预览窗口，请允许本站弹窗后重试');
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (e) { if (preview) preview.close(); toast('附件打开失败'); }
+}
+function toast(msg){ const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.getElementById('phone').appendChild(t); setTimeout(()=>t.remove(),1600); }
+
+async function doLogin(){
+  const u=document.getElementById('u').value.trim(), p=document.getElementById('p').value;
+  const e=document.getElementById('loginErr'); e.textContent='';
+  if(!u||!p){e.textContent='请输入账号密码';return;}
+  const btn=document.getElementById('loginBtn'); btn.disabled=true; btn.innerHTML='<span class="spin" style="border-color:rgba(15,36,86,.2);border-top-color:#0F2456"></span> 正在登录';
+  try{
+    const r=await api('/users/login',{method:'POST',body:{username:u,password:p}});
+    if(r.status===429){e.textContent=(r.json&&r.json.message)||'登录过于频繁，请稍后再试';return;}
+    if(!(r.json&&r.json.success)){e.textContent=(r.json&&r.json.message)||(r.status===401?'用户名或密码错误':'登录失败');return;}
+    if(r.json.data.user.role===5){
+      localStorage.setItem('ent_token',r.json.data.token);
+      localStorage.setItem('ent_user',JSON.stringify(r.json.data.user));
+      location.href='enterprise.html'; return;
+    }
+    if(r.json.data.user.role<3){ e.textContent='移动端面向学生/教师，请用学生或教师账号'; return; }
+    TOKEN=r.json.data.token; USER=r.json.data.user;
+    localStorage.setItem('m_token',TOKEN); localStorage.setItem('m_user',JSON.stringify(USER));
+    if(r.json.data.mustChangePassword){ document.getElementById('login').style.display='none'; forceChangePwd(); return; }
+    boot();
+  }catch(err){e.textContent=err.message;}
+  finally{btn.disabled=false;btn.textContent='登 录';}
+}
+function fillDemo(username){ document.getElementById('u').value=username; document.getElementById('p').value='demo1234'; document.getElementById('p').focus(); }
+document.getElementById('p').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+/* 首次登录强制修改初始密码（后端 mustChangePassword / 403 拦截） */
+function forceChangePwd(){
+  if(document.querySelector('.sheet-mask[data-force]')) return;
+  const m=document.createElement('div'); m.className='sheet-mask'; m.dataset.force='1';
+  m.innerHTML=`<div class="sheet"><h3>首次登录 · 修改初始密码</h3>
+    <p style="font-size:12px;color:var(--t2);margin-bottom:6px">为了账号安全，请先设置新密码（需≥6位且含字母和数字）</p>
+    <label>原密码</label><input id="fop" type="password" placeholder="初始密码">
+    <label>新密码</label><input id="fnp" type="password" placeholder="新密码">
+    <label>确认新密码</label><input id="fnp2" type="password" placeholder="再次输入新密码">
+    <div class="fld-err" id="fcErr"></div>
+    <button class="btn" id="fcok">提交并进入</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.querySelector('#fcok').onclick=async()=>{
+    const op=m.querySelector('#fop').value, np=m.querySelector('#fnp').value, np2=m.querySelector('#fnp2').value;
+    const err=m.querySelector('#fcErr'); err.textContent='';
+    if(!op||!np){ err.textContent='请填写完整'; return; }
+    if(np!==np2){ err.textContent='两次输入的新密码不一致'; return; }
+    if(np.length<6||!/[a-zA-Z]/.test(np)||!/[0-9]/.test(np)){ err.textContent='新密码需≥6位且含字母和数字'; return; }
+    const btn=m.querySelector('#fcok'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      const r=await api('/users/change-password',{method:'PUT',body:{oldPassword:op,newPassword:np}});
+      if(!(r.json&&r.json.success)){ err.textContent=(r.json&&r.json.message)||'修改失败'; btn.disabled=false; btn.textContent='提交并进入'; return; }
+      if(r.json.data&&r.json.data.token){ TOKEN=r.json.data.token; localStorage.setItem('m_token',TOKEN); }
+      if(USER){ USER.mustChangePassword=false; localStorage.setItem('m_user',JSON.stringify(USER)); }
+      m.remove(); toast('密码已修改 ✓'); boot();
+    }catch(e2){ err.textContent=e2.message; btn.disabled=false; btn.textContent='提交并进入'; }
+  };
+}
+function clearLoginCache(){ logout(); const e=document.getElementById('loginErr'); if(e) e.textContent='已清除缓存，请重新登录'; }
+function logout(){ TOKEN='';USER=null;localStorage.removeItem('m_token');localStorage.removeItem('m_user');
+  document.getElementById('app').style.display='none'; document.getElementById('login').style.display='flex'; }
+
+async function tryRestoreSession(){
+  if(!TOKEN||!USER) return;
+  try{
+    const r=await api('/users/profile',{on401:'return'});
+    if(r.status===401||!(r.json&&r.json.success)){ logout(); return; }
+    USER=r.json.data;
+    localStorage.setItem('m_user',JSON.stringify(USER));
+    if(USER.role===5){ location.href='enterprise.html'; return; }
+    if(USER.role<3){ logout(); document.getElementById('loginErr').textContent='移动端面向学生/教师，请换账号'; return; }
+    boot();
+  }catch{ logout(); }
+}
+
+const TABS = {
+  student: [ ['home','🏠','首页'], ['checkin','📍','打卡'], ['logs','📝','周报'], ['mine','👤','我的'] ],
+  teacher: [ ['home','🏠','首页'], ['students','👨‍🎓','实习生'], ['review','✅','批阅'], ['mine','👤','我的'] ],
+};
+const SUBPAGES = ['leave','achievements','notifications','newlog','announcements','grade','profile','applications','reports','assignment','asgchange','positions','topics','tasks','insurances','guidance','trecords','quality','agreement','risk','defense','complaint'];
+let curTab = 'home';
+let curKey = 'home';
+
+function boot(){
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='flex';
+  const role = USER.role===3 ? 'teacher' : 'student';
+  const tb = document.getElementById('tabbar'); tb.innerHTML='';
+  TABS[role].forEach(([k,ic,t])=>{
+    const b=document.createElement('button'); b.dataset.k=k; b.innerHTML=`<span class="ti">${ic}</span>${t}`;
+    b.onclick=()=>render(k); tb.appendChild(b);
+  });
+  render('home');
+  refreshBell();
+  updateNetworkState(navigator.onLine);
+}
+async function refreshBell(){
+  try{ const c=await get('/notifications/unread-count'); document.getElementById('bellDot').style.display=(c&&c.count>0)?'block':'none'; }catch{}
+  if(USER && USER.role===3){
+    try{
+      const d=await get('/workbench'); const p=(d&&d.pending)||{};
+      const n=(p.total!=null)?p.total:((p.internLogs||0)+(p.leaves||0)+(p.achievements||0)+(p.applications||0)+(p.reports||0)+(p.asgChanges||0)+(p.agreements||0)+(p.complaints||0));
+      setTabBadge('review', n);
+    }catch{}
+  }
+}
+function setTabBadge(key,n){
+  const btn=document.querySelector(`.tabbar button[data-k="${key}"]`); if(!btn) return;
+  let b=btn.querySelector('.badge');
+  if(n>0){ if(!b){ b=document.createElement('span'); b.className='badge'; btn.appendChild(b); } b.textContent=n>99?'99+':n; }
+  else if(b){ b.remove(); }
+}
+
+function setTab(key){
+  curTab = key;
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('on', b.dataset.k===key));
+  const isSub = SUBPAGES.includes(key);
+  document.getElementById('backBtn').style.visibility = isSub ? 'visible' : 'hidden';
+}
+function goBack(){ render('home'); }
+
+const TITLES={home:'首页',checkin:'打卡签到',logs:'实习周报/月报',mine:'我的',leave:'请假申请',achievements:'毕业设计成果',notifications:'通知',students:'我的实习生',review:'待批阅',newlog:'写周报/月报',announcements:'公示公告',grade:'毕设成绩',profile:'个人资料',applications:'我的申请',reports:'实习报告',assignment:'我的实习',asgchange:'换岗/终止',positions:'实习岗位',topics:'毕设选题',tasks:'毕设任务节点',insurances:'实习保险',guidance:'指导记录',trecords:'工作记录',quality:'质量检查',agreement:'实习协议',risk:'风险预警',defense:'答辩评分',complaint:'投诉与异常上报'};
+function skeleton(n=4){ let s='<div class="sk-card"><div class="sk sk-line" style="width:45%"></div><div class="sk sk-line" style="width:80%"></div></div>'; let cards=''; for(let i=0;i<n;i++) cards+='<div class="sk-card"><div class="sk sk-line" style="width:55%"></div><div class="sk sk-line" style="width:30%"></div></div>'; return s+cards; }
+function emptyBox(text,icon='📭'){ return `<div class="empty"><span class="ei">${icon}</span>${text}</div>`; }
+async function render(key){
+  curKey = key;
+  setTab(key);
+  document.getElementById('title').textContent = TITLES[key]||'';
+  const el=document.getElementById('body'); el.innerHTML=skeleton();
+  try{ await (VIEWS[key] ? VIEWS[key](el) : (el.innerHTML=emptyBox('功能开发中','🚧'))); }
+  catch(e){ el.innerHTML=`<div class="retry"><span class="ei">⚠️</span>${e.message||'加载失败'}<br><button onclick="render('${key}')">重新加载</button></div>`; }
+}
+
+function tag(t,c){return `<span class="tag ${c}">${t}</span>`;}
+function fmtDate(s){return s?new Date(s).toLocaleDateString('zh-CN'):'';}
+function fmtTime(s){return s?new Date(s).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';}
+
+const VIEWS = {
+  // ---------- 学生首页 ----------
+  async home(el){
+    if(USER.role===3) return VIEWS.teacherHome(el);
+    const [d,uc,ins] = await Promise.all([get('/workbench'), get('/notifications/unread-count').catch(()=>null), get('/insurances?page_size=20').catch(()=>null)]);
+    const pr=d.progress||{}; const a=d.assignment;
+    const unread = uc && uc.count || 0;
+    const pd=d.pending||{};
+    const nowMs=Date.now();
+    const insuranceWarn = pd.insuranceWarn || ((ins&&ins.list)||[]).filter(i=>i.end_date&&new Date(i.end_date).getTime()>=nowMs&&(new Date(i.end_date).getTime()-nowMs)<30*86400000).length;
+    const alertHtml=(d.alerts||[]).map(a=>`<div class="card tapable" onclick="render('${a.key==='asgchange'?'asgchange':a.key==='agreements'?'agreement':a.key==='checkins'?'checkin':a.key==='insurancehub'?'insurances':a.key==='riskcomplaint'?'complaint':'assignment'}')" style="background:#FFFBEB;border-left:4px solid #F59E0B;margin-bottom:10px"><div class="m">${a.title} · ${a.desc} ›</div></div>`).join('');
+    const pct=(n,r)=>{n=Number(n)||0;r=Number(r)||0;return r>0?Math.min(100,Math.round(n/r*100)):(n>0?100:0);};
+    const bar=(label,n,r)=>`<div class="prog-row"><span class="pl">${label}</span><div class="prog-bar"><i style="width:${pct(n,r)}%"></i></div><span class="pv">${n||0}/${r||0}</span></div>`;
+    const tiles=[
+      ['🏢','我的实习','assignment','ic-b'],
+      ['📍','打卡签到','checkin','ic-t'],
+      ['📝','周报月报','logs','ic-o'],
+      ['💼','实习岗位','positions','ic-p'],
+      ['📋','实习申请','applications','ic-b'],
+      ['📄','实习报告','reports','ic-g'],
+      ['📑','实习协议','agreement','ic-r'],
+      ['🏖️','我的请假','leave','ic-y'],
+      ['🎓','我的成果','achievements','ic-p'],
+      ['📌','毕设选题','topics','ic-r'],
+      ['🗓️','任务节点','tasks','ic-t'],
+      ['🏅','毕设成绩','grade','ic-o'],
+      ['🛡️','实习保险','insurances','ic-g'],
+      ['🔔','通知中心','notifications','ic-y'],
+    ];
+    const grid=tiles.map(t=>{
+      const act = t[2]==='__pwd' ? 'changePwd()' : `render('${t[2]}')`;
+      const badge = t[2]==='notifications' && unread ? `<span class="nb">${unread>99?'99+':unread}</span>` : '';
+      return `<a onclick="${act}"><span class="ic ${t[3]}">${t[0]}</span><span class="tl">${t[1]}</span>${badge}</a>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="card hello">
+        <div class="hello-top">
+          <div><div class="n">你好，${USER.realName}</div><div class="s">本届岗位实习 · ${a?('已分配 · '+(a.enterprise_name||'')):'尚未分配实习'}</div></div>
+          <a class="bell" onclick="render('notifications')">🔔${unread?`<span class="nb">${unread>99?'99+':unread}</span>`:''}</a>
+        </div>
+      </div>
+      ${alertHtml}
+      <div class="sec-t">实习进度</div>
+      <div class="card prog-card">
+        ${bar('签到',pr.checkinCount,pr.reqCheckin)}
+        ${bar('周报',pr.weeklyCount,pr.reqWeekly)}
+        ${bar('月报',pr.monthlyCount,pr.reqMonthly)}
+      </div>
+      ${insuranceWarn?`<div class="card tapable" onclick="render('insurances')" style="background:#EFF6FF;border-left:4px solid var(--blue)">
+        <div class="row" style="border:none;padding:2px 0"><div class="m" style="color:#1e40af">🛡️ 有 ${insuranceWarn} 份保险即将到期，请及时查看 ›</div></div>
+      </div>`:''}
+      ${a?`<div class="card">
+        <div class="sec-t" style="margin-top:0">我的实习</div>
+        <div class="row"><span class="m">实习企业</span><span>${a.enterprise_name||'-'}</span></div>
+        <div class="row"><span class="m">指导老师</span><span>${a.teacher_name||'-'}</span></div>
+        <div class="row"><span class="m">实习计划</span><span>${a.plan_title||'-'}</span></div>
+      </div>`:`<div class="card"><div class="empty">老师尚未为你分配实习</div></div>`}
+      <div class="sec-t">常用办理</div>
+      <div class="card" style="padding:8px 4px"><div class="fgrid">${grid}</div></div>`;
+  },
+
+  // ---------- 学生打卡 ----------
+  async checkin(el){
+    window._ckPhotoFile = null;
+    mineData = await get('/checkins/mine') || {};
+    const recs = await get('/checkins?page_size=10');
+    const done = mineData.checkedToday;
+    const hasGeo = mineData.enterpriseLat != null;
+    el.innerHTML = `
+      ${hasGeo?'<div id="cmap"></div>':'<div class="map-fallback">📍 实习单位未设置坐标<br>无法显示地图</div>'}
+      <div class="card" style="text-align:center">
+        <button class="punch ${done?'done':''}" id="punchBtn" onclick="${done?'':'gpsCheckin()'}">
+          <span class="big">${done?'今日已打卡':'GPS 打卡'}</span>
+          <span class="sm">${done?'✓ 今日已完成':'点击定位签到'}</span>
+        </button>
+        <div id="distInfo" style="font-size:13px;color:var(--t3);min-height:20px">实习单位：${mineData.enterprise||'未分配'}</div>
+        <div style="font-size:12px;color:var(--t3);margin-top:2px">有效范围：${mineData.checkinRadius?mineData.checkinRadius+' 米':'不限'}　·　累计 ${mineData.total||0} 次</div>
+        ${!done?`
+        <input id="ckPhoto" type="file" accept="image/*" capture="environment" style="display:none" onchange="onCkPhoto(event)">
+        <div id="ckPhotoPrev" style="margin-top:12px"></div>
+        <button class="btn btn-o" onclick="document.getElementById('ckPhoto').click()" style="margin-top:8px">📷 拍摄打卡照片（防代打卡）</button>`:''}
+        ${!done&&mineData.hasAssignment?`<button class="btn btn-o" onclick="simCheckin()" style="margin-top:10px">📌 模拟“在岗位置”打卡（演示）</button>`:''}
+      </div>
+      <div class="card"><div class="sec-t" style="margin-top:0">最近打卡</div>
+      ${(recs.list||[]).length?(recs.list||[]).map(c=>`<div class="row"><div><div class="m">${c.enterprise_name||'打卡'}</div><div class="d">${fmtTime(c.checkin_time)}${c.address?' · '+c.address:''}</div></div><div style="text-align:right">${c.within_range?tag('有效','tag-g'):tag((c.distance!=null?c.distance+'米·':'')+'超范围','tag-r')}${c.photo_url?`<div style="margin-top:4px"><button class="btn btn-o" onclick="openProtectedFile('${escJ(c.photo_url)}')">查看照片</button></div>`:''}</div></div>`).join(''):emptyBox('暂无打卡记录','📍')}</div>`;
+    if (hasGeo) initCheckinMap(Number(mineData.enterpriseLat), Number(mineData.enterpriseLng), Number(mineData.checkinRadius)||0);
+  },
+
+  // ---------- 学生周报/月报 ----------
+  async logs(el){
+    if(USER.role===3) return VIEWS.review(el);
+    const d = await get('/intern-logs?page_size=30');
+    _cache.logs={}; (d.list||[]).forEach(l=>_cache.logs[l.id]=l);
+    const st={0:tag('草稿','tag-m'),1:tag('待教师审核','tag-y'),2:tag('已通过','tag-g'),3:tag('已退回','tag-r')};
+    el.innerHTML = `<button class="btn" onclick="render('newlog')">＋ 写周报 / 月报</button>
+      <div class="card" style="margin-top:12px"><div class="sec-t" style="margin-top:0">我的周报/月报</div>
+      ${(d.list||[]).length?(d.list||[]).map(l=>`<div class="row tapable" onclick="logDetail(${l.id})"><div><div class="m">${l.type==='monthly'?'[月报] ':'[周报] '}${l.title}</div><div class="d">${fmtDate(l.create_time)}${l.reject_reason?' · 驳回：'+l.reject_reason:''}</div></div><div>${st[l.status]||''} <span style="color:var(--t3)">›</span></div></div>`).join(''):emptyBox('还没有周报/月报，点上方按钮新建','📝')}</div>`;
+  },
+  async newlog(el){
+    const now=new Date();
+    const weekNo=Math.ceil(now.getDate()/7);
+    const mon=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'][now.getMonth()];
+    el.innerHTML = `
+      <div class="card">
+        <div class="seg"><button id="segW" class="on" onclick="setLogType('weekly')">周报</button><button id="segM" onclick="setLogType('monthly')">月报</button></div>
+        <label>标题</label><input id="logTitle" value="第${weekNo}周实习周报" placeholder="如：第3周实习周报" />
+        <label>本期工作内容 *</label>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+          ${['完成了项目×××功能开发，通过代码审查','参与团队会议，了解项目进展和任务分工','按导师要求完成资料整理和文档撰写','独立排查并解决了×××技术问题'].map(t=>`<button type="button" style="padding:5px 8px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;font-size:11px;color:#1e40af" onclick="appendText('logContent',this.textContent)">${t}</button>`).join('')}
+        </div>
+        <textarea id="logContent" rows="4" placeholder="详细描述本周/月主要工作、参与项目…"></textarea>
+        <label>收获与体会</label>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+          ${['掌握了×××技术，提升了解决问题的能力','加深了对团队协作和职场规范的理解','发现自身×××方面不足，将加强学习'].map(t=>`<button type="button" style="padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534" onclick="appendText('logGain',this.textContent)">${t}</button>`).join('')}
+        </div>
+        <textarea id="logGain" rows="2" placeholder="知识技能收获、职业素养提升…"></textarea>
+        <label>存在问题与下期计划</label>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+          ${['下周计划继续推进×××功能开发，争取完成初版','计划完善测试用例，修复已知×××问题','将加强×××方面的学习，提升技术能力','下期计划撰写中期报告，完成×××模块'].map(t=>`<button type="button" style="padding:5px 8px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;font-size:11px;color:#92400e" onclick="appendText('logPlan',this.textContent)">${t}</button>`).join('')}
+        </div>
+        <textarea id="logPlan" rows="2" placeholder="遇到的困难及下阶段计划…"></textarea>
+        <label>附件（可选，PDF/Word/图片）</label><input id="logFile" type="file" />
+        <button class="btn" onclick="submitLog()">提交</button>
+        <button class="btn btn-o" onclick="render('logs')" style="margin-top:8px">取消</button>
+      </div>`;
+    window._logType='weekly';
+  },
+
+  // ---------- 学生请假 ----------
+  async leave(el){
+    const d = await get('/leaves?page_size=30');
+    _cache.leaves={}; (d.list||[]).forEach(l=>_cache.leaves[l.id]=l);
+    const st={0:tag('草稿','tag-m'),1:tag('待教师审核','tag-y'),2:tag('已通过','tag-g'),3:tag('已退回','tag-r')};
+    el.innerHTML = `<button class="btn" onclick="leaveForm()">＋ 申请请假</button>
+      <div class="card" style="margin-top:12px"><div class="sec-t" style="margin-top:0">请假记录</div>
+      ${(d.list||[]).length?(d.list||[]).map(l=>`<div class="row tapable" onclick="leaveDetail(${l.id})"><div><div class="m">${fmtDate(l.start_date)} ~ ${fmtDate(l.end_date)}（${l.days}天）</div><div class="d">${l.reason||''}${l.reject_reason?' · 驳回：'+l.reject_reason:''}</div></div><div>${st[l.status]||''} <span style="color:var(--t3)">›</span></div></div>`).join(''):emptyBox('暂无请假记录','🏖️')}</div>`;
+  },
+
+  // ---------- 学生成果 ----------
+  async achievements(el){
+    const d = await get('/gd-achievements?page_size=30');
+    _cache.achs={}; (d.list||[]).forEach(a=>_cache.achs[a.id]=a);
+    const st={0:tag('待审阅','tag-m'),1:tag('通过','tag-g'),2:tag('驳回','tag-r'),3:tag('未完成','tag-y')};
+    el.innerHTML = `<button class="btn" onclick="achForm()">＋ 上传毕业设计成果</button>
+      <div class="card" style="margin-top:12px"><div class="sec-t" style="margin-top:0">我的成果</div>
+      ${(d.list||[]).length?(d.list||[]).map(a=>`<div class="row tapable" onclick="achDetail(${a.id})"><div><div class="m">${a.title}</div><div class="d">${fmtDate(a.create_time)}${a.reject_reason?' · 驳回：'+a.reject_reason:''}</div></div><div>${st[a.status]||''} <span style="color:var(--t3)">›</span></div></div>`).join(''):emptyBox('暂无成果，点上方按钮上传','🎓')}</div>`;
+  },
+
+  // ---------- 通知 ----------
+  async notifications(el){
+    const d = await get('/notifications?page_size=50');
+    _cache.notifs={}; (d.list||[]).forEach(n=>_cache.notifs[n.id]=n);
+    const list=d.list||[];
+    const unread=list.filter(n=>!n.is_read).length;
+    const TYPE_ICON={success:'✅',warning:'⚠️',error:'❌',info:'ℹ️'};
+    const TYPE_CLS={success:'tag-g',warning:'tag-y',error:'tag-r',info:'tag-b'};
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:14px;font-weight:600;color:var(--t1)">${unread>0?`${unread} 条未读`:'全部已读'}</span>
+        ${unread>0?`<button class="btn btn-o" style="margin:0;padding:6px 14px;font-size:12px" onclick="readAll()">全部标为已读</button>`:''}
+      </div>
+      <div class="card">
+        ${list.length?list.map(n=>`
+          <div class="row tapable" onclick="notifDetail(${n.id})" style="${!n.is_read?'background:#F0F7FF;':''}">
+            <div style="flex:1">
+              <div class="m" style="display:flex;align-items:center;gap:5px">
+                ${!n.is_read?'<span style="width:8px;height:8px;border-radius:50%;background:var(--p);flex-shrink:0;display:inline-block"></span>':''}
+                <span style="font-weight:${n.is_read?'500':'700'}">${n.title}</span>
+                ${n.type?`<span class="tag ${TYPE_CLS[n.type]||'tag-b'}" style="font-size:10px">${TYPE_ICON[n.type]||''}</span>`:''}
+              </div>
+              <div class="d" style="margin-top:3px">${(n.content||'').slice(0,60)}${(n.content||'').length>60?'…':''}</div>
+              <div class="d" style="font-size:11px;margin-top:2px">${fmtTime(n.create_time)}</div>
+            </div>
+            <span style="color:var(--t3);flex-shrink:0">›</span>
+          </div>`).join(''):emptyBox('暂无通知','🔔')}
+      </div>`;
+  },
+
+  // ---------- 我的 ----------
+  async mine(el){
+    const stu = USER.role===4;
+    el.innerHTML = `
+      <div class="card hello"><div class="n">${USER.realName}</div><div class="s">${USER.roleName||(USER.role===3?'指导教师':'学生')}　${USER.username}</div></div>
+      <div class="card">
+        <div class="row tapable" onclick="render('profile')"><span class="m">👤 个人资料</span><span>›</span></div>
+        ${stu?`<div class="row tapable" onclick="render('assignment')"><span class="m">🏢 我的实习</span><span>›</span></div>
+        <div class="row tapable" onclick="render('positions')"><span class="m">💼 实习岗位 / 申请</span><span>›</span></div>
+        <div class="row tapable" onclick="render('reports')"><span class="m">📄 实习报告</span><span>›</span></div>
+        <div class="row tapable" onclick="render('leave')"><span class="m">🏖️ 我的请假</span><span>›</span></div>
+        <div class="row tapable" onclick="render('achievements')"><span class="m">🎓 我的成果</span><span>›</span></div>
+        <div class="row tapable" onclick="render('topics')"><span class="m">📌 毕设选题</span><span>›</span></div>
+        <div class="row tapable" onclick="render('tasks')"><span class="m">🗓️ 毕设任务节点</span><span>›</span></div>
+        <div class="row tapable" onclick="render('grade')"><span class="m">🏅 毕设成绩</span><span>›</span></div>
+        <div class="row tapable" onclick="render('insurances')"><span class="m">🛡️ 实习保险</span><span>›</span></div>`:''}
+        ${!stu?`<div class="row tapable" onclick="render('guidance')"><span class="m">📖 指导记录</span><span>›</span></div>
+        <div class="row tapable" onclick="render('trecords')"><span class="m">🗂️ 工作记录</span><span>›</span></div>
+        <div class="row tapable" onclick="render('quality')"><span class="m">🔎 质量检查</span><span>›</span></div>`:''}
+        <div class="row tapable" onclick="render('announcements')"><span class="m">📢 公示公告</span><span>›</span></div>
+        <div class="row tapable" onclick="render('notifications')"><span class="m">🔔 通知中心</span><span>›</span></div>
+        <div class="row tapable" onclick="changePwd()"><span class="m">🔑 修改密码</span><span>›</span></div>
+      </div>
+      <button class="btn btn-r" onclick="logout()">退出登录</button>
+      <div style="text-align:center;color:var(--t3);font-size:11px;margin-top:14px">实习管理平台 · 移动端 v1.3</div>`;
+  },
+
+  // ---------- 个人资料（查看+编辑） ----------
+  async profile(el){
+    const u = await get('/users/profile') || USER;
+    USER = Object.assign({}, USER, {realName:u.realName, phone:u.phone, email:u.email});
+    localStorage.setItem('m_user', JSON.stringify(USER));
+    el.innerHTML = `
+      <div class="card">
+        <div class="kv"><span class="k">用户名</span><span>${u.username||'-'}</span></div>
+        <div class="kv"><span class="k">角色</span><span>${u.roleName||'-'}</span></div>
+        ${u.eeid?`<div class="kv"><span class="k">学号/工号</span><span>${u.eeid}</span></div>`:''}
+        <div class="kv"><span class="k">上次登录</span><span>${u.lastLoginTime||'-'}</span></div>
+      </div>
+      <div class="card">
+        <label>姓名</label><input id="pfName" value="${esc(u.realName||'')}">
+        <label>手机号</label><input id="pfPhone" value="${esc(u.phone||'')}" placeholder="未填写">
+        <label>邮箱</label><input id="pfEmail" value="${esc(u.email||'')}" placeholder="未填写">
+        ${USER.role===4?`<label>技能标签（逗号分隔，用于岗位智能推荐）</label><input id="pfTags" value="${esc(u.skillTags||'')}" placeholder="如：Java,Web前端,数据库">
+        <label>紧急联系人</label><input id="pfEmName" value="${esc(u.emergencyName||'')}" placeholder="姓名">
+        <label>紧急联系人电话</label><input id="pfEmPhone" value="${esc(u.emergencyPhone||'')}" placeholder="24小时可联系">
+        <label>与本人关系</label><input id="pfEmRel" value="${esc(u.emergencyRelation||'')}" placeholder="如：父亲">`:''}
+        <div class="fld-err" id="pfErr"></div>
+        <button class="btn" id="pfSave" onclick="saveProfile()">保存资料</button>
+      </div>`;
+  },
+
+  // ---------- 毕设成绩（学生） ----------
+  async grade(el){
+    const g = await get('/gd-grades/mine');
+    if(!g){ el.innerHTML = emptyBox('暂无成绩，成绩公布后可在此查看','🏅'); return; }
+    const total = g.total_score!=null ? Number(g.total_score) : null;
+    const lvl = total==null?null:total>=90?{t:'优秀',c:'#16A34A'}:total>=80?{t:'良好',c:'#0EA5E9'}:total>=70?{t:'中等',c:'#0D9488'}:total>=60?{t:'及格',c:'#F97316'}:{t:'不及格',c:'#DC2626'};
+    const scoreRow=(label,score,weight,color)=>{
+      const n = score!=null?Number(score):null;
+      const pct = n!=null?Math.min(100,n):0;
+      const lv = n==null?null:n>=90?'优秀':n>=80?'良好':n>=70?'中等':n>=60?'及格':'不及格';
+      return `<div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <span style="font-size:13px;font-weight:500;color:var(--t2)">${label} <span style="font-size:11px;color:var(--t3)">${weight}</span></span>
+          <span style="font-size:16px;font-weight:700;color:${n==null?'var(--t3)':n>=60?color:'#DC2626'}">${n!=null?n:'—'}<span style="font-size:11px;font-weight:400;margin-left:3px;color:${n==null?'var(--t3)':n>=60?color:'#DC2626'}">${lv||''}</span></span>
+        </div>
+        <div style="height:7px;background:var(--bd);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:4px"></div>
+        </div>
+      </div>`;
+    };
+    el.innerHTML = `
+      <div class="card hello" style="background:${lvl?`linear-gradient(135deg,${lvl.c}cc,${lvl.c}88)`:'linear-gradient(135deg,#7C3AED,#0EA5E9)'}">
+        <div class="s">综合总评</div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-top:4px">
+          <div class="n" style="font-size:42px;line-height:1">${total!=null?total:'—'}</div>
+          ${lvl?`<div style="font-size:16px;font-weight:600;opacity:.9">${lvl.t}</div>`:''}
+        </div>
+        ${g.topic_title?`<div class="s" style="margin-top:6px;opacity:.8;font-size:12px">课题：${g.topic_title}</div>`:''}
+      </div>
+      <div class="card" style="padding:16px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:14px;color:var(--t2)">成绩构成</div>
+        ${scoreRow('指导成绩','30%','#0D9488',g.guidance_score)}
+        ${scoreRow('评阅成绩','30%','#0EA5E9',g.review_score)}
+        ${scoreRow('答辩成绩','40%','#7C3AED',g.defense_score)}
+        <div style="padding:10px 12px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--t3);margin-top:4px">
+          综合总评 = 指导×30% + 评阅×30% + 答辩×40%
+        </div>
+      </div>
+      <div class="card">
+        ${g.teacher_name?`<div class="kv"><span class="k">指导教师</span><span>${g.teacher_name}</span></div>`:''}
+        ${g.remark?`<div class="kv" style="align-items:flex-start"><span class="k">教师评语</span><span style="font-size:13px;line-height:1.6;color:var(--t2)">${g.remark}</span></div>`:''}
+        ${!g.remark?`<div style="text-align:center;padding:12px;color:var(--t3);font-size:13px">教师暂未填写评语</div>`:''}
+      </div>`;
+  },
+
+  // ---------- 我的实习（分配详情） ----------
+  async assignment(el){
+    const [d, mine] = await Promise.all([
+      get('/assignments?page_size=1'),
+      get('/checkins/mine').catch(()=>null)
+    ]);
+    const a = (d.list||[])[0];
+    if(!a){ el.innerHTML = emptyBox('老师尚未为你分配实习，可先浏览岗位申请','🏢'); return; }
+    const checkedToday = mine&&mine.checkedToday;
+    const totalCheckin = mine&&mine.total||0;
+    const today = new Date().toISOString().slice(0,10);
+    // Quick actions grid
+    const quickLinks = [
+      {icon:'📅',label:'打卡签到',view:'checkin',badge:checkedToday?'已打卡':null,badgeClass:checkedToday?'tag-g':''},
+      {icon:'📝',label:'周报/月报',view:'logs'},
+      {icon:'📄',label:'实习报告',view:'reports'},
+      {icon:'🏖️',label:'请假申请',view:'leave'},
+    ];
+    el.innerHTML = `
+      <div class="card hello">
+        <div class="n">${a.enterprise_name||'实习单位'}</div>
+        <div class="s">指导老师：${a.teacher_name||'待分配'}${a.plan_title?' · '+a.plan_title:''}</div>
+        ${checkedToday
+          ?`<div style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.22);border-radius:20px;padding:4px 12px;font-size:12px;margin-top:8px">✅ 今日已打卡 · 累计 ${totalCheckin} 次</div>`
+          :`<div style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,165,0,.3);border-radius:20px;padding:4px 12px;font-size:12px;margin-top:8px;color:#fff">⚠️ 今日未打卡，请尽快签到</div>`}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        ${quickLinks.map(q=>`<div class="card tapable" onclick="render('${q.view}')" style="padding:14px;text-align:center;margin:0">
+          <div style="font-size:22px">${q.icon}</div>
+          <div style="font-size:13px;font-weight:600;margin-top:6px">${q.label}</div>
+          ${q.badge?`<div style="margin-top:4px"><span class="tag ${q.badgeClass}">${q.badge}</span></div>`:''}
+        </div>`).join('')}
+      </div>
+      <div class="card">
+        <div class="sec-t" style="margin-top:0">实习信息</div>
+        <div class="kv"><span class="k">实习单位</span><span style="font-weight:600">${a.enterprise_name||'-'}</span></div>
+        <div class="kv"><span class="k">指导教师</span><span>${a.teacher_name||'待分配'}</span></div>
+        <div class="kv"><span class="k">实习计划</span><span>${a.plan_title||'-'}</span></div>
+        ${a.plan_start_date?`<div class="kv"><span class="k">实习周期</span><span>${fmtDate(a.plan_start_date)} ~ ${fmtDate(a.plan_end_date)||'待定'}</span></div>`:''}
+        ${a.checkin_radius!=null?`<div class="kv"><span class="k">打卡范围</span><span>${a.checkin_radius>0?a.checkin_radius+' 米':'不限范围'}</span></div>`:''}
+        <div class="kv"><span class="k">累计打卡</span><span style="${totalCheckin===0?'color:var(--orange)':'color:var(--green)'};font-weight:600">${totalCheckin} 次</span></div>
+      </div>
+      <div class="card" style="margin-top:8px">
+        <div class="sec-t" style="margin-top:0">申请换岗 / 终止实习</div>
+        <div style="font-size:12px;color:var(--t3);margin-bottom:10px">如需更换实习单位或因故终止实习，请发起申请，经教师和管理员审批后生效</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-o" style="flex:1" onclick="asgChangeForm('transfer',${a.id})">申请换岗</button>
+          <button class="btn btn-o" style="flex:1" onclick="asgChangeForm('terminate',${a.id})">终止实习</button>
+        </div>
+        <button class="btn btn-o" style="margin-top:8px" onclick="render('asgchange')">查看换岗/终止申请 →</button>
+      </div>`;
+  },
+
+  async asgchange(el){
+    const d = await get('/assignment-changes?page_size=30') || {};
+    _cache.asgchanges={}; (d.list||[]).forEach(c=>_cache.asgchanges[c.id]=c);
+    const ST_CLS={0:'tag-m',1:'tag-b',2:'tag-g',3:'tag-r'};
+    const ST={0:'待教师审批',1:'待管理员审批',2:'已执行',3:'已驳回'};
+    const TP={transfer:'换岗',terminate:'终止实习'};
+    const list=d.list||[];
+    const pending=list.filter(c=>c.status===0||c.status===1).length;
+    // For teachers/admins: items they need to review
+    const needsMyAction=list.filter(c=>(USER.role===3&&c.status===0)||(( USER.role===1||USER.role===2)&&c.status===1)).length;
+    el.innerHTML=`
+      ${needsMyAction>0?`<div class="card" style="background:#FFF7ED;border-left:3px solid var(--orange);margin-bottom:8px;padding:10px 14px;font-size:13px">⏳ 有 <strong>${needsMyAction}</strong> 项申请等待你审批</div>`:''}
+      ${pending>0&&USER.role===4?`<div class="card" style="background:#EFF6FF;border-left:3px solid var(--p);margin-bottom:8px;padding:10px 14px;font-size:13px">📋 有 <strong>${pending}</strong> 项申请正在审核中，请耐心等待</div>`:''}
+      <div class="card">
+        ${list.length?list.map(c=>`
+          <div class="row tapable" onclick="asgChangeDetail(${c.id})">
+            <div style="flex:1">
+              <div class="m" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <span style="font-weight:600">${TP[c.change_type]||c.change_type}申请</span>
+                <span class="tag ${ST_CLS[c.status]||'tag-m'}">${ST[c.status]||c.status}</span>
+              </div>
+              <div class="d" style="margin-top:3px">${c.student_name?c.student_name+' · ':''}${c.old_enterprise_name||'原单位'}${c.change_type==='transfer'&&c.new_enterprise_name?' → '+c.new_enterprise_name:c.change_type==='terminate'?' → 终止实习':''}</div>
+              <div class="d" style="margin-top:2px">${(c.reason||'').slice(0,50)}${(c.reason||'').length>50?'…':''}</div>
+            </div>
+            <span style="color:var(--t3)">›</span>
+          </div>`).join(''):emptyBox('暂无换岗/终止申请','🔄')}
+      </div>`;
+  },
+
+  // ---------- 公示公告（学生/教师通用） ----------
+  async announcements(el){
+    const d = await get('/announcements?page_size=30');
+    _cache.anns={}; (d.list||[]).forEach(a=>_cache.anns[a.id]=a);
+    el.innerHTML = `<div class="card">
+      ${(d.list||[]).length?(d.list||[]).map(a=>`<div class="row tapable" onclick="annDetail(${a.id})"><div><div class="m">${a.title}</div><div class="d">${a.category?'['+a.category+'] ':''}${fmtDate(a.publish_time||a.create_time)} · ${a.publisher_name||a.college_name||''}</div></div><span style="color:var(--t3)">›</span></div>`).join(''):emptyBox('暂无公示公告','📢')}</div>`;
+  },
+
+  // ---------- 学生：实习岗位浏览 + 申请 ----------
+  async positions(el){
+    const [d, mine, rec] = await Promise.all([ get('/positions?status=1&page_size=30'), get('/applications?page_size=50'), get('/positions/recommend?limit=5').catch(()=>null) ]);
+    const applied = {}; (mine.list||[]).forEach(a=>applied[a.position_id]=a.status);
+    _cache.positions={}; (d.list||[]).forEach(p=>_cache.positions[p.id]=p);
+    (rec&&rec.list||[]).forEach(p=>{ if(!_cache.positions[p.id]) _cache.positions[p.id]=p; });
+    const recItems = (rec&&rec.list||[]).filter(p=>p.match_score>0).slice(0,5);
+    const recHtml = recItems.length ? `
+      <div class="sec-t" style="margin-top:0">为你推荐 ✨</div>
+      ${recItems.map(p=>`<div class="card tapable" onclick="posDetail(${p.id})" style="border-left:3px solid var(--p)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="m" style="font-weight:600">${p.title}</div>${tag('匹配','tag-g')}</div>
+        <div class="d" style="margin-top:4px">${p.enterprise_name||''}${p.location?' · '+p.location:''}</div>
+        ${(p.match_tags&&p.match_tags.length)?`<div style="margin-top:6px">${p.match_tags.map(t=>tag(t,'tag-b')).join(' ')}</div>`:''}
+      </div>`).join('')}
+      <div class="sec-t">全部在招岗位</div>` 
+      : (rec && !rec.hasTags ? `<div class="card" style="font-size:12px;color:var(--t3)">💡 在「我的资料」填写技能标签，即可获得岗位智能推荐</div>` : '');
+    el.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn btn-o" style="margin-top:0" onclick="render('applications')">📋 我的申请</button>
+      </div>
+      ${recHtml}
+      ${(d.list||[]).length?(d.list||[]).map(p=>`
+      <div class="card tapable" onclick="posDetail(${p.id})">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div class="m" style="font-weight:600;font-size:15px">${p.title}</div>
+          ${p.salary?tag(p.salary,'tag-b'):''}
+        </div>
+        <div class="d" style="margin-top:4px">${p.enterprise_name||''}${p.location?' · '+p.location:''}${p.headcount?' · 招'+p.headcount+'人':''}</div>
+        <div style="margin-top:10px">${applied[p.id]!=null?`<span class="tag tag-m">${APP_ST[applied[p.id]]||'已申请'}</span>`:`<button class="btn btn-sm" style="margin:0" onclick="event.stopPropagation();posApply(${p.id})">申请该岗位</button>`}</div>
+      </div>`).join(''):emptyBox('暂无在招岗位','💼')}`;
+  },
+
+  // ---------- 学生：我的申请 ----------
+  async applications(el){
+    const d = await get('/applications?page_size=30');
+    _cache.applications={}; (d.list||[]).forEach(a=>_cache.applications[a.id]=a);
+    const list=d.list||[];
+    // Status-based tips
+    const hasRejected=list.some(a=>a.status===2||a.status===4||a.status===6);
+    const hasPending=list.some(a=>a.status===0||a.status===1||a.status===3);
+    const STATUS_TIPS={
+      0:'等待指导教师审核',1:'教师已同意，等待院校审核',2:'指导教师未通过，可重新申请',
+      3:'院校已通过，等待企业确认录用',4:'院校审核未通过，可重新申请',
+      5:'已录用！请查看实习分配详情',6:'企业本次未录用，可继续投递其他岗位'
+    };
+    el.innerHTML = `
+      <button class="btn" onclick="render('positions')">＋ 浏览岗位并申请</button>
+      ${hasRejected?`<div class="card" style="background:#FFF7ED;border-left:3px solid var(--orange);margin-top:8px;padding:10px 14px;font-size:13px">💡 有申请未通过，可重新浏览岗位投递</div>`:''}
+      <div class="card" style="margin-top:${hasPending||hasRejected?'8':'12'}px">
+        <div class="sec-t" style="margin-top:0">我的申请（${list.length}）</div>
+        ${list.length?list.map(a=>`
+          <div class="row tapable" onclick="appDetail(${a.id})">
+            <div style="flex:1">
+              <div class="m" style="font-weight:600">${a.position_title||'实习岗位'}</div>
+              <div class="d" style="margin-top:2px">${a.enterprise_name||''}${a.teacher_name?' · 指导：'+a.teacher_name:''}</div>
+              <div class="d" style="margin-top:2px;font-size:11px">${STATUS_TIPS[a.status]||''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              ${tag(APP_ST[a.status]||'',APP_STC[a.status]||'tag-m')}
+              <br><span style="color:var(--t3);font-size:11px">${fmtDate(a.apply_time)}</span>
+            </div>
+          </div>`).join(''):emptyBox('还没有实习申请，快去浏览岗位吧','📋')}
+      </div>`;
+  },
+
+  // ---------- 学生：实习报告 ----------
+  async reports(el){
+    const d = await get('/reports?page_size=30');
+    _cache.reports={}; (d.list||[]).forEach(r=>_cache.reports[r.id]=r);
+    const st={0:tag('草稿','tag-m'),1:tag('已提交','tag-y'),2:tag('已评阅','tag-g')};
+    el.innerHTML = `<button class="btn" onclick="reportForm()">＋ 填写实习报告</button>
+      <div class="card" style="margin-top:12px"><div class="sec-t" style="margin-top:0">我的实习报告</div>
+      ${(d.list||[]).length?(d.list||[]).map(r=>`<div class="row tapable" onclick="reportDetail(${r.id})"><div><div class="m">${r.title}</div><div class="d">${fmtDate(r.create_time)}${r.teacher_score!=null?' · 得分:'+r.teacher_score:''}</div></div><div>${st[r.status]||''} <span style="color:var(--t3)">›</span></div></div>`).join(''):emptyBox('还没有实习报告','📄')}</div>`;
+  },
+
+  // ---------- 学生：毕设选题 ----------
+  async topics(el){
+    const [myTopics, pool] = await Promise.all([
+      get('/gd-topics?page_size=20'),
+      USER.role===4 ? get('/benchmark/topic-pool').catch(()=>null) : Promise.resolve(null)
+    ]);
+    _cache.topics={}; (myTopics.list||[]).forEach(t=>_cache.topics[t.id]=t);
+    _cache.topicPool={}; ((pool&&pool.list)||[]).forEach(p=>_cache.topicPool[p.id]=p);
+    const st={0:tag('待确认','tag-y'),1:tag('已确定','tag-g'),2:tag('已驳回','tag-r')};
+    const myList=myTopics.list||[];
+    const poolList=(pool&&pool.list)||[];
+    const myTopic=myList.find(t=>t.status===1)||myList[0];
+    el.innerHTML = `
+      ${myTopic?`
+        <div class="card" style="background:linear-gradient(135deg,#7C3AED18,#0EA5E918);border:1px solid #7C3AED30;margin-bottom:10px">
+          <div class="sec-t" style="margin-top:0;color:#5B21B6">我的毕设选题</div>
+          <div style="font-size:15px;font-weight:700;color:var(--t1);margin-bottom:4px">${myTopic.title}</div>
+          <div style="font-size:13px;color:var(--t2);margin-bottom:6px">${myTopic.teacher_name?'指导教师：'+myTopic.teacher_name:''}${myTopic.type?' · '+myTopic.type:''}</div>
+          ${st[myTopic.status]||''}
+          ${myTopic.status===2?`<div style="background:#FFF1F2;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--red)">⚠️ 选题已被驳回，请与指导教师沟通后重新确认</div>`:''}
+          ${myTopic.status===0?`<div style="background:#FFF7ED;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;color:#92400e">⏳ 等待指导教师确认中，请耐心等待</div>`:''}
+        </div>`:''}
+      ${USER.role===4&&!myTopic&&poolList.length?`
+        <div class="card">
+          <div class="sec-t" style="margin-top:0">可选课题（${poolList.length} 个）</div>
+          <div style="font-size:12px;color:var(--t3);margin-bottom:10px">点击课题名查看详情，或直接点「申请」发起选题</div>
+          ${poolList.map(p=>`
+            <div class="row tapable" onclick="topicPoolDetail(${p.id})">
+              <div style="flex:1">
+                <div class="m" style="font-weight:600">${p.title}</div>
+                <div class="d">${p.teacher_name?'指导：'+p.teacher_name:''}${p.type?' · '+p.type:''}</div>
+                ${p.quota?`<div style="font-size:11px;color:var(--t3)">可接收 ${p.quota} 人</div>`:''}
+              </div>
+              <button class="btn btn-sm" style="margin:0;flex-shrink:0" onclick="event.stopPropagation();mApplyTopicPool(${p.id},'${esc(p.title)}')">申请</button>
+            </div>`).join('')}
+        </div>`:''}
+      ${myList.length>0?`
+        <div class="card" style="margin-top:8px">
+          <div class="sec-t" style="margin-top:0">全部选题记录</div>
+          ${myList.map(t=>`<div class="row tapable" onclick="topicDetail(${t.id})"><div><div class="m">${t.title}</div><div class="d">${t.teacher_name?'指导:'+t.teacher_name:''}${t.type?' · '+t.type:''}</div></div><div>${st[t.status]||''} <span style="color:var(--t3)">›</span></div></div>`).join('')}
+        </div>`:''}
+      ${!myTopic&&!poolList.length&&myList.length===0?emptyBox('暂无选题，请等待教师发布课题或管理员分配','📌'):''}`;
+  },
+
+  // ---------- 毕设任务节点 ----------
+  async tasks(el){
+    const d = await get('/gd-tasks?only_root=1&page_size=100');
+    _cache.tasks={}; (d.list||[]).forEach(t=>_cache.tasks[t.id]=t);
+    const list=d.list||[];
+    const done=list.filter(t=>t.status===2).length;
+    const pct=list.length?Math.round(done/list.length*100):0;
+    const now=Date.now();
+    el.innerHTML = `
+      <div class="card" style="padding:12px 16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:14px;font-weight:600">整体进度</span>
+          <span style="font-size:18px;font-weight:700;color:${pct>=100?'var(--green)':pct>=60?'var(--blue)':'var(--orange)'}">${pct}%</span>
+        </div>
+        <div style="height:8px;background:#F1F5F9;border-radius:8px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${pct>=100?'var(--green)':pct>=60?'var(--blue)':'var(--orange)'};border-radius:8px;transition:width .3s"></div>
+        </div>
+        <div style="font-size:11px;color:var(--t3);margin-top:6px">已完成 ${done} / 共 ${list.length} 个环节</div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="sec-t" style="margin-top:0">毕业设计各环节</div>
+        ${list.length?list.map(t=>{
+          const overdue=t.status!==2&&t.require_time&&new Date(t.require_time).getTime()<now;
+          const rowColor=t.status===2?'background:#F0FDF4':overdue?'background:#FFF7ED':'';
+          return `<div class="row tapable" onclick="taskDetail(${t.id})" style="${rowColor};border-radius:8px;margin-bottom:4px">
+            <div style="flex:1"><div class="m">${t.status===2?'✓ ':''}${t.name}</div>
+            <div class="d">${t.require_time?(overdue?'<span style="color:var(--red)">已超期 ':'要求:')+fmtDate(t.require_time)+(overdue?'</span>':''):''}${t.actual_time?' · 完成:'+fmtDate(t.actual_time):''}</div>
+            </div>
+            <div style="text-align:right">${t.status===2?tag('已完成','tag-g'):overdue?tag('已超期','tag-r'):t.status===1?tag('进行中','tag-y'):tag('未开始','tag-m')} <span style="color:var(--t3)">›</span></div>
+          </div>`;
+        }).join(''):emptyBox('暂无任务节点','🗓️')}
+      </div>`;
+  },
+
+  // ---------- 学生：实习保险 ----------
+  async insurances(el){
+    const d = await get('/insurances?page_size=30');
+    _cache.insurances={}; (d.list||[]).forEach(i=>_cache.insurances[i.id]=i);
+    const ST={0:tag('待审核','tag-m'),1:tag('有效','tag-g'),2:tag('已到期','tag-y'),3:tag('已注销','tag-r')};
+    const list=(d.list||[]);
+    const expired=list.filter(i=>i.status===2||i.status===3).length;
+    const valid=list.filter(i=>i.status===1).length;
+    el.innerHTML = `
+      ${USER.role===4?`<button class="btn" onclick="applyInsurance()">＋ 申请投保</button>`:''}
+      ${valid===0&&list.length>0?`<div class="card" style="background:#FFF7ED;border-left:4px solid var(--orange);margin-top:12px"><div style="font-size:13px;color:#92400e;line-height:1.7">⚠️ 当前无有效保险，实习期间存在风险，请尽快联系企业或自行购买实习意外险。</div></div>`:''}
+      ${list.length===0?`<div class="card" style="background:#FFF7ED;border-left:4px solid var(--orange);margin-top:12px"><div style="font-size:13px;color:#92400e;line-height:1.7">🛡️ 尚未登记保险记录，实习期间需强制投保实习意外险，请点击上方按钮申请。</div></div>`:''}
+      <div class="card" style="margin-top:12px">
+        <div class="sec-t" style="margin-top:0">保险记录（${d.total||0}）</div>
+        ${list.length?list.map(i=>`<div class="row tapable" onclick="insuranceDetail(${i.id})"><div><div class="m">${i.insurance_type||'实习保险'}</div><div class="d">${i.company||''}${i.policy_no?' · 单号:'+i.policy_no:''}</div><div class="d">${fmtDate(i.start_date)} ~ ${fmtDate(i.end_date)}${i.coverage_amount?' · 保额'+Number(i.coverage_amount).toLocaleString()+'元':''}</div></div><div>${ST[i.status]||''} <span style="color:var(--t3)">›</span></div></div>`).join(''):emptyBox('暂无保险记录','🛡️')}
+      </div>`;
+  },
+
+  async complaint(el){
+    const d = await get('/complaints?page_size=30');
+    _cache.complaints={}; (d.list||[]).forEach(c=>_cache.complaints[c.id]=c);
+    const ST={0:'待处理',1:'处理中',2:'已处理',3:'已关闭'};
+    const STC={0:'tag-y',1:'tag-b',2:'tag-g',3:'tag-m'};
+    const CAT={complaint:'🚨 投诉',incident:'⚠️ 异常',safety:'🆘 安全'};
+    const pending=(d.list||[]).filter(c=>c.status===0||c.status===1).length;
+    el.innerHTML = `
+      <button class="btn" onclick="showComplaintForm()">＋ 我要上报</button>
+      <div class="card" style="background:#EFF6FF;margin-top:12px"><div style="font-size:13px;color:#1e40af;line-height:1.7">实习投诉、异常情况、安全事件均可在此上报，学校承诺保护隐私，48小时内响应。</div></div>
+      ${pending>0?`<div class="card" style="background:#FFF7ED;border-left:3px solid var(--orange);padding:10px 14px;font-size:13px">📋 有 <strong>${pending}</strong> 项上报正在处理中，学校将尽快跟进</div>`:''}
+      <div class="card" style="margin-top:8px">
+        <div class="sec-t" style="margin-top:0">我的上报（${d.total||0}）</div>
+        ${(d.list||[]).length?(d.list||[]).map(c=>`
+          <div class="row tapable" onclick="complaintDetail(${c.id})">
+            <div style="flex:1">
+              <div class="m" style="font-weight:600">${c.title}</div>
+              <div class="d" style="margin-top:2px">${CAT[c.category]||c.category} · ${fmtTime(c.create_time)}</div>
+              ${c.handle_remark?`<div class="d" style="color:var(--green);margin-top:3px">✓ ${c.handle_remark.slice(0,40)}${c.handle_remark.length>40?'…':''}</div>`:''}
+            </div>
+            <div style="text-align:right;flex-shrink:0">${tag(ST[c.status]||'',STC[c.status]||'tag-m')}<br><span style="color:var(--t3)">›</span></div>
+          </div>`).join(''):emptyBox('暂无上报记录，实习遇到问题请及时上报','📋')}
+      </div>`;
+  },
+
+  // ---------- 教师首页 ----------
+  async teacherHome(el){
+    const [d,uc,rk] = await Promise.all([get('/workbench'), get('/notifications/unread-count').catch(()=>null), get('/risk/warnings').catch(()=>null)]);
+    const p=d.pending||{}; const unread = uc && uc.count || 0;
+    const risk = (rk && rk.summary) || {high:0,medium:0,low:0,total:0};
+    const riskBadge = (risk.high||0)+(risk.medium||0);
+    const totalPending = p.total != null ? p.total : ((p.applications||0)+(p.internLogs||0)+(p.leaves||0)+(p.achievements||0)+(p.reports||0)+(p.qualityChecks||0)+(p.asgChanges||0)+(p.agreements||0)+(p.complaints||0));
+    const flowAlerts=(d.alerts||[]).map(a=>`<div class="card tapable" onclick="render('${a.key==='reviewhub'?'review':a.key==='riskcomplaint'?'risk':'review'}')" style="border-left:4px solid var(--orange);margin-bottom:8px"><div class="m">${a.title} · ${a.desc} ›</div></div>`).join('');
+    const tiles=[
+      ['✅','待批阅','review','ic-r',totalPending],
+      ['⚠️','风险预警','risk','ic-y',riskBadge],
+      ['👨‍🎓','我的实习生','students','ic-b'],
+      ['📖','指导记录','guidance','ic-p'],
+      ['🗂️','工作记录','trecords','ic-o'],
+      ['🔎','质量检查','quality','ic-t'],
+      ['🎓','答辩评分','defense','ic-p'],
+      ['📑','实习协议','agreement','ic-g'],
+      ['📢','公示公告','announcements','ic-b'],
+      ['🔔','通知中心','notifications','ic-y',unread],
+      ['👤','个人资料','profile','ic-m'],
+    ];
+    const grid=tiles.map(t=>{
+      const badge = t[4] ? `<span class="nb">${t[4]>99?'99+':t[4]}</span>` : '';
+      return `<a onclick="render('${t[2]}')"><span class="ic ${t[3]}">${t[0]}</span><span class="tl">${t[1]}</span>${badge}</a>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="card hello">
+        <div class="hello-top">
+          <div><div class="n">你好，${USER.realName}</div><div class="s">指导教师 · 指导学生 ${d.assignedStudents||0} 人</div></div>
+          <a class="bell" onclick="render('notifications')">🔔${unread?`<span class="nb">${unread>99?'99+':unread}</span>`:''}</a>
+        </div>
+      </div>
+      <div class="sec-t">待办事项</div>
+      <div class="grid3">
+        <div class="metric"><div class="v">${p.applications||0}</div><div class="l">待审申请</div></div>
+        <div class="metric"><div class="v">${p.internLogs||0}</div><div class="l">待批周报</div></div>
+        <div class="metric"><div class="v">${p.leaves||0}</div><div class="l">待批请假</div></div>
+        <div class="metric"><div class="v">${p.achievements||0}</div><div class="l">待审成果</div></div>
+        <div class="metric"><div class="v">${p.reports||0}</div><div class="l">待评报告</div></div>
+        <div class="metric"><div class="v">${p.qualityChecks||0}</div><div class="l">待质检</div></div>
+        <div class="metric"><div class="v">${p.asgChanges||0}</div><div class="l">换岗/终止</div></div>
+        <div class="metric"><div class="v">${p.complaints||0}</div><div class="l">本组投诉</div></div>
+      </div>
+      ${flowAlerts}
+      ${riskBadge?`<div class="card tapable" onclick="render('risk')" style="border-left:4px solid var(--red)">
+        <div class="row" style="border:none;padding:2px 0"><div><div class="m">⚠️ 实习风险预警</div><div class="d">高危 ${risk.high||0} · 提醒 ${risk.medium||0} · 待关注学生 ${risk.students||0} 人</div></div><span style="color:var(--t3)">查看 ›</span></div>
+      </div>`:''}
+      <div class="sec-t">常用办理</div>
+      <div class="card" style="padding:8px 4px"><div class="fgrid">${grid}</div></div>`;
+  },
+
+  // ---------- 教师：我的实习生 ----------
+  async students(el){
+    const [d, rk] = await Promise.all([
+      get('/intern-stats/process?page_size=50'),
+      get('/risk/warnings').catch(()=>null)
+    ]);
+    _cache.students={}; (d.list||[]).forEach(s=>_cache.students[s.student_id]=s);
+    _cache.riskByStudent={};
+    ((rk&&rk.list)||[]).forEach(w=>{
+      if(!_cache.riskByStudent[w.student_id]) _cache.riskByStudent[w.student_id]=[];
+      _cache.riskByStudent[w.student_id].push(w);
+    });
+    const stuList=d.list||[];
+    const highDanger=stuList.filter(s=>(_cache.riskByStudent[s.student_id]||[]).some(w=>w.level==='high')).length;
+    el.innerHTML=`
+      ${highDanger>0?`<div class="card" style="background:#FFF1F2;border-left:3px solid var(--red);margin-bottom:8px;padding:10px 14px;font-size:13px">⚠️ 有 <strong>${highDanger}</strong> 名学生存在高危预警，请及时处理</div>`:''}
+      <div class="card">
+        <div class="sec-t" style="margin-top:0">我的实习生（${d.total||0}）</div>
+        ${stuList.length?stuList.map(s=>{
+          const risks=_cache.riskByStudent[s.student_id]||[];
+          const highRisk=risks.some(w=>w.level==='high');
+          const midRisk=risks.some(w=>w.level==='medium');
+          const riskBadge=highRisk?`<span class="tag tag-r" style="font-size:10px">高危</span>`:midRisk?`<span class="tag tag-y" style="font-size:10px">提醒</span>`:'';
+          return `<div class="row tapable" onclick="stuActions(${s.student_id},'${esc(s.student_name)}')">
+            <div style="flex:1">
+              <div class="m" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                ${s.student_name} <span class="d">${s.student_eeid||''}</span> ${riskBadge}
+              </div>
+              <div class="d">${s.enterprise_name||'未分配企业'}</div>
+              <div style="font-size:11px;color:var(--t3);margin-top:2px">
+                签到 ${s.checkin_count}${s.req_checkin>0?' / '+s.req_checkin:''}
+                · 周报 ${s.weekly_count}${s.req_weekly>0?' / '+s.req_weekly:''}
+                · 月报 ${s.monthly_count}${s.req_monthly>0?' / '+s.req_monthly:''}
+              </div>
+            </div>
+            <span style="color:var(--t3)">›</span>
+          </div>`;
+        }).join(''):emptyBox('暂无实习生','👨‍🎓')}
+      </div>`;
+  },
+
+  // ---------- 教师：待批阅（申请/周报/请假/成果/报告/选题） ----------
+  async review(el){
+    const [apps,logs,leaves,achs,reports,asg,agr,tpcs] = await Promise.all([
+      get('/applications?status=0&page_size=30'), get('/intern-logs?status=1&page_size=30'),
+      get('/leaves?status=1&page_size=30'), get('/gd-achievements?status=0&page_size=30'),
+      get('/reports?status=1&page_size=30'), get('/assignment-changes?status=0&page_size=30'),
+      get('/agreements?page_size=50'), get('/gd-topics?status=0&page_size=30')
+    ]);
+    _cache.reports={}; (reports.list||[]).forEach(r=>_cache.reports[r.id]=r);
+    _cache.topics={}; (tpcs.list||[]).forEach(t=>_cache.topics[t.id]=t);
+    const pendingAgr=(agr.list||[]).filter(a=>a.student_signed && !a.teacher_signed && a.status!==2 && a.status!==3);
+    const pendingTopics=(tpcs.list||[]);
+    const tp={transfer:'换岗',terminate:'终止'};
+    const totalPending=(apps.list||[]).length+(logs.list||[]).length+(leaves.list||[]).length+(achs.list||[]).length+(reports.list||[]).length+(asg.list||[]).length+pendingAgr.length+pendingTopics.length;
+    const sec=(title,items,html)=>`<div class="card"><div class="sec-t" style="margin-top:0">${title}（${items.length}）</div>${items.length?html:emptyBox('暂无','✅')}</div>`;
+    el.innerHTML =
+      (totalPending===0?`<div class="card" style="background:#F0FDF4;border-left:3px solid var(--green);padding:12px 14px;font-size:13px">✅ 暂无待处理事项，一切正常</div>`:'')
+      + sec('待审实习申请',(apps.list||[]),(apps.list||[]).map(a=>`<div class="row"><div><div class="m">${a.student_name}</div><div class="d">${a.position_title||''}${a.enterprise_name?' · '+a.enterprise_name:''}</div></div><div><button class="btn btn-sm" onclick="reviewApp(${a.id},true)">同意</button><button class="btn btn-sm btn-r" onclick="reviewApp(${a.id},false)">拒绝</button></div></div>`).join(''))
+      + sec('待批周报/月报',(logs.list||[]),(logs.list||[]).map(l=>`<div class="row"><div><div class="m">${l.student_name}·${l.type==='monthly'?'月报':'周报'}</div><div class="d tapable" onclick="reviewLogDetail(${l.id})" style="color:var(--blue)">${l.title} ›</div></div><div><button class="btn btn-sm" onclick="reviewLog(${l.id},true)">通过</button><button class="btn btn-sm btn-r" onclick="reviewLog(${l.id},false)">驳回</button></div></div>`).join(''))
+      + sec('换岗/终止待审',(asg.list||[]),(asg.list||[]).map(c=>`<div class="row"><div><div class="m">${c.student_name} · ${tp[c.change_type]||c.change_type}</div><div class="d">${(c.reason||'').slice(0,40)}</div></div><button class="btn btn-sm" onclick="reviewAsgM(${c.id})">审批</button></div>`).join(''))
+      + sec('待确认毕设选题',pendingTopics,pendingTopics.map(t=>`<div class="row tapable" onclick="topicDetail(${t.id})"><div><div class="m">${t.title}</div><div class="d">${t.student_name||''}${t.type?' · '+t.type:''}</div></div><div><button class="btn btn-sm" style="margin-right:4px" onclick="event.stopPropagation();confirmTopic(${t.id},true)">确认</button><button class="btn btn-sm btn-r" onclick="event.stopPropagation();confirmTopic(${t.id},false)">驳回</button></div></div>`).join(''))
+      + sec('协议待会签',pendingAgr,pendingAgr.map(a=>`<div class="row"><div><div class="m">${a.title}</div><div class="d">${a.student_name}</div></div><button class="btn btn-sm" onclick="teacherSignAgreement(${a.id})">会签</button></div>`).join(''))
+      + sec('待批请假',(leaves.list||[]),(leaves.list||[]).map(l=>`<div class="row"><div><div class="m">${l.student_name}</div><div class="d">${fmtDate(l.start_date)}~${fmtDate(l.end_date)}（${l.days}天） ${l.reason||''}</div></div><div><button class="btn btn-sm" onclick="reviewLeave(${l.id},true)">通过</button><button class="btn btn-sm btn-r" onclick="reviewLeave(${l.id},false)">驳回</button></div></div>`).join(''))
+      + sec('待审成果',(achs.list||[]),(achs.list||[]).map(a=>`<div class="row"><div><div class="m">${a.student_name}</div><div class="d">${a.title}</div></div><div><button class="btn btn-sm" onclick="reviewAch(${a.id},1)">通过</button><button class="btn btn-sm btn-r" onclick="reviewAch(${a.id},2)">驳回</button></div></div>`).join(''))
+      + sec('待评实习报告',(reports.list||[]),(reports.list||[]).map(r=>`<div class="row"><div><div class="m">${r.student_name}</div><div class="d">${r.title||''}</div></div><div><button class="btn btn-sm" onclick="gradeReport(${r.id})">评分</button></div></div>`).join(''));
+  },
+
+  // ---------- 教师：指导记录 ----------
+  async guidance(el){
+    const d = await get('/gd-guidances?page_size=30');
+    el.innerHTML = `<button class="btn" onclick="guidanceForm()">＋ 新增指导记录</button>
+      <div class="card" style="margin-top:12px"><div class="sec-t" style="margin-top:0">指导记录</div>
+      ${(d.list||[]).length?(d.list||[]).map(g=>`<div class="row tapable" onclick="guidanceDetail(${g.id})"><div><div class="m">${g.title||'指导记录'}</div><div class="d">${g.student_name||''} · ${fmtDate(g.guidance_date||g.create_time)}</div></div><span style="color:var(--t3)">›</span></div>`).join(''):emptyBox('暂无指导记录','📖')}</div>`;
+    _cache.guidance={}; (d.list||[]).forEach(g=>_cache.guidance[g.id]=g);
+  },
+
+  // ---------- 教师：工作记录 ----------
+  async trecords(el){
+    const d = await get('/teacher-records?page_size=30');
+    _cache.trecords={}; (d.list||[]).forEach(r=>_cache.trecords[r.id]=r);
+    const st={0:tag('草稿','tag-m'),1:tag('已提交','tag-g')};
+    el.innerHTML = `<button class="btn" onclick="trecordForm()">＋ 新增工作记录</button>
+      <div class="card" style="margin-top:12px"><div class="sec-t" style="margin-top:0">月报/走访记录</div>
+      ${(d.list||[]).length?(d.list||[]).map(r=>`<div class="row tapable" onclick="trecordDetail(${r.id})"><div><div class="m">${r.type==='visit'?'[走访] ':'[月报] '}${r.title}</div><div class="d">${fmtDate(r.record_date||r.create_time)}${r.student_name?' · '+r.student_name:''}</div></div><div>${st[r.status]||''} <span style="color:var(--t3)">›</span></div></div>`).join(''):emptyBox('暂无工作记录','🗂️')}</div>`;
+  },
+
+  // ---------- 教师：质量检查 ----------
+  async quality(el){
+    const d = await get('/quality-checks?page_size=30');
+    _cache.qcs={}; (d.list||[]).forEach(q=>_cache.qcs[q.id]=q);
+    const ST_CLS={0:'tag-y',1:'tag-g',2:'tag-r',3:'tag-m'};
+    const ST={0:'待审阅',1:'通过',2:'已驳回',3:'未完成'};
+    const list=d.list||[];
+    const pending=list.filter(q=>q.status===0).length;
+    el.innerHTML = `
+      ${pending>0?`<div class="card" style="background:#FFF7ED;border-left:3px solid var(--orange);margin-bottom:8px;padding:10px 14px;font-size:13px">📋 有 <strong>${pending}</strong> 项待审阅，请尽快处理</div>`:''}
+      <div class="card">
+        <div class="sec-t" style="margin-top:0">质量检查任务（${list.length}）</div>
+        ${list.length?list.map(q=>`
+          <div class="row tapable" onclick="qcDetail(${q.id})">
+            <div style="flex:1">
+              <div class="m" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <span style="font-weight:600">${q.student_name||'学生'}</span>
+                <span class="tag tag-b" style="font-size:10px">${q.check_type==='sample'?'抽查':'普查'} · ${q.scope==='self'?'自查':'互查'}</span>
+              </div>
+              <div class="d" style="margin-top:2px">${q.batch_name||''}${q.achievement_title?' · '+q.achievement_title:''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              ${tag(ST[q.status]||'',ST_CLS[q.status]||'tag-m')}
+              <span style="color:var(--t3)"> ›</span>
+            </div>
+          </div>`).join(''):emptyBox('暂无质量检查任务','🔎')}
+      </div>`;
+  },
+
+  // ---------- 电子实习协议（学生签署 / 教师会签） ----------
+  async agreement(el){
+    const d = await get('/agreements?page_size=30');
+    _cache.agreements={}; (d.list||[]).forEach(a=>_cache.agreements[a.id]=a);
+    const st={0:tag('待签署','tag-y'),1:tag('签署中','tag-m'),2:tag('已生效','tag-g'),3:tag('已作废','tag-r')};
+    const isStu = USER.role===4;
+    el.innerHTML = `<div class="card"><div class="sec-t" style="margin-top:0">${isStu?'我的实习协议':'待会签/跟踪协议'}</div>
+      ${(d.list||[]).length?(d.list||[]).map(a=>{
+        let btn='';
+        if(isStu && !a.student_signed && a.status!==2 && a.status!==3) btn=`<button class="btn btn-sm" onclick="signAgreement(${a.id})">签署</button>`;
+        else if(!isStu && USER.role===3 && a.student_signed && !a.teacher_signed && a.status!==3) btn=`<button class="btn btn-sm" onclick="teacherSignAgreement(${a.id})">会签</button>`;
+        return `<div class="row tapable" onclick="agreementDetail(${a.id})"><div><div class="m">${a.title}</div><div class="d">${a.enterprise_name||''}${a.student_name&&!isStu?' · '+a.student_name:''}</div></div><div style="text-align:right">${st[a.status]||''}${btn?'<div style="margin-top:6px">'+btn+'</div>':''}</div></div>`;
+      }).join(''):emptyBox('暂无实习协议','📑')}</div>`;
+  },
+
+  // ---------- 风险预警中心（教师/管理员） ----------
+  async risk(el){
+    const d = await get('/risk/warnings') || {};
+    const s = d.summary||{high:0,medium:0,low:0,students:0}; const list=d.list||[];
+    // Cache risk by student for riskDetail()
+    _cache.riskByStudent={};
+    list.forEach(w=>{
+      if(!_cache.riskByStudent[w.student_id]) _cache.riskByStudent[w.student_id]=[];
+      _cache.riskByStudent[w.student_id].push(w);
+    });
+    const lv={high:tag('高危','tag-r'),medium:tag('提醒','tag-y'),low:tag('关注','tag-m')};
+    const TYPE_ICON={checkin:'📍',checkin_range:'📍',weekly:'📝',monthly:'📋',insurance:'🛡️'};
+    // Group warnings by student for clean per-student display
+    const studentGroups=Object.values(_cache.riskByStudent);
+    el.innerHTML = `
+      <div class="grid3">
+        <div class="metric"><div class="v" style="color:var(--red)">${s.high||0}</div><div class="l">高危</div></div>
+        <div class="metric"><div class="v" style="color:#d97706">${s.medium||0}</div><div class="l">提醒</div></div>
+        <div class="metric"><div class="v">${s.students||0}</div><div class="l">涉及学生</div></div>
+      </div>
+      <button class="btn" onclick="notifyRisk()">📣 一键提醒全部学生</button>
+      <div class="card"><div class="sec-t" style="margin-top:0">预警明细（按学生）</div>
+      ${studentGroups.length?studentGroups.map(ws=>{
+        const w0=ws[0];
+        const hasHigh=ws.some(w=>w.level==='high');
+        const hasMid=ws.some(w=>w.level==='medium');
+        const badgeEl=hasHigh?lv.high:hasMid?lv.medium:lv.low;
+        return `<div class="row tapable" onclick="riskDetail(${w0.student_id})">
+          <div style="flex:1">
+            <div class="m" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              ${w0.student_name||''} <span class="d">${w0.student_eeid||''}</span>
+            </div>
+            ${ws.map(w=>`<div class="d" style="margin-top:2px">${TYPE_ICON[w.type]||'·'} ${w.message}</div>`).join('')}
+            ${w0.enterprise_name?`<div class="d" style="color:var(--t3)">${w0.enterprise_name}</div>`:''}
+          </div>
+          <div style="text-align:right;flex-shrink:0">${badgeEl}<span style="color:var(--t3)"> ›</span></div>
+        </div>`;
+      }).join(''):emptyBox('暂无风险预警，一切正常 🎉','✅')}</div>`;
+  },
+
+  // ---------- 答辩评分（教师/评委） ----------
+  async defense(el){
+    const d = await get('/defense/groups?page_size=40') || {};
+    const st={0:tag('筹备','tag-m'),1:tag('进行中','tag-y'),2:tag('已完成','tag-g')};
+    el.innerHTML = `<div class="card"><div class="sec-t" style="margin-top:0">我参与评审的答辩组</div>
+      ${(d.list||[]).length?(d.list||[]).map(g=>`<div class="row tapable" onclick="defenseSheet(${g.id})"><div><div class="m">${g.name}</div><div class="d">${g.defense_date||''}${g.location?' · '+g.location:''} · 学生 ${g.member_count} 人</div></div><div style="text-align:right">${st[g.status]||''}<div class="d" style="margin-top:4px">去评分 ›</div></div></div>`).join(''):emptyBox('暂无答辩安排','🎓')}</div>`;
+  },
+};
+/* 教师：周报详情（批阅前查看内容） */
+function reviewLogDetail(id){
+  api('/intern-logs/'+id).then(r=>{ const l=r.json&&r.json.data; if(!l) return;
+    sheetRaw((l.type==='monthly'?'月报':'周报')+'详情',
+      `<div class="kv"><span class="k">学生</span><span>${l.student_name||''}</span></div>
+       <div class="kv"><span class="k">标题</span><span>${l.title}</span></div>
+       <div class="detail-body">${l.content||'（无内容）'}</div>
+       <button class="btn" onclick="reviewLog(${id},true);closeSheet()">通过</button>
+       <button class="btn btn-r" style="margin-top:8px" onclick="closeSheet();reviewLog(${id},false)">驳回</button>`);
+  });
+}
+/* 教师：学生进度详情 */
+async function stuActions(id,name){
+  let stu=(_cache.students||{})[id];
+  if(!stu){
+    const d=await get('/intern-stats/process?page_size=200');
+    _cache.students={}; (d.list||[]).forEach(s=>_cache.students[s.student_id]=s);
+    stu=(_cache.students||{})[id]||{};
+  }
+  const risks=(_cache.riskByStudent||{})[id]||[];
+  const hasHigh=risks.some(w=>w.level==='high');
+  const pct=(a,r)=>r>0?Math.min(100,Math.round(a/r*100)):null;
+  const bar=(a,r,accentColor)=>{
+    if(!(r>0)) return `<div style="font-size:11px;color:var(--t3);margin-top:2px">无计划要求</div>`;
+    const pv=Math.min(100,Math.round((a||0)/r*100));
+    const c=pv>=100?'var(--green)':pv>=60?accentColor:'var(--red)';
+    return `<div style="margin-top:5px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:3px"><span>${a||0} / ${r}</span><span style="color:${c};font-weight:600">${pv}%</span></div>
+      <div style="height:5px;background:#E2E8F0;border-radius:3px"><div style="height:100%;width:${pv}%;background:${c};border-radius:3px"></div></div>
+    </div>`;
+  };
+  const TYPE_ICON={checkin:'📍',checkin_range:'📍',weekly:'📝',monthly:'📋'};
+  const riskHtml=risks.length?`<div style="margin:12px 0 0">
+    <div style="font-size:12px;font-weight:600;color:${hasHigh?'var(--red)':'#d97706'};margin-bottom:6px">⚠️ 风险预警（${risks.length}条）</div>
+    ${risks.map(w=>`<div style="background:${w.level==='high'?'#FFF1F2':'#FFFBEB'};border-radius:6px;padding:7px 10px;margin-bottom:5px;font-size:12px;color:${w.level==='high'?'var(--red)':'#92400e'}">${TYPE_ICON[w.type]||'·'} ${w.message}</div>`).join('')}
+  </div>`:'';
+  sheetRaw(name,
+    `<div class="kv"><span class="k">实习单位</span><span style="font-weight:600">${stu.enterprise_name||'未分配'}</span></div>
+     <div class="kv"><span class="k">指导教师</span><span>${stu.teacher_name||'-'}</span></div>
+     ${stu.last_checkin?`<div class="kv"><span class="k">最近打卡</span><span>${fmtTime(stu.last_checkin)}</span></div>`:'<div class="kv"><span class="k">最近打卡</span><span style="color:var(--red)">从未打卡</span></div>'}
+     <div style="margin-top:12px">
+       <div style="font-size:12px;color:var(--t3);margin-bottom:4px">打卡次数${stu.req_checkin>0?' （计划要求 '+stu.req_checkin+' 次）':''}</div>
+       <div style="font-size:24px;font-weight:700;color:var(--t1)">${stu.checkin_count||0}</div>
+       ${bar(stu.checkin_count||0,stu.req_checkin||0,'var(--blue)')}
+     </div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+       <div style="background:#F8FAFC;border-radius:10px;padding:10px">
+         <div style="font-size:11px;color:var(--t3)">周报篇数</div>
+         <div style="font-size:20px;font-weight:700;color:var(--t1);margin:2px 0">${stu.weekly_count||0}</div>
+         ${bar(stu.weekly_count||0,stu.req_weekly||0,'#8b5cf6')}
+       </div>
+       <div style="background:#F8FAFC;border-radius:10px;padding:10px">
+         <div style="font-size:11px;color:var(--t3)">月报篇数</div>
+         <div style="font-size:20px;font-weight:700;color:var(--t1);margin:2px 0">${stu.monthly_count||0}</div>
+         ${bar(stu.monthly_count||0,stu.req_monthly||0,'#8b5cf6')}
+       </div>
+     </div>
+     ${riskHtml}
+     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+       <button class="btn btn-o" onclick="closeSheet();notifyStu(${id},'${esc(name)}')">📣 发站内通知</button>
+       <button class="btn btn-o" onclick="closeSheet();resetStuPwd(${id},'${esc(name)}')">🔑 重置密码为 123456</button>
+     </div>`);
+}
+function notifyStu(id,name){
+  closeSheet();
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>发通知给 ${name}</h3>
+    <label>通知标题</label><input id="ntTitle" placeholder="如：实习周报提醒">
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+      ${['请假审批通知','实习周报提醒','请尽快完成打卡','实习协议待签署','成果上传提醒'].map(t=>`<button type="button" style="padding:5px 8px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;font-size:11px;color:#1e40af" onclick="document.getElementById('ntTitle').value=this.textContent">${t}</button>`).join('')}
+    </div>
+    <label>通知内容</label>
+    <textarea id="ntContent" rows="3" placeholder="通知详细内容…"></textarea>
+    <div id="ntErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:4px"></div>
+    <button class="btn" style="margin-top:10px" onclick="_sendNotifyStu(${id},this)">发送</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+}
+async function _sendNotifyStu(id,btn){
+  const m=btn.closest('.sheet-mask'); const err=m.querySelector('#ntErr'); err.textContent='';
+  const title=m.querySelector('#ntTitle').value.trim(); const content=m.querySelector('#ntContent').value.trim();
+  if(!title){err.textContent='请填写标题';return;}
+  btn.disabled=true;
+  const r=await api('/notifications/send',{method:'POST',body:{to_user_id:id,title,content}});
+  if(r.json&&r.json.success){toast('已发送 ✓');m.remove();}
+  else{err.textContent=(r.json&&r.json.message)||'发送失败';btn.disabled=false;}
+}
+function resetStuPwd(id,name){
+  confirmSheet(`确认将「${name}」的密码重置为 123456？该生下次登录时将被强制要求修改密码。`,async()=>{
+    const r=await api('/teacher/students/'+id+'/reset-password',{method:'PUT',body:{}});
+    toast(r.json&&r.json.success?'已重置 ✓':(r.json&&r.json.message)||'失败');
+  });
+}
+function reviewAsgM(id){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>审批换岗/终止申请</h3>
+    <label>审批意见（驳回时必填）</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      ${['变更理由不充分，请详细说明','新岗位与专业方向不符','请先与原企业完成工作交接再申请'].map(p=>`<button type="button" style="padding:5px 9px;background:#FEF9C3;border:1px solid #FDE68A;border-radius:16px;font-size:11px;color:#92400e" onclick="document.getElementById('_asgOp').value=this.textContent">${p}</button>`).join('')}
+    </div>
+    <textarea id="_asgOp" placeholder="同意时可填写意见，驳回时必填理由..." style="min-height:60px"></textarea>
+    <div id="_asgErr" style="color:var(--red);font-size:12px;min-height:14px"></div>
+    <button class="btn" style="margin-top:12px" onclick="doReviewAsg(${id},true,this)">✓ 通过</button>
+    <button class="btn btn-r" style="margin-top:8px" onclick="doReviewAsg(${id},false,this)">✕ 驳回</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+}
+async function doReviewAsg(id,approve,btn){
+  const m=btn.closest('.sheet-mask');
+  const opinion=m.querySelector('#_asgOp').value.trim();
+  const err=m.querySelector('#_asgErr'); err.textContent='';
+  if(!approve&&!opinion){err.textContent='驳回请填写意见';return;}
+  btn.disabled=true;
+  const r=await api('/assignment-changes/'+id+'/teacher-review',{method:'PUT',body:{approve,opinion:opinion||undefined}});
+  toast(r.json&&r.json.success?'已处理':(r.json&&r.json.message)); m.remove(); render('review');
+}
+function reviewApp(id,agree){
+  if(agree){
+    api('/applications/'+id+'/teacher-review',{method:'PUT',body:{agree:true,opinion:'同意申请'}}).then(r=>{
+      toast(r.json&&r.json.success?'已同意':(r.json&&r.json.message)); render('review');
+    });
+  }else{
+    sheetReject('拒绝申请理由',['专业方向不符合岗位要求','企业资质未达到实习要求','申请材料不完整，请补全后重新提交','已有其他进行中的申请，请先处理'],async reason=>{
+      const r=await api('/applications/'+id+'/teacher-review',{method:'PUT',body:{agree:false,opinion:reason}});
+      if(!(r.json&&r.json.success)) throw new Error((r.json&&r.json.message)||'操作失败');
+      toast('已拒绝'); render('review');
+    });
+  }
+}
+function gradeReport(id){
+  const rp=_cache.reports[id]||{};
+  sheet('评阅报告：'+(rp.student_name||''),
+    `<label>成绩（0-100）</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
+       ${[60,65,70,75,80,85,90,95].map(s=>`<button type="button" style="padding:6px 12px;background:#EEF2F6;border:none;border-radius:10px;font-size:13px;font-weight:600;color:#0F172A" onclick="document.getElementById('rpScore').value=${s};document.getElementById('rpScoreTip').textContent=${s}>=90?'优秀':${s}>=80?'良好':${s}>=70?'中等':${s}>=60?'及格':'不及格'">${s}</button>`).join('')}
+     </div>
+     <div style="display:flex;align-items:center;gap:10px">
+       <input id="rpScore" type="number" min="0" max="100" placeholder="0-100" style="width:80px;padding:10px;border:1px solid #E2E8F0;border-radius:10px;font-size:18px;font-weight:700;text-align:center" oninput="document.getElementById('rpScoreTip').textContent=this.value?(+this.value>=90?'优秀':+this.value>=80?'良好':+this.value>=70?'中等':+this.value>=60?'及格':'不及格'):''">
+       <span id="rpScoreTip" style="font-size:15px;font-weight:700;color:#0EA5E9"></span>
+     </div>
+     <label>评语</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+       ${['报告内容翔实，结构完整，总结深入，专业基础扎实，成绩优秀。','报告能反映实习收获，但对专业知识结合分析不够深入，建议完善。','报告内容较简单，缺乏工作细节与体会，需补充后重新提交。','格式规范，语言流畅，理论联系实际能力突出，表现良好。'].map(t=>`<button type="button" style="padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534;white-space:normal;text-align:left" onclick="document.getElementById('rpCmt').value=this.textContent">${t}</button>`).join('')}
+     </div>
+     <textarea id="rpCmt" rows="3" placeholder="填写评语（可选）"></textarea>`,
+    async m=>{ const sc=Number(m.querySelector('#rpScore').value);
+      if(!(sc>=0&&sc<=100)){ toast('请输入 0-100 的成绩'); return false; }
+      const r=await api('/reports/'+id+'/review',{method:'PUT',body:{teacher_score:sc,teacher_comment:m.querySelector('#rpCmt').value.trim()}});
+      if(!(r.json&&r.json.success)){ toast(r.json&&r.json.message); return false; } toast('已评阅 ✓'); render('review'); });
+}
+
+/* ---------- 交互逻辑 ---------- */
+/* ---- 打卡地图 ---- */
+let _map=null, _entLatLng=null, _entRadius=0;
+function initCheckinMap(lat,lng,radius){
+  _entLatLng=[lat,lng]; _entRadius=radius;
+  const box=document.getElementById('cmap'); if(!box) return;
+  box.outerHTML='<div class="map-fallback">📍 实习单位定位 '+lat.toFixed(5)+', '+lng.toFixed(5)+'<br>有效范围 '+(radius||'不限')+(radius?' 米':'')+' · 可直接定位打卡</div>';
+}
+function haversine(la1,lo1,la2,lo2){const R=6371000,t=d=>d*Math.PI/180;const dLa=t(la2-la1),dLo=t(lo2-lo1);const a=Math.sin(dLa/2)**2+Math.cos(t(la1))*Math.cos(t(la2))*Math.sin(dLo/2)**2;return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));}
+function showUserOnMap(lat,lng){
+  updateDist(lat,lng);
+}
+function updateDist(lat,lng){
+  if(!_entLatLng) return;
+  const d=haversine(lat,lng,_entLatLng[0],_entLatLng[1]);
+  const inRange=_entRadius===0||d<=_entRadius;
+  const el=document.getElementById('distInfo');
+  if(el) el.innerHTML=`距实习单位 <b class="${inRange?'dist-ok':'dist-no'}">${d} 米</b> · ${inRange?'在范围内 ✓':'超出范围'}`;
+}
+
+function gpsCheckin(){
+  if(!navigator.geolocation){ return simOrAlert(); }
+  toast('定位中…');
+  navigator.geolocation.getCurrentPosition(
+    pos=>{ const{latitude,longitude}=pos.coords; showUserOnMap(latitude,longitude); updateDist(latitude,longitude); doCheckin(latitude,longitude); },
+    ()=>{ toast('定位失败，可用“模拟在岗打卡”'); },
+    {enableHighAccuracy:true,timeout:8000});
+}
+function simCheckin(){ if(mineData.enterpriseLat==null) return toast('企业未设坐标'); const lat=Number(mineData.enterpriseLat),lng=Number(mineData.enterpriseLng); showUserOnMap(lat,lng); updateDist(lat,lng); doCheckin(lat,lng); }
+function simOrAlert(){ if(mineData.enterpriseLat!=null) simCheckin(); else toast('设备不支持定位'); }
+function onCkPhoto(e){
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  window._ckPhotoFile=f;
+  const prev=document.getElementById('ckPhotoPrev');
+  if(prev){ const url=URL.createObjectURL(f); prev.innerHTML=`<img src="${url}" style="max-width:160px;border-radius:10px;border:1px solid var(--line)"><div style="font-size:11px;color:var(--t3);margin-top:4px">将自动添加时间/定位水印后上传</div>`; }
+}
+function previewImg(src){ window.open(src,'_blank'); }
+// 给打卡照片叠加时间+定位水印，返回 Blob
+function watermarkPhoto(file, lines){
+  return new Promise((resolve)=>{
+    const img=new Image(); const url=URL.createObjectURL(file);
+    img.onload=function(){
+      try{
+        const max=1080; let w=img.width,h=img.height;
+        if(w>max){ h=Math.round(h*max/w); w=max; }
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        const ctx=cv.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+        const fs=Math.max(14,Math.round(w/34));
+        ctx.font=`bold ${fs}px sans-serif`; ctx.textBaseline='bottom';
+        const pad=Math.round(fs*0.6); let y=h-pad;
+        const barH=lines.length*(fs+6)+pad;
+        ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(0,h-barH,w,barH);
+        ctx.fillStyle='#fff';
+        for(let i=lines.length-1;i>=0;i--){ ctx.fillText(lines[i],pad,y); y-=(fs+6); }
+        cv.toBlob(b=>resolve(b||file),'image/jpeg',0.85);
+      }catch(_){ resolve(file); }
+      finally{ URL.revokeObjectURL(url); }
+    };
+    img.onerror=function(){ resolve(file); };
+    img.src=url;
+  });
+}
+async function doCheckin(lat,lng){
+  const file=window._ckPhotoFile;
+  if(file){
+    const now=new Date();
+    const lines=[ '岗位实习管理平台·打卡凭证', now.toLocaleString('zh-CN'), `定位 ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`, (mineData.enterprise||'') ];
+    const blob=await watermarkPhoto(file, lines.filter(Boolean));
+    const fd=new FormData();
+    fd.append('latitude',lat); fd.append('longitude',lng); fd.append('address','手机拍照打卡');
+    fd.append('photo', blob, 'checkin.jpg');
+    const r=await apiUpload('/checkins', fd);
+    if(r.json&&r.json.success){ window._ckPhotoFile=null; toast('打卡成功 ✓'); setTimeout(()=>render('checkin'),700); }
+    else toast((r.json&&r.json.message)||'打卡失败');
+    return;
+  }
+  const r=await api('/checkins',{method:'POST',body:{latitude:lat,longitude:lng,address:'手机打卡'}});
+  if(r.json&&r.json.success){ toast('打卡成功 ✓'); setTimeout(()=>render('checkin'),700); }
+  else toast((r.json&&r.json.message)||'打卡失败');
+}
+
+function appendText(id,text){ const el=document.getElementById(id); if(!el) return; el.value=el.value.trim()?(el.value.trim()+'；'+text):text; }
+function setLogType(t){
+  window._logType=t;
+  document.getElementById('segW').classList.toggle('on',t==='weekly');
+  document.getElementById('segM').classList.toggle('on',t==='monthly');
+  const ti=document.getElementById('logTitle'); if(!ti) return;
+  const now=new Date(); const wk=Math.ceil(now.getDate()/7); const mon=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'][now.getMonth()];
+  ti.value=t==='weekly'?`第${wk}周实习周报`:`${mon}实习月报`;
+}
+async function submitLog(){
+  const title=document.getElementById('logTitle').value.trim();
+  const mainContent=document.getElementById('logContent')?document.getElementById('logContent').value.trim():'';
+  const gainEl=document.getElementById('logGain'), planEl=document.getElementById('logPlan');
+  const sections=[mainContent,gainEl&&gainEl.value.trim()?'【收获与体会】\n'+gainEl.value.trim():'',planEl&&planEl.value.trim()?'【下期计划】\n'+planEl.value.trim():''].filter(Boolean);
+  const content=sections.join('\n\n');
+  if(!title) return toast('请填写标题');
+  if(!mainContent) return toast('请填写工作内容');
+  const file=document.getElementById('logFile')&&document.getElementById('logFile').files[0];
+  let c;
+  if(file){
+    const fd=new FormData(); fd.append('type',window._logType||'weekly'); fd.append('title',title); fd.append('content',content); fd.append('file',file);
+    c=await apiUpload('/intern-logs', fd);
+  }else{
+    c=await api('/intern-logs',{method:'POST',body:{type:window._logType||'weekly',title,content}});
+  }
+  if(!(c.json&&c.json.success)) return toast(c.json&&c.json.message||'失败');
+  await api('/intern-logs/'+c.json.data.id+'/submit',{method:'PUT'});
+  toast('已提交 ✓'); render('logs');
+}
+
+/* 底部弹层表单 */
+function sheet(title, html, onOk){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>${title}</h3>${html}<button class="btn" id="_sok">提交</button><button class="btn btn-o" id="_sc" style="margin-top:8px">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  m.querySelector('#_sc').onclick=()=>m.remove();
+  m.querySelector('#_sok').onclick=async()=>{ try{ const ok=await onOk(m); if(ok!==false)m.remove(); }catch(e){toast(e.message||'失败');} };
+}
+function leaveForm(){
+  const today=new Date().toISOString().slice(0,10);
+  sheet('请假申请',
+    `<label>请假类型</label>
+     <select id="lvType">
+       <option value="事假">事假</option><option value="病假">病假</option>
+       <option value="婚假">婚假</option><option value="丧假">丧假</option>
+       <option value="调休">调休</option>
+       <option value="考试">考试（学校组织）</option>
+       <option value="回校">回校参加校内活动</option>
+       <option value="其他">其他</option>
+     </select>
+     <label>开始日期</label><input id="lsd" type="date" value="${today}" oninput="calcLvDays(this.closest('.sheet'))">
+     <label>结束日期</label><input id="led" type="date" value="${today}" oninput="calcLvDays(this.closest('.sheet'))">
+     <div id="lvDaysTip" style="font-size:12px;color:#0ea5e9;min-height:16px;margin-top:2px">共 1 天</div>
+     <label>请假事由 *</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+       ${['因身体不适需就医，已预约医院','因家庭重要事务需处理','因学校安排返校参加考试/活动','因婚丧事宜，按规定申请假期'].map(t=>`<button type="button" style="padding:5px 8px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;font-size:11px;color:#92400e" onclick="document.getElementById('lrs').value=this.textContent">${t}</button>`).join('')}
+     </div>
+     <textarea id="lrs" placeholder="请详细说明请假原因及安排..."></textarea>
+     <label>联系方式（请假期间，便于联络）</label>
+     <input id="lvContact" placeholder="手机号或微信">`,
+    async m=>{ const start_date=m.querySelector('#lsd').value, end_date=m.querySelector('#led').value, reason=m.querySelector('#lrs').value.trim();
+      if(!start_date||!end_date||!reason){toast('请填写完整');return false;}
+      if(end_date<start_date){toast('结束日期不能早于开始日期');return false;}
+      const leave_type=m.querySelector('#lvType').value;
+      const contact=m.querySelector('#lvContact').value.trim();
+      const c=await api('/leaves',{method:'POST',body:{start_date,end_date,reason,leave_type,contact}});
+      if(!(c.json&&c.json.success)){toast(c.json&&c.json.message);return false;}
+      await api('/leaves/'+c.json.data.id+'/submit',{method:'PUT'}); toast('已提交 ✓'); render('leave'); });
+  setTimeout(()=>{ const m=document.querySelector('.sheet-mask'); if(m)calcLvDays(m); },80);
+}
+function calcLvDays(m){
+  const s=m.querySelector('#lsd'),e=m.querySelector('#led'),tip=m.querySelector('#lvDaysTip');
+  if(!s||!e||!tip)return;
+  if(s.value&&e.value){ const d=Math.round((new Date(e.value)-new Date(s.value))/(86400000))+1; tip.textContent=d>0?`共 ${d} 天`:'⚠ 结束日期不能早于开始日期'; tip.style.color=d<1?'var(--red)':'#0ea5e9'; }
+}
+function achForm(){
+  sheet('上传毕业设计成果',
+    `<label>成果类型</label>
+     <select id="achType">
+       <option value="开题报告">开题报告</option>
+       <option value="文献综述">文献综述</option>
+       <option value="外文翻译">外文翻译</option>
+       <option value="中期检查报告">中期检查报告</option>
+       <option value="论文初稿">论文初稿</option>
+       <option value="论文终稿">论文终稿</option>
+       <option value="设计作品">设计作品/源代码</option>
+       <option value="答辩材料">答辩PPT/材料</option>
+     </select>
+     <label>成果标题 *</label>
+     <input id="at" placeholder="如：基于SpringBoot的×××系统设计与实现">
+     <label>成果描述（可选）</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+       ${['本文研究了×××问题，提出并实现了×××方案','系统实现了×××功能，通过测试验证了方案可行性','按教师意见修改后提交终稿，查重率符合要求'].map(t=>`<button type="button" style="padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534" onclick="appendText('achDesc',this.textContent)">${t}</button>`).join('')}
+     </div>
+     <textarea id="achDesc" rows="2" placeholder="简要描述成果内容（选填）"></textarea>
+     <label>在线链接（如有）</label>
+     <input id="al" placeholder="GitHub/Gitee/云文档链接">
+     <label>上传附件（PDF/Word/ZIP/源码）</label>
+     <input id="af" type="file" accept=".pdf,.doc,.docx,.zip,.rar,.ppt,.pptx">`,
+    async m=>{ const title=m.querySelector('#at').value.trim(), link=m.querySelector('#al').value.trim();
+      if(!title){toast('请填写标题');return false;}
+      const achType=m.querySelector('#achType').value;
+      const desc=m.querySelector('#achDesc').value.trim();
+      const file=m.querySelector('#af').files[0];
+      let c;
+      if(file){
+        const fd=new FormData(); fd.append('title',title); fd.append('type',achType); if(desc)fd.append('description',desc); if(link)fd.append('link',link); fd.append('file',file);
+        c=await apiUpload('/gd-achievements', fd);
+      }else{
+        c=await api('/gd-achievements',{method:'POST',body:{title,type:achType,description:desc||undefined,link:link||undefined}});
+      }
+      if(!(c.json&&c.json.success)){toast(c.json&&c.json.message);return false;} toast('已提交 ✓'); render('achievements'); });
+}
+function changePwd(){
+  sheet('修改密码',
+    `<label>原密码</label><input id="op" type="password"><label>新密码（数字+字母，≥6位）</label><input id="np" type="password">`,
+    async m=>{ const oldPassword=m.querySelector('#op').value, newPassword=m.querySelector('#np').value;
+      if(!oldPassword||!newPassword){toast('请填写');return false;}
+      const r=await api('/users/change-password',{method:'PUT',body:{oldPassword,newPassword}});
+      if(!(r.json&&r.json.success)){toast(r.json&&r.json.message);return false;}
+      if(r.json.data&&r.json.data.token){TOKEN=r.json.data.token;localStorage.setItem('m_token',TOKEN);} toast('已修改 ✓'); });
+}
+async function readAll(){ await api('/notifications/read-all',{method:'PUT'}); refreshBell(); render('notifications'); }
+async function notifDetail(id){
+  const n=(_cache.notifs||{})[id]; if(!n) return;
+  const TYPE_ICON={success:'✅',warning:'⚠️',error:'❌',info:'ℹ️'};
+  const TYPE_LABEL={success:'成功',warning:'提醒',error:'错误',info:'通知'};
+  // Mark as read
+  if(!n.is_read){
+    n.is_read=true; refreshBell();
+    api('/notifications/'+id+'/read',{method:'PUT'}).catch(()=>{});
+  }
+  sheetRaw(n.title,
+    `${n.type?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+      <span style="font-size:18px">${TYPE_ICON[n.type]||'ℹ️'}</span>
+      <span style="font-size:12px;color:var(--t3)">${TYPE_LABEL[n.type]||'通知'}</span>
+      <span style="font-size:12px;color:var(--t3)">· ${fmtTime(n.create_time)}</span>
+    </div>`:`<div style="font-size:12px;color:var(--t3);margin-bottom:8px">${fmtTime(n.create_time)}</div>`}
+    <div class="detail-body" style="font-size:14px;line-height:1.9;white-space:pre-wrap">${n.content||'（无内容）'}</div>`);
+}
+
+async function saveProfile(){
+  const real_name=document.getElementById('pfName').value.trim();
+  const phone=document.getElementById('pfPhone').value.trim();
+  const email=document.getElementById('pfEmail').value.trim();
+  const err=document.getElementById('pfErr'); err.textContent='';
+  if(!real_name){ err.textContent='姓名不能为空'; return; }
+  if(phone && !/^1[3-9]\d{9}$/.test(phone)){ err.textContent='手机号格式不正确'; return; }
+  if(email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent='邮箱格式不正确'; return; }
+  const tagsEl=document.getElementById('pfTags');
+  const body={real_name,phone,email};
+  if(tagsEl) body.skill_tags=tagsEl.value.trim();
+  const emN=document.getElementById('pfEmName'), emP=document.getElementById('pfEmPhone'), emR=document.getElementById('pfEmRel');
+  if(emN){ body.emergency_name=emN.value.trim(); body.emergency_phone=(emP&&emP.value.trim())||''; body.emergency_relation=(emR&&emR.value.trim())||''; }
+  if(body.emergency_phone && !/^1[3-9]\d{9}$/.test(body.emergency_phone)){ err.textContent='紧急联系人电话格式不正确'; return; }
+  const btn=document.getElementById('pfSave'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  try{
+    const r=await api('/users/profile',{method:'PUT',body});
+    if(!(r.json&&r.json.success)){ err.textContent=(r.json&&r.json.message)||'保存失败'; }
+    else{ USER=Object.assign({},USER,{realName:real_name,phone,email}); localStorage.setItem('m_user',JSON.stringify(USER)); toast('已保存 ✓'); }
+  }catch(e){ err.textContent=e.message; }
+  btn.disabled=false; btn.textContent='保存资料';
+}
+
+async function annDetail(id){
+  const base=_cache.anns[id]||{};
+  let full=base; try{ const d=await get('/announcements/'+id); if(d) full=d; }catch{}
+  sheetRaw(full.title||'公告详情',
+    `<div class="kv"><span class="k">分类</span><span>${full.category||'-'}</span></div>
+     <div class="kv"><span class="k">发布</span><span>${fmtDate(full.publish_time||full.create_time)} · ${full.publisher_name||full.college_name||''}</span></div>
+     ${full.file_url?`<div class="kv"><span class="k">附件</span><a class="link-a" href="#" onclick="event.preventDefault();openProtectedFile('${escJ(full.file_url)}')">下载查看</a></div>`:''}
+     <div class="detail-body">${full.content||'（无正文）'}</div>`);
+}
+
+/* ---- 详情 / 草稿编辑 / 重交 ---- */
+let _cache={logs:{},leaves:{},achs:{},anns:{},apps:{},reports:{},positions:{},topics:{},guidance:{},trecords:{},students:{},riskByStudent:{},qcs:{},agreements:{},asgchanges:{},applications:{},notifs:{},insurances:{}};
+const APP_ST={0:'待审核',1:'教师同意',2:'教师拒绝',3:'院校通过',4:'院校拒绝',5:'已录用',6:'未录用'};
+const APP_STC={0:'tag-y',1:'tag-b',2:'tag-r',3:'tag-g',4:'tag-r',5:'tag-g',6:'tag-m'};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function escJ(s){return String(s==null?'':s).replace(/[\\'"<>&]/g,c=>'\\x'+c.charCodeAt(0).toString(16).padStart(2,'0'));}
+function sheetRaw(title, html){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>${title}</h3>${html}<button class="btn btn-o" id="_sc" style="margin-top:10px">关闭</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  m.querySelector('#_sc').onclick=()=>m.remove();
+}
+function closeSheet(){ const m=document.querySelector('.sheet-mask'); if(m)m.remove(); }
+
+/* 通用驳回底部弹层（带快捷理由）——替代 prompt() */
+function sheetReject(title, presets, onOk){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>${title}</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      ${presets.map(p=>`<button type="button" style="padding:6px 10px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:20px;font-size:12px;color:#1e40af;white-space:normal;text-align:left" onclick="document.getElementById('_srR').value=this.textContent">${p}</button>`).join('')}
+    </div>
+    <label>驳回原因 *</label><textarea id="_srR" placeholder="选择上方快捷理由，或手动输入" style="min-height:60px"></textarea>
+    <div id="_srErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:4px"></div>
+    <button class="btn" id="_srok" style="margin-top:8px">确认驳回</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  m.querySelector('#_srok').onclick=async()=>{
+    const reason=m.querySelector('#_srR').value.trim();
+    const err=m.querySelector('#_srErr');
+    if(!reason){err.textContent='请填写驳回原因';return;}
+    try{ m.querySelector('#_srok').disabled=true; await onOk(reason); m.remove(); }
+    catch(e){ err.textContent=e.message||'操作失败'; m.querySelector('#_srok').disabled=false; }
+  };
+}
+
+function logDetail(id){
+  const l=_cache.logs[id]; if(!l)return;
+  const st={0:'草稿',1:'待教师审核',2:'已通过',3:'已退回'}[l.status];
+  let acts='';
+  if(l.status===0) acts=`<button class="btn" onclick="submitLogId(${id})">提交批阅</button><button class="btn btn-o" style="margin-top:8px" onclick="editLog(${id})">编辑</button><button class="btn btn-r" style="margin-top:8px" onclick="delLog(${id})">删除</button>`;
+  else if(l.status===3) acts=`<button class="btn" onclick="submitLogId(${id})">重新提交</button>`;
+  sheetRaw((l.type==='monthly'?'月报':'周报')+'详情',
+    `<div class="kv"><span class="k">标题</span><span>${l.title}</span></div>
+     <div class="kv"><span class="k">状态</span><span>${st}</span></div>
+     ${l.reject_reason?`<div class="kv"><span class="k">驳回原因</span><span style="color:var(--red)">${l.reject_reason}</span></div>`:''}
+     ${l.teacher_comment?`<div class="kv"><span class="k">教师评语</span><span>${l.teacher_comment}</span></div>`:''}
+     <div class="detail-body">${l.content||'（无内容）'}</div>${acts}`);
+}
+async function submitLogId(id){ const r=await api('/intern-logs/'+id+'/submit',{method:'PUT'}); toast(r.json&&r.json.success?'已提交':r.json&&r.json.message); closeSheet(); render('logs'); }
+function delLog(id){ confirmSheet('确认删除该草稿？',async()=>{const r=await api('/intern-logs/'+id,{method:'DELETE'}); toast(r.json&&r.json.success?'已删除':(r.json&&r.json.message)); render('logs');}); }
+function editLog(id){ const l=_cache.logs[id]; closeSheet();
+  sheet('编辑'+(l.type==='monthly'?'月报':'周报'),
+    `<label>标题</label><input id="elt" value="${esc(l.title)}"><label>内容</label><textarea id="elc">${l.content||''}</textarea>`,
+    async m=>{ const title=m.querySelector('#elt').value.trim(), content=m.querySelector('#elc').value.trim(); if(!title){toast('请填写标题');return false;}
+      const r=await api('/intern-logs/'+id,{method:'PUT',body:{title,content}}); if(!(r.json&&r.json.success)){toast(r.json&&r.json.message);return false;} toast('已保存'); render('logs'); });
+}
+
+function leaveDetail(id){
+  const l=_cache.leaves[id]; if(!l)return;
+  const st={0:'草稿',1:'待教师审核',2:'已通过',3:'已退回'}[l.status];
+  let acts='';
+  if(l.status===0) acts=`<button class="btn" onclick="submitLeaveId(${id})">提交审批</button><button class="btn btn-r" style="margin-top:8px" onclick="delLeave(${id})">删除</button>`;
+  else if(l.status===3) acts=`<button class="btn" onclick="submitLeaveId(${id})">重新提交</button>`;
+  sheetRaw('请假详情',
+    `<div class="kv"><span class="k">起止</span><span>${fmtDate(l.start_date)} ~ ${fmtDate(l.end_date)}</span></div>
+     <div class="kv"><span class="k">天数</span><span>${l.days} 天</span></div>
+     <div class="kv"><span class="k">状态</span><span>${st}</span></div>
+     ${l.reject_reason?`<div class="kv"><span class="k">驳回原因</span><span style="color:var(--red)">${l.reject_reason}</span></div>`:''}
+     <div class="detail-body">${l.reason||'（无）'}</div>${acts}`);
+}
+async function submitLeaveId(id){ const r=await api('/leaves/'+id+'/submit',{method:'PUT'}); toast(r.json&&r.json.success?'已提交':r.json&&r.json.message); closeSheet(); render('leave'); }
+function delLeave(id){ confirmSheet('确认删除该请假草稿？',async()=>{const r=await api('/leaves/'+id,{method:'DELETE'}); toast(r.json&&r.json.success?'已删除':(r.json&&r.json.message)); render('leave');}); }
+
+function achDetail(id){
+  const a=_cache.achs[id]; if(!a)return;
+  const st={0:'待审阅',1:'已通过',2:'已驳回',3:'未完成'}[a.status];
+  const stColor={0:'color:var(--orange)',1:'color:var(--green)',2:'color:var(--red)',3:'color:var(--t3)'}[a.status]||'';
+  let acts='';
+  if(a.status!==1) acts=`<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+    <button class="btn" onclick="achResubmit(${id})">✏️ 编辑并重新提交</button>
+    <button class="btn btn-r" onclick="confirmSheet('确认删除该成果？删除后无法恢复。',()=>{api('/gd-achievements/${id}',{method:'DELETE'}).then(r=>{toast(r.json&&r.json.success?'已删除':(r.json&&r.json.message));closeSheet();render('achievements');});})">删除</button>
+  </div>`;
+  sheetRaw('成果详情',
+    `<div class="kv"><span class="k">标题</span><span style="font-weight:600">${a.title}</span></div>
+     <div class="kv"><span class="k">类型</span><span>${a.type||'-'}</span></div>
+     <div class="kv"><span class="k">状态</span><span style="${stColor};font-weight:600">${st}</span></div>
+     ${a.link?`<div class="kv"><span class="k">在线链接</span><a href="${esc(a.link)}" target="_blank" style="color:var(--blue)">查看 ↗</a></div>`:''}
+     ${a.file_url?`<div class="kv"><span class="k">附件</span><a href="#" onclick="event.preventDefault();openProtectedFile('${escJ(a.file_url)}')" style="color:var(--blue)">下载 ↗</a></div>`:''}
+     ${a.description?`<div class="detail-body">${a.description}</div>`:''}
+     ${a.reject_reason?`<div style="background:#FFF1F2;border-left:3px solid var(--red);border-radius:8px;padding:10px;margin-top:8px;font-size:12px;color:var(--red)">驳回原因：${a.reject_reason}</div>`:''}
+     ${acts}`);
+}
+function achResubmit(id){
+  const a=_cache.achs[id]; if(!a) return;
+  closeSheet();
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>编辑成果并重新提交</h3>
+    ${a.reject_reason?`<div style="background:#FFF7ED;border-radius:8px;padding:10px;font-size:12px;color:#92400e;margin-bottom:12px">上次驳回：${a.reject_reason}</div>`:''}
+    <label>成果类型</label>
+    <select id="reAchType">
+      ${['开题报告','文献综述','外文翻译','中期检查报告','论文初稿','论文终稿','设计作品','答辩材料'].map(t=>`<option value="${t}" ${(a.type||'')==t?'selected':''}>${t}</option>`).join('')}
+    </select>
+    <label>成果标题 *</label>
+    <input id="reAchTitle" value="${esc(a.title||'')}" placeholder="成果标题">
+    <label>成果描述（说明修改内容）</label>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+      ${['已按驳回意见修改，重新提交请审阅','根据指导教师意见，修订了相关内容和格式规范','已完善相关章节，查重率已达标准，请重新审核'].map(t=>`<button type="button" style="padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534" onclick="appendText('reAchDesc',this.textContent)">${t}</button>`).join('')}
+    </div>
+    <textarea id="reAchDesc" rows="2" placeholder="描述修改内容（选填）">${esc(a.description||'')}</textarea>
+    <label>在线链接（如有更新）</label>
+    <input id="reAchLink" value="${esc(a.link||'')}" placeholder="GitHub / Gitee / 云文档链接">
+    <label>重新上传附件（可选，替换原附件）</label>
+    <input id="reAchFile" type="file" accept=".pdf,.doc,.docx,.zip,.rar,.ppt,.pptx">
+    <div id="reAchErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:4px"></div>
+    <button class="btn" style="margin-top:10px" onclick="_submitAchResubmit(${id},this)">重新提交</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+}
+async function _submitAchResubmit(id,btn){
+  const m=btn.closest('.sheet-mask');
+  const err=m.querySelector('#reAchErr'); err.textContent='';
+  const title=m.querySelector('#reAchTitle').value.trim();
+  if(!title){err.textContent='请填写标题';return;}
+  btn.disabled=true;
+  try{
+    const body={title,type:m.querySelector('#reAchType').value};
+    const desc=m.querySelector('#reAchDesc').value.trim(); if(desc) body.description=desc;
+    const link=m.querySelector('#reAchLink').value.trim(); if(link) body.link=link;
+    const r=await api('/gd-achievements/'+id,{method:'PUT',body});
+    if(!(r.json&&r.json.success)){err.textContent=(r.json&&r.json.message)||'提交失败';btn.disabled=false;return;}
+    toast('已重新提交 ✓'); m.remove(); render('achievements');
+  }catch(e){err.textContent=e.message;btn.disabled=false;}
+}
+function confirmSheet(msg, onOk){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet">
+    <div style="text-align:center;font-size:15px;font-weight:600;color:var(--t1);margin-bottom:8px">确认操作</div>
+    <div style="text-align:center;font-size:13px;color:var(--t2);margin-bottom:20px;line-height:1.6">${msg}</div>
+    <button class="btn btn-r" id="_cfOk">确认</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button>
+  </div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  m.querySelector('#_cfOk').onclick=()=>{m.remove(); onOk();};
+}
+
+function reviewLog(id,agree){
+  if(agree){
+    api('/intern-logs/'+id+'/review',{method:'PUT',body:{agree:true}}).then(r=>{
+      toast(r.json&&r.json.success?'已通过':(r.json&&r.json.message)); render('review');
+    });
+  }else{
+    sheetReject('驳回周报/月报',['内容过于简单，请补充工作细节','与实习岗位内容无关，请修正','格式不规范，请按模板撰写','缺少本周收获与问题总结'],async reason=>{
+      const r=await api('/intern-logs/'+id+'/review',{method:'PUT',body:{agree:false,reject_reason:reason}});
+      if(!(r.json&&r.json.success)) throw new Error((r.json&&r.json.message)||'操作失败');
+      toast('已驳回'); render('review');
+    });
+  }
+}
+function reviewLeave(id,agree){
+  if(agree){
+    api('/leaves/'+id+'/review',{method:'PUT',body:{agree:true}}).then(r=>{
+      toast(r.json&&r.json.success?'已通过':(r.json&&r.json.message)); render('review');
+    });
+  }else{
+    sheetReject('驳回请假申请',['请假事由不充分，请补充说明','请假时间过长，请分段申请','需上传证明材料（医院证明等）','与企业排班冲突，请与企业协调'],async reason=>{
+      const r=await api('/leaves/'+id+'/review',{method:'PUT',body:{agree:false,reject_reason:reason}});
+      if(!(r.json&&r.json.success)) throw new Error((r.json&&r.json.message)||'操作失败');
+      toast('已驳回'); render('review');
+    });
+  }
+}
+function reviewAch(id,status){
+  if(status===1){
+    api('/gd-achievements/'+id+'/review',{method:'PUT',body:{status:1}}).then(r=>{
+      toast(r.json&&r.json.success?'已通过':(r.json&&r.json.message)); render('review');
+    });
+  }else{
+    sheetReject('驳回毕设成果',['格式不规范，请按学院要求修改','重复率超标，需降重后重新提交','内容不完整，请补充相关章节','与选题方向不符，请重新确认'],async reason=>{
+      const r=await api('/gd-achievements/'+id+'/review',{method:'PUT',body:{status:2,reject_reason:reason}});
+      if(!(r.json&&r.json.success)) throw new Error((r.json&&r.json.message)||'操作失败');
+      toast('已驳回'); render('review');
+    });
+  }
+}
+
+/* ---------- 学生：岗位/申请/报告 ---------- */
+function posDetail(id){
+  const p=_cache.positions[id]; if(!p) return;
+  // Check applied state from _cache.applications
+  const applied=_cache.applications?Object.values(_cache.applications).find(a=>a.position_id===id):null;
+  const applyBtn=applied
+    ?`<div style="background:#EFF6FF;border-radius:8px;padding:10px 14px;margin-top:12px;font-size:13px">📋 你已申请该岗位，当前状态：<strong>${APP_ST[applied.status]||'已申请'}</strong></div>`
+    :`<button class="btn" style="margin-top:12px" onclick="closeSheet();posApply(${id})">申请该岗位</button>`;
+  sheetRaw(p.title,
+    `<div class="kv"><span class="k">企业</span><span style="font-weight:600">${p.enterprise_name||'-'}</span></div>
+     <div class="kv"><span class="k">地点</span><span>${p.location||'-'}</span></div>
+     <div class="kv"><span class="k">薪资</span><span style="color:var(--green);font-weight:600">${p.salary||'面议'}</span></div>
+     <div class="kv"><span class="k">招聘人数</span><span>${p.headcount?p.headcount+'人':'-'}</span></div>
+     ${p.intern_type?`<div class="kv"><span class="k">实习类型</span><span>${p.intern_type}</span></div>`:''}
+     ${p.work_time?`<div class="kv"><span class="k">工作时间</span><span>${p.work_time}</span></div>`:''}
+     ${p.edu_req?`<div class="kv"><span class="k">学历要求</span><span>${p.edu_req}</span></div>`:''}
+     ${p.major_req?`<div class="kv"><span class="k">专业要求</span><span>${p.major_req}</span></div>`:''}
+     ${p.start_date||p.end_date?`<div class="kv"><span class="k">实习时间</span><span>${p.start_date?fmtDate(p.start_date):''}${p.end_date?' ~ '+fmtDate(p.end_date):''}</span></div>`:''}
+     ${p.deadline?`<div class="kv"><span class="k">截止申请</span><span style="${new Date(p.deadline)<new Date()?'color:var(--red)':''}">${fmtDate(p.deadline)}</span></div>`:''}
+     ${p.to_regular?`<div class="kv"><span class="k">转正机会</span><span style="color:var(--green)">✓ 优秀实习生可转正</span></div>`:''}
+     ${p.welfare?`<div style="margin:8px 0 4px;font-size:12px;color:var(--t3)">福利待遇</div><div style="display:flex;flex-wrap:wrap;gap:5px">${p.welfare.split(/[,，、]/).filter(Boolean).map(w=>`<span class="tag tag-g">${w.trim()}</span>`).join('')}</div>`:''}
+     ${p.tags?`<div style="margin:8px 0 4px;font-size:12px;color:var(--t3)">岗位标签</div><div style="display:flex;flex-wrap:wrap;gap:5px">${p.tags.split(/[,，、]/).filter(Boolean).map(t=>`<span class="tag tag-b">${t.trim()}</span>`).join('')}</div>`:''}
+     ${p.requirement?`<div class="sec-t" style="margin-top:12px">任职要求</div><div class="detail-body">${p.requirement}</div>`:''}
+     ${p.description?`<div class="sec-t">岗位描述</div><div class="detail-body">${p.description}</div>`:''}
+     ${applyBtn}`);
+}
+function posApply(id){
+  const p=_cache.positions[id]||{};
+  sheet('申请实习岗位',
+    `<div style="background:#EFF6FF;border-radius:10px;padding:10px;font-size:12px;color:#1e40af;margin-bottom:10px">📋 申请「${p.title||'该岗位'}」，请填写自我介绍，展现专业匹配度</div>
+     <label>自我介绍与申请理由</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+       ${['本人专业与岗位高度匹配，有相关项目经验，期待加入贵团队学习成长。','本人学习能力强，能快速适应工作环境，对贵公司业务方向有浓厚兴趣。','本人有×××实践经历，熟悉×××技能，相信能胜任岗位并创造价值。'].map(t=>`<button type="button" style="padding:5px 8px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;font-size:11px;color:#1e40af;white-space:normal;text-align:left" onclick="document.getElementById('appRmk').value=this.textContent">${t}</button>`).join('')}
+     </div>
+     <textarea id="appRmk" rows="4" placeholder="简述专业背景、技能、申请动机，200字内即可"></textarea>
+     <label>期望入职时间</label>
+     <input id="appStart" type="date" value="${new Date().toISOString().slice(0,10)}">`,
+    async m=>{
+      const remark=m.querySelector('#appRmk').value.trim();
+      const startDate=m.querySelector('#appStart').value;
+      const fullRemark=remark+(startDate?`；期望入职：${startDate}`:'');
+      const r=await api('/applications',{method:'POST',body:{position_id:id,student_remark:fullRemark||undefined}});
+      if(!(r.json&&r.json.success)){ toast(r.json&&r.json.message||'申请失败'); return false; } toast('申请已提交 ✓'); render('applications'); });
+}
+function appDetail(id){
+  const a=(_cache.applications||{})[id]; if(!a) return;
+  const FLOW=[
+    {s:0,label:'提交申请',done:true},
+    {s:1,label:'教师审核',done:a.status>=1,reject:a.status===2},
+    {s:3,label:'院校审核',done:a.status===3||a.status===4||a.status===5||a.status===6,reject:a.status===4},
+    {s:5,label:'企业录用',done:a.status===5||a.status===6,reject:a.status===6}
+  ];
+  const flowHtml=`<div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0">
+    ${FLOW.map((f,i)=>`
+      <div style="flex:1;text-align:center">
+        <div style="width:28px;height:28px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+          background:${f.reject?'var(--red)':f.done?'var(--green)':'#E2E8F0'};
+          color:${f.done||f.reject?'#fff':'var(--t3)'}">
+          ${f.reject?'✗':f.done?'✓':(i+1)}
+        </div>
+        <div style="font-size:10px;margin-top:3px;color:${f.reject?'var(--red)':f.done?'var(--green)':'var(--t3)'}">${f.label}</div>
+      </div>
+      ${i<FLOW.length-1?`<div style="height:2px;flex:0.5;background:${f.done&&!f.reject?'var(--green)':'#E2E8F0'};margin-bottom:16px"></div>`:''}
+    `).join('')}
+  </div>`;
+  const STATUS_TIPS={
+    0:'等待指导教师审核，请耐心等待',
+    1:'教师已同意，等待院校管理员审核',
+    2:'指导教师未通过，如有疑问请咨询教师后可重新申请',
+    3:'院校已通过，等待企业确认录用结果',
+    4:'院校审核未通过，可重新浏览岗位申请',
+    5:'🎉 已录用！实习分配已建立，请查看实习详情',
+    6:'企业本次未录用，可继续投递其他岗位'
+  };
+  const tipColor={0:'#EFF6FF',1:'#EFF6FF',2:'#FFF1F2',3:'#FFF7ED',4:'#FFF1F2',5:'#F0FDF4',6:'#FFF7ED'};
+  sheetRaw('申请详情',
+    `${flowHtml}
+     <div style="background:${tipColor[a.status]||'#F8FAFC'};border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px">${STATUS_TIPS[a.status]||''}</div>
+     <div class="kv"><span class="k">申请岗位</span><span style="font-weight:600">${a.position_title||'-'}</span></div>
+     <div class="kv"><span class="k">实习单位</span><span>${a.enterprise_name||'-'}</span></div>
+     <div class="kv"><span class="k">指导教师</span><span>${a.teacher_name||'待分配'}</span></div>
+     <div class="kv"><span class="k">申请时间</span><span>${fmtDate(a.apply_time)}</span></div>
+     ${a.student_remark?`<div style="margin:8px 0 4px;font-size:12px;color:var(--t3)">申请备注</div><div class="detail-body">${a.student_remark}</div>`:''}
+     ${a.teacher_opinion?`<div style="margin:8px 0 4px;font-size:12px;color:var(--t3)">教师意见</div><div class="detail-body">${a.teacher_opinion}</div>`:''}
+     ${a.admin_opinion?`<div style="margin:8px 0 4px;font-size:12px;color:var(--t3)">院校意见</div><div class="detail-body">${a.admin_opinion}</div>`:''}
+     ${a.status===0?`<div style="display:flex;gap:8px;margin-top:12px">
+       <button class="btn btn-r" style="flex:1" onclick="closeSheet();withdrawApp(${id})">撤回申请</button>
+       <button class="btn btn-o" style="flex:1" onclick="closeSheet()">关闭</button>
+     </div>`:''}
+     ${a.status===5?`<button class="btn" style="margin-top:12px" onclick="closeSheet();render('assignment')">查看实习详情 →</button>`:''}
+     ${(a.status===2||a.status===4||a.status===6)?`<button class="btn" style="margin-top:12px" onclick="closeSheet();render('positions')">继续浏览岗位 →</button>`:''}`);
+}
+function withdrawApp(id){ confirmSheet('确认撤回该实习申请？撤回后需重新提交。',async()=>{const r=await api('/applications/'+id,{method:'DELETE'}); toast(r.json&&r.json.success?'已撤回':(r.json&&r.json.message)); render('applications');}); }
+
+function reportForm(){
+  get('/applications?page_size=50').then(d=>{
+    const ok=(d.list||[]).filter(a=>a.status===3||a.status===5);
+    if(!ok.length){ toast('需要有通过审核的实习申请后才能写报告'); return; }
+    const opts=ok.map(a=>`<option value=”${a.id}”>${a.position_title||'岗位'}（${a.enterprise_name||''}）</option>`).join('');
+    const m=document.createElement('div'); m.className='sheet-mask';
+    m.innerHTML=`<div class=”sheet”><h3>填写实习报告</h3>
+      <label>关联申请 *</label><select id=”rpApp”>${opts}</select>
+      <label>报告标题 *</label><input id=”rpTitle” placeholder=”如：×××企业实习总结报告”>
+      <label>一、实习单位与岗位介绍</label>
+      <div style=”display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px”>
+        ${['实习单位×××成立于×年，主营×××业务，本人在×××部门担任×××岗位，主要负责×××工作。'].map(t=>`<button type=”button” style=”padding:5px 8px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;font-size:11px;color:#1e40af;white-space:normal;text-align:left” onclick=”appendText('rpSec1',this.textContent)”>${t}</button>`).join('')}
+      </div>
+      <textarea id=”rpSec1” rows=”2” placeholder=”简介实习单位背景、部门及岗位职责…”></textarea>
+      <label>二、主要工作内容与成果</label>
+      <div style=”display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px”>
+        ${['实习期间主要完成：1.×××；2.×××；3.×××，顺利达成既定任务，获导师认可。','参与了×××项目的×××环节，负责×××模块的开发，最终成功上线。'].map(t=>`<button type=”button” style=”padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534;white-space:normal;text-align:left” onclick=”appendText('rpSec2',this.textContent)”>${t}</button>`).join('')}
+      </div>
+      <textarea id=”rpSec2” rows=”3” placeholder=”详述完成的工作内容、参与项目、取得的成果…”></textarea>
+      <label>三、实习收获与体会</label>
+      <div style=”display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px”>
+        ${['通过本次实习，将专业知识与实践结合，提升了×××技能，深刻体会到职场规范的重要性。','实习让我认识到理论与实践的差距，培养了动手能力、团队协作意识和解决实际问题的能力。'].map(t=>`<button type=”button” style=”padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534;white-space:normal;text-align:left” onclick=”appendText('rpSec3',this.textContent)”>${t}</button>`).join('')}
+      </div>
+      <textarea id=”rpSec3” rows=”2” placeholder=”技能提升、职业认知、思想成长…”></textarea>
+      <label>四、不足与改进方向</label>
+      <textarea id=”rpSec4” rows=”2” placeholder=”发现的不足及今后努力方向（简要填写）…”></textarea>
+      <label>附件（可选，PDF/Word/ZIP）</label><input id=”rpFile” type=”file” accept=”.pdf,.doc,.docx,.zip”>
+      <div id=”rpErr” style=”color:var(--red);font-size:12px;min-height:14px”></div>
+      <button class=”btn” style=”margin-top:10px” onclick=”_submitReport(this)”>提交报告</button>
+      <button class=”btn btn-o” style=”margin-top:8px” onclick=”this.closest('.sheet-mask').remove()”>取消</button></div>`;
+    document.getElementById('phone').appendChild(m);
+  });
+}
+async function _submitReport(btn){
+  const m=btn.closest('.sheet-mask');
+  const title=m.querySelector('#rpTitle').value.trim();
+  const err=m.querySelector('#rpErr'); err.textContent='';
+  if(!title){err.textContent='请填写报告标题';return;}
+  const s1=m.querySelector('#rpSec1').value.trim(),s2=m.querySelector('#rpSec2').value.trim(),s3=m.querySelector('#rpSec3').value.trim(),s4=m.querySelector('#rpSec4').value.trim();
+  const content=[s1&&'一、实习单位与岗位介绍\n'+s1,s2&&'二、主要工作内容与成果\n'+s2,s3&&'三、实习收获与体会\n'+s3,s4&&'四、不足与改进方向\n'+s4].filter(Boolean).join('\n\n');
+  btn.disabled=true;
+  try{
+    const fd=new FormData();
+    fd.append('application_id', m.querySelector('#rpApp').value);
+    fd.append('title', title); fd.append('content', content);
+    const f=m.querySelector('#rpFile').files[0]; if(f) fd.append('file', f);
+    const c=await apiUpload('/reports', fd);
+    if(!(c.json&&c.json.success)){err.textContent=(c.json&&c.json.message)||'创建失败';btn.disabled=false;return;}
+    await api('/reports/'+c.json.data.id+'/submit',{method:'PUT'}); toast('报告已提交 ✓'); m.remove(); render('reports');
+  }catch(e){err.textContent=e.message;btn.disabled=false;}
+}
+function reportDetail(id){
+  const r=_cache.reports[id]; if(!r) return;
+  const st={0:'草稿',1:'已提交',2:'已评阅'}[r.status];
+  sheetRaw('实习报告',
+    `<div class="kv"><span class="k">标题</span><span>${r.title}</span></div>
+     <div class="kv"><span class="k">状态</span><span>${st}</span></div>
+     ${r.teacher_score!=null?`<div class="kv"><span class="k">教师评分</span><span>${r.teacher_score}</span></div>`:''}
+     ${r.teacher_comment?`<div class="kv"><span class="k">评语</span><span>${r.teacher_comment}</span></div>`:''}
+     ${r.file_url?`<div class="kv"><span class="k">附件</span><a class="link-a" href="#" onclick="event.preventDefault();openProtectedFile('/api/reports/${id}/download')">下载</a></div>`:''}
+     <div class="detail-body">${r.content||'（无内容）'}</div>`);
+}
+function topicDetail(id){
+  const t=_cache.topics[id]; if(!t) return;
+  const stLabel={0:'待确认',1:'已确定',2:'已驳回'}[t.status]||'-';
+  const stColor={0:'color:var(--orange)',1:'color:var(--green)',2:'color:var(--red)'}[t.status]||'';
+  let actions='';
+  if(USER.role===3 && t.status===0){
+    actions=`<div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn" style="flex:1" onclick="confirmTopic(${id},true)">✓ 确认选题</button>
+      <button class="btn btn-r" style="flex:1" onclick="confirmTopic(${id},false)">✗ 驳回选题</button>
+    </div>`;
+  } else if(USER.role===4 && t.status===2){
+    actions=`<div style="background:#FFF7ED;border-radius:8px;padding:10px;font-size:12px;color:#92400e;margin-top:12px">
+      ${t.reject_reason?'驳回原因：'+t.reject_reason:'选题已被驳回，请与指导教师沟通后重新选题。'}
+    </div>`;
+  }
+  sheetRaw('选题详情',
+    `<div class="kv"><span class="k">题目</span><span>${t.title}</span></div>
+     <div class="kv"><span class="k">状态</span><span style="${stColor};font-weight:600">${stLabel}</span></div>
+     ${t.teacher_name?`<div class="kv"><span class="k">指导教师</span><span>${t.teacher_name}</span></div>`:''}
+     ${t.type?`<div class="kv"><span class="k">类型</span><span>${t.type}</span></div>`:''}
+     ${t.source?`<div class="kv"><span class="k">来源</span><span>${t.source}</span></div>`:''}
+     ${t.keywords?`<div class="kv"><span class="k">关键词</span><span>${t.keywords}</span></div>`:''}
+     ${t.description?`<div class="detail-body">${t.description}</div>`:''}
+     ${actions}`);
+}
+function mSelectTopic(id, title){
+  confirmSheet(`确认选择课题「${title}」？提交后等待指导教师确认，确认前可通过教师更换。`, async()=>{
+    const r=await api('/gd-topics/'+id+'/select',{method:'POST',body:{}});
+    if(r.json&&r.json.success){ toast('选题申请已提交 ✓'); render('topics'); }
+    else toast((r.json&&r.json.message)||'选题失败');
+  });
+}
+function topicPoolDetail(id){
+  const p=(_cache.topicPool||{})[id]; if(!p) return;
+  const typeLabel={
+    '工程应用':'🔧 工程应用','理论研究':'📚 理论研究','软件开发':'💻 软件开发',
+    '数据分析':'📊 数据分析','设计类':'🎨 设计类','其他':'📁 其他'
+  };
+  const remaining=Math.max(0,(p.quota||1)-(p.chosen_count||0));
+  const full=remaining<=0;
+  sheetRaw(p.title,
+    `<div style="background:#F5F3FF;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+       <div style="font-size:13px;color:#5B21B6;font-weight:600">📌 课题池课题</div>
+       <div style="font-size:12px;color:#7C3AED;margin-top:2px">来自公开题库，通过志愿轮次分配</div>
+     </div>
+     <div class="kv"><span class="k">指导教师</span><span>${p.teacher_name||'—'}</span></div>
+     ${p.type?`<div class="kv"><span class="k">课题类型</span><span>${typeLabel[p.type]||p.type}</span></div>`:''}
+     ${p.source?`<div class="kv"><span class="k">课题来源</span><span>${p.source}</span></div>`:''}
+     <div class="kv"><span class="k">可接收人数</span><span style="${full?'color:var(--red);font-weight:600':''}">${remaining>0?remaining+'人名额余量':'已满额'} / 共${p.quota||1}人</span></div>
+     ${p.chosen_count?`<div class="kv"><span class="k">已报名人数</span><span>${p.chosen_count}人</span></div>`:''}
+     ${p.description?`<div style="font-size:12px;color:var(--t3);margin:10px 0 4px">课题描述</div><div class="detail-body">${p.description}</div>`:''}
+     ${full?`<div style="background:#FFF1F2;border-radius:8px;padding:10px;margin-top:10px;font-size:12px;color:var(--red)">⚠️ 该课题名额已满，无法再报名</div>`
+           :`<button class="btn" onclick="closeSheet();mApplyTopicPool(${p.id},'${esc(p.title)}')">申请此课题</button>`}`);
+}
+async function mApplyTopicPool(id, title){
+  // 检查是否已有分配到的课题
+  const existing=Object.values(_cache.topics||{}).find(t=>t.status===1);
+  if(existing){ toast('你已有确定的毕设选题，无需再选'); return; }
+  // 获取当前开放的志愿轮次
+  const rd=await get('/benchmark/topic-rounds').catch(()=>null);
+  const rounds=(rd&&rd.list)||[];
+  const activeRound=rounds.find(r=>r.status===1);
+  if(!activeRound){
+    const m=document.createElement('div'); m.className='sheet-mask';
+    m.innerHTML=`<div class="sheet"><h3>暂无开放轮次</h3>
+      <div style="background:#FFF7ED;border-radius:10px;padding:14px;font-size:13px;color:#92400e;line-height:1.7;margin-bottom:16px">
+        📋 当前没有正在进行的选题轮次。<br>请等待院校/分院管理员开放新的选题轮次后再提交志愿。
+      </div>
+      ${rounds.length?`<div style="font-size:12px;color:var(--t3)">历史轮次：${rounds.map(r=>`${r.name}（${['未开始','进行中','已结束'][r.status]||''}）`).join('、')}</div>`:''}
+      <button class="btn btn-o" onclick="this.closest('.sheet-mask').remove()" style="margin-top:14px">知道了</button>
+    </div>`;
+    document.getElementById('phone').appendChild(m);
+    m.onclick=e=>{if(e.target===m)m.remove();};
+    return;
+  }
+  // 检查是否已提交过该轮次的志愿
+  const prevChoices=await get('/benchmark/topic-rounds/'+activeRound.id+'/choices').catch(()=>null);
+  const myChoices=((prevChoices&&prevChoices.list)||[]).filter(c=>c.student_id===USER.id);
+  const already=myChoices.find(c=>c.pool_id===id);
+  if(already){ toast('已报名此课题，等待轮次结束后分配'); return; }
+  if(myChoices.length>=(activeRound.max_choices||3)){
+    toast(`本轮最多可选 ${activeRound.max_choices||3} 个志愿，请先撤销已有志愿`); return;
+  }
+  const priority=myChoices.length+1;
+  // 合并旧志愿 + 新志愿重新提交（submitChoices 会先清空再插入）
+  const newChoices=[...myChoices.map(c=>({pool_id:c.pool_id,priority:c.priority})),{pool_id:id,priority}];
+  confirmSheet(
+    `确认报名课题「${title}」？\n\n当前轮次：${activeRound.name}\n本次为第 ${priority} 志愿（最多 ${activeRound.max_choices||3} 个志愿）\n\n系统将在轮次结束后自动匹配，请耐心等待结果。`,
+    async()=>{
+      const r=await api('/benchmark/topic-choices',{method:'POST',body:{round_id:activeRound.id,choices:newChoices}});
+      if(r.json&&r.json.success){ toast('志愿提交成功 ✓ 等待分配'); render('topics'); }
+      else toast((r.json&&r.json.message)||'提交失败，请重试');
+    });
+}
+async function confirmTopic(id, agree){
+  if(agree){
+    const r=await api('/gd-topics/'+id+'/confirm',{method:'PUT',body:{agree:true}});
+    toast(r.json&&r.json.success?'已确认选题 ✓':(r.json&&r.json.message)||'操作失败');
+    closeSheet(); render('topics');
+  } else {
+    sheetReject('驳回选题理由',
+      ['题目范围过大，请缩小研究范围','题目已有学生选定，请更换题目','研究方向与本专业培养目标不符','题目缺乏研究价值或创新性，请与教师协商重选','与企业合作课题相关，需先获得企业授权'],
+      async reason=>{
+        const r=await api('/gd-topics/'+id+'/confirm',{method:'PUT',body:{agree:false,opinion:reason}});
+        if(!(r.json&&r.json.success)) throw new Error((r.json&&r.json.message)||'操作失败');
+        toast('已驳回选题'); render('topics');
+      });
+  }
+}
+function taskDetail(id){
+  const t=(_cache.tasks||{})[id]; if(!t) return;
+  const now=Date.now();
+  const overdue=t.status!==2&&t.require_time&&new Date(t.require_time).getTime()<now;
+  const daysLeft=t.require_time&&t.status!==2?Math.ceil((new Date(t.require_time).getTime()-now)/86400000):null;
+  const stLabel={0:'未开始',1:'进行中',2:'已完成'}[t.status]||'-';
+  const stColor={0:'color:var(--t3)',1:'color:var(--orange)',2:'color:var(--green)'}[t.status]||'';
+
+  // Per-task-name checklist hints so students know what to prepare
+  const hints={
+    '开题报告':['研究背景与意义（300字以上）','国内外研究现状综述','研究目标与主要内容','研究方法与技术路线','研究计划与进度安排','预期成果','指导教师签字确认'],
+    '文献综述':['参考文献不少于15篇（含3篇英文）','按主题分类整理综述','总结现有研究的不足','阐明本研究的切入点','字数不少于3000字'],
+    '中期检查':['已完成工作进度说明','遇到的问题与解决方案','后续工作计划','相关阶段性成果展示'],
+    '论文初稿':['摘要（中英文）','论文结构完整（引言/正文/结论/参考文献）','图表规范清晰','引用格式统一（APA/GB/MLA等）','字数符合专业要求'],
+    '论文定稿':['按意见修改完毕','查重率符合要求（一般≤30%）','导师审核通过','装订版和电子版均已准备'],
+    '答辩准备':['制作PPT（建议20-30页）','演讲时间控制在15分钟内','系统/作品可正常演示','准备常见问题解答'],
+  };
+  const taskHints=Object.entries(hints).find(([k])=>t.name&&t.name.includes(k));
+  const checklistHtml=taskHints?`
+    <div style="margin:12px 0;background:#EFF6FF;border-radius:10px;padding:12px">
+      <div style="font-size:12px;font-weight:600;color:#1e40af;margin-bottom:8px">📋 ${taskHints[0]}提交清单</div>
+      ${taskHints[1].map(item=>`<div style="display:flex;gap:8px;font-size:12px;color:#1e40af;margin-bottom:4px">
+        <span style="flex-shrink:0;color:${t.status===2?'var(--green)':'#60A5FA'}">●</span><span>${item}</span>
+      </div>`).join('')}
+    </div>`:'';
+
+  const urgeBanner=overdue
+    ?`<div style="background:#FFF1F2;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--red)">⚠️ 此节点已超出截止日期，请尽快完成并联系指导教师处理</div>`
+    :daysLeft!=null&&daysLeft<=7&&daysLeft>=0
+    ?`<div style="background:#FFF7ED;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#92400e">⏰ 距截止日期还有 <strong>${daysLeft}</strong> 天，请抓紧完成</div>`:''
+
+  const canUpdate=(USER.role===3||USER.role<=2)&&t.status!==2;
+  sheetRaw(t.name||'任务节点',
+    `${urgeBanner}
+     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd);margin-bottom:12px">
+       <span style="font-size:13px;font-weight:600;${stColor}">${stLabel}</span>
+       ${t.require_time?`<span style="font-size:12px;color:${overdue?'var(--red)':'var(--t3)'}">${overdue?'已超期 ':'截止 '}${fmtDate(t.require_time)}</span>`:''}
+     </div>
+     ${t.actual_time?`<div class="kv"><span class="k">完成时间</span><span style="color:var(--green)">${fmtDate(t.actual_time)} ✓</span></div>`:''}
+     ${t.responsible_role?`<div class="kv"><span class="k">负责人</span><span>${t.responsible_role}</span></div>`:''}
+     ${t.description?`<div class="detail-body">${t.description}</div>`:checklistHtml?'':`<div class="detail-body" style="color:var(--t3);font-size:13px">暂无详细说明，请联系指导教师了解具体要求。</div>`}
+     ${checklistHtml}
+     ${t.teacher_remark?`<div style="background:#F0FDF4;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12px;color:#166534"><strong>教师批注：</strong>${t.teacher_remark}</div>`:''}
+     ${canUpdate?`<div style="margin-top:14px;display:flex;gap:8px">
+       <button class="btn" style="flex:1" onclick="markTaskDone(${id})">✓ 标记已完成</button>
+       ${t.status===2?'':''}
+     </div>`:''}
+     ${USER.role===4&&t.status!==2?`<div style="margin-top:10px"><button class="btn btn-o" style="width:100%" onclick="notifyTeacherTask('${esc(t.name||'')}')">📢 通知教师确认</button></div>`:''}`);
+}
+
+async function markTaskDone(id){
+  confirmSheet('确认将此节点标记为"已完成"？请确保学生已提交所有相关材料。', async()=>{
+    const r=await api('/gd-tasks/'+id,{method:'PUT',body:{status:2,actual_time:new Date().toISOString().slice(0,10)}});
+    if(r.json&&r.json.success){ toast('节点已标记完成 ✓'); closeSheet(); render('tasks'); }
+    else toast((r.json&&r.json.message)||'操作失败');
+  });
+}
+
+function notifyTeacherTask(taskName){
+  confirmSheet(`确认向指导教师发送"${taskName}"完成通知？`, async()=>{
+    const r=await api('/notifications/send',{method:'POST',body:{
+      title:`毕设节点完成通知：${taskName}`,
+      content:`你的学生已完成「${taskName}」节点，请查看并在系统中确认。`
+    }});
+    toast(r.json&&r.json.success?'通知已发送 ✓':(r.json&&r.json.message)||'发送失败');
+    closeSheet();
+  });
+}
+function applyInsurance(){
+  const today=new Date().toISOString().slice(0,10);
+  const end=new Date(); end.setFullYear(end.getFullYear()+1);
+  const endStr=end.toISOString().slice(0,10);
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>申请实习投保</h3>
+    <div style="background:#EFF6FF;border-radius:10px;padding:12px;font-size:12px;color:#1e40af;margin-bottom:12px;line-height:1.7">
+      🛡️ 实习期间强制要求投保实习意外险，请如实填写保单信息，提交后由学校审核登记。
+    </div>
+    <label>保险类型 *</label>
+    <select id="insType">
+      <option value="实习意外险">实习意外险（必保项，覆盖意外伤亡）</option>
+      <option value="团体意外险">团体意外险（企业团险，含意外医疗）</option>
+      <option value="雇主责任险">雇主责任险（企业为实习生投保）</option>
+      <option value="商业医疗险">商业医疗险（含住院/门诊医疗费用）</option>
+      <option value="综合实习险">综合实习险（意外+医疗+责任组合）</option>
+    </select>
+    <label>保险公司 *（快选常见保险公司）</label>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+      ${['中国人保','中国平安','太平洋保险','中国人寿','泰康保险','新华保险','阳光保险','华泰保险'].map(c=>`<button type="button" style="padding:5px 8px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:12px;font-size:11px;color:#0369a1" onclick="document.getElementById('insCo').value=this.textContent">${c}</button>`).join('')}
+    </div>
+    <input id="insCo" placeholder="保险公司全称（可点击快选或手动输入）">
+    <label>保单号（选填）</label>
+    <input id="insNo" placeholder="保险单编号，如：XXXXXX-2024-00001">
+    <label>保障金额（元）</label>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+      ${['100000','200000','300000','500000','1000000'].map(v=>`<button type="button" style="padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534" onclick="document.getElementById('insAmt').value='${v}'">${(Number(v)/10000)}万</button>`).join('')}
+    </div>
+    <input id="insAmt" type="number" placeholder="保障金额（元），如：200000">
+    <label>保险生效日期 *</label><input id="insStart" type="date" value="${today}">
+    <label>保险终止日期 *</label><input id="insEnd" type="date" value="${endStr}">
+    <label>投保方式</label>
+    <select id="insPayBy">
+      <option value="企业代缴">企业代缴（由实习单位统一投保）</option>
+      <option value="学校统一办理">学校统一办理（平台统一购买）</option>
+      <option value="个人自购">个人自购（自行购买并上传保单）</option>
+    </select>
+    <label>备注（选填）</label>
+    <input id="insNote" placeholder="如：含工伤保险/另有附加险等">
+    <div id="insErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:4px"></div>
+    <button class="btn" style="margin-top:10px" onclick="_submitInsurance(this)">提交申请</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+}
+async function _submitInsurance(btn){
+  const m=btn.closest('.sheet-mask');
+  const err=m.querySelector('#insErr'); err.textContent='';
+  const company=m.querySelector('#insCo').value.trim();
+  const start=m.querySelector('#insStart').value; const end=m.querySelector('#insEnd').value;
+  if(!company){err.textContent='请填写保险公司';return;}
+  if(!start||!end){err.textContent='请填写保险起止日期';return;}
+  if(start>=end){err.textContent='终止日期须晚于生效日期';return;}
+  btn.disabled=true;
+  try{
+    const body={insurance_type:m.querySelector('#insType').value,company,start_date:start,end_date:end};
+    const no=m.querySelector('#insNo').value.trim(); if(no) body.policy_no=no;
+    const amt=m.querySelector('#insAmt').value; if(amt) body.coverage_amount=Number(amt);
+    const note=m.querySelector('#insNote').value.trim(); if(note) body.remark=note;
+    body.pay_by=m.querySelector('#insPayBy').value;
+    const r=await api('/insurances',{method:'POST',body});
+    if(r.json&&r.json.success){toast('已提交，等待学校审核 ✓');m.remove();render('insurances');}
+    else{err.textContent=(r.json&&r.json.message)||'提交失败';btn.disabled=false;}
+  }catch(e){err.textContent=e.message;btn.disabled=false;}
+}
+function insuranceDetail(id){
+  const i=(_cache.insurances||{})[id]; if(!i) return;
+  const ST={0:'待审核',1:'保障中',2:'已到期',3:'已注销'}[i.status]||'-';
+  const stColor={0:'color:var(--orange)',1:'color:var(--green)',2:'color:var(--t3)',3:'color:var(--red)'}[i.status]||'';
+  sheetRaw('保险详情',
+    `<div class="kv"><span class="k">类型</span><span>${i.insurance_type||'-'}</span></div>
+     <div class="kv"><span class="k">状态</span><span style="${stColor};font-weight:600">${ST}</span></div>
+     <div class="kv"><span class="k">保险公司</span><span>${i.company||'-'}</span></div>
+     ${i.policy_no?`<div class="kv"><span class="k">保单号</span><span style="font-size:12px">${i.policy_no}</span></div>`:''}
+     ${i.coverage_amount?`<div class="kv"><span class="k">保障金额</span><span style="color:var(--green);font-weight:600">${Number(i.coverage_amount).toLocaleString()} 元</span></div>`:''}
+     <div class="kv"><span class="k">生效日期</span><span>${fmtDate(i.start_date)}</span></div>
+     <div class="kv"><span class="k">到期日期</span><span>${fmtDate(i.end_date)}</span></div>
+     ${i.pay_by?`<div class="kv"><span class="k">投保方式</span><span>${i.pay_by}</span></div>`:''}
+     ${i.remark?`<div class="kv"><span class="k">备注</span><span>${i.remark}</span></div>`:''}
+     ${i.student_name?`<div class="kv"><span class="k">学生</span><span>${i.student_name}</span></div>`:''}`);
+}
+
+/* ---------- 教师：指导记录/工作记录/质检 ---------- */
+async function pickStudentOptions(){
+  const d=await get('/intern-stats/process?page_size=100');
+  return (d.list||[]).map(s=>`<option value="${s.student_id}">${s.student_name}（${s.student_eeid||''}）</option>`).join('');
+}
+async function guidanceForm(){
+  const opts=await pickStudentOptions();
+  if(!opts){ toast('暂无可指导的学生'); return; }
+  const today=new Date().toISOString().slice(0,10);
+  sheet('新增指导记录',
+    `<label>学生 *</label><select id="gdStu">${opts}</select>
+     <label>指导方式</label>
+     <select id="gdType">
+       <option value="面谈">面谈（当面）</option>
+       <option value="线上视频">线上视频（腾讯/钉钉会议）</option>
+       <option value="微信/QQ沟通">微信 / QQ 沟通</option>
+       <option value="电话">电话指导</option>
+       <option value="实验室指导">实验室 / 机房指导</option>
+       <option value="邮件">邮件往来</option>
+     </select>
+     <label>指导日期</label><input id="gdDate" type="date" value="${today}">
+     <label>指导主题 *</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+       ${['开题报告指导','文献综述指导','中期检查','论文初稿审阅','系统测试指导','答辩前辅导'].map(t=>`<button type="button" style="padding:5px 8px;background:#EDE9FE;border:1px solid #DDD6FE;border-radius:12px;font-size:11px;color:#5B21B6" onclick="document.getElementById('gdTitle').value=this.textContent">${t}</button>`).join('')}
+     </div>
+     <input id="gdTitle" placeholder="本次指导的主要议题">
+     <label>指导内容 *</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+       ${['检查开题报告初稿，指导文献综述方向，要求细化研究方法。','审阅论文初稿，就结构框架和写作规范提出修改意见，要求补充相关内容。','检查系统功能实现进度，针对技术问题给出解决思路。','中期检查汇报，提出下阶段重点和时间节点要求。','答辩PPT辅导，模拟答辩提问，补充完善答辩内容。'].map(t=>`<button type="button" style="padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534;white-space:normal;text-align:left" onclick="appendText('gdContent',this.textContent)">${t}</button>`).join('')}
+     </div>
+     <textarea id="gdContent" rows="3" placeholder="详细记录本次指导内容…"></textarea>
+     <label>本次结论 / 下次要求</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+       ${['按意见修改后，下次提交修改稿','下次前完成数据库设计并提交测试结果','下次提交中期报告初稿','答辩前提交最终版PPT确认'].map(t=>`<button type="button" style="padding:5px 8px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;font-size:11px;color:#92400e" onclick="document.getElementById('gdResult').value=this.textContent">${t}</button>`).join('')}
+     </div>
+     <input id="gdResult" placeholder="下次需完成的任务（选填）">`,
+    async m=>{ const title=m.querySelector('#gdTitle').value.trim(); const content=m.querySelector('#gdContent').value.trim(); if(!title){toast('请填写主题');return false;} if(!content){toast('请填写内容');return false;}
+      const r=await api('/gd-guidances',{method:'POST',body:{student_id:Number(m.querySelector('#gdStu').value),guidance_date:m.querySelector('#gdDate').value,guidance_type:m.querySelector('#gdType').value,title,content,result:m.querySelector('#gdResult').value.trim()||undefined}});
+      if(!(r.json&&r.json.success)){ toast(r.json&&r.json.message||'保存失败'); return false; } toast('已保存 ✓'); render('guidance'); });
+}
+function guidanceDetail(id){
+  const g=_cache.guidance[id]; if(!g) return;
+  sheetRaw(g.title||'指导记录',
+    `<div class="kv"><span class="k">学生</span><span>${g.student_name||'-'}</span></div>
+     <div class="kv"><span class="k">日期</span><span>${fmtDate(g.guidance_date||g.create_time)}</span></div>
+     <div class="detail-body">${g.content||'（无内容）'}</div>
+     <button class="btn btn-r" onclick="delGuidance(${id})">删除</button>`);
+}
+function delGuidance(id){ confirmSheet('确认删除该指导记录？此操作不可撤销。',async()=>{const r=await api('/gd-guidances/'+id,{method:'DELETE'}); toast(r.json&&r.json.success?'已删除':(r.json&&r.json.message)); render('guidance');}); }
+
+async function trecordForm(){
+  const opts=await pickStudentOptions();
+  const today=new Date().toISOString().slice(0,10);
+  const now=new Date();
+  const monTitle=`${now.getFullYear()}年${now.getMonth()+1}月工作月报`;
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>新增工作记录</h3>
+    <div class="seg" id="trSeg">
+      <button class="on" data-t="monthly" onclick="_setTrType(this,'monthly')">月报</button>
+      <button data-t="visit" onclick="_setTrType(this,'visit')">走访</button>
+    </div>
+    <label>关联学生（可选）</label><select id="trStu"><option value="">— 不关联特定学生 —</option>${opts}</select>
+    <label>日期</label><input id="trDate" type="date" value="${today}">
+    <label>标题</label><input id="trTitle" value="${monTitle}" placeholder="如：3月指导月报">
+    <div id="trPresets" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+      ${['本月完成了×名学生的实习材料批阅，包括周报×篇','本月开展指导×次，主要解决学生在×方面遇到的问题','本月巡访企业×家，了解学生实习状态，整体正常','发现部分学生周报提交不及时，已逐一提醒整改'].map(t=>`<button type="button" style="padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534;white-space:normal;text-align:left" onclick="appendText('trContent',this.textContent)">${t}</button>`).join('')}
+    </div>
+    <textarea id="trContent" rows="5" placeholder="月报：本月工作总结、指导情况、问题与建议…&#10;走访：走访企业、学生状态、发现问题及措施…"></textarea>
+    <label>附件（可选，PDF/图片）</label><input id="trFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+    <div id="trErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:4px"></div>
+    <button class="btn" style="margin-top:10px" onclick="_submitTrecord(this)">提交</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  window._trType='monthly';
+}
+function _setTrType(btn, type){
+  window._trType=type;
+  document.querySelectorAll('#trSeg button').forEach(b=>b.classList.toggle('on',b===btn));
+  const presets=document.getElementById('trPresets'); if(!presets) return;
+  if(type==='visit'){
+    presets.innerHTML=['学生在企业岗位正常上班，出勤情况良好，工作状态积极。','企业为学生安排了专职导师，指导到位，岗位安排符合专业培养方向。','发现学生出勤不规律，已当面提醒，要求整改并跟进。','发现岗位安排与协议不符，已与企业协商调整，待落实。'].map(t=>`<button type="button" style="padding:5px 8px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;font-size:11px;color:#1e40af;white-space:normal;text-align:left" onclick="appendText('trContent',this.textContent)">${t}</button>`).join('');
+    const ti=document.getElementById('trTitle'); if(ti&&ti.value.endsWith('月报')) ti.value=new Date().toISOString().slice(0,10)+'走访记录';
+  }else{
+    presets.innerHTML=['本月完成了×名学生的实习材料批阅，包括周报×篇','本月开展指导×次，主要解决学生在×方面遇到的问题','本月巡访企业×家，了解学生实习状态，整体正常','发现部分学生周报提交不及时，已逐一提醒整改'].map(t=>`<button type="button" style="padding:5px 8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:11px;color:#166534;white-space:normal;text-align:left" onclick="appendText('trContent',this.textContent)">${t}</button>`).join('');
+  }
+}
+async function _submitTrecord(btn){
+  const m=btn.closest('.sheet-mask');
+  const title=m.querySelector('#trTitle').value.trim(); const content=m.querySelector('#trContent').value.trim();
+  const err=m.querySelector('#trErr'); err.textContent='';
+  if(!title){err.textContent='请填写标题';return;}
+  btn.disabled=true;
+  try{
+    const fd=new FormData();
+    fd.append('type', window._trType||'monthly'); fd.append('title', title); fd.append('content', content);
+    fd.append('record_date', m.querySelector('#trDate').value);
+    const sid=m.querySelector('#trStu').value; if(sid) fd.append('student_id', sid);
+    const f=m.querySelector('#trFile').files[0]; if(f) fd.append('file', f);
+    const c=await apiUpload('/teacher-records', fd);
+    if(!(c.json&&c.json.success)){err.textContent=(c.json&&c.json.message)||'保存失败';btn.disabled=false;return;}
+    await api('/teacher-records/'+c.json.data.id+'/submit',{method:'PUT'}); toast('已提交 ✓'); m.remove(); render('trecords');
+  }catch(e){err.textContent=e.message;btn.disabled=false;}
+}
+function trecordDetail(id){
+  const r=_cache.trecords[id]; if(!r) return;
+  let acts = r.status===0 ? `<button class="btn" onclick="submitTrecord(${id})">提交</button><button class="btn btn-r" style="margin-top:8px" onclick="delTrecord(${id})">删除</button>` : '';
+  sheetRaw((r.type==='visit'?'走访记录':'月度工作记录'),
+    `<div class="kv"><span class="k">标题</span><span>${r.title}</span></div>
+     <div class="kv"><span class="k">日期</span><span>${fmtDate(r.record_date||r.create_time)}</span></div>
+     ${r.student_name?`<div class="kv"><span class="k">学生</span><span>${r.student_name}</span></div>`:''}
+     <div class="detail-body">${r.content||'（无内容）'}</div>${acts}`);
+}
+async function submitTrecord(id){ const r=await api('/teacher-records/'+id+'/submit',{method:'PUT'}); toast(r.json&&r.json.success?'已提交':(r.json&&r.json.message)); closeSheet(); render('trecords'); }
+function delTrecord(id){ confirmSheet('确认删除该工作记录？此操作不可撤销。',async()=>{const r=await api('/teacher-records/'+id,{method:'DELETE'}); toast(r.json&&r.json.success?'已删除':(r.json&&r.json.message)); render('trecords');}); }
+
+function qcDetail(id){
+  const q=(_cache.qcs||{})[id]; if(!q) return;
+  const ST={0:'待审阅',1:'通过',2:'已驳回',3:'未完成'};
+  const ST_COLOR={0:'color:var(--orange)',1:'color:var(--green)',2:'color:var(--red)',3:'color:var(--t3)'};
+  const CHECK_TYPE={sample:'抽样检查',full:'全量检查'};
+  const SCOPE={self:'自查（本组内）',cross:'互查（跨组）'};
+  let actions='';
+  if(q.status===0){
+    actions=`<div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn" style="flex:1" onclick="reviewQc(${id},1)">✓ 通过</button>
+      <button class="btn btn-r" style="flex:1" onclick="reviewQc(${id},2)">✗ 驳回</button>
+    </div>`;
+  }
+  sheetRaw('质量检查详情',
+    `<div class="kv"><span class="k">状态</span><span style="${ST_COLOR[q.status]||''};font-weight:600">${ST[q.status]||'-'}</span></div>
+     <div class="kv"><span class="k">检查学生</span><span style="font-weight:600">${q.student_name||'-'}</span></div>
+     <div class="kv"><span class="k">检查类型</span><span>${CHECK_TYPE[q.check_type]||q.check_type||'-'}</span></div>
+     <div class="kv"><span class="k">检查范围</span><span>${SCOPE[q.scope]||q.scope||'-'}</span></div>
+     ${q.batch_name?`<div class="kv"><span class="k">批次</span><span>${q.batch_name}</span></div>`:''}
+     ${q.achievement_title?`<div class="kv"><span class="k">关联成果</span><span>${q.achievement_title}</span></div>`:''}
+     ${q.opinion?`<div style="margin:10px 0 4px;font-size:12px;color:var(--t3)">审阅意见</div><div class="detail-body">${q.opinion}</div>`:''}
+     ${actions}`);
+}
+function reviewQc(id,status){
+  if(status===1){
+    closeSheet();
+    api('/quality-checks/'+id+'/review',{method:'PUT',body:{status:1}}).then(r=>{
+      toast(r.json&&r.json.success?'已通过 ✓':(r.json&&r.json.message)); render('quality');
+    });
+  }else{
+    closeSheet();
+    sheetReject('驳回质量检查',
+      ['存在明显抄袭问题，需经查重后整改重新提交','研究内容与选题方向不符，请对照任务书修改','图表/数据不完整，需补充实验/调查数据支撑','格式不规范（字体、引用、页码等），请按规范整改','按上次指导意见修改后重新提交，尚未落实'],
+      async reason=>{
+        const r=await api('/quality-checks/'+id+'/review',{method:'PUT',body:{status:2,opinion:reason}});
+        if(!(r.json&&r.json.success)) throw new Error((r.json&&r.json.message)||'操作失败');
+        toast('已驳回'); render('quality');
+      });
+  }
+}
+
+/* ---- 电子实习协议 ---- */
+function agreementDetail(id){
+  const a=(_cache.agreements||{})[id]; if(!a) return;
+  const stTxt={0:'待签署',1:'签署中',2:'已生效',3:'已作废'}[a.status]||'';
+  const signRow=(label,ok,time)=>`<div class="kv"><span class="k">${label}</span><span>${ok?'✓ 已签 '+(time?fmtTime(time):''):'未签'}</span></div>`;
+  let actions='';
+  if(USER.role===4 && !a.student_signed && a.status!==2 && a.status!==3)
+    actions=`<button class="btn" onclick="closeSheet();signAgreement(${id})">✍️ 在线签署</button>`;
+  else if(USER.role===3 && a.student_signed && !a.teacher_signed && a.status!==3)
+    actions=`<button class="btn" onclick="closeSheet();teacherSignAgreement(${id})">✍️ 教师会签</button>`;
+  sheetRaw('实习协议',
+    `<div class="kv"><span class="k">标题</span><span>${a.title}</span></div>
+     <div class="kv"><span class="k">学生</span><span>${a.student_name||''}</span></div>
+     <div class="kv"><span class="k">企业</span><span>${a.enterprise_name||'-'}</span></div>
+     <div class="kv"><span class="k">岗位</span><span>${a.position_title||'-'}</span></div>
+     <div class="kv"><span class="k">指导教师</span><span>${a.teacher_name||'-'}</span></div>
+     <div class="kv"><span class="k">实习期</span><span>${a.start_date||'-'} 至 ${a.end_date||'-'}</span></div>
+     <div class="kv"><span class="k">状态</span><span>${stTxt}</span></div>
+     ${a.content?`<div class="detail-body">${a.content}</div>`:''}
+     ${signRow('学生签署',a.student_signed,a.student_sign_time)}
+     ${signRow('教师会签',a.teacher_signed,a.teacher_sign_time)}
+     ${signRow('校方盖章',a.school_signed,a.school_sign_time)}
+     ${actions}`);
+}
+function signAgreement(id){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>在线签署实习协议</h3>
+    <div style="background:#EFF6FF;border-radius:10px;padding:12px;font-size:12px;color:#1e40af;margin-bottom:12px;line-height:1.7">
+      📄 本协议为学生 · 企业 · 学校三方实习协议，签署后具有法律效力，请确认已阅读协议全文内容。
+    </div>
+    <label>签署人姓名（请输入真实姓名）</label>
+    <input id="sgName" value="${esc(USER.realName||'')}" placeholder="输入您的真实姓名">
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:12px;background:#F8FAFC;border-radius:10px;margin-top:10px">
+      <input type="checkbox" id="sgConfirm" style="width:18px;height:18px;flex-shrink:0;margin-top:2px">
+      <label for="sgConfirm" style="font-size:12px;cursor:pointer;line-height:1.7">我已仔细阅读协议全部内容，了解三方权利义务，自愿签署本协议并承诺遵守全部条款。</label>
+    </div>
+    <div id="sgErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:6px"></div>
+    <button class="btn" style="margin-top:10px" onclick="_doSign(${id},this)">确认签署</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+}
+async function _doSign(id,btn){
+  const m=btn.closest('.sheet-mask');
+  const name=m.querySelector('#sgName').value.trim();
+  const err=m.querySelector('#sgErr'); err.textContent='';
+  if(!name){err.textContent='请填写签署人姓名';return;}
+  if(!m.querySelector('#sgConfirm').checked){err.textContent='请勾选确认条款';return;}
+  btn.disabled=true;
+  const r=await api('/agreements/'+id+'/student-sign',{method:'PUT',body:{sign_name:name}});
+  if(r.json&&r.json.success){ toast('签署成功 ✓'); m.remove(); render('agreement'); }
+  else{ err.textContent=(r.json&&r.json.message)||'签署失败'; btn.disabled=false; }
+}
+function teacherSignAgreement(id){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>教师会签确认</h3>
+    <div style="background:#F0FDF4;border-radius:10px;padding:12px;font-size:12px;color:#166534;margin-bottom:12px;line-height:1.7">
+      ✍️ 教师会签代表您确认该三方协议内容，并作为见证方共同承担监管责任。会签后不可撤回。
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:12px;background:#F8FAFC;border-radius:10px">
+      <input type="checkbox" id="tcConfirm" style="width:18px;height:18px;flex-shrink:0;margin-top:2px">
+      <label for="tcConfirm" style="font-size:12px;cursor:pointer;line-height:1.7">本人已确认协议内容符合相关规定，学生签署意愿真实，同意进行教师会签。</label>
+    </div>
+    <div id="tcErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:6px"></div>
+    <button class="btn" style="margin-top:10px" onclick="_doTSign(${id},this)">确认会签</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+}
+async function _doTSign(id,btn){
+  const m=btn.closest('.sheet-mask');
+  const err=m.querySelector('#tcErr'); err.textContent='';
+  if(!m.querySelector('#tcConfirm').checked){err.textContent='请勾选确认条款';return;}
+  btn.disabled=true;
+  const r=await api('/agreements/'+id+'/teacher-sign',{method:'PUT',body:{}});
+  if(r.json&&r.json.success){ toast('会签成功 ✓'); m.remove(); render('agreement'); }
+  else{ err.textContent=(r.json&&r.json.message)||'会签失败'; btn.disabled=false; }
+}
+function notifyRisk(){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>一键通知预警学生</h3>
+    <div style="background:#FFFBEB;border-radius:10px;padding:12px;font-size:12px;color:#92400e;margin-bottom:12px;line-height:1.7">
+      📣 将向所有存在风险预警的学生发送站内通知，提醒其尽快处理相关问题。
+    </div>
+    <label>通知内容（可自定义）</label>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+      ${['您的实习存在风险预警，请尽快处理（打卡缺勤/周报缺交/保险问题），避免影响综合评定。','实习管理系统检测到您存在异常情况，请登录系统查看详情并及时整改。','您的实习周报/月报提交不及时，请在规定时间内完成提交，否则影响考核成绩。'].map(t=>`<button type="button" style="padding:5px 8px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;font-size:11px;color:#92400e;white-space:normal;text-align:left" onclick="document.getElementById('rkMsg').value=this.textContent">${t}</button>`).join('')}
+    </div>
+    <textarea id="rkMsg" rows="3" placeholder="通知内容（可选，留空用默认提醒）">您的实习存在风险预警，请尽快处理（打卡缺勤/周报缺交/保险问题），避免影响综合评定。</textarea>
+    <div id="rkErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:4px"></div>
+    <button class="btn" style="margin-top:10px" onclick="_doNotifyRisk(this)">发送通知</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+}
+async function _doNotifyRisk(btn){
+  const m=btn.closest('.sheet-mask');
+  btn.disabled=true;
+  const msg=m.querySelector('#rkMsg').value.trim();
+  const r=await api('/risk/notify',{method:'POST',body:msg?{content:msg}:{}});
+  if(r.json&&r.json.success){ toast(r.json.message||'已发送通知'); m.remove(); }
+  else{ m.querySelector('#rkErr').textContent=(r.json&&r.json.message)||'发送失败'; btn.disabled=false; }
+}
+/* 单个学生预警详情 */
+function riskDetail(studentId){
+  const ws=(_cache.riskByStudent||{})[studentId]||[]; if(!ws.length) return;
+  const w0=ws[0];
+  const lv={high:tag('高危','tag-r'),medium:tag('提醒','tag-y'),low:tag('关注','tag-m')};
+  const TYPE_LABEL={checkin:'打卡缺勤',checkin_range:'打卡范围异常',weekly:'周报逾期',monthly:'月报逾期',insurance:'保险异常'};
+  const TYPE_ICON={checkin:'📍',checkin_range:'📍',weekly:'📝',monthly:'📋',insurance:'🛡️'};
+  const hasHigh=ws.some(w=>w.level==='high');
+  sheetRaw(`预警详情 · ${w0.student_name||''}`,
+    `<div class="kv"><span class="k">学生</span><span style="font-weight:600">${w0.student_name||'-'}${w0.student_eeid?' ('+w0.student_eeid+')':''}</span></div>
+     <div class="kv"><span class="k">实习单位</span><span>${w0.enterprise_name||'-'}</span></div>
+     <div style="margin-top:12px">
+       <div style="font-size:12px;font-weight:600;color:var(--t2);margin-bottom:8px">预警明细（${ws.length} 条）</div>
+       ${ws.map(w=>`<div style="display:flex;align-items:flex-start;gap:8px;padding:10px;border-radius:8px;margin-bottom:8px;background:${w.level==='high'?'#FFF1F2':w.level==='medium'?'#FFFBEB':'#F0F9FF'}">
+         <div style="flex:1">
+           <div style="font-size:12px;font-weight:600;color:${w.level==='high'?'var(--red)':w.level==='medium'?'#92400e':'#0369a1'};margin-bottom:2px">${TYPE_ICON[w.type]||'⚠️'} ${TYPE_LABEL[w.type]||'异常'}</div>
+           <div style="font-size:13px;color:var(--t1)">${w.message}</div>
+         </div>
+         ${lv[w.level]||''}
+       </div>`).join('')}
+     </div>
+     <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+       <button class="btn btn-o" onclick="closeSheet();notifyStu(${studentId},'${esc(w0.student_name||'')}')">📣 发通知提醒该学生</button>
+       <button class="btn btn-o" onclick="closeSheet();stuActions(${studentId},'${esc(w0.student_name||'')}')">👤 查看实习进度</button>
+     </div>`);
+}
+
+/* ---- 答辩评分（教师） ---- */
+async function defenseSheet(id){
+  const r=await api('/defense/groups/'+id); const d=r.json&&r.json.data; if(!d) return toast('加载失败');
+  const scoreQc=[60,65,70,75,80,85,90,95].map(s=>`<button type="button" style="padding:4px 8px;background:#EEF2F6;border:none;border-radius:8px;font-size:11px;color:#0F172A;cursor:pointer" onclick="document.getElementById('dsc_${'{sid}'}').value=${s}">${s}</button>`);
+  const rows=(d.members||[]).map(mem=>`
+    <div style="border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:12px">
+      <div class="kv" style="border:none;padding:0 0 6px"><span style="font-weight:600">${mem.student_name||''}</span><span style="color:var(--t3);font-size:12px">${mem.student_eeid||''}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">
+        ${[60,65,70,75,80,85,90,95].map(s=>`<button type="button" style="padding:4px 8px;background:#EEF2F6;border:none;border-radius:8px;font-size:11px" onclick="document.getElementById('dsc_${mem.student_id}').value=${s}">${s}</button>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="dsc_${mem.student_id}" type="number" min="0" max="100" placeholder="0-100" value="${mem.my_score!=null?mem.my_score:''}" style="width:70px;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:14px">
+        <input id="dcm_${mem.student_id}" placeholder="评语（可选）" value="${esc(mem.my_comment||'')}" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px">
+        <button class="btn btn-sm" style="margin:0;flex-shrink:0" onclick="dfSaveScore(${id},${mem.student_id})">保存</button>
+      </div>
+    </div>`).join('');
+  sheetRaw(`答辩评分 · ${d.name||''}（双盲评审，仅显示本人分数）`, rows||'<div class="empty">暂无答辩学生</div>');
+}
+async function dfSaveScore(id,sid){
+  const score=Number(document.getElementById('dsc_'+sid).value);
+  const comment=document.getElementById('dcm_'+sid).value;
+  if(!(score>=0&&score<=100)) return toast('评分需在 0~100');
+  const r=await api('/defense/groups/'+id+'/students/'+sid+'/score',{method:'PUT',body:{score,comment}});
+  toast(r.json&&r.json.success?'已保存 ✓':(r.json&&r.json.message)||'失败');
+}
+
+const _CP_PRESETS={
+  complaint:{
+    titles:['实习岗位与三方协议不符','企业导师未履行指导职责','被要求从事无关专业的工作','薪酬待遇低于协议约定标准','存在强制加班等违规行为','实习期间遭受不公正对待'],
+    contents:['实际从事的工作内容与三方协议约定严重不符，岗位安排与专业无关，影响正常实习质量。','企业导师长期缺席，对实习生不提供任何指导，导致无法正常完成实习任务。','单位要求从事体力劳动/无关销售/行政杂务等与专业无关工作，要求学校协调处理。','实习薪酬低于三方协议约定或劳动法最低工资标准，请学校介入协调。']
+  },
+  incident:{
+    titles:['实习地点临时变更未通知','岗位职责发生重大变化','企业联系人失联无法联系','发现安全生产隐患','实习材料/系统无法正常使用','企业提前终止合作'],
+    contents:['企业方告知实习地点变更至他处，未提前通知学校，亦未更新三方协议，请学校协助处理。','实习岗位工作职责发生重大变化，与协议不符，影响实习质量评定，需学校介入协商。','企业联系人长期无法联系（电话/微信均无应答），实习管理出现断档，请学校帮助对接。','实习场所存在安全隐患（消防/用电/化学品等），已向企业反映但未处理，请学校协助督促。']
+  },
+  safety:{
+    titles:['发生实习意外/工伤事故','遭遇职场骚扰或暴力','疑似违规用工行为','人身安全受到威胁','发生网络安全/信息泄露事件'],
+    contents:['实习期间发生意外事故，已进行初步处理，需要学校介入协调保险理赔及后续跟进。','在实习单位遭遇不当行为/言语暴力，情况已告知家人，请学校尽快介入保护学生权益。','企业存在超时用工、扣押证件、未签协议上岗等违规情况，希望学校协助维权。','人身安全受到威胁，情况紧急，请立即联系负责教师和学校相关部门。']
+  }
+};
+function complaintDetail(id){
+  const c=(_cache.complaints||{})[id]; if(!c) return;
+  const ST={0:'待处理',1:'处理中',2:'已处理',3:'已关闭'};
+  const STC={0:'color:var(--orange)',1:'color:var(--blue)',2:'color:var(--green)',3:'color:var(--t3)'};
+  const CAT={complaint:'🚨 投诉',incident:'⚠️ 异常情况上报',safety:'🆘 安全事件上报'};
+  sheetRaw(c.title||'上报详情',
+    `<div class="kv"><span class="k">状态</span><span style="${STC[c.status]||''};font-weight:600">${ST[c.status]||'-'}</span></div>
+     <div class="kv"><span class="k">类型</span><span>${CAT[c.category]||c.category||'-'}</span></div>
+     <div class="kv"><span class="k">上报时间</span><span>${fmtTime(c.create_time)}</span></div>
+     ${c.content?`<div style="margin:10px 0 4px;font-size:12px;color:var(--t3)">上报内容</div><div class="detail-body">${c.content}</div>`:''}
+     ${c.handle_remark?`<div style="background:#F0FDF4;border-left:3px solid var(--green);border-radius:8px;padding:10px 12px;margin-top:10px">
+       <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:4px">✅ 学校处理结果</div>
+       <div style="font-size:13px">${c.handle_remark}</div>
+       ${c.handle_time?`<div style="font-size:11px;color:var(--t3);margin-top:4px">${fmtTime(c.handle_time)}</div>`:''}
+     </div>`:''}
+     ${c.status===0||c.status===1?`<div style="background:#FFF7ED;border-radius:8px;padding:10px;margin-top:12px;font-size:12px;color:#92400e">⏳ 上报已受理，学校将在 48 小时内响应处理，请耐心等待</div>`:''}`);
+}
+function showComplaintForm(){
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>提交上报</h3>
+    <div style="background:#FFF7ED;border-radius:10px;padding:10px 12px;font-size:12px;color:#92400e;margin-bottom:12px;line-height:1.6">
+      📣 投诉、异常情况、安全事件均可在此上报，学校承诺保护举报人隐私，48小时内响应处理。
+    </div>
+    <label>上报类型</label>
+    <div class="seg" id="cpSeg">
+      <button class="on" onclick="_setCpCat(this,'complaint')">投诉</button>
+      <button onclick="_setCpCat(this,'incident')">异常事件</button>
+      <button onclick="_setCpCat(this,'safety')">安全问题</button>
+    </div>
+    <label>标题 *（选择常见情况快速填写）</label>
+    <div id="cpTitles" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
+    <input id="cp_title" placeholder="或手动填写简要描述（最多50字）">
+    <label>详细说明（可点击模板快速填写）</label>
+    <div id="cpContents" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
+    <textarea id="cp_content" rows="3" placeholder="请描述具体时间、地点、经过及诉求…"></textarea>
+    <label>联系电话</label>
+    <input id="cp_phone" placeholder="便于学校联系您处理" value="${esc(USER.phone||'')}">
+    <label>紧急程度</label>
+    <select id="cp_urg">
+      <option value="1">一般（正常排队处理）</option>
+      <option value="2">较紧急（请48小时内处理）</option>
+      <option value="3">紧急（请立即处理！）</option>
+    </select>
+    <div id="cpErr" style="color:var(--red);font-size:12px;margin-top:6px"></div>
+    <button class="btn" id="cpOk">提交上报</button>
+    <button class="btn btn-o" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+  _renderCpPresets(m,'complaint');
+  m.querySelector('#cpOk').onclick=async()=>{
+    const err=m.querySelector('#cpErr'); err.textContent='';
+    const title=m.querySelector('#cp_title').value.trim();
+    if(!title){err.textContent='请填写标题';return;}
+    try{
+      const r=await api('/complaints',{method:'POST',body:{
+        category:window._cpCat||'complaint', title,
+        content:m.querySelector('#cp_content').value.trim(),
+        contact_phone:m.querySelector('#cp_phone').value.trim(),
+        urgency:Number(m.querySelector('#cp_urg').value)||1
+      }});
+      if(r.json&&r.json.success){m.remove();toast(r.json.message||'已提交，学校将尽快处理');render('complaint');}
+      else err.textContent=(r.json&&r.json.message)||'提交失败';
+    }catch(e){err.textContent=e.message;}
+  };
+  window._cpCat='complaint';
+}
+function _setCpCat(btn,cat){
+  window._cpCat=cat;
+  btn.closest('#cpSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===btn));
+  _renderCpPresets(btn.closest('.sheet-mask'),cat);
+}
+function _renderCpPresets(m,cat){
+  const p=_CP_PRESETS[cat]||{titles:[],contents:[]};
+  m.querySelector('#cpTitles').innerHTML=p.titles.map(t=>`<button type="button" style="padding:5px 8px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;font-size:11px;color:#92400e" onclick="document.getElementById('cp_title').value=this.textContent">${t}</button>`).join('');
+  m.querySelector('#cpContents').innerHTML=p.contents.map(t=>`<button type="button" style="padding:5px 8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;font-size:11px;color:#334155;white-space:normal;text-align:left" onclick="appendText('cp_content',this.textContent)">${t}</button>`).join('');
+}
+
+async function asgChangeForm(type, assignmentId){
+  let enterpriseOpts='<option value="">— 不填（或换至自联企业）—</option>';
+  try{
+    const ents=await get('/enterprises?page_size=100');
+    if(ents&&ents.list) enterpriseOpts+=(ents.list||[]).map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+  }catch{}
+  const presets=type==='transfer'
+    ?['原岗位与专业方向不符，影响技能培养','原企业经营状况变化，实习指导质量下降','家庭原因，申请就近更换实习单位']
+    :['因个人原因（考研备考）无法继续实习','因家庭突发情况，需终止实习','已确定就业，获录用通知书'];
+  const m=document.createElement('div'); m.className='sheet-mask';
+  m.innerHTML=`<div class="sheet"><h3>${type==='transfer'?'申请换岗':'申请终止实习'}</h3>
+    ${type==='transfer'?`<label>拟更换的实习单位（可选）</label><select id="_acEnt">${enterpriseOpts}</select>`:''}
+    <label>申请原因 *</label>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+      ${presets.map(p=>`<button type="button" style="padding:5px 8px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;font-size:11px;color:#92400e" onclick="document.getElementById('_acRs').value=this.textContent">${p}</button>`).join('')}
+    </div>
+    <textarea id="_acRs" rows="3" placeholder="请详细说明${type==='transfer'?'换岗':'终止实习'}原因"></textarea>
+    <div id="_acErr" style="color:var(--red);font-size:12px;min-height:14px;margin-top:4px"></div>
+    <button class="btn" style="margin-top:10px" onclick="submitAsgChange(${assignmentId},'${type}',this)">提交申请</button>
+    <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button></div>`;
+  document.getElementById('phone').appendChild(m);
+}
+async function submitAsgChange(assignmentId, changeType, btn){
+  const m=btn.closest('.sheet-mask');
+  const reason=m.querySelector('#_acRs').value.trim();
+  const err=m.querySelector('#_acErr'); err.textContent='';
+  if(!reason){err.textContent='请填写申请原因';return;}
+  const body={assignment_id:assignmentId,change_type:changeType,reason};
+  const entEl=m.querySelector('#_acEnt');
+  if(entEl&&entEl.value) body.new_enterprise_id=Number(entEl.value);
+  btn.disabled=true;
+  try{
+    const r=await api('/assignment-changes',{method:'POST',body});
+    toast(r.json&&r.json.success?'申请已提交 ✓':(r.json&&r.json.message)||'失败');
+    if(r.json&&r.json.success){m.remove();render('asgchange');}
+    else{err.textContent=(r.json&&r.json.message)||'提交失败';btn.disabled=false;}
+  }catch(e){err.textContent=e.message;btn.disabled=false;}
+}
+
+function asgChangeDetail(id){
+  const c=(_cache.asgchanges||{})[id]; if(!c) return;
+  const ST={0:'待教师审批',1:'待管理员审批',2:'已执行',3:'已驳回'};
+  const ST_COLOR={0:'color:var(--orange)',1:'color:#3b82f6',2:'color:var(--green)',3:'color:var(--red)'};
+  const TP={transfer:'换岗',terminate:'终止实习'};
+  let actions='';
+  if(USER.role===3 && c.status===0){
+    actions=`<div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn" style="flex:1" onclick="asgChangeTeacherReview(${id},true)">✓ 通过申请</button>
+      <button class="btn btn-r" style="flex:1" onclick="asgChangeTeacherReview(${id},false)">✗ 驳回申请</button>
+    </div>`;
+  } else if((USER.role===1||USER.role===2) && c.status===1){
+    actions=`<div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn" style="flex:1" onclick="asgChangeAdminReview(${id},true)">✓ 批准执行</button>
+      <button class="btn btn-r" style="flex:1" onclick="asgChangeAdminReview(${id},false)">✗ 驳回申请</button>
+    </div>`;
+  }
+  sheetRaw(TP[c.change_type]||'变更申请',
+    `<div class="kv"><span class="k">申请类型</span><span style="font-weight:600">${TP[c.change_type]||c.change_type}</span></div>
+     <div class="kv"><span class="k">当前状态</span><span style="${ST_COLOR[c.status]||''};font-weight:600">${ST[c.status]||c.status}</span></div>
+     ${c.student_name?`<div class="kv"><span class="k">申请学生</span><span>${c.student_name}</span></div>`:''}
+     <div class="kv"><span class="k">原实习单位</span><span>${c.old_enterprise_name||'-'}</span></div>
+     ${c.new_enterprise_name?`<div class="kv"><span class="k">拟换单位</span><span>${c.new_enterprise_name}</span></div>`:''}
+     <div class="kv"><span class="k">申请时间</span><span>${fmtDate(c.create_time)}</span></div>
+     ${c.reason?`<div style="margin:10px 0 4px;font-size:12px;color:var(--t3)">申请原因</div><div class="detail-body">${c.reason}</div>`:''}
+     ${c.teacher_opinion?`<div style="margin:10px 0 4px;font-size:12px;color:var(--t3)">教师审批意见</div><div class="detail-body">${c.teacher_opinion}</div>`:''}
+     ${c.admin_opinion?`<div style="margin:10px 0 4px;font-size:12px;color:var(--t3)">管理员审批意见</div><div class="detail-body">${c.admin_opinion}</div>`:''}
+     ${c.status===3?`<div style="background:#FFF1F2;border-left:3px solid var(--red);padding:10px 12px;border-radius:6px;margin-top:10px;font-size:13px">❌ 申请已驳回，如有疑问请联系指导教师或管理员重新沟通</div>`:''}
+     ${c.status===2?`<div style="background:#F0FDF4;border-left:3px solid var(--green);padding:10px 12px;border-radius:6px;margin-top:10px;font-size:13px">✅ 已执行：${c.change_type==='terminate'?'实习已终止，请完善档案材料':'已换至新实习单位，请留意新单位打卡范围'}</div>`:''}
+     ${actions}`);
+}
+function asgChangeTeacherReview(id, agree){
+  closeSheet();
+  if(agree){
+    const m=document.createElement('div'); m.className='sheet-mask';
+    m.innerHTML=`<div class="sheet">
+      <h3>通过换岗/终止申请</h3>
+      <div style="background:#F0FDF4;border-left:3px solid var(--green);padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px">通过后将提交管理员进行终审执行</div>
+      <label>审批意见（选填）</label>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+        ${['情况属实，同意申请','已与企业导师核实，情况确认，同意转交管理员审批','学生申请原因合理，予以支持'].map(t=>`<button type="button" style="padding:5px 8px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;font-size:11px;color:#065f46" onclick="appendText('_acTOp',this.textContent)">${t}</button>`).join('')}
+      </div>
+      <textarea id="_acTOp" rows="2" placeholder="填写意见或直接跳过"></textarea>
+      <button class="btn" style="margin-top:10px" onclick="_submitAcTeacher(${id},true,this)">确认通过</button>
+      <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button>
+    </div>`;
+    document.getElementById('phone').appendChild(m);
+    m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  } else {
+    sheetReject('驳回换岗/终止申请',
+      ['换岗原因不充分，请与现企业导师先行沟通协调',
+       '终止实习理由不足，请提供书面证明材料后重新申请',
+       '当前实习阶段任务未完成，暂不批准换岗',
+       '学业情况不符合换岗条件，请完成当前阶段任务后再申请',
+       '新单位资质未经学校认定，暂不批准换岗申请'],
+      async reason=>{
+        const r=await api('/assignment-changes/'+id+'/teacher-review',{method:'PUT',body:{approve:false,opinion:reason}});
+        if(!(r.json&&r.json.success)) throw new Error((r.json&&r.json.message)||'操作失败');
+        toast('已驳回申请'); render('asgchange');
+      });
+  }
+}
+async function _submitAcTeacher(id, approve, btn){
+  btn.disabled=true;
+  try{
+    const opinion=(document.getElementById('_acTOp')||{}).value||'';
+    const r=await api('/assignment-changes/'+id+'/teacher-review',{method:'PUT',body:{approve,opinion:opinion.trim()||undefined}});
+    toast(r.json&&r.json.success?'审批成功 ✓':(r.json&&r.json.message)||'操作失败');
+    if(r.json&&r.json.success){btn.closest('.sheet-mask').remove(); render('asgchange');}
+    else btn.disabled=false;
+  }catch(e){toast(e.message||'操作失败','error');btn.disabled=false;}
+}
+function asgChangeAdminReview(id, agree){
+  closeSheet();
+  const c=(_cache.asgchanges||{})[id];
+  const typeTxt=c&&c.change_type==='terminate'?'终止实习':'换岗';
+  if(agree){
+    const m=document.createElement('div'); m.className='sheet-mask';
+    m.innerHTML=`<div class="sheet">
+      <h3>批准${typeTxt}申请</h3>
+      <div style="background:#FFF7ED;border-left:3px solid var(--orange);padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px">⚠️ 批准后将立即执行${typeTxt}，${c&&c.change_type==='terminate'?'实习分配将终止':'实习单位将立即更新'}，操作不可撤销</div>
+      <label>审批意见（选填）</label>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+        ${['材料核实完毕，同意执行','经审核，情况属实，批准申请','已与相关各方确认，同意变更'].map(t=>`<button type="button" style="padding:5px 8px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;font-size:11px;color:#065f46" onclick="appendText('_acAOp',this.textContent)">${t}</button>`).join('')}
+      </div>
+      <textarea id="_acAOp" rows="2" placeholder="填写意见或直接跳过"></textarea>
+      <button class="btn" style="margin-top:10px" onclick="_submitAcAdmin(${id},true,this)">确认批准并执行</button>
+      <button class="btn btn-o" style="margin-top:8px" onclick="this.closest('.sheet-mask').remove()">取消</button>
+    </div>`;
+    document.getElementById('phone').appendChild(m);
+    m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  } else {
+    sheetReject('驳回换岗/终止申请',
+      ['材料不完整，请补充相关证明文件后重新申请',
+       '不符合学校换岗政策要求，建议维持原实习安排',
+       '新实习单位未在合作企业库中，暂不批准换岗',
+       '终止申请理由不充分，请学生补充书面说明',
+       '审批流程存在异常，需进一步核查后处理'],
+      async reason=>{
+        const r=await api('/assignment-changes/'+id+'/admin-review',{method:'PUT',body:{approve:false,opinion:reason}});
+        if(!(r.json&&r.json.success)) throw new Error((r.json&&r.json.message)||'操作失败');
+        toast('已驳回申请'); render('asgchange');
+      });
+  }
+}
+async function _submitAcAdmin(id, approve, btn){
+  btn.disabled=true;
+  try{
+    const opinion=(document.getElementById('_acAOp')||{}).value||'';
+    const r=await api('/assignment-changes/'+id+'/admin-review',{method:'PUT',body:{approve,opinion:opinion.trim()||undefined}});
+    toast(r.json&&r.json.success?'操作成功 ✓':(r.json&&r.json.message)||'操作失败');
+    if(r.json&&r.json.success){btn.closest('.sheet-mask').remove(); render('asgchange');}
+    else btn.disabled=false;
+  }catch(e){toast(e.message||'操作失败','error');btn.disabled=false;}
+}
+
+tryRestoreSession();
+document.getElementById('p').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+</script>
+</body>
+</html>

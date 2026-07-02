@@ -1,0 +1,21 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <view wx:else class="card">
+    <view class="sec-t" style="margin-top:0">{{isTeacher ? '待会签 / 跟踪协议' : '我的实习协议'}}</view>
+    <block wx:if="{{list.length}}">
+      <view class="row" wx:for="{{list}}" wx:key="id">
+        <view bindtap="detail" data-item="{{item}}" style="flex:1">
+          <view class="m">{{item.title}}</view>
+          <view class="d">{{item.enterprise_name || ''}}{{item.student_name && isTeacher ? (' · ' + item.student_name) : ''}}</view>
+        </view>
+        <view class="right">
+          <text class="tag {{item.statusClass}}">{{item.statusText}}</text>
+          <button wx:if="{{item.canSign}}" class="btn btn-sm" style="margin:6rpx 0 0" data-id="{{item.id}}" bindtap="sign">签署</button>
+          <button wx:if="{{item.canCosign}}" class="btn btn-sm" style="margin:6rpx 0 0" data-id="{{item.id}}" bindtap="cosign">会签</button>
+        </view>
+      </view>
+    </block>
+    <view wx:else class="empty"><text class="ei">📑</text>暂无实习协议</view>
+  </view>
+</view>

@@ -1,0 +1,14 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <view wx:elif="{{info}}" class="card">
+    <view class="sec-t" style="margin-top:0">答辩安排</view>
+    <view class="kv"><text class="k">答辩组</text><text>{{info.name || info.title || '-'}}</text></view>
+    <view class="kv"><text class="k">答辩时间</text><text>{{info.timeText || '-'}}</text></view>
+    <view class="kv"><text class="k">地点</text><text>{{info.location || '-'}}</text></view>
+    <view class="kv"><text class="k">序号</text><text>{{info.seq != null ? info.seq : '-'}}</text></view>
+    <view class="kv"><text class="k">状态</text><text>{{info.stText}}</text></view>
+    <view class="kv"><text class="k">答辩成绩</text><text>{{info.scoreText}}</text></view>
+  </view>
+  <view wx:else class="card empty"><text class="ei">🎤</text>暂无答辩安排，请留意通知</view>
+</view>

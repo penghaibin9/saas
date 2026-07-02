@@ -1,0 +1,16 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <view wx:else class="card">
+    <block wx:if="{{list.length}}">
+      <view class="row" wx:for="{{list}}" wx:key="id">
+        <view>
+          <view class="m">{{item.insurance_type || '实习保险'}}</view>
+          <view class="d">{{item.company}}{{item.policy_no ? (' · 单号:' + item.policy_no) : ''}}</view>
+          <view class="d">{{item.rangeText}}</view>
+        </view>
+      </view>
+    </block>
+    <view wx:else class="empty"><text class="ei">🛡️</text>暂无保险记录</view>
+  </view>
+</view>

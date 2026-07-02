@@ -1,0 +1,25 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <block wx:else>
+    <view class="grid3">
+      <view class="metric"><view class="v" style="color:#dc2626">{{summary.high || 0}}</view><view class="l">高危</view></view>
+      <view class="metric"><view class="v" style="color:#d97706">{{summary.medium || 0}}</view><view class="l">提醒</view></view>
+      <view class="metric"><view class="v">{{summary.students || 0}}</view><view class="l">涉及学生</view></view>
+    </view>
+    <button class="btn" style="margin:16rpx 0" bindtap="notifyAll">📣 一键提醒全部学生</button>
+    <view class="card">
+      <view class="sec-t" style="margin-top:0">预警明细</view>
+      <block wx:if="{{list.length}}">
+        <view class="row" wx:for="{{list}}" wx:key="index">
+          <view>
+            <view class="m">{{item.student_name}} <text class="d">{{item.student_eeid || ''}}</text></view>
+            <view class="d">{{item.message}}{{item.enterprise_name ? (' · ' + item.enterprise_name) : ''}}</view>
+          </view>
+          <text class="tag {{item.levelClass}}">{{item.levelText}}</text>
+        </view>
+      </block>
+      <view wx:else class="empty"><text class="ei">✅</text>暂无风险预警，一切正常</view>
+    </view>
+  </block>
+</view>

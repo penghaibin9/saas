@@ -1,0 +1,41 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <block wx:else>
+    <view wx:if="{{isTeacher && students.length}}" class="card">
+      <view class="sec-t" style="margin-top:0">选择学生</view>
+      <picker mode="selector" range="{{students}}" range-key="real_name" value="{{stuIdx}}" bindchange="onStu">
+        <view class="input">{{students[stuIdx] ? students[stuIdx].real_name : '请选择'}}</view>
+      </picker>
+    </view>
+    <view wx:if="{{config}}" class="card">
+      <view class="sec-t" style="margin-top:0">考评权重</view>
+      <view class="kv"><text class="k">打卡</text><text>{{config.checkin_weight || 0}}%</text></view>
+      <view class="kv"><text class="k">周报</text><text>{{config.weekly_weight || 0}}%</text></view>
+      <view class="kv"><text class="k">月报</text><text>{{config.monthly_weight || 0}}%</text></view>
+      <view class="kv"><text class="k">企业评价</text><text>{{config.enterprise_weight || 0}}%</text></view>
+      <view class="kv"><text class="k">学校评价</text><text>{{config.school_weight || 0}}%</text></view>
+    </view>
+    <view class="card">
+      <view class="sec-t" style="margin-top:0">{{isTeacher ? '学生实习考评' : '我的实习考评'}}</view>
+      <block wx:if="{{score && score.total_score != null}}">
+        <view class="metric" style="margin-bottom:16rpx">
+          <view class="v">{{score.total_score}}<small> 分</small></view>
+          <view class="l">{{published ? '已发布' : '未发布'}}</view>
+        </view>
+        <view class="kv"><text class="k">打卡得分</text><text>{{score.checkin_score != null ? score.checkin_score : '-'}}</text></view>
+        <view class="kv"><text class="k">过程得分</text><text>{{score.log_score != null ? score.log_score : '-'}}</text></view>
+        <view class="kv"><text class="k">企业得分</text><text>{{score.enterprise_score != null ? score.enterprise_score : '待企业评价'}}</text></view>
+        <view class="kv"><text class="k">校内得分</text><text>{{score.school_score != null ? score.school_score : '待教师录入'}}</text></view>
+        <view wx:if="{{score.incomplete === 1}}" class="kv" style="color:#e6a23c">⚠️ 存在缺失分项，当前为按已到位分项折算的临时分</view>
+      </block>
+      <view wx:else class="empty"><text class="ei">📊</text>{{isTeacher ? '暂未核算成绩' : '成绩尚未公布'}}</view>
+      <block wx:if="{{isTeacher}}">
+        <view class="sec-t">校内评分（教师录入，0-100）</view>
+        <input class="input" type="digit" placeholder="填写校内评分后点核算" value="{{schoolScoreInput}}" bindinput="onSchoolScore" />
+        <button class="btn btn-o" loading="{{computing}}" bindtap="compute">核算该生成绩</button>
+        <button class="btn" loading="{{publishing}}" bindtap="publish">发布成绩</button>
+      </block>
+    </view>
+  </block>
+</view>

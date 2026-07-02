@@ -1,0 +1,29 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Source-control and local tooling
+.git
+.gitignore
+.vscode
+.idea
+
+# Dependencies and transient output
+node_modules
+npm-debug.log*
+*.log
+logs
+coverage
+.nyc_output
+
+# Runtime data must be mounted as volumes, never baked into an image
+uploads
+backup
+backups
+tmp
+temp
+
+# Local operating-system files
+.DS_Store
+Thumbs.db

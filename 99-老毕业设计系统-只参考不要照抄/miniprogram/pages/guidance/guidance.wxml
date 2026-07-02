@@ -1,0 +1,49 @@
+<view class="page">
+  <button class="btn" bindtap="openForm">＋ 新增指导记录</button>
+
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <view wx:else class="card" style="margin-top:22rpx">
+    <view class="sec-t" style="margin-top:0">指导记录</view>
+    <block wx:if="{{list.length}}">
+      <view class="row" wx:for="{{list}}" wx:key="id" data-item="{{item}}" bindtap="openDetail">
+        <view>
+          <view class="m">{{item.title || '指导记录'}}</view>
+          <view class="d">{{item.student_name}} · {{item.dateText}}</view>
+        </view>
+        <text style="color:#9AA7B8">›</text>
+      </view>
+    </block>
+    <view wx:else class="empty"><text class="ei">📖</text>暂无指导记录</view>
+  </view>
+</view>
+
+<view wx:if="{{showForm}}" class="mask" bindtap="closeForm">
+  <view class="sheet" catchtap="noop">
+    <view class="sheet-title">新增指导记录</view>
+    <text class="field-label">学生</text>
+    <picker mode="selector" range="{{students}}" range-key="label" value="{{stuIndex}}" bindchange="onStu">
+      <view class="input">{{students[stuIndex].label}}</view>
+    </picker>
+    <text class="field-label">指导日期</text>
+    <picker mode="date" value="{{fDate}}" bindchange="onDate"><view class="input">{{fDate}}</view></picker>
+    <text class="field-label">标题</text>
+    <input class="input" placeholder="如：开题指导" value="{{fTitle}}" bindinput="onTitle" />
+    <text class="field-label">内容</text>
+    <textarea class="textarea" placeholder="指导内容、建议…" value="{{fContent}}" bindinput="onContent" auto-height />
+    <view class="fld-err">{{fErr}}</view>
+    <button class="btn" loading="{{saving}}" bindtap="submitForm">保存</button>
+    <button class="btn btn-o" bindtap="closeForm">取消</button>
+  </view>
+</view>
+
+<view wx:if="{{showDetail}}" class="mask" bindtap="closeDetail">
+  <view class="sheet" catchtap="noop">
+    <view class="sheet-title">{{detail.title || '指导记录'}}</view>
+    <view class="kv"><text class="k">学生</text><text>{{detail.student_name || '-'}}</text></view>
+    <view class="kv"><text class="k">日期</text><text>{{detail.dateText}}</text></view>
+    <view class="detail-body">{{detail.content || '（无内容）'}}</view>
+    <button class="btn btn-r" bindtap="removeItem">删除</button>
+    <button class="btn btn-o" bindtap="closeDetail">关闭</button>
+  </view>
+</view>

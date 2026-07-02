@@ -1,0 +1,48 @@
+<view class="login">
+  <view class="login-bg"></view>
+  <view class="login-body">
+    <view class="brand">
+      <view class="logo-wrap">
+        <view class="logo">实</view>
+      </view>
+      <view class="title">实习管理平台</view>
+      <view class="sub">{{schoolName}} · {{graduationYear}}届岗位实习</view>
+      <view class="tags">
+        <text class="tag-pill">学生端</text>
+        <text class="tag-pill">教师端</text>
+        <text class="tag-pill">全流程监管</text>
+      </view>
+    </view>
+
+    <view class="form-card">
+      <view class="form-title">账号登录</view>
+      <view class="err">{{err}}</view>
+      <view class="field">
+        <text class="field-ic">👤</text>
+        <input class="ipt" placeholder="用户名 demo_stu1" placeholder-class="ph" value="{{username}}" bindinput="onUser" />
+      </view>
+      <view class="field">
+        <text class="field-ic">🔒</text>
+        <input class="ipt" password placeholder="密码 demo1234" placeholder-class="ph" value="{{password}}" bindinput="onPwd" />
+      </view>
+      <checkbox-group bindchange="onLegalChange">
+        <label class="legal-row">
+          <checkbox value="accepted" checked="{{legalAccepted}}" color="#1677FF" />
+          <text>我已阅读并同意</text>
+        </label>
+      </checkbox-group>
+      <view class="legal-links">
+        <text data-tab="privacy" catchtap="openLegal">《隐私政策》</text>
+        <text data-tab="terms" catchtap="openLegal">《用户协议》</text>
+      </view>
+      <button class="submit" loading="{{loading}}" bindtap="doLogin">登 录</button>
+      <view class="demo-box" wx:if="{{enableDemoAccounts}}">
+        <view class="demo-t">演示账号（点击可快速填入）</view>
+        <view class="demo-row">
+          <view class="demo-chip" data-u="demo_stu1" bindtap="fillDemo">学生 demo_stu1</view>
+          <view class="demo-chip" data-u="demo_teacher" bindtap="fillDemo">教师 demo_teacher</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

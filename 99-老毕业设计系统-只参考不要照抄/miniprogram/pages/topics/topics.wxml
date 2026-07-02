@@ -1,0 +1,29 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <view wx:elif="{{err}}" class="retry"><view class="ei">⚠️</view>{{err}}<button class="btn btn-o" style="width:auto;display:inline-block;margin-top:24rpx" bindtap="load">重新加载</button></view>
+  <view wx:else class="card">
+    <block wx:if="{{list.length}}">
+      <view class="row" wx:for="{{list}}" wx:key="id" data-item="{{item}}" bindtap="openDetail">
+        <view>
+          <view class="m">{{item.title}}</view>
+          <view class="d">{{item.teacher_name ? ('指导:' + item.teacher_name) : ''}}{{item.type ? (' · ' + item.type) : ''}}</view>
+        </view>
+        <view class="right"><text class="tag {{item.statusClass}}">{{item.statusText}}</text> <text style="color:#9AA7B8"> ›</text></view>
+      </view>
+    </block>
+    <view wx:else class="empty"><text class="ei">📌</text>暂无选题</view>
+  </view>
+</view>
+
+<view wx:if="{{showDetail}}" class="mask" bindtap="closeDetail">
+  <view class="sheet" catchtap="noop">
+    <view class="sheet-title">选题详情</view>
+    <view class="kv"><text class="k">题目</text><text>{{detail.title}}</text></view>
+    <view class="kv"><text class="k">状态</text><text>{{detail.statusText || '-'}}</text></view>
+    <view wx:if="{{detail.teacher_name}}" class="kv"><text class="k">指导教师</text><text>{{detail.teacher_name}}</text></view>
+    <view wx:if="{{detail.type}}" class="kv"><text class="k">类型</text><text>{{detail.type}}</text></view>
+    <view wx:if="{{detail.source}}" class="kv"><text class="k">来源</text><text>{{detail.source}}</text></view>
+    <view wx:if="{{detail.description}}" class="detail-body">{{detail.description}}</view>
+    <button class="btn btn-o" bindtap="closeDetail">关闭</button>
+  </view>
+</view>

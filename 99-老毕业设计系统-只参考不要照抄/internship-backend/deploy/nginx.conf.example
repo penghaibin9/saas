@@ -1,0 +1,70 @@
+# 毕业设计 & 岗位实习管理平台 — Nginx 反向代理示例
+# 部署路径示例：/opt/internship-backend
+# 将本文件复制到学校服务器后按域名与证书路径修改
+
+upstream internship_api {
+    server 127.0.0.1:3000;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name internship.school.edu.cn;
+
+    ssl_certificate     /etc/nginx/ssl/internship.fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/internship.privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 20m;
+
+    # 静态前端（PC / H5 / help / screen）
+    location / {
+        root /opt/internship-backend/frontend;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /m/ {
+        alias /opt/internship-backend/frontend/m/;
+        try_files $uri $uri/ /m/index.html;
+    }
+
+    location /help.html {
+        alias /opt/internship-backend/frontend/help.html;
+    }
+
+    # 将 web/演示UI.html 随前端文件部署到 frontend/ 后启用此入口。
+    location = /demo {
+        alias /opt/internship-backend/frontend/演示UI.html;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location /uploads/ {
+        proxy_pass http://internship_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "private, no-store" always;
+    }
+
+    location /api/ {
+        proxy_pass http://internship_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 迎检数据大屏（若单独部署在仓库根目录）
+    location /screen {
+        alias /opt/internship-backend/../数据大屏.html;
+    }
+}
+
+server {
+    listen 80;
+    server_name internship.school.edu.cn;
+    return 301 https://$host$request_uri;
+}

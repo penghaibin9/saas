@@ -1,0 +1,28 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading">加载中…</view>
+  <block wx:else>
+    <view class="card">
+      <view class="title">{{type === 'transfer' ? '申请换岗' : '申请终止实习'}}</view>
+      <view wx:if="{{type === 'transfer' && enterprises.length}}" class="field">
+        <text class="label">新实习单位</text>
+        <picker mode="selector" range="{{enterprises}}" range-key="name" value="{{entIndex}}" bindchange="onEntPick">
+          <view class="picker">{{enterprises[entIndex].name}}</view>
+        </picker>
+      </view>
+      <view class="field">
+        <text class="label">申请原因</text>
+        <textarea placeholder="请说明换岗或终止原因" value="{{reason}}" bindinput="onReason" maxlength="500"/>
+      </view>
+      <button class="btn" bindtap="submit">提交申请</button>
+    </view>
+    <view class="sec">历史申请</view>
+    <view wx:if="{{!list.length}}" class="empty">暂无记录</view>
+    <view wx:for="{{list}}" wx:key="id" class="card item">
+      <view class="row"><text>{{item.change_type === 'transfer' ? '换岗' : '终止'}}</text>
+        <text class="st">{{item.status === 0 ? '待教师审批' : item.status === 1 ? '待院校终审' : item.status === 2 ? '已通过' : '已驳回'}}</text>
+      </view>
+      <view class="sub">{{item.old_enterprise_name || '-'}} → {{item.new_enterprise_name || '（终止）'}}</view>
+      <view class="sub">{{item.reason}}</view>
+    </view>
+  </block>
+</view>
