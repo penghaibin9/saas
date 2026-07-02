@@ -1,123 +1,103 @@
-# P5 菜单冻结（前端）
+# P5 菜单冻结（前端）— 正式版
 
-> 本文档冻结菜单层级，不涉及任何菜单运行代码修改。
+> 本文档冻结菜单结构与授权策略，**不修改** `frontend/src` 菜单实现。
+> **上位文档**：`docs/commercialization/03-模块开关权限菜单控制模型.md`
 
-## 1) PC 管理端菜单（规划）
+## 1) 菜单域划分（冻结）
 
-```text
-工作台
-毕业设计
-  - 课题管理
-  - 毕设材料批阅
-  - 成绩汇总
-  - 材料归档
-岗位实习
-  - 实习计划
-  - 企业与岗位
-  - 实习申请
-  - 周报批阅
-  - 风险监管
-  - 成绩归档
-数据服务
-  - 统计分析
-  - 导出中心
-  - 审计记录
-系统管理
-  - 角色权限
-  - 学校配置
-```
+| 菜单域 | 路由前缀 | 用户 | Layout | 当前状态 |
+| --- | --- | --- | --- | --- |
+| 学校管理端 | `/`、`/admin/*` | 教师/管理员 | BasePortalLayout | `/` 下 Dashboard 已 active |
+| 学生门户 | `/student/*` | 学生 | StudentPortalLayout | planned |
+| 厂商后台 | `/platform/*` | 平台管理员 | PlatformLayout | planned（P6-2 首批） |
+| 企业端 | `/enterprise/*` | 企业导师 | EnterprisePortalLayout | **postponed** |
 
-### P6-1 启用规划（仅文档）
+**铁律**：`/platform` 菜单与 `/admin` 菜单**不得混排**；厂商后台不出现学生业务明细入口。
 
-```text
-岗位实习
-  - 周报批阅
-```
+## 2) 授权消费模型（冻结）
 
-## 2) 学生 PC 门户菜单（规划）
+菜单可见性由两层上下文联合决定：
 
-```text
-首页
-我的待办
-我的消息
-我的材料
-毕业设计
-  - 我的毕业设计
-  - 学生选题
-  - 材料提交
-岗位实习
-  - 我的实习
-  - 实习打卡
-  - 周报提交
-  - 实习申请
-毕业就业
-个人中心
-```
+| 上下文 | 职责 | 启用阶段 |
+| --- | --- | --- |
+| `licenseContext` | 模块是否购买、是否到期、套餐档位 | P6-2 mock |
+| `permissionContext` | 角色/功能点权限 | P6-2 占位，P8 实装 |
 
-### P6-1 启用规划（仅文档）
+### 策略表（对齐商业化总控）
 
-```text
-岗位实习
-  - 我的实习
-  - 周报提交
-```
+| 场景 | 菜单行为 | 页面行为 |
+| --- | --- | --- |
+| 未购买模块 | **隐藏**（不灰显） | 路由守卫 → noLicense |
+| 已购买未到期 | 正常显示 | 正常读写 |
+| 已购买已到期 | **仍显示** | **只读**，写操作禁用 |
+| 高级功能未购 | 隐藏或升级提示 | 按 `authEffect` 字段 |
 
-## 3) 企业端菜单（暂缓）
+## 3) 学校管理端菜单（BasePortalLayout）
 
-```text
-企业工作台
-学生实习
-周报评价
-企业导师评价
-消息通知
-```
+### 3.1 当前 active
 
-- 状态：`postponed`
-- 原因：企业端放在 P6-3 之后评估接入
+| menuKey | label | routePath | moduleCode | licenseRequired | status |
+| --- | --- | --- | --- | --- | --- |
+| `dashboard` | 工作台 | `/` | DASHBOARD | yes | **active** |
 
-## 4) SaaS 平台后台菜单（规划）
+> Dashboard 子指标/风险/待办按 `moduleCode` 受 `licenseContext` 过滤（P6-2 起）。
 
-```text
-平台首页
-学校租户
-  - 学校租户管理
-  - 租户详情
-商业配置
-  - 套餐管理
-  - 模块商品管理
-  - 模块授权中心
-权限模板
-  - 权限模板管理
-  - 菜单模板管理
-  - 角色模板管理
-订阅与订单
-  - 试用与到期管理
-  - 订单与合同管理
-平台运维
-  - 操作审计日志
-  - 系统参数配置
-```
+### 3.2 planned — P6-1（INTERNSHIP 第一主攻）
 
-## 5) 模块未授权菜单策略（推荐默认）
+| menuKey | label | routePath | moduleCode | permissionKey | phase | authEffect |
+| --- | --- | --- | --- | --- | --- | --- |
+| `internship` | 岗位实习 | `/student/internship` | INTERNSHIP | `student:internship:view` | P6-1 | 未购：隐藏 |
+| `internship-reports` | 周报提交 | `/student/internship/reports` | INTERNSHIP | `student:internship:report:submit` | P6-1 | 到期：只读 |
+| `internship-report-review` | 周报批阅 | `/admin/internship/report-review` | INTERNSHIP | `admin:internship:report:review` | P6-1 | 到期：只读 |
 
-| 场景 | 菜单表现 | 页面表现 | 按钮表现 |
+> 学生端菜单挂 StudentPortalLayout；教师批阅挂学校管理端菜单。
+
+### 3.3 planned — P6-3（GD 第二主攻）
+
+| menuKey | label | routePath | moduleCode | phase | authEffect |
+| --- | --- | --- | --- | --- | --- |
+| `graduation` | 毕业设计 | `/student/graduation` | GD | P6-3 | 未购：隐藏 |
+| `graduation-submissions` | 材料提交 | `/student/graduation/submissions` | GD | P6-3 | 到期：只读 |
+| `graduation-review` | 材料批阅 | `/admin/graduation/review` | GD | P6-3 | 到期：只读 |
+
+### 3.4 postponed
+
+| menuKey | label | routePath | moduleCode | status |
+| --- | --- | --- | --- | --- |
+| `enterprise` | 企业导师 | `/enterprise` | enterprise | **postponed** |
+| `graduation-grades` | 成绩汇总 | `/admin/graduation/grades` | GD | postponed |
+
+## 4) 厂商后台菜单（PlatformLayout）— `/platform`
+
+### 4.1 P6-2 首批（2 项）
+
+| menuKey | label | routePath | moduleCode | phase |
+| --- | --- | --- | --- | --- |
+| `platform-tenants` | 学校租户 | `/platform/tenants` | PLATFORM | **P6-2** |
+| `platform-licenses` | 模块授权 | `/platform/tenants/:id/licenses` | PLATFORM | **P6-2** |
+
+### 4.2 postponed（P2 后台页）
+
+| menuKey | label | routePath | phase |
 | --- | --- | --- | --- |
-| 学校未购买模块 | 默认隐藏菜单 | 直接不可访问 | 不显示 |
-| 学校试用模块 | 显示试用角标 | 显示剩余天数 | 正常可用 |
-| 模块到期 | 显示只读角标 | 页面只读 | 写操作禁用 |
-| 套餐不包含高级功能 | 菜单隐藏或功能置灰 | 显示升级提示 | 按钮禁用 |
-| 超人数额度 | 菜单保留 | 新增动作拦截 | 新增按钮禁用 |
+| `platform-home` | 运营首页 | `/platform` | P6-2+ |
+| `platform-packages` | 套餐管理 | `/platform/packages` | postponed |
+| `platform-modules` | 模块商品 | `/platform/modules` | postponed |
+| `platform-permission-templates` | 权限模板 | `/platform/permission-templates` | postponed |
+| `platform-menu-templates` | 菜单模板 | `/platform/menu-templates` | postponed |
+| `platform-subscriptions` | 试用与到期 | `/platform/subscriptions` | postponed |
+| `platform-orders` | 订单与合同 | `/platform/orders` | postponed |
+| `platform-audit-logs` | 操作审计 | `/platform/audit-logs` | postponed |
 
-## 6) Dashboard 授权联动菜单策略
+## 5) P6-2 动态菜单过滤（规划冻结）
 
-- 未购买“岗位实习中心”时，不显示实习相关指标和待办入口。
-- 未购买“毕业设计中心”时，不显示毕设相关指标和待办入口。
-- 未购买“数据驾驶舱中心”时，只显示基础工作台，不显示高级驾驶舱。
-- Dashboard 不应该暴露未授权模块的数据。
+1. 菜单配置源：静态 JSON + `moduleCode` / `permissionKey` 元数据。
+2. 渲染前过滤：`filterMenus(menus, licenseContext, permissionContext)`。
+3. 未购买 → 剔除节点；到期 → 保留节点、标记 `readonly`。
+4. Dashboard 工作台卡片/风险/待办同源过滤，不单开例外。
 
-## 7) 菜单与路由关系口径
+## 6) 冻结口径
 
-- 菜单仅映射到冻结路由文档中的 planned 路由。
-- P5 不新增菜单代码，不修改现有 Dashboard 左侧导航实现。
-- `/` 与 `/dev/components` 继续沿用现状，不做菜单重构。
-- `/platform/*` 菜单仅用于 SaaS 平台后台，不与 `/admin/*` 学校端菜单混用。
+- 本阶段不写菜单组件代码。
+- 权限、菜单、模块开关后续统一通过 **`licenseContext` + `permissionContext`**。
+- `/dashboard` 独立域菜单 postponed；当前工作台菜单在 `/`。

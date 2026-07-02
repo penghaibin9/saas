@@ -1,80 +1,88 @@
-# P5 路由冻结（前端）
+# P5 路由冻结（前端）— 正式版
 
-> 本文档冻结“未来路由规划”，不修改真实路由代码。
+> 本文档冻结未来路由规划，**不修改** `frontend/src/router/index.js`。
+> **上位文档**：`docs/commercialization/02-SaaS平台运营后台PC端蓝图.md`、`docs/commercialization/03-模块开关权限菜单控制模型.md`
 
 ## 1) 当前真实路由（active / frozen）
 
-| path | name | component | title | module | permissionKey | menuVisible | layout | status | phase |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `/` | `ui-preview` | `src/views/UiPreview.vue` | Dashboard 工作台首页 | dashboard | `dashboard:view` | 是 | BasePortalLayout（现状） | active | frozen |
-| `/dev/components` | `component-dev` | `src/views/ComponentDevPreview.vue` | 组件预览 | dev | `dev:components:view` | 否 | BasePortalLayout（现状） | active | frozen |
+| path | name | component | title | moduleCode | permissionKey | layout | status | phase |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `/` | `ui-preview` | `src/views/UiPreview.vue` | Dashboard 工作台首页 | DASHBOARD | `dashboard:view` | BasePortalLayout（现状） | **active** | frozen |
+| `/dev/components` | `component-dev` | `src/views/ComponentDevPreview.vue` | 组件预览 | dev | `dev:components:view` | BasePortalLayout（现状） | **active** | frozen |
 
-## 2) 未来路由域（planned）
+**仅此两条为当前真实路由。**
 
-- `/admin/*`：PC 管理端业务页面（planned）
-- `/student/*`：学生 PC 门户（planned）
-- `/platform/*`：SaaS 厂商平台运营后台（planned）
-- `/enterprise/*`：企业导师门户（planned，后期启用）
-- `/dashboard`：未来驾驶舱独立域（planned，当前不启用）
+## 2) 路由域边界表（冻结）
 
-## 2.1) 路由域边界表（商业化补强）
+| 路由域 | 当前状态 | 未来用途 | 用户 | Layout | 启用阶段 | 禁止事项 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `/` | active/frozen | Dashboard 工作台首页 | 教师/管理员 | BasePortalLayout（现状） | 已启用 | P5 不改 |
+| `/dev/components` | active/frozen | P3 组件预览 | 开发者 | BasePortalLayout（现状） | 已启用 | P5 不改 |
+| `/student/*` | **planned** | 学生 PC 门户 | 学生 | StudentPortalLayout | P6-1 起 | 不一次性铺开 |
+| `/admin/*` | **planned** | 学校 PC 管理端（本校业务） | 教师/管理员 | BasePortalLayout | P6-1 起 | 不混入 `/platform` |
+| `/platform/*` | **planned** | **SaaS 厂商运营后台** | 平台管理员 | PlatformLayout | **P6-2** 首批壳 | 不显示学生业务明细；不与 `/admin` 混用 |
+| `/enterprise/*` | **postponed** | 企业导师门户 | 企业导师 | EnterprisePortalLayout | P9 后 | 当前不启用 |
+| `/dashboard` | **planned** | 未来独立驾驶舱域 | 校领导 | 待定 | P10 后 | **当前 Dashboard 仍在 `/`** |
 
-| 路由域 | 当前状态 | 未来用途 | Layout | 启用阶段 | 不能做什么 |
+### `/platform` vs `/admin`（铁律）
+
+- `/platform/*`：厂商管**学校们**（租户、套餐、授权、到期、审计）。
+- `/admin/*`：学校管**学生们**（实习、毕设等业务）。
+- 两者路由、Layout、菜单、数据边界**不得混用**。
+
+## 3) Planned 路由清单 — P6-1（第一主攻 INTERNSHIP）
+
+| path | name | component | title | moduleCode | permissionKey | layout | status | phase |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `/student/internship` | `student-internship` | `src/views/student/StudentInternshipPage.vue` | 我的实习 | INTERNSHIP | `student:internship:view` | StudentPortalLayout | planned | **P6-1** |
+| `/student/internship/reports` | `student-internship-reports` | `src/views/student/StudentInternshipReportsPage.vue` | 周报提交 | INTERNSHIP | `student:internship:report:submit` | StudentPortalLayout | planned | **P6-1** |
+| `/admin/internship/report-review` | `admin-internship-report-review` | `src/views/admin/AdminInternshipReportReviewPage.vue` | 周报批阅 | INTERNSHIP | `admin:internship:report:review` | BasePortalLayout | planned | **P6-1** |
+
+## 4) Planned 路由清单 — P6-2（授权壳 + 平台后台首批）
+
+| path | name | component | title | moduleCode | layout | status | phase | 说明 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `/platform` | `platform-home` | `src/views/platform/PlatformHomePage.vue` | 平台运营首页 | PLATFORM | PlatformLayout | planned | P6-2+ | 可选，首批可仅 2 子页 |
+| `/platform/tenants` | `platform-tenants` | `src/views/platform/PlatformTenantsPage.vue` | 学校租户管理 | PLATFORM | PlatformLayout | planned | **P6-2** | 首批壳 #1 |
+| `/platform/tenants/:id/licenses` | `platform-tenant-licenses` | `src/views/platform/PlatformTenantLicensesPage.vue` | 模块授权中心 | PLATFORM | PlatformLayout | planned | **P6-2** | 首批壳 #2 · 读写 licenseContext |
+
+P6-2 同步规划（无新路由或守卫占位）：
+
+- `licenseContext` mock + `useModule` / `useFeature` / `useQuota`
+- 动态菜单过滤（消费 `licenseContext` + `permissionContext`）
+- 路由守卫占位：未授权模块 → noLicense 页（P8 实装）
+
+## 5) Planned 路由清单 — P6-3（第二主攻 GD + 实习扩展）
+
+| path | name | moduleCode | layout | status | phase |
 | --- | --- | --- | --- | --- | --- |
-| `/` | active/frozen | 当前 Dashboard 工作台首页 | 当前首页布局（BasePortalLayout 现状） | 已启用 | P5 不改 |
-| `/dev/components` | active/frozen | P3 组件预览页 | Dev/Layout（现状） | 已启用 | P5 不改 |
-| `/student/*` | planned | 学生 PC 门户 | StudentPortalLayout | P6-1 后逐步启用 | 不一次性铺开 |
-| `/admin/*` | planned | 学校 PC 管理端 | BasePortalLayout | P6-1 后逐步启用 | 不混入学生页 |
-| `/platform/*` | planned | SaaS 厂商平台运营后台 | PlatformLayout | P5.5/P6-2 规划后启用 | 当前不写代码 |
-| `/enterprise/*` | postponed | 企业导师门户 | EnterprisePortalLayout | 后期 | 当前不启用 |
-| `/dashboard` | planned | 未来独立驾驶舱域 | DashboardLayout | P9 或后期 | 当前 Dashboard 仍在 `/` |
+| `/student/graduation` | 我的毕业设计 | GD | StudentPortalLayout | planned | **P6-3** |
+| `/student/graduation/submissions` | 毕设材料提交 | GD | StudentPortalLayout | planned | **P6-3** |
+| `/admin/graduation/review` | 毕设材料批阅 | GD | BasePortalLayout | planned | **P6-3** |
+| `/student/graduation/topics` | 学生选题 | GD | StudentPortalLayout | planned | P6-3 |
+| `/admin/graduation/topics` | 课题管理 | GD | BasePortalLayout | planned | P6-3 |
+| `/student/internship/checkins` | 实习打卡 | INTERNSHIP | StudentPortalLayout | planned | P6-3 |
+| `/student/internship/apply` | 实习申请 | INTERNSHIP | StudentPortalLayout | planned | P6-3 |
 
-补充说明：
+## 6) Postponed 路由
 
-- `/platform/*` 属于 SaaS 厂商后台，不是学校后台。
-- `/admin/*` 是学校自己的管理端。
-- 两者不能混用。
-- 当前阶段不新增真实 router 代码。
+| path | moduleCode | status | phase | 说明 |
+| --- | --- | --- | --- | --- |
+| `/enterprise` | enterprise | planned | **postponed** | 企业导师门户，P9 后 |
+| `/dashboard` | DASHBOARD | planned | **postponed** | 独立驾驶舱域；轻量版已由 `/` 承担 |
+| `/admin/graduation/grades` | GD | planned | postponed | 成绩汇总依赖链未完成 |
+| `/platform/packages` 等其余平台页 | PLATFORM | planned | postponed | 见 `page-map.md` 平台后台表 |
 
-## 3) Planned 路由清单（仅规划）
+## 7) 命名规则冻结
 
-| path | name | component | title | module | permissionKey | menuVisible | layout | status | phase |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `/student/internship` | `student-internship` | `src/views/student/StudentInternshipPage.vue` | 我的实习 | 06 岗位实习 | `student:internship:view` | 是 | StudentPortalLayout | planned | P6-1 |
-| `/student/internship/reports` | `student-internship-reports` | `src/views/student/StudentInternshipReportsPage.vue` | 周报提交 | 06 岗位实习 | `student:internship:report:submit` | 是 | StudentPortalLayout | planned | P6-1 |
-| `/admin/internship/report-review` | `admin-internship-report-review` | `src/views/admin/AdminInternshipReportReviewPage.vue` | 周报批阅 | 06 岗位实习 | `admin:internship:report:review` | 是 | BasePortalLayout | planned | P6-1 |
-| `/student/internship/checkins` | `student-internship-checkins` | `src/views/student/StudentInternshipCheckinsPage.vue` | 实习打卡 | 06 岗位实习 | `student:internship:checkin` | 是 | StudentPortalLayout | planned | P6-2 |
-| `/student/graduation` | `student-graduation` | `src/views/student/StudentGraduationPage.vue` | 我的毕业设计 | 05 毕业设计 | `student:graduation:view` | 是 | StudentPortalLayout | planned | P6-2 |
-| `/student/graduation/submissions` | `student-graduation-submissions` | `src/views/student/StudentGraduationSubmissionsPage.vue` | 毕设材料提交 | 05 毕业设计 | `student:graduation:submission` | 是 | StudentPortalLayout | planned | P6-2 |
-| `/admin/graduation/review` | `admin-graduation-review` | `src/views/admin/AdminGraduationReviewPage.vue` | 毕设材料批阅 | 05 毕业设计 | `admin:graduation:review` | 是 | BasePortalLayout | planned | P6-2 |
-| `/student/graduation/topics` | `student-graduation-topics` | `src/views/student/StudentGraduationTopicsPage.vue` | 学生选题 | 05 毕业设计 | `student:graduation:topic:choose` | 是 | StudentPortalLayout | planned | P6-3 |
-| `/admin/graduation/topics` | `admin-graduation-topics` | `src/views/admin/AdminGraduationTopicsPage.vue` | 课题管理 | 05 毕业设计 | `admin:graduation:topic:manage` | 是 | BasePortalLayout | planned | P6-3 |
-| `/admin/graduation/grades` | `admin-graduation-grades` | `src/views/admin/AdminGraduationGradesPage.vue` | 成绩汇总 | 05 毕业设计 | `admin:graduation:grade:view` | 是 | BasePortalLayout | planned | P6-3 |
-| `/student/internship/apply` | `student-internship-apply` | `src/views/student/StudentInternshipApplyPage.vue` | 实习申请 | 06 岗位实习 | `student:internship:apply` | 是 | StudentPortalLayout | planned | P6-3 |
-| `/enterprise` | `enterprise-home` | `src/views/enterprise/EnterpriseHomePage.vue` | 企业工作台 | enterprise | `enterprise:home:view` | 是 | EnterprisePortalLayout | planned | postponed |
-| `/dashboard` | `dashboard-home` | `src/views/dashboard/DashboardHomePage.vue` | 驾驶舱独立域 | dashboard | `dashboard:domain:view` | 否 | BasePortalLayout | planned | postponed |
-| `/platform` | `platform-home` | `src/views/platform/PlatformHomePage.vue` | 平台运营首页 | platform | `platform:home:view` | 是 | PlatformLayout | planned | postponed |
-| `/platform/tenants` | `platform-tenants` | `src/views/platform/PlatformTenantsPage.vue` | 学校租户管理 | platform | `platform:tenants:view` | 是 | PlatformLayout | planned | postponed |
-| `/platform/tenants/:id` | `platform-tenant-detail` | `src/views/platform/PlatformTenantDetailPage.vue` | 租户详情 | platform | `platform:tenants:detail` | 否 | PlatformLayout | planned | postponed |
-| `/platform/packages` | `platform-packages` | `src/views/platform/PlatformPackagesPage.vue` | 套餐管理 | platform | `platform:packages:manage` | 是 | PlatformLayout | planned | postponed |
-| `/platform/modules` | `platform-modules` | `src/views/platform/PlatformModulesPage.vue` | 模块商品管理 | platform | `platform:modules:manage` | 是 | PlatformLayout | planned | postponed |
-| `/platform/licenses` | `platform-licenses` | `src/views/platform/PlatformLicensesPage.vue` | 模块授权中心 | platform | `platform:licenses:manage` | 是 | PlatformLayout | planned | postponed |
-| `/platform/permission-templates` | `platform-permission-templates` | `src/views/platform/PlatformPermissionTemplatesPage.vue` | 权限模板管理 | platform | `platform:permission-template:manage` | 是 | PlatformLayout | planned | postponed |
-| `/platform/menu-templates` | `platform-menu-templates` | `src/views/platform/PlatformMenuTemplatesPage.vue` | 菜单模板管理 | platform | `platform:menu-template:manage` | 是 | PlatformLayout | planned | postponed |
-| `/platform/subscriptions` | `platform-subscriptions` | `src/views/platform/PlatformSubscriptionsPage.vue` | 试用与到期管理 | platform | `platform:subscription:manage` | 是 | PlatformLayout | planned | postponed |
-| `/platform/orders` | `platform-orders` | `src/views/platform/PlatformOrdersPage.vue` | 订单与合同管理 | platform | `platform:orders:manage` | 是 | PlatformLayout | planned | postponed |
-| `/platform/audit-logs` | `platform-audit-logs` | `src/views/platform/PlatformAuditLogsPage.vue` | 操作审计日志 | platform | `platform:audit:view` | 是 | PlatformLayout | planned | postponed |
+1. 全小写路径。
+2. 学生端 `/student/*`；学校管理端 `/admin/*`；厂商后台 **`/platform/*`**（不用 `/console`）。
+3. 企业端 `/enterprise/*`。
+4. 禁止 test/demo 业务路由。
+5. 动作词（submit/approve）不作为一级路由。
 
-## 4) 命名规则冻结
+## 8) 边界声明
 
-1. 路由全小写。
-2. 学生端统一 `/student/...`。
-3. 管理端统一 `/admin/...`。
-4. 企业端统一 `/enterprise/...`。
-5. 不使用 test/demo 临时业务路由。
-6. 动作型词（submit/approve）不单独作为一级路由，仅可出现在业务页面名中。
-
-## 5) 边界声明
-
-- 本文档不代表已实现，仅为 P5 路由冻结合同。
-- 本阶段未修改 `frontend/src/router/index.js`。
+- 本文档为 P5 冻结合同，不代表已实现。
+- 本阶段**未修改**真实 router 代码。
+- 页面数据只经 `modules/*/provider`，禁止直引 mock、禁止拼 API path。
