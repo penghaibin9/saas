@@ -3,9 +3,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 /**
  * 路由表（对齐 docs/frontend/route-freeze.md）：
  * - `/` 与 `/dev/components` 为冻结路由，不改。
- * - `/admin/workflow/*` 为 11 权限与流程中心（全系统底座）。
- * - `/security/*` 为 00-SEC 安全错误页（meta.public，未登录可达）。
- *   meta.permissionKey / meta.moduleCode 供 P8 统一路由守卫消费，本阶段不注册全局 beforeEach。
+ * - `/security/*` 为 00-SEC 安全错误页（meta.public）。
+ * - `/admin/workflow/*` 为 11 权限与流程中心。
+ * - `/admin/student/*` 为 01 学生主档与身份中心（route-freeze/page-map 未定义 01 细分路由，按任务兜底路由接入）。
+ *   meta 供 P8 统一路由守卫消费，本阶段不注册全局 beforeEach。
  */
 const router = createRouter({
   history: createWebHistory(),
@@ -78,6 +79,49 @@ const router = createRouter({
           name: 'workflow-permissions',
           component: () => import('../views/admin/workflow/WorkflowPermissionsView.vue'),
           meta: { moduleCode: 'WORKFLOW', permissionKey: 'workflow.permission.view', title: '权限点管理' }
+        }
+      ]
+    },
+    {
+      path: '/admin/student',
+      component: () => import('../views/admin/student/AdminStudentLayout.vue'),
+      meta: { moduleCode: 'STUDENT' },
+      children: [
+        {
+          path: '',
+          name: 'student-overview',
+          component: () => import('../views/admin/student/StudentOverviewView.vue'),
+          meta: { moduleCode: 'STUDENT', title: '学生主档', requiresAuth: true, permissionKey: 'student.profile.view' }
+        },
+        {
+          path: 'list',
+          name: 'student-list',
+          component: () => import('../views/admin/student/StudentListView.vue'),
+          meta: { moduleCode: 'STUDENT', title: '学生列表', requiresAuth: true, permissionKey: 'student.profile.view' }
+        },
+        {
+          path: 'identity',
+          name: 'student-identity',
+          component: () => import('../views/admin/student/StudentIdentityView.vue'),
+          meta: { moduleCode: 'STUDENT', title: '身份认证管理', requiresAuth: true, permissionKey: 'student.identity.view' }
+        },
+        {
+          path: 'status',
+          name: 'student-status',
+          component: () => import('../views/admin/student/StudentStatusView.vue'),
+          meta: { moduleCode: 'STUDENT', title: '学生状态管理', requiresAuth: true, permissionKey: 'student.status.update' }
+        },
+        {
+          path: 'import-export',
+          name: 'student-import-export',
+          component: () => import('../views/admin/student/StudentImportExportView.vue'),
+          meta: { moduleCode: 'STUDENT', title: '导入导出', requiresAuth: true, permissionKey: 'student.export' }
+        },
+        {
+          path: ':studentId',
+          name: 'student-detail',
+          component: () => import('../views/admin/student/StudentDetailView.vue'),
+          meta: { moduleCode: 'STUDENT', title: '学生详情', requiresAuth: true, permissionKey: 'student.profile.view' }
         }
       ]
     }

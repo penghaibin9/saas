@@ -1,0 +1,110 @@
+/* 01 学生主档页面共享样式（仅模块页面使用，全部引用 tokens） */
+.sp-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+.sp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+.sp-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .sp-cols {
+    grid-template-columns: 1fr;
+  }
+}
+.sp-card {
+  padding: var(--card-padding-pc);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+.sp-table th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  font-weight: var(--font-weight-normal);
+  border-bottom: 1px solid var(--border-base);
+  white-space: nowrap;
+}
+.sp-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.sp-table tr:last-child td {
+  border-bottom: none;
+}
+.sp-table tbody tr:hover td {
+  background: var(--bg-hover);
+}
+.sp-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+.sp-metric {
+  padding: var(--card-padding-pc);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sp-metric__label {
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+}
+.sp-metric__value {
+  font-size: var(--font-size-metric);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: var(--font-numeric);
+}
+.sp-metric__hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.sp-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.sp-select,
+.sp-textarea {
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  box-sizing: border-box;
+}
+.sp-textarea {
+  width: 100%;
+  resize: vertical;
+}
+.sp-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.sp-count.is-invalid {
+  color: var(--danger-600);
+}

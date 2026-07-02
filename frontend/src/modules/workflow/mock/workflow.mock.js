@@ -302,6 +302,20 @@ export const permissions = [
   perm('internship.report.review', '实习周报批阅', M.INTERNSHIP, PERMISSION_TYPE.BUTTON),
   perm('internship.report.reject', '实习周报退回', M.INTERNSHIP, PERMISSION_TYPE.BUTTON),
   perm('graduation.topic.approve', '毕设课题审核', M.GRADUATION, PERMISSION_TYPE.BUTTON),
+  // 01 学生主档权限点入册（student 模块消费；SCHOOL_ADMIN 角色按"全部启用权限"自动继承）
+  perm('student.identity.view', '学生身份信息查看', M.STUDENT, PERMISSION_TYPE.PAGE),
+  perm('student.identity.verify', '学生身份核验', M.STUDENT, PERMISSION_TYPE.BUTTON),
+  perm('student.contact.view', '学生联系方式查看', M.STUDENT, PERMISSION_TYPE.DATA),
+  perm('student.guardian.view', '监护人信息查看', M.STUDENT, PERMISSION_TYPE.DATA),
+  perm('student.guardian.update', '监护人信息维护', M.STUDENT, PERMISSION_TYPE.BUTTON),
+  perm('student.status.update', '学生状态变更', M.STUDENT, PERMISSION_TYPE.BUTTON),
+  perm('student.import', '学生主档导入', M.STUDENT, PERMISSION_TYPE.BUTTON),
+  perm('student.export', '学生主档导出', M.STUDENT, PERMISSION_TYPE.BUTTON),
+  perm('student.audit.view', '学生主档审计查看', M.STUDENT, PERMISSION_TYPE.DATA),
+  // 00-SEC 导出三档权限点（security export guard 消费）
+  perm('security.export.list', '台账导出', M.WORKFLOW, PERMISSION_TYPE.BUTTON),
+  perm('security.export.archive', '加密档案导出', M.WORKFLOW, PERMISSION_TYPE.BUTTON),
+  perm('security.export.desensitized', '脱敏外发导出', M.WORKFLOW, PERMISSION_TYPE.BUTTON, 'DISABLED', '默认关闭，专业版开启'),
   perm('graduation.material.review', '毕设材料审阅', M.GRADUATION, PERMISSION_TYPE.BUTTON, 'DISABLED', '示例：已停用权限点'),
   perm('onboarding.material.review', '迎新材料审核', M.ONBOARDING, PERMISSION_TYPE.BUTTON, 'DISABLED', '迎新模块未启用')
 ]
@@ -340,6 +354,7 @@ export const currentPermissionContext = {
     'workflow.permission.toggle'
   ]
 }
+
 
 /* ---------------- 操作审计 ---------------- */
 let auditSeq = 1
