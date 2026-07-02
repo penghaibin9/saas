@@ -3,9 +3,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 /**
  * 路由表（对齐 docs/frontend/route-freeze.md）：
  * - `/` 与 `/dev/components` 为冻结路由，不改。
- * - `/admin/workflow/*` 为 11 权限与流程中心（全系统底座，先于业务模块落地）。
- *   meta.permissionKey / meta.moduleCode 供 P8 统一路由守卫（workflow.guards.checkRoutePermission）消费，
- *   本阶段不注册全局守卫。
+ * - `/admin/workflow/*` 为 11 权限与流程中心（全系统底座）。
+ * - `/security/*` 为 00-SEC 安全错误页（meta.public，未登录可达）。
+ *   meta.permissionKey / meta.moduleCode 供 P8 统一路由守卫消费，本阶段不注册全局 beforeEach。
  */
 const router = createRouter({
   history: createWebHistory(),
@@ -19,6 +19,30 @@ const router = createRouter({
       path: '/dev/components',
       name: 'component-dev',
       component: () => import('../views/ComponentDevPreview.vue')
+    },
+    {
+      path: '/security/401',
+      name: 'security-401',
+      component: () => import('../views/security/Error401View.vue'),
+      meta: { public: true, title: '未登录' }
+    },
+    {
+      path: '/security/403',
+      name: 'security-403',
+      component: () => import('../views/security/Error403View.vue'),
+      meta: { public: true, title: '无权访问' }
+    },
+    {
+      path: '/security/419',
+      name: 'security-419',
+      component: () => import('../views/security/Error419View.vue'),
+      meta: { public: true, title: '会话超时' }
+    },
+    {
+      path: '/security/500',
+      name: 'security-500',
+      component: () => import('../views/security/Error500View.vue'),
+      meta: { public: true, title: '服务异常' }
     },
     {
       path: '/admin/workflow',
