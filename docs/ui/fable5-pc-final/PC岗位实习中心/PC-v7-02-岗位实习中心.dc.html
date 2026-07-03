@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--pri:#2563EB;--pri-h:#1D4ED8;--pri-bg:rgba(37,99,235,.06);--pri-50:#EFF6FF;--pri-100:#DBEAFE;
+--bg:#EDF2FA;--card:#fff;--card-b:rgba(151,173,214,.32);--dv:rgba(120,144,190,.16);
+--t1:#0F1E3D;--t2:#44567E;--t3:#8494B5;--t4:#C3CDE0;
+--ok:#059669;--ok-l:#ECFDF5;--warn:#D97706;--warn-l:#FFFBEB;--err:#DC2626;--err-l:#FEF2F2;--info:#2563EB;--info-l:#EFF6FF;
+--rail-bg:linear-gradient(180deg,#0B2352,#123A80);--rail-fg:rgba(199,219,255,.6);--rail-fg-h:#fff;--rail-on-bg:linear-gradient(180deg,rgba(96,165,250,.26),rgba(37,99,235,.12));--rail-on-fg:#fff;--rail-bd:rgba(96,165,250,.35);
+--top-bg:rgba(255,255,255,.78);--top-bd:rgba(151,173,214,.3);
+--hero-grad:linear-gradient(115deg,#0B2352 0%,#123A80 55%,#2F6BFF 130%);--hero-fg:#fff;--hero-sub:rgba(191,214,255,.82);--hero-num:#fff;--hero-chip-bg:rgba(147,197,253,.14);--hero-chip-bd:rgba(147,197,253,.3);--hero-chip-fg:#DBEAFE;--hero-grid:rgba(147,197,253,.06);
+--g1:#60A5FA;--g2:#2F6BFF;--glow:rgba(96,165,250,.5);
+--r:14px;--rs:9px;
+--f:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+--s1:0 1px 2px rgba(15,40,90,.05);--s2:0 1px 3px rgba(15,40,90,.06),0 10px 28px -18px rgba(23,58,138,.28);--s3:0 8px 40px -8px rgba(15,40,90,.28)}
+.th-b{--pri:#1868C0;--pri-h:#12559F;--pri-bg:rgba(24,104,192,.06);--pri-50:#EAF2FB;--pri-100:#D0E4F7;--bg:#EEF2F7;--card-b:rgba(110,138,178,.32);--t1:#14243F;--t2:#3D5273;--t3:#78899F;--rail-bg:linear-gradient(180deg,#0D2A55,#164A8C);--hero-grad:linear-gradient(115deg,#0D2A55,#164A8C 60%,#1868C0 130%);--g1:#3E86DE;--g2:#1868C0;--glow:rgba(62,134,222,.45);--info:#1868C0;--info-l:#EAF2FB}
+.th-d{--pri:#3E8E7E;--pri-h:#327264;--pri-bg:rgba(62,142,126,.06);--pri-50:#EAF2EE;--pri-100:#D3E7DF;--bg:#E6EEE3;--card:#FAFCF8;--card-b:rgba(120,152,132,.34);--t1:#243029;--t2:#465549;--t3:#748576;--rail-bg:linear-gradient(180deg,#22443B,#356E60);--hero-grad:linear-gradient(115deg,#22443B,#356E60 60%,#3E8E7E 130%);--g1:#5CA894;--g2:#3E8E7E;--glow:rgba(92,168,148,.42);--info:#3E8E7E;--info-l:#EAF2EE;--hero-chip-bg:rgba(180,220,205,.16);--hero-chip-bd:rgba(180,220,205,.32);--hero-chip-fg:#DFF3EB}
+.th-c{--pri:#5B6C9E;--pri-h:#4B5C8D;--pri-bg:rgba(91,108,158,.07);--pri-50:#F0F3FA;--pri-100:#E1E6F0;--bg:#F6F8FC;--card-b:rgba(160,172,205,.42);--t1:#24314B;--t2:#4C5A7C;--t3:#72809A;--rail-bg:linear-gradient(180deg,#3A3F4E,#5B6070);--hero-grad:linear-gradient(115deg,#3A3F4E,#5B6070 60%,#5B6C9E 130%);--g1:#8A9AC8;--g2:#5B6C9E;--glow:rgba(169,183,216,.5);--info:#5B6C9E;--info-l:#F0F3FA}
+.th-e{--pri:#2563EB;--pri-h:#1D4ED8;--pri-bg:#EFF6FF;--pri-50:#EFF6FF;--pri-100:#DBEAFE;--bg:#F8FAFC;--card:#fff;--card-b:#E2E8F0;--dv:#EDF1F6;--t1:#0F172A;--t2:#64748B;--t3:#94A3B8;--t4:#CBD5E1;--rail-bg:#fff;--rail-fg:#64748B;--rail-fg-h:#2563EB;--rail-on-bg:#EFF6FF;--rail-on-fg:#2563EB;--rail-bd:#DBEAFE;--top-bg:#fff;--top-bd:#E2E8F0;--hero-grad:linear-gradient(115deg,#F1F5F9,#E9EEF5);--hero-fg:#0F172A;--hero-sub:#64748B;--hero-num:#2563EB;--hero-chip-bg:#F1F5F9;--hero-chip-bd:#E2E8F0;--hero-chip-fg:#475569;--hero-grid:rgba(37,99,235,.05);--g1:#3B82F6;--g2:#2563EB;--glow:rgba(37,99,235,.22);--s1:0 1px 2px rgba(15,23,42,.04);--s2:0 1px 2px rgba(15,23,42,.04),0 8px 24px -16px rgba(15,23,42,.18);--s3:0 12px 40px -12px rgba(15,23,42,.22)}
+.th-e .rail-l{border-right:1px solid #E2E8F0}
+.th-f{--pri:#111827;--pri-h:#000;--pri-bg:#F3F4F6;--pri-50:#F3F4F6;--pri-100:#E5E7EB;--bg:#F7F7F8;--card:#fff;--card-b:#E5E7EB;--dv:#EEEFF1;--t1:#111827;--t2:#6B7280;--t3:#9CA3AF;--t4:#CBD0D6;--rail-bg:linear-gradient(180deg,#1F2937,#111827);--rail-fg:rgba(229,231,235,.6);--rail-fg-h:#fff;--rail-on-bg:rgba(255,255,255,.1);--rail-on-fg:#fff;--rail-bd:rgba(255,255,255,.16);--top-bg:#fff;--top-bd:#E5E7EB;--hero-grad:linear-gradient(115deg,#1F2937,#111827);--hero-fg:#F9FAFB;--hero-sub:#9CA3AF;--hero-num:#fff;--hero-chip-bg:rgba(255,255,255,.08);--hero-chip-bd:rgba(255,255,255,.16);--hero-chip-fg:#D1D5DB;--hero-grid:rgba(255,255,255,.05);--g1:#374151;--g2:#111827;--glow:rgba(17,24,39,.22);--info:#2563EB;--info-l:#EFF6FF;--s1:0 1px 2px rgba(17,24,39,.04);--s2:0 1px 2px rgba(17,24,39,.05),0 8px 24px -16px rgba(17,24,39,.18)}
+.th-f .lnk,.th-f .drill{color:#2563EB}
+@keyframes pulseRing{0%{box-shadow:0 0 0 0 rgba(37,99,235,.35)}70%{box-shadow:0 0 0 7px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%{background-position:-500px 0}100%{background-position:500px 0}}
+body{font-family:var(--f);color:var(--t1);background:var(--bg);-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5}
+.ic{width:16px;height:16px;flex-shrink:0}
+.nw{white-space:nowrap}
+.shell{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:var(--bg)}
+.topbar{height:56px;background:var(--top-bg);backdrop-filter:blur(18px);border-bottom:1px solid var(--top-bd);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;z-index:30}
+.tb-brand{display:flex;align-items:center;gap:9px;flex-shrink:0}
+.tb-logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--g1),var(--g2));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;box-shadow:0 4px 12px -4px var(--glow)}
+.tb-binfo{display:flex;flex-direction:column;line-height:1.25}
+.tb-nm{font-size:13.5px;font-weight:700}
+.tb-sch{font-size:10.5px;color:var(--t3)}
+.cmdk{flex:1;min-width:150px;max-width:400px;height:34px;margin:0 12px;display:flex;align-items:center;gap:8px;padding:0 14px;border-radius:12px;background:var(--pri-bg);border:1px solid var(--top-bd);color:var(--t3);font-size:12.5px;cursor:text;white-space:nowrap;overflow:hidden}
+.cmdk kbd{margin-left:auto;font-size:10px;padding:2px 6px;border-radius:5px;background:var(--card);border:1px solid var(--card-b);color:var(--t3)}
+.tb-r{display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0}
+.tb-env{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(217,119,6,.1);color:#B45309;letter-spacing:.4px;border:1px solid rgba(217,119,6,.25)}
+.scope-lens{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:18px;background:var(--pri-bg);border:1px solid var(--pri-100);font-size:11.5px;color:var(--pri);font-weight:500;white-space:nowrap}
+.scope-lens .ic{width:13px;height:13px}
+.tbb{width:32px;height:32px;border:none;background:transparent;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--t3);position:relative}
+.notif-b{position:absolute;top:1px;right:1px;min-width:15px;height:15px;border-radius:8px;background:#EF4444;color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px}
+.tb-role{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 5px;border-radius:10px;cursor:pointer;border:1px solid var(--pri-100);background:var(--card);position:relative}
+.av-tb{width:27px;height:27px;border-radius:8px;background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0}
+.tb-uinfo{display:flex;flex-direction:column;line-height:1.25}
+.tb-un{color:var(--t1);font-size:12px;font-weight:600;white-space:nowrap}
+.tb-ur{color:var(--pri);font-size:10px;font-weight:500;white-space:nowrap}
+.rw{position:absolute;top:44px;right:0;background:var(--card);border:1px solid var(--card-b);border-radius:14px;box-shadow:var(--s3);z-index:60;width:340px;padding:12px;text-align:left}
+.rw-hd{font-size:12px;font-weight:700;margin-bottom:2px}
+.rw-sub{font-size:10.5px;color:var(--t3);margin-bottom:9px}
+.rw-c{border:1px solid var(--card-b);border-radius:10px;padding:9px 11px;cursor:pointer;display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.rw-c.on{border-color:var(--pri);background:var(--pri-bg);box-shadow:0 0 0 1px var(--pri)}
+.rw-nm{font-size:12.5px;font-weight:600}
+.rw-sc{font-size:10.5px;color:var(--t3)}
+.body{display:flex;flex:1;overflow:hidden}
+.rail{width:76px;background:var(--rail-bg);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:3px;flex-shrink:0;z-index:10;position:relative}
+.rail-l{}
+.ri{width:62px;padding:9px 0 7px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--rail-fg);cursor:pointer;font-size:10px;font-weight:500;position:relative}
+.ri .ic{width:19px;height:19px}
+.ri:hover{color:var(--rail-fg-h);background:rgba(147,197,253,.08)}
+.ri.on{color:var(--rail-on-fg);background:var(--rail-on-bg);box-shadow:inset 0 0 0 1px var(--rail-bd)}
+.ri-b{position:absolute;top:4px;right:9px;min-width:14px;height:14px;border-radius:7px;background:#F87171;color:#fff;font-size:8.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px}
+.rail-sp{flex:1}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.subrail{width:212px;flex-shrink:0;border-right:1px solid var(--dv);background:var(--card);overflow-y:auto;padding:14px 10px}
+.sr-brand{padding:4px 8px 12px;border-bottom:1px solid var(--dv);margin-bottom:8px}
+.sr-brand .t{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.sr-brand .s{font-size:11px;color:var(--t3);margin-top:2px}
+.sr-g{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--t3);padding:12px 8px 5px;text-transform:uppercase}
+.sr-i{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--t2);cursor:pointer;font-weight:500;position:relative;white-space:nowrap}
+.sr-i .ic{width:15px;height:15px;color:var(--t3)}
+.sr-i:hover{background:var(--pri-bg);color:var(--pri)}
+.sr-i:hover .ic{color:var(--pri)}
+.sr-i.on{background:var(--pri-bg);color:var(--pri);font-weight:600}
+.sr-i.on .ic{color:var(--pri)}
+.sr-i .b{margin-left:auto;min-width:17px;height:16px;border-radius:8px;background:var(--err-l);color:var(--err);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px}
+.ct{flex:1;overflow-y:auto;padding:20px 24px 60px;scrollbar-width:thin}
+.ct::-webkit-scrollbar{width:6px}.ct::-webkit-scrollbar-thumb{background:var(--t4);border-radius:3px}
+.pghd{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.pgt{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.pgs{font-size:12.5px;color:var(--t3);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.crumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t3);margin-bottom:12px}
+.crumb a{color:var(--pri);cursor:pointer;font-weight:500}
+.crumb .ic{width:12px;height:12px}
+.priv{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--pri);font-weight:500;padding:3px 9px;border-radius:12px;background:var(--pri-bg);border:1px solid var(--pri-100);white-space:nowrap}
+.priv .ic{width:12px;height:12px}
+.hero{position:relative;border-radius:16px;overflow:hidden;background:var(--hero-grad);color:var(--hero-fg);padding:22px 26px 24px;margin-bottom:16px;box-shadow:var(--s2)}
+.hero::before{content:'';position:absolute;inset:0;background:linear-gradient(var(--hero-grid) 1px,transparent 1px),linear-gradient(90deg,var(--hero-grid) 1px,transparent 1px);background-size:30px 30px;pointer-events:none}
+.hero-top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;position:relative}
+.hero-hi{font-size:21px;font-weight:700}
+.hero-num{font-size:13px;color:var(--hero-sub)}
+.hero-num strong{font-size:22px;color:var(--hero-num);font-variant-numeric:tabular-nums;margin:0 4px}
+.hero-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;position:relative}
+.hchip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:var(--hero-chip-bg);border:1px solid var(--hero-chip-bd);font-size:12px;color:var(--hero-chip-fg);font-weight:500}
+.hchip .ic{width:13px;height:13px}
+.hero-meta{margin-top:11px;font-size:12px;color:var(--hero-sub);display:flex;gap:14px;flex-wrap:wrap;position:relative}
+.hero-motto{position:absolute;right:26px;top:20px;font-size:11px;color:var(--hero-sub);letter-spacing:.2em;font-weight:500;opacity:.7}
+@media(max-width:1280px){.hero-motto{display:none}}
+@media(max-width:1180px){.th-dots{display:none}}
+@media(max-width:1080px){.scope-lens{display:none}}
+.orbit{display:flex;justify-content:space-between;position:relative;margin-top:20px;padding:0 4px}
+.orbit::before{content:'';position:absolute;left:34px;right:34px;top:22px;height:2px;background:var(--hero-chip-bd)}
+.ob{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:1;flex:1}
+.ob-d{min-width:46px;height:46px;padding:0 8px;border-radius:23px;background:var(--hero-chip-bg);border:1.5px solid var(--hero-chip-bd);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--hero-chip-fg);font-variant-numeric:tabular-nums}
+.ob.hot .ob-d{background:linear-gradient(135deg,var(--g1),var(--g2));border-color:rgba(255,255,255,.5);box-shadow:0 0 16px var(--glow);color:#fff;animation:pulseRing 2.4s infinite}
+.ob-l{font-size:11px;color:var(--hero-sub);white-space:nowrap}
+.ob-r{font-size:9.5px;color:#FCD34D;font-weight:600}
+.notice{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:11px;font-size:12.5px;font-weight:500;margin-bottom:14px;border:1px solid}
+.notice .ic{flex-shrink:0;width:14px;height:14px}
+.notice .lnk{margin-left:auto}
+.notice.i{background:var(--pri-bg);border-color:var(--pri-100);color:var(--pri)}
+.notice.w{background:var(--warn-l);border-color:rgba(217,119,6,.2);color:#92400E}
+.notice.e{background:var(--err-l);border-color:rgba(220,38,38,.18);color:var(--err)}
+.focus-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+.focus{background:var(--card);border:1px solid var(--card-b);border-radius:var(--r);padding:15px 17px;position:relative;overflow:hidden;cursor:pointer;box-shadow:var(--s1)}
+.focus:hover{box-shadow:var(--s2);border-color:var(--pri-100);transform:translateY(-1px)}
+.focus::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.focus.fe::before{background:linear-gradient(180deg,#F87171,#DC2626)}
+.focus.fw::before{background:linear-gradient(180deg,#FBBF24,#D97706)}
+.focus.fp::before{background:linear-gradient(180deg,#60A5FA,#2563EB)}
+.focus-k{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--t3);margin-bottom:6px}
+.focus-tt{font-size:15px;font-weight:700;line-height:1.4}
+.focus-mt{font-size:12px;color:var(--t3);margin-top:4px}
+.focus-ac{margin-top:10px;font-size:12px;color:var(--pri);font-weight:600}
+.mts{display:grid;gap:12px;margin-bottom:16px}
+.mt4{grid-template-columns:repeat(4,1fr)}.mt3{grid-template-columns:repeat(3,1fr)}.mt2{grid-template-columns:repeat(2,1fr)}
+.mc{background:var(--card);border-radius:var(--r);padding:16px 18px;border:1px solid var(--card-b);position:relative;overflow:hidden;box-shadow:var(--s1)}
+.mc-lb{font-size:12.5px;color:var(--t3);margin-bottom:7px;font-weight:500}
+.mc-v{font-size:26px;font-weight:700;line-height:1.1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.mc-tr{font-size:12px;color:var(--t3);margin-top:6px;display:flex;align-items:center;gap:4px;font-weight:500}
+.mc-tr.good{color:var(--ok)}.mc-tr.bad{color:var(--err)}
+.mc-sp{position:absolute;right:14px;bottom:12px;width:72px;height:26px;opacity:.9}
+.mc-sp polyline{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.card{background:var(--card);border-radius:var(--r);border:1px solid var(--card-b);overflow:hidden;box-shadow:var(--s1)}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 18px;border-bottom:1px solid var(--dv)}
+.card-ht{font-size:14px;font-weight:700}
+.card-b{padding:16px 18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid-2a{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+.grid-3a{display:grid;grid-template-columns:290px 1fr;gap:14px}
+@media(max-width:1100px){.grid2,.grid-2a,.focus-row,.mt4{grid-template-columns:1fr 1fr}.grid-3a{grid-template-columns:1fr}}
+.fb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.fb-in{display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--card-b);border-radius:9px;background:var(--card);min-width:200px}
+.fb-in .ic{color:var(--t4)}
+.fb-in input{border:none;outline:none;background:transparent;font-size:13px;color:var(--t1);font-family:inherit;width:100%}
+.fb-sl{padding:7px 12px;border:1px solid var(--card-b);border-radius:9px;background:var(--card);color:var(--t2);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;white-space:nowrap}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:5px 13px;border-radius:16px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--card-b);background:var(--card);color:var(--t2)}
+.chip:hover{border-color:var(--pri-100);color:var(--pri)}
+.chip.on{background:linear-gradient(135deg,var(--g1),var(--g2));border-color:transparent;color:#fff;box-shadow:0 2px 8px -2px var(--glow)}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;padding:10px 14px;font-size:12px;font-weight:600;color:var(--t3);border-bottom:1px solid var(--dv);white-space:nowrap;background:var(--pri-bg)}
+.tbl td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--dv);vertical-align:middle}
+.tbl tr:hover td{background:var(--pri-bg)}
+.tbl .nm{font-weight:600}
+.tbl .row-c{cursor:pointer}
+.ac{display:flex;gap:6px;flex-wrap:wrap}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:11px;font-size:11.5px;font-weight:600;line-height:18px;white-space:nowrap}
+.tag .dot{width:5px;height:5px;border-radius:50%;background:currentColor}
+.tg-o{background:var(--ok-l);color:var(--ok)}.tg-w{background:var(--warn-l);color:#92400E}.tg-e{background:var(--err-l);color:var(--err)}.tg-i{background:var(--info-l);color:var(--info)}.tg-g{background:rgba(15,40,90,.06);color:var(--t3)}.tg-p{background:var(--pri-100);color:var(--pri)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:inherit;white-space:nowrap}
+.btn .ic{width:14px;height:14px}
+.btn-p{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff;box-shadow:0 2px 10px -2px var(--glow)}
+.btn-p:hover{background:linear-gradient(135deg,var(--g2),var(--pri-h))}
+.btn-g{background:var(--card);color:var(--t2);border-color:var(--card-b)}.btn-g:hover{color:var(--t1);border-color:var(--pri-100)}
+.btn-d{background:var(--card);color:var(--err);border-color:rgba(220,38,38,.3)}.btn-d:hover{background:var(--err-l)}
+.btn-w{background:var(--card);color:#92400E;border-color:rgba(217,119,6,.32)}.btn-w:hover{background:var(--warn-l)}
+.btn-s{padding:4px 11px;font-size:12px}
+.lnk{background:none;border:none;color:var(--pri);padding:0;font-size:13px;cursor:pointer;font-weight:600;font-family:inherit}
+.lnk:hover{color:var(--pri-h);text-decoration:underline}
+.pg{display:flex;align-items:center;justify-content:space-between;padding:12px 2px 0;font-size:12px;color:var(--t3)}
+.pg-n{display:flex;gap:3px}
+.pg-b{padding:4px 10px;border:1px solid var(--card-b);border-radius:6px;background:var(--card);cursor:pointer;font-size:12px;color:var(--t2);font-family:inherit}
+.pg-b.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.pf{display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:1px 7px;border-radius:6px;background:rgba(120,144,190,.08)}
+.pf .v{color:var(--t2);letter-spacing:1px;font-variant-numeric:tabular-nums}
+.pf .lk{width:12px;height:12px;color:var(--t4)}
+.dl-pf{background:var(--card);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;align-items:center;text-align:center;border:1px solid var(--card-b);box-shadow:var(--s1)}
+.dl-cover{width:100%;height:70px;background:var(--hero-grad);position:relative}
+.dl-cover::before{content:'';position:absolute;inset:0;background:linear-gradient(var(--hero-grid) 1px,transparent 1px),linear-gradient(90deg,var(--hero-grid) 1px,transparent 1px);background-size:20px 20px}
+.dl-av{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#DBEAFE,#EFF6FF);display:flex;align-items:center;justify-content:center;color:var(--pri);font-weight:700;font-size:22px;margin-top:-32px;border:3px solid var(--card);position:relative;z-index:1}
+.dl-nm{font-size:17px;font-weight:700;margin-top:8px}
+.dl-id{font-size:12px;color:var(--t3);font-variant-numeric:tabular-nums;margin:2px 0 9px}
+.dl-tg{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px;padding:0 14px}
+.dl-st{width:100%;padding:0 18px 6px}
+.dl-sr{display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--dv)}
+.dl-sl{color:var(--t3)}.dl-sv{font-weight:600;text-align:right}
+.dl-acs{display:flex;gap:6px;margin:12px 0 16px;width:100%;padding:0 18px}
+.dl-acs .btn{flex:1;justify-content:center}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--dv);margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:10px 15px;font-size:13px;color:var(--t3);cursor:pointer;border-bottom:2px solid transparent;font-weight:600;white-space:nowrap}
+.tab:hover{color:var(--t1)}.tab.on{color:var(--pri);border-bottom-color:var(--pri)}
+.ig{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid var(--dv);border-radius:11px;overflow:hidden}
+.ig-i{padding:11px 15px;border-bottom:1px solid var(--dv);border-right:1px solid var(--dv)}
+.ig-lb{font-size:11px;color:var(--t3);margin-bottom:3px;font-weight:500}
+.ig-v{font-size:13px;font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.tl{position:relative;padding-left:22px}
+.tl::before{content:'';position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:var(--dv)}
+.tl-i{position:relative;padding:0 0 16px}
+.tl-i:last-child{padding-bottom:0}
+.tl-d{position:absolute;left:-19px;top:3px;width:11px;height:11px;border-radius:50%;background:var(--card);border:2px solid var(--pri)}
+.tl-d.ok{border-color:var(--ok)}.tl-d.warn{border-color:var(--warn)}.tl-d.err{border-color:var(--err)}.tl-d.mut{border-color:var(--t4)}
+.tl-t{font-size:13px;font-weight:600}
+.tl-m{font-size:12px;color:var(--t3);margin-top:2px}
+.tl-time{font-size:11px;color:var(--t4);font-variant-numeric:tabular-nums}
+.trace{background:var(--pri-bg);border:1px solid var(--pri-100);border-radius:11px;padding:12px 15px}
+.trace-h{font-size:12px;font-weight:700;color:var(--pri);display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.trace-r{display:flex;gap:10px;font-size:12px;padding:6px 0;border-top:1px dashed var(--pri-100)}
+.trace-r:first-of-type{border-top:none}
+.trace-r .k{color:var(--t3);width:70px;flex-shrink:0}
+.trace-r .val{color:var(--t2);font-weight:500}
+.form-r{margin-bottom:13px}
+.form-l{font-size:12.5px;font-weight:600;color:var(--t2);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.form-l .req{color:var(--err)}
+textarea.in,.in{width:100%;padding:9px 12px;border:1px solid var(--card-b);border-radius:9px;font-family:inherit;font-size:13px;background:var(--card);outline:none;color:var(--t1);resize:vertical}
+.in:focus{border-color:var(--pri);box-shadow:0 0 0 3px var(--pri-bg)}
+.seg{display:flex;gap:0;background:var(--pri-bg);border-radius:10px;padding:3px;width:fit-content}
+.seg-i{padding:6px 15px;font-size:12.5px;font-weight:600;border-radius:8px;cursor:pointer;color:var(--t3)}
+.seg-i.on{background:var(--card);color:var(--pri);box-shadow:var(--s1)}
+.wm{position:relative}
+.wm::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:5;background-repeat:repeat;background-image:var(--wm-img);opacity:.8}
+.mapbox{height:180px;border-radius:11px;border:1px solid var(--card-b);position:relative;overflow:hidden;background:linear-gradient(135deg,#E8EEF7,#DDE7F3)}
+.mapbox .grid{position:absolute;inset:0;background:linear-gradient(rgba(37,99,235,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,.08) 1px,transparent 1px);background-size:26px 26px}
+.mapbox .range{position:absolute;left:44%;top:44%;width:96px;height:96px;border-radius:50%;background:rgba(37,99,235,.1);border:2px dashed rgba(37,99,235,.4);transform:translate(-50%,-50%)}
+.mapbox .pin{position:absolute;width:16px;height:16px;border-radius:50%;border:3px solid #fff}
+.mapbox .pin.c{left:50%;top:50%;transform:translate(-50%,-50%);background:var(--pri)}
+.mapbox .pin.o{left:70%;top:64%;background:var(--err);box-shadow:0 0 0 4px rgba(220,38,38,.15)}
+.bar{height:7px;border-radius:4px;background:rgba(120,144,190,.16);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--g1),var(--g2))}
+.state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:64px 20px;min-height:340px}
+.state-ic{width:74px;height:74px;border-radius:20px;display:flex;align-items:center;justify-content:center}
+.state-t{font-size:17px;font-weight:700}
+.state-m{font-size:13px;color:var(--t3);max-width:420px;line-height:1.7}
+.sk{background:linear-gradient(90deg,var(--dv) 25%,rgba(255,255,255,.5) 37%,var(--dv) 63%);background-size:800px 100%;animation:shimmer 1.4s infinite;border-radius:8px}
+.spin{width:34px;height:34px;border-radius:50%;border:3px solid var(--pri-100);border-top-color:var(--pri);animation:spin .8s linear infinite}
+.ins{background:var(--card);border:1px solid var(--card-b);border-radius:var(--r);padding:15px 17px;box-shadow:var(--s1);display:flex;flex-direction:column;gap:7px}
+.ins-top{display:flex;align-items:baseline;gap:8px}
+.ins-v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.ins-lb{font-size:12.5px;color:var(--t3);font-weight:500}
+.ins-why{font-size:12.5px;color:var(--t2);line-height:1.55}
+.ins-who{font-size:11.5px;color:var(--t3);display:flex;align-items:center;gap:5px;margin-top:auto}
+.bars{display:flex;align-items:flex-end;gap:10px;height:130px;padding-top:8px}
+.barc{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+.barc .bv{width:100%;max-width:34px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--g1),var(--g2))}
+.barc .bl{font-size:11px;color:var(--t3);white-space:nowrap}
+.barc .bn{font-size:11px;font-weight:700;color:var(--t2)}
+.th-dots{display:flex;gap:5px;align-items:center}
+.th-dot{width:16px;height:16px;border-radius:50%;cursor:pointer;border:2px solid transparent}
+.th-dot.on{border-color:var(--card);box-shadow:0 0 0 1.5px var(--pri)}
+</style>
+</helmet>
+<div class="shell {{ themeClass }}">
+  <div class="topbar">
+    <div class="tb-brand">
+      <div class="tb-logo">{{ schoolLogo }}</div>
+      <div class="tb-binfo"><div class="tb-nm">{{ platformDisplayName }}</div><div class="tb-sch">{{ schoolName }}</div></div>
+    </div>
+    <div class="cmdk"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>搜索实习生 / 企业 / 岗位…</span><kbd>⌘K</kbd></div>
+    <div class="tb-r">
+      <span class="tb-env">DEV</span>
+      <div class="scope-lens"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>数据范围 · {{ dataScopeName }}</div>
+      <button class="tbb"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="notif-b">6</span></button>
+      <div class="th-dots">
+        <sc-for list="{{ themeDots }}" as="td" hint-placeholder-count="6"><span class="th-dot {{ td.cls }}" style="{{ td.style }}" title="{{ td.name }}" onClick="{{ td.pick }}"></span></sc-for>
+      </div>
+      <div class="tb-role" onClick="{{ toggleRoleMenu }}">
+        <div class="av-tb">{{ userInitial }}</div>
+        <div class="tb-uinfo"><div class="tb-un">{{ userName }}</div><div class="tb-ur">{{ currentRoleName }}</div></div>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;color:var(--t3)"><path d="m6 9 6 6 6-6"/></svg>
+        <sc-if value="{{ roleMenuOpen }}" hint-placeholder-val="{{ false }}">
+          <div class="rw" onClick="{{ stop }}">
+            <div class="rw-hd">切换工作角色</div>
+            <div class="rw-sub">不同角色的数据范围、按钮权限、统计口径不同</div>
+            <sc-for list="{{ roleList }}" as="r" hint-placeholder-count="4">
+              <div class="rw-c {{ r.onCls }}" onClick="{{ r.pick }}"><div class="rw-nm">{{ r.name }}</div><div class="rw-sc">{{ r.scope }}</div></div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="rail">
+      <sc-for list="{{ railItems }}" as="ri" hint-placeholder-count="7">
+        <div class="ri {{ ri.onCls }}" onClick="{{ ri.go }}">{{ ri.icon }}{{ ri.label }}<sc-if value="{{ ri.badge }}" hint-placeholder-val="{{ false }}"><span class="ri-b">{{ ri.badge }}</span></sc-if></div>
+      </sc-for>
+      <div class="rail-sp"></div>
+      <div class="ri"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>系统</div>
+    </div>
+    <div class="main">
+      <div class="body" style="flex:1;overflow:hidden">
+        <div class="subrail">
+          <div class="sr-brand"><div class="t">岗位实习中心</div><div class="s">{{ moduleScopeLine }}</div></div>
+          <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="6">
+            <div class="sr-g">{{ g.title }}</div>
+            <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="2">
+              <div class="sr-i {{ it.onCls }}" onClick="{{ it.go }}">{{ it.icon }}{{ it.label }}<sc-if value="{{ it.badge }}" hint-placeholder-val="{{ false }}"><span class="b">{{ it.badge }}</span></sc-if></div>
+            </sc-for>
+          </sc-for>
+        </div>
+        <div class="ct" onClick="{{ closeMenus }}">{{ screen }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;defaultRole&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;辅导员&quot;,&quot;实习指导老师&quot;,&quot;学院管理员&quot;,&quot;教务老师&quot;],&quot;default&quot;:&quot;学院管理员&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;角色与范围&quot;},&quot;defaultTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;学院蓝&quot;,&quot;商务蓝&quot;,&quot;护眼绿&quot;,&quot;雅灰&quot;,&quot;皓白极简&quot;,&quot;墨白极简&quot;],&quot;default&quot;:&quot;学院蓝&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;主题&quot;},&quot;watermarkText&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;内部资料 · 禁止外传&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;合规&quot;}}">
+class Component extends DCLogic {
+  state = { view: 'dashboard', role: 'college', theme: '', roleMenuOpen: false, student: 'liyt' };
+
+  componentDidMount(){
+    const p=this.props||{}, u={};
+    const rmap={ '辅导员':'counselor','实习指导老师':'mentor','学院管理员':'college','教务老师':'academic' };
+    const tmap={ '学院蓝':'','商务蓝':'th-b','护眼绿':'th-d','雅灰':'th-c','皓白极简':'th-e','墨白极简':'th-f' };
+    if(p.defaultRole && rmap[p.defaultRole]) u.role=rmap[p.defaultRole];
+    if(p.defaultTheme && tmap[p.defaultTheme]!==undefined) u.theme=tmap[p.defaultTheme];
+    if(p.watermarkText) this.brand.watermarkText=p.watermarkText;
+    if(Object.keys(u).length) this.setState(u); else this.forceUpdate();
+  }
+
+  // ---------- brand (tenantBrandConfig) ----------
+  brand = {
+    schoolName: '南京职业技术学院', platformDisplayName: '职校全生命周期平台',
+    schoolLogo: '职', schoolBadge: 'NJVTC', tenantBrandColor: '#2563EB',
+    watermarkText: '内部资料 · 禁止外传', userName: '张晓明'
+  };
+
+  roles = {
+    counselor: { name: '辅导员', scope: '所带班级 · 3 个班 · 128 名实习生', mod: '23软件2班 / 23网络1班 / 23大数据班', canApprove: false, canExport: false, note: '仅关怀跟进，不参与实习业务审批' },
+    mentor:    { name: '实习指导老师', scope: '本人指导 · 32 名在岗学生', mod: '本人指导的 32 名在岗学生', canApprove: true, canExport: false, note: '周报/请假/换岗一审，巡访记录' },
+    college:   { name: '学院管理员', scope: '信息工程学院 · 862 名实习生', mod: '信息工程学院 · 全院 862 名实习生', canApprove: true, canExport: true, note: '院内全量，申请/换岗二审、准入初审、归档核验' },
+    academic:  { name: '教务老师', scope: '全校教务 · 只读监管 · 1,240 名', mod: '全校 1,240 名实习生（只读监管口径）', canApprove: false, canExport: true, note: '全校只读监管与质量报告，不做业务审批' }
+  };
+
+  // per-role top counts for dashboard
+  scopeStat = {
+    counselor: { total: 128, onboard: 96, abn: 5, report: 7, risk: 3 },
+    mentor:    { total: 32,  onboard: 30, abn: 3, report: 4, risk: 2 },
+    college:   { total: 862, onboard: 731, abn: 24, report: 38, risk: 12 },
+    academic:  { total: 1240, onboard: 1042, abn: 41, report: 63, risk: 19 }
+  };
+
+  today = '2026-07-03';
+
+  students = [
+    { id:'liyt', nm:'李雨桐', no:'20230412', cls:'23软件2班', ent:'南京朗行网络科技', pos:'前端开发实习生', mentor:'王磊', ent_mentor:'周敏', pct:62, stage:'在岗中', st:'onboard', flag:'checkin', flagTxt:'打卡异常', risk:false },
+    { id:'wangc', nm:'王晨', no:'20230415', cls:'23软件2班', ent:'苏宁易购', pos:'软件测试实习生', mentor:'王磊', ent_mentor:'李强', pct:54, stage:'在岗中', st:'onboard', flag:'report', flagTxt:'周报逾期', risk:false },
+    { id:'chenh', nm:'陈浩宇', no:'20230408', cls:'23网络1班', ent:'华为南京研究所', pos:'运维实习生', mentor:'刘芳', ent_mentor:'黄涛', pct:78, stage:'在岗中', st:'onboard', flag:'', flagTxt:'正常', risk:false },
+    { id:'zhaosy', nm:'赵思远', no:'20230420', cls:'23软件2班', ent:'自主实习 · 待核验', pos:'—', mentor:'王磊', ent_mentor:'—', pct:20, stage:'准备中', st:'prepare', flag:'risk', flagTxt:'风险跟进', risk:true },
+    { id:'liuzh', nm:'刘子涵', no:'20230401', cls:'23大数据班', ent:'中兴通讯', pos:'数据分析实习生', mentor:'刘芳', ent_mentor:'孙武', pct:66, stage:'请假中', st:'leave', flag:'leave', flagTxt:'请假审批中', risk:false },
+    { id:'suny', nm:'孙悦', no:'20230433', cls:'23网络1班', ent:'途牛旅游', pos:'前端开发实习生', mentor:'刘芳', ent_mentor:'赵磊', pct:71, stage:'在岗中', st:'onboard', flag:'', flagTxt:'正常', risk:false }
+  ];
+
+  // ---------- nav config ----------
+  railDef = [
+    { k:'home', label:'工作台', icon:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>' },
+    { k:'student', label:'学生中心', icon:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>' },
+    { k:'intern', label:'岗位实习', icon:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>' },
+    { k:'data', label:'数据中心', icon:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>' },
+    { k:'approve', label:'审批', badge:'8', icon:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' },
+    { k:'perm', label:'设计规范', icon:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>' }
+  ];
+
+  navDef = [
+    { title:'概览', items:[ {k:'dashboard', label:'管理看板', ic:'grid'} ] },
+    { title:'学生与岗位', items:[ {k:'students', label:'实习学生列表', ic:'users'}, {k:'enterprise', label:'企业与岗位', ic:'building'} ] },
+    { title:'过程监管', items:[ {k:'checkin', label:'打卡异常', ic:'pin', bkey:'abn'}, {k:'reports', label:'周报批阅', ic:'file', bkey:'report'}, {k:'leave', label:'请假审批', ic:'calendar'}, {k:'visit', label:'巡访记录', ic:'route'} ] },
+    { title:'风险与收尾', items:[ {k:'risk', label:'实习风险学生', ic:'alert', bkey:'risk'}, {k:'archive', label:'实习归档', ic:'box'}, {k:'insight', label:'实习数据洞察', ic:'chart'} ] },
+    { title:'系统状态（演示）', items:[ {k:'noperm', label:'无权限', ic:'lock'}, {k:'noscope', label:'无数据范围', ic:'eyeoff'}, {k:'empty', label:'空状态', ic:'inbox'}, {k:'loading', label:'加载状态', ic:'loader'}, {k:'error', label:'异常状态', ic:'x'} ] }
+  ];
+
+  navIcons = {
+    grid:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>',
+    users:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>',
+    building:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01"/></svg>',
+    pin:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+    file:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15h6M9 11h2"/></svg>',
+    calendar:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    route:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h6a3 3 0 0 0 3-3V8"/></svg>',
+    alert:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/></svg>',
+    box:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 8-9-5-9 5v8l9 5 9-5z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>',
+    chart:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>',
+    lock:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    eyeoff:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.9 4.2A9 9 0 0 1 12 4c7 0 10 8 10 8a13 13 0 0 1-1.7 2.7M6.6 6.6A13 13 0 0 0 2 12s3 8 10 8a9 9 0 0 0 4.5-1.2"/><path d="m2 2 20 20"/></svg>',
+    inbox:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.4 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.4-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.8 1.1Z"/></svg>',
+    loader:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/></svg>',
+    x:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>'
+  };
+
+  themeDefs = [
+    { k:'', name:'学院蓝', sw:'linear-gradient(135deg,#60A5FA,#2F6BFF)' },
+    { k:'th-b', name:'商务蓝', sw:'linear-gradient(135deg,#3E86DE,#0D2A55)' },
+    { k:'th-d', name:'护眼绿', sw:'linear-gradient(135deg,#5CA894,#3E8E7E)' },
+    { k:'th-c', name:'雅灰', sw:'linear-gradient(135deg,#8A9AC8,#5B6C9E)' },
+    { k:'th-e', name:'皓白极简', sw:'linear-gradient(135deg,#F8FAFC,#CBD5E1)' },
+    { k:'th-f', name:'墨白极简', sw:'linear-gradient(135deg,#4B5563,#111827)' }
+  ];
+
+  viewMap = { dashboard:'vDashboard', students:'vStudents', 'student-detail':'vStudentDetail', enterprise:'vEnterprise', checkin:'vCheckin', 'checkin-detail':'vCheckinDetail', reports:'vReports', 'report-detail':'vReportDetail', leave:'vLeave', visit:'vVisit', risk:'vRisk', archive:'vArchive', insight:'vInsight', noperm:'vNoPerm', noscope:'vNoScope', empty:'vEmpty', loading:'vLoading', error:'vError' };
+
+  go(v){ this.setState({ view:v, roleMenuOpen:false }); const el=document.querySelector('.ct'); if(el) el.scrollTop=0; }
+  pickRole(r){ this.setState({ role:r, roleMenuOpen:false }); }
+  pickTheme(t){ this.setState({ theme:t }); }
+  openStudent(id){ this.setState({ view:'student-detail', student:id }); const el=document.querySelector('.ct'); if(el) el.scrollTop=0; }
+
+  esc(s){ return (s==null?'':(''+s)); }
+
+  // ---- shared html helpers ----
+  crumb(items){
+    let h='<div class="crumb">';
+    items.forEach((it,i)=>{ if(i) h+='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>'; h+= it.go?('<a data-go="'+it.go+'"'+(it.sid?(' data-sid="'+it.sid+'"'):'')+'>'+it.t+'</a>'):('<span>'+it.t+'</span>'); });
+    return h+'</div>';
+  }
+  pghd(t,subParts,right){
+    let sub = subParts.map(s=>'<span>'+s+'</span>').join('<span style="color:var(--t4)">·</span>');
+    return '<div class="pghd"><div><div class="pgt">'+t+'</div><div class="pgs">'+sub+'</div></div><div class="ac">'+(right||'')+'</div></div>';
+  }
+  wmStyle(){
+    const wt = this.brand.watermarkText+' · '+this.roles[this.state.role].name+' · '+this.today;
+    const svg = "data:image/svg+xml,"+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='330' height='190'><text x='165' y='95' text-anchor='middle' transform='rotate(-24 165 95)' fill='rgba(80,110,180,0.06)' font-size='13' font-family='sans-serif'>"+wt+"</text></svg>");
+    return "background-image:url(\""+svg+"\")";
+  }
+
+  // ============ SCREEN HTML BUILDERS ============
+  buildDashboard(){
+    const R=this.roles[this.state.role], s=this.scopeStat[this.state.role], hr=new Date().getHours();
+    const greet = hr<11?'上午好':(hr<13?'中午好':(hr<18?'下午好':'晚上好'));
+    const orbit=[ {n:s.total,l:'实习总数',},{n:s.onboard,l:'在岗中',hot:true},{n:s.abn,l:'打卡异常',r:'待处理'},{n:s.report,l:'待批周报'},{n:s.risk,l:'风险学生',r:'跟进'},{n:this.state.role==='counselor'?'—':'96%',l:'归档率'} ];
+    let ob = orbit.map(o=>'<div class="ob '+(o.hot?'hot':'')+'"><div class="ob-d">'+o.n+'</div><div class="ob-l">'+o.l+'</div>'+(o.r?'<div class="ob-r">'+o.r+'</div>':'')+'</div>').join('');
+    const spark=(pts,c)=>'<svg class="mc-sp" viewBox="0 0 72 26"><polyline points="'+pts+'" style="stroke:'+c+'"/></svg>';
+    let metrics = [
+      { lb:'打卡出勤率', v:'94.2%', tr:'较上周 +1.4%', good:true, sp:spark('0,20 12,16 24,18 36,10 48,12 60,6 72,4','#059669') },
+      { lb:'周报按时提交率', v:'88.6%', tr:'较上周 -2.1%', good:false, sp:spark('0,8 12,10 24,7 36,12 48,10 60,16 72,14','#D97706') },
+      { lb:'巡访完成率', v:'76.0%', tr:'低于口径 85%', good:false, sp:spark('0,18 12,14 24,16 36,12 48,14 60,10 72,12','#DC2626') },
+      { lb:'企业协同评分', v:'4.6', tr:'满分 5.0 · 稳定', good:true, sp:spark('0,12 12,10 24,11 36,9 48,10 60,8 72,8','#3B82F6') }
+    ];
+    let mc = metrics.map(m=>'<div class="mc"><div class="mc-lb">'+m.lb+'</div><div class="mc-v">'+m.v+'</div><div class="mc-tr '+(m.good?'good':'bad')+'">'+m.tr+'</div>'+m.sp+'</div>').join('');
+    const focus = this.state.role==='counselor' ?
+      [ {c:'fw',k:'今日焦点 · 关怀',tt:s.risk+' 名学生需关怀跟进',mt:'打卡异常 '+s.abn+' · 情绪/适应预警 2',ac:'查看风险学生 →',go:'risk'},
+        {c:'fp',k:'今日焦点 · 提醒',tt:'6 名学生周报逾期',mt:'可一键提醒，本班辅导员无批阅权限',ac:'发送提醒 →',go:'reports'},
+        {c:'fp',k:'今日焦点 · 名单',tt:'128 名实习生在册',mt:'在岗 96 · 请假 1 · 准备中 31',ac:'查看学生列表 →',go:'students'} ]
+      :
+      [ {c:'fe',k:'今日焦点 · 异常',tt:s.abn+' 条打卡异常待处理',mt:'超范围 '+Math.round(s.abn*0.6)+' · 疑似模拟定位 2 · 缺卡 '+Math.round(s.abn*0.2),ac:'进入异常处理 →',go:'checkin'},
+        {c:'fw',k:'今日焦点 · 批阅',tt:s.report+' 份周报待批阅',mt:'其中逾期 '+Math.max(1,Math.round(s.report*0.3))+' 份 · 退回重交 2 份',ac:'进入周报批阅 →',go:'reports'},
+        {c:'fp',k:'今日焦点 · 风险',tt:s.risk+' 名风险学生跟进中',mt:'实习中断 1 · 安全隐患 1 · 长期缺卡 '+(s.risk-2>0?s.risk-2:1),ac:'进入风险预警 →',go:'risk'} ];
+    let fc = focus.map(f=>'<div class="focus '+f.c+'" data-go="'+f.go+'"><div class="focus-k">'+f.k+'</div><div class="focus-tt">'+f.tt+'</div><div class="focus-mt">'+f.mt+'</div><div class="focus-ac">'+f.ac+'</div></div>').join('');
+    let apprHtml = R.canApprove
+      ? '<div class="card"><div class="card-h"><div class="card-ht">我的待办审批</div><span class="lnk" data-go="approve">全部 →</span></div><div class="card-b" style="padding:0">'+this.todoRows()+'</div></div>'
+      : '<div class="card"><div class="card-h"><div class="card-ht">我的待办</div><span class="tag tg-g">'+R.name+' · 无审批权</span></div><div class="card-b"><div class="notice i" style="margin:0"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>当前角色为「'+R.name+'」，'+R.note+'。可查看与提醒，审批动作对该角色隐藏。</div></div></div>';
+    return '<div class="hero"><div class="hero-motto">厚德 · 精技 · 笃行</div><div class="hero-top"><div class="hero-hi">'+greet+'，'+this.brand.userName+'</div><div class="hero-num">'+R.name+' · 岗位实习监管数据范围 <strong>'+s.total.toLocaleString()+'</strong> 名实习生</div></div>'
+      + '<div class="hero-chips"><span class="hchip"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>数据范围 · '+R.mod+'</span><span class="hchip">数据更新至 '+this.today+' 14:00</span><span class="hchip">口径 · 全日制在岗实习</span></div>'
+      + '<div class="orbit">'+ob+'</div></div>'
+      + '<div class="notice w"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/></svg>过程质量提醒：本周巡访完成率 76%，低于院校口径 85%；'+s.abn+' 条打卡异常超 24h 未处理。<span class="lnk" data-go="checkin">去处理 →</span></div>'
+      + '<div class="focus-row">'+fc+'</div>'
+      + '<div class="mts mt4">'+mc+'</div>'
+      + '<div class="grid-2a">'+apprHtml
+      + '<div class="card"><div class="card-h"><div class="card-ht">实习阶段分布</div></div><div class="card-b">'+this.stageBars()+'</div></div></div>';
+  }
+  todoRows(){
+    const rows=[
+      {t:'李雨桐 · 打卡异常（疑似模拟定位）',m:'23软件2班 · 南京朗行网络科技',tg:'tg-e',tl:'异常',go:'checkin'},
+      {t:'王晨 · 第 12 周实习周报待批阅',m:'23软件2班 · 苏宁易购 · 已逾期 2 天',tg:'tg-w',tl:'逾期',go:'reports'},
+      {t:'刘子涵 · 病假申请待审批',m:'23大数据班 · 中兴通讯 · 3 天',tg:'tg-i',tl:'请假',go:'leave'},
+      {t:'赵思远 · 自主实习单位待核验',m:'23软件2班 · 材料不齐 · 风险跟进',tg:'tg-e',tl:'风险',go:'risk'}
+    ];
+    return rows.map(r=>'<div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--dv);cursor:pointer" data-go="'+r.go+'"><span class="tag '+r.tg+'">'+r.tl+'</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">'+r.t+'</div><div style="font-size:11.5px;color:var(--t3)">'+r.m+'</div></div><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t4)"><path d="m9 18 6-6-6-6"/></svg></div>').join('');
+  }
+  stageBars(){
+    const d=[ {l:'准备中',n:31,c:'#8494B5'},{l:'待上岗',n:12,c:'#D97706'},{l:'在岗中',n:this.scopeStat[this.state.role].onboard,c:'#2563EB'},{l:'考核中',n:18,c:'#6366F1'},{l:'已完成',n:9,c:'#059669'},{l:'已归档',n:6,c:'#94A3B8'} ];
+    const mx=Math.max(...d.map(x=>x.n));
+    return '<div class="bars">'+d.map(x=>'<div class="barc"><div class="bn">'+x.n+'</div><div class="bv" style="height:'+Math.max(6,x.n/mx*100)+'%;background:'+x.c+'"></div><div class="bl">'+x.l+'</div></div>').join('')+'</div>';
+  }
+
+  studentTag(st){
+    if(st.flag==='checkin') return '<span class="tag tg-e"><span class="dot"></span>打卡异常</span>';
+    if(st.flag==='report') return '<span class="tag tg-w"><span class="dot"></span>周报逾期</span>';
+    if(st.flag==='risk') return '<span class="tag tg-e"><span class="dot"></span>风险跟进</span>';
+    if(st.flag==='leave') return '<span class="tag tg-i"><span class="dot"></span>请假中</span>';
+    return '<span class="tag tg-o"><span class="dot"></span>正常</span>';
+  }
+  buildStudents(){
+    const R=this.roles[this.state.role];
+    const right='<button class="btn btn-g btn-s"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>更多筛选</button>'+(R.canExport?'<button class="btn btn-g btn-s"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>导出</button>':'<span class="priv"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>该角色禁止批量导出</span>');
+    let rows = this.students.map(s=>'<tr class="row-c" data-sid="'+s.id+'"><td class="nm">'+s.nm+'</td><td style="color:var(--t3);font-variant-numeric:tabular-nums">'+s.no+'</td><td>'+s.cls+'</td><td>'+s.ent+'</td><td>'+(s.pos==='—'?'<span style="color:var(--t4)">—</span>':s.pos)+'</td><td>'+s.mentor+'</td><td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="width:70px"><i style="width:'+s.pct+'%"></i></div><span style="font-size:11px;color:var(--pri);font-weight:600">'+s.pct+'%</span></div></td><td>'+this.studentTag(s)+'</td><td class="ac"><button class="lnk" data-sid="'+s.id+'">查看详情</button></td></tr>').join('');
+    return this.pghd('实习学生列表',[R.name,'数据范围 · '+R.mod,'共 '+this.students.length+' 名（示例）'], right)
+      + '<div class="notice i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>你正在查看「'+R.mod+'」范围内的实习生；手机号等敏感字段默认脱敏，导出需审批留痕。</div>'
+      + '<div class="fb"><div class="fb-in"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="搜索姓名 / 学号 / 企业"></div><div class="fb-sl">全部专业<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="m6 9 6 6 6-6"/></svg></div><div class="fb-sl">全部批次<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="m6 9 6 6 6-6"/></svg></div><div class="chips"><span class="chip on">全部</span><span class="chip">在岗中</span><span class="chip">打卡异常</span><span class="chip">周报逾期</span><span class="chip">风险</span></div></div>'
+      + '<div class="card"><table class="tbl"><thead><tr><th>姓名</th><th>学号</th><th>班级</th><th>实习企业</th><th>岗位</th><th>校内导师</th><th>实习进度</th><th>状态</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table><div style="padding:12px 18px"><div class="pg"><span>共 '+this.students.length+' 条 · 数据范围内实名可见</span><div class="pg-n"><span class="pg-b">上一页</span><span class="pg-b on">1</span><span class="pg-b">下一页</span></div></div></div></div>';
+  }
+
+  buildStudentDetail(){
+    const s=this.students.find(x=>x.id===this.state.student)||this.students[0];
+    const R=this.roles[this.state.role];
+    const tags = '<span class="tag tg-p">'+s.cls+'</span><span class="tag tg-i">'+s.stage+'</span>'+(s.flag==='checkin'?'<span class="tag tg-e">打卡异常</span>':'');
+    const pf = '<div class="dl-pf"><div class="dl-cover"><span style="position:absolute;left:14px;top:12px;font-size:10px;color:var(--hero-sub);letter-spacing:.2em;font-weight:600">实习档案</span></div>'
+      + '<div class="dl-av">'+s.nm[0]+'</div><div class="dl-nm">'+s.nm+'</div><div class="dl-id">'+s.no+' · '+s.cls+'</div>'
+      + '<div class="dl-tg">'+tags+'</div>'
+      + '<div class="dl-st"><div class="dl-sr"><span class="dl-sl">实习企业</span><span class="dl-sv">'+s.ent+'</span></div><div class="dl-sr"><span class="dl-sl">实习岗位</span><span class="dl-sv">'+s.pos+'</span></div><div class="dl-sr"><span class="dl-sl">校内导师</span><span class="dl-sv">'+s.mentor+'</span></div><div class="dl-sr"><span class="dl-sl">企业导师</span><span class="dl-sv">'+s.ent_mentor+'</span></div><div class="dl-sr"><span class="dl-sl">联系电话</span><span class="dl-sv"><span class="pf"><span class="v">138****'+(s.no.slice(-4))+'</span><svg class="lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span></span></div><div class="dl-sr"><span class="dl-sl">实习进度</span><span class="dl-sv">'+s.pct+'%</span></div></div>'
+      + '<div class="dl-acs"><button class="btn btn-p btn-s">发送提醒</button>'+(R.canApprove?'<button class="btn btn-g btn-s">发起巡访</button>':'<button class="btn btn-g btn-s">关怀记录</button>')+'</div></div>';
+    const checkinTL = '<div class="tl">'
+      + '<div class="tl-i"><div class="tl-d err"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">上午打卡 · 异常</span><span class="tl-time">今日 09:12</span></div><div class="tl-m">定位偏离打卡范围 <b style="color:var(--err)">820m</b> · 疑似模拟定位（is_mock 命中）</div><div style="margin-top:6px"><button class="lnk" data-go="checkin-detail">进入异常处理 →</button></div></div>'
+      + '<div class="tl-i"><div class="tl-d ok"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">下午打卡 · 正常</span><span class="tl-time">昨日 18:03</span></div><div class="tl-m">范围内 42m · 定位精度 8m</div></div>'
+      + '<div class="tl-i"><div class="tl-d ok"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">上午打卡 · 正常</span><span class="tl-time">昨日 08:56</span></div><div class="tl-m">范围内 30m</div></div></div>';
+    const info = '<div class="tabs"><span class="tab on">实习概况</span><span class="tab">打卡记录</span><span class="tab">周报/日志</span><span class="tab">请假/换岗</span><span class="tab">评价/成绩</span><span class="tab">材料/协议</span></div>'
+      + '<div class="ig" style="margin-bottom:14px"><div class="ig-i"><div class="ig-lb">实习批次</div><div class="ig-v">2026 春季顶岗实习</div></div><div class="ig-i"><div class="ig-lb">主状态</div><div class="ig-v"><span class="tag tg-i">在岗中 ONBOARD</span></div></div><div class="ig-i" style="border-right:none"><div class="ig-lb">到岗确认</div><div class="ig-v">双方已确认 · 03-01</div></div><div class="ig-i"><div class="ig-lb">协议状态</div><div class="ig-v"><span class="tag tg-o">已生效</span></div></div><div class="ig-i"><div class="ig-lb">保险</div><div class="ig-v"><span class="tag tg-o">有效至 2026-08</span></div></div><div class="ig-i" style="border-right:none"><div class="ig-lb">巡访次数</div><div class="ig-v">2 / 应 3 次</div></div></div>'
+      + '<div class="grid2"><div class="card"><div class="card-h"><div class="card-ht">近期打卡</div><span class="lnk" data-go="checkin">全部 →</span></div><div class="card-b">'+checkinTL+'</div></div>'
+      + '<div class="card"><div class="card-h"><div class="card-ht">近期周报</div><span class="lnk" data-go="reports">全部 →</span></div><div class="card-b"><div class="tl"><div class="tl-i"><div class="tl-d warn"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">第 12 周周报 · 待批阅</span><span class="tl-time">07-01 提交</span></div><div class="tl-m">已逾期，可批阅或退回重交 · <button class="lnk" data-go="report-detail">批阅 →</button></div></div><div class="tl-i"><div class="tl-d ok"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">第 11 周周报 · 已通过</span><span class="tl-time">06-24</span></div><div class="tl-m">教师评语：完成度良好，注意需求文档同步</div></div><div class="tl-i"><div class="tl-d err"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">第 10 周周报 · 曾退回</span><span class="tl-time">06-18</span></div><div class="tl-m">退回原因：内容过于简略，需补充本周产出</div></div></div></div></div></div>';
+    return this.crumb([{t:'实习学生列表',go:'students'},{t:s.nm}])
+      + this.pghd(s.nm+' · 实习档案',[R.name+' 视角','数据范围内实名可见','脱敏字段悬停申请查看'], '<button class="btn btn-g btn-s" data-go="students">返回列表</button><button class="btn btn-g btn-s" data-go="enterprise">查看企业岗位</button>')
+      + '<div class="grid-3a">'+pf+'<div>'+info+'</div></div>';
+  }
+
+  buildEnterprise(){
+    const R=this.roles[this.state.role];
+    const ig1='<div class="ig"><div class="ig-i"><div class="ig-lb">企业名称</div><div class="ig-v">南京朗行网络科技有限公司</div></div><div class="ig-i"><div class="ig-lb">统一社会信用代码</div><div class="ig-v"><span class="pf"><span class="v">91320****K</span><svg class="lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span></div></div><div class="ig-i" style="border-right:none"><div class="ig-lb">准入状态</div><div class="ig-v"><span class="tag tg-o">已通过 · 已上架</span></div></div><div class="ig-i"><div class="ig-lb">专业匹配</div><div class="ig-v">软件技术 / 前端 · 匹配</div></div><div class="ig-i"><div class="ig-lb">在岗实习生</div><div class="ig-v">6 名（本院 4 · 他院 2）</div></div><div class="ig-i" style="border-right:none"><div class="ig-lb">合作年限</div><div class="ig-v">3 年 · 无违规记录</div></div></div>';
+    const jobs='<table class="tbl"><thead><tr><th>岗位</th><th>专业匹配</th><th>需求/在岗</th><th>企业导师</th><th>打卡范围</th><th>状态</th></tr></thead><tbody>'
+      +'<tr><td class="nm">前端开发实习生</td><td>软件技术</td><td>3 / 3</td><td>周敏</td><td>玄武区珠江路 88 号 · 300m</td><td><span class="tag tg-o">已上架</span></td></tr>'
+      +'<tr><td class="nm">软件测试实习生</td><td>软件技术</td><td>2 / 1</td><td>李强</td><td>同上 · 300m</td><td><span class="tag tg-o">已上架</span></td></tr>'
+      +'<tr><td class="nm">UI 设计实习生</td><td>数字媒体</td><td>1 / 0</td><td>—</td><td>—</td><td><span class="tag tg-w">待审核</span></td></tr></tbody></table>';
+    const mentor='<div class="ig" style="grid-template-columns:1fr 1fr"><div class="ig-i"><div class="ig-lb">企业导师</div><div class="ig-v">周敏 · 前端团队负责人</div></div><div class="ig-i" style="border-right:none"><div class="ig-lb">授权范围</div><div class="ig-v"><span class="tag tg-p">仅授权在岗学生</span></div></div><div class="ig-i" style="border-bottom:none"><div class="ig-lb">可做</div><div class="ig-v">到岗确认 · 企业评价 · 异常上报</div></div><div class="ig-i" style="border-right:none;border-bottom:none"><div class="ig-lb">禁止</div><div class="ig-v" style="color:var(--err)">查看家庭/敏感档案 · 批量导出</div></div></div>';
+    return this.crumb([{t:'实习学生列表',go:'students'},{t:'李雨桐',go:'student-detail',sid:'liyt'},{t:'企业与岗位'}])
+      + this.pghd('南京朗行网络科技 · 企业与岗位',[R.name,'准入 / 岗位 / 企业导师授权'],'<button class="btn btn-g btn-s" data-go="student-detail">返回学生详情</button>')
+      + '<div class="notice i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>企业准入已通过校级终审，岗位「UI 设计实习生」处于待审核，暂不可分配学生。</div>'
+      + '<div class="card" style="margin-bottom:14px"><div class="card-h"><div class="card-ht">企业信息</div><span class="tag tg-o">合作正常</span></div><div class="card-b">'+ig1+'</div></div>'
+      + '<div class="grid-2a"><div class="card"><div class="card-h"><div class="card-ht">岗位信息</div></div><div class="card-b" style="padding:0">'+jobs+'</div></div>'
+      + '<div class="card"><div class="card-h"><div class="card-ht">企业导师与最小授权</div></div><div class="card-b">'+mentor+'</div></div></div>';
+  }
+
+  buildCheckin(){
+    const R=this.roles[this.state.role];
+    const rows=[
+      {nm:'李雨桐',cls:'23软件2班',ent:'南京朗行网络科技',type:'疑似模拟定位',dist:'820m',time:'今日 09:12',st:'待处理',tg:'tg-e',sid:'liyt',cur:true},
+      {nm:'王晨',cls:'23软件2班',ent:'苏宁易购',type:'超出打卡范围',dist:'410m',time:'今日 08:58',st:'待处理',tg:'tg-e',sid:'wangc'},
+      {nm:'孙悦',cls:'23网络1班',ent:'途牛旅游',type:'缺卡（未打上午卡）',dist:'—',time:'今日 —',st:'待核实',tg:'tg-w',sid:'suny'},
+      {nm:'陈浩宇',cls:'23网络1班',ent:'华为南京研究所',type:'补卡申请',dist:'—',time:'昨日 19:20',st:'待审核',tg:'tg-i',sid:'chenh'},
+      {nm:'刘子涵',cls:'23大数据班',ent:'中兴通讯',type:'超出打卡范围',dist:'260m',time:'07-01',st:'已核实-合理',tg:'tg-o',sid:'liuzh'}
+    ];
+    let tr=rows.map(r=>'<tr class="row-c" data-sid="'+r.sid+'"'+(r.cur?' data-detail="1"':'')+'><td class="nm">'+r.nm+'</td><td>'+r.cls+'</td><td>'+r.ent+'</td><td><span style="color:'+(r.tg==='tg-e'?'var(--err)':'var(--t1)')+'">'+r.type+'</span></td><td style="font-variant-numeric:tabular-nums">'+r.dist+'</td><td style="color:var(--t3)">'+r.time+'</td><td><span class="tag '+r.tg+'">'+r.st+'</span></td><td class="ac">'+(r.st.indexOf('已')===0?'<button class="lnk" data-detail="1" data-sid="'+r.sid+'">查看留痕</button>':'<button class="lnk" data-detail="1" data-sid="'+r.sid+'">处理</button>')+'</td></tr>').join('');
+    return this.pghd('打卡异常列表',[R.name,'数据范围 · '+R.mod,'防作弊：is_mock / 精度 / 距离'],'<button class="btn btn-g btn-s"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>筛选</button>')
+      + '<div class="notice w"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/></svg>合规原则：超范围不直接定性为作弊，须先核实学生说明；仅在学生主动打卡瞬间采集定位。</div>'
+      + '<div class="fb"><div class="fb-in"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="搜索学生 / 企业"></div><div class="chips"><span class="chip on">全部异常</span><span class="chip">疑似模拟定位</span><span class="chip">超出范围</span><span class="chip">缺卡</span><span class="chip">补卡申请</span><span class="chip">待处理</span></div></div>'
+      + '<div class="card"><table class="tbl"><thead><tr><th>姓名</th><th>班级</th><th>企业</th><th>异常类型</th><th>偏离距离</th><th>时间</th><th>状态</th><th>操作</th></tr></thead><tbody>'+tr+'</tbody></table></div>';
+  }
+
+  buildCheckinDetail(){
+    const R=this.roles[this.state.role];
+    const trace='<div class="trace"><div class="trace-h"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>处理留痕（审计不可篡改）</div>'
+      +'<div class="trace-r"><span class="k">09:12</span><span class="val">系统检测异常：定位偏离 820m，is_mock=true，判定风险等级「中」</span></div>'
+      +'<div class="trace-r"><span class="k">09:40</span><span class="val">已通知学生李雨桐补充说明（学生端已送达）</span></div>'
+      +'<div class="trace-r"><span class="k">10:05</span><span class="val">学生提交说明：「今日在客户现场对接，未回公司打卡」并附现场照片</span></div>'
+      +'<div class="trace-r"><span class="k">待你处理</span><span class="val" style="color:var(--pri)">核实说明 → 标记合理 / 记为异常并跟进</span></div></div>';
+    const handle=R.canApprove
+      ? '<div class="card"><div class="card-h"><div class="card-ht">核实与处理</div></div><div class="card-b"><div class="form-r"><div class="form-l">处理结论</div><div class="seg"><span class="seg-i on">核实合理</span><span class="seg-i">记为异常</span><span class="seg-i">要求补卡</span></div></div><div class="form-r"><div class="form-l">处理说明<span class="req">*</span> <span style="font-weight:400;color:var(--t4)">（不少于 5 字，写入留痕）</span></div><textarea class="in" rows="3" placeholder="例：已核实学生在客户现场对接，附照片与行程佐证，本次打卡异常属合理情形。"></textarea></div><div class="ac" style="margin-top:4px"><button class="btn btn-p">提交处理 · 写入留痕</button><button class="btn btn-w">记为异常并转风险跟进</button><button class="btn btn-g" data-go="checkin">取消</button></div></div></div>'
+      : '<div class="card"><div class="card-h"><div class="card-ht">核实与处理</div><span class="tag tg-g">'+R.name+' · 只读</span></div><div class="card-b"><div class="notice i" style="margin:0"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>该角色无打卡异常处置权，仅可查看与提醒；处理动作由实习指导老师 / 学院管理员执行。</div></div></div>';
+    return this.crumb([{t:'打卡异常列表',go:'checkin'},{t:'李雨桐 · 异常处理'}])
+      + this.pghd('李雨桐 · 打卡异常处理',['23软件2班 · 南京朗行网络科技','今日 09:12 上午卡'],'<button class="btn btn-g btn-s" data-go="checkin">返回列表</button><button class="btn btn-g btn-s" data-go="student-detail">学生档案</button>')
+      + '<div class="grid-2a" style="align-items:start"><div class="card"><div class="card-h"><div class="card-ht">定位与防作弊信息</div><span class="tag tg-e">风险等级 · 中</span></div><div class="card-b"><div class="mapbox" style="margin-bottom:14px"><div class="grid"></div><div class="range"></div><div class="pin c"></div><div class="pin o"></div><div style="position:absolute;right:10px;bottom:8px;font-size:10px;color:var(--t3);background:rgba(255,255,255,.8);padding:2px 6px;border-radius:6px">蓝点=打卡范围中心 · 红点=实际定位</div></div>'
+      + '<div class="ig"><div class="ig-i"><div class="ig-lb">偏离距离</div><div class="ig-v" style="color:var(--err)">820m（范围 300m）</div></div><div class="ig-i"><div class="ig-lb">定位精度</div><div class="ig-v">6m</div></div><div class="ig-i" style="border-right:none"><div class="ig-lb">is_mock</div><div class="ig-v"><span class="tag tg-e">true 命中</span></div></div><div class="ig-i" style="border-bottom:none"><div class="ig-lb">设备</div><div class="ig-v">iPhone · device_id ****3F</div></div><div class="ig-i" style="border-bottom:none"><div class="ig-lb">时段</div><div class="ig-v">上午 day</div></div><div class="ig-i" style="border-right:none;border-bottom:none"><div class="ig-lb">补卡状态</div><div class="ig-v">无</div></div></div>'
+      + '<div style="margin-top:14px"><div class="form-l">学生说明</div><div style="background:var(--pri-bg);border:1px solid var(--pri-100);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--t2)">「今日在客户现场对接需求，未返回公司打卡，已附现场照片与企业导师确认。」<div style="margin-top:8px;display:flex;gap:8px"><div style="width:52px;height:52px;border-radius:8px;background:linear-gradient(135deg,#DDE7F3,#C7D6EF)"></div><div style="width:52px;height:52px;border-radius:8px;background:linear-gradient(135deg,#DDE7F3,#C7D6EF)"></div></div></div></div>'
+      + '</div></div><div style="display:flex;flex-direction:column;gap:14px">'+handle+trace+'</div></div>';
+  }
+
+  buildReports(){
+    const R=this.roles[this.state.role];
+    const rows=[
+      {nm:'王晨',cls:'23软件2班',wk:'第 12 周',type:'周报',time:'07-01',st:'待批阅 · 逾期',tg:'tg-w',cur:true},
+      {nm:'李雨桐',cls:'23软件2班',wk:'第 12 周',type:'周报',time:'07-02',st:'待批阅',tg:'tg-i'},
+      {nm:'陈浩宇',cls:'23网络1班',wk:'第 12 周',type:'周报',time:'07-02',st:'待批阅',tg:'tg-i'},
+      {nm:'孙悦',cls:'23网络1班',wk:'6 月',type:'月报',time:'06-30',st:'已通过',tg:'tg-o'},
+      {nm:'刘子涵',cls:'23大数据班',wk:'第 11 周',type:'周报',time:'06-25',st:'已退回',tg:'tg-e'}
+    ];
+    let tr=rows.map(r=>'<tr class="row-c"'+(r.cur?' data-detail="1"':'')+'><td class="nm">'+r.nm+'</td><td>'+r.cls+'</td><td>'+r.wk+'</td><td>'+r.type+'</td><td style="color:var(--t3)">'+r.time+'</td><td><span class="tag '+r.tg+'">'+r.st+'</span></td><td class="ac">'+((r.st.indexOf('待')===0)?'<button class="lnk" data-detail="1">批阅</button>':'<button class="lnk" data-detail="1">查看</button>')+'</td></tr>').join('');
+    return this.pghd('周报批阅列表',[R.name,'数据范围 · '+R.mod,'退回必填原因 ≥5 字'],'<button class="btn btn-g btn-s"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>筛选</button>')
+      + (R.canApprove?'':'<div class="notice i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>「'+R.name+'」无周报批阅权限，以下为只读监管视图，可查看与提醒。</div>')
+      + '<div class="fb"><div class="fb-in"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="搜索学生 / 周期"></div><div class="chips"><span class="chip on">待批阅</span><span class="chip">逾期</span><span class="chip">已退回</span><span class="chip">已通过</span><span class="chip">月报</span></div></div>'
+      + '<div class="card"><table class="tbl"><thead><tr><th>姓名</th><th>班级</th><th>周期</th><th>类型</th><th>提交时间</th><th>状态</th><th>操作</th></tr></thead><tbody>'+tr+'</tbody></table></div>';
+  }
+
+  buildReportDetail(){
+    const R=this.roles[this.state.role];
+    const body='<div class="card"><div class="card-h"><div class="card-ht">王晨 · 第 12 周实习周报</div><span class="tag tg-w">待批阅 · 逾期 2 天</span></div><div class="card-b"><div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap"><span class="tag tg-p">23软件2班</span><span class="tag tg-i">苏宁易购 · 软件测试</span><span class="tag tg-g">版本 v2（曾退回 1 次）</span></div>'
+      +'<div class="form-l">本周工作内容</div><div style="font-size:13px;color:var(--t2);line-height:1.8;margin-bottom:12px">本周主要参与商品中心模块的功能测试，编写测试用例 46 条，执行回归测试 2 轮，提交缺陷 12 个（严重 2 个已复现）。学习了公司的自动化测试框架，完成接口用例 8 条…</div>'
+      +'<div class="form-l">遇到的问题与下周计划</div><div style="font-size:13px;color:var(--t2);line-height:1.8">测试环境数据不稳定影响回归效率，已与开发沟通；下周计划补充自动化脚本，覆盖核心下单流程。</div>'
+      +'<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--dv);font-size:12px;color:var(--t3)">附件：测试报告.pdf · 缺陷清单.xlsx</div></div></div>';
+    const review = R.canApprove
+      ? '<div class="card"><div class="card-h"><div class="card-ht">教师批阅</div></div><div class="card-b"><div class="form-r"><div class="form-l">批阅结论</div><div class="seg"><span class="seg-i on">通过</span><span class="seg-i">退回修改</span></div></div><div class="form-r"><div class="form-l">评语 / 退回原因<span class="req">*</span> <span style="font-weight:400;color:var(--t4)">（退回时不少于 5 字）</span></div><textarea class="in" rows="4" placeholder="例：内容较完整，请补充缺陷复现步骤与截图，下周同步自动化进度。"></textarea></div><div class="ac"><button class="btn btn-p">通过并记录</button><button class="btn btn-w">退回修改</button><button class="btn btn-g" data-go="reports">取消</button></div><div style="margin-top:12px;font-size:11.5px;color:var(--t3);background:var(--pri-bg);border-radius:9px;padding:9px 12px">退回后学生端同步「需修改」状态，学生重新提交生成 v3，本次批阅写入审批留痕。</div></div></div>'
+      : '<div class="card"><div class="card-h"><div class="card-ht">教师批阅</div><span class="tag tg-g">'+R.name+' · 只读</span></div><div class="card-b"><div class="notice i" style="margin:0"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>批阅由实习指导老师执行。当前「'+R.name+'」仅可查看，并可向学生 / 导师发送提醒。</div></div></div>';
+    const trace='<div class="trace"><div class="trace-h"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>批阅留痕</div>'
+      +'<div class="trace-r"><span class="k">06-30</span><span class="val">王晨提交 v1 周报</span></div>'
+      +'<div class="trace-r"><span class="k">06-30</span><span class="val" style="color:var(--err)">王磊老师退回：内容过于简略，需补充产出数据</span></div>'
+      +'<div class="trace-r"><span class="k">07-01</span><span class="val">王晨重新提交 v2（逾期 2 天）</span></div></div>';
+    return this.crumb([{t:'周报批阅列表',go:'reports'},{t:'王晨 · 第 12 周'}])
+      + this.pghd('周报批阅详情',['王晨 · 23软件2班','通过 / 退回修改 · 审批留痕'],'<button class="btn btn-g btn-s" data-go="reports">返回列表</button>')
+      + '<div class="grid-2a" style="align-items:start">'+body+'<div style="display:flex;flex-direction:column;gap:14px">'+review+trace+'</div></div>';
+  }
+
+  buildLeave(){
+    const R=this.roles[this.state.role];
+    const list='<div class="card"><div class="card-h"><div class="card-ht">请假申请</div><span class="tag tg-i">2 待审批</span></div><table class="tbl"><thead><tr><th>姓名</th><th>类型</th><th>起止</th><th>事由</th><th>状态</th></tr></thead><tbody>'
+      +'<tr class="row-c" style="background:var(--pri-bg)"><td class="nm">刘子涵</td><td>病假</td><td>07-03 ~ 07-05</td><td>感冒发热，附就诊证明</td><td><span class="tag tg-i">待审批</span></td></tr>'
+      +'<tr><td class="nm">王晨</td><td>事假</td><td>07-08</td><td>家中事务</td><td><span class="tag tg-i">待审批</span></td></tr>'
+      +'<tr><td class="nm">孙悦</td><td>病假</td><td>06-28 ~ 06-29</td><td>肠胃不适</td><td><span class="tag tg-o">已同意</span></td></tr>'
+      +'<tr><td class="nm">陈浩宇</td><td>事假</td><td>06-20</td><td>无有效证明</td><td><span class="tag tg-e">已驳回</span></td></tr></tbody></table></div>';
+    const detail = R.canApprove
+      ? '<div class="card"><div class="card-h"><div class="card-ht">刘子涵 · 病假审批</div><span class="tag tg-i">待审批</span></div><div class="card-b"><div class="ig" style="margin-bottom:14px"><div class="ig-i"><div class="ig-lb">请假类型</div><div class="ig-v">病假</div></div><div class="ig-i"><div class="ig-lb">时长</div><div class="ig-v">3 天</div></div><div class="ig-i" style="border-right:none"><div class="ig-lb">起止</div><div class="ig-v">07-03 ~ 07-05</div></div><div class="ig-i" style="border-bottom:none"><div class="ig-lb">企业导师意见</div><div class="ig-v"><span class="tag tg-o">已知悉</span></div></div><div class="ig-i" style="border-bottom:none;border-right:none;grid-column:span 2"><div class="ig-lb">与打卡冲突校验</div><div class="ig-v"><span class="tag tg-o">通过 · 请假期间免打卡</span></div></div></div><div class="form-r"><div class="form-l">审批结论</div><div class="seg"><span class="seg-i on">同意</span><span class="seg-i">驳回</span></div></div><div class="form-r"><div class="form-l">审批意见 / 驳回原因<span class="req">*</span></div><textarea class="in" rows="3" placeholder="例：证明齐全，同意病假 3 天，注意休息并保持与企业导师联系。"></textarea></div><div class="ac"><button class="btn btn-p">同意并记录</button><button class="btn btn-d">驳回</button></div><div style="margin-top:12px;font-size:11.5px;color:var(--t3);background:var(--pri-bg);border-radius:9px;padding:9px 12px">审批结果实时同步学生小程序状态，并进入实习旁路状态「请假中」，不覆盖主状态「在岗中」。</div></div></div>'
+      : '<div class="card"><div class="card-h"><div class="card-ht">刘子涵 · 病假审批</div><span class="tag tg-g">'+R.name+' · 只读</span></div><div class="card-b"><div class="notice i" style="margin:0"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>请假审批由实习指导老师执行，当前角色仅可查看审批记录。</div></div></div>';
+    return this.pghd('实习请假审批',[R.name,'同意 / 驳回 · 学生端同步'],'')
+      + '<div class="grid-2a" style="align-items:start">'+list+detail+'</div>';
+  }
+
+  buildVisit(){
+    const R=this.roles[this.state.role];
+    const tl='<div class="tl">'
+      +'<div class="tl-i"><div class="tl-d ok"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">现场巡访 · 南京朗行网络科技</span><span class="tl-time">06-28</span></div><div class="tl-m">走访学生 4 名（李雨桐等）· 企业导师座谈 · 岗位适配良好，建议加强需求文档规范</div></div>'
+      +'<div class="tl-i"><div class="tl-d ok"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">电话巡访 · 中兴通讯</span><span class="tl-time">06-20</span></div><div class="tl-m">刘子涵反馈数据脱敏培训完成，出勤正常</div></div>'
+      +'<div class="tl-i"><div class="tl-d warn"></div><div style="display:flex;justify-content:space-between"><span class="tl-t">月度工作记录 · 6 月</span><span class="tl-time">06-30 草稿</span></div><div class="tl-m">本月巡访 2 次，低于口径 3 次，计划本周补齐华为南研所现场巡访</div></div></div>';
+    const stat='<div class="mts mt3" style="margin:0"><div class="mc"><div class="mc-lb">本月巡访</div><div class="mc-v">2</div><div class="mc-tr bad">口径 3 次 · 缺 1</div></div><div class="mc"><div class="mc-lb">覆盖学生</div><div class="mc-v">18</div><div class="mc-tr">/ 32 名在岗</div></div><div class="mc"><div class="mc-lb">现场比例</div><div class="mc-v">50%</div><div class="mc-tr">现场 1 · 电话 1</div></div></div>';
+    return this.pghd('巡访记录管理',[R.name,'现场 / 电话 / 月度工作记录'], R.canApprove?'<button class="btn btn-p btn-s"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>新增巡访</button>':'')
+      + stat
+      + '<div class="card" style="margin-top:14px"><div class="card-h"><div class="card-ht">巡访时间线</div><span class="lnk">导出巡访报告</span></div><div class="card-b">'+tl+'</div></div>';
+  }
+
+  buildRisk(){
+    const R=this.roles[this.state.role];
+    const rows=[
+      {nm:'赵思远',cls:'23软件2班',reason:'自主实习单位待核验 · 材料不齐',lv:'高',tg:'tg-e',st:'处理中',cur:true,sid:'zhaosy'},
+      {nm:'李雨桐',cls:'23软件2班',reason:'连续打卡异常（疑似模拟定位）',lv:'中',tg:'tg-w',st:'待受理',sid:'liyt'},
+      {nm:'王晨',cls:'23软件2班',reason:'周报连续逾期 · 沟通不畅',lv:'中',tg:'tg-w',st:'处理中',sid:'wangc'}
+    ];
+    let tr=rows.map(r=>'<tr class="row-c" data-sid="'+r.sid+'"><td class="nm">'+r.nm+'</td><td>'+r.cls+'</td><td>'+r.reason+'</td><td><span class="tag '+r.tg+'">'+r.lv+'</span></td><td><span class="tag tg-i">'+r.st+'</span></td><td class="ac"><button class="lnk" data-sid="'+r.sid+'">跟进</button></td></tr>').join('');
+    const detail='<div class="card"><div class="card-h"><div class="card-ht">赵思远 · 风险跟进</div><span class="tag tg-e">风险等级 · 高</span></div><div class="card-b"><div class="ig" style="margin-bottom:14px"><div class="ig-i"><div class="ig-lb">风险来源</div><div class="ig-v">自主实习核验</div></div><div class="ig-i"><div class="ig-lb">责任人</div><div class="ig-v">王磊（指导老师）</div></div><div class="ig-i" style="border-right:none"><div class="ig-lb">处理期限</div><div class="ig-v" style="color:var(--err)">07-05 前</div></div><div class="ig-i" style="border-bottom:none;grid-column:span 3;border-right:none"><div class="ig-lb">风险原因</div><div class="ig-v" style="font-weight:400">学生自主联系实习单位，企业资质与三方协议材料未提交，存在安全与合规风险，暂缓认定实习。</div></div></div>'
+      +'<div class="form-r"><div class="form-l">跟进措施</div><div class="seg"><span class="seg-i on">发送提醒</span><span class="seg-i">记录跟进</span><span class="seg-i">升级上报</span></div></div>'
+      +'<div class="form-r"><div class="form-l">跟进说明<span class="req">*</span></div><textarea class="in" rows="3" placeholder="例：已联系学生与家长，要求 07-05 前补交企业营业执照与三方协议，否则转校内安置实习。"></textarea></div>'
+      +'<div class="ac"><button class="btn btn-p">发送提醒并记录</button><button class="btn btn-w">更新风险状态</button></div></div></div>';
+    const trace='<div class="trace"><div class="trace-h"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>跟进留痕</div>'
+      +'<div class="trace-r"><span class="k">06-26</span><span class="val">系统识别风险：自主实习材料缺失，标记「高」</span></div>'
+      +'<div class="trace-r"><span class="k">06-28</span><span class="val">王磊已发送提醒并电话联系，学生承诺补交</span></div>'
+      +'<div class="trace-r"><span class="k">07-02</span><span class="val" style="color:var(--warn)">材料仍未齐全，风险状态保持「处理中」</span></div></div>';
+    return this.pghd('实习风险学生',[R.name,'风险原因 · 提醒 · 跟进留痕 · 状态更新'],'')
+      + '<div class="mts mt3"><div class="mc"><div class="mc-lb">风险学生</div><div class="mc-v">'+this.scopeStat[this.state.role].risk+'</div><div class="mc-tr bad">高 1 · 中 '+(this.scopeStat[this.state.role].risk-1)+'</div></div><div class="mc"><div class="mc-lb">超期未处理</div><div class="mc-v">1</div><div class="mc-tr">需 07-05 前闭环</div></div><div class="mc"><div class="mc-lb">本月已闭环</div><div class="mc-v">4</div><div class="mc-tr good">闭环率 80%</div></div></div>'
+      + '<div class="grid-2a" style="align-items:start"><div class="card"><div class="card-h"><div class="card-ht">风险学生列表</div></div><table class="tbl"><thead><tr><th>姓名</th><th>班级</th><th>风险原因</th><th>等级</th><th>状态</th><th>操作</th></tr></thead><tbody>'+tr+'</tbody></table></div><div style="display:flex;flex-direction:column;gap:14px">'+detail+trace+'</div></div>';
+  }
+
+  buildArchive(){
+    const R=this.roles[this.state.role];
+    const rows=[
+      {nm:'孙悦',cls:'23网络1班',items:'8 / 8',miss:'—',st:'已备案',tg:'tg-o'},
+      {nm:'陈浩宇',cls:'23网络1班',items:'8 / 8',miss:'—',st:'已提交',tg:'tg-i'},
+      {nm:'李雨桐',cls:'23软件2班',items:'6 / 8',miss:'企业评价 · 实习总结',st:'待补齐',tg:'tg-w'},
+      {nm:'王晨',cls:'23软件2班',items:'5 / 8',miss:'成绩未发布 · 总结',st:'待生成',tg:'tg-g'}
+    ];
+    let tr=rows.map(r=>'<tr><td class="nm">'+r.nm+'</td><td>'+r.cls+'</td><td>'+r.items+'</td><td style="color:'+(r.miss==='—'?'var(--t4)':'var(--warn)')+'">'+r.miss+'</td><td><span class="tag '+r.tg+'">'+r.st+'</span></td><td class="ac">'+(R.canApprove?(r.st==='已提交'?'<button class="lnk">核验归档</button>':(r.miss!=='—'?'<button class="lnk">催补</button>':'<button class="lnk">查看</button>')):'<button class="lnk">查看</button>')+'</td></tr>').join('');
+    const checklist='<div class="card"><div class="card-h"><div class="card-ht">归档清单 · 李雨桐</div><span class="tag tg-w">6 / 8 项</span></div><div class="card-b" style="padding:0">'
+      +['三方协议（已生效）|ok','保险凭证（有效）|ok','实习申请与分配记录|ok','打卡与考勤汇总|ok','周报/月报合集|ok','实习总结报告|miss','企业导师评价|miss','校内成绩单（已发布）|ok'].map(x=>{const p=x.split('|');return '<div style="display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--dv)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="'+(p[1]==='ok'?'var(--ok)':'var(--t4)')+'" stroke-width="2">'+(p[1]==='ok'?'<path d="M20 6 9 17l-5-5"/>':'<circle cx="12" cy="12" r="9"/>')+'</svg><span style="flex:1;font-size:13px;'+(p[1]==='miss'?'color:var(--t3)':'')+'">'+p[0]+'</span>'+(p[1]==='miss'?'<span class="tag tg-w">缺失</span>':'<span class="tag tg-o">齐备</span>')+'</div>';}).join('')+'</div></div>';
+    return this.pghd('实习归档',[R.name,'清单 → 催补 → 核验 → 归档'], R.canExport?'<button class="btn btn-g btn-s"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>批量导出档案</button>':'')
+      + '<div class="mts mt4"><div class="mc"><div class="mc-lb">应归档</div><div class="mc-v">64</div><div class="mc-tr">本批次已完成实习</div></div><div class="mc"><div class="mc-lb">已备案</div><div class="mc-v">42</div><div class="mc-tr good">归档率 65.6%</div></div><div class="mc"><div class="mc-lb">待补齐</div><div class="mc-v">15</div><div class="mc-tr bad">材料缺失</div></div><div class="mc"><div class="mc-lb">待核验</div><div class="mc-v">7</div><div class="mc-tr">待管理员核验</div></div></div>'
+      + '<div class="grid-2a" style="align-items:start"><div class="card"><div class="card-h"><div class="card-ht">归档进度</div></div><table class="tbl"><thead><tr><th>姓名</th><th>班级</th><th>材料</th><th>缺失项</th><th>归档状态</th><th>操作</th></tr></thead><tbody>'+tr+'</tbody></table></div>'+checklist+'</div>';
+  }
+
+  buildInsight(){
+    const R=this.roles[this.state.role];
+    const spark=(pts,c)=>'<svg viewBox="0 0 120 44" style="width:100%;height:44px"><polyline points="'+pts+'" fill="none" stroke="'+c+'" stroke-width="2.5" stroke-linecap="round"/></svg>';
+    const ins=[
+      {v:'820m',lb:'平均异常偏离距离',why:'超范围打卡集中在市郊 3 家企业，与班车/客户现场作业相关，非主观作弊。',who:'覆盖 6 名学生'},
+      {v:'-2.1%',lb:'周报按时率环比下降',why:'第 12 周逢考试周，软件类专业提交率下滑；建议将截止日顺延并提醒。',who:'23软件2班 影响最大'},
+      {v:'76%',lb:'巡访完成率低于口径',why:'2 名指导老师带教 &gt;30 人，现场巡访不足；建议调配或增加电话巡访。',who:'刘芳/王磊 需支援'}
+    ];
+    let insh=ins.map(i=>'<div class="ins"><div class="ins-top"><span class="ins-v">'+i.v+'</span><span class="ins-lb">'+i.lb+'</span></div><div class="ins-why">'+i.why+'</div><div class="ins-who"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'+i.who+'</div></div>').join('');
+    const trend='<div class="card"><div class="card-h"><div class="card-ht">出勤率趋势（近 8 周）</div><span class="tag tg-o">整体平稳</span></div><div class="card-b">'+spark('0,30 15,24 30,26 45,18 60,20 75,12 90,14 120,8','#059669')+'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-top:6px"><span>W5</span><span>W8</span><span>W10</span><span>W12</span></div></div></div>';
+    const dist='<div class="card"><div class="card-h"><div class="card-ht">异常类型分布</div></div><div class="card-b">'+this.hbar([['超出打卡范围',14,'#D97706'],['疑似模拟定位',6,'#DC2626'],['缺卡',5,'#8494B5'],['补卡申请',9,'#2563EB']])+'</div></div>';
+    return this.pghd('实习数据洞察',[R.name,'数据范围 · '+R.mod,'业务洞察，非纯图表'], R.canExport?'<button class="btn btn-g btn-s"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>导出质量报告</button>':'<span class="priv"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>无导出权限</span>')
+      + '<div class="notice i"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Z"/><path d="M12 8v4M12 16h.01"/></svg>洞察聚焦「为什么 + 谁受影响 + 建议动作」，指标由 aggregateInternshipMetrics 口径计算，不硬编码。</div>'
+      + '<div class="mts mt3">'+insh+'</div>'
+      + '<div class="grid2" style="margin-top:2px">'+trend+dist+'</div>';
+  }
+  hbar(rows){
+    const mx=Math.max(...rows.map(r=>r[1]));
+    return rows.map(r=>'<div style="display:flex;align-items:center;gap:10px;margin-bottom:11px"><span style="width:100px;font-size:12.5px;color:var(--t2);flex-shrink:0">'+r[0]+'</span><div class="bar" style="flex:1"><i style="width:'+(r[1]/mx*100)+'%;background:'+r[2]+'"></i></div><span style="font-size:12px;font-weight:700;width:26px;text-align:right">'+r[1]+'</span></div>').join('');
+}
+
+  buildNoPerm(){
+    return this.pghd('实习成绩发布',['权限校验'],'')
+      + '<div class="card"><div class="state"><div class="state-ic" style="background:var(--err-l);color:var(--err)"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="state-t">无操作权限</div><div class="state-m">当前角色「'+this.roles[this.state.role].name+'」没有「实习成绩发布」的操作权限。该动作仅限校级实习管理员，且与成绩核算人分离（职责分离 SoD）。</div><div class="ac"><button class="btn btn-g" data-go="dashboard">返回工作台</button><button class="btn btn-p">申请权限</button></div></div></div>';
+  }
+  buildNoScope(){
+    return this.pghd('实习学生列表',['数据范围校验'],'')
+      + '<div class="card"><div class="state"><div class="state-ic" style="background:var(--warn-l);color:var(--warn)"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.9 4.2A9 9 0 0 1 12 4c7 0 10 8 10 8a13 13 0 0 1-1.7 2.7M6.6 6.6A13 13 0 0 0 2 12s3 8 10 8a9 9 0 0 0 4.5-1.2"/><path d="m2 2 20 20"/></svg></div><div class="state-t">当前无可见数据范围</div><div class="state-m">你的账号尚未被分配任何实习数据范围（班级 / 专业 / 学院）。请联系学院管理员在「权限与流程中心」为你配置数据范围后再访问。</div><div class="ac"><button class="btn btn-g" data-go="dashboard">返回工作台</button><button class="btn btn-p">联系管理员</button></div></div></div>';
+  }
+  buildEmpty(){
+    return this.pghd('打卡异常列表',['本范围','数据范围 · '+this.roles[this.state.role].mod],'')
+      + '<div class="fb"><div class="fb-in"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="搜索学生 / 企业"></div><div class="chips"><span class="chip on">全部异常</span><span class="chip">待处理</span></div></div>'
+      + '<div class="card"><div class="state"><div class="state-ic" style="background:var(--ok-l);color:var(--ok)"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg></div><div class="state-t">暂无打卡异常</div><div class="state-m">当前数据范围内没有待处理的打卡异常，出勤情况良好。新的异常将在学生打卡后实时出现在这里。</div><div class="ac"><button class="btn btn-g" data-go="dashboard">返回工作台</button></div></div></div>';
+  }
+  buildLoading(){
+    const sk=(w)=>'<div class="sk" style="height:14px;width:'+w+'"></div>';
+    let cards='';for(let i=0;i<4;i++)cards+='<div class="mc" style="box-shadow:none">'+sk('60%')+'<div style="height:10px"></div>'+sk('40%')+'</div>';
+    let rows='';for(let i=0;i<5;i++)rows+='<div style="display:flex;gap:14px;padding:12px 18px;border-bottom:1px solid var(--dv)">'+sk('90px')+sk('120px')+sk('160px')+'<div style="flex:1"></div>'+sk('60px')+'</div>';
+    return '<div class="pghd"><div><div class="sk" style="height:24px;width:220px"></div><div style="height:8px"></div><div class="sk" style="height:12px;width:320px"></div></div></div>'
+      + '<div style="display:flex;align-items:center;gap:10px;justify-content:center;padding:14px 0 20px;color:var(--t3);font-size:13px"><div class="spin"></div>正在加载实习数据…</div>'
+      + '<div class="mts mt4">'+cards+'</div>'
+      + '<div class="card">'+rows+'</div>';
+  }
+  buildError(){
+    return this.pghd('实习数据洞察',['数据服务'],'')
+      + '<div class="card"><div class="state"><div class="state-ic" style="background:var(--err-l);color:var(--err)"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/></svg></div><div class="state-t">数据加载失败</div><div class="state-m">实习指标服务暂时不可用（错误码 INT-5031）。已自动重试 2 次仍未成功，你可以稍后重试或联系平台管理员。</div><div class="ac"><button class="btn btn-p" data-go="insight">重新加载</button><button class="btn btn-g" data-go="dashboard">返回工作台</button></div><div style="font-size:11px;color:var(--t4);margin-top:4px">Trace ID · 8f2a-INT-20260703-1412</div></div></div>';
+  }
+
+  // ---------- click delegation ----------
+  handleGo(e){ const t=e.target.closest('[data-go],[data-sid],[data-detail]'); if(!t) return; e.stopPropagation();
+    if(t.hasAttribute('data-detail')){ const sid=t.getAttribute('data-sid'); if(sid) this.setState({student:sid}); this.go(this.state.view==='checkin'?'checkin-detail':(this.state.view==='reports'?'report-detail':this.state.view)); return; }
+    const go=t.getAttribute('data-go'); const sid=t.getAttribute('data-sid');
+    if(sid && (go==='student-detail'||!go)){ this.openStudent(sid); return; }
+    if(go){ if(sid) this.setState({student:sid}); this.go(go); }
+  }
+  onStudentsClick(e){ const t=e.target.closest('[data-sid]'); if(t){ e.stopPropagation(); this.openStudent(t.getAttribute('data-sid')); } }
+  onDetailClick(e){ this.handleGo(e); }
+  onNavClick(e){ this.handleGo(e); }
+  onCheckinClick(e){ const t=e.target.closest('[data-detail],[data-sid]'); if(!t) return; e.stopPropagation(); const sid=t.getAttribute('data-sid'); if(sid) this.setState({student:sid}); this.go('checkin-detail'); }
+  onCheckinDetailClick(e){ this.handleGo(e); }
+  onReportsClick(e){ const t=e.target.closest('[data-detail]'); if(!t) return; e.stopPropagation(); this.go('report-detail'); }
+  onReportDetailClick(e){ this.handleGo(e); }
+  onLeaveClick(e){ this.handleGo(e); }
+  onRiskClick(e){ this.handleGo(e); }
+  onErrorClick(e){ this.handleGo(e); }
+  toggleRoleMenu(e){ e.stopPropagation(); this.setState({roleMenuOpen:!this.state.roleMenuOpen}); }
+  closeMenus(){ if(this.state.roleMenuOpen) this.setState({roleMenuOpen:false}); }
+
+  ih(str){ return React.createElement('span',{style:{display:'contents'},dangerouslySetInnerHTML:{__html:str||''}}); }
+
+  buildScreen(){
+    const b={ dashboard:'buildDashboard', students:'buildStudents', 'student-detail':'buildStudentDetail', enterprise:'buildEnterprise', checkin:'buildCheckin', 'checkin-detail':'buildCheckinDetail', reports:'buildReports', 'report-detail':'buildReportDetail', leave:'buildLeave', visit:'buildVisit', risk:'buildRisk', archive:'buildArchive', insight:'buildInsight', noperm:'buildNoPerm', noscope:'buildNoScope', empty:'buildEmpty', loading:'buildLoading', error:'buildError' };
+    const fn=b[this.state.view]||'buildDashboard';
+    let html='';
+    try{ html=this[fn](); }catch(err){ html='<div class="notice e">渲染出错：'+(err&&err.message||err)+'</div>'; }
+    const watermarked = (this.state.view==='student-detail'||this.state.view==='checkin-detail');
+    const wt = this.brand.watermarkText+' · '+this.roles[this.state.role].name+' · '+this.today;
+    const svg = "data:image/svg+xml,"+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='340' height='200'><text x='170' y='100' text-anchor='middle' transform='rotate(-24 170 100)' fill='rgba(80,110,180,0.07)' font-size='13' font-family='sans-serif'>"+wt+"</text></svg>");
+    return React.createElement('div',{
+      className: watermarked?'wm':'',
+      style: watermarked?{'--wm-img':'url("'+svg+'")'}:null,
+      onClick:(e)=>this.handleGo(e),
+      dangerouslySetInnerHTML:{__html:html}
+    });
+  }
+
+  renderVals(){
+    const R=this.roles[this.state.role], s=this.scopeStat[this.state.role], v=this.state.view;
+    const railItems=this.railDef.map(r=>({ label:r.label, icon:this.ih(r.icon), badge:r.badge||'', onCls:(r.k==='intern'?'on':''), go:()=>{} }));
+    const bmap={ abn:s.abn, report:s.report, risk:s.risk };
+    const navGroups=this.navDef.map(g=>({ title:g.title, items:g.items.map(it=>({ label:it.label, icon:this.ih(this.navIcons[it.ic]||''), badge: it.bkey?(''+bmap[it.bkey]):'', onCls:(v===it.k||(it.k==='students'&&v==='student-detail')||(it.k==='checkin'&&v==='checkin-detail')||(it.k==='reports'&&v==='report-detail'))?'on':'', go:()=>this.go(it.k) })) }));
+    const themeDots=this.themeDefs.map(t=>({ name:t.name, cls:(this.state.theme===t.k?'on':''), style:'background:'+t.sw, pick:()=>this.pickTheme(t.k) }));
+    const roleList=Object.keys(this.roles).map(k=>({ name:this.roles[k].name, scope:this.roles[k].scope, onCls:(this.state.role===k?'on':''), pick:()=>this.pickRole(k) }));
+    return {
+      themeClass:this.state.theme,
+      schoolLogo:this.brand.schoolLogo, schoolName:this.brand.schoolName, platformDisplayName:this.brand.platformDisplayName,
+      userName:this.brand.userName, userInitial:this.brand.userName[0], currentRoleName:R.name, dataScopeName:R.scope,
+      moduleScopeLine:R.mod,
+      railItems, navGroups, themeDots, roleList, roleMenuOpen:this.state.roleMenuOpen,
+      toggleRoleMenu:(e)=>this.toggleRoleMenu(e), closeMenus:()=>this.closeMenus(), stop:(e)=>e.stopPropagation(),
+      screen:this.buildScreen()
+    };
+  }
+}
+</script>
+</body>
+</html>

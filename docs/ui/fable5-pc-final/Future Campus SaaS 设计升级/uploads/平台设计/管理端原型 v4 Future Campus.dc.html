@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--pri-50:#EFF6FF;--pri-100:#DBEAFE;--pri-500:#3B82F6;--pri:#2563EB;--pri-h:#1D4ED8;--pri-bg:rgba(37,99,235,.06);
+--ok:#059669;--ok-l:#ECFDF5;--warn:#D97706;--warn-l:#FFFBEB;--err:#DC2626;--err-l:#FEF2F2;--info:#2563EB;--info-l:#EFF6FF;
+--bg:#EDF2FA;--card:rgba(255,255,255,.88);--card-b:rgba(151,173,214,.32);--dv:rgba(120,144,190,.16);
+--t1:#0F1E3D;--t2:#44567E;--t3:#8494B5;--t4:#C3CDE0;
+--r:14px;--rs:8px;--rxs:5px;
+--f:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+--s1:0 1px 2px rgba(15,40,90,.05);--s2:0 1px 3px rgba(15,40,90,.06),0 10px 28px -18px rgba(23,58,138,.28);--s3:0 8px 40px -8px rgba(15,40,90,.28)
+}
+@keyframes pulseRing{0%{box-shadow:0 0 0 0 rgba(37,99,235,.35)}70%{box-shadow:0 0 0 7px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+body{font-family:var(--f);color:var(--t1);background:var(--bg);-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5}
+.shell{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+/* ── Top Bar : deep academy blue + glow ── */
+.topbar{background:linear-gradient(115deg,#0B2352 0%,#123A80 58%,#1B4FA8 100%);flex-shrink:0;position:relative;z-index:20}
+.topbar::after{content:'';position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,rgba(96,165,250,.5) 30%,rgba(147,197,253,.6) 50%,rgba(96,165,250,.5) 70%,transparent)}
+.tb-row{height:50px;display:flex;align-items:center;padding:0 16px;gap:0;overflow:visible}
+.tb-brand{display:flex;align-items:center;gap:9px;padding-right:20px;margin-right:6px;border-right:1px solid rgba(147,197,253,.16);flex-shrink:0}
+.tb-logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#60A5FA,#2563EB);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0;box-shadow:0 0 14px rgba(96,165,250,.55)}
+.tb-binfo{display:flex;flex-direction:column;line-height:1.25}
+.tb-nm{color:#F0F6FF;font-size:13px;font-weight:600;white-space:nowrap;letter-spacing:.01em}
+.tb-sch{color:rgba(191,214,255,.55);font-size:10px;white-space:nowrap}
+.tb-nav{display:flex;align-items:center;gap:2px;margin-left:6px}
+.tn{padding:14px 12px;color:rgba(199,219,255,.62);font-size:13px;font-weight:500;cursor:pointer;position:relative;white-space:nowrap;transition:color .12s}
+.tn:hover{color:rgba(230,240,255,.92)}
+.tn.on{color:#fff;text-shadow:0 0 12px rgba(147,197,253,.6)}
+.tn.on::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:26px;height:2.5px;border-radius:2px;background:linear-gradient(90deg,#60A5FA,#BFDBFE,#60A5FA);box-shadow:0 0 10px rgba(96,165,250,.95)}
+.tb-r{display:flex;align-items:center;gap:4px;margin-left:auto;flex-shrink:0}
+.tb-env{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(251,191,36,.16);color:#FCD34D;letter-spacing:.4px;border:1px solid rgba(251,191,36,.25)}
+.tb-dt{color:rgba(191,214,255,.42);font-size:11px;white-space:nowrap;margin:0 3px}
+.tbb{width:32px;height:32px;border:none;background:transparent;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(191,214,255,.55);transition:all .12s}
+.tbb:hover{background:rgba(147,197,253,.12);color:#E0ECFF}
+.notif{position:relative}
+.notif-b{position:absolute;top:2px;right:2px;min-width:15px;height:15px;border-radius:8px;background:#F87171;color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;box-shadow:0 0 8px rgba(248,113,113,.7)}
+.tb-role{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 5px;border-radius:9px;cursor:pointer;margin-left:8px;transition:all .12s;border:1px solid rgba(147,197,253,.28);background:rgba(96,165,250,.12);flex-shrink:0}
+.tb-role:hover{background:rgba(96,165,250,.2);border-color:rgba(147,197,253,.5);box-shadow:0 0 12px rgba(96,165,250,.35)}
+.av-tb{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,rgba(96,165,250,.5),rgba(37,99,235,.5));color:#DBEAFE;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0}
+.tb-uinfo{display:flex;flex-direction:column;line-height:1.25}
+.tb-un{color:#EAF2FF;font-size:12px;font-weight:500;white-space:nowrap}
+.tb-ur{color:#93C5FD;font-size:10px;font-weight:500;white-space:nowrap}
+.tb-chev{color:rgba(191,214,255,.45);width:12px;height:12px;flex-shrink:0;transition:transform .15s}
+.tb-role.open .tb-chev{transform:rotate(180deg)}
+/* ── Role switcher ── */
+.role-sw{position:absolute;top:54px;right:16px;background:rgba(255,255,255,.96);backdrop-filter:blur(16px);border:1px solid var(--card-b);border-radius:12px;box-shadow:var(--s3);z-index:60;min-width:236px;padding:6px}
+.role-hd{padding:8px 12px 6px;font-size:10px;color:var(--t3);font-weight:600;letter-spacing:.4px}
+.role-i{padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--t2);display:flex;align-items:center;gap:8px;transition:all .12s}
+.role-i:hover{background:var(--pri-bg);color:var(--t1)}
+.role-i.on{background:linear-gradient(90deg,rgba(37,99,235,.12),rgba(37,99,235,.03));color:var(--pri);font-weight:600}
+.role-i .ic{width:14px;height:14px}
+.role-i .role-desc{font-size:10px;color:var(--t3);margin-left:auto}
+/* ── Body / Sidebar : glass ── */
+.body{display:flex;flex:1;overflow:hidden}
+.sb{width:218px;background:rgba(248,250,255,.72);backdrop-filter:blur(16px);border-right:1px solid rgba(151,173,214,.26);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+.sb-nav{flex:1;overflow-y:auto;padding:10px;scrollbar-width:none}
+.sb-nav::-webkit-scrollbar{display:none}
+.sb-gl{padding:16px 10px 6px;font-size:11px;color:var(--t3);font-weight:600;letter-spacing:.4px}
+.sb-gl:first-child{padding-top:6px}
+.mi{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;color:var(--t2);cursor:pointer;transition:all .12s;font-size:13px;margin:1px 0;font-weight:500;position:relative}
+.mi:hover{background:rgba(37,99,235,.07);color:var(--t1)}
+.mi.on{background:linear-gradient(90deg,rgba(37,99,235,.14),rgba(37,99,235,.02));color:var(--pri);font-weight:600}
+.mi.on::before{content:'';position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:2px;background:linear-gradient(180deg,#60A5FA,#2563EB);box-shadow:0 0 7px rgba(59,130,246,.7)}
+.mi .ic{width:16px;height:16px;flex-shrink:0}
+.mi-cnt{margin-left:auto;min-width:18px;height:18px;border-radius:9px;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;padding:0 5px}
+.mi-cnt.r{background:var(--err);color:#fff;box-shadow:0 0 8px rgba(220,38,38,.35)}
+.mi-cnt.w{background:var(--warn-l);color:var(--warn)}
+.mi-cnt.g{background:rgba(15,40,90,.06);color:var(--t3)}
+.sb-ft{padding:10px 12px;border-top:1px solid var(--dv);margin-top:auto;flex-shrink:0}
+.sb-scope{display:flex;align-items:center;gap:6px;padding:9px 11px;border-radius:9px;background:linear-gradient(90deg,rgba(37,99,235,.09),rgba(96,165,250,.04));border:1px solid rgba(37,99,235,.14);font-size:11px;color:var(--pri);font-weight:500;cursor:pointer;line-height:1.35}
+.sb-scope .ic{flex-shrink:0;width:14px;height:14px}
+/* ── Main canvas : grid texture + glow ── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.ct{flex:1;overflow-y:auto;padding:24px;scrollbar-width:thin;scrollbar-color:var(--t4) transparent;background:radial-gradient(1100px 380px at 12% -8%,rgba(96,165,250,.14),transparent 65%),radial-gradient(900px 400px at 95% 0%,rgba(147,197,253,.10),transparent 60%),linear-gradient(rgba(37,99,235,.030) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,.030) 1px,transparent 1px),var(--bg);background-size:auto,auto,34px 34px,34px 34px,auto}
+.ct::-webkit-scrollbar{width:5px}.ct::-webkit-scrollbar-thumb{background:var(--t4);border-radius:3px}
+/* ── Hero brand band ── */
+.hb{position:relative;border-radius:18px;overflow:hidden;background:linear-gradient(115deg,#0D2A5F 0%,#164390 55%,#2563EB 130%);color:#fff;padding:24px 28px;margin-bottom:16px;box-shadow:0 18px 44px -22px rgba(13,42,95,.55)}
+.hb::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(147,197,253,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(147,197,253,.06) 1px,transparent 1px);background-size:30px 30px;pointer-events:none}
+.hb-art{position:absolute;right:18px;bottom:-6px;opacity:.8;pointer-events:none}
+.hb-badge{position:absolute;right:250px;top:-34px;width:170px;height:170px;border-radius:50%;border:1.5px dashed rgba(147,197,253,.18);pointer-events:none}
+.hb-badge::after{content:'';position:absolute;inset:22px;border-radius:50%;border:1px solid rgba(147,197,253,.12)}
+.hb-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:relative}
+.hb-hi{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.hb-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;position:relative}
+.hb-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:rgba(147,197,253,.14);border:1px solid rgba(147,197,253,.28);font-size:12px;color:#DBEAFE;font-weight:500;backdrop-filter:blur(4px)}
+.hb-chip .ic{width:13px;height:13px}
+.hb-chip.hot{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.35);color:#fff}
+.hb-meta{margin-top:12px;font-size:12px;color:rgba(191,214,255,.65);display:flex;gap:14px;flex-wrap:wrap;position:relative}
+.hb-motto{position:absolute;right:28px;top:22px;font-size:11px;color:rgba(191,214,255,.5);letter-spacing:.2em;font-weight:500}
+/* ── Notice strip ── */
+.notice{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:11px;font-size:12.5px;font-weight:500;margin-bottom:14px;border:1px solid}
+.notice .ic{flex-shrink:0;width:14px;height:14px}
+.notice.i{background:rgba(37,99,235,.06);border-color:rgba(37,99,235,.16);color:var(--pri)}
+.notice.w{background:var(--warn-l);border-color:rgba(217,119,6,.2);color:#92400E}
+.notice.e{background:var(--err-l);border-color:rgba(220,38,38,.18);color:var(--err)}
+/* ── Cards : light glass ── */
+.crd{background:var(--card);backdrop-filter:blur(10px);border-radius:var(--r);border:1px solid var(--card-b);overflow:hidden;transition:all .15s;box-shadow:var(--s1)}
+.crd:hover{box-shadow:var(--s2);border-color:rgba(96,165,250,.42)}
+.crd-h{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--dv)}
+.crd-ht{font-size:14px;font-weight:600}
+.crd-b{padding:14px 20px}
+/* ── Metric cards ── */
+.hero-row{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px}
+.mts{display:grid;gap:12px;margin-bottom:18px}
+.mt4{grid-template-columns:repeat(4,1fr)}.mt3{grid-template-columns:repeat(3,1fr)}
+.mc{background:var(--card);backdrop-filter:blur(10px);border-radius:var(--r);padding:18px 20px;border:1px solid var(--card-b);transition:all .15s;position:relative;overflow:hidden;box-shadow:var(--s1)}
+.mc:hover{box-shadow:var(--s2);border-color:rgba(96,165,250,.45);transform:translateY(-1px)}
+.mc-lb{font-size:12.5px;color:var(--t3);margin-bottom:7px;font-weight:500}
+.mc-v{font-size:27px;font-weight:700;line-height:1.1;letter-spacing:-.03em;font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.mc-tr{font-size:12px;color:var(--t3);margin-top:6px;display:flex;align-items:center;gap:4px;font-weight:500}
+.mc-tr.good{color:var(--ok)}.mc-tr.bad{color:var(--err)}
+.mc-sp{position:absolute;right:14px;bottom:14px;width:74px;height:26px;opacity:.9}
+.mc-sp polyline{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mc-sp.p polyline{stroke:#3B82F6}.mc-sp.o polyline{stroke:#059669}.mc-sp.w polyline{stroke:#D97706}.mc-sp.e polyline{stroke:#DC2626}.mc-sp.i polyline{stroke:#6366F1}
+.mc-glow{position:absolute;top:-30px;right:-30px;width:110px;height:110px;border-radius:50%;pointer-events:none}
+.mc.q-p .mc-glow{background:radial-gradient(circle,rgba(59,130,246,.14),transparent 70%)}
+.mc.q-o .mc-glow{background:radial-gradient(circle,rgba(5,150,105,.12),transparent 70%)}
+.mc.q-w .mc-glow{background:radial-gradient(circle,rgba(217,119,6,.12),transparent 70%)}
+.mc.q-e .mc-glow{background:radial-gradient(circle,rgba(220,38,38,.11),transparent 70%)}
+.mc.q-i .mc-glow{background:radial-gradient(circle,rgba(99,102,241,.13),transparent 70%)}
+.mc-hero{background:linear-gradient(135deg,rgba(239,246,255,.95),rgba(255,255,255,.9));border-color:rgba(96,165,250,.4);padding:22px 24px}
+.mc-hero .mc-lb{font-size:13.5px;color:var(--pri);font-weight:600}
+.mc-hero .mc-v{font-size:38px;color:var(--pri)}
+.hspark{position:absolute;right:0;bottom:0;width:56%;height:64px;opacity:.85}
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;transition:all .12s;border:1px solid transparent;font-family:inherit;white-space:nowrap}
+.btn-p{background:linear-gradient(135deg,#3B82F6,#2563EB);color:#fff;box-shadow:0 2px 10px -2px rgba(37,99,235,.5)}
+.btn-p:hover{background:linear-gradient(135deg,#2563EB,#1D4ED8);box-shadow:0 4px 14px -2px rgba(37,99,235,.55)}
+.btn-g{background:rgba(255,255,255,.85);color:var(--t2);border-color:var(--card-b)}.btn-g:hover{background:#fff;color:var(--t1);border-color:rgba(96,165,250,.5)}
+.btn-d{background:rgba(255,255,255,.85);color:var(--err);border-color:rgba(220,38,38,.3)}.btn-d:hover{background:var(--err-l)}
+.btn-w{background:rgba(255,255,255,.85);color:#92400E;border-color:rgba(217,119,6,.32)}.btn-w:hover{background:var(--warn-l)}
+.btn-s{padding:4px 10px;font-size:12px}
+.btn-lk{background:none;border:none;color:var(--pri);padding:0;font-size:13px;cursor:pointer;font-weight:500;font-family:inherit;transition:color .1s}.btn-lk:hover{color:var(--pri-h);text-decoration:underline}
+.btn-ic{width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--card-b);background:rgba(255,255,255,.85);border-radius:8px;cursor:pointer;color:var(--t3);transition:all .12s}
+.btn-ic:hover{color:var(--t1);border-color:var(--pri)}
+/* ── Tags ── */
+.tag{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:11px;font-size:12px;font-weight:500;line-height:18px;white-space:nowrap}
+.tg-o{background:var(--ok-l);color:var(--ok)}.tg-w{background:var(--warn-l);color:#92400E}.tg-e{background:var(--err-l);color:var(--err)}.tg-i{background:var(--info-l);color:var(--info)}.tg-g{background:rgba(15,40,90,.05);color:var(--t3)}.tg-p{background:var(--pri-100);color:var(--pri)}
+.tag .dot{width:5px;height:5px;border-radius:50%;background:currentColor}
+/* ── Table ── */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;padding:10px 14px;font-size:12px;font-weight:600;color:var(--t3);border-bottom:1px solid var(--dv);white-space:nowrap;background:rgba(237,242,250,.6)}
+.tbl td{padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(120,144,190,.1);vertical-align:middle;transition:background .1s}
+.tbl tr:hover td{background:rgba(37,99,235,.045)}
+.tbl-nm{font-weight:500}.tbl-ac{display:flex;gap:6px}
+/* ── FilterBar ── */
+.fb{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fb-in{display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--card-b);border-radius:9px;background:rgba(255,255,255,.9);min-width:220px;transition:all .12s}
+.fb-in:focus-within{border-color:var(--pri);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.fb-in input{border:none;outline:none;background:transparent;font-size:13px;color:var(--t1);font-family:inherit;width:100%}
+.fb-in .ic{color:var(--t4);flex-shrink:0}
+.fb-sl{padding:7px 12px;border:1px solid var(--card-b);border-radius:9px;background:rgba(255,255,255,.9);color:var(--t2);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:inherit;white-space:nowrap;transition:all .12s}
+.fb-sl:hover{border-color:var(--pri);color:var(--t1)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:4px 13px;border-radius:16px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--card-b);background:rgba(255,255,255,.8);color:var(--t2);transition:all .12s}
+.chip:hover{border-color:rgba(96,165,250,.6);color:var(--pri)}
+.chip.on{background:linear-gradient(135deg,#3B82F6,#2563EB);border-color:transparent;color:#fff;box-shadow:0 2px 8px -2px rgba(37,99,235,.5)}
+/* ── Pagination ── */
+.pg{display:flex;align-items:center;justify-content:space-between;padding:10px 0;font-size:12px;color:var(--t3)}
+.pg-n{display:flex;gap:3px}
+.pg-b{padding:4px 10px;border:1px solid var(--card-b);border-radius:6px;background:rgba(255,255,255,.85);cursor:pointer;font-size:12px;color:var(--t2);font-family:inherit;transition:all .12s}
+.pg-b:hover{border-color:var(--pri);color:var(--pri)}
+.pg-b.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+/* ── Student detail : digital archive ── */
+.dl{display:grid;grid-template-columns:290px 1fr;gap:16px}
+.dl-pf{background:var(--card);backdrop-filter:blur(10px);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;align-items:center;text-align:center;border:1px solid var(--card-b);box-shadow:var(--s1)}
+.dl-cover{width:100%;height:74px;background:linear-gradient(115deg,#0D2A5F,#1B4FA8);position:relative}
+.dl-cover::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(147,197,253,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(147,197,253,.08) 1px,transparent 1px);background-size:22px 22px}
+.dl-cover-lb{position:absolute;left:14px;top:12px;font-size:10px;color:rgba(191,214,255,.7);letter-spacing:.24em;font-weight:600}
+.dl-av{width:66px;height:66px;border-radius:50%;background:linear-gradient(135deg,#DBEAFE,#EFF6FF);display:flex;align-items:center;justify-content:center;color:var(--pri);font-weight:700;font-size:23px;margin-top:-33px;border:3px solid #fff;box-shadow:0 4px 14px -4px rgba(23,58,138,.4);position:relative;z-index:1}
+.dl-nm{font-size:18px;font-weight:700;margin-top:8px}.dl-id{font-size:12px;color:var(--t3);font-variant-numeric:tabular-nums;margin:2px 0 10px}
+.dl-tg{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:14px;padding:0 16px}
+.dl-ring{display:flex;align-items:center;gap:12px;padding:10px 14px;margin:0 16px 12px;border-radius:11px;background:linear-gradient(90deg,rgba(37,99,235,.07),rgba(96,165,250,.03));border:1px solid rgba(37,99,235,.13);width:calc(100% - 32px)}
+.dl-ring-tx{text-align:left}
+.dl-ring-v{font-size:15px;font-weight:700;color:var(--pri);font-variant-numeric:tabular-nums}
+.dl-ring-l{font-size:11px;color:var(--t3)}
+.dl-st{width:100%;display:flex;flex-direction:column;text-align:left;padding:0 20px}
+.dl-sr{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid var(--dv)}
+.dl-sl{color:var(--t3)}.dl-sv{font-weight:500}
+.dl-acs{display:flex;gap:6px;margin:12px 0 16px;width:100%;padding:0 20px}
+.dl-acs .btn{flex:1;justify-content:center}
+/* ── PrivacyField ── */
+.pf{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:2px 8px;border-radius:6px;background:rgba(120,144,190,.08);cursor:default}
+.pf:hover{background:rgba(37,99,235,.08)}
+.pf-val{color:var(--t3);letter-spacing:1.5px;font-variant-numeric:tabular-nums}
+.pf-lock{width:13px;height:13px;color:var(--t4);flex-shrink:0;cursor:pointer;transition:color .12s}
+.pf:hover .pf-lock{color:var(--pri)}
+.pf-tip{font-size:10px;color:var(--t4);font-style:italic}
+.comply{display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.14);border-radius:10px;margin-bottom:12px;font-size:11.5px;color:var(--pri);font-weight:500}
+.comply .ic{flex-shrink:0;width:14px;height:14px}
+/* ── Tabs / info grid ── */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--dv)}
+.tab{padding:11px 16px;font-size:13px;color:var(--t3);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;transition:all .12s;white-space:nowrap}
+.tab:hover{color:var(--t1)}.tab.on{color:var(--pri);border-bottom-color:var(--pri);text-shadow:0 0 14px rgba(59,130,246,.35)}
+.ig{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+.ig-i{padding:12px 16px;border-bottom:1px solid var(--dv)}
+.ig-lb{font-size:11px;color:var(--t3);margin-bottom:3px;font-weight:500;letter-spacing:.02em}
+.ig-v{font-size:13px;font-weight:500;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.sh{font-size:12px;font-weight:600;padding:10px 16px;background:rgba(237,242,250,.6);border-bottom:1px solid var(--dv);color:var(--t3);letter-spacing:.04em}
+/* ── Watermark ── */
+.wm{position:relative}
+.wm::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:10;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180'%3E%3Ctext x='160' y='90' text-anchor='middle' dominant-baseline='middle' transform='rotate(-25 160 90)' fill='rgba(80,110,180,0.05)' font-size='13' font-family='system-ui,sans-serif'%3E%E5%86%85%E9%83%A8 %C2%B7 %E5%BC%A0%E8%80%81%E5%B8%88 %C2%B7 2026-07-03%3C/text%3E%3C/svg%3E");background-repeat:repeat}
+/* ── Quick actions / todo / risk ── */
+.qa{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.qa-i{display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 4px;border-radius:11px;cursor:pointer;transition:all .12s;text-align:center}
+.qa-i:hover{background:rgba(37,99,235,.06);transform:translateY(-2px)}
+.qa-ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;box-shadow:0 4px 12px -4px rgba(23,58,138,.5)}
+.qa-lb{font-size:12px;color:var(--t2);line-height:1.3}
+.td-i{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--dv);cursor:pointer;transition:all .12s}
+.td-i:last-child{border-bottom:none}
+.td-i:hover{background:rgba(37,99,235,.05);margin:0 -20px;padding:10px 20px;border-radius:6px}
+.td-d{width:7px;height:7px;border-radius:50%;margin-top:6px;flex-shrink:0}
+.td-d.dw{background:var(--warn);box-shadow:0 0 6px rgba(217,119,6,.5)}.td-d.de{background:var(--err);box-shadow:0 0 6px rgba(220,38,38,.55)}.td-d.dp{background:var(--pri);box-shadow:0 0 6px rgba(37,99,235,.5)}.td-d.do{background:var(--ok);box-shadow:0 0 6px rgba(5,150,105,.45)}
+.td-inf{flex:1;min-width:0}.td-tt{font-size:13px;font-weight:500}.td-mt{font-size:12px;color:var(--t3)}
+.td-tm{font-size:11px;color:var(--t4);white-space:nowrap;margin-top:2px}
+.rsk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-left:3px solid var(--err);background:var(--err-l);border-radius:0 8px 8px 0;margin-bottom:8px;transition:box-shadow .12s}
+.rsk:hover{box-shadow:var(--s1)}
+.rsk.med{border-left-color:var(--warn);background:var(--warn-l)}
+.rsk-inf{flex:1}.rsk-hd{display:flex;align-items:center;gap:5px;margin-bottom:2px}
+.rsk-nm{font-size:13px;font-weight:500}.rsk-tp{font-size:12px;font-weight:500}
+.rsk .rsk-tp{color:var(--err)}.rsk.med .rsk-tp{color:#92400E}
+.rsk-dt{font-size:12px;color:var(--t2)}.rsk-sb{font-size:11px;color:var(--t3)}
+.rsk-lv{font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.rsk-hi{background:rgba(220,38,38,.12);color:var(--err)}.rsk-md{background:rgba(217,119,6,.13);color:#92400E}
+/* ── Bars (svg) ── */
+.bar-r{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.bar-l{width:80px;font-size:12px;color:var(--t2);text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-svg{flex:1;height:14px;display:block}
+.bar-v{width:48px;font-size:12px;color:var(--t3);font-weight:500;font-variant-numeric:tabular-nums}
+/* ── Layout grids ── */
+.g2{display:grid;grid-template-columns:3fr 2fr;gap:16px}
+.ge{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+.ph-l{display:flex;flex-direction:column;gap:4px}
+.ph-tt{font-size:21px;font-weight:700;line-height:1.3;letter-spacing:-.02em}
+.ph-ds{font-size:13px;color:var(--t3)}
+.ph-ac{display:flex;gap:8px}
+.av-s{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.av-p{background:var(--pri-50);color:var(--pri)}.av-o{background:var(--ok-l);color:var(--ok)}.av-w{background:var(--warn-l);color:#92400E}.av-e{background:var(--err-l);color:var(--err)}
+.stu-c{display:flex;align-items:center;gap:8px}
+.stu-a{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#DBEAFE,#EFF6FF);display:flex;align-items:center;justify-content:center;color:var(--pri);font-weight:600;font-size:12px;flex-shrink:0}
+.chk{width:16px;height:16px;border:1.5px solid var(--card-b);border-radius:5px;cursor:pointer;flex-shrink:0;transition:all .12s;background:#fff}
+.chk:hover{border-color:var(--pri)}
+.br{display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:13px;color:var(--t3)}
+/* ── Modal ── */
+.mo{position:fixed;inset:0;background:rgba(13,42,95,.4);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px)}
+.mo-c{background:#fff;border-radius:16px;padding:24px;width:430px;max-width:90vw;box-shadow:var(--s3)}
+.mo-tt{font-size:16px;font-weight:600;margin-bottom:10px}.mo-bd{font-size:13px;color:var(--t2);margin-bottom:20px;line-height:1.6}
+.mo-wn{padding:8px 12px;background:var(--warn-l);border-radius:8px;color:#92400E;font-size:12px;margin-top:10px;font-weight:500}
+.mo-ac{display:flex;justify-content:flex-end;gap:8px}
+/* ── Timeline ── */
+.tl{position:relative;padding-left:20px}
+.tl::before{content:'';position:absolute;left:4px;top:4px;bottom:4px;width:1.5px;background:linear-gradient(180deg,rgba(37,99,235,.35),rgba(120,144,190,.15))}
+.tl-i{position:relative;padding:6px 0;display:flex;gap:10px}
+.tl-dot{position:absolute;left:-20px;top:10px;width:9px;height:9px;border-radius:50%;border:2px solid #fff;z-index:1}
+.tl-dot-o{background:var(--ok);box-shadow:0 0 6px rgba(5,150,105,.5)}.tl-dot-p{background:var(--pri);box-shadow:0 0 7px rgba(37,99,235,.6)}.tl-dot-w{background:var(--warn)}.tl-dot-e{background:var(--err)}.tl-dot-g{background:var(--t4)}
+.tl-tt{font-size:13px;font-weight:500}.tl-mt{font-size:11px;color:var(--t3)}
+.tab-sub{display:flex;gap:0;background:rgba(15,40,90,.05);border-radius:9px;padding:3px;width:fit-content}
+.tab-sb{padding:4px 13px;font-size:12px;font-weight:500;border-radius:7px;cursor:pointer;color:var(--t3);transition:all .12s}
+.tab-sb:hover{color:var(--t1)}.tab-sb.on{background:#fff;color:var(--pri);box-shadow:var(--s1);font-weight:600}
+.ic{width:16px;height:16px;flex-shrink:0}
+/* ── Cockpit ── */
+.ck-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.ck-meta{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--t3);flex-wrap:wrap}
+.ck-meta-i{display:flex;align-items:center;gap:4px}
+.ck-meta-i .ic{width:13px;height:13px}
+.drill{font-size:11px;color:var(--pri);cursor:pointer;font-weight:500;display:flex;align-items:center;gap:3px;transition:color .1s}
+.drill:hover{color:var(--pri-h);text-decoration:underline}
+/* ── Approval flow ── */
+.flow{display:flex;align-items:flex-start;padding:6px 4px 2px}
+.fl-n{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;width:86px;text-align:center}
+.fl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+.fl-dot.done{background:linear-gradient(135deg,#3B82F6,#2563EB);color:#fff;box-shadow:0 2px 8px -2px rgba(37,99,235,.6)}
+.fl-dot.cur{background:#fff;border:2px solid var(--pri);color:var(--pri);animation:pulseRing 2s infinite}
+.fl-dot.wait{background:rgba(15,40,90,.06);color:var(--t3)}
+.fl-lb{font-size:11.5px;font-weight:500;color:var(--t2);line-height:1.3}
+.fl-lb.cur{color:var(--pri);font-weight:600}
+.fl-mt{font-size:10px;color:var(--t4)}
+.fl-ln{flex:1;height:2px;border-radius:1px;margin-top:13px;background:rgba(120,144,190,.25);min-width:16px}
+.fl-ln.done{background:linear-gradient(90deg,#3B82F6,#60A5FA);box-shadow:0 0 6px rgba(59,130,246,.4)}
+.diff{display:grid;grid-template-columns:88px 1fr 1fr;gap:0;font-size:12.5px;border:1px solid var(--dv);border-radius:10px;overflow:hidden}
+.diff>div{padding:9px 12px;border-bottom:1px solid var(--dv)}
+.diff .dh{background:rgba(237,242,250,.7);font-weight:600;color:var(--t3);font-size:11.5px}
+.diff .old{color:var(--t3);text-decoration:line-through;text-decoration-color:rgba(220,38,38,.4)}
+.diff .new{color:var(--pri);font-weight:600;background:rgba(37,99,235,.04)}
+.txa{width:100%;border:1px solid var(--card-b);border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;color:var(--t1);background:rgba(255,255,255,.9);resize:vertical;min-height:64px;outline:none;transition:all .12s}
+.txa:focus{border-color:var(--pri);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+/* ── Matrix ── */
+.mx{width:100%;border-collapse:collapse;font-size:12.5px}
+.mx th{padding:9px 12px;font-size:11.5px;font-weight:600;color:var(--t3);border-bottom:1px solid var(--dv);background:rgba(237,242,250,.6);text-align:center;white-space:nowrap}
+.mx th:first-child{text-align:left}
+.mx td{padding:9px 12px;border-bottom:1px solid rgba(120,144,190,.1);text-align:center}
+.mx td:first-child{text-align:left;font-weight:500}
+.mx-d{display:inline-block;width:9px;height:9px;border-radius:50%}
+.mx-full{background:var(--pri);box-shadow:0 0 5px rgba(37,99,235,.5)}
+.mx-part{background:#fff;border:2.5px solid var(--pri)}
+.mx-none{background:rgba(15,40,90,.1)}
+/* ── Design system view ── */
+.sw-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.sw{width:92px}
+.sw-c{height:52px;border-radius:10px;border:1px solid rgba(15,40,90,.06);margin-bottom:5px}
+.sw-n{font-size:11px;font-weight:600}
+.sw-v{font-size:10px;color:var(--t3);font-variant-numeric:tabular-nums}
+.ds-lbl{font-size:11px;color:var(--t3);font-weight:600;letter-spacing:.4px;margin:14px 0 8px}
+.ds-lbl:first-child{margin-top:0}
+.sk{height:14px;border-radius:7px;background:linear-gradient(90deg,rgba(120,144,190,.12) 25%,rgba(120,144,190,.22) 37%,rgba(120,144,190,.12) 63%);background-size:400px 100%;animation:shimmer 1.4s infinite linear;margin-bottom:8px}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;color:var(--t3);text-align:center}
+.empty-ic{width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,rgba(37,99,235,.08),rgba(96,165,250,.04));border:1px solid rgba(37,99,235,.12);display:flex;align-items:center;justify-content:center;margin-bottom:14px;color:var(--pri)}
+.empty-tt{font-size:14px;font-weight:500;color:var(--t2);margin-bottom:4px}.empty-ds{font-size:13px}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:rgba(37,99,235,.07);color:var(--pri);padding:2px 7px;border-radius:5px}
+@media(max-width:900px){.hero-row,.mt4{grid-template-columns:repeat(2,1fr)}.g2,.ge{grid-template-columns:1fr}.ig{grid-template-columns:repeat(2,1fr)}.dl{grid-template-columns:1fr}}
+</style>
+</helmet>
+<div class="shell">
+<div class="topbar">
+<div class="tb-row">
+<div class="tb-brand"><div class="tb-logo">{{ logoText }}</div><div class="tb-binfo"><span class="tb-nm">{{ platformName }}</span><span class="tb-sch">{{ schoolName }} · Student Lifecycle OS</span></div></div>
+<nav class="tb-nav">
+<div class="tn {{ mWork }}" data-m="work" onClick="{{ setMod }}">工作台</div>
+<div class="tn {{ mStu }}" data-m="stu" onClick="{{ setMod }}">学生管理</div>
+<div class="tn {{ mTeach }}" data-m="teach" onClick="{{ setMod }}">教学实习</div>
+<div class="tn {{ mData }}" data-m="data" onClick="{{ setMod }}">数据中心</div>
+<div class="tn {{ mSys }}" data-m="sys" onClick="{{ setMod }}">系统管理</div>
+</nav>
+<div class="tb-r">
+<span class="tb-env">{{ envLabel }}</span>
+<span class="tb-dt">数据基准日 {{ baseDate }}</span>
+<div class="notif"><button class="tbb" onClick="{{ goApproval }}">{{ iBell }}<span class="notif-b">{{ pendingCount }}</span></button></div>
+<div class="tb-role {{ roleOpen }}" onClick="{{ toggleRole }}"><div class="av-tb">{{ userCh }}</div><div class="tb-uinfo"><span class="tb-un">{{ userName }}</span><span class="tb-ur">{{ userRole }} · {{ scopeShort }}</span></div>{{ chevDown }}</div>
+</div>
+</div>
+</div>
+<sc-if value="{{ showRole }}">
+<div class="role-sw">
+<div class="role-hd">切换身份 · 数据范围随身份变化</div>
+<div class="role-i {{ rAdmin }}" data-r="admin" onClick="{{ switchRole }}">{{ iShield }} 学校管理员<span class="role-desc">全校</span></div>
+<div class="role-i {{ rCollege }}" data-r="college" onClick="{{ switchRole }}">{{ iHome }} 学院管理员<span class="role-desc">信息工程学院</span></div>
+<div class="role-i {{ rCoun }}" data-r="counselor" onClick="{{ switchRole }}">{{ iClip }} 辅导员<span class="role-desc">3个班级</span></div>
+<div class="role-i {{ rAdv }}" data-r="advisor" onClick="{{ switchRole }}">{{ iBook }} 指导教师<span class="role-desc">28人</span></div>
+<div class="role-i {{ rEmp }}" data-r="employ" onClick="{{ switchRole }}">{{ iTrend }} 就业老师<span class="role-desc">应届毕业生</span></div>
+<div class="role-i {{ rSysAdmin }}" data-r="sysadmin" onClick="{{ switchRole }}">{{ iSliders }} 系统管理员<span class="role-desc">全系统</span></div>
+</div>
+</sc-if>
+<div class="body">
+<aside class="sb">
+<nav class="sb-nav">
+<sc-if value="{{ isWork }}">
+<div class="sb-gl">工作台</div>
+<div class="mi {{ aDash }}" data-v="dashboard" onClick="{{ nav }}">{{ iHome }} 我的工作台</div>
+<div class="mi {{ aApp2 }}" data-v="approval" onClick="{{ nav }}">{{ iChk }} 审批中心<span class="mi-cnt r">3</span></div>
+<div class="mi {{ aCk2 }}" data-v="cockpit" onClick="{{ nav }}">{{ iChart }} 数据驾驶舱</div>
+<div class="sb-gl">提示</div>
+<div class="mi" data-v="taskCenter" onClick="{{ nav }}">{{ iClock }} 任务中心<span class="mi-cnt w">8</span></div>
+<div class="mi" data-v="riskCenter" onClick="{{ nav }}">{{ iAlert }} 风险预警<span class="mi-cnt r">18</span></div>
+</sc-if>
+<sc-if value="{{ isStu }}">
+<div class="sb-gl">学生管理</div>
+<div class="mi {{ aStu }}" data-v="students" onClick="{{ nav }}">{{ iUsers }} 学生主档<span class="mi-cnt g">12,486</span></div>
+<div class="mi {{ aId }}" data-v="identity" onClick="{{ nav }}">{{ iUChk }} 身份核验<span class="mi-cnt r">126</span></div>
+<div class="sb-gl">学生服务</div>
+<div class="mi" data-v="newStudent" onClick="{{ nav }}">{{ iPlus }} 数字迎新</div>
+<div class="mi" data-v="campusService" onClick="{{ nav }}">{{ iHome }} 在校服务</div>
+<div class="mi" data-v="studentAccount" onClick="{{ nav }}">{{ iLock }} 账号管理</div>
+</sc-if>
+<sc-if value="{{ isTeach }}">
+<div class="sb-gl">教学实习</div>
+<div class="mi" data-v="academic" onClick="{{ nav }}">{{ iGrad }} 学业过程</div>
+<div class="mi" data-v="thesis" onClick="{{ nav }}">{{ iFile }} 毕业设计</div>
+<div class="mi" data-v="internship" onClick="{{ nav }}">{{ iBrief }} 岗位实习</div>
+<div class="mi" data-v="employment" onClick="{{ nav }}">{{ iTrend }} 毕业就业</div>
+<div class="sb-gl">教学工具</div>
+<div class="mi" data-v="taskCenter" onClick="{{ nav }}">{{ iChk }} 任务中心<span class="mi-cnt w">8</span></div>
+<div class="mi" data-v="riskCenter" onClick="{{ nav }}">{{ iShield }} 风险预警<span class="mi-cnt r">18</span></div>
+</sc-if>
+<sc-if value="{{ isData }}">
+<div class="sb-gl">数据中心</div>
+<div class="mi {{ aCk }}" data-v="cockpit" onClick="{{ nav }}">{{ iChart }} 数据驾驶舱</div>
+<div class="mi {{ aApp }}" data-v="approval" onClick="{{ nav }}">{{ iChk }} 审批中心<span class="mi-cnt r">3</span></div>
+<div class="sb-gl">数据工具</div>
+<div class="mi" data-v="dataExport" onClick="{{ nav }}">{{ iDown }} 数据导出</div>
+<div class="mi" data-v="dataReport" onClick="{{ nav }}">{{ iFile }} 报表中心</div>
+</sc-if>
+<sc-if value="{{ isSys }}">
+<div class="sb-gl">系统管理</div>
+<div class="mi {{ aApp3 }}" data-v="approval" onClick="{{ nav }}">{{ iChk }} 权限与审批</div>
+<div class="mi" data-v="audit" onClick="{{ nav }}">{{ iLock }} 安全审计</div>
+<div class="mi" data-v="settings" onClick="{{ nav }}">{{ iSliders }} 系统设置</div>
+<div class="sb-gl">平台</div>
+<div class="mi" data-v="tenantConfig" onClick="{{ nav }}">{{ iHome }} 租户品牌配置</div>
+<div class="mi {{ aDs }}" data-v="design" onClick="{{ nav }}">{{ iSliders }} 设计规范 Design System</div>
+</sc-if>
+</nav>
+<div class="sb-ft"><div class="sb-scope">{{ iShield }} 数据范围：{{ scopeLabel }}</div></div>
+</aside>
+<div class="main"><main class="ct">
+<!-- ═══ Workbench (role-driven) ═══ -->
+<sc-if value="{{ vDash }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="工作台">
+<div class="hb">
+<span class="hb-motto">{{ schoolMotto }}</span>
+<div class="hb-badge"></div>
+<svg class="hb-art" width="300" height="120" viewBox="0 0 300 120" fill="none" stroke="rgba(170,205,255,0.22)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M20 118h260"></path><path d="M120 118V60h60v58"></path><path d="M120 60l30-22 30 22"></path><path d="M150 38V20"></path><path d="M150 20l20 5-20 5"></path>
+<path d="M138 118V88h24v30"></path><path d="M40 118V78h56v40"></path><path d="M204 118V78h56v40"></path>
+<path d="M52 90h10M52 102h10M74 90h10M74 102h10M216 90h10M216 102h10M238 90h10M238 102h10"></path>
+<path d="M132 72h8M160 72h8"></path><circle cx="150" cy="70" r="6"></circle><path d="M150 66v4l3 2"></path>
+</svg>
+<div class="hb-top"><div class="hb-hi">{{ greeting }}，{{ userName }}</div></div>
+<div class="hb-chips">
+<span class="hb-chip hot">{{ iShield }} 当前身份：{{ userRole }}</span>
+<span class="hb-chip">{{ iUsers }} 数据范围：{{ scopeLabel }}</span>
+<span class="hb-chip">{{ iHome }} {{ schoolName }}</span>
+</div>
+<div class="hb-meta"><span>{{ today }}</span><span>数据更新至 {{ baseDate }} 14:00</span><span>数据口径：全日制在籍学生</span></div>
+</div>
+<div class="notice {{ wb.nLv }}">{{ iAlert }} {{ wb.notice }}<span class="drill" style="margin-left:auto" data-v="riskCenter" onClick="{{ nav }}">去处理 →</span></div>
+<div class="hero-row">
+<div class="mc mc-hero q-p"><div class="mc-glow"></div><div class="mc-lb">{{ wb.heroLb }}</div><div class="mc-v">{{ wb.heroV }}</div><div class="mc-tr">{{ wb.heroTr }}</div>
+<svg class="hspark" viewBox="0 0 200 64" preserveAspectRatio="none"><defs><linearGradient id="hsg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3B82F6" stop-opacity=".28"></stop><stop offset="100%" stop-color="#3B82F6" stop-opacity="0"></stop></linearGradient></defs><polygon points="{{ wb.heroSpf }}" fill="url(#hsg)"></polygon><polyline points="{{ wb.heroSp }}" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+</div>
+<sc-for list="{{ wb.metsTop }}" as="m" hint-placeholder-count="2">
+<div class="mc q-{{ m.q }}"><div class="mc-glow"></div><div class="mc-lb">{{ m.lb }}</div><div class="mc-v">{{ m.v }}</div><div class="mc-tr {{ m.tq }}">{{ m.tr }}</div><svg class="mc-sp {{ m.q }}" viewBox="0 0 72 24" preserveAspectRatio="none"><polyline points="{{ m.sp }}"></polyline></svg></div>
+</sc-for>
+</div>
+<div class="mts mt4">
+<sc-for list="{{ wb.metsRest }}" as="m" hint-placeholder-count="4">
+<div class="mc q-{{ m.q }}"><div class="mc-glow"></div><div class="mc-lb">{{ m.lb }}</div><div class="mc-v">{{ m.v }}</div><div class="mc-tr {{ m.tq }}">{{ m.tr }}</div><svg class="mc-sp {{ m.q }}" viewBox="0 0 72 24" preserveAspectRatio="none"><polyline points="{{ m.sp }}"></polyline></svg></div>
+</sc-for>
+</div>
+<div class="g2">
+<div class="crd"><div class="crd-h"><span class="crd-ht">{{ wb.todoTitle }}</span><button class="btn-lk" data-v="approval" onClick="{{ nav }}">查看全部 →</button></div><div class="crd-b"><div>
+<sc-for list="{{ wb.todos }}" as="t" hint-placeholder-count="4">
+<div class="td-i"><div class="td-d {{ t.d }}"></div><div class="td-inf"><div class="td-tt">{{ t.tt }}</div><div class="td-mt">{{ t.mt }}</div></div><div class="td-tm">{{ t.tm }}</div></div>
+</sc-for>
+</div></div></div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">风险预警</span><span class="tag tg-e" style="font-size:11px">{{ wb.riskN }}</span></div><div class="crd-b">
+<sc-for list="{{ wb.risks }}" as="r" hint-placeholder-count="3">
+<div class="rsk {{ r.md }}"><div class="rsk-inf"><div class="rsk-hd"><span class="rsk-nm">{{ r.nm }}</span><span class="rsk-tp">{{ r.tp }}</span></div><div class="rsk-dt">{{ r.dt }}</div><div class="rsk-sb">{{ r.sb }}</div></div><span class="rsk-lv {{ r.lc }}">{{ r.lv }}</span></div>
+</sc-for>
+</div></div>
+</div>
+<div class="ge" style="margin-top:16px">
+<div class="crd"><div class="crd-h"><span class="crd-ht">{{ wb.distTitle }}</span><span class="drill" data-v="cockpit" onClick="{{ nav }}">下钻 →</span></div><div class="crd-b" style="padding:20px">
+<sc-for list="{{ wb.dist }}" as="b" hint-placeholder-count="5">
+<div class="bar-r"><div class="bar-l">{{ b.l }}</div><svg class="bar-svg" viewBox="0 0 100 14" preserveAspectRatio="none"><rect x="0" y="0" width="100" height="14" rx="7" fill="rgba(120,144,190,0.1)"></rect><rect x="0" y="0" width="{{ b.w }}" height="14" rx="7" fill="{{ b.c }}"></rect></svg><div class="bar-v">{{ b.v }}</div></div>
+</sc-for>
+</div></div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div class="crd"><div class="crd-h"><span class="crd-ht">快捷入口</span></div><div class="crd-b"><div class="qa">
+<div class="qa-i" data-v="students" onClick="{{ nav }}"><div class="qa-ic" style="background:linear-gradient(135deg,#3B82F6,#2563EB)">档</div><div class="qa-lb">学生主档</div></div>
+<div class="qa-i" data-v="identity" onClick="{{ nav }}"><div class="qa-ic" style="background:linear-gradient(135deg,#10B981,#059669)">核</div><div class="qa-lb">身份核验</div></div>
+<div class="qa-i" data-v="approval" onClick="{{ nav }}"><div class="qa-ic" style="background:linear-gradient(135deg,#F59E0B,#D97706)">审</div><div class="qa-lb">审批中心</div></div>
+<div class="qa-i" data-v="cockpit" onClick="{{ nav }}"><div class="qa-ic" style="background:linear-gradient(135deg,#818CF8,#6366F1)">数</div><div class="qa-lb">数据驾驶舱</div></div>
+</div></div></div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">最近流程动态</span></div><div class="crd-b"><div>
+<sc-for list="{{ wb.flows }}" as="f" hint-placeholder-count="3">
+<div class="td-i"><div class="td-d {{ f.d }}"></div><div class="td-inf"><div class="td-tt">{{ f.tt }}</div><div class="td-mt">{{ f.mt }}</div></div><div class="td-tm">{{ f.tm }}</div></div>
+</sc-for>
+</div></div></div>
+</div>
+</div>
+</div>
+</sc-if>
+<!-- ═══ Student List ═══ -->
+<sc-if value="{{ vStu }}">
+<div data-screen-label="学生主档">
+<div class="ph"><div class="ph-l"><div class="ph-tt">学生主档</div><div class="ph-ds">当前数据范围：{{ scopeLabel }} · 共 12,486 名学生 · 数据基准日 {{ baseDate }}</div></div><div class="ph-ac"><button class="btn btn-g" onClick="{{ showExp }}">{{ iDown }} 导出</button><button class="btn btn-p">{{ iPlus }} 新增学生</button></div></div>
+<div class="crd">
+<div style="padding:14px 20px;border-bottom:1px solid var(--dv);display:flex;flex-direction:column;gap:10px">
+<div class="fb">
+<div class="fb-in">{{ iSearch }}<input placeholder="搜索姓名、学号、班级…"></div>
+<div class="fb-sl">全部年级 {{ iChevD }}</div><div class="fb-sl">全部学院 {{ iChevD }}</div><div class="fb-sl">全部专业 {{ iChevD }}</div>
+<button class="btn-lk" style="margin-left:auto">重置筛选</button>
+</div>
+<div class="chips">
+<span class="chip on">全部 12,486</span><span class="chip">在校 6,493</span><span class="chip">实习中 3,208</span><span class="chip">毕设中 2,641</span><span class="chip">待核验 126</span><span class="chip">风险学生 18</span>
+</div>
+</div>
+<div style="overflow-x:auto">
+<table class="tbl"><thead><tr><th style="width:36px"><div class="chk"></div></th><th>姓名</th><th>学号</th><th>年级</th><th>专业</th><th>班级</th><th>状态</th><th>风险</th><th style="width:100px">操作</th></tr></thead>
+<tbody><sc-for list="{{ students }}" as="s" hint-placeholder-count="8">
+<tr><td><div class="chk"></div></td>
+<td><div class="stu-c"><div class="stu-a">{{ s.ch }}</div><div class="tbl-nm">{{ s.name }}</div></div></td>
+<td style="color:var(--t3);font-size:12px;font-variant-numeric:tabular-nums">{{ s.id }}</td>
+<td>{{ s.gl }}</td><td>{{ s.major }}</td><td>{{ s.cls }}</td>
+<td><span class="{{ s.tc }}"><span class="dot"></span>{{ s.sl }}</span></td>
+<td><sc-if value="{{ s.risk }}"><span class="tag tg-e">{{ s.risk }}</span></sc-if></td>
+<td><div class="tbl-ac"><button class="btn-lk btn-s" data-id="{{ s.id }}" onClick="{{ goDet }}">查看</button><button class="btn-ic" style="width:24px;height:24px">{{ iMore }}</button></div></td>
+</tr></sc-for></tbody></table>
+</div>
+<div class="pg" style="padding:10px 20px"><div>共 <strong style="font-variant-numeric:tabular-nums">12,486</strong> 条</div><div class="pg-n"><button class="pg-b">上一页</button><button class="pg-b on">1</button><button class="pg-b">2</button><button class="pg-b">3</button><span style="color:var(--t4)">…</span><button class="pg-b">125</button><button class="pg-b">下一页</button></div></div>
+</div>
+</div>
+</sc-if>
+<!-- ═══ Student Detail : digital archive ═══ -->
+<sc-if value="{{ vDet }}">
+<div data-screen-label="学生详情">
+<div class="br"><button class="btn btn-g btn-s" onClick="{{ goBack }}">{{ iArrL }} 返回列表</button><span style="color:var(--t4);margin:0 4px">/</span><span style="color:var(--t3)">学生主档 / {{ ds.name }} · 数字学生档案</span></div>
+<div class="comply">{{ iShield }} 当前页面含学生隐私信息，已启用安全水印 · 查看与导出操作均记入审计日志 · 数据范围：{{ scopeLabel }}</div>
+<div class="dl wm">
+<div style="display:flex;flex-direction:column;gap:16px">
+<div class="dl-pf">
+<div class="dl-cover"><span class="dl-cover-lb">数字学生档案 · STUDENT PROFILE</span></div>
+<div class="dl-av">{{ ds.ch }}</div><div class="dl-nm">{{ ds.name }}</div><div class="dl-id">{{ ds.id }}</div>
+<div class="dl-tg"><span class="{{ ds.tc }}"><span class="dot"></span>{{ ds.sl }}</span>
+<sc-if value="{{ ds.risk }}"><span class="tag tg-e">{{ ds.risk }}</span></sc-if>
+<sc-if value="{{ ds.vf }}"><span class="tag tg-o">已核验</span></sc-if>
+<sc-if value="{{ ds.nvf }}"><span class="tag tg-w">待核验</span></sc-if>
+</div>
+<div class="dl-ring">
+<svg width="54" height="54" viewBox="0 0 54 54"><circle cx="27" cy="27" r="23" fill="none" stroke="rgba(37,99,235,.12)" stroke-width="5"></circle><circle cx="27" cy="27" r="23" fill="none" stroke="url(#rg)" stroke-width="5" stroke-linecap="round" stroke-dasharray="{{ ds.ring }}" transform="rotate(-90 27 27)"></circle><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#60A5FA"></stop><stop offset="100%" stop-color="#2563EB"></stop></linearGradient></defs><text x="27" y="31" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">{{ ds.pct }}</text></svg>
+<div class="dl-ring-tx"><div class="dl-ring-v">{{ ds.stage }}</div><div class="dl-ring-l">生命周期进度 · 入学→毕业</div></div>
+</div>
+<div class="dl-st">
+<div class="dl-sr"><span class="dl-sl">入学日期</span><span class="dl-sv">{{ ds.enroll }}</span></div>
+<div class="dl-sr"><span class="dl-sl">专业</span><span class="dl-sv">{{ ds.major }}</span></div>
+<div class="dl-sr"><span class="dl-sl">班级</span><span class="dl-sv">{{ ds.cls }}</span></div>
+<div class="dl-sr"><span class="dl-sl">辅导员</span><span class="dl-sv">{{ ds.couns }}</span></div>
+<div class="dl-sr"><span class="dl-sl">账号状态</span><span class="dl-sv" style="color:var(--ok)">已绑定</span></div>
+</div>
+<div class="dl-acs"><button class="btn btn-g btn-s">编辑</button><button class="btn btn-g btn-s" onClick="{{ showExp }}">导出</button><button class="btn btn-g btn-s">审计日志</button></div>
+</div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">成长时间线</span></div><div class="crd-b" style="padding:12px 16px">
+<div class="tl">
+<div class="tl-i"><div class="tl-dot tl-dot-o"></div><div><div class="tl-tt">身份核验通过</div><div class="tl-mt">2024-09-05</div></div></div>
+<div class="tl-i"><div class="tl-dot tl-dot-o"></div><div><div class="tl-tt">迎新报到完成</div><div class="tl-mt">2024-09-01</div></div></div>
+<div class="tl-i"><div class="tl-dot tl-dot-p"></div><div><div class="tl-tt">学籍信息录入</div><div class="tl-mt">2024-08-20</div></div></div>
+<div class="tl-i"><div class="tl-dot tl-dot-g"></div><div><div class="tl-tt">账号创建</div><div class="tl-mt">2024-08-15</div></div></div>
+</div>
+</div></div>
+</div>
+<div>
+<div class="crd">
+<div class="tabs" style="padding:0 20px">
+<div class="tab {{ tbBas }}" data-t="basic" onClick="{{ setTb }}">基本信息</div>
+<div class="tab {{ tbAca }}" data-t="aca" onClick="{{ setTb }}">学业信息</div>
+<div class="tab {{ tbInt }}" data-t="int" onClick="{{ setTb }}">实习信息</div>
+<div class="tab {{ tbThe }}" data-t="the" onClick="{{ setTb }}">毕设信息</div>
+<div class="tab {{ tbEmp }}" data-t="emp" onClick="{{ setTb }}">就业信息</div>
+</div>
+<sc-if value="{{ stBas }}">
+<div class="sh">个人信息</div>
+<div class="ig">
+<div class="ig-i"><div class="ig-lb">姓名</div><div class="ig-v">{{ ds.name }}</div></div>
+<div class="ig-i"><div class="ig-lb">性别</div><div class="ig-v">{{ ds.gen }}</div></div>
+<div class="ig-i"><div class="ig-lb">出生日期</div><div class="ig-v">{{ ds.birth }}</div></div>
+<div class="ig-i"><div class="ig-lb">身份证号</div><div class="ig-v"><div class="pf" title="学生隐私信息，查看完整内容将记录审计日志"><span class="pf-val">{{ ds.idC }}</span>{{ lockIcon }}<span class="pf-tip">审计</span></div></div></div>
+<div class="ig-i"><div class="ig-lb">手机号码</div><div class="ig-v"><div class="pf" title="学生隐私信息，查看完整内容将记录审计日志"><span class="pf-val">{{ ds.phone }}</span>{{ lockIcon }}<span class="pf-tip">审计</span></div></div></div>
+<div class="ig-i"><div class="ig-lb">电子邮箱</div><div class="ig-v">{{ ds.email }}</div></div>
+</div>
+<div class="sh">学籍信息</div>
+<div class="ig">
+<div class="ig-i"><div class="ig-lb">学号</div><div class="ig-v" style="font-variant-numeric:tabular-nums">{{ ds.id }}</div></div>
+<div class="ig-i"><div class="ig-lb">年级</div><div class="ig-v">{{ ds.gl }}</div></div>
+<div class="ig-i"><div class="ig-lb">专业</div><div class="ig-v">{{ ds.major }}</div></div>
+<div class="ig-i"><div class="ig-lb">班级</div><div class="ig-v">{{ ds.cls }}</div></div>
+<div class="ig-i"><div class="ig-lb">入学日期</div><div class="ig-v">{{ ds.enroll }}</div></div>
+<div class="ig-i"><div class="ig-lb">当前状态</div><div class="ig-v"><span class="{{ ds.tc }}"><span class="dot"></span>{{ ds.sl }}</span></div></div>
+</div>
+<div class="sh">家庭信息</div>
+<div class="ig">
+<div class="ig-i"><div class="ig-lb">家庭住址</div><div class="ig-v"><div class="pf" title="学生隐私信息，查看完整内容将记录审计日志"><span class="pf-val">{{ ds.addr }}</span>{{ lockIcon }}<span class="pf-tip">审计</span></div></div></div>
+<div class="ig-i"><div class="ig-lb">监护人</div><div class="ig-v"><div class="pf"><span class="pf-val">{{ ds.guar }}</span>{{ lockIcon }}</div></div></div>
+<div class="ig-i"><div class="ig-lb">监护人电话</div><div class="ig-v"><div class="pf" title="学生隐私信息，查看完整内容将记录审计日志"><span class="pf-val">{{ ds.gPh }}</span>{{ lockIcon }}<span class="pf-tip">审计</span></div></div></div>
+</div>
+</sc-if>
+<sc-if value="{{ stAca }}">
+<div class="crd-b"><div class="mts mt3" style="margin-bottom:16px">
+<div class="mc q-p"><div class="mc-glow"></div><div class="mc-lb">已修学分</div><div class="mc-v">86</div><div class="mc-tr">总要求 142</div></div>
+<div class="mc q-o"><div class="mc-glow"></div><div class="mc-lb">已通过课程</div><div class="mc-v">24</div><div class="mc-tr good">通过率 92.3%</div></div>
+<div class="mc q-e"><div class="mc-glow"></div><div class="mc-lb">不及格课程</div><div class="mc-v">{{ ds.failC }}</div><div class="mc-tr">{{ ds.failTr }}</div></div>
+</div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">本学期成绩</span></div>
+<table class="tbl"><thead><tr><th>课程名称</th><th>学分</th><th>成绩</th><th>状态</th></tr></thead><tbody>
+<tr><td>高等数学</td><td>4</td><td style="font-variant-numeric:tabular-nums">82</td><td><span class="tag tg-o">通过</span></td></tr>
+<tr><td>机械制图</td><td>3</td><td style="font-variant-numeric:tabular-nums">76</td><td><span class="tag tg-o">通过</span></td></tr>
+<tr><td>电工基础</td><td>3</td><td style="font-variant-numeric:tabular-nums;color:var(--err)">45</td><td><span class="tag tg-e">不及格</span></td></tr>
+<tr><td>英语(二)</td><td>2</td><td style="font-variant-numeric:tabular-nums">68</td><td><span class="tag tg-o">通过</span></td></tr>
+</tbody></table></div></div>
+</sc-if>
+<sc-if value="{{ stInt }}">
+<div class="crd-b"><div class="mts mt3" style="margin-bottom:16px">
+<div class="mc q-i"><div class="mc-glow"></div><div class="mc-lb">实习状态</div><div class="mc-v" style="font-size:18px">{{ ds.intSt }}</div></div>
+<div class="mc q-o"><div class="mc-glow"></div><div class="mc-lb">已提交周报</div><div class="mc-v">{{ ds.intWk }}</div></div>
+<div class="mc q-w"><div class="mc-glow"></div><div class="mc-lb">逾期周报</div><div class="mc-v">{{ ds.intOv }}</div></div>
+</div>
+<sc-if value="{{ ds.hasInt }}"><div class="crd"><div class="sh">实习信息</div>
+<div class="ig">
+<div class="ig-i"><div class="ig-lb">实习单位</div><div class="ig-v">{{ ds.intCo }}</div></div>
+<div class="ig-i"><div class="ig-lb">岗位</div><div class="ig-v">{{ ds.intPos }}</div></div>
+<div class="ig-i"><div class="ig-lb">企业导师</div><div class="ig-v">{{ ds.intMen }}</div></div>
+<div class="ig-i"><div class="ig-lb">开始日期</div><div class="ig-v">{{ ds.intStart }}</div></div>
+<div class="ig-i"><div class="ig-lb">计划结束</div><div class="ig-v">{{ ds.intEnd }}</div></div>
+<div class="ig-i"><div class="ig-lb">实习状态</div><div class="ig-v"><span class="tag tg-i">{{ ds.intSt }}</span></div></div>
+</div></div></sc-if></div>
+</sc-if>
+<sc-if value="{{ stThe }}">
+<div class="crd-b"><div class="mts mt3" style="margin-bottom:16px">
+<div class="mc q-p"><div class="mc-glow"></div><div class="mc-lb">毕设阶段</div><div class="mc-v" style="font-size:18px">{{ ds.thSt }}</div></div>
+<div class="mc q-o"><div class="mc-glow"></div><div class="mc-lb">指导教师</div><div class="mc-v" style="font-size:18px">{{ ds.thAdv }}</div></div>
+<div class="mc q-i"><div class="mc-glow"></div><div class="mc-lb">提交材料</div><div class="mc-v">{{ ds.thDoc }}</div></div>
+</div>
+<sc-if value="{{ ds.hasTh }}"><div class="crd"><div class="sh">选题信息</div>
+<div class="ig"><div class="ig-i" style="grid-column:span 3"><div class="ig-lb">毕设题目</div><div class="ig-v">{{ ds.thTitle }}</div></div>
+<div class="ig-i"><div class="ig-lb">选题状态</div><div class="ig-v"><span class="tag tg-o">已通过</span></div></div>
+<div class="ig-i"><div class="ig-lb">开题时间</div><div class="ig-v">2026-03-15</div></div>
+<div class="ig-i"><div class="ig-lb">答辩时间</div><div class="ig-v">待定</div></div>
+</div></div></sc-if></div>
+</sc-if>
+<sc-if value="{{ stEmp }}">
+<div class="crd-b"><div class="mts mt3">
+<div class="mc q-w"><div class="mc-glow"></div><div class="mc-lb">就业状态</div><div class="mc-v" style="font-size:18px">{{ ds.empSt }}</div></div>
+<div class="mc q-i"><div class="mc-glow"></div><div class="mc-lb">去向类型</div><div class="mc-v" style="font-size:18px">{{ ds.empTp }}</div></div>
+<div class="mc q-o"><div class="mc-glow"></div><div class="mc-lb">填报进度</div><div class="mc-v" style="font-size:18px">{{ ds.empPr }}</div></div>
+</div></div>
+</sc-if>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+<!-- ═══ Identity ═══ -->
+<sc-if value="{{ vId }}">
+<div data-screen-label="身份核验">
+<div class="ph"><div class="ph-l"><div class="ph-tt">身份核验</div><div class="ph-ds">2024级新生身份核验进度 · 已核验 874 / 1,000</div></div><div class="ph-ac"><button class="btn btn-p">批量核验</button></div></div>
+<div class="mts mt4">
+<div class="mc q-w"><div class="mc-glow"></div><div class="mc-lb">待核验</div><div class="mc-v">126</div></div>
+<div class="mc q-o"><div class="mc-glow"></div><div class="mc-lb">已通过</div><div class="mc-v">874</div></div>
+<div class="mc q-e"><div class="mc-glow"></div><div class="mc-lb">已退回</div><div class="mc-v">8</div></div>
+<div class="mc q-i"><div class="mc-glow"></div><div class="mc-lb">证件过期</div><div class="mc-v">4</div></div>
+</div>
+<div class="crd">
+<div style="padding:10px 20px;border-bottom:1px solid var(--dv)"><div class="tab-sub"><div class="tab-sb on">待核验 (126)</div><div class="tab-sb">已通过 (874)</div><div class="tab-sb">已退回 (8)</div><div class="tab-sb">证件过期 (4)</div></div></div>
+<table class="tbl"><thead><tr><th>姓名</th><th>学号</th><th>专业班级</th><th>核验状态</th><th>提交时间</th><th style="width:120px">操作</th></tr></thead><tbody>
+<tr><td><div class="stu-c"><div class="stu-a">赵</div><div class="tbl-nm">赵思远</div></div></td><td style="color:var(--t3);font-size:12px;font-variant-numeric:tabular-nums">20241004</td><td>电子商务 · 24电商1班</td><td><span class="tag tg-w">待核验</span></td><td style="color:var(--t3)">2026-06-28</td><td><div class="tbl-ac"><button class="btn btn-s btn-p">通过</button><button class="btn btn-s btn-g" onClick="{{ showReject }}">退回</button></div></td></tr>
+<tr><td><div class="stu-c"><div class="stu-a">吴</div><div class="tbl-nm">吴雨萱</div></div></td><td style="color:var(--t3);font-size:12px;font-variant-numeric:tabular-nums">20241009</td><td>电子商务 · 24电商2班</td><td><span class="tag tg-w">待核验</span></td><td style="color:var(--t3)">2026-06-29</td><td><div class="tbl-ac"><button class="btn btn-s btn-p">通过</button><button class="btn btn-s btn-g" onClick="{{ showReject }}">退回</button></div></td></tr>
+<tr><td><div class="stu-c"><div class="stu-a">刘</div><div class="tbl-nm">刘洋</div></div></td><td style="color:var(--t3);font-size:12px;font-variant-numeric:tabular-nums">20241015</td><td>智能制造 · 24智造2班</td><td><span class="tag tg-e">已退回</span></td><td style="color:var(--t3)">2026-06-25</td><td><button class="btn btn-s btn-g">查看详情</button></td></tr>
+<tr><td><div class="stu-c"><div class="stu-a">黄</div><div class="tbl-nm">黄子轩</div></div></td><td style="color:var(--t3);font-size:12px;font-variant-numeric:tabular-nums">20241022</td><td>会计 · 24会计1班</td><td><span class="tag tg-w">待核验</span></td><td style="color:var(--t3)">2026-07-01</td><td><div class="tbl-ac"><button class="btn btn-s btn-p">通过</button><button class="btn btn-s btn-g" onClick="{{ showReject }}">退回</button></div></td></tr>
+<tr><td><div class="stu-c"><div class="stu-a">林</div><div class="tbl-nm">林小雨</div></div></td><td style="color:var(--t3);font-size:12px;font-variant-numeric:tabular-nums">20241031</td><td>学前教育 · 24学前2班</td><td><span class="tag tg-i">证件过期</span></td><td style="color:var(--t3)">2026-06-20</td><td><button class="btn btn-s btn-g">通知补交</button></td></tr>
+</tbody></table>
+<div class="pg" style="padding:10px 20px"><div>共 <strong style="font-variant-numeric:tabular-nums">126</strong> 条待核验</div><div class="pg-n"><button class="pg-b on">1</button><button class="pg-b">2</button><button class="pg-b">3</button><button class="pg-b">下一页</button></div></div>
+</div>
+</div>
+</sc-if>
+<!-- ═══ Data Cockpit ═══ -->
+<sc-if value="{{ vCk }}">
+<div data-screen-label="数据驾驶舱">
+<div class="ph"><div class="ph-l"><div class="ph-tt">数据驾驶舱</div><div class="ph-ds">实践教学总览 · 浅色管理驾驶舱</div></div><div class="ph-ac"><div class="tab-sub" style="margin-right:8px"><div class="tab-sb on">本学期</div><div class="tab-sb">本学年</div><div class="tab-sb">近30天</div></div><button class="btn btn-g">{{ iDown }} 导出报表</button></div></div>
+<div class="ck-bar">
+<div class="ck-meta">
+<div class="ck-meta-i">{{ iClock }} 更新至 {{ baseDate }} 14:00</div>
+<div class="ck-meta-i">{{ iShield }} 数据范围：{{ scopeLabel }}</div>
+<div class="ck-meta-i">{{ iInfo }} 口径：全日制在籍学生 · 指标由底层数据聚合生成</div>
+</div>
+</div>
+<div class="notice e">{{ iAlert }} 异常提示：72 名学生实习打卡异常，128 名学生周报逾期<span class="drill" style="margin-left:auto" data-v="riskCenter" onClick="{{ nav }}">下钻名单 →</span></div>
+<div class="mts mt4">
+<div class="mc q-p"><div class="mc-glow"></div><div class="mc-lb">在校学生总数</div><div class="mc-v">12,486</div><div class="mc-tr good">↑ 8.2% 同比</div><svg class="mc-sp p" viewBox="0 0 72 24" preserveAspectRatio="none"><polyline points="0,18 12,16 24,17 36,12 48,10 60,7 72,5"></polyline></svg></div>
+<div class="mc q-o"><div class="mc-glow"></div><div class="mc-lb">实习就业率</div><div class="mc-v">78.4%</div><div class="mc-tr good">↑ 3.1%</div><svg class="mc-sp o" viewBox="0 0 72 24" preserveAspectRatio="none"><polyline points="0,16 12,15 24,12 36,13 48,9 60,8 72,4"></polyline></svg></div>
+<div class="mc q-i"><div class="mc-glow"></div><div class="mc-lb">毕设通过率</div><div class="mc-v">92.6%</div><div class="mc-tr good">↑ 1.2%</div><svg class="mc-sp i" viewBox="0 0 72 24" preserveAspectRatio="none"><polyline points="0,14 12,12 24,13 36,10 48,9 60,7 72,6"></polyline></svg></div>
+<div class="mc q-e"><div class="mc-glow"></div><div class="mc-lb">风险学生占比</div><div class="mc-v">2.8%</div><div class="mc-tr bad">↑ 0.3%</div><svg class="mc-sp e" viewBox="0 0 72 24" preserveAspectRatio="none"><polyline points="0,16 12,15 24,13 36,14 48,11 60,10 72,8"></polyline></svg></div>
+</div>
+<div class="ge">
+<div class="crd"><div class="crd-h"><span class="crd-ht">待办与风险趋势（近14天）</span><span class="drill" data-v="riskCenter" onClick="{{ nav }}">下钻 →</span></div><div class="crd-b" style="padding:18px 20px">
+<svg viewBox="0 0 320 120" style="width:100%;height:150px;display:block">
+<defs><linearGradient id="ag1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3B82F6" stop-opacity=".25"></stop><stop offset="100%" stop-color="#3B82F6" stop-opacity="0"></stop></linearGradient></defs>
+<line x1="0" y1="30" x2="320" y2="30" stroke="rgba(120,144,190,.14)" stroke-width="1"></line>
+<line x1="0" y1="60" x2="320" y2="60" stroke="rgba(120,144,190,.14)" stroke-width="1"></line>
+<line x1="0" y1="90" x2="320" y2="90" stroke="rgba(120,144,190,.14)" stroke-width="1"></line>
+<polygon points="0,70 24,62 48,66 72,52 96,58 120,44 144,50 168,38 192,44 216,32 240,40 264,28 288,34 320,22 320,120 0,120" fill="url(#ag1)"></polygon>
+<polyline points="0,70 24,62 48,66 72,52 96,58 120,44 144,50 168,38 192,44 216,32 240,40 264,28 288,34 320,22" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+<polyline points="0,96 24,94 48,95 72,90 96,92 120,86 144,89 168,84 192,88 216,82 240,86 264,80 288,84 320,78" fill="none" stroke="#DC2626" stroke-width="2" stroke-dasharray="4 3" stroke-linecap="round"></polyline>
+<circle cx="216" cy="32" r="4" fill="#fff" stroke="#3B82F6" stroke-width="2.5"></circle>
+</svg>
+<div style="display:flex;gap:16px;font-size:11px;color:var(--t3);margin-top:8px"><span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:2.5px;background:#3B82F6;border-radius:2px;display:inline-block"></span>待办任务量</span><span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:2px;background:#DC2626;border-radius:2px;display:inline-block"></span>风险学生数</span></div>
+</div></div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">各专业在校人数</span><span class="drill" data-v="students" onClick="{{ nav }}">下钻 →</span></div><div class="crd-b" style="padding:18px 20px">
+<svg viewBox="0 0 320 140" style="width:100%;height:160px;display:block">
+<defs><linearGradient id="bg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#60A5FA"></stop><stop offset="100%" stop-color="#2563EB"></stop></linearGradient></defs>
+<line x1="0" y1="120" x2="320" y2="120" stroke="rgba(120,144,190,.25)" stroke-width="1"></line>
+<rect x="14" y="20" width="26" height="100" rx="6" fill="url(#bg1)"></rect>
+<rect x="58" y="35" width="26" height="85" rx="6" fill="url(#bg1)" opacity=".88"></rect>
+<rect x="102" y="52" width="26" height="68" rx="6" fill="url(#bg1)" opacity=".76"></rect>
+<rect x="146" y="64" width="26" height="56" rx="6" fill="url(#bg1)" opacity=".64"></rect>
+<rect x="190" y="75" width="26" height="45" rx="6" fill="url(#bg1)" opacity=".52"></rect>
+<rect x="234" y="82" width="26" height="38" rx="6" fill="url(#bg1)" opacity=".44"></rect>
+<rect x="278" y="90" width="26" height="30" rx="6" fill="url(#bg1)" opacity=".38"></rect>
+<text x="27" y="14" text-anchor="middle" font-size="10" fill="#44567E" font-weight="600">2847</text>
+<text x="71" y="29" text-anchor="middle" font-size="10" fill="#44567E">2410</text>
+<text x="115" y="46" text-anchor="middle" font-size="10" fill="#44567E">1940</text>
+<text x="159" y="58" text-anchor="middle" font-size="10" fill="#44567E">1608</text>
+<text x="203" y="69" text-anchor="middle" font-size="10" fill="#44567E">1274</text>
+<text x="247" y="76" text-anchor="middle" font-size="10" fill="#44567E">1066</text>
+<text x="291" y="84" text-anchor="middle" font-size="10" fill="#44567E">841</text>
+<text x="27" y="134" text-anchor="middle" font-size="9.5" fill="#8494B5">软件</text>
+<text x="71" y="134" text-anchor="middle" font-size="9.5" fill="#8494B5">护理</text>
+<text x="115" y="134" text-anchor="middle" font-size="9.5" fill="#8494B5">智造</text>
+<text x="159" y="134" text-anchor="middle" font-size="9.5" fill="#8494B5">电商</text>
+<text x="203" y="134" text-anchor="middle" font-size="9.5" fill="#8494B5">会计</text>
+<text x="247" y="134" text-anchor="middle" font-size="9.5" fill="#8494B5">学前</text>
+<text x="291" y="134" text-anchor="middle" font-size="9.5" fill="#8494B5">机电</text>
+</svg>
+</div></div>
+</div>
+<div class="ge" style="margin-top:16px">
+<div class="crd"><div class="crd-h"><span class="crd-ht">学生状态分布</span><span class="drill" data-v="students" onClick="{{ nav }}">下钻 →</span></div><div class="crd-b" style="padding:20px">
+<div class="bar-r"><div class="bar-l">在校正常</div><svg class="bar-svg" viewBox="0 0 100 14" preserveAspectRatio="none"><rect x="0" y="0" width="100" height="14" rx="7" fill="rgba(120,144,190,0.1)"></rect><rect x="0" y="0" width="52" height="14" rx="7" fill="#059669"></rect></svg><div class="bar-v">6,493</div></div>
+<div class="bar-r"><div class="bar-l">实习进行中</div><svg class="bar-svg" viewBox="0 0 100 14" preserveAspectRatio="none"><rect x="0" y="0" width="100" height="14" rx="7" fill="rgba(120,144,190,0.1)"></rect><rect x="0" y="0" width="26" height="14" rx="7" fill="#3B82F6"></rect></svg><div class="bar-v">3,208</div></div>
+<div class="bar-r"><div class="bar-l">毕设进行中</div><svg class="bar-svg" viewBox="0 0 100 14" preserveAspectRatio="none"><rect x="0" y="0" width="100" height="14" rx="7" fill="rgba(120,144,190,0.1)"></rect><rect x="0" y="0" width="21" height="14" rx="7" fill="#6366F1"></rect></svg><div class="bar-v">2,641</div></div>
+<div class="bar-r"><div class="bar-l">待身份核验</div><svg class="bar-svg" viewBox="0 0 100 14" preserveAspectRatio="none"><rect x="0" y="0" width="100" height="14" rx="7" fill="rgba(120,144,190,0.1)"></rect><rect x="0" y="0" width="4" height="14" rx="2" fill="#D97706"></rect></svg><div class="bar-v">126</div></div>
+<div class="bar-r"><div class="bar-l">学业预警</div><svg class="bar-svg" viewBox="0 0 100 14" preserveAspectRatio="none"><rect x="0" y="0" width="100" height="14" rx="7" fill="rgba(120,144,190,0.1)"></rect><rect x="0" y="0" width="2" height="14" rx="2" fill="#DC2626"></rect></svg><div class="bar-v">18</div></div>
+</div></div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">风险学生 TOP</span><span class="drill" data-v="students" onClick="{{ nav }}">全部名单 →</span></div>
+<table class="tbl"><thead><tr><th>学生</th><th>风险类型</th><th>班级</th><th>等级</th><th style="width:72px">操作</th></tr></thead><tbody>
+<tr><td><div class="stu-c"><div class="av-s av-e">王</div><span class="tbl-nm">王晨</span></div></td><td>学业预警 · 3门不及格</td><td>22护理1班</td><td><span class="rsk-lv rsk-hi">高</span></td><td><button class="btn-lk btn-s" data-id="20221003" onClick="{{ goDet }}">处理</button></td></tr>
+<tr><td><div class="stu-c"><div class="av-s av-w">李</div><span class="tbl-nm">李雨桐</span></div></td><td>实习异常 · 周报逾期</td><td>23软件2班</td><td><span class="rsk-lv rsk-md">中</span></td><td><button class="btn-lk btn-s" data-id="20231002" onClick="{{ goDet }}">处理</button></td></tr>
+<tr><td><div class="stu-c"><div class="av-s av-w">陈</div><span class="tbl-nm">陈浩宇</span></div></td><td>就业预警 · 超期未填报</td><td>22机电1班</td><td><span class="rsk-lv rsk-md">中</span></td><td><button class="btn-lk btn-s" data-id="20221006" onClick="{{ goDet }}">处理</button></td></tr>
+</tbody></table>
+<div style="padding:10px 20px;font-size:11px;color:var(--t3);border-top:1px solid var(--dv)">{{ iInfo }} 指标口径：风险等级由学业 / 实习 / 就业三维度规则引擎判定，趋势颜色由业务好坏（trendQuality）决定，非数字正负。</div>
+</div>
+</div>
+</div>
+</sc-if>
+<!-- ═══ Approval / Permission Center ═══ -->
+<sc-if value="{{ vApp }}">
+<div data-screen-label="权限与审批中心">
+<div class="ph"><div class="ph-l"><div class="ph-tt">权限与审批中心</div><div class="ph-ds">待我审批 3 · 今日已处理 8 · 超时 1 · 数据范围：{{ scopeLabel }}</div></div><div class="ph-ac"><button class="btn btn-g">{{ iDown }} 审批记录导出</button></div></div>
+<div class="g2">
+<div class="crd"><div class="crd-h"><span class="crd-ht">审批详情 · 学籍信息变更</span><span class="tag tg-w">辅导员审核中</span></div><div class="crd-b">
+<div class="flow" style="margin-bottom:18px">
+<div class="fl-n"><div class="fl-dot done">✓</div><div class="fl-lb">学生提交</div><div class="fl-mt">07-01 09:32</div></div>
+<div class="fl-ln done"></div>
+<div class="fl-n"><div class="fl-dot cur">2</div><div class="fl-lb cur">辅导员审核</div><div class="fl-mt">当前节点</div></div>
+<div class="fl-ln"></div>
+<div class="fl-n"><div class="fl-dot wait">3</div><div class="fl-lb">教务复核</div><div class="fl-mt">待流转</div></div>
+<div class="fl-ln"></div>
+<div class="fl-n"><div class="fl-dot wait">4</div><div class="fl-lb">完成生效</div><div class="fl-mt">—</div></div>
+</div>
+<div class="ds-lbl">申请内容 · 原值 / 新值</div>
+<div class="diff" style="margin-bottom:14px">
+<div class="dh">字段</div><div class="dh">原值</div><div class="dh">新值</div>
+<div>联系电话</div><div class="old"><span class="pf" title="学生隐私信息，查看完整内容将记录审计日志"><span class="pf-val">138****5678</span>{{ lockIcon }}</span></div><div class="new"><span class="pf"><span class="pf-val">137****2266</span>{{ lockIcon }}</span></div>
+<div>家庭住址</div><div class="old">江苏省南京市***区***路</div><div class="new">江苏省南京市***区***街道</div>
+</div>
+<div class="notice w" style="margin-bottom:14px">{{ iAlert }} 风险提醒：该学生存在学业预警记录，涉及联系方式变更，请核对佐证材料后审批。</div>
+<div class="ds-lbl">审批意见</div>
+<textarea class="txa" placeholder="填写审批意见…（退回 / 驳回时原因必填，且不少于 5 个字）"></textarea>
+<div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+<button class="btn btn-p">{{ iChk }} 通过</button>
+<button class="btn btn-w" onClick="{{ showReject }}">退回修改</button>
+<button class="btn btn-d" onClick="{{ showReject }}">驳回</button>
+<span style="font-size:11px;color:var(--t3);margin-left:auto">操作将记入审计日志</span>
+</div>
+</div></div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div class="crd"><div class="crd-h"><span class="crd-ht">待办审批流</span><span class="tag tg-e" style="font-size:11px">3</span></div><div class="crd-b"><div>
+<div class="td-i" style="background:rgba(37,99,235,.05);margin:0 -20px;padding:10px 20px"><div class="td-d dp"></div><div class="td-inf"><div class="td-tt">张一鸣 · 学籍信息变更</div><div class="td-mt">辅导员审核 · 07-01 提交</div></div><div class="td-tm"><span class="tag tg-p" style="font-size:10px">处理中</span></div></div>
+<div class="td-i"><div class="td-d dw"></div><div class="td-inf"><div class="td-tt">李雨桐 · 实习单位变更</div><div class="td-mt">指导教师审核 · 06-30 提交</div></div><div class="td-tm"><span class="tag tg-w" style="font-size:10px">超时</span></div></div>
+<div class="td-i"><div class="td-d dw"></div><div class="td-inf"><div class="td-tt">陈浩宇 · 就业材料核验</div><div class="td-mt">就业老师核验 · 今日提交</div></div><div class="td-tm"><span class="tag tg-g" style="font-size:10px">待处理</span></div></div>
+</div></div></div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">审批历史</span></div><div class="crd-b" style="padding:12px 16px">
+<div class="tl">
+<div class="tl-i"><div class="tl-dot tl-dot-p"></div><div><div class="tl-tt">流转至辅导员审核</div><div class="tl-mt">2026-07-01 09:33 · 系统</div></div></div>
+<div class="tl-i"><div class="tl-dot tl-dot-o"></div><div><div class="tl-tt">学生提交变更申请（附佐证 1 份）</div><div class="tl-mt">2026-07-01 09:32 · 张一鸣</div></div></div>
+<div class="tl-i"><div class="tl-dot tl-dot-w"></div><div><div class="tl-tt">上次申请被退回：材料不清晰</div><div class="tl-mt">2026-06-28 15:02 · 王莉</div></div></div>
+</div>
+</div></div>
+</div>
+</div>
+<div class="crd" style="margin-top:16px"><div class="crd-h"><span class="crd-ht">角色权限矩阵</span><span style="font-size:11px;color:var(--t3)">● 完整权限 ◐ 范围内权限 － 无权限 · 权限随数据范围收敛</span></div>
+<div style="overflow-x:auto"><table class="mx">
+<thead><tr><th>角色 / 模块</th><th>学生主档</th><th>身份核验</th><th>学业过程</th><th>岗位实习</th><th>毕业设计</th><th>毕业就业</th><th>数据驾驶舱</th><th>系统管理</th></tr></thead>
+<tbody>
+<tr><td>学校管理员</td><td><span class="mx-d mx-full"></span></td><td><span class="mx-d mx-full"></span></td><td><span class="mx-d mx-full"></span></td><td><span class="mx-d mx-full"></span></td><td><span class="mx-d mx-full"></span></td><td><span class="mx-d mx-full"></span></td><td><span class="mx-d mx-full"></span></td><td><span class="mx-d mx-part"></span></td></tr>
+<tr><td>学院管理员</td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-none"></span></td></tr>
+<tr><td>辅导员</td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td></tr>
+<tr><td>指导教师</td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td></tr>
+<tr><td>就业老师</td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-full"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-none"></span></td></tr>
+<tr><td>系统管理员</td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-none"></span></td><td><span class="mx-d mx-part"></span></td><td><span class="mx-d mx-full"></span></td></tr>
+</tbody></table></div>
+</div>
+</div>
+</sc-if>
+<!-- ═══ Design System ═══ -->
+<sc-if value="{{ vDs }}">
+<div data-screen-label="设计规范">
+<div class="ph"><div class="ph-l"><div class="ph-tt">Design System · 清透学院蓝</div><div class="ph-ds">Future Campus SaaS 视觉规范 · 组件均为多租户可配置，品牌位使用租户变量</div></div></div>
+<div class="ge">
+<div class="crd"><div class="crd-h"><span class="crd-ht">色板</span></div><div class="crd-b">
+<div class="ds-lbl">主色 · 学院蓝（品牌位 tenantBrandColor 可覆盖）</div>
+<div class="sw-row">
+<div class="sw"><div class="sw-c" style="background:#EFF6FF"></div><div class="sw-n">Primary-50</div><div class="sw-v">#EFF6FF</div></div>
+<div class="sw"><div class="sw-c" style="background:#DBEAFE"></div><div class="sw-n">Primary-100</div><div class="sw-v">#DBEAFE</div></div>
+<div class="sw"><div class="sw-c" style="background:#3B82F6"></div><div class="sw-n">Primary-500</div><div class="sw-v">#3B82F6</div></div>
+<div class="sw"><div class="sw-c" style="background:#2563EB"></div><div class="sw-n">Primary-600</div><div class="sw-v">#2563EB</div></div>
+<div class="sw"><div class="sw-c" style="background:#1D4ED8"></div><div class="sw-n">Primary-700</div><div class="sw-v">#1D4ED8</div></div>
+<div class="sw"><div class="sw-c" style="background:linear-gradient(115deg,#0B2352,#1B4FA8)"></div><div class="sw-n">Deep Campus</div><div class="sw-v">顶栏/封面</div></div>
+</div>
+<div class="ds-lbl">状态语义色（业务状态，与趋势色分离）</div>
+<div class="sw-row">
+<div class="sw"><div class="sw-c" style="background:#059669"></div><div class="sw-n">Success</div><div class="sw-v">已完成/通过</div></div>
+<div class="sw"><div class="sw-c" style="background:#D97706"></div><div class="sw-n">Warning</div><div class="sw-v">待处理/退回</div></div>
+<div class="sw"><div class="sw-c" style="background:#DC2626"></div><div class="sw-n">Danger</div><div class="sw-v">异常/驳回</div></div>
+<div class="sw"><div class="sw-c" style="background:#8494B5"></div><div class="sw-n">Gray</div><div class="sw-v">草稿/未开始</div></div>
+</div>
+<div class="ds-lbl">中性色 · 清透底</div>
+<div class="sw-row">
+<div class="sw"><div class="sw-c" style="background:#EDF2FA"></div><div class="sw-n">BG</div><div class="sw-v">#EDF2FA+网格</div></div>
+<div class="sw"><div class="sw-c" style="background:rgba(255,255,255,.88);border:1px solid rgba(151,173,214,.4)"></div><div class="sw-n">Glass Card</div><div class="sw-v">白玻璃轻层</div></div>
+<div class="sw"><div class="sw-c" style="background:#0F1E3D"></div><div class="sw-n">Ink</div><div class="sw-v">#0F1E3D</div></div>
+<div class="sw"><div class="sw-c" style="background:#8494B5"></div><div class="sw-n">Text-3</div><div class="sw-v">#8494B5</div></div>
+</div>
+</div></div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">字体层级 · 间距 · 圆角 · 阴影</span></div><div class="crd-b">
+<div class="ds-lbl">字体（system-ui + PingFang SC，数字 tabular-nums）</div>
+<div style="font-size:21px;font-weight:700;letter-spacing:-.02em">页面大标题 21px / 700</div>
+<div style="font-size:14px;font-weight:600;margin-top:4px">卡片标题 14px / 600</div>
+<div style="font-size:13px;color:var(--t2);margin-top:4px">正文 13-14px / 400 · 表格正文</div>
+<div style="font-size:12px;color:var(--t3);margin-top:4px">辅助文字 12px · 说明与元信息</div>
+<div style="font-size:27px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:6px;color:var(--pri)">12,486 <span style="font-size:12px;color:var(--t3);font-weight:500">指标数字 24-38px tabular</span></div>
+<div class="ds-lbl">间距 4px 栅格 · 圆角 · 玻璃层</div>
+<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">
+<div style="width:4px;height:4px;background:var(--pri-100);border-radius:1px"></div><div style="width:8px;height:8px;background:var(--pri-100);border-radius:2px"></div><div style="width:12px;height:12px;background:var(--pri-100);border-radius:3px"></div><div style="width:16px;height:16px;background:var(--pri-100);border-radius:4px"></div><div style="width:24px;height:24px;background:var(--pri-100);border-radius:6px"></div><span style="font-size:11px;color:var(--t3)">4 / 8 / 12 / 16 / 24 / 32</span>
+</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+<div style="width:112px;height:58px;border-radius:14px;background:rgba(255,255,255,.88);border:1px solid var(--card-b);box-shadow:var(--s1);display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--t3)">卡片 r14 · s1</div>
+<div style="width:112px;height:58px;border-radius:14px;background:rgba(255,255,255,.88);border:1px solid rgba(96,165,250,.45);box-shadow:var(--s2);display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--t3)">hover 光晕边框</div>
+<div style="width:112px;height:58px;border-radius:14px;background:linear-gradient(135deg,rgba(239,246,255,.95),#fff);border:1px solid rgba(96,165,250,.4);display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--pri)">Hero 渐变卡</div>
+</div>
+</div></div>
+</div>
+<div class="ge" style="margin-top:16px">
+<div class="crd"><div class="crd-h"><span class="crd-ht">核心组件</span></div><div class="crd-b">
+<div class="ds-lbl">按钮 Button</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-p">主操作</button><button class="btn btn-g">次操作</button><button class="btn btn-w">退回修改</button><button class="btn btn-d">驳回</button><button class="btn-lk">链接操作</button></div>
+<div class="ds-lbl">状态标签 AppStatusTag / 风险标签 AppRiskTag</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag tg-o"><span class="dot"></span>已通过</span><span class="tag tg-i"><span class="dot"></span>处理中</span><span class="tag tg-w"><span class="dot"></span>待处理</span><span class="tag tg-e"><span class="dot"></span>已驳回</span><span class="tag tg-g"><span class="dot"></span>草稿</span><span class="rsk-lv rsk-hi">高风险</span><span class="rsk-lv rsk-md">中风险</span></div>
+<div class="ds-lbl">隐私字段 PrivacyField · hover 提示审计</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap"><div class="pf" title="学生隐私信息，查看完整内容将记录审计日志"><span class="pf-val">320106****1234</span>{{ lockIcon }}<span class="pf-tip">审计</span></div><div class="pf" title="学生隐私信息，查看完整内容将记录审计日志"><span class="pf-val">138****5678</span>{{ lockIcon }}<span class="pf-tip">审计</span></div></div>
+<div class="ds-lbl">角色切换 RoleSwitcher · 数据范围 DataScopeHint</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<div style="display:flex;align-items:center;gap:8px;padding:4px 10px 4px 5px;border-radius:9px;border:1px solid rgba(37,99,235,.25);background:rgba(37,99,235,.06);cursor:pointer"><div class="av-tb" style="background:linear-gradient(135deg,#93C5FD,#3B82F6)">王</div><div style="line-height:1.25"><div style="font-size:12px;font-weight:500">王莉老师</div><div style="font-size:10px;color:var(--pri)">辅导员 · 3个班级 ▾</div></div></div>
+<div class="sb-scope" style="width:auto">{{ iShield }} 数据范围：本人所带班级</div>
+</div>
+</div></div>
+<div class="crd"><div class="crd-h"><span class="crd-ht">状态样板 · 品牌配置位</span></div><div class="crd-b">
+<div class="ds-lbl">加载 Loading（骨架屏）/ 空状态 / 无权限</div>
+<div style="border:1px dashed var(--card-b);border-radius:10px;padding:12px;margin-bottom:10px"><div class="sk" style="width:40%"></div><div class="sk" style="width:88%"></div><div class="sk" style="width:66%;margin-bottom:0"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px">
+<div style="border:1px dashed var(--card-b);border-radius:10px"><div class="empty" style="padding:22px 12px"><div class="empty-ic" style="width:40px;height:40px">{{ iFile }}</div><div class="empty-tt">暂无数据</div><div class="empty-ds" style="font-size:11.5px">可导入学生名单开始使用</div></div></div>
+<div style="border:1px dashed var(--card-b);border-radius:10px"><div class="empty" style="padding:22px 12px"><div class="empty-ic" style="width:40px;height:40px">{{ iLock }}</div><div class="empty-tt">无权限查看</div><div class="empty-ds" style="font-size:11.5px">当前身份数据范围外 · 联系管理员</div></div></div>
+</div>
+<div class="ds-lbl">租户品牌配置位（禁止写死学校）</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<sc-for list="{{ brandVars }}" as="bv" hint-placeholder-count="6"><span class="code">{{ bv }}</span></sc-for>
+</div>
+</div></div>
+</div>
+</div>
+</sc-if>
+<!-- ═══ Other ═══ -->
+<sc-if value="{{ vOther }}">
+<div class="crd"><div class="empty"><div class="empty-ic">{{ iFile }}</div><div class="empty-tt">{{ pageTitle }}</div><div class="empty-ds">此模块正在建设中，敬请期待</div></div></div>
+</sc-if>
+</main></div>
+</div>
+</div>
+<sc-if value="{{ modal }}">
+<div class="mo" onClick="{{ closeMo }}"><div class="mo-c" onClick="{{ stopP }}"><div class="mo-tt">{{ moTitle }}</div><div class="mo-bd">{{ moBody }}<div class="mo-wn">{{ moWarn }}</div></div><div class="mo-ac"><button class="btn btn-g" onClick="{{ closeMo }}">取消</button><button class="btn btn-p" onClick="{{ closeMo }}">{{ moBtn }}</button></div></div></div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;100%&quot;},&quot;platformName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;职校全生命周期平台&quot;,&quot;section&quot;:&quot;租户配置&quot;},&quot;schoolName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;南京职业技术学院&quot;,&quot;section&quot;:&quot;租户配置&quot;},&quot;schoolMotto&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;厚德 · 精技 · 笃行&quot;,&quot;section&quot;:&quot;租户配置&quot;},&quot;logoText&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;职&quot;,&quot;section&quot;:&quot;租户配置&quot;},&quot;envLabel&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;DEV&quot;,&quot;options&quot;:[&quot;DEV&quot;,&quot;STAGING&quot;,&quot;PROD&quot;],&quot;section&quot;:&quot;租户配置&quot;},&quot;baseDate&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;2026-07-03&quot;,&quot;section&quot;:&quot;租户配置&quot;}}">
+class Component extends DCLogic {
+  state = { mod: 'work', view: 'dashboard', tab: 'basic', detId: '20241001', modal: '', role: 'admin', showRole: false };
+  renderVals() {
+    const st = this.state, v = st.view, mod = st.mod;
+    const h = React.createElement;
+    const ic = (ch) => h('svg',{width:16,height:16,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.75,strokeLinecap:'round',strokeLinejoin:'round',className:'ic'},...ch);
+    const p = d => h('path',{d}), c = (cx,cy,r) => h('circle',{cx,cy,r}), ln = (x1,y1,x2,y2) => h('line',{x1,y1,x2,y2}), pl = pts => h('polyline',{points:pts}), rt = (x,y,w,ht,rx) => h('rect',{x,y,width:w,height:ht,rx});
+    const iHome=ic([p('M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z'),p('M9 22V12h6v10')]);
+    const iClip=ic([p('M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2'),rt(8,2,8,4,1)]);
+    const iBook=ic([p('M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z'),p('M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z')]);
+    const iUsers=ic([p('M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2'),c(8.5,7,4),p('M23 21v-2a4 4 0 00-3-3.87'),p('M16 3.13a4 4 0 010 7.75')]);
+    const iUChk=ic([p('M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2'),c(8.5,7,4),pl('17 11 19 13 23 9')]);
+    const iGrad=ic([pl('1 9 12 2 23 9 12 16 1 9'),p('M5 12v6s3 4 7 4 4 0 7-4v-6')]);
+    const iFile=ic([p('M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'),pl('14 2 14 8 20 8'),ln(16,13,8,13),ln(16,17,8,17)]);
+    const iBrief=ic([rt(2,7,20,14,2),p('M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16')]);
+    const iTrend=ic([pl('23 6 13.5 15.5 8.5 10.5 1 18')]);
+    const iChart=ic([ln(18,20,18,10),ln(12,20,12,4),ln(6,20,6,14)]);
+    const iChk=ic([p('M22 11.08V12a10 10 0 11-5.93-9.14'),pl('22 4 12 14.01 9 11.01')]);
+    const iShield=ic([p('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z')]);
+    const iLock=ic([rt(3,11,18,11,2),p('M7 11V7a5 5 0 0110 0v4')]);
+    const iSliders=ic([ln(4,21,4,14),ln(4,10,4,3),ln(12,21,12,12),ln(12,8,12,3),ln(20,21,20,16),ln(20,12,20,3),ln(1,14,7,14),ln(9,8,15,8),ln(17,16,23,16)]);
+    const iBell=ic([p('M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9'),p('M13.73 21a2 2 0 01-3.46 0')]);
+    const iSearch=ic([c(11,11,8),ln(21,21,16.65,16.65)]);
+    const iChevD=ic([pl('6 9 12 15 18 9')]);
+    const chevDown=h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',className:'tb-chev'},h('polyline',{points:'6 9 12 15 18 9'}));
+    const iArrL=ic([ln(19,12,5,12),pl('12 19 5 12 12 5')]);
+    const iMore=ic([c(12,5,1),c(12,12,1),c(12,19,1)]);
+    const iDown=ic([p('M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4'),pl('7 10 12 15 17 10'),ln(12,15,12,3)]);
+    const iPlus=ic([ln(12,5,12,19),ln(5,12,19,12)]);
+    const iClock=ic([c(12,12,10),pl('12 6 12 12 16 14')]);
+    const iInfo=ic([c(12,12,10),ln(12,16,12,12),ln(12,8,12.01,8)]);
+    const iAlert=ic([p('M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z'),ln(12,9,12,13),ln(12,17,12.01,17)]);
+    const lockIcon=h('svg',{width:13,height:13,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',className:'pf-lock'},h('rect',{x:3,y:11,width:18,height:11,rx:2}),h('path',{d:'M7 11V7a5 5 0 0110 0v4'}));
+    const roles = { admin:['学校管理员','全校 12,486 名学生','张老师','全校'], college:['学院管理员','信息工程学院 · 2,847 名学生','周院长','本学院'], counselor:['辅导员','机电工程学院 · 3个班级','王莉老师','3个班级'], advisor:['指导教师','本人指导学生 28 人','李明教授','28名学生'], employ:['就业老师','应届毕业生 2,641 人','刘老师','应届生'], sysadmin:['系统管理员','全系统配置与审计','管理员','全系统'] };
+    const r = roles[st.role] || roles.admin;
+    const sp1='0,18 12,15 24,16 36,11 48,12 60,7 72,5', sp2='0,8 12,10 24,9 36,13 48,12 60,16 72,15', sp3='0,15 12,13 24,14 36,10 48,11 60,8 72,6', sp4='0,12 12,14 24,11 36,12 48,9 60,11 72,8';
+    const heroSp='0,50 24,44 48,46 72,36 96,40 120,30 144,34 168,24 192,28 216,18 240,22 264,14 288,18 320,10';
+    const heroSpf=heroSp+' 320,64 0,64';
+    const wbAll = {
+      admin:{heroLb:'全校在校学生',heroV:'12,486',heroTr:'较上月 ↑2.3% · 含休学 42 · 覆盖 7 个学院',notice:'数据质量提醒：全校学生主档完整度 96.2%，312 名学生资料待补全',nLv:'i',
+        metsTop:[{lb:'待办任务',v:'36',tr:'今日新增 8',q:'w',tq:'',sp:sp2},{lb:'风险预警',v:'18',tr:'↑ 3 较昨日',q:'e',tq:'bad',sp:sp4}],
+        metsRest:[{lb:'待身份核验',v:'126',tr:'本周到期 42',q:'i',tq:'',sp:sp2},{lb:'实习进行中',v:'3,208',tr:'完成率 78%',q:'o',tq:'good',sp:sp1},{lb:'毕设进行中',v:'2,641',tr:'选题完成 89%',q:'p',tq:'',sp:sp3},{lb:'就业待填报',v:'812',tr:'↑ 15 较上周',q:'w',tq:'bad',sp:sp2}],
+        todoTitle:'今日待办',riskN:'18 条',distTitle:'学院学生分布',
+        todos:[{d:'de',tt:'王晨 学业预警处理',mt:'风险处理 · 22护理1班',tm:'1小时前'},{d:'dw',tt:'张一鸣 实习周报审核',mt:'审批任务 · 24智造1班',tm:'10分钟前'},{d:'dp',tt:'李雨桐 毕设选题审核',mt:'审批任务 · 23软件2班',tm:'30分钟前'},{d:'dw',tt:'赵思远 身份核验催办',mt:'身份核验 · 24电商1班',tm:'2小时前'},{d:'dp',tt:'孙艺欣 资料补全提醒',mt:'材料管理 · 24学前1班',tm:'3小时前'}],
+        risks:[{nm:'王晨',tp:'学业预警',dt:'本学期3门课程不及格',sb:'22护理1班 · 2022级',lv:'高风险',lc:'rsk-hi',md:''},{nm:'李雨桐',tp:'实习异常',dt:'连续2周未提交周报',sb:'23软件2班 · 2023级',lv:'中风险',lc:'rsk-md',md:'med'},{nm:'陈浩宇',tp:'就业预警',dt:'就业去向超期未填报',sb:'22机电1班 · 2022级',lv:'中风险',lc:'rsk-md',md:'med'}],
+        dist:[{l:'信息工程',w:'85',c:'#2563EB',v:'2,847'},{l:'医护学院',w:'72',c:'#3B82F6',v:'2,410'},{l:'智能制造',w:'58',c:'#60A5FA',v:'1,940'},{l:'商贸学院',w:'48',c:'#93C5FD',v:'1,608'},{l:'教育学院',w:'32',c:'#BFDBFE',v:'1,066'}],
+        flows:[{d:'do',tt:'2024级新生身份核验',mt:'已核验 874/1,000 · 87.4%',tm:'进行中'},{d:'do',tt:'2023级实习周报收集',mt:'已提交 1,286/1,450 · 88.7%',tm:'进行中'},{d:'dp',tt:'2022级毕设选题审核',mt:'已审核 2,108/2,641 · 79.8%',tm:'进行中'},{d:'dw',tt:'就业去向填报催办',mt:'已填报 1,829/2,641 · 69.3%',tm:'预警中'}]},
+      college:{heroLb:'本学院在校学生',heroV:'2,847',heroTr:'信息工程学院 · 6 个专业 · 42 个班级',notice:'班级风险提醒：4 个班级存在待处理风险学生，23软件2班风险最集中',nLv:'w',
+        metsTop:[{lb:'班级风险',v:'4',tr:'涉及学生 9 人',q:'e',tq:'bad',sp:sp4},{lb:'待身份核验',v:'38',tr:'逾期 6',q:'i',tq:'',sp:sp2}],
+        metsRest:[{lb:'实习进行中',v:'812',tr:'周报提交率 88%',q:'o',tq:'good',sp:sp1},{lb:'毕设进行中',v:'604',tr:'开题通过 81%',q:'p',tq:'',sp:sp3},{lb:'资料待补全',v:'21',tr:'催办中 9',q:'w',tq:'',sp:sp2},{lb:'数据完整度',v:'97.1%',tr:'↑ 0.4% 较上周',q:'o',tq:'good',sp:sp1}],
+        todoTitle:'学院待办',riskN:'9 条',distTitle:'专业学生分布',
+        todos:[{d:'dw',tt:'23软件2班 风险复核',mt:'班级风险 · 3名学生待跟进',tm:'今日'},{d:'dp',tt:'实习企业资质复核',mt:'岗位实习 · 2家企业',tm:'昨日'},{d:'dp',tt:'毕设开题批次审核',mt:'毕业设计 · 46份材料',tm:'本周'},{d:'dw',tt:'新生核验催办',mt:'身份核验 · 逾期6人',tm:'催办中'}],
+        risks:[{nm:'李雨桐',tp:'实习异常',dt:'连续2周未提交周报',sb:'23软件2班',lv:'中风险',lc:'rsk-md',md:'med'},{nm:'周子豪',tp:'打卡异常',dt:'本周2次实习打卡缺失',sb:'23软件1班',lv:'中风险',lc:'rsk-md',md:'med'},{nm:'吴雨萱',tp:'核验逾期',dt:'身份核验超期5天',sb:'24电商2班',lv:'中风险',lc:'rsk-md',md:'med'}],
+        dist:[{l:'软件技术',w:'85',c:'#2563EB',v:'986'},{l:'电子商务',w:'62',c:'#3B82F6',v:'714'},{l:'大数据',w:'48',c:'#60A5FA',v:'552'},{l:'网络技术',w:'34',c:'#93C5FD',v:'391'},{l:'数字媒体',w:'18',c:'#BFDBFE',v:'204'}],
+        flows:[{d:'do',tt:'学院实习动员批次',mt:'812 名学生已到岗确认',tm:'完成'},{d:'dp',tt:'毕设开题材料收集',mt:'已提交 512/604 · 84.8%',tm:'进行中'},{d:'dw',tt:'实习企业协议续签',mt:'12/18 家已续签',tm:'预警中'}]},
+      counselor:{heroLb:'所带学生',heroV:'486',heroTr:'机电工程学院 · 3 个班级 · 实习 107 · 毕设 38',notice:'8 名学生身份核验已逾期，今日截止的谈话记录 1 份待提交',nLv:'w',
+        metsTop:[{lb:'今日待办',v:'12',tr:'紧急 3',q:'w',tq:'',sp:sp2},{lb:'风险学生',v:'5',tr:'↑ 1 较昨日',q:'e',tq:'bad',sp:sp4}],
+        metsRest:[{lb:'待身份核验',v:'23',tr:'逾期 8',q:'i',tq:'bad',sp:sp2},{lb:'实习中',v:'107',tr:'周报逾期 4',q:'o',tq:'',sp:sp1},{lb:'毕设中',v:'38',tr:'进度正常',q:'p',tq:'good',sp:sp3},{lb:'资料缺失',v:'6',tr:'催办中 3',q:'w',tq:'',sp:sp2}],
+        todoTitle:'今日待办',riskN:'5 条',distTitle:'学生状态分布',
+        todos:[{d:'de',tt:'王晨 学业预警处理',mt:'3门不及格 · 需谈话记录',tm:'紧急'},{d:'dw',tt:'张一鸣 实习周报审核',mt:'2026年第26周',tm:'10分钟'},{d:'dw',tt:'赵思远 身份核验催办',mt:'逾期7天未完成核验',tm:'催办中'},{d:'dp',tt:'孙艺欣 资料补全',mt:'缺少经济认定材料',tm:'2小时前'}],
+        risks:[{nm:'王晨',tp:'学业预警',dt:'3门课程不及格，累计5门',sb:'22护理1班 · 需谈话',lv:'高',lc:'rsk-hi',md:''},{nm:'孙艺欣',tp:'资料缺失',dt:'缺少家庭经济认定材料',sb:'24学前1班',lv:'中',lc:'rsk-md',md:'med'},{nm:'赵思远',tp:'核验逾期',dt:'身份核验超期7天',sb:'24电商1班',lv:'中',lc:'rsk-md',md:'med'}],
+        dist:[{l:'在校正常',w:'65',c:'#059669',v:'316'},{l:'实习中',w:'22',c:'#3B82F6',v:'107'},{l:'毕设中',w:'8',c:'#6366F1',v:'38'},{l:'待核验',w:'5',c:'#D97706',v:'23'},{l:'风险',w:'2',c:'#DC2626',v:'5'}],
+        flows:[{d:'do',tt:'班级晨检打卡',mt:'今日出勤 481/486',tm:'完成'},{d:'dp',tt:'家庭经济认定收集',mt:'已提交 92/98',tm:'进行中'},{d:'dw',tt:'就业去向待填报',mt:'本班待填 26 人',tm:'催办中'}]},
+      advisor:{heroLb:'指导学生',heroV:'28',heroTr:'实习 12 · 毕设 15 · 已毕业 1',notice:'2 份周报为逾期补交，李雨桐中期检查表已逾期 2 天',nLv:'w',
+        metsTop:[{lb:'待批周报',v:'8',tr:'逾期补交 2',q:'w',tq:'',sp:sp2},{lb:'风险提醒',v:'3',tr:'需处理',q:'e',tq:'bad',sp:sp4}],
+        metsRest:[{lb:'毕设材料待审',v:'5',tr:'今日新增 2',q:'i',tq:'',sp:sp2},{lb:'开题通过率',v:'80%',tr:'12/15 人',q:'o',tq:'good',sp:sp1},{lb:'中期完成率',v:'45%',tr:'低于院均 58%',q:'w',tq:'bad',sp:sp2},{lb:'实习到岗率',v:'100%',tr:'12/12 人',q:'o',tq:'good',sp:sp1}],
+        todoTitle:'待批阅任务',riskN:'3 条',distTitle:'毕设阶段进度',
+        todos:[{d:'dp',tt:'张一鸣 · 第26周实习周报',mt:'南京智造科技 · 提交于昨日',tm:'待批阅'},{d:'dp',tt:'张一鸣 开题报告',mt:'智能产线监控系统 · 今日',tm:'待审核'},{d:'dp',tt:'赵思远 文献综述',mt:'跨境电商运营 · 昨日',tm:'待审核'},{d:'dw',tt:'李雨桐 中期检查表',mt:'校园服务小程序 · 逾期2天',tm:'催办'},{d:'dw',tt:'陈浩宇 · 第25周（补交）',mt:'常州机械厂 · 逾期提交',tm:'待批阅'}],
+        risks:[{nm:'李雨桐',tp:'实习异常',dt:'连续2周未提交周报',sb:'23软件2班',lv:'中',lc:'rsk-md',md:'med'},{nm:'王晨',tp:'学业预警',dt:'毕设进度受学业影响',sb:'22护理1班',lv:'高',lc:'rsk-hi',md:''},{nm:'陈浩宇',tp:'周报逾期',dt:'第25周周报逾期补交',sb:'22机电1班',lv:'中',lc:'rsk-md',md:'med'}],
+        dist:[{l:'选题完成',w:'93',c:'#059669',v:'93%'},{l:'开题通过',w:'80',c:'#2563EB',v:'80%'},{l:'中期完成',w:'45',c:'#D97706',v:'45%'},{l:'终稿提交',w:'12',c:'#8494B5',v:'12%'}],
+        flows:[{d:'do',tt:'张一鸣 开题答辩通过',mt:'智能产线监控系统',tm:'昨日'},{d:'dp',tt:'周子豪 实习中期评价',mt:'无锡东软集团 · 企业导师已评',tm:'今日'},{d:'dw',tt:'李雨桐 催办通知已发送',mt:'中期检查表 · 第2次催办',tm:'1小时前'}]},
+      employ:{heroLb:'应届毕业生',heroV:'2,641',heroTr:'就业去向填报率 69.3% · 目标 85%',notice:'就业填报率低于目标 15.7 个百分点，812 名学生待填报，9 条就业异常待核实',nLv:'e',
+        metsTop:[{lb:'待填报学生',v:'812',tr:'↑ 15 较上周',q:'w',tq:'bad',sp:sp2},{lb:'就业异常',v:'9',tr:'待核实',q:'e',tq:'bad',sp:sp4}],
+        metsRest:[{lb:'材料待核验',v:'64',tr:'今日新增 12',q:'i',tq:'',sp:sp2},{lb:'已就业',v:'1,829',tr:'占比 69.3%',q:'o',tq:'good',sp:sp1},{lb:'企业拟录用',v:'217',tr:'实习转就业',q:'p',tq:'good',sp:sp3},{lb:'合作企业',v:'132',tr:'本年新增 18',q:'o',tq:'good',sp:sp1}],
+        todoTitle:'就业待办',riskN:'9 条',distTitle:'就业去向分布',
+        todos:[{d:'dw',tt:'李佳 就业证明材料复核',mt:'材料被退回后重新上传',tm:'今日'},{d:'dp',tt:'陈思雨 拟录用确认',mt:'实习企业转正流程',tm:'昨日'},{d:'dw',tt:'22机电1班 填报催办',mt:'待填报 38 人 · 第3次催办',tm:'催办中'},{d:'dp',tt:'南京智造科技 岗位发布审核',mt:'12个岗位 · 校招专场',tm:'本周'}],
+        risks:[{nm:'陈浩宇',tp:'超期未填报',dt:'就业去向超期30天未填报',sb:'22机电1班',lv:'中',lc:'rsk-md',md:'med'},{nm:'李佳',tp:'材料退回',dt:'就业证明材料不清晰',sb:'22软件2班',lv:'中',lc:'rsk-md',md:'med'},{nm:'王晨',tp:'就业困难',dt:'学业预警影响毕业资格',sb:'22护理1班',lv:'高',lc:'rsk-hi',md:''}],
+        dist:[{l:'企业就业',w:'58',c:'#2563EB',v:'1,532'},{l:'升学',w:'11',c:'#059669',v:'297'},{l:'自主创业',w:'2',c:'#6366F1',v:'43'},{l:'待填报',w:'31',c:'#D97706',v:'812'}],
+        flows:[{d:'do',tt:'校园招聘会（春季场）',mt:'86 家企业 · 意向签约 214 人',tm:'完成'},{d:'dp',tt:'就业材料核验批次',mt:'已核验 428/492 · 87%',tm:'进行中'},{d:'dw',tt:'填报催办短信推送',mt:'覆盖 812 名待填报学生',tm:'今日'}]},
+      sysadmin:{heroLb:'平台运行状态',heroV:'正常',heroTr:'12 个业务模块全部在线 · 本月可用率 99.98%',notice:'2 个模块授权将于 30 天内到期：数据驾驶舱、毕业就业',nLv:'i',
+        metsTop:[{lb:'今日审计事件',v:'1,284',tr:'敏感查看 46',q:'i',tq:'',sp:sp2},{lb:'异常登录',v:'2',tr:'已自动拦截',q:'e',tq:'good',sp:sp4}],
+        metsRest:[{lb:'活跃用户',v:'3,412',tr:'今日登录',q:'p',tq:'good',sp:sp1},{lb:'接口调用',v:'86万',tr:'近24小时',q:'i',tq:'',sp:sp3},{lb:'存储用量',v:'62%',tr:'1.24 TB / 2 TB',q:'w',tq:'',sp:sp2},{lb:'待处理工单',v:'4',tr:'超时 0',q:'o',tq:'good',sp:sp1}],
+        todoTitle:'系统待办',riskN:'2 条',distTitle:'模块运行状态',
+        todos:[{d:'dw',tt:'数据驾驶舱模块续期',mt:'授权 30 天后到期',tm:'本月'},{d:'dp',tt:'新学期角色批量开通',mt:'待开通教师账号 46 个',tm:'本周'},{d:'dp',tt:'水印策略更新',mt:'详情页水印规则 v2',tm:'待发布'}],
+        risks:[{nm:'账号安全',tp:'异常登录',dt:'2次异地登录已拦截',sb:'安全审计 · 今日',lv:'中',lc:'rsk-md',md:'med'},{nm:'模块授权',tp:'即将到期',dt:'2个模块30天内到期',sb:'租户授权',lv:'中',lc:'rsk-md',md:'med'}],
+        dist:[{l:'学生主档',w:'100',c:'#059669',v:'在线'},{l:'岗位实习',w:'100',c:'#059669',v:'在线'},{l:'毕业设计',w:'100',c:'#059669',v:'在线'},{l:'毕业就业',w:'100',c:'#D97706',v:'将到期'},{l:'数据驾驶舱',w:'100',c:'#D97706',v:'将到期'}],
+        flows:[{d:'do',tt:'夜间数据备份完成',mt:'全量备份 · 1.24 TB',tm:'04:00'},{d:'dp',tt:'v2.4.1 版本发布',mt:'灰度 20% 租户',tm:'昨日'},{d:'do',tt:'安全扫描通过',mt:'0 高危 · 2 低危已修复',tm:'本周'}]}
+    };
+    const wb = wbAll[st.role] || wbAll.admin;
+    const sm={active:['在校','tag tg-o'],intern:['实习进行中','tag tg-i'],thesis:['毕设进行中','tag tg-p'],verify:['待身份核验','tag tg-w'],employ:['就业待填报','tag tg-w'],graduated:['已毕业','tag tg-g']};
+    const stagePct={active:['在校学习期',35],intern:['岗位实习期',62],thesis:['毕业设计期',78],verify:['入学核验期',12],employ:['就业落实期',90],graduated:['已毕业',100]};
+    const CIRC = 2*Math.PI*23;
+    const rawStu=[
+      {id:'20241001',name:'张一鸣',g:'2024',major:'智能制造技术',cls:'24智造1班',status:'active',risk:'',vf:true,gen:'男',birth:'2005-03-15',phone:'138****5678',idC:'320106****1234',addr:'江苏省南京市***区***路',guar:'张**',gPh:'139****8765',enroll:'2024-09-01',couns:'王莉',email:'zhang***@edu.cn',failC:'0',failTr:'无不及格',intSt:'未开始',intWk:'0',intOv:'0',hasInt:false,intCo:'',intPos:'',intMen:'',intStart:'',intEnd:'',thSt:'未开始',thAdv:'李明',thDoc:'0',hasTh:false,thTitle:'',empSt:'未填报',empTp:'—',empPr:'未开始'},
+      {id:'20231002',name:'李雨桐',g:'2023',major:'软件技术',cls:'23软件2班',status:'intern',risk:'周报逾期',vf:true,gen:'女',birth:'2004-11-08',phone:'137****2345',idC:'320105****6789',addr:'江苏省苏州市***区***路',guar:'李**',gPh:'136****3456',enroll:'2023-09-01',couns:'王莉',email:'li***@edu.cn',failC:'1',failTr:'已补考通过',intSt:'进行中',intWk:'22',intOv:'2',hasInt:true,intCo:'苏州云软科技有限公司',intPos:'前端开发实习生',intMen:'陈经理',intStart:'2025-07-01',intEnd:'2026-01-15',thSt:'中期检查',thAdv:'李明',thDoc:'3',hasTh:true,thTitle:'基于微信小程序的校园服务平台设计与实现',empSt:'未填报',empTp:'—',empPr:'未开始'},
+      {id:'20221003',name:'王晨',g:'2022',major:'护理',cls:'22护理1班',status:'thesis',risk:'学业预警',vf:true,gen:'男',birth:'2003-07-22',phone:'135****9876',idC:'320104****2345',addr:'江苏省无锡市***区***路',guar:'王**',gPh:'134****6543',enroll:'2022-09-01',couns:'张伟',email:'wang***@edu.cn',failC:'3',failTr:'需重修',intSt:'已完成',intWk:'24',intOv:'0',hasInt:true,intCo:'南京市第一医院',intPos:'护理实习生',intMen:'刘护士长',intStart:'2024-07-01',intEnd:'2025-01-15',thSt:'选题完成',thAdv:'李明',thDoc:'2',hasTh:true,thTitle:'社区老年护理服务模式研究',empSt:'待填报',empTp:'—',empPr:'未开始'},
+      {id:'20241004',name:'赵思远',g:'2024',major:'电子商务',cls:'24电商1班',status:'verify',risk:'',vf:false,gen:'女',birth:'2005-01-30',phone:'133****4567',idC:'320103****8901',addr:'江苏省常州市***区***路',guar:'赵**',gPh:'132****7890',enroll:'2024-09-01',couns:'张伟',email:'zhao***@edu.cn',failC:'0',failTr:'—',intSt:'未开始',intWk:'0',intOv:'0',hasInt:false,intCo:'',intPos:'',intMen:'',intStart:'',intEnd:'',thSt:'未开始',thAdv:'李明',thDoc:'0',hasTh:false,thTitle:'',empSt:'未填报',empTp:'—',empPr:'未开始'},
+      {id:'20231005',name:'刘子涵',g:'2023',major:'会计',cls:'23会计1班',status:'active',risk:'',vf:true,gen:'女',birth:'2004-05-18',phone:'131****6789',idC:'320102****4567',addr:'江苏省扬州市***区***路',guar:'刘**',gPh:'130****5432',enroll:'2023-09-01',couns:'王莉',email:'liu***@edu.cn',failC:'0',failTr:'无',intSt:'未开始',intWk:'0',intOv:'0',hasInt:false,intCo:'',intPos:'',intMen:'',intStart:'',intEnd:'',thSt:'未开始',thAdv:'—',thDoc:'0',hasTh:false,thTitle:'',empSt:'未填报',empTp:'—',empPr:'未开始'},
+      {id:'20221006',name:'陈浩宇',g:'2022',major:'机电一体化',cls:'22机电1班',status:'employ',risk:'就业待填',vf:true,gen:'男',birth:'2003-12-05',phone:'158****1234',idC:'320101****6789',addr:'江苏省南通市***区***路',guar:'陈**',gPh:'157****9876',enroll:'2022-09-01',couns:'张伟',email:'chen***@edu.cn',failC:'0',failTr:'无',intSt:'已完成',intWk:'24',intOv:'1',hasInt:true,intCo:'常州恒力机械',intPos:'机电维护实习',intMen:'周主管',intStart:'2024-07-01',intEnd:'2025-01-15',thSt:'终稿提交',thAdv:'—',thDoc:'5',hasTh:true,thTitle:'数控机床故障诊断系统设计',empSt:'待填报',empTp:'—',empPr:'待开始'},
+      {id:'20241007',name:'孙艺欣',g:'2024',major:'学前教育',cls:'24学前1班',status:'active',risk:'资料缺失',vf:true,gen:'女',birth:'2005-08-12',phone:'156****5678',idC:'320107****2345',addr:'江苏省镇江市***区***路',guar:'孙**',gPh:'155****4321',enroll:'2024-09-01',couns:'王莉',email:'sun***@edu.cn',failC:'0',failTr:'无',intSt:'未开始',intWk:'0',intOv:'0',hasInt:false,intCo:'',intPos:'',intMen:'',intStart:'',intEnd:'',thSt:'未开始',thAdv:'—',thDoc:'0',hasTh:false,thTitle:'',empSt:'未填报',empTp:'—',empPr:'未开始'},
+      {id:'20231008',name:'周子豪',g:'2023',major:'软件技术',cls:'23软件1班',status:'intern',risk:'',vf:true,gen:'男',birth:'2004-02-28',phone:'150****9012',idC:'320108****0123',addr:'江苏省泰州市***区***路',guar:'周**',gPh:'151****8765',enroll:'2023-09-01',couns:'张伟',email:'zhou***@edu.cn',failC:'0',failTr:'无',intSt:'进行中',intWk:'20',intOv:'0',hasInt:true,intCo:'无锡东软集团',intPos:'测试工程师实习',intMen:'吴经理',intStart:'2025-07-01',intEnd:'2026-01-15',thSt:'开题通过',thAdv:'李明',thDoc:'2',hasTh:true,thTitle:'自动化测试框架的设计与应用',empSt:'未填报',empTp:'—',empPr:'未开始'},
+      {id:'20241009',name:'吴雨萱',g:'2024',major:'电子商务',cls:'24电商2班',status:'verify',risk:'',vf:false,gen:'女',birth:'2005-06-20',phone:'185****3456',idC:'320109****8901',addr:'江苏省盐城市***区***路',guar:'吴**',gPh:'186****2109',enroll:'2024-09-01',couns:'王莉',email:'wu***@edu.cn',failC:'0',failTr:'—',intSt:'未开始',intWk:'0',intOv:'0',hasInt:false,intCo:'',intPos:'',intMen:'',intStart:'',intEnd:'',thSt:'未开始',thAdv:'—',thDoc:'0',hasTh:false,thTitle:'',empSt:'未填报',empTp:'—',empPr:'未开始'}
+    ];
+    const students = rawStu.map(s => {
+      const sg = stagePct[s.status] || stagePct.active;
+      return {...s, ch: s.name[0], gl: s.g+'级', sl: (sm[s.status]||sm.active)[0], tc: (sm[s.status]||sm.active)[1], nvf: !s.vf, stage: sg[0], pct: sg[1]+'%', ring: (CIRC*sg[1]/100).toFixed(1)+' '+CIRC.toFixed(1)};
+    });
+    const ds = students.find(s => s.id === st.detId) || students[0];
+    const titles = {dashboard:'我的工作台',students:'学生主档',detail:'学生详情',identity:'身份核验',cockpit:'数据驾驶舱',approval:'权限与审批中心',design:'设计规范',academic:'学业过程',thesis:'毕业设计',internship:'岗位实习',employment:'毕业就业',audit:'安全审计',settings:'系统设置',newStudent:'数字迎新',campusService:'在校服务',studentAccount:'账号管理',taskCenter:'任务中心',riskCenter:'风险预警',dataExport:'数据导出',dataReport:'报表中心',tenantConfig:'租户品牌配置'};
+    const viewMod = {dashboard:'work',students:'stu',detail:'stu',identity:'stu',newStudent:'stu',campusService:'stu',studentAccount:'stu',academic:'teach',thesis:'teach',internship:'teach',employment:'teach',taskCenter:'teach',riskCenter:'teach',cockpit:'data',dataExport:'data',dataReport:'data',audit:'sys',settings:'sys',tenantConfig:'sys',design:'sys'};
+    const modalData = {
+      export:{title:'导出确认',body:'导出操作需要管理员权限确认。导出数据可能包含学生敏感信息（身份证号、手机号等），请确保符合数据安全管理要求。',warn:'⚠ 导出记录将被写入安全审计日志',btn:'确认导出'},
+      reject:{title:'确认退回',body:'请填写退回原因（必填，不少于 5 个字）。退回后学生将收到待办与消息通知，需重新提交材料；退回记录保留在流程历史中。',warn:'⚠ 此操作将被记录到审计日志',btn:'确认退回'}
+    };
+    const mo = modalData[st.modal];
+    const hr = new Date().getHours();
+    const greeting = hr < 12 ? '早上好' : hr < 18 ? '下午好' : '晚上好';
+    const curMod = viewMod[v] || mod;
+    const B='{'+'{', E='}'+'}';
+    const brandVars=['schoolName','platformDisplayName','schoolShortName','schoolLogo','schoolBadge','schoolMotto','campusIllustration','tenantBrandColor','watermarkText','currentRoleName','dataScopeName','envLabel','baseDate'].map(k=>B+k+E);
+    return {
+      pageTitle:titles[v]||v,
+      platformName: this.props.platformName ?? '职校全生命周期平台',
+      schoolName: this.props.schoolName ?? '南京职业技术学院',
+      schoolMotto: this.props.schoolMotto ?? '厚德 · 精技 · 笃行',
+      logoText: this.props.logoText ?? '职',
+      envLabel: this.props.envLabel ?? 'DEV',
+      baseDate: this.props.baseDate ?? '2026-07-03',
+      pendingCount: '3',
+      userName: r[2], userRole: r[0], userCh: r[2][0], scopeLabel: r[1], scopeShort: r[3], greeting,
+      wb, brandVars,
+      showRole: st.showRole, roleOpen: st.showRole ? 'open' : '',
+      rAdmin:st.role==='admin'?'on':'',rCollege:st.role==='college'?'on':'',rCoun:st.role==='counselor'?'on':'',rAdv:st.role==='advisor'?'on':'',rEmp:st.role==='employ'?'on':'',rSysAdmin:st.role==='sysadmin'?'on':'',
+      mWork:curMod==='work'?'on':'',mStu:curMod==='stu'?'on':'',mTeach:curMod==='teach'?'on':'',mData:curMod==='data'?'on':'',mSys:curMod==='sys'?'on':'',
+      isWork:curMod==='work',isStu:curMod==='stu',isTeach:curMod==='teach',isData:curMod==='data',isSys:curMod==='sys',
+      vDash:v==='dashboard',vStu:v==='students',vDet:v==='detail',vId:v==='identity',vCk:v==='cockpit',vApp:v==='approval',vDs:v==='design',
+      vOther:!['dashboard','students','detail','identity','cockpit','approval','design'].includes(v),
+      aDash:v==='dashboard'?'on':'',aStu:(v==='students'||v==='detail')?'on':'',aId:v==='identity'?'on':'',
+      aCk:v==='cockpit'?'on':'',aCk2:v==='cockpit'?'on':'',aApp:v==='approval'?'on':'',aApp2:v==='approval'?'on':'',aApp3:v==='approval'?'on':'',aDs:v==='design'?'on':'',
+      tbBas:st.tab==='basic'?'on':'',tbAca:st.tab==='aca'?'on':'',tbInt:st.tab==='int'?'on':'',
+      tbThe:st.tab==='the'?'on':'',tbEmp:st.tab==='emp'?'on':'',
+      stBas:st.tab==='basic',stAca:st.tab==='aca',stInt:st.tab==='int',stThe:st.tab==='the',stEmp:st.tab==='emp',
+      today:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'}),
+      students, ds, modal:!!st.modal,
+      moTitle:mo?.title||'',moBody:mo?.body||'',moWarn:mo?.warn||'',moBtn:mo?.btn||'',
+      iHome,iClip,iBook,iUsers,iUChk,iGrad,iFile,iBrief,iTrend,iChart,iChk,iShield,iLock,iSliders,
+      iBell,iSearch,iChevD,chevDown,iArrL,iMore,iDown,iPlus,iClock,iInfo,iAlert,lockIcon,
+      setMod:e=>{const m=e.currentTarget.dataset.m;if(!m)return;const first={work:'dashboard',stu:'students',teach:'academic',data:'cockpit',sys:'approval'};this.setState({mod:m,view:first[m]||'dashboard',showRole:false})},
+      nav:e=>{const t=e.currentTarget.dataset.v;if(t){const vm={dashboard:'work',students:'stu',detail:'stu',identity:'stu',newStudent:'stu',campusService:'stu',studentAccount:'stu',academic:'teach',thesis:'teach',internship:'teach',employment:'teach',taskCenter:'teach',riskCenter:'teach',cockpit:'data',dataExport:'data',dataReport:'data',audit:'sys',settings:'sys',tenantConfig:'sys',design:'sys',approval:this.state.mod==='sys'?'sys':'data'};this.setState({view:t,mod:vm[t]||st.mod,showRole:false})}},
+      setTb:e=>{const t=e.currentTarget.dataset.t;if(t)this.setState({tab:t})},
+      goDet:e=>{const id=e.currentTarget.dataset.id;if(id)this.setState({view:'detail',detId:id,tab:'basic',mod:'stu'})},
+      goBack:()=>this.setState({view:'students'}),
+      goApproval:()=>this.setState({mod:'data',view:'approval',showRole:false}),
+      toggleRole:()=>this.setState(p=>({showRole:!p.showRole})),
+      switchRole:e=>{const rr=e.currentTarget.dataset.r;if(rr)this.setState({role:rr,showRole:false,view:'dashboard',mod:'work'})},
+      showExp:()=>this.setState({modal:'export'}),
+      showReject:()=>this.setState({modal:'reject'}),
+      closeMo:()=>this.setState({modal:''}),
+      stopP:e=>e.stopPropagation(),
+    };
+  }
+}
+</script>
+</body>
+</html>

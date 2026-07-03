@@ -31,6 +31,14 @@
 
 后续开发小程序 **必须参考本目录**，并同时读取 08A / 08B 业务文档。
 
+**当前已归档**：
+
+- `docs/ui/fable5-miniapp-final/小程序设计.pdf`
+- `docs/ui/fable5-miniapp-final/职校学生全生命周期小程序.zip`
+- `docs/ui/fable5-miniapp-final/职校学生全生命周期-小程序设计稿.html`
+
+学生端约 60 屏，教师端 T1–T30 共 30 屏。设计稿已完成主体设计并通过总验收。
+
 ---
 
 ## 重要规则
