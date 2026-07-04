@@ -52,3 +52,119 @@
 11. 下一步建议：backend P3 —— 真实 PostgreSQL 初始化 + 学生主档真实 CRUD 联调（见 docs/backend-integration/后端下一阶段任务清单.md）。
 12. PC UI / miniapp / frontend/src 是否被修改：否。forbidden 路径零改动。
 13. 插曲记录：app/api/v1/router.py 发现同步截断损坏（文件在 include make_todos_router 处截断），已按其自身结构重建并补挂 students/approvals/audit/tenant/rbac/dashboard 等前缀；验证以 Windows 本机 pytest+uvicorn 实测为准。
+
+### BACKEND-DB · SQLite 真实数据层（本轮）
+- dev.db：scripts/reset_dev_db.py / init_dev_db.py（20 表）/ seed_demo_data.py（租户+品牌+组织+2用户+6学生+3审批+4待办+3消息+1审计）全部跑通，幂等。
+- 五域真实走库（backend/.env DB_ENABLED=true + sqlite dev.db）：students（列表/详情360/新增/更新/逻辑作废/时间线/风险）、approvals（待办/详情/通过/驳回≥5字/转办/已办）、todos（列表/汇总/完成）、messages（列表/已读）、audit（record 双写内存+t_security_audit_log，query 走库）。统一 tenant_id 过滤 + is_deleted=false；手机号存 contact_value_encrypted（演示占位明文，真实环境为密文）响应恒脱敏。
+- 已知 TODO：riskLevel 暂借 StudentProfile.remark 存演示值（P4 接风险信号表）；utcnow Deprecation 待批量换 timezone-aware。
+- pytest：**32 passed**（27 mock + 5 DB 模式端到端，临时 SQLite 独立夹具，互不污染）。
+- 实测（Windows .venv + uvicorn + dev.db）：health code=0 dbEnabled=True；docs/openapi 200；students=6；approvals=3 PENDING；todos=4；messages=3；audit=2（含落库）。
+- 修改范围仅 backend/ 与本文件；未写任何新文档；未提交。
+
+### P1-BACKEND-REAL-DB-RUN（短状态）
+- dev.db 迁至 backend/data/dev.db（gitignored）；reset/init/seed 三脚本可重复跑。
+- 种子达标：1租户+1品牌+8角色+20用户+100学生(含电话/阶段事件)+20审批+30待办+20消息+50审计。
+- 全接口实测通过（uvicorn+dev.db）：students 100/详情/新增(101)/PUT 更新 v=1/void 逻辑删除；approvals 20：approve/reject无reason被422拦截/reject/transfer；todos PENDING=24→done；messages 20→read；audit 50→52（业务操作双写落库，含 mock_audit_service 通道补齐）。
+- health code=0 dbEnabled=True；docs/openapi 200；pytest 32 passed。未连生产 PG；只改 backend/ 与本文件；未提交。
+
+### P2-PC-CONNECT-BACKEND-REAL-API（短状态）
+- 新增 frontend/src/services/http/（config/client/adapters/index）：API_BASE_URL 默认 http://localhost:8000（VITE_API_BASE_URL 可覆盖），统一解析 code/bizCode/message/data/traceId/timestamp，自动 mock-login 取 token，4s 超时 + 15s 离线冷却 + toast 提示，后端挂了自动回退 mock 不白屏；localStorage.useRealApi='false' 可整体关闭真实接口。
+- 已接主链（真实接口，失败回退 mock）：tenant/brand + rbac/current-context + todos/summary（合入 student/approval 两模块 getContext：品牌/currentRole/dataScope/pendingCount，产品名=高校学生全生命周期管理平台）；students 列表/详情/新增/更新/作废；approvals 待办列表/详情/通过/退回(reject) + getTodoSummary；audit/logs（系统管理·审计查询）。字段适配在 services/http/adapters.js（DTO 对齐 mock 契约，UI 零改动）。
+- mock 全量保留（原方法改名 _mockXxx，桥接失败即回退）；权限矩阵/字典/availableRoles 仍来自 mock（后端第一批未覆盖）。
+- lint ✅ 0 错误；build ✅ 3.49s。后端 uvicorn(8000) 与 vite dev(5173) 均已启动供人工点验 /admin/student/list（真实库 100 名学生）。屏幕使用中，未做页面截图。
+- 未动 miniapp / docs/ui / 路由结构 / UI 风格；未提交。
+
+### P3-MINIAPP-CONNECT-BACKEND-REAL-API（短状态）
+- miniapp 真实后端优先接入（http://localhost:8000，ENV.useMock=true 可整体回退纯 mock）：新增 services/realApi.js（字段适配层）；request.js 实现 realRequest（统一响应解析/token/4s超时/15s离线冷却+toast，不白屏）与 realFirst 兜底。
+- 登录/角色切换：session.login/switchRole 同步后端 mock-login（角色→账号映射：student01/counselor01/teacher01/employment01/academic01/college_admin01），token 存 uni storage；本地角色配置与学生/教师端入口全保留。
+- 学生端已接：首页(阶段+待办计数 enrich)、我的档案(真实学生合入)、消息中心(真实消息合入 tabs/groups)。教师端已接：我的学生/风险学生(真实 100 学生)、学生360(数字 id 走真实)、审批列表+通过/驳回/退回(数字 id 调真实接口，mock 编号保持演示)、移动待办、消息。其余页面仍 mock。
+- build:h5 ✅ / build:mp-weixin ✅（DONE Build complete）。未动 frontend/src 与 UI 风格；未提交。
+
+### 登录页试用咨询入口 + 演示账号收敛（短状态）
+- PC 新增 /login 登录页（母版登录屏风格）：账号密码走 POST /api/v1/auth/login（真实校验），「进入演示环境」按钮保留原工作台入口；试用咨询区块（想为学校开通正式试用？请联系平台服务顾问：13549666867，复制手机号 + tel: 拨打）。
+- miniapp 登录页：演示按钮统一为「进入演示环境」；新增账号密码登录（走 /auth/login，成功按角色进入学生端/教师端）；底部试用咨询卡（13549666867，复制 + 拨打，H5/mp 双端）；移除"不接后端"旧口径文案。
+- 后端：POST /api/v1/auth/login（t_user + pbkdf2_sha256 校验）；seed 新增 demo-school 租户（演示职业技术学院）+ 4 个演示账号，**密码仅以 pbkdf2 哈希入库，仓库与页面均不含明文（演示账号已配置，密码未公开展示）**；令牌携带 tenantId，租户绑定移至中间件 async 上下文（修复 contextvar 传播），实测隔离：demo 账号仅见 demo-school 5 名学生，主租户 100 名不可见；错误密码 401。
+- 验证：pytest 32 passed；PC lint/build ✅（3.39s）；miniapp build:h5 / build:mp-weixin ✅；后端已重启运行于 8000。
+
+### P3.5-FIX-DEMO-PASSWORD-SIMPLE（短状态）
+- demo-school 四个演示账号（admin/teacher/counselor/student_demo）密码已统一简化并隐藏展示：种子脚本仅存新 pbkdf2_sha256 哈希，仓库/页面/本文件均无明文；旧密码已失效（实测 REJECTED）。
+- 四账号新密码登录实测均 code=0 且角色正确；pytest 32 passed；PC build ✅；miniapp build:h5 / build:mp-weixin ✅。登录页未改结构，仍只显示试用电话 13549666867。后端已重启（8000）。
+
+### P4-文件上传/导入导出/审计（短状态）
+- 文件上传（真实）：POST /api/v1/files/upload（白名单+黑名单校验、50MB 上限、sha256、UPLOAD_DIR 落盘、t_file_object 登记、审计）+ GET /files/meta/{id}；新增 models/file.py（t_file_object，冻结册表卡）。
+- 学生导入（真实两步）：/import/students/validate（JSON 行）与 /validate-file（xlsx/csv，openpyxl 解析）Dry-Run 写 t_student_import_batch，行级错误（必填/文件内重复/库内重复）；/import/students/confirm 整批一个事务失败回滚，插入含联系方式加密列。
+- 学生导出（真实 xlsx）：/export/students 用途≥5字必填 → openpyxl 生成（首行水印：平台名/导出人/时间/用途/脱敏声明；手机号恒脱敏）→ t_export_task(file_hash) + 审计；/export/tasks/{id}/download 下载（写 DOWNLOAD 审计）。占位接口全部保留。
+- 审计增强：中间件补 ip/userAgent/method/path 请求元（仅新增行，租户绑定逻辑未动）；t_security_audit_log 落库带全字段；/audit/logs 支持 action/operator/dateFrom/dateTo 过滤。
+- PC：学生主档导出入口接真实（createExport 真实优先→自动打开下载链接，mock 校验流保留为回退）；审计日志真实接口沿用 P2 桥接自动获得新字段。导入入口暂保留 mock（页面无真实文件控件，后端 validate-file 已就绪）。miniapp 本轮未动。
+- 回归门槛通过：demo-school=5 / 主租户=100 / demo 登录 code=0；P3.5 保护文件仅 middleware/context.py 增加请求元 3 行（兼容性增量）。pytest **36 passed**（新增 4 个 P4 用例：上传/导入两步/导出下载/审计过滤）；PC lint ✅ build ✅（3.59s）；后端已重启（8000）。
+
+### P4.1-PC-REAL-STUDENT-IMPORT-FIX（短状态）
+- PC 学生主档导入接真实：导入页新增隐藏文件控件（xlsx/csv）→ multipart 上传 /import/students/validate-file → 展示 totalRows/validRows/errorRows + 错误表（行号/字段/原始值/错误说明，后端错误行补 rowIndex/field/rawValue 增量键）→ 真实批次校验失败禁 confirm（后端 400 双保险实测 BLOCKED）→ /import/students/confirm 成功后跳转学生列表刷新。mock 演示流完整保留（离线自动回退，"跳过错误行"仅 mock 流显示）。
+- client.js 新增 requestUpload（FormData multipart，15s 超时，离线冷却复用）。
+- 联调实测：坏文件 DRY_RUN_FAILED(err0: rowIndex=3/field=studentNo/rawValue 有值) → 好文件 PASSED → confirm inserted=1 → 列表可查(手机号脱敏)。回归：demo 登录 OK、demo-school=5。pytest 36 passed；PC lint ✅ build ✅(3.54s)。临时验证文件已清理，后端运行于 8000。
+
+### P5-部署准备（短状态）
+- 范围：与 P4/P4.1 并行执行，只做部署准备，不改业务逻辑。本轮只新增/修改了
+  `deploy/`、`scripts/deploy/`、`backend/Dockerfile`、本文件，未碰 `backend/app`、
+  `backend/scripts/seed_demo_data.py`、`frontend/src`、`miniapp`、`docs`、
+  `00-今天新设计文档`、`99-老毕业设计系统-只参考不要照抄`、根 package.json、任何 lock 文件。
+- 新增 `backend/Dockerfile`：python:3.12-slim，白名单方式 COPY（app/、alembic/、alembic.ini、
+  requirements.txt、scripts/），不打包 `.venv`/`.env`/`data`/`uploads`/`_legacy_node_express`/`tests`；
+  `uvicorn app.main:app --host 0.0.0.0 --port 8000`（不带 --reload）；HEALTHCHECK 探 `/health`。
+- 新增 `deploy/docker/docker-compose.local.yml`：backend + postgres(16-alpine，真实服务) +
+  redis(7-alpine，预留占位，backend 当前未接入真实缓存逻辑) + nginx(1.27-alpine)。
+  端口规划：80(nginx·PC)、8080(nginx·miniapp H5)、8000(backend)、5432(postgres)、6379(redis)。
+  数据用具名 volume（pgdata/backend-data/backend-uploads/redisdata），不绑定挂载到仓库目录，
+  与本机非 Docker 的 SQLite 开发流（`backend/data/dev.db`）互不干扰。
+- 新增 `deploy/nginx/nginx.conf`：单个完整配置（供整体挂载替换官方 nginx 镜像默认配置），
+  两个 server 块（:80 PC / :8080 miniapp H5），均含 try_files 前端路由兜底、index.html 不缓存、
+  静态资源长缓存、gzip（http 层全局）、4 条基础安全响应头、`/api/` 反代 `http://backend:8000`。
+  与仓库既有的 `deploy/nginx/pc-frontend.conf.example`、`miniapp-h5.conf.example`（传统宿主机
+  Nginx + conf.d 模式）并存、不冲突、不是同一部署形态，均未改动旧文件。
+- 更新 `deploy/env/backend.env.example`：DATABASE_URL 指向 compose 里的 postgres 服务名；
+  如实注明 Postgres 首次是空库，需手动 `alembic upgrade head` 建表才能真正读写，不迁移也不会
+  报错崩溃（会退回 DB_ENABLED=false 的 mock 行为）；REDIS_URL 标注"预留，backend 未接入"。
+- 新增 `deploy/env/frontend.env.example`（任务要求的新文件名，与既有 `pc-frontend.env.example`
+  内容等价、变量一致，互不冲突，二选一使用）；更新 `deploy/env/miniapp.env.example` 的
+  `MINIAPP_API_BASE_URL` 说明为经本地 nginx（8080）或直连 backend(8000) 两种可选值。
+- 新增 4 个 `scripts/deploy/*.ps1`（沿用 `scripts/dev/`、`scripts/check/` 现有风格：UTF-8 BOM、
+  Write-Host 彩色输出、`$PSScriptRoot` 定位根目录、失败非 0 退出码、`Read-Host` 收尾防止窗口秒关）：
+  `build-pc.ps1`（frontend npm run build → 校验 dist/index.html）、
+  `build-miniapp.ps1`（miniapp build:h5 必须过 + build:mp-weixin 尽量过，两者独立汇总）、
+  `start-backend.ps1`（docker compose up backend，自动带 postgres/redis 依赖，`-All` 可选连 nginx，
+  首次自动从 `.example` 复制 `backend.env`，轮询 `/health` 但不影响退出码）、
+  `check-deploy.ps1`（纯只读：10 个部署文件是否齐全 + `docker compose config` 语法 +
+  临时容器 `nginx -t` 语法 + 5 个规划端口占用情况汇总，全程不启动/不停止任何服务）。
+- 验证方式的真实情况（如实记录，不夸大）：本次执行环境是隔离 Linux 沙箱，**没有 docker、
+  没有 nginx 二进制、没有 pwsh，也无法联网装（apt/pip 均被拒绝/断网）**，因此未能真正跑
+  `docker compose config`、`nginx -t`、PowerShell 解析器做终极语法验证。已做的替代验证：
+  (a) `docker-compose.local.yml` 用 Python `yaml.safe_load` 解析通过，并额外用自定义
+      Loader 排查过无重复 key；services/networks/volumes 结构、端口、depends_on 均核对与设计一致；
+  (b) `nginx.conf` 用逐字符括号计数确认 `{`/`}` 配对且深度归零，两处跨行指令（log_format、
+      gzip_types）人工确认以 `;` 收尾；`root`/`proxy_pass` 目标与 compose 里的 volume 挂载路径、
+      服务名逐一核对一致；
+  (c) 4 个 `.ps1` 脚本用 Python 做括号/引号计数（排除注释行后）确认 `{}()[]` 全部配对、
+      单引号数量为偶数；UTF-8 BOM（`EF BB BF`）与仓库既有脚本逐字节比对一致；
+  (d) Dockerfile / env 示例文件人工逐行核对，未做自动化工具验证。
+  **请在本机装好 Docker Desktop 后，实际跑一次 `scripts\deploy\check-deploy.ps1` 和
+  `docker compose -f deploy\docker\docker-compose.local.yml config` 复核，如报错请反馈。**
+- 未真实起任何容器、未连服务器；只做本地部署预演配置准备。
+- 是否修改 `backend/app`：否。是否修改 `frontend/src`：否。是否修改 `miniapp`：否。
+- 本次未 `git add`、未 `commit`、未 `push`、未执行任何 `git stash/reset/checkout`。
+
+### P5.5A-BACKEND-SECURITY-HARDENING（短状态）
+- 新增 core/token_store.py（内存态基础版，生产迁 Redis 只换此模块）：refreshToken 签发/一次性轮换/按用户吊销；access jti 黑名单；登录失败 5 次锁 15 分钟；滑动窗口限流。
+- JWT：access 带 jti；密钥走 settings.jwt_secret（环境变量 JWT_SECRET_KEY/JWT_SECRET）；assert_secret_safe 生产默认弱密钥拒启；get_current_user 校验 jti 黑名单。
+- /auth/refresh（轮换，旧 refresh 复用返回 401001）；/auth/logout 真失效（jti 黑名单 + 吊销该用户全部 refresh，实测登出后 me=401）；mock-login 与 /auth/login 均签发真实 refreshToken。
+- 锁定：/auth/login 错 5 次锁 15 分钟（审计 LOGIN_FAIL/LOGIN_LOCKED，锁定态 401 提示剩余分钟）。
+- 限流：登录 10 次/IP/分（429001+审计 RATE_LIMITED）、上传 20 次/用户/分、导出 5 次/用户/分；403/越权与限流统一在异常处理器写审计 PERMISSION_DENIED/RATE_LIMITED。
+- PC client：存 refreshToken，401 自动刷新一次重试，新增 logoutRemote()；miniapp request：refresh 存储 + 401 刷新重试（uni storage）。登录页/试用电话/演示账号隐藏逻辑零改动；P4 导入导出接口零改动（仅导出加限流守卫）。
+- 回归：demo-school=5 / 主租户=100（重灌后精确恢复，此前 101 为 P4.1 联调导入的合法数据）/ demo 登录 code=0 + refresh code=0 + 登出后 401。pytest **41 passed**（新增 5 个安全用例；conftest 每用例重置内存安全态，db_mode 夹具上移共享）；PC lint ✅ build ✅；miniapp h5/mp-weixin ✅。deploy/nginx/Dockerfile 未触碰。后端运行于 8000。
+
+### FINAL-INTEGRATION-CHECK-NO-COMMIT（终检结论）
+- 危险文件：无「演示账号密码.txt」；backend/.env、data/dev.db、uploads/ 均已 gitignore 未被追踪；git ls-files 中的 uploads 匹配仅为 docs/ui 与 99-老系统的历史设计资产（非运行时数据，未动）；补 backend/.dockerignore（.venv/.env/db/uploads/缓存），Dockerfile 本就只 COPY requirements/app/alembic/alembic.ini/scripts。
+- 后端全矩阵实测：health/docs/openapi=200；demo 登录 0 / 错密码 401001 / 无 token 401001；跨租户访问被拒(404001 不泄露存在性)；students 详情/审批 20/待办 30/消息 20；上传 0 且 evil.exe 被拒 400001；validate-file=DRY_RUN_PASSED→confirm=SUCCESS+1；export=SUCCESS→download=200→审计 EXPORT 命中；pytest 41 passed。终态已 reseed 恢复基线：demo-school=5 / 主租户=100。
+- 构建：PC lint 0 错误 + build ✅；miniapp build:h5 / mp-weixin ✅。产物级校验：两端登录页 chunk 均含 13549666867，全产物+源码 grep 无任何明文密码。
+- 部署：10 个部署文件齐全；nginx.conf 含 PC/miniapp 双站点 root、/api/ 代理、try_files history fallback、gzip、X-Frame-Options/X-Content-Type-Options。
+- 本轮修复仅 2 处小项：backend/.dockerignore（新增）；无其他代码改动。页面级人工点验（/login、学生列表、导入导出、审批、审计、断网 fallback）此前各阶段均已实测通过，本轮以接口矩阵+产物校验复核，未重复占用用户屏幕。
+- 建议提交分组见终检输出；未 add/commit/push。
