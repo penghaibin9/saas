@@ -34,16 +34,35 @@
       </view>
 
       <button class="btn btn-primary btn-block login__btn" :class="{ 'is-teacher': tab === 'teacher' }" @click="onLogin">
-        {{ tab === 'student' ? '进入学生端（模拟登录）' : '进入教师端（模拟登录）' }}
+        进入演示环境
       </button>
+
+      <!-- 账号密码登录（真实校验：POST /api/v1/auth/login，不展示任何演示密码） -->
+      <view class="login__divider"><text class="t-xs t-tertiary">账号密码登录</text></view>
+      <input v-model="account.loginName" class="login__input" placeholder="请输入账号" placeholder-class="login__ph" />
+      <input v-model="account.password" class="login__input" type="password" password placeholder="请输入密码" placeholder-class="login__ph" />
+      <button class="btn btn-block login__btn login__btn--acc" :disabled="accLoading" @click="onAccountLogin">
+        {{ accLoading ? '登录中…' : '登 录' }}
+      </button>
+
       <view class="login__wx" @click="onLogin">
         <text class="login__wx-icon">◍</text>
         <text class="t-sm t-secondary">微信一键登录（演示）</text>
       </view>
     </view>
 
+    <!-- 试用咨询（可公开电话；无任何账号密码信息） -->
+    <view class="login__trial card">
+      <text class="login__trial-tt">想为学校开通正式试用？</text>
+      <text class="login__trial-ph">获取试用名额 / 商务咨询：{{ trialPhone }}</text>
+      <view class="login__trial-ops">
+        <button class="login__trial-btn" @click="copyPhone">复制手机号</button>
+        <button class="login__trial-btn login__trial-btn--tel" @click="callPhone">拨打电话</button>
+      </view>
+    </view>
+
     <view class="login__foot">
-      <text class="t-xs t-tertiary">当前为演示环境 · 数据均为 mock，不接后端</text>
+      <text class="t-xs t-tertiary">演示环境数据仅供体验 · 正式开通请联系平台服务顾问</text>
       <text class="t-xs t-tertiary">{{ brand.copyright }}</text>
     </view>
   </view>
@@ -53,12 +72,56 @@
 import { tenantBrandConfig, ROLE } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { relaunch, toast } from '@/utils/nav'
+import { realRequest, setToken } from '@/services/request'
 
 export default {
   data() {
-    return { brand: tenantBrandConfig, tab: 'student' }
+    return {
+      brand: tenantBrandConfig,
+      tab: 'student',
+      trialPhone: '13549666867',
+      account: { loginName: '', password: '' },
+      accLoading: false
+    }
   },
   methods: {
+    /** 账号密码登录（真实校验；成功后按角色进入对应端） */
+    onAccountLogin() {
+      if (!this.account.loginName || !this.account.password) {
+        toast('请输入账号与密码')
+        return
+      }
+      this.accLoading = true
+      realRequest('/auth/login', {
+        method: 'POST',
+        auth: false,
+        data: { loginName: this.account.loginName.trim(), password: this.account.password }
+      }).then((d) => {
+        setToken(d.accessToken)
+        const session = useSessionStore()
+        const roleCode = (d.currentRole && d.currentRole.roleCode) || 'STUDENT'
+        const map = { STUDENT: ROLE.STUDENT, COUNSELOR: ROLE.COUNSELOR, GD_MENTOR: ROLE.GD_MENTOR }
+        session.login(map[roleCode] || (roleCode === 'STUDENT' ? ROLE.STUDENT : ROLE.COUNSELOR))
+        session.realUser = d
+        toast('欢迎，' + d.displayName)
+        relaunch(roleCode === 'STUDENT' ? '/pages/student/home/index' : '/pages/teacher/workbench/index')
+      }).catch((e) => {
+        toast((e && e.message) || '登录失败，请稍后重试')
+      }).finally(() => {
+        this.accLoading = false
+      })
+    },
+    copyPhone() {
+      uni.setClipboardData({ data: this.trialPhone, success: () => toast('手机号已复制') })
+    },
+    callPhone() {
+      // #ifdef H5
+      window.location.href = 'tel:' + this.trialPhone
+      // #endif
+      // #ifndef H5
+      uni.makePhoneCall({ phoneNumber: this.trialPhone, fail: () => {} })
+      // #endif
+    },
     onLogin() {
       const session = useSessionStore()
       if (this.tab === 'student') {
@@ -104,4 +167,23 @@ export default {
 .login__wx { display: flex; align-items: center; justify-content: center; gap: var(--space-2); margin-top: var(--space-4); }
 .login__wx-icon { color: var(--success-500); font-size: 20px; }
 .login__foot { margin-top: var(--space-6); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.login__divider { display: flex; align-items: center; justify-content: center; margin: var(--space-4) 0 var(--space-2); }
+.login__input {
+  width: 100%; box-sizing: border-box; height: 44px; margin-top: var(--space-3);
+  padding: 0 var(--space-4); border-radius: var(--radius-lg);
+  border: 1px solid var(--border-base); background: var(--bg-card); font-size: var(--font-size-md);
+}
+.login__ph { color: var(--text-tertiary); }
+.login__btn--acc { margin-top: var(--space-3); height: 44px; background: var(--bg-card); color: var(--brand-primary); border: 1px solid var(--brand-primary); }
+.login__trial { position: relative; margin-top: var(--space-4); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
+.login__trial-tt { font-size: var(--font-size-md); font-weight: 600; color: var(--text-primary); }
+.login__trial-ph { font-size: var(--font-size-sm); color: var(--text-secondary); }
+.login__trial-ops { display: flex; gap: var(--space-3); margin-top: var(--space-1); }
+.login__trial-btn {
+  flex: 1; height: 38px; line-height: 38px; font-size: var(--font-size-sm);
+  border-radius: var(--radius-md); border: 1px solid var(--primary-100);
+  background: var(--primary-50); color: var(--brand-primary); padding: 0;
+}
+.login__trial-btn::after { border: none; }
+.login__trial-btn--tel { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
 </style>

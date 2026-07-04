@@ -1,10 +1,13 @@
 /**
- * 运行环境开关。V1 固定使用 mock，不接真实后端、不连数据库。
+ * 运行环境开关。P3：真实后端优先（失败自动回退 mock，不白屏）。
+ * useMock=true 可整体回到纯 mock 演示模式。
  */
 export const ENV = {
-  useMock: true, // 是否使用 mock 数据（V1 恒为 true）
-  apiBaseUrl: '', // 预留：真实后端地址
-  mockLatency: 260 // mock 模拟网络延迟(ms)
+  useMock: false, // false=优先真实后端，失败回退 mock；true=纯 mock
+  apiBaseUrl: 'http://localhost:8000', // 后端地址（mp-weixin 真机联调改为局域网 IP）
+  apiPrefix: '/api/v1',
+  requestTimeout: 4000,
+  mockLatency: 260
 }
 
 export default ENV

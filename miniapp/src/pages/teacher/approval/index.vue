@@ -72,8 +72,18 @@ export default {
         content: need ? '' : '确认通过「' + a.title + '」？',
         success: (r) => {
           if (!r.confirm) return
-          a.status = type === 'approve' ? 'APPROVED' : type === 'reject' ? 'REJECTED' : 'RETURNED'
-          toast('已' + label + '（演示）')
+          const next = type === 'approve' ? 'APPROVED' : type === 'reject' ? 'REJECTED' : 'RETURNED'
+          if (/^\d+$/.test(String(a.id))) {
+            teacherApi.actApproval(a.id, type, r.content || '').then(() => {
+              a.status = next
+              toast('已' + label)
+            }).catch((e) => {
+              toast((e && e.message) || label + '失败，请重试')
+            })
+          } else {
+            a.status = next
+            toast('已' + label + '（演示）')
+          }
         }
       })
     }

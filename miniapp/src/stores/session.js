@@ -8,12 +8,16 @@
 import { defineStore } from 'pinia'
 import { getRoleConfig, hasAction, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
+import { loginReal } from '@/services/realApi'
+import { shouldTryReal } from '@/services/request'
 
 const STORAGE_KEY = 'gx_session_v1'
 
 export const useSessionStore = defineStore('session', {
   state: () => ({
     logged: false,
+    // P3：真实后端登录返回（token 已存 storage；null=未连通，走 mock）
+    realUser: null,
     // 当前角色 key（学生 / 各类教师）
     currentRole: ROLE.STUDENT,
     // 当前登录用户（mock）
@@ -46,12 +50,20 @@ export const useSessionStore = defineStore('session', {
         this.availableRoles = [ROLE.STUDENT]
       }
       this.persist()
+      /* P3：同步真实后端登录取 token（失败静默，页面走 mock 兜底） */
+      if (shouldTryReal()) {
+        loginReal(roleKey, cfg.side).then((d) => { this.realUser = d || null }).catch(() => {})
+      }
       return cfg.homeRoute
     },
     /** 教师端切换身份（08B 3.3：切换后需刷新数据） */
     switchRole(roleKey) {
       this.currentRole = roleKey
       this.persist()
+      /* P3：切换身份 = 重新用对应演示账号登录后端（数据范围随之变化） */
+      if (shouldTryReal()) {
+        loginReal(roleKey, getRoleConfig(roleKey).side).then((d) => { this.realUser = d || null }).catch(() => {})
+      }
     },
     logout() {
       this.logged = false
