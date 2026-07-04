@@ -69,7 +69,14 @@ def tenant_not_found(msg: str = "租户不存在或已停用"):
 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppException)
-    async def _app_exc(_: Request, exc: AppException):
+    async def _app_exc(request: Request, exc: AppException):
+        if exc.code in ("NO_PERMISSION", "NO_DATA_SCOPE", "RATE_LIMITED"):
+            try:  # 越权/限流写审计，失败不影响响应
+                from app.services import audit_log
+                audit_log.record("PERMISSION_DENIED" if exc.code != "RATE_LIMITED" else "RATE_LIMITED",
+                                 request.url.path, detail={"message": exc.message})
+            except Exception:  # noqa: BLE001
+                pass
         return JSONResponse(
             status_code=exc.http_status,
             content=fail(exc.code, exc.message, exc.details),

@@ -121,10 +121,16 @@ def login(tenant_code: str, login_name: str, user_type: str, client_type: str) -
         "tid": tenant_code, "activeContextId": active["contextId"],
         "currentRoleCode": active["contextType"], "clientType": client_type,
     })
+    from app.core.token_store import issue_refresh
+    refresh_token = issue_refresh({
+        "userId": user["userId"], "realName": user["realName"], "userType": user["userType"],
+        "tid": tenant_code, "activeContextId": active["contextId"],
+        "currentRoleCode": active["contextType"], "clientType": client_type,
+    })
     return {
         "accessToken": token,
         "tokenType": "Bearer",
-        "refreshToken": f"mock-refresh-{user['userId']}",
+        "refreshToken": refresh_token,
         "expiresIn": 7200,
         # ── BACKEND-OVERNIGHT 任务要求的扁平字段（与 user/contexts 并存）──
         "userId": user["userId"],

@@ -47,3 +47,15 @@ def set_current_user(user: Optional[dict]) -> None:
 
 def get_current_user_ctx() -> Optional[dict]:
     return _user.get()
+
+
+# ── 请求元信息（P4 审计增强：ip / userAgent / method / path）──
+_request_meta: ContextVar[Optional[dict]] = ContextVar("request_meta", default=None)
+
+
+def set_request_meta(meta: Optional[dict]) -> None:
+    _request_meta.set(meta)
+
+
+def get_request_meta() -> dict:
+    return _request_meta.get() or {}

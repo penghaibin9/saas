@@ -31,12 +31,15 @@ def list_audit_logs(action: Optional[str] = Query(default=None,
 alias_router = APIRouter(prefix="/audit", tags=["audit"])
 
 
-@alias_router.get("/logs", summary="审计日志查询（DB_ENABLED=false：内存列表，重启即失，见 README）")
+@alias_router.get("/logs", summary="审计日志查询（支持 action/operator/dateFrom/dateTo 过滤；DB 模式含 ip/ua/method/path）")
 def audit_logs(action: Optional[str] = Query(default=None),
+               operator: Optional[str] = Query(default=None, description="操作人姓名模糊匹配"),
+               dateFrom: Optional[str] = Query(default=None, description="起始日期 YYYY-MM-DD"),
+               dateTo: Optional[str] = Query(default=None, description="截止日期 YYYY-MM-DD"),
                page: int = Query(default=1, ge=1),
                pageSize: int = Query(default=20, ge=1, le=100),
                user=Depends(get_current_user)):
-    items, total = audit_log.query(page, pageSize, action)
+    items, total = audit_log.query(page, pageSize, action, operator, dateFrom, dateTo)
     return success(paginate(items, total, page, pageSize))
 
 

@@ -58,3 +58,12 @@ def get_db() -> Iterator:
 
 def db_enabled() -> bool:
     return bool(settings.DB_ENABLED and settings.DATABASE_URL)
+
+
+def reset_state() -> None:
+    """重置 engine/session 缓存（切换 DATABASE_URL / 测试夹具用）。"""
+    global _engine, _SessionLocal
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _SessionLocal = None

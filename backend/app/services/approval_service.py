@@ -7,6 +7,7 @@ from typing import Optional
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException, not_found
 from app.core.pagination import page_slice
+from app.db.session import db_enabled
 
 _now = lambda: datetime.now().isoformat(timespec="seconds")  # noqa: E731
 
@@ -36,7 +37,9 @@ def _visible(rows):
 
 
 def list_tasks(page: int, page_size: int, status: Optional[str] = None) -> tuple[list[dict], int]:
-    # TODO(P3)：DB_ENABLED=true 查 t_workflow_task（assignee_id=当前用户 + tenant_id + PENDING）
+    if db_enabled():
+        from app.services import db_service
+        return db_service.list_tasks(page, page_size, status)
     rows = [r for r in _visible(_TASKS) if r["status"] == "PENDING"]
     if status:
         rows = [r for r in rows if r["status"] == status]
@@ -44,6 +47,9 @@ def list_tasks(page: int, page_size: int, status: Optional[str] = None) -> tuple
 
 
 def get_task(task_id: str) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.get_task(task_id)
     row = next((r for r in _visible(_TASKS) if r["taskId"] == task_id), None)
     if not row:
         raise not_found("审批任务不存在")
@@ -69,18 +75,30 @@ def _act(task_id: str, action: str, reason: str | None = None, target: str | Non
 
 
 def approve(task_id: str, comment: str | None) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.act_task(task_id, "APPROVED", comment)
     return _act(task_id, "APPROVED", comment)
 
 
 def reject(task_id: str, reason: str) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.act_task(task_id, "REJECTED", reason)
     return _act(task_id, "REJECTED", reason)
 
 
 def transfer(task_id: str, target_user_id: str, comment: str | None) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.act_task(task_id, "TRANSFERRED", comment, target_user_id)
     return _act(task_id, "TRANSFERRED", comment, target_user_id)
 
 
 def list_processed(page: int, page_size: int) -> tuple[list[dict], int]:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.list_processed(page, page_size)
     return page_slice(_PROCESSED, page, page_size), len(_PROCESSED)
 
 

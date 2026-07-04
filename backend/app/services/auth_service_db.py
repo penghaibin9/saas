@@ -1,0 +1,81 @@
+"""
+真实账号登录（POST /api/v1/auth/login）：查 t_user + pbkdf2 校验，密码仅以 hash 入库。
+demo 账号绑定租户 demo-school（tenant_id=1000000000000000003），令牌携带 tenantId 实现行级隔离。
+"""
+from __future__ import annotations
+
+from sqlalchemy import select
+
+from app.core.exceptions import AppException
+from app.core.security import create_access_token, verify_password
+from app.core.token_store import (issue_refresh, login_locked, record_login_failure,
+                                  reset_login_failures)
+from app.db.session import db_enabled, get_sessionmaker
+
+DEMO_TENANT_ID = 1000000000000000003
+DEMO_TENANT_CODE = "demo-school"
+DEMO_TENANT_NAME = "演示职业技术学院"
+
+ROLE_BY_LOGIN = {
+    "admin_demo": ("SCHOOL_ADMIN", "学校管理员", "SCHOOL", "全校学生（演示租户）"),
+    "teacher_demo": ("GD_MENTOR", "指导教师", "GD_STUDENTS", "本人指导学生（演示租户）"),
+    "counselor_demo": ("COUNSELOR", "辅导员", "COUNSELOR_CLASSES", "所带班级学生（演示租户）"),
+    "student_demo": ("STUDENT", "学生", "SELF", "本人"),
+}
+
+
+def login_with_password(login_name: str, password: str) -> dict:
+    if not db_enabled():
+        raise AppException("UNAUTHORIZED", "账号密码登录需启用数据库（DB_ENABLED=true）；演示可用 mock-login")
+    # P5.5A：登录失败 5 次锁定 15 分钟（按登录名）
+    remain = login_locked(f"pw:{login_name}")
+    if remain > 0:
+        from app.services import audit_log
+        audit_log.record("LOGIN_LOCKED", login_name, detail={"remainSeconds": remain}, result="DENIED")
+        raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定，请 {remain // 60 + 1} 分钟后再试")
+    from app.models import User
+    db = get_sessionmaker()()
+    try:
+        user = db.scalars(select(User).where(User.login_name == login_name,
+                                             User.is_deleted.is_(False),
+                                             User.status == "ACTIVE")).first()
+        if not user or not verify_password(password, user.password_hash):
+            from app.services import audit_log
+            count, locked = record_login_failure(f"pw:{login_name}")
+            audit_log.record("LOGIN_FAIL", login_name,
+                             detail={"failCount": count, "locked": bool(locked)}, result="FAIL")
+            if locked:
+                raise AppException("UNAUTHORIZED", "失败次数过多，账号已锁定 15 分钟")
+            raise AppException("UNAUTHORIZED", "账号或密码不正确")
+        reset_login_failures(f"pw:{login_name}")
+        role_code, role_name, scope, scope_label = ROLE_BY_LOGIN.get(
+            user.login_name, ("SCHOOL_ADMIN", "管理员", "SCHOOL", "全校"))
+        tenant_id = str(user.tenant_id)
+        is_demo = user.tenant_id == DEMO_TENANT_ID
+        token = create_access_token({
+            "userId": f"db-{user.id}", "realName": user.real_name, "userType": user.user_type,
+            "tid": DEMO_TENANT_CODE if is_demo else "demo",
+            "tenantId": tenant_id, "tenantName": DEMO_TENANT_NAME if is_demo else "",
+            "activeContextId": f"ctx_{user.login_name}", "currentRoleCode": role_code, "clientType": "PC",
+        })
+        refresh_token = issue_refresh({
+            "userId": f"db-{user.id}", "realName": user.real_name, "userType": user.user_type,
+            "tid": DEMO_TENANT_CODE if is_demo else "demo", "tenantId": tenant_id,
+            "tenantName": DEMO_TENANT_NAME if is_demo else "",
+            "activeContextId": f"ctx_{user.login_name}", "currentRoleCode": role_code, "clientType": "PC",
+        })
+        return {
+            "accessToken": token, "refreshToken": refresh_token,
+            "tokenType": "Bearer", "expiresIn": 7200,
+            "userId": f"db-{user.id}", "username": user.login_name, "displayName": user.real_name,
+            "tenantId": tenant_id, "tenantName": DEMO_TENANT_NAME if is_demo else "",
+            "currentRole": {"roleCode": role_code, "roleName": role_name,
+                            "dataScope": scope, "scopeLabel": scope_label},
+            "roles": [{"roleCode": role_code, "roleName": role_name}],
+            "dataScope": {"scope": scope, "scopeLabel": scope_label},
+            "permissionActions": {"viewList": True, "export": role_code != "STUDENT", "viewSensitive": False},
+            "user": {"userId": f"db-{user.id}", "realName": user.real_name,
+                     "userType": user.user_type, "mustChangePassword": False},
+        }
+    finally:
+        db.close()

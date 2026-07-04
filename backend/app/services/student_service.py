@@ -70,9 +70,9 @@ def list_students(page: int, page_size: int, keyword: Optional[str] = None, coll
                   major: Optional[str] = None, class_name: Optional[str] = None, status: Optional[str] = None,
                   risk_level: Optional[str] = None) -> tuple[list[dict], int]:
     if db_enabled():
-        # TODO(P3)：SQLAlchemy 查询 t_student_profile（tenant_id + is_deleted=false + 条件过滤 + 分页）
-        from app.db.session import get_db  # noqa: F401  （骨架预留，防未用告警不加逻辑）
-        pass
+        from app.services import db_service
+        return db_service.list_students(page, page_size, keyword, college, major,
+                                        class_name, status, risk_level)
     rows = _visible(_MOCK_STUDENTS)
     if keyword:
         rows = [r for r in rows if keyword in r["realName"] or keyword in r["studentNo"] or keyword in r["className"]]
@@ -97,6 +97,9 @@ def _find(student_id: str) -> dict:
 
 
 def get_student(student_id: str) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.get_student(student_id)
     row = _find(student_id)
     return {
         **row,
@@ -110,6 +113,9 @@ def get_student(student_id: str) -> dict:
 
 
 def create_student(body) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.create_student(body)
     if any(r["studentNo"] == body.studentNo for r in _visible(_MOCK_STUDENTS)):
         raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）")
     row = _mk(body.studentNo, body.realName, body.gender or "", "", "", "", body.grade or "",
@@ -119,6 +125,9 @@ def create_student(body) -> dict:
 
 
 def update_student(student_id: str, body) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.update_student(student_id, body)
     row = _find(student_id)
     for src, dst in [("realName", "realName"), ("gender", "gender"), ("grade", "grade"), ("remark", "remark")]:
         v = getattr(body, src, None)
@@ -132,6 +141,9 @@ def update_student(student_id: str, body) -> dict:
 
 
 def void_student(student_id: str, reason: str) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.void_student(student_id, reason)
     row = _find(student_id)
     row["isDeleted"] = True          # 逻辑作废：不物理删除，档案可追溯（回收站冷冻期见冻结册 t_student_recycle_bin）
     row["studentStatus"] = "RECYCLED"
@@ -141,11 +153,17 @@ def void_student(student_id: str, reason: str) -> dict:
 
 
 def get_timeline(student_id: str) -> list[dict]:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.get_timeline(student_id)
     _find(student_id)
     return _TIMELINE["default"]
 
 
 def get_risk_summary(student_id: str) -> dict:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.get_risk_summary(student_id)
     row = _find(student_id)
     return {
         "studentId": row["id"], "riskLevel": row["riskLevel"],

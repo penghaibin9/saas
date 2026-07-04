@@ -21,15 +21,24 @@ from app.core.context import set_current_user
 from app.core.exceptions import AppException, unauthorized
 
 
+def assert_secret_safe() -> None:
+    """生产环境禁止默认 JWT 密钥（JWT_SECRET_KEY/JWT_SECRET 必须来自环境变量）。"""
+    if settings.APP_ENV in ("prod", "production"):
+        weak = {"change-me-in-production", "school-lifecycle-dev-secret-change-me-please-32", ""}
+        if settings.jwt_secret in weak or len(settings.jwt_secret) < 32:
+            raise RuntimeError("生产环境必须通过环境变量设置 ≥32 位随机 JWT_SECRET_KEY")
+
+
 def create_access_token(payload: dict) -> str:
     now = int(time.time())
-    body = {**payload, "iat": now, "exp": now + settings.JWT_EXPIRES_IN}
-    return jwt.encode(body, settings.JWT_SECRET, algorithm=settings.JWT_ALG)
+    import uuid as _uuid
+    body = {**payload, "jti": _uuid.uuid4().hex, "iat": now, "exp": now + settings.JWT_EXPIRES_IN}
+    return jwt.encode(body, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
 def decode_token(token: str) -> dict:
     try:
-        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALG])
+        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     except jwt.ExpiredSignatureError:
         raise unauthorized("登录已过期，请重新登录")
     except jwt.PyJWTError:
@@ -48,6 +57,11 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     if not token:
         raise unauthorized("未提供认证令牌")
     claims = decode_token(token)
+    from app.core.token_store import jti_blocked
+    if jti_blocked(claims.get("jti")):
+        from app.core.exceptions import unauthorized as _unauth
+        raise _unauth("令牌已登出失效，请重新登录")
+    # 租户绑定在 RequestContextMiddleware._bind_token_tenant 完成（async 上下文才能正确传播 contextvar）
     user = {
         "userId": claims.get("userId"),
         "realName": claims.get("realName"),
@@ -69,3 +83,25 @@ def require_platform_admin(authorization: Optional[str] = Header(default=None)) 
     if not token or token != expected:
         raise unauthorized("平台运营令牌无效")
     return "platform"
+
+
+# ── 真实口令（pbkdf2_sha256，标准库实现；生产可平滑替换 bcrypt/argon2）──
+import hashlib
+import secrets
+
+
+def hash_password(plain: str, iterations: int = 200000) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", plain.encode(), bytes.fromhex(salt), iterations).hex()
+    return f"pbkdf2_sha256${iterations}${salt}${digest}"
+
+
+def verify_password(plain: str, stored: str) -> bool:
+    try:
+        algo, iter_s, salt, digest = stored.split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        calc = hashlib.pbkdf2_hmac("sha256", plain.encode(), bytes.fromhex(salt), int(iter_s)).hex()
+        return secrets.compare_digest(calc, digest)
+    except Exception:  # noqa: BLE001
+        return False

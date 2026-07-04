@@ -75,3 +75,73 @@ def export_task_status(task_id: str, user=Depends(get_current_user)):
         "storage": {"bucket": None, "objectKey": None, "signedUrl": None},
     }
     return success(task)
+
+
+# ── P4 · 真实导入导出（学生主档）──
+from typing import Optional  # noqa: E402
+
+from fastapi import File, UploadFile  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
+
+from app.services import import_export_service as ie  # noqa: E402
+from app.services.file_service import validate_ext  # noqa: E402
+
+
+class ImportRowsRequest(BaseModel):
+    rows: list[dict] = Field(default_factory=list, description="学生行（studentNo/realName/gender/grade/phone）")
+
+
+class ImportConfirmRequest(BaseModel):
+    batchNo: str = Field(..., description="Dry-Run 返回的批次号")
+
+
+class ExportStudentsRequest(BaseModel):
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，写审计）")
+
+
+@import_router.post("/students/validate", summary="学生导入 · Dry-Run 校验（JSON 行）")
+def import_students_validate(body: ImportRowsRequest, user=Depends(get_current_user)):
+    result = ie.dry_run(body.rows)
+    audit_log.record("IMPORT", "student-dry-run",
+                     detail={"batchNo": result["batchNo"], "total": result["totalRows"], "errors": result["errorRows"]})
+    return success(result, message="校验完成")
+
+
+@import_router.post("/students/validate-file", summary="学生导入 · Dry-Run 校验（上传 xlsx/csv 文件）")
+async def import_students_validate_file(file: UploadFile = File(...), user=Depends(get_current_user)):
+    ext = validate_ext(file.filename or "")
+    content = await file.read()
+    rows = ie.parse_upload_rows(content, ext)
+    result = ie.dry_run(rows)
+    audit_log.record("IMPORT", "student-dry-run-file",
+                     detail={"file": file.filename, "batchNo": result["batchNo"], "total": result["totalRows"]})
+    return success(result, message="文件解析并校验完成")
+
+
+@import_router.post("/students/confirm", summary="学生导入 · 确认写入（整批一个事务，失败回滚）")
+def import_students_confirm(body: ImportConfirmRequest, user=Depends(get_current_user)):
+    result = ie.confirm(body.batchNo)
+    audit_log.record("IMPORT", "student-confirm",
+                     detail={"batchNo": body.batchNo, "inserted": result["insertedRows"]})
+    return success(result, message="导入完成")
+
+
+@export_router.post("/students", summary="学生主档导出（真实 xlsx：脱敏 + 水印 + t_export_task + 审计）")
+def export_students(body: ExportStudentsRequest, user=Depends(get_current_user)):
+    from app.core.exceptions import AppException
+    from app.core.token_store import rate_limit
+    if not rate_limit(f"export:{user.get('userId', '-')}", 5, 60):
+        raise AppException("RATE_LIMITED", "导出过于频繁（每分钟最多 5 次），请稍后再试")
+    task = ie.create_students_export(body.purpose)
+    audit_log.record("EXPORT", "students-xlsx",
+                     detail={"taskId": task["taskId"], "rows": task["rowCount"], "purpose": task["purpose"]})
+    return success(task, message="导出完成")
+
+
+@export_router.get("/tasks/{task_id}/download", summary="下载导出文件（xlsx；下载行为写审计）")
+def download_export(task_id: str, user=Depends(get_current_user)):
+    path = ie.export_file_path(task_id)
+    audit_log.record("DOWNLOAD", "export-file", detail={"taskId": task_id, "file": path.name})
+    return FileResponse(path, filename=path.name,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

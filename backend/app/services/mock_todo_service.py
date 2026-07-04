@@ -21,6 +21,13 @@ _TODOS = [
 
 def list_todos(status: str | None = None, todo_type: str | None = None,
                page: int = 1, page_size: int = 20) -> dict:
+    from app.db.session import db_enabled
+    if db_enabled():
+        from app.services import db_service
+        items, total, by_type = db_service.list_todos(status, todo_type, page, page_size)
+        data = paginate(items, total, page, page_size)
+        data["countByType"] = by_type
+        return data
     rows = _TODOS
     if status:
         rows = [r for r in rows if r["status"] == status]
@@ -38,6 +45,11 @@ def list_todos(status: str | None = None, todo_type: str | None = None,
 
 def get_summary(user_ctx: dict) -> dict:
     """待办汇总（角色化：辅导员/指导教师/就业老师/管理员看到不同计数口径）。"""
+    from app.db.session import db_enabled
+    if db_enabled():
+        from app.services import db_service
+        role = (user_ctx or {}).get("currentRoleCode", "DB")
+        return {"role": role, **db_service.todo_summary()}
     role = (user_ctx or {}).get("currentRoleCode", "")
     base = {"pending": 6, "overdue": 1, "nearDeadline": 2, "doneToday": 3}
     by_role = {
@@ -51,5 +63,9 @@ def get_summary(user_ctx: dict) -> dict:
 
 
 def mark_done(todo_id: str) -> dict:
-    """完成待办（占位：不校验存在性，接库后走 t_unified_todo 状态流转 PENDING→DONE）。"""
+    """完成待办：DB 模式走 t_unified_todo 状态流转 PENDING→DONE。"""
+    from app.db.session import db_enabled
+    if db_enabled():
+        from app.services import db_service
+        return db_service.todo_done(todo_id)
     return {"todoId": todo_id, "status": "DONE"}

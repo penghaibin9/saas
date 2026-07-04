@@ -43,12 +43,25 @@ def record(action: str, resource: str, detail: dict | None = None, result: str =
             "occurredAt": _now_iso(),
         }
         _LOGS.appendleft(entry)
+        try:
+            from app.db.session import db_enabled
+            if db_enabled():
+                from app.services import db_service
+                db_service.audit_insert(action, resource, detail, result)
+        except Exception:  # noqa: BLE001 — 审计落库失败不阻塞主业务
+            pass
         return entry
     except Exception:  # noqa: BLE001 — 审计绝不阻塞主业务
         return {}
 
 
-def query(page: int = 1, page_size: int = 20, action: str | None = None) -> tuple[list[dict], int]:
+def query(page: int = 1, page_size: int = 20, action: str | None = None,
+          operator: str | None = None, date_from: str | None = None,
+          date_to: str | None = None) -> tuple[list[dict], int]:
+    from app.db.session import db_enabled
+    if db_enabled():
+        from app.services import db_service
+        return db_service.audit_query(page, page_size, action, operator, date_from, date_to)
     items = [x for x in _LOGS if not action or x["action"] == action]
     total = len(items)
     start = (page - 1) * page_size

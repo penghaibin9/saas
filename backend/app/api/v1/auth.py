@@ -5,18 +5,47 @@ from fastapi import APIRouter, Depends
 
 from app.core.response import success
 from app.core.security import get_current_user
+from pydantic import BaseModel, Field
+
 from app.schemas.auth import MockLoginRequest, SwitchRoleRequest
+from app.services import auth_service_db
 from app.services import mock_audit_service as audit
 from app.services import mock_auth_service as auth_svc
+from app.core.context import get_request_meta
+from app.core.exceptions import AppException, unauthorized
+from app.core.security import create_access_token, decode_token
+from app.core.token_store import block_jti, consume_refresh, issue_refresh, rate_limit
+
+
+def _login_rate_guard():
+    ip = (get_request_meta() or {}).get("ip") or "unknown"
+    if not rate_limit(f"login:{ip}", 10, 60):
+        audit.record("RATE_LIMITED", path="/api/v1/auth/*login", target_type="auth", target_id=ip)
+        raise AppException("RATE_LIMITED", "登录过于频繁，请 1 分钟后再试")
 
 router = APIRouter()
 
 
 @router.post("/mock-login", summary="Mock 登录（返回演示令牌 + 多身份）")
 def mock_login(body: MockLoginRequest):
+    _login_rate_guard()
     result = auth_svc.login(body.tenantCode, body.loginName, body.userType, body.clientType)
     audit.record("登录", method="POST", path="/api/v1/auth/mock-login",
                  status_code=200, target_type="auth", target_id=result["user"]["userId"])
+    return success(result, message="登录成功")
+
+
+class PasswordLoginRequest(BaseModel):
+    loginName: str = Field(..., description="演示租户账号（如 admin_demo）")
+    password: str = Field(..., min_length=1, description="密码（仅 hash 入库，接口不回显）")
+
+
+@router.post("/login", summary="账号密码登录（真实校验：t_user + pbkdf2 哈希；demo 账号仅访问 demo-school 租户）")
+def login(body: PasswordLoginRequest):
+    _login_rate_guard()
+    result = auth_service_db.login_with_password(body.loginName.strip(), body.password)
+    audit.record("登录", method="POST", path="/api/v1/auth/login",
+                 status_code=200, target_type="auth", target_id=result["userId"])
     return success(result, message="登录成功")
 
 
@@ -33,8 +62,37 @@ def switch_role(body: SwitchRoleRequest, user=Depends(get_current_user)):
     return success(result, message="身份切换成功")
 
 
-@router.post("/logout", summary="登出（mock：令牌即弃；TODO P1/P2 接真实会话吊销）")
-def logout(user=Depends(get_current_user)):
+class RefreshRequest(BaseModel):
+    refreshToken: str = Field(..., min_length=10, description="登录返回的 refreshToken（一次性，轮换发新）")
+
+
+@router.post("/refresh", summary="刷新令牌（refreshToken 一次性轮换，旧 access 不受影响直至过期/登出）")
+def refresh(body: RefreshRequest):
+    claims = consume_refresh(body.refreshToken)
+    if not claims:
+        raise unauthorized("refreshToken 无效或已使用，请重新登录")
+    token = create_access_token(dict(claims))
+    new_refresh = issue_refresh(claims)
+    audit.record("TOKEN_REFRESH", target_type="auth", target_id=str(claims.get("userId", "-")))
+    return success({"accessToken": token, "refreshToken": new_refresh,
+                    "tokenType": "Bearer", "expiresIn": 7200}, message="已刷新")
+
+
+from typing import Optional as _Optional  # noqa: E402
+
+from fastapi import Header  # noqa: E402
+
+
+@router.post("/logout", summary="登出（access 令牌 jti 进入黑名单即刻失效；吊销该用户全部 refreshToken）")
+def logout(user=Depends(get_current_user), authorization: _Optional[str] = Header(default=None)):
+    try:
+        raw = (authorization or "")[7:].strip()
+        claims = decode_token(raw) if raw else {}
+        block_jti(claims.get("jti"), float(claims.get("exp") or 0) or None)
+    except Exception:  # noqa: BLE001 — 解析失败不影响登出语义
+        pass
+    from app.core.token_store import revoke_refresh_by_user
+    revoke_refresh_by_user(str(user.get("userId", "")))
     audit.record("登出", method="POST", path="/api/v1/auth/logout",
                  status_code=200, target_type="auth", target_id=user.get("userId", "-"))
-    return success({"loggedOut": True}, message="已登出")
+    return success({"loggedOut": True, "tokenInvalidated": True}, message="已登出，令牌已失效")

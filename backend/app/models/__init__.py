@@ -7,3 +7,4 @@ from app.models.student import StudentContact, StudentImportBatch, StudentProfil
 from app.models.approval import UnifiedTodo, WorkflowInstance, WorkflowTask  # noqa: F401
 from app.models.message import UnifiedMessage  # noqa: F401
 from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401
+from app.models.file import FileObject  # noqa: F401

@@ -11,6 +11,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Integer
+
+BigIntPK = BigInteger().with_variant(Integer, "sqlite")  # SQLite 下映射 INTEGER 以获得 rowid 自增
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -20,7 +22,7 @@ class Base(DeclarativeBase):
 
 class PKMixin:
     # TODO(冻结册 §1.1)：生产由应用层雪花/发号器赋值；autoincrement 仅为 SQLite 测试兼容
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
 
 
 class TenantMixin:

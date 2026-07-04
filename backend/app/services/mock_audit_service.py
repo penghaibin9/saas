@@ -44,6 +44,15 @@ def record(action: str, *, method: str | None = None, path: str | None = None,
     }
     _BUFFER.insert(0, entry)
     del _BUFFER[_MAX:]
+    try:
+        from app.db.session import db_enabled
+        if db_enabled():
+            from app.services import db_service
+            db_service.audit_insert(action, target_type or (path or ""),
+                                    {"method": method, "path": path, "targetId": target_id,
+                                     **(detail or {})}, "SUCCESS")
+    except Exception:  # noqa: BLE001 — 审计落库失败不阻塞主业务
+        pass
 
 
 def _seed() -> None:

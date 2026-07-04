@@ -43,3 +43,31 @@ async def upload_placeholder(file: UploadFile = File(...), user=Depends(get_curr
             "mimeType": file.content_type, "hash": sha.hexdigest()}
     audit_log.record("FILE_UPLOAD", f"file:{file_id}", {"fileName": file.filename, "size": size})
     return success(meta)
+
+
+# ── P4 · 真实上传（本地 UPLOAD_DIR 落盘 + t_file_object 登记）──
+from fastapi import File, UploadFile  # noqa: E402
+
+from app.services import file_service  # noqa: E402
+
+
+@router.post("/upload", summary="上传文件（真实：白名单校验 + sha256 + 落盘 + t_file_object 登记 + 审计）")
+async def upload_real(file: UploadFile = File(...), bizType: str = "ATTACHMENT",
+                      user=Depends(get_current_user)):
+    from app.core.exceptions import AppException
+    from app.core.token_store import rate_limit
+    if not rate_limit(f"upload:{user.get('userId', '-')}", 20, 60):
+        raise AppException("RATE_LIMITED", "上传过于频繁（每分钟最多 20 次），请稍后再试")
+    meta = await file_service.store_upload(file, bizType)
+    audit_log.record("FILE_UPLOAD", meta["fileName"],
+                     detail={"fileId": meta["fileId"], "size": meta["sizeBytes"], "sha256": meta["sha256"][:16]})
+    return success(meta, message="上传成功")
+
+
+@router.get("/meta/{file_id}", summary="文件元数据")
+def file_meta(file_id: str, user=Depends(get_current_user)):
+    meta = file_service.get_file_meta(file_id)
+    if not meta:
+        from app.core.exceptions import not_found
+        raise not_found("文件不存在")
+    return success(meta)

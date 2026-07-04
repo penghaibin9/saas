@@ -13,7 +13,7 @@ import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-from app.core.context import set_current_user, set_trace_id
+from app.core.context import set_current_user, set_request_meta, set_trace_id
 from app.core.tenant_context import resolve_tenant
 
 logger = logging.getLogger("app.access")
@@ -26,6 +26,13 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         set_trace_id(trace_id)
         set_current_user(None)
         resolve_tenant(request)  # 多租户：解析并写入上下文（single 模式恒为默认租户）
+        _bind_token_tenant(request)  # 令牌带 tenantId 时覆盖（demo 账号只见 demo-school 数据）
+        set_request_meta({
+            "ip": (request.client.host if request.client else "") or request.headers.get("x-forwarded-for", ""),
+            "userAgent": request.headers.get("user-agent", "")[:400],
+            "method": request.method,
+            "path": request.url.path,
+        })  # P4：审计落库补全 ip/ua/method/path
 
         start = time.perf_counter()
         response = await call_next(request)
@@ -38,3 +45,22 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                    "path": request.url.path, "status": response.status_code, "ms": cost_ms},
         )
         return response
+
+
+def _bind_token_tenant(request: Request) -> None:
+    """从 Authorization 令牌解出 tenantId 并覆盖上下文租户（在 async 上下文中 set，
+    确保 contextvar 传播到所有 threadpool 依赖与端点；失败静默，走默认租户）。"""
+    try:
+        auth = request.headers.get("authorization") or ""
+        if not auth.lower().startswith("bearer "):
+            return
+        from app.core.context import set_tenant
+        from app.core.security import decode_token
+        claims = decode_token(auth[7:].strip())
+        if claims.get("tenantId"):
+            set_tenant({"tenantId": str(claims["tenantId"]),
+                        "tenantCode": claims.get("tid") or "",
+                        "tenantName": claims.get("tenantName") or "",
+                        "status": "ACTIVE"})
+    except Exception:  # noqa: BLE001 — 非法令牌交由 get_current_user 统一处理
+        return

@@ -18,6 +18,13 @@ _MESSAGES = [
 
 def list_messages(read_status: str | None = None, message_type: str | None = None,
                   page: int = 1, page_size: int = 20) -> dict:
+    from app.db.session import db_enabled
+    if db_enabled():
+        from app.services import db_service
+        items, total = db_service.list_messages(read_status, message_type, page, page_size)
+        data = paginate(items, total, page, page_size)
+        data["unread"] = sum(1 for r in items if r["readStatus"] == "UNREAD")
+        return data
     rows = _MESSAGES
     if read_status:
         rows = [r for r in rows if r["readStatus"] == read_status]
@@ -31,5 +38,9 @@ def list_messages(read_status: str | None = None, message_type: str | None = Non
 
 
 def mark_read(message_id: str) -> dict:
-    """标记已读（占位：接库后写 t_unified_message.status=READ + read_at）。"""
+    """标记已读：DB 模式写 t_unified_message.status=READ + read_at。"""
+    from app.db.session import db_enabled
+    if db_enabled():
+        from app.services import db_service
+        return db_service.message_read(message_id)
     return {"messageId": message_id, "status": "READ"}

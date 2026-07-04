@@ -10,6 +10,7 @@ from app.models import rbac as _rbac  # noqa: F401
 from app.models import student as _student  # noqa: F401
 from app.models import approval as _approval  # noqa: F401
 from app.models import audit as _audit  # noqa: F401
+from app.models import file as _file  # noqa: F401
 from app.models import message as _message  # noqa: F401
 
 metadata = Base.metadata
