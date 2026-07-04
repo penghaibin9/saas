@@ -22,10 +22,17 @@ import { LoadingState } from '@/components/business'
 import { platformApi } from '@/modules/platform/api/platform.api'
 
 const MENUS = [
-  { key: 'plt-home', label: '运营看板', icon: '◫', path: '/admin/platform' },
+  { key: 'plt-overview', label: '平台总控台', icon: '◎', path: '/admin/platform/overview' },
   { key: 'plt-tenants', label: '租户学校', icon: '♜', path: '/admin/platform/tenants' },
-  { key: 'plt-packages', label: '套餐授权', icon: '❖', path: '/admin/platform/packages' },
-  { key: 'plt-orders', label: '订单续费', icon: '▤', path: '/admin/platform/orders' },
+  { key: 'plt-packages', label: '套餐管理', icon: '❖', path: '/admin/platform/packages' },
+  { key: 'plt-rules', label: '规则中心', icon: '☲', path: '/admin/platform/rules' },
+  { key: 'plt-dicts', label: '字典管理', icon: '≣', path: '/admin/platform/dictionaries' },
+  { key: 'plt-orders', label: '订单开通', icon: '▤', path: '/admin/platform/orders' },
+  { key: 'plt-notices', label: '平台公告', icon: '♪', path: '/admin/platform/notices' },
+  { key: 'plt-security', label: '安全策略', icon: '☖', path: '/admin/platform/security' },
+  { key: 'plt-audit', label: '全平台审计', icon: '☰', path: '/admin/platform/audit' },
+  { key: 'plt-settings', label: '系统参数', icon: '✱', path: '/admin/platform/settings' },
+  { key: 'plt-home', label: '运营看板', icon: '◫', path: '/admin/platform' },
   { key: 'plt-integrations', label: '集成开放', icon: '⇄', path: '/admin/platform/integrations' },
   { key: 'plt-api', label: 'API·Webhook', icon: '✦', path: '/admin/platform/api-access' },
   { key: 'plt-sync', label: '同步与日志', icon: '≡', path: '/admin/platform/sync' }

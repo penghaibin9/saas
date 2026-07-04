@@ -83,6 +83,12 @@ export const ADMIN_MENU = [
     icon: '☁',
     platformOnly: true,
     children: [
+      { key: 'platform-control', label: '平台总控台', path: '/admin/platform/overview', moduleCode: 'PLATFORM', permissionKey: 'platform.control.view', platformOnly: true },
+      { key: 'platform-tenants', label: '租户学校管控', path: '/admin/platform/tenants', moduleCode: 'PLATFORM', permissionKey: 'platform.tenant.view', platformOnly: true },
+      { key: 'platform-rules', label: '规则与功能开关', path: '/admin/platform/rules', moduleCode: 'PLATFORM', permissionKey: 'platform.rule.view', platformOnly: true },
+      { key: 'platform-orders', label: '订单与开通', path: '/admin/platform/orders', moduleCode: 'PLATFORM', permissionKey: 'platform.order.view', platformOnly: true },
+      { key: 'platform-notices', label: '平台公告', path: '/admin/platform/notices', moduleCode: 'PLATFORM', permissionKey: 'platform.notice.view', platformOnly: true },
+      { key: 'platform-security', label: '安全与审计', path: '/admin/platform/security', moduleCode: 'PLATFORM', permissionKey: 'platform.security.view', platformOnly: true },
       { key: 'platform-ops', label: '平台运营', path: '/admin/platform', moduleCode: 'PLATFORM', permissionKey: 'platform.dashboard.view', platformOnly: true }
     ]
   }
