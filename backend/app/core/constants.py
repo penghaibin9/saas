@@ -1,0 +1,10 @@
+"""统一数字错误码（BACKEND-OVERNIGHT 阶段4）。字符串契约码见 core/response.BIZ_TO_NUM。"""
+CODE_SUCCESS = 0
+CODE_BAD_REQUEST = 400001      # 参数错误
+CODE_UNAUTHORIZED = 401001     # 未登录
+CODE_NO_PERMISSION = 403001    # 无权限
+CODE_SCOPE_DENIED = 403002     # 数据范围越权
+CODE_NOT_FOUND = 404001        # 数据不存在
+CODE_CONFLICT = 409001         # 数据冲突
+CODE_VALIDATION = 422001       # 参数校验失败
+CODE_SERVER_ERROR = 500001     # 系统异常

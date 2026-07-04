@@ -1,0 +1,46 @@
+"""
+审计日志（占位，对齐冻结契约 §九）
+────────────────────────────────────────────────────────────
+登录/登出/身份切换/上传/导入导出等埋点已通过 services/audit_log.record() 写入内存队列，
+此处提供 PC 管理端查询入口。接库后改查 t_security_audit / t_operation_audit_log。
+"""
+from __future__ import annotations
+
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
+
+from app.core.response import paginate, success
+from app.core.security import get_current_user
+from app.services import audit_log
+
+router = APIRouter(prefix="/admin/audit-logs", tags=["09·审计日志（占位）"])
+
+
+@router.get("", summary="审计日志列表（占位：内存队列）")
+def list_audit_logs(action: Optional[str] = Query(default=None,
+                    description="LOGIN / LOGOUT / CONTEXT_SWITCH / FILE_UPLOAD / IMPORT / EXPORT ..."),
+                    page: int = Query(default=1, ge=1),
+                    pageSize: int = Query(default=20, ge=1, le=100),
+                    user=Depends(get_current_user)):
+    items, total = audit_log.query(page, pageSize, action)
+    return success(paginate(items, total, page, pageSize))
+
+
+# ── BACKEND-OVERNIGHT 追加：任务规定路径别名 /api/v1/audit/* ──
+alias_router = APIRouter(prefix="/audit", tags=["audit"])
+
+
+@alias_router.get("/logs", summary="审计日志查询（DB_ENABLED=false：内存列表，重启即失，见 README）")
+def audit_logs(action: Optional[str] = Query(default=None),
+               page: int = Query(default=1, ge=1),
+               pageSize: int = Query(default=20, ge=1, le=100),
+               user=Depends(get_current_user)):
+    items, total = audit_log.query(page, pageSize, action)
+    return success(paginate(items, total, page, pageSize))
+
+
+@alias_router.post("/mock-record", summary="写入一条演示审计记录（联调用）")
+def mock_record(user=Depends(get_current_user)):
+    audit_log.record("MOCK", "demo", detail={"path": "/api/v1/audit/mock-record", "method": "POST"})
+    return success({"recorded": True}, message="已写入内存审计队列（DB_ENABLED=true 后写 t_security_audit_log）")
