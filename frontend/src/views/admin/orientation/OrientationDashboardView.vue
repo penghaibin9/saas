@@ -112,6 +112,10 @@ export default {
       this.$router.push(path)
     },
     goLink(link) {
+      if (link && String(link).startsWith('/')) {
+        this.go(link)
+        return
+      }
       if (LINKS[link]) this.go(LINKS[link])
     },
     funnelWidth(s) {
