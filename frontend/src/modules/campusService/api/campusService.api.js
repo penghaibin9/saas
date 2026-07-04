@@ -9,6 +9,7 @@
  */
 import * as db from '@/mocks/campusService/campusService.mock'
 import { maskPhone, maskIdCard } from '@/security'
+import { request, shouldTryReal } from '@/services/http/client'
 
 const delay = (ms = 150) => new Promise((r) => setTimeout(r, ms))
 let seq = 0
@@ -125,6 +126,10 @@ export async function getExportOptions(listKey) {
 
 /* ---------------- 看板（按数据范围动态计算） ---------------- */
 export async function getCampusServiceDashboard() {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/campus-service/dashboard')) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const students = scopeStudents(db.serviceStudents).filter((s) => s.recordStatus === 'ACTIVE')
   const leaves = scopeByStudent(db.leaveApplications).filter((l) => l.recordStatus === 'ACTIVE')
@@ -151,6 +156,10 @@ function maskStudent(s) {
 }
 
 export async function getServiceStudents(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/students', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', classId = '', careLevel = '', riskLevel = '', recordStatus = '', page = 1, pageSize = 10 } = params
   let list = scopeStudents(db.serviceStudents)
@@ -168,6 +177,10 @@ export async function getServiceStudents(params = {}) {
 }
 
 export async function getStudentServiceDetail(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/students/${id}`)) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.serviceStudents.find((x) => x.id === id)
   if (!s) return fail('学生服务档案不存在，或不在当前数据范围内')
@@ -200,6 +213,10 @@ export async function getStudentServiceDetail(id) {
 }
 
 export async function createServiceRecord(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/campus-service/students', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.name || !payload?.studentNo) return fail('姓名与学号为必填项')
   const id = `svc-s-${Date.now()}`
@@ -249,6 +266,10 @@ export async function updateServiceRecord(id, payload) {
 }
 
 export async function voidServiceRecord(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/students/${id}/void`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.serviceStudents.find((x) => x.id === id)
   if (!s) return fail('服务记录不存在')
@@ -269,6 +290,10 @@ export async function batchRemindServiceStudents(ids = [], scene = '在校服务
 
 /* ---------------- 请假审批 ---------------- */
 export async function getLeaveApplications(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/leaves', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', type = '', status = '', classId = '', page = 1, pageSize = 10 } = params
   let list = scopeByStudent(db.leaveApplications)
@@ -285,6 +310,10 @@ export async function getLeaveApplications(params = {}) {
 }
 
 export async function getLeaveApplicationDetail(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/leaves/${id}`)) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const l = db.leaveApplications.find((x) => x.id === id)
   if (!l) return fail('请假申请不存在或不在当前数据范围内')
@@ -295,6 +324,10 @@ export async function getLeaveApplicationDetail(id) {
 }
 
 export async function approveLeave(id, { comment = '' } = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/leaves/${id}/approve`, { method: 'POST', body: { comment } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const l = db.leaveApplications.find((x) => x.id === id)
   if (!l) return fail('请假申请不存在')
@@ -306,6 +339,10 @@ export async function approveLeave(id, { comment = '' } = {}) {
 }
 
 export async function returnLeave(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/leaves/${id}/return`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const l = db.leaveApplications.find((x) => x.id === id)
   if (!l) return fail('请假申请不存在')
@@ -318,6 +355,10 @@ export async function returnLeave(id, { reason }) {
 }
 
 export async function batchApproveLeaves(ids = []) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/campus-service/leaves/batch-approve', { method: 'POST', body: { ids } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!ids.length) return fail('请先选择申请')
   let count = 0
@@ -338,6 +379,10 @@ function maskGrant(g) {
 }
 
 export async function getGrantApplications(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/grants', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', type = '', status = '', page = 1, pageSize = 10 } = params
   let list = scopeByStudent(db.grantApplications)
@@ -350,6 +395,10 @@ export async function getGrantApplications(params = {}) {
 }
 
 export async function getGrantApplicationDetail(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/grants/${id}`)) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const g = db.grantApplications.find((x) => x.id === id)
   if (!g) return fail('资助申请不存在或不在当前数据范围内')
@@ -373,6 +422,10 @@ export async function getGrantApplicationDetail(id) {
 }
 
 export async function approveGrant(id, { comment = '' } = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/grants/${id}/approve`, { method: 'POST', body: { comment } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const g = db.grantApplications.find((x) => x.id === id)
   if (!g) return fail('资助申请不存在')
@@ -386,6 +439,10 @@ export async function approveGrant(id, { comment = '' } = {}) {
 }
 
 export async function returnGrant(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/grants/${id}/return`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const g = db.grantApplications.find((x) => x.id === id)
   if (!g) return fail('资助申请不存在')
@@ -398,6 +455,10 @@ export async function returnGrant(id, { reason }) {
 }
 
 export async function batchApproveGrants(ids = []) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/campus-service/grants/batch-approve', { method: 'POST', body: { ids } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!ids.length) return fail('请先选择申请')
   let count = 0
@@ -425,6 +486,10 @@ function dormScope(list) {
 }
 
 export async function getDormitoryRecords(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/dorm-records', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', buildingId = '', status = '', page = 1, pageSize = 10 } = params
   let list = dormScope(db.dormitoryRecords)
@@ -483,6 +548,10 @@ export async function updateDormitoryRecord(id, payload) {
 }
 
 export async function getDormitoryExceptions(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/dorm-exceptions', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', type = '', status = '', buildingId = '', page = 1, pageSize = 10 } = params
   let list = dormScope(db.dormitoryExceptionRecords)
@@ -499,6 +568,10 @@ export async function getDormitoryExceptions(params = {}) {
 }
 
 export async function markDormException(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/campus-service/dorm-exceptions', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.studentId || !payload?.type || !payload?.detail) return fail('学生、异常类型与情况说明为必填项')
   if (payload.detail.trim().length < 5) return fail('情况说明不少于 5 个字')
@@ -534,6 +607,10 @@ export async function markDormException(payload) {
 }
 
 export async function handleDormException(id, { note, complete }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/dorm-exceptions/${id}/handle`, { method: 'POST', body: { note, complete } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const d = db.dormitoryExceptionRecords.find((x) => x.id === id)
   if (!d) return fail('异常记录不存在')
@@ -550,6 +627,10 @@ export async function handleDormException(id, { note, complete }) {
 
 /* ---------------- 违纪 / 处分 ---------------- */
 export async function getDisciplineRecords(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/disciplines', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', type = '', status = '', recordStatus = '', page = 1, pageSize = 10 } = params
   let list = scopeByStudent(db.disciplineRecords)
@@ -566,6 +647,10 @@ export async function getDisciplineRecords(params = {}) {
 }
 
 export async function createDisciplineRecord(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/campus-service/disciplines', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.studentId || !payload?.type || !payload?.reason) return fail('学生、处分类型与事由为必填项')
   if (payload.reason.trim().length < 5) return fail('事由说明不少于 5 个字')
@@ -616,6 +701,10 @@ export async function updateDisciplineRecord(id, payload) {
 }
 
 export async function voidDisciplineRecord(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/disciplines/${id}/void`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const d = db.disciplineRecords.find((x) => x.id === id)
   if (!d) return fail('处分记录不存在')
@@ -631,6 +720,10 @@ export async function voidDisciplineRecord(id, { reason }) {
 
 /* ---------------- 服务工单 ---------------- */
 export async function getServiceWorkOrders(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/work-orders', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', type = '', status = '', priority = '', page = 1, pageSize = 10 } = params
   let list = scopeByStudent(db.serviceWorkOrders)
@@ -649,6 +742,10 @@ export async function getServiceWorkOrders(params = {}) {
 }
 
 export async function getWorkOrderDetail(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/work-orders/${id}`)) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const w = db.serviceWorkOrders.find((x) => x.id === id)
   if (!w) return fail('工单不存在或不在当前数据范围内')
@@ -663,6 +760,10 @@ export async function getWorkOrderDetail(id) {
 }
 
 export async function createWorkOrder(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/campus-service/work-orders', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.studentId || !payload?.title || !payload?.type) return fail('学生、标题与类型为必填项')
   const s = db.serviceStudents.find((x) => x.id === payload.studentId)
@@ -708,6 +809,10 @@ export async function updateWorkOrder(id, payload) {
 }
 
 export async function assignWorkOrders(ids = [], { handlerId }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/campus-service/work-orders/assign', { method: 'POST', body: { ids, handler: handlerId } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!ids.length) return fail('请先选择工单')
   const handler = db.filterOptions.handlers.find((h) => h.value === handlerId)
@@ -732,6 +837,10 @@ export async function assignWorkOrders(ids = [], { handlerId }) {
 }
 
 export async function handleWorkOrder(id, { note, close }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/work-orders/${id}/handle`, { method: 'POST', body: { note, close } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const w = db.serviceWorkOrders.find((x) => x.id === id)
   if (!w) return fail('工单不存在')
@@ -756,6 +865,10 @@ export async function handleWorkOrder(id, { note, close }) {
 }
 
 export async function closeWorkOrder(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/campus-service/work-orders/${id}/close`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const w = db.serviceWorkOrders.find((x) => x.id === id)
   if (!w) return fail('工单不存在')
@@ -776,6 +889,10 @@ export async function closeWorkOrder(id, { reason }) {
 
 /* ---------------- 心理关怀（涉密） ---------------- */
 export async function getMentalHealthRecords(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/mental-records', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const pa = buildPermissionActions()['campus.mental.view']
   if (!pa || !pa.visible) return fail('该数据为涉密内容，当前角色不可见', 403)
@@ -833,6 +950,10 @@ export async function createExport(listKey, payload = {}) {
 
 /* ---------------- 审计日志 ---------------- */
 export async function getAuditLogs(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/campus-service/audit-logs', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { bizType = '', keyword = '', page = 1, pageSize = 20 } = params
   let list = db.auditLogs.filter((a) => (!bizType || a.bizType === bizType) && (kw(a.detail, keyword) || kw(a.operator, keyword)))

@@ -1,9 +1,10 @@
 /**
- * 岗位实习中心 API（mock 实现）。
- * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功。
- * 真实后端阶段仅替换实现，方法签名冻结不变（与 dashboard/student 模块同约定）。
- * 页面禁止直接 import mocks，必须经本文件获取数据。
+ * 岗位实习中心 API（P7：真实优先 + mock 兜底）。
+ * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功；方法签名冻结不变。
+ * 真实接口 /api/v1/internship/*；后端不可达时自动回退 mock，页面不白屏。
+ * 业务错误（如意见<5字 422001 / 已处理 409001）直接透出，不回退 mock。
  */
+import { request, shouldTryReal } from '@/services/http/client'
 import {
   tenantBrandConfig,
   currentRole,
@@ -38,8 +39,33 @@ function paginate(list, { page = 1, pageSize = 10 } = {}) {
   return { list: list.slice(start, start + pageSize), total, page, pageSize }
 }
 
+/** 真实优先：object 型返回。失败→mock；业务错误→透出 */
+async function real(realFn, mockFn) {
+  if (!shouldTryReal()) return mockFn()
+  try {
+    const data = await realFn()
+    return { code: 0, data, message: 'ok' }
+  } catch (e) {
+    if (e.biz) return { code: e.code || 1, data: null, message: e.message }
+    return mockFn()
+  }
+}
+
+/** 真实优先：分页型返回，后端 items → 前端 list 映射 */
+async function realList(path, params, mockFn) {
+  if (!shouldTryReal()) return mockFn()
+  try {
+    const d = await request(path, { params })
+    return { code: 0, message: 'ok',
+      data: { list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 } }
+  } catch (e) {
+    if (e.biz) return { code: e.code || 1, data: null, message: e.message }
+    return mockFn()
+  }
+}
+
 export const internshipApi = {
-  /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典（页面初始化统一获取） */
+  /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典（页面初始化统一获取，走 mock 上下文） */
   getContext() {
     return ok({
       tenantBrandConfig: { ...tenantBrandConfig },
@@ -51,11 +77,14 @@ export const internshipApi = {
   },
 
   getDashboardSummary() {
-    return ok(JSON.parse(JSON.stringify(dashboardSummary)))
+    return real(() => request('/internship/dashboard'),
+      () => ok(JSON.parse(JSON.stringify(dashboardSummary))))
   },
 
-  /** 实习学生列表（筛选 + 分页） */
   getStudents(params = {}) {
+    return realList('/internship/students', params, () => this._mockStudents(params))
+  },
+  _mockStudents(params = {}) {
     let list = [...internshipStudents]
     if (params.keyword) {
       const kw = params.keyword.trim()
@@ -69,13 +98,17 @@ export const internshipApi = {
   },
 
   getStudentDetail(id) {
-    const detail = studentDetailMap[id]
-    if (!detail) return fail('未找到该学生的实习档案，或不在当前数据范围内')
-    return ok(JSON.parse(JSON.stringify(detail)))
+    return real(() => request(`/internship/students/${id}`), () => {
+      const detail = studentDetailMap[id]
+      if (!detail) return fail('未找到该学生的实习档案，或不在当前数据范围内')
+      return ok(JSON.parse(JSON.stringify(detail)))
+    })
   },
 
-  /** 打卡异常列表 */
   getAttendanceExceptions(params = {}) {
+    return realList('/internship/exceptions', params, () => this._mockExceptions(params))
+  },
+  _mockExceptions(params = {}) {
     let list = [...attendanceExceptions]
     if (params.type) list = list.filter((e) => e.type === params.type)
     if (params.status) list = list.filter((e) => e.status === params.status)
@@ -84,16 +117,20 @@ export const internshipApi = {
   },
 
   getAttendanceExceptionDetail(id) {
-    const detail = attendanceExceptionDetailMap[id]
-    if (!detail) return fail('异常记录不存在或已被处理归档')
-    return ok(JSON.parse(JSON.stringify(detail)))
+    return real(() => request(`/internship/exceptions/${id}`), () => {
+      const detail = attendanceExceptionDetailMap[id]
+      if (!detail) return fail('异常记录不存在或已被处理归档')
+      return ok(JSON.parse(JSON.stringify(detail)))
+    })
   },
 
-  /**
-   * 处理打卡异常（闭环动作，处理意见必填 ≥5 字）。
-   * action: REASONABLE 标记合理 | ABNORMAL 记为异常 | TO_RISK 转风险跟进
-   */
   handleAttendanceException(id, { action, comment }) {
+    return real(
+      () => request(`/internship/exceptions/${id}/handle`, { method: 'POST', body: { action, comment } }),
+      () => this._mockHandleException(id, { action, comment })
+    )
+  },
+  _mockHandleException(id, { action, comment }) {
     if (!comment || comment.trim().length < 5) return fail('处理意见必填且不少于 5 个字')
     const row = attendanceExceptions.find((e) => e.id === id)
     const detail = attendanceExceptionDetailMap[id]
@@ -112,8 +149,10 @@ export const internshipApi = {
     return ok({ id, status: 'COMPLETED', statusLabel: label })
   },
 
-  /** 周报批阅列表 */
   getWeeklyReports(params = {}) {
+    return realList('/internship/reports', params, () => this._mockReports(params))
+  },
+  _mockReports(params = {}) {
     let list = [...weeklyReports]
     if (params.status) list = list.filter((r) => r.status === params.status)
     if (params.keyword) list = list.filter((r) => r.studentName.includes(params.keyword.trim()))
@@ -121,16 +160,20 @@ export const internshipApi = {
   },
 
   getWeeklyReportDetail(id) {
-    const detail = weeklyReportDetailMap[id]
-    if (!detail) return fail('周报不存在或不在当前数据范围内')
-    return ok(JSON.parse(JSON.stringify(detail)))
+    return real(() => request(`/internship/reports/${id}`), () => {
+      const detail = weeklyReportDetailMap[id]
+      if (!detail) return fail('周报不存在或不在当前数据范围内')
+      return ok(JSON.parse(JSON.stringify(detail)))
+    })
   },
 
-  /**
-   * 批阅周报（闭环动作）。
-   * action: APPROVE 通过（评语选填）| RETURN 退回（原因必填 ≥5 字）
-   */
   reviewWeeklyReport(id, { action, comment }) {
+    return real(
+      () => request(`/internship/reports/${id}/review`, { method: 'POST', body: { action, comment } }),
+      () => this._mockReviewReport(id, { action, comment })
+    )
+  },
+  _mockReviewReport(id, { action, comment }) {
     if (action === 'RETURN' && (!comment || comment.trim().length < 5)) {
       return fail('退回原因必填且不少于 5 个字')
     }
@@ -150,8 +193,10 @@ export const internshipApi = {
     return ok({ id, status: next.status, statusLabel: next.label })
   },
 
-  /** 风险学生列表 */
   getRiskStudents(params = {}) {
+    return realList('/internship/risks', params, () => this._mockRisks(params))
+  },
+  _mockRisks(params = {}) {
     let list = [...riskStudents]
     if (params.level) list = list.filter((r) => r.level === params.level)
     if (params.status) list = list.filter((r) => r.status === params.status)

@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import approval, audit, auth, authz, dashboard, files, platform, rbac, student, system, tenant, transfer
+from app.api.v1 import academic, approval, audit, auth, authz, campus_service, dashboard, employment, files, graduation, internship, orientation, platform, rbac, student, system, tenant, transfer
 from app.api.v1 import file as file_simple
 from app.api.v1 import import_export
 from app.api.v1 import message as message_simple
 from app.api.v1 import todo as todo_simple
+from app.api.v1 import stats
 from app.api.v1.todos import make_router as make_todos_router
 
 api_router = APIRouter()
@@ -23,6 +24,12 @@ api_router.include_router(file_simple.router, prefix="/files", tags=["files"])  
 # 业务第一批
 api_router.include_router(student.router)                                    # /api/v1/students/*
 api_router.include_router(approval.router)                                   # /api/v1/approvals/*
+api_router.include_router(internship.router)                                 # /api/v1/internship/*
+api_router.include_router(orientation.router)                                # /api/v1/orientation/*
+api_router.include_router(campus_service.router)                             # /api/v1/campus-service/*
+api_router.include_router(academic.router)                                   # /api/v1/academic/*
+api_router.include_router(graduation.router)                                 # /api/v1/graduation/*
+api_router.include_router(employment.router)                                 # /api/v1/employment/*
 
 # 看板 / 待办 / 消息（扁平简化端点）
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -47,4 +54,5 @@ api_router.include_router(audit.alias_router)                                 # 
 api_router.include_router(platform.router)                                    # /api/v1/platform/*
 
 # 系统
+api_router.include_router(stats.router)                                       # /api/v1/stats/*
 api_router.include_router(system.router, tags=["system"])                     # /api/v1/system/info

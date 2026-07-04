@@ -7,6 +7,7 @@
  *  - 数据范围：辅导员(CLASS)只见本班，学院角色(COLLEGE)见本院，SCHOOL 见全部。
  */
 import * as db from '@/mocks/employment/employment.mock'
+import { request, shouldTryReal } from '@/services/http/client'
 import { maskPhone, maskIdCard, maskSalary } from '@/security'
 
 const delay = (ms = 160) => new Promise((r) => setTimeout(r, ms))
@@ -118,6 +119,10 @@ export async function getExportOptions(listKey) {
 
 /* ---------------- 看板 ---------------- */
 export async function getEmploymentDashboard() {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/dashboard')) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   return envelope(clone(db.dashboardSummary))
 }
@@ -128,6 +133,10 @@ function maskStudent(s) {
 }
 
 export async function getEmploymentStudents(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/employment/students', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', classId = '', destinationType = '', verifyStatus = '', helpLevel = '', recordStatus = '', page = 1, pageSize = 10 } = params
   let list = scopeFilter(db.employmentStudents)
@@ -146,6 +155,10 @@ export async function getEmploymentStudents(params = {}) {
 }
 
 export async function getEmploymentStudentDetail(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/employment/students/${id}`)) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.employmentStudents.find((x) => x.id === id)
   if (!s) return fail('学生就业记录不存在')
@@ -156,6 +169,10 @@ export async function getEmploymentStudentDetail(id) {
 }
 
 export async function createEmploymentRecord(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/students', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.name || !payload?.studentNo) return fail('姓名与学号为必填项')
   const id = `emp-s-${Date.now()}`
@@ -195,6 +212,10 @@ export async function createEmploymentRecord(payload) {
 }
 
 export async function updateEmploymentRecord(id, payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/employment/students/${id}`, { method: 'PUT', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.employmentStudents.find((x) => x.id === id)
   if (!s) return fail('记录不存在')
@@ -205,6 +226,10 @@ export async function updateEmploymentRecord(id, payload) {
 }
 
 export async function voidEmploymentRecord(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/employment/students/${id}/void`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.employmentStudents.find((x) => x.id === id)
   if (!s) return fail('记录不存在')
@@ -223,6 +248,10 @@ export async function batchRemindStudents(ids = []) {
 }
 
 export async function batchMarkDestination(ids = [], destinationType) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/students/mark-destination', { method: 'POST', body: { ids, destinationType } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const label = db.statusOptions.destinationType.find((d) => d.value === destinationType)?.label || destinationType
   ids.forEach((id) => {
@@ -239,6 +268,10 @@ export async function batchMarkDestination(ids = [], destinationType) {
 
 /* ---------------- 材料审核 ---------------- */
 export async function getEmploymentMaterials(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/employment/materials', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', status = '', materialType = '', page = 1, pageSize = 10 } = params
   const scopedIds = new Set(scopeFilter(db.employmentStudents).map((s) => s.id))
@@ -260,6 +293,10 @@ export async function getMaterialReviewDetail(id) {
 }
 
 export async function approveMaterial(id, { comment = '' } = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/employment/materials/${id}/approve`, { method: 'POST', body: { comment } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const m = db.employmentMaterials.find((x) => x.id === id)
   if (!m) return fail('材料不存在')
@@ -277,6 +314,10 @@ export async function approveMaterial(id, { comment = '' } = {}) {
 }
 
 export async function returnMaterial(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/employment/materials/${id}/return`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const m = db.employmentMaterials.find((x) => x.id === id)
   if (!m) return fail('材料不存在')
@@ -307,6 +348,10 @@ export async function batchReviewMaterials(ids = [], { pass, reason = '' }) {
 
 /* ---------------- 未就业学生 ---------------- */
 export async function getUnemployedStudents(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/employment/unemployed', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', helpLevel = '', riskLevel = '', page = 1, pageSize = 10 } = params
   let list = scopeFilter(db.employmentStudents).filter(
@@ -328,6 +373,10 @@ export async function getUnemployedStudents(params = {}) {
 }
 
 export async function markEmployed(ids = []) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/unemployed/mark-employed', { method: 'POST', body: { ids } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   ids.forEach((id) => {
     const s = db.employmentStudents.find((x) => x.id === id)
@@ -344,6 +393,10 @@ export async function markEmployed(ids = []) {
 }
 
 export async function markKeyHelp(ids = []) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/unemployed/mark-key-help', { method: 'POST', body: { ids } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   ids.forEach((id) => {
     const s = db.employmentStudents.find((x) => x.id === id)
@@ -358,6 +411,10 @@ export async function markKeyHelp(ids = []) {
 }
 
 export async function assignEmploymentTeacher(ids = [], { teacher }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/unemployed/assign-teacher', { method: 'POST', body: { ids, teacher } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!teacher) return fail('请选择就业老师')
   ids.forEach((id) => {
@@ -373,6 +430,10 @@ export async function assignEmploymentTeacher(ids = [], { teacher }) {
 
 /* ---------------- 跟进记录 ---------------- */
 export async function getFollowUpRecords(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/employment/followups', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', status = '', page = 1, pageSize = 10 } = params
   const scopedIds = new Set(scopeFilter(db.employmentStudents).map((s) => s.id))
@@ -385,6 +446,10 @@ export async function getFollowUpRecords(params = {}) {
 }
 
 export async function createFollowUp(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/followups', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.studentId || !payload?.content) return fail('学生与跟进内容为必填项')
   const s = db.employmentStudents.find((x) => x.id === payload.studentId)
@@ -421,6 +486,10 @@ export async function updateFollowUp(id, payload) {
 }
 
 export async function voidFollowUp(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/employment/followups/${id}/void`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const f = db.followUpRecords.find((x) => x.id === id)
   if (!f) return fail('跟进记录不存在')
@@ -433,6 +502,10 @@ export async function voidFollowUp(id, { reason }) {
 
 /* ---------------- 企业与岗位 ---------------- */
 export async function getCompanies(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/employment/companies', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', status = '', page = 1, pageSize = 10 } = params
   let list = db.companyList.filter((c) => (kw(c.name, keyword) || kw(c.industry, keyword)) && (!status || c.status === status))
@@ -442,6 +515,10 @@ export async function getCompanies(params = {}) {
 }
 
 export async function createCompany(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/companies', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.name || !payload?.creditCode) return fail('企业名称与统一社会信用代码为必填项')
   const id = `emp-c-${Date.now()}`
@@ -472,6 +549,10 @@ export async function updateCompany(id, payload) {
 }
 
 export async function disableCompany(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/employment/companies/${id}/disable`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const c = db.companyList.find((x) => x.id === id)
   if (!c) return fail('企业不存在')
@@ -484,6 +565,10 @@ export async function disableCompany(id, { reason }) {
 }
 
 export async function getJobs(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/employment/jobs', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', status = '', companyId = '', page = 1, pageSize = 10 } = params
   let list = db.jobList.filter(
@@ -495,6 +580,10 @@ export async function getJobs(params = {}) {
 }
 
 export async function createJob(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/employment/jobs', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.title || !payload?.companyId) return fail('岗位名称与所属企业为必填项')
   const c = db.companyList.find((x) => x.id === payload.companyId)
@@ -526,6 +615,10 @@ export async function updateJob(id, payload) {
 }
 
 export async function disableJob(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/employment/jobs/${id}/disable`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const j = db.jobList.find((x) => x.id === id)
   if (!j) return fail('岗位不存在')
@@ -591,6 +684,10 @@ export async function createExport(listKey, payload = {}) {
 
 /* ---------------- 审计日志 ---------------- */
 export async function getAuditLogs(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/employment/audit-logs', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { bizType = '', keyword = '', page = 1, pageSize = 20 } = params
   let list = db.auditLogs.filter((a) => (!bizType || a.bizType === bizType) && (kw(a.detail, keyword) || kw(a.operator, keyword)))

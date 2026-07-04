@@ -6,6 +6,7 @@
  */
 import * as db from '@/mocks/orientation/orientation.mock'
 import { maskPhone, maskIdCard } from '@/security'
+import { request, shouldTryReal } from '@/services/http/client'
 
 const delay = (ms = 160) => new Promise((r) => setTimeout(r, ms))
 let seq = 0
@@ -119,6 +120,10 @@ export async function getExportOptions(listKey) {
 
 /* ---------------- 看板 ---------------- */
 export async function getOrientationDashboard() {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/orientation/dashboard')) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   return envelope(clone(db.dashboardSummary))
 }
@@ -129,6 +134,10 @@ function maskStudent(s) {
 }
 
 export async function getOrientationStudents(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/students', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', classId = '', stage = '', reportStatus = '', paymentStatus = '', riskLevel = '', page = 1, pageSize = 10 } = params
   let list = scopeFilter(db.orientationStudents)
@@ -147,6 +156,10 @@ export async function getOrientationStudents(params = {}) {
 }
 
 export async function getOrientationStudentDetail(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/students/${id}`)) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.orientationStudents.find((x) => x.id === id)
   if (!s) return fail('新生记录不存在')
@@ -167,6 +180,10 @@ export async function getOrientationStudentDetail(id) {
 }
 
 export async function createOrientationStudent(payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/orientation/students', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   if (!payload?.name || !payload?.admissionNo) return fail('姓名与录取编号为必填项')
   const id = `ori-s-${Date.now()}`
@@ -211,6 +228,10 @@ export async function createOrientationStudent(payload) {
 }
 
 export async function updateOrientationStudent(id, payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/students/${id}`, { method: 'PUT', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.orientationStudents.find((x) => x.id === id)
   if (!s) return fail('记录不存在')
@@ -221,6 +242,10 @@ export async function updateOrientationStudent(id, payload) {
 }
 
 export async function voidOrientationStudent(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/students/${id}/void`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.orientationStudents.find((x) => x.id === id)
   if (!s) return fail('记录不存在')
@@ -254,6 +279,10 @@ export async function batchAssignCounselor(ids = [], { counselor }) {
 
 /* ---------------- 报到进度 ---------------- */
 export async function getRegistrationProgress(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/progress', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', blockedOnly = '', page = 1, pageSize = 10 } = params
   let list = scopeFilter(db.orientationStudents).filter((s) => s.recordStatus === 'ACTIVE')
@@ -272,6 +301,14 @@ export async function getRegistrationProgress(params = {}) {
 }
 
 export async function updateBlockedIssue(id, { blockedStep, blockedReason }) {
+  if (shouldTryReal()) {
+    try {
+      return envelope(await request(`/orientation/progress/${id}/blocked`, {
+        method: 'PUT',
+        body: { blockedStep, blockedReason }
+      }))
+    } catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.orientationStudents.find((x) => x.id === id)
   if (!s) return fail('记录不存在')
@@ -285,6 +322,11 @@ export async function updateBlockedIssue(id, { blockedStep, blockedReason }) {
 }
 
 export async function resolveBlockedIssue(id, { note = '' } = {}) {
+  if (shouldTryReal()) {
+    try {
+      return envelope(await request(`/orientation/progress/${id}/resolve`, { method: 'POST', body: { note } }))
+    } catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.orientationStudents.find((x) => x.id === id)
   if (!s) return fail('记录不存在')
@@ -299,6 +341,10 @@ export async function resolveBlockedIssue(id, { note = '' } = {}) {
 
 /* ---------------- 缴费 / 绿色通道 ---------------- */
 export async function getPaymentStatusList(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/payments', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', paymentStatus = '', page = 1, pageSize = 10 } = params
   let list = scopeFilter(db.orientationStudents).filter((s) => s.recordStatus === 'ACTIVE')
@@ -318,6 +364,10 @@ export async function getPaymentStatusList(params = {}) {
 }
 
 export async function getGreenChannelApplications(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/green-channels', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', status = '', page = 1, pageSize = 10 } = params
   const scopedIds = new Set(scopeFilter(db.orientationStudents).map((s) => s.id))
@@ -330,6 +380,10 @@ export async function getGreenChannelApplications(params = {}) {
 }
 
 export async function approveGreenChannel(id, { remark = '' } = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/green-channels/${id}/approve`, { method: 'POST', body: { remark } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const g = db.greenChannelApplications.find((x) => x.id === id)
   if (!g) return fail('申请不存在')
@@ -352,6 +406,10 @@ export async function approveGreenChannel(id, { remark = '' } = {}) {
 }
 
 export async function rejectGreenChannel(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/green-channels/${id}/reject`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const g = db.greenChannelApplications.find((x) => x.id === id)
   if (!g) return fail('申请不存在')
@@ -369,6 +427,10 @@ export async function rejectGreenChannel(id, { reason }) {
 }
 
 export async function returnGreenChannel(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/green-channels/${id}/return`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const g = db.greenChannelApplications.find((x) => x.id === id)
   if (!g) return fail('申请不存在')
@@ -387,6 +449,10 @@ export async function returnGreenChannel(id, { reason }) {
 
 /* ---------------- 材料审核 ---------------- */
 export async function getMaterialReviewList(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/materials', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', status = '', materialType = '', page = 1, pageSize = 10 } = params
   const scopedIds = new Set(scopeFilter(db.orientationStudents).map((s) => s.id))
@@ -399,6 +465,10 @@ export async function getMaterialReviewList(params = {}) {
 }
 
 export async function approveOrientationMaterial(id, { comment = '' } = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/materials/${id}/approve`, { method: 'POST', body: { comment } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const m = db.materialReviewList.find((x) => x.id === id)
   if (!m) return fail('材料不存在')
@@ -421,6 +491,10 @@ export async function approveOrientationMaterial(id, { comment = '' } = {}) {
 }
 
 export async function returnOrientationMaterial(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/materials/${id}/return`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const m = db.materialReviewList.find((x) => x.id === id)
   if (!m) return fail('材料不存在')
@@ -450,6 +524,10 @@ export async function batchReviewOrientationMaterials(ids = [], { pass, reason =
 
 /* ---------------- 宿舍入住 ---------------- */
 export async function getDormitoryCheckinList(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/dorms', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', dormStatus = '', building = '', page = 1, pageSize = 10 } = params
   let list = scopeFilter(db.orientationStudents).filter((s) => s.recordStatus === 'ACTIVE')
@@ -463,6 +541,10 @@ export async function getDormitoryCheckinList(params = {}) {
 }
 
 export async function updateDormInfo(id, payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/dorms/${id}`, { method: 'PUT', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.orientationStudents.find((x) => x.id === id)
   if (!s) return fail('记录不存在')
@@ -474,6 +556,10 @@ export async function updateDormInfo(id, payload) {
 }
 
 export async function batchConfirmCheckin(ids = []) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/orientation/dorms/confirm', { method: 'POST', body: { ids } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   ids.forEach((id) => {
     const s = db.orientationStudents.find((x) => x.id === id)
@@ -489,6 +575,10 @@ export async function batchConfirmCheckin(ids = []) {
 }
 
 export async function markDormException(id, { note }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/dorms/${id}/exception`, { method: 'POST', body: { note } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const s = db.orientationStudents.find((x) => x.id === id)
   if (!s) return fail('记录不存在')
@@ -503,6 +593,10 @@ export async function markDormException(id, { note }) {
 
 /* ---------------- 迎新异常 ---------------- */
 export async function getExceptionStudents(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/exceptions', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { keyword = '', exceptionType = '', status = '', riskLevel = '', page = 1, pageSize = 10 } = params
   const scopedIds = new Set(scopeFilter(db.orientationStudents).map((s) => s.id))
@@ -520,6 +614,10 @@ export async function getExceptionStudents(params = {}) {
 }
 
 export async function getExceptionDetail(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/exceptions/${id}`)) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const e = db.exceptionStudents.find((x) => x.id === id)
   if (!e) return fail('异常记录不存在')
@@ -529,6 +627,10 @@ export async function getExceptionDetail(id) {
 }
 
 export async function addExceptionFollowUp(id, payload) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/exceptions/${id}/followup`, { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const e = db.exceptionStudents.find((x) => x.id === id)
   if (!e) return fail('异常记录不存在')
@@ -562,6 +664,10 @@ export async function updateExceptionFollowUp(id, followId, payload) {
 }
 
 export async function resolveException(id, { note = '' } = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/exceptions/${id}/resolve`, { method: 'POST', body: { note } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const e = db.exceptionStudents.find((x) => x.id === id)
   if (!e) return fail('异常记录不存在')
@@ -575,6 +681,10 @@ export async function resolveException(id, { note = '' } = {}) {
 }
 
 export async function escalateException(id, { reason }) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/exceptions/${id}/escalate`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const e = db.exceptionStudents.find((x) => x.id === id)
   if (!e) return fail('异常记录不存在')
@@ -627,6 +737,10 @@ export async function createExport(listKey, payload = {}) {
 
 /* ---------------- 审计日志 ---------------- */
 export async function getAuditLogs(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/audit-logs', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
   await delay()
   const { bizType = '', keyword = '', page = 1, pageSize = 20 } = params
   let list = db.auditLogs.filter((a) => (!bizType || a.bizType === bizType) && (kw(a.detail, keyword) || kw(a.operator, keyword)))

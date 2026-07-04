@@ -216,12 +216,57 @@ def run() -> int:
 
     db.commit()
 
-    # ── P6：平台总控种子（平台超管/运营租户/订单/公告；幂等）──
-    from _seed_platform import seed_platform
-    seed_platform(db)
+    # ── P6：平台总控种子（可选；服务器旧版 ORM 无 PlatformConfig 时跳过）──
+    try:
+        from _seed_platform import seed_platform
+        seed_platform(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] platform seed skipped: {e}")
 
     main_students = db.scalars(select(StudentProfile).where(StudentProfile.tenant_id == TID)).all()
     demo_students = db.scalars(select(StudentProfile).where(StudentProfile.tenant_id == TID2)).all()
+    # 岗位实习域种子（幂等；不改学生数，不影响 demo=5 / 主租户=100 基线）
+    try:
+        from _seed_internship import seed_internship
+        seed_internship(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] internship seed skipped: {e}")
+
+    # 数字迎新域种子（幂等）
+    try:
+        from _seed_orientation import seed_orientation
+        seed_orientation(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] orientation seed skipped: {e}")
+
+    # 在校服务域种子（幂等）
+    try:
+        from _seed_campus_service import seed_campus_service
+        seed_campus_service(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] campus_service seed skipped: {e}")
+
+    # 学业过程域种子（幂等）
+    try:
+        from _seed_academic import seed_academic
+        seed_academic(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] academic seed skipped: {e}")
+
+    # 毕业设计域种子（幂等）
+    try:
+        from _seed_graduation import seed_graduation
+        seed_graduation(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] graduation seed skipped: {e}")
+
+    # 就业服务域种子（幂等）
+    try:
+        from _seed_employment import seed_employment
+        seed_employment(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] employment seed skipped: {e}")
+
     print("[seed] OK")
     print(f"[seed] 主租户 demo        : 学生={len(main_students)} 角色={len(ROLES)} 用户=20 "
           f"审批=20 待办=30 消息=20 审计=50 文件=2 导入批次=2 导出任务=1")

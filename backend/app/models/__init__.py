@@ -9,3 +9,18 @@ from app.models.message import UnifiedMessage  # noqa: F401
 from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401
 from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
+from app.models.internship import (AttendanceException, InternshipAuditTrail, InternshipBatch,  # noqa: F401
+                                    InternshipRecord, RiskRecord, WeeklyReport)
+from app.models.orientation import (GreenChannelApplication, OrientationAuditTrail,  # noqa: F401
+                                     OrientationException, OrientationExceptionFollowup,
+                                     OrientationMaterial, OrientationStudent)
+from app.models.campus_service import (CsAuditTrail, CsDiscipline, CsDormException,  # noqa: F401
+                                        CsDormRecord, CsGrant, CsLeave, CsMentalRecord,
+                                        CsServiceStudent, CsWorkOrder)
+from app.models.academic import (AcademicAuditTrail, AcademicGrade, AcademicIntervention,  # noqa: F401
+                                    AcademicMakeup, AcademicRetake, AcademicStudent, AcademicWarning)
+from app.models.graduation import (GraduationAuditTrail, GraduationDefenseGroup,  # noqa: F401
+                                      GraduationFinal, GraduationProposal, GraduationStudent,
+                                      GraduationTopic)
+from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob,  # noqa: F401
+                                     EmpMaterial, EmpStudent)
