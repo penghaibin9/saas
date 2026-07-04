@@ -1,0 +1,60 @@
+# =============================================================================
+# 小程序 H5 端 · Nginx 站点示例
+# 用法：复制去掉 .example，放到 /etc/nginx/conf.d/miniapp-h5.conf，
+#      改好 server_name / root，然后：sudo nginx -t && sudo systemctl reload nginx
+# 说明见 docs/deploy/04-miniapp小程序部署.md、docs/deploy/07-Nginx部署说明.md
+# 当前阶段：纯 mock，后端未接入
+# =============================================================================
+
+server {
+    listen       80;
+    # TODO 改成小程序 H5 的域名；没有域名就写 IP（或用不同端口，见 docs/deploy/07 第 4 节）
+    server_name  m.example.com;
+
+    # TODO 指向存放 miniapp/dist/build/h5 内容的目录
+    root   /var/www/miniapp-h5;
+    index  index.html;
+
+    server_tokens off;
+
+    # ① 前端路由兜底（H5 单页应用同样需要，否则刷新 404）
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ② index.html 不缓存
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    # ③ 静态资源长缓存
+    location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        access_log off;
+    }
+
+    # ④ gzip
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1k;
+    gzip_vary on;
+    gzip_types text/plain text/css application/json application/javascript image/svg+xml;
+
+    # ⑤ 基础安全响应头
+    add_header X-Frame-Options        "SAMEORIGIN"                        always;
+    add_header X-Content-Type-Options "nosniff"                           always;
+    add_header Referrer-Policy        "strict-origin-when-cross-origin"   always;
+
+    # ⑥ 【预留】API 反向代理（后端未接入，保持注释；后端接入后同 pc-frontend 示例）
+    # location /api/ {
+    #     proxy_pass http://127.0.0.1:8000;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    #     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    #     proxy_set_header X-Forwarded-Proto $scheme;
+    # }
+
+    access_log /var/log/nginx/miniapp-h5.access.log;
+    error_log  /var/log/nginx/miniapp-h5.error.log;
+}

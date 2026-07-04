@@ -1,0 +1,115 @@
+# =============================================================================
+# docker-compose.local.yml —— 本地部署预演（P5 部署准备）
+# -----------------------------------------------------------------------------
+# 用途：在本机用 Docker 把「backend + postgres + redis(预留) + nginx」串起来跑一遍，
+#      验证部署骨架是否搭得对；不是真实服务器上线脚本，不会也不应该指向生产环境。
+#
+# 使用前准备（手动执行一次）：
+#   1) 复制环境变量模板：
+#        cp ../env/backend.env.example ../env/backend.env
+#      按需修改 backend.env（本地预演可直接用默认值）。
+#   2) 构建前端 / 小程序 H5 静态产物（nginx 用 volume 只读挂载，不在容器内 build）：
+#        powershell -File ../../scripts/deploy/build-pc.ps1
+#        powershell -File ../../scripts/deploy/build-miniapp.ps1
+#   3) 在本目录执行：docker compose -f docker-compose.local.yml up -d --build
+#      （或直接跑 scripts/deploy/start-backend.ps1，会帮你做同样的事）
+#
+# 首次让后端真正连上 Postgres（可选，不做则后端可仍用 backend/.env 的 SQLite 模式单独运行）：
+#   docker compose -f docker-compose.local.yml exec backend alembic upgrade head
+#
+# 端口规划（本地预演，宿主机对外端口）：
+#   80    → nginx：PC 管理端静态站点
+#   8080  → nginx：miniapp H5 静态站点
+#   8000  → backend：FastAPI（Swagger 见 /docs）
+#   5432  → postgres（仅本地调试用；真实服务器不要对公网开放，见 docs/ops/07）
+#   6379  → redis（预留，backend 当前代码未接入，只占位起容器）
+# =============================================================================
+
+services:
+  # ── 数据库：PostgreSQL（backend/alembic 已按此驱动/连接串格式设计，见 backend/README.md）──
+  postgres:
+    image: postgres:16-alpine
+    container_name: school-lifecycle-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-student_lifecycle}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"   # 本地预演调试方便；真实部署不建议暴露到公网
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-student_lifecycle}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - school-lifecycle
+
+  # ── 缓存：Redis（预留）—— backend 当前 REDIS_URL 仅占位读入，未实际接入缓存逻辑 ──
+  redis:
+    image: redis:7-alpine
+    container_name: school-lifecycle-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - school-lifecycle
+
+  # ── 后端：FastAPI（backend/Dockerfile 构建）──
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: school-lifecycle-backend
+    restart: unless-stopped
+    env_file:
+      - ../env/backend.env   # 先 cp backend.env.example 为 backend.env（本目录下 ../env/）
+    environment:
+      # 覆盖 env_file 中的主机名部分：docker 网络内用服务名 postgres/redis，而不是 localhost
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-student_lifecycle}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-data:/app/data
+      - backend-uploads:/app/uploads
+    networks:
+      - school-lifecycle
+
+  # ── Nginx：托管 PC / miniapp H5 静态产物 + 反代 /api/ 给 backend ──
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: school-lifecycle-nginx
+    restart: unless-stopped
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # 只读挂载构建产物；先跑 scripts/deploy/build-pc.ps1 / build-miniapp.ps1 生成
+      - ../../frontend/dist:/usr/share/nginx/html/pc:ro
+      - ../../miniapp/dist/build/h5:/usr/share/nginx/html/miniapp:ro
+    ports:
+      - "80:80"
+      - "8080:8080"
+    depends_on:
+      - backend
+    networks:
+      - school-lifecycle
+
+networks:
+  school-lifecycle:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  backend-data:
+  backend-uploads:

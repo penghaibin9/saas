@@ -1,0 +1,71 @@
+# =============================================================================
+# PC 管理端前端 · Nginx 站点示例
+# 用法：复制本文件去掉 .example，放到 /etc/nginx/conf.d/pc-frontend.conf，
+#      按注释改好 server_name / root，然后：sudo nginx -t && sudo systemctl reload nginx
+# 说明见 docs/deploy/07-Nginx部署说明.md
+# 当前阶段：前端用 mock 假数据，后端未接入（API 代理段默认注释）
+# =============================================================================
+
+server {
+    listen       80;
+    # TODO 改成你的域名；没有域名就写服务器公网 IP
+    server_name  admin.example.com;
+
+    # TODO 指向存放 frontend/dist 内容的目录
+    # （用版本目录+软链时指向 /var/www/pc-frontend/current，见 docs/deploy/09）
+    root   /var/www/pc-frontend;
+    index  index.html;
+
+    # ---- 隐藏 Nginx 版本号（安全）----
+    server_tokens off;
+
+    # ---- ① 前端路由兜底：解决刷新子页面 404（history 模式必需）----
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ---- ② index.html 不缓存：保证发版后立即拿到最新入口 ----
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    # ---- ③ 静态资源长缓存：文件名带哈希，可安全缓存一年 ----
+    location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        access_log off;
+    }
+
+    # ---- ④ gzip 压缩 ----
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1k;
+    gzip_vary on;
+    gzip_types text/plain text/css application/json application/javascript
+               application/x-javascript text/xml application/xml image/svg+xml;
+
+    # ---- ⑤ 基础安全响应头 ----
+    add_header X-Frame-Options        "SAMEORIGIN"                        always;
+    add_header X-Content-Type-Options "nosniff"                           always;
+    add_header Referrer-Policy        "strict-origin-when-cross-origin"   always;
+    add_header X-XSS-Protection       "1; mode=block"                     always;
+
+    # ---- ⑥ 【预留】API 反向代理 ----
+    # 当前后端【未接入】，本段保持注释。
+    # 后端接入后：取消注释，把 8000 改成后端真实端口，并按 docs/deploy/05 联调。
+    # location /api/ {
+    #     proxy_pass http://127.0.0.1:8000;
+    #     proxy_http_version 1.1;
+    #     proxy_set_header Host              $host;
+    #     proxy_set_header X-Real-IP         $remote_addr;
+    #     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    #     proxy_set_header X-Forwarded-Proto $scheme;
+    #     proxy_read_timeout 60s;
+    # }
+
+    # ---- 日志（便于排查，见 docs/ops/04）----
+    access_log /var/log/nginx/pc-frontend.access.log;
+    error_log  /var/log/nginx/pc-frontend.error.log;
+}
+
+# 有域名后建议上 HTTPS：sudo certbot --nginx -d admin.example.com（见 docs/deploy/07 第 5 节）
