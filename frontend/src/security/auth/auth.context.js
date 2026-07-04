@@ -2,6 +2,14 @@
  * authContext（mock）— 登录态/会话/强制改密/MFA 的统一前端入口。
  * 当前为纯前端 mock，不接真实认证后端；P11+ 替换 MOCK_AUTH 数据来源，函数签名冻结不变。
  * 与 workflow permissionContext 的分工：auth 管"你是谁/会话是否有效"，permission 管"你能做什么"。
+ *
+ * SECURITY-P0 · token 存储安全（docs/security/05-token与会话安全建议.md）：
+ * 当前为纯内存 mock（刷新即失），未把 token 写入 localStorage/sessionStorage —— 保持该约束。
+ * TODO(P11+ 接真实认证时)：
+ *  1. 生产环境优先使用 HttpOnly + Secure + SameSite=Lax/Strict Cookie 承载会话，前端 JS 不可读；
+ *  2. 若必须前端持有 accessToken，只放内存并缩短有效期（≤30min），配合 refresh token 静默续期；
+ *  3. 禁止将 token / refreshToken 写入 localStorage（XSS 即失守）；
+ *  4. 登出与 401/419 必须清空内存态（clearAuthContext 已提供）。
  */
 import { reactive, readonly } from 'vue'
 import { SESSION_POLICY } from '../constants/security.constants'

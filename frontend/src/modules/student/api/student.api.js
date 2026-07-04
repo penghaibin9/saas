@@ -100,9 +100,20 @@ function studentLabel(s) {
 
 const kw = (text, k) => !k || String(text || '').includes(String(k).trim())
 
+/* P2 · 真实后端桥（失败自动回退本文件 mock 实现，页面不白屏） */
+import { withFallback, shouldTryReal } from '@/services/http/client'
+import * as realApi from '@/services/http/adapters'
+
 export const studentApi = {
-  /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典（模块布局初始化统一获取） */
+  /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典（模块布局初始化统一获取）；后端在线时合入真实品牌/角色/范围 */
   getContext() {
+    return this._mockGetContext().then((res) => {
+      if (!shouldTryReal()) return res
+      return realApi.enrichContext(res).catch(() => res)
+    })
+  },
+
+  _mockGetContext() {
     const p = profile()
     return ok({
       tenantBrandConfig: clone(tenantBrandConfig),
@@ -208,6 +219,10 @@ export const studentApi = {
   /* ================= 学生主档列表 ================= */
 
   getStudents(params = {}) {
+    return withFallback('students.list', () => realApi.getStudents(params), () => this._mockGetStudents(params))
+  },
+
+  _mockGetStudents(params = {}) {
     let list = scopedStudents({ includeVoided: params.includeVoided === true || params.includeVoided === 'true' })
     if (params.keyword) {
       list = list.filter(
@@ -227,6 +242,10 @@ export const studentApi = {
 
   /** 学生360：主档 + 全生命周期关联记录 + 审计 */
   getStudentDetail(studentId) {
+    return withFallback('students.detail', () => realApi.getStudentDetail(studentId), () => this._mockGetStudentDetail(studentId))
+  },
+
+  _mockGetStudentDetail(studentId) {
     const s = findStudent(studentId)
     if (!s || !inScope(s)) return fail('学生不存在或不在当前数据范围内')
     const preset = getDetailPreset(studentId)
@@ -246,6 +265,10 @@ export const studentApi = {
   },
 
   createStudent(payload = {}) {
+    return withFallback('students.create', () => realApi.createStudent(payload), () => this._mockCreateStudent(payload))
+  },
+
+  _mockCreateStudent(payload = {}) {
     const name = String(payload.name || '').trim()
     const studentNo = String(payload.studentNo || '').trim()
     if (!name || !studentNo || !payload.classId) return fail('姓名、学号、班级为必填项')
@@ -285,6 +308,10 @@ export const studentApi = {
   },
 
   updateStudent(studentId, payload = {}) {
+    return withFallback('students.update', () => realApi.updateStudent(studentId, payload), () => this._mockUpdateStudent(studentId, payload))
+  },
+
+  _mockUpdateStudent(studentId, payload = {}) {
     const s = findStudent(studentId)
     if (!s || !inScope(s)) return fail('学生不存在或不在当前数据范围内')
     const editable = ['name', 'gender', 'phone', 'idCard', 'grade', 'counselorName']
@@ -311,6 +338,10 @@ export const studentApi = {
 
   /** 作废主档（逻辑删除，不物理删除，原因必填） */
   voidStudent(studentId, { reason } = {}) {
+    return withFallback('students.void', () => realApi.voidStudent(studentId, reason), () => this._mockVoidStudent(studentId, { reason }))
+  },
+
+  _mockVoidStudent(studentId, { reason } = {}) {
     const s = findStudent(studentId)
     if (!s) return fail('学生不存在')
     if (s.voided) return fail('该学生主档已是作废状态')
@@ -684,6 +715,26 @@ export const studentApi = {
 
   /** 创建导出任务（强制脱敏 + 水印 + 审计确认） */
   createExport({ scope, fieldKeys = [], purpose, remark, rowCount } = {}) {
+    const scopeDef0 = exportOptions.scopes.find((s) => s.value === scope)
+    const purposeDef0 = exportOptions.purposes.find((p) => p.value === purpose)
+    if (scopeDef0 && fieldKeys.length && purposeDef0) {
+      return withFallback(
+        'students.export',
+        () => realApi.createStudentsExport({
+          purpose: purposeDef0.label, remark, rowCount, scopeLabel: scopeDef0.label
+        }).then((res) => {
+          if (res.data && res.data.downloadUrl) {
+            try { window.open(res.data.downloadUrl, '_blank') } catch { /* 下载失败静默 */ }
+          }
+          return res
+        }),
+        () => this._mockCreateExport({ scope, fieldKeys, purpose, remark, rowCount })
+      )
+    }
+    return this._mockCreateExport({ scope, fieldKeys, purpose, remark, rowCount })
+  },
+
+  _mockCreateExport({ scope, fieldKeys = [], purpose, remark, rowCount } = {}) {
     const scopeDef = exportOptions.scopes.find((s) => s.value === scope)
     if (!scopeDef) return fail('请选择导出范围')
     if (!fieldKeys.length) return fail('请至少选择一个导出字段')

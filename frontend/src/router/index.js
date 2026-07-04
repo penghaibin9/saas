@@ -58,6 +58,13 @@ const router = createRouter({
       redirect: '/'
     },
     {
+      /* 登录页（账号密码走 /api/v1/auth/login；「进入演示环境」回工作台，不影响既有演示流程） */
+      path: '/login',
+      name: 'login',
+      component: () => import('../views/LoginView.vue'),
+      meta: { public: true, title: '登录' }
+    },
+    {
       path: '/dev/preview',
       name: 'ui-preview',
       component: () => import('../views/UiPreview.vue'),

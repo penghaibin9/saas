@@ -5,6 +5,9 @@
  * 页面禁止直接 import mocks，必须经本文件获取数据。
  * 留痕规则：所有写操作（含导入导出）均追加 operationLogList / auditLogs，不提供删除审计日志的方法。
  */
+/* P2 · 真实后端桥 */
+import { withFallback } from '@/services/http/client'
+import * as realApi from '@/services/http/adapters'
 import {
   tenantBrandConfig,
   currentRole,
@@ -546,7 +549,7 @@ export const systemApi = {
   },
 
   getAuditLogs() {
-    return ok(clone(auditLogs))
+    return withFallback('audit.logs', () => realApi.getAuditLogs(), () => ok(clone(auditLogs)))
   },
 
   exportLogs({ tab, scope, fields }) {

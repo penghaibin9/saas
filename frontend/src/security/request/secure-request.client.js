@@ -12,6 +12,14 @@ import { getAuthContext, refreshLastActive, clearAuthContext } from '../auth/aut
 
 let seq = 0
 
+/* SECURITY-P0：页面级 traceId（一次加载一条链路；requestId 为单请求粒度） */
+const pageTraceId = `tr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+/** 获取本页链路 traceId（X-Trace-Id） */
+export function getTraceId() {
+  return pageTraceId
+}
+
 /** 生成链路追踪 requestId */
 export function createRequestId() {
   seq = (seq + 1) % 10000
@@ -49,9 +57,14 @@ export async function secureRequest(url, options = {}) {
 
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
   headers[REQUEST_ID_HEADER] = requestId
+  headers['X-Trace-Id'] = pageTraceId
   // Authorization 预留：真实认证后端接入后由会话服务提供 token
   const auth = getAuthContext()
   if (auth.userId) headers.Authorization = `Bearer mock-${auth.userId}`
+  // SECURITY-P0 预留：多租户 / 角色 / 数据范围头（后端以服务端会话为准，请求头仅作路由与审计辅助，不作为授权依据）
+  if (auth.tenantId) headers['X-Tenant-Id'] = auth.tenantId
+  if (options.currentRole) headers['X-Current-Role'] = String(options.currentRole)
+  if (options.dataScope) headers['X-Data-Scope'] = String(options.dataScope)
   attachCsrfHeader(headers, method)
 
   const qs = options.params

@@ -203,9 +203,20 @@ function bizTypeLabelOf(bizType) {
   return hit ? hit.label : bizType
 }
 
+/* P2 · 真实后端桥（失败自动回退本文件 mock 实现） */
+import { withFallback, shouldTryReal } from '@/services/http/client'
+import * as realApi from '@/services/http/adapters'
+
 export const approvalApi = {
   /** 品牌 / 当前角色 / 数据范围 / 权限动作 / 字典 / 可切换角色（页面初始化统一获取） */
   getContext() {
+    return this._mockGetContext().then((res) => {
+      if (!shouldTryReal()) return res
+      return realApi.enrichContext(res).catch(() => res)
+    })
+  },
+
+  _mockGetContext() {
     const p = profile()
     return ok({
       tenantBrandConfig: clone(tenantBrandConfig),
@@ -241,6 +252,10 @@ export const approvalApi = {
 
   /** 待办统计（按当前角色数据范围实时重算，业务类型 / 紧急度 / 超时联动写操作） */
   getTodoSummary() {
+    return withFallback('approvals.summary', () => realApi.getTodoSummary(), () => this._mockGetTodoSummary())
+  },
+
+  _mockGetTodoSummary() {
     const p = profile()
     const list = scopedTodos()
     const byBizType = p.todoBizTypes.map((bizType) => {
@@ -279,6 +294,10 @@ export const approvalApi = {
 
   /** 我的待办（按角色数据范围过滤业务类型，支持筛选 + 分页，超时/临期置顶） */
   getTodos(params = {}) {
+    return withFallback('approvals.todos', () => realApi.getApprovalTodos(params), () => this._mockGetTodos(params))
+  },
+
+  _mockGetTodos(params = {}) {
     let list = [...scopedTodos()]
     if (params.bizType) list = list.filter((t) => t.bizType === params.bizType)
     if (params.urgency) list = list.filter((t) => t.urgency === params.urgency)
@@ -305,6 +324,13 @@ export const approvalApi = {
 
   /** 审批详情（业务字段 + 时间线 + 加签建议；taskId 不存在返回失败供页面 ErrorState） */
   getApprovalDetail(taskId) {
+    if (/^\d+$/.test(String(taskId))) {
+      return withFallback('approvals.detail', () => realApi.getApprovalDetail(taskId), () => this._mockGetApprovalDetail(taskId))
+    }
+    return this._mockGetApprovalDetail(taskId)
+  },
+
+  _mockGetApprovalDetail(taskId) {
     const task = approvalList.find((t) => t.taskId === taskId)
     if (!task) return fail('审批任务不存在或已被撤销，请返回列表刷新后重试')
     const detail = approvalDetailMap[taskId] || {
@@ -324,6 +350,13 @@ export const approvalApi = {
 
   /** 通过（意见选填；更新状态 + 时间线 + 已办 + 审计，待办统计随之联动） */
   approveTask(taskId, { comment } = {}) {
+    if (/^\d+$/.test(String(taskId))) {
+      return withFallback('approvals.approve', () => realApi.approveTask(taskId, comment), () => this._mockApproveTask(taskId, { comment }))
+    }
+    return this._mockApproveTask(taskId, { comment })
+  },
+
+  _mockApproveTask(taskId, { comment } = {}) {
     const { task, error } = findPendingTask(taskId)
     if (error) return fail(error)
     doApprove(task, comment)
@@ -337,6 +370,14 @@ export const approvalApi = {
 
   /** 退回（原因必填 ≥5 字；写入退回记录并留痕，结果同步申请人） */
   returnTask(taskId, { reason } = {}) {
+    if (!reason || reason.trim().length < 5) return fail('退回原因必填且不少于 5 个字')
+    if (/^\d+$/.test(String(taskId))) {
+      return withFallback('approvals.return', () => realApi.returnTask(taskId, reason), () => this._mockReturnTask(taskId, { reason }))
+    }
+    return this._mockReturnTask(taskId, { reason })
+  },
+
+  _mockReturnTask(taskId, { reason } = {}) {
     if (!reason || reason.trim().length < 5) return fail('退回原因必填且不少于 5 个字')
     const { task, error } = findPendingTask(taskId)
     if (error) return fail(error)

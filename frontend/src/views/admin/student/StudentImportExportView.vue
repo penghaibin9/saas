@@ -40,8 +40,15 @@
                   <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
                 </select>
                 <AppButton variant="secondary" :disabled="!canImport" @click="pickFile">
-                  {{ importForm.fileName || '选择数据文件' }}
+                  {{ importForm.fileName || '选择数据文件（xlsx / csv）' }}
                 </AppButton>
+                <input
+                  ref="fileInput"
+                  type="file"
+                  accept=".xlsx,.csv"
+                  style="display: none"
+                  @change="onFilePicked"
+                />
               </div>
             </div>
 
@@ -51,14 +58,14 @@
                 <AppButton variant="primary" :disabled="!canImport || validating" @click="validate">
                   {{ validating ? '校验中…' : '开始校验' }}
                 </AppButton>
-                <label v-if="validateResult" class="ie-check">
+                <label v-if="validateResult && !realImport" class="ie-check">
                   <input v-model="importForm.skipErrors" type="checkbox" />
                   跳过错误行继续导入
                 </label>
                 <AppButton
                   v-if="validateResult"
                   variant="primary"
-                  :disabled="!canImport || importing || (validateResult.errorRows > 0 && !importForm.skipErrors)"
+                  :disabled="!canImport || importing || (validateResult.errorRows > 0 && (realImport || !importForm.skipErrors))"
                   @click="confirmImport"
                 >
                   {{ importing ? '导入中…' : '确认导入' }}
@@ -74,12 +81,13 @@
                 </div>
                 <table v-if="validateResult.errors.length" class="mp-audit">
                   <thead>
-                    <tr><th>行号</th><th>字段</th><th>错误说明</th></tr>
+                    <tr><th>行号</th><th>字段</th><th>原始值</th><th>错误说明</th></tr>
                   </thead>
                   <tbody>
                     <tr v-for="e in validateResult.errors" :key="e.row">
                       <td class="is-who">第 {{ e.row }} 行</td>
                       <td>{{ e.field }}</td>
+                      <td>{{ e.rawValue || '—' }}</td>
                       <td>{{ e.message }}</td>
                     </tr>
                   </tbody>
@@ -236,6 +244,8 @@ import { ModulePageShell, StatusTag as AppStatusTag, EmptyState } from '@/compon
 import { AppGlobalState, AppConfirmDialog } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { studentApi } from '@/modules/student/api/student.api'
+import { shouldTryReal } from '@/services/http/client'
+import { confirmStudentImport, validateStudentImportFile } from '@/services/http/adapters'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -249,6 +259,9 @@ export default {
       audits: [],
       exportOpts: { scopes: [], fieldGroups: [], purposes: [] },
       importForm: { templateId: '', fileName: '', skipErrors: false },
+      pickedFile: null,
+      realBatchNo: '',
+      realImport: false,
       validating: false,
       importing: false,
       validateResult: null,
@@ -311,15 +324,42 @@ export default {
       toast.success('模板「' + t.fileName + '」已开始下载（演示环境不产生真实文件）')
     },
     pickFile() {
-      // 演示环境：模拟文件选择（真实实现走 upload.guard 上传通道）
+      // 真实文件选择（后端在线走 /import/students/validate-file；离线回退 mock 演示）
+      if (this.$refs.fileInput) {
+        this.$refs.fileInput.value = ''
+        this.$refs.fileInput.click()
+        return
+      }
       this.importForm.fileName = 'student-import-' + Date.now() + '.xlsx'
       this.validateResult = null
+      this.importError = ''
+    },
+    onFilePicked(e) {
+      const file = e.target.files && e.target.files[0]
+      if (!file) return
+      this.pickedFile = file
+      this.importForm.fileName = file.name
+      this.validateResult = null
+      this.realBatchNo = ''
+      this.realImport = false
       this.importError = ''
     },
     async validate() {
       this.importError = ''
       this.validating = true
-      const res = await studentApi.validateImport(this.importForm)
+      let res
+      if (this.pickedFile && shouldTryReal()) {
+        // 真实 Dry-Run：上传 xlsx/csv → 后端解析校验（失败自动回退 mock 演示流）
+        res = await validateStudentImportFile(this.pickedFile).catch(() => null)
+        if (res && res.code === 0) {
+          this.realImport = true
+          this.realBatchNo = res.data.batchNo
+        }
+      }
+      if (!res) {
+        this.realImport = false
+        res = await studentApi.validateImport(this.importForm)
+      }
       this.validating = false
       if (res.code === 0) {
         this.validateResult = res.data
@@ -331,16 +371,29 @@ export default {
     async confirmImport() {
       this.importError = ''
       this.importing = true
-      const res = await studentApi.confirmImport(this.importForm)
+      let res
+      if (this.realImport && this.realBatchNo) {
+        res = await confirmStudentImport(this.realBatchNo).catch((e) => ({ code: -1, message: e.message }))
+      } else {
+        res = await studentApi.confirmImport(this.importForm)
+      }
       this.importing = false
       if (res.code === 0) {
         toast.success(
-          '导入完成：成功 ' + res.data.successRows + ' 条，失败 ' + res.data.failedRows + ' 条，审计编号 ' + res.data.auditId
+          '导入完成：成功 ' + res.data.successRows + ' 条，失败 ' + res.data.failedRows + ' 条，批次 ' + res.data.auditId
         )
+        const wasReal = this.realImport
         this.validateResult = null
+        this.pickedFile = null
+        this.realBatchNo = ''
+        this.realImport = false
         this.importForm = { templateId: '', fileName: '', skipErrors: false }
         this.refreshTasks()
         this.refreshAudits()
+        if (wasReal) {
+          // 真实导入成功：跳转学生主档列表（列表挂载即从后端拉取最新数据）
+          this.$router.push('/admin/student/list')
+        }
       } else {
         this.importError = res.message
       }
