@@ -34,6 +34,11 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             "path": request.url.path,
         })  # P4：审计落库补全 ip/ua/method/path
 
+        deny = _expired_tenant_readonly_deny(request)  # P6：到期租户只读（写操作 403）
+        if deny is not None:
+            deny.headers["X-Trace-Id"] = trace_id
+            return deny
+
         start = time.perf_counter()
         response = await call_next(request)
         cost_ms = round((time.perf_counter() - start) * 1000, 1)
@@ -64,3 +69,45 @@ def _bind_token_tenant(request: Request) -> None:
                         "status": "ACTIVE"})
     except Exception:  # noqa: BLE001 — 非法令牌交由 get_current_user 统一处理
         return
+
+
+# ── P6：到期租户只读控制 ──
+_READONLY_EXEMPT_PREFIXES = (
+    "/api/v1/auth", "/api/v1/platform", "/health", "/docs", "/openapi", "/redoc",
+)
+
+
+def _expired_tenant_readonly_deny(request: Request):
+    """租户到期（trial/active 已过 expireAt 或被标记 expired）后：
+    可登录、可查看（GET），所有写操作（POST/PUT/PATCH/DELETE）返回 403 MODULE_EXPIRED_READONLY。
+    平台超管不受限；配置缺失/异常一律放行，绝不阻断正常业务。"""
+    try:
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
+        path = request.url.path
+        if not path.startswith("/api/") or path.startswith(_READONLY_EXEMPT_PREFIXES):
+            return None
+        from app.core.context import get_current_user_ctx, get_tenant
+        user = get_current_user_ctx() or {}
+        if user.get("userType") == "PLATFORM_SUPER_ADMIN":
+            return None
+        tenant = get_tenant() or {}
+        tid = tenant.get("tenantId")
+        if not tid:
+            return None
+        from app.db.session import db_enabled
+        if not db_enabled():
+            return None
+        from app.services.platform_service import tenant_status
+        if tenant_status(int(tid)) != "expired":
+            return None
+        from starlette.responses import JSONResponse
+        from app.core.response import fail
+        from app.services import audit_log
+        audit_log.record("WRITE_DENIED_EXPIRED", path,
+                         detail={"method": request.method, "tenantId": str(tid)}, result="DENIED")
+        return JSONResponse(status_code=403, content=fail(
+            "MODULE_EXPIRED_READONLY",
+            "服务已到期，当前为只读模式：可查看数据，无法新增或修改。续费请联系平台方 13549666867"))
+    except Exception:  # noqa: BLE001 — 只读控制自身故障不阻断业务
+        return None

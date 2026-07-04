@@ -8,3 +8,4 @@ from app.models.approval import UnifiedTodo, WorkflowInstance, WorkflowTask  # n
 from app.models.message import UnifiedMessage  # noqa: F401
 from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401
 from app.models.file import FileObject  # noqa: F401
+from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401

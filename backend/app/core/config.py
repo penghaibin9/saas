@@ -36,11 +36,23 @@ class Settings(BaseSettings):
     # ── 平台运营控制面（跨租户，独立令牌，与学校角色边界隔离）──
     PLATFORM_ADMIN_TOKEN: str = ""       # 未配置则平台端接口默认关闭
 
-    # ── 数据库（预留，默认不连）──
-    DB_ENABLED: bool = False             # 默认关闭：本阶段只做可运行骨架，不连真实库
-    DATABASE_URL: str = ""               # 形如 postgresql+psycopg://user:pwd@host:5432/db（PostgreSQL，见冻结文档）
+    # ── 数据库 ──
+    DB_ENABLED: bool = False             # 关闭时走 mock；开启后按 effective_database_url 连库
+    DATABASE_URL: str = ""               # 显式连接串（最高优先级）：sqlite/mysql/postgresql 均可；留空则按 DB_DRIVER 组装
     REDIS_URL: str = ""                  # 预留（缓存）
     FILE_STORAGE_ENDPOINT: str = ""      # 预留（MinIO/对象存储）
+
+    # ── 数据库分项配置（DATABASE_URL 留空时按此组装；部署演示用 MySQL）──
+    DB_DRIVER: str = "sqlite"            # sqlite（本地 dev，默认，保留不删）/ mysql（部署演示）/ postgresql
+    DB_HOST: str = "127.0.0.1"
+    DB_PORT: int = 3306
+    DB_NAME: str = "saas_lifecycle"
+    DB_USER: str = "saas_user"
+    DB_PASSWORD: str = ""               # 禁止写进仓库 / AI执行状态；仅经 .env / 环境变量注入
+    DB_SQLITE_PATH: str = "./data/dev.db"  # DB_DRIVER=sqlite 时的库文件（保留 SQLite dev 模式）
+    DB_POOL_SIZE: int = 10              # MySQL / PG 连接池大小
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_RECYCLE: int = 3600         # 秒；规避 MySQL wait_timeout 断连
 
     # ── CORS（逗号分隔白名单；留空开发放开）──
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5188"
@@ -73,6 +85,42 @@ class Settings(BaseSettings):
         if not self.CORS_ORIGINS.strip():
             return ["*"]
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def effective_database_url(self) -> str:
+        """实际连接串。优先级：显式 DATABASE_URL > 按 DB_DRIVER 组装。
+        - mysql   → mysql+pymysql://user:pwd@host:port/db?charset=utf8mb4
+        - sqlite  → sqlite+pysqlite:///<DB_SQLITE_PATH>（保留本地 dev 模式）
+        - postgresql → postgresql+psycopg://user:pwd@host:port/db
+        密码经 URL 编码，不落仓库。"""
+        if self.DATABASE_URL.strip():
+            return self.DATABASE_URL.strip()
+        drv = (self.DB_DRIVER or "sqlite").strip().lower()
+        if drv in ("mysql", "mariadb"):
+            from urllib.parse import quote_plus
+            pwd = quote_plus(self.DB_PASSWORD or "")
+            user = quote_plus(self.DB_USER or "root")
+            return (f"mysql+pymysql://{user}:{pwd}@{self.DB_HOST}:{self.DB_PORT}"
+                    f"/{self.DB_NAME}?charset=utf8mb4")
+        if drv in ("postgresql", "postgres", "pg"):
+            from urllib.parse import quote_plus
+            pwd = quote_plus(self.DB_PASSWORD or "")
+            user = quote_plus(self.DB_USER or "postgres")
+            return (f"postgresql+psycopg://{user}:{pwd}@{self.DB_HOST}:{self.DB_PORT}"
+                    f"/{self.DB_NAME}")
+        # sqlite（默认）
+        return f"sqlite+pysqlite:///{self.DB_SQLITE_PATH}"
+
+    @property
+    def db_dialect(self) -> str:
+        """由 effective_database_url 推断方言：mysql / sqlite / postgresql。"""
+        url = self.effective_database_url
+        head = url.split(":", 1)[0].lower() if url else ""
+        if head.startswith("mysql") or head.startswith("mariadb"):
+            return "mysql"
+        if head.startswith("postgresql") or head.startswith("postgres"):
+            return "postgresql"
+        return "sqlite"
 
 
 @lru_cache

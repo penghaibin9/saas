@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import approval, audit, auth, authz, dashboard, files, rbac, student, system, tenant, transfer
+from app.api.v1 import approval, audit, auth, authz, dashboard, files, platform, rbac, student, system, tenant, transfer
 from app.api.v1 import file as file_simple
 from app.api.v1 import import_export
 from app.api.v1 import message as message_simple
@@ -42,6 +42,9 @@ api_router.include_router(transfer.router)                                   # /
 # 审计
 api_router.include_router(audit.router)                                       # /api/v1/admin/audit-logs（PC 管理端）
 api_router.include_router(audit.alias_router)                                 # /api/v1/audit/*（任务规定路径）
+
+# P6 平台总控（仅 PLATFORM_SUPER_ADMIN，后端强校验 + 拒绝审计）
+api_router.include_router(platform.router)                                    # /api/v1/platform/*
 
 # 系统
 api_router.include_router(system.router, tags=["system"])                     # /api/v1/system/info

@@ -39,6 +39,8 @@ def validate_ext(filename: str) -> str:
 async def store_upload(file, biz_type: str = "ATTACHMENT") -> dict:
     """校验 + 落盘 + 登记。返回契约字段（fileId/fileName/size/sha256/ext/bizType/storedAt）。"""
     filename = file.filename or "unnamed"
+    _ensure_upload_allowed()
+    max_size = _upload_max_size()
     ext = validate_ext(filename)
     sha = hashlib.sha256()
     size = 0
@@ -48,10 +50,11 @@ async def store_upload(file, biz_type: str = "ATTACHMENT") -> dict:
     with target.open("wb") as out:
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
-            if size > MAX_SIZE:
+            if size > max_size:
                 out.close()
                 target.unlink(missing_ok=True)
-                raise AppException("FILE_TOO_LARGE", "文件超过 50MB 上限")
+                raise AppException("FILE_TOO_LARGE",
+                                   f"文件超过 {max_size // (1024 * 1024)}MB 上限（平台规则中心配置）")
             sha.update(chunk)
             out.write(chunk)
     digest = sha.hexdigest()
@@ -91,3 +94,27 @@ def get_file_meta(file_id: str) -> dict | None:
         finally:
             db.close()
     return _MEM_REGISTRY.get(file_id)
+
+
+# ── P6 规则中心 / 功能开关接入 ──
+
+def _upload_max_size() -> int:
+    """上传大小上限：默认 MAX_SIZE（50MB），可被平台规则 file.uploadMaxSizeMb 覆盖。"""
+    try:
+        from app.core.context import current_tenant_id
+        from app.services.platform_service import safe_rule
+        mb = safe_rule(int(current_tenant_id() or 0), "file", "uploadMaxSizeMb")
+        return int(mb) * 1024 * 1024 if mb else MAX_SIZE
+    except Exception:
+        return MAX_SIZE
+
+
+def _ensure_upload_allowed() -> None:
+    try:
+        from app.core.context import current_tenant_id
+        from app.services.platform_service import feature_enabled
+        allowed = feature_enabled(int(current_tenant_id() or 0), "fileUpload")
+    except Exception:
+        allowed = True
+    if not allowed:
+        raise AppException("MODULE_NOT_AUTHORIZED", "当前学校套餐未开通「文件上传」功能，请联系平台方 13549666867")

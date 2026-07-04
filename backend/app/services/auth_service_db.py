@@ -48,8 +48,19 @@ def login_with_password(login_name: str, password: str) -> dict:
                 raise AppException("UNAUTHORIZED", "失败次数过多，账号已锁定 15 分钟")
             raise AppException("UNAUTHORIZED", "账号或密码不正确")
         reset_login_failures(f"pw:{login_name}")
+        # P6：租户运营状态校验——停用租户全员禁止登录（平台超管除外）
+        if user.user_type != "PLATFORM_SUPER_ADMIN":
+            from app.services import platform_service
+            if platform_service.tenant_status(user.tenant_id) == "disabled":
+                from app.services import audit_log
+                audit_log.record("LOGIN_TENANT_DISABLED", login_name,
+                                 detail={"tenantId": str(user.tenant_id)}, result="DENIED")
+                raise AppException("NO_PERMISSION", "该学校服务已停用，无法登录，请联系平台方 13549666867")
         role_code, role_name, scope, scope_label = ROLE_BY_LOGIN.get(
             user.login_name, ("SCHOOL_ADMIN", "管理员", "SCHOOL", "全校"))
+        if user.user_type == "PLATFORM_SUPER_ADMIN":
+            role_code, role_name, scope, scope_label = (
+                "PLATFORM_SUPER_ADMIN", "平台超级管理员", "PLATFORM", "全平台（跨租户）")
         tenant_id = str(user.tenant_id)
         is_demo = user.tenant_id == DEMO_TENANT_ID
         token = create_access_token({

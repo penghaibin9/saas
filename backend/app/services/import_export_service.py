@@ -82,6 +82,11 @@ def parse_upload_rows(content: bytes, ext: str) -> list[dict]:
 
 
 def dry_run(rows: list[dict]) -> dict:
+    _ensure_feature("studentImport", "学生导入")
+    max_rows = int(_rule("import", "importMaxRows") or 5000)
+    if len(rows) > max_rows:
+        raise AppException("VALIDATION_ERROR",
+                           f"单次导入不能超过 {max_rows} 行（平台规则中心配置），当前 {len(rows)} 行")
     ok_rows, errors = _validate_rows(rows)
     batch_no = f"IMP{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}"
     status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
@@ -150,8 +155,11 @@ def _mask_phone(v: str | None) -> str:
 
 def create_students_export(purpose: str) -> dict:
     """真实导出 xlsx（敏感字段脱敏 + 首行水印），写 t_export_task。"""
-    if not purpose or len(purpose.strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "导出用途必填且不少于 5 个字（写入审计）")
+    _ensure_feature("studentExport", "学生导出")
+    need = _rule("export", "exportNeedPurpose")
+    min_len = int(_rule("export", "exportPurposeMinLength") or 0)
+    if need and (not purpose or len(purpose.strip()) < min_len):
+        raise AppException("VALIDATION_ERROR", f"导出用途必填且不少于 {min_len} 字（平台规则中心配置）")
     user = get_current_user_ctx() or {}
     from openpyxl import Workbook
     from app.services import db_service
@@ -205,3 +213,17 @@ def export_file_path(task_id: str) -> Path:
         finally:
             db.close()
     raise not_found("导出任务不存在或文件已清理")
+
+
+# ── P6 规则中心 / 功能开关接入 ──
+
+def _rule(group: str, key: str):
+    from app.services.platform_service import safe_rule
+    return safe_rule(_tid(), group, key)
+
+
+def _ensure_feature(key: str, label: str) -> None:
+    from app.services.platform_service import feature_enabled
+    if not feature_enabled(_tid(), key):
+        raise AppException("MODULE_NOT_AUTHORIZED",
+                           f"当前学校套餐未开通「{label}」功能，请联系平台方 13549666867")

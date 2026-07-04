@@ -11,7 +11,7 @@ class ApprovalActionRequest(BaseModel):
 
 
 class ApprovalRejectRequest(BaseModel):
-    reason: str = Field(..., min_length=5, description="驳回原因（必填 ≥5 字，冻结册 §1.4）")
+    reason: str = Field(..., min_length=1, description="驳回原因（必填；最小长度由平台规则中心 approval.rejectReasonMinLength 决定，默认 5）")
 
 
 class ApprovalTransferRequest(BaseModel):

@@ -82,6 +82,7 @@ def approve(task_id: str, comment: str | None) -> dict:
 
 
 def reject(task_id: str, reason: str) -> dict:
+    _check_reject_reason(reason)
     if db_enabled():
         from app.services import db_service
         return db_service.act_task(task_id, "REJECTED", reason)
@@ -104,3 +105,20 @@ def list_processed(page: int, page_size: int) -> tuple[list[dict], int]:
 
 def list_cc(page: int, page_size: int) -> tuple[list[dict], int]:
     return page_slice(_CC, page, page_size), len(_CC)
+
+
+def _check_reject_reason(reason: str) -> None:
+    """P6 规则中心：驳回原因是否必填/最小长度 由 approval.* 规则实时决定。"""
+    from app.core.context import current_tenant_id
+    from app.services.platform_service import safe_rule
+    try:
+        tid = int(current_tenant_id() or 0)
+    except (TypeError, ValueError):
+        tid = 0
+    required = safe_rule(tid, "approval", "rejectReasonRequired")
+    min_len = safe_rule(tid, "approval", "rejectReasonMinLength") or 0
+    text = (reason or "").strip()
+    if required and len(text) < int(min_len):
+        from app.core.exceptions import AppException
+        raise AppException("REJECT_REASON_REQUIRED",
+                           f"驳回原因不能少于 {min_len} 字（平台规则中心配置）")

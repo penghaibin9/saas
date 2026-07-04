@@ -97,7 +97,7 @@ class ImportConfirmRequest(BaseModel):
 
 
 class ExportStudentsRequest(BaseModel):
-    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，写审计）")
+    purpose: str = Field(..., min_length=1, description="导出用途（必填；最小长度由平台规则 export.exportPurposeMinLength 决定，默认 5）")
 
 
 @import_router.post("/students/validate", summary="学生导入 · Dry-Run 校验（JSON 行）")
