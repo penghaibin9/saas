@@ -2,7 +2,24 @@
 
 > 回来先看这里，不用记流程、不用翻历史。
 
-## 最新更新（2026-07-04）：后端 P0 收口 · 统一为 FastAPI 基线（BACKEND-P0-FASTAPI-BASELINE-CLEANUP）
+## 最新更新（2026-07-04）：MySQL 可部署演示（FAST-TRACK-MYSQL-ONLINE-SELLABLE-RUN）
+
+只改 backend/ + frontend/src + miniapp + deploy/ + scripts/ + 本文件；未动 mock 数据、未动数据库冻结册、未 add/commit/push。密码只走 .env（本记录不含任何密码）。
+
+1. MySQL 支持是否完成：是。config 新增 DB_DRIVER/DB_HOST/PORT/NAME/USER/PASSWORD + effective_database_url 组装（mysql+pymysql，charset=utf8mb4）；session 按方言配连接池；requirements 加 PyMySQL；保留 SQLite dev 不删。
+2. MySQL 脚本是否完成：是。backend/scripts 新增 check_mysql_connection.py / init_mysql_db.py / reset_mysql_db.py（CONFIRM_RESET_MYSQL=YES 二次确认 + 生产词保护）/ seed_mysql_demo_data.py；种子逻辑抽到 _seed_core.py 单一来源（SQLite/MySQL 共用）。
+3. MySQL 是否真实连接成功：本机沙箱无 root/无 MySQL 服务、PyPI 被墙，无法真连；改为离线证明——21 张表全部渲染为合法 MySQL DDL（BIGINT AUTO_INCREMENT / JSON / VARCHAR 带长度 / 索引≤128 utf8mb4 安全）。真连需用户在装了 MySQL 的机器上跑（见第 9 条）。
+4. MySQL 种子是否成功：逻辑已验证——真实引擎 create_all 建 21 表通过；18 类 ORM 构造 + commit 通过；demo-school=5、主租户=100、admin/teacher/counselor/student_demo（演示账号已配置，密码只存 pbkdf2 hash，未公开展示）；新增 文件/导入批次/导出任务 测试数据。
+5. 后端能否以 MySQL 模式启动：代码就绪（DB_ENABLED=true + DB_DRIVER=mysql 即走 MySQL）；沙箱缺 fastapi/pydantic 无法起 uvicorn，需在用户机验证。
+6. PC build 是否通过：lint 通过；build 在本沙箱无法跑（node_modules 为 Windows 版，缺 Linux rollup/esbuild 原生二进制且 registry 被墙）——属环境限制非代码问题，请在 Windows 上 npm run build。
+7. miniapp build 是否通过：同上，需在 Windows 上 npm run build:h5 / build:mp-weixin（env.js 已改为可配置 VITE_API_BASE_URL）。
+8. 部署配置是否改成 MySQL 版：是。deploy/docker/docker-compose.mysql.yml（内置 mysql:8 utf8mb4，支持外部 MySQL）、deploy/nginx/nginx.mysql.conf（/ PC、/miniapp/ H5、/api/ 反代、安全头+gzip+history 兜底、uploads/exports 挂盘）、deploy/env/backend.mysql.env.example、scripts/deploy/mysql-init.ps1、scripts/deploy/deploy-server-check.ps1。前端 API 地址已可配置（同源生产默认走 /api/v1 经 nginx）。
+9. 还缺什么服务器信息：① MySQL 密码（填 backend/.env 的 DB_PASSWORD，勿提交）；② 服务器公网 IP/域名（填前端 VITE_API_BASE_URL 或用同源 + nginx，填 CORS_ORIGINS）；③ 在用户机执行：check_mysql_connection→init_mysql_db→seed_mysql_demo_data，再 uvicorn 起后端、npm 构建两端。
+10. git：未 add、未 commit、未 push。
+
+---
+
+## 上一轮更新（2026-07-04）：后端 P0 收口 · 统一为 FastAPI 基线（BACKEND-P0-FASTAPI-BASELINE-CLEANUP）
 
 本轮只做 **backend/ 收口**，不碰 frontend/src、miniapp、docs/ui、数据库冻结文档、package.json（前端）、lock 文件。只修改了 `backend/` 与本文件。
 
@@ -28,7 +45,7 @@
 
 ## 2026-07-04：接口契约 / 权限 / 测试 / 演示 / 后端接入 / 销售 / 风险 七类交付文档（PROJECT-CONTRACT-QA-DEMO-DOCS）
 
-本轮只补**交付类文档**，不碰任何业务代码、不碰数据库冻结册。只动了 `docs/api/`（仅新增，未改旧�
+本轮只补**交付类文档**，不碰任何业务代码、不碰数据库冻结册。只动了 `docs/api/`（仅新增，未改旧�
 ## 2026-07-04 · BACKEND-OVERNIGHT-FULL-FOUNDATION-AND-FIRST-REAL-API
 
 ### 阶段 0 · 现状扫描（只读）
@@ -168,3 +185,15 @@
 - 部署：10 个部署文件齐全；nginx.conf 含 PC/miniapp 双站点 root、/api/ 代理、try_files history fallback、gzip、X-Frame-Options/X-Content-Type-Options。
 - 本轮修复仅 2 处小项：backend/.dockerignore（新增）；无其他代码改动。页面级人工点验（/login、学生列表、导入导出、审批、审计、断网 fallback）此前各阶段均已实测通过，本轮以接口矩阵+产物校验复核，未重复占用用户屏幕。
 - 建议提交分组见终检输出；未 add/commit/push。
+
+
+### P6-PLATFORM-OWNER-CONFIG-AND-RULE-CENTER（平台老板总控台）
+- 后端配置中枢：新增 t_platform_config（KV：tenant_id=0 全局默认，租户行覆盖；PACKAGE/FEATURES/RULES/WORKFLOWS/DICT/BRAND/SECURITY/SETTINGS/TENANT_META 九类）+ t_order + t_platform_notice 三张表；三级合并生效（平台默认 ← 套餐 ← 租户覆盖）。
+- 强校验：/api/v1/platform/*（约 45 个端点）全部经 require_platform_super_admin 后端依赖校验；SCHOOL_ADMIN/TEACHER/STUDENT 一律 403 NO_PERMISSION 且写审计 PERMISSION_DENIED；未登录 401。
+- 租户全托管：列表/详情/新建（tenantCode 唯一 409）/启停/延试用/试用转正式/标记到期/变更套餐/容量覆盖/用量/重置演示数据（仅 demo-school，恢复 5 人基线）。停用租户全员登录被拒（403+审计）；到期租户可登录可查看、所有写操作 403 MODULE_EXPIRED_READONLY（中间件级，续费提示含 13549666867）。
+- 规则中心真生效（不是摆设）：审批驳回原因最小字数、导出用途必填+最小字数、单次导入最大行数、上传大小上限均实时读取规则中心（改完立即按新值校验，已有用例证明）；5 档套餐（trial/basic/standard/professional/private）价格/时长/容量/功能可改；19 个功能开关关闭后业务接口 403 MODULE_NOT_AUTHORIZED；8 类审批流开关/时限可配；12 类字典可改；品牌（顶栏名/水印/主色/咨询电话）可配；安全参数带合法边界（越界拒绝保存，不允许不设防）；订单标记支付自动开通/续期；公告草稿→发布→下线；跨租户审计查询（tenantId/action/operator/日期过滤）。
+- 账号控制：为任意学校创建管理员/停用/启用/重置密码；初始密码与新密码仅响应一次性返回，不落任何日志与文档。
+- 种子扩展（幂等，基线不动）：平台运营中心租户 + 平台超管账号（platform_owner，密码只存 pbkdf2 哈希，未公开展示）+ trial-school（试用中）/expired-school（已到期只读）/disabled-school（已停用禁登录）三个演示租户（各 1 管理员 + 2 学生，密码同样只存哈希）+ 2 订单 + 2 公告；主/演示租户补 TENANT_META（professional/standard，远期到期）。重灌链路（_seed_core.run）已挂接平台种子；也可对既有库单独执行 scripts/seed_platform_data.py。
+- PC 平台总控：新增 10 个真实接口页面（views/admin/platform/control/：总控台总览/租户管控[开通抽屉+行操作]/租户配置中心[运营容量/功能开关/规则/审批流/品牌/账号 六页签]/套餐/字典/订单/公告/安全/全平台审计/系统参数），platformControl.api.js 真实优先+演示兜底不白屏；platform.routes.js 新增 overview、tenants/create、features、rules、workflows、brands、users、dictionaries、notices、security、audit、settings 路由并将 tenants/:tenantId、packages、orders 指向真实页；AdminPlatformLayout 侧栏与 adminMenu 平台组同步扩充（platformOnly）。
+- 回归与验收：pytest **57 passed**（新增 16 个平台用例：403 强校验/租户生命周期/停用禁登/到期只读/开关 403/规则动态生效/安全边界/订单开通/公告/一次性密码/拒绝审计落库）；live smoke 全过（总览 6 租户 111 学生、demo 管理员平台接口 403 且学生仍=5、disabled 登录 403、expired 写 403 读 200）；PC lint 0 错误 + build ✅（516 modules）；基线终态 demo-school=5 / 主租户=100。
+- 未 git add、未 commit、未 push；未触碰 miniapp/、deploy/、.env、dev.db 基线数据。
