@@ -1,0 +1,119 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^Mobile(.*)": "@/components/Mobile$1.vue",
+      "^App(.*)": "@/components/App$1.vue"
+    }
+  },
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": { "navigationBarTitleText": "登录", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/role-switch/index",
+      "style": { "navigationBarTitleText": "选择身份", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/home/index",
+      "style": { "navigationBarTitleText": "首页", "navigationStyle": "custom", "enablePullDownRefresh": true }
+    },
+    {
+      "path": "pages/student/profile/index",
+      "style": { "navigationBarTitleText": "我的档案" }
+    },
+    {
+      "path": "pages/student/orientation/index",
+      "style": { "navigationBarTitleText": "迎新报到" }
+    },
+    {
+      "path": "pages/student/campus-service/index",
+      "style": { "navigationBarTitleText": "在校服务", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/service-apply/index",
+      "style": { "navigationBarTitleText": "服务申请" }
+    },
+    {
+      "path": "pages/student/academic/index",
+      "style": { "navigationBarTitleText": "学业进度" }
+    },
+    {
+      "path": "pages/student/internship/index",
+      "style": { "navigationBarTitleText": "岗位实习" }
+    },
+    {
+      "path": "pages/student/weekly-report/index",
+      "style": { "navigationBarTitleText": "填写周报" }
+    },
+    {
+      "path": "pages/student/graduation/index",
+      "style": { "navigationBarTitleText": "毕业设计" }
+    },
+    {
+      "path": "pages/student/employment/index",
+      "style": { "navigationBarTitleText": "就业去向" }
+    },
+    {
+      "path": "pages/student/my-applications/index",
+      "style": { "navigationBarTitleText": "我的申请" }
+    },
+    {
+      "path": "pages/student/messages/index",
+      "style": { "navigationBarTitleText": "消息中心", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/me/index",
+      "style": { "navigationBarTitleText": "个人中心", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/workbench/index",
+      "style": { "navigationBarTitleText": "工作台", "navigationStyle": "custom", "enablePullDownRefresh": true }
+    },
+    {
+      "path": "pages/teacher/todos/index",
+      "style": { "navigationBarTitleText": "今日待办", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/approval/index",
+      "style": { "navigationBarTitleText": "审批处理" }
+    },
+    {
+      "path": "pages/teacher/risk-students/index",
+      "style": { "navigationBarTitleText": "风险学生" }
+    },
+    {
+      "path": "pages/teacher/student-detail/index",
+      "style": { "navigationBarTitleText": "学生详情", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-review/index",
+      "style": { "navigationBarTitleText": "实习周报批阅" }
+    },
+    {
+      "path": "pages/teacher/graduation-guide/index",
+      "style": { "navigationBarTitleText": "毕设指导" }
+    },
+    {
+      "path": "pages/teacher/employment-follow/index",
+      "style": { "navigationBarTitleText": "就业跟进" }
+    },
+    {
+      "path": "pages/teacher/messages/index",
+      "style": { "navigationBarTitleText": "消息中心", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/me/index",
+      "style": { "navigationBarTitleText": "个人中心", "navigationStyle": "custom" }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "高校学生全生命周期管理平台",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F9FAFB",
+    "backgroundColorTop": "#F9FAFB",
+    "backgroundColorBottom": "#F9FAFB"
+  }
+}

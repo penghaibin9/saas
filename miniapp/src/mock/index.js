@@ -1,0 +1,22 @@
+/** mock 数据聚合入口 */
+export { mockStudentUser, mockTeacherUser } from './user'
+// 学生
+export { studentHome } from './student/home'
+export { studentProfile } from './student/profile'
+export { studentOrientation } from './student/orientation'
+export { serviceCategories, serviceItems } from './student/campusService'
+export { studentAcademic } from './student/academic'
+export { studentInternship } from './student/internship'
+export { studentGraduation } from './student/graduation'
+export { studentEmployment } from './student/employment'
+export { applicationTabs, applications } from './student/applications'
+export { studentMessageTabs, studentMessages } from './student/messages'
+// 教师
+export { students, student360 } from './teacher/students'
+export { workbenchByRole } from './teacher/workbench'
+export { todoFilters, teacherTodos } from './teacher/todos'
+export { default as approvals } from './teacher/approval'
+export { weeklyReports, abnormalCheckins } from './teacher/internshipReview'
+export { gdStudents, gdReviewDetail } from './teacher/graduationGuide'
+export { employmentStats, employmentTabs, employmentStudents, jobPool } from './teacher/employmentFollow'
+export { teacherMessageTabs, teacherMessages } from './teacher/messages'

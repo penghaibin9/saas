@@ -1,0 +1,111 @@
+<template>
+  <view class="page-wrap">
+    <MobileNavBar title="选择工作身份" subtitle="同一账号，多个身份" variant="teacher" :show-back="canBack" />
+    <view class="page-pad">
+      <view class="rs__intro card">
+        <view class="row" style="gap:12px;">
+          <view class="rs__avatar">{{ userInitial }}</view>
+          <view class="flex-1">
+            <text class="t-lg t-bold">{{ user.name }}</text>
+            <text class="t-sm t-secondary"> · {{ user.title }}</text>
+            <text class="rs__intro-sub">{{ user.college }} · 工号 {{ user.workNo }}</text>
+          </view>
+        </view>
+        <text class="rs__tip">切换身份后，工作台、学生、待办、消息将按该身份的数据范围刷新。</text>
+      </view>
+
+      <text class="rs__label">可用身份（{{ identities.length }}）</text>
+      <view class="stack">
+        <view
+          v-for="r in identities"
+          :key="r.key"
+          class="rs__item card"
+          :class="{ 'is-current': r.key === currentRole }"
+          @click="pick(r.key)"
+        >
+          <view class="rs__item-icon">{{ r.icon }}</view>
+          <view class="flex-1">
+            <view class="row-between">
+              <text class="t-md t-bold">{{ r.label }}</text>
+              <text v-if="r.key === currentRole" class="rs__current">当前</text>
+            </view>
+            <text class="rs__scope">{{ r.dataScopeText }}</text>
+            <view class="rs__stats">
+              <text class="rs__stat">待办 {{ r.todo }}</text>
+              <text class="rs__stat is-risk">风险 {{ r.risk }}</text>
+            </view>
+          </view>
+          <text class="rs__arrow">›</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script>
+import { useSessionStore } from '@/stores/session'
+import { getRoleConfig } from '@/config/roles.config'
+import { mockTeacherUser } from '@/mock/user'
+import { workbenchByRole } from '@/mock/teacher/workbench'
+import { relaunch, toast } from '@/utils/nav'
+
+const ICONS = { counselor: '👥', mentor: '📘', intern_mentor: '💼', employment: '🎯', academic: '📋', college_admin: '🏛' }
+
+export default {
+  data() {
+    return { user: mockTeacherUser, currentRole: '', canBack: false }
+  },
+  computed: {
+    userInitial() {
+      return (this.user.name || '师').slice(0, 1)
+    },
+    identities() {
+      const session = useSessionStore()
+      return (session.availableRoles.length ? session.availableRoles : this.user.identities).map((key) => {
+        const cfg = getRoleConfig(key)
+        const wb = workbenchByRole[key] || { metrics: [] }
+        const todo = (wb.metrics.find((m) => ['todo', 'weekly', 'review', 'warning', 'follow'].includes(m.key)) || {}).value || 0
+        const risk = (wb.metrics.find((m) => ['risk', 'abnormal', 'unemployed', 'status'].includes(m.key)) || {}).value || 0
+        return { key, label: cfg.label, dataScopeText: cfg.dataScopeText, icon: ICONS[key] || '🧑‍🏫', todo, risk }
+      })
+    }
+  },
+  onLoad() {
+    const session = useSessionStore()
+    this.currentRole = session.currentRole
+    this.canBack = session.isTeacher && getCurrentPages().length > 1
+  },
+  methods: {
+    pick(key) {
+      const session = useSessionStore()
+      session.switchRole(key)
+      toast('已切换为「' + getRoleConfig(key).label + '」')
+      relaunch('/pages/teacher/workbench/index')
+    }
+  }
+}
+</script>
+
+<style scoped>
+.rs__intro { margin-bottom: var(--space-5); }
+.rs__avatar {
+  width: 44px; height: 44px; border-radius: var(--radius-full);
+  background: var(--brand-gradient-teacher); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: var(--font-size-lg);
+}
+.rs__intro-sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
+.rs__tip { display: block; margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-secondary); background: var(--teacher-50); padding: var(--space-2) var(--space-3); border-radius: var(--radius-base); }
+.rs__label { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); margin-bottom: var(--space-3); }
+.rs__item { display: flex; align-items: center; gap: var(--space-3); }
+.rs__item.is-current { border: 1px solid var(--teacher-600); }
+.rs__item-icon {
+  width: 40px; height: 40px; border-radius: var(--radius-md);
+  background: var(--teacher-50); display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.rs__current { font-size: var(--font-size-xs); color: var(--teacher-700); background: var(--teacher-50); padding: 2px 8px; border-radius: var(--radius-full); }
+.rs__scope { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 2px; }
+.rs__stats { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
+.rs__stat { font-size: var(--font-size-xs); color: var(--text-secondary); }
+.rs__stat.is-risk { color: var(--danger-600); }
+.rs__arrow { font-size: var(--font-size-2xl); color: var(--text-tertiary); }
+</style>

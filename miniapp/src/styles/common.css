@@ -1,0 +1,116 @@
+/* 通用页面/布局样式 —— 全部引用 tokens.css 变量，禁止硬编码。 */
+
+.page-wrap {
+  min-height: 100vh;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+.page-pad {
+  padding: var(--page-padding-mobile);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap-mobile);
+}
+.stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.row {
+  display: flex;
+  align-items: center;
+}
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.flex-1 {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 卡片 */
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--card-padding-mobile);
+  box-shadow: var(--shadow-card);
+}
+.card-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+/* 区块标题 */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: var(--space-5) 0 var(--space-3);
+}
+.section-head__title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+.section-head__more {
+  font-size: var(--font-size-sm);
+  color: var(--text-link);
+}
+
+/* 文本工具 */
+.t-primary { color: var(--text-primary); }
+.t-secondary { color: var(--text-secondary); }
+.t-tertiary { color: var(--text-tertiary); }
+.t-xs { font-size: var(--font-size-xs); }
+.t-sm { font-size: var(--font-size-sm); }
+.t-md { font-size: var(--font-size-md); }
+.t-lg { font-size: var(--font-size-lg); }
+.t-bold { font-weight: var(--font-weight-semibold); }
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 主按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  border: none;
+  line-height: 1.2;
+}
+.btn::after { border: none; }
+.btn-primary { background: var(--brand-primary); color: var(--text-inverse); }
+.btn-ghost { background: var(--bg-card); color: var(--brand-primary); border: 1px solid var(--brand-primary); }
+.btn-block { display: flex; width: 100%; }
+
+/* 徽标数字 */
+.badge-dot {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--danger-500);
+  color: var(--text-inverse);
+  font-size: var(--font-size-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* 分割线 */
+.divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: var(--space-3) 0;
+}

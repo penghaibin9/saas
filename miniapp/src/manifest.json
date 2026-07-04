@@ -1,0 +1,25 @@
+{
+  "name": "高校学生全生命周期管理平台",
+  "appid": "",
+  "description": "面向本科/高职/职业本科/应用型高校的学生全周期管理与服务 SaaS 平台 · 小程序端",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "app-plus": {
+    "usingComponents": true,
+    "splashscreen": { "alwaysShowBeforeRender": true, "waiting": true, "autoclose": true, "delay": 0 }
+  },
+  "quickapp": {},
+  "mp-weixin": {
+    "appid": "",
+    "setting": { "urlCheck": false, "es6": true, "minified": true },
+    "usingComponents": true,
+    "__usePrivacyCheck__": false
+  },
+  "h5": {
+    "title": "高校学生全生命周期管理平台",
+    "router": { "mode": "hash", "base": "./" },
+    "devServer": { "port": 5188, "host": "localhost" }
+  },
+  "vueVersion": "3"
+}
