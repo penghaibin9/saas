@@ -4,6 +4,7 @@
     subtitle="权限与流程中心"
     :menus="visibleMenus"
     :active-key="activeKey"
+    :ctx="contextLoaded ? { currentRole: { userName: userName } } : null"
     @menu-select="onMenuSelect"
   >
     <template #header-right>
@@ -16,7 +17,6 @@
           <option value="NO_LICENSE">未授权</option>
         </select>
       </label>
-      <span class="wfl-user">{{ userName }}</span>
     </template>
     <router-view />
   </BasePortalLayout>
@@ -95,12 +95,5 @@ export default {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   background: var(--bg-card);
-}
-.wfl-user {
-  padding-left: var(--space-4);
-  border-left: 1px solid var(--border-base);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
 }
 </style>

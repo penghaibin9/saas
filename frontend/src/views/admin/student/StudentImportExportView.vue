@@ -1,147 +1,475 @@
 <template>
-  <div class="sp-page" style="position: relative">
-    <SecurityWatermark purpose="学生主档导入导出" />
-    <AppSectionHeader
-      title="导入导出"
-      subtitle="本页为 01-P1 预留：仅 mock 校验与审计演示，不解析真实文件、不产生真实下载（真实导入导出在 01-P2 开发）"
+  <ModulePageShell
+    title="导入导出管理"
+    subtitle="模板下载 · 字段校验 · 错误预览 · 脱敏水印 · 审计回执"
+    :role-name="ctx.currentRole.roleName"
+    :data-scope-name="ctx.dataScope.scopeName"
+    watermark-purpose="学生数据导入导出"
+  >
+    <AppGlobalState
+      v-if="forbidden"
+      state="forbidden"
+      title="暂无导入导出权限"
+      :description="forbiddenReason"
     />
-
-    <StudentStateBlock :no-permission="noPermission">
-      <div class="sp-cols">
-        <AppCard class="sp-card">
-          <AppSectionHeader title="学生主档导入（预留）" compact />
-          <p class="ie-text">
-            支持按模板批量导入学生主档。导入流程：下载模板 → 填写 → 上传 → Dry-Run 校验 → 确认导入。
-            上传文件将经安全基线校验（类型白名单 pdf/doc/docx/jpg/jpeg/png/zip/rar/xlsx/pptx，单文件 ≤ 50MB）。
-          </p>
-          <AppInlineAlert type="info" description="当前为校验演示：点击下方按钮查看 mock 校验结果，不会上传或解析任何真实文件。" />
-          <div class="stu-panel__actions" style="display: flex; justify-content: flex-end; gap: var(--space-3)">
-            <AppButton
-              variant="primary"
-              :disabled="!canImport || importing"
-              :loading="importing"
-              :title="canImport ? '' : '当前账号无导入权限'"
-              @click="onValidateImport"
-            >执行导入校验（mock）</AppButton>
+    <div v-else class="mp-stack">
+      <div class="mp-grid-2">
+        <!-- 导入 -->
+        <section class="mp-card">
+          <div class="mp-card__head">
+            <span class="mp-card__title">批量导入</span>
+            <span v-if="!canImport" class="mp-note">{{ reason('importStudents') }}</span>
           </div>
-          <template v-if="importResult">
-            <AppSectionHeader title="校验结果" compact />
-            <div class="ie-result">
-              <span>总行数 {{ importResult.totalRows }}</span>
-              <span class="ie-ok">有效 {{ importResult.validRows }}</span>
-              <span class="ie-bad">异常 {{ importResult.errorRows }}</span>
+          <div class="mp-card__body mp-stack">
+            <div>
+              <div class="ie-label">1. 下载导入模板</div>
+              <div v-for="t in templates" :key="t.id" class="ie-tpl">
+                <div>
+                  <div class="mp-cell-main">{{ t.name }}</div>
+                  <div class="mp-cell-sub">{{ t.description }} · {{ t.fieldCount }} 个字段 · 更新于 {{ t.updatedAt }}</div>
+                </div>
+                <AppButton variant="ghost" @click="downloadTemplate(t)">下载模板</AppButton>
+              </div>
             </div>
-            <table class="sp-table">
-              <thead><tr><th>行号</th><th>字段</th><th>问题</th></tr></thead>
-              <tbody>
-                <tr v-for="(e, i) in importResult.errors" :key="i">
-                  <td>{{ e.row }}</td><td>{{ e.field }}</td><td>{{ e.message }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </template>
-        </AppCard>
 
-        <AppCard class="sp-card">
-          <AppSectionHeader title="学生主档导出（预留）" compact />
-          <p class="ie-text">
-            导出分三档：台账导出 / 加密档案 / 脱敏外发。所有导出默认脱敏、携带页面水印口径、强制写入审计事件；
-            超出行数上限需走异步导出。
-          </p>
-          <AppInlineAlert type="info" description="当前为导出演示：经 security 导出闸口校验并写入审计事件，不生成真实文件。" />
-          <div class="stu-panel__actions" style="display: flex; justify-content: flex-end; gap: var(--space-3)">
-            <AppButton
-              variant="primary"
-              :disabled="!canExport || exporting"
-              :loading="exporting"
-              :title="canExport ? '' : '当前账号无导出权限'"
-              @click="onExport"
-            >执行导出（mock）</AppButton>
+            <div>
+              <div class="ie-label">2. 选择模板与数据文件</div>
+              <div class="ie-row">
+                <select v-model="importForm.templateId" class="ie-control" :disabled="!canImport">
+                  <option value="">请选择导入模板</option>
+                  <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+                </select>
+                <AppButton variant="secondary" :disabled="!canImport" @click="pickFile">
+                  {{ importForm.fileName || '选择数据文件' }}
+                </AppButton>
+              </div>
+            </div>
+
+            <div>
+              <div class="ie-label">3. 校验与导入</div>
+              <div class="ie-row">
+                <AppButton variant="primary" :disabled="!canImport || validating" @click="validate">
+                  {{ validating ? '校验中…' : '开始校验' }}
+                </AppButton>
+                <label v-if="validateResult" class="ie-check">
+                  <input v-model="importForm.skipErrors" type="checkbox" />
+                  跳过错误行继续导入
+                </label>
+                <AppButton
+                  v-if="validateResult"
+                  variant="primary"
+                  :disabled="!canImport || importing || (validateResult.errorRows > 0 && !importForm.skipErrors)"
+                  @click="confirmImport"
+                >
+                  {{ importing ? '导入中…' : '确认导入' }}
+                </AppButton>
+              </div>
+              <p v-if="importError" class="mp-form-err">{{ importError }}</p>
+
+              <template v-if="validateResult">
+                <div class="ie-validate">
+                  校验完成：共 {{ validateResult.totalRows }} 行，可导入
+                  <span class="ie-ok">{{ validateResult.validRows }}</span> 行，错误
+                  <span class="ie-bad">{{ validateResult.errorRows }}</span> 行
+                </div>
+                <table v-if="validateResult.errors.length" class="mp-audit">
+                  <thead>
+                    <tr><th>行号</th><th>字段</th><th>错误说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="e in validateResult.errors" :key="e.row">
+                      <td class="is-who">第 {{ e.row }} 行</td>
+                      <td>{{ e.field }}</td>
+                      <td>{{ e.message }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+            </div>
           </div>
-          <template v-if="exportResult">
-            <AppInlineAlert
-              type="success"
-              :description="`导出任务已创建（mock）：任务号 ${exportResult.taskId}，共 ${exportResult.rowCount} 行，已附水印标识并写入导出审计。`"
-            />
-          </template>
-          <template v-if="exportError">
-            <AppInlineAlert type="warning" :description="`导出被安全闸口拦截：${exportError}`" />
-          </template>
-        </AppCard>
+        </section>
+
+        <!-- 导出 -->
+        <section class="mp-card">
+          <div class="mp-card__head">
+            <span class="mp-card__title">批量导出</span>
+            <span v-if="!canExport" class="mp-note">{{ reason('exportStudents') }}</span>
+          </div>
+          <div class="mp-card__body mp-stack">
+            <div>
+              <div class="ie-label">导出范围</div>
+              <label
+                v-for="s in exportOpts.scopes"
+                :key="s.value"
+                class="mp-radio"
+                :class="{ 'is-active': exportForm.scope === s.value }"
+              >
+                <input v-model="exportForm.scope" type="radio" :value="s.value" :disabled="!canExport" />
+                <span>
+                  <span class="mp-radio__title">{{ s.label }}</span>
+                  <span class="mp-radio__desc">{{ s.desc }}</span>
+                </span>
+              </label>
+            </div>
+
+            <div>
+              <div class="ie-label">导出字段（敏感字段导出后自动脱敏）</div>
+              <div v-for="g in exportOpts.fieldGroups" :key="g.key" class="ie-group">
+                <div class="ie-group__title">{{ g.label }}</div>
+                <label v-for="f in g.fields" :key="f.key" class="ie-check">
+                  <input
+                    type="checkbox"
+                    :checked="exportForm.fieldKeys.includes(f.key)"
+                    :disabled="!canExport"
+                    @change="toggleField(f.key, $event.target.checked)"
+                  />
+                  {{ f.label }}
+                  <span v-if="f.sensitive" class="ie-sensitive">脱敏</span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <div class="ie-label">导出用途（写入审计）</div>
+              <select v-model="exportForm.purpose" class="ie-control" :disabled="!canExport">
+                <option value="">请选择用途</option>
+                <option v-for="p in exportOpts.purposes" :key="p.value" :value="p.value">{{ p.label }}</option>
+              </select>
+              <textarea
+                v-model="exportForm.remark"
+                class="mp-textarea ie-remark"
+                placeholder="补充说明（选填），将与用途一并写入审计日志"
+                :disabled="!canExport"
+              />
+            </div>
+
+            <p v-if="exportError" class="mp-form-err">{{ exportError }}</p>
+            <div class="ie-row">
+              <AppButton variant="primary" :disabled="!canExport" @click="openExportConfirm">创建导出任务</AppButton>
+              <span class="mp-note">导出文件自动脱敏并附「{{ ctx.tenantBrandConfig.watermarkText }}」水印</span>
+            </div>
+          </div>
+        </section>
       </div>
-    </StudentStateBlock>
-  </div>
+
+      <!-- 任务回执 -->
+      <section class="mp-card">
+        <div class="mp-card__head">
+          <span class="mp-card__title">导入导出任务回执</span>
+          <span class="mp-note">每个任务对应一条审计编号，可追溯</span>
+        </div>
+        <div class="mp-card__body">
+          <EmptyState v-if="!tasks.length" title="暂无任务记录" />
+          <table v-else class="mp-audit">
+            <thead>
+              <tr>
+                <th>类型</th>
+                <th>任务</th>
+                <th>行数（成功 / 失败）</th>
+                <th>安全措施</th>
+                <th>操作人</th>
+                <th>时间</th>
+                <th>审计编号</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in tasks" :key="t.id">
+                <td class="is-who">{{ t.typeLabel }}</td>
+                <td>
+                  {{ t.title }}
+                  <div class="mp-cell-sub">{{ t.fileName }}</div>
+                </td>
+                <td>{{ t.totalRows }}（{{ t.successRows }} / {{ t.failedRows }}）</td>
+                <td>
+                  <AppStatusTag v-if="t.masked" type="info" label="已脱敏" />
+                  <AppStatusTag v-if="t.watermark" type="info" label="含水印" />
+                  <span v-if="!t.masked && !t.watermark" class="mp-note">—</span>
+                </td>
+                <td>{{ t.operator }}（{{ t.roleName }}）</td>
+                <td>{{ t.time }}</td>
+                <td>{{ t.auditId }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 审计留痕 -->
+      <section v-if="canAudit" class="mp-card">
+        <div class="mp-card__head"><span class="mp-card__title">最近审计留痕</span></div>
+        <div class="mp-card__body">
+          <table class="mp-audit">
+            <thead>
+              <tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="a in audits" :key="a.id">
+                <td>{{ a.time }}</td>
+                <td class="is-who">{{ a.operator }}（{{ a.roleName }}）</td>
+                <td>{{ a.action }}</td>
+                <td>{{ a.targetName }}</td>
+                <td>{{ a.detail }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- 导出确认（审计确认） -->
+    <AppConfirmDialog
+      :visible="exportDialog.visible"
+      type="warning"
+      title="确认创建导出任务"
+      :message="exportSummary"
+      confirm-text="确认导出"
+      :submitting="exportDialog.submitting"
+      @update:visible="exportDialog.visible = $event"
+      @confirm="submitExport"
+    />
+  </ModulePageShell>
 </template>
 
 <script>
-/** 页面 7：/admin/student/import-export 导入导出（仅 mock 预留；真实实现属 01-P2） */
-import { AppCard, AppButton, AppSectionHeader } from '@/components/ui'
-import AppInlineAlert from '@/components/common/AppInlineAlert.vue'
-import { SecurityWatermark } from '@/security'
-import StudentStateBlock from '@/modules/student/components/StudentStateBlock.vue'
-import { studentProvider, hasStudentPermission, STUDENT_PERMISSION } from '@/modules/student'
+/** 导入导出管理（/admin/student/import-export）：模板 → 校验 → 错误预览 → 回执；导出脱敏 + 水印 + 审计。 */
+import { ModulePageShell, StatusTag as AppStatusTag, EmptyState } from '@/components/business'
+import { AppGlobalState, AppConfirmDialog } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { studentApi } from '@/modules/student/api/student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'StudentImportExportView',
-  components: { AppCard, AppButton, AppSectionHeader, AppInlineAlert, SecurityWatermark, StudentStateBlock },
+  components: { ModulePageShell, AppStatusTag, EmptyState, AppGlobalState, AppConfirmDialog, AppButton },
+  props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      templates: [],
+      tasks: [],
+      audits: [],
+      exportOpts: { scopes: [], fieldGroups: [], purposes: [] },
+      importForm: { templateId: '', fileName: '', skipErrors: false },
+      validating: false,
       importing: false,
-      exporting: false,
-      importResult: null,
-      exportResult: null,
-      exportError: ''
+      validateResult: null,
+      importError: '',
+      exportForm: { scope: 'CURRENT_SCOPE', fieldKeys: ['name', 'studentNo', 'orgPath'], purpose: '', remark: '' },
+      exportError: '',
+      exportDialog: { visible: false, submitting: false }
     }
   },
   computed: {
-    noPermission() {
-      return !hasStudentPermission(STUDENT_PERMISSION.PROFILE_VIEW)
-    },
     canImport() {
-      return hasStudentPermission(STUDENT_PERMISSION.IMPORT)
+      const pa = this.ctx.permissionActions.importStudents
+      return !!(pa && pa.visible && pa.allowed)
     },
     canExport() {
-      return hasStudentPermission(STUDENT_PERMISSION.EXPORT)
+      const pa = this.ctx.permissionActions.exportStudents
+      return !!(pa && pa.visible && pa.allowed)
+    },
+    canAudit() {
+      const pa = this.ctx.permissionActions.viewAudit
+      return !!(pa && pa.visible && pa.allowed)
+    },
+    forbidden() {
+      const pa = this.ctx.permissionActions
+      const importVisible = pa.importStudents && pa.importStudents.visible
+      const exportVisible = pa.exportStudents && pa.exportStudents.visible
+      return !importVisible && !exportVisible
+    },
+    forbiddenReason() {
+      const pa = this.ctx.permissionActions
+      return (pa.importStudents && pa.importStudents.reason) || (pa.exportStudents && pa.exportStudents.reason) || '请联系系统管理员开通'
+    },
+    exportSummary() {
+      const scope = this.exportOpts.scopes.find((s) => s.value === this.exportForm.scope)
+      const purpose = this.exportOpts.purposes.find((p) => p.value === this.exportForm.purpose)
+      const sensitiveCount = this.exportOpts.fieldGroups
+        .flatMap((g) => g.fields)
+        .filter((f) => this.exportForm.fieldKeys.includes(f.key) && f.sensitive).length
+      return (
+        '范围：' + (scope ? scope.label : '—') +
+        '；字段 ' + this.exportForm.fieldKeys.length + ' 个（含敏感字段 ' + sensitiveCount + ' 个，导出后自动脱敏）' +
+        '；用途：' + (purpose ? purpose.label : '—') +
+        '。文件将附水印，本次导出写入审计日志。'
+      )
     }
   },
+  async created() {
+    const [tplRes, optRes] = await Promise.all([studentApi.getImportTemplates(), studentApi.getExportOptions()])
+    if (tplRes.code === 0) this.templates = tplRes.data
+    if (optRes.code === 0) this.exportOpts = optRes.data
+    this.refreshTasks()
+    this.refreshAudits()
+  },
   methods: {
-    async onValidateImport() {
-      this.importing = true
-      try {
-        const res = await studentProvider.validateStudentImport({})
-        if (res.code === 0) {
-          this.importResult = res.data
-          toast.success('导入校验完成（mock），已写入审计')
-        } else toast.warning(res.message)
-      } finally {
-        this.importing = false
+    reason(key) {
+      const pa = this.ctx.permissionActions[key]
+      return pa && !pa.allowed ? pa.reason : ''
+    },
+    downloadTemplate(t) {
+      toast.success('模板「' + t.fileName + '」已开始下载（演示环境不产生真实文件）')
+    },
+    pickFile() {
+      // 演示环境：模拟文件选择（真实实现走 upload.guard 上传通道）
+      this.importForm.fileName = 'student-import-' + Date.now() + '.xlsx'
+      this.validateResult = null
+      this.importError = ''
+    },
+    async validate() {
+      this.importError = ''
+      this.validating = true
+      const res = await studentApi.validateImport(this.importForm)
+      this.validating = false
+      if (res.code === 0) {
+        this.validateResult = res.data
+        this.refreshAudits()
+      } else {
+        this.importError = res.message
       }
     },
-    async onExport() {
-      this.exporting = true
-      this.exportError = ''
-      this.exportResult = null
-      try {
-        const res = await studentProvider.exportStudents({ exportType: 'LIST', purpose: '主档台账核对' })
-        if (res.code === 0) {
-          this.exportResult = res.data
-          toast.success('导出任务已创建（mock），审计已留痕')
-        } else {
-          this.exportError = res.message
-        }
-      } finally {
-        this.exporting = false
+    async confirmImport() {
+      this.importError = ''
+      this.importing = true
+      const res = await studentApi.confirmImport(this.importForm)
+      this.importing = false
+      if (res.code === 0) {
+        toast.success(
+          '导入完成：成功 ' + res.data.successRows + ' 条，失败 ' + res.data.failedRows + ' 条，审计编号 ' + res.data.auditId
+        )
+        this.validateResult = null
+        this.importForm = { templateId: '', fileName: '', skipErrors: false }
+        this.refreshTasks()
+        this.refreshAudits()
+      } else {
+        this.importError = res.message
       }
+    },
+    toggleField(key, checked) {
+      const list = this.exportForm.fieldKeys
+      this.exportForm.fieldKeys = checked ? [...list, key] : list.filter((k) => k !== key)
+    },
+    openExportConfirm() {
+      this.exportError = ''
+      if (!this.exportForm.fieldKeys.length) {
+        this.exportError = '请至少选择一个导出字段'
+        return
+      }
+      if (!this.exportForm.purpose) {
+        this.exportError = '导出用途必选（用于审计留痕）'
+        return
+      }
+      this.exportDialog = { visible: true, submitting: false }
+    },
+    async submitExport() {
+      this.exportDialog.submitting = true
+      const res = await studentApi.createExport(this.exportForm)
+      this.exportDialog.submitting = false
+      if (res.code === 0) {
+        this.exportDialog.visible = false
+        toast.success('导出任务已创建：已脱敏、含水印，审计编号 ' + res.data.auditId)
+        this.exportForm.remark = ''
+        this.refreshTasks()
+        this.refreshAudits()
+      } else {
+        this.exportError = res.message
+        this.exportDialog.visible = false
+      }
+    },
+    async refreshTasks() {
+      const res = await studentApi.getTransferTasks()
+      if (res.code === 0) this.tasks = res.data
+    },
+    async refreshAudits() {
+      if (!this.canAudit) return
+      const res = await studentApi.getAuditLogs({ page: 1, pageSize: 6 })
+      if (res.code === 0) this.audits = res.data.list
     }
   }
 }
 </script>
 
 <style scoped>
-@import './student-page.css';
-.ie-text { margin: 0; font-size: var(--font-size-sm); color: var(--text-secondary); line-height: var(--line-height-base); }
-.ie-result { display: flex; gap: var(--space-4); font-size: var(--font-size-sm); color: var(--text-secondary); }
-.ie-ok { color: var(--success-600); }
-.ie-bad { color: var(--danger-600); }
+@import '@/styles/module-page.css';
+
+/* 步骤标题 */
+.ie-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--space-2);
+}
+.ie-tpl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+}
+.ie-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.ie-control {
+  height: 34px;
+  min-width: 220px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  padding: 0 var(--space-2);
+  outline: none;
+}
+.ie-control:focus {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-50);
+}
+.ie-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-right: var(--space-3);
+  cursor: pointer;
+}
+.ie-validate {
+  margin: var(--space-2) 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+.ie-ok {
+  color: var(--success-600);
+  font-weight: var(--font-weight-semibold);
+}
+.ie-bad {
+  color: var(--danger-600);
+  font-weight: var(--font-weight-semibold);
+}
+.ie-group {
+  margin-bottom: var(--space-2);
+}
+.ie-group__title {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-1);
+}
+.ie-sensitive {
+  display: inline-block;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-base);
+  background: var(--warning-50);
+  color: var(--warning-600);
+  border: 1px solid var(--warning-100);
+  font-size: var(--font-size-xs);
+}
+.ie-remark {
+  margin-top: var(--space-2);
+  min-height: 56px;
+}
 </style>

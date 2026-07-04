@@ -33,56 +33,65 @@ export default {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  height: 36px;
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 9px;
+  font-size: 13px;
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   border: 1px solid transparent;
-  transition:
-    background var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
+  font-family: inherit;
+  white-space: nowrap;
+  transition: all 0.12s;
 }
 .app-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 .app-button--primary {
-  background: var(--primary-600);
-  border-color: var(--primary-600);
-  color: var(--text-inverse);
+  background: var(--btn-p-bg);
+  border-color: transparent;
+  color: #fff;
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--btn-p-shadow);
 }
 .app-button--primary:hover:not(:disabled) {
-  background: var(--primary-700);
+  background: var(--btn-p-bg-h);
+  box-shadow: 0 4px 14px -2px var(--glow);
 }
 .app-button--secondary {
-  background: var(--bg-card);
-  border-color: var(--border-base);
-  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.85);
+  border-color: var(--card-b);
+  color: var(--t2);
 }
 .app-button--secondary:hover:not(:disabled) {
-  border-color: var(--primary-100);
-  color: var(--primary-600);
-  background: var(--primary-50);
+  background: var(--bg-card);
+  color: var(--t1);
+  border-color: var(--glow);
 }
 .app-button--ghost {
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--t2);
 }
 .app-button--ghost:hover:not(:disabled) {
-  background: var(--gray-100);
+  background: var(--pri-bg);
+  color: var(--pri);
 }
 .app-button--danger {
-  background: var(--danger-50);
-  border-color: var(--danger-100);
-  color: var(--danger-600);
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(220, 38, 38, 0.3);
+  color: var(--err);
+}
+.app-button--danger:hover:not(:disabled) {
+  background: var(--err-l);
 }
 .app-button--warning {
-  background: var(--warning-50);
-  border-color: var(--warning-100);
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(217, 119, 6, 0.32);
   color: var(--warning-700);
+}
+.app-button--warning:hover:not(:disabled) {
+  background: var(--warn-l);
 }
 .app-button__spinner {
   width: 14px;

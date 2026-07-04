@@ -1,0 +1,226 @@
+/* 数字迎新中心 — 页面级共享样式（模块内私有，不污染全局） */
+
+.ori-grid {
+  display: grid;
+  grid-template-columns: 1.62fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .ori-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ori-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+}
+.ori-section__title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+.ori-section__more {
+  border: none;
+  background: none;
+  color: var(--primary-600);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+.ori-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.ori-section__head .ori-section__title {
+  margin: 0;
+}
+
+/* 学院进度条 */
+.ori-rate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+}
+.ori-rate__head {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+}
+.ori-rate__value {
+  font-variant-numeric: var(--font-numeric);
+  color: var(--text-secondary);
+}
+.ori-rate__track {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--gray-100);
+  overflow: hidden;
+}
+.ori-rate__bar {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--primary-400), var(--primary-600));
+}
+
+/* 风险与待办 */
+.ori-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  font-size: var(--font-size-sm);
+  border-bottom: 1px dashed var(--border-light);
+  cursor: pointer;
+}
+.ori-alert:last-child {
+  border-bottom: none;
+}
+.ori-alert__title {
+  flex: 1;
+}
+.ori-todo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.ori-todo:hover {
+  border-color: var(--primary-100);
+  background: var(--primary-50);
+}
+.ori-todo__value {
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--primary-600);
+}
+
+/* 去向分布 */
+.ori-dist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ori-dist__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--bg-section-blue);
+  border: 1px solid var(--border-light);
+  font-size: var(--font-size-xs);
+}
+.ori-dist__value {
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--primary-700);
+}
+
+/* 详情页 */
+.ori-detail-grid {
+  display: grid;
+  grid-template-columns: 1.62fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .ori-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.ori-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+.ori-kv__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ori-kv__label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.ori-kv__value {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.ori-back {
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  padding: 0;
+}
+.ori-back:hover {
+  color: var(--primary-600);
+}
+
+/* 材料预览占位 */
+.ori-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 220px;
+  border: 1.5px dashed var(--border-base);
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  background: var(--bg-section-blue);
+}
+.ori-preview__icon {
+  font-size: 30px;
+}
+
+/* 页面内标签页（企业/岗位） */
+.ori-tabs {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: 3px;
+  background: var(--gray-100);
+  border-radius: var(--radius-full);
+}
+.ori-tabs__item {
+  border: none;
+  background: none;
+  height: 30px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--motion-fast) var(--ease-standard);
+}
+.ori-tabs__item.is-active {
+  background: var(--bg-card);
+  color: var(--primary-700);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-card);
+}
+
+.ori-inline-note {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.ori-void-row td {
+  opacity: 0.55;
+}

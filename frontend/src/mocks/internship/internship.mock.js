@@ -1,0 +1,410 @@
+/**
+ * 岗位实习中心 mock 数据（06 反向建模 V1.0 口径）。
+ * 剧本与 mocks/db.js 保持同一世界观（赵一凡 / 刘强 / 李敏 / 华信智能 / 星辰网络）。
+ * 页面禁止直接 import 本文件，必须经 modules/internship/api 获取。
+ */
+
+export const tenantBrandConfig = {
+  tenantId: 'tenant-demo-a',
+  schoolName: '演示职业技术学院',
+  platformDisplayName: '高校学生全生命周期管理平台',
+  schoolLogo: '',
+  schoolBadge: '',
+  brandColor: '#2563eb',
+  watermarkText: '演示职业技术学院 · 内部数据'
+}
+
+/** 当前登录角色（mock：实习指导教师视角，体现权限差异） */
+export const currentRole = {
+  userId: 't-002',
+  userName: '刘强',
+  roleCode: 'INTERN_ADVISOR',
+  roleName: '实习指导教师'
+}
+
+export const dataScope = {
+  scopeCode: 'INTERN_STUDENTS',
+  scopeName: '我指导的实习学生（8 人）'
+}
+
+/**
+ * 权限动作表：allowed=false 且 visible=true 时按钮置灰并提示 reason；
+ * visible=false 时按钮不渲染（涉密入口）。
+ */
+export const permissionActions = {
+  createBatch: { visible: true, allowed: false, reason: '新增实习批次需「学院管理员」角色' },
+  importStudents: { visible: true, allowed: false, reason: '批量导入需「学院管理员」角色' },
+  exportGroup: { visible: true, allowed: true, reason: '' },
+  exportAll: { visible: false, allowed: false, reason: '全院导出仅学院管理员可见' },
+  viewAuditLog: { visible: true, allowed: true, reason: '' },
+  createStudent: { visible: true, allowed: false, reason: '新增实习学生需「学院管理员」角色' },
+  batchAssignAdvisor: { visible: true, allowed: false, reason: '批量分配指导老师需「学院管理员」角色' },
+  batchRemind: { visible: true, allowed: true, reason: '' },
+  batchArchive: { visible: false, allowed: false, reason: '归档仅学院管理员可见' },
+  editStudent: { visible: true, allowed: false, reason: '编辑实习信息需「学院管理员」角色' },
+  handleException: { visible: true, allowed: true, reason: '' },
+  batchMarkReasonable: { visible: true, allowed: true, reason: '' },
+  exportExceptions: { visible: true, allowed: true, reason: '' },
+  reviewReport: { visible: true, allowed: true, reason: '' },
+  batchApproveReports: { visible: true, allowed: true, reason: '' },
+  exportReports: { visible: true, allowed: true, reason: '' },
+  manageRisk: { visible: true, allowed: true, reason: '' },
+  exportRiskList: { visible: true, allowed: true, reason: '仅限本组学生名单，含水印' }
+}
+
+export const statusOptions = {
+  internshipStatus: [
+    { value: 'PREPARING', label: '准备中' },
+    { value: 'READY', label: '待上岗' },
+    { value: 'ONBOARD', label: '在岗中' },
+    { value: 'ASSESSING', label: '考核中' },
+    { value: 'ARCHIVED', label: '已归档' }
+  ],
+  riskLevel: [
+    { value: 'LOW', label: '低风险' },
+    { value: 'MEDIUM', label: '中风险' },
+    { value: 'HIGH', label: '高风险' }
+  ],
+  exceptionType: [
+    { value: 'OUT_OF_RANGE', label: '超范围' },
+    { value: 'MOCK_LOCATION', label: '模拟定位' },
+    { value: 'MISSING', label: '缺卡' }
+  ],
+  reportStatus: [
+    { value: 'PENDING_REVIEW', label: '待批阅' },
+    { value: 'APPROVED', label: '已通过' },
+    { value: 'RETURNED', label: '已退回' },
+    { value: 'OVERDUE', label: '逾期未交' }
+  ],
+  classes: [
+    { value: 'c-2301', label: '软件2301' },
+    { value: 'c-2302', label: '软件2302' }
+  ],
+  enterprises: [
+    { value: 'ent-001', label: '华信智能科技有限公司' },
+    { value: 'ent-002', label: '星辰网络技术有限公司' }
+  ]
+}
+
+export const dashboardSummary = {
+  batchName: '2026 届春季实习批次',
+  batchRange: '2026-03-02 ~ 2026-08-28',
+  batchStatus: '进行中',
+  stats: [
+    { label: '在岗学生', value: '8', trend: '', trendQuality: 'neutral' },
+    { label: '今日打卡率', value: '87.5%', trend: '▲ 较昨日 +12.5%', trendQuality: 'good' },
+    { label: '本周周报提交率', value: '75.0%', trend: '▼ 较上周 -12.5%', trendQuality: 'bad' },
+    { label: '待处理打卡异常', value: '3', trend: '今日新增 1', trendQuality: 'neutral' },
+    { label: '风险学生', value: '2', trend: '高风险 1', trendQuality: 'bad' }
+  ],
+  flow: [
+    { label: '准备中', value: 0 },
+    { label: '待上岗', value: 1 },
+    { label: '在岗中', value: 6, active: true },
+    { label: '考核中', value: 1 },
+    { label: '已归档', value: 0 }
+  ],
+  todos: [
+    { id: 'todo-1', label: '待批阅周报', count: 2, tone: 'danger', hint: '最早提交于 2 天前', route: '/admin/internship/reports' },
+    { id: 'todo-2', label: '待核实打卡异常', count: 3, tone: 'warning', hint: '含模拟定位命中 1 条', route: '/admin/internship/exceptions' },
+    { id: 'todo-3', label: '风险学生待跟进', count: 2, tone: 'warning', hint: '1 人临近处理期限', route: '/admin/internship/risks' }
+  ],
+  riskAlerts: [
+    { id: 'ra-1', code: 'INT-R07', level: 'HIGH', title: '连续 3 天打卡异常', detail: '赵一凡（软件2301）· 已自动生成风险单', time: '今天 08:00' },
+    { id: 'ra-2', code: 'INT-R10', level: 'MEDIUM', title: '第 4 周周报未提交', detail: '赵一凡（软件2301）· 已催办 1 次', time: '昨天 18:00' }
+  ]
+}
+
+/** 实习学生列表（当前数据范围内 8 人） */
+export const internshipStudents = [
+  {
+    id: 'int-001', studentId: 'stu-001', name: '赵一凡', studentNo: 'S2026-000001',
+    className: '软件2301', classId: 'c-2301',
+    enterpriseId: 'ent-001', enterpriseName: '华信智能科技有限公司', positionName: '前端开发实习生',
+    advisorName: '刘强', enterpriseMentor: '周工',
+    status: 'ONBOARD', statusLabel: '在岗中',
+    checkinSummary: '连续 3 天异常', checkinTone: 'danger',
+    reportSummary: '3/4 周', riskLevel: 'HIGH',
+    phone: '13512346867'
+  },
+  {
+    id: 'int-002', studentId: 'stu-006', name: '林晓彤', studentNo: 'S2026-000006',
+    className: '软件2301', classId: 'c-2301',
+    enterpriseId: 'ent-001', enterpriseName: '华信智能科技有限公司', positionName: '测试实习生',
+    advisorName: '刘强', enterpriseMentor: '周工',
+    status: 'ONBOARD', statusLabel: '在岗中',
+    checkinSummary: '正常', checkinTone: 'success',
+    reportSummary: '4/4 周', riskLevel: 'NONE',
+    phone: '15912348873'
+  },
+  {
+    id: 'int-003', studentId: 'stu-007', name: '陈志远', studentNo: 'S2026-000007',
+    className: '软件2302', classId: 'c-2302',
+    enterpriseId: 'ent-002', enterpriseName: '星辰网络技术有限公司', positionName: '运维实习生',
+    advisorName: '刘强', enterpriseMentor: '吴经理',
+    status: 'ONBOARD', statusLabel: '在岗中（请假旁路）',
+    checkinSummary: '请假 3 天', checkinTone: 'warning',
+    reportSummary: '3/4 周', riskLevel: 'MEDIUM',
+    phone: '13712345460'
+  },
+  {
+    id: 'int-004', studentId: 'stu-008', name: '孙一诺', studentNo: 'S2026-000008',
+    className: '软件2302', classId: 'c-2302',
+    enterpriseId: '', enterpriseName: '', positionName: '',
+    advisorName: '刘强', enterpriseMentor: '',
+    status: 'READY', statusLabel: '待上岗',
+    checkinSummary: '—', checkinTone: 'default',
+    reportSummary: '—', riskLevel: 'MEDIUM',
+    phone: '18612340031'
+  },
+  {
+    id: 'int-005', studentId: 'stu-009', name: '周雨萌', studentNo: 'S2026-000009',
+    className: '软件2301', classId: 'c-2301',
+    enterpriseId: 'ent-001', enterpriseName: '华信智能科技有限公司', positionName: '产品助理实习生',
+    advisorName: '刘强', enterpriseMentor: '周工',
+    status: 'ASSESSING', statusLabel: '考核中',
+    checkinSummary: '正常', checkinTone: 'success',
+    reportSummary: '4/4 周', riskLevel: 'NONE',
+    phone: '15012347788'
+  },
+  {
+    id: 'int-006', studentId: 'stu-010', name: '吴俊杰', studentNo: 'S2026-000010',
+    className: '软件2301', classId: 'c-2301',
+    enterpriseId: 'ent-001', enterpriseName: '华信智能科技有限公司', positionName: '前端开发实习生',
+    advisorName: '刘强', enterpriseMentor: '周工',
+    status: 'ONBOARD', statusLabel: '在岗中',
+    checkinSummary: '今日超范围 1 次', checkinTone: 'warning',
+    reportSummary: '4/4 周', riskLevel: 'NONE',
+    phone: '13812349921'
+  },
+  {
+    id: 'int-007', studentId: 'stu-011', name: '郑浩然', studentNo: 'S2026-000011',
+    className: '软件2302', classId: 'c-2302',
+    enterpriseId: 'ent-002', enterpriseName: '星辰网络技术有限公司', positionName: '网络工程实习生',
+    advisorName: '刘强', enterpriseMentor: '吴经理',
+    status: 'ONBOARD', statusLabel: '在岗中',
+    checkinSummary: '模拟定位命中', checkinTone: 'danger',
+    reportSummary: '3/4 周', riskLevel: 'NONE',
+    phone: '13312340276'
+  },
+  {
+    id: 'int-008', studentId: 'stu-012', name: '何雨珊', studentNo: 'S2026-000012',
+    className: '软件2301', classId: 'c-2301',
+    enterpriseId: 'ent-001', enterpriseName: '华信智能科技有限公司', positionName: '测试实习生',
+    advisorName: '刘强', enterpriseMentor: '周工',
+    status: 'ONBOARD', statusLabel: '在岗中',
+    checkinSummary: '正常', checkinTone: 'success',
+    reportSummary: '4/4 周', riskLevel: 'NONE',
+    phone: '15512340049'
+  }
+]
+
+/** 学生实习详情（按 id 索引，闭环演示重点做 int-001） */
+export const studentDetailMap = {
+  'int-001': {
+    id: 'int-001', name: '赵一凡', studentNo: 'S2026-000001', className: '软件2301',
+    phone: '13512346867', status: 'ONBOARD', statusLabel: '在岗中', riskLevel: 'HIGH',
+    enterpriseName: '华信智能科技有限公司', positionName: '前端开发实习生',
+    advisorName: '刘强', enterpriseMentor: '周工 · 137****9902',
+    internRange: '2026-03-02 ~ 2026-08-28',
+    insurance: '实习责任险 · 有效至 2026-08-31',
+    agreement: '三方协议已生效',
+    stateFlow: [
+      { title: '材料核验通过（准备中 → 待上岗）', time: '2026-03-01', tone: 'success' },
+      { title: '到岗双确认（学生 + 企业导师）', time: '2026-03-02', tone: 'success' },
+      { title: '在岗中（当前）· 旁路态：风险处理中', time: '进行中', tone: 'processing' },
+      { title: '考核中 · 已归档', time: '未到达', tone: 'default' }
+    ],
+    checkins: [
+      { id: 'ck-101', date: '07-02 上午', result: '超范围', tone: 'danger', distance: '1.2 km', accuracy: '±12 m', device: '正常', note: '客户现场装机，附照片', handle: '待核实' },
+      { id: 'ck-102', date: '07-01 上午', result: '超范围', tone: 'danger', distance: '1.4 km', accuracy: '±8 m', device: '正常', note: '同上，客户现场', handle: '待核实' },
+      { id: 'ck-103', date: '06-30 上午', result: '模拟定位', tone: 'danger', distance: '—', accuracy: '—', device: 'is_mock 命中', note: '未提交说明', handle: '已转风险' },
+      { id: 'ck-104', date: '06-29 上午', result: '正常', tone: 'success', distance: '86 m', accuracy: '±5 m', device: '正常', note: '', handle: '—' }
+    ],
+    reports: [
+      { id: 'wr-101', week: '第 4 周', status: 'OVERDUE', submitAt: '', version: '—' },
+      { id: 'wr-001', week: '第 3 周', status: 'PENDING_REVIEW', submitAt: '07-01 08:02', version: 'v2（重交）' },
+      { id: 'wr-102', week: '第 2 周', status: 'APPROVED', submitAt: '06-21 20:15', version: 'v1' }
+    ],
+    leaves: [
+      { id: 'lv-001', type: '病假', range: '06-10 ~ 06-11（2 天）', status: 'APPROVED', reviewer: '刘强' }
+    ],
+    risks: [
+      { id: 'risk-001', code: 'INT-R07', title: '连续 3 天打卡异常', level: 'HIGH', status: '跟进中', owner: '刘强' }
+    ],
+    auditTrail: [
+      { who: '刘强 · 实习指导教师', time: '06-30 16:40', action: '打卡异常转风险跟进', affected: '风险单 risk-001 创建；学生端打卡状态同步「已转风险」' },
+      { who: '系统', time: '06-30 08:00', action: '触发 INT-R07 预警', affected: '连续 3 天打卡异常 · 自动生成风险记录' },
+      { who: '李敏 · 辅导员', time: '06-28 10:12', action: '发送提醒', affected: '第 3 周周报催交 · 小程序订阅消息' }
+    ]
+  }
+}
+
+/** 打卡异常（学生小程序 P11 提交 → 教师 T18/T19 → PC 处理） */
+export const attendanceExceptions = [
+  {
+    id: 'ex-001', internId: 'int-001', studentName: '赵一凡', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', date: '07-02 上午',
+    type: 'OUT_OF_RANGE', typeLabel: '超范围', distance: '1.2 km',
+    deviceRisk: '正常', note: '客户现场装机 · 附 2 图', streak: '连续 3 天',
+    status: 'PENDING_HANDLE', statusLabel: '待核实'
+  },
+  {
+    id: 'ex-002', internId: 'int-006', studentName: '吴俊杰', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', date: '07-02 上午',
+    type: 'OUT_OF_RANGE', typeLabel: '超范围', distance: '0.8 km',
+    deviceRisk: '正常', note: '园区停车场排队入厂', streak: '',
+    status: 'PENDING_HANDLE', statusLabel: '待核实'
+  },
+  {
+    id: 'ex-003', internId: 'int-007', studentName: '郑浩然', className: '软件2302',
+    enterpriseName: '星辰网络技术有限公司', date: '07-01 下午',
+    type: 'MOCK_LOCATION', typeLabel: '模拟定位', distance: '—',
+    deviceRisk: 'is_mock 命中', note: '未提交说明', streak: '',
+    status: 'PENDING_HANDLE', statusLabel: '待核实'
+  },
+  {
+    id: 'ex-004', internId: 'int-008', studentName: '何雨珊', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', date: '06-30 上午',
+    type: 'OUT_OF_RANGE', typeLabel: '超范围', distance: '2.1 km',
+    deviceRisk: '正常', note: '供应商仓库盘点', streak: '',
+    status: 'COMPLETED', statusLabel: '已标记合理'
+  }
+]
+
+export const attendanceExceptionDetailMap = {
+  'ex-001': {
+    id: 'ex-001', internId: 'int-001', studentName: '赵一凡', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', positionName: '前端开发实习生',
+    date: '07-02 08:47', typeLabel: '超范围 · 连续第 3 天',
+    distance: '1.2 km（打卡范围 500 m）', accuracy: '±12 m',
+    address: '苏州市吴中区XX产业园', device: 'iPhone 15 · 常用设备',
+    deviceId: 'A8F2****D31C', mockDetect: '未命中', systemRisk: '中 · 连续异常（INT-R07）',
+    studentNote: '本周被安排到客户现场支持装机调试，地点在吴中产业园，带队的是企业周工，预计周五结束。已附现场照片。',
+    noteTime: '07-02 08:49', attachments: ['现场照片 1', '现场照片 2'],
+    status: 'PENDING_HANDLE',
+    trail: [
+      { title: '系统 · 触发 INT-R07 预警', desc: '连续 3 天打卡异常，建议转风险', time: '07-02 08:50', tone: 'warning' },
+      { title: '刘强 · 领取处理', desc: '', time: '07-02 09:10', tone: 'processing' }
+    ]
+  },
+  'ex-002': {
+    id: 'ex-002', internId: 'int-006', studentName: '吴俊杰', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', positionName: '前端开发实习生',
+    date: '07-02 08:31', typeLabel: '超范围',
+    distance: '0.8 km（打卡范围 500 m）', accuracy: '±9 m',
+    address: '苏州市工业园区XX路', device: 'HarmonyOS · 常用设备',
+    deviceId: 'B3C1****77F0', mockDetect: '未命中', systemRisk: '低',
+    studentNote: '园区停车场排队入厂，在门口先打卡。',
+    noteTime: '07-02 08:32', attachments: [],
+    status: 'PENDING_HANDLE',
+    trail: [{ title: '学生提交异常说明（小程序 P11）', desc: '', time: '07-02 08:32', tone: 'processing' }]
+  },
+  'ex-003': {
+    id: 'ex-003', internId: 'int-007', studentName: '郑浩然', className: '软件2302',
+    enterpriseName: '星辰网络技术有限公司', positionName: '网络工程实习生',
+    date: '07-01 14:20', typeLabel: '模拟定位',
+    distance: '—', accuracy: '—',
+    address: '定位数据不可信', device: 'Android · 新设备',
+    deviceId: 'C9D4****02A8', mockDetect: '命中（is_mock=1）', systemRisk: '高 · 建议转风险（INT-R08）',
+    studentNote: '未提交说明', noteTime: '', attachments: [],
+    status: 'PENDING_HANDLE',
+    trail: [{ title: '系统 · 模拟定位检测命中', desc: '按冻结规则：不直接定性作弊，需教师核实', time: '07-01 14:21', tone: 'danger' }]
+  }
+}
+
+/** 周报（学生 P12 → 教师 T20 → PC 批阅） */
+export const weeklyReports = [
+  {
+    id: 'wr-001', internId: 'int-001', studentName: '赵一凡', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', week: '第 3 周',
+    submitAt: '07-01 08:02', version: 'v2', isResubmit: true, wordCount: 1430,
+    attachments: 3, riskFlag: 'HIGH', status: 'PENDING_REVIEW', statusLabel: '待批阅'
+  },
+  {
+    id: 'wr-002', internId: 'int-002', studentName: '林晓彤', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', week: '第 4 周',
+    submitAt: '07-01 21:14', version: 'v1', isResubmit: false, wordCount: 1120,
+    attachments: 2, riskFlag: '', status: 'PENDING_REVIEW', statusLabel: '待批阅'
+  },
+  {
+    id: 'wr-003', internId: 'int-007', studentName: '郑浩然', className: '软件2302',
+    enterpriseName: '星辰网络技术有限公司', week: '第 4 周',
+    submitAt: '', version: '—', isResubmit: false, wordCount: 0,
+    attachments: 0, riskFlag: '', status: 'OVERDUE', statusLabel: '逾期 2 天未交'
+  },
+  {
+    id: 'wr-004', internId: 'int-008', studentName: '何雨珊', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', week: '第 3 周',
+    submitAt: '06-28 20:31', version: 'v1', isResubmit: false, wordCount: 620,
+    attachments: 0, riskFlag: '', status: 'RETURNED', statusLabel: '已退回'
+  },
+  {
+    id: 'wr-005', internId: 'int-005', studentName: '周雨萌', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', week: '第 4 周',
+    submitAt: '07-01 19:40', version: 'v1', isResubmit: false, wordCount: 980,
+    attachments: 1, riskFlag: '', status: 'APPROVED', statusLabel: '已通过'
+  }
+]
+
+export const weeklyReportDetailMap = {
+  'wr-001': {
+    id: 'wr-001', internId: 'int-001', studentName: '赵一凡', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', positionName: '前端开发实习生',
+    week: '第 3 周', submitAt: '07-01 08:02', version: 'v2', isResubmit: true,
+    wordCount: 1430, riskFlag: 'HIGH',
+    content: {
+      work: '本周主要在客户现场配合周工完成 3 个前端页面的联调与上线，学习了灰度发布与回滚流程。',
+      harvest: '掌握了接口 Mock 与联调排错方法；问题是对打包配置还不熟练，已向企业导师申请专项讲解。',
+      plan: '返回公司参与组件库单元测试补齐，完成第 4 周周报与缺卡说明。'
+    },
+    attachments: ['联调记录表.xlsx', '现场照片 ×2', '上线清单.pdf'],
+    versions: [
+      { title: 'v2 · 重新提交（当前批阅版本）', desc: '补充了联调记录与下周计划', time: '07-01 08:02', tone: 'processing' },
+      { title: 'v1 · 被退回', desc: '退回原因：仅 300 字，缺少本周工作实质内容与问题反思，请补充联调过程细节。', time: '06-29 10:22 · 刘强', tone: 'danger' },
+      { title: 'v1 · 首次提交', desc: '', time: '06-28 22:10', tone: 'default' }
+    ],
+    status: 'PENDING_REVIEW',
+    trail: [
+      { who: '刘强', time: '06-29 10:22', action: '退回 v1', affected: '原因已同步学生端（P12 退回提醒条）' },
+      { who: '赵一凡（学生端）', time: '07-01 08:02', action: '重交 v2', affected: '来自小程序 P12' }
+    ]
+  },
+  'wr-002': {
+    id: 'wr-002', internId: 'int-002', studentName: '林晓彤', className: '软件2301',
+    enterpriseName: '华信智能科技有限公司', positionName: '测试实习生',
+    week: '第 4 周', submitAt: '07-01 21:14', version: 'v1', isResubmit: false,
+    wordCount: 1120, riskFlag: '',
+    content: {
+      work: '完成登录与订单模块回归测试 86 条用例，提交缺陷 7 个，其中 2 个为阻塞级。',
+      harvest: '学会了用例分层设计；对自动化脚本维护还需要练习。',
+      plan: '下周开始接口自动化脚本编写，目标覆盖核心链路 30%。'
+    },
+    attachments: ['测试用例.xlsx', '缺陷清单.xlsx'],
+    versions: [{ title: 'v1 · 首次提交', desc: '', time: '07-01 21:14', tone: 'processing' }],
+    status: 'PENDING_REVIEW',
+    trail: []
+  }
+}
+
+/** 风险学生（INT-R 编码口径） */
+export const riskStudents = [
+  {
+    id: 'risk-001', internId: 'int-001', studentName: '赵一凡', className: '软件2301',
+    source: 'INT-R07 连续打卡异常', sourceDetail: '来源：系统预警 06-30',
+    level: 'HIGH', owner: '刘强（指导教师）', deadline: '07-04',
+    lastFollow: '07-01 已电话核实客户现场安排', status: 'PROCESSING', statusLabel: '跟进中'
+  },
+  {
+    id: 'risk-002', internId: 'int-003', studentName: '陈志远', className: '软件2302',
+    source: 'INT-R16 情绪波动上报', sourceDetail: '来源：企业导师反馈 06-20',
+    level: 'MEDIUM', owner: '李敏（辅导员）', deadline: '07-08',
+    lastFollow: '06-28 辅导员已联系家长', status: 'PROCESSING', statusLabel: '跟进中'
+  },
+  {
+    id: 'risk-003', internId: 'int-004', studentName: '孙一诺', className: '软件2302',
+    source: 'INT-R06 超期未到岗', sourceDetail: '来源：系统预警 06-25',
+    level: 'MEDIUM', owner: '刘强（指导教师）', deadline: '07-10',
+    lastFollow: '—', status: 'PENDING_HANDLE', statusLabel: '待处理'
+  }
+]

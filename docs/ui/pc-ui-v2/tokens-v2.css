@@ -1,0 +1,264 @@
+/**
+ * 设计令牌 Design Tokens · V2（PC-UI v2 重设计）
+ * 用法：整体替换 frontend/src/styles/tokens.css（变量名与 V1 完全兼容：只改值、只新增，不删名）
+ * 依据：docs/ui/pc-ui-v2/06-组件与视觉规范 · V2.1 冻结规范 §3/§4
+ * 规则：组件、页面禁止硬编码颜色/字号/间距/圆角/阴影，必须引用本文件 CSS 变量。
+ */
+:root {
+  /* ========== 颜色：主色（教育蓝 · tenantBrandColor 可覆盖） ========== */
+  --primary-50: #eff6ff;
+  --primary-25: #f7faff;
+  --primary-100: #dbeafe;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  /* v2 新增：主色淡底（激活菜单 / 范围镜片 / 选中行） */
+  --primary-tint: #eef4ff;
+
+  /* ========== 颜色：状态语义色（只表达业务状态，不表达数据趋势） ========== */
+  --success-50: #eaf7ef;
+  --success-100: #cfebda;
+  --success-500: #10b981;
+  --success-600: #0e8345;
+  --success-700: #076e38;
+
+  --warning-50: #fff8e8;
+  --warning-100: #f5e3bc;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+  --warning-700: #b45309;
+
+  --danger-50: #fef2f2;
+  --danger-100: #fde0e0;
+  --danger-500: #ef4444;
+  --danger-600: #dc2626;
+  --danger-700: #b91c1c;
+
+  --info-50: #f0f9ff;
+  --info-100: #e0f2fe;
+  --info-500: #0ea5e9;
+  --info-600: #0284c7;
+  --info-700: #0369a1;
+
+  /* v2 新增：阶段标签色（生命周期各段，全局唯一映射） */
+  --stage-orientation: #b45309;  /* 迎新 */
+  --stage-orientation-bg: #fff8e8;
+  --stage-campus: #0e8345;       /* 在校 */
+  --stage-campus-bg: #eaf7ef;
+  --stage-internship: #2563eb;   /* 实习 */
+  --stage-internship-bg: #eef4ff;
+  --stage-graduation: #6d5bd0;   /* 毕设 */
+  --stage-graduation-bg: #f4f1ff;
+  --stage-employment: #be3b84;   /* 就业 */
+  --stage-employment-bg: #fdf3f8;
+
+  /* ========== 颜色：中性灰 ========== */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+  /* ========== 产品表面 ========== */
+  --slate-blue-50: #f3f6fb;
+  --slate-blue-100: #e8eef7;
+  --slate-blue-200: #dce6f2;
+  --slate-blue-600: #4b6282;
+  --slate-blue-700: #394e6b;
+
+  /* ========== 颜色：文本 ========== */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;   /* v2：由 #64748b 加深一档，表格正文更实 */
+  --text-tertiary: #94a3b8;
+  --text-quaternary: #b6c0cf;  /* v2 新增：留痕 / 占位 / 禁用图标 */
+  --text-disabled: var(--gray-300);
+  --text-inverse: #ffffff;
+  --text-link: var(--primary-600);
+
+  /* ========== 颜色：背景与边框 ========== */
+  --bg-page: #f5f7fa;          /* v2：中性冷纸白，去蓝灰味 */
+  --bg-page-alt: #f5f7fa;
+  --bg-card: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #f8fafd;
+  --bg-sidebar: #fafbfd;       /* v2：浅色左栏（禁止大黑侧栏） */
+  --bg-topbar: #ffffff;        /* v2 新增 */
+  --bg-section: #f8fafc;
+  --bg-section-blue: #f4f8fe;
+  --bg-section-warm: #fffdf4;  /* v2：待保存/变更提示底 */
+  --primary-soft: var(--primary-tint);
+  --success-soft: #eaf7ef;
+  --warning-soft: #fff8e8;
+  --danger-soft: #fef2f2;
+  --risk-soft: #fef2f2;
+  --bg-hover: #fafbfd;
+  --bg-disabled: var(--gray-100);
+  --bg-mask: rgba(15, 23, 42, 0.2); /* v2：抽屉遮罩变轻，列表仍可辨认 */
+  --bg-batchbar: #0f172a;      /* v2 新增：批量操作条 / 深色说明底 */
+  --border-light: #f1f4f8;     /* v2：行分隔线 */
+  --border-base: #e6eaf1;      /* v2：卡片/控件描边 */
+  --border-dark: #cbd5e1;
+  --border-subtle: var(--border-base);
+  --card-border: var(--border-base);
+  /* v2：渐变全部退役 —— 保留变量名防报错，值退化为纯色 */
+  --page-gradient: var(--bg-page);
+  --hero-gradient: var(--bg-card);
+  --card-gradient: var(--bg-card);
+  --todo-gradient: var(--bg-card);
+  --risk-gradient: var(--bg-card);
+
+  /* ========== 颜色：数据趋势色（只由 trendQuality 决定） ========== */
+  --trend-good: var(--success-600);
+  --trend-bad: var(--danger-600);
+  --trend-neutral: var(--gray-500);
+
+  /* ========== 字体 ========== */
+  --font-family-base:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    Arial, sans-serif;
+  --font-family-mono: ui-monospace, Menlo, Consolas, monospace; /* v2 新增：单号/留痕编号 */
+  --font-numeric: tabular-nums;
+
+  --font-size-xs: 11px;        /* v2：辅助/口径/留痕 */
+  --font-size-sm: 12.5px;      /* v2：表格正文 */
+  --font-size-base: 13px;      /* v2：正文（管理端密度） */
+  --font-size-md: 14px;
+  --font-size-lg: 14px;        /* 卡片标题（700 承重，不靠大字号） */
+  --font-size-xl: 17px;
+  --font-size-2xl: 19px;       /* 页面大标题 */
+  --font-size-3xl: 22px;
+  --font-size-metric-sm: 24px;
+  --font-size-metric: 26px;
+  --font-size-metric-lg: 32px;
+  --font-size-display: 36px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-base: 1.5715;
+
+  /* ========== 间距（4px 栅格） ========== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --page-padding-pc: 24px;
+  --card-padding-pc: 16px;     /* v2：18→16，密度上调 */
+  --page-padding-mobile: 16px;
+  --card-padding-mobile: 14px;
+  --card-gap-mobile: 12px;
+
+  /* v2 新增：壳尺寸 */
+  --topbar-height: 52px;
+  --sidebar-width: 224px;
+  --table-row-relaxed: 52px;
+  --table-row-base: 46px;
+  --table-row-compact: 38px;
+  --table-header-height: 38px;
+
+  /* ========== 圆角 ========== */
+  --radius-sm: 4px;
+  --radius-base: 5px;          /* v2：标签 */
+  --radius-md: 8px;            /* 控件 / 按钮 */
+  --radius-card-sm: 11px;      /* v2：卡片统一 11 */
+  --radius-lg: 11px;
+  --radius-xl: 14px;
+  --radius-full: 999px;
+
+  /* ========== 阴影（卡片零阴影，浮层一档） ========== */
+  --shadow-sm: none;
+  --shadow-base: none;
+  --shadow-md: 0 8px 24px -12px rgba(15, 23, 42, 0.18);
+  --shadow-lg: 0 24px 64px -32px rgba(15, 23, 42, 0.25); /* 抽屉 / 弹窗 / 下拉 */
+  --shadow-card: none;
+  --shadow-section: none;
+  --shadow-card-hover: 0 4px 16px -6px rgba(15, 23, 42, 0.12);
+  --shadow-capsule: none;
+  --shadow-header: none;
+
+  /* ========== 层级 ========== */
+  --z-sticky: 100;
+  --z-drawer: 900;
+  --z-modal: 1000;
+  --z-toast: 1100;
+
+  /* ========== 触控与安全区 ========== */
+  --touch-target-min: 44px;
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ========== 动效 ========== */
+  --motion-fast: 0.15s;
+  --motion-normal: 0.2s;
+  --motion-slow: 0.3s;
+  --ease-standard: ease;
+}
+
+/* ================= 主题皮肤（root 或 body 挂 class，命名沿用 v7 原型） ================= */
+
+/* th-b 沉稳商务蓝 */
+.th-b {
+  --primary-50: #eaf2fb;
+  --primary-100: #d0e4f7;
+  --primary-500: #3e86de;
+  --primary-600: #1868c0;
+  --primary-700: #12559f;
+  --primary-tint: #eaf2fb;
+  --bg-page: #eef2f7;
+  --bg-sidebar: #f7f9fc;
+}
+
+/* th-d 豆沙绿护眼 */
+.th-d {
+  --primary-50: #eaf2ee;
+  --primary-100: #d3e7df;
+  --primary-500: #5ca894;
+  --primary-600: #3e8e7e;
+  --primary-700: #327264;
+  --primary-tint: #eaf2ee;
+  --bg-page: #eef3ec;
+  --bg-sidebar: #f8fbf7;
+}
+
+/* th-c 云岚雅灰 */
+.th-c {
+  --primary-50: #f0f3fa;
+  --primary-100: #e1e6f0;
+  --primary-500: #8a9ac8;
+  --primary-600: #5b6c9e;
+  --primary-700: #4b5c8d;
+  --primary-tint: #f0f3fa;
+  --bg-page: #f4f6fa;
+  --bg-sidebar: #fafbfd;
+}
+
+/* th-e 皓白极简 */
+.th-e {
+  --bg-page: #f8fafc;
+  --bg-sidebar: #ffffff;
+  --border-base: #e2e8f0;
+}
+
+/* th-f 墨白极简（链接仍用蓝，保证可点击性可辨） */
+.th-f {
+  --primary-50: #f3f4f6;
+  --primary-100: #e5e7eb;
+  --primary-500: #374151;
+  --primary-600: #111827;
+  --primary-700: #000000;
+  --primary-tint: #f3f4f6;
+  --bg-page: #f7f7f8;
+  --bg-sidebar: #fbfbfc;
+  --text-link: #2563eb;
+}

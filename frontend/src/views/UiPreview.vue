@@ -1,6 +1,6 @@
 <template>
   <BasePortalLayout
-    title="职校学生全生命周期平台"
+    title="高校学生全生命周期管理平台"
     subtitle="产品体验中心"
     :menus="navMenus"
     :active-key="activeSection"
@@ -16,7 +16,7 @@
     <div class="experience">
       <div id="overview">
         <LifecycleTimeline
-          title="职校学生全生命周期运行中心"
+          title="高校学生全生命周期运行中心"
           subtitle="围绕迎新、毕业设计、岗位实习、基础能力验证的全过程协同与风险闭环"
           :stages="dashboard.lifecycleBannerStages"
           :capsules="dashboard.bannerCapsules"

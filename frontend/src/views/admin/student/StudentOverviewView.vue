@@ -1,104 +1,224 @@
 <template>
-  <div class="sp-page">
-    <AppSectionHeader index="01" title="学生主档与身份中心" subtitle="全系统统一学生数据底座：主档、身份、学籍、监护人、数据范围与审计" />
-    <StudentStateBlock :loading="loading" :error="error" :empty="!overview" :no-permission="noPermission" @retry="load">
-      <template v-if="overview">
-        <div class="sp-grid">
-          <AppCard class="sp-metric" hoverable @click="go('/admin/student/list')">
-            <span class="sp-metric__label">学生总数</span>
-            <span class="sp-metric__value">{{ overview.totalCount }}</span>
-            <span class="sp-metric__hint">点击进入学生列表</span>
-          </AppCard>
-          <AppCard class="sp-metric">
-            <span class="sp-metric__label">在校学生</span>
-            <span class="sp-metric__value">{{ overview.activeCount }}</span>
-          </AppCard>
-          <AppCard class="sp-metric" hoverable @click="go('/admin/student/identity')">
-            <span class="sp-metric__label">待身份核验</span>
-            <span class="sp-metric__value">{{ overview.pendingVerifyCount }}</span>
-            <span class="sp-metric__hint">进入身份认证管理</span>
-          </AppCard>
-          <AppCard class="sp-metric">
-            <span class="sp-metric__label">资料缺失</span>
-            <span class="sp-metric__value">{{ overview.dataMissingCount }}</span>
-          </AppCard>
-          <AppCard class="sp-metric">
-            <span class="sp-metric__label">学业预警</span>
-            <span class="sp-metric__value">{{ overview.academicWarningCount }}</span>
-          </AppCard>
-          <AppCard class="sp-metric">
-            <span class="sp-metric__label">账号未绑定</span>
-            <span class="sp-metric__value">{{ overview.accountUnboundCount }}</span>
-          </AppCard>
-        </div>
+  <ModulePageShell
+    title="学生中心看板"
+    subtitle="学生主档 · 学籍身份 · 风险跟进的统一入口"
+    :role-name="ctx.currentRole.roleName"
+    :data-scope-name="ctx.dataScope.scopeName"
+    watermark-purpose="学生中心看板"
+  >
+    <ErrorState v-if="error" :description="error" @retry="load" />
+    <LoadingState v-else-if="loading" />
+    <div v-else class="mp-stack">
+      <ModuleHero
+        :title="ctx.tenantBrandConfig.platformDisplayName + ' · 学生中心'"
+        :subtitle="'指标按「' + ctx.dataScope.scopeName + '」实时统计，不同角色可见指标不同'"
+        :chips="heroChips"
+        :stats="summary.stats"
+        :flow="summary.flow"
+      />
 
-        <div class="sp-cols">
-          <AppCard class="sp-card">
-            <AppSectionHeader title="最近状态变更" compact />
-            <StudentTimeline :items="overview.recentStatusChanges" />
-          </AppCard>
-          <AppCard class="sp-card">
-            <AppSectionHeader title="最近身份核验" compact />
-            <StudentTimeline :items="overview.recentVerifies" />
-          </AppCard>
-        </div>
+      <div class="mp-grid-cards">
+        <button
+          v-for="t in summary.todos"
+          :key="t.key"
+          type="button"
+          class="ov-todo"
+          :class="'is-' + t.tone"
+          @click="$router.push(t.route)"
+        >
+          <span class="ov-todo__count">{{ t.count }}</span>
+          <span class="ov-todo__label">{{ t.label }}</span>
+          <span class="ov-todo__hint">{{ t.hint }}</span>
+          <span class="ov-todo__go">去处理 ›</span>
+        </button>
+      </div>
 
-        <AppCard class="sp-card">
-          <AppSectionHeader title="高频入口" compact />
-          <div class="sp-actions-row">
-            <AppButton variant="secondary" @click="go('/admin/student/list')">学生列表</AppButton>
-            <AppButton variant="secondary" @click="go('/admin/student/identity')">身份认证</AppButton>
-            <AppButton variant="secondary" @click="go('/admin/student/status')">状态管理</AppButton>
-            <AppButton variant="secondary" @click="go('/admin/student/import-export')">导入导出</AppButton>
+      <div class="mp-grid-2">
+        <section class="mp-card">
+          <div class="mp-card__head">
+            <span class="mp-card__title">最近学籍异动</span>
+            <button class="mp-link" @click="$router.push('/admin/student/status')">全部记录 ›</button>
           </div>
-        </AppCard>
-      </template>
-    </StudentStateBlock>
-  </div>
+          <div class="mp-card__body">
+            <EmptyState
+              v-if="!summary.recentChanges.length"
+              title="暂无学籍异动"
+              description="当前数据范围内近期没有状态变更记录"
+            />
+            <ul v-else class="mp-timeline">
+              <li v-for="r in summary.recentChanges" :key="r.id" class="mp-timeline__item">
+                <div class="mp-timeline__title">
+                  {{ r.studentName }}（{{ r.className }}）：{{ statusLabel(r.fromStatus) }} →
+                  {{ statusLabel(r.toStatus) }}
+                </div>
+                <div class="mp-timeline__desc">{{ r.reason }}</div>
+                <div class="mp-timeline__time">{{ r.operatedAt }} · {{ r.operator }}（{{ r.roleName }}）</div>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="mp-card">
+          <div class="mp-card__head">
+            <span class="mp-card__title">最近操作留痕</span>
+            <span class="mp-note">全部管理动作可审计追溯</span>
+          </div>
+          <div class="mp-card__body">
+            <table class="mp-audit">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>操作人</th>
+                  <th>动作</th>
+                  <th>对象</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="a in summary.recentAudits" :key="a.id">
+                  <td>{{ a.time }}</td>
+                  <td class="is-who">{{ a.operator }}（{{ a.roleName }}）</td>
+                  <td>{{ a.action }}</td>
+                  <td>{{ a.targetName }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <section class="mp-card">
+        <div class="mp-card__head">
+          <span class="mp-card__title">快捷入口</span>
+          <span class="mp-note">按钮随当前角色权限自动裁剪</span>
+        </div>
+        <div class="mp-card__body">
+          <ModuleToolbar :actions="quickActions" @action="onQuickAction" />
+        </div>
+      </section>
+    </div>
+  </ModulePageShell>
 </template>
 
 <script>
-/** 页面 2：/admin/student 学生主档概览 */
-import { AppCard, AppButton, AppSectionHeader } from '@/components/ui'
-import StudentStateBlock from '@/modules/student/components/StudentStateBlock.vue'
-import StudentTimeline from '@/modules/student/components/StudentTimeline.vue'
-import { studentProvider, hasStudentPermission, STUDENT_PERMISSION } from '@/modules/student'
+/** 学生中心首页 / 管理看板（/admin/student）：角色差异化指标 + 待办 + 异动 + 审计。 */
+import {
+  ModulePageShell,
+  ModuleHero,
+  ModuleToolbar,
+  LoadingState,
+  ErrorState,
+  EmptyState
+} from '@/components/business'
+import { studentApi } from '@/modules/student/api/student.api'
 
 export default {
   name: 'StudentOverviewView',
-  components: { AppCard, AppButton, AppSectionHeader, StudentStateBlock, StudentTimeline },
+  components: { ModulePageShell, ModuleHero, ModuleToolbar, LoadingState, ErrorState, EmptyState },
+  props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: false, error: '', overview: null }
+    return {
+      loading: true,
+      error: '',
+      summary: { stats: [], flow: [], todos: [], recentChanges: [], recentAudits: [] }
+    }
   },
   computed: {
-    noPermission() {
-      return !hasStudentPermission(STUDENT_PERMISSION.PROFILE_VIEW)
+    heroChips() {
+      return [
+        this.ctx.currentRole.roleName,
+        '数据范围：' + this.ctx.dataScope.scopeName,
+        '敏感字段默认脱敏'
+      ]
+    },
+    quickActions() {
+      const pa = this.ctx.permissionActions
+      return [
+        { key: 'list', label: '学生主档列表', variant: 'primary', perm: 'viewList' },
+        { key: 'create', label: '新增学生', perm: 'createStudent' },
+        { key: 'import', label: '批量导入', perm: 'importStudents' },
+        { key: 'export', label: '导出台账', perm: 'exportStudents' },
+        { key: 'status', label: '学籍状态管理', perm: 'changeStatus' },
+        { key: 'risk', label: '风险标签', perm: 'viewList' }
+      ]
+        .filter((a) => pa[a.perm] && pa[a.perm].visible)
+        .map((a) => ({ ...a, disabled: !pa[a.perm].allowed, disabledReason: pa[a.perm].reason }))
     }
   },
   created() {
-    if (!this.noPermission) this.load()
+    this.load()
   },
   methods: {
-    go(path) {
-      this.$router.push(path)
+    statusLabel(v) {
+      const hit = this.ctx.statusOptions.studentStatus.find((o) => o.value === v)
+      return hit ? hit.label : v
+    },
+    onQuickAction(key) {
+      const routeMap = {
+        list: '/admin/student/list',
+        create: '/admin/student/list?action=create',
+        import: '/admin/student/import-export',
+        export: '/admin/student/import-export',
+        status: '/admin/student/status',
+        risk: '/admin/student/risk-tags'
+      }
+      if (routeMap[key]) this.$router.push(routeMap[key])
     },
     async load() {
       this.loading = true
       this.error = ''
-      try {
-        const res = await studentProvider.getStudentOverview()
-        if (res.code === 0) this.overview = res.data
-        else this.error = res.message
-      } catch (e) {
-        this.error = e.message || '加载失败'
-      } finally {
-        this.loading = false
-      }
+      const res = await studentApi.getDashboardSummary()
+      if (res.code === 0) this.summary = res.data
+      else this.error = res.message
+      this.loading = false
     }
   }
 }
 </script>
 
 <style scoped>
-@import './student-page.css';
+@import '@/styles/module-page.css';
+
+/* 待办卡片 */
+.ov-todo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.ov-todo:hover {
+  border-color: var(--primary-100);
+}
+.ov-todo__count {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: var(--font-numeric);
+}
+.ov-todo.is-warning .ov-todo__count {
+  color: var(--warning-600);
+}
+.ov-todo.is-danger .ov-todo__count {
+  color: var(--danger-600);
+}
+.ov-todo__label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.ov-todo__hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.ov-todo__go {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-link);
+  font-weight: var(--font-weight-medium);
+}
 </style>

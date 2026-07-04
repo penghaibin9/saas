@@ -5,16 +5,63 @@ import { createRouter, createWebHistory } from 'vue-router'
  * - `/` 与 `/dev/components` 为冻结路由，不改。
  * - `/security/*` 为 00-SEC 安全错误页（meta.public）。
  * - `/admin/workflow/*` 为 11 权限与流程中心。
- * - `/admin/student/*` 为 01 学生主档与身份中心（route-freeze/page-map 未定义 01 细分路由，按任务兜底路由接入）。
- *   meta 供 P8 统一路由守卫消费，本阶段不注册全局 beforeEach。
+ * - `/admin/*` 10 个 PC 业务模块由 PC-10-MODULE-INTEGRATION-FINAL-RUN 统一接入，
+ *   复用各模块 routes 文件，不重构 router 架构、不注册全局 beforeEach（守卫由 P8 消费 meta）。
  */
+
+/* 10 个 PC 业务模块路由（复用模块内 routes 文件，最小接入） */
+import { studentRoutes } from '@/modules/student/student.routes'
+import orientationRoutes from '@/modules/orientation/orientation.routes'
+import campusServiceRoutes from '@/modules/campusService/campusService.routes'
+import academicRoutes from '@/modules/academic/academic.routes'
+import internshipRoutes from '@/modules/internship/routes'
+import graduationRoutes from '@/modules/graduation/routes'
+import employmentRoutes from '@/modules/employment/employment.routes'
+import dataCenterRoutes from '@/modules/dataCenter/dataCenter.routes'
+import approvalRoutes from '@/modules/approval/approval.routes'
+import systemRoutes from '@/modules/system/system.routes'
+import platformRoutes from '@/modules/platform/platform.routes'
+
+/**
+ * 模块 routes 文件形态不一（部分为数组、部分为单个父路由对象），
+ * 统一展平为一维顶层路由数组后并入总表。studentRoutes 内已含 8 条子路由
+ * （含 corrections / risk-tags），AdminStudentLayout 的 registerStudentRoutes
+ * 兜底注册以 router.hasRoute 为前置判断，正式接入后自动跳过，不会重复注册。
+ */
+const moduleRoutes = [
+  studentRoutes,
+  orientationRoutes,
+  campusServiceRoutes,
+  academicRoutes,
+  internshipRoutes,
+  graduationRoutes,
+  employmentRoutes,
+  dataCenterRoutes,
+  approvalRoutes,
+  systemRoutes,
+  platformRoutes
+].flatMap((def) => (Array.isArray(def) ? def : [def]))
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
+      /* PC-10-MODULE-MENU-BRIDGE-P0-FIX：默认入口改为 PC 管理端工作台（10 模块入口可见），
+         菜单数据源 config/adminMenu.js；旧产品体验页保留在 /dev/preview 仅作存档 */
       path: '/',
+      name: 'admin-workbench',
+      component: () => import('../views/AdminWorkbenchView.vue')
+    },
+    {
+      /* /admin 裸路径兜底：重定向到管理端工作台，避免白屏 */
+      path: '/admin',
+      redirect: '/'
+    },
+    {
+      path: '/dev/preview',
       name: 'ui-preview',
-      component: () => import('../views/UiPreview.vue')
+      component: () => import('../views/UiPreview.vue'),
+      meta: { title: '旧产品体验页（存档）' }
     },
     {
       path: '/dev/components',
@@ -82,49 +129,8 @@ const router = createRouter({
         }
       ]
     },
-    {
-      path: '/admin/student',
-      component: () => import('../views/admin/student/AdminStudentLayout.vue'),
-      meta: { moduleCode: 'STUDENT' },
-      children: [
-        {
-          path: '',
-          name: 'student-overview',
-          component: () => import('../views/admin/student/StudentOverviewView.vue'),
-          meta: { moduleCode: 'STUDENT', title: '学生主档', requiresAuth: true, permissionKey: 'student.profile.view' }
-        },
-        {
-          path: 'list',
-          name: 'student-list',
-          component: () => import('../views/admin/student/StudentListView.vue'),
-          meta: { moduleCode: 'STUDENT', title: '学生列表', requiresAuth: true, permissionKey: 'student.profile.view' }
-        },
-        {
-          path: 'identity',
-          name: 'student-identity',
-          component: () => import('../views/admin/student/StudentIdentityView.vue'),
-          meta: { moduleCode: 'STUDENT', title: '身份认证管理', requiresAuth: true, permissionKey: 'student.identity.view' }
-        },
-        {
-          path: 'status',
-          name: 'student-status',
-          component: () => import('../views/admin/student/StudentStatusView.vue'),
-          meta: { moduleCode: 'STUDENT', title: '学生状态管理', requiresAuth: true, permissionKey: 'student.status.update' }
-        },
-        {
-          path: 'import-export',
-          name: 'student-import-export',
-          component: () => import('../views/admin/student/StudentImportExportView.vue'),
-          meta: { moduleCode: 'STUDENT', title: '导入导出', requiresAuth: true, permissionKey: 'student.export' }
-        },
-        {
-          path: ':studentId',
-          name: 'student-detail',
-          component: () => import('../views/admin/student/StudentDetailView.vue'),
-          meta: { moduleCode: 'STUDENT', title: '学生详情', requiresAuth: true, permissionKey: 'student.profile.view' }
-        }
-      ]
-    }
+    /* /admin/student/* 由 studentRoutes 提供（含 8 条子路由），并入 moduleRoutes 统一接入。 */
+    ...moduleRoutes
   ]
 })
 

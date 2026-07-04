@@ -1,210 +1,426 @@
 <template>
-  <div class="sp-page">
-    <AppSectionHeader
-      title="学生状态管理"
-      subtitle="学籍状态数据管理与状态变更（多角色工作台由 09A 承载，本页只管状态数据）"
-    />
+  <ModulePageShell
+    title="学籍状态管理"
+    :subtitle="'共 ' + pagination.total + ' 条变更记录 · 每次变更均需原因并留痕'"
+    :role-name="ctx.currentRole.roleName"
+    :data-scope-name="ctx.dataScope.scopeName"
+    watermark-purpose="学籍状态管理"
+  >
+    <template #actions>
+      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+    </template>
 
-    <StudentStateBlock :loading="loading" :error="error" :empty="!all.length" :no-permission="noPermission" @retry="load">
-      <div class="sp-grid">
-        <AppCard v-for="d in distribution" :key="d.status" class="sp-metric">
-          <span class="sp-metric__label">{{ d.label }}</span>
-          <span class="sp-metric__value">{{ d.count }}</span>
-        </AppCard>
-      </div>
+    <div class="mp-stack">
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
-      <AppCard class="sp-card">
-        <AppSectionHeader title="学生状态列表" compact />
-        <table class="sp-table">
-          <thead>
-            <tr><th>姓名</th><th>学号</th><th>班级</th><th>当前状态</th><th>学业状态</th><th>操作</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in pageList" :key="s.studentId">
-              <td>{{ s.name }}</td>
-              <td>{{ s.studentNo }}</td>
-              <td>{{ s.className }}</td>
-              <td><StudentStatusTag :status="s.studentStatus" /></td>
-              <td>{{ academicText(s.academicStatus) }}</td>
-              <td>
-                <AppButton
-                  variant="secondary"
-                  :disabled="!canChange || !allowedNext(s).length"
-                  :title="allowedNext(s).length ? '' : '当前状态为终态'"
-                  @click="openChange(s)"
-                >变更状态</AppButton>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="sp-pager">
-          <AppButton variant="ghost" :disabled="page <= 1" @click="turnPage(-1)">上一页</AppButton>
-          <span>第 {{ page }} / {{ maxPage }} 页</span>
-          <AppButton variant="ghost" :disabled="page >= maxPage" @click="turnPage(1)">下一页</AppButton>
-        </div>
-      </AppCard>
+      <ErrorState v-if="error" :description="error" @retry="load" />
+      <LoadingState v-else-if="loading" />
+      <EmptyState
+        v-else-if="!rows.length"
+        title="暂无学籍变更记录"
+        description="可调整筛选条件，或点击右上角「发起状态变更」"
+      />
+      <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
+        <template #cell-student="{ row }">
+          <div class="mp-cell-main">{{ row.studentName }}</div>
+          <div class="mp-cell-sub">{{ row.className }}</div>
+        </template>
+        <template #cell-change="{ row }">
+          <AppStatusTag :type="tone(row.fromStatus)" :label="statusLabel(row.fromStatus)" />
+          <span class="ss-arrow">→</span>
+          <AppStatusTag :type="tone(row.toStatus)" :label="statusLabel(row.toStatus)" dot />
+        </template>
+        <template #cell-reason="{ row }">
+          <div class="mp-cell-main ss-reason">{{ row.reason }}</div>
+          <div v-if="row.attachment" class="mp-cell-sub">附件：{{ row.attachment }}</div>
+        </template>
+        <template #cell-operator="{ row }">
+          <div class="mp-cell-main">{{ row.operator }}</div>
+          <div class="mp-cell-sub">{{ row.roleName }}</div>
+        </template>
+        <template #cell-actions="{ row }">
+          <button class="mp-link" @click="$router.push('/admin/student/' + row.studentId)">学生360</button>
+        </template>
+      </DataTable>
 
-      <AppCard class="sp-card">
-        <AppSectionHeader title="最近状态变更时间线" compact />
-        <StudentTimeline :items="recentChanges" />
-      </AppCard>
-    </StudentStateBlock>
+      <p class="mp-note">
+        学籍状态变更为高敏感操作：原因必填（≥5 字）、全程审计留痕；批量变更仅限「学籍老师」角色。
+      </p>
+    </div>
 
-    <AppDrawer :visible="changeVisible" :title="changeTarget ? `变更 ${changeTarget.name} 的学生状态` : '变更状态'" @update:visible="changeVisible = $event">
-      <div v-if="changeTarget" class="ss-change">
-        <div class="ss-change__row">
-          <span class="ss-change__label">当前状态</span>
-          <StudentStatusTag :status="changeTarget.studentStatus" />
-        </div>
-        <div class="ss-change__row">
-          <span class="ss-change__label">目标状态</span>
-          <select v-model="targetStatus" class="sp-select">
-            <option value="">请选择</option>
-            <option v-for="st in allowedNext(changeTarget)" :key="st" :value="st">{{ statusText(st) }}</option>
-          </select>
-        </div>
-        <div>
-          <span class="ss-change__label">变更原因（必填）</span>
-          <textarea v-model="reason" rows="3" class="sp-textarea" placeholder="请填写变更原因，将写入时间线与审计" />
-          <div class="sp-count" :class="{ 'is-invalid': !reasonCheck.valid }">
-            当前 {{ reasonCheck.length }} 字 / 至少 {{ reasonCheck.minLength }} 字
+    <!-- 发起 / 批量状态变更 -->
+    <AppDrawer :visible="drawer.visible" :title="drawer.batch ? '批量变更学籍状态' : '发起学籍状态变更'" @update:visible="drawer.visible = $event">
+      <div class="mp-stack">
+        <template v-if="drawer.batch">
+          <p class="mp-note">在当前数据范围内选择学生（已排除作废主档），本次将统一变更为同一目标状态。</p>
+          <div class="ss-stu-list">
+            <label v-for="s in candidates" :key="s.studentId" class="ss-stu-item">
+              <input
+                type="checkbox"
+                :checked="drawer.studentIds.includes(s.studentId)"
+                @change="toggleStudent(s.studentId, $event.target.checked)"
+              />
+              <span class="mp-cell-main">{{ s.name }}</span>
+              <span class="mp-cell-sub">{{ s.className }} · {{ statusLabel(s.studentStatus) }}</span>
+            </label>
           </div>
+        </template>
+        <template v-else>
+          <label class="ss-field">
+            <span class="ss-field__label">选择学生 *</span>
+            <select v-model="drawer.studentId" class="ss-field__control">
+              <option value="">请选择学生</option>
+              <option v-for="s in candidates" :key="s.studentId" :value="s.studentId">
+                {{ s.name }} · {{ s.className }} · 当前 {{ statusLabel(s.studentStatus) }}
+              </option>
+            </select>
+          </label>
+        </template>
+
+        <div>
+          <div class="ss-field__label ss-field__label--block">目标状态 *</div>
+          <label
+            v-for="o in ctx.statusOptions.studentStatusFlow"
+            :key="o.value"
+            class="mp-radio"
+            :class="{ 'is-active': drawer.toStatus === o.value }"
+          >
+            <input v-model="drawer.toStatus" type="radio" :value="o.value" />
+            <span>
+              <span class="mp-radio__title">{{ o.label }}</span>
+              <span class="mp-radio__desc">{{ statusDesc(o.value) }}</span>
+            </span>
+          </label>
         </div>
-        <div class="stu-panel__actions" style="display: flex; justify-content: flex-end; gap: var(--space-3)">
-          <AppButton variant="secondary" @click="changeVisible = false">取消</AppButton>
-          <AppButton
-            variant="primary"
-            :disabled="!targetStatus || !reasonCheck.valid || submitting"
-            :loading="submitting"
-            @click="onChangeConfirm"
-          >确认变更</AppButton>
+
+        <label class="ss-field">
+          <span class="ss-field__label">变更原因 *（≥5 字，写入审计）</span>
+          <textarea v-model="drawer.reason" class="mp-textarea" placeholder="如：因病申请休学一学年，附三甲医院诊断证明" />
+        </label>
+        <label class="ss-field">
+          <span class="ss-field__label">依据附件（选填）</span>
+          <input v-model="drawer.attachment" class="ss-field__control" placeholder="如：休学申请表.pdf" />
+        </label>
+
+        <p v-if="drawer.error" class="mp-form-err">{{ drawer.error }}</p>
+        <div class="ss-drawer-ops">
+          <AppButton variant="ghost" @click="drawer.visible = false">取消</AppButton>
+          <AppButton variant="primary" :disabled="drawer.submitting" @click="submitChange">
+            {{ drawer.batch ? '确认批量变更' : '确认变更' }}
+          </AppButton>
         </div>
       </div>
     </AppDrawer>
-  </div>
+
+    <!-- 导出变更记录 -->
+    <AppConfirmDialog
+      :visible="exportDialog.visible"
+      type="warning"
+      title="导出学籍变更记录"
+      :message="'将导出当前筛选范围内 ' + pagination.total + ' 条变更记录：敏感字段脱敏、文件附水印、写入审计日志。'"
+      confirm-text="确认导出"
+      require-reason
+      reason-label="导出用途"
+      reason-placeholder="如：学籍季度检查材料（不少于 5 个字）"
+      :submitting="exportDialog.submitting"
+      @update:visible="exportDialog.visible = $event"
+      @confirm="submitExport"
+    />
+  </ModulePageShell>
 </template>
 
 <script>
-/** 页面 6：/admin/student/status 学生状态管理（只管状态数据，不做 09A 工作台） */
-import { AppCard, AppButton, AppDrawer, AppSectionHeader } from '@/components/ui'
-import StudentStateBlock from '@/modules/student/components/StudentStateBlock.vue'
-import StudentStatusTag from '@/modules/student/components/StudentStatusTag.vue'
-import StudentTimeline from '@/modules/student/components/StudentTimeline.vue'
+/** 学籍状态管理（/admin/student/status）：变更记录 + 发起变更 + 批量变更 + 导出留痕。 */
 import {
-  studentProvider,
-  hasStudentPermission,
-  STUDENT_PERMISSION,
-  STUDENT_STATUS_LABELS,
-  formatStudentStatus,
-  formatAcademicStatus,
-  getAllowedNextStatuses,
-  validateStatusChangeReason
-} from '@/modules/student'
+  ModulePageShell,
+  ModuleToolbar,
+  AdvancedFilter,
+  DataTable,
+  StatusTag as AppStatusTag,
+  LoadingState,
+  ErrorState,
+  EmptyState
+} from '@/components/business'
+import { AppConfirmDialog } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
+import { studentApi } from '@/modules/student/api/student.api'
 import { toast } from '@/utils/toast'
+
+const EMPTY_FILTERS = () => ({ keyword: '', toStatus: '', dateFrom: '' })
+
+const STATUS_DESC = {
+  ADMITTED: '新生已录取，待完成迎新报到',
+  ACTIVE: '正常在读，参与全部教学与实习安排',
+  SUSPENDED: '保留学籍暂停学业，需附医院或相关证明',
+  GRADUATED: '完成培养方案审核，准予毕业',
+  DROPPED: '终止学业，需本人申请与监护人确认'
+}
 
 export default {
   name: 'StudentStatusView',
-  components: { AppCard, AppButton, AppDrawer, AppSectionHeader, StudentStateBlock, StudentStatusTag, StudentTimeline },
+  components: {
+    ModulePageShell,
+    ModuleToolbar,
+    AdvancedFilter,
+    DataTable,
+    AppStatusTag,
+    LoadingState,
+    ErrorState,
+    EmptyState,
+    AppConfirmDialog,
+    AppButton,
+    AppDrawer
+  },
+  props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false,
+      loading: true,
       error: '',
-      all: [],
-      recentChanges: [],
-      page: 1,
-      pageSize: 10,
-      changeVisible: false,
-      changeTarget: null,
-      targetStatus: '',
-      reason: '',
-      submitting: false
+      rows: [],
+      candidates: [],
+      filters: EMPTY_FILTERS(),
+      pagination: { page: 1, pageSize: 10, total: 0 },
+      columns: [
+        { key: 'student', title: '学生' },
+        { key: 'change', title: '状态变更' },
+        { key: 'reason', title: '原因与依据' },
+        { key: 'operator', title: '操作人' },
+        { key: 'operatedAt', title: '时间', width: '150px' },
+        { key: 'actions', title: '操作', width: '90px' }
+      ],
+      drawer: {
+        visible: false,
+        batch: false,
+        studentId: '',
+        studentIds: [],
+        toStatus: '',
+        reason: '',
+        attachment: '',
+        error: '',
+        submitting: false
+      },
+      exportDialog: { visible: false, submitting: false }
     }
   },
   computed: {
-    noPermission() {
-      return !hasStudentPermission(STUDENT_PERMISSION.PROFILE_VIEW)
+    filterFields() {
+      return [
+        { key: 'keyword', label: '学生姓名', type: 'text', placeholder: '按姓名搜索' },
+        { key: 'toStatus', label: '目标状态', type: 'select', options: this.ctx.statusOptions.studentStatusFlow },
+        { key: 'dateFrom', label: '起始日期', type: 'date' }
+      ]
     },
-    canChange() {
-      return hasStudentPermission(STUDENT_PERMISSION.STATUS_UPDATE)
-    },
-    distribution() {
-      return Object.entries(STUDENT_STATUS_LABELS).map(([status, label]) => ({
-        status,
-        label,
-        count: this.all.filter((s) => s.studentStatus === status).length
-      }))
-    },
-    pageList() {
-      return this.all.slice((this.page - 1) * this.pageSize, this.page * this.pageSize)
-    },
-    maxPage() {
-      return Math.max(1, Math.ceil(this.all.length / this.pageSize))
-    },
-    reasonCheck() {
-      return validateStatusChangeReason(this.reason)
+    toolbarActions() {
+      const pa = this.ctx.permissionActions
+      return [
+        { key: 'change', label: '发起状态变更', variant: 'primary', perm: 'changeStatus' },
+        { key: 'batch', label: '批量变更', perm: 'batchChangeStatus' },
+        { key: 'export', label: '导出变更记录', perm: 'exportStatusRecords' }
+      ]
+        .filter((a) => pa[a.perm] && pa[a.perm].visible)
+        .map((a) => ({ ...a, disabled: !pa[a.perm].allowed, disabledReason: pa[a.perm].reason }))
     }
   },
   created() {
-    if (!this.noPermission) this.load()
+    this.load()
+    this.loadCandidates()
   },
   methods: {
-    statusText: formatStudentStatus,
-    academicText: formatAcademicStatus,
-    allowedNext(s) {
-      return getAllowedNextStatuses(s.studentStatus)
+    statusLabel(v) {
+      const hit = this.ctx.statusOptions.studentStatus.find((o) => o.value === v)
+      return hit ? hit.label : v
     },
-    turnPage(delta) {
-      const next = this.page + delta
-      if (next < 1 || next > this.maxPage) return
-      this.page = next
+    statusDesc(v) {
+      return STATUS_DESC[v] || ''
+    },
+    tone(v) {
+      return { ADMITTED: 'processing', ACTIVE: 'success', SUSPENDED: 'warning', GRADUATED: 'info', DROPPED: 'default' }[v] || 'default'
+    },
+    onPageChange(page) {
+      this.pagination.page = page
+      this.load()
+    },
+    search() {
+      this.pagination.page = 1
+      this.load()
+    },
+    reset() {
+      this.filters = EMPTY_FILTERS()
+      this.pagination.page = 1
+      this.load()
+    },
+    onToolbar(key) {
+      if (key === 'change') this.openDrawer(false)
+      if (key === 'batch') this.openDrawer(true)
+      if (key === 'export') this.exportDialog = { visible: true, submitting: false }
+    },
+    openDrawer(batch) {
+      this.drawer = {
+        visible: true,
+        batch,
+        studentId: '',
+        studentIds: [],
+        toStatus: '',
+        reason: '',
+        attachment: '',
+        error: '',
+        submitting: false
+      }
+    },
+    toggleStudent(id, checked) {
+      const list = this.drawer.studentIds
+      this.drawer.studentIds = checked ? [...list, id] : list.filter((x) => x !== id)
+    },
+    async submitChange() {
+      const d = this.drawer
+      d.error = ''
+      if (!d.toStatus) {
+        d.error = '请选择目标状态'
+        return
+      }
+      if (String(d.reason).trim().length < 5) {
+        d.error = '变更原因必填且不少于 5 个字'
+        return
+      }
+      d.submitting = true
+      let res
+      if (d.batch) {
+        if (!d.studentIds.length) {
+          d.error = '请至少勾选一名学生'
+          d.submitting = false
+          return
+        }
+        res = await studentApi.batchChangeStatus(d.studentIds, { toStatus: d.toStatus, reason: d.reason })
+      } else {
+        if (!d.studentId) {
+          d.error = '请选择学生'
+          d.submitting = false
+          return
+        }
+        res = await studentApi.changeStatus(d.studentId, {
+          toStatus: d.toStatus,
+          reason: d.reason,
+          attachment: d.attachment
+        })
+      }
+      d.submitting = false
+      if (res.code === 0) {
+        d.visible = false
+        toast.success(
+          d.batch
+            ? '批量变更完成：成功 ' + res.data.success + ' 条，跳过 ' + res.data.skipped + ' 条（已留痕）'
+            : '学籍状态已变更并留痕'
+        )
+        this.load()
+        this.loadCandidates()
+      } else {
+        d.error = res.message
+      }
+    },
+    async submitExport({ reason }) {
+      this.exportDialog.submitting = true
+      const res = await studentApi.createExport({
+        scope: 'FILTERED',
+        fieldKeys: ['name', 'studentNo', 'studentStatus'],
+        purpose: 'AUDIT',
+        remark: reason,
+        rowCount: this.pagination.total
+      })
+      this.exportDialog.submitting = false
+      if (res.code === 0) {
+        this.exportDialog.visible = false
+        toast.success('变更记录导出任务已创建：已脱敏、含水印，审计编号 ' + res.data.auditId)
+      } else {
+        toast.error(res.message)
+      }
+    },
+    async loadCandidates() {
+      const res = await studentApi.getStudents({ page: 1, pageSize: 100 })
+      if (res.code === 0) this.candidates = res.data.list.filter((s) => !s.voided)
     },
     async load() {
       this.loading = true
       this.error = ''
-      try {
-        const [listRes, overviewRes] = await Promise.all([
-          studentProvider.getStudentList({ page: 1, pageSize: 100 }),
-          studentProvider.getStudentOverview()
-        ])
-        if (listRes.code === 0) this.all = listRes.data.list
-        else this.error = listRes.message
-        if (overviewRes.code === 0) this.recentChanges = overviewRes.data.recentStatusChanges
-      } catch (e) {
-        this.error = e.message || '加载失败'
-      } finally {
-        this.loading = false
+      const res = await studentApi.getStatusRecords({
+        ...this.filters,
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize
+      })
+      if (res.code === 0) {
+        this.rows = res.data.list
+        this.pagination.total = res.data.total
+      } else {
+        this.error = res.message
       }
-    },
-    openChange(s) {
-      this.changeTarget = s
-      this.targetStatus = ''
-      this.reason = ''
-      this.changeVisible = true
-    },
-    async onChangeConfirm() {
-      if (!this.changeTarget || !this.targetStatus || !this.reasonCheck.valid) return
-      this.submitting = true
-      try {
-        const res = await studentProvider.changeStudentStatus(this.changeTarget.studentId, {
-          targetStatus: this.targetStatus,
-          reason: this.reason.trim()
-        })
-        if (res.code === 0) {
-          toast.success('状态已变更，原因已写入时间线与审计')
-          this.changeVisible = false
-          await this.load()
-        } else toast.warning(res.message)
-      } finally {
-        this.submitting = false
-      }
+      this.loading = false
     }
   }
 }
 </script>
 
 <style scoped>
-@import './student-page.css';
-.ss-change { display: flex; flex-direction: column; gap: var(--space-4); }
-.ss-change__row { display: flex; align-items: center; gap: var(--space-3); }
-.ss-change__label { font-size: var(--font-size-sm); color: var(--text-secondary); white-space: nowrap; display: inline-block; margin-bottom: var(--space-2); }
+@import '@/styles/module-page.css';
+
+/* 状态流转箭头 */
+.ss-arrow {
+  margin: 0 var(--space-1);
+  color: var(--text-tertiary);
+}
+.ss-reason {
+  max-width: 360px;
+  white-space: normal;
+}
+.ss-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ss-field__label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.ss-field__label--block {
+  margin-bottom: var(--space-2);
+}
+.ss-field__control {
+  height: 34px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  padding: 0 var(--space-2);
+  outline: none;
+}
+.ss-field__control:focus {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-50);
+}
+.ss-stu-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-base);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ss-stu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-base);
+  cursor: pointer;
+}
+.ss-stu-item:hover {
+  background: var(--bg-hover);
+}
+.ss-drawer-ops {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
 </style>
