@@ -1,0 +1,116 @@
+# =============================================================================
+# docker-compose.mysql.yml —— MySQL 版部署（可上服务器给客户演示/试用）
+# -----------------------------------------------------------------------------
+# 相对本地预演版（docker-compose.local.yml, PostgreSQL）的差异：
+#   - 数据库改为 MySQL 8（utf8mb4 / utf8mb4_unicode_ci），不再默认 postgres。
+#   - 后端用 DB_DRIVER=mysql + DB_* 连接（见 backend 支持的 effective_database_url）。
+#   - Nginx 单站点对外：/（PC）、/miniapp/（H5）、/api/（后端）、/uploads/、/exports/。
+#   - 上传/导出目录 bind mount 到服务器磁盘（./volumes/...），数据持久化不随容器销毁。
+#
+# ── 使用（服务器上，一次性）─────────────────────────────────────────────
+#   1) 准备环境变量（不提交 git）：
+#        cp ../env/backend.mysql.env.example ../env/backend.mysql.env
+#        # 编辑 backend.mysql.env，填 DB_PASSWORD / JWT_SECRET_KEY / 你的服务器 IP 到 CORS
+#      同时把下面 x-db-* 的 MYSQL_PASSWORD 改成同一个密码。
+#   2) 构建前端 / H5 静态产物（在开发机或 CI 上）：
+#        powershell -File ../../scripts/deploy/build-pc.ps1
+#        powershell -File ../../scripts/deploy/build-miniapp.ps1
+#      注意：miniapp 若走 /miniapp/ 子路径，H5 需以 base=/miniapp/ 构建。
+#   3) 起服务：
+#        docker compose -f docker-compose.mysql.yml up -d --build
+#   4) 建表 + 灌演示数据（首次）：
+#        docker compose -f docker-compose.mysql.yml exec backend python scripts/init_mysql_db.py
+#        docker compose -f docker-compose.mysql.yml exec backend python scripts/seed_mysql_demo_data.py
+#   5) 访问： http://服务器IP/           （PC 管理端）
+#            http://服务器IP/miniapp/    （H5）
+#            http://服务器IP/api/v1/docs （后端 Swagger）
+#
+# ── 用「外部已装好的 MySQL」而非本 compose 内置 mysql ──────────────────
+#   把下面 mysql 服务整段注释掉；在 backend.mysql.env 里将 DB_HOST 指到外部地址
+#   （同机可用 host-gateway：给 backend 加 extra_hosts: ["host.docker.internal:host-gateway"]，
+#    DB_HOST=host.docker.internal），并去掉 backend 对 mysql 的 depends_on。
+# =============================================================================
+
+services:
+  # ── 数据库：MySQL 8（utf8mb4）。用外部 MySQL 时把本服务整段注释掉。──
+  mysql:
+    image: mysql:8.0
+    container_name: school-lifecycle-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-saas_lifecycle}
+      MYSQL_USER: ${DB_USER:-saas_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-change-me-in-.env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me-root}
+    volumes:
+      - ./volumes/mysql:/var/lib/mysql          # 数据落服务器磁盘，持久化
+    # 仅本机调试才放开端口；对公网演示建议不暴露 3306（见 docs/ops 安全加固）
+    # ports:
+    #   - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${DB_PASSWORD:-change-me-in-.env}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - school-lifecycle
+
+  # ── 后端：FastAPI（连 MySQL）──
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: school-lifecycle-backend
+    restart: unless-stopped
+    env_file:
+      - ../env/backend.mysql.env      # 先 cp backend.mysql.env.example 为 backend.mysql.env
+    environment:
+      # docker 网络内用服务名 mysql 覆盖主机名；密码/库名沿用 env_file
+      DB_ENABLED: "true"
+      DB_DRIVER: "mysql"
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-saas_lifecycle}
+      DB_USER: ${DB_USER:-saas_user}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me-in-.env}
+      DATABASE_URL: ""                # 留空 → 由 DB_* 组装 mysql+pymysql（含 charset=utf8mb4）
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./volumes/uploads:/app/uploads    # 上传目录 → 服务器磁盘
+      - ./volumes/exports:/app/exports    # 导出目录 → 服务器磁盘
+    expose:
+      - "8000"                            # 只在内网暴露，对外由 nginx 反代
+    networks:
+      - school-lifecycle
+
+  # ── Nginx：托管 PC + miniapp H5，反代 /api/，直读 uploads/exports ──
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: school-lifecycle-nginx
+    restart: unless-stopped
+    volumes:
+      - ../nginx/nginx.mysql.conf:/etc/nginx/nginx.conf:ro
+      - ../../frontend/dist:/usr/share/nginx/html/pc:ro
+      - ../../miniapp/dist/build/h5:/usr/share/nginx/html/miniapp:ro
+      - ./volumes/uploads:/srv/uploads:ro
+      - ./volumes/exports:/srv/exports:ro
+    ports:
+      - "80:80"           # 对外公网访问入口
+    depends_on:
+      - backend
+    networks:
+      - school-lifecycle
+
+networks:
+  school-lifecycle:
+    driver: bridge
+
+# 说明：数据持久化用 bind mount（./volumes/*）落在服务器磁盘，便于备份；
+#      如偏好 docker named volume，可自行改为 volumes: 段。
