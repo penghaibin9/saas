@@ -34,30 +34,135 @@ def _require_teacher(user: dict | None):
     return u
 
 
+# 管理类角色：租户级可见是设计预期（校级/学院管理员/教务处）
+_ADMIN_ROLES = {"SCHOOL_ADMIN", "COLLEGE_ADMIN", "ACADEMIC_TEACHER", "SCHOOL_LEADER"}
+_ADVISOR_ROLES = {"GD_MENTOR", "MENTOR", "INTERN_MENTOR", "INTERNSHIP_MENTOR"}
+
+
 def resolve_teacher_scope(user: dict) -> dict:
-    """解析教师范围。当前用现有字段尽力收敛：
-    - GD_MENTOR   → 按毕设导师姓名（advisor_name）
-    - INTERN_*    → 按实习指导教师姓名（advisor_name）
-    - COUNSELOR   → 按班级（暂无 teacher↔class 映射，落到租户兜底）
-    无法精确时 mode=TENANT_FALLBACK，仅保证租户隔离。"""
+    """解析教师数据范围（t_teacher_student_scope 最小可用版）：
+    - 范围表行：CLASS(班级名) / COLLEGE(学院名) / STUDENT(学号) / ADVISOR(按导师姓名，
+      ref_value 可登记别名，用于历史数据导师姓名与账号姓名不一致的过渡映射)
+    - 导师类角色（GD_MENTOR/INTERN_MENTOR）默认叠加本人姓名的 ADVISOR 收敛
+    - 管理类角色（校级/院级/教务）→ ADMIN_TENANT（租户级，设计预期）
+    - 无任何范围信息 → TENANT_FALLBACK（仅租户隔离；试点可用，标准版应逐步清零）"""
     u = user or {}
     role = (u.get("currentRoleCode") or "").upper()
     name = u.get("realName") or ""
-    advisor_roles = {"GD_MENTOR", "MENTOR", "INTERN_MENTOR", "INTERNSHIP_MENTOR"}
-    if role in advisor_roles and name:
-        return {"mode": "SCOPED", "by": "ADVISOR_NAME", "advisorName": name,
-                "roleCode": role, "tenantId": _tid()}
-    return {"mode": "TENANT_FALLBACK", "by": "TENANT", "advisorName": name,
-            "roleCode": role, "tenantId": _tid()}
+    uid = str(u.get("userId") or "")
+    scope = {"mode": "TENANT_FALLBACK", "by": "TENANT", "advisorName": name,
+             "roleCode": role, "tenantId": _tid(),
+             "classNames": set(), "studentNos": set(), "collegeNames": set(),
+             "advisorNames": set()}
+    if (u.get("userType") or "").upper() == "ADMIN" or role in _ADMIN_ROLES:
+        scope["mode"] = "ADMIN_TENANT"
+        scope["by"] = "ADMIN"
+        return scope
+    if db_enabled():
+        keys = {k for k in (uid, uid[2:] if uid.startswith("u_") else "", name) if k}
+        try:
+            with _session() as db:
+                from app.models import TeacherStudentScope
+                rows = db.scalars(select(TeacherStudentScope).where(
+                    TeacherStudentScope.tenant_id == _tid(),
+                    TeacherStudentScope.is_deleted.is_(False),
+                    TeacherStudentScope.status == "ACTIVE",
+                    TeacherStudentScope.teacher_key.in_(keys))).all()
+        except Exception:  # noqa: BLE001 — 范围表缺失（旧库未迁移）时退回兜底，不 500
+            rows = []
+        for r in rows:
+            if r.role_code and (r.role_code or "").upper() != role:
+                continue
+            st = (r.scope_type or "").upper()
+            if st == "CLASS" and r.ref_value:
+                scope["classNames"].add(r.ref_value.strip())
+            elif st == "STUDENT" and r.ref_value:
+                scope["studentNos"].add(r.ref_value.strip())
+            elif st == "COLLEGE" and r.ref_value:
+                scope["collegeNames"].add(r.ref_value.strip())
+            elif st == "ADVISOR":
+                scope["advisorNames"].add((r.ref_value or name).strip())
+    if role in _ADVISOR_ROLES and name:
+        scope["advisorNames"].add(name)
+    if scope["classNames"] or scope["studentNos"] or scope["collegeNames"] or scope["advisorNames"]:
+        scope["mode"] = "SCOPED"
+        scope["by"] = "SCOPE_TABLE"
+    return scope
 
 
-def can_teacher_view_student(user: dict, student) -> bool:
-    """教师是否可查看某学生。硬边界：必须同租户。软边界：SCOPED 时按导师姓名收敛。"""
+def _class_match(scope: dict, class_name: str | None) -> bool:
+    """班级名匹配（兼容「软件2301」与「软件2301班」两种写法）。"""
+    cn = (class_name or "").strip()
+    if not cn:
+        return False
+    variants = {cn, cn.rstrip("班"), cn + "班"}
+    return bool(variants & scope["classNames"])
+
+
+def scope_match_row(scope: dict, student_no=None, class_name=None, advisor_name=None,
+                    college_name=None) -> bool:
+    """判断一行学生相关数据是否在教师范围内（SCOPED 才收敛，其余模式恒通过）。"""
+    if scope.get("mode") != "SCOPED":
+        return True
+    if student_no and str(student_no).strip() in scope["studentNos"]:
+        return True
+    if _class_match(scope, class_name):
+        return True
+    if advisor_name and (advisor_name or "").strip() in scope["advisorNames"]:
+        return True
+    if college_name and (college_name or "").strip() in scope["collegeNames"]:
+        return True
+    return False
+
+
+def can_teacher_view_student(user: dict, student, scope: dict | None = None, db=None) -> bool:
+    """教师是否可查看某学生。硬边界：必须同租户；SCOPED 时按范围表/导师关系收敛。"""
     if student is None:
         return False
     if getattr(student, "tenant_id", None) != _tid():
         return False
-    return True  # 同租户即可见（TENANT_FALLBACK）；更细粒度待范围表
+    scope = scope or resolve_teacher_scope(user)
+    if scope["mode"] != "SCOPED":
+        return True
+    no = getattr(student, "student_no", None)
+    if no and str(no).strip() in scope["studentNos"]:
+        return True
+    if db is not None:
+        # 班级 / 学院（学生主档 class_id → t_class）
+        try:
+            from app.models import College, SchoolClass
+            if getattr(student, "class_id", None):
+                cls = db.get(SchoolClass, student.class_id)
+                if cls and _class_match(scope, cls.class_name):
+                    return True
+            if getattr(student, "college_id", None) and scope["collegeNames"]:
+                col = db.get(College, student.college_id)
+                if col and (col.college_name or "").strip() in scope["collegeNames"]:
+                    return True
+            # 各域冗余班级名（迎新/在校/学业/毕设/就业按姓名+学号冗余存班级）
+            from app.models import AcademicStudent, CsServiceStudent, EmpStudent, GraduationStudent
+            for model in (AcademicStudent, CsServiceStudent, EmpStudent, GraduationStudent):
+                row = db.scalars(select(model).where(
+                    model.tenant_id == _tid(), model.is_deleted.is_(False),
+                    model.student_no == no)).first()
+                if row and _class_match(scope, getattr(row, "class_name", None)):
+                    return True
+            # 导师关系（实习/毕设 advisor_name）
+            if scope["advisorNames"]:
+                from app.models import GraduationStudent as _GS, InternshipRecord as _IR
+                ir = db.scalars(select(_IR).where(
+                    _IR.tenant_id == _tid(), _IR.student_id == student.id,
+                    _IR.is_deleted.is_(False))).first()
+                if ir and (ir.advisor_name or "").strip() in scope["advisorNames"]:
+                    return True
+                gs = db.scalars(select(_GS).where(
+                    _GS.tenant_id == _tid(), _GS.student_no == no,
+                    _GS.is_deleted.is_(False))).first()
+                if gs and (gs.advisor_name or "").strip() in scope["advisorNames"]:
+                    return True
+        except Exception:  # noqa: BLE001 — 关系判断异常时按无权限处理（拒绝优先）
+            return False
+    return False
 
 
 def filter_students_for_teacher(user: dict, rows: list) -> list:
@@ -126,6 +231,10 @@ def todos(user: dict) -> dict:
     def add(fn, label, module, group, **kw):
         rows, _ = _safe_list(fn, 1, 20, **kw)
         for r in rows:
+            if not scope_match_row(scope, student_no=r.get("studentNo"),
+                                   class_name=r.get("className"),
+                                   advisor_name=r.get("advisorName")):
+                continue
             items.append({"id": r.get("id"), "group": group,
                           "title": f"{label}：{r.get('name') or r.get('studentName') or r.get('title', '')}",
                           "student": r.get("name") or r.get("studentName") or "",
@@ -207,6 +316,10 @@ def risk_students(user: dict) -> dict:
             if "在校" not in row["tags"]:
                 row["tags"].append("在校")
     lst = list(out.values())
+    # 范围收敛：SCOPED 教师只看自己负责的班级/学生/指导学生
+    if scope["mode"] == "SCOPED":
+        lst = [r for r in lst if scope_match_row(scope, student_no=r.get("studentNo"),
+                                                 class_name=r.get("className"))]
     order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
     lst.sort(key=lambda x: order.get(x.get("riskLevel"), 3))
     for i, r in enumerate(lst):
@@ -242,9 +355,13 @@ def student_detail(user: dict, student_id) -> dict:
                 StudentProfile.is_deleted.is_(False))).first()
         if stu is None or stu.is_deleted:
             raise AppException("DATA_NOT_FOUND", "学生不存在")
-        # 同租户内的更细范围（班级/指导关系）越权 → 403（当前 TENANT_FALLBACK 恒放行）
-        if not can_teacher_view_student(u, stu):
-            raise AppException("NO_PERMISSION", "无权限查看该学生")
+        # 同租户内的更细范围（班级/学号/指导关系）越权 → 403
+        scope = resolve_teacher_scope(u)
+        if not can_teacher_view_student(u, stu, scope=scope, db=db):
+            from app.services import audit_log
+            audit_log.record("TEACHER_SCOPE_DENIED", f"mobile/teacher/student/{student_id}",
+                             detail={"studentNo": stu.student_no}, result="DENIED")
+            raise AppException("NO_PERMISSION", "该学生不在你的负责范围内")
         name, no = stu.real_name, stu.student_no
         # 学业
         a = db.scalars(select(AcademicStudent).where(
@@ -381,26 +498,32 @@ def messages(user: dict) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         return {"hasData": False, "unreadCount": 0, "tabs": [], "groups": {}}
+    scope = resolve_teacher_scope(u)
+
+    def _in_scope(r):
+        return scope_match_row(scope, student_no=r.get("studentNo"),
+                               class_name=r.get("className"),
+                               advisor_name=r.get("advisorName"))
     system_msgs, dynamic_msgs, risk_msgs = [], [], []
     # 学生动态：待批周报 / 开题
     reports, _ = _safe_list(internship_service.list_weekly_reports, 1, 15, status="PENDING_REVIEW")
-    for r in reports:
+    for r in filter(_in_scope, reports):
         dynamic_msgs.append({"id": "dyn-wr-" + str(r.get("id")),
                              "title": f"{r.get('name') or r.get('studentName') or '学生'} 提交了实习周报",
                              "module": "岗位实习", "level": "normal", "read": False})
     props, _ = _safe_list(graduation_service.list_proposals, 1, 15, status="PENDING_REVIEW")
-    for p in props:
+    for p in filter(_in_scope, props):
         dynamic_msgs.append({"id": "dyn-gp-" + str(p.get("id")),
                              "title": f"{p.get('name') or p.get('studentName') or '学生'} 提交了开题材料",
                              "module": "毕业设计", "level": "normal", "read": False})
     # 风险预警：打卡异常 / 学业预警
     excs, _ = _safe_list(internship_service.list_attendance_exceptions, 1, 15, status="PENDING_HANDLE")
-    for e in excs:
+    for e in filter(_in_scope, excs):
         risk_msgs.append({"id": "risk-ck-" + str(e.get("id")),
                           "title": f"{e.get('name') or e.get('studentName') or '学生'} 打卡异常",
                           "module": "风险预警", "level": "high", "read": False})
     warns, _ = _safe_list(academic_service.list_warnings, 1, 15, status="PENDING_HANDLE")
-    for w in warns:
+    for w in filter(_in_scope, warns):
         risk_msgs.append({"id": "risk-aw-" + str(w.get("id")),
                           "title": f"{w.get('name') or w.get('studentName') or '学生'} 学业预警",
                           "module": "风险预警", "level": "high", "read": False})
@@ -416,10 +539,187 @@ def messages(user: dict) -> dict:
 
 # ══════════ 教师审批列表（复用审批服务，mobile 轻量） ══════════
 
+def _filter_approvals_by_scope(scope: dict, rows: list) -> list:
+    """SCOPED 教师的审批列表按申请人（学生）范围收敛：
+    按 applicantName 在本租户学生主档内解析，再复用 can_teacher_view_student。
+    解析不到申请人的任务（非学生发起/历史数据）保守隐藏。"""
+    if scope.get("mode") != "SCOPED" or not rows:
+        return rows
+    out = []
+    try:
+        with _session() as db:
+            from app.models import StudentProfile
+            for r in rows:
+                nm = (r.get("applicantName") or "").strip()
+                if not nm:
+                    continue
+                stu = db.scalars(select(StudentProfile).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.real_name == nm,
+                    StudentProfile.is_deleted.is_(False))).first()
+                if stu is not None and can_teacher_view_student({}, stu, scope=scope, db=db):
+                    out.append(r)
+    except Exception:  # noqa: BLE001 — 收敛异常时宁可少展示，不越权
+        return []
+    return out
+
+
 def approvals(user: dict) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         return {"hasData": False, "approvals": [], "filters": [], "pendingCount": 0}
-    rows, total = _safe_list(approval_service.list_tasks, 1, 50, status="PENDING_REVIEW")
+    scope = resolve_teacher_scope(u)
+    rows, total = _safe_list(approval_service.list_tasks, 1, 50, status="PENDING")
+    rows = _filter_approvals_by_scope(scope, rows)
+    total = len(rows) if scope.get("mode") == "SCOPED" else total
     filters = [{"key": "pending", "label": "待处理"}, {"key": "done", "label": "已处理"}]
-    return {"hasData": total > 0, "approvals": rows, "filters": filters, "pendingCount": total}
+    return {"hasData": total > 0, "approvals": rows, "filters": filters,
+            "pendingCount": total, "scopeMode": scope["mode"]}
+
+
+# ══════════ 教师写操作（mobile 包装：教师校验 + 范围校验 + 审计 + 冲突 409） ══════════
+
+def _audit_write(action: str, resource: str, detail: dict):
+    from app.services import audit_log
+    audit_log.record(action, resource, detail=detail)
+
+
+def _assert_task_in_scope(u: dict, task_id: str):
+    """审批任务范围校验：任务必须在本租户（服务层已保证），SCOPED 教师须能看到申请人。"""
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") != "SCOPED":
+        return
+    try:
+        row = approval_service.get_task(task_id)
+    except Exception:
+        return  # 不存在 → 交由后续动作返回 404
+    if not _filter_approvals_by_scope(scope, [row]):
+        raise AppException("NO_PERMISSION", "该审批不在你的负责范围内")
+
+
+def approval_act(user: dict, task_id: str, action: str, reason: str | None = None) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实审批")
+    _assert_task_in_scope(u, task_id)
+    if action == "approve":
+        result = approval_service.approve(task_id, reason or "")
+    elif action == "reject":
+        result = approval_service.reject(task_id, reason or "")
+    else:
+        raise AppException("VALIDATION_ERROR", "action 必须是 approve/reject")
+    _audit_write("MOBILE_APPROVAL_" + action.upper(), f"approval:{task_id}",
+                 {"operator": u.get("realName"), "reason": (reason or "")[:200]})
+    return result
+
+
+def weekly_review(user: dict, report_id: str, action: str, comment: str | None = None) -> dict:
+    """实习周报批阅（APPROVE/RETURN）。SCOPED 教师只能批阅范围内学生的周报。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "SCOPED":
+        detail = internship_service.get_weekly_report_detail(report_id)  # 不存在 → 404
+        if not scope_match_row(scope, class_name=detail.get("className"),
+                               advisor_name=detail.get("advisorName"),
+                               student_no=detail.get("studentNo")):
+            # 兜底：按实习记录导师姓名判定
+            allowed = False
+            try:
+                with _session() as db:
+                    from app.models import InternshipRecord, WeeklyReport
+                    w = db.get(WeeklyReport, int(report_id))
+                    rec = db.get(InternshipRecord, w.internship_id) if w else None
+                    if rec and (rec.advisor_name or "").strip() in scope["advisorNames"]:
+                        allowed = True
+                    if rec and rec.student_id:
+                        from app.models import StudentProfile
+                        stu = db.get(StudentProfile, rec.student_id)
+                        if stu is not None and can_teacher_view_student({}, stu, scope=scope, db=db):
+                            allowed = True
+            except Exception:  # noqa: BLE001
+                allowed = False
+            if not allowed:
+                raise AppException("NO_PERMISSION", "该周报不在你的负责范围内")
+    result = internship_service.review_weekly_report(report_id, action, comment or "")
+    _audit_write("MOBILE_WEEKLY_REVIEW", f"internship/weekly:{report_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
+def exception_handle(user: dict, exception_id: str, action: str, comment: str | None = None) -> dict:
+    """打卡异常处理（REASONABLE/ABNORMAL/TO_RISK）。服务层已做租户过滤 + 已处理 409。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实处理")
+    result = internship_service.handle_attendance_exception(exception_id, action, comment or "")
+    _audit_write("MOBILE_CHECKIN_HANDLE", f"internship/exception:{exception_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
+def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
+    """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "SCOPED":
+        detail = graduation_service.get_proposal_detail(proposal_id)  # 不存在 → 404
+        if not scope_match_row(scope, class_name=detail.get("className"),
+                               advisor_name=detail.get("advisorName"),
+                               student_no=detail.get("studentNo")):
+            raise AppException("NO_PERMISSION", "该开题不在你的指导范围内")
+    result = graduation_service.review_proposal(proposal_id, action, comment)
+    _audit_write("MOBILE_PROPOSAL_REVIEW", f"graduation/proposal:{proposal_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
+def warning_handle(user: dict, warning_id: str, action: str, note: str | None = None) -> dict:
+    """学业预警处理：CLOSE（关闭）/ ESCALATE（升级）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实处理")
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "SCOPED":
+        detail = academic_service.get_warning_detail(warning_id)  # 不存在 → 404
+        w = detail.get("warning") or {}
+        s = detail.get("student") or {}
+        if not scope_match_row(scope, class_name=w.get("className") or s.get("className"),
+                               student_no=s.get("studentNo")):
+            raise AppException("NO_PERMISSION", "该预警学生不在你的负责范围内")
+    if action == "CLOSE":
+        result = academic_service.close_warning(warning_id, note or "")
+    elif action == "ESCALATE":
+        result = academic_service.escalate_warning(warning_id, note or "")
+    else:
+        raise AppException("VALIDATION_ERROR", "action 必须是 CLOSE/ESCALATE")
+    _audit_write("MOBILE_WARNING_HANDLE", f"academic/warning:{warning_id}",
+                 {"operator": u.get("realName"), "action": action, "note": (note or "")[:200]})
+    return result
+
+
+def followup_create(user: dict, body: dict) -> dict:
+    """就业跟进记录（真实落库）。SCOPED 就业老师只能跟进范围内学生。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
+    scope = resolve_teacher_scope(u)
+    sid = body.get("studentId")
+    if scope.get("mode") == "SCOPED" and sid:
+        try:
+            with _session() as db:
+                from app.models import EmpStudent
+                es = db.get(EmpStudent, int(sid))
+                if es is None or es.is_deleted or es.tenant_id != _tid():
+                    raise AppException("DATA_NOT_FOUND", "就业学生不存在")
+                if not scope_match_row(scope, student_no=es.student_no,
+                                       class_name=es.class_name):
+                    raise AppException("NO_PERMISSION", "该学生不在你的负责范围内")
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "studentId 必须为数字")
+    result = employment_service.create_followup(body)
+    _audit_write("MOBILE_EMP_FOLLOWUP", f"employment/followup:{result.get('id')}",
+                 {"operator": u.get("realName"), "studentId": str(sid or "")})
+    return result

@@ -267,6 +267,20 @@ def run() -> int:
     except Exception as e:  # noqa: BLE001
         print(f"[seed] employment seed skipped: {e}")
 
+    # 移动端演示学生（李晓萌）跨域记录（幂等；重命名首个学生，不新增，主租户仍=100）
+    try:
+        from _seed_mobile_demo import seed_mobile_demo
+        seed_mobile_demo(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] mobile_demo seed skipped: {e}")
+
+    # 教师范围映射（teacher_student_scope 最小可用版，幂等）
+    try:
+        from _seed_teacher_scope import seed_teacher_scope
+        seed_teacher_scope(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] teacher_scope seed skipped: {e}")
+
     print("[seed] OK")
     print(f"[seed] 主租户 demo        : 学生={len(main_students)} 角色={len(ROLES)} 用户=20 "
           f"审批=20 待办=30 消息=20 审计=50 文件=2 导入批次=2 导出任务=1")

@@ -139,3 +139,56 @@ def teacher_messages(user=Depends(get_current_user)):
 @router.get("/teacher/approvals", summary="教师·审批列表（mobile 轻量）")
 def teacher_approvals(user=Depends(get_current_user)):
     return success(tea.approvals(user))
+
+
+# ── 教师端·写操作（mobile 包装：教师校验 + 范围校验 + 审计 + 冲突 409） ──
+
+@router.post("/teacher/approvals/{task_id}/approve", summary="教师·审批通过（范围校验+审计）")
+def teacher_approval_approve(task_id: str, body: dict = Body(default={}),
+                             user=Depends(get_current_user)):
+    return success(tea.approval_act(user, task_id, "approve", body.get("comment") or ""),
+                   message="已通过")
+
+
+@router.post("/teacher/approvals/{task_id}/reject", summary="教师·审批驳回（范围校验+审计）")
+def teacher_approval_reject(task_id: str, body: dict = Body(default={}),
+                            user=Depends(get_current_user)):
+    return success(tea.approval_act(user, task_id, "reject", body.get("reason") or ""),
+                   message="已驳回")
+
+
+@router.post("/teacher/internship/weekly/{report_id}/review",
+             summary="教师·实习周报批阅（APPROVE/RETURN，范围校验+审计）")
+def teacher_weekly_review(report_id: str, body: dict = Body(...),
+                          user=Depends(get_current_user)):
+    return success(tea.weekly_review(user, report_id, str(body.get("action") or "").upper(),
+                                     body.get("comment") or ""), message="批阅完成")
+
+
+@router.post("/teacher/internship/exception/{exception_id}/handle",
+             summary="教师·打卡异常处理（REASONABLE/ABNORMAL/TO_RISK，审计）")
+def teacher_exception_handle(exception_id: str, body: dict = Body(...),
+                             user=Depends(get_current_user)):
+    return success(tea.exception_handle(user, exception_id, str(body.get("action") or "").upper(),
+                                        body.get("comment") or ""), message="处理完成")
+
+
+@router.post("/teacher/graduation/proposal/{proposal_id}/review",
+             summary="教师·毕设开题批阅（APPROVE/REJECT，范围校验+审计）")
+def teacher_proposal_review(proposal_id: str, body: dict = Body(...),
+                            user=Depends(get_current_user)):
+    return success(tea.proposal_review(user, proposal_id, str(body.get("action") or "").upper(),
+                                       body.get("comment") or ""), message="批阅完成")
+
+
+@router.post("/teacher/academic/warning/{warning_id}/handle",
+             summary="教师·学业预警处理（CLOSE/ESCALATE，范围校验+审计）")
+def teacher_warning_handle(warning_id: str, body: dict = Body(...),
+                           user=Depends(get_current_user)):
+    return success(tea.warning_handle(user, warning_id, str(body.get("action") or "").upper(),
+                                      body.get("note") or ""), message="处理完成")
+
+
+@router.post("/teacher/employment/followup", summary="教师·新增就业跟进（范围校验+审计）")
+def teacher_followup_create(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.followup_create(user, body), message="跟进已记录")

@@ -24,3 +24,4 @@ from app.models.graduation import (GraduationAuditTrail, GraduationDefenseGroup,
                                       GraduationTopic)
 from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob,  # noqa: F401
                                      EmpMaterial, EmpStudent)
+from app.models.teacher_scope import TeacherStudentScope  # noqa: F401
