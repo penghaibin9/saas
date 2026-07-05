@@ -97,14 +97,17 @@ def get_risk_stats() -> dict:
     from app.models import (AcademicStudent, CsServiceStudent, EmpStudent, GraduationStudent,
                             OrientationStudent)
     with session() as db:
-        def by_risk(model, extra=()):
+        # 各域风险字段：多数用 risk_level；学业域用 warning_level（同为 HIGH/MEDIUM/LOW 口径，见 academic L_LEVEL）
+        def by_risk(model, extra=(), field="risk_level"):
+            col = getattr(model, field)
             out = {}
             for lvl in ("HIGH", "MEDIUM", "LOW"):
-                out[lvl] = _count(db, model, model.is_deleted.is_(False), model.risk_level == lvl, *extra)
+                out[lvl] = _count(db, model, model.is_deleted.is_(False), col == lvl, *extra)
             return out
         domains = {"迎新": by_risk(OrientationStudent, (OrientationStudent.record_status == "ACTIVE",)),
                    "在校服务": by_risk(CsServiceStudent, (CsServiceStudent.record_status == "ACTIVE",)),
-                   "学业": by_risk(AcademicStudent, (AcademicStudent.record_status == "ACTIVE",)),
+                   "学业": by_risk(AcademicStudent, (AcademicStudent.record_status == "ACTIVE",),
+                                 field="warning_level"),
                    "毕业设计": by_risk(GraduationStudent, (GraduationStudent.record_status == "ACTIVE",)),
                    "就业": by_risk(EmpStudent, (EmpStudent.record_status == "ACTIVE",))}
         high = sum(d["HIGH"] for d in domains.values())

@@ -6,7 +6,8 @@
 #   可选参数： -ApiBase http://服务器IP  (默认 http://localhost:8000)
 # =============================================================================
 param(
-    [string]$ApiBase = "http://localhost:8000"
+    [string]$ApiBase = "http://localhost:8000",
+    [string]$EnvFile = "backend\.env"      # 生产安全基线检查读取的 env 文件（可指向 deploy\env\backend.mysql.env）
 )
 $RepoRoot   = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $BackendDir = Join-Path $RepoRoot "backend"
@@ -57,6 +58,39 @@ try {
     elseif ($LASTEXITCODE -eq 2) { Warn "MySQL 参数不全（多半是没填 DB_PASSWORD）——见上方提示" }
     else { Fail "MySQL 连接失败（退出码 $LASTEXITCODE）" }
 } finally { Pop-Location }
+
+# 5) 生产安全基线 env 静态检查（镜像后端启动期 assert_secret_safe/assert_prod_flags_safe/assert_cors_safe，
+#    提前在部署前拦住误配；后端启动时若违规会直接拒绝启动）
+Write-Host "`n[5] 生产安全基线（读取 $EnvFile）"
+$envPath = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $RepoRoot $EnvFile }
+if (-not (Test-Path $envPath)) {
+    Warn "未找到 env 文件：$EnvFile（跳过安全基线检查；生产部署前请提供，或用 -EnvFile 指定）"
+} else {
+    $cfg = @{}
+    foreach ($line in Get-Content $envPath) {
+        $t = $line.Trim()
+        if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) {
+            $kv = $t.Split('=', 2); $cfg[$kv[0].Trim()] = $kv[1].Trim()
+        }
+    }
+    # 必填项
+    foreach ($k in @('APP_ENV', 'DB_ENABLED', 'JWT_SECRET_KEY', 'CORS_ORIGINS')) {
+        if ($cfg.ContainsKey($k) -and $cfg[$k]) { Ok "env 必填项 $k 已设置" }
+        else { Warn "env 缺少必填项 $k" }
+    }
+    $appEnv = "$($cfg['APP_ENV'])".ToLower()
+    if ($appEnv -notin @('prod', 'production')) {
+        Warn "APP_ENV=$appEnv（非生产）——生产安全基线仅在 APP_ENV=prod 时强校验"
+    } else {
+        if ("$($cfg['DEBUG'])".ToLower() -in @('true', '1', 'yes', 'on')) { Fail "生产 DEBUG 必须为 false" } else { Ok "DEBUG 已关闭" }
+        if ("$($cfg['MOCK_LOGIN_ENABLED'])".ToLower() -in @('true', '1', 'yes', 'on')) { Fail "生产禁止 MOCK_LOGIN_ENABLED=true（免密演示登录）" } else { Ok "mock-login 生产已关闭" }
+        $cors = "$($cfg['CORS_ORIGINS'])"
+        if (-not $cors -or $cors.Contains('*')) { Fail "生产 CORS_ORIGINS 不得为空或含 *（必须白名单）" } else { Ok "CORS 白名单已配置" }
+        $jwt = if ($cfg['JWT_SECRET_KEY']) { $cfg['JWT_SECRET_KEY'] } else { "$($cfg['JWT_SECRET'])" }
+        $weak = @('change-me-in-production', 'school-lifecycle-dev-secret-change-me-please-32', '')
+        if (($weak -contains $jwt) -or ($jwt.Length -lt 32)) { Fail "生产 JWT_SECRET_KEY 为弱值/过短（需 ≥32 位随机）" } else { Ok "JWT 密钥强度达标" }
+    }
+}
 
 # 汇总
 Write-Host "`n== 自检结果：PASS=$pass WARN=$warn FAIL=$fail ==" -ForegroundColor Cyan

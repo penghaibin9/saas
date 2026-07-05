@@ -95,7 +95,9 @@ def dry_run(rows: list[dict]) -> dict:
     status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
     batch = {"batchNo": batch_no, "status": status, "totalRows": len(rows),
              "okRows": len(ok_rows), "errorRows": len(errors), "errors": errors[:50],
-             "rows": ok_rows}
+             "rows": ok_rows,
+             # 绑定租户与创建人：确认阶段据此做租户隔离校验，防跨租户凭 batchNo 确认他人批次
+             "tenantId": _tid(), "createdBy": (get_current_user_ctx() or {}).get("userId")}
     if db_enabled():
         from app.models import StudentImportBatch
         db = get_sessionmaker()()
@@ -107,12 +109,14 @@ def dry_run(rows: list[dict]) -> dict:
         finally:
             db.close()
     _MEM_BATCHES[batch_no] = batch
-    return {k: v for k, v in batch.items() if k != "rows"} | {"batchNo": batch_no}
+    _internal = {"rows", "tenantId", "createdBy"}   # 内部字段不返回给客户端
+    return {k: v for k, v in batch.items() if k not in _internal} | {"batchNo": batch_no}
 
 
 def confirm(batch_no: str) -> dict:
     batch = _MEM_BATCHES.get(batch_no)
-    if not batch:
+    # 租户隔离：批次不存在，或不属于当前租户，一律按「不存在」处理（不泄露存在性），防跨租户确认
+    if not batch or batch.get("tenantId") != _tid():
         raise not_found("导入批次不存在或已过期，请重新校验")
     if batch["status"] != "DRY_RUN_PASSED":
         raise AppException("VALIDATION_ERROR", "该批次未通过 Dry-Run 校验，禁止确认导入")
