@@ -66,9 +66,12 @@ def parse_upload_rows(content: bytes, ext: str) -> list[dict]:
     if ext == "xlsx":
         import io as _io
         from openpyxl import load_workbook
-        wb = load_workbook(_io.BytesIO(content), read_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
+        try:
+            wb = load_workbook(_io.BytesIO(content), read_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+        except Exception:  # noqa: BLE001 — 畸形/伪造 xlsx 转 400，不冒泡到全局 500
+            raise AppException("FILE_TYPE_NOT_ALLOWED", "文件不是有效的 xlsx，请用标准模板导出后再上传")
         if not rows:
             return []
         headers = [str(h or "").strip() for h in rows[0]]

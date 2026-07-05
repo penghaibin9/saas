@@ -19,7 +19,8 @@ ALLOWED_EXT = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
 BLOCKED_EXT = {"exe", "js", "bat", "sh", "php", "jsp", "html", "svg"}
 MAX_SIZE = 50 * 1024 * 1024
 
-_MEM_REGISTRY: dict[str, dict] = {}  # DB_ENABLED=false 时的内存登记
+_MEM_REGISTRY: dict[str, dict] = {}   # DB_ENABLED=false 时的内存登记（file_id -> meta）
+_MEM_TENANT: dict[str, int] = {}      # file_id -> tenant_id（内存模式下的租户归属，防跨租户读取）
 
 
 def upload_dir() -> Path:
@@ -77,15 +78,23 @@ async def store_upload(file, biz_type: str = "ATTACHMENT") -> dict:
     else:
         meta["fileId"] = f"mem-{uuid.uuid4().hex[:12]}"
         _MEM_REGISTRY[meta["fileId"]] = meta
+        _MEM_TENANT[meta["fileId"]] = int(current_tenant_id() or 0)
     return meta
 
 
 def get_file_meta(file_id: str) -> dict | None:
+    """按【当前租户】读取文件元数据。跨租户 / 无租户上下文一律返回 None（不泄露文件存在性）。"""
+    tid = int(current_tenant_id() or 0)
     if db_enabled() and file_id.isdigit():
+        if not tid:
+            return None  # 无租户上下文：拒绝，避免越权读取他人文件元数据
+        from sqlalchemy import select
         from app.models import FileObject
         db = get_sessionmaker()()
         try:
-            row = db.get(FileObject, int(file_id))
+            row = db.scalars(select(FileObject).where(
+                FileObject.id == int(file_id),
+                FileObject.tenant_id == tid)).first()
             if not row or row.is_deleted:
                 return None
             return {"fileId": str(row.id), "fileName": row.file_name, "ext": row.ext,
@@ -93,6 +102,10 @@ def get_file_meta(file_id: str) -> dict | None:
                     "bizType": row.biz_type, "storedAt": row.created_at.isoformat(timespec="seconds")}
         finally:
             db.close()
+    # 内存模式（DB_ENABLED=false）：同样按租户归属校验，非本租户返回 None
+    owner = _MEM_TENANT.get(file_id)
+    if owner is not None and owner != tid:
+        return None
     return _MEM_REGISTRY.get(file_id)
 
 
