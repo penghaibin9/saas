@@ -87,7 +87,8 @@ def _mk_user(uid, login, name, utype, ctx_type, ctx_name, org, scope, scope_labe
     }
 
 DEMO_USERS.update({
-    "u_student01": _mk_user("u_student01", "student01", "张一鸣", "STUDENT", "STUDENT", "学生本人", "软件学院·软件2401班", "SELF", "本人", 1),
+    "u_student01": {**_mk_user("u_student01", "student01", "张一鸣", "STUDENT", "STUDENT", "学生本人", "软件学院·软件2401班", "SELF", "本人", 1),
+                    "studentNo": "2023100001"},
     "u_counselor01": _mk_user("u_counselor01", "counselor01", "王莉", "TEACHER", "COUNSELOR", "辅导员", "软件学院", "COUNSELOR_CLASSES", "本人所带班级学生", 486),
     "u_teacher01": _mk_user("u_teacher01", "teacher01", "李明", "TEACHER", "GD_MENTOR", "指导教师", "软件学院", "GD_STUDENTS", "本人指导学生", 28),
     "u_employment01": _mk_user("u_employment01", "employment01", "刘芳", "TEACHER", "EMPLOYMENT_TEACHER", "就业老师", "就业指导中心", "SCHOOL", "应届毕业生", 2641),
@@ -109,6 +110,15 @@ def _context_of(user: dict, context_id: str) -> Optional[dict]:
     return next((c for c in user["contexts"] if c["contextId"] == context_id), None)
 
 
+def _resolve_tenant_claims(tenant_code: str) -> dict:
+    """按租户码解析令牌租户声明；未知/缺省一律绑定默认租户，令牌带 tenantId
+    后中间件以令牌为准，X-Tenant 头无法再切换已登录用户的数据租户。"""
+    from app.core.config import settings
+    from app.core.tenant_context import get_mock_tenant
+    t = get_mock_tenant((tenant_code or "").strip()) or get_mock_tenant(settings.DEFAULT_TENANT_CODE)
+    return {"tid": t["tenantCode"], "tenantId": t["tenantId"], "tenantName": t["tenantName"]}
+
+
 def login(tenant_code: str, login_name: str, user_type: str, client_type: str) -> dict:
     user = _find_user(login_name, user_type)
     if not user:
@@ -116,17 +126,17 @@ def login(tenant_code: str, login_name: str, user_type: str, client_type: str) -
 
     contexts = user["contexts"]
     active = contexts[0]
-    token = create_access_token({
+    tclaims = _resolve_tenant_claims(tenant_code)
+    claims = {
         "userId": user["userId"], "realName": user["realName"], "userType": user["userType"],
-        "tid": tenant_code, "activeContextId": active["contextId"],
+        **tclaims, "activeContextId": active["contextId"],
         "currentRoleCode": active["contextType"], "clientType": client_type,
-    })
+    }
+    if user.get("studentNo"):
+        claims["studentNo"] = user["studentNo"]
+    token = create_access_token(claims)
     from app.core.token_store import issue_refresh
-    refresh_token = issue_refresh({
-        "userId": user["userId"], "realName": user["realName"], "userType": user["userType"],
-        "tid": tenant_code, "activeContextId": active["contextId"],
-        "currentRoleCode": active["contextType"], "clientType": client_type,
-    })
+    refresh_token = issue_refresh(dict(claims))
     return {
         "accessToken": token,
         "tokenType": "Bearer",
@@ -136,8 +146,8 @@ def login(tenant_code: str, login_name: str, user_type: str, client_type: str) -
         "userId": user["userId"],
         "username": user["loginName"],
         "displayName": user["realName"],
-        "tenantId": "1000000000000000001",
-        "tenantName": "示范职业技术学院",
+        "tenantId": tclaims["tenantId"],
+        "tenantName": tclaims["tenantName"],
         "currentRole": {"roleCode": active["contextType"], "roleName": active["contextName"],
                         "dataScope": active["dataScope"], "scopeLabel": active.get("scopeLabel", "")},
         "roles": [{"roleCode": c["contextType"], "roleName": c["contextName"]} for c in contexts],
@@ -188,11 +198,15 @@ def switch_role(user_ctx: dict, context_id: str, client_type: str) -> dict:
     if not target["enabled"]:
         raise AppException("ROLE_NOT_FOUND", "该身份已禁用")
 
-    token = create_access_token({
+    sclaims = {
         "userId": user["userId"], "realName": user["realName"], "userType": user["userType"],
-        "tid": user_ctx.get("tenantCode"), "activeContextId": target["contextId"],
+        **_resolve_tenant_claims(user_ctx.get("tenantCode") or ""),
+        "activeContextId": target["contextId"],
         "currentRoleCode": target["contextType"], "clientType": client_type,
-    })
+    }
+    if user.get("studentNo"):
+        sclaims["studentNo"] = user["studentNo"]
+    token = create_access_token(sclaims)
     return {
         "accessToken": token,
         "activeContextId": target["contextId"],

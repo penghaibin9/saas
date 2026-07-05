@@ -67,6 +67,13 @@ def _bind_token_tenant(request: Request) -> None:
                         "tenantCode": claims.get("tid") or "",
                         "tenantName": claims.get("tenantName") or "",
                         "status": "ACTIVE"})
+        elif claims.get("tid"):
+            # 兼容旧令牌（只有租户码无 tenantId）：按令牌租户码绑定，
+            # 确保已登录请求的数据租户只由令牌决定，X-Tenant 头无法越权切换。
+            from app.core.tenant_context import get_mock_tenant
+            t = get_mock_tenant(str(claims["tid"]).strip())
+            if t:
+                set_tenant(dict(t))
     except Exception:  # noqa: BLE001 — 非法令牌交由 get_current_user 统一处理
         return
 

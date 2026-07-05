@@ -3,17 +3,11 @@
 ────────────────────────────────────────────────────────────
 启动：
     cd backend
-    python -m venv .venv
-    .venv\\Scripts\\activate        （Windows；Linux/macOS 用 source .venv/bin/activate）
-    pip install -r requirements.txt
     uvicorn app.main:app --reload --port 8000
-
 验收：
     http://localhost:8000/health   健康检查（统一响应结构）
     http://localhost:8000/docs     Swagger 文档
-
-当前阶段：可运行 mock 骨架。不连库（DB_ENABLED=False）、不改 frontend/src、不改 miniapp。
-契约来源：docs/api/00-API契约冻结总册.md（响应/错误码/分页/租户/角色/数据范围/审计/文件）。
+契约来源：docs/api/00-API契约冻结总册.md。
 """
 from __future__ import annotations
 
@@ -27,6 +21,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.response import success
+from app.core.security import assert_cors_safe, assert_prod_flags_safe, assert_secret_safe
 from app.middleware.context import RequestContextMiddleware
 
 APP_VERSION = "0.1.0"
@@ -35,19 +30,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 
 def create_app() -> FastAPI:
+    # 安全底线：生产环境弱/默认 JWT 密钥拒绝启动（防伪造令牌绕过权限）。
+    assert_secret_safe()
+    # 生产环境禁止 CORS 通配符（* + credentials 不安全），强制显式白名单。
+    assert_cors_safe()
+    # 生产环境 DEBUG 必须关闭；mock-login 不得显式开启。
+    assert_prod_flags_safe()
+    # 生产环境关闭 /docs、/redoc、/openapi.json，不把接口蓝图暴露公网。
+    _is_prod = settings.APP_ENV.strip().lower() in ("prod", "production")
     app = FastAPI(
         title=settings.APP_NAME,
         version=APP_VERSION,
-        description=(
-            "SaaS 后台骨架（mock 数据，未连库）。统一响应：code / message / data / traceId / timestamp。\n\n"
-            "**mock 账号**（任意非空密码）：`student01` 学生 · `teacher01` 教师(3 身份) · `admin01` 校级管理员。\n\n"
-            "登录 `POST /api/v1/authz/login` 拿 accessToken，右上角 Authorize 填 `Bearer <token>` 后可调其余接口。"
-        ),
-        docs_url="/docs",
-        redoc_url="/redoc",
+        description="SaaS 后台。统一响应：code / message / data / traceId / timestamp。",
+        docs_url=None if _is_prod else "/docs",
+        redoc_url=None if _is_prod else "/redoc",
+        openapi_url=None if _is_prod else "/openapi.json",
     )
 
-    # 中间件（后加先执行：CORS 最外层 → 请求上下文/traceId/租户）
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -63,16 +62,20 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["00·基础"], summary="健康检查")
     def health():
+        if _is_prod:
+            return success({"status": "UP"})
         return success({
             "status": "UP",
             "app": settings.APP_NAME,
             "version": APP_VERSION,
             "env": settings.APP_ENV,
-            "dbEnabled": settings.DB_ENABLED,  # 骨架阶段恒 False：未连库
+            "dbEnabled": settings.DB_ENABLED,
         })
 
     @app.get("/", include_in_schema=False)
     def index():
+        if _is_prod:
+            return success({"status": "UP"})
         return RedirectResponse(url="/docs")
 
     return app

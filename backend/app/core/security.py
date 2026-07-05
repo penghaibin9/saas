@@ -14,11 +14,11 @@ import time
 from typing import Optional
 
 import jwt
-from fastapi import Header
+from fastapi import Depends, Header
 
 from app.core.config import settings
 from app.core.context import set_current_user
-from app.core.exceptions import AppException, unauthorized
+from app.core.exceptions import AppException, no_permission, unauthorized
 
 
 def assert_secret_safe() -> None:
@@ -27,6 +27,25 @@ def assert_secret_safe() -> None:
         weak = {"change-me-in-production", "school-lifecycle-dev-secret-change-me-please-32", ""}
         if settings.jwt_secret in weak or len(settings.jwt_secret) < 32:
             raise RuntimeError("生产环境必须通过环境变量设置 ≥32 位随机 JWT_SECRET_KEY")
+
+
+def assert_prod_flags_safe() -> None:
+    """生产环境基线开关：DEBUG 必须为 false；mock-login 不得显式开启。"""
+    if settings.is_prod:
+        if settings.DEBUG:
+            raise RuntimeError("生产环境必须设置 DEBUG=false")
+        v = (settings.MOCK_LOGIN_ENABLED or "").strip().lower()
+        if v in ("true", "1", "yes", "on"):
+            raise RuntimeError("生产环境禁止显式开启 MOCK_LOGIN_ENABLED（免密演示登录）")
+
+
+def assert_cors_safe() -> None:
+    """生产环境禁止 CORS 通配符（allow_credentials=True 时 * 既不安全也不合规）。
+    留空回退通配或显式含 * 均拒绝启动，强制运维显式配置白名单。"""
+    if settings.is_prod:
+        origins = settings.cors_origin_list
+        if not settings.CORS_ORIGINS.strip() or "*" in origins:
+            raise RuntimeError("生产环境必须显式配置 CORS_ORIGINS 白名单，禁止使用通配符")
 
 
 def create_access_token(payload: dict) -> str:
@@ -69,8 +88,18 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
         "tenantCode": claims.get("tid"),
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
+        "studentNo": claims.get("studentNo"),
     }
     set_current_user(user)
+    return user
+
+
+def require_staff(user: dict = Depends(get_current_user)) -> dict:
+    """FastAPI 依赖：仅教职工/管理员可访问的 PC 管理端接口。
+    学生令牌一律 403，防止学生越权访问全校学生主档/审批/待办/导入导出/审计等 PC 接口。
+    学生的合法入口是 /mobile/* 专用端点（严格本人 + 脱敏）。"""
+    if (user.get("userType") or "").strip().upper() == "STUDENT":
+        raise no_permission("该接口仅教职工可用，请使用移动端个人页")
     return user
 
 

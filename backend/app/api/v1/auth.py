@@ -26,8 +26,14 @@ def _login_rate_guard():
 router = APIRouter()
 
 
-@router.post("/mock-login", summary="Mock 登录（返回演示令牌 + 多身份）")
+@router.post("/mock-login", summary="Mock 登录（返回演示令牌 + 多身份；生产环境默认关闭）")
 def mock_login(body: MockLoginRequest):
+    from app.core.config import settings
+    if not settings.mock_login_enabled:
+        # 生产环境（或显式 MOCK_LOGIN_ENABLED=false）：端点关闭，绝不签发免密令牌
+        audit.record("MOCK_LOGIN_DENIED", path="/api/v1/auth/mock-login",
+                     target_type="auth", target_id=body.loginName or "-")
+        raise AppException("NO_PERMISSION", "演示登录已关闭，请使用账号密码登录")
     _login_rate_guard()
     result = auth_svc.login(body.tenantCode, body.loginName, body.userType, body.clientType)
     audit.record("登录", method="POST", path="/api/v1/auth/mock-login",
