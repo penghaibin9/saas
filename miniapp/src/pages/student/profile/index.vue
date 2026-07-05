@@ -90,7 +90,11 @@ export default {
       this.state = 'loading'
       studentApi.getProfile().then((d) => { this.p = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
-    correct(field) { toast('已发起「' + field + '」更正申请（演示）') }
+    correct(field) {
+      // 走真实服务申请（信息更正工单），不做假成功
+      uni.navigateTo({ url: '/pages/student/service-apply/index?name=' +
+        encodeURIComponent('信息更正申请（' + field + '）') + '&dept=' + encodeURIComponent('学籍管理') })
+    }
   }
 }
 </script>

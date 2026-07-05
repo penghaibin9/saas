@@ -52,8 +52,8 @@
     </view>
 
     <MobileSafeAreaBar>
-      <button class="btn btn-ghost flex-1" @click="reset">重置</button>
-      <button class="btn btn-primary flex-1" @click="submit">提交申请</button>
+      <button class="btn btn-ghost flex-1" :disabled="submitting" @click="reset">重置</button>
+      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交申请' }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
@@ -61,7 +61,10 @@
 <script>
 import { useSubmissionsStore } from '@/stores/submissions'
 import { studentApi } from '@/services/studentApi'
+import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
+
+const submitLock = createSubmitLock(1500)
 
 const TYPE_MAP = {
   学生请假: ['事假', '病假', '公假', '其他'],
@@ -80,7 +83,8 @@ export default {
       startDate: '',
       endDate: '',
       reason: '',
-      fileName: ''
+      fileName: '',
+      submitting: false
     }
   },
   onLoad(q) {
@@ -101,7 +105,7 @@ export default {
       uni.chooseImage({
         count: 1,
         success: () => { this.fileName = '已选择 1 个附件' },
-        fail: () => { this.fileName = '示例附件.jpg（演示）' }
+        fail: () => { /* 用户取消选择：不伪造附件 */ }
       })
     },
     reset() {
@@ -110,6 +114,7 @@ export default {
       this.fileName = ''
     },
     submit() {
+      if (this.submitting) return
       if (this.reason.trim().length < 5) {
         toast('申请事由至少 5 个字')
         return
@@ -120,22 +125,24 @@ export default {
         name: this.svcName + '（' + this.typeOptions[this.typeIndex] + '）',
         dept: this.dept, needApprove: this.needApprove, detail: content
       })
-      // 真实提交；业务错误（403/409/422）不假装成功，仅网络失败离线暂存
-      studentApi.submitServiceApply({
+      this.submitting = true
+      // 真实提交（提交锁防连点）；业务错误（403/409/422）绝不假装成功
+      submitLock.run(() => studentApi.submitServiceApply({
         serviceKey: isLeave ? 'LEAVE' : this.svcName,
         reason: content, startTime: this.startDate, endTime: this.endDate
-      }).then(() => {
+      })).then(() => {
         localAdd()
         uni.showToast({ title: '提交成功', icon: 'success' })
         setTimeout(() => { uni.redirectTo({ url: '/pages/student/my-applications/index' }) }, 700)
       }).catch((e) => {
+        if (e && e.code === 'LOCKED') return
         if (e && e.biz) {
-          toast((e && e.message) || '提交失败，请检查后重试')
+          toast(normalizeError(e).text) // 409 重复 / 422 字段 / 403 权限：清晰提示
         } else {
-          localAdd()
-          toast('网络异常，已离线暂存（未提交服务器）')
-          setTimeout(() => { uni.redirectTo({ url: '/pages/student/my-applications/index' }) }, 900)
+          toast('网络异常，提交未成功，请稍后重试')
         }
+      }).finally(() => {
+        this.submitting = false
       })
     }
   }

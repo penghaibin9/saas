@@ -56,7 +56,7 @@ export default {
       this.state = 'loading'
       studentApi.getEmployment().then((d) => { this.e = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
-    report() { toast('打开就业去向填报（演示）') }
+    report() { toast('去向填报入口即将开放，可先联系就业指导老师登记') }
   }
 }
 </script>

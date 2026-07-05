@@ -42,7 +42,7 @@
         <!-- 功能入口 -->
         <view class="section-head"><text class="section-head__title">毕设功能</text></view>
         <view class="gd__entries card">
-          <text v-for="e in g.entries" :key="e" class="gd__entry" @click="toast(e + '（演示）')">{{ e }}</text>
+          <text v-for="e in g.entries" :key="e" class="gd__entry" @click="toast(e + '：入口即将开放')">{{ e }}</text>
         </view>
       </view>
     </MobileGlobalState>
@@ -61,7 +61,7 @@ export default {
       this.state = 'loading'
       studentApi.getGraduation().then((d) => { this.g = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
-    submitNode() { toast('打开「' + this.g.primaryAction.title + '」上传（演示）') }
+    submitNode() { toast('「' + this.g.primaryAction.title + '」材料上传请在 PC 端毕设中心完成') }
   }
 }
 </script>

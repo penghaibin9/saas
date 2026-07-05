@@ -29,7 +29,7 @@
 
       <!-- 证照 / 授权 / 隐私 -->
       <view class="card">
-        <view v-for="row in listMenu" :key="row.key" class="me__row" @click="toast(row.label + '（演示）')">
+        <view v-for="row in listMenu" :key="row.key" class="me__row" @click="toast(row.label + '：即将开放')">
           <text class="me__row-icon">{{ row.icon }}</text>
           <text class="me__row-label flex-1">{{ row.label }}</text>
           <text v-if="row.note" class="me__row-note">{{ row.note }}</text>

@@ -55,7 +55,7 @@ export default {
       this.state = 'loading'
       studentApi.getOrientation().then((d) => { this.o = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
-    call(c) { uni.makePhoneCall({ phoneNumber: c.phone, fail: () => toast('拨打 ' + c.name + '（演示）') }) }
+    call(c) { uni.makePhoneCall({ phoneNumber: c.phone, fail: () => toast('拨号未成功，可手动拨打：' + (c.phone || '')) }) }
   }
 }
 </script>

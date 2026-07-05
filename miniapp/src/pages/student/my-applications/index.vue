@@ -24,8 +24,8 @@
                 <text class="ma__opinion-text flex-1">{{ a.lastOpinion }}</text>
               </view>
               <view class="ma__actions">
-                <text v-if="a.status === 'RETURNED'" class="ma__btn is-primary" @click.stop="toast('去补充材料（演示）')">补充材料</text>
-                <text v-if="a.hasResult" class="ma__btn" @click.stop="toast('查看结果凭证（演示）')">结果凭证</text>
+                <text v-if="a.status === 'RETURNED'" class="ma__btn is-primary" @click.stop="resubmit(a)">重新提交</text>
+                <text v-if="a.hasResult" class="ma__btn" @click.stop="toast('结果凭证下载即将开放')">结果凭证</text>
                 <text class="ma__btn" @click.stop="detail(a)">办理详情</text>
               </view>
             </view>
@@ -60,7 +60,10 @@ export default {
       this.state = 'loading'
       studentApi.getApplications().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
-    detail(a) { toast('打开办理详情：' + a.name + '（演示）') }
+    detail(a) { toast(a.name + '：' + (a.statusText || a.status || '处理中') + (a.lastOpinion ? '，意见：' + a.lastOpinion : '')) },
+    resubmit(a) {
+      uni.navigateTo({ url: '/pages/student/service-apply/index?name=' + encodeURIComponent(a.name || '服务申请') })
+    }
   }
 }
 </script>

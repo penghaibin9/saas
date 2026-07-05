@@ -20,7 +20,7 @@
             <text class="home__hi-name">{{ greeting }}，{{ user.name }}</text>
             <text class="home__hi-sub">{{ user.className }} · {{ user.stageText }}</text>
           </view>
-          <view class="home__code" @click="toast('出示校园码用于门禁/考勤（演示）')">
+          <view class="home__code" @click="toast('校园码将随学校门禁对接后启用')">
             <text class="home__code-icon">▣</text>
             <text class="home__code-txt">校园码</text>
           </view>

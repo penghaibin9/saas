@@ -33,8 +33,8 @@
     </view>
 
     <MobileSafeAreaBar>
-      <button class="btn btn-ghost flex-1" @click="saveDraft">存草稿</button>
-      <button class="btn btn-primary flex-1" @click="submit">提交周报</button>
+      <button class="btn btn-ghost flex-1" :disabled="submitting" @click="saveDraft">存草稿</button>
+      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交周报' }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
@@ -42,13 +42,17 @@
 <script>
 import { useSubmissionsStore } from '@/stores/submissions'
 import { studentApi } from '@/services/studentApi'
+import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast, back } from '@/utils/nav'
+
+const submitLock = createSubmitLock(1500)
 
 export default {
   data() {
     return {
       week: '本周', company: '', post: '',
-      tasks: '', gain: '', problem: '', hours: ''
+      tasks: '', gain: '', problem: '', hours: '',
+      submitting: false
     }
   },
   onLoad(q) {
@@ -57,8 +61,9 @@ export default {
     if (q && q.post) this.post = decodeURIComponent(q.post)
   },
   methods: {
-    saveDraft() { toast('已存草稿（演示）') },
+    saveDraft() { toast('草稿已保留在本页，提交前请勿关闭') },
     submit() {
+      if (this.submitting) return
       if (!this.tasks.trim() || !this.gain.trim()) {
         toast('请填写本周工作内容与收获')
         return
@@ -74,22 +79,24 @@ export default {
         week: this.week, company: this.company, post: this.post,
         tasks: this.tasks.trim(), gain: this.gain.trim(), problem: this.problem.trim(), hours: this.hours
       })
-      // 真实提交；重复提交同周 409 明确提示，不兜底成功
-      studentApi.submitWeeklyReport({
+      this.submitting = true
+      // 真实提交（提交锁防连点）；重复提交同周 409 明确提示，绝不兜底成功
+      submitLock.run(() => studentApi.submitWeeklyReport({
         weekNo, content, problems: this.problem.trim(), planNext: ''
-      }).then(() => {
+      })).then(() => {
         localAdd()
         uni.showToast({ title: '周报已提交', icon: 'success' })
         setTimeout(() => back(), 700)
       }).catch((e) => {
+        if (e && e.code === 'LOCKED') return
         if (e && e.biz) {
           if (String(e.code).startsWith('409')) toast('本周周报已提交，请勿重复提交')
-          else toast((e && e.message) || '提交失败，请检查后重试')
+          else toast(normalizeError(e).text)
         } else {
-          localAdd()
-          toast('网络异常，已离线暂存（未提交服务器）')
-          setTimeout(() => back(), 900)
+          toast('网络异常，提交未成功，请稍后重试')
         }
+      }).finally(() => {
+        this.submitting = false
       })
     }
   }

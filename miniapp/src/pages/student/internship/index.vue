@@ -56,7 +56,7 @@
         <!-- 功能入口 -->
         <view class="section-head"><text class="section-head__title">实习功能</text></view>
         <view class="in__entries card">
-          <text v-for="e in i.entries" :key="e" class="in__entry" @click="toast(e + '（演示）')">{{ e }}</text>
+          <text v-for="e in i.entries" :key="e" class="in__entry" @click="entryTap(e)">{{ e }}</text>
         </view>
       </view>
     </MobileGlobalState>
@@ -87,11 +87,14 @@ export default {
       this.state = 'loading'
       studentApi.getInternship().then((d) => { this.i = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
+    entryTap(e) {
+      if (String(e).indexOf('周报') >= 0) return this.weekly()
+      toast(e + '：入口即将开放')
+    },
     checkin() {
       if (this.i.checkin.done) return toast('今日已打卡')
-      uni.showModal({ title: '实习打卡', content: '仅在此刻采集定位，不后台持续定位。确认打卡？', success: (r) => {
-        if (r.confirm) { this.i.checkin.done = true; this.i.status.todayCheckin = 'COMPLETED'; toast('打卡成功（演示）') }
-      } })
+      // 定位打卡依赖企业电子围栏配置，试点版暂未开放；绝不做本地假打卡
+      toast('定位打卡将在学校开通企业围栏后启用')
     },
     weekly() {
       if (this.i.weekly.submitted || useSubmissionsStore().hasWeekly(this.i.weekly.week)) {

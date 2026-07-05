@@ -21,7 +21,7 @@
               <view v-if="m.status" class="msg__sub"><MobileStatusTag :status="m.status" /></view>
               <view v-if="m.actionable || m.receipt" class="msg__actions">
                 <text v-if="m.actionable" class="msg__btn is-primary" @click.stop="handle(m)">去处理</text>
-                <text v-if="m.receipt" class="msg__btn" @click.stop="toast('已回执（演示）')">确认回执</text>
+                <text v-if="m.receipt" class="msg__btn" @click.stop="toast('回执确认功能即将开放')">确认回执</text>
               </view>
             </view>
           </view>
