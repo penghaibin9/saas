@@ -1,9 +1,13 @@
-"""pytest 公共夹具：默认 DB_ENABLED=false（mock 模式），共享 TestClient 与登录令牌。"""
+"""pytest 公共夹具：强制隔离生产 MySQL，默认 mock 模式（不读写 saas_lifecycle）。"""
 from __future__ import annotations
 
 import os
 
-os.environ.setdefault("DB_ENABLED", "false")
+# 必须在 import app 之前覆盖（防止 shell `export $(grep .env)` 把 DB_ENABLED=true 带进 pytest）
+os.environ["APP_ENV"] = "test"
+os.environ["DB_ENABLED"] = "false"
+os.environ["DATABASE_URL"] = ""
+os.environ.setdefault("TEST_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
 import pytest
 from fastapi.testclient import TestClient

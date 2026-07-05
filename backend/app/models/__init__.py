@@ -25,5 +25,6 @@ from app.models.graduation import (GraduationAuditTrail, GraduationDefenseGroup,
 from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob,  # noqa: F401
                                      EmpMaterial, EmpStudent)
 from app.models.teacher_scope import TeacherStudentScope  # noqa: F401
+from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401

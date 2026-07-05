@@ -1,0 +1,339 @@
+"""新学校开局向导（P13-A）。
+把一所新学校从"空租户"带到"可试点"：建租户 → 品牌 → 院系/专业/班级 → 学生 → 教师账号/角色/数据范围。
+设计要点：
+- 复用已有能力：租户/校管账号复用 platform_service；教师范围复用 t_teacher_student_scope。
+- dry-run：只校验、给行号错误，不落库。
+- confirm：整批一个事务；atomic 模式下任一硬错误 → 整批回滚（422）。
+- 严格租户隔离：非平台运营账号不得写入非本人租户（403）。
+- 所有 confirm 写审计；空数据不 500。
+本模块不重复造"文件解析"轮子：接收结构化 JSON rows（前端/脚本可由 csv/xlsx 转出），
+文件级导入仍可走既有 import_export/domain_import；本模块是"开局编排层"。
+"""
+from __future__ import annotations
+
+from sqlalchemy import func, select
+
+from app.core.exceptions import AppException
+from app.core.security import hash_password
+from app.db.session import db_enabled, get_sessionmaker
+from app.services import audit_log
+from app.services.db_service import _tid
+
+_PLATFORM_TYPES = {"PLATFORM_OP", "PLATFORM_ADMIN", "SUPER_ADMIN", "ADMIN"}
+_OPERATOR_TYPES = _PLATFORM_TYPES | {"SCHOOL_ADMIN", "STAFF"}
+
+
+def _session():
+    return get_sessionmaker()()
+
+
+def _require_operator(user: dict | None) -> dict:
+    u = user or {}
+    ut = (u.get("userType") or "").strip().upper()
+    if ut == "STUDENT" or ut == "TEACHER":
+        raise AppException("NO_PERMISSION", "开局向导仅平台运营/学校管理员可用")
+    if ut not in _OPERATOR_TYPES:
+        raise AppException("NO_PERMISSION", "无权执行开局向导")
+    return u
+
+
+def _is_platform(user: dict) -> bool:
+    return (user.get("userType") or "").strip().upper() in _PLATFORM_TYPES
+
+
+def _resolve_target_tenant(user: dict, body: dict) -> int:
+    """目标租户：body.tenantId 优先；非平台运营只能操作本租户，否则 403（禁跨租户）。"""
+    own = 0
+    try:
+        own = _tid()
+    except Exception:  # noqa: BLE001
+        own = 0
+    raw = body.get("tenantId")
+    target = int(raw) if raw not in (None, "") else own
+    if target and own and target != own and not _is_platform(user):
+        raise AppException("NO_PERMISSION", "禁止跨租户写入：只能操作本校租户")
+    if not target:
+        raise AppException("VALIDATION_ERROR", "缺少目标租户（tenantId）")
+    return target
+
+
+def _blank_report(dry_run: bool, tenant_id: int) -> dict:
+    return {
+        "dryRun": dry_run, "tenantId": str(tenant_id),
+        "entities": {k: {"created": 0, "skipped": 0, "failed": 0}
+                     for k in ("colleges", "majors", "classes", "students", "teachers")},
+        "errors": [], "teacherCredentials": [],
+    }
+
+
+# ─────────── 租户创建（平台运营，复用 platform_service） ───────────
+
+def create_tenant_step(user: dict, body: dict) -> dict:
+    u = _require_operator(user)
+    if not _is_platform(u):
+        raise AppException("NO_PERMISSION", "仅平台运营可创建新租户")
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实建租户")
+    from app.services import platform_service
+    res = platform_service.create_tenant(body)
+    audit_log.record("ONBOARD_CREATE_TENANT", f"tenant:{body.get('tenantCode')}",
+                     {"tenantName": body.get("tenantName")})
+    return res
+
+
+# ─────────── 校验器（返回错误列表；不写库） ───────────
+
+def _validate_rows(body: dict) -> list[dict]:
+    """跨实体校验，返回 [{row, entity, field, error}]。行号 1-based（对应导入表行）。"""
+    errors: list[dict] = []
+    colleges = body.get("colleges") or []
+    majors = body.get("majors") or []
+    classes = body.get("classes") or []
+    students = body.get("students") or []
+    teachers = body.get("teachers") or []
+
+    college_names = set()
+    for i, c in enumerate(colleges, 1):
+        nm = str((c or {}).get("name") or "").strip()
+        if not nm:
+            errors.append({"row": i, "entity": "college", "field": "name", "error": "院系名称必填"})
+        else:
+            college_names.add(nm)
+    major_names = set()
+    for i, m in enumerate(majors, 1):
+        nm = str((m or {}).get("name") or "").strip()
+        cg = str((m or {}).get("collegeName") or "").strip()
+        if not nm:
+            errors.append({"row": i, "entity": "major", "field": "name", "error": "专业名称必填"})
+        if not cg:
+            errors.append({"row": i, "entity": "major", "field": "collegeName", "error": "所属院系必填"})
+        if nm:
+            major_names.add(nm)
+    for i, k in enumerate(classes, 1):
+        nm = str((k or {}).get("name") or "").strip()
+        mj = str((k or {}).get("majorName") or "").strip()
+        if not nm:
+            errors.append({"row": i, "entity": "class", "field": "name", "error": "班级名称必填"})
+        if not mj:
+            errors.append({"row": i, "entity": "class", "field": "majorName", "error": "所属专业必填"})
+    seen_no = set()
+    for i, s in enumerate(students, 1):
+        no = str((s or {}).get("studentNo") or "").strip()
+        nm = str((s or {}).get("name") or "").strip()
+        if not no:
+            errors.append({"row": i, "entity": "student", "field": "studentNo", "error": "学号必填"})
+        elif no in seen_no:
+            errors.append({"row": i, "entity": "student", "field": "studentNo", "error": f"文件内学号重复：{no}"})
+        else:
+            seen_no.add(no)
+        if not nm:
+            errors.append({"row": i, "entity": "student", "field": "name", "error": "姓名必填"})
+    seen_login = set()
+    for i, t in enumerate(teachers, 1):
+        ln = str((t or {}).get("loginName") or "").strip()
+        nm = str((t or {}).get("name") or "").strip()
+        rc = str((t or {}).get("roleCode") or "").strip()
+        if not ln:
+            errors.append({"row": i, "entity": "teacher", "field": "loginName", "error": "登录名必填"})
+        elif ln in seen_login:
+            errors.append({"row": i, "entity": "teacher", "field": "loginName", "error": f"文件内登录名重复：{ln}"})
+        else:
+            seen_login.add(ln)
+        if not nm:
+            errors.append({"row": i, "entity": "teacher", "field": "name", "error": "姓名必填"})
+        if not rc:
+            errors.append({"row": i, "entity": "teacher", "field": "roleCode", "error": "角色编码必填"})
+    return errors
+
+
+# ─────────── 主编排 ───────────
+
+def run_onboarding(user: dict, body: dict, dry_run: bool = True) -> dict:
+    u = _require_operator(user)
+    tenant_id = _resolve_target_tenant(u, body)
+    report = _blank_report(dry_run, tenant_id)
+    if not db_enabled():
+        # 演示模式：只做校验，返回报告，不落库
+        report["errors"] = _validate_rows(body)
+        report["note"] = "演示模式：仅校验不落库"
+        return report
+
+    # 1) 结构校验（行号）
+    errors = _validate_rows(body)
+    report["errors"] = errors
+    atomic = bool(body.get("atomic", True))
+
+    if dry_run:
+        # 预演：统计将创建/跳过数量（不写库）
+        _count_preview(tenant_id, body, report)
+        return report
+
+    if errors and atomic:
+        # 整批回滚语义：有硬错误直接拒绝，不写任何一行
+        raise AppException("VALIDATION_ERROR", "存在错误行，已整批回滚（未写入任何数据）",
+                           details={"errors": errors})
+
+    # 2) confirm：一个事务写入
+    with _session() as db:
+        from app.models import (College, Major, Role, SchoolClass, StudentProfile, TeacherStudentScope,
+                                User, UserRole)
+
+        def col(name):
+            return db.scalars(select(College).where(College.tenant_id == tenant_id,
+                              College.college_name == name, College.is_deleted.is_(False))).first()
+
+        def maj(name):
+            return db.scalars(select(Major).where(Major.tenant_id == tenant_id,
+                              Major.major_name == name, Major.is_deleted.is_(False))).first()
+
+        def cls(name):
+            return db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == tenant_id,
+                              SchoolClass.class_name == name, SchoolClass.is_deleted.is_(False))).first()
+
+        # 院系
+        for c in (body.get("colleges") or []):
+            nm = str(c.get("name")).strip()
+            if col(nm):
+                report["entities"]["colleges"]["skipped"] += 1
+                continue
+            db.add(College(tenant_id=tenant_id, college_name=nm, code=c.get("code")))
+            report["entities"]["colleges"]["created"] += 1
+        db.flush()
+        # 专业
+        for m in (body.get("majors") or []):
+            nm = str(m.get("name")).strip()
+            cg = col(str(m.get("collegeName")).strip())
+            if not cg:
+                report["entities"]["majors"]["failed"] += 1
+                report["errors"].append({"entity": "major", "field": "collegeName",
+                                         "error": f"院系不存在：{m.get('collegeName')}"})
+                continue
+            if maj(nm):
+                report["entities"]["majors"]["skipped"] += 1
+                continue
+            db.add(Major(tenant_id=tenant_id, college_id=cg.id, major_name=nm, code=m.get("code")))
+            report["entities"]["majors"]["created"] += 1
+        db.flush()
+        # 班级
+        for k in (body.get("classes") or []):
+            nm = str(k.get("name")).strip()
+            mj = maj(str(k.get("majorName")).strip())
+            if not mj:
+                report["entities"]["classes"]["failed"] += 1
+                report["errors"].append({"entity": "class", "field": "majorName",
+                                         "error": f"专业不存在：{k.get('majorName')}"})
+                continue
+            if cls(nm):
+                report["entities"]["classes"]["skipped"] += 1
+                continue
+            db.add(SchoolClass(tenant_id=tenant_id, major_id=mj.id, class_name=nm,
+                               grade=k.get("grade")))
+            report["entities"]["classes"]["created"] += 1
+        db.flush()
+        # 学生
+        for s in (body.get("students") or []):
+            no = str(s.get("studentNo")).strip()
+            dup = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == tenant_id, StudentProfile.student_no == no,
+                StudentProfile.is_deleted.is_(False))).first()
+            if dup:
+                report["entities"]["students"]["skipped"] += 1
+                continue
+            k = cls(str(s.get("className") or "").strip()) if s.get("className") else None
+            db.add(StudentProfile(
+                tenant_id=tenant_id, student_no=no, real_name=str(s.get("name")).strip(),
+                gender=s.get("gender"), grade=s.get("grade"),
+                class_id=k.id if k else None, major_id=k.major_id if k else None,
+                current_stage=s.get("stage") or "ENROLLED",
+                student_status="NORMAL", status="ACTIVE"))
+            report["entities"]["students"]["created"] += 1
+        db.flush()
+        # 教师账号 + 角色 + 范围
+        for t in (body.get("teachers") or []):
+            ln = str(t.get("loginName")).strip()
+            dup = db.scalars(select(User).where(User.tenant_id == tenant_id,
+                             User.login_name == ln, User.is_deleted.is_(False))).first()
+            if dup:
+                report["entities"]["teachers"]["skipped"] += 1
+                continue
+            import secrets
+            pwd = "Tmp@" + secrets.token_urlsafe(6)
+            uobj = User(tenant_id=tenant_id, login_name=ln, real_name=str(t.get("name")).strip(),
+                        password_hash=hash_password(pwd), user_type="TEACHER",
+                        status="ACTIVE", must_change_password=True)
+            db.add(uobj)
+            db.flush()
+            rc = str(t.get("roleCode")).strip()
+            role = db.scalars(select(Role).where(Role.tenant_id == tenant_id,
+                              Role.role_code == rc, Role.is_deleted.is_(False))).first()
+            if not role:
+                role = Role(tenant_id=tenant_id, role_code=rc, role_name=t.get("roleName") or rc,
+                            role_type="SYSTEM", status="ACTIVE")
+                db.add(role)
+                db.flush()
+            db.add(UserRole(tenant_id=tenant_id, user_id=uobj.id, role_id=role.id, status="ACTIVE"))
+            # 数据范围绑定（复用 t_teacher_student_scope）
+            stype = str(t.get("scopeType") or "").strip().upper()
+            sref = t.get("scopeRef")
+            if stype in ("CLASS", "COLLEGE", "STUDENT", "ADVISOR"):
+                db.add(TeacherStudentScope(tenant_id=tenant_id, teacher_key=ln,
+                       teacher_name=str(t.get("name")).strip(), role_code=rc,
+                       scope_type=stype, ref_value=str(sref) if sref not in (None, "") else None,
+                       status="ACTIVE"))
+            report["entities"]["teachers"]["created"] += 1
+            report["teacherCredentials"].append({"loginName": ln, "initialPassword": pwd})
+        db.commit()
+
+    audit_log.record("ONBOARD_IMPORT", f"tenant:{tenant_id}",
+                     {"entities": {k: v for k, v in report["entities"].items()}})
+    return report
+
+
+def _count_preview(tenant_id: int, body: dict, report: dict) -> None:
+    """dry-run 预演：统计将新建/跳过（不写库）。"""
+    with _session() as db:
+        from app.models import College, Major, SchoolClass, StudentProfile, User
+
+        def exists(model, col, val):
+            return db.scalars(select(model).where(model.tenant_id == tenant_id, col == val,
+                              model.is_deleted.is_(False))).first() is not None
+        for c in (body.get("colleges") or []):
+            nm = str((c or {}).get("name") or "").strip()
+            if not nm:
+                report["entities"]["colleges"]["failed"] += 1
+            elif exists(College, College.college_name, nm):
+                report["entities"]["colleges"]["skipped"] += 1
+            else:
+                report["entities"]["colleges"]["created"] += 1
+        for m in (body.get("majors") or []):
+            nm = str((m or {}).get("name") or "").strip()
+            if not nm:
+                report["entities"]["majors"]["failed"] += 1
+            elif exists(Major, Major.major_name, nm):
+                report["entities"]["majors"]["skipped"] += 1
+            else:
+                report["entities"]["majors"]["created"] += 1
+        for k in (body.get("classes") or []):
+            nm = str((k or {}).get("name") or "").strip()
+            if not nm:
+                report["entities"]["classes"]["failed"] += 1
+            elif exists(SchoolClass, SchoolClass.class_name, nm):
+                report["entities"]["classes"]["skipped"] += 1
+            else:
+                report["entities"]["classes"]["created"] += 1
+        for s in (body.get("students") or []):
+            no = str((s or {}).get("studentNo") or "").strip()
+            if not no:
+                report["entities"]["students"]["failed"] += 1
+            elif exists(StudentProfile, StudentProfile.student_no, no):
+                report["entities"]["students"]["skipped"] += 1
+            else:
+                report["entities"]["students"]["created"] += 1
+        for t in (body.get("teachers") or []):
+            ln = str((t or {}).get("loginName") or "").strip()
+            if not ln:
+                report["entities"]["teachers"]["failed"] += 1
+            elif exists(User, User.login_name, ln):
+                report["entities"]["teachers"]["skipped"] += 1
+            else:
+                report["entities"]["teachers"]["created"] += 1

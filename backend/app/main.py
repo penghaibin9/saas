@@ -60,7 +60,6 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-
     @app.on_event("startup")
     async def _sandbox_midnight_reset():
         """体验沙箱每晚 0 点自动重置（单实例进程内定时；多实例部署请改用 cron 跑
@@ -102,6 +101,38 @@ def create_app() -> FastAPI:
             "env": settings.APP_ENV,
             "dbEnabled": settings.DB_ENABLED,
         })
+
+    @app.get("/health/ready", tags=["00·基础"], summary="就绪检查（DB/上传/导出目录）")
+    def health_ready():
+        import os
+
+        checks = {}
+        # 数据库连通
+        if settings.DB_ENABLED:
+            try:
+                from sqlalchemy import text
+
+                from app.db.session import get_engine
+                with get_engine().connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                checks["database"] = {"ok": True}
+            except Exception as e:  # noqa: BLE001
+                checks["database"] = {"ok": False, "error": str(e)[:120]}
+        else:
+            checks["database"] = {"ok": True, "note": "DB_ENABLED=false（mock 模式）"}
+        # 上传目录可写
+        for key, path in (("uploadDir", settings.UPLOAD_DIR), ("exportDir", "./exports")):
+            try:
+                os.makedirs(path, exist_ok=True)
+                probe = os.path.join(path, ".write_probe")
+                with open(probe, "w") as f:
+                    f.write("ok")
+                os.remove(probe)
+                checks[key] = {"ok": True, "path": path}
+            except Exception as e:  # noqa: BLE001
+                checks[key] = {"ok": False, "path": path, "error": str(e)[:120]}
+        all_ok = all(c.get("ok") for c in checks.values())
+        return success({"status": "READY" if all_ok else "DEGRADED", "checks": checks})
 
     @app.get("/", include_in_schema=False)
     def index():
