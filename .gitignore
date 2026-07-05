@@ -22,3 +22,35 @@ frontend/dist/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+
+# ===== 安全收口：备份 / 本地产物 / 敏感文件（与 CI forbidden-files 一致）=====
+# 本地备份目录（勿入库）
+.ai-backup/
+_local-backup/
+.snapshots/
+
+# 测试/调试转储与本地校验脚本
+backend/_pfull3.txt
+_pfull*.txt
+backend/scripts/_sec_verify.py
+
+# 运行时产物 / 上传导出 / 打包产物（CI 会拒绝这些被跟踪）
+uploads/
+exports/
+unpackage/
+*.db
+*.sqlite
+*.sqlite3
+
+# 密钥 / 证书（任何目录）
+*.pem
+*.key
+*.pfx
+*.p12
+*.keystore
+
+# 打包物与设计大文件（勿入库）
+一键构建.bat
+docs/ui/*.zip
+docs/ui/*.pdf
+docs/ui/**/*.pdf
