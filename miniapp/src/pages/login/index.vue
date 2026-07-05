@@ -33,8 +33,8 @@
           : '教师端：看待办 · 批审批 · 看风险 · 处理异常 · 查学生' }}</text>
       </view>
 
-      <button class="btn btn-primary btn-block login__btn" :class="{ 'is-teacher': tab === 'teacher' }" @click="onLogin">
-        进入演示环境
+      <button class="btn btn-primary btn-block login__btn" :class="{ 'is-teacher': tab === 'teacher' }" :disabled="demoLoading" @click="onLogin">
+        {{ demoLoading ? '正在进入…' : '进入演示环境' }}
       </button>
 
       <!-- 账号密码登录（真实校验：POST /api/v1/auth/login，不展示任何演示密码） -->
@@ -72,7 +72,7 @@
 import { tenantBrandConfig, ROLE } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { relaunch, toast } from '@/utils/nav'
-import { realRequest, setToken } from '@/services/request'
+import { realRequest, setRefreshToken, setToken } from '@/services/request'
 
 export default {
   data() {
@@ -81,7 +81,8 @@ export default {
       tab: 'student',
       trialPhone: '13549666867',
       account: { loginName: '', password: '' },
-      accLoading: false
+      accLoading: false,
+      demoLoading: false
     }
   },
   methods: {
@@ -98,6 +99,7 @@ export default {
         data: { loginName: this.account.loginName.trim(), password: this.account.password }
       }).then((d) => {
         setToken(d.accessToken)
+        setRefreshToken(d.refreshToken || '')
         const session = useSessionStore()
         const roleCode = (d.currentRole && d.currentRole.roleCode) || 'STUDENT'
         const map = {
@@ -127,16 +129,22 @@ export default {
       uni.makePhoneCall({ phoneNumber: this.trialPhone, fail: () => {} })
       // #endif
     },
-    onLogin() {
-      const session = useSessionStore()
-      if (this.tab === 'student') {
-        session.login(ROLE.STUDENT)
-        toast('欢迎回来，' + session.mockUser.name)
-        relaunch('/pages/student/home/index')
-      } else {
-        // 教师：先建立教师会话（默认辅导员身份），再进入身份选择页
-        session.login(ROLE.COUNSELOR)
-        relaunch('/pages/role-switch/index')
+    async onLogin() {
+      if (this.demoLoading) return
+      this.demoLoading = true
+      try {
+        const session = useSessionStore()
+        if (this.tab === 'student') {
+          await session.login(ROLE.STUDENT) // 等 token 就绪再进首页，首屏即真实数据
+          toast('欢迎回来，' + session.mockUser.name)
+          relaunch('/pages/student/home/index')
+        } else {
+          // 教师：先建立教师会话（默认辅导员身份），再进入身份选择页
+          await session.login(ROLE.COUNSELOR)
+          relaunch('/pages/role-switch/index')
+        }
+      } finally {
+        this.demoLoading = false
       }
     }
   }

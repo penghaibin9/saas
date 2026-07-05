@@ -20,7 +20,7 @@
           v-for="r in identities"
           :key="r.key"
           class="rs__item card"
-          :class="{ 'is-current': r.key === currentRole }"
+          :class="{ 'is-current': r.key === currentRole, 'is-disabled': switching }"
           @click="pick(r.key)"
         >
           <view class="rs__item-icon">{{ r.icon }}</view>
@@ -48,12 +48,13 @@ import { getRoleConfig } from '@/config/roles.config'
 import { mockTeacherUser } from '@/mock/user'
 import { workbenchByRole } from '@/mock/teacher/workbench'
 import { relaunch, toast } from '@/utils/nav'
+import { toastError } from '@/services/request'
 
 const ICONS = { counselor: '👥', mentor: '📘', intern_mentor: '💼', employment: '🎯', academic: '📋', college_admin: '🏛' }
 
 export default {
   data() {
-    return { user: mockTeacherUser, currentRole: '', canBack: false }
+    return { user: mockTeacherUser, currentRole: '', canBack: false, switching: false }
   },
   computed: {
     userInitial() {
@@ -76,11 +77,22 @@ export default {
     this.canBack = session.isTeacher && getCurrentPages().length > 1
   },
   methods: {
-    pick(key) {
-      const session = useSessionStore()
-      session.switchRole(key)
-      toast('已切换为「' + getRoleConfig(key).label + '」')
-      relaunch('/pages/teacher/workbench/index')
+    async pick(key) {
+      if (this.switching) return
+      this.switching = true
+      uni.showLoading({ title: '切换中…', mask: true })
+      try {
+        const session = useSessionStore()
+        await session.switchRole(key)
+        uni.hideLoading()
+        toast('已切换为「' + getRoleConfig(key).label + '」')
+        relaunch('/pages/teacher/workbench/index')
+      } catch (e) {
+        uni.hideLoading()
+        toastError(e)
+      } finally {
+        this.switching = false
+      }
     }
   }
 }
@@ -98,6 +110,7 @@ export default {
 .rs__label { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); margin-bottom: var(--space-3); }
 .rs__item { display: flex; align-items: center; gap: var(--space-3); }
 .rs__item.is-current { border: 1px solid var(--teacher-600); }
+.rs__item.is-disabled { opacity: 0.6; pointer-events: none; }
 .rs__item-icon {
   width: 40px; height: 40px; border-radius: var(--radius-md);
   background: var(--teacher-50); display: flex; align-items: center; justify-content: center; font-size: 22px;

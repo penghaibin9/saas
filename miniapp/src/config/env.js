@@ -20,7 +20,7 @@ export const ENV = {
   useMock: false, // false=优先真实后端，失败回退 mock；true=纯 mock
   apiBaseUrl: resolveApiBaseUrl(), // 后端地址（可被 VITE_API_BASE_URL 覆盖）
   apiPrefix: '/api/v1',
-  requestTimeout: 4000,
+  requestTimeout: 8000, // 校园弱网下 4s 偏紧；8s 内无响应按网络失败处理（读兜底/写明确报错）
   mockLatency: 260
 }
 

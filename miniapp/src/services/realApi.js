@@ -39,147 +39,47 @@ const STAGE_TEXT = {
   GRADUATION_DESIGN: '毕设', EMPLOYMENT: '就业'
 }
 
-function studentItem(r) {
-  return {
-    id: String(r.id),
-    name: r.realName,
-    studentNo: r.studentNo,
-    className: r.className || '—',
-    major: r.majorName || '—',
-    stage: STAGE_TEXT[r.currentStage] || '在校',
-    task: '',
-    risk: r.riskLevel === 'NONE' ? 'LOW' : r.riskLevel,
-    pending: 0,
-    last: (r.updatedAt || '').slice(0, 16).replace('T', ' '),
-    intern: r.currentStage === 'INTERNSHIP',
-    gd: r.currentStage === 'GRADUATION_DESIGN'
-  }
-}
+/* P10：已彻底移除对 PC 管理端全量接口（/students、/students/{id}、/approvals/tasks 列表、
+ * /todos、/messages）的调用。教师端一律走 /mobile/teacher/*（范围过滤 + 权限校验）。 */
 
-export async function students() {
-  const d = await realRequest('/students', { data: { page: 1, pageSize: 100 } })
-  return d.items.map(studentItem)
-}
-
-export async function riskStudents() {
-  const list = await students()
-  return list.filter((s) => s.risk === 'HIGH' || s.risk === 'MEDIUM')
-}
-
-export async function student360(id) {
-  const d = await realRequest(`/students/${id}`)
-  return {
-    base: {
-      name: d.realName, studentNo: d.studentNo, className: d.className || '—',
-      major: d.majorName || '—', stage: STAGE_TEXT[d.currentStage] || '在校',
-      phone: d.phoneMasked || ''
-    },
-    risk: {
-      level: d.riskLevel === 'NONE' ? 'LOW' : d.riskLevel,
-      types: d.riskLevel === 'NONE' ? [] : ['存在风险信号（演示）'],
-      since: (d.updatedAt || '').slice(0, 10)
-    },
-    tags: [STAGE_TEXT[d.currentStage] || '在校'],
-    timeline: (d.timeline || []).map((e, i) => ({
-      id: 'tl' + i,
-      time: (e.occurredAt || '').replace('T', ' ').slice(0, 16),
-      text: e.title || '',
-      type: 'normal'
-    }))
-  }
-}
-
-const BIZ_LABEL = {
-  PROFILE_CORRECTION: '学籍 · 信息更正', COMPANY_CHANGE: '实习 · 单位变更',
-  MATERIAL_VERIFY: '就业 · 材料核验', LEAVE: '在校 · 请假'
-}
-
-export async function approvals() {
-  const d = await realRequest('/approvals/tasks', { data: { page: 1, pageSize: 50 } })
-  return d.items.map((t) => ({
-    id: String(t.taskId),
-    title: t.title || '审批任务',
-    type: BIZ_LABEL[t.sourceBizType] || t.sourceBizType || '审批',
-    student: t.applicantName || '—',
-    className: '',
-    submitTime: (t.submittedAt || '').replace('T', ' ').slice(0, 16),
-    status: 'PENDING_REVIEW',
-    level: t.urgency === 'OVERDUE' || t.urgency === 'NEAR_DEADLINE' ? 'high' : 'normal',
-    fields: [
-      { label: '来源模块', value: t.sourceModule || '—' },
-      { label: '当前节点', value: t.nodeName || t.nodeCode || '—' },
-      { label: '提交时间', value: (t.submittedAt || '').replace('T', ' ').slice(0, 16) }
-    ],
-    flow: [
-      { node: '学生提交', time: (t.submittedAt || '').slice(5, 16).replace('T', ' '), done: true },
-      { node: t.nodeName || '审核', time: '待处理', done: false, current: true },
-      { node: '办结', time: '—', done: false }
-    ]
-  }))
-}
-
-/** 审批操作：approve / reject / return（return 映射为后端 reject，原因必填） */
+/** 审批操作：approve / reject / return（return 映射为 reject，原因必填）。
+ * P10：改走 /mobile/teacher/approvals/*（后端做教师校验 + 范围校验 + 审计 + 409 冲突）。 */
 export function actApproval(id, type, reason) {
   if (type === 'approve') {
-    return realRequest(`/approvals/tasks/${id}/approve`, { method: 'POST', data: { comment: reason || '' } })
+    return realRequest(`/mobile/teacher/approvals/${id}/approve`,
+      { method: 'POST', data: { comment: reason || '' } })
   }
-  return realRequest(`/approvals/tasks/${id}/reject`, {
+  return realRequest(`/mobile/teacher/approvals/${id}/reject`, {
     method: 'POST',
     data: { reason: reason && reason.trim().length >= 5 ? reason : '移动端驳回（未填详细原因）' }
   })
 }
 
-const TODO_GROUP = { APPROVAL: 'approve', REVIEW: 'review', RISK: 'risk', SUBMIT: 'confirm', CONFIRM: 'confirm' }
+/* ══════════ P10 · 教师端写操作（mobile 范围接口，真实落库+审计） ══════════ */
 
-export async function todos() {
-  const d = await realRequest('/todos', { data: { page: 1, pageSize: 50 } })
-  return d.items.map((t) => ({
-    id: String(t.todoId),
-    group: t.status === 'DONE' ? 'done' : TODO_GROUP[t.todoType] || 'approve',
-    title: t.title,
-    student: '',
-    module: t.sourceModule || '—',
-    deadline: (t.dueAt || '').replace('T', ' ').slice(0, 16),
-    level: 'normal',
-    status: t.status === 'DONE' ? 'DONE' : 'PENDING_REVIEW',
-    soon: false
-  }))
-}
+/** 实习周报批阅：action=APPROVE/RETURN（退回需 comment ≥5 字） */
+export const reviewWeeklyReal = (reportId, action, comment) =>
+  realRequest(`/mobile/teacher/internship/weekly/${reportId}/review`,
+    { method: 'POST', data: { action, comment: comment || '' } })
 
-/** 消息：合入 mock 的 tabs/groups 结构（真实条目放进第一个 tab，徽标重算） */
-export async function enrichMessages(mockData) {
-  const d = await realRequest('/messages', { data: { page: 1, pageSize: 50 } })
-  const items = d.items.map((m) => ({
-    id: String(m.messageId),
-    title: m.title,
-    module: m.messageType === 'ANNOUNCEMENT' ? '公告' : m.messageType === 'SYSTEM' ? '系统' : '待办通知',
-    level: 'normal',
-    time: (m.createdAt || '').replace('T', ' ').slice(0, 16),
-    read: m.readStatus === 'READ',
-    actionable: false
-  }))
-  const tabs = mockData.tabs || []
-  const firstKey = tabs.length ? tabs[0].key : 'todo'
-  mockData.groups = { ...mockData.groups, [firstKey]: items }
-  tabs.forEach((t) => {
-    const list = mockData.groups[t.key] || []
-    t.badge = list.filter((x) => !x.read).length
-  })
-  mockData.realApi = true
-  return mockData
-}
+/** 毕设开题批阅：action=APPROVE/REJECT（驳回需 comment ≥5 字） */
+export const reviewProposalReal = (proposalId, action, comment) =>
+  realRequest(`/mobile/teacher/graduation/proposal/${proposalId}/review`,
+    { method: 'POST', data: { action, comment: comment || '' } })
 
-/** 学生「我的档案」：真实学生（演示绑定 student_id=1）合入 mock 结构 */
-export async function enrichProfile(mockProfile) {
-  const ov = await realRequest('/mobile/me/overview')
-  const d = (ov && ov.student) || {}
-  if (!d.name) return mockProfile
-  mockProfile.base = { ...mockProfile.base, name: d.name, studentNo: d.studentNo }
-  mockProfile.org = { ...mockProfile.org, className: d.className || mockProfile.org.className }
-  mockProfile.status = { ...mockProfile.status, stageText: STAGE_TEXT[d.stage] || mockProfile.status.stageText }
-  mockProfile.realApi = true
-  return mockProfile
-}
+/** 打卡异常处理：action=REASONABLE/ABNORMAL/TO_RISK（意见 ≥5 字） */
+export const handleCheckinReal = (exceptionId, action, comment) =>
+  realRequest(`/mobile/teacher/internship/exception/${exceptionId}/handle`,
+    { method: 'POST', data: { action, comment: comment || '' } })
+
+/** 学业预警处理：action=CLOSE/ESCALATE（说明 ≥5 字） */
+export const handleWarningReal = (warningId, action, note) =>
+  realRequest(`/mobile/teacher/academic/warning/${warningId}/handle`,
+    { method: 'POST', data: { action, note: note || '' } })
+
+/** 就业跟进记录（真实落库） */
+export const createFollowupReal = (body) =>
+  realRequest('/mobile/teacher/employment/followup', { method: 'POST', data: body })
 
 /** 学生首页：真实阶段 + 待办计数合入 mock 结构 */
 export async function enrichHome(mockHome) {
@@ -388,9 +288,13 @@ export async function teacherGraduationReal(mock) {
     status: s.status || 'PROCESSING', deadline: s.deadline || '' }))
   const detail = {}
   ;(d.reviewDetail || []).forEach((p) => {
-    detail[String(p.id || '')] = { student: p.name || '', topic: p.topicTitle || '',
-      node: '开题', submitTime: p.submittedAt || '—', attachment: p.fileName || '—',
-      abstract: p.abstract || '（暂无摘要）', progress: [] }
+    // 以学生（projectId=gd_student_id）为键，页面用学生行打开批阅；proposalId 供真实批阅接口
+    const key = String(p.projectId || p.id || '')
+    if (!detail[key]) {
+      detail[key] = { student: p.studentName || p.name || '', topic: p.topicTitle || '',
+        node: '开题', submitTime: p.submitAt || p.submittedAt || '—', attachment: '—',
+        abstract: '（详见 PC 端材料附件）', progress: [], proposalId: String(p.id || '') }
+    }
   })
   return { list: list.length ? list : (mock.list || []),
     detail: Object.keys(detail).length ? detail : (mock.detail || {}), _real: true }

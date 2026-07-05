@@ -9,7 +9,7 @@ import { defineStore } from 'pinia'
 import { getRoleConfig, hasAction, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { loginReal } from '@/services/realApi'
-import { shouldTryReal } from '@/services/request'
+import { clearTokens, shouldTryReal } from '@/services/request'
 
 const STORAGE_KEY = 'gx_session_v1'
 
@@ -42,8 +42,10 @@ export const useSessionStore = defineStore('session', {
     can(action) {
       return hasAction(this.currentRole, action)
     },
-    /** mock 登录：根据选择进入学生端或教师端 */
-    login(roleKey) {
+    /** 演示登录：根据选择进入学生端或教师端。
+     * 返回 Promise：真实 token 就绪（或确认拿不到）后才 resolve，
+     * 避免"页面先加载、token 后到"导致首屏 401/回退。 */
+    async login(roleKey) {
       const cfg = getRoleConfig(roleKey)
       this.currentRole = roleKey
       this.logged = true
@@ -55,9 +57,13 @@ export const useSessionStore = defineStore('session', {
         this.availableRoles = [ROLE.STUDENT]
       }
       this.persist()
-      /* P3：同步真实后端登录取 token（失败静默，页面走 mock 兜底） */
+      /* 真实后端登录取 token（失败静默，页面走网络兜底骨架） */
       if (shouldTryReal()) {
-        loginReal(roleKey, cfg.side).then((d) => { this.applyRealUser(d) }).catch(() => {})
+        clearTokens() // 先清旧 token，防止旧角色残留
+        try {
+          const d = await loginReal(roleKey, cfg.side)
+          this.applyRealUser(d)
+        } catch (e) { /* 后端不可达：页面按网络失败兜底 */ }
       }
       return cfg.homeRoute
     },
@@ -84,19 +90,28 @@ export const useSessionStore = defineStore('session', {
         realName: p.name || this.identity.realName
       }
     },
-    /** 教师端切换身份（08B 3.3：切换后需刷新数据） */
-    switchRole(roleKey) {
+    /** 教师端切换身份（08B 3.3）。返回 Promise：新 token 生效后才 resolve，
+     * 调用方必须 await 后再刷新数据，避免旧角色 token 残留导致数据范围错乱。 */
+    async switchRole(roleKey) {
       this.currentRole = roleKey
       this.persist()
-      /* P3：切换身份 = 重新用对应演示账号登录后端（数据范围随之变化） */
+      /* 切换身份 = 重新用对应演示账号登录后端（数据范围随之变化） */
       if (shouldTryReal()) {
-        loginReal(roleKey, getRoleConfig(roleKey).side).then((d) => { this.applyRealUser(d) }).catch(() => {})
+        clearTokens() // 旧角色 token 立即作废，绝不带着旧范围发请求
+        try {
+          const d = await loginReal(roleKey, getRoleConfig(roleKey).side)
+          this.applyRealUser(d)
+        } catch (e) { /* 后端不可达：页面按网络失败兜底 */ }
       }
     },
     logout() {
       this.logged = false
       this.mockUser = null
       this.availableRoles = []
+      this.realUser = null
+      this.identity = { userId: null, studentId: null, studentNo: null, realName: null,
+        roleCode: null, roleName: null }
+      clearTokens()
       try { uni.removeStorageSync(STORAGE_KEY) } catch (e) {}
     },
     persist() {
