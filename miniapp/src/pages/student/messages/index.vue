@@ -52,9 +52,19 @@ export default {
       this.state = 'loading'
       studentApi.getMessages().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
-    open(m) { m.read = true },
+    /** 打开消息：本地即时置灰 + 真实通知（msg- 前缀）同步服务器已读，失败不打扰阅读 */
+    open(m) {
+      m.read = true
+      this._syncRead(m)
+    },
+    _syncRead(m) {
+      if (m._synced || !/^msg-\d+$/.test(String(m.id))) return
+      m._synced = true
+      studentApi.markMessageRead(String(m.id).replace('msg-', '')).catch(() => { m._synced = false })
+    },
     handle(m) {
       m.read = true
+      this._syncRead(m)
       if (m.status === 'RETURNED') return go('/pages/student/my-applications/index')
       go('/pages/student/campus-service/index')
     }

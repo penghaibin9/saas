@@ -50,6 +50,16 @@ def internship_weekly(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_weekly_submit(user, body))
 
 
+@router.post("/internship/checkin", summary="实习每日打卡（本人，一天一次，真实落库）")
+def internship_checkin(body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(stu.internship_checkin(user, body))
+
+
+@router.post("/me/messages/{message_id}/read", summary="标记本人消息已读")
+def me_message_read(message_id: str, user=Depends(get_current_user)):
+    return success(stu.message_mark_read(user, message_id))
+
+
 @router.get("/orientation/my", summary="我的迎新报到")
 def orientation_my(user=Depends(get_current_user)):
     return success(stu.orientation_my(user))

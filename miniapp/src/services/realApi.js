@@ -133,10 +133,17 @@ export async function enrichAcademic(mock) {
 export async function enrichInternship(mock) {
   const r = await realRequest('/mobile/internship/my')
   if (!r || !r.hasData) return { ...mock, hasBatch: false, _real: false }
-  return { ...mock, hasBatch: true, company: r.enterpriseName || mock.company,
+  const out = { ...mock, hasBatch: true, company: r.enterpriseName || mock.company,
     post: r.positionName || mock.post, schoolMentor: r.advisorName || mock.schoolMentor,
     statusText: r.status, riskLevel: r.riskLevel,
     weeklyList: r.weeklyReports || [], checkinExceptions: r.attendanceExceptions || [], _real: true }
+  // 真实打卡状态覆盖 mock 骨架
+  if (r.todayCheckin) {
+    out.checkin = { ...(mock.checkin || {}), done: !!r.todayCheckin.done,
+      time: r.todayCheckin.time || '', totalDays: r.todayCheckin.totalDays || 0 }
+    out.status = { ...(mock.status || {}), todayCheckin: r.todayCheckin.done ? 'COMPLETED' : 'PENDING' }
+  }
+  return out
 }
 
 export async function enrichGraduation(mock) {
@@ -187,6 +194,14 @@ export const submitServiceApply = (body) =>
 
 export const submitWeeklyReport = (body) =>
   realRequest('/mobile/internship/weekly', { method: 'POST', data: body })
+
+/** 实习每日打卡（真实落库，一天一次，409=今日已打） */
+export const submitCheckin = (body) =>
+  realRequest('/mobile/internship/checkin', { method: 'POST', data: body || {} })
+
+/** 标记本人消息已读（严格本人校验） */
+export const markMessageRead = (id) =>
+  realRequest('/mobile/me/messages/' + id + '/read', { method: 'POST' })
 
 /** 学生档案：真实脱敏字段覆盖 mock 骨架（手机/身份证仅脱敏串，住址不返回）。 */
 export async function enrichProfileReal(mockProfile) {

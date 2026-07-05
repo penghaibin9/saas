@@ -63,7 +63,7 @@
 
     <MobileSafeAreaBar v-if="i && i.hasBatch">
       <button class="btn btn-ghost flex-1" @click="weekly">写周报</button>
-      <button class="btn btn-primary flex-1" @click="checkin">{{ i.checkin.done ? '已打卡' : '一键打卡' }}</button>
+      <button class="btn btn-primary flex-1" :disabled="checkingIn || i.checkin.done" @click="checkin">{{ i.checkin.done ? '已打卡' : (checkingIn ? '打卡中…' : '一键打卡') }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
@@ -73,7 +73,7 @@ import { studentApi } from '@/services/studentApi'
 import { useSubmissionsStore } from '@/stores/submissions'
 import { toast, go } from '@/utils/nav'
 export default {
-  data() { return { i: null, state: 'loading' } },
+  data() { return { i: null, state: 'loading', checkingIn: false } },
   onLoad() { this.load() },
   onShow() {
     if (this.i && useSubmissionsStore().hasWeekly(this.i.weekly.week)) {
@@ -93,8 +93,38 @@ export default {
     },
     checkin() {
       if (this.i.checkin.done) return toast('今日已打卡')
-      // 定位打卡依赖企业电子围栏配置，试点版暂未开放；绝不做本地假打卡
-      toast('定位打卡将在学校开通企业围栏后启用')
+      if (this.checkingIn) return
+      uni.showModal({
+        title: '实习打卡',
+        content: '仅在此刻采集一次定位用于打卡留痕，不后台持续定位。确认打卡？',
+        success: (r) => {
+          if (!r.confirm || this.checkingIn) return
+          this.checkingIn = true
+          const submit = (loc) => {
+            studentApi.submitCheckin(loc || {}).then((res) => {
+              this.i.checkin.done = true
+              this.i.status.todayCheckin = 'COMPLETED'
+              toast(res.message || '打卡成功')
+            }).catch((e) => {
+              if (e && String(e.code).startsWith('409')) {
+                this.i.checkin.done = true
+                this.i.status.todayCheckin = 'COMPLETED'
+                toast('今日已打卡')
+              } else if (e && e.biz) {
+                toast((e && e.message) || '打卡失败，请稍后重试')
+              } else {
+                toast('网络异常，打卡未成功，请稍后重试')
+              }
+            }).finally(() => { this.checkingIn = false })
+          }
+          // 定位失败不阻断打卡：无定位则只记录时间（后端 result=NO_LOCATION）
+          uni.getLocation({
+            type: 'gcj02',
+            success: (p) => submit({ lat: p.latitude, lng: p.longitude }),
+            fail: () => submit({})
+          })
+        }
+      })
     },
     weekly() {
       if (this.i.weekly.submitted || useSubmissionsStore().hasWeekly(this.i.weekly.week)) {

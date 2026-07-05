@@ -46,6 +46,8 @@ export const studentApi = {
       () => mockRequest({ tabs: M.studentMessageTabs, groups: M.studentMessages })),
   // 写操作：业务错误（401/403/409/422）透出，不兜底成成功
   submitServiceApply: (body) => real.submitServiceApply(body),
-  submitWeeklyReport: (body) => real.submitWeeklyReport(body)
+  submitWeeklyReport: (body) => real.submitWeeklyReport(body),
+  submitCheckin: (body) => real.submitCheckin(body),
+  markMessageRead: (id) => real.markMessageRead(id)
 }
 export default studentApi

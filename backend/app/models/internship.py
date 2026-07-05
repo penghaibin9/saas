@@ -71,6 +71,24 @@ class AttendanceException(PKMixin, TenantMixin, CommonMixin, Base):
     handled_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_checkin 实习每日打卡（真实落库；一天一次，唯一约束兜底并发）。
+    企业电子围栏未配置时 result=RECORDED（仅留痕定位），配置后可算 NORMAL/OUT_OF_RANGE。"""
+    __tablename__ = "t_internship_checkin"
+    __table_args__ = (UniqueConstraint("tenant_id", "internship_id", "checkin_date",
+                                       name="uk_internship_checkin_day"),)
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    checkin_date: Mapped[str] = mapped_column(String(10), nullable=False, comment="YYYY-MM-DD")
+    checkin_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    lat: Mapped[float | None] = mapped_column(Float)
+    lng: Mapped[float | None] = mapped_column(Float)
+    address: Mapped[str | None] = mapped_column(String(300))
+    result: Mapped[str] = mapped_column(String(30), nullable=False, default="RECORDED",
+                                        comment="RECORDED/NORMAL/OUT_OF_RANGE/NO_LOCATION")
+    note: Mapped[str | None] = mapped_column(String(500), comment="学生备注")
+
+
 class WeeklyReport(PKMixin, TenantMixin, CommonMixin, Base):
     """t_weekly_report 实习周报（支持重交版本）。"""
     __tablename__ = "t_weekly_report"

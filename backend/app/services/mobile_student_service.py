@@ -224,6 +224,36 @@ def _resolve_uid(u: dict):
         return None
 
 
+def message_mark_read(user: dict, message_id) -> dict:
+    """标记本人接收的统一消息为已读。严格校验 receiver 归属：非本人消息 404（不泄露存在性）。"""
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持")
+    try:
+        mid = int(str(message_id).replace("msg-", ""))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "消息 id 无效")
+    with _session() as db:
+        stu = resolve_student(db, u)
+        if not stu:
+            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
+        uid = _resolve_uid(u)
+        if uid is None:
+            uid = stu.id
+        from datetime import datetime as _dt
+
+        from app.models import UnifiedMessage
+        m = db.get(UnifiedMessage, mid)
+        if m is None or m.is_deleted or m.tenant_id != _tid() or m.receiver_id != uid:
+            raise AppException("DATA_NOT_FOUND", "消息不存在")
+        if (m.status or "") != "READ":
+            m.status = "READ"
+            m.read_at = _dt.utcnow()
+            m.version += 1
+            db.commit()
+        return {"messageId": str(m.id), "status": "READ"}
+
+
 # ─────────── 六大域·我的 ───────────
 
 def orientation_my(user: dict) -> dict:
@@ -330,7 +360,9 @@ def internship_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        from app.models import AttendanceException, InternshipRecord, WeeklyReport
+        from datetime import datetime as _dt
+
+        from app.models import AttendanceException, InternshipCheckin, InternshipRecord, WeeklyReport
         rec = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
             InternshipRecord.is_deleted.is_(False))).first()
@@ -343,10 +375,20 @@ def internship_my(user: dict) -> dict:
                           AttendanceException.internship_id == rec.id,
                           AttendanceException.is_deleted.is_(False)).order_by(
                           AttendanceException.id.desc())).all()
+        today = f"{_dt.now():%Y-%m-%d}"
+        today_ck = db.scalars(select(InternshipCheckin).where(
+            InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
+            InternshipCheckin.checkin_date == today, InternshipCheckin.is_deleted.is_(False))).first()
+        ck_total = db.scalar(select(func.count()).select_from(InternshipCheckin).where(
+            InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
+            InternshipCheckin.is_deleted.is_(False))) or 0
         return {"hasData": True,
                 "enterpriseName": rec.enterprise_name or "", "positionName": rec.position_name or "",
                 "advisorName": rec.advisor_name or "", "status": rec.status,
                 "riskLevel": rec.risk_level,
+                "todayCheckin": {"done": bool(today_ck),
+                                 "time": _iso(today_ck.checkin_at) if today_ck else None,
+                                 "totalDays": int(ck_total)},
                 "weeklyReports": [{"week": r.week_number, "status": r.status,
                                    "reviewComment": r.review_comment or ""} for r in reports],
                 "attendanceExceptions": [{"type": e.exception_type, "status": e.status,
@@ -553,6 +595,60 @@ def campus_service_apply(user: dict, body: dict) -> dict:
     audit_log.record("MOBILE_SERVICE_APPLY", f"campus-service:{service_key}",
                      {"studentNo": u.get("studentNo"), "serviceKey": service_key})
     return {"id": str(rid), "status": status, "message": "提交成功，等待处理"}
+
+
+def internship_checkin(user: dict, body: dict) -> dict:
+    """实习每日打卡（真实落库）：一天一次（唯一约束兜底并发 409）。
+    企业围栏未配置阶段 result=RECORDED/NO_LOCATION，定位仅留痕不作弊性判定。"""
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实打卡")
+    with _session() as db:
+        stu = resolve_student(db, u)
+        if not stu:
+            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
+        from datetime import datetime as _dt
+
+        from app.models import InternshipCheckin, InternshipRecord
+        rec = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
+            InternshipRecord.is_deleted.is_(False))).first()
+        if not rec:
+            raise AppException("DATA_NOT_FOUND", "你当前没有实习记录，无法打卡")
+        today = f"{_dt.now():%Y-%m-%d}"
+        dup = db.scalars(select(InternshipCheckin).where(
+            InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
+            InternshipCheckin.checkin_date == today, InternshipCheckin.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "今日已打卡，请勿重复打卡")
+
+        def _f(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        lat, lng = _f(body.get("lat")), _f(body.get("lng"))
+        row = InternshipCheckin(tenant_id=_tid(), internship_id=rec.id, checkin_date=today,
+                                checkin_at=_dt.utcnow(), lat=lat, lng=lng,
+                                address=str(body.get("address") or "")[:300] or None,
+                                result="RECORDED" if (lat is not None and lng is not None) else "NO_LOCATION",
+                                note=str(body.get("note") or "")[:500] or None)
+        db.add(row)
+        try:
+            db.flush()
+            rid, result = row.id, row.result
+            db.commit()
+        except Exception as exc:  # 并发重复打卡：唯一约束兜底 → 409
+            db.rollback()
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(exc, IntegrityError):
+                raise AppException("DATA_CONFLICT", "今日已打卡，请勿重复打卡")
+            raise
+    audit_log.record("MOBILE_CHECKIN", f"internship:checkin:{today}",
+                     {"studentNo": u.get("studentNo"), "result": result})
+    return {"id": str(rid), "date": today, "result": result,
+            "message": "打卡成功" + ("" if result == "RECORDED" else "（未获取到定位，仅记录时间）")}
 
 
 def internship_weekly_submit(user: dict, body: dict) -> dict:
