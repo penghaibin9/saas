@@ -29,6 +29,7 @@ import {
   reportDetailMap,
   auditLogs
 } from '@/mocks/dataCenter/dataCenter.mock'
+import { request, shouldTryReal } from '@/services/http/client'
 
 const DELAY = 120
 
@@ -121,7 +122,11 @@ export const dataCenterApi = {
   },
 
   /** 全景概览（caliber：REGISTERED 在册口径 / NATURAL 自然口径） */
-  getOverview({ caliber = 'REGISTERED' } = {}) {
+  async getOverview({ caliber = 'REGISTERED' } = {}) {
+    if (shouldTryReal()) {
+      try { return Promise.resolve({ code: 0, data: await request('/stats/overview', { params: { caliber } }), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     const data = overviewMetrics[caliber]
     if (!data) return fail('未知统计口径，请刷新后重试')
     return ok(clone(data))
