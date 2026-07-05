@@ -56,5 +56,7 @@ api_router.include_router(platform.router)                                    # 
 
 # 系统
 api_router.include_router(stats.router)                                       # /api/v1/stats/*
-api_router.include_router(mobile.router)                                      # /api/v1/mobile/*
+api_router.include_router(mobile.router)                                      # /api/v1/mobile/*（含 /me/portal-config）
+from app.api.v1 import student_portal_admin                                    # noqa: E402
+api_router.include_router(student_portal_admin.router)                        # /api/v1/admin/tenants/{id}/student-portal-config
 api_router.include_router(system.router, tags=["system"])                     # /api/v1/system/info

@@ -1,0 +1,24 @@
+{
+  "name": "student-portal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "学生 PC 自助门户（独立工程，仅 STUDENT 角色，重任务/材料/证明/长表单/大表格）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .js,.vue --no-error-on-unmatched-pattern"
+  },
+  "dependencies": {
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "eslint": "^8.57.0",
+    "eslint-plugin-vue": "^9.24.0",
+    "vite": "^5.2.8"
+  }
+}

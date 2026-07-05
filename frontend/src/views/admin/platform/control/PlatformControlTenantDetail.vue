@@ -57,6 +57,11 @@
         <div class="ptd__ops"><AppButton variant="primary" :loading="saving" @click="saveFeatures">保存功能开关</AppButton></div>
       </AppCard>
 
+      <AppCard v-else-if="tab === 'studentPortal'" class="ptd__panel">
+        <AppSectionHeader title="学生 PC 门户配置（保存后写审计；关闭的模块/功能，学生端菜单隐藏且后端 403）" />
+        <StudentPortalConfigPanel :tenant-id="tid" />
+      </AppCard>
+
       <div v-else-if="tab === 'rules'" class="ptd__rules">
         <AppCard v-for="(kv, group) in rules" :key="group" class="ptd__panel">
           <AppSectionHeader :title="ruleGroupLabels[group] || group" />
@@ -136,13 +141,14 @@
 import { AppButton, AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import StudentPortalConfigPanel from '@/modules/platform/components/StudentPortalConfigPanel.vue'
 import { toast } from '@/utils/toast'
 
 const STATUS = { trial: ['warning', '试用中'], active: ['success', '正式'], expired: ['danger', '已到期'], disabled: ['default', '已停用'] }
 
 export default {
   name: 'PlatformControlTenantDetail',
-  components: { AppButton, AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag },
+  components: { AppButton, AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag, StudentPortalConfigPanel },
   data() {
     return {
       loading: true,
@@ -156,7 +162,8 @@ export default {
         { key: 'rules', label: '规则中心' },
         { key: 'workflows', label: '审批流' },
         { key: 'brand', label: '品牌' },
-        { key: 'users', label: '账号' }
+        { key: 'users', label: '账号' },
+        { key: 'studentPortal', label: '学生PC门户' }
       ],
       quota: { maxStudents: 0, maxUsers: 0, storageLimitMb: 0 },
       features: {},

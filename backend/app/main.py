@@ -60,6 +60,37 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
+
+    @app.on_event("startup")
+    async def _sandbox_midnight_reset():
+        """体验沙箱每晚 0 点自动重置（单实例进程内定时；多实例部署请改用 cron 跑
+        scripts/reset_sandbox_school.py --confirm 并置 SANDBOX_AUTO_RESET=false）。"""
+        import asyncio
+
+        from app.db.session import db_enabled
+        if not (settings.sandbox_auto_reset and db_enabled()):
+            return
+
+        async def _loop():
+            from anyio import to_thread
+
+            from app.services.sandbox_service import reset_sandbox, seconds_until_next_midnight
+            while True:
+                try:
+                    await asyncio.sleep(seconds_until_next_midnight())
+                    from app.db.session import get_sessionmaker
+                    db = get_sessionmaker()()
+                    try:
+                        await to_thread.run_sync(lambda: reset_sandbox(db, dry_run=False))
+                    finally:
+                        db.close()
+                except asyncio.CancelledError:
+                    return
+                except Exception:  # noqa: BLE001 — 单次失败不终止调度，次日再试
+                    logging.getLogger("app.sandbox").exception("sandbox midnight reset failed")
+
+        asyncio.create_task(_loop())
+
     @app.get("/health", tags=["00·基础"], summary="健康检查")
     def health():
         if _is_prod:

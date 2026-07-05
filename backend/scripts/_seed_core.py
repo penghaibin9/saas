@@ -281,6 +281,20 @@ def run() -> int:
     except Exception as e:  # noqa: BLE001
         print(f"[seed] teacher_scope seed skipped: {e}")
 
+    # 演示租户六大模块完整演示数据（幂等 · 只新增；登录页「进入演示环境」数据源）
+    try:
+        from _seed_demo_school import seed_demo_school
+        print(f"[seed] demo-school domains: {seed_demo_school(db)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] demo_school seed skipped: {e}")
+
+    # 双真实租户演示体系：demo-school(admin/teacher/student) + sandbox-school(admin2/teacher2/student2)
+    try:
+        from _seed_two_tenants import seed_two_tenants
+        print(f"[seed] two-tenants: {seed_two_tenants(db)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[seed] two_tenants seed skipped: {e}")
+
     print("[seed] OK")
     print(f"[seed] 主租户 demo        : 学生={len(main_students)} 角色={len(ROLES)} 用户=20 "
           f"审批=20 待办=30 消息=20 审计=50 文件=2 导入批次=2 导出任务=1")

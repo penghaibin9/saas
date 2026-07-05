@@ -40,6 +40,18 @@ def me_applications(user=Depends(get_current_user)):
     return success(stu.my_applications(user))
 
 
+@router.get("/me/portal-config", summary="学生 PC 门户配置（仅学生·本人所在租户）")
+def me_portal_config(user=Depends(get_current_user)):
+    """学生 PC 门户启动配置。仅 STUDENT 可访问（非学生 403）；只返回本人租户配置，
+    不接受 tenantId 查询参数，杜绝跨租户读取；配置缺失返回安全默认，不 500。"""
+    from app.core.context import current_tenant_id
+    from app.core.exceptions import no_permission
+    from app.services import student_portal_service as sp
+    if (user.get("userType") or "").strip().upper() != "STUDENT":
+        raise no_permission("学生 PC 门户仅学生可访问，请使用学生账号登录")
+    return success(sp.get_config(int(current_tenant_id() or 0)))
+
+
 @router.post("/campus-service/apply", summary="提交在校服务申请（本人）")
 def campus_service_apply(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.campus_service_apply(user, body))
