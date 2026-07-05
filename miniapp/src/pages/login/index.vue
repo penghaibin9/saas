@@ -100,9 +100,14 @@ export default {
         setToken(d.accessToken)
         const session = useSessionStore()
         const roleCode = (d.currentRole && d.currentRole.roleCode) || 'STUDENT'
-        const map = { STUDENT: ROLE.STUDENT, COUNSELOR: ROLE.COUNSELOR, GD_MENTOR: ROLE.GD_MENTOR }
+        const map = {
+          STUDENT: ROLE.STUDENT, COUNSELOR: ROLE.COUNSELOR,
+          GD_MENTOR: ROLE.MENTOR, MENTOR: ROLE.MENTOR,
+          INTERN_MENTOR: ROLE.INTERN_MENTOR, EMPLOYMENT: ROLE.EMPLOYMENT,
+          ACADEMIC: ROLE.ACADEMIC, COLLEGE_ADMIN: ROLE.COLLEGE_ADMIN
+        }
         session.login(map[roleCode] || (roleCode === 'STUDENT' ? ROLE.STUDENT : ROLE.COUNSELOR))
-        session.realUser = d
+        session.applyRealUser(d)
         toast('欢迎，' + d.displayName)
         relaunch(roleCode === 'STUDENT' ? '/pages/student/home/index' : '/pages/teacher/workbench/index')
       }).catch((e) => {

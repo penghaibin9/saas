@@ -118,9 +118,23 @@ export function realFirst(label, realFn, mockFn) {
   })
 }
 
+/**
+ * 真实优先（严格）：仅在"网络失败"时回退 mock；业务错误（401/403/409/422，e.biz=true）直接抛出，
+ * 由页面按错误码处理，不假装成功。用于写操作与需要感知权限/校验错误的读操作。
+ */
+export function realFirstStrict(label, realFn, mockFn) {
+  if (!shouldTryReal()) return mockFn ? mockFn() : Promise.reject({ code: 'MOCK_ONLY', message: '演示模式' })
+  return realFn().catch((e) => {
+    if (e && e.biz) throw e // 业务错误透出，不兜底
+    console.warn('[realApi] ' + label + ' 网络失败回退 mock：', e && e.message)
+    if (mockFn) return mockFn()
+    throw e
+  })
+}
+
 /** 兼容旧签名：预留通道 */
 export function request(options) {
   return realRequest(options.url, { method: options.method, data: options.data })
 }
 
-export default { mockRequest, realRequest, realFirst, request, setToken, getToken }
+export default { mockRequest, realRequest, realFirst, realFirstStrict, request, setToken, getToken }

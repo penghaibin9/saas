@@ -23,7 +23,12 @@ export const useSessionStore = defineStore('session', {
     // 当前登录用户（mock）
     mockUser: null,
     // 教师多身份：可切换的身份 key 列表
-    availableRoles: []
+    availableRoles: [],
+    // 真实身份字段（登录响应 + /mobile/me/profile 回填），供页面自校验
+    identity: {
+      userId: null, studentId: null, studentNo: null, realName: null,
+      roleCode: null, roleName: null
+    }
   }),
   getters: {
     roleConfig: (s) => getRoleConfig(s.currentRole),
@@ -52,9 +57,32 @@ export const useSessionStore = defineStore('session', {
       this.persist()
       /* P3：同步真实后端登录取 token（失败静默，页面走 mock 兜底） */
       if (shouldTryReal()) {
-        loginReal(roleKey, cfg.side).then((d) => { this.realUser = d || null }).catch(() => {})
+        loginReal(roleKey, cfg.side).then((d) => { this.applyRealUser(d) }).catch(() => {})
       }
       return cfg.homeRoute
+    },
+    /** P9.2：把真实登录响应的身份字段落到 identity，供页面自校验 */
+    applyRealUser(d) {
+      this.realUser = d || null
+      if (!d) return
+      const role = d.currentRole || {}
+      this.identity = {
+        ...this.identity,
+        userId: d.userId != null ? d.userId : this.identity.userId,
+        realName: d.displayName || d.realName || this.identity.realName,
+        roleCode: role.roleCode || this.identity.roleCode,
+        roleName: role.roleName || this.identity.roleName
+      }
+    },
+    /** /mobile/me/profile 回填 studentId/studentNo（登录响应里没有） */
+    setStudentIdentity(p) {
+      if (!p) return
+      this.identity = {
+        ...this.identity,
+        studentId: p.studentId != null ? p.studentId : this.identity.studentId,
+        studentNo: p.studentNo || this.identity.studentNo,
+        realName: p.name || this.identity.realName
+      }
     },
     /** 教师端切换身份（08B 3.3：切换后需刷新数据） */
     switchRole(roleKey) {
@@ -62,7 +90,7 @@ export const useSessionStore = defineStore('session', {
       this.persist()
       /* P3：切换身份 = 重新用对应演示账号登录后端（数据范围随之变化） */
       if (shouldTryReal()) {
-        loginReal(roleKey, getRoleConfig(roleKey).side).then((d) => { this.realUser = d || null }).catch(() => {})
+        loginReal(roleKey, getRoleConfig(roleKey).side).then((d) => { this.applyRealUser(d) }).catch(() => {})
       }
     },
     logout() {

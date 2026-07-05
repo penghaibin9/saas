@@ -1,8 +1,8 @@
 /** 学生「我的档案」mock（08A 9.5） */
 export const studentProfile = {
   base: {
-    name: '林可欣', studentNo: '2024010612', gender: '女', nation: '汉族',
-    birth: '2006-03-18', political: '共青团员', idCard: '4301231999xxxx1234'
+    name: '张一鸣', studentNo: '2023100001', gender: '男', nation: '汉族',
+    birth: '2005-03-18', political: '共青团员', idCard: '4301232005xxxx1234'
   },
   contact: {
     phone: '13612345678', email: 'linkx@example.edu.cn',

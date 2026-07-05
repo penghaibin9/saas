@@ -2,15 +2,15 @@
 import { teacherIdentities } from '@/config/roles.config'
 
 export const mockStudentUser = {
-  id: 'stu_20240612',
-  name: '林可欣',
+  id: 'stu_2023100001',
+  name: '张一鸣',
   avatar: '',
-  studentNo: '2024010612',
-  gender: '女',
-  college: '信息工程学院',
+  studentNo: '2023100001',
+  gender: '男',
+  college: '软件学院',
   major: '软件工程',
   className: '软件工程 2401 班',
-  grade: '2024 级',
+  grade: '2023 级',
   // 当前阶段（对应 08A：ENROLLED 在校）
   stage: 'ENROLLED',
   stageText: '在校',
