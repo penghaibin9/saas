@@ -242,13 +242,11 @@ def _insts(db, ids) -> dict:
 
 def list_tasks(page: int, page_size: int, status: Optional[str] = None) -> tuple[list[dict], int]:
     with session() as db:
-        q = select(WorkflowTask).where(WorkflowTask.tenant_id == _tid(),
-                                       WorkflowTask.is_deleted.is_(False),
-                                       WorkflowTask.status == (status or "PENDING"))
-        rows = db.scalars(q.order_by(WorkflowTask.id)).all()
-        total = len(rows)
-        start = (max(1, page) - 1) * page_size
-        rows = rows[start:start + page_size]
+        cond = (WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status == (status or "PENDING"))
+        total = db.scalar(select(func.count()).select_from(WorkflowTask).where(*cond)) or 0
+        rows = db.scalars(select(WorkflowTask).where(*cond).order_by(WorkflowTask.id)
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         insts = _insts(db, [r.instance_id for r in rows])
         return [_task_row(t, insts.get(t.instance_id)) for t in rows], total
 
@@ -288,13 +286,11 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
 
 def list_processed(page: int, page_size: int) -> tuple[list[dict], int]:
     with session() as db:
-        rows = db.scalars(select(WorkflowTask).where(
-            WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
-            WorkflowTask.status.in_(["APPROVED", "REJECTED", "TRANSFERRED"])
-        ).order_by(WorkflowTask.acted_at.desc())).all()
-        total = len(rows)
-        start = (max(1, page) - 1) * page_size
-        rows = rows[start:start + page_size]
+        cond = (WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status.in_(["APPROVED", "REJECTED", "TRANSFERRED"]))
+        total = db.scalar(select(func.count()).select_from(WorkflowTask).where(*cond)) or 0
+        rows = db.scalars(select(WorkflowTask).where(*cond).order_by(WorkflowTask.acted_at.desc())
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         insts = _insts(db, [r.instance_id for r in rows])
         return [_task_row(t, insts.get(t.instance_id)) for t in rows], total
 
@@ -308,13 +304,13 @@ def list_todos(status=None, todo_type=None, page=1, page_size=20) -> tuple[list[
             q = q.where(UnifiedTodo.status == status)
         if todo_type:
             q = q.where(UnifiedTodo.todo_type == todo_type)
-        rows = db.scalars(q.order_by(UnifiedTodo.id)).all()
-        total = len(rows)
-        start = (max(1, page) - 1) * page_size
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.scalars(q.order_by(UnifiedTodo.id)
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         items = [{
             "todoId": str(r.id), "todoType": r.todo_type, "title": r.title, "status": r.status,
             "sourceModule": r.source_module, "dueAt": _iso(r.due_at), "createdAt": _iso(r.created_at),
-        } for r in rows[start:start + page_size]]
+        } for r in rows]
         by_type: dict[str, int] = {}
         for r in db.execute(select(UnifiedTodo.todo_type, func.count()).where(
                 UnifiedTodo.tenant_id == _tid(), UnifiedTodo.is_deleted.is_(False)
@@ -353,14 +349,14 @@ def list_messages(read_status=None, message_type=None, page=1, page_size=20) -> 
             q = q.where(UnifiedMessage.status == read_status)
         if message_type:
             q = q.where(UnifiedMessage.message_type == message_type)
-        rows = db.scalars(q.order_by(UnifiedMessage.id.desc())).all()
-        total = len(rows)
-        start = (max(1, page) - 1) * page_size
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.scalars(q.order_by(UnifiedMessage.id.desc())
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         return [{
             "messageId": str(r.id), "title": r.title, "content": r.content or "",
             "messageType": r.message_type or "SYSTEM", "readStatus": r.status,
             "createdAt": _iso(r.created_at), "readAt": _iso(r.read_at),
-        } for r in rows[start:start + page_size]], total
+        } for r in rows], total
 
 
 def message_read(message_id) -> dict:
@@ -404,9 +400,9 @@ def audit_query(page: int, page_size: int, action: str | None = None,
             q = q.where(SecurityAuditLog.created_at >= date_from)
         if date_to:
             q = q.where(SecurityAuditLog.created_at <= date_to + " 23:59:59")
-        rows = db.scalars(q.order_by(SecurityAuditLog.id.desc())).all()
-        total = len(rows)
-        start = (max(1, page) - 1) * page_size
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.scalars(q.order_by(SecurityAuditLog.id.desc())
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         return [{
             "auditId": str(r.id), "action": r.action, "resource": r.resource or "",
             "ip": r.ip or "", "userAgent": (r.user_agent or "")[:80],
@@ -414,4 +410,4 @@ def audit_query(page: int, page_size: int, action: str | None = None,
             "result": r.result or "SUCCESS", "actorId": r.operator_id, "actorName": r.operator_name,
             "tenantId": str(r.tenant_id), "requestId": r.trace_id, "detail": r.detail_json or {},
             "occurredAt": _iso(r.created_at),
-        } for r in rows[start:start + page_size]], total
+        } for r in rows], total

@@ -164,8 +164,11 @@ def my_messages(user: dict) -> dict:
                               "deadline": _iso(getattr(t, "due_at", None)),
                               "read": (t.status or "") != "PENDING",
                               "status": t.status, "link": t.source_module or ""})
-        # 通知 → 本人接收的统一消息（receiver_id 精准匹配本人 user_id，无法匹配则不返回）
+        # 通知 → 本人接收的统一消息（receiver_id 精准匹配本人 user_id；
+        # mock 演示令牌无数字 uid 时，以学生主档 id 兜底匹配演示种子消息）
         uid = _resolve_uid(u)
+        if uid is None:
+            uid = sid
         if uid is not None:
             notices = db.scalars(select(UnifiedMessage).where(
                 UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
@@ -210,8 +213,11 @@ def my_messages(user: dict) -> dict:
 
 
 def _resolve_uid(u: dict):
-    """从 token 尽力解析本人 user_id（int）；解析不到返回 None（则通知区不返回全校消息）。"""
-    v = u.get("userId")
+    """从 token 尽力解析本人 user_id（int）；兼容 db-<id> / u_xxx 前缀形式。
+    解析不到返回 None（则通知区不返回全校消息，绝不放开 receiver 过滤）。"""
+    v = str(u.get("userId") or "")
+    if v.startswith("db-"):
+        v = v[3:]
     try:
         return int(v)
     except (TypeError, ValueError):
@@ -517,6 +523,17 @@ def campus_service_apply(user: dict, body: dict) -> dict:
                                   name=stu.real_name, grade=stu.grade, record_status="ACTIVE")
             db.add(cs)
             db.flush()
+        # 防重复提交：同一学生同一服务、相同事由且仍在待处理，视为重复（409）
+        pending_leave = db.scalars(select(CsLeave).where(
+            CsLeave.tenant_id == _tid(), CsLeave.cs_student_id == cs.id,
+            CsLeave.is_deleted.is_(False), CsLeave.status == "PENDING_REVIEW",
+            CsLeave.reason == content)).first()
+        pending_wo = db.scalars(select(CsWorkOrder).where(
+            CsWorkOrder.tenant_id == _tid(), CsWorkOrder.cs_student_id == cs.id,
+            CsWorkOrder.is_deleted.is_(False), CsWorkOrder.status == "PENDING_HANDLE",
+            CsWorkOrder.title == service_key, CsWorkOrder.detail == content)).first()
+        if pending_leave or pending_wo:
+            raise AppException("DATA_CONFLICT", "相同申请已提交且仍在处理中，请勿重复提交")
         is_leave = service_key.upper() in ("LEAVE", "SV1", "请假")
         from datetime import datetime as _dt
         if is_leave:
@@ -574,9 +591,16 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
                          plan_content=str(body.get("planNext") or ""), word_count=len(content),
                          report_version=1, status="PENDING_REVIEW", submitted_at=_dt.utcnow())
         db.add(w)
-        db.flush()
-        wid, status = w.id, w.status
-        db.commit()
+        try:
+            db.flush()
+            wid, status = w.id, w.status
+            db.commit()
+        except Exception as exc:  # 并发重复提交：唯一约束兜底 → 409（绝不 500）
+            db.rollback()
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(exc, IntegrityError):
+                raise AppException("DATA_CONFLICT", f"第 {week_no} 周周报已提交，请勿重复提交")
+            raise
     audit_log.record("MOBILE_WEEKLY_SUBMIT", f"internship:week{week_no}",
                      {"studentNo": u.get("studentNo"), "weekNo": week_no})
     return {"id": str(wid), "status": status, "message": "周报提交成功"}
