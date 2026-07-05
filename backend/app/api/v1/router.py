@@ -8,6 +8,7 @@ from app.api.v1 import file as file_simple
 from app.api.v1 import import_export
 from app.api.v1 import message as message_simple
 from app.api.v1 import todo as todo_simple
+from app.api.v1 import mobile
 from app.api.v1 import stats
 from app.api.v1.todos import make_router as make_todos_router
 
@@ -55,4 +56,5 @@ api_router.include_router(platform.router)                                    # 
 
 # 系统
 api_router.include_router(stats.router)                                       # /api/v1/stats/*
+api_router.include_router(mobile.router)                                      # /api/v1/mobile/*
 api_router.include_router(system.router, tags=["system"])                     # /api/v1/system/info
