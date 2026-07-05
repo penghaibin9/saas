@@ -20,6 +20,12 @@ export const teacherApi = {
       () => mockRequest(M.approvals)),
   /** 审批操作沿用真实审批接口（数字 id）；已确认仅处理本人可见任务 */
   actApproval: (id, type, reason) => real.actApproval(id, type, reason),
+  /** 教师写操作：真实后端（范围校验+审计），业务错误透出，不回退 mock */
+  reviewWeekly: (id, action, comment) => real.reviewWeeklyReal(id, action, comment),
+  reviewProposal: (id, action, comment) => real.reviewProposalReal(id, action, comment),
+  handleWarning: (id, action, note) => real.handleWarningReal(id, action, note),
+  handleCheckin: (id, action, comment) => real.handleCheckinReal(id, action, comment),
+  createFollowup: (body) => real.createFollowupReal(body),
   // 风险学生：后端范围过滤（不再调用 PC /students?pageSize=100）
   getRiskStudents: () =>
     realFirst('teacher.risk',

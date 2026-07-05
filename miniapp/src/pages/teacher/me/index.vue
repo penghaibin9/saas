@@ -68,7 +68,7 @@ export default {
     go,
     onMenu(row) {
       if (row.key === 'switch') return go('/pages/role-switch/index')
-      toast(row.label + '（演示）')
+      toast(row.label + '：即将开放')
     },
     logout() {
       uni.showModal({ title: '退出登录', content: '确认退出当前演示账号？', success: (r) => {

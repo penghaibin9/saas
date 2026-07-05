@@ -85,9 +85,8 @@ export default {
       go(map[t.group] || '/pages/teacher/approval/index')
     },
     quickDone(t) {
-      uni.showModal({ title: '快速处理', content: '确认将「' + t.title + '」标记为已处理？', success: (r) => {
-        if (r.confirm) { t.status = 'COMPLETED'; t.group = 'done'; t.soon = false; toast('已处理（演示）') }
-      } })
+      // 待办来自各业务模块聚合，必须进入对应模块真实处理，不做本地假完成
+      this.handle(t)
     }
   }
 }

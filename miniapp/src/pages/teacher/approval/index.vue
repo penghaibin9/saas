@@ -57,32 +57,49 @@
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 export default {
-  data() { return { list: null, state: 'loading' } },
+  data() { return { list: null, state: 'loading', acting: false } },
   onLoad() { this.load() },
+  onPullDownRefresh() {
+    if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
+    this.load(() => uni.stopPullDownRefresh())
+  },
   methods: {
-    load() {
+    load(done) {
       this.state = 'loading'
-      teacherApi.getApprovals().then((d) => { this.list = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+      teacherApi.getApprovals()
+        .then((d) => { this.list = d; this.state = 'ready' })
+        .catch(() => { this.state = 'error' })
+        .finally(() => { if (done) done() })
     },
     act(a, type) {
+      if (this.acting) return
       const label = { approve: '通过', reject: '驳回', return: '退回' }[type]
       const need = type !== 'approve'
       uni.showModal({
         title: label + '审批', editable: need, placeholderText: need ? '请填写' + label + '意见' : '',
         content: need ? '' : '确认通过「' + a.title + '」？',
         success: (r) => {
-          if (!r.confirm) return
+          if (!r.confirm || this.acting) return
           const next = type === 'approve' ? 'APPROVED' : type === 'reject' ? 'REJECTED' : 'RETURNED'
           if (/^\d+$/.test(String(a.id))) {
+            this.acting = true
             teacherApi.actApproval(a.id, type, r.content || '').then(() => {
               a.status = next
               toast('已' + label)
+              this.load() // 成功后从服务器刷新列表，不依赖本地状态
             }).catch((e) => {
-              toast((e && e.message) || label + '失败，请重试')
-            })
+              if (e && String(e.code).startsWith('409')) {
+                toast('该任务已被处理，正在刷新')
+                this.load()
+              } else if (e && String(e.code).startsWith('403')) {
+                toast((e && e.message) || '没有权限处理该审批')
+              } else {
+                toast((e && e.message) || label + '失败，请重试')
+              }
+            }).finally(() => { this.acting = false })
           } else {
-            a.status = next
-            toast('已' + label + '（演示）')
+            // 离线兜底数据（非数字 id）：不能假装成功，提示等网络恢复
+            toast('当前为离线数据，无法提交审批，请恢复网络后重试')
           }
         }
       })

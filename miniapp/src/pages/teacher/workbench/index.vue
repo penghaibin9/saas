@@ -150,7 +150,7 @@ export default {
         overview: '/pages/teacher/workbench/index'
       }
       if (map[q.key]) return go(map[q.key])
-      toast(q.label + '（演示）')
+      toast(q.label + '：即将开放')
     },
     handleTodo(t) { go('/pages/teacher/todos/index') },
     handleRisk(r) { go('/pages/teacher/risk-students/index') },

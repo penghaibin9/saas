@@ -48,10 +48,15 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 export default {
-  data() { return { data: null, state: 'loading', tab: 'unemployed' } },
+  data() { return { data: null, state: 'loading', tab: 'unemployed', acting: false } },
   onLoad() { this.load() },
+  onPullDownRefresh() {
+    if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
+    this.load(() => uni.stopPullDownRefresh())
+  },
   computed: {
     filtered() {
       if (!this.data) return []
@@ -59,13 +64,45 @@ export default {
     }
   },
   methods: {
-    load() {
+    load(done) {
       this.state = 'loading'
-      teacherApi.getEmployment().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+      teacherApi.getEmployment().then((d) => { this.data = d; this.state = 'ready' })
+        .catch(() => { this.state = 'error' })
+        .finally(() => { if (done) done() })
     },
-    contact(s) { uni.makePhoneCall({ phoneNumber: '13600000000', fail: () => toast('联系 ' + s.name + '（演示）') }) },
-    recommend(s) { toast('为 ' + s.name + ' 推荐岗位（演示）') },
-    verify(s) { toast('核验 ' + s.name + ' 就业去向（演示）') }
+    /** 跟进联系：填写跟进内容 → 真实写入就业跟进记录（后端范围校验 + 审计） */
+    contact(s) {
+      if (this.acting) return
+      uni.showModal({
+        title: '记录跟进 · ' + s.name, editable: true,
+        placeholderText: '填写本次联系内容（如电话沟通就业意向）',
+        success: (r) => {
+          if (!r.confirm || this.acting) return
+          if (!r.content || r.content.trim().length < 2) {
+            toast('请填写跟进内容')
+            return
+          }
+          if (!/^\d+$/.test(String(s.id))) {
+            toast('当前为离线数据，无法记录跟进，请恢复网络后重试')
+            return
+          }
+          this.acting = true
+          teacherApi.createFollowup({ studentId: s.id, way: 'PHONE', content: r.content.trim() })
+            .then(() => {
+              s.contactTimes = (s.contactTimes || 0) + 1
+              s.last = r.content.trim()
+              toast('跟进已记录')
+            })
+            .catch((e) => toast(normalizeError(e).text))
+            .finally(() => { this.acting = false })
+        }
+      })
+    },
+    recommend(s) {
+      // 推荐岗位属 PC 端完整流程；移动端引导记录一次“岗位推荐”跟进，不做假成功
+      this.contact(s)
+    },
+    verify(s) { toast('去向核验需在 PC 端完成材料核对') }
   }
 }
 </script>

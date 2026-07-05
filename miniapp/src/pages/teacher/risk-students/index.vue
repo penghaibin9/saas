@@ -57,13 +57,20 @@ export default {
       return c
     }
   },
+  onPullDownRefresh() {
+    if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
+    this.load(() => uni.stopPullDownRefresh())
+  },
   methods: {
-    load() {
+    load(done) {
       this.state = 'loading'
-      teacherApi.getRiskStudents().then((d) => { this.list = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+      teacherApi.getRiskStudents().then((d) => { this.list = d; this.state = 'ready' })
+        .catch(() => { this.state = 'error' })
+        .finally(() => { if (done) done() })
     },
     openStudent(s) { go('/pages/teacher/student-detail/index?id=' + s.id) },
-    contact(s) { uni.makePhoneCall({ phoneNumber: '13600000000', fail: () => toast('联系 ' + s.name + '（演示）') }) }
+    // 学生联系方式属敏感信息：不在列表明文提供，进入学生详情查看脱敏联系方式
+    contact(s) { this.openStudent(s) }
   }
 }
 </script>

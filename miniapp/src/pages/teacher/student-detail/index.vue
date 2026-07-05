@@ -29,7 +29,7 @@
           <view class="stack-sm">
             <view v-for="p in s.pendingItems" :key="p.id" class="sd__pending card">
               <text class="t-md flex-1">{{ p.title }}</text>
-              <text class="sd__pending-btn" @click="toast(p.action + '（演示）')">{{ p.action }}</text>
+              <text class="sd__pending-btn" @click="goPending(p)">{{ p.action }}</text>
             </view>
           </view>
         </template>
@@ -88,9 +88,17 @@ export default {
         else { this.state = 'error' }
       })
     },
-    call() { uni.makePhoneCall({ phoneNumber: '13600000000', fail: () => toast('拨打学生电话（演示）') }) },
-    record() { uni.showModal({ title: '记录联系', editable: true, placeholderText: '填写联系方式与结果', success: (r) => r.confirm && toast('已记录（演示）') }) },
-    care() { toast('已创建关怀任务（演示）') }
+    // 待办跳转到对应业务模块真实处理
+    goPending(p) {
+      const t = (p && (p.title || p.action)) || ''
+      if (t.indexOf('学业') >= 0) return uni.navigateTo({ url: '/pages/teacher/risk-students/index' })
+      if (t.indexOf('实习') >= 0) return uni.navigateTo({ url: '/pages/teacher/internship-review/index' })
+      uni.navigateTo({ url: '/pages/teacher/todos/index' })
+    },
+    // 学生电话属敏感信息，移动端只展示脱敏号码；拨打请在 PC 端经授权查看后进行
+    call() { toast('学生联系方式已脱敏，请在 PC 端经授权流程查看') },
+    record() { toast('联系记录请在对应业务模块内填写（实习批阅/就业跟进）') },
+    care() { toast('关怀任务请在 PC 端学工模块创建') }
   }
 }
 </script>

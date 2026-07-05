@@ -23,11 +23,11 @@
               <text class="gg__deadline" :class="{ 'is-overdue': g.status === 'OVERDUE' }">截止 {{ g.deadline }}</text>
             </view>
             <view v-if="g.status === 'PENDING_REVIEW'" class="gg__actions">
-              <button class="btn btn-ghost" @click.stop="toast('查看材料（演示）')">查看材料</button>
+              <button class="btn btn-ghost" @click.stop="toast('材料附件请在 PC 端毕设中心查看')">查看材料</button>
               <button class="gg__review" @click.stop="openReview(g)">去批阅</button>
             </view>
             <view v-else-if="g.status === 'OVERDUE'" class="gg__actions">
-              <button class="gg__urge" @click.stop="toast('已催交（演示）')">催交学生</button>
+              <button class="gg__urge" @click.stop="toast('催交提醒将随消息推送功能开放，可先线下联系')">催交学生</button>
             </view>
           </view>
         </view>
@@ -63,10 +63,15 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 export default {
-  data() { return { data: null, state: 'loading', f: 'all', reviewing: null } },
+  data() { return { data: null, state: 'loading', f: 'all', reviewing: null, acting: false } },
   onLoad() { this.load() },
+  onPullDownRefresh() {
+    if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
+    this.load(() => uni.stopPullDownRefresh())
+  },
   computed: {
     filtered() {
       if (!this.data) return []
@@ -83,9 +88,11 @@ export default {
   },
   methods: {
     toast,
-    load() {
+    load(done) {
       this.state = 'loading'
-      teacherApi.getGdStudents().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+      teacherApi.getGdStudents().then((d) => { this.data = d; this.state = 'ready' })
+        .catch(() => { this.state = 'error' })
+        .finally(() => { if (done) done() })
     },
     openReview(g) {
       if (g.status === 'OVERDUE') return toast('学生尚未提交，可催交')
@@ -93,13 +100,38 @@ export default {
       this.reviewing = g
     },
     submitReview(type) {
+      if (this.acting) return
       const label = type === 'pass' ? '通过' : '退回整改'
       const g = this.reviewing
+      const proposalId = (this.detail && this.detail.proposalId) || ''
       uni.showModal({ title: label, editable: true, placeholderText: '填写指导/退回意见', success: (r) => {
-        if (!r.confirm) return
-        g.status = type === 'pass' ? 'APPROVED' : 'RETURNED'
-        this.reviewing = null
-        toast('已' + label + '（演示）')
+        if (!r.confirm || this.acting) return
+        if (type !== 'pass' && (!r.content || r.content.trim().length < 5)) {
+          toast('退回需填写至少 5 字意见')
+          return
+        }
+        if (!/^\d+$/.test(String(proposalId))) {
+          toast('当前为离线数据或暂无待批材料，无法提交批阅')
+          return
+        }
+        this.acting = true
+        teacherApi.reviewProposal(proposalId, type === 'pass' ? 'APPROVE' : 'REJECT', r.content || '')
+          .then((res) => {
+            g.status = res.status || (type === 'pass' ? 'APPROVED' : 'REJECTED')
+            this.reviewing = null
+            toast('已' + label)
+            this.load() // 服务器为准刷新
+          })
+          .catch((e) => {
+            if (String(e && e.code).startsWith('409')) {
+              toast('该材料已被批阅，正在刷新')
+              this.reviewing = null
+              this.load()
+            } else {
+              toast(normalizeError(e).text)
+            }
+          })
+          .finally(() => { this.acting = false })
       } })
     }
   }

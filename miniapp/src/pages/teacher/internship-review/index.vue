@@ -34,8 +34,8 @@
 
               <view class="ir__actions">
                 <template v-if="w.overdue">
-                  <button class="btn btn-ghost flex-1" @click="toast('已催交（演示）')">催交周报</button>
-                  <button class="ir__risk flex-1" @click="toast('已记录风险（演示）')">记录风险</button>
+                  <button class="btn btn-ghost flex-1" @click="toast('催交提醒将随消息推送功能开放，可先线下联系')">催交周报</button>
+                  <button class="ir__risk flex-1" @click="toast('可在「打卡异常」中将异常转为风险跟进')">记录风险</button>
                 </template>
                 <template v-else-if="w.status === 'PENDING_REVIEW'">
                   <button class="btn btn-ghost flex-1" @click="review(w, 'return')">退回</button>
@@ -74,18 +74,23 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 export default {
   data() {
     return {
-      data: null, state: 'loading', tab: 'weekly',
+      data: null, state: 'loading', tab: 'weekly', acting: false,
       tabs: [{ key: 'weekly', label: '周报批阅' }, { key: 'abnormal', label: '打卡异常' }]
     }
   },
   onLoad() { this.load() },
+  onPullDownRefresh() {
+    if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
+    this.load(() => uni.stopPullDownRefresh())
+  },
   methods: {
     toast,
-    load() {
+    load(done) {
       this.state = 'loading'
       teacherApi.getWeeklyReports().then((d) => {
         this.data = d
@@ -93,17 +98,66 @@ export default {
         this.tabs[1].badge = d.abnormal.filter((a) => a.status === 'PENDING_HANDLE').length
         this.state = 'ready'
       }).catch(() => { this.state = 'error' })
+        .finally(() => { if (done) done() })
+    },
+    _actErr(e, refresh) {
+      if (e && String(e.code).startsWith('409')) {
+        toast('已被处理，正在刷新')
+        if (refresh) this.load()
+      } else {
+        toast(normalizeError(e).text)
+      }
     },
     review(w, type) {
+      if (this.acting) return
       const label = type === 'pass' ? '通过' : '退回'
       uni.showModal({ title: '周报' + label, editable: true, placeholderText: '填写评阅意见', success: (r) => {
-        if (!r.confirm) return
-        w.status = type === 'pass' ? 'APPROVED' : 'RETURNED'
-        w.feedback = r.content || (type === 'pass' ? '内容充实，通过。' : '请补充产出细节。')
-        toast('已' + label + '（演示）')
+        if (!r.confirm || this.acting) return
+        if (type !== 'pass' && (!r.content || r.content.trim().length < 5)) {
+          toast('退回需填写至少 5 字意见')
+          return
+        }
+        if (!/^\d+$/.test(String(w.id))) {
+          toast('当前为离线数据，无法批阅，请恢复网络后重试')
+          return
+        }
+        this.acting = true
+        teacherApi.reviewWeekly(w.id, type === 'pass' ? 'APPROVE' : 'RETURN', r.content || '')
+          .then((res) => {
+            w.status = res.status || (type === 'pass' ? 'APPROVED' : 'RETURNED')
+            w.feedback = r.content || ''
+            toast('已' + label)
+            this.load() // 从服务器刷新，保证列表与库一致
+          })
+          .catch((e) => this._actErr(e, true))
+          .finally(() => { this.acting = false })
       } })
     },
-    ck(c, type) { c.status = type === 'ok' ? 'COMPLETED' : 'ABNORMAL'; toast('已处理（演示）') }
+    ck(c, type) {
+      if (this.acting) return
+      const action = type === 'ok' ? 'REASONABLE' : 'ABNORMAL'
+      uni.showModal({ title: type === 'ok' ? '认定有效' : '异常计入', editable: true,
+        placeholderText: '填写处理意见（至少 5 字）', success: (r) => {
+          if (!r.confirm || this.acting) return
+          if (!r.content || r.content.trim().length < 5) {
+            toast('处理意见至少 5 字')
+            return
+          }
+          if (!/^\d+$/.test(String(c.id))) {
+            toast('当前为离线数据，无法处理，请恢复网络后重试')
+            return
+          }
+          this.acting = true
+          teacherApi.handleCheckin(c.id, action, r.content)
+            .then((res) => {
+              c.status = res.status || 'COMPLETED'
+              toast(res.statusLabel || '已处理')
+              this.load()
+            })
+            .catch((e) => this._actErr(e, true))
+            .finally(() => { this.acting = false })
+        } })
+    }
   }
 }
 </script>
