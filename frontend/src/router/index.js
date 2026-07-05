@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getToken, isPlatformSuperAdmin } from '@/services/http/client'
 
 /**
  * 路由表（对齐 docs/frontend/route-freeze.md）：
@@ -139,6 +140,28 @@ const router = createRouter({
     /* /admin/student/* 由 studentRoutes 提供（含 8 条子路由），并入 moduleRoutes 统一接入。 */
     ...moduleRoutes
   ]
+})
+
+/**
+ * P6-SECURITY：平台总控台（老板运营端）路由守卫。
+ * 仅拦截 /admin/platform/* —— 未以平台超级管理员身份登录者一律跳登录页。
+ * 业务模块（学生/审批/迎新等对外演示页）与「进入演示环境」流程完全不受影响。
+ * 说明：令牌为内存态，刷新后需重新登录；后端 /api/v1/platform/* 另有 403 强校验兜底。
+ */
+router.beforeEach((to, from, next) => {
+  // P11：全站强制登录——未登录一律回登录页（账号密码=真实库 / 演示账号=演示租户）。
+  // 登录页与安全错误页（meta.public）除外。
+  const isPublic = to.path === '/login' || to.meta?.public
+  if (!isPublic && !getToken()) {
+    next({ path: '/login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} })
+    return
+  }
+  const isPlatform = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
+  if (isPlatform && !isPlatformSuperAdmin()) {
+    next({ path: '/login', query: { redirect: to.fullPath, reason: 'platform-owner-only' } })
+    return
+  }
+  next()
 })
 
 export default router

@@ -11,13 +11,21 @@
 function resolveApiBaseUrl() {
   try {
     const v = import.meta && import.meta.env && import.meta.env.VITE_API_BASE_URL
-    if (v) return String(v).replace(/\/+$/, '')
+    if (v) {
+      let url = String(v).replace(/\/+$/, '')
+      // 兼容误配：VITE 只填源，勿带 /api；若运维误填 .../api/v1 则剥离避免双前缀
+      url = url.replace(/\/api\/v1$/i, '')
+      return url
+    }
   } catch (e) { /* 某些编译目标无 import.meta，忽略 */ }
   return 'http://localhost:8000'
 }
 
 export const ENV = {
-  useMock: false, // false=优先真实后端，失败回退 mock；true=纯 mock
+  // true=纯 mock 演示（无需后端，秒开，用于独立演示）；false=优先真实后端，失败回退 mock。
+  // 说明：改回 false 前请先启动后端(uvicorn，localhost:8000)并灌好种子数据，否则登录/各页会因等
+  //       后端超时(requestTimeout)而卡顿。做真实数据/MySQL 联调时再置 false。
+  useMock: true,
   apiBaseUrl: resolveApiBaseUrl(), // 后端地址（可被 VITE_API_BASE_URL 覆盖）
   apiPrefix: '/api/v1',
   requestTimeout: 8000, // 校园弱网下 4s 偏紧；8s 内无响应按网络失败处理（读兜底/写明确报错）

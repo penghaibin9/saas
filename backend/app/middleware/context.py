@@ -35,6 +35,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         })  # P4：审计落库补全 ip/ua/method/path
 
         deny = _expired_tenant_readonly_deny(request)  # P6：到期租户只读（写操作 403）
+        if deny is None:
+            deny = _demo_tenant_readonly_deny(request)  # P12：正式演示租户只读锁
         if deny is not None:
             deny.headers["X-Trace-Id"] = trace_id
             return deny
@@ -82,6 +84,38 @@ def _bind_token_tenant(request: Request) -> None:
 _READONLY_EXEMPT_PREFIXES = (
     "/api/v1/auth", "/api/v1/platform", "/health", "/docs", "/openapi", "/redoc",
 )
+
+# ── P12：正式演示租户（demo-school）只读锁 ──
+_DEMO_READONLY_TENANT_ID = "1000000000000000003"
+
+
+def _demo_tenant_readonly_deny(request: Request):
+    """正式演示租户数据不许改动：登录后的所有写操作（POST/PUT/PATCH/DELETE）返回 403，
+    引导参观者去体验沙箱（sandbox-school）随意操作。auth/登录/登出/刷新不受限。"""
+    try:
+        from app.core.config import settings
+        if not settings.demo_tenant_readonly:
+            return None
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
+        path = request.url.path
+        if not path.startswith("/api/") or path.startswith(_READONLY_EXEMPT_PREFIXES):
+            return None
+        from app.core.context import get_tenant
+        tenant = get_tenant() or {}
+        if str(tenant.get("tenantId") or "") != _DEMO_READONLY_TENANT_ID:
+            return None
+        from starlette.responses import JSONResponse
+        from app.core.response import fail
+        from app.services import audit_log
+        audit_log.record("DEMO_READONLY_DENY", path,
+                         detail={"method": request.method}, result="DENIED")
+        return JSONResponse(status_code=403, content=fail(
+            "NO_PERMISSION",
+            "正式演示环境为只读，数据不可修改。想动手体验请用沙箱账号登录"
+            "（学生 student2 / 教师 teacher2 / 管理员 admin2，密码 123456，每晚 0 点自动重置）"))
+    except Exception:  # noqa: BLE001 — 只读锁自身故障不阻断业务
+        return None
 
 
 def _expired_tenant_readonly_deny(request: Request):

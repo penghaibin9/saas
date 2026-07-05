@@ -42,10 +42,10 @@ export const useSessionStore = defineStore('session', {
     can(action) {
       return hasAction(this.currentRole, action)
     },
-    /** 演示登录：根据选择进入学生端或教师端。
-     * 返回 Promise：真实 token 就绪（或确认拿不到）后才 resolve，
-     * 避免"页面先加载、token 后到"导致首屏 401/回退。 */
-    async login(roleKey) {
+    /** 建立会话：根据角色进入学生端或教师端。
+     * skipRealLogin=true（账号密码登录已持有真实 token）时只建 UI 会话，绝不覆盖令牌；
+     * 否则用演示账号走真实 /api/v1/auth/login（P12：不再依赖 mock-login）。 */
+    async login(roleKey, { skipRealLogin = false } = {}) {
       const cfg = getRoleConfig(roleKey)
       this.currentRole = roleKey
       this.logged = true
@@ -57,13 +57,16 @@ export const useSessionStore = defineStore('session', {
         this.availableRoles = [ROLE.STUDENT]
       }
       this.persist()
-      /* 真实后端登录取 token（失败静默，页面走网络兜底骨架） */
-      if (shouldTryReal()) {
+      if (!skipRealLogin && shouldTryReal()) {
         clearTokens() // 先清旧 token，防止旧角色残留
         try {
           const d = await loginReal(roleKey, cfg.side)
           this.applyRealUser(d)
-        } catch (e) { /* 后端不可达：页面按网络失败兜底 */ }
+        } catch (e) {
+          /* 登录被拒（403 等业务错）：向上抛出，避免无 token 进首页白屏 */
+          if (e && e.biz && (e.code === 403001 || e.code === 403002)) throw e
+          /* 其他后端不可达：页面按网络失败兜底 */
+        }
       }
       return cfg.homeRoute
     },

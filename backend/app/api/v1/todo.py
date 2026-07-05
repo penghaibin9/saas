@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from app.core.response import success
-from app.core.security import get_current_user
+from app.core.security import require_staff
 from app.services import mock_todo_service as todo_svc
 
 router = APIRouter(tags=["S7·简化-待办"])
@@ -24,16 +24,16 @@ def list_todos(
     todoType: Optional[str] = Query(default=None, description="APPROVAL/REVIEW/RISK/SUBMIT/CONFIRM"),
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=20, ge=1, le=100),
-    user=Depends(get_current_user),
+    user=Depends(require_staff),
 ):
     return success(todo_svc.list_todos(status, todoType, page, pageSize))
 
 
 @router.get("/summary", summary="待办汇总（角色化计数）")
-def todo_summary(user=Depends(get_current_user)):
+def todo_summary(user=Depends(require_staff)):
     return success(todo_svc.get_summary(user))
 
 
 @router.post("/{todo_id}/done", summary="完成待办（占位：内存状态流转）")
-def todo_done(todo_id: str, user=Depends(get_current_user)):
+def todo_done(todo_id: str, user=Depends(require_staff)):
     return success(todo_svc.mark_done(todo_id), message="已完成")

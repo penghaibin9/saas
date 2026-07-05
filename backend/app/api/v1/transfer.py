@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.core.exceptions import AppException, not_found
 from app.core.response import success
-from app.core.security import get_current_user
+from app.core.security import require_staff
 from app.services import audit_log
 
 router = APIRouter(prefix="/admin/students", tags=["02·导入导出（占位）"])
@@ -41,7 +41,7 @@ class ExportBody(BaseModel):
 
 
 @router.post("/import/dry-run", summary="2.12 导入试算 DryRun（占位）")
-def import_dry_run(body: DryRunBody, user=Depends(get_current_user)):
+def import_dry_run(body: DryRunBody, user=Depends(require_staff)):
     batch_id = f"batch-{uuid.uuid4().hex[:12]}"
     result = {
         "batchId": batch_id, "importType": body.importType, "fileId": body.fileId,
@@ -59,7 +59,7 @@ def import_dry_run(body: DryRunBody, user=Depends(get_current_user)):
 
 
 @router.post("/import/confirm", summary="2.13 导入确认（占位，requestId 幂等）")
-def import_confirm(body: ConfirmBody, user=Depends(get_current_user)):
+def import_confirm(body: ConfirmBody, user=Depends(require_staff)):
     # 幂等：同 requestId 直接返回原结果
     if body.requestId in _REQUESTS:
         prior = _REQUESTS[body.requestId]
@@ -81,7 +81,7 @@ def import_confirm(body: ConfirmBody, user=Depends(get_current_user)):
 
 
 @router.post("/export", summary="2.14 导出（占位：返回异步任务）")
-def export_students(body: ExportBody, user=Depends(get_current_user)):
+def export_students(body: ExportBody, user=Depends(require_staff)):
     task_id = f"export-{uuid.uuid4().hex[:12]}"
     audit_log.record("EXPORT", f"export:{task_id}", {"exportType": body.exportType, "filters": body.filters or {}})
     return success({

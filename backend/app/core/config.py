@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # ── 应用 ──
     APP_NAME: str = "高校学生全生命周期管理平台 · 后端"
     APP_ENV: str = "dev"                 # dev / test / prod
+    ENV: str = ""                        # 兼容部分部署脚本使用 ENV=production
+    ENVIRONMENT: str = ""                # 兼容 ENVIRONMENT=production
     APP_PORT: int = 8000                 # 与 deploy/05、08 预留端口一致
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = True
@@ -28,6 +30,13 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "school-lifecycle-dev-secret-change-me-please-32"
     JWT_ALG: str = "HS256"
     JWT_EXPIRES_IN: int = 7200           # 秒
+    # 演示登录（/auth/mock-login）开关。生产环境默认强制关闭，关闭后端点返回 403，
+    # 不再免密签发任意角色令牌。留空/未设时按 is_prod 推断（prod 关、非 prod 开）。
+    MOCK_LOGIN_ENABLED: str = ""
+    # 正式演示租户只读锁：写操作一律 403（参观者改不动演示数据）。置 false 可临时放开。
+    DEMO_TENANT_READONLY: str = ""
+    # 体验沙箱每晚 0 点自动重置（进程内定时任务；置 false 关闭，改用 cron 跑脚本）。
+    SANDBOX_AUTO_RESET: str = ""
 
     # ── 多租户（对齐 DB 冻结册：单库/单 schema + tenant_id 行级隔离）──
     TENANCY_MODE: str = "single"         # single(私有化单校) / multi(SaaS 多校)
@@ -65,12 +74,51 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"       # 文件上传占位目录（不真正落对象存储）
     AUDIT_ENABLED: bool = True          # 审计开关（DB_ENABLED=False 时写内存列表）
 
+    # ── 短信/通知（P13-B；默认关闭，测试环境永不真实发送）──
+    SMS_ENABLED: str = "false"          # "true" 才真实发送；否则记录 SKIPPED
+    SMS_PROVIDER: str = "mock"          # mock / aliyun / tencent
+    SMS_ACCESS_KEY_ID: str = ""         # 真实密钥仅经 .env 注入，禁止进仓库
+    SMS_ACCESS_KEY_SECRET: str = ""
+    SMS_SIGN_NAME: str = ""             # 短信签名
+    SMS_TEMPLATE_TODO: str = ""         # 待办提醒模板ID
+    SMS_TEMPLATE_REJECTED: str = ""     # 退回提醒模板ID
+    SMS_TEMPLATE_WARNING: str = ""      # 预警提醒模板ID
+    SMS_RATE_LIMIT_PER_MINUTE: int = 30 # 每租户每分钟发送上限
+    SMS_MAX_RETRY: int = 2              # 发送失败重试次数
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
     )
+
+    @property
+    def is_prod(self) -> bool:
+        for val in (self.APP_ENV, self.ENV, self.ENVIRONMENT):
+            if (val or "").strip().lower() in ("prod", "production"):
+                return True
+        return False
+
+    @property
+    def mock_login_enabled(self) -> bool:
+        """演示登录是否启用。显式配置优先；未配置时生产关、其余环境开。"""
+        v = (self.MOCK_LOGIN_ENABLED or "").strip().lower()
+        if v in ("true", "1", "yes", "on"):
+            return True
+        if v in ("false", "0", "no", "off"):
+            return False
+        return not self.is_prod
+
+    @property
+    def demo_tenant_readonly(self) -> bool:
+        """正式演示租户是否只读（默认开）。"""
+        return (self.DEMO_TENANT_READONLY or "").strip().lower() not in ("false", "0", "no", "off")
+
+    @property
+    def sandbox_auto_reset(self) -> bool:
+        """沙箱是否每晚 0 点自动重置（默认开；需 DB_ENABLED）。"""
+        return (self.SANDBOX_AUTO_RESET or "").strip().lower() not in ("false", "0", "no", "off")
 
     @property
     def jwt_secret(self) -> str:

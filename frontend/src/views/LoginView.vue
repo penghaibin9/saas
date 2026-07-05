@@ -12,6 +12,31 @@
         <span class="lg-ft">数据范围清晰</span>
         <span class="lg-ft">隐私脱敏与审计留痕</span>
       </div>
+
+      <!-- 演示账号（放品牌区空位，不占登录卡；点击填入右侧表单，仍需真实登录） -->
+      <div class="lg-demo">
+        <div class="lg-demo__group">
+          <div class="lg-demo__tt">正式演示 · 演示职业技术学校<span class="lg-demo__tag">数据只读</span></div>
+          <div class="lg-demo__row" v-for="a in demoAccounts" :key="a.login" @click="fillDemo(a)">
+            <span class="lg-demo__role">{{ a.role }}</span>
+            <b class="lg-demo__login">{{ a.login }}</b>
+            <span class="lg-demo__pwd">{{ demoPassword }}</span>
+            <button class="lg-demo__copy" @click.stop="copyText(a.login)">复制账号</button>
+            <button class="lg-demo__copy" @click.stop="copyText(demoPassword)">复制密码</button>
+          </div>
+        </div>
+        <div class="lg-demo__group">
+          <div class="lg-demo__tt">自由体验 · 体验沙箱学校<span class="lg-demo__tag lg-demo__tag--warn">随便操作 · 每晚 0 点重置</span></div>
+          <div class="lg-demo__row" v-for="a in sandboxAccounts" :key="a.login" @click="fillDemo(a)">
+            <span class="lg-demo__role">{{ a.role }}</span>
+            <b class="lg-demo__login">{{ a.login }}</b>
+            <span class="lg-demo__pwd">{{ demoPassword }}</span>
+            <button class="lg-demo__copy" @click.stop="copyText(a.login)">复制账号</button>
+            <button class="lg-demo__copy" @click.stop="copyText(demoPassword)">复制密码</button>
+          </div>
+        </div>
+        <div class="lg-demo__tip">点击账号自动填入右侧表单，仍需点「登 录」；学生端请在手机 H5/小程序使用 student / student2（密码同 123456）</div>
+      </div>
     </div>
     <!-- 右：登录卡 -->
     <div class="lg-r">
@@ -33,7 +58,11 @@
         <button class="lg-btn lg-btn--p" :disabled="loading" @click="doLogin">
           {{ loading ? '登录中…' : '登 录' }}
         </button>
-        <button class="lg-btn lg-btn--g" @click="enterDemo">进入演示环境</button>
+
+        <!-- 小屏（左侧品牌区隐藏时）给一行演示账号提示，保证可发现 -->
+        <div class="lg-demo-mini">
+          演示：admin · teacher（只读）｜沙箱：admin2 · teacher2（可随便点）密码均 123456
+        </div>
 
         <!-- 试用咨询（可公开电话，不含任何账号密码） -->
         <div class="lg-trial">
@@ -67,7 +96,16 @@ export default {
       trialPhone: '13549666867',
       form: { loginName: '', password: '' },
       loading: false,
-      error: ''
+      error: '',
+      demoPassword: '123456',
+      demoAccounts: [
+        { role: '管理员', login: 'admin' },
+        { role: '教师', login: 'teacher' }
+      ],
+      sandboxAccounts: [
+        { role: '管理员', login: 'admin2' },
+        { role: '教师', login: 'teacher2' }
+      ]
     }
   },
   methods: {
@@ -81,15 +119,26 @@ export default {
       try {
         const data = await loginWithPassword(this.form.loginName, this.form.password)
         toast.success(`欢迎，${data.displayName}（${data.currentRole.roleName}）`)
-        this.$router.push('/')
+        this.$router.push(this.$route.query.redirect || '/')
       } catch (e) {
         this.error = e.message || '登录失败，请稍后重试'
       } finally {
         this.loading = false
       }
     },
-    enterDemo() {
-      this.$router.push('/')
+    /** 点演示账号仅自动填入表单——不绕过登录，仍需点「登 录」走真实 /auth/login */
+    fillDemo(a) {
+      this.form.loginName = a.login
+      this.form.password = this.demoPassword
+      this.error = ''
+    },
+    async copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text)
+        toast.success('已复制')
+      } catch {
+        toast.info(text)
+      }
     },
     async copyPhone() {
       try {
@@ -319,6 +368,108 @@ export default {
 .lg-btn--g:hover {
   color: var(--pri);
   border-color: var(--glow);
+}
+/* 演示账号区（左侧品牌区暗底样式，不占登录卡） */
+.lg-demo {
+  position: relative;
+  margin-top: 40px;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lg-demo__group {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(147, 197, 253, 0.22);
+  backdrop-filter: blur(6px);
+}
+.lg-demo__tt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: var(--font-weight-semibold);
+  color: #dbeafe;
+  margin-bottom: 6px;
+}
+.lg-demo__tag {
+  font-size: 10px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(147, 197, 253, 0.16);
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  color: #bfdbfe;
+  font-weight: normal;
+}
+.lg-demo__tag--warn {
+  background: rgba(251, 191, 36, 0.14);
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fde68a;
+}
+.lg-demo__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.lg-demo__row:hover {
+  background: rgba(147, 197, 253, 0.12);
+}
+.lg-demo__role {
+  font-size: 11.5px;
+  color: rgba(191, 214, 255, 0.75);
+  width: 44px;
+  flex-shrink: 0;
+}
+.lg-demo__login {
+  font-size: 12.5px;
+  color: #93c5fd;
+  font-family: var(--font-family-mono, monospace);
+}
+.lg-demo__pwd {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: rgba(191, 214, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+.lg-demo__copy {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  background: transparent;
+  color: #bfdbfe;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.lg-demo__copy:hover {
+  background: rgba(147, 197, 253, 0.16);
+  border-color: #93c5fd;
+}
+.lg-demo__tip {
+  font-size: 11px;
+  color: rgba(191, 214, 255, 0.6);
+  line-height: 1.6;
+}
+/* 小屏提示（左侧品牌区隐藏时可见） */
+.lg-demo-mini {
+  display: none;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--t3);
+  line-height: 1.6;
+  text-align: center;
+}
+@media (max-width: 900px) {
+  .lg-demo-mini {
+    display: block;
+  }
 }
 /* 试用咨询（克制的蓝白样式，非广告位） */
 .lg-trial {

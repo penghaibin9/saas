@@ -14,14 +14,35 @@ from app.db.session import db_enabled, get_sessionmaker
 
 DEMO_TENANT_ID = 1000000000000000003
 DEMO_TENANT_CODE = "demo-school"
-DEMO_TENANT_NAME = "演示职业技术学院"
+DEMO_TENANT_NAME = "演示职业技术学校"
+SANDBOX_TENANT_ID = 1000000000000000007
+SANDBOX_TENANT_CODE = "sandbox-school"
+SANDBOX_TENANT_NAME = "体验沙箱学校"
 
 ROLE_BY_LOGIN = {
+    # 正式演示租户 demo-school（真实账号，密码见登录页；仅存在于演示租户）
+    "admin": ("SCHOOL_ADMIN", "学校管理员", "SCHOOL", "全校学生（正式演示）"),
+    "teacher": ("COUNSELOR", "辅导员/指导教师", "COUNSELOR_CLASSES", "所带班级与指导学生（正式演示）"),
+    "student": ("STUDENT", "学生", "SELF", "本人"),
+    # 自由体验租户 sandbox-school（可随时重置）
+    "admin2": ("SCHOOL_ADMIN", "学校管理员", "SCHOOL", "全校学生（体验沙箱）"),
+    "teacher2": ("COUNSELOR", "辅导员/指导教师", "COUNSELOR_CLASSES", "所带班级与指导学生（体验沙箱）"),
+    "student2": ("STUDENT", "学生", "SELF", "本人"),
+    # 历史演示账号（保留兼容）
     "admin_demo": ("SCHOOL_ADMIN", "学校管理员", "SCHOOL", "全校学生（演示租户）"),
     "teacher_demo": ("GD_MENTOR", "指导教师", "GD_STUDENTS", "本人指导学生（演示租户）"),
     "counselor_demo": ("COUNSELOR", "辅导员", "COUNSELOR_CLASSES", "所带班级学生（演示租户）"),
     "student_demo": ("STUDENT", "学生", "SELF", "本人"),
 }
+
+
+def _tenant_meta(db, tenant_id: int) -> tuple[str, str]:
+    """按 t_tenant 解析 (tenantCode, tenantName)：任意真实租户通用，不再写死 demo。"""
+    from app.models import Tenant
+    t = db.get(Tenant, tenant_id)
+    if t is not None:
+        return t.tenant_code or "demo", t.school_name or ""
+    return "demo", ""
 
 
 def login_with_password(login_name: str, password: str) -> dict:
@@ -62,24 +83,29 @@ def login_with_password(login_name: str, password: str) -> dict:
             role_code, role_name, scope, scope_label = (
                 "PLATFORM_SUPER_ADMIN", "平台超级管理员", "PLATFORM", "全平台（跨租户）")
         tenant_id = str(user.tenant_id)
-        is_demo = user.tenant_id == DEMO_TENANT_ID
-        token = create_access_token({
+        t_code, t_name = _tenant_meta(db, user.tenant_id)
+        claims = {
             "userId": f"db-{user.id}", "realName": user.real_name, "userType": user.user_type,
-            "tid": DEMO_TENANT_CODE if is_demo else "demo",
-            "tenantId": tenant_id, "tenantName": DEMO_TENANT_NAME if is_demo else "",
+            "tid": t_code,
+            "tenantId": tenant_id, "tenantName": t_name,
             "activeContextId": f"ctx_{user.login_name}", "currentRoleCode": role_code, "clientType": "PC",
-        })
-        refresh_token = issue_refresh({
-            "userId": f"db-{user.id}", "realName": user.real_name, "userType": user.user_type,
-            "tid": DEMO_TENANT_CODE if is_demo else "demo", "tenantId": tenant_id,
-            "tenantName": DEMO_TENANT_NAME if is_demo else "",
-            "activeContextId": f"ctx_{user.login_name}", "currentRoleCode": role_code, "clientType": "PC",
-        })
+        }
+        # 学生账号：令牌带学号（移动端"本人数据"按学号精确解析，不依赖姓名唯一）
+        if (user.user_type or "").upper() == "STUDENT":
+            from app.models import StudentProfile
+            sp = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == user.tenant_id,
+                StudentProfile.real_name == user.real_name,
+                StudentProfile.is_deleted.is_(False))).first()
+            if sp:
+                claims["studentNo"] = sp.student_no
+        token = create_access_token(claims)
+        refresh_token = issue_refresh(dict(claims))
         return {
             "accessToken": token, "refreshToken": refresh_token,
             "tokenType": "Bearer", "expiresIn": 7200,
             "userId": f"db-{user.id}", "username": user.login_name, "displayName": user.real_name,
-            "tenantId": tenant_id, "tenantName": DEMO_TENANT_NAME if is_demo else "",
+            "tenantId": tenant_id, "tenantName": t_name,
             "currentRole": {"roleCode": role_code, "roleName": role_name,
                             "dataScope": scope, "scopeLabel": scope_label},
             "roles": [{"roleCode": role_code, "roleName": role_name}],

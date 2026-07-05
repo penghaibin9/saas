@@ -71,7 +71,7 @@ export default {
       toast(row.label + '：即将开放')
     },
     logout() {
-      uni.showModal({ title: '退出登录', content: '确认退出当前演示账号？', success: (r) => {
+      uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: (r) => {
         if (r.confirm) { useSessionStore().logout(); relaunch('/pages/login/index') }
       } })
     }

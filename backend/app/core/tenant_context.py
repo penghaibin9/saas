@@ -25,7 +25,13 @@ _MOCK_TENANTS = {
     "demo-school": {
         "tenantId": "1000000000000000003",
         "tenantCode": "demo-school",
-        "tenantName": "演示职业技术学院",
+        "tenantName": "演示职业技术学校",
+        "status": "ACTIVE",
+    },
+    "sandbox-school": {
+        "tenantId": "1000000000000000007",
+        "tenantCode": "sandbox-school",
+        "tenantName": "体验沙箱学校",
         "status": "ACTIVE",
     },
     "hnsh": {
