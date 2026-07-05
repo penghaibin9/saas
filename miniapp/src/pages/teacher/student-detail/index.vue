@@ -78,22 +78,15 @@ export default {
     riskText(l) { return RISK[l] || l },
     load() {
       this.state = 'loading'
-      Promise.all([teacherApi.getStudent360(this.id), teacherApi.getStudents()]).then(([detail, list]) => {
-        if (detail) { this.s = detail }
-        else {
-          const b = (list || []).find((x) => x.id === this.id) || list[0]
-          // 为没有专门360数据的学生构造一份基础摘要
-          this.s = {
-            base: { name: b.name, className: b.className, major: b.major, stage: b.stage, phone: '136****0000' },
-            risk: b.risk === 'LOW' ? null : { level: b.risk, types: [b.task], since: '2026-07-01' },
-            tags: [b.stage + '中'],
-            pendingItems: b.pending ? [{ id: 'x1', title: b.task, action: '去处理' }] : [],
-            intern: b.intern ? { company: '—', post: '—', mentor: '本人', companyMentor: '—' } : null,
-            timeline: [{ id: 't1', time: '最近', text: b.last, type: b.risk === 'HIGH' ? 'risk' : 'ok' }]
-          }
-        }
-        this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+      // 只走 mobile 范围接口（不再拉 PC 全列表）；403/404 明确提示，不白屏
+      teacherApi.getStudent360(this.id).then((detail) => {
+        if (detail) { this.s = detail; this.state = 'ready' } else { this.s = null; this.state = 'empty' }
+      }).catch((e) => {
+        const code = e && e.code ? String(e.code) : ''
+        if (code.startsWith('403')) { toast('无权限查看该学生'); this.state = 'empty' }
+        else if (code.startsWith('404')) { toast('未找到该学生'); this.state = 'empty' }
+        else { this.state = 'error' }
+      })
     },
     call() { uni.makePhoneCall({ phoneNumber: '13600000000', fail: () => toast('拨打学生电话（演示）') }) },
     record() { uni.showModal({ title: '记录联系', editable: true, placeholderText: '填写联系方式与结果', success: (r) => r.confirm && toast('已记录（演示）') }) },

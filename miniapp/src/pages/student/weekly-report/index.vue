@@ -41,6 +41,7 @@
 
 <script>
 import { useSubmissionsStore } from '@/stores/submissions'
+import { studentApi } from '@/services/studentApi'
 import { toast, back } from '@/utils/nav'
 
 export default {
@@ -62,12 +63,34 @@ export default {
         toast('请填写本周工作内容与收获')
         return
       }
-      useSubmissionsStore().addWeeklyReport({
+      const content = '【工作】' + this.tasks.trim() + ' 【收获】' + this.gain.trim()
+      if (content.length < 20) {
+        toast('周报内容至少 20 字')
+        return
+      }
+      const m = String(this.week).match(/\d+/)
+      const weekNo = m ? Number(m[0]) : 1
+      const localAdd = () => useSubmissionsStore().addWeeklyReport({
         week: this.week, company: this.company, post: this.post,
         tasks: this.tasks.trim(), gain: this.gain.trim(), problem: this.problem.trim(), hours: this.hours
       })
-      uni.showToast({ title: '周报已提交', icon: 'success' })
-      setTimeout(() => back(), 700)
+      // 真实提交；重复提交同周 409 明确提示，不兜底成功
+      studentApi.submitWeeklyReport({
+        weekNo, content, problems: this.problem.trim(), planNext: ''
+      }).then(() => {
+        localAdd()
+        uni.showToast({ title: '周报已提交', icon: 'success' })
+        setTimeout(() => back(), 700)
+      }).catch((e) => {
+        if (e && e.biz) {
+          if (String(e.code).startsWith('409')) toast('本周周报已提交，请勿重复提交')
+          else toast((e && e.message) || '提交失败，请检查后重试')
+        } else {
+          localAdd()
+          toast('网络异常，已离线暂存（未提交服务器）')
+          setTimeout(() => back(), 900)
+        }
+      })
     }
   }
 }

@@ -60,6 +60,7 @@
 
 <script>
 import { useSubmissionsStore } from '@/stores/submissions'
+import { studentApi } from '@/services/studentApi'
 import { toast } from '@/utils/nav'
 
 const TYPE_MAP = {
@@ -109,21 +110,33 @@ export default {
       this.fileName = ''
     },
     submit() {
-      if (!this.reason.trim()) {
-        toast('请填写申请事由')
+      if (this.reason.trim().length < 5) {
+        toast('申请事由至少 5 个字')
         return
       }
-      const detail = this.typeOptions[this.typeIndex] + ' · ' + this.startDate + '~' + this.endDate + ' · ' + this.reason.trim()
-      useSubmissionsStore().addApplication({
+      const content = this.typeOptions[this.typeIndex] + ' · ' + this.startDate + '~' + this.endDate + ' · ' + this.reason.trim()
+      const isLeave = this.svcName.indexOf('请假') >= 0
+      const localAdd = () => useSubmissionsStore().addApplication({
         name: this.svcName + '（' + this.typeOptions[this.typeIndex] + '）',
-        dept: this.dept,
-        needApprove: this.needApprove,
-        detail
+        dept: this.dept, needApprove: this.needApprove, detail: content
       })
-      uni.showToast({ title: '提交成功', icon: 'success' })
-      setTimeout(() => {
-        uni.redirectTo({ url: '/pages/student/my-applications/index' })
-      }, 700)
+      // 真实提交；业务错误（403/409/422）不假装成功，仅网络失败离线暂存
+      studentApi.submitServiceApply({
+        serviceKey: isLeave ? 'LEAVE' : this.svcName,
+        reason: content, startTime: this.startDate, endTime: this.endDate
+      }).then(() => {
+        localAdd()
+        uni.showToast({ title: '提交成功', icon: 'success' })
+        setTimeout(() => { uni.redirectTo({ url: '/pages/student/my-applications/index' }) }, 700)
+      }).catch((e) => {
+        if (e && e.biz) {
+          toast((e && e.message) || '提交失败，请检查后重试')
+        } else {
+          localAdd()
+          toast('网络异常，已离线暂存（未提交服务器）')
+          setTimeout(() => { uni.redirectTo({ url: '/pages/student/my-applications/index' }) }, 900)
+        }
+      })
     }
   }
 }

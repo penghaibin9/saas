@@ -171,33 +171,272 @@ export async function enrichMessages(mockData) {
 
 /** 学生「我的档案」：真实学生（演示绑定 student_id=1）合入 mock 结构 */
 export async function enrichProfile(mockProfile) {
-  const d = await realRequest('/students/1')
-  mockProfile.base = { ...mockProfile.base, name: d.realName, studentNo: d.studentNo, gender: d.gender || mockProfile.base.gender }
-  mockProfile.contact = { ...mockProfile.contact, phone: d.phoneMasked || mockProfile.contact.phone }
-  mockProfile.org = {
-    ...mockProfile.org,
-    college: d.collegeName || mockProfile.org.college,
-    major: d.majorName || mockProfile.org.major,
-    className: d.className || mockProfile.org.className
-  }
-  mockProfile.status = { ...mockProfile.status, stageText: STAGE_TEXT[d.currentStage] || mockProfile.status.stageText }
+  const ov = await realRequest('/mobile/me/overview')
+  const d = (ov && ov.student) || {}
+  if (!d.name) return mockProfile
+  mockProfile.base = { ...mockProfile.base, name: d.name, studentNo: d.studentNo }
+  mockProfile.org = { ...mockProfile.org, className: d.className || mockProfile.org.className }
+  mockProfile.status = { ...mockProfile.status, stageText: STAGE_TEXT[d.stage] || mockProfile.status.stageText }
   mockProfile.realApi = true
   return mockProfile
 }
 
 /** 学生首页：真实阶段 + 待办计数合入 mock 结构 */
 export async function enrichHome(mockHome) {
-  const [stu, summary] = await Promise.all([
-    realRequest('/students/1'),
-    realRequest('/todos/summary').catch(() => null)
-  ])
-  if (mockHome.stageCard) {
-    mockHome.stageCard.stageText = STAGE_TEXT[stu.currentStage] || mockHome.stageCard.stageText
+  const ov = await realRequest('/mobile/me/overview')
+  const stu = (ov && ov.student) || {}
+  if (stu.stage && mockHome.stageCard) {
+    mockHome.stageCard.stageText = STAGE_TEXT[stu.stage] || mockHome.stageCard.stageText
     mockHome.stageCard.title = `你正处于「${mockHome.stageCard.stageText}」阶段`
   }
-  if (summary && mockHome.todoOverview) {
-    mockHome.todoOverview.pending = summary.pending
+  if (ov && Array.isArray(ov.todos) && mockHome.todoOverview) {
+    mockHome.todoOverview.pending = ov.todos.length
   }
+  if (ov && Array.isArray(ov.alerts)) mockHome.realAlerts = ov.alerts
+  if (ov && Array.isArray(ov.domains)) mockHome.realDomains = ov.domains
   mockHome.realApi = true
   return mockHome
+}
+
+/* ══════════ 移动端·学生自视图（mobile/<域>/my）字段适配 ══════════
+ * 策略：真实数据覆盖到 mock 骨架的主展示字段，保证页面不破；hasData=false 时保留 mock 骨架。
+ * 敏感信息（处分/心理）后端已只回摘要状态，不回明细。
+ */
+export const mobileOverview = () => realRequest('/mobile/me/overview')
+
+export async function enrichOrientation(mock) {
+  const r = await realRequest('/mobile/orientation/my')
+  if (!r || !r.hasData) return { ...mock, _real: false }
+  const stMap = { NOT_REPORTED: '未报到', PREPARED: '预报到完成', CHECKED_IN: '已现场报到',
+    COLLEGE_CONFIRMED: '学院已确认' }
+  return { ...mock, overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || mock.overallText,
+    dorm: { building: r.building, room: r.room, status: r.dormStatus },
+    payStatus: r.paymentStatus, materialStatus: r.materialStatus,
+    blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
+    steps: (r.steps && r.steps.length) ? r.steps.map((s) => ({ key: s.key, status: s.status })) : mock.steps,
+    _real: true }
+}
+
+export async function enrichAcademic(mock) {
+  const r = await realRequest('/mobile/academic/my')
+  if (!r || !r.hasData) return { ...mock, _real: false }
+  const s = r.summary || {}
+  return { ...mock,
+    summary: { gpa: s.gpa, rank: mock.summary.rank, creditEarned: s.obtainedCredits,
+      creditTotal: s.requiredCredits, warning: (s.warningLevel && s.warningLevel !== 'NONE'),
+      academicStatus: s.academicStatus, failedCount: s.failedCount },
+    courses: (r.grades || []).map((g) => ({ name: g.course, term: g.term, score: g.score,
+      pass: g.passStatus === 'PASSED' })),
+    warnings: r.warnings || [], _real: true }
+}
+
+export async function enrichInternship(mock) {
+  const r = await realRequest('/mobile/internship/my')
+  if (!r || !r.hasData) return { ...mock, hasBatch: false, _real: false }
+  return { ...mock, hasBatch: true, company: r.enterpriseName || mock.company,
+    post: r.positionName || mock.post, schoolMentor: r.advisorName || mock.schoolMentor,
+    statusText: r.status, riskLevel: r.riskLevel,
+    weeklyList: r.weeklyReports || [], checkinExceptions: r.attendanceExceptions || [], _real: true }
+}
+
+export async function enrichGraduation(mock) {
+  const r = await realRequest('/mobile/graduation/my')
+  if (!r || !r.hasData) return { ...mock, hasBatch: false, _real: false }
+  return { ...mock, hasBatch: true, topic: r.topicTitle || mock.topic, mentor: r.advisorName || mock.mentor,
+    stage: r.stage, defenseGroup: r.defenseGroup, plagiarismRate: r.plagiarismRate,
+    proposals: r.proposals || [], finals: r.finals || [], _real: true }
+}
+
+export async function enrichEmployment(mock) {
+  const r = await realRequest('/mobile/employment/my')
+  if (!r || !r.hasData) return { ...mock, _real: false }
+  const dMap = { SIGNED: '签约就业', FLEXIBLE: '灵活就业', FURTHER_STUDY: '升学', ENLISTED: '入伍',
+    STARTUP: '自主创业', UNEMPLOYED: '待就业' }
+  return { ...mock, stageText: dMap[r.destinationType] || mock.stageText,
+    destination: r.destinationType === 'SIGNED'
+      ? { company: r.companyName, job: r.jobTitle } : mock.destination,
+    verifyStatus: r.verifyStatus, materialStatus: r.materialStatus,
+    materials: r.materials || [], followUps: r.followUps || [], _real: true }
+}
+
+export async function enrichCampusService(mock) {
+  const r = await realRequest('/mobile/campus-service/my')
+  if (!r || !r.hasData) return { ...mock, myRecords: null, _real: false }
+  return { ...mock, myRecords: { leaves: r.leaves || [], workOrders: r.workOrders || [],
+    disciplineNotice: r.disciplineNotice, mentalNotice: r.mentalNotice }, _real: true }
+}
+
+/* 教师端·工作台聚合（本校待办，只读） */
+export const mobileTeacherOverview = () => realRequest('/mobile/teacher/overview')
+export const mobileTeacherTodos = () => realRequest('/mobile/teacher/todos')
+export const mobileTeacherDomain = (domain) => realRequest('/mobile/teacher/' + domain)
+
+/* 教师工作台：真实待办计数覆盖到 mock 骨架（保留 dueSoon/riskStudents 展示结构） */
+export async function enrichTeacherWorkbench(mock) {
+  const r = await realRequest('/mobile/teacher/overview')
+  if (!r || !r.hasData) return { ...mock, _real: false }
+  const realMetrics = (r.metrics || []).slice(0, 4).map((m) => ({ key: m.key, label: m.label, value: m.value }))
+  return { ...mock, metrics: realMetrics.length ? realMetrics : mock.metrics,
+    pendingTotal: r.pendingTotal, _real: true }
+}
+
+/* ══════════ P9.2 · 学生端补齐（档案脱敏 / 本人消息 / 我的申请 / 写操作） ══════════ */
+
+export const submitServiceApply = (body) =>
+  realRequest('/mobile/campus-service/apply', { method: 'POST', data: body })
+
+export const submitWeeklyReport = (body) =>
+  realRequest('/mobile/internship/weekly', { method: 'POST', data: body })
+
+/** 学生档案：真实脱敏字段覆盖 mock 骨架（手机/身份证仅脱敏串，住址不返回）。 */
+export async function enrichProfileReal(mockProfile) {
+  const d = await realRequest('/mobile/me/profile')
+  if (!d || !d.hasData) return { ...mockProfile, _real: false }
+  const p = JSON.parse(JSON.stringify(mockProfile))
+  p.base = { ...p.base, name: d.name, studentNo: d.studentNo,
+    gender: d.gender || p.base.gender, idCard: d.idCardMasked || '' }
+  p.contact = { ...p.contact, phone: d.phoneMasked || '', address: '' }
+  p.org = { ...p.org, college: d.collegeName || p.org.college, major: d.majorName || p.org.major,
+    className: d.className || p.org.className, grade: d.grade || p.org.grade }
+  p.status = { ...p.status, stageText: STAGE_TEXT[d.stage] || p.status.stageText }
+  p._real = true
+  p._identity = { studentId: d.studentId, studentNo: d.studentNo, name: d.name }
+  return p
+}
+
+/** 学生消息（严格本人）→ mock tabs/groups 形状。 */
+export async function selfMessages(mock) {
+  const d = await realRequest('/mobile/me/messages')
+  if (!d) return mock
+  const tabs = (d.tabs && d.tabs.length) ? d.tabs : (mock.tabs || [])
+  const groups = d.groups || {}
+  tabs.forEach((t) => { t.badge = (groups[t.key] || []).filter((x) => !x.read).length })
+  return { tabs, groups, unreadCount: d.unreadCount || 0, realApi: true }
+}
+
+/** 学生申请（本人聚合）→ 页面 {tabs,list}；applyTime 兜底防切片崩溃。 */
+export async function selfApplications() {
+  const d = await realRequest('/mobile/me/applications')
+  const list = (d.applications || []).map((a) => ({
+    ...a, applyTime: a.applyTime || '—', eta: a.eta || '—' }))
+  return { tabs: d.tabs || [], list }
+}
+
+/* ══════════ P9.2 · 教师端补齐（范围接口，替代 PC 全列表） ══════════ */
+
+/** 教师待办：真实结构（替代 PC /todos）。 */
+export async function teacherTodosReal() {
+  const d = await realRequest('/mobile/teacher/todos')
+  return { filters: d.filters || [], pendingCount: d.pendingCount || 0,
+    list: (d.list || []).map((t) => ({ ...t, soon: false })) }
+}
+
+/** 教师风险学生：后端筛选 + 范围过滤（替代 PC /students?pageSize=100）→ 页面数组。 */
+export async function teacherRiskStudents() {
+  const d = await realRequest('/mobile/teacher/risk-students')
+  return (d.list || []).map((r) => ({
+    id: r.studentId || r.studentNo || r.id, name: r.name, studentNo: r.studentNo || '',
+    className: r.className || '—', major: '', stage: (r.tags && r.tags[0]) || '在校',
+    task: r.riskType + (r.reason ? '·' + r.reason : ''), risk: r.riskLevel,
+    pending: 0, last: r.latestTime || '' }))
+}
+
+/** 教师学生360（权限校验后）→ 页面形状；无权限/不存在由业务错抛出。 */
+export async function teacherStudent360(id) {
+  const d = await realRequest('/mobile/teacher/student/' + id)
+  if (!d || !d.hasData) return null
+  const types = []
+  if (d.academicSummary && d.academicSummary.warningCount) types.push('学业预警')
+  if (d.risk && d.risk.internRisk && d.risk.internRisk !== 'NONE') types.push('实习风险')
+  return {
+    base: { name: d.base.name, className: d.base.className || '—', major: '', stage: d.base.stage },
+    risk: (d.risk && d.risk.level !== 'LOW') ? { level: d.risk.level, types, since: '' } : null,
+    tags: [],
+    pendingItems: (d.pendingItems || []).map((p, i) => ({ id: 'pi' + i, title: p.title, action: p.action })),
+    intern: (d.internshipSummary && d.internshipSummary.hasData)
+      ? { company: d.internshipSummary.enterprise, post: d.internshipSummary.position,
+          mentor: '—', companyMentor: '—' } : null,
+    timeline: (d.lifecycle || []).map((e, i) => ({ id: 'tl' + i, time: e.time || '',
+      text: (e.stage || '') + (e.reason ? '·' + e.reason : ''), type: 'normal' }))
+  }
+}
+
+/** 教师·实习批阅页 → {reports, abnormal}。 */
+export async function teacherInternshipReal(mock) {
+  const d = await realRequest('/mobile/teacher/internship')
+  const reports = (d.weeklyReports || []).map((r) => ({
+    id: String(r.id || r.reportId || ''), student: r.studentName || r.name || '',
+    className: r.className || '', week: r.weekNumber ? ('第 ' + r.weekNumber + ' 周') : (r.week || ''),
+    company: r.enterpriseName || r.company || '', post: r.positionName || r.post || '',
+    submitTime: r.submittedAt || r.submitTime || '—', status: r.status,
+    overdue: r.status === 'OVERDUE', tasks: r.workContent || '', gain: r.harvestContent || '',
+    problem: r.planContent || '' }))
+  const abnormal = (d.abnormalCheckins || []).map((e) => ({
+    id: String(e.id || ''), student: e.studentName || e.name || '',
+    time: e.exceptionDate || e.date || '', type: e.exceptionType || e.type || '异常',
+    distance: e.distance || '—', note: e.note || '', status: e.status || 'PENDING_HANDLE' }))
+  return { reports: reports.length ? reports : (mock.reports || []),
+    abnormal: abnormal.length ? abnormal : (mock.abnormal || []), _real: true }
+}
+
+/** 教师·毕设指导页 → {list, detail}。 */
+export async function teacherGraduationReal(mock) {
+  const d = await realRequest('/mobile/teacher/graduation')
+  const list = (d.students || []).map((s) => ({
+    id: String(s.id || ''), name: s.name || s.studentName || '', className: s.className || '',
+    topic: s.topicTitle || s.topic || '（未选题）', node: s.stage || '毕设',
+    status: s.status || 'PROCESSING', deadline: s.deadline || '' }))
+  const detail = {}
+  ;(d.reviewDetail || []).forEach((p) => {
+    detail[String(p.id || '')] = { student: p.name || '', topic: p.topicTitle || '',
+      node: '开题', submitTime: p.submittedAt || '—', attachment: p.fileName || '—',
+      abstract: p.abstract || '（暂无摘要）', progress: [] }
+  })
+  return { list: list.length ? list : (mock.list || []),
+    detail: Object.keys(detail).length ? detail : (mock.detail || {}), _real: true }
+}
+
+/** 教师·就业跟进页 → {stats, tabs, list, jobs}。 */
+export async function teacherEmploymentReal(mock) {
+  const d = await realRequest('/mobile/teacher/employment')
+  const s = d.stats || {}
+  const stats = { total: s.total || 0, employed: s.employed || 0, rate: s.rate || s.employmentRate || 0,
+    unemployed: s.unemployed || 0, verified: s.verified || 0 }
+  const list = (d.students || []).map((x) => ({
+    id: String(x.id || ''), name: x.name || '', className: x.className || '',
+    group: (x.destinationType && x.destinationType !== 'UNEMPLOYED') ? 'following' : 'unemployed',
+    intention: x.intention || x.destinationType || '未填报', city: x.city || '—',
+    company: x.companyName || '', contactTimes: x.contactTimes || 0,
+    last: x.lastFollow || '', status: x.verifyStatus || 'PENDING_HANDLE' }))
+  const jobs = (d.jobPool || []).map((j) => ({
+    id: String(j.id || ''), company: j.companyName || j.company || '', post: j.jobTitle || j.post || '',
+    salary: j.salaryRange || '—', city: j.city || '—', headcount: j.headcount || 1 }))
+  return { stats: (d.stats ? stats : (mock.stats || stats)),
+    tabs: mock.tabs || d.tabs || [], list: list.length ? list : (mock.list || []),
+    jobs: jobs.length ? jobs : (mock.jobs || []), _real: true }
+}
+
+/** 教师消息（范围/系统）→ {tabs, groups}。 */
+export async function teacherMessagesReal(mock) {
+  const d = await realRequest('/mobile/teacher/messages')
+  if (!d || !d.groups) return mock
+  const groups = d.groups
+  const tabs = (d.tabs && d.tabs.length) ? d.tabs : (mock.tabs || [])
+  tabs.forEach((t) => { t.badge = (groups[t.key] || []).filter((x) => !x.read).length })
+  return { tabs, groups, realApi: true }
+}
+
+/** 教师审批列表（mobile 范围）→ 页面数组。 */
+export async function teacherApprovalsReal(mock) {
+  const d = await realRequest('/mobile/teacher/approvals')
+  const list = (d.approvals || []).map((t) => ({
+    id: String(t.taskId || t.id || ''), title: t.title || '审批任务',
+    type: t.sourceModule || t.sourceBizType || '审批', student: t.applicantName || '—',
+    className: '', submitTime: (t.submittedAt || '').replace('T', ' ').slice(0, 16),
+    status: 'PENDING_REVIEW', level: t.urgency === 'OVERDUE' ? 'high' : 'normal',
+    fields: [{ label: '来源模块', value: t.sourceModule || '—' },
+      { label: '当前节点', value: t.nodeName || t.nodeCode || '—' }],
+    flow: [{ node: '学生提交', time: '', done: true },
+      { node: t.nodeName || '审核', time: '待处理', done: false, current: true }] }))
+  return list.length ? list : (mock || [])
 }
