@@ -20,9 +20,11 @@ SCOPE_ROWS = [
     ("counselor01", "王莉", "COUNSELOR", "CLASS", "软件2301班"),
     ("counselor01", "王莉", "COUNSELOR", "CLASS", "软件2301"),
     ("counselor01", "王莉", "COUNSELOR", "CLASS", "软件2302"),
+    # teacher01 演示账号默认身份是 GD_MENTOR，别名行 role_code=None 让两类导师
+    # 身份都能命中（实习=刘强 / 毕设=王芳 的历史数据映射）
     ("teacher01", "李明", None, "STUDENT", "2023100001"),
-    ("teacher01", "李明", "INTERN_MENTOR", "ADVISOR", "刘强"),
-    ("teacher01", "李明", "GD_MENTOR", "ADVISOR", "王芳"),
+    ("teacher01", "李明", None, "ADVISOR", "刘强"),
+    ("teacher01", "李明", None, "ADVISOR", "王芳"),
     ("employment01", "刘芳", "EMPLOYMENT_TEACHER", "CLASS", "软件2301班"),
     ("employment01", "刘芳", "EMPLOYMENT_TEACHER", "CLASS", "软件2301"),
     ("employment01", "刘芳", "EMPLOYMENT_TEACHER", "CLASS", "软件2302"),

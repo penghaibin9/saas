@@ -417,6 +417,20 @@ def student_detail(user: dict, student_id) -> dict:
 
 # ══════════ 六域教师页（真实结构，租户过滤 + scopeMode） ══════════
 
+def _advisor_map(ids: list) -> dict:
+    """internship_id → advisor_name（一次查询，供范围过滤）。"""
+    if not ids:
+        return {}
+    try:
+        with _session() as db:
+            from app.models import InternshipRecord
+            rows = db.scalars(select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(), InternshipRecord.id.in_(ids))).all()
+            return {r.id: (r.advisor_name or "") for r in rows}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def internship(user: dict) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
@@ -424,6 +438,18 @@ def internship(user: dict) -> dict:
     scope = resolve_teacher_scope(u)
     reports, rtotal = _safe_list(internship_service.list_weekly_reports, 1, 50, status="PENDING_REVIEW")
     excs, etotal = _safe_list(internship_service.list_attendance_exceptions, 1, 50, status="PENDING_HANDLE")
+    # 范围收敛：列表里只保留自己能处理的（看得见 = 批得了），与写操作范围一致
+    if scope["mode"] == "SCOPED":
+        adv = _advisor_map([int(r.get("internId") or 0) for r in reports] +
+                           [int(e.get("internId") or e.get("internshipId") or 0) for e in excs])
+        reports = [r for r in reports if scope_match_row(
+            scope, class_name=r.get("className"), advisor_name=adv.get(int(r.get("internId") or 0)),
+            student_no=r.get("studentNo"))]
+        excs = [e for e in excs if scope_match_row(
+            scope, class_name=e.get("className"),
+            advisor_name=adv.get(int(e.get("internId") or e.get("internshipId") or 0)),
+            student_no=e.get("studentNo"))]
+        rtotal, etotal = len(reports), len(excs)
     stats = {}
     try:
         stats = internship_service.get_dashboard_summary()
@@ -440,10 +466,15 @@ def graduation(user: dict) -> dict:
     scope = resolve_teacher_scope(u)
     students, stotal = _safe_list(graduation_service.list_students, 1, 50)
     proposals, ptotal = _safe_list(graduation_service.list_proposals, 1, 50, status="PENDING_REVIEW")
-    # SCOPED：按导师姓名收敛
-    if scope["mode"] == "SCOPED" and scope.get("advisorName"):
-        adv = scope["advisorName"]
-        students = [s for s in students if (s.get("advisorName") or s.get("mentor") or "") == adv] or students
+    # SCOPED：严格按范围收敛（导师姓名/别名、班级、学号），不再"过滤为空就放全量"
+    if scope["mode"] == "SCOPED":
+        students = [s for s in students if scope_match_row(
+            scope, advisor_name=s.get("advisorName") or s.get("mentor"),
+            class_name=s.get("className"), student_no=s.get("studentNo"))]
+        proposals = [p for p in proposals if scope_match_row(
+            scope, advisor_name=p.get("advisorName"),
+            class_name=p.get("className"), student_no=p.get("studentNo"))]
+        stotal, ptotal = len(students), len(proposals)
     stats = {}
     try:
         stats = graduation_service.get_dashboard()
@@ -460,6 +491,10 @@ def employment(user: dict) -> dict:
     scope = resolve_teacher_scope(u)
     students, stotal = _safe_list(employment_service.list_students, 1, 50)
     jobs, _ = _safe_list(employment_service.list_jobs, 1, 30)
+    if scope["mode"] == "SCOPED":
+        students = [s for s in students if scope_match_row(
+            scope, class_name=s.get("className"), student_no=s.get("studentNo"))]
+        stotal = len(students)
     stats = {}
     try:
         stats = employment_service.get_dashboard()
