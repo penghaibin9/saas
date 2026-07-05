@@ -10,7 +10,7 @@ from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401
 from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAuditTrail, InternshipBatch,  # noqa: F401
-                                    InternshipRecord, RiskRecord, WeeklyReport)
+                                    InternshipCheckin, InternshipRecord, RiskRecord, WeeklyReport)
 from app.models.orientation import (GreenChannelApplication, OrientationAuditTrail,  # noqa: F401
                                      OrientationException, OrientationExceptionFollowup,
                                      OrientationMaterial, OrientationStudent)
@@ -25,3 +25,4 @@ from app.models.graduation import (GraduationAuditTrail, GraduationDefenseGroup,
 from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob,  # noqa: F401
                                      EmpMaterial, EmpStudent)
 from app.models.teacher_scope import TeacherStudentScope  # noqa: F401
+from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
