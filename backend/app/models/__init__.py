@@ -27,6 +27,9 @@ from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJo
 from app.models.teacher_scope import TeacherStudentScope  # noqa: F401
 from app.models.affairs import (AffairsAuditTrail, AffairsClassCadre,  # noqa: F401
                                 AffairsLeaveCancelRecord, AffairsLeaveExtension)
+from app.models.affairs_aid import (AidApply, AidBatch, AidFamilyEconomy,  # noqa: F401
+                                    AidLevelHistory, FundingApplication,
+                                    FundingBatch, FundingProject)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401

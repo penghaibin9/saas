@@ -24,8 +24,8 @@ _VIEW_LABEL = {"SA_ADMIN": "学工处（全校）", "COLLEGE_SA": "学院学工�
 _MODULE_CARDS = [
     ("class", "班级管理", "LIVE"),
     ("leave", "请假销假", "LIVE"),
-    ("aid", "困难认定", "PENDING"),
-    ("funding", "奖助管理", "PENDING"),
+    ("aid", "困难认定", "LIVE"),
+    ("funding", "奖助管理", "LIVE"),
     ("discipline", "违纪处分", "PENDING"),
     ("risk", "风险预警", "PENDING"),
     ("talk", "谈心谈话", "PENDING"),
@@ -109,6 +109,20 @@ def get_dashboard(user: dict) -> dict:
                 ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW"]))) or 0
         overdue_leave = db.scalar(select(func.count()).select_from(CsLeave).where(
             *leave_cond, CsLeave.affairs_status == "OVERDUE")) or 0
+        # 困难认定 / 奖助待审统计（P3 上线，真实聚合）
+        from app.models import AidApply, FundingApplication
+        stu_ids = _students_in_classes(db, allowed) if allowed is not None else None
+        aid_cond = [AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False),
+                    AidApply.status.in_(["CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW",
+                                         "SCHOOL_REVIEW", "PUBLICITY"])]
+        fund_cond = [FundingApplication.tenant_id == _tid(), FundingApplication.is_deleted.is_(False),
+                     FundingApplication.status.in_(["COUNSELOR_REVIEW", "COLLEGE_REVIEW",
+                                                    "SCHOOL_REVIEW", "PUBLICITY"])]
+        if stu_ids is not None:
+            aid_cond.append(AidApply.student_id.in_(stu_ids))
+            fund_cond.append(FundingApplication.student_id.in_(stu_ids))
+        pending_aid = db.scalar(select(func.count()).select_from(AidApply).where(*aid_cond)) or 0
+        pending_funding = db.scalar(select(func.count()).select_from(FundingApplication).where(*fund_cond)) or 0
         return {
             "view": view,
             "viewLabel": _VIEW_LABEL[view],
@@ -120,6 +134,8 @@ def get_dashboard(user: dict) -> dict:
                 {"key": "pendingTodo", "label": "待办", "value": todo, "unit": "件"},
                 {"key": "pendingLeave", "label": "待审请假", "value": pending_leave, "unit": "件"},
                 {"key": "overdueLeave", "label": "逾期未销假", "value": overdue_leave, "unit": "件"},
+                {"key": "pendingAid", "label": "待审困难认定", "value": pending_aid, "unit": "件"},
+                {"key": "pendingFunding", "label": "待审奖助", "value": pending_funding, "unit": "件"},
                 {"key": "riskStudents", "label": "风险学生", "value": 0, "unit": "人",
                  "note": "13A 风险域 P4 上线"},
             ],

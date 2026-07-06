@@ -1,0 +1,589 @@
+"""13A-P3 困难认定闭环（范式五件套 + 强敏感家庭经济管线）。
+
+12 态：DRAFT/SUBMITTED/CLASS_REVIEW/COUNSELOR_REVIEW/COLLEGE_REVIEW/SCHOOL_REVIEW/
+PUBLICITY/APPROVED/REJECTED/ADJUST_REVIEW/ARCHIVED（NOT_STARTED 为批次前置态）。
+管理端 apply 直接受理到 CLASS_REVIEW 并建 workflow；SCHOOL_REVIEW 通过→PUBLICITY；
+公示期满(可配 0 天快测)→APPROVED，写 level_history 进困难库 + StageEvent 进 360。
+家庭经济：列表/详情默认脱敏，income_encrypted 永不出列表；查看完整走 reveal（sensitiveView 鉴权 + SENSITIVE_VIEW 审计）。
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta
+
+from sqlalchemy import select
+
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import AppException, no_permission, not_found
+from app.services.db_service import _iso, _tid, audit_insert, session
+
+LEVELS = {"SPECIAL": "特别困难", "DIFFICULT": "困难", "GENERAL": "一般困难"}
+_LEVEL_RANK = {"GENERAL": 1, "DIFFICULT": 2, "SPECIAL": 3}
+
+AID_NODES = ["CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"]
+_TERMINAL = {"APPROVED", "REJECTED", "ARCHIVED"}
+# 拥有家庭经济 sensitiveView 权限点的角色（V1：学工处/学校管理/资助老师；学院/辅导员仅脱敏）
+_SENSITIVE_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "FUNDING_TEACHER", "ADMIN"}
+
+L_AID = {
+    "DRAFT": "草稿", "SUBMITTED": "已提交", "CLASS_REVIEW": "班级评议", "COUNSELOR_REVIEW": "辅导员初审",
+    "COLLEGE_REVIEW": "学院复审", "SCHOOL_REVIEW": "学校终审", "PUBLICITY": "公示中",
+    "APPROVED": "已通过", "REJECTED": "已驳回", "ADJUST_REVIEW": "动态调整审批", "ARCHIVED": "已归档",
+}
+
+
+def _op():
+    u = get_current_user_ctx() or {}
+    return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
+
+
+def _parse_dt(v):
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(v, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _audit(db, biz_id, action, detail="", before="", after=""):
+    from app.models import AffairsAuditTrail
+    n, r, uid = _op()
+    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type="AID", biz_id=int(biz_id) if biz_id else None,
+                             action=action, operator=n or uid, role_name=r, detail=detail,
+                             before_val=before, after_val=after, occurred_at=datetime.utcnow()))
+
+
+# ── workflow / 待办 / 消息 helper（复用请假范式）──
+
+def _assignee_for(db, node, student_id):
+    if node in ("CLASS_REVIEW", "COUNSELOR_REVIEW") and student_id:
+        from app.models import SchoolClass, StudentProfile
+        s = db.get(StudentProfile, int(student_id))
+        if s and s.class_id:
+            c = db.get(SchoolClass, int(s.class_id))
+            if c and c.counselor_id:
+                return int(c.counselor_id)
+    return 0
+
+
+def _open_wf(db, apply_id, applicant_id, title, first_node, assignee_id):
+    from app.models import WorkflowInstance, WorkflowTask
+    inst = WorkflowInstance(tenant_id=_tid(), workflow_code="AFFAIRS_AID_IDENTIFY",
+                            source_module="student-affairs", source_biz_type="AID",
+                            source_biz_id=int(apply_id), applicant_id=int(applicant_id or 0),
+                            title=title, status="RUNNING", current_node=first_node)
+    db.add(inst)
+    db.flush()
+    db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=first_node,
+                        assignee_id=int(assignee_id or 0), status="PENDING"))
+    return inst
+
+
+def _cur_task(db, inst_id, node):
+    from app.models import WorkflowTask
+    return db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == inst_id,
+        WorkflowTask.node_code == node, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False))).first()
+
+
+def _todo_upsert(db, apply_id, assignee_id, student_id, title, todo_type="AID_APPROVAL"):
+    from app.models import UnifiedTodo
+    row = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_id == int(apply_id), UnifiedTodo.todo_type == todo_type,
+        UnifiedTodo.assignee_id == int(assignee_id or 0),
+        UnifiedTodo.is_deleted.is_(False))).first()
+    if row:
+        row.title, row.status, row.version = title, "PENDING", row.version + 1
+    else:
+        db.add(UnifiedTodo(tenant_id=_tid(), source_module="student-affairs", source_biz_type="AID",
+                           source_biz_id=int(apply_id), todo_type=todo_type,
+                           assignee_id=int(assignee_id or 0), student_id=student_id, title=title,
+                           status="PENDING"))
+
+
+def _todo_done(db, apply_id, todo_type="AID_APPROVAL"):
+    from app.models import UnifiedTodo
+    for r in db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+            UnifiedTodo.source_biz_id == int(apply_id), UnifiedTodo.todo_type == todo_type,
+            UnifiedTodo.is_deleted.is_(False))).all():
+        r.status, r.version = "DONE", r.version + 1
+
+
+def _msg(db, receiver_id, title, content, mtype, apply_id):
+    from app.models import UnifiedMessage
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0),
+                          source_module="student-affairs", source_biz_id=int(apply_id),
+                          title=title, content=content, message_type=mtype, status="UNREAD"))
+
+
+# ── 数据范围 / 敏感权限 ──
+
+def _scope_or_403(db, student_id, user):
+    from app.models import StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    allowed, _ = _allowed_class_ids(db, user)
+    if allowed is None:
+        return
+    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    if not s or s.class_id not in allowed:
+        raise AppException("NO_DATA_SCOPE", "该申请不在您的数据范围内")
+
+
+def _can_sensitive_view(user) -> bool:
+    return (user or {}).get("currentRoleCode") in _SENSITIVE_ROLES
+
+
+# ── 序列化 ──
+
+def _income_range(v) -> str:
+    try:
+        n = float(v or 0)
+    except (TypeError, ValueError):
+        return "未填写"
+    if n <= 0:
+        return "未填写"
+    if n < 10000:
+        return "1万以下"
+    if n < 20000:
+        return "1-2万"
+    if n < 40000:
+        return "2-4万"
+    return "4万以上"
+
+
+def _mask_family(fe) -> dict:
+    """家庭经济脱敏视图（income 只给区间，明细标 detailMasked）。列表/详情默认走此。"""
+    if not fe:
+        return {}
+    tags = json.loads(fe.special_flags_json) if fe.special_flags_json else []
+    return {
+        "annualIncomeRange": _income_range(fe.income_encrypted),
+        "memberCount": fe.member_count or 0,
+        "specialTags": tags,
+        "detailMasked": True,
+    }
+
+
+def _reveal_family(fe) -> dict:
+    if not fe:
+        return {}
+    tags = json.loads(fe.special_flags_json) if fe.special_flags_json else []
+    members = json.loads(fe.family_members_json) if fe.family_members_json else []
+    return {
+        "annualIncome": fe.income_encrypted, "debt": fe.debt_encrypted,
+        "memberCount": fe.member_count or 0, "familyMembers": members,
+        "specialTags": tags, "detailMasked": False,
+    }
+
+
+def _batch_row(b) -> dict:
+    return {
+        "batchId": str(b.id), "batchName": b.batch_name, "schoolYear": b.year_code,
+        "applyStart": _iso(b.apply_start), "applyEnd": _iso(b.apply_end),
+        "publicityDays": b.publicity_days if b.publicity_days is not None else 5,
+        "status": b.status,
+    }
+
+
+def _apply_row(x, s=None, fe=None) -> dict:
+    return {
+        "applyId": str(x.id), "batchId": str(x.batch_id), "studentId": str(x.student_id),
+        "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+        "applyLevel": x.apply_level, "suggestLevel": x.suggest_level, "finalLevel": x.final_level,
+        "status": x.status, "statusLabel": L_AID.get(x.status, x.status),
+        "currentNode": x.status if x.status in AID_NODES else "",
+        "familyEconomy": _mask_family(fe),  # 强敏感：默认脱敏
+        "version": x.version,
+    }
+
+
+# ═══════════ 批次 ═══════════
+
+def create_batch(body, user) -> dict:
+    with session() as db:
+        from app.models import AidBatch
+        publish = bool(getattr(body, "publish", False))
+        b = AidBatch(tenant_id=_tid(), batch_name=body.batchName, year_code=body.schoolYear,
+                     apply_start=_parse_dt(body.applyStart), apply_end=_parse_dt(body.applyEnd),
+                     publicity_days=(body.publicityDays if body.publicityDays is not None else 5),
+                     level_config_json=json.dumps(body.levelConfig or {}, ensure_ascii=False),
+                     status=("OPEN" if publish else "DRAFT"))
+        db.add(b)
+        db.flush()
+        _audit(db, b.id, "BATCH_CREATE", f"publish={publish}")
+        db.commit()
+        db.refresh(b)
+        return _batch_row(b)
+
+
+def list_batches(user, school_year=None, status=None, page=1, page_size=20):
+    with session() as db:
+        from app.models import AidBatch
+        conds = [AidBatch.tenant_id == _tid(), AidBatch.is_deleted.is_(False)]
+        if school_year:
+            conds.append(AidBatch.year_code == school_year)
+        if status:
+            conds.append(AidBatch.status == status)
+        rows = db.scalars(select(AidBatch).where(*conds).order_by(AidBatch.id.desc())).all()
+        out = [_batch_row(b) for b in rows]
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+# ═══════════ 申请（管理端受理直达班级评议）═══════════
+
+def apply(body, user) -> dict:
+    student_id = int(body.studentId)
+    if (body.applyLevel or "") not in LEVELS:
+        raise AppException("VALIDATION_ERROR", "申请等级非法")
+    st = (body.statement or "").strip()
+    if not (10 <= len(st) <= 500):
+        raise AppException("VALIDATION_ERROR", "困难情况说明需 10-500 字")
+    with session() as db:
+        from app.models import AidApply, AidBatch, AidFamilyEconomy, StudentProfile
+        s = db.get(StudentProfile, student_id)
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("学生不存在或不在数据范围内")
+        b = db.get(AidBatch, int(body.batchId))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("认定批次不存在")
+        if b.status != "OPEN":
+            raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        # 同批次重复申请（非终态）→ 409
+        dup = db.scalars(select(AidApply).where(
+            AidApply.tenant_id == _tid(), AidApply.batch_id == b.id,
+            AidApply.student_id == student_id, AidApply.is_deleted.is_(False))).first()
+        if dup and dup.status not in _TERMINAL:
+            raise AppException("DATA_CONFLICT", "该生在本批次已有在途申请，不可重复提交")
+        first = AID_NODES[0]
+        x = AidApply(tenant_id=_tid(), batch_id=b.id, student_id=student_id,
+                     apply_level=body.applyLevel, statement=st, status=first)
+        db.add(x)
+        db.flush()
+        # 家庭经济强敏感表（独立存储）
+        fe = AidFamilyEconomy(
+            tenant_id=_tid(), apply_id=x.id, student_id=student_id,
+            member_count=getattr(body, "memberCount", None),
+            income_encrypted=str(getattr(body, "annualIncome", "") or ""),
+            debt_encrypted=str(getattr(body, "debt", "") or ""),
+            family_members_json=json.dumps(getattr(body, "familyMembers", []) or [], ensure_ascii=False),
+            special_flags_json=json.dumps(getattr(body, "specialTags", []) or [], ensure_ascii=False))
+        db.add(fe)
+        assignee = _assignee_for(db, first, student_id)
+        inst = _open_wf(db, x.id, student_id, f"{s.real_name} 困难认定", first, assignee)
+        x.workflow_instance_id = inst.id
+        _todo_upsert(db, x.id, assignee, student_id, f"困难认定待评议：{s.real_name}")
+        _audit(db, x.id, "APPLY", f"level={body.applyLevel}")  # 涉家庭经济录入
+        db.commit()
+        db.refresh(x)
+        db.refresh(fe)
+        return _apply_row(x, s, fe)
+
+
+# ═══════════ 评审（逐级）═══════════
+
+def _load(db, apply_id):
+    from app.models import AidApply, StudentProfile
+    x = db.get(AidApply, int(apply_id))
+    if not x or x.is_deleted or x.tenant_id != _tid():
+        raise not_found("认定申请不存在")
+    s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+    return x, s
+
+
+def _family_of(db, apply_id):
+    from app.models import AidFamilyEconomy
+    return db.scalars(select(AidFamilyEconomy).where(
+        AidFamilyEconomy.tenant_id == _tid(), AidFamilyEconomy.apply_id == int(apply_id),
+        AidFamilyEconomy.is_deleted.is_(False))).first()
+
+
+def _act_task(db, x, action, reason=""):
+    from app.models import WorkflowInstance
+    inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+    task = _cur_task(db, inst.id, x.status) if inst else None
+    if task:
+        task.status, task.acted_at, task.action_reason = action, datetime.utcnow(), reason
+        task.version += 1
+    return inst
+
+
+def review(apply_id, user, action, level=None, reason="") -> dict:
+    action = (action or "").upper()
+    with session() as db:
+        from app.models import WorkflowTask
+        x, s = _load(db, apply_id)
+        _scope_or_403(db, x.student_id, user)
+        if x.status not in AID_NODES:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
+        if action == "APPROVE":
+            inst = _act_task(db, x, "APPROVED", reason or "")
+            # 辅导员初审带出建议等级
+            if x.status == "COUNSELOR_REVIEW" and level in LEVELS:
+                x.suggest_level = level
+            i = AID_NODES.index(x.status)
+            if i + 1 < len(AID_NODES):
+                nxt = AID_NODES[i + 1]
+                x.status, x.version = nxt, x.version + 1
+                if inst:
+                    inst.current_node = nxt
+                assignee = _assignee_for(db, nxt, x.student_id)
+                db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
+                                    assignee_id=assignee, status="PENDING"))
+                _todo_upsert(db, x.id, assignee, x.student_id,
+                             f"困难认定待审（{L_AID[nxt]}）：{s.real_name if s else ''}")
+                _audit(db, x.id, "REVIEW_STEP", f"{AID_NODES[i]}->{nxt}")
+            else:
+                # 学校终审通过 → 公示
+                x.final_level = (level if level in LEVELS else (x.suggest_level or x.apply_level))
+                x.status, x.publicity_at, x.version = "PUBLICITY", datetime.utcnow(), x.version + 1
+                if inst:
+                    inst.current_node = "PUBLICITY"
+                _todo_done(db, x.id)
+                _msg(db, x.student_id, "困难认定进入公示",
+                     f"你的困难认定（拟定{LEVELS.get(x.final_level, '')}）进入公示", "PUBLISHED_NOTICE", x.id)
+                _audit(db, x.id, "TO_PUBLICITY", f"final={x.final_level}")
+        elif action == "REJECT":
+            if not reason or len(reason.strip()) < 5:
+                raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+            inst = _act_task(db, x, "REJECTED", reason.strip())
+            x.status, x.return_reason, x.result_at, x.version = "REJECTED", reason.strip(), datetime.utcnow(), x.version + 1
+            if inst:
+                inst.status = "REJECTED"
+            _todo_done(db, x.id)
+            _msg(db, x.student_id, "困难认定未通过", reason.strip(), "WORKFLOW_RESULT", x.id)
+            _audit(db, x.id, "REJECTED", reason.strip())
+        elif action == "RETURN":
+            if not reason or len(reason.strip()) < 5:
+                raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+            _act_task(db, x, "TRANSFERRED", reason.strip())
+            x.status, x.return_reason, x.version = "DRAFT", reason.strip(), x.version + 1
+            _todo_done(db, x.id)
+            _msg(db, x.student_id, "困难认定被退回", reason.strip(), "RETURNED_NOTICE", x.id)
+            _audit(db, x.id, "RETURNED", reason.strip())
+        else:
+            raise AppException("VALIDATION_ERROR", "无效操作")
+        db.commit()
+        db.refresh(x)
+        return _apply_row(x, s, _family_of(db, x.id))
+
+
+def resubmit(apply_id, user) -> dict:
+    """退回(DRAFT)后重新提交 → 回班级评议（新审批周期）。"""
+    with session() as db:
+        from app.models import WorkflowInstance, WorkflowTask
+        x, s = _load(db, apply_id)
+        _scope_or_403(db, x.student_id, user)
+        if x.status != "DRAFT":
+            raise AppException("APPROVAL_VERSION_CONFLICT", "仅被退回的申请可重新提交")
+        first = AID_NODES[0]
+        x.status, x.return_reason, x.version = first, None, x.version + 1
+        inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+        if inst:
+            inst.status, inst.current_node = "RUNNING", first
+        assignee = _assignee_for(db, first, x.student_id)
+        db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id if inst else 0, node_code=first,
+                            assignee_id=assignee, status="PENDING"))
+        _todo_upsert(db, x.id, assignee, x.student_id, f"困难认定重新提交待评议：{s.real_name if s else ''}")
+        _audit(db, x.id, "RESUBMIT")
+        db.commit()
+        db.refresh(x)
+        return _apply_row(x, s, _family_of(db, x.id))
+
+
+# ═══════════ 公示定时流转（幂等）═══════════
+
+def _confirm_one(db, x):
+    """PUBLICITY → APPROVED：写困难库(level_history) + 进 360 + 通知。"""
+    from app.models import AidLevelHistory, StudentStageEvent, WorkflowInstance
+    x.status, x.result_at, x.version = "APPROVED", datetime.utcnow(), x.version + 1
+    if x.workflow_instance_id:
+        inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
+        if inst:
+            inst.status = "APPROVED"
+    db.add(AidLevelHistory(tenant_id=_tid(), student_id=int(x.student_id), from_level=None,
+                           to_level=x.final_level, change_type="IDENTIFY", apply_id=x.id,
+                           batch_id=x.batch_id, effective_at=datetime.utcnow()))
+    db.add(StudentStageEvent(tenant_id=_tid(), student_id=int(x.student_id), from_stage=None,
+                             to_stage="AID_APPROVED", reason=f"困难认定通过（{LEVELS.get(x.final_level, '')}）",
+                             source_module="student-affairs"))
+    _todo_done(db, x.id)
+    _msg(db, x.student_id, "困难认定通过", f"你的困难认定已通过（{LEVELS.get(x.final_level, '')}）", "WORKFLOW_RESULT", x.id)
+    _audit(db, x.id, "APPROVED", f"final={x.final_level}")
+
+
+def scan_publicity() -> dict:
+    """公示期满自动转 APPROVED（幂等：仅 PUBLICITY 且已过 publicity_days）。"""
+    from app.models import AidApply, AidBatch
+    now = datetime.utcnow()
+    with session() as db:
+        rows = db.scalars(select(AidApply).where(
+            AidApply.tenant_id == _tid(), AidApply.status == "PUBLICITY",
+            AidApply.publicity_at.is_not(None), AidApply.is_deleted.is_(False))).all()
+        cnt = 0
+        for x in rows:
+            b = db.get(AidBatch, int(x.batch_id))
+            days = (b.publicity_days if b and b.publicity_days is not None else 5)
+            if x.publicity_at + timedelta(days=days) <= now:
+                _confirm_one(db, x)
+                cnt += 1
+        db.commit()
+        return {"count": cnt}
+
+
+def confirm_publicity(apply_id, user) -> dict:
+    """人工确认公示期满（提前结束公示，同 scan 效果）。"""
+    with session() as db:
+        x, s = _load(db, apply_id)
+        _scope_or_403(db, x.student_id, user)
+        if x.status != "PUBLICITY":
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在公示状态")
+        _confirm_one(db, x)
+        db.commit()
+        db.refresh(x)
+        return _apply_row(x, s, _family_of(db, x.id))
+
+
+# ═══════════ 动态调整 ═══════════
+
+def adjust(apply_id, user, target_level, reason="") -> dict:
+    if target_level not in LEVELS:
+        raise AppException("VALIDATION_ERROR", "目标等级非法")
+    if not reason or len(reason.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "调整原因必填且不少于 5 字")
+    with session() as db:
+        x, s = _load(db, apply_id)
+        _scope_or_403(db, x.student_id, user)
+        if x.status != "APPROVED":
+            raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过的认定可发起动态调整")
+        x.status, x.suggest_level, x.version = "ADJUST_REVIEW", target_level, x.version + 1
+        assignee = _assignee_for(db, "COUNSELOR_REVIEW", x.student_id)
+        _todo_upsert(db, x.id, assignee, x.student_id, f"困难等级调整待审：{s.real_name if s else ''}",
+                     todo_type="AID_ADJUST")
+        _audit(db, x.id, "ADJUST_SUBMIT", f"{x.final_level}->{target_level}: {reason.strip()}")
+        db.commit()
+        db.refresh(x)
+        return _apply_row(x, s, _family_of(db, x.id))
+
+
+def approve_adjust(apply_id, user, action="APPROVE") -> dict:
+    with session() as db:
+        from app.models import AidLevelHistory
+        x, s = _load(db, apply_id)
+        _scope_or_403(db, x.student_id, user)
+        if x.status != "ADJUST_REVIEW":
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在调整审批状态")
+        if (action or "").upper() == "APPROVE":
+            old = x.final_level
+            db.add(AidLevelHistory(tenant_id=_tid(), student_id=int(x.student_id), from_level=old,
+                                   to_level=x.suggest_level, change_type="ADJUST", apply_id=x.id,
+                                   batch_id=x.batch_id, effective_at=datetime.utcnow()))
+            x.final_level = x.suggest_level
+            _audit(db, x.id, "ADJUST_APPROVED", f"{old}->{x.final_level}")
+        else:
+            _audit(db, x.id, "ADJUST_REJECTED")
+        x.status, x.version = "APPROVED", x.version + 1
+        _todo_done(db, x.id, todo_type="AID_ADJUST")
+        _msg(db, x.student_id, "困难等级调整结果", f"当前等级：{LEVELS.get(x.final_level, '')}", "WORKFLOW_RESULT", x.id)
+        db.commit()
+        db.refresh(x)
+        return _apply_row(x, s, _family_of(db, x.id))
+
+
+# ═══════════ 查询 / 困难库 / 敏感 reveal ═══════════
+
+def list_applications(user, batch_id=None, status=None, level=None, page=1, page_size=20):
+    from app.models import AidApply, AidFamilyEconomy, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False)]
+        if batch_id:
+            conds.append(AidApply.batch_id == int(batch_id))
+        if status:
+            conds.append(AidApply.status == status)
+        if level:
+            conds.append(AidApply.final_level == level)
+        rows = db.scalars(select(AidApply).where(*conds).order_by(AidApply.id.desc())).all()
+        out = []
+        for x in rows:
+            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            fe = db.scalars(select(AidFamilyEconomy).where(
+                AidFamilyEconomy.tenant_id == _tid(), AidFamilyEconomy.apply_id == x.id,
+                AidFamilyEconomy.is_deleted.is_(False))).first()
+            out.append(_apply_row(x, s, fe))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def get_application(apply_id, user) -> dict:
+    with session() as db:
+        x, s = _load(db, apply_id)
+        _scope_or_403(db, x.student_id, user)
+        return _apply_row(x, s, _family_of(db, x.id))
+
+
+def reveal_family_economy(apply_id, user, reason="") -> dict:
+    """查看完整家庭经济：sensitiveView 鉴权 + 强制 SENSITIVE_VIEW 审计（越权与成功均落审计）。"""
+    with session() as db:
+        x, s = _load(db, apply_id)
+        _scope_or_403(db, x.student_id, user)
+        fe = _family_of(db, x.id)
+    if not _can_sensitive_view(user):
+        audit_insert("SENSITIVE_VIEW", "aid_family_economy",
+                     {"applyId": str(apply_id), "reason": reason, "granted": False}, "DENY")
+        raise no_permission("无家庭经济完整信息查看权限")
+    audit_insert("SENSITIVE_VIEW", "aid_family_economy",
+                 {"applyId": str(apply_id), "studentId": str(x.student_id), "reason": reason,
+                  "granted": True}, "SUCCESS")
+    return {"applyId": str(x.id), "studentId": str(x.student_id),
+            "realName": s.real_name if s else "", "familyEconomy": _reveal_family(fe)}
+
+
+def difficult_students(user, level=None, page=1, page_size=50):
+    """困难学生库：认定通过(APPROVED)的最新等级聚合，供助学金/绿通/临补前置校验。"""
+    from app.models import AidApply, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        rows = db.scalars(select(AidApply).where(
+            AidApply.tenant_id == _tid(), AidApply.status == "APPROVED",
+            AidApply.is_deleted.is_(False)).order_by(AidApply.id.desc())).all()
+        seen, out = set(), []
+        for x in rows:
+            if x.student_id in seen:
+                continue
+            seen.add(x.student_id)
+            if level and x.final_level != level:
+                continue
+            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append({"studentId": str(x.student_id), "realName": s.real_name if s else "",
+                        "level": x.final_level, "levelLabel": LEVELS.get(x.final_level, ""),
+                        "identifiedAt": _iso(x.result_at), "batchId": str(x.batch_id)})
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def is_in_difficult_library(db, student_id) -> str | None:
+    """供 funding 助学金前置校验：返回学生当前困难等级或 None（本函数复用同一 db 会话）。"""
+    from app.models import AidApply
+    x = db.scalars(select(AidApply).where(
+        AidApply.tenant_id == _tid(), AidApply.student_id == int(student_id),
+        AidApply.status == "APPROVED", AidApply.is_deleted.is_(False)).order_by(
+        AidApply.id.desc())).first()
+    return x.final_level if x else None
