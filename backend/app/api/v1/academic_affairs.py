@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 from app.core.response import paginate, success
 from app.core.security import require_staff
+from app.services import academic_affairs_change_service as change_svc
+from app.services import academic_affairs_program_service as prog_svc
 from app.services import academic_affairs_service as svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
@@ -128,3 +130,93 @@ def register(body: RegisterBody, batchId: int = Path(...), user=Depends(require_
 def registrations(batchId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
     items, total = svc.list_registrations(batchId, user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+# ═══════════ 学籍异动（P2，休学/复学/退学/转专业/留级）═══════════
+
+class StatusChangeSubmit(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    changeType: str = Field(..., description="SUSPEND/RESUME/WITHDRAW/RETAIN/TRANSFER_MAJOR")
+    reason: Optional[str] = Field("", max_length=500)
+    toCollegeId: Optional[str] = None
+    toMajorId: Optional[str] = None
+    toClassId: Optional[str] = None
+
+
+class AaReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT/RETURN")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+@router.post("/status-changes", summary="发起学籍异动")
+def status_change_submit(body: StatusChangeSubmit, user=Depends(require_staff)):
+    return success(change_svc.submit(body, user), message="异动已提交")
+
+
+@router.get("/status-changes", summary="学籍异动列表")
+def status_changes(changeType: Optional[str] = None, status: Optional[str] = None,
+                   studentId: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                   user=Depends(require_staff)):
+    items, total = change_svc.list_changes(user, changeType, status, studentId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/status-changes/{changeId}", summary="异动详情")
+def status_change_detail(changeId: int = Path(...), user=Depends(require_staff)):
+    return success(change_svc.get_change(changeId, user))
+
+
+@router.post("/status-changes/{changeId}/review", summary="异动审批（多节点，终审经单一入口生效）")
+def status_change_review(body: AaReviewBody, changeId: int = Path(...), user=Depends(require_staff)):
+    return success(change_svc.review(changeId, user, body.action, body.reason or ""), message="已处理")
+
+
+# ═══════════ 培养方案（P2 编制骨架，审批发布 P3）═══════════
+
+class ProgramCreate(BaseModel):
+    programName: str = Field(..., min_length=1)
+    majorId: Optional[str] = None
+    gradeYear: Optional[str] = None
+    totalCredits: Optional[int] = None
+    requirement: Optional[dict] = Field(default_factory=dict)
+
+
+class ProgramUpdate(BaseModel):
+    programName: Optional[str] = None
+    totalCredits: Optional[int] = None
+    requirement: Optional[dict] = None
+
+
+class ProgramCourseBody(BaseModel):
+    courseId: Optional[str] = None
+    courseName: str = Field(..., min_length=1)
+    openTermNo: Optional[int] = None
+    module: Optional[str] = None
+    credit: Optional[int] = None
+
+
+@router.post("/programs", summary="新建培养方案")
+def program_create(body: ProgramCreate, user=Depends(require_staff)):
+    return success(prog_svc.create_program(body, user), message="已创建")
+
+
+@router.get("/programs", summary="培养方案列表")
+def programs(majorId: Optional[str] = None, status: Optional[str] = None,
+             page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = prog_svc.list_programs(user, majorId, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/programs/{programId}", summary="方案详情（含课程明细+学分差额）")
+def program_detail(programId: int = Path(...), user=Depends(require_staff)):
+    return success(prog_svc.get_program(programId, user))
+
+
+@router.put("/programs/{programId}", summary="编辑方案（编制态）")
+def program_update(body: ProgramUpdate, programId: int = Path(...), user=Depends(require_staff)):
+    return success(prog_svc.update_program(programId, user, body), message="已保存")
+
+
+@router.post("/programs/{programId}/courses", summary="方案增课程明细")
+def program_add_course(body: ProgramCourseBody, programId: int = Path(...), user=Depends(require_staff)):
+    return success(prog_svc.add_course(programId, user, body), message="已添加")

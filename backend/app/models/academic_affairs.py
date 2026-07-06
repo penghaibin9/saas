@@ -74,7 +74,9 @@ class AaStatusChange(PKMixin, TenantMixin, CommonMixin, Base):
     to_class_id: Mapped[int | None] = mapped_column(BigInteger)
     reason: Mapped[str | None] = mapped_column(String(500), comment="异动原因(敏感脱敏)")
     effective_date: Mapped[datetime | None] = mapped_column(DateTime)
+    expire_date: Mapped[datetime | None] = mapped_column(DateTime, comment="休学到期日(P2真实补充:最长年限)")
     term_code: Mapped[str | None] = mapped_column(String(50))
+    current_node: Mapped[str | None] = mapped_column(String(50), comment="多节点审批当前节点")
     source_biz_id: Mapped[int | None] = mapped_column(BigInteger, comment="来源单据(注册/异动)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="EFFECTIVE", index=True,
                                         comment="DRAFT/SUBMITTED/IN_REVIEW/APPROVED/REJECTED/RETURNED/CANCELLED/EFFECTIVE/ARCHIVED")
@@ -107,3 +109,46 @@ class AaRegistration(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_REGISTER", index=True)
 
     __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "student_id", name="uk_aa_registration"),)
+
+
+# ═══════════ 培养方案组（13B-P2 建表 + 编制骨架；审批发布 P3）═══════════
+
+
+class AaProgram(PKMixin, TenantMixin, CommonMixin, Base):
+    """培养方案主档（毕业要求 JSONB 并入）。发布后改动强制新版本(prev_version_id 链)。"""
+    __tablename__ = "t_aa_program"
+
+    program_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    major_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    grade_year: Mapped[str | None] = mapped_column(String(20), comment="适用年级 如 2026")
+    total_credits: Mapped[float | None] = mapped_column(Integer)
+    requirement_json: Mapped[str | None] = mapped_column(String(2000), comment="分模块学分要求")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    prev_version_id: Mapped[int | None] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/COLLEGE_REVIEW/ACADEMIC_REVIEW/RETURNED/PUBLISHED/ENABLED/FROZEN/DISABLED")
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+
+
+class AaProgramCourse(PKMixin, TenantMixin, CommonMixin, Base):
+    """方案-课程明细（学期安排）。course_id→t_aa_course(P3)；P2 编制期以 course_name 文本占位。"""
+    __tablename__ = "t_aa_program_course"
+
+    program_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    course_id: Mapped[int | None] = mapped_column(BigInteger, comment="→ t_aa_course(P3);编制期可空")
+    course_name: Mapped[str | None] = mapped_column(String(200), comment="P2 编制期课程名占位")
+    open_term_no: Mapped[int | None] = mapped_column(Integer, comment="第几学期开课")
+    module: Mapped[str | None] = mapped_column(String(50), comment="课程模块 公共/专业/实践…")
+    credit_snapshot: Mapped[float | None] = mapped_column(Integer)
+
+
+class AaProgramBinding(PKMixin, TenantMixin, CommonMixin, Base):
+    """方案-年级/班级绑定（历史年级锁旧版本）。ACTIVE/SUPERSEDED。"""
+    __tablename__ = "t_aa_program_binding"
+
+    program_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    major_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    grade_year: Mapped[str | None] = mapped_column(String(20))
+    class_id: Mapped[int | None] = mapped_column(BigInteger, comment="nullable=全专业")
+    bound_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
