@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.services import academic_affairs_change_service as change_svc
+from app.services import academic_affairs_course_service as course_svc
 from app.services import academic_affairs_program_service as prog_svc
 from app.services import academic_affairs_service as svc
+from app.services import academic_affairs_task_service as task_svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
 
@@ -220,3 +222,131 @@ def program_update(body: ProgramUpdate, programId: int = Path(...), user=Depends
 @router.post("/programs/{programId}/courses", summary="方案增课程明细")
 def program_add_course(body: ProgramCourseBody, programId: int = Path(...), user=Depends(require_staff)):
     return success(prog_svc.add_course(programId, user, body), message="已添加")
+
+
+@router.post("/programs/{programId}/submit", summary="提交方案审核（发布前校验学分达标）")
+def program_submit(programId: int = Path(...), user=Depends(require_staff)):
+    return success(prog_svc.submit_program(programId, user), message="已提交")
+
+
+@router.post("/programs/{programId}/review", summary="方案两级审核（学院→教务→PUBLISHED）")
+def program_review(body: AaReviewBody, programId: int = Path(...), user=Depends(require_staff)):
+    return success(prog_svc.review_program(programId, user, body.action, body.reason or ""), message="已处理")
+
+
+class BindGradeBody(BaseModel):
+    gradeYear: str = Field(..., min_length=1)
+    classId: Optional[str] = None
+
+
+@router.post("/programs/{programId}/bind", summary="已发布方案绑定年级（锁旧版本）")
+def program_bind(body: BindGradeBody, programId: int = Path(...), user=Depends(require_staff)):
+    return success(prog_svc.bind_grade(programId, user, body.gradeYear, body.classId), message="已绑定")
+
+
+# ═══════════ 课程库（P3，两级审核，商业级全字段）═══════════
+
+class CourseCreate(BaseModel):
+    courseCode: str = Field(..., min_length=1)
+    courseName: str = Field(..., min_length=1)
+    courseNameEn: Optional[str] = None
+    category: str = Field("MAJOR_CORE", description="PUBLIC_BASIC/DISCIPLINE_BASIC/MAJOR_CORE/MAJOR_ELECTIVE/PRACTICE")
+    nature: str = Field("REQUIRED", description="REQUIRED/ELECTIVE/LIMITED_ELECTIVE/PUBLIC_ELECTIVE")
+    credit: float = Field(0)
+    hoursTotal: Optional[int] = None
+    hoursTheory: Optional[int] = None
+    hoursPractice: Optional[int] = None
+    hoursExperiment: Optional[int] = None
+    hoursComputer: Optional[int] = None
+    examMode: str = Field("EXAM", description="EXAM/CHECK")
+    ownerCollegeId: Optional[str] = None
+    isCore: bool = Field(False)
+    prerequisiteCodes: Optional[list] = Field(default_factory=list)
+
+
+@router.post("/courses", summary="新建课程（草稿）")
+def course_create(body: CourseCreate, user=Depends(require_staff)):
+    return success(course_svc.create_course(body, user), message="已创建")
+
+
+@router.get("/courses", summary="课程库列表")
+def courses(keyword: Optional[str] = None, category: Optional[str] = None, nature: Optional[str] = None,
+            status: Optional[str] = None, page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = course_svc.list_courses(user, keyword, category, nature, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/courses/{courseId}", summary="课程详情")
+def course_detail(courseId: int = Path(...), user=Depends(require_staff)):
+    return success(course_svc.get_course(courseId, user))
+
+
+@router.put("/courses/{courseId}", summary="编辑课程（已启用改动强制新版本）")
+def course_update(body: CourseCreate, courseId: int = Path(...), user=Depends(require_staff)):
+    return success(course_svc.update_course(courseId, user, body), message="已保存")
+
+
+@router.post("/courses/{courseId}/submit", summary="提交课程审核")
+def course_submit(courseId: int = Path(...), user=Depends(require_staff)):
+    return success(course_svc.submit_course(courseId, user), message="已提交")
+
+
+@router.post("/courses/{courseId}/review", summary="课程两级审核（学院→教务→ENABLED）")
+def course_review(body: AaReviewBody, courseId: int = Path(...), user=Depends(require_staff)):
+    return success(course_svc.review_course(courseId, user, body.action, body.reason or ""), message="已处理")
+
+
+# ═══════════ 教学任务（P3）═══════════
+
+class TaskBatchGenerate(BaseModel):
+    termId: str = Field(..., min_length=1)
+    collegeId: Optional[str] = None
+    batchName: Optional[str] = None
+
+
+class AssignBody(BaseModel):
+    teacherId: Optional[str] = None
+    teacherKey: Optional[str] = None
+    teacherName: str = Field(..., min_length=1)
+    weeklyHours: Optional[int] = None
+    expectedStudents: Optional[int] = None
+    isMerged: Optional[bool] = None
+
+
+class TeacherActBody(BaseModel):
+    action: str = Field(..., description="CONFIRM/REJECT")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+@router.post("/teaching-task-batches/generate", summary="生成教学任务批次（按已发布方案，幂等）")
+def task_generate(body: TaskBatchGenerate, user=Depends(require_staff)):
+    return success(task_svc.generate_batch(body, user), message="已生成")
+
+
+@router.get("/teaching-task-batches", summary="教学任务批次列表")
+def task_batches(termId: Optional[str] = None, status: Optional[str] = None,
+                 page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = task_svc.list_batches(user, termId, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/teaching-task-batches/{batchId}/submit", summary="提交批次审核（要求全部已分配）")
+def task_batch_submit(batchId: int = Path(...), user=Depends(require_staff)):
+    return success(task_svc.submit_batch(batchId, user), message="已提交")
+
+
+@router.get("/teaching-task-batches/{batchId}/tasks", summary="批次内教学任务列表")
+def task_list(batchId: int = Path(...), status: Optional[str] = None,
+              page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
+    items, total = task_svc.list_tasks(batchId, user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/teaching-tasks/{taskId}/assign", summary="分配授课教师")
+def task_assign(body: AssignBody, taskId: int = Path(...), user=Depends(require_staff)):
+    return success(task_svc.assign_teacher(taskId, user, body), message="已分配")
+
+
+@router.post("/teaching-tasks/{taskId}/teacher-act", summary="教师确认/退回教学任务")
+def task_teacher_act(body: TeacherActBody, taskId: int = Path(...), user=Depends(require_staff)):
+    return success(task_svc.teacher_act(taskId, user, body.action, body.reason or ""), message="已处理")

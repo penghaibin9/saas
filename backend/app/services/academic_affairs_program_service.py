@@ -124,3 +124,83 @@ def list_programs(user, major_id=None, status=None, page=1, page_size=20):
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total
+
+
+# ═══════════ 方案两审发布 + 绑定年级（13B-P3）═══════════
+
+def _credit_sum(db, program_id):
+    from app.models import AaProgramCourse
+    rows = db.scalars(select(AaProgramCourse).where(
+        AaProgramCourse.tenant_id == _tid(), AaProgramCourse.program_id == int(program_id),
+        AaProgramCourse.is_deleted.is_(False))).all()
+    return sum(float(c.credit_snapshot or 0) for c in rows)
+
+
+def submit_program(program_id, user) -> dict:
+    """提交方案审核（编制→学院审）。发布前校验课程学分合计达毕业总学分。"""
+    with session() as db:
+        from app.models import AaProgram
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "仅编制/退回态方案可提交")
+        csum = _credit_sum(db, p.id)
+        if p.total_credits and csum < float(p.total_credits):
+            raise AppException("VALIDATION_ERROR",
+                               f"课程学分合计 {csum} 未达毕业总学分 {p.total_credits}，不可提交")
+        p.status = "COLLEGE_REVIEW"
+        _audit(db, p.id, "SUBMIT", f"creditSum={csum}")
+        db.commit()
+        db.refresh(p)
+        return _row(p)
+
+
+def review_program(program_id, user, action, reason="") -> dict:
+    action = (action or "").upper()
+    with session() as db:
+        from app.models import AaProgram
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("COLLEGE_REVIEW", "ACADEMIC_REVIEW"):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该方案当前状态不可审核")
+        if action == "APPROVE":
+            p.status = "ACADEMIC_REVIEW" if p.status == "COLLEGE_REVIEW" else "PUBLISHED"
+            _audit(db, p.id, "APPROVE", f"->{p.status}")
+        elif action in ("REJECT", "RETURN"):
+            if not reason or len(reason.strip()) < 5:
+                raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+            p.status = "RETURNED"
+            _audit(db, p.id, "RETURNED", reason.strip())
+        else:
+            raise AppException("VALIDATION_ERROR", "无效操作")
+        db.commit()
+        db.refresh(p)
+        return _row(p)
+
+
+def bind_grade(program_id, user, grade_year, class_id=None) -> dict:
+    """已发布方案绑定年级（同专业+年级旧绑定置 SUPERSEDED，历史年级锁旧版本）。"""
+    with session() as db:
+        from app.models import AaProgram, AaProgramBinding
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("PUBLISHED", "ENABLED"):
+            raise AppException("DATA_CONFLICT", "仅已发布方案可绑定年级")
+        # 同专业+年级旧绑定 SUPERSEDED
+        for old in db.scalars(select(AaProgramBinding).where(
+                AaProgramBinding.tenant_id == _tid(), AaProgramBinding.major_id == p.major_id,
+                AaProgramBinding.grade_year == grade_year, AaProgramBinding.status == "ACTIVE",
+                AaProgramBinding.is_deleted.is_(False))).all():
+            old.status = "SUPERSEDED"
+        b = AaProgramBinding(tenant_id=_tid(), program_id=p.id, major_id=p.major_id,
+                             grade_year=grade_year,
+                             class_id=(int(class_id) if class_id else None),
+                             bound_at=datetime.utcnow(), status="ACTIVE")
+        db.add(b)
+        p.status = "ENABLED"
+        _audit(db, p.id, "BIND", f"grade={grade_year}")
+        db.commit()
+        return {"programId": str(program_id), "gradeYear": grade_year, "status": "ENABLED"}

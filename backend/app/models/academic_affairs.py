@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (BigInteger, Boolean, DateTime, Integer, String,
+from sqlalchemy import (BigInteger, Boolean, DateTime, Integer, Numeric, String,
                         UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -152,3 +152,75 @@ class AaProgramBinding(PKMixin, TenantMixin, CommonMixin, Base):
     class_id: Mapped[int | None] = mapped_column(BigInteger, comment="nullable=全专业")
     bound_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
+
+
+# ═══════════ 课程库与教学任务组（13B-P3；商业教务软件全字段）═══════════
+
+
+class AaCourse(PKMixin, TenantMixin, CommonMixin, Base):
+    """课程库（版本化字典，两级审核）。字段对齐正方/强智等成熟教务软件。唯一(tenant,course_code,version)。"""
+    __tablename__ = "t_aa_course"
+
+    course_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="课程代码")
+    course_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    course_name_en: Mapped[str | None] = mapped_column(String(200), comment="课程英文名")
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="MAJOR_CORE",
+                                          comment="PUBLIC_BASIC/DISCIPLINE_BASIC/MAJOR_CORE/MAJOR_ELECTIVE/PRACTICE 公共基础/学科基础/专业核心/专业选修/集中实践")
+    nature: Mapped[str] = mapped_column(String(50), nullable=False, default="REQUIRED",
+                                        comment="REQUIRED/ELECTIVE/LIMITED_ELECTIVE/PUBLIC_ELECTIVE 必修/选修/限选/公选")
+    credit: Mapped[float] = mapped_column(Numeric(4, 1), nullable=False, default=0, comment="学分")
+    hours_total: Mapped[int | None] = mapped_column(Integer, comment="总学时")
+    hours_theory: Mapped[int | None] = mapped_column(Integer, comment="理论学时")
+    hours_practice: Mapped[int | None] = mapped_column(Integer, comment="实践学时")
+    hours_experiment: Mapped[int | None] = mapped_column(Integer, comment="实验学时")
+    hours_computer: Mapped[int | None] = mapped_column(Integer, comment="上机学时")
+    exam_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="EXAM",
+                                           comment="EXAM/CHECK 考试/考查")
+    owner_college_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="开课单位")
+    owner_teacher_id: Mapped[int | None] = mapped_column(BigInteger, comment="课程负责人")
+    is_core: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否核心课/学位课")
+    prerequisite_codes_json: Mapped[str | None] = mapped_column(String(500), comment="先修课代码 JSON")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    prev_version_id: Mapped[int | None] = mapped_column(BigInteger, comment="上一版本(改动强制新版本链)")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/COLLEGE_REVIEW/ACADEMIC_REVIEW/ENABLED/RETURNED/DISABLED")
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+
+    __table_args__ = (UniqueConstraint("tenant_id", "course_code", "version", name="uk_aa_course"),)
+
+
+class AaTeachingTaskBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """学期教学任务批次（按方案生成应开课程，generate 幂等）。DRAFT/COLLEGE_CONFIRMED/TEACHER_CONFIRMED/SUBMITTED/APPROVED。"""
+    __tablename__ = "t_aa_teaching_task_batch"
+
+    term_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    generate_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+
+
+class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
+    """教学任务（课程×教学班×教师）。含教学班(可合班)+周学时/起止周。PENDING_ASSIGN/ASSIGNED/TEACHER_CONFIRMED/REJECTED_BY_TEACHER。"""
+    __tablename__ = "t_aa_teaching_task"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    course_code: Mapped[str | None] = mapped_column(String(50))
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    teaching_class_code: Mapped[str | None] = mapped_column(String(50), comment="教学班代码")
+    teaching_class_name: Mapped[str | None] = mapped_column(String(200), comment="教学班名(可合班)")
+    is_merged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否合班")
+    teacher_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    teacher_key: Mapped[str | None] = mapped_column(String(100))
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    expected_students: Mapped[int | None] = mapped_column(Integer, comment="预计人数")
+    weekly_hours: Mapped[int | None] = mapped_column(Integer, comment="周学时")
+    total_hours: Mapped[int | None] = mapped_column(Integer, comment="计划总学时")
+    start_week: Mapped[int | None] = mapped_column(Integer, comment="起始周")
+    end_week: Mapped[int | None] = mapped_column(Integer, comment="结束周")
+    confirm_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reject_reason: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_ASSIGN", index=True)
