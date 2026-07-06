@@ -11,6 +11,7 @@ from app.core.security import require_staff
 from app.services import academic_affairs_change_service as change_svc
 from app.services import academic_affairs_course_service as course_svc
 from app.services import academic_affairs_program_service as prog_svc
+from app.services import academic_affairs_schedule_service as sched_svc
 from app.services import academic_affairs_service as svc
 from app.services import academic_affairs_task_service as task_svc
 
@@ -350,3 +351,86 @@ def task_assign(body: AssignBody, taskId: int = Path(...), user=Depends(require_
 @router.post("/teaching-tasks/{taskId}/teacher-act", summary="教师确认/退回教学任务")
 def task_teacher_act(body: TeacherActBody, taskId: int = Path(...), user=Depends(require_staff)):
     return success(task_svc.teacher_act(taskId, user, body.action, body.reason or ""), message="已处理")
+
+
+# ═══════════ 课表（P4，三重冲突检测 + 单双周 + 三视图）═══════════
+
+class ScheduleBatchCreate(BaseModel):
+    termId: str = Field(..., min_length=1)
+    batchName: Optional[str] = None
+    collegeId: Optional[str] = None
+
+
+class ScheduleItemBody(BaseModel):
+    taskId: Optional[str] = None
+    courseName: Optional[str] = None
+    classId: Optional[str] = None
+    className: Optional[str] = None
+    teacherKey: Optional[str] = None
+    teacherName: Optional[str] = None
+    weekday: int = Field(..., ge=1, le=7, description="星期 1-7")
+    slotNo: int = Field(..., ge=1, description="节次")
+    startWeek: int = Field(1, ge=1)
+    endWeek: int = Field(18, ge=1)
+    weekParity: str = Field("ALL", description="ALL/ODD/EVEN 全周/单周/双周")
+    classroom: Optional[str] = None
+
+
+class ScheduleImportBody(BaseModel):
+    items: list[dict] = Field(..., description="课表行数组（同一冲突检测器逐行校验）")
+
+
+class VoidBody(BaseModel):
+    reason: str = Field(..., min_length=1)
+
+
+@router.post("/schedule-batches", summary="新建课表批次")
+def schedule_batch_create(body: ScheduleBatchCreate, user=Depends(require_staff)):
+    return success(sched_svc.create_batch(body, user), message="已创建")
+
+
+@router.get("/schedule-batches", summary="课表批次列表")
+def schedule_batches(termId: Optional[str] = None, status: Optional[str] = None,
+                     page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = sched_svc.list_batches(user, termId, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/schedule-batches/{batchId}/items", summary="手工排课（三重冲突检测→409）")
+def schedule_add_item(body: ScheduleItemBody, batchId: int = Path(...), user=Depends(require_staff)):
+    return success(sched_svc.add_item(batchId, user, body), message="已排课")
+
+
+@router.post("/schedule-batches/{batchId}/import", summary="导入课表（同一冲突检测器，返回冲突清单）")
+def schedule_import(body: ScheduleImportBody, batchId: int = Path(...), user=Depends(require_staff)):
+    return success(sched_svc.import_items(batchId, user, body.items), message="导入完成")
+
+
+@router.post("/schedule-batches/{batchId}/pre-publish", summary="课表预发布")
+def schedule_pre_publish(batchId: int = Path(...), user=Depends(require_staff)):
+    return success(sched_svc.pre_publish(batchId, user), message="已预发布")
+
+
+@router.post("/schedule-batches/{batchId}/publish", summary="课表发布（通知师生）")
+def schedule_publish(batchId: int = Path(...), user=Depends(require_staff)):
+    return success(sched_svc.publish(batchId, user), message="已发布")
+
+
+@router.post("/schedule-batches/{batchId}/void-reissue", summary="作废重发（调停课运维通道，留审计）")
+def schedule_void(body: VoidBody, batchId: int = Path(...), user=Depends(require_staff)):
+    return success(sched_svc.void_and_reissue(batchId, user, body.reason), message="已作废")
+
+
+@router.get("/schedule-batches/{batchId}/class-view", summary="班级课表视图")
+def schedule_class_view(batchId: int = Path(...), classId: str = "", user=Depends(require_staff)):
+    return success(sched_svc.class_view(batchId, user, classId))
+
+
+@router.get("/schedule-batches/{batchId}/teacher-view", summary="教师课表视图")
+def schedule_teacher_view(batchId: int = Path(...), teacherKey: str = "", user=Depends(require_staff)):
+    return success(sched_svc.teacher_view(batchId, user, teacherKey))
+
+
+@router.get("/schedule-batches/{batchId}/student-view", summary="学生课表视图（按行政班服务端推导）")
+def schedule_student_view(batchId: int = Path(...), studentId: str = "", user=Depends(require_staff)):
+    return success(sched_svc.student_view(batchId, user, studentId))

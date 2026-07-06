@@ -224,3 +224,39 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
     confirm_at: Mapped[datetime | None] = mapped_column(DateTime)
     reject_reason: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_ASSIGN", index=True)
+
+
+# ═══════════ 课表组（13B-P4；三重冲突检测 + 单双周，对齐正方/强智）═══════════
+
+
+class AaScheduleBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """课表批次（预发布→发布通知→归档）。DRAFT/PRE_PUBLISHED/PUBLISHED/ARCHIVED。"""
+    __tablename__ = "t_aa_schedule_batch"
+
+    term_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
+    publish_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
+    """课表项（手工/导入双通道，同一冲突检测器）。EFFECTIVE/CHANGED/CANCELLED（V1 仅 EFFECTIVE）。"""
+    __tablename__ = "t_aa_schedule_item"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    task_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_teaching_task")
+    course_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    class_name: Mapped[str | None] = mapped_column(String(100))
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False, comment="星期 1-7")
+    slot_no: Mapped[int] = mapped_column(Integer, nullable=False, comment="节次 →t_aa_time_slot")
+    start_week: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="起始周")
+    end_week: Mapped[int] = mapped_column(Integer, nullable=False, default=18, comment="结束周")
+    week_parity: Mapped[str] = mapped_column(String(10), nullable=False, default="ALL",
+                                             comment="ALL/ODD/EVEN 全周/单周/双周")
+    classroom_text: Mapped[str | None] = mapped_column(String(100), index=True, comment="教室(V1文本)")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="EFFECTIVE", index=True)
