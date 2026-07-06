@@ -13,7 +13,9 @@ from app.services import affairs_dashboard_service as svc
 from app.services import affairs_discipline_service as disc_svc
 from app.services import affairs_funding_service as funding_svc
 from app.services import affairs_leave_service as leave_svc
+from app.services import affairs_profile_service as profile_svc
 from app.services import affairs_risk_service as risk_svc
+from app.services import affairs_talk_service as talk_svc
 
 router = APIRouter(prefix="/student-affairs", tags=["学工中心"])
 
@@ -506,3 +508,89 @@ def risk_reopen(body: RiskReasonBody = RiskReasonBody(), riskId: int = Path(...)
 @router.post("/risk/scan-timeout", summary="风险超时扫描（分派/升级，幂等）")
 def risk_scan_timeout(user=Depends(require_staff)):
     return success(risk_svc.scan_timeout())
+
+
+# ═══════════ 谈心谈话 + 家校 + 画像/时间线（P5）═══════════
+
+class TalkCreate(BaseModel):
+    studentIds: list[str] = Field(..., min_length=1)
+    talkType: str = Field(..., description="DAILY/ACADEMIC/PSYCHOLOGY/DISCIPLINE/...")
+    topic: str = Field(..., min_length=1)
+    scheduledAt: Optional[str] = None
+
+
+class TalkRecordBody(BaseModel):
+    content: str = Field(..., min_length=1, description="谈话内容≥20字")
+    result: Optional[str] = Field("", max_length=50)
+    needFollowUp: bool = Field(False)
+
+
+class TalkFollowBody(BaseModel):
+    action: str = Field(..., description="FOLLOW/CLOSE/TO_RISK/TO_HOME_SCHOOL")
+    content: Optional[str] = Field("", max_length=1000)
+
+
+class ContactCreate(BaseModel):
+    contactType: str = Field("PHONE", description="PHONE/WECHAT/VISIT/MESSAGE")
+    reason: Optional[str] = Field("", max_length=500)
+    result: Optional[str] = Field("", max_length=1000)
+    fullPhoneView: bool = Field(False, description="是否查看完整号码")
+    viewReason: Optional[str] = Field("", description="查看完整号码原因≥5字")
+
+
+@router.get("/students/{studentId}/profile", summary="学工画像（各域沉淀汇总）")
+def student_profile(studentId: int = Path(...), user=Depends(require_staff)):
+    return success(profile_svc.get_profile(studentId, user))
+
+
+@router.get("/students/{studentId}/timeline", summary="成长时间线（360，各域进360事件倒序）")
+def student_timeline(studentId: int = Path(...), eventType: Optional[str] = None,
+                     page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = profile_svc.get_timeline(studentId, user, eventType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/talks", summary="谈话列表（管理侧默认摘要，心理类按权限）")
+def talks(talkType: Optional[str] = None, status: Optional[str] = None,
+          studentId: Optional[str] = None, page: int = 1, pageSize: int = 20,
+          user=Depends(require_staff)):
+    items, total = talk_svc.list_talks(user, talkType, status, studentId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/talks", summary="建谈话计划（批量圈定学生）")
+def talk_create(body: TalkCreate, user=Depends(require_staff)):
+    return success(talk_svc.create_talk(body, user), message="已创建")
+
+
+@router.get("/talks/stats", summary="谈话工作量统计（完成率）")
+def talk_stats(groupBy: str = "TYPE", user=Depends(require_staff)):
+    return success(talk_svc.talk_stats(user, groupBy))
+
+
+@router.get("/talks/{talkId}", summary="谈话详情（心理类全文按权限）")
+def talk_detail(talkId: int = Path(...), user=Depends(require_staff)):
+    return success(talk_svc.get_talk(talkId, user))
+
+
+@router.post("/talks/{talkId}/record", summary="填写谈话记录（→COMPLETED，进360）")
+def talk_record(body: TalkRecordBody, talkId: int = Path(...), user=Depends(require_staff)):
+    return success(talk_svc.record_talk(talkId, user, body.content, body.result or "", body.needFollowUp),
+                   message="已记录")
+
+
+@router.post("/talks/{talkId}/follow-up", summary="跟进/办结/转风险/转家校")
+def talk_follow(body: TalkFollowBody, talkId: int = Path(...), user=Depends(require_staff)):
+    return success(talk_svc.follow_up(talkId, user, body.action, body.content or ""), message="已处理")
+
+
+@router.get("/students/{studentId}/family-contacts", summary="家校联系记录列表")
+def family_contacts(studentId: int = Path(...), page: int = 1, pageSize: int = 20,
+                    user=Depends(require_staff)):
+    items, total = talk_svc.list_contacts(studentId, user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/students/{studentId}/family-contacts", summary="登记家校联系（完整号码必填原因+审计）")
+def family_contact_create(body: ContactCreate, studentId: int = Path(...), user=Depends(require_staff)):
+    return success(talk_svc.create_contact(studentId, user, body), message="已登记")

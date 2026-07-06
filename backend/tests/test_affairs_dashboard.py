@@ -48,8 +48,8 @@ def test_dashboard_three_role_views(client, db_mode):
     assert r["data"]["view"] == "SA_ADMIN"
     assert r["data"]["scopeMode"] == "ADMIN_TENANT"
     assert len(r["data"]["moduleCards"]) == 13
-    # 首页卡随阶段点亮：P1 class / P2 leave / P3 aid+funding / P4 discipline+risk——其余仍空态
-    _live = {"class", "leave", "aid", "funding", "discipline", "risk"}
+    # 首页卡随阶段点亮：P1 class / P2 leave / P3 aid+funding / P4 discipline+risk / P5 talk+family+profile
+    _live = {"class", "leave", "aid", "funding", "discipline", "risk", "talk", "family", "profile"}
     assert {m["key"] for m in r["data"]["moduleCards"] if m["status"] == "LIVE"} == _live
     assert all(m["empty"] for m in r["data"]["moduleCards"] if m["key"] not in _live)
 

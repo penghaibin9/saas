@@ -33,6 +33,8 @@ from app.models.affairs_aid import (AidApply, AidBatch, AidFamilyEconomy,  # noq
 from app.models.affairs_discipline import (AffairsRiskHandle,  # noqa: F401
                                            AffairsRiskRecord, DisciplineCase,
                                            DisciplineRemoveApply)
+from app.models.affairs_talk import (FamilyContactLog, TalkPlan,  # noqa: F401
+                                     TalkRecord)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401
