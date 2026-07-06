@@ -12,6 +12,7 @@ from app.api.v1 import mobile
 from app.api.v1 import notification
 from app.api.v1 import onboarding
 from app.api.v1 import stats
+from app.api.v1 import student_affairs
 from app.api.v1.todos import make_router as make_todos_router
 
 api_router = APIRouter()
@@ -33,6 +34,7 @@ api_router.include_router(campus_service.router)                             # /
 api_router.include_router(academic.router)                                   # /api/v1/academic/*
 api_router.include_router(graduation.router)                                 # /api/v1/graduation/*
 api_router.include_router(employment.router)                                 # /api/v1/employment/*
+api_router.include_router(student_affairs.router)                            # /api/v1/student-affairs/*（13A 学工中心）
 
 # 看板 / 待办 / 消息（扁平简化端点）
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])

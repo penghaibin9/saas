@@ -20,5 +20,7 @@ from app.models import graduation as _graduation  # noqa: F401
 from app.models import employment as _employment  # noqa: F401
 from app.models import message as _message  # noqa: F401
 from app.models import portal as _portal  # noqa: F401
+from app.models import teacher_scope as _teacher_scope  # noqa: F401
+from app.models import affairs as _affairs  # noqa: F401
 
 metadata = Base.metadata
