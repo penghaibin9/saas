@@ -295,3 +295,36 @@ class AaGradeRecord(PKMixin, TenantMixin, CommonMixin, Base):
     total_score: Mapped[int | None] = mapped_column(Integer, comment="总评(合成)")
     pass_status: Mapped[str | None] = mapped_column(String(50), comment="PASSED/FAIL")
     acad_grade_id: Mapped[int | None] = mapped_column(BigInteger, comment="投影 t_acad_grade 回链")
+
+
+# ═══════════ 毕业资格预审组（13B-P6；七项跨域供数三态判定）═══════════
+
+
+class AaGraduationAuditBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """毕业预审批次（圈定应届生→生成→预审）。DRAFT/GENERATED/PRECHECKED/REVIEWING/ARCHIVED。"""
+    __tablename__ = "t_aa_graduation_audit_batch"
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    grade_year: Mapped[str | None] = mapped_column(String(20), index=True, comment="毕业年级")
+    major_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    scope_json: Mapped[str | None] = mapped_column(String(2000))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
+    generate_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AaGraduationAuditResult(PKMixin, TenantMixin, CommonMixin, Base):
+    """逐生预审结果（七项三态判定 item_results_json 收敛）。终审经 change_student_status 写主档。唯一(tenant,batch,student)。"""
+    __tablename__ = "t_aa_graduation_audit_result"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    item_results_json: Mapped[str | None] = mapped_column(String(4000),
+                                                          comment="七项：每项 PASS/FAIL/UNKNOWN + 证据引用")
+    overall: Mapped[str | None] = mapped_column(String(50), comment="SYSTEM_PASSED/SYSTEM_ABNORMAL")
+    conclusion: Mapped[str | None] = mapped_column(String(50), comment="GRADUATED/COMPLETED/DELAYED")
+    rerun_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    review_note: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="WAIT_PRECHECK", index=True,
+                                        comment="WAIT_PRECHECK/SYSTEM_PASSED/SYSTEM_ABNORMAL/COLLEGE_REVIEW/ACADEMIC_REVIEW/GRADUATED/COMPLETED/DELAYED/REJECTED/ARCHIVED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "student_id", name="uk_aa_grad_audit"),)

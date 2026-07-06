@@ -40,7 +40,9 @@ from app.models.affairs_dorm import (DormBed, DormBuilding,  # noqa: F401
                                      DormTransfer)
 from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F401
 from app.models.academic_affairs import (AaCalendarEvent, AaCourse,  # noqa: F401
-                                         AaGradeRecord, AaGradeTask, AaProgram,
+                                         AaGradeRecord, AaGradeTask,
+                                         AaGraduationAuditBatch,
+                                         AaGraduationAuditResult, AaProgram,
                                          AaProgramBinding, AaProgramCourse,
                                          AaRegistration, AaRegistrationBatch,
                                          AaScheduleBatch, AaScheduleItem,

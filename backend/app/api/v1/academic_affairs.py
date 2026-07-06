@@ -11,6 +11,7 @@ from app.core.security import require_staff
 from app.services import academic_affairs_change_service as change_svc
 from app.services import academic_affairs_course_service as course_svc
 from app.services import academic_affairs_grade_service as grade_svc
+from app.services import academic_affairs_graduation_service as grad_svc
 from app.services import academic_affairs_program_service as prog_svc
 from app.services import academic_affairs_schedule_service as sched_svc
 from app.services import academic_affairs_warning_service as warn_svc
@@ -501,3 +502,68 @@ def warnings(level: Optional[str] = None, status: Optional[str] = None, sourceCo
              page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
     items, total = warn_svc.list_warnings(user, level, status, sourceCode, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+# ═══════════ 毕业资格预审（P6，七项供数三态判定）═══════════
+
+class GradAuditBatchCreate(BaseModel):
+    batchName: str = Field(..., min_length=1)
+    gradeYear: Optional[str] = None
+    majorId: Optional[str] = None
+
+
+class GenerateStudentsBody(BaseModel):
+    studentIds: Optional[list[str]] = None
+
+
+class GradReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    note: Optional[str] = Field("", max_length=500)
+
+
+class GradFinalBody(BaseModel):
+    conclusion: str = Field(..., description="GRADUATED/COMPLETED/DELAYED")
+    confirm: bool = Field(False, description="二次确认(涉学籍终态)")
+
+
+@router.post("/graduation-audit-batches", summary="新建毕业预审批次")
+def grad_batch_create(body: GradAuditBatchCreate, user=Depends(require_staff)):
+    return success(grad_svc.create_batch(body, user), message="已创建")
+
+
+@router.post("/graduation-audit-batches/{batchId}/generate", summary="圈定应届生生成预审行（幂等）")
+def grad_generate(body: GenerateStudentsBody = GenerateStudentsBody(), batchId: int = Path(...),
+                  user=Depends(require_staff)):
+    return success(grad_svc.generate(batchId, user, body.studentIds), message="已生成")
+
+
+@router.post("/graduation-audit-batches/{batchId}/precheck", summary="七项供数三态预审（幂等，覆盖）")
+def grad_precheck(batchId: int = Path(...), user=Depends(require_staff)):
+    return success(grad_svc.precheck(batchId, user), message="预审完成")
+
+
+@router.get("/graduation-audit-batches/{batchId}/results", summary="预审结果列表")
+def grad_results(batchId: int = Path(...), status: Optional[str] = None, overall: Optional[str] = None,
+                 page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
+    items, total = grad_svc.list_results(batchId, user, status, overall, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/graduation-audit-batches/{batchId}/rosters", summary="三名单（毕业/结业/延毕）")
+def grad_rosters(batchId: int = Path(...), user=Depends(require_staff)):
+    return success(grad_svc.rosters(batchId, user))
+
+
+@router.get("/graduation-results/{resultId}", summary="预审结果详情（七项证据）")
+def grad_result_detail(resultId: int = Path(...), user=Depends(require_staff)):
+    return success(grad_svc.get_result(resultId, user))
+
+
+@router.post("/graduation-results/{resultId}/college-review", summary="学院初审")
+def grad_college_review(body: GradReviewBody, resultId: int = Path(...), user=Depends(require_staff)):
+    return success(grad_svc.college_review(resultId, user, body.action, body.note or ""), message="已处理")
+
+
+@router.post("/graduation-results/{resultId}/final", summary="教务终审（结论→经单一入口写学籍，强制二次确认）")
+def grad_final(body: GradFinalBody, resultId: int = Path(...), user=Depends(require_staff)):
+    return success(grad_svc.academic_final(resultId, user, body.conclusion, body.confirm), message="已终审")
