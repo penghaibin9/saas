@@ -143,3 +143,29 @@ def test_m6_one_step_building(client, db_mode):
         "floors": 3, "roomsPerFloor": 2, "bedsPerRoom": 6})
     occ = client.get(f"{BASE}/dorm/occupancy", headers=hdr).json()["data"]
     assert occ["totalBeds"] == 36  # 3×2×6
+
+
+def test_m7_self_select_toggle(client, db_mode):
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    bid = _make_building(client, hdr)
+    _, beds = _first_bed(client, hdr, bid)
+    # 默认关：配置显示辅导员分配 + 给学生的提醒文案
+    cfg_off = client.get(f"{BASE}/dorm/config", headers=hdr).json()["data"]
+    assert cfg_off["selfSelectEnabled"] is False and cfg_off["assignMode"] == "COUNSELOR_ASSIGN"
+    assert "辅导员" in cfg_off["studentNotice"]  # 关闭时提醒学生
+    # 学生自选 → 403，错误信息即提醒文案
+    r403 = client.post(f"{BASE}/dorm/beds/{beds[0]['bedId']}/self-select", headers=hdr,
+                       json={"studentId": str(ids["sm"])})
+    assert r403.status_code == 403 and "辅导员" in r403.text
+    # 辅导员分配（普通 checkin）始终可用 —— 不受开关影响
+    assert client.post(f"{BASE}/dorm/beds/{beds[1]['bedId']}/checkin", headers=hdr,
+                       json={"studentId": str(ids["sm"])}).status_code == 200
+    # 学校放开
+    client.put(f"{BASE}/dorm/config/self-select", headers=hdr, json={"enabled": True})
+    cfg = client.get(f"{BASE}/dorm/config", headers=hdr).json()["data"]
+    assert cfg["selfSelectEnabled"] is True and cfg["assignMode"] == "SELF_SELECT"
+    # 放开后学生自选成功（换到另一张床）
+    r = client.post(f"{BASE}/dorm/beds/{beds[2]['bedId']}/self-select", headers=hdr,
+                    json={"studentId": str(ids["sm"])}).json()
+    assert r["data"]["status"] == "OCCUPIED"

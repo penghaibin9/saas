@@ -692,6 +692,26 @@ def dorm_checkout(bedId: int = Path(...), user=Depends(require_staff)):
     return success(dorm_svc.checkout(bedId, user), message="已退宿")
 
 
+class DormConfigBody(BaseModel):
+    enabled: bool = Field(..., description="是否放开学生自选宿舍（true=学生自选，false=辅导员分配）")
+
+
+@router.get("/dorm/config", summary="宿舍分配模式（学生自选是否放开）")
+def dorm_config(user=Depends(require_staff)):
+    return success(dorm_svc.get_dorm_config(user))
+
+
+@router.put("/dorm/config/self-select", summary="学校开/关学生自选宿舍")
+def dorm_set_self_select(body: DormConfigBody, user=Depends(require_staff)):
+    return success(dorm_svc.set_self_select(user, body.enabled),
+                   message=("已放开学生自选" if body.enabled else "已切换为辅导员分配"))
+
+
+@router.post("/dorm/beds/{bedId}/self-select", summary="学生自选床位入住（需学校放开，否则403）")
+def dorm_self_select(body: CheckinBody, bedId: int = Path(...), user=Depends(require_staff)):
+    return success(dorm_svc.self_select_checkin(bedId, user, body.studentId), message="已入住")
+
+
 @router.post("/dorm/transfers", summary="发起调宿（原床释放/新床占用，走审批）")
 def dorm_transfer_submit(body: TransferSubmit, user=Depends(require_staff)):
     return success(dorm_svc.submit_transfer(user, body.studentId, body.toBedId, body.reason or ""),
