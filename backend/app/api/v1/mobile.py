@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, Depends
 
 from app.core.response import success
 from app.core.security import get_current_user
+from app.services import mobile_affairs_service as aff
 from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
 
@@ -214,3 +215,50 @@ def teacher_warning_handle(warning_id: str, body: dict = Body(...),
 @router.post("/teacher/employment/followup", summary="教师·新增就业跟进（范围校验+审计）")
 def teacher_followup_create(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.followup_create(user, body), message="跟进已记录")
+
+
+# ── 13A 学工中心·学生自视图（P7 多端收口，本人只读）──
+@router.get("/affairs/overview", summary="学工·我的总览（本人各域计数）")
+def affairs_overview(user=Depends(get_current_user)):
+    return success(aff.overview_my(user))
+
+
+@router.get("/affairs/leave/my", summary="学工·我的请假")
+def affairs_leave_my(user=Depends(get_current_user)):
+    return success(aff.leave_my(user))
+
+
+@router.get("/affairs/aid/my", summary="学工·我的困难认定")
+def affairs_aid_my(user=Depends(get_current_user)):
+    return success(aff.aid_my(user))
+
+
+@router.get("/affairs/funding/my", summary="学工·我的奖助")
+def affairs_funding_my(user=Depends(get_current_user)):
+    return success(aff.funding_my(user))
+
+
+@router.get("/affairs/discipline/my", summary="学工·我的处分（仅数量）")
+def affairs_discipline_my(user=Depends(get_current_user)):
+    return success(aff.discipline_my(user))
+
+
+@router.get("/affairs/dorm/my", summary="学工·我的宿舍（含自选开关）")
+def affairs_dorm_my(user=Depends(get_current_user)):
+    return success(aff.dorm_my(user))
+
+
+@router.get("/affairs/dorm/select-options", summary="学工·自选床位可选项（按本人性别，受学校开关控制）")
+def affairs_dorm_options(user=Depends(get_current_user)):
+    return success(aff.dorm_select_options(user))
+
+
+@router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·学生自选床位入住本人（未放开→403）")
+def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
+    return success(aff.dorm_self_select(user, bed_id), message="已入住")
+
+
+# ── 教师端·学工待办卡（P7）──
+@router.get("/teacher/affairs", summary="教师·学工待办卡（本校按类型聚合）")
+def teacher_affairs(user=Depends(get_current_user)):
+    return success(aff.teacher_affairs(user))
