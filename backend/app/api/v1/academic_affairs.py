@@ -10,8 +10,10 @@ from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.services import academic_affairs_change_service as change_svc
 from app.services import academic_affairs_course_service as course_svc
+from app.services import academic_affairs_grade_service as grade_svc
 from app.services import academic_affairs_program_service as prog_svc
 from app.services import academic_affairs_schedule_service as sched_svc
+from app.services import academic_affairs_warning_service as warn_svc
 from app.services import academic_affairs_service as svc
 from app.services import academic_affairs_task_service as task_svc
 
@@ -434,3 +436,68 @@ def schedule_teacher_view(batchId: int = Path(...), teacherKey: str = "", user=D
 @router.get("/schedule-batches/{batchId}/student-view", summary="学生课表视图（按行政班服务端推导）")
 def schedule_student_view(batchId: int = Path(...), studentId: str = "", user=Depends(require_staff)):
     return success(sched_svc.student_view(batchId, user, studentId))
+
+
+# ═══════════ 成绩录入 + 读侧视图（P5，平时+期末按比例）═══════════
+
+class GradeTaskCreate(BaseModel):
+    teachingTaskId: Optional[str] = None
+    termId: Optional[str] = None
+    termCode: Optional[str] = None
+    courseName: str = Field(..., min_length=1)
+    classId: Optional[str] = None
+    credit: Optional[float] = None
+    usualRatio: int = Field(30, ge=0, le=100, description="平时占比%")
+    finalRatio: int = Field(70, ge=0, le=100, description="期末占比%")
+    passLine: int = Field(60, ge=0, le=100)
+
+
+class ScoreBody(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    usualScore: Optional[int] = Field(None, ge=0, le=100)
+    finalScore: Optional[int] = Field(None, ge=0, le=100)
+
+
+@router.post("/grade-tasks", summary="新建成绩录入任务（配平时/期末占比）")
+def grade_task_create(body: GradeTaskCreate, user=Depends(require_staff)):
+    return success(grade_svc.create_grade_task(body, user), message="已创建")
+
+
+@router.post("/grade-tasks/{taskId}/scores", summary="录入平时/期末分（实时合成总评）")
+def grade_enter_score(body: ScoreBody, taskId: int = Path(...), user=Depends(require_staff)):
+    return success(grade_svc.enter_score(taskId, user, body), message="已录入")
+
+
+@router.post("/grade-tasks/{taskId}/publish", summary="发布成绩（合成→原子回写 t_acad_grade）")
+def grade_publish(taskId: int = Path(...), user=Depends(require_staff)):
+    return success(grade_svc.publish_grades(taskId, user), message="已发布")
+
+
+@router.get("/students/{studentId}/transcript", summary="学生成绩单（读侧）")
+def grade_transcript(studentId: int = Path(...), user=Depends(require_staff)):
+    return success(grade_svc.transcript(studentId, user))
+
+
+@router.get("/grade-views/fail-list", summary="挂科清单（读侧下钻）")
+def grade_fail_list(term: Optional[str] = None, page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
+    items, total = grade_svc.fail_list(user, term, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/grade-views/analysis", summary="成绩分析（分数段分布+及格率）")
+def grade_analysis(term: Optional[str] = None, user=Depends(require_staff)):
+    return success(grade_svc.grade_analysis(user, term))
+
+
+# ═══════════ 学业预警规则引擎（P5）═══════════
+
+@router.post("/warnings/scan", summary="学业预警扫描（挂科规则，幂等）")
+def warning_scan(user=Depends(require_staff)):
+    return success(warn_svc.scan_warnings(user))
+
+
+@router.get("/warnings", summary="学业预警列表")
+def warnings(level: Optional[str] = None, status: Optional[str] = None, sourceCode: Optional[str] = None,
+             page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = warn_svc.list_warnings(user, level, status, sourceCode, page, pageSize)
+    return success(paginate(items, total, page, pageSize))

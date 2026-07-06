@@ -260,3 +260,38 @@ class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
                                              comment="ALL/ODD/EVEN 全周/单周/双周")
     classroom_text: Mapped[str | None] = mapped_column(String(100), index=True, comment="教室(V1文本)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="EFFECTIVE", index=True)
+
+
+# ═══════════ 成绩录入组（13B-P5；平时+期末按比例，发布原子回写 t_acad_grade）═══════════
+
+
+class AaGradeTask(PKMixin, TenantMixin, CommonMixin, Base):
+    """成绩录入任务（对应教学任务/教学班）。平时+期末按比例合成。DRAFT/ENTERING/SUBMITTED/PUBLISHED。"""
+    __tablename__ = "t_aa_grade_task"
+
+    teaching_task_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    term_code: Mapped[str | None] = mapped_column(String(50))
+    course_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    teacher_key: Mapped[str | None] = mapped_column(String(100))
+    credit: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    usual_ratio: Mapped[int] = mapped_column(Integer, nullable=False, default=30, comment="平时占比%")
+    final_ratio: Mapped[int] = mapped_column(Integer, nullable=False, default=70, comment="期末占比%")
+    pass_line: Mapped[int] = mapped_column(Integer, nullable=False, default=60, comment="及格线")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
+    publish_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AaGradeRecord(PKMixin, TenantMixin, CommonMixin, Base):
+    """成绩明细（每生：平时分+期末分→合成总评）。发布时投影 t_acad_grade。"""
+    __tablename__ = "t_aa_grade_record"
+
+    task_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    usual_score: Mapped[int | None] = mapped_column(Integer, comment="平时分")
+    final_score: Mapped[int | None] = mapped_column(Integer, comment="期末分")
+    total_score: Mapped[int | None] = mapped_column(Integer, comment="总评(合成)")
+    pass_status: Mapped[str | None] = mapped_column(String(50), comment="PASSED/FAIL")
+    acad_grade_id: Mapped[int | None] = mapped_column(BigInteger, comment="投影 t_acad_grade 回链")

@@ -40,12 +40,12 @@ from app.models.affairs_dorm import (DormBed, DormBuilding,  # noqa: F401
                                      DormTransfer)
 from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F401
 from app.models.academic_affairs import (AaCalendarEvent, AaCourse,  # noqa: F401
-                                         AaProgram, AaProgramBinding,
-                                         AaProgramCourse, AaRegistration,
-                                         AaRegistrationBatch, AaScheduleBatch,
-                                         AaScheduleItem, AaStatusChange,
-                                         AaTeachingTask, AaTeachingTaskBatch,
-                                         AaTerm, AaTimeSlot)
+                                         AaGradeRecord, AaGradeTask, AaProgram,
+                                         AaProgramBinding, AaProgramCourse,
+                                         AaRegistration, AaRegistrationBatch,
+                                         AaScheduleBatch, AaScheduleItem,
+                                         AaStatusChange, AaTeachingTask,
+                                         AaTeachingTaskBatch, AaTerm, AaTimeSlot)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401

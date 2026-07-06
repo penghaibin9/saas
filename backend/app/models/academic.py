@@ -81,6 +81,10 @@ class AcademicWarning(PKMixin, TenantMixin, CommonMixin, Base):
     level: Mapped[str] = mapped_column(String(50), nullable=False, default="MEDIUM")
     reason: Mapped[str | None] = mapped_column(String(500))
     source_rule: Mapped[str | None] = mapped_column(String(100))
+    # ── 13B-P5 加列（nullable）：预警规则引擎来源标识，供扫描幂等去重与规则追溯 ──
+    source_code: Mapped[str | None] = mapped_column(String(50), index=True,
+                                                   comment="来源 EXAM_FAIL/CREDIT_GAP…")
+    rule_code: Mapped[str | None] = mapped_column(String(50), comment="触发规则编码")
     owner: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_HANDLE")
     trigger_time: Mapped[datetime | None] = mapped_column(DateTime)
