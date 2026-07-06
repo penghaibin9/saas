@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, Depends
 
 from app.core.response import success
 from app.core.security import get_current_user
+from app.services import mobile_academic_affairs_service as aa
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
@@ -272,3 +273,39 @@ def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
 @router.get("/teacher/affairs", summary="教师·学工待办卡（本校按类型聚合）")
 def teacher_affairs(user=Depends(get_current_user)):
     return success(aff.teacher_affairs(user))
+
+
+# ── 13B 教务中心·学生自视图（P7 多端收口，本人只读 + 异动申请）──
+@router.get("/academic/schedule/my", summary="教务·我的课表（最新已发布，按行政班推导）")
+def academic_schedule_my(user=Depends(get_current_user)):
+    return success(aa.schedule_my(user))
+
+
+@router.get("/academic/transcript/my", summary="教务·我的成绩单")
+def academic_transcript_my(user=Depends(get_current_user)):
+    return success(aa.transcript_my(user))
+
+
+@router.get("/academic/status/my", summary="教务·我的学籍与异动")
+def academic_status_my(user=Depends(get_current_user)):
+    return success(aa.status_my(user))
+
+
+@router.post("/academic/status-change", summary="教务·学生本人发起学籍异动申请（唯一学生写入口）")
+def academic_status_change(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.submit_status_change_my(user, body), message="异动已提交")
+
+
+@router.get("/academic/graduation/my", summary="教务·我的毕业进度（七项）")
+def academic_graduation_my(user=Depends(get_current_user)):
+    return success(aa.graduation_progress_my(user))
+
+
+@router.get("/academic/exam/my", summary="教务·我的考试（占位）")
+def academic_exam_my(user=Depends(get_current_user)):
+    return success(aa.exam_my(user))
+
+
+@router.get("/academic/teacher-schedule/my", summary="教务·教师我的课表")
+def academic_teacher_schedule_my(user=Depends(get_current_user)):
+    return success(aa.teacher_schedule_my(user))
