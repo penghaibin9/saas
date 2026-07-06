@@ -23,7 +23,7 @@ _VIEW_LABEL = {"SA_ADMIN": "学工处（全校）", "COLLEGE_SA": "学院学工�
 # 13A 13 个业务模块卡（P1 仅班级 LIVE，其余各阶段上线，先渲染空态）
 _MODULE_CARDS = [
     ("class", "班级管理", "LIVE"),
-    ("leave", "请假销假", "PENDING"),
+    ("leave", "请假销假", "LIVE"),
     ("aid", "困难认定", "PENDING"),
     ("funding", "奖助管理", "PENDING"),
     ("discipline", "违纪处分", "PENDING"),
@@ -45,6 +45,17 @@ def _resolve_view(user: dict) -> str:
     if role in _COLLEGE_ROLES:
         return "COLLEGE_SA"
     return "COUNSELOR"  # 默认按最小范围（辅导员/班主任）
+
+
+def _students_in_classes(db, class_ids):
+    """返回给定班级下的学生 id 列表（空哨兵避免 IN() 空表达式）。"""
+    from app.models import StudentProfile
+    if not class_ids:
+        return [-1]
+    rows = db.scalars(select(StudentProfile.id).where(
+        StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+        StudentProfile.class_id.in_(class_ids))).all()
+    return list(rows) or [-1]
 
 
 def _allowed_class_ids(db, user: dict):
@@ -88,6 +99,16 @@ def get_dashboard(user: dict) -> dict:
         todo = db.scalar(select(func.count()).select_from(UnifiedTodo).where(
             UnifiedTodo.tenant_id == _tid(), UnifiedTodo.is_deleted.is_(False),
             UnifiedTodo.status == "PENDING")) or 0
+        # 请假统计（P2 上线，真实聚合 affairs_status）
+        from app.models import CsLeave
+        leave_cond = [CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False)]
+        if allowed is not None:
+            leave_cond.append(CsLeave.student_id.in_(_students_in_classes(db, allowed)))
+        pending_leave = db.scalar(select(func.count()).select_from(CsLeave).where(
+            *leave_cond, CsLeave.affairs_status.in_(
+                ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW"]))) or 0
+        overdue_leave = db.scalar(select(func.count()).select_from(CsLeave).where(
+            *leave_cond, CsLeave.affairs_status == "OVERDUE")) or 0
         return {
             "view": view,
             "viewLabel": _VIEW_LABEL[view],
@@ -97,10 +118,10 @@ def get_dashboard(user: dict) -> dict:
                 {"key": "studentTotal", "label": "学生数(范围内)", "value": stu_total, "unit": "人"},
                 {"key": "classTotal", "label": "班级数", "value": cls_total, "unit": "个"},
                 {"key": "pendingTodo", "label": "待办", "value": todo, "unit": "件"},
+                {"key": "pendingLeave", "label": "待审请假", "value": pending_leave, "unit": "件"},
+                {"key": "overdueLeave", "label": "逾期未销假", "value": overdue_leave, "unit": "件"},
                 {"key": "riskStudents", "label": "风险学生", "value": 0, "unit": "人",
                  "note": "13A 风险域 P4 上线"},
-                {"key": "pendingLeave", "label": "待审请假", "value": 0, "unit": "件",
-                 "note": "13A 请假域 P2 上线"},
             ],
             "moduleCards": [
                 {"key": k, "label": label, "status": st,

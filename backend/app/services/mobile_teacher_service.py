@@ -59,7 +59,13 @@ def resolve_teacher_scope(user: dict) -> dict:
         scope["by"] = "ADMIN"
         return scope
     if db_enabled():
-        keys = {k for k in (uid, uid[2:] if uid.startswith("u_") else "", name) if k}
+        # 键派生：mock 用户 u_counselor01→counselor01；db 用户 activeContextId=ctx_<login_name>；
+        # 姓名兜底（teacher_key 或 teacher_name 任一命中即生效）
+        ctx = str(u.get("activeContextId") or "")
+        keys = {k for k in (uid,
+                            uid[2:] if uid.startswith("u_") else "",
+                            ctx[4:] if ctx.startswith("ctx_") else "",
+                            name) if k}
         try:
             with _session() as db:
                 from app.models import TeacherStudentScope
@@ -67,7 +73,8 @@ def resolve_teacher_scope(user: dict) -> dict:
                     TeacherStudentScope.tenant_id == _tid(),
                     TeacherStudentScope.is_deleted.is_(False),
                     TeacherStudentScope.status == "ACTIVE",
-                    TeacherStudentScope.teacher_key.in_(keys))).all()
+                    (TeacherStudentScope.teacher_key.in_(keys)) |
+                    (TeacherStudentScope.teacher_name.in_(keys)))).all()
         except Exception:  # noqa: BLE001 — 范围表缺失（旧库未迁移）时退回兜底，不 500
             rows = []
         for r in rows:

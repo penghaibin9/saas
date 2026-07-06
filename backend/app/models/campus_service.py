@@ -46,6 +46,15 @@ class CsLeave(PKMixin, TenantMixin, CommonMixin, Base):
     reviewer: Mapped[str | None] = mapped_column(String(100))
     review_time: Mapped[datetime | None] = mapped_column(DateTime)
     return_reason: Mapped[str | None] = mapped_column(String(500))
+    # ── 13A-P2 加列（全 nullable，双状态列并行；旧列语义不动，见 P0 §4.2 集成①）──
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="直连 t_student_profile.id")
+    affairs_status: Mapped[str | None] = mapped_column(String(50), index=True, comment="13A 14 态真相列")
+    days: Mapped[float | None] = mapped_column(Numeric(5, 1), comment="数值天数，审批层级分流依据")
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    expected_return_at: Mapped[datetime | None] = mapped_column(DateTime)
+    actual_return_at: Mapped[datetime | None] = mapped_column(DateTime)
+    parent_notify: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    overdue_pushed_at: Mapped[datetime | None] = mapped_column(DateTime, comment="逾期扫描幂等标记")
 
 
 class CsGrant(PKMixin, TenantMixin, CommonMixin, Base):

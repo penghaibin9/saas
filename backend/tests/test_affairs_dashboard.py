@@ -48,8 +48,9 @@ def test_dashboard_three_role_views(client, db_mode):
     assert r["data"]["view"] == "SA_ADMIN"
     assert r["data"]["scopeMode"] == "ADMIN_TENANT"
     assert len(r["data"]["moduleCards"]) == 13
-    assert any(m["key"] == "class" and m["status"] == "LIVE" for m in r["data"]["moduleCards"])
-    assert all(m["empty"] for m in r["data"]["moduleCards"] if m["key"] != "class")
+    # P1 上线 class；P2 上线 leave（请假销假闭环，首页卡变化）——恰好这两张 LIVE 且非空，其余仍空态
+    assert {m["key"] for m in r["data"]["moduleCards"] if m["status"] == "LIVE"} == {"class", "leave"}
+    assert all(m["empty"] for m in r["data"]["moduleCards"] if m["key"] not in ("class", "leave"))
 
     # 学院学工：本院视图
     r2 = client.get("/api/v1/student-affairs/dashboard", headers=_hdr(client, "college_admin01")).json()
