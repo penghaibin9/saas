@@ -1,0 +1,417 @@
+"""13A-P6 宿舍房源台账（楼/房/床）+ 学生选床入住 + 调宿 + 宿舍检查。
+
+房源三级：楼(building) → 房(room,含 floor_no/capacity) → 床(bed,占用事实源)。
+生成器：给「层数×每层房数×每间床位」一键铺满整栋。入住/退宿/调宿事务内回写 t_cs_dorm_record。
+学生选床级联：选楼(按性别过滤)→选层/房(带空床数)→选空床→入住。检查异常→回写 t_cs_dorm_exception+生成风险(DORM)。
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime
+
+from sqlalchemy import func, select
+
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import AppException, not_found
+from app.services.db_service import _iso, _tid, session
+
+GENDER_LIMITS = ("MALE", "FEMALE", "MIXED")
+TRANSFER_NODES = ["COUNSELOR_REVIEW", "DORM_MANAGER_REVIEW"]
+CHECK_TYPES = ("HYGIENE", "SAFETY", "CONTRABAND", "NIGHT_ABSENCE")
+
+
+def _op():
+    u = get_current_user_ctx() or {}
+    return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
+
+
+def _audit(db, biz_type, biz_id, action, detail=""):
+    from app.models import AffairsAuditTrail
+    n, r, uid = _op()
+    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=int(biz_id) if biz_id else None,
+                             action=action, operator=n or uid, role_name=r, detail=detail,
+                             occurred_at=datetime.utcnow()))
+
+
+def _gender_ok(building_gender, student_gender) -> bool:
+    if building_gender == "MIXED" or not building_gender:
+        return True
+    g = (student_gender or "").upper()
+    male = g in ("M", "MALE", "男", "1")
+    female = g in ("F", "FEMALE", "女", "2")
+    return (building_gender == "MALE" and male) or (building_gender == "FEMALE" and female) \
+        or (not male and not female)  # 性别未知不拦（数据兜底）
+
+
+def _cs_student_id(db, student_id):
+    from app.models import CsServiceStudent
+    cs = db.scalars(select(CsServiceStudent).where(
+        CsServiceStudent.tenant_id == _tid(), CsServiceStudent.student_id == int(student_id),
+        CsServiceStudent.is_deleted.is_(False))).first()
+    return cs.id if cs else int(student_id)
+
+
+# ═══════════ 楼栋 ═══════════
+
+def _building_row(b, vacant=None, total=None) -> dict:
+    return {"buildingId": str(b.id), "buildingName": b.building_name,
+            "buildingCode": b.building_code or "", "genderLimit": b.gender_limit,
+            "managerTeacherKey": b.manager_teacher_key or "", "floorCount": b.floor_count,
+            "status": b.status, "vacantBeds": vacant, "totalBeds": total}
+
+
+def create_building(body, user) -> dict:
+    if (body.genderLimit or "MIXED") not in GENDER_LIMITS:
+        raise AppException("VALIDATION_ERROR", "性别限制非法")
+    with session() as db:
+        from app.models import DormBuilding
+        b = DormBuilding(tenant_id=_tid(), building_name=body.buildingName,
+                         building_code=getattr(body, "buildingCode", None),
+                         gender_limit=(body.genderLimit or "MIXED"),
+                         manager_teacher_key=getattr(body, "managerTeacherKey", None),
+                         floor_count=getattr(body, "floorCount", None), status="ENABLED")
+        db.add(b)
+        db.flush()
+        _audit(db, "DORM_BUILDING", b.id, "CREATE", body.buildingName)
+        bid = b.id
+        # 一步到位：建楼同时带布局参数则直接铺床
+        floors = getattr(body, "floors", None)
+        if floors:
+            _generate(db, b, floors, getattr(body, "roomsPerFloor", 0) or 0,
+                      getattr(body, "bedsPerRoom", 0) or 0)
+        db.commit()
+        db.refresh(b)
+        return _building_row(b)
+
+
+def _generate(db, b, floors, rooms_per_floor, beds_per_room) -> dict:
+    """给整栋楼铺房+床：floor(1..N) × room(每层 M 间) × bed(每间 K 床)。跳过已存在房号（幂等）。"""
+    from app.models import DormBed, DormRoom
+    if floors <= 0 or rooms_per_floor <= 0 or beds_per_room <= 0:
+        raise AppException("VALIDATION_ERROR", "层数/每层房数/每间床位须为正整数")
+    existing = {r.room_no for r in db.scalars(select(DormRoom).where(
+        DormRoom.tenant_id == _tid(), DormRoom.building_id == b.id,
+        DormRoom.is_deleted.is_(False))).all()}
+    rooms_made = beds_made = 0
+    for floor in range(1, floors + 1):
+        for seq in range(1, rooms_per_floor + 1):
+            room_no = f"{floor}{seq:02d}"  # 5层1号→501
+            if room_no in existing:
+                continue
+            room = DormRoom(tenant_id=_tid(), building_id=b.id, floor_no=floor, room_no=room_no,
+                            capacity=beds_per_room, room_type="STANDARD", status="ENABLED")
+            db.add(room)
+            db.flush()
+            rooms_made += 1
+            for i in range(1, beds_per_room + 1):
+                db.add(DormBed(tenant_id=_tid(), building_id=b.id, room_id=room.id,
+                               bed_no=f"{room_no}-{i}", status="VACANT"))
+                beds_made += 1
+    b.floor_count = floors
+    _audit(db, "DORM_BUILDING", b.id, "GENERATE", f"{floors}层×{rooms_per_floor}间×{beds_per_room}床")
+    return {"roomsCreated": rooms_made, "bedsCreated": beds_made}
+
+
+def generate_layout(building_id, user, floors, rooms_per_floor, beds_per_room) -> dict:
+    with session() as db:
+        from app.models import DormBuilding
+        b = db.get(DormBuilding, int(building_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("楼栋不存在")
+        res = _generate(db, b, floors, rooms_per_floor, beds_per_room)
+        db.commit()
+        return {"buildingId": str(building_id), **res}
+
+
+def list_buildings(user, gender=None, page=1, page_size=50):
+    """楼栋列表（gender 传入时按性别过滤——学生自选床位用）。附空床/总床数。"""
+    from app.models import DormBed, DormBuilding
+    with session() as db:
+        conds = [DormBuilding.tenant_id == _tid(), DormBuilding.is_deleted.is_(False),
+                 DormBuilding.status == "ENABLED"]
+        rows = db.scalars(select(DormBuilding).where(*conds).order_by(DormBuilding.id)).all()
+        out = []
+        for b in rows:
+            if gender and not _gender_ok(b.gender_limit, gender):
+                continue
+            total = db.scalar(select(func.count()).select_from(DormBed).where(
+                DormBed.tenant_id == _tid(), DormBed.building_id == b.id,
+                DormBed.is_deleted.is_(False))) or 0
+            vacant = db.scalar(select(func.count()).select_from(DormBed).where(
+                DormBed.tenant_id == _tid(), DormBed.building_id == b.id,
+                DormBed.status == "VACANT", DormBed.is_deleted.is_(False))) or 0
+            out.append(_building_row(b, vacant, total))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def list_rooms(building_id, user, floor=None, page=1, page_size=100):
+    """房间列表（级联第2级：选层后列房，带空床数）。"""
+    from app.models import DormBed, DormRoom
+    with session() as db:
+        conds = [DormRoom.tenant_id == _tid(), DormRoom.building_id == int(building_id),
+                 DormRoom.is_deleted.is_(False)]
+        if floor is not None:
+            conds.append(DormRoom.floor_no == int(floor))
+        rows = db.scalars(select(DormRoom).where(*conds).order_by(DormRoom.floor_no, DormRoom.room_no)).all()
+        out = []
+        for r in rows:
+            vacant = db.scalar(select(func.count()).select_from(DormBed).where(
+                DormBed.tenant_id == _tid(), DormBed.room_id == r.id,
+                DormBed.status == "VACANT", DormBed.is_deleted.is_(False))) or 0
+            out.append({"roomId": str(r.id), "buildingId": str(r.building_id), "floorNo": r.floor_no,
+                        "roomNo": r.room_no, "capacity": r.capacity, "roomType": r.room_type or "",
+                        "status": r.status, "vacantBeds": vacant})
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def list_beds(room_id, user):
+    """床位列表（级联第3级：选房后列床，标空/已住）。"""
+    from app.models import DormBed, StudentProfile
+    with session() as db:
+        rows = db.scalars(select(DormBed).where(
+            DormBed.tenant_id == _tid(), DormBed.room_id == int(room_id),
+            DormBed.is_deleted.is_(False)).order_by(DormBed.bed_no)).all()
+        out = []
+        for x in rows:
+            occ = None
+            if x.student_id:
+                s = db.get(StudentProfile, int(x.student_id))
+                occ = s.real_name if s else str(x.student_id)
+            out.append({"bedId": str(x.id), "roomId": str(x.room_id), "bedNo": x.bed_no,
+                        "status": x.status, "studentId": str(x.student_id or ""),
+                        "occupantName": occ, "occupiedAt": _iso(x.occupied_at)})
+        return out
+
+
+# ═══════════ 入住 / 退宿（回写 t_cs_dorm_record）═══════════
+
+def _writeback_dorm_record(db, student_id, building, room, bed) -> int:
+    """事务内回写 t_cs_dorm_record（既有"我的宿舍"读链路零改动）。返回记录 id。"""
+    from app.models import CsDormRecord
+    csid = _cs_student_id(db, student_id)
+    rec = db.scalars(select(CsDormRecord).where(
+        CsDormRecord.tenant_id == _tid(), CsDormRecord.cs_student_id == csid,
+        CsDormRecord.record_status == "ACTIVE", CsDormRecord.is_deleted.is_(False))).first()
+    if rec:
+        rec.building, rec.room, rec.bed, rec.status = building, room, bed, "IN"
+    else:
+        rec = CsDormRecord(tenant_id=_tid(), cs_student_id=csid, building=building, room=room,
+                           bed=bed, checkin_date=datetime.utcnow(), status="IN", record_status="ACTIVE")
+        db.add(rec)
+        db.flush()
+    return rec.id
+
+
+def _release_student_beds(db, student_id, exclude_bed_id=None):
+    from app.models import DormBed
+    for b in db.scalars(select(DormBed).where(
+            DormBed.tenant_id == _tid(), DormBed.student_id == int(student_id),
+            DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).all():
+        if exclude_bed_id and b.id == exclude_bed_id:
+            continue
+        b.student_id, b.status, b.occupied_at, b.version = None, "VACANT", None, b.version + 1
+
+
+def checkin(bed_id, user, student_id) -> dict:
+    with session() as db:
+        from app.models import DormBed, DormBuilding, DormRoom, StudentProfile
+        bed = db.get(DormBed, int(bed_id))
+        if not bed or bed.is_deleted or bed.tenant_id != _tid():
+            raise not_found("床位不存在")
+        if bed.status != "VACANT":
+            raise AppException("DATA_CONFLICT", "该床位已被占用或锁定")
+        s = db.get(StudentProfile, int(student_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("学生不存在")
+        b = db.get(DormBuilding, int(bed.building_id))
+        if b and not _gender_ok(b.gender_limit, s.gender):
+            raise AppException("DATA_CONFLICT", "学生性别与楼栋限制不符")
+        _release_student_beds(db, s.id)  # 换床：先释放原床
+        room = db.get(DormRoom, int(bed.room_id))
+        rec_id = _writeback_dorm_record(db, s.id, b.building_name if b else "",
+                                        room.room_no if room else "", bed.bed_no)
+        bed.student_id, bed.status, bed.occupied_at = s.id, "OCCUPIED", datetime.utcnow()
+        bed.cs_dorm_record_id, bed.version = rec_id, bed.version + 1
+        _audit(db, "DORM_BED", bed.id, "CHECKIN", f"student={s.id}")
+        db.commit()
+        return {"bedId": str(bed.id), "bedNo": bed.bed_no, "studentId": str(s.id),
+                "building": b.building_name if b else "", "room": room.room_no if room else "",
+                "status": "OCCUPIED"}
+
+
+def checkout(bed_id, user) -> dict:
+    with session() as db:
+        from app.models import CsDormRecord, DormBed
+        bed = db.get(DormBed, int(bed_id))
+        if not bed or bed.is_deleted or bed.tenant_id != _tid():
+            raise not_found("床位不存在")
+        if bed.status != "OCCUPIED":
+            raise AppException("DATA_CONFLICT", "该床位无人入住")
+        if bed.cs_dorm_record_id:
+            rec = db.get(CsDormRecord, int(bed.cs_dorm_record_id))
+            if rec:
+                rec.status, rec.record_status = "OUT", "INACTIVE"
+        bed.student_id, bed.status, bed.occupied_at, bed.cs_dorm_record_id, bed.version = \
+            None, "VACANT", None, None, bed.version + 1
+        _audit(db, "DORM_BED", bed.id, "CHECKOUT")
+        db.commit()
+        return {"bedId": str(bed.id), "status": "VACANT"}
+
+
+# ═══════════ 调宿（审批：辅导员→宿管→执行）═══════════
+
+def submit_transfer(user, student_id, to_bed_id, reason="") -> dict:
+    with session() as db:
+        from app.models import DormBed, DormTransfer, StudentProfile
+        s = db.get(StudentProfile, int(student_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("学生不存在")
+        to_bed = db.get(DormBed, int(to_bed_id))
+        if not to_bed or to_bed.is_deleted or to_bed.tenant_id != _tid():
+            raise not_found("目标床位不存在")
+        if to_bed.status != "VACANT":
+            raise AppException("DATA_CONFLICT", "目标床位已被占用")
+        from_bed = db.scalars(select(DormBed).where(
+            DormBed.tenant_id == _tid(), DormBed.student_id == int(student_id),
+            DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).first()
+        first = TRANSFER_NODES[0]
+        t = DormTransfer(tenant_id=_tid(), student_id=s.id,
+                         from_bed_id=(from_bed.id if from_bed else None), to_bed_id=to_bed.id,
+                         reason=reason, status=first, current_node=first)
+        db.add(t)
+        db.flush()
+        _audit(db, "DORM_TRANSFER", t.id, "SUBMIT")
+        db.commit()
+        db.refresh(t)
+        return _transfer_row(t)
+
+
+def _transfer_row(t) -> dict:
+    return {"transferId": str(t.id), "studentId": str(t.student_id),
+            "fromBedId": str(t.from_bed_id or ""), "toBedId": str(t.to_bed_id or ""),
+            "reason": t.reason or "", "status": t.status, "currentNode": t.current_node or "",
+            "version": t.version}
+
+
+def review_transfer(transfer_id, user, action, reason="") -> dict:
+    """辅导员→宿管两级；终审通过即执行(原床释放/新床占用/回写)。"""
+    action = (action or "").upper()
+    with session() as db:
+        from app.models import DormBed, DormBuilding, DormRoom, DormTransfer
+        t = db.get(DormTransfer, int(transfer_id))
+        if not t or t.is_deleted or t.tenant_id != _tid():
+            raise not_found("调宿申请不存在")
+        if t.status not in TRANSFER_NODES:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该调宿当前状态不可审批")
+        if action == "REJECT":
+            if not reason or len(reason.strip()) < 5:
+                raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+            t.status, t.return_reason, t.version = "REJECTED", reason.strip(), t.version + 1
+            _audit(db, "DORM_TRANSFER", t.id, "REJECTED", reason.strip())
+        elif action == "APPROVE":
+            i = TRANSFER_NODES.index(t.current_node) if t.current_node in TRANSFER_NODES else 0
+            if i + 1 < len(TRANSFER_NODES):
+                nxt = TRANSFER_NODES[i + 1]
+                t.current_node, t.status, t.version = nxt, nxt, t.version + 1
+                _audit(db, "DORM_TRANSFER", t.id, "STEP", f"->{nxt}")
+            else:
+                # 终审通过 → 执行调宿
+                to_bed = db.get(DormBed, int(t.to_bed_id)) if t.to_bed_id else None
+                if not to_bed or to_bed.status != "VACANT":
+                    raise AppException("DATA_CONFLICT", "目标床位已被占用，调宿无法执行")
+                _release_student_beds(db, t.student_id)  # 释放原床
+                b = db.get(DormBuilding, int(to_bed.building_id))
+                room = db.get(DormRoom, int(to_bed.room_id))
+                rec_id = _writeback_dorm_record(db, t.student_id, b.building_name if b else "",
+                                                room.room_no if room else "", to_bed.bed_no)
+                to_bed.student_id, to_bed.status, to_bed.occupied_at = t.student_id, "OCCUPIED", datetime.utcnow()
+                to_bed.cs_dorm_record_id, to_bed.version = rec_id, to_bed.version + 1
+                t.status, t.version = "EXECUTED", t.version + 1
+                _audit(db, "DORM_TRANSFER", t.id, "EXECUTED")
+        else:
+            raise AppException("VALIDATION_ERROR", "无效操作")
+        db.commit()
+        db.refresh(t)
+        return _transfer_row(t)
+
+
+# ═══════════ 宿舍检查（异常→回写异常表+生成风险）═══════════
+
+def create_check_task(body, user) -> dict:
+    if (body.checkType or "HYGIENE") not in CHECK_TYPES:
+        raise AppException("VALIDATION_ERROR", "检查类型非法")
+    with session() as db:
+        from app.models import DormCheckTask
+        t = DormCheckTask(tenant_id=_tid(), task_name=body.taskName,
+                          building_id=(int(body.buildingId) if getattr(body, "buildingId", None) else None),
+                          check_type=(body.checkType or "HYGIENE"),
+                          checker_key=getattr(body, "checkerKey", None), status="RUNNING")
+        db.add(t)
+        db.flush()
+        _audit(db, "DORM_CHECK", t.id, "TASK_CREATE", body.checkType or "HYGIENE")
+        db.commit()
+        db.refresh(t)
+        return {"taskId": str(t.id), "taskName": t.task_name, "checkType": t.check_type, "status": t.status}
+
+
+def submit_check_record(task_id, user, body) -> dict:
+    """录检查结果；ABNORMAL → 回写 t_cs_dorm_exception + 生成 t_affairs_risk_record(source=DORM)。"""
+    result = (body.result or "NORMAL").upper()
+    with session() as db:
+        from app.models import (AffairsRiskRecord, CsDormException, DormCheckRecord,
+                                DormCheckTask, DormRoom)
+        task = db.get(DormCheckTask, int(task_id))
+        if not task or task.is_deleted or task.tenant_id != _tid():
+            raise not_found("检查任务不存在")
+        room_id = int(body.roomId) if getattr(body, "roomId", None) else None
+        rec = DormCheckRecord(tenant_id=_tid(), task_id=task.id, room_id=room_id, result=result,
+                              issue_type=getattr(body, "issueType", None),
+                              detail=getattr(body, "detail", None),
+                              status=("ABNORMAL" if result == "ABNORMAL" else "NORMAL"))
+        db.add(rec)
+        db.flush()
+        if result == "ABNORMAL":
+            if not (body.detail or "").strip() or len((body.detail or "").strip()) < 5:
+                raise AppException("VALIDATION_ERROR", "异常说明必填且不少于 5 字")
+            room = db.get(DormRoom, room_id) if room_id else None
+            # 回写在校服务宿舍异常表
+            exc = CsDormException(tenant_id=_tid(), cs_student_id=0,
+                                  exc_type=(rec.issue_type or "DORM_CHECK"),
+                                  detail=rec.detail, status="PENDING_HANDLE")
+            db.add(exc)
+            db.flush()
+            rec.related_exception_id = exc.id
+            # 生成风险（source=DORM，来源引用检查记录）
+            risk = AffairsRiskRecord(tenant_id=_tid(), student_id=0, source="DORM",
+                                     source_ref_id=rec.id, risk_level="MEDIUM",
+                                     title=f"宿舍检查异常：{room.room_no if room else ''}",
+                                     detail=rec.detail, status="NEW")
+            db.add(risk)
+            db.flush()
+            rec.related_risk_id = risk.id
+            _audit(db, "DORM_CHECK", rec.id, "ABNORMAL", f"exc={exc.id},risk={risk.id}")
+        else:
+            _audit(db, "DORM_CHECK", rec.id, "NORMAL")
+        db.commit()
+        db.refresh(rec)
+        return {"recordId": str(rec.id), "taskId": str(task.id), "result": rec.result,
+                "relatedExceptionId": str(rec.related_exception_id or ""),
+                "relatedRiskId": str(rec.related_risk_id or ""), "status": rec.status}
+
+
+# ═══════════ 台账统计（入住率）═══════════
+
+def occupancy_stats(user):
+    from app.models import DormBed
+    with session() as db:
+        total = db.scalar(select(func.count()).select_from(DormBed).where(
+            DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False))) or 0
+        occupied = db.scalar(select(func.count()).select_from(DormBed).where(
+            DormBed.tenant_id == _tid(), DormBed.status == "OCCUPIED",
+            DormBed.is_deleted.is_(False))) or 0
+        return {"totalBeds": total, "occupiedBeds": occupied, "vacantBeds": total - occupied,
+                "occupancyRate": round(occupied / total, 3) if total else 0.0}

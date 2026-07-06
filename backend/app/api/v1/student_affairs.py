@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from app.core.response import success, paginate
 from app.core.security import require_staff
 from app.services import affairs_aid_service as aid_svc
+from app.services import affairs_archive_service as archive_svc
 from app.services import affairs_dashboard_service as svc
 from app.services import affairs_discipline_service as disc_svc
+from app.services import affairs_dorm_service as dorm_svc
 from app.services import affairs_funding_service as funding_svc
 from app.services import affairs_leave_service as leave_svc
 from app.services import affairs_profile_service as profile_svc
@@ -594,3 +596,155 @@ def family_contacts(studentId: int = Path(...), page: int = 1, pageSize: int = 2
 @router.post("/students/{studentId}/family-contacts", summary="登记家校联系（完整号码必填原因+审计）")
 def family_contact_create(body: ContactCreate, studentId: int = Path(...), user=Depends(require_staff)):
     return success(talk_svc.create_contact(studentId, user, body), message="已登记")
+
+
+# ═══════════ 宿舍房源台账（P6，楼/房/床 + 选床 + 调宿 + 检查）═══════════
+
+class BuildingCreate(BaseModel):
+    buildingName: str = Field(..., min_length=1, description="楼栋名称，如 紫荆1号楼")
+    buildingCode: Optional[str] = None
+    genderLimit: str = Field("MIXED", description="MALE/FEMALE/MIXED")
+    managerTeacherKey: Optional[str] = None
+    floorCount: Optional[int] = None
+    # 一步到位：带上以下三参数则建楼即铺满床位
+    floors: Optional[int] = Field(None, description="层数（带上则一键铺床）")
+    roomsPerFloor: Optional[int] = Field(None, description="每层房间数")
+    bedsPerRoom: Optional[int] = Field(None, description="每间床位数")
+
+
+class GenerateBody(BaseModel):
+    floors: int = Field(..., ge=1, description="层数")
+    roomsPerFloor: int = Field(..., ge=1, description="每层房间数")
+    bedsPerRoom: int = Field(..., ge=1, description="每间床位数")
+
+
+class CheckinBody(BaseModel):
+    studentId: str = Field(..., min_length=1)
+
+
+class TransferSubmit(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    toBedId: str = Field(..., min_length=1)
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class DormReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class CheckTaskCreate(BaseModel):
+    taskName: str = Field(..., min_length=1)
+    buildingId: Optional[str] = None
+    checkType: str = Field("HYGIENE", description="HYGIENE/SAFETY/CONTRABAND/NIGHT_ABSENCE")
+    checkerKey: Optional[str] = None
+
+
+class CheckRecordBody(BaseModel):
+    roomId: Optional[str] = None
+    result: str = Field(..., description="NORMAL/ABNORMAL")
+    issueType: Optional[str] = None
+    detail: Optional[str] = Field("", max_length=1000)
+
+
+@router.post("/dorm/buildings", summary="新建楼栋（带层数/房数/床位则一键铺满）")
+def dorm_building_create(body: BuildingCreate, user=Depends(require_staff)):
+    return success(dorm_svc.create_building(body, user), message="已创建")
+
+
+@router.get("/dorm/buildings", summary="楼栋列表（选床级联1；gender 过滤）")
+def dorm_buildings(gender: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                   user=Depends(require_staff)):
+    items, total = dorm_svc.list_buildings(user, gender, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/dorm/buildings/{buildingId}/generate", summary="铺房+床（层数×每层房数×每间床位）")
+def dorm_generate(body: GenerateBody, buildingId: int = Path(...), user=Depends(require_staff)):
+    return success(dorm_svc.generate_layout(buildingId, user, body.floors, body.roomsPerFloor,
+                                            body.bedsPerRoom), message="已铺床位")
+
+
+@router.get("/dorm/buildings/{buildingId}/rooms", summary="房间列表（选床级联2；floor 过滤，带空床数）")
+def dorm_rooms(buildingId: int = Path(...), floor: Optional[int] = None, page: int = 1,
+               pageSize: int = 100, user=Depends(require_staff)):
+    items, total = dorm_svc.list_rooms(buildingId, user, floor, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/dorm/rooms/{roomId}/beds", summary="床位列表（选床级联3；标空/已住）")
+def dorm_beds(roomId: int = Path(...), user=Depends(require_staff)):
+    return success({"items": dorm_svc.list_beds(roomId, user)})
+
+
+@router.get("/dorm/occupancy", summary="宿舍入住率统计")
+def dorm_occupancy(user=Depends(require_staff)):
+    return success(dorm_svc.occupancy_stats(user))
+
+
+@router.post("/dorm/beds/{bedId}/checkin", summary="学生入住某床（回写我的宿舍）")
+def dorm_checkin(body: CheckinBody, bedId: int = Path(...), user=Depends(require_staff)):
+    return success(dorm_svc.checkin(bedId, user, body.studentId), message="已入住")
+
+
+@router.post("/dorm/beds/{bedId}/checkout", summary="退宿（释放床位）")
+def dorm_checkout(bedId: int = Path(...), user=Depends(require_staff)):
+    return success(dorm_svc.checkout(bedId, user), message="已退宿")
+
+
+@router.post("/dorm/transfers", summary="发起调宿（原床释放/新床占用，走审批）")
+def dorm_transfer_submit(body: TransferSubmit, user=Depends(require_staff)):
+    return success(dorm_svc.submit_transfer(user, body.studentId, body.toBedId, body.reason or ""),
+                   message="调宿已提交")
+
+
+@router.post("/dorm/transfers/{transferId}/review", summary="调宿审批（辅导员→宿管→执行）")
+def dorm_transfer_review(body: DormReviewBody, transferId: int = Path(...), user=Depends(require_staff)):
+    return success(dorm_svc.review_transfer(transferId, user, body.action, body.reason or ""),
+                   message="已处理")
+
+
+@router.post("/dorm/check-tasks", summary="建宿舍检查任务")
+def dorm_check_task(body: CheckTaskCreate, user=Depends(require_staff)):
+    return success(dorm_svc.create_check_task(body, user), message="已创建")
+
+
+@router.post("/dorm/check-tasks/{taskId}/records", summary="录检查结果（异常→风险）")
+def dorm_check_record(body: CheckRecordBody, taskId: int = Path(...), user=Depends(require_staff)):
+    return success(dorm_svc.submit_check_record(taskId, user, body), message="已记录")
+
+
+# ═══════════ 学工归档（P6，archive）═══════════
+
+class ArchiveBatchCreate(BaseModel):
+    batchName: str = Field(..., min_length=1)
+    yearCode: Optional[str] = None
+    scope: Optional[dict] = Field(default_factory=dict)
+
+
+class CollectBody(BaseModel):
+    studentIds: list[str] = Field(..., min_length=1)
+
+
+class AdvanceBody(BaseModel):
+    action: Optional[str] = Field("APPROVE")
+
+
+@router.post("/archive/batches", summary="建归档批次")
+def archive_batch_create(body: ArchiveBatchCreate, user=Depends(require_staff)):
+    return success(archive_svc.create_batch(body, user), message="已创建")
+
+
+@router.get("/archive/batches/{batchId}", summary="归档批次详情（含档案包）")
+def archive_batch(batchId: int = Path(...), user=Depends(require_staff)):
+    return success(archive_svc.get_batch(batchId, user))
+
+
+@router.post("/archive/batches/{batchId}/collect", summary="圈定学生生成档案包")
+def archive_collect(body: CollectBody, batchId: int = Path(...), user=Depends(require_staff)):
+    return success(archive_svc.collect(batchId, user, body.studentIds), message="已收集")
+
+
+@router.post("/archive/batches/{batchId}/advance", summary="批次流转（→归档时登记水印包）")
+def archive_advance(body: AdvanceBody = AdvanceBody(), batchId: int = Path(...), user=Depends(require_staff)):
+    return success(archive_svc.advance(batchId, user, body.action or "APPROVE"), message="已流转")

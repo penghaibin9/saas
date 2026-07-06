@@ -35,6 +35,10 @@ from app.models.affairs_discipline import (AffairsRiskHandle,  # noqa: F401
                                            DisciplineRemoveApply)
 from app.models.affairs_talk import (FamilyContactLog, TalkPlan,  # noqa: F401
                                      TalkRecord)
+from app.models.affairs_dorm import (DormBed, DormBuilding,  # noqa: F401
+                                     DormCheckRecord, DormCheckTask, DormRoom,
+                                     DormTransfer)
+from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F401
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401
