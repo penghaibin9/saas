@@ -110,6 +110,9 @@ class CsDiscipline(PKMixin, TenantMixin, CommonMixin, Base):
     revoke_reason: Mapped[str | None] = mapped_column(String(500))
     record_status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
     void_reason: Mapped[str | None] = mapped_column(String(500))
+    # ── 13A-P4 加列（nullable）：投影来源回链，便于一致性对账与回滚清理；存量手工行为 NULL ──
+    source_case_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                       comment="t_affairs_discipline_case 投影来源")
 
 
 class CsWorkOrder(PKMixin, TenantMixin, CommonMixin, Base):

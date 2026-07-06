@@ -26,8 +26,8 @@ _MODULE_CARDS = [
     ("leave", "请假销假", "LIVE"),
     ("aid", "困难认定", "LIVE"),
     ("funding", "奖助管理", "LIVE"),
-    ("discipline", "违纪处分", "PENDING"),
-    ("risk", "风险预警", "PENDING"),
+    ("discipline", "违纪处分", "LIVE"),
+    ("risk", "风险预警", "LIVE"),
     ("talk", "谈心谈话", "PENDING"),
     ("family", "家校联系", "PENDING"),
     ("dorm", "宿舍管理", "PENDING"),
@@ -123,6 +123,19 @@ def get_dashboard(user: dict) -> dict:
             fund_cond.append(FundingApplication.student_id.in_(stu_ids))
         pending_aid = db.scalar(select(func.count()).select_from(AidApply).where(*aid_cond)) or 0
         pending_funding = db.scalar(select(func.count()).select_from(FundingApplication).where(*fund_cond)) or 0
+        # 处分待审 / 在办风险统计（P4 上线，真实聚合）
+        from app.models import AffairsRiskRecord, DisciplineCase
+        disc_cond = [DisciplineCase.tenant_id == _tid(), DisciplineCase.is_deleted.is_(False),
+                     DisciplineCase.status.in_(["COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW",
+                                                "SCHOOL_REVIEW", "REMOVE_REVIEW"])]
+        risk_cond = [AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.is_deleted.is_(False),
+                     AffairsRiskRecord.status.notin_(["CLOSED"])]
+        if stu_ids is not None:
+            disc_cond.append(DisciplineCase.student_id.in_(stu_ids))
+            risk_cond.append(AffairsRiskRecord.student_id.in_(stu_ids))
+        pending_disc = db.scalar(select(func.count()).select_from(DisciplineCase).where(*disc_cond)) or 0
+        risk_open = db.scalar(select(func.count(func.distinct(AffairsRiskRecord.student_id)))
+                              .select_from(AffairsRiskRecord).where(*risk_cond)) or 0
         return {
             "view": view,
             "viewLabel": _VIEW_LABEL[view],
@@ -136,8 +149,8 @@ def get_dashboard(user: dict) -> dict:
                 {"key": "overdueLeave", "label": "逾期未销假", "value": overdue_leave, "unit": "件"},
                 {"key": "pendingAid", "label": "待审困难认定", "value": pending_aid, "unit": "件"},
                 {"key": "pendingFunding", "label": "待审奖助", "value": pending_funding, "unit": "件"},
-                {"key": "riskStudents", "label": "风险学生", "value": 0, "unit": "人",
-                 "note": "13A 风险域 P4 上线"},
+                {"key": "pendingDiscipline", "label": "待审处分", "value": pending_disc, "unit": "件"},
+                {"key": "riskStudents", "label": "风险学生", "value": risk_open, "unit": "人"},
             ],
             "moduleCards": [
                 {"key": k, "label": label, "status": st,

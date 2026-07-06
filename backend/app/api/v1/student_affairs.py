@@ -10,8 +10,10 @@ from app.core.response import success, paginate
 from app.core.security import require_staff
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_dashboard_service as svc
+from app.services import affairs_discipline_service as disc_svc
 from app.services import affairs_funding_service as funding_svc
 from app.services import affairs_leave_service as leave_svc
+from app.services import affairs_risk_service as risk_svc
 
 router = APIRouter(prefix="/student-affairs", tags=["学工中心"])
 
@@ -344,3 +346,163 @@ def funding_publicity_confirm(applicationId: int = Path(...), user=Depends(requi
 @router.post("/funding/scan-publicity", summary="资助公示扫描（定时/手动，幂等）")
 def funding_scan_publicity(user=Depends(require_staff)):
     return success(funding_svc.scan_publicity())
+
+
+# ═══════════ 违纪处分（P4，discipline 全套）═══════════
+
+class DisciplineRegister(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    discType: str = Field(..., description="WARNING/SERIOUS_WARNING/DEMERIT/PROBATION/EXPEL")
+    reason: str = Field(..., min_length=1, description="违纪事实≥5字")
+    docNo: Optional[str] = None
+
+
+class DiscReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT/RETURN")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class DiscRemoveBody(BaseModel):
+    reason: str = Field(..., min_length=1, description="解除理由≥5字")
+
+
+@router.post("/discipline/cases", summary="登记违纪处分")
+def discipline_register(body: DisciplineRegister, user=Depends(require_staff)):
+    return success(disc_svc.register(body, user), message="已登记")
+
+
+@router.get("/discipline/cases", summary="处分列表（学生端仅数量，此为教师侧明细）")
+def discipline_cases(status: Optional[str] = None, discType: Optional[str] = None,
+                     page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = disc_svc.list_cases(user, status, discType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/discipline/reconcile", summary="处分投影一致性对账")
+def discipline_reconcile(user=Depends(require_staff)):
+    return success(disc_svc.projection_reconcile())
+
+
+@router.get("/discipline/cases/{caseId}", summary="处分详情")
+def discipline_case(caseId: int = Path(...), user=Depends(require_staff)):
+    return success(disc_svc.get_case(caseId, user))
+
+
+@router.post("/discipline/cases/{caseId}/submit", summary="提交学院初审")
+def discipline_submit(caseId: int = Path(...), user=Depends(require_staff)):
+    return success(disc_svc.submit(caseId, user), message="已提交")
+
+
+@router.post("/discipline/cases/{caseId}/cancel", summary="撤销登记")
+def discipline_cancel(caseId: int = Path(...), user=Depends(require_staff)):
+    return success(disc_svc.cancel(caseId, user), message="已撤销")
+
+
+@router.post("/discipline/cases/{caseId}/review", summary="处分审批（学院初审/学工处复核/校级）")
+def discipline_review(body: DiscReviewBody, caseId: int = Path(...), user=Depends(require_staff)):
+    return success(disc_svc.review(caseId, user, body.action, body.reason or ""), message="已处理")
+
+
+@router.post("/discipline/cases/{caseId}/remove", summary="发起处分解除申请")
+def discipline_remove(body: DiscRemoveBody, caseId: int = Path(...), user=Depends(require_staff)):
+    return success(disc_svc.submit_remove(caseId, user, body.reason), message="解除已提交")
+
+
+@router.post("/discipline/cases/{caseId}/remove-review", summary="处分解除审批（辅→院→处）")
+def discipline_remove_review(body: DiscReviewBody, caseId: int = Path(...), user=Depends(require_staff)):
+    return success(disc_svc.review_remove(caseId, user, body.action, body.reason or ""), message="已处理")
+
+
+# ═══════════ 风险预警（P4，risk 全套）═══════════
+
+class RiskCreate(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    source: str = Field(..., description="LEAVE_OVERDUE/ACADEMIC_WARNING/DORM/MENTAL/DISCIPLINE/...")
+    sourceRefId: Optional[str] = None
+    riskLevel: str = Field("MEDIUM", description="LOW/MEDIUM/HIGH/CRITICAL")
+    title: Optional[str] = None
+    detail: Optional[str] = None
+
+
+class RiskAssignBody(BaseModel):
+    ownerId: str = Field(..., min_length=1)
+
+
+class RiskContentBody(BaseModel):
+    content: Optional[str] = Field("", max_length=1000)
+
+
+class RiskTransferBody(BaseModel):
+    newOwnerId: str = Field(..., min_length=1)
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class RiskReasonBody(BaseModel):
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class RiskCloseBody(BaseModel):
+    conclusion: str = Field(..., min_length=1, description="关闭结论≥5字")
+
+
+@router.post("/risk/records", summary="建风险记录（多来源，去重）")
+def risk_create(body: RiskCreate, user=Depends(require_staff)):
+    return success(risk_svc.create_risk(body, user), message="已建单")
+
+
+@router.get("/risk/records", summary="风险列表（心理来源明细按角色）")
+def risk_records(source: Optional[str] = None, status: Optional[str] = None,
+                 riskLevel: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                 user=Depends(require_staff)):
+    items, total = risk_svc.list_risks(user, source, status, riskLevel, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/risk/records/{riskId}", summary="风险详情")
+def risk_record(riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.get_risk(riskId, user))
+
+
+@router.post("/risk/records/{riskId}/assign", summary="分派责任人")
+def risk_assign(body: RiskAssignBody, riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.assign(riskId, user, body.ownerId), message="已分派")
+
+
+@router.post("/risk/records/{riskId}/process", summary="处置（首条→PROCESSING）")
+def risk_process(body: RiskContentBody, riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.process(riskId, user, body.content or ""), message="已处置")
+
+
+@router.post("/risk/records/{riskId}/follow", summary="转持续跟进")
+def risk_follow(body: RiskContentBody = RiskContentBody(), riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.follow(riskId, user, body.content or ""), message="已转跟进")
+
+
+@router.post("/risk/records/{riskId}/transfer", summary="转办（换责任人）")
+def risk_transfer(body: RiskTransferBody, riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.transfer(riskId, user, body.newOwnerId, body.reason or ""), message="已转办")
+
+
+@router.post("/risk/records/{riskId}/escalate", summary="升级")
+def risk_escalate(body: RiskReasonBody = RiskReasonBody(), riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.escalate(riskId, user, body.reason or ""), message="已升级")
+
+
+@router.post("/risk/records/{riskId}/takeover", summary="上级接管")
+def risk_takeover(body: RiskContentBody = RiskContentBody(), riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.takeover(riskId, user, body.content or ""), message="已接管")
+
+
+@router.post("/risk/records/{riskId}/close", summary="关闭（结论≥5字，进360）")
+def risk_close(body: RiskCloseBody, riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.close(riskId, user, body.conclusion), message="已关闭")
+
+
+@router.post("/risk/records/{riskId}/reopen", summary="复发重开")
+def risk_reopen(body: RiskReasonBody = RiskReasonBody(), riskId: int = Path(...), user=Depends(require_staff)):
+    return success(risk_svc.reopen(riskId, user, body.reason or ""), message="已重开")
+
+
+@router.post("/risk/scan-timeout", summary="风险超时扫描（分派/升级，幂等）")
+def risk_scan_timeout(user=Depends(require_staff)):
+    return success(risk_svc.scan_timeout())
