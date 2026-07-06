@@ -59,6 +59,12 @@ export const studentApi = {
   getDormOptions: () => real.affairsDormOptions(),
   getDormRooms: (buildingId, floor) => real.affairsDormRooms(buildingId, floor),
   getDormBeds: (roomId) => real.affairsDormBeds(roomId),
-  selfSelectBed: (bedId) => real.affairsDormSelfSelect(bedId)
+  selfSelectBed: (bedId) => real.affairsDormSelfSelect(bedId),
+  // 13B 教务中心（P7 真实优先无 mock 兜底）
+  getMySchedule: () => real.acadScheduleMy(),
+  getMyTranscript: () => real.acadTranscriptMy(),
+  getMyAcadStatus: () => real.acadStatusMy(),
+  submitStatusChange: (body) => real.acadStatusChange(body),
+  getMyGraduation: () => real.acadGraduationMy()
 }
 export default studentApi

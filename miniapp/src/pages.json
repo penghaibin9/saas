@@ -80,8 +80,32 @@
       "style": { "navigationBarTitleText": "我的宿舍" }
     },
     {
+      "path": "pages/student/academic-affairs/index",
+      "style": { "navigationBarTitleText": "教务中心", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/academic-affairs/schedule",
+      "style": { "navigationBarTitleText": "我的课表" }
+    },
+    {
+      "path": "pages/student/academic-affairs/transcript",
+      "style": { "navigationBarTitleText": "我的成绩" }
+    },
+    {
+      "path": "pages/student/academic-affairs/status",
+      "style": { "navigationBarTitleText": "学籍与异动" }
+    },
+    {
+      "path": "pages/student/academic-affairs/graduation",
+      "style": { "navigationBarTitleText": "毕业进度" }
+    },
+    {
       "path": "pages/teacher/affairs/index",
       "style": { "navigationBarTitleText": "学工待办", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/my-schedule/index",
+      "style": { "navigationBarTitleText": "我的课表", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/workbench/index",

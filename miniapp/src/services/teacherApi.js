@@ -26,8 +26,9 @@ export const teacherApi = {
   handleWarning: (id, action, note) => real.handleWarningReal(id, action, note),
   handleCheckin: (id, action, comment) => real.handleCheckinReal(id, action, comment),
   createFollowup: (body) => real.createFollowupReal(body),
-  // 13A 学工待办卡（P7，真实优先无 mock 兜底）
+  // 13A 学工待办卡 + 13B 教师课表（P7，真实优先无 mock 兜底）
   getAffairs: () => real.teacherAffairs(),
+  getMySchedule: () => real.acadTeacherScheduleMy(),
   // 风险学生：后端范围过滤（不再调用 PC /students?pageSize=100）
   getRiskStudents: () =>
     realFirst('teacher.risk',
