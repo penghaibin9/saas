@@ -365,3 +365,19 @@ export async function teacherApprovalsReal(mock) {
       { node: t.nodeName || '审核', time: '待处理', done: false, current: true }] }))
   return list.length ? list : (mock || [])
 }
+
+// ── 13A 学工中心（P7 多端收口，学生自视图 + 自选床位；教师待办卡）──
+export const affairsOverview = () => realRequest('/mobile/affairs/overview')
+export const affairsLeaveMy = () => realRequest('/mobile/affairs/leave/my')
+export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
+export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
+export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')
+export const affairsDormMy = () => realRequest('/mobile/affairs/dorm/my')
+export const affairsDormOptions = () => realRequest('/mobile/affairs/dorm/select-options')
+export const affairsDormSelfSelect = (bedId) =>
+  realRequest(`/mobile/affairs/dorm/beds/${bedId}/self-select`, { method: 'POST', data: {} })
+export const affairsDormRooms = (buildingId, floor) =>
+  realRequest(`/mobile/affairs/dorm/buildings/${buildingId}/rooms${floor ? '?floor=' + floor : ''}`)
+export const affairsDormBeds = (roomId) =>
+  realRequest(`/mobile/affairs/dorm/rooms/${roomId}/beds`)
+export const teacherAffairs = () => realRequest('/mobile/teacher/affairs')

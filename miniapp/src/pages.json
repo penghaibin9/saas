@@ -68,6 +68,22 @@
       "style": { "navigationBarTitleText": "个人中心", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/student/affairs/index",
+      "style": { "navigationBarTitleText": "学工中心", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/affairs/leave",
+      "style": { "navigationBarTitleText": "我的请假" }
+    },
+    {
+      "path": "pages/student/affairs/dorm",
+      "style": { "navigationBarTitleText": "我的宿舍" }
+    },
+    {
+      "path": "pages/teacher/affairs/index",
+      "style": { "navigationBarTitleText": "学工待办", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/workbench/index",
       "style": { "navigationBarTitleText": "工作台", "navigationStyle": "custom", "enablePullDownRefresh": true }
     },

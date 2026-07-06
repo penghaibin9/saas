@@ -129,6 +129,31 @@ def dorm_select_options(user) -> dict:
     return {**cfg, "buildings": buildings}
 
 
+def _require_self_select_on(user):
+    from app.services import affairs_dorm_service as dorm
+    if not dorm.is_self_select_enabled():
+        raise no_permission(dorm._NOTICE_OFF)
+
+
+def dorm_rooms(user, building_id, floor=None) -> dict:
+    """学生浏览某楼房间（选床级联，仅学校放开自选时可用）。"""
+    from app.services import affairs_dorm_service as dorm
+    with session() as db:
+        _me(db, user)
+    _require_self_select_on(user)
+    items, total = dorm.list_rooms(building_id, user, floor)
+    return {"items": items, "total": total}
+
+
+def dorm_beds(user, room_id) -> dict:
+    """学生浏览某房床位（选床级联，仅学校放开自选时可用）。"""
+    from app.services import affairs_dorm_service as dorm
+    with session() as db:
+        _me(db, user)
+    _require_self_select_on(user)
+    return {"items": dorm.list_beds(room_id, user)}
+
+
 def dorm_self_select(user, bed_id) -> dict:
     """学生自选某空床入住本人。学校未放开→403（含提醒文案）。只能给自己选。"""
     from app.services import affairs_dorm_service as dorm

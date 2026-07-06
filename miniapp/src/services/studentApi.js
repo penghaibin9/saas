@@ -48,6 +48,17 @@ export const studentApi = {
   submitServiceApply: (body) => real.submitServiceApply(body),
   submitWeeklyReport: (body) => real.submitWeeklyReport(body),
   submitCheckin: (body) => real.submitCheckin(body),
-  markMessageRead: (id) => real.markMessageRead(id)
+  markMessageRead: (id) => real.markMessageRead(id),
+  // 13A 学工中心（P7 多端收口，真实优先无 mock 兜底，业务错误透出）
+  getAffairsOverview: () => real.affairsOverview(),
+  getMyLeaves: () => real.affairsLeaveMy(),
+  getMyAid: () => real.affairsAidMy(),
+  getMyFunding: () => real.affairsFundingMy(),
+  getMyDiscipline: () => real.affairsDisciplineMy(),
+  getMyDorm: () => real.affairsDormMy(),
+  getDormOptions: () => real.affairsDormOptions(),
+  getDormRooms: (buildingId, floor) => real.affairsDormRooms(buildingId, floor),
+  getDormBeds: (roomId) => real.affairsDormBeds(roomId),
+  selfSelectBed: (bedId) => real.affairsDormSelfSelect(bedId)
 }
 export default studentApi

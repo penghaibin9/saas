@@ -93,12 +93,18 @@ def test_mb4_dorm_self_select_toggle_flow(client, db_mode):
     rooms = client.get(f"{BASE}/dorm/buildings/{bid}/rooms?floor=1", headers=admin).json()["data"]["items"]
     beds = client.get(f"{BASE}/dorm/rooms/{rooms[0]['roomId']}/beds", headers=admin).json()["data"]["items"]
     assert client.post(f"{MB}/affairs/dorm/beds/{beds[0]['bedId']}/self-select", headers=stu).status_code == 403
+    # 关闭时学生也不能浏览房/床 → 403
+    assert client.get(f"{MB}/affairs/dorm/buildings/{bid}/rooms", headers=stu).status_code == 403
     # 学校放开
     client.put(f"{BASE}/dorm/config/self-select", headers=admin, json={"enabled": True})
     opt2 = client.get(f"{MB}/affairs/dorm/select-options", headers=stu).json()["data"]
     assert opt2["selfSelectEnabled"] is True and len(opt2["buildings"]) == 1
+    # 放开后学生走 mobile 级联浏览房→床
+    mrooms = client.get(f"{MB}/affairs/dorm/buildings/{bid}/rooms", headers=stu).json()["data"]["items"]
+    assert len(mrooms) == 2  # 1层2间
+    mbeds = client.get(f"{MB}/affairs/dorm/rooms/{mrooms[0]['roomId']}/beds", headers=stu).json()["data"]["items"]
     # 学生自选入住本人
-    r = client.post(f"{MB}/affairs/dorm/beds/{beds[0]['bedId']}/self-select", headers=stu).json()
+    r = client.post(f"{MB}/affairs/dorm/beds/{mbeds[0]['bedId']}/self-select", headers=stu).json()
     assert r["data"]["status"] == "OCCUPIED"
     mine = client.get(f"{MB}/affairs/dorm/my", headers=stu).json()["data"]
     assert mine["hasBed"] is True and mine["myBed"]["building"] == "紫荆1号楼"

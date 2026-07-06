@@ -253,6 +253,16 @@ def affairs_dorm_options(user=Depends(get_current_user)):
     return success(aff.dorm_select_options(user))
 
 
+@router.get("/affairs/dorm/buildings/{building_id}/rooms", summary="学工·选床级联·某楼房间（需放开自选）")
+def affairs_dorm_rooms(building_id: int, floor: int = None, user=Depends(get_current_user)):
+    return success(aff.dorm_rooms(user, building_id, floor))
+
+
+@router.get("/affairs/dorm/rooms/{room_id}/beds", summary="学工·选床级联·某房床位（需放开自选）")
+def affairs_dorm_beds(room_id: int, user=Depends(get_current_user)):
+    return success(aff.dorm_beds(user, room_id))
+
+
 @router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·学生自选床位入住本人（未放开→403）")
 def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
     return success(aff.dorm_self_select(user, bed_id), message="已入住")
