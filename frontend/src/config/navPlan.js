@@ -298,16 +298,45 @@ export const NAV_PLAN = [
       ...P('当前批次进度', '实习学生概览', '企业岗位概览', '打卡异常概览', '周报提交概览',
         '教师指导概览', '风险学生概览', '就业落实概览', '待办事项', '数据趋势')
     ]),
-    mod('in-batches', '实习批次', null, P('批次列表', '新建批次', '批次时间轴', '实习阶段配置', '打卡规则', '周报规则', '指导规则', '评价规则', '成绩规则', '批次启停', '批次归档')),
+    mod('in-batches', '实习批次', '/admin/internship/batches', [
+      I('批次列表（新建/编辑/启停/归档/作废）', '/admin/internship/batches'),
+      I('批次时间轴（阶段配置，JSON 可编辑）', '/admin/internship/batches'),
+      I('打卡/周报/指导/评价/成绩规则配置（JSON 可编辑）', '/admin/internship/batches'),
+      I('批次台账导出', '/admin/internship/batches'),
+      ...P('阶段配置可视化编辑器', '规则配置可视化编辑器')
+    ]),
     mod('in-students', '实习学生', '/admin/internship/students', [
       I('实习名单', '/admin/internship/students'),
       ...P('实习资格', '学生实习状态', '实习去向', '学生岗位', '学生企业', '学生导师', '学生打卡', '学生周报', '学生风险', '学生材料', '学生归档')
     ]),
-    mod('in-enterprises', '企业库', '/admin/employment/companies', [
-      I('企业列表（现有·企业与岗位）', '/admin/employment/companies'),
-      ...P('企业详情', '企业联系人', '企业导师', '企业资质', '企业合作记录', '企业评价', '企业黑名单', '企业岗位', '企业统计', '企业归档')
+    mod('in-enterprises', '企业库', '/admin/internship/enterprises', [
+      I('企业列表', '/admin/internship/enterprises'),
+      I('企业详情', '/admin/internship/enterprises'),
+      I('企业联系人', '/admin/internship/enterprises'),
+      I('企业导师', '/admin/internship/enterprises'),
+      I('企业资质审核', '/admin/internship/enterprises'),
+      I('企业黑名单', '/admin/internship/enterprises'),
+      I('企业归档', '/admin/internship/enterprises'),
+      PA('企业统计', '/admin/internship/enterprises'),
+      PA('企业合作记录', '/admin/internship/enterprises'),
+      PA('企业岗位', '/admin/internship/enterprises'),
+      ...P('企业评价'),
+      // 旧就业企业页：隐藏主入口（hidden 不进菜单/不进搜索），仅保留路由兼容——
+      // 新企业库 /admin/internship/enterprises 为唯一主入口；旧 URL 仍可访问且高亮本模块。
+      { label: '企业列表（旧·就业企业库·兼容入口，已隐藏）', path: '/admin/employment/companies', status: 'implemented', disabled: false, badge: '', hidden: true }
     ]),
-    mod('in-positions', '岗位库', null, P('岗位列表', '岗位详情', '岗位要求', '岗位容量', '岗位专业匹配', '岗位风险提示', '岗位发布', '岗位下架', '岗位统计', '岗位归档')),
+    mod('in-positions', '岗位库', '/admin/internship/positions', [
+      I('岗位列表', '/admin/internship/positions'),
+      I('岗位详情', '/admin/internship/positions'),
+      I('岗位要求（专业/年级）', '/admin/internship/positions'),
+      I('岗位容量', '/admin/internship/positions'),
+      I('岗位发布（上架）', '/admin/internship/positions'),
+      I('岗位下架', '/admin/internship/positions'),
+      I('岗位风险提示', '/admin/internship/positions'),
+      I('岗位归档', '/admin/internship/positions'),
+      PA('岗位统计', '/admin/internship/positions'),
+      ...P('岗位专业匹配')
+    ]),
     mod('in-match', '岗位匹配', null, P('学生意向', '岗位推荐', '专业匹配', '企业匹配', '手动匹配', '批量匹配', '匹配确认', '匹配冲突', '匹配结果', '匹配统计')),
     mod('in-apply', '实习申请审核', null, P('学生申请', '自主实习申请', '岗位申请', '企业信息提交', '学生材料提交', '指导老师初审', '学院审核', '学校复核', '审核退回', '审核通过', '审核台账')),
     mod('in-assign', '岗位分配', null, P('分配规则', '指导老师分配', '企业岗位分配', '批量分配', '调岗申请', '调岗审批', '分配结果', '分配日志', '分配统计')),
@@ -394,15 +423,16 @@ export const PLATFORM_PLAN = grp('platform', '平台运营', 'platform', [
  */
 export function getVisibleNavPlan({ includePlanned = false } = {}) {
   // 普通业务角色：只见 implemented / partial；管理员/开发者视角：additionally 见 planned / unauthorized
+  // hidden 叶子：任何视角都不进菜单（如旧兼容入口），仅保留路由/高亮
   const keepLeaf = (leaf) =>
-    includePlanned || leaf.status === 'implemented' || leaf.status === 'partial'
+    !leaf.hidden && (includePlanned || leaf.status === 'implemented' || leaf.status === 'partial')
   const keepMod = (mod2) =>
     includePlanned || mod2.status === 'implemented' || mod2.status === 'partial' || mod2.children.some(keepLeaf)
   return NAV_PLAN.map((group) => ({
     ...group,
     children: group.children
       .filter(keepMod)
-      .map((mod2) => ({ ...mod2, children: includePlanned ? mod2.children : mod2.children.filter(keepLeaf) }))
+      .map((mod2) => ({ ...mod2, children: mod2.children.filter(keepLeaf) }))
   })).filter((group) => group.children.length > 0)
 }
 
@@ -457,6 +487,7 @@ export function searchNavPlan(query) {
         })
       }
       for (const leaf of mod2.children) {
+        if (leaf.hidden) continue  // 隐藏的兼容入口不进搜索
         if (leaf.label.toLowerCase().includes(q)) {
           out.push({
             label: leaf.label,

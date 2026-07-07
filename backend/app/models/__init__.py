@@ -11,6 +11,7 @@ from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAuditTrail, InternshipBatch,  # noqa: F401
                                     InternshipCheckin, InternshipRecord, RiskRecord, WeeklyReport)
+from app.models.internship_position import InternshipPosition  # noqa: F401  (岗位库·独立文件)
 from app.models.orientation import (GreenChannelApplication, OrientationArchive,  # noqa: F401
                                      OrientationAuditTrail, OrientationBatch,
                                      OrientationCheckinPoint, OrientationException,
@@ -25,8 +26,9 @@ from app.models.academic import (AcademicAuditTrail, AcademicGrade, AcademicInte
 from app.models.graduation import (GraduationAuditTrail, GraduationDefenseGroup,  # noqa: F401
                                       GraduationFinal, GraduationProposal, GraduationStudent,
                                       GraduationTopic)
-from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob,  # noqa: F401
-                                     EmpMaterial, EmpStudent)
+from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup,  # noqa: F401
+                                     EmpJob, EmpMaterial, EmpStudent,
+                                     InternshipEnterpriseContact)
 from app.models.teacher_scope import TeacherStudentScope  # noqa: F401
 from app.models.affairs import (AffairsAuditTrail, AffairsClassCadre,  # noqa: F401
                                 AffairsLeaveCancelRecord, AffairsLeaveExtension)

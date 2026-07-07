@@ -49,7 +49,15 @@ export const permissionActions = {
   batchApproveReports: { visible: true, allowed: true, reason: '' },
   exportReports: { visible: true, allowed: true, reason: '' },
   manageRisk: { visible: true, allowed: true, reason: '' },
-  exportRiskList: { visible: true, allowed: true, reason: '仅限本组学生名单，含水印' }
+  exportRiskList: { visible: true, allowed: true, reason: '仅限本组学生名单，含水印' },
+  createEnterprise: { visible: true, allowed: true, reason: '' },
+  editEnterprise: { visible: true, allowed: true, reason: '' },
+  reviewEnterprise: { visible: true, allowed: false, reason: '企业资质审核需「实习管理员 / 学院实习负责人」角色' },
+  cooperationEnterprise: { visible: true, allowed: true, reason: '' },
+  blacklistEnterprise: { visible: true, allowed: false, reason: '拉黑/移出黑名单需「实习管理员」角色' },
+  importEnterprises: { visible: true, allowed: true, reason: '' },
+  exportEnterprises: { visible: true, allowed: true, reason: '导出字段脱敏、含水印、写审计' },
+  manageEnterpriseContact: { visible: true, allowed: true, reason: '' }
 }
 
 export const statusOptions = {
@@ -83,7 +91,115 @@ export const statusOptions = {
   enterprises: [
     { value: 'ent-001', label: '华信智能科技有限公司' },
     { value: 'ent-002', label: '星辰网络技术有限公司' }
+  ],
+  coopStatus: [
+    { value: 'PENDING', label: '待审核' },
+    { value: 'ACTIVE', label: '合作中' },
+    { value: 'REJECTED', label: '已驳回' },
+    { value: 'SUSPENDED', label: '已暂停' },
+    { value: 'BLACKLIST', label: '黑名单' },
+    { value: 'ARCHIVED', label: '已归档' }
+  ],
+  enterpriseSource: [
+    { value: 'SELF_BUILT', label: '自建' },
+    { value: 'SCHOOL_ENTERPRISE', label: '校企合作' },
+    { value: 'STUDENT_SELF', label: '学生自主' },
+    { value: 'RECOMMENDED', label: '推荐' }
+  ],
+  enterpriseIndustry: [
+    { value: '软件', label: '软件' },
+    { value: '智能制造', label: '智能制造' },
+    { value: '电子商务', label: '电子商务' },
+    { value: '现代物流', label: '现代物流' }
+  ],
+  batchStatus: [
+    { value: 'DRAFT', label: '草稿' },
+    { value: 'RUNNING', label: '进行中' },
+    { value: 'CLOSED', label: '已结束' },
+    { value: 'ARCHIVED', label: '已归档' },
+    { value: 'VOIDED', label: '已作废' }
   ]
+}
+
+/** 默认阶段时间轴 / 规则配置（新建批次未指定时，与后端默认值一致） */
+export const defaultBatchStages = [
+  { code: 'PREP', name: '岗前准备', startDate: '', endDate: '' },
+  { code: 'ONBOARD', name: '在岗实习', startDate: '', endDate: '' },
+  { code: 'REVIEW', name: '总结考核', startDate: '', endDate: '' }
+]
+export const defaultBatchRules = {
+  checkin: { requireDaily: true, geofenceRadiusM: 500, allowedExceptionTypes: ['OUT_OF_RANGE', 'MOCK_LOCATION', 'MISSING'] },
+  weeklyReport: { frequency: 'WEEKLY', minWordCount: 800, deadlineWeekday: 7 },
+  guidance: { minVisitsPerTerm: 2, minCommunicationsPerMonth: 2 },
+  evaluation: { enterpriseWeight: 0.4, teacherWeight: 0.4, selfWeight: 0.2 },
+  score: { passThreshold: 60, components: [{ name: '企业评价', weight: 0.4 }, { name: '教师评价', weight: 0.4 }, { name: '考核成绩', weight: 0.2 }] }
+}
+
+/** 实习批次列表（组织时间轴 + 状态机 DRAFT→RUNNING→CLOSED→ARCHIVED） */
+export const internshipBatches = [
+  {
+    id: 'batch-001', batchName: '2026 届春季岗位实习', batchNo: 'INT-2026S',
+    academicYear: '2025-2026', term: '第二学期',
+    startDate: '2026-03-02', endDate: '2026-08-28',
+    signupStartDate: '2026-02-01', signupEndDate: '2026-02-20',
+    plannedCount: 120, actualCount: 8, status: 'RUNNING', statusLabel: '进行中',
+    archiveStatus: 'NOT_ARCHIVED', remark: '与专业课教学计划同步', updateTime: '2026-07-01 09:00'
+  },
+  {
+    id: 'batch-002', batchName: '2025 届秋季岗位实习', batchNo: 'INT-2025F',
+    academicYear: '2025-2026', term: '第一学期',
+    startDate: '2025-09-01', endDate: '2026-01-15',
+    signupStartDate: '2025-08-10', signupEndDate: '2025-08-25',
+    plannedCount: 110, actualCount: 104, status: 'ARCHIVED', statusLabel: '已归档',
+    archiveStatus: 'ARCHIVED', remark: '', updateTime: '2026-01-20 14:30'
+  },
+  {
+    id: 'batch-003', batchName: '2026 届暑期岗位实习（草案）', batchNo: 'INT-2026SUM',
+    academicYear: '2025-2026', term: '暑期',
+    startDate: '2026-07-15', endDate: '2026-08-31',
+    signupStartDate: '', signupEndDate: '',
+    plannedCount: 40, actualCount: 0, status: 'DRAFT', statusLabel: '草稿',
+    archiveStatus: 'NOT_ARCHIVED', remark: '待学院实习负责人确认规则后启用', updateTime: '2026-07-05 16:12'
+  }
+]
+
+export const internshipBatchDetailMap = {
+  'batch-001': {
+    ...internshipBatches[0],
+    stages: [
+      { code: 'PREP', name: '岗前准备', startDate: '2026-03-02', endDate: '2026-03-08' },
+      { code: 'ONBOARD', name: '在岗实习', startDate: '2026-03-09', endDate: '2026-08-15' },
+      { code: 'REVIEW', name: '总结考核', startDate: '2026-08-16', endDate: '2026-08-28' }
+    ],
+    rules: defaultBatchRules,
+    previousStatus: 'DRAFT', lastTransitionAt: '2026-02-25 10:00', lastTransitionBy: '刘强',
+    transitionReason: '', archivedAt: '', archivedBy: '', archiveBatchNo: '',
+    auditTrail: [
+      { id: 'at-1', action: 'CREATE', operator: '刘强', time: '2026-02-20 09:00', detail: '{"batchName":"2026 届春季岗位实习"}' },
+      { id: 'at-2', action: 'ACTIVATE', operator: '刘强', time: '2026-02-25 10:00', detail: '{"before":"DRAFT","after":"RUNNING"}' }
+    ]
+  },
+  'batch-002': {
+    ...internshipBatches[1],
+    stages: defaultBatchStages,
+    rules: defaultBatchRules,
+    previousStatus: 'CLOSED', lastTransitionAt: '2026-01-20 14:30', lastTransitionBy: '刘强',
+    transitionReason: '', archivedAt: '2026-01-20 14:30', archivedBy: '刘强', archiveBatchNo: 'INT-2025F',
+    auditTrail: [
+      { id: 'at-3', action: 'CLOSE', operator: '刘强', time: '2026-01-15 18:00', detail: '{"before":"RUNNING","after":"CLOSED"}' },
+      { id: 'at-4', action: 'ARCHIVE', operator: '刘强', time: '2026-01-20 14:30', detail: '{"before":"CLOSED","after":"ARCHIVED"}' }
+    ]
+  },
+  'batch-003': {
+    ...internshipBatches[2],
+    stages: defaultBatchStages,
+    rules: defaultBatchRules,
+    previousStatus: '', lastTransitionAt: '', lastTransitionBy: '',
+    transitionReason: '', archivedAt: '', archivedBy: '', archiveBatchNo: '',
+    auditTrail: [
+      { id: 'at-5', action: 'CREATE', operator: '刘强', time: '2026-07-05 16:12', detail: '{"batchName":"2026 届暑期岗位实习（草案）"}' }
+    ]
+  }
 }
 
 export const dashboardSummary = {
@@ -408,3 +524,47 @@ export const riskStudents = [
     lastFollow: '—', status: 'PENDING_HANDLE', statusLabel: '待处理'
   }
 ]
+
+// ═══════════ 企业库（岗位实习） ═══════════
+export const enterpriseList = [
+  {
+    id: 'ent-001', name: '华信智能科技有限公司', creditCode: '91310000MA1FL0001X',
+    industry: '软件', nature: '民营', scale: '中型', region: '上海', city: '上海',
+    address: '浦东新区张江高科技园区博云路 2 号', source: 'SCHOOL_ENTERPRISE', sourceLabel: '校企合作',
+    cooperationLevel: '战略合作', contactPerson: '王经理', contactPhoneMasked: '138****0011',
+    coopStatus: 'ACTIVE', coopStatusLabel: '合作中', coopStatusTone: 'success',
+    qualificationStatus: 'PASSED', qualificationLabel: '资质通过',
+    blacklist: false, blacklistReason: '', internCount: 12, hiredCount: 8,
+    remark: '连续 3 年接收软件专业实习生', reviewBy: '李管理员', reviewAt: '2026-03-01 10:20',
+    reviewComment: '营业执照、资质齐全', updatedAt: '2026-06-30 09:12'
+  },
+  {
+    id: 'ent-002', name: '星辰网络技术有限公司', creditCode: '91310000MA1FL0002Y',
+    industry: '电子商务', nature: '民营', scale: '小型', region: '上海', city: '上海',
+    address: '徐汇区漕河泾开发区宜山路 700 号', source: 'SELF_BUILT', sourceLabel: '自建',
+    cooperationLevel: '一般合作', contactPerson: '赵主管', contactPhoneMasked: '139****0022',
+    coopStatus: 'PENDING', coopStatusLabel: '待审核', coopStatusTone: 'warning',
+    qualificationStatus: 'UNREVIEWED', qualificationLabel: '未核验',
+    blacklist: false, blacklistReason: '', internCount: 0, hiredCount: 0,
+    remark: '新提交待审核', reviewBy: '', reviewAt: null, reviewComment: '', updatedAt: '2026-06-28 15:40'
+  },
+  {
+    id: 'ent-003', name: '瑞丰物流有限公司', creditCode: '91310000MA1FL0003Z',
+    industry: '现代物流', nature: '民营', scale: '中型', region: '江苏', city: '苏州',
+    address: '苏州工业园区星湖街 328 号', source: 'RECOMMENDED', sourceLabel: '推荐',
+    cooperationLevel: '', contactPerson: '孙经理', contactPhoneMasked: '137****0033',
+    coopStatus: 'BLACKLIST', coopStatusLabel: '黑名单', coopStatusTone: 'danger',
+    qualificationStatus: 'PASSED', qualificationLabel: '资质通过',
+    blacklist: true, blacklistReason: '拖欠 2025 届实习生津贴，学生多次投诉', internCount: 3, hiredCount: 1,
+    remark: '', reviewBy: '李管理员', reviewAt: '2025-09-10 14:00', reviewComment: '', updatedAt: '2026-05-20 11:00'
+  }
+]
+
+export const enterpriseContactsMap = {
+  'ent-001': [
+    { id: 'ec-1', companyId: 'ent-001', contactType: 'CONTACT', contactTypeLabel: '联系人', name: '王经理', title: 'HR 经理', phoneMasked: '138****0011', email: 'wang@huaxin.com', isPrimary: true, remark: '', status: 'ACTIVE' },
+    { id: 'ec-2', companyId: 'ent-001', contactType: 'MENTOR', contactTypeLabel: '企业导师', name: '陈工', title: '技术总监', phoneMasked: '138****0099', email: 'chen@huaxin.com', isPrimary: true, remark: '带教软件实习生', status: 'ACTIVE' }
+  ],
+  'ent-002': [],
+  'ent-003': []
+}

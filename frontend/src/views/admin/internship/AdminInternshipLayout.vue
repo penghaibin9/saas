@@ -24,6 +24,7 @@ import { internshipApi } from '@/modules/internship/api/internship.api'
 
 const MENUS = [
   { key: 'int-dashboard', label: '管理看板', icon: '◫', path: '/admin/internship' },
+  { key: 'int-batches', label: '实习批次', icon: '▤', path: '/admin/internship/batches' },
   { key: 'int-students', label: '实习学生', icon: '☰', path: '/admin/internship/students' },
   { key: 'int-exceptions', label: '打卡异常', icon: '◔', path: '/admin/internship/exceptions' },
   { key: 'int-reports', label: '周报批阅', icon: '✎', path: '/admin/internship/reports' },

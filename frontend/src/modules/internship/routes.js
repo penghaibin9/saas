@@ -16,6 +16,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', title: '岗位实习中心', requiresAuth: true, permissionKey: 'internship.dashboard.view' }
     },
     {
+      path: 'batches',
+      name: 'internship-batches',
+      component: () => import('@/views/admin/internship/InternshipBatchListView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '实习批次', requiresAuth: true, permissionKey: 'internship.batch.manage' }
+    },
+    {
       path: 'students',
       name: 'internship-students',
       component: () => import('@/views/admin/internship/InternshipStudentListView.vue'),
@@ -56,6 +62,30 @@ const internshipRoutes = {
       name: 'internship-risks',
       component: () => import('@/views/admin/internship/InternshipRiskView.vue'),
       meta: { moduleCode: 'INTERNSHIP', title: '实习风险学生', requiresAuth: true, permissionKey: 'internship.risk.view' }
+    },
+    {
+      path: 'enterprises',
+      name: 'internship-enterprises',
+      component: () => import('@/views/admin/internship/InternshipEnterpriseListView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '企业库', requiresAuth: true, permissionKey: 'internship.enterprise.view' }
+    },
+    {
+      path: 'enterprises/:id',
+      name: 'internship-enterprise-detail',
+      component: () => import('@/views/admin/internship/InternshipEnterpriseDetailView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '企业详情', requiresAuth: true, permissionKey: 'internship.enterprise.view' }
+    },
+    {
+      path: 'positions',
+      name: 'internship-positions',
+      component: () => import('@/views/admin/internship/InternshipPositionListView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '岗位库', requiresAuth: true, permissionKey: 'internship.position.view' }
+    },
+    {
+      path: 'positions/:id',
+      name: 'internship-position-detail',
+      component: () => import('@/views/admin/internship/InternshipPositionDetailView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '岗位详情', requiresAuth: true, permissionKey: 'internship.position.view' }
     }
   ]
 }

@@ -11,16 +11,34 @@ from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMi
 
 
 class InternshipBatch(PKMixin, TenantMixin, CommonMixin, Base):
-    """t_internship_batch 实习批次。"""
+    """t_internship_batch 实习批次（组织实习工作的时间轴 + 规则骨架，状态机
+    DRAFT草稿 → RUNNING进行中 → CLOSED已结束 → ARCHIVED已归档；VOIDED仅草稿可作废）。"""
     __tablename__ = "t_internship_batch"
     __table_args__ = (UniqueConstraint("tenant_id", "batch_no", name="uk_intern_batch_no"),)
 
     batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
     batch_no: Mapped[str] = mapped_column(String(100), nullable=False)
-    start_date: Mapped[datetime | None] = mapped_column(DateTime)
-    end_date: Mapped[datetime | None] = mapped_column(DateTime)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="RUNNING",
-                                        comment="RUNNING/CLOSED")
+    academic_year: Mapped[str | None] = mapped_column(String(20), comment="学年，如 2025-2026")
+    term: Mapped[str | None] = mapped_column(String(20), comment="学期")
+    start_date: Mapped[datetime | None] = mapped_column(DateTime, comment="实习起")
+    end_date: Mapped[datetime | None] = mapped_column(DateTime, comment="实习止")
+    signup_start_date: Mapped[datetime | None] = mapped_column(DateTime, comment="报名/资格确认窗口起")
+    signup_end_date: Mapped[datetime | None] = mapped_column(DateTime, comment="报名/资格确认窗口止")
+    planned_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="计划实习人数")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT",
+                                        comment="DRAFT/RUNNING/CLOSED/ARCHIVED/VOIDED")
+    stage_config: Mapped[list | None] = mapped_column(JSON, comment="阶段/时间轴 [{code,name,startDate,endDate}]")
+    rules_config: Mapped[dict | None] = mapped_column(
+        JSON, comment="规则配置 {checkin/weeklyReport/guidance/evaluation/score}")
+    previous_status: Mapped[str | None] = mapped_column(String(50))
+    last_transition_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_transition_by: Mapped[str | None] = mapped_column(String(100))
+    transition_reason: Mapped[str | None] = mapped_column(String(500))
+    archive_status: Mapped[str] = mapped_column(String(50), nullable=False, default="NOT_ARCHIVED",
+                                                comment="NOT_ARCHIVED/ARCHIVED")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime)
+    archived_by: Mapped[str | None] = mapped_column(String(100))
+    archive_batch_no: Mapped[str | None] = mapped_column(String(100))
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -138,7 +156,7 @@ class InternshipAuditTrail(PKMixin, TenantMixin, AuditTimeMixin, Base):
 
     target_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     target_type: Mapped[str] = mapped_column(String(50), nullable=False,
-                                             comment="RECORD/EXCEPTION/REPORT/RISK")
+                                             comment="RECORD/EXCEPTION/REPORT/RISK/BATCH")
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     operator_name: Mapped[str | None] = mapped_column(String(100))
     detail_json: Mapped[dict | None] = mapped_column(JSON)

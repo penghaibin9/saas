@@ -14,6 +14,7 @@ from app.api.v1 import onboarding
 from app.api.v1 import academic_affairs
 from app.api.v1 import stats
 from app.api.v1 import student_affairs
+from app.api.v1 import internship_position  # 岗位库（独立 router，/internship/positions/*）
 from app.api.v1.todos import make_router as make_todos_router
 
 api_router = APIRouter()
@@ -30,6 +31,7 @@ api_router.include_router(file_simple.router, prefix="/files", tags=["files"])  
 api_router.include_router(student.router)                                    # /api/v1/students/*
 api_router.include_router(approval.router)                                   # /api/v1/approvals/*
 api_router.include_router(internship.router)                                 # /api/v1/internship/*
+api_router.include_router(internship_position.router)                        # /api/v1/internship/positions/*（岗位库）
 api_router.include_router(orientation.router)                                # /api/v1/orientation/*
 api_router.include_router(campus_service.router)                             # /api/v1/campus-service/*
 api_router.include_router(academic.router)                                   # /api/v1/academic/*
