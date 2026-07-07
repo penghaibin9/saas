@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, Numeric, String, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -120,3 +120,75 @@ class OrientationAuditTrail(PKMixin, TenantMixin, AuditTimeMixin, Base):
     before_val: Mapped[str | None] = mapped_column(String(200))
     after_val: Mapped[str | None] = mapped_column(String(200))
     occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class OrientationBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_batch 迎新批次——组织整轮迎新的时间轴与状态骨架。"""
+    __tablename__ = "t_orientation_batch"
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_no", name="uk_ori_batch_no"),)
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="批次名称，如 2026 级新生迎新")
+    batch_no: Mapped[str] = mapped_column(String(100), nullable=False, comment="批次编号")
+    year: Mapped[str | None] = mapped_column(String(20), comment="年级/年份")
+    start_date: Mapped[datetime | None] = mapped_column(DateTime, comment="批次开始")
+    end_date: Mapped[datetime | None] = mapped_column(DateTime, comment="批次结束")
+    report_start_date: Mapped[datetime | None] = mapped_column(DateTime, comment="报到开始")
+    report_end_date: Mapped[datetime | None] = mapped_column(DateTime, comment="报到结束")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT",
+                                        comment="DRAFT 草稿 / ACTIVE 进行中 / CLOSED 已结束")
+    planned_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="计划新生数")
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class OrientationCheckinPoint(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_checkin_point 现场报到点。"""
+    __tablename__ = "t_orientation_checkin_point"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False, comment="报到点名称")
+    location: Mapped[str | None] = mapped_column(String(300), comment="地点")
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="接待容量")
+    in_charge: Mapped[str | None] = mapped_column(String(100), comment="负责人")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ENABLED", comment="ENABLED/DISABLED")
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class OrientationFlowConfig(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_flow_config 报到流程配置——每个环节一行。"""
+    __tablename__ = "t_orientation_flow_config"
+    __table_args__ = (UniqueConstraint("tenant_id", "step_key", name="uk_ori_flow_step"),)
+
+    step_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    step_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="是否启用")
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="是否必办")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class OrientationNoticeTask(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_notice_task 迎新通知任务——渠道状态/发送结果。"""
+    __tablename__ = "t_orientation_notice_task"
+
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str | None] = mapped_column(String(2000))
+    channel: Mapped[str] = mapped_column(String(50), nullable=False, default="INAPP",
+                                         comment="INAPP 站内/SMS 短信/EMAIL 邮件/MINIAPP 小程序")
+    target_scope: Mapped[str | None] = mapped_column(String(200), comment="目标范围说明")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING",
+                                        comment="PENDING/SENT/FAILED/DISABLED")
+    fail_reason: Mapped[str | None] = mapped_column(String(500))
+    sent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class OrientationArchive(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_archive 迎新归档批次。"""
+    __tablename__ = "t_orientation_archive"
+
+    archive_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    batch_no: Mapped[str | None] = mapped_column(String(100))
+    scope: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING", comment="PENDING/DONE")
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    archived_by: Mapped[str | None] = mapped_column(String(100))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime)
+    remark: Mapped[str | None] = mapped_column(String(500))

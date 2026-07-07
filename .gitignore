@@ -54,3 +54,8 @@ unpackage/
 docs/ui/*.zip
 docs/ui/*.pdf
 docs/ui/**/*.pdf
+
+# Python 虚拟环境（后端开发用，勿入库）
+.venv/
+backend/.venv/
+venv/

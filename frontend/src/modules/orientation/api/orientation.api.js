@@ -257,6 +257,27 @@ export async function voidOrientationStudent(id, { reason }) {
   return envelope({ id })
 }
 
+export async function verifyOrientationStudent(id, { passed = true, reason = '' } = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/students/${id}/verify`, { method: 'POST', body: { passed, reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
+  await delay()
+  const s = db.orientationStudents.find((x) => x.id === id)
+  if (!s) return fail('记录不存在')
+  if (!passed && (!reason || reason.trim().length < 5)) return fail('核验不通过原因不少于 5 个字')
+  if (passed) {
+    s.stage = 'PRE_STUDENT_VERIFIED'
+    s.steps = { ...(s.steps || {}), INFO: 'DONE' }
+    pushAudit('STUDENT', id, '信息核验通过', s.name, 'ADMITTED', 'PRE_STUDENT_VERIFIED')
+  } else {
+    s.exceptionNote = reason
+    pushAudit('STUDENT', id, '信息核验不通过', `${s.name}：${reason}`)
+  }
+  s.updateTime = db.nowText()
+  return envelope({ id, stage: s.stage })
+}
+
 export async function batchRemindStudents(ids = [], scene = '报到提醒') {
   await delay()
   pushAudit('STUDENT', ids.join(','), '批量提醒', `向 ${ids.length} 名新生发送${scene}`)
@@ -747,4 +768,162 @@ export async function getAuditLogs(params = {}) {
   const total = list.length
   const start = (page - 1) * pageSize
   return envelope({ list: clone(list.slice(start, start + pageSize)), total, page, pageSize })
+}
+
+/* ---------------- 迎新批次（真实后端 /orientation/batches；离线兜底 mock） ---------------- */
+const _mockBatches = [
+  {
+    id: 'b1', batchName: '2026 级新生迎新', batchNo: 'ORI-2026', year: '2026',
+    startDate: '2026-09-01T00:00:00', endDate: '', reportStartDate: '2026-09-01T00:00:00',
+    reportEndDate: '2026-09-15T00:00:00', status: 'ACTIVE', statusLabel: '进行中',
+    plannedCount: 3200, remark: '秋季迎新', updateTime: ''
+  }
+]
+
+export async function getOrientationBatches(params = {}) {
+  if (shouldTryReal()) {
+    try { const d = await request('/orientation/batches', { params: params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
+  await delay()
+  const { keyword = '', status = '', page = 1, pageSize = 20 } = params
+  const list = _mockBatches.filter((b) => (kw(b.batchName, keyword) || kw(b.batchNo, keyword)) && (!status || b.status === status))
+  const total = list.length
+  const start = (page - 1) * pageSize
+  return envelope({ list: clone(list.slice(start, start + pageSize)), total, page, pageSize })
+}
+
+export async function createOrientationBatch(payload = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request('/orientation/batches', { method: 'POST', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
+  await delay()
+  if (!payload.batchName || !payload.batchNo) return fail('批次名称与批次编号必填')
+  if (_mockBatches.some((b) => b.batchNo === payload.batchNo)) return fail(`批次编号 ${payload.batchNo} 已存在`)
+  const b = { id: 'b' + Date.now(), status: 'DRAFT', statusLabel: '草稿', plannedCount: payload.plannedCount || 0, remark: '', ...payload }
+  _mockBatches.unshift(b)
+  return envelope({ id: b.id })
+}
+
+export async function updateOrientationBatch(id, payload = {}) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/batches/${id}`, { method: 'PUT', body: payload })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
+  await delay()
+  const b = _mockBatches.find((x) => x.id === id)
+  if (b) Object.assign(b, payload)
+  return envelope({ id: id })
+}
+
+export async function activateOrientationBatch(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/batches/${id}/activate`, { method: 'POST' })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
+  await delay()
+  const b = _mockBatches.find((x) => x.id === id)
+  if (b) { b.status = 'ACTIVE'; b.statusLabel = '进行中' }
+  return envelope({ id: id, status: 'ACTIVE' })
+}
+
+export async function closeOrientationBatch(id) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/batches/${id}/close`, { method: 'POST' })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
+  await delay()
+  const b = _mockBatches.find((x) => x.id === id)
+  if (b) { b.status = 'CLOSED'; b.statusLabel = '已结束' }
+  return envelope({ id: id, status: 'CLOSED' })
+}
+
+export async function voidOrientationBatch(id, reason) {
+  if (shouldTryReal()) {
+    try { return envelope(await request(`/orientation/batches/${id}/void`, { method: 'POST', body: { reason } })) }
+    catch (e) { if (e.biz) return fail(e.message, e.code) }
+  }
+  await delay()
+  if (!reason || reason.trim().length < 5) return fail('作废原因必填且不少于 5 字')
+  const i = _mockBatches.findIndex((x) => x.id === id)
+  if (i >= 0) _mockBatches.splice(i, 1)
+  return envelope({ id: id })
+}
+
+/* ---------------- 现场报到点 / 流程配置 / 迎新通知 / 迎新归档（真实后端 + 离线兜底） ---------------- */
+const _mockPoints = [{ id: 'p1', name: '东门报到点', location: '东大门', capacity: 300, inCharge: '王老师', status: 'ENABLED', statusLabel: '启用', remark: '', updateTime: '' }]
+const _mockFlow = [
+  { id: 'f1', stepKey: 'ACTIVATE', stepName: '账号激活', enabled: true, required: true, sortOrder: 0 },
+  { id: 'f2', stepKey: 'INFO', stepName: '信息核对', enabled: true, required: true, sortOrder: 1 },
+  { id: 'f3', stepKey: 'MATERIAL', stepName: '材料上传', enabled: true, required: true, sortOrder: 2 },
+  { id: 'f4', stepKey: 'PAYMENT', stepName: '缴费/绿色通道', enabled: true, required: true, sortOrder: 3 },
+  { id: 'f5', stepKey: 'DORM', stepName: '宿舍确认', enabled: true, required: true, sortOrder: 4 },
+  { id: 'f6', stepKey: 'CHECKIN', stepName: '现场报到', enabled: true, required: true, sortOrder: 5 },
+  { id: 'f7', stepKey: 'ARCHIVE', stepName: '归档', enabled: true, required: false, sortOrder: 6 }
+]
+const _mockNotices = []
+const _mockArchives = []
+const _list = (arr, params) => {
+  const { keyword = '', status = '', page = 1, pageSize = 20 } = params || {}
+  let l = arr.filter((x) => (!keyword || (x.name || x.title || x.archiveName || '').includes(keyword)) && (!status || x.status === status))
+  const total = l.length
+  const start = (page - 1) * pageSize
+  return envelope({ list: clone(l.slice(start, start + pageSize)), total, page, pageSize })
+}
+
+export async function getCheckinPoints(params = {}) {
+  if (shouldTryReal()) { try { const d = await request('/orientation/checkin-points', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); return _list(_mockPoints, params)
+}
+export async function createCheckinPoint(payload) {
+  if (shouldTryReal()) { try { return envelope(await request('/orientation/checkin-points', { method: 'POST', body: payload })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); if (!payload.name) return fail('报到点名称必填'); _mockPoints.unshift({ id: 'p' + Date.now(), status: 'ENABLED', statusLabel: '启用', ...payload }); return envelope({ id: 'ok' })
+}
+export async function updateCheckinPoint(id, payload) {
+  if (shouldTryReal()) { try { return envelope(await request(`/orientation/checkin-points/${id}`, { method: 'PUT', body: payload })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); const p = _mockPoints.find((x) => x.id === id); if (p) Object.assign(p, payload); return envelope({ id })
+}
+export async function toggleCheckinPoint(id) {
+  if (shouldTryReal()) { try { return envelope(await request(`/orientation/checkin-points/${id}/toggle`, { method: 'POST' })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); const p = _mockPoints.find((x) => x.id === id); if (p) { p.status = p.status === 'ENABLED' ? 'DISABLED' : 'ENABLED'; p.statusLabel = p.status === 'ENABLED' ? '启用' : '停用' } return envelope({ id, status: p ? p.status : '' })
+}
+export async function deleteCheckinPoint(id) {
+  if (shouldTryReal()) { try { return envelope(await request(`/orientation/checkin-points/${id}/delete`, { method: 'POST' })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); const i = _mockPoints.findIndex((x) => x.id === id); if (i >= 0) _mockPoints.splice(i, 1); return envelope({ id })
+}
+
+export async function getFlowConfig() {
+  if (shouldTryReal()) { try { return envelope(await request('/orientation/flow-config')) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); return envelope(clone(_mockFlow))
+}
+export async function updateFlowConfig(id, payload) {
+  if (shouldTryReal()) { try { return envelope(await request(`/orientation/flow-config/${id}`, { method: 'PUT', body: payload })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); const f = _mockFlow.find((x) => x.id === id); if (f) Object.assign(f, payload); return envelope({ id, enabled: f ? f.enabled : true })
+}
+
+export async function getNoticeTasks(params = {}) {
+  if (shouldTryReal()) { try { const d = await request('/orientation/notices', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); return _list(_mockNotices, params)
+}
+export async function createNoticeTask(payload) {
+  if (shouldTryReal()) { try { return envelope(await request('/orientation/notices', { method: 'POST', body: payload })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); if (!payload.title) return fail('通知标题必填'); const ch = payload.channel || 'INAPP'; _mockNotices.unshift({ id: 'n' + Date.now(), status: 'PENDING', statusLabel: '待发送', channelLabel: { INAPP: '站内通知', SMS: '短信', EMAIL: '邮件', MINIAPP: '小程序' }[ch] || ch, sentCount: 0, failReason: '', ...payload, channel: ch }); return envelope({ id: 'ok' })
+}
+export async function sendNoticeTask(id) {
+  if (shouldTryReal()) { try { return envelope(await request(`/orientation/notices/${id}/send`, { method: 'POST' })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); const n = _mockNotices.find((x) => x.id === id); if (n) { if (n.channel === 'INAPP') { n.status = 'SENT'; n.statusLabel = '已发送'; n.sentCount = 1 } else { n.status = 'DISABLED'; n.statusLabel = '渠道未配置'; n.failReason = '该渠道未配置' } } return envelope({ id, status: n ? n.status : '', failReason: n ? n.failReason : '' })
+}
+
+export async function getArchives(params = {}) {
+  if (shouldTryReal()) { try { const d = await request('/orientation/archives', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); return _list(_mockArchives, params)
+}
+export async function createArchive(payload) {
+  if (shouldTryReal()) { try { return envelope(await request('/orientation/archives', { method: 'POST', body: payload })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); if (!payload.archiveName) return fail('归档名称必填'); _mockArchives.unshift({ id: 'a' + Date.now(), status: 'PENDING', statusLabel: '待归档', itemCount: 0, archivedBy: '', ...payload }); return envelope({ id: 'ok' })
+}
+export async function runArchive(id) {
+  if (shouldTryReal()) { try { return envelope(await request(`/orientation/archives/${id}/run`, { method: 'POST' })) } catch (e) { if (e.biz) return fail(e.message, e.code) } }
+  await delay(); const a = _mockArchives.find((x) => x.id === id); if (a) { a.status = 'DONE'; a.statusLabel = '已归档'; a.itemCount = 10 } return envelope({ id, status: 'DONE', itemCount: 10 })
 }

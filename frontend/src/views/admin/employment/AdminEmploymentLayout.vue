@@ -1,7 +1,7 @@
 <template>
   <BasePortalLayout
     :title="portalTitle"
-    subtitle="就业服务中心"
+    subtitle="岗位实习中心 · 就业服务"
     :menus="menus"
     :active-key="activeKey"
     :ctx="

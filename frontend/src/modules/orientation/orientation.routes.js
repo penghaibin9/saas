@@ -17,6 +17,78 @@ export const orientationRoutes = {
       meta: { moduleCode: 'ORIENTATION', title: '数字迎新管理看板', requiresAuth: true, permissionKey: 'orientation.student.view' }
     },
     {
+      path: 'batches',
+      name: 'orientation-batches',
+      component: () => import('@/views/admin/orientation/OrientationBatchListView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '迎新批次', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'green-channels',
+      name: 'orientation-green-channels',
+      component: () => import('@/views/admin/orientation/OrientationGreenChannelView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '绿色通道', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'no-show',
+      name: 'orientation-no-show',
+      component: () => import('@/views/admin/orientation/OrientationNoShowView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '未报到学生', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'statistics',
+      name: 'orientation-statistics',
+      component: () => import('@/views/admin/orientation/OrientationStatsView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '迎新统计', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'verify',
+      name: 'orientation-verify',
+      component: () => import('@/views/admin/orientation/OrientationVerifyView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '新生信息核验', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'qualification',
+      name: 'orientation-qualification',
+      component: () => import('@/views/admin/orientation/OrientationQualificationView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '报到资格', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'data',
+      name: 'orientation-data',
+      component: () => import('@/views/admin/orientation/OrientationDataView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '新生数据', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'flow-config',
+      name: 'orientation-flow-config',
+      component: () => import('@/views/admin/orientation/OrientationFlowConfigView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '报到流程配置', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'dorm-preassign',
+      name: 'orientation-dorm-preassign',
+      component: () => import('@/views/admin/orientation/OrientationDormPreassignView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '宿舍预分配', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'checkin-points',
+      name: 'orientation-checkin-points',
+      component: () => import('@/views/admin/orientation/OrientationCheckinPointView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '现场报到点', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'notices',
+      name: 'orientation-notices',
+      component: () => import('@/views/admin/orientation/OrientationNoticeView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '迎新通知', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
+      path: 'archive',
+      name: 'orientation-archive',
+      component: () => import('@/views/admin/orientation/OrientationArchiveView.vue'),
+      meta: { moduleCode: 'ORIENTATION', title: '迎新归档', requiresAuth: true, permissionKey: 'orientation.student.view' }
+    },
+    {
       path: 'students',
       name: 'orientation-students',
       component: () => import('@/views/admin/orientation/OrientationStudentListView.vue'),

@@ -170,3 +170,115 @@ def test_update_dorm(client, auth_headers, db_mode):
 
 def test_requires_login(client):
     assert client.get("/api/v1/orientation/dashboard").json()["code"] == 401001
+
+
+def test_batch_closed_loop(client, auth_headers, db_mode):
+    # 新建（草稿）
+    c = client.post("/api/v1/orientation/batches", headers=auth_headers,
+                    json={"batchName": "2026 级新生迎新", "batchNo": "ORI-2026",
+                          "year": "2026", "startDate": "2026-09-01", "reportEndDate": "2026-09-15",
+                          "plannedCount": 3200, "remark": "秋季迎新"}).json()
+    assert c["code"] == 0
+    bid = c["data"]["id"]
+    # 编号唯一
+    dup = client.post("/api/v1/orientation/batches", headers=auth_headers,
+                      json={"batchName": "重复", "batchNo": "ORI-2026"}).json()
+    assert dup["code"] != 0
+    # 列表 + 脱敏无关，状态为草稿
+    lst = client.get("/api/v1/orientation/batches", headers=auth_headers).json()
+    assert lst["code"] == 0 and lst["data"]["total"] == 1
+    row = lst["data"]["items"][0]
+    assert row["statusLabel"] == "草稿" and row["plannedCount"] == 3200
+    # 非法流转：草稿不能直接结束
+    bad = client.post(f"/api/v1/orientation/batches/{bid}/close", headers=auth_headers).json()
+    assert bad["code"] != 0
+    # 启用 草稿→进行中
+    act = client.post(f"/api/v1/orientation/batches/{bid}/activate", headers=auth_headers).json()
+    assert act["code"] == 0 and act["data"]["status"] == "ACTIVE"
+    # 重复启用被拒
+    assert client.post(f"/api/v1/orientation/batches/{bid}/activate", headers=auth_headers).json()["code"] != 0
+    # 编辑
+    upd = client.put(f"/api/v1/orientation/batches/{bid}", headers=auth_headers,
+                     json={"plannedCount": 3300}).json()
+    assert upd["code"] == 0
+    assert client.get(f"/api/v1/orientation/batches/{bid}", headers=auth_headers).json()["data"]["plannedCount"] == 3300
+    # 结束 进行中→已结束
+    cl = client.post(f"/api/v1/orientation/batches/{bid}/close", headers=auth_headers).json()
+    assert cl["code"] == 0 and cl["data"]["status"] == "CLOSED"
+    # 已结束不可编辑
+    assert client.put(f"/api/v1/orientation/batches/{bid}", headers=auth_headers,
+                      json={"remark": "x"}).json()["code"] != 0
+    # 审计留痕（BATCH 类型）
+    logs = client.get("/api/v1/orientation/audit-logs?bizType=BATCH", headers=auth_headers).json()
+    assert logs["code"] == 0 and logs["data"]["total"] >= 3
+
+
+def test_verify_closed_loop(client, auth_headers, db_mode):
+    ids = _seed(db_mode)
+    sid = ids["student"]
+    # 不通过但原因太短 → 拒绝
+    bad = client.post(f"/api/v1/orientation/students/{sid}/verify", headers=auth_headers,
+                      json={"passed": False, "reason": "x"}).json()
+    assert bad["code"] != 0
+    # 通过 → stage=PRE_STUDENT_VERIFIED，环节 INFO=DONE
+    ok = client.post(f"/api/v1/orientation/students/{sid}/verify", headers=auth_headers,
+                     json={"passed": True}).json()
+    assert ok["code"] == 0 and ok["data"]["stage"] == "PRE_STUDENT_VERIFIED"
+    det = client.get(f"/api/v1/orientation/students/{sid}", headers=auth_headers).json()
+    assert det["data"]["student"]["steps"]["INFO"] == "DONE"
+    # 不通过（含原因） → 记录成功
+    fail = client.post(f"/api/v1/orientation/students/{sid}/verify", headers=auth_headers,
+                       json={"passed": False, "reason": "身份证与录取信息不一致"}).json()
+    assert fail["code"] == 0
+    # 审计留痕（核验动作 ≥ 2 条）
+    logs = client.get("/api/v1/orientation/audit-logs?keyword=核验", headers=auth_headers).json()
+    assert logs["code"] == 0 and logs["data"]["total"] >= 2
+
+
+def test_checkin_point_crud(client, auth_headers, db_mode):
+    c = client.post("/api/v1/orientation/checkin-points", headers=auth_headers,
+                    json={"name": "东门报到点", "location": "东大门", "capacity": 300, "inCharge": "王老师"}).json()
+    assert c["code"] == 0
+    pid = c["data"]["id"]
+    lst = client.get("/api/v1/orientation/checkin-points", headers=auth_headers).json()
+    assert lst["code"] == 0 and lst["data"]["total"] == 1 and lst["data"]["items"][0]["statusLabel"] == "启用"
+    t = client.post(f"/api/v1/orientation/checkin-points/{pid}/toggle", headers=auth_headers).json()
+    assert t["code"] == 0 and t["data"]["status"] == "DISABLED"
+    u = client.put(f"/api/v1/orientation/checkin-points/{pid}", headers=auth_headers, json={"capacity": 500}).json()
+    assert u["code"] == 0
+    d = client.post(f"/api/v1/orientation/checkin-points/{pid}/delete", headers=auth_headers).json()
+    assert d["code"] == 0
+    assert client.get("/api/v1/orientation/checkin-points", headers=auth_headers).json()["data"]["total"] == 0
+
+
+def test_flow_config(client, auth_headers, db_mode):
+    lst = client.get("/api/v1/orientation/flow-config", headers=auth_headers).json()
+    assert lst["code"] == 0 and len(lst["data"]) == 7  # 首次自动 seed 7 环节
+    fid = lst["data"][3]["id"]
+    upd = client.put(f"/api/v1/orientation/flow-config/{fid}", headers=auth_headers, json={"enabled": False}).json()
+    assert upd["code"] == 0 and upd["data"]["enabled"] is False
+    again = client.get("/api/v1/orientation/flow-config", headers=auth_headers).json()
+    assert again["code"] == 0 and len(again["data"]) == 7  # 不重复 seed
+
+
+def test_notice_send(client, auth_headers, db_mode):
+    a = client.post("/api/v1/orientation/notices", headers=auth_headers,
+                    json={"title": "报到须知", "channel": "INAPP"}).json()
+    assert a["code"] == 0
+    s1 = client.post(f"/api/v1/orientation/notices/{a['data']['id']}/send", headers=auth_headers).json()
+    assert s1["code"] == 0 and s1["data"]["status"] == "SENT"
+    b = client.post("/api/v1/orientation/notices", headers=auth_headers,
+                    json={"title": "缴费提醒", "channel": "SMS"}).json()
+    s2 = client.post(f"/api/v1/orientation/notices/{b['data']['id']}/send", headers=auth_headers).json()
+    assert s2["code"] == 0 and s2["data"]["status"] == "DISABLED" and s2["data"]["failReason"]
+
+
+def test_archive_run(client, auth_headers, db_mode):
+    _seed(db_mode)
+    c = client.post("/api/v1/orientation/archives", headers=auth_headers,
+                    json={"archiveName": "2026 迎新归档", "scope": "全校"}).json()
+    assert c["code"] == 0
+    aid = c["data"]["id"]
+    r = client.post(f"/api/v1/orientation/archives/{aid}/run", headers=auth_headers).json()
+    assert r["code"] == 0 and r["data"]["status"] == "DONE" and r["data"]["itemCount"] >= 1
+    assert client.post(f"/api/v1/orientation/archives/{aid}/run", headers=auth_headers).json()["code"] != 0

@@ -1,7 +1,7 @@
 <template>
   <BasePortalLayout
     :title="brandTitle"
-    subtitle="学业过程中心"
+    subtitle="教务中心 · 学业过程"
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"

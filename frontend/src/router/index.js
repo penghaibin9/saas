@@ -59,6 +59,18 @@ const router = createRouter({
       redirect: '/'
     },
     {
+      /* 旧入口兼容（PC-NAV-6MODULE-REGROUP）：/admin/system/log（单数）→ 现行日志中心，避免旧书签 404 */
+      path: '/admin/system/log',
+      redirect: '/admin/system/logs'
+    },
+    {
+      /* 帮助中心（PC-HELP-CENTER）：功能帮助 + 业务流程图，由顶部「功能/帮助」搜索命中进入 */
+      path: '/admin/help',
+      name: 'admin-help',
+      component: () => import('../views/admin/help/AdminHelpView.vue'),
+      meta: { title: '帮助中心' }
+    },
+    {
       /* 登录页（账号密码走 /api/v1/auth/login；「进入演示环境」回工作台，不影响既有演示流程） */
       path: '/login',
       name: 'login',

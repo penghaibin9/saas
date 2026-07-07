@@ -1,7 +1,7 @@
 <template>
   <BasePortalLayout
     :title="brandTitle"
-    subtitle="审批中心"
+    subtitle="工作台 · 审批中心"
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"

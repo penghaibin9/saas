@@ -11,9 +11,12 @@ from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAuditTrail, InternshipBatch,  # noqa: F401
                                     InternshipCheckin, InternshipRecord, RiskRecord, WeeklyReport)
-from app.models.orientation import (GreenChannelApplication, OrientationAuditTrail,  # noqa: F401
-                                     OrientationException, OrientationExceptionFollowup,
-                                     OrientationMaterial, OrientationStudent)
+from app.models.orientation import (GreenChannelApplication, OrientationArchive,  # noqa: F401
+                                     OrientationAuditTrail, OrientationBatch,
+                                     OrientationCheckinPoint, OrientationException,
+                                     OrientationExceptionFollowup, OrientationFlowConfig,
+                                     OrientationMaterial, OrientationNoticeTask,
+                                     OrientationStudent)
 from app.models.campus_service import (CsAuditTrail, CsDiscipline, CsDormException,  # noqa: F401
                                         CsDormRecord, CsGrant, CsLeave, CsMentalRecord,
                                         CsServiceStudent, CsWorkOrder)

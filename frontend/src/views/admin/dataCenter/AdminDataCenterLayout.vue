@@ -1,7 +1,7 @@
 <template>
   <BasePortalLayout
     :title="brandTitle"
-    subtitle="数据中心"
+    subtitle="工作台 · 领导驾驶舱"
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"

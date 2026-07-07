@@ -66,10 +66,6 @@
             <div class="awb-orbit__lb">{{ group.label }}</div>
           </div>
         </div>
-        <div class="awb-hb__meta">
-          <span>菜单与可见性 · config/adminMenu.js × 当前视角</span>
-          <span>品牌信息来自租户配置</span>
-        </div>
       </section>
 
       <div class="awb-notice">
@@ -78,9 +74,38 @@
           <path d="M12 8h.01M12 11v5" />
         </svg>
         <span class="awb-notice__tx">
-          当前视角：{{ currentRoleTypeLabel }} · 可进入 {{ leafCount }} 个模块。左侧导航或下方卡片均可进入。
+          当前视角：{{ currentRoleTypeLabel }} · 可进入 {{ leafCount }} 个模块。点卡片右上角 ☆ 可把常用模块固定到顶部「我的常用」。
         </span>
       </div>
+
+      <!-- 我的常用：老师自定义置顶的高频模块（本机记忆，按登录人区分），无需去二/三级菜单找 -->
+      <section v-if="favoriteLeaves.length" class="awb-group awb-group--fav">
+        <div class="awb-group__title">
+          <span class="awb-group__t">⭐ 我的常用</span>
+          <span class="awb-group__n">{{ favoriteLeaves.length }} 个 · 点 ★ 可移除</span>
+        </div>
+        <div class="awb-cards">
+          <button
+            v-for="leaf in favoriteLeaves"
+            :key="'fav-' + leaf.key"
+            type="button"
+            class="awb-card"
+            @click="go(leaf.path)"
+          >
+            <span class="awb-card__ic">{{ leaf.label.charAt(0) }}</span>
+            <span class="awb-card__inf">
+              <span class="awb-card__name">{{ leaf.label }}</span>
+            </span>
+            <span
+              class="awb-card__fav is-on"
+              role="button"
+              title="从「我的常用」移除"
+              @click.stop.prevent="toggleFav(leaf)"
+            >★</span>
+            <span class="awb-card__go">进入 →</span>
+          </button>
+        </div>
+      </section>
 
       <section v-for="group in visibleMenu" :key="group.key" class="awb-group">
         <div class="awb-group__title">
@@ -98,8 +123,14 @@
             <span class="awb-card__ic">{{ leaf.label.charAt(0) }}</span>
             <span class="awb-card__inf">
               <span class="awb-card__name">{{ leaf.label }}</span>
-              <span class="awb-card__path">{{ leaf.path }}</span>
             </span>
+            <span
+              class="awb-card__fav"
+              :class="{ 'is-on': isFav(leaf.key) }"
+              role="button"
+              :title="isFav(leaf.key) ? '从「我的常用」移除' : '固定到「我的常用」'"
+              @click.stop.prevent="toggleFav(leaf)"
+            >{{ isFav(leaf.key) ? '★' : '☆' }}</span>
             <span class="awb-card__go">进入 →</span>
           </button>
         </div>
@@ -141,7 +172,9 @@ export default {
     return {
       auth,
       /* 默认视角 = 当前登录角色类型（mock 为 SCHOOL_ADMIN），普通学校角色默认看不到平台运营 */
-      viewAsRoleType: (auth.roles && auth.roles[0]) || ROLE_TYPE.SCHOOL_ADMIN
+      viewAsRoleType: (auth.roles && auth.roles[0]) || ROLE_TYPE.SCHOOL_ADMIN,
+      /* 我的常用：老师自定义置顶的模块 key 列表（本机记忆，按登录人区分） */
+      favorites: []
     }
   },
   computed: {
@@ -152,7 +185,11 @@ export default {
       return 'PC 管理端工作台'
     },
     roleTypeOptions() {
-      return Object.keys(ROLE_TYPE_LABELS).map((value) => ({ value, label: ROLE_TYPE_LABELS[value] }))
+      // 安全：平台运营为老板专用，不在学校侧工作台的「视角」下拉中暴露（避免露出平台入口名称）。
+      // 平台超管本人仍通过真实身份 token 直接进入 /admin/platform，不依赖此演示切换器。
+      return Object.keys(ROLE_TYPE_LABELS)
+        .filter((value) => value !== ROLE_TYPE.PLATFORM)
+        .map((value) => ({ value, label: ROLE_TYPE_LABELS[value] }))
     },
     currentRoleTypeLabel() {
       return ROLE_TYPE_LABELS[this.viewAsRoleType] || this.viewAsRoleType
@@ -162,11 +199,46 @@ export default {
     },
     leafCount() {
       return this.visibleMenu.reduce((n, g) => n + g.children.length, 0)
+    },
+    allLeaves() {
+      return this.visibleMenu.flatMap((g) => g.children)
+    },
+    favoriteLeaves() {
+      const set = new Set(this.favorites)
+      // 仅展示「当前视角可见」的收藏项，避免切换视角/角色后露出无权限入口
+      return this.allLeaves.filter((l) => set.has(l.key))
     }
+  },
+  created() {
+    this.loadFavorites()
   },
   methods: {
     go(path) {
       if (path && path !== this.$route.path) this.$router.push(path)
+    },
+    favStorageKey() {
+      return 'wb_fav_v1_' + (this.auth.displayName || 'default')
+    },
+    loadFavorites() {
+      try {
+        const raw = window.localStorage.getItem(this.favStorageKey())
+        this.favorites = raw ? JSON.parse(raw) : []
+      } catch {
+        this.favorites = []
+      }
+    },
+    isFav(key) {
+      return this.favorites.includes(key)
+    },
+    toggleFav(leaf) {
+      const i = this.favorites.indexOf(leaf.key)
+      if (i >= 0) this.favorites.splice(i, 1)
+      else this.favorites.push(leaf.key)
+      try {
+        window.localStorage.setItem(this.favStorageKey(), JSON.stringify(this.favorites))
+      } catch {
+        /* 隐私模式下存储失败则仅当次生效 */
+      }
     }
   }
 }
@@ -483,6 +555,30 @@ export default {
   color: var(--pri);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
+}
+.awb-card__fav {
+  font-size: 15px;
+  line-height: 1;
+  color: var(--t3);
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 7px;
+  flex-shrink: 0;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease,
+    transform 0.12s ease;
+}
+.awb-card__fav:hover {
+  color: #f59e0b;
+  background: var(--pri-bg);
+  transform: scale(1.18);
+}
+.awb-card__fav.is-on {
+  color: #f59e0b;
+}
+.awb-group--fav .awb-group__t {
+  color: #b45309;
 }
 .awb-devnote {
   font-size: var(--font-size-xs);

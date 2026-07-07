@@ -1,7 +1,7 @@
 <template>
   <BasePortalLayout
     :title="portalTitle"
-    subtitle="数字迎新中心"
+    subtitle="学工中心 · 数字迎新"
     :menus="menus"
     :active-key="activeKey"
     :ctx="

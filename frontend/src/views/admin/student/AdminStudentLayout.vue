@@ -1,7 +1,7 @@
 <template>
   <BasePortalLayout
     :title="brandTitle"
-    subtitle="学生中心 · 学生主档与身份"
+    subtitle="学工中心 · 学生画像"
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"

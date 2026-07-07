@@ -1,7 +1,7 @@
 <template>
   <BasePortalLayout
     title="学校管理端"
-    subtitle="权限与流程中心"
+    subtitle="系统管理 · 权限与流程"
     :menus="visibleMenus"
     :active-key="activeKey"
     :ctx="contextLoaded ? { currentRole: { userName: userName } } : null"

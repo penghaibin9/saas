@@ -7,8 +7,10 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import (GreenChannelApplication, OrientationAuditTrail, OrientationException,
-                        OrientationExceptionFollowup, OrientationMaterial, OrientationStudent)
+from app.models import (GreenChannelApplication, OrientationArchive, OrientationAuditTrail,
+                        OrientationBatch, OrientationCheckinPoint, OrientationException,
+                        OrientationExceptionFollowup, OrientationFlowConfig, OrientationMaterial,
+                        OrientationNoticeTask, OrientationStudent)
 from app.services.db_service import _iso, _mask_id_card, _mask_phone, _tid, session
 
 L_STAGE = {"ADMITTED": "已录取", "PRE_STUDENT_VERIFIED": "预报到已核验",
@@ -218,6 +220,33 @@ def void_student(sid, reason: str) -> dict:
         _audit(db, "STUDENT", s.id, "作废报到记录", reason.strip())
         db.commit()
         return {"id": str(s.id)}
+
+
+def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
+    """新生信息核验：通过 → 预报到已核验（stage=PRE_STUDENT_VERIFIED，环节 INFO=DONE）；
+    不通过 → 记录原因 + 标记高风险，stage 不前进。"""
+    with session() as db:
+        s = _get_student(db, sid)
+        if s.stage in ("ENROLLED", "CANCELLED"):
+            raise AppException("INVALID_STATE", "该新生已入学/已取消，不可再核验")
+        if passed:
+            before = s.stage
+            s.stage = "PRE_STUDENT_VERIFIED"
+            s.exception_note = ""
+            steps = _merged_steps_json(s.steps_json)
+            steps["INFO"] = "DONE"
+            s.steps_json = steps
+            _audit(db, "STUDENT", s.id, "信息核验通过", before=before, after="PRE_STUDENT_VERIFIED")
+        else:
+            if not reason or len(reason.strip()) < 5:
+                raise AppException("VALIDATION_ERROR", "核验不通过原因必填且不少于 5 字")
+            s.exception_note = reason.strip()
+            if s.risk_level == "LOW":
+                s.risk_level = "HIGH"
+            _audit(db, "STUDENT", s.id, "信息核验不通过", reason.strip())
+        s.version += 1
+        db.commit()
+        return {"id": str(s.id), "stage": s.stage}
 
 
 # ═══ 报到进度 ═══
@@ -731,3 +760,397 @@ def get_dashboard() -> dict:
             ],
             "riskAlerts": [], "flow": [], "stepFunnel": step_funnel, "collegeRates": [],
         }
+
+
+# ═══ 迎新批次（组织时间轴 + 状态机 DRAFT→ACTIVE→CLOSED） ═══
+
+L_BATCH = {"DRAFT": "草稿", "ACTIVE": "进行中", "CLOSED": "已结束"}
+
+
+def _parse_dt(v):
+    if not v:
+        return None
+    s = str(v).strip().replace("Z", "").replace("/", "-")
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s[:19])
+    except ValueError:
+        try:
+            return datetime.strptime(s[:10], "%Y-%m-%d")
+        except ValueError:
+            return None
+
+
+def _batch_row(b: OrientationBatch) -> dict:
+    return {
+        "id": str(b.id), "batchName": b.batch_name, "batchNo": b.batch_no, "year": b.year or "",
+        "startDate": _iso(b.start_date) or "", "endDate": _iso(b.end_date) or "",
+        "reportStartDate": _iso(b.report_start_date) or "", "reportEndDate": _iso(b.report_end_date) or "",
+        "status": b.status, "statusLabel": L_BATCH.get(b.status, b.status),
+        "plannedCount": int(b.planned_count or 0), "remark": b.remark or "",
+        "updateTime": _iso(b.updated_at),
+    }
+
+
+def _get_batch(db, bid) -> OrientationBatch:
+    b = db.get(OrientationBatch, int(bid))
+    if not b or b.is_deleted or b.tenant_id != _tid():
+        raise not_found("迎新批次不存在或不在当前数据范围内")
+    return b
+
+
+def list_batches(page, page_size, keyword=None, status=None):
+    with session() as db:
+        q = select(OrientationBatch).where(OrientationBatch.tenant_id == _tid(),
+                                           OrientationBatch.is_deleted.is_(False))
+        if status:
+            q = q.where(OrientationBatch.status == status)
+        rows = db.scalars(q.order_by(OrientationBatch.id.desc())).all()
+        if keyword:
+            kw = keyword.strip()
+            rows = [r for r in rows if kw in (r.batch_name or "") or kw in (r.batch_no or "")]
+        items, total = _page([_batch_row(r) for r in rows], page, page_size)
+        return items, total
+
+
+def get_batch(bid) -> dict:
+    with session() as db:
+        return _batch_row(_get_batch(db, bid))
+
+
+def create_batch(body: dict) -> dict:
+    name = str(body.get("batchName") or "").strip()
+    no = str(body.get("batchNo") or "").strip()
+    if not name or not no:
+        raise AppException("VALIDATION_ERROR", "批次名称与批次编号必填")
+    with session() as db:
+        dup = db.scalars(select(OrientationBatch).where(
+            OrientationBatch.tenant_id == _tid(), OrientationBatch.batch_no == no,
+            OrientationBatch.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", f"批次编号 {no} 已存在")
+        b = OrientationBatch(
+            tenant_id=_tid(), batch_name=name, batch_no=no, year=body.get("year"),
+            start_date=_parse_dt(body.get("startDate")), end_date=_parse_dt(body.get("endDate")),
+            report_start_date=_parse_dt(body.get("reportStartDate")),
+            report_end_date=_parse_dt(body.get("reportEndDate")),
+            planned_count=int(body.get("plannedCount") or 0), remark=body.get("remark"), status="DRAFT")
+        db.add(b)
+        db.flush()
+        _audit(db, "BATCH", b.id, "新建迎新批次", f"{name}（{no}）")
+        db.commit()
+        return {"id": str(b.id)}
+
+
+def update_batch(bid, body: dict) -> dict:
+    with session() as db:
+        b = _get_batch(db, bid)
+        if b.status == "CLOSED":
+            raise AppException("INVALID_STATE", "已结束的批次不可编辑")
+        for k, col in {"batchName": "batch_name", "year": "year", "remark": "remark"}.items():
+            if body.get(k) is not None:
+                setattr(b, col, body[k])
+        for k, col in {"startDate": "start_date", "endDate": "end_date",
+                       "reportStartDate": "report_start_date", "reportEndDate": "report_end_date"}.items():
+            if body.get(k) is not None:
+                setattr(b, col, _parse_dt(body[k]))
+        if body.get("plannedCount") is not None:
+            b.planned_count = int(body["plannedCount"] or 0)
+        b.version += 1
+        _audit(db, "BATCH", b.id, "编辑迎新批次")
+        db.commit()
+        return {"id": str(b.id)}
+
+
+def activate_batch(bid) -> dict:
+    with session() as db:
+        b = _get_batch(db, bid)
+        if b.status != "DRAFT":
+            raise AppException("INVALID_STATE", "仅草稿批次可启用")
+        b.status = "ACTIVE"
+        b.version += 1
+        _audit(db, "BATCH", b.id, "启用迎新批次", before="DRAFT", after="ACTIVE")
+        db.commit()
+        return {"id": str(b.id), "status": b.status}
+
+
+def close_batch(bid) -> dict:
+    with session() as db:
+        b = _get_batch(db, bid)
+        if b.status != "ACTIVE":
+            raise AppException("INVALID_STATE", "仅进行中批次可结束")
+        b.status = "CLOSED"
+        b.version += 1
+        _audit(db, "BATCH", b.id, "结束迎新批次", before="ACTIVE", after="CLOSED")
+        db.commit()
+        return {"id": str(b.id), "status": b.status}
+
+
+def delete_batch(bid, reason: str) -> dict:
+    if not reason or len(reason.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
+    with session() as db:
+        b = _get_batch(db, bid)
+        if b.status == "ACTIVE":
+            raise AppException("INVALID_STATE", "进行中的批次不可作废，请先结束")
+        b.is_deleted = True
+        b.version += 1
+        _audit(db, "BATCH", b.id, "作废迎新批次", reason.strip())
+        db.commit()
+        return {"id": str(b.id)}
+
+
+# ═══ 现场报到点 ═══
+
+L_POINT = {"ENABLED": "启用", "DISABLED": "停用"}
+
+
+def _point_row(p):
+    return {"id": str(p.id), "name": p.name, "location": p.location or "",
+            "capacity": int(p.capacity or 0), "inCharge": p.in_charge or "",
+            "status": p.status, "statusLabel": L_POINT.get(p.status, p.status),
+            "remark": p.remark or "", "updateTime": _iso(p.updated_at)}
+
+
+def _get_point(db, pid):
+    p = db.get(OrientationCheckinPoint, int(pid))
+    if not p or p.is_deleted or p.tenant_id != _tid():
+        raise not_found("报到点不存在或不在当前数据范围内")
+    return p
+
+
+def list_checkin_points(page, page_size, keyword=None, status=None):
+    with session() as db:
+        q = select(OrientationCheckinPoint).where(OrientationCheckinPoint.tenant_id == _tid(),
+                                                  OrientationCheckinPoint.is_deleted.is_(False))
+        if status:
+            q = q.where(OrientationCheckinPoint.status == status)
+        rows = db.scalars(q.order_by(OrientationCheckinPoint.id.desc())).all()
+        if keyword:
+            kw = keyword.strip()
+            rows = [r for r in rows if kw in (r.name or "") or kw in (r.location or "")]
+        items, total = _page([_point_row(r) for r in rows], page, page_size)
+        return items, total
+
+
+def create_checkin_point(body):
+    name = str(body.get("name") or "").strip()
+    if not name:
+        raise AppException("VALIDATION_ERROR", "报到点名称必填")
+    with session() as db:
+        p = OrientationCheckinPoint(tenant_id=_tid(), name=name, location=body.get("location"),
+                                    capacity=int(body.get("capacity") or 0), in_charge=body.get("inCharge"),
+                                    status="ENABLED", remark=body.get("remark"))
+        db.add(p)
+        db.flush()
+        _audit(db, "CHECKIN_POINT", p.id, "新增报到点", name)
+        db.commit()
+        return {"id": str(p.id)}
+
+
+def update_checkin_point(pid, body):
+    with session() as db:
+        p = _get_point(db, pid)
+        for k, col in {"name": "name", "location": "location", "inCharge": "in_charge", "remark": "remark"}.items():
+            if body.get(k) is not None:
+                setattr(p, col, body[k])
+        if body.get("capacity") is not None:
+            p.capacity = int(body["capacity"] or 0)
+        p.version += 1
+        _audit(db, "CHECKIN_POINT", p.id, "编辑报到点")
+        db.commit()
+        return {"id": str(p.id)}
+
+
+def toggle_checkin_point(pid):
+    with session() as db:
+        p = _get_point(db, pid)
+        p.status = "DISABLED" if p.status == "ENABLED" else "ENABLED"
+        p.version += 1
+        _audit(db, "CHECKIN_POINT", p.id, "切换报到点状态", after=p.status)
+        db.commit()
+        return {"id": str(p.id), "status": p.status}
+
+
+def delete_checkin_point(pid):
+    with session() as db:
+        p = _get_point(db, pid)
+        p.is_deleted = True
+        p.version += 1
+        _audit(db, "CHECKIN_POINT", p.id, "删除报到点")
+        db.commit()
+        return {"id": str(p.id)}
+
+
+# ═══ 报到流程配置 ═══
+
+def _flow_row(f):
+    return {"id": str(f.id), "stepKey": f.step_key, "stepName": f.step_name,
+            "enabled": bool(f.enabled), "required": bool(f.required),
+            "sortOrder": int(f.sort_order or 0), "remark": f.remark or ""}
+
+
+def _ensure_flow_seed(db):
+    exists = db.scalar(select(func.count()).select_from(OrientationFlowConfig).where(
+        OrientationFlowConfig.tenant_id == _tid())) or 0
+    if exists:
+        return
+    for i, s in enumerate(REGISTRATION_STEPS):
+        db.add(OrientationFlowConfig(tenant_id=_tid(), step_key=s["key"], step_name=s["label"],
+                                     enabled=True, required=True, sort_order=i))
+    db.commit()
+
+
+def list_flow_config():
+    with session() as db:
+        _ensure_flow_seed(db)
+        rows = db.scalars(select(OrientationFlowConfig).where(
+            OrientationFlowConfig.tenant_id == _tid(),
+            OrientationFlowConfig.is_deleted.is_(False)).order_by(OrientationFlowConfig.sort_order)).all()
+        return [_flow_row(r) for r in rows]
+
+
+def update_flow_config(fid, body):
+    with session() as db:
+        f = db.get(OrientationFlowConfig, int(fid))
+        if not f or f.is_deleted or f.tenant_id != _tid():
+            raise not_found("流程环节不存在")
+        if body.get("enabled") is not None:
+            f.enabled = bool(body["enabled"])
+        if body.get("required") is not None:
+            f.required = bool(body["required"])
+        if body.get("remark") is not None:
+            f.remark = body["remark"]
+        f.version += 1
+        _audit(db, "FLOW_CONFIG", f.id, "调整流程环节", detail=f.step_name)
+        db.commit()
+        return {"id": str(f.id), "enabled": bool(f.enabled)}
+
+
+# ═══ 迎新通知（本轮不接真实短信/邮件：仅站内渠道已配置，其余显示未配置） ═══
+
+L_NOTICE = {"PENDING": "待发送", "SENT": "已发送", "FAILED": "发送失败", "DISABLED": "渠道未配置"}
+L_CHANNEL = {"INAPP": "站内通知", "SMS": "短信", "EMAIL": "邮件", "MINIAPP": "小程序"}
+CONFIGURED_CHANNELS = {"INAPP"}
+
+
+def _notice_row(n):
+    return {"id": str(n.id), "title": n.title, "content": n.content or "",
+            "channel": n.channel, "channelLabel": L_CHANNEL.get(n.channel, n.channel),
+            "targetScope": n.target_scope or "", "status": n.status,
+            "statusLabel": L_NOTICE.get(n.status, n.status), "failReason": n.fail_reason or "",
+            "sentCount": int(n.sent_count or 0), "updateTime": _iso(n.updated_at)}
+
+
+def list_notice_tasks(page, page_size, keyword=None, status=None, channel=None):
+    with session() as db:
+        q = select(OrientationNoticeTask).where(OrientationNoticeTask.tenant_id == _tid(),
+                                                OrientationNoticeTask.is_deleted.is_(False))
+        if status:
+            q = q.where(OrientationNoticeTask.status == status)
+        if channel:
+            q = q.where(OrientationNoticeTask.channel == channel)
+        rows = db.scalars(q.order_by(OrientationNoticeTask.id.desc())).all()
+        if keyword:
+            kw = keyword.strip()
+            rows = [r for r in rows if kw in (r.title or "")]
+        items, total = _page([_notice_row(r) for r in rows], page, page_size)
+        return items, total
+
+
+def create_notice_task(body):
+    title = str(body.get("title") or "").strip()
+    if not title:
+        raise AppException("VALIDATION_ERROR", "通知标题必填")
+    with session() as db:
+        n = OrientationNoticeTask(tenant_id=_tid(), title=title, content=body.get("content"),
+                                  channel=body.get("channel") or "INAPP",
+                                  target_scope=body.get("targetScope"), status="PENDING")
+        db.add(n)
+        db.flush()
+        _audit(db, "NOTICE", n.id, "新建迎新通知", title)
+        db.commit()
+        return {"id": str(n.id)}
+
+
+def send_notice_task(nid):
+    with session() as db:
+        n = db.get(OrientationNoticeTask, int(nid))
+        if not n or n.is_deleted or n.tenant_id != _tid():
+            raise not_found("通知任务不存在")
+        if n.status == "SENT":
+            raise AppException("INVALID_STATE", "该通知已发送")
+        if n.channel not in CONFIGURED_CHANNELS:
+            n.status = "DISABLED"
+            n.fail_reason = f"{L_CHANNEL.get(n.channel, n.channel)}渠道未配置，请先在系统管理接入"
+            _audit(db, "NOTICE", n.id, "发送失败（渠道未配置）", detail=n.channel)
+        else:
+            n.status = "SENT"
+            n.sent_count = 1
+            n.fail_reason = ""
+            _audit(db, "NOTICE", n.id, "发送站内通知", after="SENT")
+        n.version += 1
+        db.commit()
+        return {"id": str(n.id), "status": n.status, "failReason": n.fail_reason or ""}
+
+
+# ═══ 迎新归档 ═══
+
+L_ARCHIVE = {"PENDING": "待归档", "DONE": "已归档"}
+
+
+def _archive_row(a):
+    return {"id": str(a.id), "archiveName": a.archive_name, "batchNo": a.batch_no or "",
+            "scope": a.scope or "", "status": a.status, "statusLabel": L_ARCHIVE.get(a.status, a.status),
+            "itemCount": int(a.item_count or 0), "archivedBy": a.archived_by or "",
+            "archivedAt": _iso(a.archived_at) or "", "remark": a.remark or "", "updateTime": _iso(a.updated_at)}
+
+
+def list_archives(page, page_size, keyword=None, status=None):
+    with session() as db:
+        q = select(OrientationArchive).where(OrientationArchive.tenant_id == _tid(),
+                                             OrientationArchive.is_deleted.is_(False))
+        if status:
+            q = q.where(OrientationArchive.status == status)
+        rows = db.scalars(q.order_by(OrientationArchive.id.desc())).all()
+        if keyword:
+            kw = keyword.strip()
+            rows = [r for r in rows if kw in (r.archive_name or "")]
+        items, total = _page([_archive_row(r) for r in rows], page, page_size)
+        return items, total
+
+
+def create_archive(body):
+    name = str(body.get("archiveName") or "").strip()
+    if not name:
+        raise AppException("VALIDATION_ERROR", "归档名称必填")
+    with session() as db:
+        a = OrientationArchive(tenant_id=_tid(), archive_name=name, batch_no=body.get("batchNo"),
+                               scope=body.get("scope"), status="PENDING", remark=body.get("remark"))
+        db.add(a)
+        db.flush()
+        _audit(db, "ARCHIVE", a.id, "新建归档任务", name)
+        db.commit()
+        return {"id": str(a.id)}
+
+
+def run_archive(aid):
+    with session() as db:
+        a = db.get(OrientationArchive, int(aid))
+        if not a or a.is_deleted or a.tenant_id != _tid():
+            raise not_found("归档任务不存在")
+        if a.status == "DONE":
+            raise AppException("INVALID_STATE", "该归档已完成")
+        cnt = db.scalar(select(func.count()).select_from(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.is_deleted.is_(False))) or 0
+        name, _role = _op()
+        a.status = "DONE"
+        a.item_count = int(cnt)
+        a.archived_by = name
+        a.archived_at = datetime.utcnow()
+        a.version += 1
+        _audit(db, "ARCHIVE", a.id, "执行归档", after="DONE", detail=f"归档 {cnt} 名新生")
+        db.commit()
+        return {"id": str(a.id), "status": a.status, "itemCount": int(cnt)}

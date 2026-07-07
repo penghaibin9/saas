@@ -7,8 +7,10 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.orientation import (BlockedBody, CommentBody, DormBody, FollowUpBody, IdsBody,
-                                      NoteBody, ReasonBody, RemarkBody, StudentCreate, StudentUpdate)
+from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchUpdate, BlockedBody,
+                                      CommentBody, DormBody, FlowUpdate, FollowUpBody, IdsBody,
+                                      NoteBody, NoticeCreate, PointCreate, PointUpdate, ReasonBody,
+                                      RemarkBody, StudentCreate, StudentUpdate, VerifyBody)
 from app.services import orientation_service as svc
 
 router = APIRouter(prefix="/orientation", tags=["数字迎新"])
@@ -48,6 +50,11 @@ def student_update(sid: str, body: StudentUpdate, user=Depends(get_current_user)
 @router.post("/students/{sid}/void", summary="作废新生（原因≥5字）")
 def student_void(sid: str, body: ReasonBody, user=Depends(get_current_user)):
     return success(svc.void_student(sid, body.reason), message="已作废")
+
+
+@router.post("/students/{sid}/verify", summary="新生信息核验（通过/不通过；不通过原因≥5字）")
+def student_verify(sid: str, body: VerifyBody, user=Depends(get_current_user)):
+    return success(svc.verify_student(sid, body.passed, body.reason), message="已核验")
 
 
 @router.get("/progress", summary="报到进度")
@@ -177,3 +184,125 @@ def audit_logs(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=20
                user=Depends(get_current_user)):
     items, total = svc.list_audit(page, pageSize, biz_type=bizType, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
+
+
+# ═══ 迎新批次 ═══
+
+@router.get("/batches", summary="迎新批次列表")
+def batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+            keyword: Optional[str] = None, status: Optional[str] = None,
+            user=Depends(get_current_user)):
+    items, total = svc.list_batches(page, pageSize, keyword=keyword, status=status)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/batches/{bid}", summary="批次详情")
+def batch_detail(bid: str, user=Depends(get_current_user)):
+    return success(svc.get_batch(bid))
+
+
+@router.post("/batches", summary="新建批次")
+def batch_create(body: BatchCreate, user=Depends(get_current_user)):
+    return success(svc.create_batch(body.model_dump()), message="已新建")
+
+
+@router.put("/batches/{bid}", summary="编辑批次")
+def batch_update(bid: str, body: BatchUpdate, user=Depends(get_current_user)):
+    return success(svc.update_batch(bid, body.model_dump()), message="已保存")
+
+
+@router.post("/batches/{bid}/activate", summary="启用批次（草稿→进行中）")
+def batch_activate(bid: str, user=Depends(get_current_user)):
+    return success(svc.activate_batch(bid), message="已启用")
+
+
+@router.post("/batches/{bid}/close", summary="结束批次（进行中→已结束）")
+def batch_close(bid: str, user=Depends(get_current_user)):
+    return success(svc.close_batch(bid), message="已结束")
+
+
+@router.post("/batches/{bid}/void", summary="作废批次（原因≥5字）")
+def batch_void(bid: str, body: ReasonBody, user=Depends(get_current_user)):
+    return success(svc.delete_batch(bid, body.reason), message="已作废")
+
+
+# ═══ 现场报到点 ═══
+
+@router.get("/checkin-points", summary="现场报到点列表")
+def checkin_points(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                   keyword: Optional[str] = None, status: Optional[str] = None,
+                   user=Depends(get_current_user)):
+    items, total = svc.list_checkin_points(page, pageSize, keyword=keyword, status=status)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/checkin-points", summary="新增报到点")
+def checkin_point_create(body: PointCreate, user=Depends(get_current_user)):
+    return success(svc.create_checkin_point(body.model_dump()), message="已新增")
+
+
+@router.put("/checkin-points/{pid}", summary="编辑报到点")
+def checkin_point_update(pid: str, body: PointUpdate, user=Depends(get_current_user)):
+    return success(svc.update_checkin_point(pid, body.model_dump()), message="已保存")
+
+
+@router.post("/checkin-points/{pid}/toggle", summary="启用/停用报到点")
+def checkin_point_toggle(pid: str, user=Depends(get_current_user)):
+    return success(svc.toggle_checkin_point(pid), message="已切换")
+
+
+@router.post("/checkin-points/{pid}/delete", summary="删除报到点")
+def checkin_point_delete(pid: str, user=Depends(get_current_user)):
+    return success(svc.delete_checkin_point(pid), message="已删除")
+
+
+# ═══ 报到流程配置 ═══
+
+@router.get("/flow-config", summary="报到流程配置")
+def flow_config(user=Depends(get_current_user)):
+    return success(svc.list_flow_config())
+
+
+@router.put("/flow-config/{fid}", summary="调整流程环节（启用/必办）")
+def flow_config_update(fid: str, body: FlowUpdate, user=Depends(get_current_user)):
+    return success(svc.update_flow_config(fid, body.model_dump()), message="已更新")
+
+
+# ═══ 迎新通知 ═══
+
+@router.get("/notices", summary="迎新通知列表")
+def notices(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+            keyword: Optional[str] = None, status: Optional[str] = None, channel: Optional[str] = None,
+            user=Depends(get_current_user)):
+    items, total = svc.list_notice_tasks(page, pageSize, keyword=keyword, status=status, channel=channel)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/notices", summary="新建通知")
+def notice_create(body: NoticeCreate, user=Depends(get_current_user)):
+    return success(svc.create_notice_task(body.model_dump()), message="已新建")
+
+
+@router.post("/notices/{nid}/send", summary="发送通知（仅站内已配置，短信/邮件显示未配置）")
+def notice_send(nid: str, user=Depends(get_current_user)):
+    return success(svc.send_notice_task(nid), message="已提交发送")
+
+
+# ═══ 迎新归档 ═══
+
+@router.get("/archives", summary="迎新归档列表")
+def archives(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+             keyword: Optional[str] = None, status: Optional[str] = None,
+             user=Depends(get_current_user)):
+    items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/archives", summary="新建归档任务")
+def archive_create(body: ArchiveCreate, user=Depends(get_current_user)):
+    return success(svc.create_archive(body.model_dump()), message="已新建")
+
+
+@router.post("/archives/{aid}/run", summary="执行归档")
+def archive_run(aid: str, user=Depends(get_current_user)):
+    return success(svc.run_archive(aid), message="已归档")

@@ -11,13 +11,84 @@
           <span v-if="brandLine2" class="bpl-brand__sch">{{ brandLine2 }}</span>
         </span>
       </div>
-      <div class="bpl-cmdk">
-        <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="11" cy="11" r="7" />
-          <path d="M21 21l-4.3-4.3" />
-        </svg>
-        <span class="bpl-cmdk__tx">搜索学生、功能…</span>
-        <kbd>⌘K</kbd>
+      <div class="bpl-search">
+        <!-- ① 学生搜索框（仅管理端有 ctx 时显示；后端按数据范围返回） -->
+        <div v-if="ctx" class="bpl-cmdk bpl-cmdk--stu" :class="{ 'is-open': stuOpen }">
+          <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
+          <input
+            ref="stuInput"
+            v-model="stuQuery"
+            class="bpl-cmdk__input"
+            type="text"
+            placeholder="搜学生（姓名 / 学号）"
+            @focus="stuOpen = true"
+            @keydown.enter.prevent="pickFirstStu"
+            @keydown.esc.prevent="stuOpen = false"
+            @blur="closeStuSoon"
+          />
+          <div v-if="stuOpen && stuQuery.trim().length >= 2" class="bpl-cmdk__panel" @mousedown.prevent>
+            <template v-if="stuResults.length">
+              <div class="bpl-cmdk__grp">学生</div>
+              <a
+                v-for="s in stuResults"
+                :key="'stu-' + s.id"
+                class="bpl-cmdk__opt"
+                href="javascript:void(0)"
+                @click="pickStu(s)"
+              >
+                <span class="bpl-cmdk__opt-lb">{{ s.name }}</span>
+                <span class="bpl-cmdk__opt-pt">{{ s.no }}{{ s.sub ? ' · ' + s.sub : '' }}</span>
+              </a>
+            </template>
+            <div v-else-if="stuSearching" class="bpl-cmdk__loading">正在搜索学生…</div>
+            <div v-else class="bpl-cmdk__empty">未找到「{{ stuQuery }}」相关学生</div>
+          </div>
+        </div>
+
+        <!-- ② 功能 / 帮助搜索框（功能页面 + 帮助文档 + 业务流程图） -->
+        <div class="bpl-cmdk bpl-cmdk--fn" :class="{ 'is-open': fnOpen }">
+          <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
+          <input
+            ref="fnInput"
+            v-model="fnQuery"
+            class="bpl-cmdk__input"
+            type="text"
+            placeholder="搜功能、帮助文档、流程图"
+            @focus="fnOpen = true"
+            @keydown.enter.prevent="pickFirstFn"
+            @keydown.down.prevent="moveFn(1)"
+            @keydown.up.prevent="moveFn(-1)"
+            @keydown.esc.prevent="fnOpen = false"
+            @blur="closeFnSoon"
+          />
+          <kbd>⌘K</kbd>
+          <div v-if="fnOpen" class="bpl-cmdk__panel" @mousedown.prevent>
+            <template v-if="fnResults.length">
+              <template v-for="grp in fnGrouped" :key="grp.kind">
+                <div class="bpl-cmdk__grp">{{ grp.kind }}</div>
+                <a
+                  v-for="r in grp.items"
+                  :key="r._idx"
+                  class="bpl-cmdk__opt"
+                  :class="{ 'is-active': r._idx === fnActive, 'is-disabled': r.disabled }"
+                  href="javascript:void(0)"
+                  @click="pickFn(r)"
+                  @mouseenter="fnActive = r._idx"
+                >
+                  <span class="bpl-cmdk__opt-lb">{{ r.label }}</span>
+                  <span v-if="r.badge" class="bpl-planbadge" :class="'bpl-planbadge--' + (r.disabled ? 'planned' : 'partial')">{{ r.badge }}</span>
+                </a>
+              </template>
+            </template>
+            <div v-else class="bpl-cmdk__empty">未找到「{{ fnQuery }}」相关功能或帮助</div>
+          </div>
+        </div>
       </div>
       <div class="bpl-top-r">
         <div class="bpl-thdots" title="主题皮肤 themePreference">
@@ -45,13 +116,8 @@
           </svg>
           <span v-if="pendingCount" class="bpl-bell__b">{{ pendingCount }}</span>
         </span>
-        <div v-if="roleName" class="bpl-role">
-          <span class="bpl-role__av">{{ userChar }}</span>
-          <span class="bpl-role__info">
-            <span class="bpl-role__nm">{{ userName }}</span>
-            <span class="bpl-role__ur">{{ roleName }}</span>
-          </span>
-        </div>
+        <!-- 顶栏用户身份/退出由全局 AppUserChip 统一承载（见 App.vue），
+             此处不再渲染重复的角色胶囊，避免与右上角悬浮胶囊重影。 -->
         <slot name="user" />
       </div>
     </header>
@@ -77,7 +143,44 @@
 
       <!-- 左二级 196px 浅色业务导航（分组小标题 + 计数徽标）；无 ctx 时回退为旧版单栏菜单 -->
       <aside class="bpl-aside" :class="{ 'is-hidden': hideAside, 'bpl-aside--subnav': !!ctx }">
-        <slot name="menu">
+        <!-- navPlan 驱动的「完整二级 + 三级」施工地图（12 个业务模块 layout：有 ctx、无自定义 #menu）。
+             implemented/partial 可点；planned 灰色「待施工」不可点，点击仅 toast；角色可见性见 isPlannerView。 -->
+        <nav v-if="ctx && !$slots.menu" class="bpl-tree">
+          <div class="bpl-submods__label">{{ planGroupLabel }}</div>
+          <template v-for="m in planMods" :key="m.key">
+            <!-- 二级模块（有 children 显示展开箭头） -->
+            <a
+              class="bpl-submods__item bpl-tree__mod"
+              :class="{ 'is-active': m.key === planActiveModKey, 'is-disabled': m.disabled && !m.children.length }"
+              href="javascript:void(0)"
+              @click="onTreeMod(m)"
+            >
+              <span
+                v-if="m.children.length"
+                class="bpl-tree__caret"
+                :class="{ 'is-open': isExpanded(m.key) }"
+              >▸</span>
+              <span v-else class="bpl-tree__caret bpl-tree__caret--sp" />
+              <span class="bpl-submods__lb">{{ m.label }}</span>
+              <span v-if="m.badge" class="bpl-planbadge" :class="'bpl-planbadge--' + m.status">{{ m.badge }}</span>
+            </a>
+            <!-- 三级页面（展开时缩进显示） -->
+            <div v-if="m.children.length && isExpanded(m.key)" class="bpl-tree__leaves">
+              <a
+                v-for="leaf in m.children"
+                :key="m.key + '/' + leaf.label"
+                class="bpl-menu__item bpl-tree__leaf"
+                :class="{ 'is-active': !leaf.disabled && leaf.path === currentPath, 'is-disabled': leaf.disabled }"
+                href="javascript:void(0)"
+                @click="onPlanLeaf(leaf)"
+              >
+                <span class="bpl-menu__label">{{ leaf.label }}</span>
+                <span v-if="leaf.badge" class="bpl-planbadge" :class="'bpl-planbadge--' + leaf.status">{{ leaf.badge }}</span>
+              </a>
+            </div>
+          </template>
+        </nav>
+        <slot v-else name="menu">
           <div v-if="ctx && subtitle" class="bpl-aside__head">
             <div class="bpl-aside__title">{{ subtitle }}</div>
             <div v-if="scopeName" class="bpl-aside__meta">{{ scopeName }}</div>
@@ -117,7 +220,10 @@
 
 <script>
 import { AppIcon } from '@/components/ui'
-import { getVisibleAdminMenu, findActiveMenu } from '@/config/adminMenu'
+import { getVisibleAdminMenu, findActiveMenu, SEARCH_ALIASES } from '@/config/adminMenu'
+import { searchHelp } from '@/config/helpContent'
+import { getVisibleNavPlan, findActiveInPlan, searchNavPlan } from '@/config/navPlan'
+import { toast } from '@/utils/toast'
 
 /**
  * BasePortalLayout 门户壳基座（PC-UI v2 · 视觉母版 docs/ui/pc-ui-v2/00-基准-管理端v6三主题.dc.html）
@@ -144,8 +250,14 @@ import { getVisibleAdminMenu, findActiveMenu } from '@/config/adminMenu'
 
 /* 一级图标轨图标（视觉资源，非业务配置；键与 adminMenu 分组 key 对应） */
 const RAIL_ICONS = {
+  /* 6 个新一级模块图标（PC-NAV-6MODULE-REGROUP）；旧 key 保留以兼容任何遗留引用 */
   home: ['M3 11l9-7 9 7', 'M5 10v10h14V10'],
-  workbench: ['M9 11l3 3 8-8', 'M20 12v6a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h9'],
+  workbench: ['M3 11l9-7 9 7', 'M5 10v10h14V10'], // 工作台 · home
+  'student-affairs': ['M9 8a3.2 3.2 0 100 .01', 'M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5', 'M16 8h5M16 12h5'], // 学工中心 · users
+  'academic-affairs': ['M12 6.5C10.5 5 8 4.5 4 5v13c4-.5 6.5 0 8 1.5', 'M12 6.5C13.5 5 16 4.5 20 5v13c-4-.5-6.5 0-8 1.5'], // 教务中心 · book-open
+  graduation: ['M22 10L12 5 2 10l10 5 10-5z', 'M6 12v5c0 2 2.7 3.5 6 3.5s6-1.5 6-3.5v-5'], // 毕业设计中心 · graduation-cap
+  internship: ['M3 7h18v13H3z', 'M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2'], // 岗位实习中心 · briefcase
+  /* 旧分组 key（重组前）保留，避免遗留引用取不到图标 */
   'student-center': ['M9 8a3.2 3.2 0 100 .01', 'M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5', 'M16 8h5M16 12h5'],
   practice: ['M3 7h18v13H3z', 'M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2'],
   'data-center': ['M4 20V10M10 20V4M16 20v-8M22 20H2'],
@@ -191,10 +303,81 @@ export default {
   data() {
     return {
       theme: readThemePreference(),
-      themeOptions: THEME_OPTIONS
+      themeOptions: THEME_OPTIONS,
+      /* ① 学生搜索框（后端按数据范围返回） */
+      stuQuery: '',
+      stuOpen: false,
+      stuResults: [],
+      stuSearching: false,
+      stuTimer: null,
+      stuSeq: 0,
+      stuBlurTimer: null,
+      /* ② 功能 / 帮助搜索框（功能页面 + 帮助文档 + 业务流程图） */
+      fnQuery: '',
+      fnOpen: false,
+      fnActive: 0,
+      fnBlurTimer: null,
+      /* 侧栏树：各二级模块的展开状态 { modKey: true/false }（未记录时默认展开当前路由所属二级） */
+      expandedMods: {}
     }
   },
   computed: {
+    /** 当前角色可见的一级模块 key 集合（用于把搜索结果限制在有权限的范围内） */
+    visibleGroupKeys() {
+      return new Set(getVisibleAdminMenu(this.ctx).map((g) => g.key))
+    },
+    /** 功能/帮助搜索结果：旧名兼容 + 完整目录(navPlan) + 帮助文档/流程图；planned 显示「待施工」不跳转 */
+    fnResults() {
+      const inScope = (p) => {
+        const gk = findActiveMenu(p).groupKey
+        return !gk || this.visibleGroupKeys.has(gk)
+      }
+      const q = this.fnQuery.trim().toLowerCase()
+      const out = []
+      // 旧一级名兼容（数据中心/学生中心/教学实践/权限与流程 → 新归属）
+      const pool = SEARCH_ALIASES.filter((a) => inScope(a.path))
+      const matched = !q
+        ? pool.slice(0, 4)
+        : pool.filter(
+            (a) =>
+              a.label.toLowerCase().includes(q) ||
+              a.keywords.some((k) => {
+                const kk = k.toLowerCase()
+                return kk.includes(q) || q.includes(kk)
+              })
+          )
+      matched.forEach((a) => out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' }))
+      // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通「待施工/未开通」不跳
+      if (q) {
+        for (const r of searchNavPlan(this.fnQuery)) {
+          const kind =
+            r.status === 'planned' ? '规划 · 待施工'
+              : r.status === 'partial' ? '页面 · 待补强'
+                : r.status === 'unauthorized' ? '未开通' : '功能/页面'
+          out.push({ kind, label: r.trail, to: r.disabled ? null : r.path, disabled: r.disabled, badge: r.badge })
+        }
+      }
+      // 帮助文档 / 业务流程图
+      searchHelp(q).forEach((h) => out.push({ kind: h.kind, label: h.title, to: '/admin/help?topic=' + h.id, disabled: false, badge: '' }))
+      // 去重（label+to）后截断
+      const seen = new Set()
+      const dedup = out.filter((r) => {
+        const k = r.label + '|' + r.to
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+      return dedup.slice(0, 16).map((r, i) => ({ ...r, _idx: i }))
+    },
+    /** 按类别分组，供面板分区渲染 */
+    fnGrouped() {
+      const order = ['功能/页面', '页面 · 待补强', '规划 · 待施工', '未开通', '帮助文档', '业务流程图']
+      const map = {}
+      this.fnResults.forEach((r) => {
+        ;(map[r.kind] = map[r.kind] || []).push(r)
+      })
+      return order.filter((k) => map[k]).map((k) => ({ kind: k, items: map[k] }))
+    },
     themeClass() {
       return this.theme ? 'th-' + this.theme : ''
     },
@@ -231,23 +414,50 @@ export default {
       return (this.ctx && this.ctx.pendingCount) || 0
     },
     railItems() {
+      // 一级图标轨 = adminMenu.js 的 6 个一级模块（工作台已作为第一个分组，
+      // 其首叶「我的工作台」指向 /；不再额外合成 home，避免出现两个「工作台」）。
       if (!this.ctx) return []
-      const items = [{ key: 'home', label: '工作台', path: '/' }]
-      for (const group of getVisibleAdminMenu(this.ctx)) {
+      return getVisibleAdminMenu(this.ctx).map((group) => {
         const first = group.children[0]
-        items.push({
+        return {
           key: group.key,
-          label: group.key === 'workbench' && first ? first.label : group.label,
+          label: group.label,
           path: first ? first.path : '',
           badge: group.badge
-        })
-      }
-      return items
+        }
+      })
     },
     railActiveKey() {
+      // 依路径定位一级模块；根路径 / 命中「工作台」首叶，未知路径兜底高亮工作台。
       const path = this.$route ? this.$route.path : ''
-      if (!path || path === '/') return 'home'
-      return findActiveMenu(path).groupKey
+      return findActiveMenu(path).groupKey || 'workbench'
+    },
+    /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
+    isPlannerView() {
+      // 管理员/开发者视角可见 planned/unauthorized；普通业务角色只见 implemented/partial
+      if (import.meta.env && import.meta.env.DEV) return true
+      const rt =
+        (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''
+      return rt === 'SCHOOL_ADMIN' || rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
+    },
+    currentPath() {
+      return this.$route ? this.$route.path : ''
+    },
+    planActive() {
+      return findActiveInPlan(this.currentPath)
+    },
+    planGroup() {
+      const gk = this.railActiveKey
+      return getVisibleNavPlan({ includePlanned: this.isPlannerView }).find((g) => g.key === gk) || null
+    },
+    planGroupLabel() {
+      return this.planGroup ? this.planGroup.label : ''
+    },
+    planMods() {
+      return this.planGroup ? this.planGroup.children : []
+    },
+    planActiveModKey() {
+      return this.planActive.modKey || (this.planMods[0] && this.planMods[0].key) || ''
     }
   },
   methods: {
@@ -272,7 +482,134 @@ export default {
         return
       }
       this.$emit('menu-select', item)
+    },
+    /* ── ② 功能 / 帮助搜索框 ── */
+    pickFn(r) {
+      if (!r) return
+      if (r.disabled) {
+        toast.info(r.badge === '未开通' ? '该功能未开通' : '该功能待施工，敬请期待')
+        return
+      }
+      if (!r.to) return
+      this.fnQuery = ''
+      this.fnOpen = false
+      if (this.$router && r.to !== this.$route.fullPath) this.$router.push(r.to)
+    },
+    pickFirstFn() {
+      const list = this.fnResults
+      if (list.length) this.pickFn(list[this.fnActive] || list[0])
+    },
+    moveFn(delta) {
+      const n = this.fnResults.length
+      if (!n) return
+      this.fnActive = (this.fnActive + delta + n) % n
+    },
+    closeFnSoon() {
+      this.fnBlurTimer = setTimeout(() => {
+        this.fnOpen = false
+      }, 150)
+    },
+    onGlobalKeydown(e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        this.fnOpen = true
+        this.$nextTick(() => this.$refs.fnInput && this.$refs.fnInput.focus())
+      }
+    },
+    /* ── ① 学生搜索框（后端按数据范围过滤，越权搜不到） ── */
+    queueStuSearch(q) {
+      clearTimeout(this.stuTimer)
+      const kw = (q || '').trim()
+      if (!this.ctx || kw.length < 2) {
+        this.stuResults = []
+        this.stuSearching = false
+        return
+      }
+      this.stuSearching = true
+      this.stuTimer = setTimeout(() => this.doStuSearch(kw), 320)
+    },
+    async doStuSearch(kw) {
+      const seq = ++this.stuSeq
+      try {
+        // 动态引入，避免通用壳在顶层耦合学生业务模块
+        const { studentApi } = await import('@/modules/student/api/student.api')
+        const res = await studentApi.getStudents({ keyword: kw, pageSize: 6 })
+        if (seq !== this.stuSeq) return
+        const list = (res && res.code === 0 && res.data && res.data.list) || []
+        this.stuResults = list.map((s) => ({
+          id: s.studentId,
+          name: s.name,
+          no: s.studentNo,
+          sub: [s.className, s.grade ? s.grade + '级' : ''].filter(Boolean).join(' · ')
+        }))
+      } catch {
+        if (seq === this.stuSeq) this.stuResults = []
+      } finally {
+        if (seq === this.stuSeq) this.stuSearching = false
+      }
+    },
+    pickFirstStu() {
+      if (this.stuResults.length) this.pickStu(this.stuResults[0])
+    },
+    pickStu(s) {
+      if (!s || !s.id) return
+      this.stuQuery = ''
+      this.stuOpen = false
+      this.stuResults = []
+      const p = '/admin/student/' + s.id
+      if (this.$router && p !== this.$route.path) this.$router.push(p)
+    },
+    closeStuSoon() {
+      this.stuBlurTimer = setTimeout(() => {
+        this.stuOpen = false
+      }, 150)
+    },
+    /* 二级模块是否展开：未手动记录时，默认展开「当前路由所属二级」 */
+    isExpanded(key) {
+      if (key in this.expandedMods) return this.expandedMods[key]
+      return key === this.planActive.modKey
+    },
+    toggleMod(key) {
+      this.expandedMods = { ...this.expandedMods, [key]: !this.isExpanded(key) }
+    },
+    /* 点二级模块：有三级则展开/折叠；implemented/partial 同时跳转；planned/未开通（且无三级）仅 toast */
+    onTreeMod(m) {
+      if (!m) return
+      if (m.children && m.children.length) this.toggleMod(m.key)
+      if (m.disabled) {
+        if (!m.children || !m.children.length) {
+          toast.info(m.badge === '未开通' ? '该模块未开通' : '该功能待施工，敬请期待')
+        }
+        return
+      }
+      if (m.path && m.path !== this.$route.path) this.$router.push(m.path)
+    },
+    /* 点三级页面：implemented/partial 跳转，planned/未开通仅 toast，不跳空页 */
+    onPlanLeaf(leaf) {
+      if (!leaf) return
+      if (leaf.disabled) {
+        toast.info(leaf.badge === '未开通' ? '该功能未开通' : '该功能待施工，敬请期待')
+        return
+      }
+      if (leaf.path && leaf.path !== this.$route.path) this.$router.push(leaf.path)
     }
+  },
+  watch: {
+    fnQuery() {
+      this.fnActive = 0
+    },
+    stuQuery(q) {
+      this.queueStuSearch(q)
+    }
+  },
+  mounted() {
+    window.addEventListener('keydown', this.onGlobalKeydown)
+  },
+  beforeUnmount() {
+    window.removeEventListener('keydown', this.onGlobalKeydown)
+    if (this.stuBlurTimer) clearTimeout(this.stuBlurTimer)
+    if (this.stuTimer) clearTimeout(this.stuTimer)
+    if (this.fnBlurTimer) clearTimeout(this.fnBlurTimer)
   }
 }
 </script>
@@ -343,12 +680,23 @@ export default {
   color: var(--t3);
   white-space: nowrap;
 }
-.bpl-cmdk {
+.bpl-search {
   flex: 1;
-  min-width: 120px;
-  max-width: 430px;
-  height: 34px;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
   margin: 0 14px;
+  max-width: 640px;
+}
+.bpl-cmdk--stu {
+  flex: 0 1 210px;
+}
+.bpl-cmdk--fn {
+  flex: 1;
+}
+.bpl-cmdk {
+  min-width: 0;
+  height: 34px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -361,7 +709,13 @@ export default {
   cursor: text;
   transition: all 0.12s;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+}
+.bpl-cmdk.is-open {
+  border-color: var(--glow);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--pri-bg);
 }
 .bpl-cmdk:hover {
   border-color: var(--glow);
@@ -383,12 +737,93 @@ export default {
   border: 1px solid var(--card-b);
   color: var(--t3);
 }
+.bpl-cmdk__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--t1);
+  padding: 0;
+}
+.bpl-cmdk__input::placeholder {
+  color: var(--t3);
+}
+.bpl-cmdk__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--card-b);
+  border-radius: 12px;
+  box-shadow: var(--s2, 0 12px 32px -8px rgba(15, 23, 42, 0.25));
+  padding: 6px;
+  z-index: 50;
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: normal;
+}
+.bpl-cmdk__opt {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.bpl-cmdk__opt:hover,
+.bpl-cmdk__opt.is-active {
+  background: var(--pri-bg);
+}
+.bpl-cmdk__opt-lb {
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--t1);
+  white-space: nowrap;
+}
+.bpl-cmdk__opt-pt {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--t3);
+  font-variant-numeric: var(--font-numeric);
+  white-space: nowrap;
+}
+.bpl-cmdk__empty {
+  padding: 12px 10px;
+  font-size: 12.5px;
+  color: var(--t3);
+  text-align: center;
+}
+.bpl-cmdk__grp {
+  font-size: 10.5px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  color: var(--t3);
+  padding: 8px 10px 4px;
+}
+.bpl-cmdk__loading {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--t3);
+  text-align: center;
+}
 .bpl-top-r {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: auto;
+  /* 为右上角全局悬浮的退出胶囊（AppUserChip · fixed）让出空间，避免相互压叠 */
+  margin-right: 144px;
   flex-shrink: 0;
+}
+@media (max-width: 900px) {
+  .bpl-top-r {
+    margin-right: 120px;
+  }
 }
 .bpl-thdots {
   display: flex;
@@ -662,6 +1097,120 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* 二级模块切换区（同一级下的兄弟模块，如 学工中心 → 学生画像/数字迎新/在校服务） */
+.bpl-submods {
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--dv);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bpl-submods__label {
+  font-size: 10.5px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  color: var(--t3);
+  padding: 2px 8px 6px;
+}
+.bpl-submods__item {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  color: var(--t2);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.bpl-submods__item:hover {
+  background: var(--pri-bg);
+  color: var(--t1);
+}
+.bpl-submods__item.is-active {
+  background: var(--pri-bg);
+  color: var(--pri);
+  font-weight: var(--font-weight-semibold);
+}
+.bpl-submods__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bpl-submods__lb {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* planned / partial / unauthorized 灰显与徽标（施工地图） */
+.bpl-submods__item.is-disabled,
+.bpl-menu__item.is-disabled {
+  color: var(--text-disabled, #9aa4b2);
+  cursor: not-allowed;
+}
+.bpl-submods__item.is-disabled:hover {
+  background: transparent;
+  color: var(--text-disabled, #9aa4b2);
+}
+.bpl-planbadge {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 15px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+.bpl-planbadge--planned,
+.bpl-planbadge--unauthorized {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+.bpl-planbadge--partial {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+/* 侧栏树：二级箭头 + 三级缩进 */
+.bpl-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bpl-tree__caret {
+  flex-shrink: 0;
+  width: 12px;
+  font-size: 10px;
+  color: var(--t3);
+  transition: transform 0.15s ease;
+  display: inline-block;
+  text-align: center;
+}
+.bpl-tree__caret.is-open {
+  transform: rotate(90deg);
+}
+.bpl-tree__caret--sp {
+  visibility: hidden;
+}
+.bpl-tree__leaves {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px 0 3px 0;
+}
+.bpl-tree__leaf {
+  padding-left: 30px;
+  font-size: 12.5px;
+}
+.bpl-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .bpl-menu {
   display: flex;
