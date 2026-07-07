@@ -41,8 +41,7 @@ const MENUS = [
   { key: 'emp-students', label: '就业学生', icon: '☰', path: '/admin/employment/students' },
   { key: 'emp-materials', label: '材料审核', icon: '◈', path: '/admin/employment/materials' },
   { key: 'emp-unemployed', label: '未就业帮扶', icon: '◐', path: '/admin/employment/unemployed' },
-  { key: 'emp-followups', label: '跟进记录', icon: '✎', path: '/admin/employment/followups' },
-  { key: 'emp-companies', label: '企业与岗位', icon: '▣', path: '/admin/employment/companies' }
+  { key: 'emp-followups', label: '跟进记录', icon: '✎', path: '/admin/employment/followups' }
 ]
 
 export default {

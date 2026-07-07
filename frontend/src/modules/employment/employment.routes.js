@@ -51,12 +51,6 @@ export const employmentRoutes = {
       name: 'employment-followups',
       component: () => import('@/views/admin/employment/EmploymentFollowUpView.vue'),
       meta: { moduleCode: 'EMPLOYMENT', title: '就业跟进记录', requiresAuth: true, permissionKey: 'employment.followup.create' }
-    },
-    {
-      path: 'companies',
-      name: 'employment-companies',
-      component: () => import('@/views/admin/employment/EmploymentCompanyJobView.vue'),
-      meta: { moduleCode: 'EMPLOYMENT', title: '企业与岗位资源', requiresAuth: true, permissionKey: 'employment.record.view' }
     }
   ]
 }

@@ -4,7 +4,7 @@
  * P11：不再自动 mock-login——未登录必须经登录页（账号密码=真实库 / 演示账号=演示租户）。
  * 令牌存 sessionStorage：F5 刷新不掉登录，关浏览器即清（比 localStorage 更安全）。
  */
-import { API_BASE_URL, API_PREFIX, realApiEnabled } from './config'
+import { API_BASE_URL, API_PREFIX, allowMockFallback, realApiEnabled } from './config'
 import { toast } from '@/utils/toast'
 
 const TOKEN_KEY = 'gx_pc_token_v1'
@@ -28,7 +28,22 @@ function _holdTokens(access, refresh) {
 }
 
 export function shouldTryReal() {
-  return realApiEnabled() && Date.now() >= state.offlineUntil
+  return realApiEnabled()
+}
+
+export function canUseMockFallback() {
+  return allowMockFallback()
+}
+
+export function isWriteMethod(method = 'GET') {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase())
+}
+
+function strictFailure(label, e) {
+  const err = e instanceof Error ? e : new Error(String(e || '真实接口不可用'))
+  err.strict = true
+  err.label = label
+  return err
 }
 
 function markOffline() {
@@ -76,7 +91,14 @@ async function rawRequest(path, { method = 'GET', params, body, auth = true } = 
     state.notified = false
     return payload.data
   } catch (e) {
-    if (!e.biz) markOffline() // 网络层异常才进入离线冷却；业务错误正常抛出
+    if (!e.biz) {
+      markOffline()
+      if (!canUseMockFallback() || isWriteMethod(method)) {
+        e.biz = true
+        e.code = isWriteMethod(method) ? 503002 : 503001
+        e.message = isWriteMethod(method) ? '真实接口不可用，写操作禁止 mock 成功' : '真实接口不可用，生产环境已禁用 mock fallback'
+      }
+    }
     throw e
   } finally {
     clearTimeout(timer)
@@ -221,7 +243,12 @@ export async function requestUpload(path, file, fieldName = 'file') {
     }
     return payload.data
   } catch (e) {
-    if (!e.biz) markOffline()
+    if (!e.biz) {
+      markOffline()
+      e.biz = true
+      e.code = 503002
+      e.message = '真实接口不可用，写操作禁止 mock 成功'
+    }
     throw e
   } finally {
     clearTimeout(timer)
@@ -230,10 +257,27 @@ export async function requestUpload(path, file, fieldName = 'file') {
 
 /** mock 兜底包裹：真实调用失败（后端挂/业务错）时执行 mockFn，页面不白屏 */
 export function withFallback(label, realFn, mockFn) {
-  if (!shouldTryReal()) return mockFn()
+  if (!shouldTryReal()) {
+    if (canUseMockFallback()) return mockFn()
+    return Promise.reject(strictFailure(label, new Error('生产环境已禁用 mock fallback')))
+  }
   return realFn().catch((e) => {
+    if (e.biz || !canUseMockFallback()) throw strictFailure(label, e)
     // eslint-disable-next-line no-console
     console.warn(`[realApi] ${label} 回退 mock：`, e.message)
     return mockFn()
   })
+}
+
+export async function realFirst(label, realFn, mockFn, { write = false } = {}) {
+  if (!shouldTryReal()) {
+    if (!write && canUseMockFallback()) return mockFn()
+    throw strictFailure(label, new Error(write ? '写操作禁止 mock 成功' : '生产环境已禁用 mock fallback'))
+  }
+  try {
+    return await realFn()
+  } catch (e) {
+    if (e.biz || write || !canUseMockFallback()) throw strictFailure(label, e)
+    return mockFn()
+  }
 }

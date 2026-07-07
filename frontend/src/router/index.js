@@ -64,6 +64,11 @@ const router = createRouter({
       redirect: '/admin/system/logs'
     },
     {
+      /* 旧就业企业页已下线：统一跳转岗位实习中心企业库 */
+      path: '/admin/employment/companies',
+      redirect: '/admin/internship/enterprises'
+    },
+    {
       /* 帮助中心（PC-HELP-CENTER）：功能帮助 + 业务流程图，由顶部「功能/帮助」搜索命中进入 */
       path: '/admin/help',
       name: 'admin-help',

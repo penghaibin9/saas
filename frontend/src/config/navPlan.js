@@ -320,10 +320,7 @@ export const NAV_PLAN = [
       PA('企业统计', '/admin/internship/enterprises'),
       PA('企业合作记录', '/admin/internship/enterprises'),
       PA('企业岗位', '/admin/internship/enterprises'),
-      ...P('企业评价'),
-      // 旧就业企业页：隐藏主入口（hidden 不进菜单/不进搜索），仅保留路由兼容——
-      // 新企业库 /admin/internship/enterprises 为唯一主入口；旧 URL 仍可访问且高亮本模块。
-      { label: '企业列表（旧·就业企业库·兼容入口，已隐藏）', path: '/admin/employment/companies', status: 'implemented', disabled: false, badge: '', hidden: true }
+      ...P('企业评价')
     ]),
     mod('in-positions', '岗位库', '/admin/internship/positions', [
       I('岗位列表', '/admin/internship/positions'),

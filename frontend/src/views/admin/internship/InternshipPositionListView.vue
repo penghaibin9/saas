@@ -101,7 +101,7 @@ import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, L
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { positionApi } from '@/modules/internship/api/position.api'
-import { POSITION_STATUS } from '@/mocks/internship/position.mock'
+import { POSITION_STATUS } from '@/modules/internship/constants/position.constants'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', companyId: '', risk: '' })

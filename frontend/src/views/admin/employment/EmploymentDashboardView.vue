@@ -69,7 +69,7 @@ const LINKS = {
   students: '/admin/employment/students',
   materials: '/admin/employment/materials',
   unemployed: '/admin/employment/unemployed',
-  companies: '/admin/employment/companies'
+  companies: '/admin/internship/enterprises'
 }
 
 export default {

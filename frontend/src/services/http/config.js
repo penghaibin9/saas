@@ -4,7 +4,7 @@
  *   1) VITE_API_BASE_URL（显式配置，只填「源」如 http://服务器IP，勿带 /api，前缀 /api/v1 会自动拼接）
  *   2) 开发模式（import.meta.env.DEV）→ http://localhost:8000
  *   3) 生产构建未配置 → 同源（''），最终请求形如 /api/v1/... ，由 Nginx 的 location /api/ 反代到后端
- * localStorage.useRealApi='false' 可一键回退纯 mock。
+ * mock fallback 仅允许开发构建在读接口失败时使用；生产构建和写操作不回退 mock。
  */
 export const API_BASE_URL = (() => {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
@@ -15,10 +15,16 @@ export const API_BASE_URL = (() => {
 
 export const API_PREFIX = '/api/v1'
 
+export function isProdBuild() {
+  const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
+  return !!env.PROD
+}
+
+export function allowMockFallback() {
+  const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
+  return !!env.DEV
+}
+
 export function realApiEnabled() {
-  try {
-    return window.localStorage.getItem('useRealApi') !== 'false'
-  } catch {
-    return true
-  }
+  return true
 }
