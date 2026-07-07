@@ -51,11 +51,15 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""                  # 预留（缓存）
     FILE_STORAGE_ENDPOINT: str = ""      # 预留（MinIO/对象存储）
 
-    # ── 数据库分项配置（DATABASE_URL 留空时按此组装；部署演示用 MySQL）──
-    DB_DRIVER: str = "sqlite"            # sqlite（本地 dev，默认，保留不删）/ mysql（部署演示）/ postgresql
+    # ── 数据库分项配置（DATABASE_URL 留空时按此组装）──
+    # MySQL-only 收口（2026-07-07）：正式开发/测试/部署统一 MySQL(utf8mb4)。
+    #   mysql       → 正式（默认）
+    #   sqlite      → legacy · 仅历史临时演示（保留不删）
+    #   postgresql  → legacy · 仅历史兼容（保留不删）
+    DB_DRIVER: str = "mysql"
     DB_HOST: str = "127.0.0.1"
     DB_PORT: int = 3306
-    DB_NAME: str = "saas_lifecycle"
+    DB_NAME: str = "student_lifecycle_dev"   # 开发库标准名（utf8mb4 / utf8mb4_unicode_ci）
     DB_USER: str = "saas_user"
     DB_PASSWORD: str = ""               # 禁止写进仓库 / AI执行状态；仅经 .env / 环境变量注入
     DB_SQLITE_PATH: str = "./data/dev.db"  # DB_DRIVER=sqlite 时的库文件（保留 SQLite dev 模式）
@@ -67,7 +71,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5188"
 
     # ── 任务 BACKEND-OVERNIGHT 追加（与旧键并存，旧键继续生效）──
-    TEST_DATABASE_URL: str = "sqlite+pysqlite:///:memory:"   # pytest / 本地无 PG 时用
+    # MySQL-only 收口：测试库标准 = MySQL student_lifecycle_test（utf8mb4）。
+    # 密码经 .env / 环境变量注入，禁止写死；无本机 MySQL 时可临时置 sqlite（legacy 演示，不得当 MySQL 验收）。
+    TEST_DATABASE_URL: str = "mysql+pymysql://saas_user:@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4"
     JWT_SECRET_KEY: str = ""            # 优先级高于 JWT_SECRET；生产必须改
     JWT_ALGORITHM: str = ""             # 优先级高于 JWT_ALG
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120

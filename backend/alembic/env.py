@@ -16,7 +16,15 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# 连接串优先级：env DATABASE_URL > 应用配置 effective_database_url（MySQL-only 收口后默认 MySQL）
+#              > alembic.ini 占位默认。确保迁移默认落 MySQL，不再回落 PostgreSQL 占位。
 env_url = os.environ.get("DATABASE_URL", "").strip()
+if not env_url:
+    try:
+        from app.core.config import settings  # noqa: E402
+        env_url = (settings.effective_database_url or "").strip()
+    except Exception:
+        env_url = ""
 if env_url:
     config.set_main_option("sqlalchemy.url", env_url)
 

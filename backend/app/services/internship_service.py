@@ -286,8 +286,9 @@ def list_weekly_reports(page, page_size, status=None, keyword=None):
                                        WeeklyReport.is_deleted.is_(False))
         if status:
             q = q.where(WeeklyReport.status == status)
-        rows = db.scalars(q.order_by(WeeklyReport.submitted_at.desc().nullslast()
-                                     if hasattr(WeeklyReport.submitted_at, 'desc') else WeeklyReport.id.desc())).all()
+        rows = db.scalars(q.order_by(WeeklyReport.submitted_at.is_(None),
+                                     WeeklyReport.submitted_at.desc(),
+                                     WeeklyReport.id.desc())).all()
         items = []
         for w in rows:
             rec = db.get(InternshipRecord, w.internship_id)
