@@ -1,0 +1,37 @@
+"""毕业设计中心 · 毕设看板测试：真实聚合结构 + 待办含 hint/route + 答辩待发布计数联动 + 风险预警为列表。
+全部经 HTTP client 走真库(db_mode)。"""
+from __future__ import annotations
+
+DASH = "/api/v1/graduation/dashboard"
+DG = "/api/v1/graduation/defense-groups"
+
+
+def _todo(data, tid):
+    return next((t for t in data["todos"] if t["id"] == tid), None)
+
+
+def test_dashboard_structure_and_todo_hints(client, auth_headers, db_mode):
+    h = auth_headers
+    data = client.get(DASH, headers=h).json()["data"]
+    assert isinstance(data["stats"], list) and len(data["stats"]) >= 5
+    assert isinstance(data["flow"], list) and data["flow"]
+    assert isinstance(data["riskAlerts"], list)
+    # 待办每项都有 hint + route（前端模板依赖 t.hint）
+    assert data["todos"]
+    for t in data["todos"]:
+        assert t["hint"] and t["route"]
+    assert _todo(data, "t4")["label"].startswith("答辩组")
+
+
+def test_pending_defense_count_reflects_new_group(client, auth_headers, db_mode):
+    h = auth_headers
+    before = _todo(client.get(DASH, headers=h).json()["data"], "t4")["count"]
+
+    client.post(DG, headers=h, json={"groupName": "看板答辩组", "chair": "组长", "location": "L1",
+                                     "members": ["评委1"], "secretary": "秘书"})
+
+    after = _todo(client.get(DASH, headers=h).json()["data"], "t4")["count"]
+    assert after == before + 1
+
+    stat = next(s for s in client.get(DASH, headers=h).json()["data"]["stats"] if s["label"] == "答辩待发布")
+    assert int(stat["value"]) == after

@@ -161,21 +161,21 @@
                 :class="{ 'is-open': isExpanded(m.key) }"
               >▸</span>
               <span v-else class="bpl-tree__caret bpl-tree__caret--sp" />
-              <span class="bpl-submods__lb">{{ m.label }}</span>
-              <span v-if="m.badge" class="bpl-planbadge" :class="'bpl-planbadge--' + m.status">{{ m.badge }}</span>
+              <span class="bpl-submods__lb" :title="m.label">{{ m.label }}</span>
+              <span v-if="m.badge && m.status !== 'planned'" class="bpl-planbadge" :class="'bpl-planbadge--' + m.status">{{ m.badge }}</span>
             </a>
             <!-- 三级页面（展开时缩进显示） -->
             <div v-if="m.children.length && isExpanded(m.key)" class="bpl-tree__leaves">
               <a
                 v-for="leaf in m.children"
-                :key="m.key + '/' + leaf.label"
+                :key="leafKey(m, leaf)"
                 class="bpl-menu__item bpl-tree__leaf"
-                :class="{ 'is-active': !leaf.disabled && leaf.path === currentPath, 'is-disabled': leaf.disabled }"
+                :class="{ 'is-active': isLeafActive(m, leaf), 'is-disabled': leaf.disabled }"
                 href="javascript:void(0)"
-                @click="onPlanLeaf(leaf)"
+                @click="onPlanLeaf(leaf, m)"
               >
-                <span class="bpl-menu__label">{{ leaf.label }}</span>
-                <span v-if="leaf.badge" class="bpl-planbadge" :class="'bpl-planbadge--' + leaf.status">{{ leaf.badge }}</span>
+                <span class="bpl-menu__label" :title="leaf.label">{{ leaf.label }}</span>
+                <span v-if="leaf.badge && leaf.status !== 'planned'" class="bpl-planbadge" :class="'bpl-planbadge--' + leaf.status">{{ leaf.badge }}</span>
               </a>
             </div>
           </template>
@@ -222,7 +222,7 @@
 import { AppIcon } from '@/components/ui'
 import { getVisibleAdminMenu, findActiveMenu, SEARCH_ALIASES } from '@/config/adminMenu'
 import { searchHelp } from '@/config/helpContent'
-import { getVisibleNavPlan, findActiveInPlan, searchNavPlan } from '@/config/navPlan'
+import { getVisibleNavPlan, findActiveInPlan, searchNavPlan, navRefMatches } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 /**
@@ -318,7 +318,9 @@ export default {
       fnActive: 0,
       fnBlurTimer: null,
       /* 侧栏树：各二级模块的展开状态 { modKey: true/false }（未记录时默认展开当前路由所属二级） */
-      expandedMods: {}
+      expandedMods: {},
+      /* 三级菜单被点击的唯一 leafKey（用于同 path 多叶子的点击反馈/高亮跟随；路由切换后失效自动回退路由匹配） */
+      clickedLeafKey: ''
     }
   },
   computed: {
@@ -443,8 +445,12 @@ export default {
     currentPath() {
       return this.$route ? this.$route.path : ''
     },
+    currentNavRef() {
+      if (!this.$route) return ''
+      return this.$route.fullPath.split('#')[0]
+    },
     planActive() {
-      return findActiveInPlan(this.currentPath)
+      return findActiveInPlan(this.currentPath, this.currentNavRef)
     },
     planGroup() {
       const gk = this.railActiveKey
@@ -458,6 +464,35 @@ export default {
     },
     planActiveModKey() {
       return this.planActive.modKey || (this.planMods[0] && this.planMods[0].key) || ''
+    },
+    /* 按当前路由定位应高亮的唯一三级叶子：取「最具体」匹配（路径越长越具体、带 query 精确匹配优先），
+       避免形如 /admin/graduation 的看板叶子用前缀规则抢占所有子页；同 path 多叶子取其中第一个。 */
+    routeActiveLeafKey() {
+      let best = { key: '', score: -1 }
+      for (const m of this.planMods) {
+        for (const leaf of (m.children || [])) {
+          if (leaf.disabled || !leaf.path) continue
+          if (!navRefMatches(this.currentNavRef, leaf.path)) continue
+          const score = leaf.path.length + (leaf.path.indexOf('?') >= 0 ? 1000 : 0)
+          if (score > best.score) best = { key: m.key + '/' + leaf.label, score }
+        }
+      }
+      return best.key
+    },
+    /* 生效高亮：优先「用户刚点且该叶子仍在当前路由上」的 leafKey（点击反馈/同 path 兄弟切换），
+       否则回退路由首个匹配叶子；始终只有一个叶子高亮。 */
+    effectiveActiveLeafKey() {
+      const ck = this.clickedLeafKey
+      if (ck) {
+        for (const m of this.planMods) {
+          for (const leaf of (m.children || [])) {
+            if (m.key + '/' + leaf.label === ck) {
+              return leaf.path && navRefMatches(this.currentNavRef, leaf.path) ? ck : this.routeActiveLeafKey
+            }
+          }
+        }
+      }
+      return this.routeActiveLeafKey
     }
   },
   methods: {
@@ -582,16 +617,32 @@ export default {
         }
         return
       }
-      if (m.path && m.path !== this.$route.path) this.$router.push(m.path)
+      // 精确比较目标与当前完整 URL：避免 /admin/graduation 这类「前缀」被 navRefMatches
+      // 判为「已在此」而跳过跳转（导致从子页点看板/总览时点了不动）。
+      if (m.path && m.path !== this.currentNavRef) this.$router.push(m.path)
     },
-    /* 点三级页面：implemented/partial 跳转，planned/未开通仅 toast，不跳空页 */
-    onPlanLeaf(leaf) {
+    navRefMatches,
+    /* 叶子唯一标识（与模板 :key 一致）：同 path 多叶子也能各自区分高亮/点击。 */
+    leafKey(m, leaf) {
+      return m.key + '/' + leaf.label
+    },
+    /* 三级高亮：一律按唯一 leafKey 匹配，保证任何路由下最多一个叶子高亮，
+       杜绝「同 path 多叶子全部连成一片高亮」。 */
+    isLeafActive(m, leaf) {
+      return !leaf.disabled && this.leafKey(m, leaf) === this.effectiveActiveLeafKey
+    },
+    /* 点三级页面：implemented/partial 跳转（含 query 的 panel 切换），planned/未开通仅 toast。
+       无论 path 是否已匹配，都记下被点叶子的 leafKey → 高亮跟随点击移动，杜绝「再点不动无反馈」。 */
+    onPlanLeaf(leaf, m) {
       if (!leaf) return
       if (leaf.disabled) {
         toast.info(leaf.badge === '未开通' ? '该功能未开通' : '该功能待施工，敬请期待')
         return
       }
-      if (leaf.path && leaf.path !== this.$route.path) this.$router.push(leaf.path)
+      if (m) this.clickedLeafKey = this.leafKey(m, leaf)
+      // 精确比较：只要目标与当前完整 URL 不同就跳转，避免 /admin/graduation 这类前缀路径
+      // 被 navRefMatches 判为「已在此」而跳过跳转（这是「点毕设总览看不了东西」的真因）。
+      if (leaf.path && leaf.path !== this.currentNavRef) this.$router.push(leaf.path)
     }
   },
   watch: {
@@ -1197,15 +1248,71 @@ export default {
 .bpl-tree__caret--sp {
   visibility: hidden;
 }
+/* ══ 侧栏施工地图：二级(分组标题) ↔ 三级(具体页面) 强层级区分 ══ */
+/* 二级模块：像“分组标题”——更大更粗、颜色最深、组间留白，箭头醒目 */
+.bpl-tree .bpl-tree__mod {
+  font-size: 13.5px;
+  font-weight: var(--font-weight-bold);
+  color: var(--t1);
+  margin-top: 8px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.bpl-tree .bpl-tree__mod:first-of-type {
+  margin-top: 2px;
+}
+.bpl-tree .bpl-tree__mod .bpl-tree__caret {
+  font-size: 11px;
+  color: var(--t2);
+}
+.bpl-tree .bpl-tree__mod .bpl-submods__lb {
+  letter-spacing: 0.01em;
+}
+.bpl-tree .bpl-tree__mod.is-disabled {
+  color: var(--text-disabled, #9aa4b2);
+  font-weight: var(--font-weight-semibold);
+}
+/* 三级容器：整组明显右缩进 + 左侧竖引导线 */
 .bpl-tree__leaves {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin: 1px 0 3px 0;
+  margin: 1px 0 7px 16px;
+  /* 竖引导线：同侧栏分隔线同色系，加深到清晰可见 */
+  border-left: 1.5px solid rgba(120, 144, 190, 0.42);
 }
-.bpl-tree__leaf {
-  padding-left: 30px;
+/* 三级页面：小字浅色 + 与竖线相连的长横向连接符（├── 树形），明显缩进、一眼看出是子级 */
+.bpl-tree .bpl-tree__leaf {
+  position: relative;
+  padding: 6px 10px 6px 34px;
   font-size: 12.5px;
+  font-weight: 400;
+  color: var(--t3);
+}
+.bpl-tree .bpl-tree__leaf::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 24px;
+  height: 1.5px;
+  background: rgba(120, 144, 190, 0.42);
+}
+.bpl-tree .bpl-tree__leaf:hover {
+  color: var(--t1);
+}
+.bpl-tree .bpl-tree__leaf.is-disabled {
+  color: var(--text-disabled, #9aa4b2);
+}
+.bpl-tree .bpl-tree__leaf.is-disabled::before {
+  opacity: 0.45;
+}
+.bpl-tree .bpl-tree__leaf.is-active {
+  color: var(--pri);
+  font-weight: var(--font-weight-medium);
+}
+.bpl-tree .bpl-tree__leaf.is-active::before {
+  background: var(--pri);
 }
 .bpl-menu__item {
   display: flex;

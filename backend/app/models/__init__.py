@@ -23,9 +23,17 @@ from app.models.campus_service import (CsAuditTrail, CsDiscipline, CsDormExcepti
                                         CsServiceStudent, CsWorkOrder)
 from app.models.academic import (AcademicAuditTrail, AcademicGrade, AcademicIntervention,  # noqa: F401
                                     AcademicMakeup, AcademicRetake, AcademicStudent, AcademicWarning)
-from app.models.graduation import (GraduationAuditTrail, GraduationDefenseGroup,  # noqa: F401
-                                      GraduationFinal, GraduationProposal, GraduationStudent,
-                                      GraduationTopic)
+from app.models.graduation import (GraduationArchiveRecord, GraduationAuditTrail,  # noqa: F401
+                                      GraduationBatch, GraduationDefenseGroup, GraduationDefenseScore,
+                                      GraduationFinal, GraduationGrade, GraduationGuidance,
+                                      GraduationDefenseExpert, GraduationGradeAppeal,
+                                      GraduationMentor, GraduationMentorAssignment,
+                                      GraduationMentorEval, GraduationMidterm, GraduationPeerReview,
+                                      GraduationPlagiarismCheck, GraduationProposal, GraduationReview,
+                                      GraduationRiskCase,
+                                      GraduationStudent, GraduationTaskBook, GraduationTemplate,
+                                      GraduationTopic, GraduationTopicChangeRequest,
+                                      GraduationTopicChoice, GraduationTopicRound)
 from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup,  # noqa: F401
                                      EmpJob, EmpMaterial, EmpStudent,
                                      InternshipEnterpriseContact)

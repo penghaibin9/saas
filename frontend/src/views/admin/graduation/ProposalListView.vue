@@ -10,6 +10,7 @@
     </template>
 
     <div class="mp-stack">
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
       <div class="mp-tabs">
         <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}
@@ -31,6 +32,10 @@
           <StatusTag v-if="row.isResubmit" type="info" :label="row.version + ' 重交'" />
           <span v-else>{{ row.version }}</span>
         </template>
+        <template #cell-submitAt="{ row }">
+          <AppDateDisplay :value="row.submitAt" mode="datetime" />
+          <div v-if="row.deadline" class="mp-cell-sub"><AppDateDisplay :value="row.deadline" mode="deadline" /></div>
+        </template>
         <template #cell-status="{ row }">
           <StatusTag :status="row.status === 'NOT_SUBMITTED' ? 'OVERDUE' : row.status" :label="row.statusLabel" dot />
         </template>
@@ -42,7 +47,7 @@
         </template>
       </DataTable>
 
-      <p class="mp-note">当前角色为学院管理员：可查看与催办；「通过 / 驳回」按钮在批阅详情内按指导教师权限控制。</p>
+      <p class="mp-note">筛选默认「全部时间」，空日期不会导致查无数据。「通过 / 驳回」在批阅详情内按指导教师权限控制。</p>
     </div>
   </ModulePageShell>
 </template>
@@ -50,22 +55,23 @@
 <script>
 /** 开题材料列表（/admin/graduation/proposals）。 */
 import {
-  ModulePageShell, ModuleToolbar, DataTable,
+  ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
   StatusTag, LoadingState, ErrorState, EmptyState
 } from '@/components/business'
+import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ProposalListView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true,
       error: '',
       rows: [],
-      filters: { status: 'PENDING_REVIEW' },
+      filters: { status: 'PENDING_REVIEW', dateStart: '', dateEnd: '' },
       pagination: { page: 1, pageSize: 10, total: 0 },
       tabs: [
         { value: 'PENDING_REVIEW', label: '待审阅' },
@@ -78,7 +84,7 @@ export default {
         { key: 'student', title: '学生' },
         { key: 'topic', title: '课题' },
         { key: 'version', title: '版本' },
-        { key: 'submitAt', title: '提交时间' },
+        { key: 'submitAt', title: '提交 / 截止' },
         { key: 'attachments', title: '附件' },
         { key: 'status', title: '状态' },
         { key: 'actions', title: '操作', width: '80px' }
@@ -86,6 +92,13 @@ export default {
     }
   },
   computed: {
+    filterFields() {
+      return [{
+        key: 'date', label: '提交时间', type: 'daterange',
+        startKey: 'dateStart', endKey: 'dateEnd',
+        memoryKey: 'graduation.proposals.dateRange', emptyLabel: '全部时间'
+      }]
+    },
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [{ key: 'exportProposals', label: '导出开题材料' }]
@@ -102,15 +115,25 @@ export default {
       this.pagination.page = 1
       this.load()
     },
+    onFilterSearch() { this.pagination.page = 1; this.load() },
+    onFilterReset() {
+      this.filters = { ...this.filters, dateStart: '', dateEnd: '' }
+      this.pagination.page = 1
+      this.load()
+    },
     onPageChange(page) {
       this.pagination.page = page
       this.load()
     },
-    onToolbar() {
-      toast.success('开题材料导出任务已创建（脱敏 + 水印），已写入审计日志')
+    async onToolbar() {
+      const res = await graduationApi.downloadProposalsExport(this.filters.status)
+      if (res.code === 0) toast.success('开题材料台账已导出（含导出人/时间抬头），已写入审计日志')
+      else toast.error(res.message || '导出失败')
     },
-    remind(row) {
-      toast.success('已向 ' + row.studentName + ' 发送开题催交提醒（GD-R04 联动），催办已留痕')
+    async remind(row) {
+      const res = await graduationApi.remindProposal(row.projectId || row.gdStudentId)
+      if (res.code === 0) toast.success('已向 ' + row.studentName + ' 发送开题催交提醒（GD-R04 联动），催办已留痕')
+      else toast.error(res.message || '催交失败')
     },
     async load() {
       this.loading = true

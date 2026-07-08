@@ -1,0 +1,78 @@
+"""毕业设计中心 · 导师管理 Batch 4 闭环测试：
+导师评价（评分范围/等级/历史）+ 批量分配（容量/资格冲突跳过）+ 分配冲突自动检测 + 批量归档。
+全部经 HTTP client 走真库(db_mode)。"""
+from __future__ import annotations
+
+STU = "/api/v1/students"
+GD_STU = "/api/v1/graduation/gd-students"
+M = "/api/v1/graduation/gd-mentors"
+
+
+def _mentor(client, h, no, name, capacity=8, qualify=True):
+    mid = client.post(M, headers=h, json={"teacherNo": no, "teacherName": name, "maxCapacity": capacity}).json()["data"]["id"]
+    if qualify:
+        client.post(f"{M}/{mid}/review", headers=h, json={"action": "APPROVE"})
+    return mid
+
+
+def _gd_student(client, h, no, name):
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+
+
+def test_mentor_eval_range_level_and_history(client, auth_headers, db_mode):
+    h = auth_headers
+    mid = _mentor(client, h, "EV1", "评价导师")
+
+    bad_score = client.post(f"{M}/{mid}/evals", headers=h, json={"score": 120, "level": "优秀"})
+    assert bad_score.json()["code"] != 0
+    bad_level = client.post(f"{M}/{mid}/evals", headers=h, json={"score": 90, "level": "满分"})
+    assert bad_level.json()["code"] != 0
+
+    ok = client.post(f"{M}/{mid}/evals", headers=h, json={"score": 92, "level": "优秀", "note": "指导认真", "period": "2026春"})
+    assert ok.json()["code"] == 0
+    client.post(f"{M}/{mid}/evals", headers=h, json={"score": 80, "level": "良好"})
+
+    hist = client.get(f"{M}/{mid}/evals", headers=h).json()["data"]["items"]
+    assert len(hist) == 2
+
+    detail = client.get(f"{M}/{mid}", headers=h).json()["data"]
+    assert detail["latestEval"]["level"] == "良好"  # 最新一条
+
+
+def test_batch_assign_skips_capacity_and_unqualified(client, auth_headers, db_mode):
+    h = auth_headers
+    m_full = _mentor(client, h, "BA1", "满员导师", capacity=1)
+    m_ok = _mentor(client, h, "BA2", "可用导师", capacity=5)
+    m_bad = _mentor(client, h, "BA3", "未认证导师", qualify=False)
+    g1 = _gd_student(client, h, "BS1", "批量甲")
+    g2 = _gd_student(client, h, "BS2", "批量乙")
+    g3 = _gd_student(client, h, "BS3", "批量丙")
+
+    body = {"assignments": [
+        {"gdStudentId": g1, "mentorId": m_full},   # ok（占满 capacity=1）
+        {"gdStudentId": g2, "mentorId": m_full},   # skip：满员
+        {"gdStudentId": g3, "mentorId": m_bad},    # skip：未认证
+    ]}
+    res = client.post(f"{M}/batch-assign", headers=h, json=body).json()["data"]
+    assert res["assigned"] == 1 and res["skipped"] == 2
+
+    # 补分配 g2 给可用导师成功
+    res2 = client.post(f"{M}/batch-assign", headers=h, json={"assignments": [{"gdStudentId": g2, "mentorId": m_ok}]}).json()["data"]
+    assert res2["assigned"] == 1
+
+
+def test_conflicts_and_batch_archive(client, auth_headers, db_mode):
+    h = auth_headers
+    # 未认证导师 + 停用导师（可批量归档）
+    m_bad = _mentor(client, h, "CF1", "待归档导师", qualify=True)
+    client.post(f"{M}/{m_bad}/disable", headers=h, json={"reason": "本届不再带教"})
+
+    conflicts = client.get(f"{M}/conflicts", headers=h).json()["data"]
+    assert "overCapacity" in conflicts and "advancedNoMentor" in conflicts and "total" in conflicts
+
+    res = client.post(f"{M}/batch-archive", headers=h, json={"mentorIds": [m_bad]}).json()["data"]
+    assert res["archived"] == 1
+
+    after = client.get(f"{M}/{m_bad}", headers=h).json()["data"]
+    assert after["qualificationStatus"] == "ARCHIVED"

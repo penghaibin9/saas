@@ -1,0 +1,144 @@
+"""毕业设计中心 · 成果提交闭环测试：
+学生提交初稿/定稿（定稿须初稿通过、待审不可重复）→ 管理端批阅（GD-R09 查重超标拦截 / 退回需理由）→
+退回后重交 → 未提交派生 + 催交 → Excel 台账导出。全部经 HTTP client 走真库(db_mode)。"""
+from __future__ import annotations
+
+GD_STU = "/api/v1/graduation/gd-students"
+GD_TOPIC = "/api/v1/graduation/gd-topics"
+STU = "/api/v1/students"
+PROP = "/api/v1/graduation/proposals"
+FINAL = "/api/v1/graduation/finals"
+MOBILE = "/api/v1/mobile"
+MAIN = 1000000000000000001
+
+
+def _stu_token(real_name):
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{real_name}", "realName": real_name, "userType": "STUDENT",
+        "tid": "demo", "tenantId": str(MAIN), "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+
+
+def _gd_student_with_topic(client, h, no, name):
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    tid = client.post(GD_TOPIC, headers=h, json={
+        "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": "指导李老师",
+        "capacity": 1, "submitReview": True}).json()["data"]["id"]
+    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
+    return gid
+
+
+def _to_guiding(client, h, sh, gid, name):
+    """通过开题审核把学生推进到 GUIDING（成果提交的前置阶段）。"""
+    client.post(f"{MOBILE}/graduation/proposal", headers=sh,
+                json={"background": "选题背景说明足够长度", "plan": "研究方案与进度足够长度", "outcome": ""})
+    lst = client.get(PROP, headers=h, params={"status": "PENDING_REVIEW"}).json()["data"]
+    pid = next(r for r in lst["items"] if r["studentName"] == name)["id"]
+    client.post(f"{PROP}/{pid}/review", headers=h, json={"action": "APPROVE", "comment": "选题合理"})
+
+
+def _pending_final_id(client, h, name):
+    lst = client.get(FINAL, headers=h, params={"status": "PENDING_REVIEW"}).json()["data"]
+    return next(r for r in lst["items"] if r["studentName"] == name)["id"]
+
+
+def test_submit_order_draft_then_final(client, auth_headers, db_mode):
+    h = auth_headers
+    name = "成果小明"
+    gid = _gd_student_with_topic(client, h, "FN001", name)
+    sh = _stu_token(name)
+    _to_guiding(client, h, sh, gid, name)
+
+    # 定稿须先有通过的初稿
+    early = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "定稿"})
+    assert early.json()["code"] != 0
+
+    draft = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    assert draft.json()["code"] == 0
+    assert draft.json()["data"]["version"] == "v1"
+
+    # 待审不可重复提交
+    dup = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    assert dup.json()["code"] != 0
+
+    fid = _pending_final_id(client, h, name)
+    client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "APPROVE"})
+
+    # 初稿通过后可交定稿
+    fin = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "定稿"})
+    assert fin.json()["code"] == 0
+    assert fin.json()["data"]["finalType"] == "定稿"
+
+
+def test_gd_r09_plagiarism_blocks_approve(client, auth_headers, db_mode):
+    h = auth_headers
+    name = "查重小红"
+    gid = _gd_student_with_topic(client, h, "FN101", name)
+    sh = _stu_token(name)
+    _to_guiding(client, h, sh, gid, name)
+
+    # 提交带超标查重率的初稿
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "plagiarismRate": "35%"})
+    fid = _pending_final_id(client, h, name)
+
+    blocked = client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "APPROVE"})
+    assert blocked.json()["code"] != 0  # GD-R09 拦截
+
+    # 退回需理由≥5，然后可正常退回
+    bad = client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "REJECT", "comment": "x"})
+    assert bad.json()["code"] != 0
+    ok = client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "REJECT", "comment": "查重超标请降重后重交"})
+    assert ok.json()["code"] == 0
+
+
+def test_reject_then_resubmit_new_version(client, auth_headers, db_mode):
+    h = auth_headers
+    name = "重交小刚"
+    gid = _gd_student_with_topic(client, h, "FN201", name)
+    sh = _stu_token(name)
+    _to_guiding(client, h, sh, gid, name)
+
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    fid = _pending_final_id(client, h, name)
+    client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "REJECT", "comment": "格式需按模板调整"})
+
+    resub = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    assert resub.json()["code"] == 0
+    assert resub.json()["data"]["version"] == "v2"
+
+
+def test_not_submitted_derivation_and_remind(client, auth_headers, db_mode):
+    h = auth_headers
+    name = "未交小李"
+    gid = _gd_student_with_topic(client, h, "FN301", name)
+    sh = _stu_token(name)
+    _to_guiding(client, h, sh, gid, name)  # GUIDING 且无成果
+
+    nb = client.get(FINAL, headers=h, params={"status": "NOT_SUBMITTED"}).json()["data"]
+    target = next(r for r in nb["items"] if r["studentName"] == name)
+    assert target["status"] == "NOT_SUBMITTED"
+
+    remind = client.post(f"{FINAL}/remind", headers=h, json={"gdStudentId": target["gdStudentId"]})
+    assert remind.json()["code"] == 0
+
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    remind2 = client.post(f"{FINAL}/remind", headers=h, json={"gdStudentId": target["gdStudentId"]})
+    assert remind2.json()["code"] != 0  # 已提交不可催
+
+
+def test_export_finals_ledger(client, auth_headers, db_mode):
+    h = auth_headers
+    name = "导出小周"
+    gid = _gd_student_with_topic(client, h, "FN401", name)
+    sh = _stu_token(name)
+    _to_guiding(client, h, sh, gid, name)
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+
+    exp = client.post(f"{FINAL}/export", headers=h)
+    body = exp.json()
+    assert body["code"] == 0
+    assert body["data"]["rowCount"] >= 1
+    assert body["data"]["filename"].endswith(".xlsx")

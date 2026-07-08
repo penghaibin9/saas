@@ -246,49 +246,135 @@ export const NAV_PLAN = [
     mod('aa-stats', '教务统计', null, P('教务总览', '学籍统计', '注册统计', '课程统计', '教学任务统计', '课表统计', '调停课统计', '选课统计', '考务统计', '成绩统计', '学业预警统计', '毕业资格统计', '教师工作量统计', '教学资源统计', '导出报表'))
   ]),
 
-  /* ═══════════ 一级④：毕业设计中心（key 对齐 adminMenu 的 graduation，供 rail 高亮联动）═══════════ */
+  /* ═══════════ 一级④：毕业设计中心（key 对齐 adminMenu 的 graduation，供 rail 高亮联动）═══════════
+   * 2026-07-09 按三家成熟商业系统对标重新分组（详见 docs/施工记录/毕业设计中心-导航重构对标记录.md）：
+   * 同方知网(CNKI)大学生毕业论文管理系统 / 强智科技教学微服务平台 / 维普毕业论文管理系统，
+   * 三家均按"选题→过程指导→成果检查→答辩成绩→归档"阶段分组二级菜单，不按数据实体逐个拆二级模块。
+   * 本轮把 2026-07-08 夜间新增模块里"同一页面被拆成多个二级菜单"的部分合并回页面实际的 tab 结构；
+   * 已验收的题目库/选题管理/毕设批次/毕设学生保持不变，不在本轮合并范围内。 */
   grp('graduation', '毕业设计中心', 'graduationDesign', [
     mod('gd-dashboard', '毕设看板', '/admin/graduation', [
-      I('毕设总览（管理看板）', '/admin/graduation'),
-      ...P('当前批次进度', '学生完成进度', '导师指导进度', '选题进度', '开题进度', '中期检查进度',
-        '成果提交进度', '查重进度', '答辩进度', '风险预警', '待办事项', '数据统计')
+      I('毕设总览（管理看板，含阶段进度条/待办/风险提示，已实现）', '/admin/graduation'),
+      I('跨模块统计报表（导师/指导/中期/评阅/成绩/归档等 9 域统计中心）', '/admin/graduation/stats-report')
     ]),
-    mod('gd-batches', '毕设批次', null, P('批次列表', '新建批次', '批次时间轴', '阶段配置', '材料模板', '评分规则', '查重规则', '答辩规则', '批次启停', '批次归档')),
+    // 毕设批次为单页多视图：各三级带 ?panel= 指向同一页的不同视图/动作，页面按 panel 响应
+    // （新建→开抽屉、阶段/规则→详情默认落到对应 tab、进行中/已归档→按状态筛选、导出→下载台账）。
+    // 每个三级是不同 ref，点击都能导航、都有反应，避免多叶子同 path「点了没反应」。（对齐实习批次写法）
+    mod('gd-batches', '毕设批次', '/admin/graduation/batches?panel=list', [
+      I('批次列表（新建/编辑/启停/作废）', '/admin/graduation/batches?panel=list'),
+      I('新建批次', '/admin/graduation/batches?panel=create'),
+      I('阶段时间轴配置', '/admin/graduation/batches?panel=stages'),
+      I('规则配置（查重/答辩/成绩权重）', '/admin/graduation/batches?panel=rules'),
+      I('进行中批次', '/admin/graduation/batches?panel=running'),
+      I('已归档批次', '/admin/graduation/batches?panel=archived'),
+      I('毕设批次台账导出', '/admin/graduation/batches?panel=export'),
+      I('材料模板（模板中心·材料类）', '/admin/graduation/templates?type=MATERIAL')
+    ]),
     mod('gd-students', '毕设学生', '/admin/graduation/students', [
-      I('学生名单', '/admin/graduation/students'),
-      ...P('学生资格', '学生分组', '学生进度', '学生风险', '学生材料', '学生导师', '学生答辩组', '学生毕业资格联动', '学生归档')
+      I('学生名单（建档/导入导出）', '/admin/graduation/students?panel=roster'),
+      I('学生进度（节点筛选）', '/admin/graduation/students?panel=progress'),
+      I('学生风险', '/admin/graduation/students?panel=risk'),
+      I('学生导师（已选题）', '/admin/graduation/students?panel=mentor'),
+      I('未选题学生（分配选题）', '/admin/graduation/students?panel=topic'),
+      I('学生资格', '/admin/graduation/students?panel=eligibility'),
+      I('学生分组', '/admin/graduation/students?panel=grouping'),
+      I('学生材料', '/admin/graduation/students?panel=materials'),
+      I('学生答辩组', '/admin/graduation/students?panel=defense'),
+      I('学生毕业资格联动', '/admin/graduation/students?panel=grad-qual'),
+      I('学生归档（roster 归档状态字段，区别于下方"预警与归档"的材料清单核验）', '/admin/graduation/students?panel=archive')
     ]),
-    mod('gd-topic-lib', '题目库', null, P('题目列表', '教师申报题目', '企业题目', '学生自拟题目', '题目分类', '题目容量', '题目要求', '题目附件', '题目历史', '题目归档')),
+    mod('gd-topic-lib', '题目库', '/admin/graduation/topic-lib', [
+      I('题目列表', '/admin/graduation/topic-lib?panel=list'),
+      I('教师申报题目', '/admin/graduation/topic-lib?panel=teacher-apply'),
+      I('企业题目', '/admin/graduation/topic-lib?panel=enterprise'),
+      I('学生自拟题目', '/admin/graduation/topic-lib?panel=student-proposed'),
+      I('待审核题目', '/admin/graduation/topic-lib?panel=pending'),
+      I('题目分类', '/admin/graduation/topic-lib?panel=category'),
+      I('题目容量', '/admin/graduation/topic-lib?panel=capacity'),
+      I('题目要求', '/admin/graduation/topic-lib?panel=requirements'),
+      I('题目附件', '/admin/graduation/topic-lib?panel=attachments'),
+      I('题目历史', '/admin/graduation/topic-lib?panel=history'),
+      I('题目归档', '/admin/graduation/topic-lib?panel=archive')
+    ]),
     mod('gd-topics', '选题管理', '/admin/graduation/topics', [
-      ...P('选题开放'),
-      I('学生选题（现有·选题管理）', '/admin/graduation/topics'),
-      ...P('教师确认', '题目审核', '退选重选', '题目调整', '冲突处理', '选题结果', '选题统计', '选题归档')
+      I('选题轮次', '/admin/graduation/topic-rounds?panel=rounds'),
+      I('学生志愿', '/admin/graduation/topic-rounds?panel=choices'),
+      I('匹配结果', '/admin/graduation/topic-rounds?panel=match'),
+      I('学生选题（选题管理）', '/admin/graduation/topics'),
+      I('教师确认（志愿一对一确认/驳回）', '/admin/graduation/topic-rounds?panel=choices'),
+      I('题目调整（选题变更申请审核）', '/admin/graduation/topic-changes'),
+      // 已删除的旧占位项及原因：选题开放＝选题轮次页内"开放轮次"按钮（已实现，非独立页面）；
+      // 题目审核＝题目库"待审核题目"面板重复；选题结果＝本组"匹配结果"重复。均非真实缺口。
+      I('退选重选（学生撤回志愿后重填，管理端可代退）', '/admin/graduation/topic-rounds?panel=choices'),
+      I('容量冲突人工复核（过热题目+竞争学生确认/驳回）', '/admin/graduation/topic-rounds?panel=conflicts'),
+      I('选题统计报表（志愿分布/参与/过热题目）', '/admin/graduation/topic-rounds?panel=conflicts'),
+      I('选题归档（已关闭/已匹配轮次归档）', '/admin/graduation/topic-rounds?panel=rounds')
     ]),
-    mod('gd-mentors', '导师管理', null, P('导师名单', '导师资格', '导师容量', '导师方向', '导师学生', '导师工作量', '导师指导统计', '导师评价', '导师归档')),
-    mod('gd-mentor-assign', '导师分配', null, P('分配规则', '手动分配', '批量分配', '学生调导师', '导师确认', '分配冲突', '分配结果', '分配日志', '分配归档')),
-    mod('gd-task-book', '任务书', null, P('任务书模板', '任务书填写', '导师审核', '学生确认', '任务书退回', '任务书定稿', '任务书导出', '任务书归档')),
+    // 导师管理 + 导师分配：原为 2 个二级模块，均指向同一页 GraduationMentorListView.vue 的不同 panel，
+    // 已合并为 1 个二级模块 + 2 个三级页签（对齐 CNKI/强智"导师"作为选题任务书阶段的一个子域，不单列多个二级）。
+    mod('gd-mentors', '导师管理与分配', '/admin/graduation/mentors?panel=list', [
+      I('导师名单（申报/审核/编辑/导入导出）', '/admin/graduation/mentors?panel=list'),
+      I('导师容量与工作量', '/admin/graduation/mentors?panel=list'),
+      I('未分配导师学生（发起分配）', '/admin/graduation/mentors?panel=assign'),
+      I('分配调整记录（调导师/取消分配）', '/admin/graduation/mentors?panel=assign'),
+      I('导师评价（评分0-100+等级+意见，含历史）', '/admin/graduation/mentors?panel=list'),
+      I('批量分配（一键把未分配学生分给已认证导师）', '/admin/graduation/mentors?panel=assign'),
+      I('分配冲突自动检测（超容量/进阶段无导师/导师非认证）', '/admin/graduation/mentors?panel=list'),
+      I('导师归档批量（批量归档已停用/驳回导师）', '/admin/graduation/mentors?panel=list')
+    ]),
+    // 任务书 + 指导过程 + 中期检查：原为 3 个二级模块，均指向同一页 GraduationProcessView.vue 的不同 panel，
+    // 已合并为 1 个二级模块 + 3 个三级页签（对齐三家系统"过程指导"统一分组，含指导记录+中期检查+整改跟踪）。
+    mod('gd-process', '过程指导', '/admin/graduation/process?panel=taskbook', [
+      I('任务书下达/确认/变更', '/admin/graduation/process?panel=taskbook'),
+      I('指导记录（时间线/新增/撤销）', '/admin/graduation/process?panel=guidance'),
+      I('中期检查（三档结论/整改跟踪）', '/admin/graduation/process?panel=midterm'),
+      I('任务书模板（模板中心·任务书类）', '/admin/graduation/templates?type=TASKBOOK'),
+      I('指导频次统计报表（统计中心）', '/admin/graduation/stats-report'),
+      I('中期统计报表（统计中心）', '/admin/graduation/stats-report'),
+      I('过程归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive')
+    ]),
     mod('gd-proposal', '开题材料', '/admin/graduation/proposals', [
-      ...P('开题模板'),
-      I('开题报告提交（现有·开题材料）', '/admin/graduation/proposals'),
-      ...P('开题附件', '导师审核', '开题答辩', '开题结果', '开题退回', '开题整改', '开题统计', '开题归档')
+      I('开题报告列表与批阅（提交/导师审核通过或驳回，点击进入详情页操作，已实现）', '/admin/graduation/proposals'),
+      I('开题模板（模板中心·开题类）', '/admin/graduation/templates?type=PROPOSAL'),
+      I('开题附件（详情页附件清单）', '/admin/graduation/proposals'),
+      I('开题答辩（现场答辩·详情页录入 PASS/FAIL）', '/admin/graduation/proposals'),
+      I('开题整改跟踪（已驳回页签→学生重交）', '/admin/graduation/proposals'),
+      I('开题统计（统计中心）', '/admin/graduation/stats-report'),
+      I('开题归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive')
     ]),
-    mod('gd-guidance', '指导过程', null, P('指导计划', '指导记录', '线上指导', '线下指导', '指导附件', '指导签到', '指导频次统计', '指导异常', '指导归档')),
-    mod('gd-midterm', '中期检查', null, P('中期检查批次', '中期材料提交', '导师检查', '学院检查', '中期结果', '整改要求', '整改提交', '中期统计', '中期归档')),
-    mod('gd-submission', '成果提交', '/admin/graduation/finals', [
+    // 成果提交 + 查重记录 + 教师评阅：对齐三家系统"成果检查"统一分组（提交/查重/评阅同阶段）。
+    // 查重与评阅共用 GraduationDefenseGradeView.vue 的 panel；成果提交沿用既有独立页面。
+    mod('gd-final-review', '成果检查', '/admin/graduation/finals', [
       I('论文提交（现有·成果提交）', '/admin/graduation/finals'),
-      ...P('设计成果提交', '源文件提交', '附件提交', '版本记录', '导师确认', '提交退回', '最终稿确认', '成果归档')
+      I('查重记录（发起/回填/复查）', '/admin/graduation/defense-grade?panel=plagiarism'),
+      I('教师评阅（分配/提交/退回，SoD 校验）', '/admin/graduation/defense-grade?panel=review'),
+      I('版本记录（成果初稿/定稿版本）', '/admin/graduation/finals'),
+      I('互查整改（学生互评+被评整改）', '/admin/graduation/more?panel=peer'),
+      I('查重报告归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive'),
+      I('评阅统计报表（统计中心）', '/admin/graduation/stats-report'),
+      I('成果归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive')
     ]),
-    mod('gd-plagiarism', '查重记录', null, P('查重任务', '查重提交', '查重结果', '重复率记录', '查重报告', '复查申请', '查重异常', '查重统计', '查重归档')),
-    mod('gd-review', '教师评阅', null, P('评阅分配', '评阅任务', '评阅材料', '评阅评分', '评阅意见', '评阅退回', '评阅完成', '评阅统计', '评阅归档')),
-    mod('gd-defense', '答辩安排', '/admin/graduation/defense', [
+    // 答辩安排 + 答辩评分 + 成绩评定：对齐三家系统"答辩成绩"统一分组。
+    // 答辩评分与成绩评定共用 GraduationDefenseGradeView.vue 的 panel；答辩安排沿用既有独立页面。
+    mod('gd-defense', '答辩成绩', '/admin/graduation/defense', [
       I('答辩批次（现有·答辩安排）', '/admin/graduation/defense'),
-      ...P('答辩分组', '答辩专家', '答辩秘书', '答辩学生', '答辩时间', '答辩地点', '答辩顺序', '答辩通知', '答辩材料', '答辩安排导出')
+      I('答辩评分（评委录入/缺席/确认/二次答辩）', '/admin/graduation/defense-grade?panel=defense'),
+      I('成绩评定（核算/复核/发布/撤回）', '/admin/graduation/defense-grade?panel=grade'),
+      I('答辩分组（现有·答辩安排分组/学生分配）', '/admin/graduation/defense'),
+      I('答辩专家（评委库+回避）', '/admin/graduation/more?panel=experts'),
+      I('答辩通知（对已发布答辩组学生通知，留痕）', '/admin/graduation/defense'),
+      I('成绩更正申诉（学生申诉→复核）', '/admin/graduation/more?panel=appeals'),
+      I('答辩与成绩归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive')
     ]),
-    mod('gd-defense-score', '答辩评分', null, P('答辩记录', '专家评分', '秘书记录', '答辩问题', '答辩意见', '答辩结果', '二次答辩', '答辩评分统计', '答辩归档')),
-    mod('gd-grade', '成绩评定', null, P('导师成绩', '评阅成绩', '答辩成绩', '综合成绩', '成绩规则', '成绩审核', '成绩发布', '成绩复核', '成绩更正', '成绩归档')),
-    mod('gd-risk', '问题预警', null, P('未选题预警', '未分配导师预警', '开题逾期预警', '指导不足预警', '中期未过预警', '成果逾期预警', '查重超标预警', '答辩异常预警', '成绩异常预警', '预警处置', '预警统计')),
-    mod('gd-archive', '毕设归档', null, P('学生归档包', '题目归档', '任务书归档', '开题归档', '中期归档', '指导记录归档', '成果归档', '查重归档', '评阅归档', '答辩归档', '成绩归档', '缺失材料提醒', '批量归档', '归档导出')),
-    mod('gd-stats', '毕设统计', null, P('毕设总览', '选题统计', '导师工作量统计', '学生进度统计', '开题统计', '中期统计', '查重统计', '答辩统计', '成绩统计', '风险统计', '学院对比', '专业对比', '导出报表'))
+    // 问题预警 + 毕设归档 + 毕设统计：对齐三家系统"归档与统计"收尾阶段，三者共用 GraduationRiskArchiveView.vue。
+    mod('gd-risk-archive', '预警 · 归档 · 统计', '/admin/graduation/risk-archive?panel=risk', [
+      I('问题预警（GD-R01/R04/R06/R07/R08/R09/R13 扫描+受理+处理+关闭）', '/admin/graduation/risk-archive?panel=risk'),
+      I('学生归档包（自动核验清单/提交/核验/驳回/导出台账）', '/admin/graduation/risk-archive?panel=archive'),
+      I('毕设总览统计（跨模块聚合）与学院/专业对比', '/admin/graduation/risk-archive?panel=stats'),
+      I('剩余风险编码补齐（GD-R02/R03/R05/R10/R11 已接扫描）', '/admin/graduation/risk-archive?panel=risk'),
+      I('批量归档一键操作（批量生成提交 / 一键核验备案）', '/admin/graduation/risk-archive?panel=archive'),
+      I('开题/中期/查重/答辩细分报表（统计中心）', '/admin/graduation/stats-report')
+    ])
   ]),
 
   /* ═══════════ 一级⑤：岗位实习中心 ═══════════ */
@@ -434,26 +520,73 @@ export function getVisibleNavPlan({ includePlanned = false } = {}) {
 }
 
 /**
- * 依当前路由 path 在规划树中定位所属 一级/二级/三级（用于侧栏高亮）。
+ * 拆分 navPlan path（可含 ?query）。
+ */
+export function splitNavRef(ref) {
+  if (!ref) return { path: '', query: '' }
+  const q = ref.indexOf('?')
+  if (q === -1) return { path: ref, query: '' }
+  return { path: ref.slice(0, q), query: ref.slice(q + 1) }
+}
+
+/** 列表页无 panel 参数时的默认三级高亮 */
+const DEFAULT_PANEL_BY_PATH = {
+  '/admin/graduation/students': 'roster',
+  '/admin/graduation/batches': 'list',
+  '/admin/graduation/topic-lib': 'list',
+  '/admin/graduation/topic-rounds': 'rounds',
+  '/admin/graduation/mentors': 'list',
+  '/admin/graduation/process': 'taskbook',
+  '/admin/graduation/defense-grade': 'plagiarism',
+  '/admin/graduation/risk-archive': 'risk'}
+
+export function normalizeNavRef(fullPath) {
+  const ref = (fullPath || '').split('#')[0]
+  const { path, query } = splitNavRef(ref)
+  const fallback = DEFAULT_PANEL_BY_PATH[path]
+  if (fallback && !query) return `${path}?panel=${fallback}`
+  return ref
+}
+
+/** 当前路由是否命中某菜单 ref（path + query） */
+export function navRefMatches(currentRef, candidateRef) {
+  const cur = splitNavRef(normalizeNavRef(currentRef))
+  const cand = splitNavRef(candidateRef)
+  if (cand.path === '/') return cur.path === '/'
+  if (cand.query) return cur.path === cand.path && cur.query === cand.query
+  const { path: curPath } = cur
+  return curPath === cand.path || curPath.startsWith(`${cand.path}/`)
+}
+
+/**
+ * 依当前路由在规划树中定位所属 一级/二级/三级（用于侧栏高亮）。
+ * @param {string} path 路由 path
+ * @param {string} [fullPath] 含 query 的完整路径（三级菜单带 ?panel= 时必须）
  * @returns {{groupKey:string, modKey:string, leafKey:string}}
  */
-export function findActiveInPlan(path) {
+export function findActiveInPlan(path, fullPath = '') {
   if (!path) return { groupKey: '', modKey: '', leafKey: '' }
-  let best = { groupKey: '', modKey: '', leafKey: '', len: -1 }
+  const ref = normalizeNavRef(fullPath || path)
+  let best = { groupKey: '', modKey: '', leafKey: '', score: -1 }
   for (const group of NAV_PLAN) {
     for (const mod2 of group.children) {
-      const cands = [{ key: mod2.key, path: mod2.path, isLeaf: false }]
-      mod2.children.forEach((leaf, i) => leaf.path && cands.push({ key: mod2.key + ':' + i, path: leaf.path, isLeaf: true, leaf }))
+      const cands = [{ key: mod2.key, path: mod2.path, isLeaf: false, label: '' }]
+      mod2.children.forEach((leaf, i) => {
+        if (leaf.path) cands.push({ key: `${mod2.key}:${i}`, path: leaf.path, isLeaf: true, label: leaf.label })
+      })
       for (const c of cands) {
         if (!c.path) continue
-        const hit = c.path === '/' ? path === '/' : path === c.path || path.startsWith(c.path + '/')
-        if (hit && c.path.length > best.len) {
-          best = {
-            groupKey: group.key,
-            modKey: mod2.key,
-            leafKey: c.isLeaf ? c.leaf.label : '',
-            len: c.path.length
+        let score = -1
+        if (navRefMatches(ref, c.path)) {
+          score = c.path.length + (splitNavRef(c.path).query ? 1000 : 0)
+        } else {
+          const { path: cp, query: cq } = splitNavRef(c.path)
+          if (!cq && (cp === '/' ? path === '/' : path === cp || path.startsWith(`${cp}/`))) {
+            score = cp.length
           }
+        }
+        if (score > best.score) {
+          best = { groupKey: group.key, modKey: mod2.key, leafKey: c.isLeaf ? c.label : '', score }
         }
       }
     }

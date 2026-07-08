@@ -20,6 +20,20 @@
         :flow="hero.flow"
       />
 
+      <section v-if="hero.moduleStats && hero.moduleStats.length" class="mp-card">
+        <div class="mp-card__head">
+          <span class="mp-card__title">跨模块统计</span>
+          <button class="mp-link" @click="$router.push('/admin/graduation/risk-archive?panel=stats')">完整统计 →</button>
+        </div>
+        <div class="mp-card__body gdb-modstats">
+          <div v-for="s in hero.moduleStats" :key="s.label" class="gdb-modstat">
+            <div class="gdb-modstat__val">{{ s.value }}</div>
+            <div class="gdb-modstat__label">{{ s.label }}</div>
+            <div class="gdb-modstat__hint">{{ s.hint }}</div>
+          </div>
+        </div>
+      </section>
+
       <div class="mp-grid-2">
         <section class="mp-card">
           <div class="mp-card__head">
@@ -67,14 +81,13 @@
 /** 毕业设计中心 · 管理看板（/admin/graduation）。 */
 import { ModulePageShell, ModuleHero, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
-import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationDashboardView',
   components: { ModulePageShell, ModuleHero, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', hero: { stats: [], flow: [], todos: [], riskAlerts: [], batchName: '', batchRange: '', batchStatus: '' } }
+    return { loading: true, error: '', hero: { stats: [], flow: [], todos: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' } }
   },
   computed: {
     toolbarActions() {
@@ -105,9 +118,14 @@ export default {
       this.loading = false
     },
     onToolbar(key) {
-      if (key === 'exportStats') toast.success('进度统计导出任务已创建（脱敏 + 水印），已写入审计日志')
-      else if (key === 'viewAuditLog') toast.info('演示环境：操作日志面板将在后续批次开放')
-      else toast.info('演示环境：该操作将在后续批次开放')
+      // 看板工具栏跳转到对应真实业务页，不做假动作
+      const map = {
+        createBatch: '/admin/graduation/batches?panel=create',
+        importStudents: '/admin/graduation/students?panel=roster',
+        exportStats: '/admin/graduation/risk-archive?panel=stats',
+        viewAuditLog: '/admin/graduation/risk-archive?panel=risk'
+      }
+      if (map[key]) this.$router.push(map[key])
     }
   }
 }
@@ -120,4 +138,9 @@ export default {
   font-weight: var(--font-weight-medium);
   margin: 0 var(--space-1);
 }
+.gdb-modstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.gdb-modstat { padding: var(--space-3); background: var(--gray-50); border: 1px solid var(--border-light); border-radius: var(--radius-md); }
+.gdb-modstat__val { font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
+.gdb-modstat__label { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 2px; }
+.gdb-modstat__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 4px; }
 </style>

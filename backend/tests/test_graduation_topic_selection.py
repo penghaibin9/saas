@@ -1,0 +1,82 @@
+"""毕业设计中心 · 选题管理 Batch 3 闭环测试：
+容量冲突人工复核（过热题目派生）+ 选题统计 + 退选（管理端代退）+ 选题归档（仅关闭/匹配可归档）。
+全部经 HTTP client 走真库(db_mode)。"""
+from __future__ import annotations
+
+GD_STU = "/api/v1/graduation/gd-students"
+GD_TOPIC = "/api/v1/graduation/gd-topics"
+STU = "/api/v1/students"
+RD = "/api/v1/graduation/gd-topic-rounds"
+
+
+def _student(client, h, no, name):
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+
+
+def _pool_topic(client, h, title, capacity):
+    tid = client.post(GD_TOPIC, headers=h, json={
+        "title": title, "sourceType": "TEACHER", "advisorName": "选题李老师",
+        "capacity": capacity, "submitReview": True}).json()["data"]["id"]
+    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    return tid
+
+
+def _open_round(client, h, name):
+    rid = client.post(RD, headers=h, json={"roundName": name, "roundNo": 1, "maxChoices": 3}).json()["data"]["id"]
+    client.post(f"{RD}/{rid}/open", headers=h)
+    return rid
+
+
+def test_capacity_conflict_and_stats(client, auth_headers, db_mode):
+    h = auth_headers
+    rid = _open_round(client, h, "冲突轮次")
+    tid = _pool_topic(client, h, "过热课题（容量1）", 1)
+    g1 = _student(client, h, "TS001", "选题甲")
+    g2 = _student(client, h, "TS002", "选题乙")
+    client.post(f"{RD}/{rid}/choices", headers=h, json={"gdStudentId": g1, "choices": [{"topicId": tid, "choiceOrder": 1}]})
+    client.post(f"{RD}/{rid}/choices", headers=h, json={"gdStudentId": g2, "choices": [{"topicId": tid, "choiceOrder": 1}]})
+
+    conflicts = client.get(f"{RD}/{rid}/capacity-conflicts", headers=h).json()["data"]["items"]
+    hot = next(c for c in conflicts if c["topicId"] == str(tid))
+    assert hot["pendingCount"] == 2 and hot["remaining"] == 1 and hot["overBy"] == 1
+    assert len(hot["students"]) == 2
+
+    stats = client.get(f"{RD}/{rid}/stats", headers=h).json()["data"]
+    assert stats["studentCount"] == 2
+    assert stats["conflictTopicCount"] >= 1
+    assert stats["totalChoices"] == 2
+
+
+def test_withdraw_choices(client, auth_headers, db_mode):
+    h = auth_headers
+    rid = _open_round(client, h, "退选轮次")
+    tid = _pool_topic(client, h, "普通课题", 5)
+    g1 = _student(client, h, "TS101", "退选甲")
+    client.post(f"{RD}/{rid}/choices", headers=h, json={"gdStudentId": g1, "choices": [{"topicId": tid, "choiceOrder": 1}]})
+
+    before = client.get(f"{RD}/{rid}/choices", headers=h, params={"gdStudentId": g1}).json()["data"]
+    assert len(before) == 1
+
+    wd = client.post(f"{RD}/{rid}/choices/withdraw", headers=h, params={"gdStudentId": g1})
+    assert wd.json()["code"] == 0 and wd.json()["data"]["withdrawn"] == 1
+
+    after = client.get(f"{RD}/{rid}/choices", headers=h, params={"gdStudentId": g1}).json()["data"]
+    assert len(after) == 0
+
+    # 无志愿再退选 → 报错
+    again = client.post(f"{RD}/{rid}/choices/withdraw", headers=h, params={"gdStudentId": g1})
+    assert again.json()["code"] != 0
+
+
+def test_archive_round(client, auth_headers, db_mode):
+    h = auth_headers
+    rid = _open_round(client, h, "归档轮次")
+
+    # OPEN 不可直接归档
+    early = client.post(f"{RD}/{rid}/archive", headers=h)
+    assert early.json()["code"] != 0
+
+    client.post(f"{RD}/{rid}/close", headers=h)
+    ok = client.post(f"{RD}/{rid}/archive", headers=h)
+    assert ok.json()["code"] == 0 and ok.json()["data"]["status"] == "ARCHIVED"

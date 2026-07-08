@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="成果提交"
-    subtitle="定稿 / 初稿版本 + 查重状态 · 查重超标自动退回修改（GD-R09）"
+    subtitle="初稿 / 定稿版本 + 查重状态 · 查重超标不可直接通过（GD-R09），须退回修改"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,6 +10,7 @@
     </template>
 
     <div class="mp-stack">
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
       <div class="mp-tabs">
         <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}
@@ -29,7 +30,8 @@
         </template>
         <template #cell-typeVersion="{ row }">
           <div class="mp-cell-main" style="font-size: var(--font-size-sm)">{{ row.type }} {{ row.version }}</div>
-          <div class="mp-cell-sub">{{ row.submitAt || '未提交' }}</div>
+          <div class="mp-cell-sub"><AppDateDisplay :value="row.submitAt" mode="datetime" empty-text="未提交" /></div>
+          <div v-if="row.deadline" class="mp-cell-sub"><AppDateDisplay :value="row.deadline" mode="deadline" /></div>
         </template>
         <template #cell-plagiarism="{ row }">
           <StatusTag :type="row.plagiarismTone" :label="row.plagiarismRate + ' · ' + row.plagiarismStatus" />
@@ -38,40 +40,67 @@
           <StatusTag :status="row.status === 'NOT_SUBMITTED' ? 'PENDING_SUBMIT' : row.status" :label="row.statusLabel" dot />
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/graduation/students/' + row.projectId)">查看档案</button>
+          <button v-if="row.status !== 'NOT_SUBMITTED'" class="mp-link" @click="$router.push('/admin/graduation/students/' + row.projectId)">查看档案</button>
           <button
             v-if="row.status === 'PENDING_REVIEW'"
-            class="mp-link is-disabled"
-            style="margin-left: var(--space-2)"
+            class="mp-link"
+            :class="{ 'is-disabled': !canReview }"
             :title="reviewReason"
-          >批阅</button>
+            style="margin-left: var(--space-2)"
+            @click="askReview(row, 'APPROVE')"
+          >通过</button>
+          <button
+            v-if="row.status === 'PENDING_REVIEW'"
+            class="mp-link"
+            :class="{ 'is-disabled': !canReview }"
+            :title="reviewReason"
+            style="margin-left: var(--space-2)"
+            @click="askReview(row, 'REJECT')"
+          >退回</button>
+          <button v-if="row.status === 'NOT_SUBMITTED'" class="mp-link" @click="remind(row)">催交</button>
         </template>
       </DataTable>
 
-      <p class="mp-note">成果批阅（通过 / 退回修改）由指导教师在成果批阅详情执行；查重报告在学生毕设详情「查重记录」页签查看与下载（学生端 P16 同步可见）。</p>
+      <p class="mp-note">成果批阅（通过 / 退回修改）由指导教师执行；查重超标（&gt;30%）系统拦截不可直接通过。查重报告在学生毕设详情「查重记录」页签查看（学生端 P16 同步可见）。</p>
     </div>
+
+    <AppConfirmDialog
+      v-model:visible="confirm.visible"
+      :title="confirm.title"
+      :message="confirm.message"
+      :type="confirm.type"
+      :confirm-text="confirm.confirmText"
+      :require-reason="confirm.requireReason"
+      :reason-label="confirm.reasonLabel"
+      :submitting="submitting"
+      @confirm="onConfirm"
+    />
   </ModulePageShell>
 </template>
 
 <script>
-/** 成果提交列表（/admin/graduation/finals）：成果状态 + 查重状态一屏监管。 */
+/** 成果提交列表（/admin/graduation/finals）：成果状态 + 查重状态一屏监管 + 真实批阅/催交/导出。 */
 import {
-  ModulePageShell, ModuleToolbar, DataTable,
+  ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
   StatusTag, LoadingState, ErrorState, EmptyState
 } from '@/components/business'
+import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'FinalSubmissionListView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true,
       error: '',
       rows: [],
-      filters: { status: '' },
+      submitting: false,
+      confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确定', requireReason: false, reasonLabel: '', action: '', row: null },
+      filters: { status: '', dateStart: '', dateEnd: '' },
       pagination: { page: 1, pageSize: 10, total: 0 },
       tabs: [
         { value: '', label: '全部' },
@@ -86,11 +115,22 @@ export default {
         { key: 'typeVersion', title: '成果 / 版本' },
         { key: 'plagiarism', title: '查重' },
         { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作', width: '140px' }
+        { key: 'actions', title: '操作', width: '200px' }
       ]
     }
   },
   computed: {
+    filterFields() {
+      return [{
+        key: 'date', label: '提交截止/时间', type: 'daterange',
+        startKey: 'dateStart', endKey: 'dateEnd',
+        memoryKey: 'graduation.finals.dateRange', emptyLabel: '全部时间'
+      }]
+    },
+    canReview() {
+      const pa = this.ctx.permissionActions.reviewFinal
+      return !!(pa && pa.visible && pa.allowed)
+    },
     reviewReason() {
       const pa = this.ctx.permissionActions.reviewFinal
       return pa && !pa.allowed ? pa.reason : ''
@@ -111,12 +151,47 @@ export default {
       this.pagination.page = 1
       this.load()
     },
+    onFilterSearch() { this.pagination.page = 1; this.load() },
+    onFilterReset() {
+      this.filters = { ...this.filters, dateStart: '', dateEnd: '' }
+      this.pagination.page = 1
+      this.load()
+    },
     onPageChange(page) {
       this.pagination.page = page
       this.load()
     },
-    onToolbar() {
-      toast.success('成果清单导出任务已创建（脱敏 + 水印），已写入审计日志')
+    async onToolbar() {
+      const res = await graduationApi.downloadFinalsExport(this.filters.status)
+      if (res.code === 0) toast.success('成果清单已导出（含导出人/时间抬头），已写入审计日志')
+      else toast.error(res.message || '导出失败')
+    },
+    askReview(row, action) {
+      if (!this.canReview) return
+      if (action === 'APPROVE') {
+        this.confirm = { visible: true, title: '通过成果', message: `确认通过「${row.studentName}」的${row.type} ${row.version}？查重超标将被系统拦截。`, type: 'primary', confirmText: '通过', requireReason: false, reasonLabel: '', action: 'APPROVE', row }
+      } else {
+        this.confirm = { visible: true, title: '退回修改', message: `退回「${row.studentName}」的${row.type} ${row.version}，请填写退回原因（≥5 字），学生端同步可见。`, type: 'danger', confirmText: '退回修改', requireReason: true, reasonLabel: '退回原因', action: 'REJECT', row }
+      }
+    },
+    async onConfirm({ reason } = {}) {
+      const row = this.confirm.row
+      if (!row) return
+      this.submitting = true
+      const res = await graduationApi.reviewFinal(row.id, { action: this.confirm.action, comment: reason || '' })
+      this.submitting = false
+      if (res.code === 0) {
+        toast.success(this.confirm.action === 'APPROVE' ? '已通过，结果同步学生端' : '已退回修改，学生端可见退回原因')
+        this.confirm.visible = false
+        this.load()
+      } else {
+        toast.error(res.message || '批阅失败')
+      }
+    },
+    async remind(row) {
+      const res = await graduationApi.remindFinal(row.projectId || row.gdStudentId)
+      if (res.code === 0) toast.success('已向 ' + row.studentName + ' 发送成果催交提醒，催办已留痕')
+      else toast.error(res.message || '催交失败')
     },
     async load() {
       this.loading = true

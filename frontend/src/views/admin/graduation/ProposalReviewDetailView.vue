@@ -76,7 +76,22 @@
               </div>
               <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅动作写入审批留痕，学生端即时同步状态</p>
             </template>
-            <EmptyState v-else :title="'该开题报告' + (detail.status === 'APPROVED' ? '已通过' : '已驳回')" description="批阅结果已同步学生端，留痕见下方审批记录" />
+            <template v-else-if="detail.status === 'APPROVED'">
+              <div class="mp-kv"><span class="mp-kv__k">书面开题</span><span class="mp-kv__v">已通过</span></div>
+              <div v-if="detail.defenseResult" class="mp-kv"><span class="mp-kv__k">开题答辩</span>
+                <span class="mp-kv__v">{{ detail.defenseResult === 'PASS' ? '现场答辩通过' : '现场答辩不通过' }}{{ detail.defenseComment ? '：' + detail.defenseComment : '' }}</span>
+              </div>
+              <template v-else>
+                <label class="mp-note" style="display:block;margin:var(--space-3) 0 var(--space-1)">开题答辩评语（不通过时必填≥5字）</label>
+                <textarea v-model="defenseComment" class="mp-textarea" placeholder="现场开题答辩评语…"></textarea>
+                <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3)">
+                  <AppButton variant="primary" :loading="submitting" style="flex:1" @click="submitDefense('PASS')">✓ 答辩通过</AppButton>
+                  <AppButton variant="warning" :loading="submitting" style="flex:1" @click="submitDefense('FAIL')">✕ 答辩不通过</AppButton>
+                </div>
+                <p class="mp-note" style="text-align:center;margin-top:var(--space-2)">开题答辩为现场环节，区别于上方书面审核</p>
+              </template>
+            </template>
+            <EmptyState v-else :title="'该开题报告已驳回'" description="批阅结果已同步学生端，留痕见下方审批记录" />
           </div>
         </section>
 
@@ -111,6 +126,7 @@
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
+import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -118,7 +134,7 @@ export default {
   components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, defenseComment: '' }
   },
   computed: {
     canReview() {
@@ -160,6 +176,16 @@ export default {
       } else {
         this.formError = res.message
       }
+    },
+    async submitDefense(result) {
+      if (result === 'FAIL' && (!this.defenseComment || this.defenseComment.trim().length < 5)) {
+        toast.error('开题答辩不通过时评语必填且不少于 5 字'); return
+      }
+      this.submitting = true
+      const res = await graduationMoreApi.holdProposalDefense(this.detail.id, result, this.defenseComment)
+      this.submitting = false
+      if (res.code === 0) { toast.success('开题答辩已录入'); this.defenseComment = ''; this.load() }
+      else toast.error(res.message || '录入失败')
     }
   }
 }
