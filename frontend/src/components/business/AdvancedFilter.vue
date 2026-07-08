@@ -1,7 +1,12 @@
 <template>
   <div class="af">
     <div class="af__fields">
-      <label v-for="f in fields" :key="f.key" class="af__field">
+      <label
+        v-for="f in fields"
+        :key="f.key"
+        class="af__field"
+        :class="{ 'af__field--range': f.type === 'daterange' || f.type === 'date-range' }"
+      >
         <span class="af__label">{{ f.label }}</span>
         <select
           v-if="f.type === 'select'"
@@ -12,12 +17,25 @@
           <option value="">全部</option>
           <option v-for="o in f.options || []" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
-        <input
+        <AppDatePicker
           v-else-if="f.type === 'date'"
-          type="date"
-          class="af__control"
-          :value="modelValue[f.key] ?? ''"
-          @change="update(f.key, $event.target.value)"
+          class="af__date"
+          :model-value="modelValue[f.key] ?? ''"
+          :placeholder="f.placeholder || '全部时间'"
+          :clearable="f.clearable !== false"
+          :show-empty-hint="false"
+          @update:model-value="update(f.key, $event)"
+        />
+        <AppDateRangePicker
+          v-else-if="f.type === 'daterange' || f.type === 'date-range'"
+          class="af__range"
+          :model-value="rangeValue(f)"
+          mode="filter"
+          :empty-label="f.emptyLabel || '全部时间'"
+          :memory-key="f.memoryKey || ''"
+          :show-shortcuts="f.showShortcuts !== false"
+          :with-time="!!f.withTime"
+          @update:model-value="updateRange(f, $event)"
         />
         <input
           v-else
@@ -41,17 +59,16 @@
 <script>
 /**
  * AdvancedFilter — 高级筛选区（通用受控组件）。
- * Props:
- *  - modelValue: 筛选值对象（v-model）
- *  - fields: [{ key, label, type: 'select'|'text'|'date', options?: [{value,label}], placeholder? }]
- *    字段字典由业务 api 的 statusOptions 提供，本组件不写死任何业务选项。
- * Emits: update:modelValue / search / reset
+ * fields: [{ key, label, type: 'select'|'text'|'date'|'daterange', options?, placeholder?,
+ *            startKey?, endKey?, memoryKey?, emptyLabel?, showShortcuts?, withTime? }]
+ * date / daterange 统一走公共日期底座；空日期=不限制，文案「全部时间」。
  */
 import { AppButton } from '@/components/ui'
+import { AppDatePicker, AppDateRangePicker } from '@/components/common/date'
 
 export default {
   name: 'AdvancedFilter',
-  components: { AppButton },
+  components: { AppButton, AppDatePicker, AppDateRangePicker },
   props: {
     modelValue: { type: Object, required: true },
     fields: { type: Array, default: () => [] }
@@ -60,13 +77,43 @@ export default {
   methods: {
     update(key, value) {
       this.$emit('update:modelValue', { ...this.modelValue, [key]: value })
+    },
+    rangeValue(f) {
+      const startKey = f.startKey || (f.key + 'Start')
+      const endKey = f.endKey || (f.key + 'End')
+      // 也支持整体对象挂在 f.key 上
+      if (this.modelValue[f.key] && typeof this.modelValue[f.key] === 'object') {
+        return {
+          start: this.modelValue[f.key].start || '',
+          end: this.modelValue[f.key].end || ''
+        }
+      }
+      return {
+        start: this.modelValue[startKey] || '',
+        end: this.modelValue[endKey] || ''
+      }
+    },
+    updateRange(f, range) {
+      const startKey = f.startKey || (f.key + 'Start')
+      const endKey = f.endKey || (f.key + 'End')
+      if (f.asObject) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          [f.key]: { start: range.start || '', end: range.end || '' }
+        })
+        return
+      }
+      this.$emit('update:modelValue', {
+        ...this.modelValue,
+        [startKey]: range.start || '',
+        [endKey]: range.end || ''
+      })
     }
   }
 }
 </script>
 
 <style scoped>
-/* 母版筛选区：玻璃卡 + fb-in 输入 */
 .af {
   background: var(--card);
   backdrop-filter: blur(10px);
@@ -93,6 +140,10 @@ export default {
   gap: var(--space-1);
   min-width: 130px;
 }
+.af__field--range {
+  min-width: 320px;
+  flex: 1 1 360px;
+}
 .af__label {
   font-size: var(--font-size-xs);
   color: var(--t3);
@@ -117,6 +168,10 @@ export default {
 }
 .af__control--text {
   min-width: 180px;
+}
+.af__date :deep(.app-date__label),
+.af__range :deep(.app-dr__label) {
+  display: none;
 }
 .af__ops {
   display: flex;
