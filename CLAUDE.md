@@ -864,8 +864,9 @@ docs/modules/13A-13B-数据表与迁移策略草案.md
 2. **允许多个三级叶子指向同一 path**（同页不同动作/面板），但：
    - 点击**必须有反馈**：记录被点叶子的 leafKey，让高亮跟随点击移动；**禁止**因「path 已匹配就 return、跳过 router.push」导致点了没反应。
    - 路由定位取**「最具体」匹配**（路径最长 + 带 `?query=` 精确匹配优先），避免形如 `/admin/graduation` 的看板叶子用前缀规则抢占其所有子页高亮。
-3. **新增或改动 navPlan 三级项后，必须在侧栏实测**：① 当前页只亮一个叶子；② 每个可点叶子点击都有高亮/跳转反馈。不测不算完成。
-4. 参考实现：`BasePortalLayout.vue` 的 `leafKey / isLeafActive / routeActiveLeafKey / effectiveActiveLeafKey / clickedLeafKey`（2026-07-08 收口）。
+3. **跳转判断用「精确比较完整 URL」，不用前缀匹配。** 决定是否 `router.push` 时必须 `path !== currentFullPath`，**禁止**用 `navRefMatches(path)`（前缀规则）判断——否则形如 `/admin/graduation` 这类「其它子页的前缀路径」的看板/总览叶子，从子页点击时会被判为「已在此」而不跳转（表现为「点了看不了东西」）。菜单模块行（二级）同理。
+4. **新增或改动 navPlan 三级项后，必须在侧栏实测**：① 当前页只亮一个叶子；② 从别的子页点该叶子能真跳过去且页面渲染；③ 每个可点叶子点击都有高亮/跳转反馈。不测不算完成。
+5. 参考实现：`BasePortalLayout.vue` 的 `leafKey / isLeafActive / routeActiveLeafKey / effectiveActiveLeafKey / clickedLeafKey / onPlanLeaf / onTreeMod`（2026-07-08 收口，含前缀路径跳转修复）。
 
 ---
 ## 10. 权限 key 命名规范
@@ -1630,3 +1631,43 @@ D. 可删除候选：确认无引用、无数据依赖、无路由依赖、无�
 一句话：
 
 筛选日期默认不限，业务日期从批次带出，截止日期给快捷按钮，日期展示全系统统一。
+
+## 40. 公共组件强制调用规则
+
+本项目已建成「交付级公共组件底座」（第一阶段 12 个 + 第二阶段 8 个），统一出口：
+
+```text
+业务组件：import { AppXxx } from '@/components/common'
+UI 基元：import { AppButton, AppBadge, AppCard } from '@/components/ui'
+```
+
+使用手册：`docs/公共组件/02-第一阶段交付级公共组件使用指南.md`
+在线预览：登录后访问 `/dev/components`
+总控表：`docs/公共组件/00-高校SaaS公共组件商业化底座总控表.md`
+
+强制规则：
+
+1. 后续所有业务模块（学工/教务/毕设/实习/工作台/系统管理）开发页面时，凡涉及以下场景，必须优先复用公共组件，禁止各模块另写一套：
+   - 权限按钮 → AppPermissionButton
+   - 导出 Excel → AppExportButton + AppExportConfirm
+   - 二次确认（退回/驳回/删除）→ AppConfirmDialog
+   - 状态/风险标签 → AppStatusTag / AppRiskTag
+   - 敏感字段脱敏 → AppSensitiveText
+   - 附件展示/上传态 → AppFilePreview / AppFileList
+   - 批量操作 → AppBatchActionBar
+   - 审批处理/审批历史 → AppApprovalPanel / AppWorkflowTimeline
+   - 操作留痕展示 → AppAuditTrail
+   - 工作台待办/消息/指标 → AppTodoPanel / AppNotificationPanel / AppMetricCard
+   - 复制/帮助/字段提示 → AppCopyableText / AppHelpTooltip / AppFieldHint
+2. 需要新能力时，先判断能否给公共组件加 prop 增强，不要在业务页面复制一份改。
+3. 禁止重写清单：DataTable、AdvancedFilter、AppDrawer、AppConfirmDialog、公共日期族、Excel 管道、以及本底座已冻结组件，只允许增强不允许拆掉重做。
+4. 安全红线（组件不替代后端）：
+   - AppPermissionButton 只做前端体验，越权拦截必须后端校验；
+   - AppExportButton/AppExportConfirm 不伪造导出成功，真实导出走后端并写审计；
+   - AppAuditTrail 只展示后端真实审计，不伪造；
+   - AppApprovalPanel/AppWorkflowTimeline 只做交互展示，状态流转由后端审批引擎；
+   - 敏感字段一律 AppSensitiveText，查看明文由调用方写审计；
+   - 附件业务表只存 file_id，上传/对象存储由文件中心对接，未接入前上传能力标 partial。
+5. 未复用公共组件而自造重复实现的页面，必须写入 `docs/施工记录/历史欠账.md`。
+
+一句话：公共组件是标准零件仓，业务页面只许取零件，不许各造一套。

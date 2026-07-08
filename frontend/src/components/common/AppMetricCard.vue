@@ -1,5 +1,15 @@
 <template>
   <div
+    v-if="loading"
+    class="app-metric-card is-loading"
+    :class="`is-accent-${accentTone}`"
+  >
+    <span class="app-metric-card__sk app-metric-card__sk--title" />
+    <span class="app-metric-card__sk app-metric-card__sk--value" />
+    <span class="app-metric-card__sk app-metric-card__sk--foot" />
+  </div>
+  <div
+    v-else
     class="app-metric-card"
     :class="[`is-accent-${accentTone}`, { 'is-drillable': drillable }]"
     @click="onClick"
@@ -53,7 +63,8 @@ export default {
     },
     drillable: { type: Boolean, default: false },
     drillTarget: { type: String, default: '' },
-    updatedAt: { type: String, default: '' }
+    updatedAt: { type: String, default: '' },
+    loading: { type: Boolean, default: false }
   },
   emits: ['drill'],
   computed: {
@@ -193,5 +204,24 @@ export default {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
   flex-shrink: 0;
+}
+/* loading 骨架 */
+.app-metric-card.is-loading {
+  justify-content: center;
+  gap: var(--space-3);
+}
+.app-metric-card__sk {
+  display: block;
+  border-radius: var(--radius-base);
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 37%, var(--gray-100) 63%);
+  background-size: 400% 100%;
+  animation: amc-shimmer 1.4s ease infinite;
+}
+.app-metric-card__sk--title { width: 40%; height: 12px; }
+.app-metric-card__sk--value { width: 60%; height: 30px; }
+.app-metric-card__sk--foot { width: 30%; height: 10px; }
+@keyframes amc-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
 }
 </style>

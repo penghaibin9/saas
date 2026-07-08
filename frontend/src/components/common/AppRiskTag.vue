@@ -1,5 +1,5 @@
 <template>
-  <span class="app-risk-tag" :class="`is-${normalized}`">
+  <span class="app-risk-tag" :class="[`is-${normalized}`, { 'is-sm': size === 'sm' }]">
     <span class="app-risk-tag__dot" />
     {{ displayLabel }}
   </span>
@@ -18,20 +18,32 @@ const LEVEL_MAP = {
   HIGH: '高风险',
   CRITICAL: '严重风险'
 }
+// 常见别名 → 标准四档（兼容后端不同枚举/中文）
+const LEVEL_ALIAS = {
+  L: 'LOW', LOW: 'LOW', 低: 'LOW', 低风险: 'LOW', NORMAL: 'LOW',
+  M: 'MEDIUM', MID: 'MEDIUM', MEDIUM: 'MEDIUM', 中: 'MEDIUM', 中风险: 'MEDIUM',
+  H: 'HIGH', HIGH: 'HIGH', 高: 'HIGH', 高风险: 'HIGH',
+  CRITICAL: 'CRITICAL', SEVERE: 'CRITICAL', URGENT: 'CRITICAL', 严重: 'CRITICAL', 严重风险: 'CRITICAL', 紧急: 'CRITICAL'
+}
 
 export default {
   name: 'AppRiskTag',
   props: {
     level: {
-      type: String,
-      required: true,
-      validator: (v) => ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(String(v).toUpperCase())
+      type: [String, Number],
+      required: true
     },
-    label: { type: String, default: '' }
+    label: { type: String, default: '' },
+    size: {
+      type: String,
+      default: 'md',
+      validator: (v) => ['sm', 'md'].includes(v)
+    }
   },
   computed: {
     normalized() {
-      return String(this.level).toUpperCase()
+      const raw = String(this.level).trim().toUpperCase()
+      return LEVEL_ALIAS[raw] || LEVEL_ALIAS[String(this.level).trim()] || raw
     },
     displayLabel() {
       return this.label || LEVEL_MAP[this.normalized] || this.level
@@ -52,6 +64,12 @@ export default {
   line-height: 22px;
   white-space: nowrap;
   border: 1px solid transparent;
+}
+.app-risk-tag.is-sm {
+  height: 18px;
+  line-height: 18px;
+  padding: 0 var(--space-1);
+  font-size: 11px;
 }
 .app-risk-tag__dot {
   width: 6px;

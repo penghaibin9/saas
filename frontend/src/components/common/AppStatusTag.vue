@@ -1,5 +1,5 @@
 <template>
-  <span class="app-status-tag" :class="`is-${semantic}`">
+  <span class="app-status-tag" :class="[`is-${semantic}`, { 'is-sm': size === 'sm' }]">
     <span v-if="dot" class="app-status-tag__dot" />
     <slot>{{ displayLabel }}</slot>
   </span>
@@ -16,23 +16,47 @@
  * 依据 V2.1 §3.2：状态语义色只表达业务状态。
  */
 const STATUS_MAP = {
+  // 通用审批/流转
   DRAFT: { label: '草稿', type: 'default' },
   PENDING_SUBMIT: { label: '待提交', type: 'default' },
+  PENDING: { label: '待处理', type: 'warning' },
   PENDING_REVIEW: { label: '待审核', type: 'warning' },
+  PENDING_AUDIT: { label: '待审核', type: 'warning' },
   PENDING_HANDLE: { label: '待处理', type: 'warning' },
+  PENDING_APPROVE: { label: '待审批', type: 'warning' },
+  SUBMITTED: { label: '已提交', type: 'processing' },
   REVIEWING: { label: '审核中', type: 'processing' },
   PROCESSING: { label: '处理中', type: 'processing' },
+  IN_PROGRESS: { label: '进行中', type: 'processing' },
   APPROVED: { label: '已通过', type: 'success' },
+  CONFIRMED: { label: '已确认', type: 'success' },
+  PASSED: { label: '已通过', type: 'success' },
   COMPLETED: { label: '已完成', type: 'success' },
+  FINISHED: { label: '已结束', type: 'success' },
   RETURNED: { label: '已退回', type: 'warning' },
   REJECTED: { label: '已驳回', type: 'danger' },
+  FAILED: { label: '未通过', type: 'danger' },
   OVERDUE: { label: '已逾期', type: 'danger' },
+  EXPIRED: { label: '已过期', type: 'danger' },
   ABNORMAL: { label: '异常', type: 'danger' },
+  CANCELLED: { label: '已取消', type: 'default' },
   PUBLISHED: { label: '已发布', type: 'success' },
   ARCHIVED: { label: '已归档', type: 'info' },
   READONLY: { label: '只读', type: 'info' },
+  ENABLED: { label: '启用中', type: 'success' },
   DISABLED: { label: '已停用', type: 'default' },
-  NOT_STARTED: { label: '未开始', type: 'default' }
+  NOT_STARTED: { label: '未开始', type: 'default' },
+  // 学工/迎新
+  REPORTED: { label: '已报到', type: 'success' },
+  NOT_REPORTED: { label: '未报到', type: 'warning' },
+  CHECKED_IN: { label: '已入住', type: 'success' },
+  ON_LEAVE: { label: '请假中', type: 'processing' },
+  // 教务/毕设/实习
+  ENROLLED: { label: '在读', type: 'success' },
+  GRADED: { label: '已评定', type: 'success' },
+  DEFENDING: { label: '答辩中', type: 'processing' },
+  SIGNED: { label: '已签订', type: 'success' },
+  TERMINATED: { label: '已终止', type: 'danger' }
 }
 
 export default {
@@ -46,7 +70,12 @@ export default {
         !v || ['success', 'processing', 'warning', 'danger', 'info', 'default'].includes(v)
     },
     label: { type: String, default: '' },
-    dot: { type: Boolean, default: false }
+    dot: { type: Boolean, default: false },
+    size: {
+      type: String,
+      default: 'md',
+      validator: (v) => ['sm', 'md'].includes(v)
+    }
   },
   computed: {
     mapped() {
@@ -74,6 +103,12 @@ export default {
   line-height: 22px;
   white-space: nowrap;
   border: 1px solid transparent;
+}
+.app-status-tag.is-sm {
+  height: 18px;
+  line-height: 18px;
+  padding: 0 var(--space-1);
+  font-size: 11px;
 }
 .app-status-tag__dot {
   width: 6px;

@@ -1,13 +1,13 @@
 <template>
   <div v-if="visible" class="app-confirm-dialog__mask" @click.self="onCancel">
     <div class="app-confirm-dialog" role="dialog" aria-modal="true">
-      <div class="app-confirm-dialog__header" :class="`is-${type}`">
-        <span class="app-confirm-dialog__icon">{{ type === 'danger' ? '!' : '?' }}</span>
+      <div class="app-confirm-dialog__header" :class="`is-${effType}`">
+        <span class="app-confirm-dialog__icon">{{ effType === 'danger' ? '!' : '?' }}</span>
         <span class="app-confirm-dialog__title">{{ title }}</span>
       </div>
 
       <div class="app-confirm-dialog__body">
-        <p v-if="message" class="app-confirm-dialog__message">{{ message }}</p>
+        <p v-if="displayMessage" class="app-confirm-dialog__message">{{ displayMessage }}</p>
         <slot />
 
         <div v-if="requireReason" class="app-confirm-dialog__reason">
@@ -34,11 +34,11 @@
         <button
           type="button"
           class="acd-btn acd-btn--confirm"
-          :class="`is-${type}`"
-          :disabled="submitting"
+          :class="`is-${effType}`"
+          :disabled="busy"
           @click="onConfirm"
         >
-          {{ submitting ? '提交中…' : confirmText }}
+          {{ busy ? '提交中…' : confirmText }}
         </button>
       </div>
     </div>
@@ -64,12 +64,16 @@ export default {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },
     message: { type: String, default: '' },
+    /** content: message 的别名，方便调用方语义化传参 */
+    content: { type: String, default: '' },
     type: {
       type: String,
       default: 'warning',
       validator: (v) => ['primary', 'warning', 'danger'].includes(v)
     },
-    confirmText: { type: String, required: true },
+    /** danger: 便捷布尔，等价 type='danger'（优先级高于 type） */
+    danger: { type: Boolean, default: false },
+    confirmText: { type: String, default: '确认' },
     cancelText: { type: String, default: '取消' },
     requireReason: { type: Boolean, default: false },
     reasonLabel: { type: String, default: '处理原因' },
@@ -77,11 +81,24 @@ export default {
     reasonMinLength: { type: Number, default: 5 },
     showNotify: { type: Boolean, default: false },
     notifyLabel: { type: String, default: '通知学生' },
-    submitting: { type: Boolean, default: false }
+    submitting: { type: Boolean, default: false },
+    /** loading: submitting 的别名 */
+    loading: { type: Boolean, default: false }
   },
   emits: ['update:visible', 'confirm', 'cancel'],
   data() {
     return { reason: '', notify: true, reasonError: '' }
+  },
+  computed: {
+    displayMessage() {
+      return this.content || this.message
+    },
+    effType() {
+      return this.danger ? 'danger' : this.type
+    },
+    busy() {
+      return this.loading || this.submitting
+    }
   },
   watch: {
     visible(v) {

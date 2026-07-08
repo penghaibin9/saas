@@ -83,15 +83,26 @@
 
 ## 2. 六层总览统计
 
-| 层 | 名称 | 组件数 | 已有（含部分） | 需新建为主 | 正式上线前必须 |
-|----|------|--------|----------------|------------|----------------|
-| 第 1 层 | 视觉与页面骨架 | 10 | 7 | 3 | 部分（壳/头/工具栏） |
-| 第 2 层 | 数据展示 | 15 | 10 | 5 | 表/筛选/状态/空错载 |
-| 第 3 层 | 数据录入 | 14 | 1（日期成熟） | 13 | 表单与提交条统一 |
-| 第 4 层 | 高校业务选择器 | 15 | 0～雏形 | 15 | 学工/教务/实习核心选型器 |
-| 第 5 层 | 交付级业务组件 | 16 | 9 | 7 | **几乎全部** |
-| 第 6 层 | 体验增强 | 12 | 3 | 9 | 水印必须；其余后置 |
-| **合计** | — | **82** | — | — | — |
+> **2026-07-08 盘点更新**：详见附录 C 与 `01-前端组件资产盘点报告.md`。
+
+| 层 | 名称 | 组件数 | implemented | partial | page-only | duplicate | missing | blocked |
+|----|------|--------|-------------|---------|-----------|-----------|---------|---------|
+| 第 1 层 | 视觉与页面骨架 | 10 | 4 | 2 | 0 | 1 | 3 | 0 |
+| 第 2 层 | 数据展示 | 15 | 7 | 4 | 1 | 2 | 1 | 0 |
+| 第 3 层 | 数据录入 | 14 | 1 | 0 | 8 | 0 | 5 | 0 |
+| 第 4 层 | 高校业务选择器 | 15 | 0 | 0 | 9 | 0 | 6 | 0 |
+| 第 5 层 | 交付级业务组件 | 16 | 3 | 6 | 1 | 2 | 2 | 2 |
+| 第 6 层 | 体验增强 | 12 | 1 | 2 | 0 | 0 | 8 | 1 |
+| **合计** | — | **82** | **20** | **24** | **12** | **8** | **15** | **3** |
+
+| 层 | 名称 | 已有（含部分） | 需新建为主 | 正式上线前必须 |
+|----|------|----------------|------------|----------------|
+| 第 1 层 | 视觉与页面骨架 | 7 | 3 | 部分（壳/头/工具栏） |
+| 第 2 层 | 数据展示 | 13 | 2 | 表/筛选/状态/空错载 |
+| 第 3 层 | 数据录入 | 9（含 page-only 表单） | 5 | 表单与提交条统一 |
+| 第 4 层 | 高校业务选择器 | 9（page-only 下拉） | 6 | 学工/教务/实习核心选型器 |
+| 第 5 层 | 交付级业务组件 | 12 | 4 | **几乎全部** |
+| 第 6 层 | 体验增强 | 3 | 9 | 水印必须；其余后置 |
 
 分类快查：
 
@@ -425,19 +436,28 @@ AppPermissionButton、AppFileUpload、AppFileList、AppBatchActionBar、AppAppro
 
 | 项 | 内容 |
 |----|------|
-| 本轮动作 | 仅新增本规划文档，不改代码、不改业务、不提交 git |
-| 新增路径 | `docs/公共组件/00-高校SaaS公共组件商业化底座总控表.md` |
+| 最新动作（2026-07-08） | 只读盘点 + 更新附录 C + 新增 `01-前端组件资产盘点报告.md` |
+| 规划文档 | `docs/公共组件/00-高校SaaS公共组件商业化底座总控表.md` |
+| 盘点报告 | `docs/公共组件/01-前端组件资产盘点报告.md` |
 | 六层组件总数 | **82** |
-| 背景假设 | 公共日期底座已提交；毕业设计 PC 试点已收口；后续暂停新业务功能，专攻公共底座 |
+| 背景假设 | 公共日期底座 `431c389`；毕设 PC 试点 `graduation-pc-trial-v1`；公共组件冲刺在干净 worktree `components-foundation-sprint` |
+| 未改 | 业务代码、后端、数据库、路由；未提交 git |
 
 ---
 
 ## 附录 A：快速答案卡（给用户直接看）
 
 1. **六层组件总数**：82  
-2. **第一阶段先做**：PermissionButton、AuditTrail、SensitiveText 增强、FileUpload/List/Preview、Excel 导入导出向导增强、BatchActionBar、ConfirmDialog 规范增强、Approval/Todo 面板可用版  
-3. **禁止重写**：DataTable、AdvancedFilter、AppDrawer、AppConfirmDialog、公共日期组件族（及 Excel 管道）  
-4. **开发顺序提醒**：第 0 清理 → 第 1 交付级 → 第 2 展示 → 第 3 选择器 → 第 4 录入 → 第 5 骨架 → 第 6 体验  
+2. **已有可直接复用（implemented）**：20 个  
+3. **只需增强（partial）**：24 个  
+4. **页面散落待抽（page-only）**：12 个  
+5. **多份重复待合并（duplicate）**：8 个  
+6. **完全缺失（missing）**：15 个  
+7. **平台阻塞（blocked）**：3 个（FileUpload、PrintButton 等）  
+8. **第一阶段先做**：PermissionButton、AuditTrail 抽公共、SensitiveText 推广、Excel 导出入口统一、ConfirmDialog 扫尾  
+9. **禁止重写**：DataTable、AdvancedFilter、AppDrawer、AppConfirmDialog、公共日期组件族（及 Excel 管道）  
+10. **开发顺序提醒**：第 0 清理 → 第 1 交付级 → 第 2 展示 → 第 3 选择器 → 第 4 录入 → 第 5 骨架 → 第 6 体验  
+11. **详细盘点**：见 `01-前端组件资产盘点报告.md` 与附录 C  
 
 ---
 
@@ -456,3 +476,180 @@ AppPermissionButton、AppFileUpload、AppFileList、AppBatchActionBar、AppAppro
 | AppWatermark | SecurityWatermark | 公共出口 re-export |
 
 **原则**：别名与文档优先，文件搬迁最后做，避免大爆炸重构。
+
+---
+
+## 附录 C：2026-07-08 前端组件资产盘点结果（82 项全表）
+
+> 盘点方式：只读扫描 `frontend/src/components/`、`modules/*/components/`、`security/components/`、`utils/`。  
+> 详细说明见：`docs/公共组件/01-前端组件资产盘点报告.md`  
+> **成熟度口径**：`implemented` / `partial` / `page-only` / `duplicate` / `missing` / `blocked`  
+> **视觉口径**：`商业级` / `可用但普通` / `粗糙` / `不统一` / `缺失`  
+> **处理建议**：`禁止重写，只增强` / `增强现有组件` / `抽成公共组件` / `新建公共组件` / `暂缓` / `正式上线前必须做`
+
+### C.1 第 1 层：视觉与页面骨架（10）
+
+| 组件名称 | 已有 | 已有路径 | 成熟度 | 视觉 | 新建 | 仅增强 | 禁止重写 | 阶段 | 状态 | 处理建议 |
+|----------|------|----------|--------|------|------|--------|----------|------|------|----------|
+| AppPageShell | 是 | `business/ModulePageShell.vue` | implemented | 可用但普通 | 否 | 是 | 否 | 第5阶段 | partial | 禁止重写，只增强 |
+| AppPageHeader | 是 | `common/AppPageHeader.vue` | partial | 可用但普通 | 否 | 是 | 否 | 第5阶段 | partial | 增强现有组件 |
+| AppModuleHero | 是 | `business/ModuleHero.vue` | implemented | 可用但普通 | 否 | 是 | 否 | 第5阶段 | partial | 禁止重写，只增强 |
+| AppSectionCard | 部分 | `ui/AppCard.vue` | partial | 不统一 | 否 | 是 | 否 | 第5阶段 | partial | 增强现有组件 |
+| AppSectionHeader | 是 | `ui/AppSectionHeader.vue` + `dashboard/AppSectionHeader.vue` | duplicate | 不统一 | 否 | 是 | 否 | 第5阶段 | partial | 抽成公共组件 |
+| AppToolbar | 是 | `business/ModuleToolbar.vue` | implemented | 可用但普通 | 否 | 是 | 否 | 第5阶段 | partial | 禁止重写，只增强 |
+| AppActionBar | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第5阶段 | planned | 新建公共组件 |
+| AppStickyFooter | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第5阶段 | planned | 暂缓 |
+| AppDrawerLayout | 是 | `ui/AppDrawer.vue` | implemented | 可用但普通 | 否 | 是 | **是** | 第5阶段 | implemented | **禁止重写，只增强** |
+| AppResponsiveGrid | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第5阶段 | planned | 暂缓 |
+
+### C.2 第 2 层：数据展示（15）
+
+| 组件名称 | 已有 | 已有路径 | 成熟度 | 视觉 | 新建 | 仅增强 | 禁止重写 | 阶段 | 状态 | 处理建议 |
+|----------|------|----------|--------|------|------|--------|----------|------|------|----------|
+| AppDataTable | 是 | `business/DataTable.vue` | implemented | 可用但普通 | 否 | 是 | **是** | 第2阶段 | implemented | **禁止重写，只增强** |
+| AppColumnConfig | 部分 | 各模块 `ColumnSettings*.vue` | duplicate | 不统一 | 是 | 是 | 否 | 第2阶段 | partial | 抽成公共组件 |
+| AppPagination | 部分 | `DataTable.vue` 内嵌 pager | partial | 不统一 | 是 | 是 | 否 | 第2阶段 | partial | 增强现有组件 |
+| AppAdvancedFilter | 是 | `business/AdvancedFilter.vue` | implemented | 可用但普通 | 否 | 是 | **是** | 第2阶段 | implemented | **禁止重写，只增强** |
+| AppSearchBox | 部分 | `StudentSearchBar.vue` + 筛选 keyword | duplicate | 不统一 | 是 | 否 | 否 | 第2阶段 | partial | 抽成公共组件 |
+| AppStatusTag | 是 | `common/AppStatusTag.vue` | implemented | 商业级 | 否 | 是 | 否 | 第2阶段 | implemented | 增强现有组件 |
+| AppRiskTag | 是 | `common/AppRiskTag.vue` | implemented | 商业级 | 否 | 是 | 否 | 第2阶段 | implemented | 增强现有组件 |
+| AppProgressBar | 部分 | `dashboard/DataQualityBar.vue` | partial | 粗糙 | 是 | 否 | 否 | 第2阶段 | planned | 暂缓 |
+| AppMetricCard | 是 | `common/AppMetricCard.vue` + `dashboard/MetricCard.vue` | duplicate | 不统一 | 否 | 是 | 否 | 第2阶段 | partial | 增强现有组件 |
+| AppChartCard | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第2阶段 | planned | 暂缓 |
+| AppTimeline | 是 | `common/AppTimeline.vue` + `dashboard/LifecycleTimeline.vue` | partial | 不统一 | 否 | 是 | 否 | 第2阶段 | partial | 增强现有组件 |
+| AppDescriptionList | 页内 | 各详情页 `mp-kv` 样式 | page-only | 粗糙 | 是 | 否 | 否 | 第2阶段 | planned | 新建公共组件 |
+| AppEmptyState | 是 | `business/EmptyState.vue` → `AppGlobalState` | implemented | 可用但普通 | 否 | 是 | 否 | 第2阶段 | partial | 增强现有组件 |
+| AppErrorState | 是 | `business/ErrorState.vue` → `AppGlobalState` | implemented | 可用但普通 | 否 | 是 | 否 | 第2阶段 | partial | 增强现有组件 |
+| AppLoadingState | 是 | `business/LoadingState.vue` → `AppGlobalState` | implemented | 可用但普通 | 否 | 是 | 否 | 第2阶段 | partial | 增强现有组件 |
+
+### C.3 第 3 层：数据录入（14）
+
+| 组件名称 | 已有 | 已有路径 | 成熟度 | 视觉 | 新建 | 仅增强 | 禁止重写 | 阶段 | 状态 | 处理建议 |
+|----------|------|----------|--------|------|------|--------|----------|------|------|----------|
+| AppForm | 页内 | 各页 `ie-fld` 散写 | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 新建公共组件 |
+| AppFormItem | 页内 | 各页 label 散写 | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 新建公共组件 |
+| AppTextInput | 页内 | `ie-in` class | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 新建公共组件 |
+| AppNumberInput | 页内 | 原生 number input | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 暂缓 |
+| AppSelect | 页内 | 原生 `<select>` | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 新建公共组件 |
+| AppMultiSelect | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第4阶段 | planned | 新建公共组件 |
+| AppRadioGroup | 页内 | 原生 radio | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 暂缓 |
+| AppCheckboxGroup | 页内 | 原生 checkbox | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 暂缓 |
+| AppTextarea | 页内 | 原生 textarea | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 新建公共组件 |
+| AppRichTextEditor | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第4阶段 | planned | 暂缓 |
+| AppFormSection | 页内 | `mp-card` 分区 | page-only | 粗糙 | 是 | 否 | 否 | 第4阶段 | planned | 暂缓 |
+| AppFormValidator | 否 | 局部校验散落 | missing | 缺失 | 是 | 否 | 否 | 第4阶段 | planned | 新建公共组件 |
+| AppSubmitBar | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第4阶段 | planned | 新建公共组件 |
+| 公共日期组件族 | 是 | `common/date/*` + `dateUtils.js` | implemented | 商业级 | 否 | 是 | **是** | 已完成 | implemented | **禁止重写，只增强** |
+
+### C.4 第 4 层：高校业务选择器（15）
+
+| 组件名称 | 已有 | 已有路径 | 成熟度 | 视觉 | 新建 | 仅增强 | 禁止重写 | 阶段 | 状态 | 处理建议 |
+|----------|------|----------|--------|------|------|--------|----------|------|------|----------|
+| AppStudentPicker | 页内 | 列表关键字/建档 select | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppTeacherPicker | 页内 | 导师分配输入/下拉 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppClassPicker | 页内 | AdvancedFilter class 字段 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppMajorPicker | 页内 | AdvancedFilter major 字段 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppCollegePicker | 页内 | AdvancedFilter college 字段 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppOrgCascader | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppAcademicYearPicker | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppTermPicker | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppBatchPicker | 页内 | 毕设/迎新/实习批次 `<select>` | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppRolePicker | 页内 | 系统角色页局部 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppTenantPicker | 页内 | 平台租户页局部 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 暂缓 |
+| AppCompanyPicker | 页内 | 实习企业搜索/下拉 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppPositionPicker | 页内 | 实习岗位搜索/下拉 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppMentorPicker | 页内 | 毕设导师分配 | page-only | 粗糙 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+| AppCoursePicker | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第3阶段 | planned | 新建公共组件 |
+
+### C.5 第 5 层：交付级业务组件（16）
+
+| 组件名称 | 已有 | 已有路径 | 成熟度 | 视觉 | 新建 | 仅增强 | 禁止重写 | 阶段 | 状态 | 处理建议 |
+|----------|------|----------|--------|------|------|--------|----------|------|------|----------|
+| AppExcelImportWizard | 是 | `common/excel/AppExcelImportDrawer.vue` 等 | partial | 可用但普通 | 否 | 是 | 否（禁重做管道） | 第1阶段 | partial | 增强现有组件 |
+| AppExcelExportButton | 是 | `common/excel/AppExportButton.vue` | partial | 可用但普通 | 否 | 是 | 否 | 第1阶段 | partial | 增强现有组件 |
+| AppExportConfirm | 是 | `common/AppExportConfirm.vue` | implemented | 商业级 | 否 | 是 | 建议禁重写 | 第1阶段 | implemented | 禁止重写，只增强 |
+| AppImportResultPanel | 部分 | `excel/AppImportErrorSummary.vue` 等 | partial | 可用但普通 | 否 | 是 | 否 | 第1阶段 | partial | 增强现有组件 |
+| AppFileUpload | 否 | 平台 `/api/v1/files` 占位 | blocked | 缺失 | 是 | 否 | 否 | 第1阶段 | blocked | 正式上线前必须做 |
+| AppFilePreview | 是 | `common/AppFilePreview.vue` | partial | 可用但普通 | 否 | 是 | 否 | 第1阶段 | partial | 增强现有组件 |
+| AppFileList | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第1阶段 | planned | 正式上线前必须做 |
+| AppAuditTrail | 副本×3 | `modules/*/AuditTrailPanel.vue` | duplicate | 不统一 | 是 | 是 | 否 | 第1阶段 | partial | 抽成公共组件 |
+| AppSensitiveText | 是 | `common/AppSensitiveText.vue` | partial | 可用但普通 | 否 | 是 | 否 | 第1阶段 | partial | 增强现有组件 |
+| AppPermissionButton | 页内 | `permissionActions` map 散落 | page-only | 不统一 | 是 | 否 | 否 | 第1阶段 | planned | 新建公共组件 |
+| AppConfirmDialog | 是 | `common/AppConfirmDialog.vue` | implemented | 商业级 | 否 | 是 | **是** | 第1阶段 | implemented | **禁止重写，只增强** |
+| AppBatchActionBar | 副本×2 | `orientation/employment/BatchActionBar.vue` | duplicate | 不统一 | 是 | 否 | 否 | 第1阶段 | partial | 抽成公共组件 |
+| AppWorkflowTimeline | 部分 | `common/AppTimeline` + workflow 组件 | partial | 不统一 | 否 | 是 | 否 | 第1阶段 | partial | 增强现有组件 |
+| AppApprovalPanel | 部分 | `workflow/ApprovalTaskDetailPanel.vue` 等 | partial | 可用但普通 | 是 | 是 | 否 | 第1阶段 | partial | 增强现有组件 |
+| AppTodoPanel | 部分 | `common/AppTodoCard` + `dashboard/TaskWorkbenchPanel` | partial | 不统一 | 是 | 是 | 否 | 第1阶段 | partial | 增强现有组件 |
+| AppNotificationPanel | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第1阶段 | planned | 暂缓 |
+
+### C.6 第 6 层：体验增强（12）
+
+| 组件名称 | 已有 | 已有路径 | 成熟度 | 视觉 | 新建 | 仅增强 | 禁止重写 | 阶段 | 状态 | 处理建议 |
+|----------|------|----------|--------|------|------|--------|----------|------|------|----------|
+| AppWatermark | 是 | `security/SecurityWatermark.vue` | partial | 可用但普通 | 否 | 是 | 否 | 第6阶段 | partial | 正式上线前必须做 |
+| AppCopyableText | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第6阶段 | planned | 暂缓 |
+| AppHelpTooltip | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第6阶段 | planned | 暂缓 |
+| AppFieldHint | 页内 | `ie-hint` class | page-only | 粗糙 | 是 | 否 | 否 | 第6阶段 | planned | 暂缓 |
+| AppQuickFilterChips | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第6阶段 | planned | 暂缓 |
+| AppKeyboardShortcut | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第6阶段 | planned | 暂缓 |
+| AppPrintButton | 否 | — | blocked | 缺失 | 是 | 否 | 否 | 第6阶段 | blocked | 正式上线前必须做 |
+| AppQRCode | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第6阶段 | planned | 暂缓 |
+| AppBadge | 是 | `ui/AppBadge.vue` | implemented | 商业级 | 否 | 是 | 否 | 第6阶段 | implemented | 增强现有组件 |
+| AppAvatarGroup | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第6阶段 | planned | 暂缓 |
+| AppStepGuide | 部分 | `common/AppStepBar.vue` | partial | 可用但普通 | 否 | 是 | 否 | 第6阶段 | partial | 暂缓 |
+| AppOperationResult | 否 | — | missing | 缺失 | 是 | 否 | 否 | 第6阶段 | planned | 暂缓 |
+
+### C.7 盘点结论速查
+
+| 统计项 | 数量 |
+|--------|------|
+| 总组件数 | 82 |
+| implemented（可直接复用） | 20 |
+| partial（需增强） | 24 |
+| page-only（页面散落待抽） | 12 |
+| duplicate（多份待合并） | 8 |
+| missing（完全缺失） | 15 |
+| blocked（平台依赖） | 3 |
+| 禁止重写清单 | DataTable、AdvancedFilter、AppDrawer、AppConfirmDialog、公共日期族、Excel 管道 |
+| 第一阶段优先 5 项 | PermissionButton、AuditTrail、SensitiveText、Excel 导出入口、ConfirmDialog 扫尾 |
+
+---
+
+## 附录：第一/二阶段交付级公共组件落地状态（2026-07-09）
+
+> 本轮已按「交付级公共组件底座」施工完成 20 个组件；统一出口 `@/components/common`（UI 基元在 `@/components/ui`）。
+> 在线预览：`/dev/components`。使用手册：`docs/公共组件/02-第一阶段交付级公共组件使用指南.md`。
+> commit：待用户确认后提交（本轮不 commit、不 push）。
+
+### 第一阶段（12 个）
+
+| 组件 | 类型 | 状态 | 备注 |
+|------|------|------|------|
+| AppPermissionButton | 新建 | implemented | 仅前端体验，越权拦截由后端 |
+| AppAuditTrail | 新建 | implemented | 只展示后端真实审计 |
+| AppFileList | 新建 | partial | 展示态完成；上传/存储依赖文件中心 |
+| AppBatchActionBar | 新建 | implemented | 列表多选浮出操作条 |
+| AppApprovalPanel | 新建 | implemented | 驳回/退回强制意见+校验 |
+| AppExportButton | 增强·统一出口 | implemented | 不伪造导出成功，走后端 |
+| AppExportConfirm | 复用 | implemented | 必填导出用途写审计 |
+| AppConfirmDialog | 增强 | implemented | 新增 content/danger/loading 别名 |
+| AppStatusTag | 增强 | implemented | 状态映射扩到 40+、新增 size |
+| AppRiskTag | 增强 | implemented | 支持别名、新增 size |
+| AppSensitiveText | 复用 | implemented | 默认脱敏，@reveal 写审计 |
+| AppFilePreview | 复用 | implemented | 只展示与派发事件 |
+
+### 第二阶段（8 个）
+
+| 组件 | 类型 | 状态 | 备注 |
+|------|------|------|------|
+| AppMetricCard | 增强 | implemented | 新增 loading 骨架 |
+| AppWorkflowTimeline | 新建 | implemented | 审批流/流转时间线 |
+| AppTodoPanel | 新建 | implemented | 工作台待办 |
+| AppNotificationPanel | 新建 | implemented | 消息通知面板 |
+| AppCopyableText | 新建 | implemented | 敏感字段仍用 AppSensitiveText |
+| AppHelpTooltip | 新建 | implemented | 口径/填写帮助气泡 |
+| AppFieldHint | 新建 | implemented | 表单字段提示 |
+| AppBadge | 增强 | implemented | 新增计数/红点，兼容原胶囊 |
+
+**验收口径**：统一出口可被多模块 `import`；`/dev/components` 真实渲染并可交互；`npm run build` 通过；无 console 报错。
+**未覆盖（随业务模块对接）**：后端真实数据、导出接口、审批引擎联调；文件中心上传/对象存储（AppFileList/AppFilePreview 上传态）。
