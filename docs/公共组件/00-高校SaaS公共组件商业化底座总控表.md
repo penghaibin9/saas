@@ -692,3 +692,12 @@ AppRemoteSelect（基座）、AppStudentPicker、AppTeacherPicker、AppMentorPic
 
 **验收口径**：统一出口可多模块 import；`npm run build` 通过；`/dev/components` 有示例。
 **未接（随业务/能力对接）**：选择器真实后端与数据范围过滤、图表库、二维码出图、富文本 XSS 清洗、DataTable 列配置真实联动。
+
+---
+
+## 附录：/dev/components 预览页重构（2026-07-09）
+
+用户反馈「第 2 批只显示 10 个组件」经查为**场景式展示、非组件缺失**。本轮把 `/dev/components` 从 6 个业务场景卡
+重构为 **9 组、每个组件一个高校业务示例** 的完整画廊，并加 partial（部分完成）/后端负责/统一别名标签，新手可逐组验收。
+完整《展示覆盖表》+《5 星 UI 验收表》见 `docs/公共组件/03-第二阶段公共组件使用指南.md` 附录。
+验证：`npm run build` 通过、`npm run lint` 零报错；登录态截图因本地后端未运行未采集（已 build+lint+props 静态核对佐证）。
