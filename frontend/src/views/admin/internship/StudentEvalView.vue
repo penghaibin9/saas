@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="学生鉴定" subtitle="学生自评 · 指导教师意见 · 学校审核鉴定"
+  <ModulePageShell title="评价与成绩" subtitle="学生鉴定 · 学生自评 · 指导教师意见 · 学校审核"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
       <AppButton variant="secondary" :loading="exporting" @click="doExport">⬇ 导出 Excel 台账</AppButton>

@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="实习成绩" subtitle="五项权重核算 · 复核发布 · 缺项不可发布"
+  <ModulePageShell title="评价与成绩" subtitle="实习成绩 · 五项权重核算 · 复核发布 · 缺项不可发布"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
       <AppButton variant="primary" @click="openCompute">＋ 核算成绩</AppButton>

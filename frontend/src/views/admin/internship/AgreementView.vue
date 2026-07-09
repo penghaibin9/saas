@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="三方协议" subtitle="协议生成 · 学生/企业/学校三方确认 · 签署扫描件留痕"
+  <ModulePageShell title="申请与协议" subtitle="三方协议 · 协议生成 · 学生/企业/学校确认 · 签署扫描件留痕"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
       <AppButton variant="primary" @click="openGenerate">＋ 生成协议</AppButton>

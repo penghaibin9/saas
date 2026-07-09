@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="岗位实习中心"
+    title="实习工作台"
     :subtitle="hero.batchName + ' · ' + hero.batchStatus"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
@@ -13,7 +13,7 @@
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-stack">
       <ModuleHero
-        :title="ctx.tenantBrandConfig.schoolName + ' · 岗位实习总览'"
+        :title="ctx.tenantBrandConfig.schoolName + ' · 实习总览'"
         :subtitle="hero.batchName + '（' + hero.batchRange + '）'"
         :chips="heroChips"
         :stats="hero.stats"

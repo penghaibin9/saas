@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="打卡异常"
+    title="打卡与请假"
     :subtitle="'待核实 ' + pendingCount + ' 条 · 承接学生小程序 P11 打卡异常说明'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"

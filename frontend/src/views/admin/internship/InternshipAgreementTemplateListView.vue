@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="实习协议模板库"
+    title="申请与协议"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"

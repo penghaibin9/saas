@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="打卡与补卡" subtitle="打卡台账 · 打卡异常处理 · 补卡审批"
+  <ModulePageShell title="打卡与请假" subtitle="打卡台账 · 打卡异常 · 补卡审批 · 实习请假"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
       <AppButton :variant="'secondary'" :loading="exporting" @click="doExport">⬇ 导出 Excel 台账</AppButton>

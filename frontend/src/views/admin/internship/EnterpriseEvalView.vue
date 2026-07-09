@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="企业评价" subtitle="企业导师五维评价 · 学校审核 · 来源可追溯"
+  <ModulePageShell title="评价与成绩" subtitle="企业评价 · 企业导师五维评价 · 学校审核 · 来源可追溯"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
       <AppButton variant="primary" @click="openCreate">＋ 录入企业评价</AppButton>

@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="实习批次"
+    title="批次与规则"
     :subtitle="pageSubtitle"
     :role-name="roleName"
     :data-scope-name="dataScopeName"

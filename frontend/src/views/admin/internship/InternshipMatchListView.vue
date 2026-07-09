@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="岗位匹配"
+    title="匹配与分配"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"

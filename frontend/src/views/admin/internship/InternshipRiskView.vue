@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="风险学生"
+    title="风险处置"
     :subtitle="'风险来源统一挂 INT-R 编码 · 关闭风险需填写原因并留痕'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"

@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="企业库"
+    title="企业与岗位"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"

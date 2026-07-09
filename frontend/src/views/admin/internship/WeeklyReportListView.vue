@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="周报批阅"
+    title="周报与任务"
     :subtitle="'承接学生小程序 P12 周报提交 · 退回原因必填并同步学生端'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"

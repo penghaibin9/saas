@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="实习请假审批" subtitle="学生实习期请假 · 指导教师审批 · 证明附件留痕"
+  <ModulePageShell title="打卡与请假" subtitle="学生实习期请假 · 指导教师审批 · 证明附件留痕"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
       <AppButton variant="secondary" :loading="exporting" @click="doExport">⬇ 导出 Excel 台账</AppButton>
