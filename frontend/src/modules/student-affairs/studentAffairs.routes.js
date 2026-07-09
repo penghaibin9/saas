@@ -37,10 +37,53 @@ const studentAffairsRoutes = [
           requiresAuth: true,
           permissionKey: 'studentAffairs.profile.view'
         }
+      },
+      {
+        path: 'classes',
+        name: 'student-affairs-classes',
+        component: () => import('@/views/admin/student-affairs/StudentAffairsClassListView.vue'),
+        meta: {
+          moduleCode: 'STUDENT_AFFAIRS',
+          title: '班级管理',
+          requiresAuth: true,
+          permissionKey: 'studentAffairs.classes.view'
+        }
+      },
+      {
+        path: 'classes/:classId',
+        name: 'student-affairs-class-detail',
+        component: () => import('@/views/admin/student-affairs/StudentAffairsClassDetailView.vue'),
+        meta: {
+          moduleCode: 'STUDENT_AFFAIRS',
+          title: '班级详情',
+          requiresAuth: true,
+          permissionKey: 'studentAffairs.classes.view'
+        }
+      },
+      {
+        path: 'dormitory',
+        name: 'student-affairs-dormitory',
+        component: () => import('@/views/admin/student-affairs/StudentAffairsDormitoryView.vue'),
+        meta: {
+          moduleCode: 'STUDENT_AFFAIRS',
+          title: '宿舍管理',
+          requiresAuth: true,
+          permissionKey: 'studentAffairs.dorm.view'
+        }
+      },
+      {
+        path: 'dormitory/:panel(buildings|rooms|beds|checks|absence)',
+        name: 'student-affairs-dormitory-panel',
+        component: () => import('@/views/admin/student-affairs/StudentAffairsDormitoryView.vue'),
+        meta: {
+          moduleCode: 'STUDENT_AFFAIRS',
+          title: '宿舍管理',
+          requiresAuth: true,
+          permissionKey: 'studentAffairs.dorm.view'
+        }
       }
     ]
   }
 ]
 
 export default studentAffairsRoutes
-

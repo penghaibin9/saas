@@ -102,10 +102,20 @@ export const NAV_PLAN = [
       I('身份核验（现有）', '/admin/student/identity'),
       I('导入导出（现有）', '/admin/student/import-export')
     ]),
-    mod('sa-classes', '班级管理', null, P(
-      '班级列表', '班级详情', '班级学生', '辅导员绑定', '班主任绑定', '班干部管理', '班级通讯录',
-      '班级风险概览', '班级请假统计', '班级宿舍统计', '班级奖助统计', '班级活动统计', '班级档案'
-    )),
+    mod('sa-classes', '班级管理', '/admin/student-affairs/classes', [
+      I('班级列表', '/admin/student-affairs/classes'),
+      I('班级详情', '/admin/student-affairs/classes'),
+      I('班级学生', '/admin/student-affairs/classes'),
+      I('辅导员绑定', '/admin/student-affairs/classes'),
+      I('班主任绑定', '/admin/student-affairs/classes'),
+      I('班干部管理', '/admin/student-affairs/classes'),
+      I('班级通讯录', '/admin/student-affairs/classes'),
+      I('班级风险概览', '/admin/student-affairs/classes'),
+      I('班级请假统计', '/admin/student-affairs/classes'),
+      I('班级宿舍统计', '/admin/student-affairs/classes'),
+      ...P('班级奖助统计', '班级活动统计'),
+      I('班级档案入口', '/admin/student-affairs/classes')
+    ]),
     mod('sa-orientation', '数字迎新', '/admin/orientation', [
       I('迎新看板', '/admin/orientation'),
       I('迎新批次', '/admin/orientation/batches'),
@@ -165,11 +175,20 @@ export const NAV_PLAN = [
       '家长信息', '联系人维护', '联系记录', '家校通知', '通知回执', '紧急联系',
       '重点学生家校沟通', '家长授权记录', '家校联系统计', '家校材料归档'
     )),
-    mod('sa-dorm', '宿舍管理', null, [
-      ...P('宿舍看板', '楼栋管理', '房间管理', '床位管理'),
-      I('入住管理（现有·宿舍服务）', '/admin/campus-service/dormitory'),
-      ...P('退宿管理', '调宿申请', '调宿审批', '宿舍检查', '夜不归宿', '公寓纪律', '宿舍维修',
-        '文明寝室', '宿舍异常', '宿舍统计', '宿舍归档')
+    mod('sa-dorm', '宿舍管理', '/admin/student-affairs/dormitory', [
+      I('宿舍看板', '/admin/student-affairs/dormitory'),
+      I('楼栋管理', '/admin/student-affairs/dormitory/buildings'),
+      I('房间管理', '/admin/student-affairs/dormitory/rooms'),
+      I('床位管理', '/admin/student-affairs/dormitory/beds'),
+      I('入住管理', '/admin/student-affairs/dormitory'),
+      I('退宿管理', '/admin/student-affairs/dormitory'),
+      I('调宿申请 / 审批入口', '/admin/student-affairs/dormitory'),
+      I('宿舍检查', '/admin/student-affairs/dormitory/checks'),
+      I('夜不归宿', '/admin/student-affairs/dormitory/absence'),
+      ...P('公寓纪律', '宿舍维修', '文明寝室'),
+      I('宿舍异常', '/admin/student-affairs/dormitory/absence'),
+      I('宿舍统计摘要', '/admin/student-affairs/dormitory'),
+      I('宿舍归档入口', '/admin/student-affairs/dormitory')
     ]),
     mod('sa-activities', '学生活动', null, P(
       '活动看板', '活动发布', '活动报名', '报名审核', '活动签到', '活动请假',

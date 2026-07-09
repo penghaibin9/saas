@@ -65,6 +65,34 @@ export const studentAffairsApi = {
     return ok(await request(`/student-affairs/students/${studentId}/timeline`, { params }))
   },
 
+  async listClasses() {
+    return ok(await request('/student-affairs/classes'))
+  },
+
+  async listClassCadres(classId) {
+    return ok(await request(`/student-affairs/classes/${classId}/cadres`))
+  },
+
+  async getDormOccupancy() {
+    return ok(await request('/student-affairs/dorm/occupancy'))
+  },
+
+  async listDormBuildings(params = {}) {
+    return ok(await request('/student-affairs/dorm/buildings', { params }))
+  },
+
+  async listDormRooms(buildingId, params = {}) {
+    return ok(await request(`/student-affairs/dorm/buildings/${buildingId}/rooms`, { params }))
+  },
+
+  async listDormBeds(roomId) {
+    return ok(await request(`/student-affairs/dorm/rooms/${roomId}/beds`))
+  },
+
+  async getDormConfig() {
+    return ok(await request('/student-affairs/dorm/config'))
+  },
+
   async getStudentBasic(studentId) {
     return ok(normalizeStudent(await request(`/students/${studentId}`)))
   },
@@ -93,4 +121,3 @@ export const studentAffairsApi = {
 }
 
 export default studentAffairsApi
-
