@@ -137,11 +137,15 @@ export const NAV_PLAN = [
       I('迎新统计', '/admin/orientation/statistics'),
       I('迎新归档', '/admin/orientation/archive')
     ]),
-    mod('sa-leave', '请假销假', null, [
-      ...P('请假看板', '请假申请'),
-      I('请假审批', '/admin/campus-service/leave'),
-      ...P('续假申请', '续假审批', '销假管理', '归寝核验', '长假审批', '外出备案',
-        '请假异常', '超期未销假', '请假规则配置', '请假台账', '请假统计', '请假归档')
+    mod('sa-leave', '????', '/admin/student-affairs/leave', [
+      I('????', '/admin/student-affairs/leave'),
+      I('????', '/admin/student-affairs/leave/approvals'),
+      I('????', '/admin/student-affairs/leave'),
+      I('????', '/admin/student-affairs/leave/approvals'),
+      I('????', '/admin/student-affairs/leave/exceptions'),
+      I('??????', '/admin/student-affairs/leave/exceptions'),
+      I('??????', '/admin/student-affairs/leave/rules'),
+      P('???????', '????', '??????', '????', '????')
     ]),
     mod('sa-difficulty', '困难认定', null, P(
       '认定批次', '学生申请', '材料上传', '材料审核', '辅导员初审', '班级民主评议', '学院审核',
@@ -162,11 +166,18 @@ export const NAV_PLAN = [
       '心理看板', '心理测评', '测评结果', '重点关注学生', '咨询预约', '咨询记录', '危机预警',
       '危机干预', '转介记录', '回访记录', '心理活动', '心理档案', '心理权限审计', '心理统计'
     )),
-    mod('sa-risk', '风险预警', null, P(
-      '风险看板', '风险学生', '学业风险摘要', '请假异常风险', '夜不归宿风险', '心理关注风险',
-      '违纪风险', '经济困难风险', '实习异常风险', '多维风险合并', '风险处置', '风险跟进',
-      '风险关闭', '风险规则配置', '风险统计'
-    )),
+    mod('sa-risk', '????', '/admin/student-affairs/risk', [
+      I('????', '/admin/student-affairs/risk'),
+      I('????', '/admin/student-affairs/risk'),
+      I('????', '/admin/student-affairs/risk'),
+      I('????', '/admin/student-affairs/risk'),
+      I('????', '/admin/student-affairs/risk'),
+      I('????', '/admin/student-affairs/risk'),
+      I('????', '/admin/student-affairs/risk'),
+      I('??????', '/admin/student-affairs/risk'),
+      I('??????', '/admin/student-affairs/risk/rules'),
+      P('??????', '???????', '????', '????')
+    ]),
     mod('sa-talks', '谈心谈话', null, P(
       '谈话计划', '谈话记录', '重点学生谈话', '风险学生谈话', '家校联动谈话', '谈话跟进',
       '待回访学生', '批量导入谈话', '谈话统计', '谈话归档'

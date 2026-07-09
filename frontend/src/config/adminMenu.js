@@ -52,6 +52,8 @@ export const ADMIN_MENU = [
       { key: 'sa-profile', label: '学生画像', path: '/admin/student-affairs/profile', moduleCode: 'STUDENT_AFFAIRS', permissionKey: 'studentAffairs.profile.view' },
       { key: 'sa-classes', label: '班级管理', path: '/admin/student-affairs/classes', moduleCode: 'STUDENT_AFFAIRS', permissionKey: 'studentAffairs.classes.view' },
       { key: 'sa-dormitory', label: '宿舍管理', path: '/admin/student-affairs/dormitory', moduleCode: 'STUDENT_AFFAIRS', permissionKey: 'studentAffairs.dorm.view' },
+      { key: 'sa-leave', label: '????', path: '/admin/student-affairs/leave', moduleCode: 'STUDENT_AFFAIRS', permissionKey: 'studentAffairs.leave.view' },
+      { key: 'sa-risk', label: '????', path: '/admin/student-affairs/risk', moduleCode: 'STUDENT_AFFAIRS', permissionKey: 'studentAffairs.risk.view' },
       { key: 'sa-orientation', label: '数字迎新', path: '/admin/orientation', moduleCode: 'ORIENTATION', permissionKey: 'orientation.dashboard.view' },
       { key: 'sa-campus', label: '在校服务', path: '/admin/campus-service', moduleCode: 'CAMPUS_SERVICE', permissionKey: 'campusService.dashboard.view' }
     ]
@@ -194,6 +196,8 @@ export const SEARCH_ALIASES = [
   { keywords: ['学生中心', '学生画像', '学生主档'], path: '/admin/student-affairs/profile', label: '学工中心 / 学生画像' },
   { keywords: ['班级管理', '班级学生', '辅导员绑定', '班干部'], path: '/admin/student-affairs/classes', label: '学工中心 / 班级管理' },
   { keywords: ['宿舍管理', '楼栋', '房间', '床位', '夜不归宿'], path: '/admin/student-affairs/dormitory', label: '学工中心 / 宿舍管理' },
+  { keywords: ['????', '????', '????', '????'], path: '/admin/student-affairs/leave', label: '???? / ????' },
+  { keywords: ['????', '????', '????', '????'], path: '/admin/student-affairs/risk', label: '???? / ????' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
   { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 学业过程' },

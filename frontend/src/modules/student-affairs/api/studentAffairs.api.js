@@ -93,6 +93,166 @@ export const studentAffairsApi = {
     return ok(await request('/student-affairs/dorm/config'))
   },
 
+  async listPendingLeaves(params = {}) {
+    const data = await request('/student-affairs/leave/pending', {
+      params: {
+        page: params.page || 1,
+        pageSize: params.pageSize || 20
+      }
+    })
+    return ok({
+      items: data.items || [],
+      total: data.total || 0,
+      page: data.page || params.page || 1,
+      pageSize: data.pageSize || params.pageSize || 20
+    })
+  },
+
+  async getLeaveDetail(leaveId) {
+    return ok(await request(`/student-affairs/leave/${leaveId}`))
+  },
+
+  async approveLeave(leaveId, comment = '') {
+    return ok(await request(`/student-affairs/leave/${leaveId}/approve`, {
+      method: 'POST',
+      body: { comment }
+    }))
+  },
+
+  async rejectLeave(leaveId, reason) {
+    return ok(await request(`/student-affairs/leave/${leaveId}/reject`, {
+      method: 'POST',
+      body: { reason }
+    }))
+  },
+
+  async returnLeave(leaveId, reason) {
+    return ok(await request(`/student-affairs/leave/${leaveId}/return`, {
+      method: 'POST',
+      body: { reason }
+    }))
+  },
+
+  async cancelLeave(leaveId, proofNote = '') {
+    return ok(await request(`/student-affairs/leave/${leaveId}/cancel`, {
+      method: 'POST',
+      body: { proofNote }
+    }))
+  },
+
+  async confirmCancelLeave(leaveId, note = '') {
+    return ok(await request(`/student-affairs/leave/${leaveId}/cancel-confirm`, {
+      method: 'POST',
+      body: { note }
+    }))
+  },
+
+  async applyLeaveExtension(leaveId, body) {
+    return ok(await request(`/student-affairs/leave/${leaveId}/extension`, {
+      method: 'POST',
+      body
+    }))
+  },
+
+  async approveLeaveExtension(leaveId) {
+    return ok(await request(`/student-affairs/leave/${leaveId}/extension-approve`, {
+      method: 'POST'
+    }))
+  },
+
+  async scanLeaveOverdue() {
+    return ok(await request('/student-affairs/leave/scan-overdue', { method: 'POST' }))
+  },
+
+  async listRiskRecords(params = {}) {
+    const data = await request('/student-affairs/risk/records', {
+      params: {
+        source: params.source,
+        status: params.status,
+        riskLevel: params.riskLevel,
+        page: params.page || 1,
+        pageSize: params.pageSize || 20
+      }
+    })
+    return ok({
+      items: data.items || [],
+      total: data.total || 0,
+      page: data.page || params.page || 1,
+      pageSize: data.pageSize || params.pageSize || 20
+    })
+  },
+
+  async getRiskRecord(riskId) {
+    return ok(await request(`/student-affairs/risk/records/${riskId}`))
+  },
+
+  async createRiskRecord(body) {
+    return ok(await request('/student-affairs/risk/records', {
+      method: 'POST',
+      body
+    }))
+  },
+
+  async assignRisk(riskId, ownerId) {
+    return ok(await request(`/student-affairs/risk/records/${riskId}/assign`, {
+      method: 'POST',
+      body: { ownerId }
+    }))
+  },
+
+  async processRisk(riskId, content) {
+    return ok(await request(`/student-affairs/risk/records/${riskId}/process`, {
+      method: 'POST',
+      body: { content }
+    }))
+  },
+
+  async followRisk(riskId, content = '') {
+    return ok(await request(`/student-affairs/risk/records/${riskId}/follow`, {
+      method: 'POST',
+      body: { content }
+    }))
+  },
+
+  async transferRisk(riskId, newOwnerId, reason = '') {
+    return ok(await request(`/student-affairs/risk/records/${riskId}/transfer`, {
+      method: 'POST',
+      body: { newOwnerId, reason }
+    }))
+  },
+
+  async escalateRisk(riskId, reason = '') {
+    return ok(await request(`/student-affairs/risk/records/${riskId}/escalate`, {
+      method: 'POST',
+      body: { reason }
+    }))
+  },
+
+  async takeoverRisk(riskId, content = '') {
+    return ok(await request(`/student-affairs/risk/records/${riskId}/takeover`, {
+      method: 'POST',
+      body: { content }
+    }))
+  },
+
+  async closeRisk(riskId, conclusion) {
+    return ok(await request(`/student-affairs/risk/records/${riskId}/close`, {
+      method: 'POST',
+      body: { conclusion }
+    }))
+  },
+
+  async reopenRisk(riskId, reason = '') {
+    return ok(await request(`/student-affairs/risk/records/${riskId}/reopen`, {
+      method: 'POST',
+      body: { reason }
+    }))
+  },
+
+  async scanRiskTimeout() {
+    return ok(await request('/student-affairs/risk/scan-timeout', { method: 'POST' }))
+  },
+
   async getStudentBasic(studentId) {
     return ok(normalizeStudent(await request(`/students/${studentId}`)))
   },
