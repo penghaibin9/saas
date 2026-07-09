@@ -112,6 +112,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', title: '岗位详情', requiresAuth: true, permissionKey: 'internship.position.view' }
     },
     {
+      path: 'agreements',
+      name: 'internship-agreements',
+      component: () => import('@/views/admin/internship/AgreementView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '三方协议', requiresAuth: true, permissionKey: 'internship.agreement.view' }
+    },
+    {
       path: 'agreement-templates',
       name: 'internship-agreement-templates',
       component: () => import('@/views/admin/internship/InternshipAgreementTemplateListView.vue'),

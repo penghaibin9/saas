@@ -101,6 +101,20 @@ def internship_leave_withdraw(leave_id: str, user=Depends(get_current_user)):
     return success(lv.withdraw(user, leave_id), message="已撤回")
 
 
+@router.get("/internship/agreements", summary="本人三方协议列表")
+def internship_my_agreements(user=Depends(get_current_user)):
+    from app.services import internship_agreement_service as agr
+    return success(agr.my_agreements(user))
+
+
+@router.post("/internship/agreements/{agreement_id}/confirm", summary="本人确认/驳回三方协议")
+def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import internship_agreement_service as agr
+    b = body or {}
+    return success(agr.student_confirm(user, agreement_id, (b.get("action") or "").upper(),
+                                       b.get("reason") or ""), message="已提交")
+
+
 @router.post("/me/messages/{message_id}/read", summary="标记本人消息已读")
 def me_message_read(message_id: str, user=Depends(get_current_user)):
     return success(stu.message_mark_read(user, message_id))

@@ -16,6 +16,7 @@ from app.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, 
                                      VoidBatchRequest)
 from app.services import audit_log
 from app.services import internship_enterprise_service as ent
+from app.services import internship_agreement_service as agr
 from app.services import internship_guidance_service as gd
 from app.services import internship_leave_service as lv
 from app.services import internship_makeup_service as mk
@@ -313,6 +314,76 @@ def leave_review(leave_id: str, body: dict = Body(...), user=Depends(get_current
     result = lv.review(user, leave_id, (b.get("action") or "").upper(), b.get("comment") or "")
     audit_log.record("审批实习请假", f"internship-leave:{leave_id}", detail=result)
     return success(result, message="审批完成")
+
+
+# ═══════════ 三方协议签署实例（P2-A：三方确认状态机，owner + 数据范围）═══════════
+
+@router.post("/agreements/export", summary="三方协议台账导出 Excel(.xlsx)")
+def agreements_export(status: Optional[str] = None, keyword: Optional[str] = None,
+                      user=Depends(get_current_user)):
+    data = agr.export_agreements(status=status, keyword=keyword, user=user)
+    audit_log.record("导出三方协议台账", "internship-agreement:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+@router.get("/agreements", summary="三方协议列表（按数据范围）")
+def agreements(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+               status: Optional[str] = None, keyword: Optional[str] = None,
+               user=Depends(get_current_user)):
+    items, total = agr.list_agreements(page, pageSize, status=status, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/agreements", summary="生成协议实例（owner，DRAFT）")
+def agreement_generate(body: dict = Body(...), user=Depends(get_current_user)):
+    result = agr.generate(user, body)
+    audit_log.record("生成三方协议", f"internship-agreement:{result['id']}", detail=result)
+    return success(result, message="已生成协议草稿")
+
+
+@router.get("/agreements/{agreement_id}", summary="协议详情（含附件/三方确认留痕）")
+def agreement_detail(agreement_id: str, user=Depends(get_current_user)):
+    return success(agr.get_agreement(agreement_id, user=user))
+
+
+@router.post("/agreements/{agreement_id}/issue", summary="下发协议（DRAFT→待学生确认）")
+def agreement_issue(agreement_id: str, user=Depends(get_current_user)):
+    return success(agr.issue(user, agreement_id), message="已下发")
+
+
+@router.post("/agreements/{agreement_id}/enterprise-confirm", summary="记录企业签署（需上传扫描件→待学校确认）")
+def agreement_enterprise_confirm(agreement_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = agr.enterprise_confirm(user, agreement_id, body)
+    audit_log.record("记录企业签署三方协议", f"internship-agreement:{agreement_id}", detail=result)
+    return success(result, message="已记录企业签署")
+
+
+@router.post("/agreements/{agreement_id}/school-confirm", summary="学校确认（待学校确认→已生效）")
+def agreement_school_confirm(agreement_id: str, user=Depends(get_current_user)):
+    result = agr.school_confirm(user, agreement_id)
+    audit_log.record("学校确认三方协议生效", f"internship-agreement:{agreement_id}", detail=result)
+    return success(result, message="协议已生效")
+
+
+@router.post("/agreements/{agreement_id}/reject", summary="驳回协议（原因≥5字）")
+def agreement_reject(agreement_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = agr.reject(user, agreement_id, (body or {}).get("reason") or "")
+    audit_log.record("驳回三方协议", f"internship-agreement:{agreement_id}", detail=result)
+    return success(result, message="已驳回")
+
+
+@router.post("/agreements/{agreement_id}/void", summary="作废协议")
+def agreement_void(agreement_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    result = agr.void(user, agreement_id, (body or {}).get("reason") or "")
+    audit_log.record("作废三方协议", f"internship-agreement:{agreement_id}", detail=result)
+    return success(result, message="已作废")
+
+
+@router.post("/agreements/{agreement_id}/archive", summary="归档协议（已生效→已归档）")
+def agreement_archive(agreement_id: str, user=Depends(get_current_user)):
+    result = agr.archive(user, agreement_id)
+    audit_log.record("归档三方协议", f"internship-agreement:{agreement_id}", detail=result)
+    return success(result, message="已归档")
 
 
 # ═══════════ 实习批次（组织时间轴 + 规则骨架，状态机 DRAFT→RUNNING→CLOSED→ARCHIVED）═══════════

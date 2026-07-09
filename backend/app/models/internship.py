@@ -182,6 +182,39 @@ class InternshipVisit(PKMixin, TenantMixin, CommonMixin, Base):
     file_id: Mapped[str | None] = mapped_column(String(64), comment="附件 file_id 预留")
 
 
+class InternshipAgreement(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_agreement 三方协议签署实例（区别于 t_internship_agreement_template 模板库）。
+    三方确认流：DRAFT 草稿 → PENDING_STUDENT 待学生确认 → PENDING_ENTERPRISE 待企业确认
+    → PENDING_SCHOOL 待学校确认 → EFFECTIVE 已生效；旁支 REJECTED/VOIDED/ARCHIVED。
+    无电子签章时，企业确认以「上传纸质三方协议签署扫描件(file_id)」为准（不伪造电子签），
+    电子签章能力预留。owner：学生本人确认；教师/管理员生成/推进/作废/归档。"""
+    __tablename__ = "t_internship_agreement"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    template_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ 模板库")
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    enterprise_name: Mapped[str | None] = mapped_column(String(200))
+    position_name: Mapped[str | None] = mapped_column(String(100))
+    student_confirm_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                                        comment="PENDING/CONFIRMED/REJECTED")
+    student_confirm_at: Mapped[datetime | None] = mapped_column(DateTime)
+    enterprise_confirm_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    enterprise_confirm_at: Mapped[datetime | None] = mapped_column(DateTime)
+    enterprise_confirm_by: Mapped[str | None] = mapped_column(String(50), comment="记录企业签署的经办人")
+    school_confirm_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    school_confirm_at: Mapped[datetime | None] = mapped_column(DateTime)
+    school_confirm_by: Mapped[str | None] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/PENDING_STUDENT/PENDING_ENTERPRISE/PENDING_SCHOOL/"
+                                                "EFFECTIVE/REJECTED/VOIDED/ARCHIVED")
+    reject_reason: Mapped[str | None] = mapped_column(String(500))
+    file_id: Mapped[str | None] = mapped_column(String(64), comment="签署扫描件 file_id（文件中心）")
+    esign_status: Mapped[str] = mapped_column(String(20), nullable=False, default="NONE",
+                                              comment="电子签章预留 NONE/PENDING/SIGNED")
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
 class InternshipLeave(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_leave 实习请假（学生对实习期请假，指导教师审批）。
     状态机：PENDING 待审批 →(教师) APPROVED 已通过 / REJECTED 已驳回；PENDING →(学生) WITHDRAWN 已撤回。
