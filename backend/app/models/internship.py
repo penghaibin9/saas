@@ -246,6 +246,30 @@ class InternshipEnterpriseEval(PKMixin, TenantMixin, CommonMixin, Base):
     file_id: Mapped[str | None] = mapped_column(String(64), comment="企业签署评价扫描件 file_id")
 
 
+class InternshipStudentEval(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_student_eval 学生实习鉴定/自评（学生自评 + 教师/企业意见 + 学校审核）。
+    学生本人提交自评(mobile) SUBMITTED；指导教师补意见；学校审核 PENDING→APPROVED/RETURNED。"""
+    __tablename__ = "t_internship_student_eval"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    self_summary: Mapped[str | None] = mapped_column(Text, comment="实习总结")
+    self_harvest: Mapped[str | None] = mapped_column(Text, comment="学习收获")
+    self_problem: Mapped[str | None] = mapped_column(Text, comment="存在问题")
+    advisor_opinion: Mapped[str | None] = mapped_column(String(1000), comment="指导教师意见")
+    mentor_opinion: Mapped[str | None] = mapped_column(String(1000), comment="企业导师意见")
+    submit_status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT",
+                                               comment="DRAFT/SUBMITTED")
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    school_review_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                                      comment="PENDING/APPROVED/RETURNED")
+    school_review_comment: Mapped[str | None] = mapped_column(String(500))
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(50))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    file_id: Mapped[str | None] = mapped_column(String(64), comment="鉴定表扫描件 file_id")
+
+
 class InternshipLeave(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_leave 实习请假（学生对实习期请假，指导教师审批）。
     状态机：PENDING 待审批 →(教师) APPROVED 已通过 / REJECTED 已驳回；PENDING →(学生) WITHDRAWN 已撤回。

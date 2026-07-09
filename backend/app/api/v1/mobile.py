@@ -115,6 +115,18 @@ def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user
                                        b.get("reason") or ""), message="已提交")
 
 
+@router.get("/internship/self-eval", summary="本人实习自评/鉴定")
+def internship_my_self_eval(user=Depends(get_current_user)):
+    from app.services import internship_student_eval_service as se
+    return success(se.my_eval(user))
+
+
+@router.post("/internship/self-eval", summary="提交/重交本人实习自评（总结/收获/问题）")
+def internship_submit_self_eval(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import internship_student_eval_service as se
+    return success(se.student_submit(user, body or {}), message="自评已提交")
+
+
 @router.post("/me/messages/{message_id}/read", summary="标记本人消息已读")
 def me_message_read(message_id: str, user=Depends(get_current_user)):
     return success(stu.message_mark_read(user, message_id))

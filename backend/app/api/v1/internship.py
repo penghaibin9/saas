@@ -23,6 +23,7 @@ from app.services import internship_leave_service as lv
 from app.services import internship_makeup_service as mk
 from app.services import internship_risk_service as risk
 from app.services import internship_service as svc
+from app.services import internship_student_eval_service as se
 from app.services import internship_visit_service as vis
 from app.services import xlsx_util
 
@@ -423,6 +424,44 @@ def enterprise_eval_review(eval_id: str, body: dict = Body(...), user=Depends(ge
     b = body or {}
     result = ee.review(user, eval_id, (b.get("action") or "").upper(), b.get("comment") or "")
     audit_log.record("审核企业评价", f"internship-enterprise-eval:{eval_id}", detail=result)
+    return success(result, message="审核完成")
+
+
+# ═══════════ 学生鉴定/自评（P2-C：学生自评 + 教师意见 + 学校审核）═══════════
+
+@router.post("/student-evals/export", summary="学生鉴定台账导出 Excel(.xlsx)")
+def student_evals_export(reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
+                         user=Depends(get_current_user)):
+    data = se.export_evals(review_status=reviewStatus, keyword=keyword, user=user)
+    audit_log.record("导出学生鉴定台账", "internship-student-eval:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+@router.get("/student-evals", summary="学生鉴定列表（按数据范围）")
+def student_evals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                  reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
+                  user=Depends(get_current_user)):
+    items, total = se.list_evals(page, pageSize, review_status=reviewStatus, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/student-evals/{eval_id}", summary="学生鉴定详情（自评/意见/审核留痕）")
+def student_eval_detail(eval_id: str, user=Depends(get_current_user)):
+    return success(se.get_eval(eval_id, user=user))
+
+
+@router.post("/student-evals/{eval_id}/advisor-comment", summary="指导教师填写意见（owner）")
+def student_eval_advisor_comment(eval_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = se.advisor_comment(user, eval_id, body)
+    audit_log.record("填写学生鉴定指导意见", f"internship-student-eval:{eval_id}", detail=result)
+    return success(result, message="已保存意见")
+
+
+@router.post("/student-evals/{eval_id}/review", summary="学校审核学生鉴定（通过/退回，退回原因≥5字）")
+def student_eval_review(eval_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    b = body or {}
+    result = se.review(user, eval_id, (b.get("action") or "").upper(), b.get("comment") or "")
+    audit_log.record("审核学生鉴定", f"internship-student-eval:{eval_id}", detail=result)
     return success(result, message="审核完成")
 
 
