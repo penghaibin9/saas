@@ -17,7 +17,9 @@ from app.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, 
 from app.services import audit_log
 from app.services import internship_enterprise_service as ent
 from app.services import internship_guidance_service as gd
+from app.services import internship_leave_service as lv
 from app.services import internship_makeup_service as mk
+from app.services import internship_risk_service as risk
 from app.services import internship_service as svc
 from app.services import internship_visit_service as vis
 from app.services import xlsx_util
@@ -233,6 +235,84 @@ def risks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
           user=Depends(get_current_user)):
     items, total = svc.list_risk_students(page, pageSize, level=level, status=status, user=user)
     return success(paginate(items, total, page, pageSize))
+
+
+# ═══════════ 风险处置闭环（P1-Stage3：受理/跟进/升级/关闭，owner + 审计）═══════════
+# 静态子路由 export 声明在 /{rid} 之前，避免被动态段吞掉。
+
+@router.post("/risks/export", summary="风险处置台账导出 Excel(.xlsx)")
+def risks_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = risk.export_risks(keyword=keyword, user=user)
+    audit_log.record("导出风险处置台账", "internship-risk:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+@router.get("/risks/{risk_id}", summary="风险单详情（含处置留痕）")
+def risk_detail(risk_id: str, user=Depends(get_current_user)):
+    return success(risk.get_risk(risk_id, user=user))
+
+
+@router.post("/risks/{risk_id}/handle", summary="受理风险（PENDING→PROCESSING，owner）")
+def risk_handle(risk_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    b = body or {}
+    result = risk.handle(user, risk_id, owner_name=b.get("ownerName"),
+                         deadline=b.get("deadline"), comment=b.get("comment") or "")
+    audit_log.record("受理实习风险", f"internship-risk:{risk_id}", detail=result)
+    return success(result, message="已受理")
+
+
+@router.post("/risks/{risk_id}/follow", summary="风险跟进（追加跟进说明，owner）")
+def risk_follow(risk_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = risk.follow(user, risk_id, (body or {}).get("note") or "")
+    audit_log.record("跟进实习风险", f"internship-risk:{risk_id}", detail=result)
+    return success(result, message="已跟进")
+
+
+@router.post("/risks/{risk_id}/escalate", summary="风险升级（提升等级，owner）")
+def risk_escalate(risk_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    b = body or {}
+    result = risk.escalate(user, risk_id, (b.get("level") or "").upper(), b.get("note") or "")
+    audit_log.record("升级实习风险", f"internship-risk:{risk_id}", detail=result)
+    return success(result, message="已升级")
+
+
+@router.post("/risks/{risk_id}/close", summary="风险关闭（化解/关闭归档，owner）")
+def risk_close(risk_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    b = body or {}
+    result = risk.close(user, risk_id, (b.get("result") or "RESOLVED").upper(), b.get("comment") or "")
+    audit_log.record("关闭实习风险", f"internship-risk:{risk_id}", detail=result)
+    return success(result, message="已关闭")
+
+
+# ═══════════ 实习请假审批（P1-Stage3：教师端 owner + 数据范围；学生端在 mobile）═══════════
+
+@router.post("/leaves/export", summary="请假审批台账导出 Excel(.xlsx)")
+def leaves_export(status: Optional[str] = None, keyword: Optional[str] = None,
+                  user=Depends(get_current_user)):
+    data = lv.export_leaves(status=status, keyword=keyword, user=user)
+    audit_log.record("导出请假审批台账", "internship-leave:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+@router.get("/leaves", summary="实习请假列表（按数据范围）")
+def leaves(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+           status: Optional[str] = None, keyword: Optional[str] = None,
+           user=Depends(get_current_user)):
+    items, total = lv.list_leaves(page, pageSize, status=status, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/leaves/{leave_id}", summary="请假详情（含附件/审批留痕）")
+def leave_detail(leave_id: str, user=Depends(get_current_user)):
+    return success(lv.get_leave(leave_id, user=user))
+
+
+@router.post("/leaves/{leave_id}/review", summary="审批请假（通过/驳回，驳回原因≥5字，owner）")
+def leave_review(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    b = body or {}
+    result = lv.review(user, leave_id, (b.get("action") or "").upper(), b.get("comment") or "")
+    audit_log.record("审批实习请假", f"internship-leave:{leave_id}", detail=result)
+    return success(result, message="审批完成")
 
 
 # ═══════════ 实习批次（组织时间轴 + 规则骨架，状态机 DRAFT→RUNNING→CLOSED→ARCHIVED）═══════════

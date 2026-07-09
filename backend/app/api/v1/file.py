@@ -71,3 +71,16 @@ def file_meta(file_id: str, user=Depends(get_current_user)):
         from app.core.exceptions import not_found
         raise not_found("文件不存在")
     return success(meta)
+
+
+@router.get("/download/{file_id}", summary="下载附件（按租户校验 + 审计留痕）")
+def download_file(file_id: str, user=Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+
+    from app.core.exceptions import not_found
+    resolved = file_service.resolve_download(file_id)
+    if not resolved:
+        raise not_found("文件不存在或已丢失")
+    path, filename = resolved
+    audit_log.record("FILE_DOWNLOAD", filename, detail={"fileId": file_id})
+    return FileResponse(str(path), filename=filename)

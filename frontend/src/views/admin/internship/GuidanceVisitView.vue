@@ -94,6 +94,11 @@
             <label class="fld"><span class="fld__lb">月度小结</span><textarea v-model="form.monthlyReport" class="fld__ct fld__ta" placeholder="可选：本月巡访月报"></textarea></label>
           </template>
 
+          <label class="fld"><span class="fld__lb">附件（可选，走文件中心）</span>
+            <input type="file" class="fld__ct fld__file" @change="onFilePick" />
+            <span v-if="form.fileId" class="fld__att">已上传：{{ attachName }}</span>
+            <span v-else-if="uploadingFile" class="fld__att">上传中…</span>
+          </label>
           <p class="modal__hint">仅可对本人指导学生新增，越权将被后端拒绝并写审计。</p>
         </div>
         <div class="modal__foot">
@@ -115,6 +120,12 @@
             <div v-for="f in detailFields" :key="f.key" class="dline">
               <span class="dline__lb">{{ f.label }}</span>
               <span class="dline__ct">{{ detailDlg.data[f.key] || '—' }}</span>
+            </div>
+            <div v-if="detailDlg.data.attachment" class="dline">
+              <span class="dline__lb">附件</span>
+              <span class="dline__ct">
+                <button class="op" @click="downloadAtt(detailDlg.data.attachment)">⬇ {{ detailDlg.data.attachment.fileName }}</button>
+              </span>
             </div>
             <div class="dtrail">
               <div class="dtrail__t">操作留痕</div>
@@ -204,6 +215,7 @@ export default {
       keyword: '', rectifyFilter: '',
       studentOptions: [],
       form: emptyForm(),
+      uploadingFile: false, attachName: '',
       createDlg: { visible: false, submitting: false },
       detailDlg: { visible: false, loading: false, data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', submitting: false },
@@ -234,8 +246,24 @@ export default {
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
     },
+    async onFilePick(e) {
+      const file = e.target.files && e.target.files[0]
+      if (!file) return
+      this.uploadingFile = true
+      const res = await guidanceVisitApi.uploadAttachment(file)
+      this.uploadingFile = false
+      if (res.code !== 0) return toast.error(res.message || '上传失败')
+      this.form.fileId = res.data.fileId
+      this.attachName = res.data.fileName || file.name
+      toast.success('附件已上传')
+    },
+    async downloadAtt(att) {
+      try { await guidanceVisitApi.downloadAttachment(att.fileId, att.fileName) }
+      catch (e) { toast.error('下载失败：' + (e.message || '')) }
+    },
     async openCreate() {
       this.form = emptyForm()
+      this.attachName = ''
       this.form.method = this.methodOptions[0].value
       this.createDlg.visible = true
       if (!this.studentOptions.length) {
@@ -350,6 +378,8 @@ export default {
   padding: 0 var(--space-2); font-size: var(--font-size-sm); }
 .fld__ta { height: 72px; padding: var(--space-2); resize: vertical; }
 .chk { display: flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-sm); color: var(--text-secondary); }
+.fld__file { height: auto; padding: var(--space-1) 0; border: none; font-size: var(--font-size-xs); }
+.fld__att { font-size: var(--font-size-xs); color: var(--success-700); }
 .dline { display: flex; gap: var(--space-3); padding: var(--space-1) 0; font-size: var(--font-size-sm); }
 .dline__lb { width: 88px; flex-shrink: 0; color: var(--text-tertiary); }
 .dline__ct { color: var(--text-primary); word-break: break-all; }

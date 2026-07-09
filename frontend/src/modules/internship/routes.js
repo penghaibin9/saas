@@ -76,6 +76,18 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', title: '实习风险学生', requiresAuth: true, permissionKey: 'internship.risk.view' }
     },
     {
+      path: 'risk-disposal',
+      name: 'internship-risk-disposal',
+      component: () => import('@/views/admin/internship/RiskDisposalView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '风险处置', requiresAuth: true, permissionKey: 'internship.risk.handle' }
+    },
+    {
+      path: 'leaves',
+      name: 'internship-leaves',
+      component: () => import('@/views/admin/internship/LeaveReviewView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '实习请假审批', requiresAuth: true, permissionKey: 'internship.leave.review' }
+    },
+    {
       path: 'enterprises',
       name: 'internship-enterprises',
       component: () => import('@/views/admin/internship/InternshipEnterpriseListView.vue'),

@@ -182,6 +182,29 @@ class InternshipVisit(PKMixin, TenantMixin, CommonMixin, Base):
     file_id: Mapped[str | None] = mapped_column(String(64), comment="附件 file_id 预留")
 
 
+class InternshipLeave(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_leave 实习请假（学生对实习期请假，指导教师审批）。
+    状态机：PENDING 待审批 →(教师) APPROVED 已通过 / REJECTED 已驳回；PENDING →(学生) WITHDRAWN 已撤回。
+    owner 边界：学生只能对本人实习记录申请/撤回；教师只能审批本人指导学生（advisor_name）。"""
+    __tablename__ = "t_internship_leave"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    leave_type: Mapped[str] = mapped_column(String(20), nullable=False, default="PERSONAL",
+                                            comment="SICK 病假 / PERSONAL 事假 / OTHER 其他")
+    start_date: Mapped[str] = mapped_column(String(10), nullable=False, comment="起 YYYY-MM-DD")
+    end_date: Mapped[str] = mapped_column(String(10), nullable=False, comment="止 YYYY-MM-DD")
+    days: Mapped[float] = mapped_column(Float, nullable=False, default=1, comment="请假天数")
+    reason: Mapped[str] = mapped_column(String(500), nullable=False, comment="请假事由")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                        comment="PENDING/APPROVED/REJECTED/WITHDRAWN")
+    apply_by_name: Mapped[str | None] = mapped_column(String(50), comment="申请人（学生）")
+    review_by_name: Mapped[str | None] = mapped_column(String(50), comment="审批人")
+    review_at: Mapped[datetime | None] = mapped_column(DateTime)
+    review_comment: Mapped[str | None] = mapped_column(String(500))
+    file_id: Mapped[str | None] = mapped_column(String(64), comment="证明附件 file_id（文件中心）")
+
+
 class WeeklyReport(PKMixin, TenantMixin, CommonMixin, Base):
     """t_weekly_report 实习周报（支持重交版本）。"""
     __tablename__ = "t_weekly_report"

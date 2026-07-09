@@ -56,6 +56,37 @@ def _scope_ctx(user):
     return _current_scope(user), _rec_in_scope
 
 
+def _validate_file(file_id):
+    """附件 file_id 校验：为空放行；非空必须是本租户已存在的文件，否则拒绝。"""
+    fid = (file_id or "").strip()
+    if not fid:
+        return None
+    from app.services import file_service
+    if not file_service.get_file_meta(fid):
+        raise AppException("VALIDATION_ERROR", "附件不存在或无权访问，请重新上传")
+    return fid
+
+
+def _spawn_risk(db, rec, stu, g, user):
+    """指导「转风险」联动：to_risk=True 时在 t_risk_record 生成一条待处理风险单并写审计。
+    返回新建 risk_id 或 None。风险处置闭环见 internship_risk_service。"""
+    from app.models import RiskRecord
+    risk = RiskRecord(
+        tenant_id=_tid(), internship_id=rec.id,
+        risk_code="INT-GUIDE", risk_title=f"指导发现问题：{g.topic or g.problem_type or '需跟进'}",
+        risk_level="MEDIUM", source_module="guidance",
+        owner_name=_op_name(user), status="PENDING_HANDLE",
+        last_follow_note=(g.suggestion or g.content or "")[:500])
+    db.add(risk); db.flush()
+    db.add(InternshipAuditTrail(
+        tenant_id=_tid(), target_id=risk.id, target_type="RISK", action="CREATE_FROM_GUIDANCE",
+        operator_name=_op_name(user),
+        detail_json={"guidanceId": str(g.id), "studentName": stu.real_name if stu else "",
+                     "notifyCounselor": bool(g.notify_counselor)},
+        occurred_at=datetime.utcnow()))
+    return risk.id
+
+
 def create(user, body) -> dict:
     b = body or {}
     iid = b.get("internshipId") or b.get("internId")
@@ -63,6 +94,7 @@ def create(user, body) -> dict:
         raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
     if not (b.get("content") or "").strip():
         raise AppException("VALIDATION_ERROR", "指导内容必填")
+    file_id = _validate_file(b.get("fileId"))
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         rec = db.get(InternshipRecord, int(iid))
@@ -78,12 +110,15 @@ def create(user, body) -> dict:
             problem_type=b.get("problemType"), suggestion=b.get("suggestion"),
             next_follow_date=b.get("nextFollowDate"),
             to_risk=bool(b.get("toRisk")), notify_counselor=bool(b.get("notifyCounselor")),
-            file_id=b.get("fileId"), status="NORMAL")
+            file_id=file_id, status="NORMAL")
         db.add(g); db.flush()
-        _trail(db, g.id, "CREATE", {"method": g.method, "topic": g.topic or ""},
-               operator=_op_name(user))
+        _trail(db, g.id, "CREATE", {"method": g.method, "topic": g.topic or "",
+                                    "hasFile": bool(file_id)}, operator=_op_name(user))
+        risk_id = _spawn_risk(db, rec, stu, g, user) if g.to_risk else None
+        if risk_id:
+            _trail(db, g.id, "SPAWN_RISK", {"riskId": str(risk_id)}, operator=_op_name(user))
         db.commit()
-        return {"id": str(g.id)}
+        return {"id": str(g.id), "riskId": str(risk_id) if risk_id else None}
 
 
 def void_guidance(user, gid, reason="") -> dict:
@@ -130,7 +165,8 @@ def get_guidance(gid, user=None) -> dict:
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "GUIDANCE",
             InternshipAuditTrail.target_id == g.id).order_by(InternshipAuditTrail.id)).all()
-        return {**_row(g, rec, stu),
+        from app.services import file_service
+        return {**_row(g, rec, stu), "attachment": file_service.attachment_view(g.file_id),
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "occurredAt": _iso(t.occurred_at)} for t in trail]}
 

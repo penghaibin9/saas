@@ -56,11 +56,23 @@ def _scope_ctx(user):
     return _current_scope(user), _rec_in_scope
 
 
+def _validate_file(file_id):
+    """附件 file_id 校验：为空放行；非空必须是本租户已存在文件，否则拒绝。"""
+    fid = (file_id or "").strip()
+    if not fid:
+        return None
+    from app.services import file_service
+    if not file_service.get_file_meta(fid):
+        raise AppException("VALIDATION_ERROR", "附件不存在或无权访问，请重新上传")
+    return fid
+
+
 def create(user, body) -> dict:
     b = body or {}
     iid = b.get("internshipId") or b.get("internId")
     if not iid:
         raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+    file_id = _validate_file(b.get("fileId"))
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         rec = db.get(InternshipRecord, int(iid))
@@ -78,7 +90,7 @@ def create(user, body) -> dict:
             safety_issue=b.get("safetyIssue"), rectify_require=b.get("rectifyRequire"),
             rectify_deadline=b.get("rectifyDeadline"),
             rectify_status="PENDING" if has_rectify else "NONE",
-            monthly_report=b.get("monthlyReport"), file_id=b.get("fileId"))
+            monthly_report=b.get("monthlyReport"), file_id=file_id)
         db.add(v); db.flush()
         _trail(db, v.id, "CREATE", {"method": v.method, "hasRectify": has_rectify},
                operator=_op_name(user))
@@ -137,7 +149,9 @@ def get_visit(vid, user=None) -> dict:
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "VISIT",
             InternshipAuditTrail.target_id == v.id).order_by(InternshipAuditTrail.id)).all()
+        from app.services import file_service
         return {**_row(v, rec, stu), "monthlyReport": v.monthly_report or "",
+                "attachment": file_service.attachment_view(v.file_id),
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
                                for t in trail]}

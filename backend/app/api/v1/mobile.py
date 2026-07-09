@@ -83,6 +83,24 @@ def internship_makeup_withdraw(makeup_id: str, user=Depends(get_current_user)):
     return success(mk.withdraw(user, makeup_id), message="已撤回")
 
 
+@router.get("/internship/leaves", summary="本人实习请假列表")
+def internship_my_leaves(user=Depends(get_current_user)):
+    from app.services import internship_leave_service as lv
+    return success(lv.my_leaves(user))
+
+
+@router.post("/internship/leave", summary="实习请假申请（本人，待指导教师审批）")
+def internship_leave_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import internship_leave_service as lv
+    return success(lv.apply(user, body or {}), message="请假申请已提交")
+
+
+@router.post("/internship/leave/{leave_id}/withdraw", summary="撤回本人请假申请")
+def internship_leave_withdraw(leave_id: str, user=Depends(get_current_user)):
+    from app.services import internship_leave_service as lv
+    return success(lv.withdraw(user, leave_id), message="已撤回")
+
+
 @router.post("/me/messages/{message_id}/read", summary="标记本人消息已读")
 def me_message_read(message_id: str, user=Depends(get_current_user)):
     return success(stu.message_mark_read(user, message_id))

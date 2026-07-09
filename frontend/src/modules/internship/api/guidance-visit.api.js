@@ -3,7 +3,7 @@
  * 端点 /internship/guidances、/internship/visits。
  * owner + 数据范围由后端强校验，前端仅负责交互与提示。
  */
-import { request } from '@/services/http/client'
+import { request, requestUpload, requestBlob } from '@/services/http/client'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -23,7 +23,21 @@ async function callList(path, params = {}) {
 
 const B = '/internship'
 
+// 附件：走文件中心真实上传/下载（不伪造）。
+export async function uploadAttachment(file) {
+  try { return ok(await requestUpload('/files/upload', file)) } catch (e) { return toErr(e) }
+}
+export async function downloadAttachment(fileId, fileName = '附件') {
+  const blob = await requestBlob(`/files/download/${fileId}`)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = fileName; document.body.appendChild(a); a.click()
+  a.remove(); URL.revokeObjectURL(url)
+}
+
 export const guidanceVisitApi = {
+  uploadAttachment,
+  downloadAttachment,
   // 指导记录
   getGuidances(params = {}) { return callList(`${B}/guidances`, params) },
   getGuidanceDetail(id) { return call(() => request(`${B}/guidances/${id}`)) },

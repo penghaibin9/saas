@@ -109,6 +109,29 @@ def get_file_meta(file_id: str) -> dict | None:
     return _MEM_REGISTRY.get(file_id)
 
 
+def attachment_view(file_id: str | None) -> dict | None:
+    """把 file_id 解析为附件展示字段（按当前租户）。无效 / 跨租户 / 空 → None。
+    供业务详情接口把 file_id 还原成 {fileId,fileName,ext,sizeBytes} 供前端展示/下载。"""
+    if not file_id:
+        return None
+    m = get_file_meta(file_id)
+    if not m:
+        return None
+    return {"fileId": m["fileId"], "fileName": m.get("fileName"),
+            "ext": m.get("ext"), "sizeBytes": m.get("sizeBytes")}
+
+
+def resolve_download(file_id: str):
+    """返回 (磁盘绝对路径, 原始文件名) 供下载；无效 / 文件丢失 → None。按当前租户校验。"""
+    m = get_file_meta(file_id)
+    if not m or not m.get("fileKey"):
+        return None
+    path = upload_dir() / m["fileKey"]
+    if not path.exists():
+        return None
+    return path, m.get("fileName") or path.name
+
+
 # ── P6 规则中心 / 功能开关接入 ──
 
 def _upload_max_size() -> int:
