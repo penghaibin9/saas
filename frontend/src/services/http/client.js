@@ -255,6 +255,46 @@ export async function requestUpload(path, file, fieldName = 'file') {
   }
 }
 
+/** 二进制下载入口（Excel 模板 / 台账文件），与 request 共用登录态与 API 前缀。 */
+export async function requestBlob(path, options = {}) {
+  await ensureToken()
+  const qs = options.params
+    ? '?' +
+      Object.entries(options.params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&')
+    : ''
+  const headers = {}
+  if (state.token) headers.Authorization = `Bearer ${state.token}`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), options.timeout || 15000)
+  try {
+    const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
+      method: options.method || 'GET',
+      headers,
+      signal: controller.signal
+    })
+    if (!res.ok) {
+      const err = new Error(`文件下载失败（HTTP ${res.status}）`)
+      err.biz = true
+      err.code = res.status
+      throw err
+    }
+    return await res.blob()
+  } catch (e) {
+    if (!e.biz) {
+      markOffline()
+      e.biz = true
+      e.code = 503001
+      e.message = '真实接口不可用，文件下载失败'
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** mock 兜底包裹：真实调用失败（后端挂/业务错）时执行 mockFn，页面不白屏 */
 export function withFallback(label, realFn, mockFn) {
   if (!shouldTryReal()) {

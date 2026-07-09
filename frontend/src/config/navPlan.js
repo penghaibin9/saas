@@ -71,20 +71,34 @@ export const NAV_PLAN = [
 
   /* ═══════════ 一级②：学工中心 ═══════════ */
   grp('student-affairs', '学工中心', 'studentAffairs', [
-    mod('sa-dashboard', '学工看板', null, P(
-      '学工总览', '今日待办', '辅导员待办', '学生风险概览', '请假审批概览', '奖助进度概览',
-      '宿舍异常概览', '心理关注概览', '违纪处分概览', '学工数据趋势', '重点学生提醒', '待归档材料提醒'
-    )),
-    mod('sa-profile', '学生画像', '/admin/student', [
-      I('学生主档', '/admin/student/list'),
-      ...P('基础信息'),
-      I('学籍状态摘要', '/admin/student/status'),
-      ...P('班级信息', '家庭与联系人', '家校联系记录', '奖助信息摘要', '请假记录摘要',
-        '宿舍信息摘要', '处分记录摘要', '心理关注摘要'),
-      I('风险标签', '/admin/student/risk-tags'),
-      ...P('成长档案', '材料归档'),
-      I('信息更正审核', '/admin/student/corrections'),
-      ...P('数据变更日志'),
+    mod('sa-dashboard', '学工看板', '/admin/student-affairs/dashboard', [
+      I('学工总览', '/admin/student-affairs/dashboard'),
+      I('今日待办', '/admin/student-affairs/dashboard'),
+      I('辅导员待办', '/admin/student-affairs/dashboard'),
+      I('学生风险概览', '/admin/student-affairs/dashboard'),
+      I('请假审批概览', '/admin/student-affairs/dashboard'),
+      ...P('奖助进度概览'),
+      I('宿舍异常概览', '/admin/student-affairs/dashboard'),
+      ...P('心理关注概览', '违纪处分概览', '学工数据趋势'),
+      I('重点学生提醒', '/admin/student-affairs/dashboard'),
+      ...P('待归档材料提醒')
+    ]),
+    mod('sa-profile', '学生画像', '/admin/student-affairs/profile', [
+      I('学生主档摘要', '/admin/student-affairs/profile'),
+      I('基础信息', '/admin/student-affairs/profile'),
+      I('学籍状态摘要', '/admin/student-affairs/profile'),
+      I('班级信息', '/admin/student-affairs/profile'),
+      I('家庭与联系人摘要', '/admin/student-affairs/profile'),
+      ...P('家校联系记录', '奖助信息摘要'),
+      I('请假记录摘要', '/admin/student-affairs/profile'),
+      I('宿舍信息摘要', '/admin/student-affairs/profile'),
+      I('处分摘要', '/admin/student-affairs/profile'),
+      I('心理关注摘要', '/admin/student-affairs/profile'),
+      I('风险标签', '/admin/student-affairs/profile'),
+      I('成长时间线', '/admin/student-affairs/profile'),
+      ...P('材料归档'),
+      I('信息更正审核（现有学生中心）', '/admin/student/corrections'),
+      I('数据变更日志入口', '/admin/student-affairs/profile'),
       I('身份核验（现有）', '/admin/student/identity'),
       I('导入导出（现有）', '/admin/student/import-export')
     ]),

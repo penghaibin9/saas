@@ -43,12 +43,13 @@ export const ADMIN_MENU = [
     ]
   },
   {
-    /* 一级②学工中心：学生画像（原学生主档）/ 数字迎新 / 在校服务（原学生中心迁入） */
+    /* 一级②学工中心：B 包主线 / 数字迎新外部承接 / 在校服务过渡入口 */
     key: 'student-affairs',
     label: '学工中心',
     icon: '☰',
     children: [
-      { key: 'sa-student', label: '学生画像', path: '/admin/student', moduleCode: 'STUDENT', permissionKey: 'student.profile.view' },
+      { key: 'sa-dashboard', label: '学工看板', path: '/admin/student-affairs/dashboard', moduleCode: 'STUDENT_AFFAIRS', permissionKey: 'studentAffairs.dashboard.view' },
+      { key: 'sa-profile', label: '学生画像', path: '/admin/student-affairs/profile', moduleCode: 'STUDENT_AFFAIRS', permissionKey: 'studentAffairs.profile.view' },
       { key: 'sa-orientation', label: '数字迎新', path: '/admin/orientation', moduleCode: 'ORIENTATION', permissionKey: 'orientation.dashboard.view' },
       { key: 'sa-campus', label: '在校服务', path: '/admin/campus-service', moduleCode: 'CAMPUS_SERVICE', permissionKey: 'campusService.dashboard.view' }
     ]
@@ -115,9 +116,9 @@ const ROLE_MODULE_ALLOW = {
   // 说明：本轮导航重组只「新增」虚拟模块 WORKBENCH（我的工作台，人人可见），
   // 其余各业务 moduleCode 的角色可见性一字未改 —— 不扩大任何角色的数据/菜单权限。
   [ROLE_TYPE.PLATFORM]: ['PLATFORM'],
-  [ROLE_TYPE.SCHOOL_ADMIN]: ['WORKBENCH', 'WORKFLOW', 'STUDENT', 'ORIENTATION', 'CAMPUS_SERVICE', 'ACADEMIC', 'INTERNSHIP', 'GRADUATION', 'EMPLOYMENT', 'DATA_CENTER', 'APPROVAL', 'SYSTEM'],
+  [ROLE_TYPE.SCHOOL_ADMIN]: ['WORKBENCH', 'WORKFLOW', 'STUDENT_AFFAIRS', 'STUDENT', 'ORIENTATION', 'CAMPUS_SERVICE', 'ACADEMIC', 'INTERNSHIP', 'GRADUATION', 'EMPLOYMENT', 'DATA_CENTER', 'APPROVAL', 'SYSTEM'],
   [ROLE_TYPE.ACADEMIC_STAFF]: ['WORKBENCH', 'STUDENT', 'ACADEMIC', 'DATA_CENTER', 'APPROVAL', 'INTERNSHIP', 'GRADUATION', 'EMPLOYMENT'],
-  [ROLE_TYPE.COUNSELOR]: ['WORKBENCH', 'STUDENT', 'ORIENTATION', 'CAMPUS_SERVICE', 'ACADEMIC', 'INTERNSHIP'],
+  [ROLE_TYPE.COUNSELOR]: ['WORKBENCH', 'STUDENT_AFFAIRS', 'STUDENT', 'ORIENTATION', 'CAMPUS_SERVICE', 'ACADEMIC', 'INTERNSHIP'],
   [ROLE_TYPE.AUDITOR]: ['WORKBENCH', 'SYSTEM', 'DATA_CENTER', 'APPROVAL']
 }
 
@@ -187,7 +188,8 @@ export const LEGACY_GROUP_KEY_MAP = {
  */
 export const SEARCH_ALIASES = [
   { keywords: ['工作台', '我的工作台', '首页'], path: '/', label: '工作台 / 我的工作台' },
-  { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
+  { keywords: ['学工中心', '学工看板', '学工总览', '辅导员待办'], path: '/admin/student-affairs/dashboard', label: '学工中心 / 学工看板' },
+  { keywords: ['学生中心', '学生画像', '学生主档'], path: '/admin/student-affairs/profile', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
   { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 学业过程' },
