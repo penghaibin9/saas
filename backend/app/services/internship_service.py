@@ -394,6 +394,7 @@ def _batch_row(db, b: InternshipBatch) -> dict:
         "status": b.status, "statusLabel": BATCH_STATUS_LABEL.get(b.status, b.status),
         "archiveStatus": b.archive_status or "NOT_ARCHIVED",
         "remark": b.remark or "", "updateTime": _iso(b.updated_at),
+        "createTime": _iso(b.created_at) or "",
     }
 
 
@@ -591,16 +592,27 @@ def void_batch(bid, reason: str) -> dict:
 
 
 def export_batches(keyword=None, status=None) -> dict:
+    """导出实习批次 Excel 台账（按当前筛选）。"""
+    from app.core.context import get_current_user_ctx
+    from app.services import xlsx_util
+
     items, _total = list_batches(1, 10000, keyword=keyword, status=status)
-    header = ["批次名称", "批次编号", "学年", "学期", "起止", "计划人数", "实际人数", "状态", "更新时间"]
-    lines = [",".join(header)]
+    headers = ["批次名称", "批次编号", "学年", "学期", "开始时间", "结束时间", "状态",
+               "是否当前批次", "规则摘要", "创建时间"]
+    data_rows = []
     for r in items:
-        rng = f"{r['startDate'][:10]}~{r['endDate'][:10]}" if r["startDate"] and r["endDate"] else ""
-        lines.append(",".join([r["batchName"], r["batchNo"], r["academicYear"], r["term"], rng,
-                               str(r["plannedCount"]), str(r["actualCount"]), r["statusLabel"],
-                               r["updateTime"] or ""]))
-    content = "\n".join(lines)
-    return {"filename": "实习批次台账.csv", "content": content, "rowCount": len(items)}
+        rule_summary = (r.get("remark") or "")[:120]
+        is_current = "是" if r.get("status") == "RUNNING" else "否"
+        data_rows.append([
+            r["batchName"], r["batchNo"], r["academicYear"], r["term"],
+            (r["startDate"] or "")[:10], (r["endDate"] or "")[:10],
+            r["statusLabel"], is_current, rule_summary,
+            (r.get("createTime") or r.get("updateTime") or "")[:19]])
+    user = get_current_user_ctx() or {}
+    wm = (f"岗位实习中心·实习批次台账 · 导出人：{user.get('realName', '-')} · "
+          f"{datetime.now():%Y-%m-%d %H:%M}")
+    content = xlsx_util.build_ledger_xlsx("实习批次台账", headers, data_rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "实习批次台账.xlsx", len(items))
 
 
 # ═══ 看板 ═══

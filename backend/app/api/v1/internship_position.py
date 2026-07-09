@@ -5,16 +5,33 @@
 """
 from __future__ import annotations
 
+import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.internship_position import (PositionCreate, PositionImport, PositionRiskRequest,
-                                             PositionStatusAction, PositionUpdate)
+from app.schemas.internship_position import (PositionCreate, PositionImport, PositionImportErrors,
+                                             PositionRiskRequest, PositionStatusAction, PositionUpdate)
 from app.services import audit_log
 from app.services import internship_position_service as pos
+from app.services import xlsx_util
+
+_POS_XLSX_HEADERS = ["岗位名称", "关联企业", "岗位类型", "专业要求", "年级要求", "工作地点",
+                     "容量", "薪资/补贴", "企业导师", "状态", "风险标记", "备注"]
+_POS_XLSX_MAP = {"岗位名称": "title", "关联企业": "company", "岗位类型": "category",
+                 "专业要求": "major", "年级要求": "grade", "工作地点": "location",
+                 "容量": "headcount", "薪资/补贴": "salary", "企业导师": "mentor",
+                 "状态": "status", "风险标记": "riskFlag", "备注": "remark"}
+
+
+def _pos_row_values(r: dict) -> list:
+    return [r.get("title", ""), r.get("company", ""), r.get("category", ""),
+            r.get("major", ""), r.get("grade", ""), r.get("location", ""),
+            r.get("headcount", ""), r.get("salary", ""), r.get("mentor", ""),
+            r.get("status", ""), r.get("riskFlag", ""), r.get("remark", "")]
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-岗位库"])
 
@@ -34,9 +51,44 @@ def position_stats(user=Depends(get_current_user)):
     return success(pos.position_stats())
 
 
-@router.post("/positions/import/dry-run", summary="岗位导入·预校验（企业须能匹配，不写库）")
+@router.post("/positions/import/dry-run", summary="岗位导入·预校验（高级粘贴/Excel 共用，不写库）")
 def position_import_dry_run(body: PositionImport, user=Depends(get_current_user)):
     return success(pos.import_dry_run(body.rows))
+
+
+@router.get("/positions/import/template", summary="岗位库导入·下载 Excel 模板(.xlsx)")
+def position_import_template(user=Depends(get_current_user)):
+    data = xlsx_util.build_template_xlsx(
+        _POS_XLSX_HEADERS,
+        required=["岗位名称", "关联企业"],
+        samples=[
+            ["前端开发实习生", "华信智能科技有限公司", "技术岗", "软件技术", "2024级", "上海浦东", "3", "3k-4k", "李导师", "草稿", "否", ""],
+        ],
+        notes=[
+            "1. 只导入「导入模板」页；关联企业填企业全称或统一社会信用代码（须已在企业库且合作中）。",
+            "2. 黑名单/停用企业不能导入岗位；容量须为正整数。",
+            "3. 导入后岗位默认为草稿态，须走审核上架流程。",
+        ])
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=position_import_template.xlsx"})
+
+
+@router.post("/positions/import/xlsx", summary="岗位库导入·上传 Excel 解析+预校验")
+async def position_import_xlsx(file: UploadFile = File(...), user=Depends(get_current_user)):
+    content = await file.read()
+    rows = xlsx_util.read_xlsx(content, _POS_XLSX_MAP)
+    dry = pos.import_dry_run(rows)
+    return success({"rows": rows, **dry})
+
+
+@router.post("/positions/import/errors-xlsx", summary="岗位库导入·下载错误行 Excel")
+def position_import_errors_xlsx(body: PositionImportErrors, user=Depends(get_current_user)):
+    content = xlsx_util.build_error_rows_xlsx(
+        _POS_XLSX_HEADERS, body.rows, body.errors, _pos_row_values)
+    packed = xlsx_util.pack_xlsx_result(content, "岗位导入错误行.xlsx", len(body.errors))
+    return success(packed)
 
 
 @router.post("/positions/import/confirm", summary="岗位导入·确认（整批事务，预校验须全通过）")
@@ -46,7 +98,7 @@ def position_import_confirm(body: PositionImport, user=Depends(get_current_user)
     return success(result, message="导入完成")
 
 
-@router.post("/positions/export", summary="岗位库导出 CSV（写审计）")
+@router.post("/positions/export", summary="岗位库导出 Excel 台账（写审计）")
 def position_export(keyword: Optional[str] = None, status: Optional[str] = None,
                     companyId: Optional[str] = None, user=Depends(get_current_user)):
     data = pos.export_positions(keyword=keyword, status=status, company_id=companyId)

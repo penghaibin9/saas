@@ -118,8 +118,8 @@ def test_stats(client, auth_headers, db_mode):
 
 
 def test_import_dry_run_and_confirm(client, auth_headers, db_mode):
-    rows = [{"name": "导入企业A", "creditCode": "91310000IMP0001XA", "industry": "制造"},
-            {"name": "", "creditCode": "91310000IMP0002XA"}]  # 第二行缺名称
+    rows = [{"name": "导入企业A", "creditCode": "91310000IMP0001XA", "industry": "制造", "region": "上海"},
+            {"name": "", "creditCode": "91310000IMP0002XA", "industry": "制造", "region": "上海"}]  # 第二行缺名称
     dry = client.post(f"{BASE}/import/dry-run", headers=auth_headers, json={"rows": rows}).json()
     assert dry["code"] == 0
     assert dry["data"]["validRows"] == 1 and dry["data"]["invalidRows"] == 1
@@ -133,12 +133,13 @@ def test_import_dry_run_and_confirm(client, auth_headers, db_mode):
 
 
 def test_export_masked(client, auth_headers, db_mode):
+    import base64
     _create(client, auth_headers, creditCode="91310000EXP0001XA")
     ex = client.post(f"{BASE}/export", headers=auth_headers).json()
     assert ex["code"] == 0
-    assert "企业名称" in ex["data"]["content"] and ex["data"]["rowCount"] >= 1
-    # 导出不含完整手机号（脱敏）
-    assert "13800001234" not in ex["data"]["content"]
+    assert ex["data"]["filename"].endswith(".xlsx")
+    raw = base64.b64decode(ex["data"]["contentBase64"])
+    assert raw[:2] == b"PK" and ex["data"]["rowCount"] >= 1
 
 
 def test_detail_and_not_found(client, auth_headers, db_mode):
@@ -147,3 +148,61 @@ def test_detail_and_not_found(client, auth_headers, db_mode):
     assert d["code"] == 0 and "contacts" in d["data"] and "auditTrail" in d["data"]
     nf = client.get(f"{BASE}/99999999", headers=auth_headers).json()
     assert nf["code"] != 0
+
+
+def test_import_rejects_junk_names(client, auth_headers, db_mode):
+    """把营业执照整段粘进来的脏数据必须全部被预校验拦下（名称是账号/地址/税号/标签/纯数字）。"""
+    junk = [
+        {"name": "银行账户: 6607007880100001016"},
+        {"name": "开户银行: 上海浦东发展银行股份有限公司长沙开福支行"},
+        {"name": "单位地址: 湖南长沙岳麓区西铁馨寓1715"},
+        {"name": "税号: 91430104MA4RXFFJ0T"},
+        {"name": "名称: 湖南跃科信息工程有限公司"},   # 带"名称:"标签也拒，应去标签
+        {"name": "6607007880100001016"},              # 纯数字
+    ]
+    dry = client.post(f"{BASE}/import/dry-run", headers=auth_headers, json={"rows": junk}).json()
+    assert dry["code"] == 0
+    assert dry["data"]["validRows"] == 0 and dry["data"]["invalidRows"] == len(junk)
+    # 含脏行 → 确认导入被拒
+    assert client.post(f"{BASE}/import/confirm", headers=auth_headers, json={"rows": junk}).json()["code"] != 0
+    # 去掉标签后的正常企业名可通过
+    clean = [{"name": "湖南跃科信息工程有限公司", "creditCode": "91430104MA4RXFFJ0T",
+              "industry": "软件", "region": "长沙"}]
+    ok = client.post(f"{BASE}/import/dry-run", headers=auth_headers, json={"rows": clean}).json()
+    assert ok["data"]["validRows"] == 1 and ok["data"]["invalidRows"] == 0
+
+
+def test_create_rejects_junk_name_and_bad_credit(client, auth_headers, db_mode):
+    # 纯数字/账号名被拒
+    assert client.post(BASE, headers=auth_headers, json={"name": "6607007880100001016"}).json()["code"] != 0
+    # 标签名被拒
+    assert client.post(BASE, headers=auth_headers, json={"name": "税号: 91430104"}).json()["code"] != 0
+    # 信用代码含冒号/空格被拒
+    assert client.post(BASE, headers=auth_headers,
+                       json={"name": "正常科技有限公司", "creditCode": "税号:914"}).json()["code"] != 0
+
+
+def test_xlsx_import_template_and_upload(client, auth_headers, db_mode):
+    """Excel 导入：模板可下载(.xlsx)；上传 xlsx 解析+预校验，脏行被拦、好行可确认。"""
+    import io
+    from openpyxl import Workbook
+    # 模板下载
+    tpl = client.get(f"{BASE}/import/template", headers=auth_headers)
+    assert tpl.status_code == 200 and tpl.content[:2] == b"PK"  # xlsx = zip
+    # 构造 1 正常 + 1 脏(纯数字名) 的 xlsx
+    wb = Workbook(); ws = wb.active
+    ws.append(["企业名称", "统一社会信用代码", "行业", "地区"])
+    ws.append(["跃科信息工程有限公司", "91430104MA4RXFFJ0T", "软件", "长沙"])
+    ws.append(["6607007880100001016", "", "", ""])  # 脏：纯数字名
+    buf = io.BytesIO(); wb.save(buf)
+    up = client.post(f"{BASE}/import/xlsx", headers=auth_headers,
+                     files={"file": ("t.xlsx", buf.getvalue(),
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}).json()
+    assert up["code"] == 0
+    assert len(up["data"]["rows"]) == 2
+    assert up["data"]["validRows"] == 1 and up["data"]["invalidRows"] == 1
+    # 含脏行确认被拒；仅好行确认通过
+    assert client.post(f"{BASE}/import/confirm", headers=auth_headers,
+                       json={"rows": up["data"]["rows"]}).json()["code"] != 0
+    good = [r for r in up["data"]["rows"] if "6607" not in r["name"]]
+    assert client.post(f"{BASE}/import/confirm", headers=auth_headers, json={"rows": good}).json()["code"] == 0

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="企业库"
-    :subtitle="'共 ' + total + ' 家 · 合作企业主档 · 联系电话默认脱敏'"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -70,13 +70,25 @@
       </form>
     </AppDrawer>
 
-    <!-- 导入（粘贴 CSV 真导入：dry-run → 确认）-->
-    <AppDrawer v-model:visible="importVisible" title="导入企业（CSV 粘贴）">
+    <!-- 导入：Excel 模板导入（推荐）+ 高级粘贴辅助 -->
+    <AppDrawer v-model:visible="importVisible" title="导入企业">
       <div class="ie-form">
-        <p class="ie-hint">每行一家，逗号分隔：<b>企业名称,信用代码,行业,地区</b>（名称必填，信用代码库内/文件内不可重复）</p>
-        <textarea v-model="importText" class="ie-in" rows="6" placeholder="示例：\n新华科技,91310000AAAA0001X,软件,上海" />
+        <div class="ie-xlsx">
+          <b>方式一 · Excel 模板导入（推荐）</b>
+          <div class="ie-actions" style="margin: 6px 0 0">
+            <button type="button" class="mp-btn" @click="downloadTemplate">下载 Excel 模板</button>
+            <label class="mp-btn mp-btn--primary" style="cursor: pointer">
+              上传 Excel
+              <input type="file" accept=".xlsx" style="display: none" @change="onXlsxFile" />
+            </label>
+          </div>
+          <p class="ie-hint">下载模板 → 按表头填写 → 上传 .xlsx，系统自动预校验；通过后可确认导入。</p>
+        </div>
+        <p class="ie-hint" style="margin-top: 8px"><b>方式二 · 高级粘贴导入</b>：适用于少量临时录入，正式批量导入请使用 Excel 模板。</p>
+        <textarea v-model="importText" class="ie-in" rows="4" placeholder="企业名称,信用代码,行业,地区,联系人,联系电话" />
         <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="dryRunImport">预校验</button>
+          <button type="button" class="mp-btn" @click="dryRunImport">粘贴预校验</button>
+          <button v-if="importResult && importResult.errors.length" type="button" class="mp-btn" @click="downloadErrorXlsx">下载错误行 Excel</button>
           <button type="button" class="mp-btn mp-btn--primary" :disabled="!importChecked || submitting" @click="confirmImport">确认导入</button>
         </div>
         <div v-if="importResult" class="ie-imp">
@@ -109,10 +121,35 @@ import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, L
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ keyword: '', coopStatus: '', industry: '', region: '' })
+const EMPTY_FILTERS = () => ({ keyword: '', coopStatus: '', industry: '', region: '', blacklist: '' })
 const EMPTY_FORM = () => ({ name: '', creditCode: '', industry: '', source: '', region: '', scale: '', address: '', contactPerson: '', contactPhone: '', remark: '' })
+const ENTERPRISE_PANEL_PRESETS = {
+  list: () => EMPTY_FILTERS(),
+  detail: () => EMPTY_FILTERS(),
+  contacts: () => EMPTY_FILTERS(),
+  mentor: () => EMPTY_FILTERS(),
+  qualification: () => ({ ...EMPTY_FILTERS(), coopStatus: 'PENDING' }),
+  blacklist: () => ({ ...EMPTY_FILTERS(), blacklist: 'true' }),
+  archive: () => ({ ...EMPTY_FILTERS(), coopStatus: 'ARCHIVED' }),
+  stats: () => EMPTY_FILTERS(),
+  cooperation: () => ({ ...EMPTY_FILTERS(), coopStatus: 'ACTIVE' }),
+  positions: () => EMPTY_FILTERS()
+}
+const ENTERPRISE_PANEL_HINTS = {
+  list: '合作企业主档 · 联系电话默认脱敏',
+  detail: '点击行「详情」进入企业详情页',
+  contacts: '联系人在企业详情页维护',
+  mentor: '企业导师在企业详情页维护',
+  qualification: '待审核企业 · 行内可「审核」资质',
+  blacklist: '黑名单企业 · 可「移出黑名单」',
+  archive: '已归档企业台账',
+  stats: '统计能力待补强 · 当前为全量列表',
+  cooperation: '合作中企业',
+  positions: '关联岗位请前往岗位库筛选企业'
+}
 
 export default {
   name: 'InternshipEnterpriseListView',
@@ -120,11 +157,11 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', submitting: false,
+      loading: true, error: '', submitting: false, activePanel: 'list',
       rows: [], total: 0, page: 1, pageSize: 10,
       filters: EMPTY_FILTERS(),
       editVisible: false, editing: null, form: EMPTY_FORM(), formError: '',
-      importVisible: false, importText: '', importChecked: false, importResult: null,
+      importVisible: false, importText: '', importChecked: false, importResult: null, importRows: [],
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null, extra: null },
       columns: [
         { key: 'company', title: '企业 / 信用代码' },
@@ -156,21 +193,42 @@ export default {
       return [
         { key: 'create', label: '＋ 新增企业', variant: 'primary' },
         { key: 'import', label: '导入' },
-        { key: 'export', label: '导出' }
+        { key: 'export', label: '导出 Excel 台账' }
       ].filter((a) => !pa[a.key + 'Enterprise'] || pa[a.key + 'Enterprise'].visible !== false)
         .map((a) => {
           const p = pa[({ create: 'createEnterprise', import: 'importEnterprises', export: 'exportEnterprises' })[a.key]]
           return p ? { ...a, disabled: !p.allowed, disabledReason: p.reason } : a
         })
+    },
+    pageSubtitle() {
+      const hint = ENTERPRISE_PANEL_HINTS[this.activePanel] || ENTERPRISE_PANEL_HINTS.list
+      return `共 ${this.total} 家 · ${hint}`
     }
   },
-  created() { this.load() },
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.applyPanel((panel || 'list').toString())
+      }
+    }
+  },
   methods: {
+    applyPanel(panel) {
+      const key = ENTERPRISE_PANEL_PRESETS[panel] ? panel : 'list'
+      this.activePanel = key
+      this.filters = (ENTERPRISE_PANEL_PRESETS[key] || ENTERPRISE_PANEL_PRESETS.list)()
+      this.page = 1
+      this.load()
+    },
     can(key) { const p = this.perms[key]; return !!(p && p.allowed) },
     reason(key) { const p = this.perms[key]; return p && !p.allowed ? p.reason : '' },
     async load() {
       this.loading = true; this.error = ''
-      const res = await internshipApi.getEnterprises({ ...this.filters, page: this.page, pageSize: this.pageSize })
+      const p = { ...this.filters, page: this.page, pageSize: this.pageSize }
+      if (p.blacklist === '') delete p.blacklist
+      else if (p.blacklist === 'true') p.blacklist = true
+      const res = await internshipApi.getEnterprises(p)
       if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
       this.loading = false
     },
@@ -179,7 +237,7 @@ export default {
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) {
       if (key === 'create') { if (!this.can('createEnterprise')) return toast.error(this.reason('createEnterprise')); this.editing = null; this.form = EMPTY_FORM(); this.formError = ''; this.editVisible = true }
-      if (key === 'import') { if (!this.can('importEnterprises')) return toast.error(this.reason('importEnterprises')); this.importText = ''; this.importResult = null; this.importChecked = false; this.importVisible = true }
+      if (key === 'import') { if (!this.can('importEnterprises')) return toast.error(this.reason('importEnterprises')); this.importText = ''; this.importResult = null; this.importChecked = false; this.importRows = []; this.importVisible = true }
       if (key === 'export') this.doExport()
     },
     async submitEdit() {
@@ -222,33 +280,54 @@ export default {
     },
     _parseImport() {
       return this.importText.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
-        const [name, creditCode, industry, region] = l.split(',').map((x) => (x || '').trim())
-        return { name, creditCode, industry, region }
+        const p = l.split(',').map((x) => (x || '').trim())
+        return {
+          name: p[0], creditCode: p[1], industry: p[2], region: p[3],
+          contactPerson: p[4] || '', contactPhone: p[5] || '', remark: p[8] || ''
+        }
       })
+    },
+    downloadTemplate() {
+      internshipApi.downloadEnterpriseTemplate().catch((e) => toast.error(e.message || '模板下载失败'))
+    },
+    async onXlsxFile(e) {
+      const file = e.target.files && e.target.files[0]
+      e.target.value = ''
+      if (!file) return
+      const res = await internshipApi.importEnterprisesXlsx(file)
+      if (res.code !== 0) return toast.error(res.message)
+      this.importRows = res.data.rows || []
+      this.importResult = { total: res.data.total, validRows: res.data.validRows, invalidRows: res.data.invalidRows, errors: res.data.errors }
+      this.importChecked = res.data.invalidRows === 0 && this.importRows.length > 0
+      toast.success(`Excel 已解析 ${res.data.total} 行，通过 ${res.data.validRows} 行`)
     },
     async dryRunImport() {
       const rows = this._parseImport()
       if (!rows.length) return toast.error('请粘贴至少一行')
+      this.importRows = rows
       const res = await internshipApi.importEnterprisesDryRun(rows)
       if (res.code === 0) { this.importResult = res.data; this.importChecked = res.data.invalidRows === 0 }
       else toast.error(res.message)
     },
     async confirmImport() {
-      const rows = this._parseImport()
+      const rows = this.importRows && this.importRows.length ? this.importRows : this._parseImport()
       const res = await internshipApi.importEnterprisesConfirm(rows)
       if (res.code === 0) { toast.success(`已导入 ${res.data.created} 家（初始待审核）`); this.importVisible = false; this.load() }
       else toast.error(res.message)
     },
+    async downloadErrorXlsx() {
+      if (!this.importRows.length || !this.importResult?.errors?.length) return
+      const res = await internshipApi.downloadEnterpriseImportErrors(this.importRows, this.importResult.errors)
+      if (res.code === 0) {
+        downloadXlsxFromApi(res.data, '企业导入错误行.xlsx')
+        toast.success('错误行 Excel 已下载')
+      } else toast.error(res.message)
+    },
     async doExport() {
       if (!this.can('exportEnterprises')) return toast.error(this.reason('exportEnterprises'))
-      const res = await internshipApi.exportEnterprises({ ...this.filters })
-      if (res.code !== 0) return toast.error(res.message)
-      const blob = new Blob(['﻿' + res.data.content], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = res.data.filename || '企业库导出.csv'; a.click()
-      URL.revokeObjectURL(url)
-      toast.success(`已导出 ${res.data.rowCount} 家（脱敏，已写审计）`)
+      const res = await internshipApi.downloadEnterpriseExport({ ...this.filters })
+      if (res.code === 0) toast.success(`已导出 Excel 台账 ${res.data.rowCount} 家（脱敏，已写审计）`)
+      else toast.error(res.message)
     }
   }
 }
@@ -268,6 +347,7 @@ export default {
 .ie-in:focus { outline: none; border-color: var(--pri, #2563eb); }
 .ie-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
 .ie-hint { grid-column: 1 / -1; font-size: 12px; color: var(--t3, #64748b); margin: 0; }
+.ie-xlsx { grid-column: 1 / -1; padding: 10px 12px; border: 1px dashed var(--line, #d9dee8); border-radius: 8px; font-size: 13px; background: var(--bg-subtle, #f8fafc); }
 .ie-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 .mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }

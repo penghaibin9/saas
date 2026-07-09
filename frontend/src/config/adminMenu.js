@@ -195,6 +195,7 @@ export const SEARCH_ALIASES = [
   { keywords: ['岗位实习', '实习', '打卡', '周报'], path: '/admin/internship', label: '岗位实习中心' },
   { keywords: ['企业库', '合作企业', '企业列表'], path: '/admin/internship/enterprises', label: '岗位实习中心 / 企业库' },
   { keywords: ['企业岗位', '岗位库', '岗位资源'], path: '/admin/internship/positions', label: '岗位实习中心 / 岗位库' },
+  { keywords: ['岗位匹配', '学生意向', '专业匹配', '匹配确认'], path: '/admin/internship/match', label: '岗位实习中心 / 岗位匹配' },
   { keywords: ['就业服务', '就业', '未就业帮扶'], path: '/admin/employment', label: '岗位实习中心 / 就业服务' },
   { keywords: ['数据中心', '数据驾驶舱', '领导驾驶舱', '生命周期'], path: '/admin/data-center', label: '工作台 / 领导驾驶舱' },
   { keywords: ['审批中心', '我的待办', '待办', '已办'], path: '/admin/approval', label: '工作台 / 审批中心' },

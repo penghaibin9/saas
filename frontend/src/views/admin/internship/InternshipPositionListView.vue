@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="岗位库"
-    :subtitle="'共 ' + total + ' 个岗位 · 岗位关联企业 · 黑名单/停用企业不可上架'"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -9,10 +9,30 @@
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
 
+    <div v-if="activePanel === 'stats' && posStats" class="mp-stats">
+      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.total }}</div><div class="mp-stat__lbl">岗位总数</div></div>
+      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.riskCount }}</div><div class="mp-stat__lbl">风险岗位</div></div>
+      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.publishedCapacity }}</div><div class="mp-stat__lbl">已上架容量</div></div>
+      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.publishedAllocated }}</div><div class="mp-stat__lbl">已分配</div></div>
+      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.capacityUtilization }}%</div><div class="mp-stat__lbl">容量利用率</div></div>
+      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.unlimitedMajorCount }}</div><div class="mp-stat__lbl">不限专业(上架)</div></div>
+    </div>
+
     <div class="mp-stack">
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+      <AdvancedFilter v-if="activePanel !== 'stats'" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
+      <template v-else-if="activePanel === 'stats' && posStats">
+        <div class="ip-block">
+          <h3 class="ip-h">按状态</h3>
+          <DataTable :columns="statStatusCols" :rows="posStats.byStatus || []" row-key="status" :pagination="null" />
+        </div>
+        <div class="ip-block">
+          <h3 class="ip-h">按专业要求（已上架）</h3>
+          <EmptyState v-if="!(posStats.byMajor || []).length" title="暂无已上架岗位" description="上架岗位后可按专业要求聚合统计" />
+          <DataTable v-else :columns="statMajorCols" :rows="posStats.byMajor || []" row-key="major" :pagination="null" />
+        </div>
+      </template>
       <EmptyState v-else-if="!rows.length" title="暂无岗位" description="可「＋ 新增岗位」或「导入」补充岗位库（岗位须先有企业）" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-position="{ row }">
@@ -70,13 +90,24 @@
       </form>
     </AppDrawer>
 
-    <!-- 导入 -->
-    <AppDrawer v-model:visible="importVisible" title="导入岗位（CSV 粘贴）">
+    <!-- 导入：Excel 模板导入（推荐）+ 高级粘贴辅助 -->
+    <AppDrawer v-model:visible="importVisible" title="导入岗位">
       <div class="ie-form">
-        <p class="ie-hint">每行一个，逗号分隔：<b>岗位名称,企业名称,专业要求,工作地点,容量</b>（企业名称须已在企业库）</p>
-        <textarea v-model="importText" class="ie-in" rows="6" placeholder="示例：前端实习生,华信智能科技有限公司,软件技术,上海,3" />
+        <div class="ie-xlsx">
+          <b>方式一 · Excel 模板导入（推荐）</b>
+          <div class="ie-actions" style="margin: 6px 0 0">
+            <button type="button" class="mp-btn" @click="downloadTemplate">下载 Excel 模板</button>
+            <label class="mp-btn mp-btn--primary" style="cursor: pointer">
+              上传 Excel
+              <input type="file" accept=".xlsx" style="display: none" @change="onXlsxFile" />
+            </label>
+          </div>
+        </div>
+        <p class="ie-hint" style="margin-top: 8px"><b>方式二 · 高级粘贴导入</b>：适用于少量临时录入，正式批量导入请使用 Excel 模板。</p>
+        <textarea v-model="importText" class="ie-in" rows="5" placeholder="岗位名称,企业名称,专业要求,工作地点,容量" />
         <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="dryRunImport">预校验</button>
+          <button type="button" class="mp-btn" @click="dryRunImport">粘贴预校验</button>
+          <button v-if="importResult && importResult.errors.length" type="button" class="mp-btn" @click="downloadErrorXlsx">下载错误行 Excel</button>
           <button type="button" class="mp-btn mp-btn--primary" :disabled="!importChecked || submitting" @click="confirmImport">确认导入</button>
         </div>
         <div v-if="importResult" class="ie-imp">
@@ -101,11 +132,34 @@ import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, L
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { positionApi } from '@/modules/internship/api/position.api'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { POSITION_STATUS } from '@/modules/internship/constants/position.constants'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', companyId: '', risk: '' })
 const EMPTY_FORM = () => ({ companyId: '', title: '', majorRequirement: '', gradeRequirement: '', workLocation: '', salaryRange: '', subsidy: '', headcount: 1, mentorContactId: '', remark: '' })
+const POSITION_PANEL_PRESETS = {
+  list: () => EMPTY_FILTERS(),
+  detail: () => EMPTY_FILTERS(),
+  requirement: () => EMPTY_FILTERS(),
+  capacity: () => ({ ...EMPTY_FILTERS(), status: 'PUBLISHED' }),
+  publish: () => ({ ...EMPTY_FILTERS(), status: 'PENDING' }),
+  offline: () => ({ ...EMPTY_FILTERS(), status: 'PUBLISHED' }),
+  risk: () => ({ ...EMPTY_FILTERS(), risk: 'true' }),
+  archive: () => ({ ...EMPTY_FILTERS(), status: 'ARCHIVED' }),
+  stats: () => EMPTY_FILTERS()
+}
+const POSITION_PANEL_HINTS = {
+  list: '岗位关联企业 · 黑名单/停用企业不可上架',
+  detail: '点击行「详情」进入岗位详情页',
+  requirement: '关注「专业/年级」列 · 新建/编辑可维护要求',
+  capacity: '已上架岗位 · 关注「已分配/容量」列',
+  publish: '待审核岗位 · 行内可「上架」',
+  offline: '已上架岗位 · 行内可「下架」',
+  risk: '仅风险岗位 · 可「解除风险」',
+  archive: '已归档岗位台账',
+  stats: '岗位库真实统计 · 状态分布 / 专业分布 / 容量利用率'
+}
 
 export default {
   name: 'InternshipPositionListView',
@@ -113,11 +167,11 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', submitting: false,
+      loading: true, error: '', submitting: false, activePanel: 'list',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      enterpriseOpts: [], mentorOpts: [],
+      enterpriseOpts: [], mentorOpts: [], posStats: null,
       editVisible: false, editing: null, form: EMPTY_FORM(), formError: '',
-      importVisible: false, importText: '', importChecked: false, importResult: null,
+      importVisible: false, importText: '', importChecked: false, importResult: null, importRows: [],
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
         { key: 'position', title: '岗位 / 企业' },
@@ -127,6 +181,13 @@ export default {
         { key: 'capacity', title: '已分配/容量' },
         { key: 'status', title: '状态' },
         { key: 'actions', title: '操作', width: '230px' }
+      ],
+      statStatusCols: [{ key: 'label', title: '状态' }, { key: 'count', title: '数量' }],
+      statMajorCols: [
+        { key: 'major', title: '专业要求' },
+        { key: 'count', title: '岗位数' },
+        { key: 'capacity', title: '容量' },
+        { key: 'allocated', title: '已分配' }
       ]
     }
   },
@@ -141,18 +202,52 @@ export default {
       ]
     },
     toolbarActions() {
-      return [{ key: 'create', label: '＋ 新增岗位', variant: 'primary' }, { key: 'import', label: '导入' }, { key: 'export', label: '导出' }]
+      if (this.activePanel === 'stats') {
+        return [{ key: 'refreshStats', label: '刷新统计', variant: 'primary' }, { key: 'export', label: '导出 Excel 台账' }]
+      }
+      return [{ key: 'create', label: '＋ 新增岗位', variant: 'primary' }, { key: 'import', label: '导入' }, { key: 'export', label: '导出 Excel 台账' }]
+    },
+    pageSubtitle() {
+      const hint = POSITION_PANEL_HINTS[this.activePanel] || POSITION_PANEL_HINTS.list
+      if (this.activePanel === 'stats' && this.posStats) {
+        return `${hint} · 共 ${this.posStats.total} 个岗位`
+      }
+      return `共 ${this.total} 个岗位 · ${hint}`
+    }
+  },
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.applyPanel((panel || 'list').toString())
+      }
     }
   },
   async created() {
     const e = await positionApi.getEnterpriseOptions()
     if (e.code === 0) this.enterpriseOpts = e.data
-    this.load()
   },
   methods: {
+    applyPanel(panel) {
+      const key = POSITION_PANEL_PRESETS[panel] ? panel : 'list'
+      this.activePanel = key
+      this.filters = (POSITION_PANEL_PRESETS[key] || POSITION_PANEL_PRESETS.list)()
+      this.page = 1
+      this.load()
+    },
     async load() {
       this.loading = true; this.error = ''
-      const res = await positionApi.getPositions({ ...this.filters, page: this.page, pageSize: this.pageSize })
+      if (this.activePanel === 'stats') {
+        const res = await positionApi.getPositionStats()
+        if (res.code === 0) { this.posStats = res.data; this.rows = []; this.total = 0 }
+        else this.error = res.message
+        this.loading = false
+        return
+      }
+      this.posStats = null
+      const p = { ...this.filters, page: this.page, pageSize: this.pageSize }
+      if (p.risk === '') delete p.risk
+      const res = await positionApi.getPositions(p)
       if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
       this.loading = false
     },
@@ -163,6 +258,7 @@ export default {
       if (key === 'create') { this.editing = null; this.form = EMPTY_FORM(); this.mentorOpts = []; this.formError = ''; this.editVisible = true }
       if (key === 'import') { this.importText = ''; this.importResult = null; this.importChecked = false; this.importVisible = true }
       if (key === 'export') this.doExport()
+      if (key === 'refreshStats') this.load()
     },
     async onCompanyChange() {
       this.form.mentorContactId = ''
@@ -210,20 +306,41 @@ export default {
     async dryRunImport() {
       const rows = this._parse()
       if (!rows.length) return toast.error('请粘贴至少一行')
+      this.importRows = rows
       const res = await positionApi.importPositionsDryRun(rows)
       if (res.code === 0) { this.importResult = res.data; this.importChecked = res.data.invalidRows === 0 } else toast.error(res.message)
     },
+    downloadTemplate() {
+      positionApi.downloadPositionTemplate().catch((e) => toast.error(e.message || '模板下载失败'))
+    },
+    async onXlsxFile(e) {
+      const file = e.target.files && e.target.files[0]
+      e.target.value = ''
+      if (!file) return
+      const res = await positionApi.importPositionsXlsx(file)
+      if (res.code !== 0) return toast.error(res.message)
+      this.importRows = res.data.rows || []
+      this.importResult = { total: res.data.total, validRows: res.data.validRows, invalidRows: res.data.invalidRows, errors: res.data.errors }
+      this.importChecked = res.data.invalidRows === 0 && this.importRows.length > 0
+      toast.success(`Excel 已解析 ${res.data.total} 行，通过 ${res.data.validRows} 行`)
+    },
+    async downloadErrorXlsx() {
+      if (!this.importRows.length || !this.importResult?.errors?.length) return
+      const res = await positionApi.downloadPositionImportErrors(this.importRows, this.importResult.errors)
+      if (res.code === 0) {
+        downloadXlsxFromApi(res.data, '岗位导入错误行.xlsx')
+        toast.success('错误行 Excel 已下载')
+      } else toast.error(res.message)
+    },
     async confirmImport() {
-      const res = await positionApi.importPositionsConfirm(this._parse())
+      const rows = this.importRows?.length ? this.importRows : this._parse()
+      const res = await positionApi.importPositionsConfirm(rows)
       if (res.code === 0) { toast.success(`已导入 ${res.data.created} 个岗位（草稿）`); this.importVisible = false; this.load() } else toast.error(res.message)
     },
     async doExport() {
-      const res = await positionApi.exportPositions({ ...this.filters })
-      if (res.code !== 0) return toast.error(res.message)
-      const blob = new Blob(['﻿' + res.data.content], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob); const a = document.createElement('a')
-      a.href = url; a.download = res.data.filename || '岗位库导出.csv'; a.click(); URL.revokeObjectURL(url)
-      toast.success(`已导出 ${res.data.rowCount} 个岗位（已写审计）`)
+      const res = await positionApi.downloadPositionExport({ ...this.filters })
+      if (res.code === 0) toast.success(`已导出 Excel 台账 ${res.data.rowCount} 个岗位（已写审计）`)
+      else toast.error(res.message)
     }
   }
 }
@@ -247,5 +364,12 @@ export default {
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .ie-imp { grid-column: 1 / -1; font-size: 12px; }
 .ie-imp__errs { margin: 4px 0 0; padding-left: 18px; color: var(--danger, #dc2626); }
+.ie-xlsx { grid-column: 1 / -1; padding: 10px 12px; border: 1px dashed var(--line, #d9dee8); border-radius: 8px; font-size: 13px; background: var(--bg-subtle, #f8fafc); }
 .ie-ok { color: var(--success, #16a34a); } .ie-bad { color: var(--danger, #dc2626); }
+.mp-stats { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.mp-stat { min-width: 120px; padding: var(--space-3) var(--space-4); background: #fff; border: 1px solid var(--line, #d9dee8); border-radius: 8px; }
+.mp-stat__val { font-size: 20px; font-weight: 600; }
+.mp-stat__lbl { color: var(--t2, #475569); font-size: 12px; margin-top: 4px; }
+.ip-block { margin-bottom: var(--space-4); }
+.ip-h { margin: 0 0 var(--space-2); font-size: 14px; }
 </style>

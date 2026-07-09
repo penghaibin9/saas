@@ -176,3 +176,8 @@ class ContactUpdate(BaseModel):
 
 class EnterpriseImport(BaseModel):
     rows: list[dict] = Field(default_factory=list)
+
+
+class ImportErrorsExport(BaseModel):
+    rows: list[dict] = Field(default_factory=list)
+    errors: list[dict] = Field(default_factory=list)

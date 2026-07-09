@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="实习学生"
-    :subtitle="'共 ' + pagination.total + ' 人 · 手机号/学号默认脱敏展示'"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,164 +11,268 @@
 
     <div class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
-
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="没有符合条件的实习学生" description="可调整筛选条件后重新查询" />
-      <DataTable
-        v-else
-        :columns="columns"
-        :rows="rows"
-        row-key="id"
-        selectable
-        v-model:selected="selected"
-        :pagination="pagination"
-        @page-change="onPageChange"
-      >
-        <template #batch-actions>
-          <button class="mp-link" :class="{ 'is-disabled': !can('batchAssignAdvisor') }" :title="reason('batchAssignAdvisor')" @click="batch('batchAssignAdvisor')">批量分配指导老师</button>
-          <button class="mp-link" :class="{ 'is-disabled': !can('batchRemind') }" :title="reason('batchRemind')" @click="batch('batchRemind')">批量提醒</button>
-          <button class="mp-link" :class="{ 'is-disabled': !can('exportGroup') }" :title="reason('exportGroup')" @click="batch('exportGroup')">导出所选</button>
-        </template>
+      <EmptyState v-else-if="!rows.length" title="暂无实习学生" description="可「＋ 建档」或「导入」录入实习学生（岗位在详情里从岗位库分配）" />
+      <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.name }}</div>
-          <div class="mp-cell-sub">{{ maskNo(row.studentNo) }} · {{ maskPhone(row.phone) }}</div>
+          <div class="mp-cell-sub">{{ maskNo(row.studentNo) }} · {{ row.className }}</div>
         </template>
-        <template #cell-enterprise="{ row }">
-          <template v-if="row.enterpriseName">
+        <template #cell-placement="{ row }">
+          <template v-if="row.positionId">
             <div class="mp-cell-main">{{ row.enterpriseName }}</div>
-            <div class="mp-cell-sub">{{ row.positionName }}</div>
+            <div class="mp-cell-sub">{{ row.positionName }}<span v-if="row.mentorName"> · 导师 {{ row.mentorName }}</span></div>
           </template>
-          <span v-else class="mp-note">未分配企业</span>
+          <span v-else class="mp-note">未分配岗位</span>
         </template>
+        <template #cell-eligibility="{ row }">
+          <StatusTag :type="eligTone(row.eligibilityStatus)" :label="row.eligibilityLabel" />
+        </template>
+        <template #cell-destination="{ row }">{{ row.destinationLabel }}</template>
         <template #cell-status="{ row }">
-          <StatusTag :status="row.status" :label="row.statusLabel" dot />
-        </template>
-        <template #cell-checkin="{ row }">
-          <StatusTag :type="row.checkinTone" :label="row.checkinSummary" />
-        </template>
-        <template #cell-risk="{ row }">
-          <RiskTag v-if="row.riskLevel !== 'NONE'" :level="row.riskLevel" />
-          <span v-else class="mp-note">无</span>
+          <StatusTag :type="row.statusTone" :label="row.statusLabel" dot />
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/internship/students/' + row.id)">查看</button>
-          <button class="mp-link is-disabled" style="margin-left: var(--space-2)" :title="reason('editStudent')">编辑</button>
+          <button class="mp-link" @click="$router.push('/admin/internship/students/' + row.id)">详情</button>
+          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="openAssign(row)">{{ row.positionId ? '调岗' : '分配岗位' }}</button>
+          <button v-if="row.eligibilityStatus !== 'QUALIFIED' && row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="askEligibility(row)">认定资格</button>
         </template>
       </DataTable>
     </div>
+
+    <!-- 建档 -->
+    <AppDrawer v-model:visible="createVisible" title="实习学生建档">
+      <form class="ie-form" @submit.prevent="submitCreate">
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
+          <select v-model="cform.studentId" class="ie-in">
+            <option value="">请选择学生</option>
+            <option v-for="s in studentOpts" :key="s.id" :value="s.id">{{ s.name }}（{{ s.studentNo }}）</option>
+          </select>
+        </label>
+        <label class="ie-fld"><span class="ie-lbl">校内指导教师</span><input v-model.trim="cform.advisorName" class="ie-in" /></label>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="cform.remark" class="ie-in" rows="2" /></label>
+        <p v-if="cError" class="ie-err">{{ cError }}</p>
+        <div class="ie-actions">
+          <button type="button" class="mp-btn" @click="createVisible = false">取消</button>
+          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">建档</button>
+        </div>
+      </form>
+    </AppDrawer>
+
+    <!-- 分配岗位（从岗位库选已上架岗位） -->
+    <AppDrawer v-model:visible="assignVisible" :title="assignRow ? `分配岗位 · ${assignRow.name}` : '分配岗位'">
+      <div class="ie-form">
+        <p class="ie-hint">仅「已上架」且企业非黑名单、未满员的岗位可选（来自岗位库真实数据）。</p>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
+          <select v-model="assignPositionId" class="ie-in">
+            <option value="">请选择岗位</option>
+            <option v-for="p in positionOpts" :key="p.id" :value="p.id" :disabled="p.remaining <= 0">{{ p.title }} · {{ p.companyName }}（余 {{ p.remaining }}）</option>
+          </select>
+        </label>
+        <p v-if="assignError" class="ie-err">{{ assignError }}</p>
+        <div class="ie-actions">
+          <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
+          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !assignPositionId" @click="submitAssign">确认分配</button>
+        </div>
+      </div>
+    </AppDrawer>
+
+    <!-- 导入 -->
+    <AppDrawer v-model:visible="importVisible" title="导入实习学生（CSV 粘贴）">
+      <div class="ie-form">
+        <p class="ie-hint">每行一个学号（须已在学生主档）：<b>学号</b>；也可加校内导师：<b>学号,校内导师</b></p>
+        <textarea v-model="importText" class="ie-in" rows="6" placeholder="示例：2023115001" />
+        <div class="ie-actions">
+          <button type="button" class="mp-btn" @click="dryRunImport">预校验</button>
+          <button type="button" class="mp-btn mp-btn--primary" :disabled="!importChecked || submitting" @click="confirmImport">确认导入</button>
+        </div>
+        <div v-if="importResult" class="ie-imp">
+          <p>共 {{ importResult.total }} 行 · 通过 <b class="ie-ok">{{ importResult.validRows }}</b> · 失败 <b class="ie-bad">{{ importResult.invalidRows }}</b></p>
+          <ul v-if="importResult.errors.length" class="ie-imp__errs"><li v-for="(e, i) in importResult.errors" :key="i">第 {{ e.rowNo }} 行 · {{ e.field }}：{{ e.message }}</li></ul>
+          <p v-else class="ie-ok">全部通过，可确认导入。</p>
+        </div>
+      </div>
+    </AppDrawer>
+
+    <AppConfirmDialog
+      v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
+      :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
+      :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
+    />
   </ModulePageShell>
 </template>
 
 <script>
-/** 实习学生列表（/admin/internship/students）：高级筛选 + 批量条 + 权限按钮 + 脱敏。 */
-import {
-  ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
-  StatusTag, RiskTag, LoadingState, ErrorState, EmptyState
-} from '@/components/business'
-import { internshipApi } from '@/modules/internship/api/internship.api'
+/** 实习学生列表（/admin/internship/students）：生产级只走真实后端；建档/分配岗位(岗位库)/资格/状态/导入导出。 */
+import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppDrawer } from '@/components/ui'
+import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { internStudentApi } from '@/modules/internship/api/internship-student.api'
+import { STUDENT_STATUS, ELIGIBILITY_STATUS, DESTINATION_TYPE } from '@/modules/internship/constants/internship-student.constants'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ keyword: '', classId: '', enterpriseId: '', status: '', riskLevel: '' })
+const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '' })
+
+const PANEL_PRESETS = {
+  roster: () => EMPTY_FILTERS(),
+  eligibility: () => ({ ...EMPTY_FILTERS(), eligibility: 'PENDING' }),
+  status: () => ({ ...EMPTY_FILTERS(), status: 'ONBOARD' }),
+  destination: () => ({ ...EMPTY_FILTERS(), destination: 'NONE' }),
+  position: () => ({ ...EMPTY_FILTERS(), hasPosition: 'false' }),
+  enterprise: () => ({ ...EMPTY_FILTERS(), hasPosition: 'true' }),
+  mentor: () => ({ ...EMPTY_FILTERS(), hasPosition: 'true' })
+}
+
+const PANEL_HINTS = {
+  roster: '建档、导入、导出全量名单',
+  eligibility: '筛选待认定资格学生，可在行内「认定资格」',
+  status: '按实习状态筛选（默认在岗中，可改筛选条件）',
+  destination: '筛选未落实去向学生',
+  position: '筛选未分配岗位学生，可「分配岗位 / 调岗」',
+  enterprise: '筛选已分配企业/岗位学生',
+  mentor: '筛选已分配岗位（含企业导师）学生'
+}
 
 export default {
   name: 'InternshipStudentListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true,
-      error: '',
-      rows: [],
-      selected: [],
-      filters: EMPTY_FILTERS(),
-      pagination: { page: 1, pageSize: 10, total: 0 },
+      loading: true, error: '', submitting: false, activePanel: 'roster',
+      rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
+      createVisible: false, cform: { studentId: '', advisorName: '', remark: '' }, cError: '', studentOpts: [],
+      assignVisible: false, assignRow: null, assignPositionId: '', assignError: '', positionOpts: [],
+      importVisible: false, importText: '', importChecked: false, importResult: null,
+      confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
         { key: 'student', title: '学生' },
-        { key: 'className', title: '班级' },
-        { key: 'enterprise', title: '企业 / 岗位' },
-        { key: 'advisorName', title: '指导老师' },
+        { key: 'eligibility', title: '实习资格' },
+        { key: 'destination', title: '去向' },
+        { key: 'placement', title: '企业 / 岗位' },
         { key: 'status', title: '实习状态' },
-        { key: 'checkin', title: '近 7 日打卡' },
-        { key: 'reportSummary', title: '周报' },
-        { key: 'risk', title: '风险' },
-        { key: 'actions', title: '操作', width: '120px' }
+        { key: 'actions', title: '操作', width: '210px' }
       ]
     }
   },
   computed: {
+    statusOpts() { return STUDENT_STATUS },
     filterFields() {
-      const o = this.ctx.statusOptions
       return [
-        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 企业' },
-        { key: 'classId', label: '班级', type: 'select', options: o.classes },
-        { key: 'enterpriseId', label: '企业', type: 'select', options: o.enterprises },
-        { key: 'status', label: '实习状态', type: 'select', options: o.internshipStatus },
-        { key: 'riskLevel', label: '风险等级', type: 'select', options: o.riskLevel }
+        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号' },
+        { key: 'status', label: '实习状态', type: 'select', options: STUDENT_STATUS },
+        { key: 'eligibility', label: '实习资格', type: 'select', options: ELIGIBILITY_STATUS },
+        { key: 'destination', label: '去向', type: 'select', options: DESTINATION_TYPE },
+        { key: 'hasPosition', label: '岗位', type: 'select', options: [{ value: 'true', label: '已分配' }, { value: 'false', label: '未分配' }] }
       ]
     },
     toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [
-        { key: 'createStudent', label: '＋ 新增实习学生', variant: 'primary' },
-        { key: 'importStudents', label: '批量导入' },
-        { key: 'exportGroup', label: '批量导出' }
-      ]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+      return [{ key: 'create', label: '＋ 建档', variant: 'primary' }, { key: 'import', label: '导入' }, { key: 'export', label: '导出' }]
+    },
+    pageSubtitle() {
+      const hint = PANEL_HINTS[this.activePanel] || ''
+      return `共 ${this.total} 人 · ${hint} · 学号默认脱敏`
     }
   },
-  created() {
-    this.load()
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.applyPanel((panel || 'roster').toString())
+      }
+    }
   },
   methods: {
-    can(key) {
-      const pa = this.ctx.permissionActions[key]
-      return !!(pa && pa.visible && pa.allowed)
-    },
-    reason(key) {
-      const pa = this.ctx.permissionActions[key]
-      return pa && !pa.allowed ? pa.reason : ''
-    },
-    maskPhone(v) {
-      return v ? v.slice(0, 3) + '****' + v.slice(-4) : '未登记'
-    },
-    maskNo(v) {
-      return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''
-    },
-    onPageChange(page) {
-      this.pagination.page = page
+    applyPanel(panel) {
+      const key = PANEL_PRESETS[panel] ? panel : 'roster'
+      this.activePanel = key
+      this.filters = (PANEL_PRESETS[key] || PANEL_PRESETS.roster)()
+      this.page = 1
       this.load()
     },
-    search() {
-      this.pagination.page = 1
-      this.load()
-    },
-    reset() {
-      this.filters = EMPTY_FILTERS()
-      this.pagination.page = 1
-      this.load()
-    },
-    onToolbar(key) {
-      if (key === 'exportGroup') toast.success('导出任务已创建：字段已脱敏、文件含水印，本次导出已写入审计日志')
-    },
-    batch(key) {
-      if (!this.can(key)) return
-      if (key === 'batchRemind') toast.success('已向 ' + this.selected.length + ' 名学生发送提醒（站内信 + 小程序），已留痕')
-      if (key === 'exportGroup') toast.success('已导出所选 ' + this.selected.length + ' 条（脱敏 + 水印），已留痕')
-      this.selected = []
-    },
+    maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
+    eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     async load() {
-      this.loading = true
-      this.error = ''
-      const res = await internshipApi.getStudents({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
-      if (res.code === 0) {
-        this.rows = res.data.list
-        this.pagination.total = res.data.total
-      } else {
-        this.error = res.message
-      }
+      this.loading = true; this.error = ''
+      const p = { ...this.filters, page: this.page, pageSize: this.pageSize }
+      if (p.hasPosition === '') delete p.hasPosition
+      const res = await internStudentApi.getStudents(p)
+      if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
       this.loading = false
+    },
+    search() { this.page = 1; this.load() },
+    reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
+    turnPage(p) { this.page = p; this.load() },
+    async onToolbar(key) {
+      if (key === 'create') {
+        this.cform = { studentId: '', advisorName: '', remark: '' }; this.cError = ''
+        const s = await internStudentApi.getStudentOptions()
+        if (s.code === 0) this.studentOpts = s.data
+        this.createVisible = true
+      }
+      if (key === 'import') { this.importText = ''; this.importResult = null; this.importChecked = false; this.importVisible = true }
+      if (key === 'export') this.doExport()
+    },
+    async submitCreate() {
+      this.cError = ''
+      if (!this.cform.studentId) { this.cError = '请选择学生'; return }
+      this.submitting = true
+      try {
+        const res = await internStudentApi.createStudent({ studentId: this.cform.studentId, advisorName: this.cform.advisorName, remark: this.cform.remark })
+        if (res.code === 0) { toast.success('已建档'); this.createVisible = false; this.load() } else this.cError = res.message
+      } finally { this.submitting = false }
+    },
+    async openAssign(row) {
+      this.assignRow = row; this.assignPositionId = ''; this.assignError = ''
+      const p = await internStudentApi.getPublishedPositions()
+      if (p.code === 0) this.positionOpts = p.data
+      else { this.positionOpts = []; toast.error(p.message) }
+      this.assignVisible = true
+    },
+    async submitAssign() {
+      this.assignError = ''
+      this.submitting = true
+      try {
+        const res = await internStudentApi.assignPosition(this.assignRow.id, { positionId: this.assignPositionId })
+        if (res.code === 0) { toast.success('已分配岗位（岗位库名额已回填）'); this.assignVisible = false; this.load() } else this.assignError = res.message
+      } finally { this.submitting = false }
+    },
+    askEligibility(row) {
+      this.confirm = { visible: true, title: '实习资格认定', message: `确认「${row.name}」实习资格合格？（合格后方可待上岗）`, type: 'primary', confirmText: '认定合格', requireReason: false, reasonLabel: '认定意见', action: 'ELIG_QUALIFIED', row }
+    },
+    async onConfirm({ reason } = {}) {
+      const { action, row } = this.confirm
+      this.submitting = true
+      try {
+        let res
+        if (action === 'ELIG_QUALIFIED') res = await internStudentApi.setEligibility(row.id, { status: 'QUALIFIED', reason: reason || '' })
+        if (res && res.code === 0) { toast.success('已更新'); this.confirm.visible = false; this.load() } else if (res) toast.error(res.message)
+      } finally { this.submitting = false }
+    },
+    _parse() {
+      return this.importText.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+        const [studentNo, advisorName] = l.split(',').map((x) => (x || '').trim())
+        return { studentNo, advisorName }
+      })
+    },
+    async dryRunImport() {
+      const rows = this._parse()
+      if (!rows.length) return toast.error('请粘贴至少一行')
+      const res = await internStudentApi.importDryRun(rows)
+      if (res.code === 0) { this.importResult = res.data; this.importChecked = res.data.invalidRows === 0 } else toast.error(res.message)
+    },
+    async confirmImport() {
+      const res = await internStudentApi.importConfirm(this._parse())
+      if (res.code === 0) { toast.success(`已建档 ${res.data.created} 人`); this.importVisible = false; this.load() } else toast.error(res.message)
+    },
+    async doExport() {
+      const res = await internStudentApi.exportStudents({ ...this.filters })
+      if (res.code !== 0) return toast.error(res.message)
+      const blob = new Blob(['﻿' + res.data.content], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob); const a = document.createElement('a')
+      a.href = url; a.download = res.data.filename || '实习学生导出.csv'; a.click(); URL.revokeObjectURL(url)
+      toast.success(`已导出 ${res.data.rowCount} 人（脱敏，已写审计）`)
     }
   }
 }
@@ -176,4 +280,19 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.ie-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: var(--space-1) 0; }
+.ie-fld { display: flex; flex-direction: column; gap: 4px; }
+.ie-fld--full { grid-column: 1 / -1; }
+.ie-lbl { font-size: 12px; color: var(--t2, #475569); }
+.ie-lbl i { color: var(--danger, #dc2626); font-style: normal; }
+.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
+.ie-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
+.ie-hint { grid-column: 1 / -1; font-size: 12px; color: var(--t3, #64748b); margin: 0; }
+.ie-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
+.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
+.mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ie-imp { grid-column: 1 / -1; font-size: 12px; }
+.ie-imp__errs { margin: 4px 0 0; padding-left: 18px; color: var(--danger, #dc2626); }
+.ie-ok { color: var(--success, #16a34a); } .ie-bad { color: var(--danger, #dc2626); }
 </style>

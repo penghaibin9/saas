@@ -1,184 +1,185 @@
 <template>
   <ModulePageShell
     :title="detail ? detail.name + ' · 实习详情' : '实习详情'"
-    :subtitle="detail ? detail.className + ' · ' + maskNo(detail.studentNo) : ''"
+    :subtitle="detail ? detail.className + ' · ' + maskNo(detail.studentNo) : '加载中'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <button class="mp-btn" @click="$router.push('/admin/internship/students')">← 返回实习学生</button>
     </template>
 
-    <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
+    <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
-    <div v-else class="mp-grid-2">
-      <div class="mp-stack">
+    <template v-else-if="detail">
+      <div class="sd-head">
+        <StatusTag :type="detail.statusTone" :label="detail.statusLabel" dot />
+        <StatusTag :type="eligTone(detail.eligibilityStatus)" :label="detail.eligibilityLabel" />
+        <span class="sd-dest">去向：{{ detail.destinationLabel }}</span>
+        <div class="sd-head__spacer" />
+        <button v-if="detail.eligibilityStatus !== 'QUALIFIED' && detail.status !== 'ARCHIVED'" class="mp-btn" @click="askEligibility">认定资格合格</button>
+        <button v-if="detail.status !== 'ARCHIVED'" class="mp-btn mp-btn--primary" @click="openAssign">{{ detail.positionId ? '调岗' : '分配岗位' }}</button>
+        <button v-if="detail.positionId && detail.status !== 'ARCHIVED'" class="mp-btn" @click="askUnassign">退岗</button>
+        <button v-if="statusAction" class="mp-btn mp-btn--primary" @click="askStatus(statusAction.action)">{{ statusAction.label }}</button>
+      </div>
+
+      <div class="mp-grid-2">
         <section class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">实习信息</span>
-            <span>
-              <StatusTag :status="detail.status" :label="detail.statusLabel" dot />
-              <RiskTag v-if="detail.riskLevel !== 'NONE'" :level="detail.riskLevel" style="margin-left: var(--space-2)" />
-            </span>
-          </div>
-          <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">实习企业</span><span class="mp-kv__v">{{ detail.enterpriseName }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">实习岗位</span><span class="mp-kv__v">{{ detail.positionName }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">校内导师</span><span class="mp-kv__v">{{ detail.advisorName }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">企业导师</span><span class="mp-kv__v">{{ detail.enterpriseMentor }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">实习起止</span><span class="mp-kv__v">{{ detail.internRange }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">保险</span><span class="mp-kv__v">{{ detail.insurance }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">三方协议</span><span class="mp-kv__v">{{ detail.agreement }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">联系电话</span><span class="mp-kv__v">{{ maskPhone(detail.phone) }}</span></div>
+          <div class="mp-card__head"><span class="mp-card__title">实习信息</span></div>
+          <div class="mp-card__body sd-grid">
+            <div class="sd-kv"><span class="sd-k">姓名</span><span class="sd-v">{{ detail.name }}</span></div>
+            <div class="sd-kv"><span class="sd-k">学号</span><span class="sd-v">{{ maskNo(detail.studentNo) }}</span></div>
+            <div class="sd-kv"><span class="sd-k">班级</span><span class="sd-v">{{ detail.className }}</span></div>
+            <div class="sd-kv"><span class="sd-k">联系电话</span><span class="sd-v">{{ detail.phone || '未登记' }}</span></div>
+            <div class="sd-kv"><span class="sd-k">校内指导教师</span><span class="sd-v">{{ detail.advisorName || '未指定' }}</span></div>
+            <div class="sd-kv"><span class="sd-k">实习起止</span><span class="sd-v">{{ detail.internRange || '—' }}</span></div>
+            <div class="sd-kv"><span class="sd-k">实习保险</span><span class="sd-v">{{ detail.insurance || '—' }}</span></div>
+            <div class="sd-kv"><span class="sd-k">三方协议</span><span class="sd-v">{{ detail.agreement || '—' }}</span></div>
+            <div class="sd-kv sd-kv--full"><span class="sd-k">备注</span><span class="sd-v">{{ detail.remark || '—' }}</span></div>
           </div>
         </section>
 
         <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">主状态进度</span></div>
+          <div class="mp-card__head"><span class="mp-card__title">企业 / 岗位 / 导师（来自企业库·岗位库）</span></div>
           <div class="mp-card__body">
-            <ul class="mp-timeline">
-              <li v-for="s in detail.stateFlow" :key="s.title" class="mp-timeline__item" :class="'is-' + (s.tone === 'processing' ? 'warning' : s.tone)">
-                <div class="mp-timeline__title">{{ s.title }}</div>
-                <div class="mp-timeline__time">{{ s.time }}</div>
-              </li>
-            </ul>
+            <EmptyState v-if="!detail.positionId" title="未分配岗位" description="点右上「分配岗位」从岗位库选择已上架岗位" />
+            <div v-else class="sd-grid">
+              <div class="sd-kv"><span class="sd-k">实习企业</span>
+                <span class="sd-v"><a class="mp-link" @click="detail.enterpriseId && $router.push('/admin/internship/enterprises/' + detail.enterpriseId)">{{ detail.enterpriseName }}</a>
+                  <span v-if="detail.company && detail.company.blacklist" class="sd-warn"> · 黑名单</span></span>
+              </div>
+              <div class="sd-kv"><span class="sd-k">实习岗位</span>
+                <span class="sd-v"><a class="mp-link" @click="$router.push('/admin/internship/positions/' + detail.positionId)">{{ detail.positionName }}</a></span>
+              </div>
+              <div class="sd-kv"><span class="sd-k">企业导师</span><span class="sd-v">{{ detail.mentorName || '未指定' }}</span></div>
+              <div class="sd-kv"><span class="sd-k">岗位容量</span><span class="sd-v">{{ detail.position ? detail.position.capacity : '—' }}</span></div>
+              <div class="sd-kv"><span class="sd-k">工作地点</span><span class="sd-v">{{ detail.position ? detail.position.workLocation : '—' }}</span></div>
+            </div>
+            <div v-if="!detail.positionId && detail.status !== 'ARCHIVED'" class="sd-dest-actions">
+              <span class="sd-k">未分配可标记去向：</span>
+              <button class="mp-link" @click="askDestination('SELF_ARRANGED')">自主实习</button>
+              <button class="mp-link" @click="askDestination('EXEMPTED')">免实习</button>
+            </div>
           </div>
         </section>
       </div>
 
-      <div class="mp-stack">
-        <section class="mp-card">
-          <div class="mp-tabs" style="padding: 0 var(--space-4)">
-            <button v-for="t in tabs" :key="t.key" class="mp-tab" :class="{ 'is-active': tab === t.key }" @click="tab = t.key">
-              {{ t.label }}
-            </button>
-          </div>
-          <div class="mp-card__body">
-            <table v-if="tab === 'checkins'" class="mp-audit">
-              <thead><tr><th>日期 / 时段</th><th>结果</th><th>距打卡点</th><th>设备</th><th>学生说明</th><th>处理</th></tr></thead>
-              <tbody>
-                <tr v-for="c in detail.checkins" :key="c.id">
-                  <td class="is-who">{{ c.date }}</td>
-                  <td><StatusTag :type="c.tone" :label="c.result" /></td>
-                  <td>{{ c.distance }}</td>
-                  <td>{{ c.device }}</td>
-                  <td>{{ c.note || '—' }}</td>
-                  <td>{{ c.handle }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <table v-else-if="tab === 'reports'" class="mp-audit">
-              <thead><tr><th>周次</th><th>提交时间</th><th>版本</th><th>状态</th></tr></thead>
-              <tbody>
-                <tr v-for="r in detail.reports" :key="r.id">
-                  <td class="is-who">{{ r.week }}</td>
-                  <td>{{ r.submitAt || '—' }}</td>
-                  <td>{{ r.version }}</td>
-                  <td><StatusTag :status="r.status" dot /></td>
-                </tr>
-              </tbody>
-            </table>
-            <table v-else-if="tab === 'leaves'" class="mp-audit">
-              <thead><tr><th>类型</th><th>时间</th><th>状态</th><th>审批人</th></tr></thead>
-              <tbody>
-                <tr v-for="l in detail.leaves" :key="l.id">
-                  <td class="is-who">{{ l.type }}</td>
-                  <td>{{ l.range }}</td>
-                  <td><StatusTag :status="l.status" dot /></td>
-                  <td>{{ l.reviewer }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <table v-else class="mp-audit">
-              <thead><tr><th>编码 / 风险</th><th>等级</th><th>状态</th><th>责任人</th></tr></thead>
-              <tbody>
-                <tr v-for="r in detail.risks" :key="r.id">
-                  <td class="is-who">{{ r.code }} · {{ r.title }}</td>
-                  <td><RiskTag :level="r.level" /></td>
-                  <td>{{ r.status }}</td>
-                  <td>{{ r.owner }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+      <section class="mp-card">
+        <div class="mp-card__head"><span class="mp-card__title">操作留痕</span></div>
+        <div class="mp-card__body">
+          <EmptyState v-if="!detail.auditTrail.length" title="暂无操作记录" />
+          <ul v-else class="sd-trail">
+            <li v-for="(a, i) in detail.auditTrail" :key="i" class="sd-trail__item">
+              <span>{{ a.action }}</span><span class="sd-trail__meta">{{ a.operator }} · {{ a.occurredAt }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+    </template>
 
-        <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">审计日志（本学生实习档案）</span></div>
-          <div class="mp-card__body">
-            <table class="mp-audit">
-              <thead><tr><th>操作人</th><th>时间</th><th>动作</th><th>影响数据</th></tr></thead>
-              <tbody>
-                <tr v-for="(a, i) in detail.auditTrail" :key="i">
-                  <td class="is-who">{{ a.who }}</td>
-                  <td>{{ a.time }}</td>
-                  <td>{{ a.action }}</td>
-                  <td>{{ a.affected }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+    <!-- 分配岗位 -->
+    <AppDrawer v-model:visible="assignVisible" title="分配岗位">
+      <div class="ie-form">
+        <p class="ie-hint">仅「已上架」且企业非黑名单、未满员的岗位可选。</p>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
+          <select v-model="assignPositionId" class="ie-in">
+            <option value="">请选择岗位</option>
+            <option v-for="p in positionOpts" :key="p.id" :value="p.id" :disabled="p.remaining <= 0">{{ p.title }} · {{ p.companyName }}（余 {{ p.remaining }}）</option>
+          </select>
+        </label>
+        <p v-if="assignError" class="ie-err">{{ assignError }}</p>
+        <div class="ie-actions">
+          <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
+          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !assignPositionId" @click="submitAssign">确认分配</button>
+        </div>
       </div>
-    </div>
+    </AppDrawer>
+
+    <AppConfirmDialog
+      v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
+      :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
+      :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
+    />
   </ModulePageShell>
 </template>
 
 <script>
-/** 实习学生详情（/admin/internship/students/:id）：档案 + 四页签 + 审计日志。 */
-import { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState } from '@/components/business'
-import { internshipApi } from '@/modules/internship/api/internship.api'
+/** 实习学生详情（/admin/internship/students/:id）：生产级；企业/岗位/导师真实关联 + 分配/退岗/状态机/资格/去向 + 审计。 */
+import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppDrawer } from '@/components/ui'
+import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { toast } from '@/utils/toast'
+
+const STATUS_NEXT = {
+  PREPARING: { action: 'READY', label: '置为待上岗' },
+  READY: { action: 'ONBOARD', label: '上岗' },
+  ONBOARD: { action: 'ASSESS', label: '进入考核' },
+  ASSESSING: { action: 'ARCHIVE', label: '归档' }
+}
 
 export default {
   name: 'InternshipStudentDetailView',
-  components: { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true,
-      error: '',
-      detail: null,
-      tab: 'checkins',
-      tabs: [
-        { key: 'checkins', label: '打卡记录' },
-        { key: 'reports', label: '周报记录' },
-        { key: 'leaves', label: '请假记录' },
-        { key: 'risks', label: '风险记录' }
-      ]
+      loading: true, error: '', submitting: false, detail: null,
+      assignVisible: false, assignPositionId: '', assignError: '', positionOpts: [],
+      confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, extra: null }
     }
   },
   computed: {
-    toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [
-        { key: 'batchRemind', label: '发送提醒' },
-        { key: 'editStudent', label: '编辑实习信息', variant: 'primary' }
-      ]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
-    }
+    statusAction() { return this.detail && this.detail.status !== 'ARCHIVED' ? STATUS_NEXT[this.detail.status] : null }
   },
-  created() {
-    this.load()
-  },
+  created() { this.load() },
   methods: {
-    maskPhone(v) {
-      return v ? v.slice(0, 3) + '****' + v.slice(-4) : '未登记'
-    },
-    maskNo(v) {
-      return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''
-    },
-    onToolbar(key) {
-      if (key === 'batchRemind') toast.success('提醒已发送（站内信 + 小程序订阅消息），已写入审计日志')
-    },
+    maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
+    eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     async load() {
-      this.loading = true
-      this.error = ''
-      const res = await internshipApi.getStudentDetail(this.$route.params.id)
-      if (res.code === 0) this.detail = res.data
-      else this.error = res.message
+      this.loading = true; this.error = ''
+      const res = await internStudentApi.getStudentDetail(this.$route.params.id)
+      if (res.code === 0) this.detail = res.data; else this.error = res.message
       this.loading = false
+    },
+    async openAssign() {
+      this.assignPositionId = ''; this.assignError = ''
+      const p = await internStudentApi.getPublishedPositions()
+      if (p.code === 0) this.positionOpts = p.data; else toast.error(p.message)
+      this.assignVisible = true
+    },
+    async submitAssign() {
+      this.assignError = ''; this.submitting = true
+      try {
+        const res = await internStudentApi.assignPosition(this.detail.id, { positionId: this.assignPositionId })
+        if (res.code === 0) { toast.success('已分配岗位'); this.assignVisible = false; this.load() } else this.assignError = res.message
+      } finally { this.submitting = false }
+    },
+    askEligibility() {
+      this.confirm = { visible: true, title: '实习资格认定', message: '确认该生实习资格合格？', type: 'primary', confirmText: '认定合格', requireReason: false, action: 'ELIG', extra: null }
+    },
+    askUnassign() {
+      this.confirm = { visible: true, title: '退岗', message: '确认退岗？将释放该岗位名额。', type: 'warning', confirmText: '确认退岗', requireReason: true, reasonLabel: '退岗原因', action: 'UNASSIGN', extra: null }
+    },
+    askStatus(action) {
+      const m = STATUS_NEXT[this.detail.status]
+      this.confirm = { visible: true, title: m.label, message: `确认执行「${m.label}」？`, type: 'primary', confirmText: '确认', requireReason: false, action: 'STATUS', extra: action }
+    },
+    askDestination(dest) {
+      const label = dest === 'SELF_ARRANGED' ? '自主实习' : '免实习'
+      this.confirm = { visible: true, title: '标记去向 · ' + label, message: `确认将去向标记为「${label}」？`, type: 'primary', confirmText: '确认', requireReason: false, action: 'DEST', extra: dest }
+    },
+    async onConfirm({ reason } = {}) {
+      const { action, extra } = this.confirm
+      this.submitting = true
+      try {
+        let res
+        if (action === 'ELIG') res = await internStudentApi.setEligibility(this.detail.id, { status: 'QUALIFIED', reason: reason || '' })
+        else if (action === 'UNASSIGN') res = await internStudentApi.unassignPosition(this.detail.id, { reason: reason || '' })
+        else if (action === 'STATUS') res = await internStudentApi.setStatus(this.detail.id, { action: extra, reason: reason || '' })
+        else if (action === 'DEST') res = await internStudentApi.setDestination(this.detail.id, { destination: extra, reason: reason || '' })
+        if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; this.load() } else if (res) toast.error(res.message)
+      } finally { this.submitting = false }
     }
   }
 }
@@ -186,4 +187,28 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.sd-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.sd-head__spacer { flex: 1; }
+.sd-dest { font-size: 12px; color: var(--t2, #475569); }
+.sd-warn { color: var(--danger, #dc2626); }
+.sd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.sd-kv { display: flex; flex-direction: column; gap: 2px; }
+.sd-kv--full { grid-column: 1 / -1; }
+.sd-k { font-size: 12px; color: var(--t3, #64748b); }
+.sd-v { font-size: 13px; color: var(--t1, #0f1e3d); }
+.sd-dest-actions { margin-top: var(--space-3); display: flex; align-items: center; gap: var(--space-2); font-size: 12px; }
+.sd-trail__item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--line, #eef1f6); font-size: 13px; }
+.sd-trail__meta { color: var(--t3, #64748b); font-size: 12px; }
+.mp-btn { padding: 7px 14px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
+.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
+.mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ie-form { display: grid; grid-template-columns: 1fr; gap: var(--space-3); }
+.ie-fld { display: flex; flex-direction: column; gap: 4px; }
+.ie-fld--full { grid-column: 1 / -1; }
+.ie-lbl { font-size: 12px; color: var(--t2, #475569); }
+.ie-lbl i { color: var(--danger, #dc2626); font-style: normal; }
+.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
+.ie-err { color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
+.ie-hint { font-size: 12px; color: var(--t3, #64748b); margin: 0; }
+.ie-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 </style>

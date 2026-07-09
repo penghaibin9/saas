@@ -117,10 +117,13 @@ def test_import_dry_run_and_confirm(client, auth_headers, db_mode):
 
 
 def test_export(client, auth_headers, db_mode):
+    import base64
     cid = _company(client, auth_headers, cc="91310000POSEXP1XA")
     _mk(client, auth_headers, cid)
     ex = client.post(f"{POS}/export", headers=auth_headers).json()
-    assert ex["code"] == 0 and "岗位名称" in ex["data"]["content"] and ex["data"]["rowCount"] >= 1
+    assert ex["code"] == 0 and ex["data"]["filename"].endswith(".xlsx")
+    assert base64.b64decode(ex["data"]["contentBase64"])[:2] == b"PK"
+    assert ex["data"]["rowCount"] >= 1
 
 
 def test_detail_and_not_found(client, auth_headers, db_mode):
@@ -129,6 +132,26 @@ def test_detail_and_not_found(client, auth_headers, db_mode):
     d = client.get(f"{POS}/{pid}", headers=auth_headers).json()
     assert d["code"] == 0 and d["data"]["company"]["coopStatus"] == "ACTIVE" and "auditTrail" in d["data"]
     assert client.get(f"{POS}/99999999", headers=auth_headers).json()["code"] != 0
+
+
+def test_position_xlsx_import_template_and_upload(client, auth_headers, db_mode):
+    import io
+    from openpyxl import Workbook
+    _company(client, auth_headers, cc="91310000POSXLS1XA", name="Excel导入企业")
+    tpl = client.get(f"{POS}/import/template", headers=auth_headers)
+    assert tpl.status_code == 200 and tpl.content[:2] == b"PK"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["岗位名称", "关联企业", "岗位类型", "专业要求", "年级要求", "工作地点", "容量"])
+    ws.append(["测试岗位X", "Excel导入企业", "技术岗", "软件技术", "2024级", "上海", "2"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    up = client.post(f"{POS}/import/xlsx", headers=auth_headers,
+                     files={"file": ("p.xlsx", buf.getvalue(),
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}).json()
+    assert up["code"] == 0 and up["data"]["validRows"] == 1
+    assert client.post(f"{POS}/import/confirm", headers=auth_headers,
+                       json={"rows": up["data"]["rows"]}).json()["code"] == 0
 
 
 def test_reverse_fill_enterprise_position_summary(client, auth_headers, db_mode):

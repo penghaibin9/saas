@@ -4,7 +4,8 @@
  * 真实接口 /api/v1/internship/*；后端不可达时自动回退 mock，页面不白屏。
  * 业务错误（如意见<5字 422001 / 已处理 409001）直接透出，不回退 mock。
  */
-import { request, shouldTryReal } from '@/services/http/client'
+import { request, shouldTryReal, requestUpload, requestBlob } from '@/services/http/client'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import {
   tenantBrandConfig,
   currentRole,
@@ -139,6 +140,12 @@ export const internshipApi = {
 
   exportBatches(params = {}) {
     return realStrict(() => request('/internship/batches/export', { method: 'POST', params }))
+  },
+
+  async downloadBatchExport(params = {}) {
+    const res = await this.exportBatches(params)
+    if (res.code === 0) downloadXlsxFromApi(res.data, '实习批次台账.xlsx')
+    return res
   },
 
   getStudents(params = {}) {
@@ -322,6 +329,38 @@ export const internshipApi = {
 
   exportEnterprises(params = {}) {
     return realStrict(() => request('/internship/enterprises/export', { method: 'POST', params }))
+  },
+
+  downloadEnterpriseImportErrors(rows, errors) {
+    return realStrict(() => request('/internship/enterprises/import/errors-xlsx', {
+      method: 'POST', body: { rows, errors }
+    }))
+  },
+
+  async downloadEnterpriseExport(params = {}) {
+    const res = await this.exportEnterprises(params)
+    if (res.code === 0) downloadXlsxFromApi(res.data, '企业库台账.xlsx')
+    return res
+  },
+
+  /** 上传 Excel(.xlsx) 解析+预校验，返回 { rows, validRows, invalidRows, errors } */
+  async importEnterprisesXlsx(file) {
+    try {
+      return { code: 0, data: await requestUpload('/internship/enterprises/import/xlsx', file), message: 'ok' }
+    } catch (e) {
+      return { code: e.code || 1, data: null, message: e.message || '上传失败' }
+    }
+  },
+
+  /** 下载企业导入 Excel 模板(.xlsx) */
+  async downloadEnterpriseTemplate() {
+    const blob = await requestBlob('/internship/enterprises/import/template')
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '企业导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 }
 

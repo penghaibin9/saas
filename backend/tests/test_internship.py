@@ -163,9 +163,12 @@ def test_batch_closed_loop(client, auth_headers, db_mode):
     # 审计留痕（BATCH 类型，详情自带 auditTrail）
     det2 = client.get(f"/api/v1/internship/batches/{bid}", headers=auth_headers).json()["data"]
     assert len(det2["auditTrail"]) >= 4
-    # 导出台账
+    # 导出台账（Excel/xlsx）
+    import base64
     exp = client.post("/api/v1/internship/batches/export", headers=auth_headers).json()
     assert exp["code"] == 0 and exp["data"]["rowCount"] >= 1
+    assert exp["data"]["filename"].endswith(".xlsx")
+    assert base64.b64decode(exp["data"]["contentBase64"])[:2] == b"PK"
 
 
 def test_batch_void_only_draft(client, auth_headers, db_mode):

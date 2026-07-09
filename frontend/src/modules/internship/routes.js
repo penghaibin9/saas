@@ -86,6 +86,18 @@ const internshipRoutes = {
       name: 'internship-position-detail',
       component: () => import('@/views/admin/internship/InternshipPositionDetailView.vue'),
       meta: { moduleCode: 'INTERNSHIP', title: '岗位详情', requiresAuth: true, permissionKey: 'internship.position.view' }
+    },
+    {
+      path: 'agreement-templates',
+      name: 'internship-agreement-templates',
+      component: () => import('@/views/admin/internship/InternshipAgreementTemplateListView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '实习协议模板库', requiresAuth: true, permissionKey: 'internship.agreementTemplate.view' }
+    },
+    {
+      path: 'match',
+      name: 'internship-match',
+      component: () => import('@/views/admin/internship/InternshipMatchListView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '岗位匹配', requiresAuth: true, permissionKey: 'internship.match.view' }
     }
   ]
 }

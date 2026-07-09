@@ -51,10 +51,18 @@ class InternshipRecord(PKMixin, TenantMixin, CommonMixin, Base):
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True,
                                             comment="= t_student_profile.id")
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
-    enterprise_name: Mapped[str | None] = mapped_column(String(200), comment="实习单位")
-    position_name: Mapped[str | None] = mapped_column(String(100), comment="岗位")
+    enterprise_name: Mapped[str | None] = mapped_column(String(200), comment="实习单位（冗余展示）")
+    position_name: Mapped[str | None] = mapped_column(String(100), comment="岗位（冗余展示）")
     advisor_name: Mapped[str | None] = mapped_column(String(100), comment="校内指导教师")
-    enterprise_mentor_name: Mapped[str | None] = mapped_column(String(100), comment="企业导师")
+    enterprise_mentor_name: Mapped[str | None] = mapped_column(String(100), comment="企业导师（冗余展示）")
+    # ── 与企业库/岗位库真实关联（additive；分配岗位时回填，退岗时清空）──
+    enterprise_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_emp_company.id")
+    position_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_internship_position.id")
+    mentor_contact_id: Mapped[int | None] = mapped_column(BigInteger, comment="→ t_internship_enterprise_contact.id")
+    eligibility_status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING",
+                                                    comment="实习资格 PENDING/QUALIFIED/UNQUALIFIED")
+    destination_type: Mapped[str] = mapped_column(String(50), nullable=False, default="NONE",
+                                                  comment="实习去向 ASSIGNED/SELF_ARRANGED/EXEMPTED/NONE")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PREPARING",
                                         comment="PREPARING/READY/ONBOARD/ASSESSING/ARCHIVED")
     risk_level: Mapped[str] = mapped_column(String(50), nullable=False, default="NONE",

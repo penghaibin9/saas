@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
@@ -16,7 +17,41 @@ from sqlalchemy import func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact
+from app.services import excel  # 公共 Excel 导入导出底座（V1.1）
 from app.services.db_service import _iso, _mask_phone, _tid, session
+
+# 统一社会信用代码：宽松校验——纯字母数字、8~20 位（拦截含空格/冒号/标签/纯符号的脏值）。
+# 注：真实标准为 18 位固定字符集，待演示数据统一为真实码后可收紧为 ^[0-9A-HJ-NPQRTUWXY]{18}$。
+_CREDIT_CODE_RE = re.compile(r"^[0-9A-Za-z]{8,20}$")
+# 疑似"字段标签"前缀（用户把营业执照整段粘进来时每行会带标签）
+_NAME_LABEL_RE = re.compile(
+    r"^\s*(企业名称|公司名称|名称|单位名称|银行账户|开户银行|开户行|账户|账号|"
+    r"单位地址|注册地址|地址|税号|纳税人识别号|电话|联系电话|手机|联系人|法人|法定代表人|"
+    r"注册资本|经营范围|统一社会信用代码|信用代码|营业执照)\s*[:：]")
+
+
+def _validate_credit_code(cc: str) -> str | None:
+    """返回错误信息；合法或为空返回 None。"""
+    if not cc:
+        return None
+    if not _CREDIT_CODE_RE.match(cc):
+        return "统一社会信用代码格式不合法（应为 18 位数字+大写字母，不含 I/O/S/V/Z）"
+    return None
+
+
+def _validate_company_name(name: str) -> str | None:
+    """企业名称合理性校验，拦截账号/地址/税号/纯数字等非企业名。合法返回 None。"""
+    if not name:
+        return "企业名称必填"
+    if _NAME_LABEL_RE.match(name):
+        return "企业名称疑似含字段标签（如 名称:/银行账户:/税号:），请只填企业全称"
+    if len(name) < 4:
+        return "企业名称过短（疑似无效，请填企业全称）"
+    if re.fullmatch(r"[\d\W_]+", name):
+        return "企业名称不能是纯数字/符号（疑似账号、税号或金额）"
+    if not re.search(r"[一-鿿]", name) and not re.search(r"[A-Za-z]{2,}", name):
+        return "企业名称格式不合法（缺少中文或字母）"
+    return None
 
 # ── 字典 ──
 COOP_LABEL = {"PENDING": "待审核", "ACTIVE": "合作中", "REJECTED": "已驳回",
@@ -153,9 +188,13 @@ def _apply(c: EmpCompany, body) -> None:
 def create_enterprise(body) -> dict:
     with session() as db:
         name = (getattr(body, "name", "") or "").strip()
-        if not name:
-            raise AppException("VALIDATION_ERROR", "企业名称必填")
+        name_err = _validate_company_name(name)
+        if name_err:
+            raise AppException("VALIDATION_ERROR", name_err)
         cc = (getattr(body, "creditCode", "") or "").strip()
+        cc_err = _validate_credit_code(cc)
+        if cc_err:
+            raise AppException("VALIDATION_ERROR", cc_err)
         if cc:
             dup = db.scalars(select(EmpCompany).where(
                 EmpCompany.tenant_id == _tid(), EmpCompany.credit_code == cc,
@@ -379,38 +418,34 @@ def enterprise_stats() -> dict:
 _IMPORT_COLS = ["name", "creditCode", "industry", "region", "contactPerson", "contactPhone"]
 
 
-def import_dry_run(rows: list[dict]) -> dict:
-    """逐行预校验，不写库。name 必填；信用码批内 + 库内去重。"""
+# ═══════════ 公共 Excel 底座接入（V1.1）═══════════
+# 企业库改为「只写配置」，导入导出全部走 app.services.excel 底座。
+# 模块自有严格校验器（信用码 / 企业名合理性）作为 ColumnSpec.validators 复用，行为与旧实现等价。
+
+def _v_name(v: str, col) -> str | None:
+    return _validate_company_name(v)
+
+
+def _v_credit(v: str, col) -> str | None:
+    return _validate_credit_code(v)
+
+
+def _db_credit_dup(rows: list[dict]) -> dict:
+    """库内查重扩展点：信用代码已在 t_emp_company 视为重复。返回 {1-based 行号: 原因}。"""
     with session() as db:
         existing = {c.credit_code for c in db.scalars(select(EmpCompany).where(
             EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False),
             EmpCompany.credit_code.is_not(None))).all()}
-        errors, seen, valid = [], set(), 0
-        for i, r in enumerate(rows or []):
-            row_no = i + 1
-            name = (r.get("name") or "").strip()
-            cc = (r.get("creditCode") or "").strip()
-            if not name:
-                errors.append({"rowNo": row_no, "field": "name", "message": "企业名称必填"})
-                continue
-            if cc and cc in existing:
-                errors.append({"rowNo": row_no, "field": "creditCode", "message": f"信用代码库内已存在：{cc}"})
-                continue
-            if cc and cc in seen:
-                errors.append({"rowNo": row_no, "field": "creditCode", "message": f"文件内信用代码重复：{cc}"})
-                continue
-            if cc:
-                seen.add(cc)
-            valid += 1
-        return {"total": len(rows or []), "validRows": valid,
-                "invalidRows": len(errors), "errors": errors}
+    out = {}
+    for i, r in enumerate(rows or []):
+        cc = (r.get("creditCode") or "").strip()
+        if cc and cc in existing:
+            out[i + 1] = f"信用代码库内已存在：{cc}"
+    return out
 
 
-def import_confirm(rows: list[dict]) -> dict:
-    """预校验全通过才允许确认；以整批为事务，任一行失败整批回滚。"""
-    pre = import_dry_run(rows)
-    if pre["invalidRows"] > 0:
-        raise AppException("DATA_CONFLICT", "存在未通过预校验的行，禁止确认导入")
+def _persist_enterprises(rows: list[dict]) -> dict:
+    """落库扩展点：整批事务写入 t_emp_company + 审计留痕（与旧 import_confirm 等价）。"""
     with session() as db:
         created = 0
         for r in rows or []:
@@ -420,6 +455,7 @@ def import_confirm(rows: list[dict]) -> dict:
                 industry=r.get("industry") or None, region=r.get("region") or None,
                 contact_person=r.get("contactPerson") or None,
                 contact_phone_encrypted=(r.get("contactPhone") or "").strip() or None,
+                remark=(r.get("remark") or "").strip() or None,
                 status="ACTIVE", coop_status="PENDING", qualification_status="UNREVIEWED",
                 source="SELF_BUILT")
             db.add(c)
@@ -430,16 +466,87 @@ def import_confirm(rows: list[dict]) -> dict:
         return {"created": created}
 
 
+def build_import_spec() -> excel.ImportSpec:
+    C = excel.ColumnSpec
+    return excel.ImportSpec(
+        module_key="internship", biz_type="enterprise", template_name="企业库导入",
+        columns=[
+            C("name", "企业名称", required=True, validators=[_v_name],
+              example="华信智能科技有限公司", help_text="填企业全称，勿填账号/税号/地址"),
+            C("creditCode", "统一社会信用代码", required=True, unique_in_file=True,
+              validators=[_v_credit], example="91310000MA1FL0001X",
+              help_text="18 位数字+大写字母；文件内、库内不可重复"),
+            C("industry", "行业", required=True, example="软件"),
+            C("region", "地区", required=True, example="上海"),
+            C("contactPerson", "联系人", example="王经理"),
+            C("contactPhone", "联系电话", example="13800000000", help_text="敏感字段，列表默认脱敏"),
+            C("coopStatus", "合作状态", help_text="仅供查阅，导入后默认「待审核」"),
+            C("qualificationStatus", "资质状态", help_text="仅供查阅，导入后默认「未核验」"),
+            C("remark", "备注"),
+        ],
+        notes=[
+            "1. 只导入「导入模板」这一页；第一行表头请勿改动、勿删除。",
+            "2. 带 * 为必填：企业名称、统一社会信用代码、行业、地区。",
+            "3. 统一社会信用代码：18 位数字+大写字母；同一份文件内、系统库内不可重复。",
+            "4. 合作状态/资质状态列仅供查阅，导入后默认为「待审核/未核验」。",
+            "5. 联系电话为敏感字段，列表默认脱敏展示。",
+            "6. 从第 2 行起逐行填写，一行一家企业；填完保存为 .xlsx 后上传。",
+        ],
+        duplicate_check=_db_credit_dup, persist_rows=_persist_enterprises,
+        permission_key="internship.enterprise.import", audit_action="导入企业库",
+    )
+
+
+def build_export_spec() -> excel.ExportSpec:
+    C = excel.ColumnSpec
+    return excel.ExportSpec(
+        module_key="internship", biz_type="enterprise", sheet_title="企业库台账",
+        file_name="企业库台账.xlsx",
+        columns=[
+            C("name", "企业名称"), C("creditCode", "统一社会信用代码"),
+            C("industry", "行业"), C("region", "地区"),
+            C("coopStatusLabel", "合作状态"), C("qualificationLabel", "资质状态"),
+            C("contactPerson", "联系人"), C("contactPhoneMasked", "联系电话(脱敏)"),
+            C("internCount", "累计实习生"),
+            C("blacklist", "是否黑名单", mask=lambda v: "是" if v else "否"),
+            C("remark", "备注"),
+        ],
+    )
+
+
+def import_template_bytes() -> bytes:
+    """企业库导入 Excel 模板（底座生成）。"""
+    return excel.build_template(build_import_spec())
+
+
+def import_read(content: bytes) -> list[dict]:
+    """上传 .xlsx → list[dict]（走底座表头映射）。"""
+    return excel.read_upload(build_import_spec(), content)
+
+
+def import_errors_pack(rows: list[dict], errors: list[dict]) -> dict:
+    """错误行 Excel（底座生成，pack 后返回下载体）。"""
+    return excel.build_error_rows(build_import_spec(), rows, errors)
+
+
+def import_dry_run(rows: list[dict]) -> dict:
+    """预校验（走底座统一管道）。返回结构含 total/validRows/invalidRows/errors（超集，向后兼容）。"""
+    return excel.pre_validate(build_import_spec(), rows)
+
+
+def import_confirm(rows: list[dict]) -> dict:
+    """确认导入（走底座；底座强制再校验，全通过才落库）+ 登记通用导入记录。"""
+    spec = build_import_spec()
+    pre = excel.pre_validate(spec, rows)
+    result = excel.confirm_import(spec, rows)
+    excel.job_service.record_import(spec.module_key, spec.biz_type, pre=pre,
+                                    result=result, status="IMPORTED")
+    return {"created": result.get("created", 0)}
+
+
 def export_enterprises(keyword=None, coop_status=None, industry=None, region=None) -> dict:
-    """导出 CSV（联系电话脱敏；导出动作由调用方写安全审计）。"""
+    """导出 Excel 台账（走底座；联系电话已在列表层脱敏，黑名单列由底座 mask 转「是/否」）。"""
     items, _ = list_enterprises(1, 100000, keyword=keyword, coop_status=coop_status,
                                 industry=industry, region=region)
-    header = ["企业名称", "统一社会信用代码", "行业", "地区", "合作状态", "资质", "联系人",
-              "联系电话(脱敏)", "累计实习生", "是否黑名单"]
-    lines = [",".join(header)]
-    for it in items:
-        lines.append(",".join(str(x).replace(",", "，") for x in [
-            it["name"], it["creditCode"], it["industry"], it["region"], it["coopStatusLabel"],
-            it["qualificationLabel"], it["contactPerson"], it["contactPhoneMasked"],
-            it["internCount"], "是" if it["blacklist"] else "否"]))
-    return {"filename": "企业库导出.csv", "content": "\n".join(lines), "rowCount": len(items)}
+    user = get_current_user_ctx() or {}
+    return excel.build_export(build_export_spec(), items, operator_name=user.get("realName", "-"))

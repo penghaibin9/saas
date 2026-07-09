@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="实习批次"
-    subtitle="组织岗位实习的时间轴与规则骨架（草稿 → 进行中 → 已结束 → 已归档）"
+    :subtitle="pageSubtitle"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="实习批次管理"
@@ -115,6 +115,18 @@ import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '' })
+const BATCH_PANEL_PRESETS = {
+  list: () => EMPTY_FILTERS(),
+  timeline: () => ({ ...EMPTY_FILTERS(), status: 'RUNNING' }),
+  rules: () => ({ ...EMPTY_FILTERS(), status: 'DRAFT' }),
+  export: () => ({ ...EMPTY_FILTERS(), status: 'ARCHIVED' })
+}
+const BATCH_PANEL_HINTS = {
+  list: '组织岗位实习的时间轴与规则骨架（草稿 → 进行中 → 已结束 → 已归档）',
+  timeline: '进行中批次 · 点击行「详情」查看阶段时间轴，新建/编辑可配 stagesJson',
+  rules: '草稿批次 · 新建/编辑时可编辑 rulesJson（打卡/周报/指导/评价/成绩）',
+  export: '已归档批次台账 · 可用右上角「导出 Excel 台账」'
+}
 const STATUS_OPTIONS = [
   { value: 'DRAFT', label: '草稿' },
   { value: 'RUNNING', label: '进行中' },
@@ -135,6 +147,7 @@ export default {
       loading: true,
       error: '',
       submitting: false,
+      activePanel: 'list',
       rows: [],
       total: 0,
       page: 1,
@@ -169,7 +182,7 @@ export default {
       const p = this.perms.createBatch
       return [
         { key: 'create', label: '新建批次', disabled: p ? !p.allowed : false, disabledReason: p && !p.allowed ? p.reason : '' },
-        { key: 'export', label: '导出台账' }
+        { key: 'export', label: '导出 Excel 台账' }
       ]
     },
     filterFields() {
@@ -245,19 +258,34 @@ export default {
         return { title: '作废批次', message: r ? `作废「${r.batchName}」（仅草稿态可作废，可审计）。` : '', type: 'danger', confirmText: '确认作废', requireReason: true }
       }
       return { title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false }
+    },
+    pageSubtitle() {
+      const hint = BATCH_PANEL_HINTS[this.activePanel] || BATCH_PANEL_HINTS.list
+      return `共 ${this.total} 个批次 · ${hint}`
+    }
+  },
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.applyPanel((panel || 'list').toString())
+      }
     }
   },
   async created() {
-    await this.init()
+    const ctx = await internshipApi.getContext()
+    if (ctx.code === 0) this.ctx = ctx.data
   },
   methods: {
+    applyPanel(panel) {
+      const key = BATCH_PANEL_PRESETS[panel] ? panel : 'list'
+      this.activePanel = key
+      this.filters = (BATCH_PANEL_PRESETS[key] || BATCH_PANEL_PRESETS.list)()
+      this.page = 1
+      this.load()
+    },
     pct(v) {
       return `${Math.round((v || 0) * 100)}%`
-    },
-    async init() {
-      const ctx = await internshipApi.getContext()
-      if (ctx.code === 0) this.ctx = ctx.data
-      await this.load()
     },
     async load() {
       this.loading = true
@@ -295,16 +323,9 @@ export default {
       else if (key === 'export') this.doExport()
     },
     async doExport() {
-      const res = await internshipApi.exportBatches({ ...this.filters })
-      if (res.code !== 0) return toast.error(res.message)
-      const blob = new Blob(['﻿' + res.data.content], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = res.data.filename || '实习批次台账.csv'
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success(`已导出 ${res.data.rowCount} 个批次（已写审计）`)
+      const res = await internshipApi.downloadBatchExport({ ...this.filters })
+      if (res.code === 0) toast.success(`已导出 Excel 台账 ${res.data.rowCount} 个批次（已写审计）`)
+      else toast.error(res.message)
     },
     openCreate() {
       this.editing = null

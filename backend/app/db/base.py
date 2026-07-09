@@ -22,5 +22,7 @@ from app.models import message as _message  # noqa: F401
 from app.models import portal as _portal  # noqa: F401
 from app.models import teacher_scope as _teacher_scope  # noqa: F401
 from app.models import affairs as _affairs  # noqa: F401
+from app.models import excel_import_job as _excel_import_job  # noqa: F401
+from app.models import internship_agreement_template as _internship_agreement_template  # noqa: F401
 
 metadata = Base.metadata

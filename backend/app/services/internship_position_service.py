@@ -111,9 +111,22 @@ def get_position(pos_id) -> dict:
             company = {"id": str(c.id), "name": c.name, "coopStatus": c.coop_status,
                        "coopStatusLabel": COOP_LABEL.get(c.coop_status, c.coop_status),
                        "blacklist": bool(c.blacklist)}
+        # 反向补：本岗位已分配学生（allocated_count 的真实来源，实习学生分配闭环回填）
+        from app.models import InternshipRecord, StudentProfile
+        recs = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.position_id == p.id).order_by(InternshipRecord.id)).all()
+        smap = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_([r.student_id for r in recs]))).all()} if recs else {}
+        assigned = [{"recordId": str(r.id), "studentId": str(r.student_id),
+                     "name": (smap.get(r.student_id).real_name if smap.get(r.student_id) else "-"),
+                     "studentNo": (smap.get(r.student_id).student_no if smap.get(r.student_id) else "-"),
+                     "status": r.status} for r in recs]
         return {
             **_row(p),
             "company": company,
+            "assignedStudents": assigned,
+            "assignedCount": len(assigned),
             "auditTrail": [{"action": a.action, "operator": a.operator_name or "",
                             "detail": a.detail_json or {}, "occurredAt": _iso(a.occurred_at)}
                            for a in trail],
@@ -270,9 +283,32 @@ def position_stats() -> dict:
         cap = db.execute(select(func.coalesce(func.sum(InternshipPosition.headcount), 0),
                                 func.coalesce(func.sum(InternshipPosition.allocated_count), 0)).where(
             *base, InternshipPosition.status == "PUBLISHED")).first()
+        published_capacity = int(cap[0] or 0)
+        published_allocated = int(cap[1] or 0)
+        util = round(published_allocated * 100.0 / published_capacity, 1) if published_capacity else 0.0
+        # 已上架岗位按专业要求聚合；空专业计入 unlimitedMajorCount
+        pub_rows = db.scalars(select(InternshipPosition).where(
+            *base, InternshipPosition.status == "PUBLISHED")).all()
+        major_map: dict[str, dict] = {}
+        unlimited = 0
+        for p in pub_rows:
+            req = (p.major_requirement or "").strip()
+            if not req:
+                unlimited += 1
+                key = "(不限专业)"
+            else:
+                key = req
+            bucket = major_map.setdefault(key, {"major": key, "count": 0, "capacity": 0, "allocated": 0})
+            bucket["count"] += 1
+            bucket["capacity"] += int(p.headcount or 0)
+            bucket["allocated"] += int(p.allocated_count or 0)
+        by_major = sorted(major_map.values(), key=lambda x: (-x["count"], x["major"]))
         return {
             "total": total, "byStatus": by_status, "riskCount": risk,
-            "publishedCapacity": int(cap[0] or 0), "publishedAllocated": int(cap[1] or 0),
+            "publishedCapacity": published_capacity, "publishedAllocated": published_allocated,
+            "capacityUtilization": util,
+            "unlimitedMajorCount": unlimited,
+            "byMajor": by_major,
         }
 
 
@@ -287,16 +323,35 @@ def count_for_enterprise(company_id) -> dict:
         return {"total": total, "published": published}
 
 
-# ═══════════ 导入 / 导出（CSV 真导入导出）═══════════
+# ═══════════ 导入 / 导出（Excel 真导入导出；dry-run 与粘贴共用）═══════════
+
+def _resolve_company(companies, key: str):
+    by_code = {c.credit_code: c for c in companies if c.credit_code}
+    by_name = {c.name: c for c in companies}
+    return by_code.get(key) or by_name.get(key)
+
+
+def _company_import_block(c) -> str | None:
+    """导入岗位时企业须存在且非黑名单、须合作中。"""
+    if not c:
+        return None
+    if c.blacklist or c.coop_status == "BLACKLIST":
+        return "黑名单企业不能导入岗位"
+    if c.coop_status != "ACTIVE":
+        return f"停用/未合作企业不能导入岗位（当前：{COOP_LABEL.get(c.coop_status, c.coop_status)}）"
+    return None
+
 
 def import_dry_run(rows: list[dict]) -> dict:
-    """逐行预校验：title 必填；company（信用码或名称）必须能匹配到已有企业。"""
+    """逐行预校验：title/company 必填；企业须存在且合作中；容量为正整数；批内+库内去重。"""
     with session() as db:
         companies = db.scalars(select(EmpCompany).where(
             EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()
-        by_code = {c.credit_code: c for c in companies if c.credit_code}
-        by_name = {c.name: c for c in companies}
-        errors, valid = [], 0
+        existing = {(p.company_id, (p.title or "").strip().lower()) for p in db.scalars(
+            select(InternshipPosition).where(
+                InternshipPosition.tenant_id == _tid(),
+                InternshipPosition.is_deleted.is_(False))).all()}
+        errors, seen, valid = [], set(), 0
         for i, r in enumerate(rows or []):
             row_no = i + 1
             title = (r.get("title") or "").strip()
@@ -304,10 +359,34 @@ def import_dry_run(rows: list[dict]) -> dict:
             if not title:
                 errors.append({"rowNo": row_no, "field": "title", "message": "岗位名称必填"})
                 continue
-            if not key or (key not in by_code and key not in by_name):
-                errors.append({"rowNo": row_no, "field": "company",
-                               "message": f"未匹配到企业（信用码/名称）：{key or '空'}"})
+            if not key:
+                errors.append({"rowNo": row_no, "field": "company", "message": "关联企业必填"})
                 continue
+            c = _resolve_company(companies, key)
+            if not c:
+                errors.append({"rowNo": row_no, "field": "company",
+                               "message": f"未匹配到企业（信用码/名称）：{key}"})
+                continue
+            blk = _company_import_block(c)
+            if blk:
+                errors.append({"rowNo": row_no, "field": "company", "message": blk})
+                continue
+            hc_raw = (r.get("headcount") or "1").strip() if isinstance(r.get("headcount"), str) else r.get("headcount")
+            try:
+                hc = int(hc_raw or 1)
+                if hc < 1:
+                    raise ValueError()
+            except (TypeError, ValueError):
+                errors.append({"rowNo": row_no, "field": "headcount", "message": "容量必须为正整数"})
+                continue
+            dup_key = (c.id, title.lower())
+            if dup_key in existing:
+                errors.append({"rowNo": row_no, "field": "title", "message": f"库内已存在同企业同岗位：{title}"})
+                continue
+            if dup_key in seen:
+                errors.append({"rowNo": row_no, "field": "title", "message": f"文件内同企业岗位重复：{title}"})
+                continue
+            seen.add(dup_key)
             valid += 1
         return {"total": len(rows or []), "validRows": valid,
                 "invalidRows": len(errors), "errors": errors}
@@ -320,17 +399,25 @@ def import_confirm(rows: list[dict]) -> dict:
     with session() as db:
         companies = db.scalars(select(EmpCompany).where(
             EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()
-        by_code = {c.credit_code: c for c in companies if c.credit_code}
-        by_name = {c.name: c for c in companies}
         created = 0
         for r in rows or []:
             key = (r.get("company") or "").strip()
-            c = by_code.get(key) or by_name.get(key)
+            c = _resolve_company(companies, key)
+            hc_raw = r.get("headcount") or 1
+            hc = int(hc_raw) if str(hc_raw).isdigit() else 1
+            risk_on = str(r.get("riskFlag") or r.get("risk") or "").strip() in ("是", "true", "True", "1", "Y")
             p = InternshipPosition(
                 tenant_id=_tid(), company_id=c.id, company_name=c.name,
                 title=(r.get("title") or "").strip(),
-                major_requirement=r.get("major") or None, work_location=r.get("location") or None,
-                headcount=int(r.get("headcount") or 1), status="DRAFT")
+                category=r.get("category") or None,
+                major_requirement=r.get("major") or None,
+                grade_requirement=r.get("grade") or None,
+                work_location=r.get("location") or None,
+                salary_range=r.get("salary") or None,
+                headcount=max(1, hc), status="DRAFT",
+                mentor_name=r.get("mentor") or None,
+                risk_flag=risk_on,
+                remark=r.get("remark") or None)
             db.add(p)
             db.flush()
             _trail(db, p.id, "IMPORT", {"title": p.title})
@@ -340,13 +427,21 @@ def import_confirm(rows: list[dict]) -> dict:
 
 
 def export_positions(keyword=None, status=None, company_id=None) -> dict:
+    from app.services import xlsx_util
+
     items, _ = list_positions(1, 100000, keyword=keyword, status=status, company_id=company_id)
-    header = ["岗位名称", "所属企业", "专业要求", "年级要求", "工作地点", "薪资", "容量", "已分配",
-              "状态", "风险"]
-    lines = [",".join(header)]
+    headers = ["岗位名称", "关联企业", "岗位类型", "专业要求", "年级要求", "工作地点",
+               "容量", "薪资/补贴", "企业导师", "状态", "风险标记", "备注"]
+    data_rows = []
     for it in items:
-        lines.append(",".join(str(x).replace(",", "，") for x in [
-            it["title"], it["companyName"], it["majorRequirement"], it["gradeRequirement"],
-            it["workLocation"], it["salaryRange"], it["headcount"], it["allocatedCount"],
-            it["statusLabel"], "是" if it["riskFlag"] else "否"]))
-    return {"filename": "岗位库导出.csv", "content": "\n".join(lines), "rowCount": len(items)}
+        sal = it["salaryRange"] or it.get("subsidy") or ""
+        data_rows.append([
+            it["title"], it["companyName"], it.get("category") or "",
+            it["majorRequirement"], it["gradeRequirement"], it["workLocation"],
+            it["headcount"], sal, it["mentorName"], it["statusLabel"],
+            "是" if it["riskFlag"] else "否", it.get("remark") or ""])
+    user = get_current_user_ctx() or {}
+    wm = (f"岗位实习中心·岗位库台账 · 导出人：{user.get('realName', '-')} · "
+          f"{datetime.now():%Y-%m-%d %H:%M}")
+    content = xlsx_util.build_ledger_xlsx("岗位库台账", headers, data_rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "岗位库台账.xlsx", len(items))

@@ -385,45 +385,65 @@ export const NAV_PLAN = [
         '教师指导概览', '风险学生概览', '就业落实概览', '待办事项', '数据趋势')
     ]),
     mod('in-batches', '实习批次', '/admin/internship/batches', [
-      I('批次列表（新建/编辑/启停/归档/作废）', '/admin/internship/batches'),
-      I('批次时间轴（阶段配置，JSON 可编辑）', '/admin/internship/batches'),
-      I('打卡/周报/指导/评价/成绩规则配置（JSON 可编辑）', '/admin/internship/batches'),
-      I('批次台账导出', '/admin/internship/batches'),
+      I('批次列表（新建/编辑/启停/归档/作废）', '/admin/internship/batches?panel=list'),
+      I('批次时间轴（阶段配置，JSON 可编辑）', '/admin/internship/batches?panel=timeline'),
+      I('打卡/周报/指导/评价/成绩规则配置（JSON 可编辑）', '/admin/internship/batches?panel=rules'),
+      I('批次台账导出', '/admin/internship/batches?panel=export'),
       ...P('阶段配置可视化编辑器', '规则配置可视化编辑器')
     ]),
     mod('in-students', '实习学生', '/admin/internship/students', [
-      I('实习名单', '/admin/internship/students'),
-      ...P('实习资格', '学生实习状态', '实习去向', '学生岗位', '学生企业', '学生导师', '学生打卡', '学生周报', '学生风险', '学生材料', '学生归档')
+      I('实习名单（建档/导入导出）', '/admin/internship/students?panel=roster'),
+      I('实习资格认定', '/admin/internship/students?panel=eligibility'),
+      I('学生实习状态', '/admin/internship/students?panel=status'),
+      I('实习去向', '/admin/internship/students?panel=destination'),
+      I('学生岗位（从岗位库分配/调岗/退岗）', '/admin/internship/students?panel=position'),
+      I('学生企业', '/admin/internship/students?panel=enterprise'),
+      I('学生导师', '/admin/internship/students?panel=mentor'),
+      ...P('学生打卡', '学生周报', '学生风险', '学生材料', '学生归档')
     ]),
     mod('in-enterprises', '企业库', '/admin/internship/enterprises', [
-      I('企业列表', '/admin/internship/enterprises'),
-      I('企业详情', '/admin/internship/enterprises'),
-      I('企业联系人', '/admin/internship/enterprises'),
-      I('企业导师', '/admin/internship/enterprises'),
-      I('企业资质审核', '/admin/internship/enterprises'),
-      I('企业黑名单', '/admin/internship/enterprises'),
-      I('企业归档', '/admin/internship/enterprises'),
-      PA('企业统计', '/admin/internship/enterprises'),
-      PA('企业合作记录', '/admin/internship/enterprises'),
-      PA('企业岗位', '/admin/internship/enterprises'),
+      I('企业列表', '/admin/internship/enterprises?panel=list'),
+      I('企业详情', '/admin/internship/enterprises?panel=detail'),
+      I('企业联系人', '/admin/internship/enterprises?panel=contacts'),
+      I('企业导师', '/admin/internship/enterprises?panel=mentor'),
+      I('企业资质审核', '/admin/internship/enterprises?panel=qualification'),
+      I('企业黑名单', '/admin/internship/enterprises?panel=blacklist'),
+      I('企业归档', '/admin/internship/enterprises?panel=archive'),
+      PA('企业统计', '/admin/internship/enterprises?panel=stats'),
+      PA('企业合作记录', '/admin/internship/enterprises?panel=cooperation'),
+      PA('企业岗位', '/admin/internship/enterprises?panel=positions'),
       ...P('企业评价')
     ]),
     mod('in-positions', '岗位库', '/admin/internship/positions', [
-      I('岗位列表', '/admin/internship/positions'),
-      I('岗位详情', '/admin/internship/positions'),
-      I('岗位要求（专业/年级）', '/admin/internship/positions'),
-      I('岗位容量', '/admin/internship/positions'),
-      I('岗位发布（上架）', '/admin/internship/positions'),
-      I('岗位下架', '/admin/internship/positions'),
-      I('岗位风险提示', '/admin/internship/positions'),
-      I('岗位归档', '/admin/internship/positions'),
-      PA('岗位统计', '/admin/internship/positions'),
-      ...P('岗位专业匹配')
+      I('岗位列表', '/admin/internship/positions?panel=list'),
+      I('岗位详情', '/admin/internship/positions?panel=detail'),
+      I('岗位要求（专业/年级）', '/admin/internship/positions?panel=requirement'),
+      I('岗位容量', '/admin/internship/positions?panel=capacity'),
+      I('岗位发布（上架）', '/admin/internship/positions?panel=publish'),
+      I('岗位下架', '/admin/internship/positions?panel=offline'),
+      I('岗位风险提示', '/admin/internship/positions?panel=risk'),
+      I('岗位归档', '/admin/internship/positions?panel=archive'),
+      I('岗位统计', '/admin/internship/positions?panel=stats'),
+      I('岗位专业匹配', '/admin/internship/match?panel=major')
     ]),
-    mod('in-match', '岗位匹配', null, P('学生意向', '岗位推荐', '专业匹配', '企业匹配', '手动匹配', '批量匹配', '匹配确认', '匹配冲突', '匹配结果', '匹配统计')),
+    mod('in-match', '岗位匹配', '/admin/internship/match', [
+      I('学生意向', '/admin/internship/match?panel=intention'),
+      I('岗位推荐', '/admin/internship/match?panel=recommend'),
+      I('专业匹配', '/admin/internship/match?panel=major'),
+      I('企业匹配', '/admin/internship/match?panel=enterprise'),
+      I('手动匹配', '/admin/internship/match?panel=manual'),
+      I('批量匹配', '/admin/internship/match?panel=batch'),
+      I('匹配确认', '/admin/internship/match?panel=confirm'),
+      I('匹配冲突', '/admin/internship/match?panel=conflict'),
+      I('匹配结果', '/admin/internship/match?panel=results'),
+      I('匹配统计', '/admin/internship/match?panel=stats')
+    ]),
     mod('in-apply', '实习申请审核', null, P('学生申请', '自主实习申请', '岗位申请', '企业信息提交', '学生材料提交', '指导老师初审', '学院审核', '学校复核', '审核退回', '审核通过', '审核台账')),
     mod('in-assign', '岗位分配', null, P('分配规则', '指导老师分配', '企业岗位分配', '批量分配', '调岗申请', '调岗审批', '分配结果', '分配日志', '分配统计')),
-    mod('in-agreement', '实习协议', null, P('协议模板', '协议发起', '学生确认', '企业确认', '学校确认', '三方协议', '协议上传', '协议审核', '协议变更', '协议归档')),
+    mod('in-agreement', '实习协议', '/admin/internship/agreement-templates', [
+      I('协议模板库（新建/编辑/启停/归档/默认/适用范围/变量）', '/admin/internship/agreement-templates'),
+      ...P('协议发起', '学生确认', '企业确认', '学校确认', '三方协议', '协议上传', '协议审核', '协议变更', '协议归档')
+    ]),
     mod('in-plan', '实习计划任务', null, P('实习计划', '实习任务', '周期目标', '岗位任务书', '企业任务', '指导老师任务', '学生任务确认', '任务完成记录', '任务统计')),
     mod('in-attendance', '打卡管理', null, [
       ...P('打卡规则', '打卡记录', '定位打卡', '外勤打卡', '补卡申请', '补卡审批', '缺卡记录', '迟到早退', '连续未打卡'),
@@ -531,6 +551,11 @@ export function splitNavRef(ref) {
 
 /** 列表页无 panel 参数时的默认三级高亮 */
 const DEFAULT_PANEL_BY_PATH = {
+  '/admin/internship/students': 'roster',
+  '/admin/internship/batches': 'list',
+  '/admin/internship/enterprises': 'list',
+  '/admin/internship/positions': 'list',
+  '/admin/internship/match': 'intention',
   '/admin/graduation/students': 'roster',
   '/admin/graduation/batches': 'list',
   '/admin/graduation/topic-lib': 'list',

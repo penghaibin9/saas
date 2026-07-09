@@ -1,7 +1,8 @@
 /**
  * 岗位实习中心 · 岗位库 API（生产级：仅走真实后端，不回退 mock）。
  */
-import { request } from '@/services/http/client'
+import { request, requestUpload, requestBlob } from '@/services/http/client'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })
@@ -72,6 +73,36 @@ export const positionApi = {
 
   exportPositions(params = {}) {
     return call(() => request('/internship/positions/export', { method: 'POST', params }))
+  },
+
+  async downloadPositionExport(params = {}) {
+    const res = await this.exportPositions(params)
+    if (res.code === 0) downloadXlsxFromApi(res.data, '岗位库台账.xlsx')
+    return res
+  },
+
+  async importPositionsXlsx(file) {
+    try {
+      return { code: 0, data: await requestUpload('/internship/positions/import/xlsx', file), message: 'ok' }
+    } catch (e) {
+      return { code: e.code || 1, data: null, message: e.message || '上传失败' }
+    }
+  },
+
+  async downloadPositionTemplate() {
+    const blob = await requestBlob('/internship/positions/import/template')
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '岗位导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+
+  downloadPositionImportErrors(rows, errors) {
+    return call(() => request('/internship/positions/import/errors-xlsx', {
+      method: 'POST', body: { rows, errors }
+    }))
   },
 
   getEnterpriseOptions() {

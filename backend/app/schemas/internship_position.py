@@ -47,3 +47,8 @@ class PositionRiskRequest(BaseModel):
 
 class PositionImport(BaseModel):
     rows: list[dict] = Field(default_factory=list)
+
+
+class PositionImportErrors(BaseModel):
+    rows: list[dict] = Field(default_factory=list)
+    errors: list[dict] = Field(default_factory=list)

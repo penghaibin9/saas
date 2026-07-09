@@ -1,19 +1,25 @@
 """岗位实习域 API（/api/v1/internship/*）。真实走库；写操作落审计。"""
 from __future__ import annotations
 
+import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, ContactCreate,
                                      ContactUpdate, CoopActionRequest, EnterpriseCreate,
                                      EnterpriseImport, EnterpriseReview, EnterpriseUpdate,
-                                     ExceptionHandleRequest, ReportReviewRequest, VoidBatchRequest)
+                                     ExceptionHandleRequest, ImportErrorsExport, ReportReviewRequest,
+                                     VoidBatchRequest)
 from app.services import audit_log
 from app.services import internship_enterprise_service as ent
 from app.services import internship_service as svc
+
+# 企业库导入导出已全部迁至公共 Excel 底座（app.services.excel）：
+# 字段/校验/模板/错误行/台账由 internship_enterprise_service 的 ImportSpec/ExportSpec 定义。
 
 router = APIRouter(prefix="/internship", tags=["岗位实习"])
 
@@ -92,7 +98,7 @@ def risks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 # ═══════════ 实习批次（组织时间轴 + 规则骨架，状态机 DRAFT→RUNNING→CLOSED→ARCHIVED）═══════════
 # 注意：静态子路由 export 声明在 /{bid} 之前，避免被动态段吞掉（同企业库范式）。
 
-@router.post("/batches/export", summary="导出批次台账 CSV（写审计）")
+@router.post("/batches/export", summary="导出批次 Excel 台账（写审计）")
 def batch_export(keyword: Optional[str] = None, status: Optional[str] = None,
                  user=Depends(get_current_user)):
     data = svc.export_batches(keyword=keyword, status=status)
@@ -178,6 +184,30 @@ def enterprise_import_dry_run(body: EnterpriseImport, user=Depends(get_current_u
     return success(ent.import_dry_run(body.rows))
 
 
+@router.get("/enterprises/import/template", summary="企业库导入·下载 Excel 模板(.xlsx)")
+def enterprise_import_template(user=Depends(get_current_user)):
+    # 走公共 Excel 底座生成模板（字段/必填/示例/说明由 ImportSpec 统一定义）
+    data = ent.import_template_bytes()
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=enterprise_import_template.xlsx"})
+
+
+@router.post("/enterprises/import/xlsx", summary="企业库导入·上传 Excel 解析+预校验（不写库，返回行数据供确认）")
+async def enterprise_import_xlsx(file: UploadFile = File(...), user=Depends(get_current_user)):
+    content = await file.read()
+    rows = ent.import_read(content)          # 底座表头映射
+    dry = ent.import_dry_run(rows)           # 底座统一预校验
+    return success({"rows": rows, **dry})
+
+
+@router.post("/enterprises/import/errors-xlsx", summary="企业库导入·下载错误行 Excel")
+def enterprise_import_errors_xlsx(body: ImportErrorsExport, user=Depends(get_current_user)):
+    packed = ent.import_errors_pack(body.rows, body.errors)   # 底座生成错误行 Excel
+    return success(packed)
+
+
 @router.post("/enterprises/import/confirm", summary="企业库导入·确认（整批事务，预校验须全通过）")
 def enterprise_import_confirm(body: EnterpriseImport, user=Depends(get_current_user)):
     result = ent.import_confirm(body.rows)
@@ -185,7 +215,7 @@ def enterprise_import_confirm(body: EnterpriseImport, user=Depends(get_current_u
     return success(result, message="导入完成")
 
 
-@router.post("/enterprises/export", summary="企业库导出 CSV（脱敏，写审计）")
+@router.post("/enterprises/export", summary="企业库导出 Excel 台账（脱敏，写审计）")
 def enterprise_export(keyword: Optional[str] = None, coopStatus: Optional[str] = None,
                       industry: Optional[str] = None, region: Optional[str] = None,
                       user=Depends(get_current_user)):
