@@ -22,6 +22,7 @@ from app.services import internship_guidance_service as gd
 from app.services import internship_leave_service as lv
 from app.services import internship_makeup_service as mk
 from app.services import internship_risk_service as risk
+from app.services import internship_score_service as score
 from app.services import internship_service as svc
 from app.services import internship_student_eval_service as se
 from app.services import internship_visit_service as vis
@@ -463,6 +464,76 @@ def student_eval_review(eval_id: str, body: dict = Body(...), user=Depends(get_c
     result = se.review(user, eval_id, (b.get("action") or "").upper(), b.get("comment") or "")
     audit_log.record("审核学生鉴定", f"internship-student-eval:{eval_id}", detail=result)
     return success(result, message="审核完成")
+
+
+# ═══════════ 实习成绩五项权重（P2-D：权重配置 + 加权核算 + 复核发布，owner + 数据范围）═══════════
+
+@router.get("/scores/config", summary="成绩权重配置（五项权重，和=100）")
+def score_config_get(user=Depends(get_current_user)):
+    return success(score.get_config(user=user))
+
+
+@router.post("/scores/config", summary="保存成绩权重配置（校验权重和=100）")
+def score_config_save(body: dict = Body(...), user=Depends(get_current_user)):
+    result = score.save_config(user, body)
+    audit_log.record("保存实习成绩权重配置", "internship-score:config", detail=body)
+    return success(result, message="配置已保存")
+
+
+@router.post("/scores/export", summary="实习成绩台账导出 Excel(.xlsx)")
+def scores_export(status: Optional[str] = None, keyword: Optional[str] = None,
+                  user=Depends(get_current_user)):
+    data = score.export_scores(status=status, keyword=keyword, user=user)
+    audit_log.record("导出实习成绩台账", "internship-score:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+@router.get("/scores", summary="实习成绩列表（按数据范围）")
+def scores(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+           status: Optional[str] = None, keyword: Optional[str] = None,
+           user=Depends(get_current_user)):
+    items, total = score.list_scores(page, pageSize, status=status, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/scores/compute", summary="核算成绩（五项加权，缺项标记，owner）")
+def score_compute(body: dict = Body(...), user=Depends(get_current_user)):
+    result = score.compute(user, body)
+    audit_log.record("核算实习成绩", f"internship-score:{result['id']}", detail=result)
+    return success(result, message="核算完成")
+
+
+@router.get("/scores/{score_id}", summary="成绩详情（五项/权重/核算发布留痕）")
+def score_detail(score_id: str, user=Depends(get_current_user)):
+    return success(score.get_score(score_id, user=user))
+
+
+@router.post("/scores/{score_id}/publish", summary="发布成绩（待复核→已发布，缺项拒绝）")
+def score_publish(score_id: str, user=Depends(get_current_user)):
+    result = score.publish(user, score_id)
+    audit_log.record("发布实习成绩", f"internship-score:{score_id}", detail=result)
+    return success(result, message="成绩已发布")
+
+
+@router.post("/scores/{score_id}/return", summary="退回重算（待复核→待核算）")
+def score_return(score_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    result = score.return_recalc(user, score_id, (body or {}).get("reason") or "")
+    audit_log.record("退回实习成绩重算", f"internship-score:{score_id}", detail=result)
+    return success(result, message="已退回重算")
+
+
+@router.post("/scores/{score_id}/withdraw", summary="撤回成绩（已发布→已撤回，原因≥5字）")
+def score_withdraw(score_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = score.withdraw(user, score_id, (body or {}).get("reason") or "")
+    audit_log.record("撤回实习成绩", f"internship-score:{score_id}", detail=result)
+    return success(result, message="已撤回")
+
+
+@router.post("/scores/{score_id}/archive", summary="归档成绩（已发布→已归档）")
+def score_archive(score_id: str, user=Depends(get_current_user)):
+    result = score.archive(user, score_id)
+    audit_log.record("归档实习成绩", f"internship-score:{score_id}", detail=result)
+    return success(result, message="已归档")
 
 
 # ═══════════ 实习批次（组织时间轴 + 规则骨架，状态机 DRAFT→RUNNING→CLOSED→ARCHIVED）═══════════

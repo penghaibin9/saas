@@ -270,6 +270,53 @@ class InternshipStudentEval(PKMixin, TenantMixin, CommonMixin, Base):
     file_id: Mapped[str | None] = mapped_column(String(64), comment="鉴定表扫描件 file_id")
 
 
+class InternshipScoreConfig(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_score_config 实习成绩权重配置（五项权重，和须=100）。batch_id 空=租户默认。"""
+    __tablename__ = "t_internship_score_config"
+
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    checkin_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=20, comment="打卡权重")
+    weekly_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=20, comment="周报权重")
+    monthly_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=10, comment="月报/总结权重")
+    enterprise_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=30, comment="企业评价权重")
+    school_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=20, comment="学校/教师评价权重")
+    pass_line: Mapped[float] = mapped_column(Float, nullable=False, default=60.0, comment="及格线")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+
+
+class InternshipFinalScore(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_final_score 实习最终成绩（五项加权核算）。一名学生一条。
+    状态机：PENDING_CALC 待核算 → PENDING_REVIEW 待复核 → PUBLISHED 已发布 → WITHDRAWN 已撤回 → ARCHIVED 已归档。
+    缺项(incomplete)不得发布。"""
+    __tablename__ = "t_internship_final_score"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    checkin_score: Mapped[int | None] = mapped_column(Integer, comment="打卡分 0-100")
+    weekly_score: Mapped[int | None] = mapped_column(Integer, comment="周报分 0-100")
+    monthly_score: Mapped[int | None] = mapped_column(Integer, comment="月报/总结分 0-100")
+    enterprise_score: Mapped[int | None] = mapped_column(Integer, comment="企业评价分 0-100（可自动取企业评价均分）")
+    school_score: Mapped[int | None] = mapped_column(Integer, comment="学校/指导教师评分 0-100")
+    w_checkin: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="权重快照")
+    w_weekly: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    w_monthly: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    w_enterprise: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    w_school: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_score: Mapped[float | None] = mapped_column(Float, comment="加权总分")
+    pass_line: Mapped[float] = mapped_column(Float, nullable=False, default=60.0)
+    is_pass: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    incomplete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="是否缺项")
+    incomplete_reason: Mapped[str | None] = mapped_column(String(300), comment="缺哪几项")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING_CALC",
+                                        comment="PENDING_CALC/PENDING_REVIEW/PUBLISHED/WITHDRAWN/ARCHIVED")
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(50))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    published_by_name: Mapped[str | None] = mapped_column(String(50))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
 class InternshipLeave(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_leave 实习请假（学生对实习期请假，指导教师审批）。
     状态机：PENDING 待审批 →(教师) APPROVED 已通过 / REJECTED 已驳回；PENDING →(学生) WITHDRAWN 已撤回。
