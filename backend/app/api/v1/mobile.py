@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, Depends
 
 from app.core.response import success
 from app.core.security import get_current_user
+from app.services import internship_makeup_service as mk
 from app.services import mobile_academic_affairs_service as aa
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_student_service as stu
@@ -67,6 +68,19 @@ def internship_weekly(body: dict = Body(...), user=Depends(get_current_user)):
 @router.post("/internship/checkin", summary="实习每日打卡（本人，一天一次，真实落库）")
 def internship_checkin(body: dict = Body(default={}), user=Depends(get_current_user)):
     return success(stu.internship_checkin(user, body))
+
+
+@router.post("/internship/makeup", summary="补卡申请（本人某日缺卡，待指导教师审批）")
+def internship_makeup_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    b = body or {}
+    return success(mk.apply(user, checkin_date=b.get("checkinDate") or b.get("date") or "",
+                            reason=b.get("reason") or "", makeup_type=b.get("makeupType") or "MISSING"),
+                   message="补卡申请已提交")
+
+
+@router.post("/internship/makeup/{makeup_id}/withdraw", summary="撤回本人补卡申请")
+def internship_makeup_withdraw(makeup_id: str, user=Depends(get_current_user)):
+    return success(mk.withdraw(user, makeup_id), message="已撤回")
 
 
 @router.post("/me/messages/{message_id}/read", summary="标记本人消息已读")

@@ -4,7 +4,7 @@ from __future__ import annotations
 import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
@@ -16,7 +16,11 @@ from app.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, 
                                      VoidBatchRequest)
 from app.services import audit_log
 from app.services import internship_enterprise_service as ent
+from app.services import internship_makeup_service as mk
 from app.services import internship_service as svc
+from app.services import xlsx_util
+
+_XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 # 企业库导入导出已全部迁至公共 Excel 底座（app.services.excel）：
 # 字段/校验/模板/错误行/台账由 internship_enterprise_service 的 ImportSpec/ExportSpec 定义。
@@ -44,6 +48,23 @@ def student_detail(record_id: str, user=Depends(get_current_user)):
     return success(svc.get_internship_student_detail(record_id, user=user))
 
 
+@router.get("/checkins", summary="打卡台账（按数据范围）")
+def checkins(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+             result: Optional[str] = None, keyword: Optional[str] = None,
+             internshipId: Optional[str] = None, user=Depends(get_current_user)):
+    items, total = svc.list_checkins(page, pageSize, result=result, keyword=keyword,
+                                     internship_id=internshipId, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/checkins/export", summary="打卡台账导出 Excel(.xlsx)")
+def checkins_export(result: Optional[str] = None, keyword: Optional[str] = None,
+                    user=Depends(get_current_user)):
+    data = svc.export_checkins(result=result, keyword=keyword, user=user)
+    audit_log.record("导出打卡台账", "internship-checkin:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
 @router.get("/exceptions", summary="打卡异常列表")
 def exceptions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                type: Optional[str] = None, status: Optional[str] = None,
@@ -51,6 +72,15 @@ def exceptions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=20
     items, total = svc.list_attendance_exceptions(page, pageSize, type=type, status=status,
                                                   keyword=keyword, user=user)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/exceptions/export", summary="打卡异常台账导出 Excel(.xlsx)")
+def exceptions_export(type: Optional[str] = None, status: Optional[str] = None,
+                      keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = svc.export_exceptions(type=type, status=status, keyword=keyword, user=user)
+    audit_log.record("导出打卡异常台账", "internship-exception:export",
+                     detail={"rowCount": data["rowCount"]})
+    return success(data)
 
 
 @router.get("/exceptions/{exception_id}", summary="打卡异常详情（含处理留痕）")
@@ -61,10 +91,46 @@ def exception_detail(exception_id: str, user=Depends(get_current_user)):
 @router.post("/exceptions/{exception_id}/handle", summary="处理打卡异常（合理/异常/转风险，意见≥5字）")
 def handle_exception(exception_id: str, body: ExceptionHandleRequest,
                      user=Depends(get_current_user)):
-    result = svc.handle_attendance_exception(exception_id, body.action, body.comment)
+    result = svc.handle_attendance_exception(exception_id, body.action, body.comment, user=user)
     audit_log.record("处理打卡异常", f"internship-exception:{exception_id}",
                      detail={"action": body.action})
     return success(result, message="已处理")
+
+
+# ═══ 补卡审批（PC 管理端·owner+数据范围；学生申请/撤回在 /mobile/internship/makeup/*） ═══
+
+@router.get("/makeups", summary="补卡审批台账（按数据范围）")
+def makeups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+            status: Optional[str] = None, user=Depends(get_current_user)):
+    items, total = mk.list_makeups(page, pageSize, status=status, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/makeups/{makeup_id}", summary="补卡申请详情（含审批留痕）")
+def makeup_detail(makeup_id: str, user=Depends(get_current_user)):
+    return success(mk.get_makeup(makeup_id, user=user))
+
+
+@router.post("/makeups/{makeup_id}/approve", summary="补卡·通过（owner 校验，真实补写打卡）")
+def makeup_approve(makeup_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    result = mk.review(user, makeup_id, "APPROVE", (body or {}).get("comment") or "")
+    audit_log.record("审批补卡·通过", f"internship-makeup:{makeup_id}", detail=result)
+    return success(result, message="已通过")
+
+
+@router.post("/makeups/{makeup_id}/reject", summary="补卡·驳回（owner 校验，原因≥5字）")
+def makeup_reject(makeup_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = mk.review(user, makeup_id, "REJECT", (body or {}).get("comment") or "")
+    audit_log.record("审批补卡·驳回", f"internship-makeup:{makeup_id}", detail=result)
+    return success(result, message="已驳回")
+
+
+@router.post("/makeups/export", summary="补卡审批台账导出 Excel(.xlsx)")
+def makeups_export(status: Optional[str] = None, user=Depends(get_current_user)):
+    data = mk.export_makeups(status=status, user=user)
+    audit_log.record("导出补卡审批台账", "internship-makeup:export",
+                     detail={"rowCount": data["rowCount"]})
+    return success(data)
 
 
 @router.get("/reports", summary="周报批阅列表")

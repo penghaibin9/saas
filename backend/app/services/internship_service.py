@@ -9,7 +9,8 @@ from sqlalchemy import func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (AttendanceException, InternshipAuditTrail, InternshipBatch,
-                        InternshipRecord, RiskRecord, StudentContact, StudentProfile, WeeklyReport)
+                        InternshipCheckin, InternshipRecord, RiskRecord, StudentContact,
+                        StudentProfile, WeeklyReport)
 from app.schemas.internship import RulesConfig, StageItem
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
@@ -219,6 +220,73 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
     }
 
 
+# ═══ 打卡台账（PC 管理端只读，over t_internship_checkin；移动端学生写入，按数据范围收敛） ═══
+
+CHECKIN_RESULT_LABEL = {"RECORDED": "已记录", "NORMAL": "正常", "OUT_OF_RANGE": "超范围", "NO_LOCATION": "无定位"}
+
+
+def _checkin_row(c: InternshipCheckin, rec, stu) -> dict:
+    return {
+        "id": str(c.id), "internId": str(c.internship_id),
+        "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
+        "advisorName": rec.advisor_name if rec else "", "enterpriseName": rec.enterprise_name if rec else "",
+        "date": c.checkin_date, "at": _iso(c.checkin_at) or "",
+        "result": c.result, "resultLabel": CHECKIN_RESULT_LABEL.get(c.result, c.result),
+        "tone": "danger" if c.result in ("OUT_OF_RANGE", "NO_LOCATION") else "success",
+        "address": c.address or "", "note": c.note or "",
+    }
+
+
+def list_checkins(page, page_size, result=None, keyword=None, internship_id=None, user=None):
+    with session() as db:
+        q = select(InternshipCheckin).where(InternshipCheckin.tenant_id == _tid(),
+                                            InternshipCheckin.is_deleted.is_(False))
+        if result:
+            q = q.where(InternshipCheckin.result == result)
+        if internship_id:
+            q = q.where(InternshipCheckin.internship_id == int(internship_id))
+        rows = db.scalars(q.order_by(InternshipCheckin.checkin_date.desc(),
+                                     InternshipCheckin.id.desc())).all()
+        scope = _current_scope(user)
+        items = []
+        for c in rows:
+            rec = db.get(InternshipRecord, c.internship_id)
+            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
+                continue
+            if not _rec_in_scope(scope, db, rec, stu):  # P0-D 数据范围
+                continue
+            items.append(_checkin_row(c, rec, stu))
+        total = len(items)
+        start = (max(1, page) - 1) * page_size
+        return items[start:start + page_size], total
+
+
+def export_checkins(result=None, keyword=None, user=None) -> dict:
+    from app.services import xlsx_util
+    items, _ = list_checkins(1, 100000, result=result, keyword=keyword, user=user)
+    headers = ["学号", "姓名", "校内指导教师", "企业", "打卡日期", "打卡时间", "结果", "地址", "备注"]
+    data_rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
+                  it["date"], it["at"], it["resultLabel"], it["address"], it["note"]] for it in items]
+    wm = (f"岗位实习中心·打卡台账 · 导出人：{(get_current_user_ctx() or {}).get('realName', '-')} · "
+          f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx("打卡台账", headers, data_rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "打卡台账.xlsx", len(items))
+
+
+def export_exceptions(type=None, status=None, keyword=None, user=None) -> dict:
+    from app.services import xlsx_util
+    items, _ = list_attendance_exceptions(1, 100000, type=type, status=status, keyword=keyword, user=user)
+    headers = ["姓名", "班级", "企业", "异常类型", "异常时间", "距离", "连续", "设备", "处理状态"]
+    data_rows = [[it["studentName"], it["className"], it["enterpriseName"], it["typeLabel"],
+                  it["date"], it["distance"], it["streak"], it["deviceRisk"], it["statusLabel"]]
+                 for it in items]
+    wm = (f"岗位实习中心·打卡异常台账 · 导出人：{(get_current_user_ctx() or {}).get('realName', '-')} · "
+          f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx("打卡异常台账", headers, data_rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "打卡异常台账.xlsx", len(items))
+
+
 def _exc_ctx(db, c: AttendanceException):
     rec = db.get(InternshipRecord, c.internship_id)
     stu = db.get(StudentProfile, rec.student_id) if rec else None
@@ -273,7 +341,7 @@ def get_exception_detail(exception_id, user=None) -> dict:
         return row
 
 
-def handle_attendance_exception(exception_id, action: str, comment: str) -> dict:
+def handle_attendance_exception(exception_id, action: str, comment: str, user=None) -> dict:
     if action not in ("REASONABLE", "ABNORMAL", "TO_RISK"):
         raise AppException("VALIDATION_ERROR", "action 必须是 REASONABLE/ABNORMAL/TO_RISK")
     if not comment or len(comment.strip()) < 5:
@@ -282,6 +350,10 @@ def handle_attendance_exception(exception_id, action: str, comment: str) -> dict
         c = db.get(AttendanceException, int(exception_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("打卡异常不存在")
+        rec, stu = _exc_ctx(db, c)
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):  # P1：owner 级写校验
+            from app.core.exceptions import no_permission
+            raise no_permission("只能处理本人指导学生的打卡异常")
         if c.status == "COMPLETED":
             raise AppException("DATA_CONFLICT", "该异常已处理，请刷新")
         c.status = "COMPLETED"

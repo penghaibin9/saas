@@ -115,6 +115,26 @@ class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
     note: Mapped[str | None] = mapped_column(String(500), comment="学生备注")
 
 
+class InternshipMakeup(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_makeup 补卡申请（学生对某日缺卡发起，指导教师审批）。
+    状态机：PENDING 待审核 →(教师) APPROVED 已通过 / REJECTED 已驳回；PENDING →(学生) WITHDRAWN 已撤回。
+    owner 边界：学生只能对本人实习记录申请/撤回；教师只能审批本人指导学生的申请（advisor_name）。"""
+    __tablename__ = "t_internship_makeup"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    checkin_date: Mapped[str] = mapped_column(String(10), nullable=False, comment="补卡日期 YYYY-MM-DD")
+    makeup_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MISSING",
+                                             comment="MISSING 缺卡 / OUT_OF_RANGE 超范围补录")
+    reason: Mapped[str] = mapped_column(String(500), nullable=False, comment="补卡事由")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                        comment="PENDING/APPROVED/REJECTED/WITHDRAWN")
+    apply_by_name: Mapped[str | None] = mapped_column(String(50), comment="申请人（学生）")
+    review_by_name: Mapped[str | None] = mapped_column(String(50), comment="审批人")
+    review_at: Mapped[datetime | None] = mapped_column(DateTime)
+    review_comment: Mapped[str | None] = mapped_column(String(500))
+
+
 class WeeklyReport(PKMixin, TenantMixin, CommonMixin, Base):
     """t_weekly_report 实习周报（支持重交版本）。"""
     __tablename__ = "t_weekly_report"
