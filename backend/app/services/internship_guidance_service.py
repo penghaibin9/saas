@@ -78,11 +78,19 @@ def _spawn_risk(db, rec, stu, g, user):
         owner_name=_op_name(user), status="PENDING_HANDLE",
         last_follow_note=(g.suggestion or g.content or "")[:500])
     db.add(risk); db.flush()
+    notified = False
+    if g.notify_counselor:
+        from app.services.internship_service import notify_counselor_for_student
+        notified = notify_counselor_for_student(
+            db, stu, title=f"实习风险提醒：{stu.real_name if stu else '学生'}",
+            content=f"指导教师 {_op_name(user)} 在指导中发现问题「{g.topic or g.problem_type or '需跟进'}」，"
+                    f"已形成风险单待处置。建议：{(g.suggestion or g.content or '')[:200]}",
+            source_biz_id=risk.id, message_type="INTERNSHIP_RISK")
     db.add(InternshipAuditTrail(
         tenant_id=_tid(), target_id=risk.id, target_type="RISK", action="CREATE_FROM_GUIDANCE",
         operator_name=_op_name(user),
         detail_json={"guidanceId": str(g.id), "studentName": stu.real_name if stu else "",
-                     "notifyCounselor": bool(g.notify_counselor)},
+                     "notifyCounselor": bool(g.notify_counselor), "counselorNotified": notified},
         occurred_at=datetime.utcnow()))
     return risk.id
 
@@ -117,6 +125,13 @@ def create(user, body) -> dict:
         risk_id = _spawn_risk(db, rec, stu, g, user) if g.to_risk else None
         if risk_id:
             _trail(db, g.id, "SPAWN_RISK", {"riskId": str(risk_id)}, operator=_op_name(user))
+        elif g.notify_counselor:  # 仅通知辅导员、未形成风险
+            from app.services.internship_service import notify_counselor_for_student
+            if notify_counselor_for_student(
+                    db, stu, title=f"实习指导提醒：{stu.real_name if stu else '学生'}",
+                    content=f"指导教师 {_op_name(user)} 反馈：{(g.content or '')[:200]}",
+                    source_biz_id=g.id, message_type="INTERNSHIP_GUIDANCE"):
+                _trail(db, g.id, "NOTIFY_COUNSELOR", {}, operator=_op_name(user))
         db.commit()
         return {"id": str(g.id), "riskId": str(risk_id) if risk_id else None}
 

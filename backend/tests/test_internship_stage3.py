@@ -206,6 +206,48 @@ def test_leave_reject_reason_required_and_end_before_start(client, db_mode):
                        headers=_mentor("刘强")).status_code == 400
 
 
+def test_leave_approve_writes_leave_checkins(client, db_mode):
+    ids = _seed(db_mode)
+    ap = client.post("/api/v1/mobile/internship/leave",
+                     json={"startDate": "2026-07-10", "endDate": "2026-07-12", "reason": "感冒发烧就医"},
+                     headers=_student("S3-A")).json()["data"]
+    ok = client.post(f"{INT}/leaves/{ap['id']}/review", json={"action": "APPROVE"}, headers=_mentor("刘强"))
+    assert ok.status_code == 200 and ok.json()["data"]["leaveDays"] == 3
+    # 打卡台账显示这 3 天为「请假」
+    checkins = client.get(f"{INT}/checkins", headers=_mentor("刘强")).json()["data"]["items"]
+    leave_days = [c for c in checkins if c["result"] == "LEAVE"]
+    assert len(leave_days) == 3 and all(c["resultLabel"] == "请假" for c in leave_days)
+
+
+def test_guidance_notify_counselor_sends_message(client, db_mode):
+    ids = _seed(db_mode)
+    # 给学生甲(rec_a/stu_a)配一个带辅导员的班级
+    from app.db.session import get_sessionmaker
+    from app.models import SchoolClass, StudentProfile, UnifiedMessage
+    db = get_sessionmaker()()
+    try:
+        cls = SchoolClass(tenant_id=TID, major_id=1, class_name="测试2401班", counselor_id=88888)
+        db.add(cls); db.flush()
+        db.get(StudentProfile, ids["stu_a"]).class_id = cls.id
+        db.commit()
+    finally:
+        db.close()
+    # 指导转风险 + 通知辅导员
+    res = client.post(f"{INT}/guidances", json={"internshipId": str(ids["rec_a"]), "content": "发现安全隐患",
+                                                "topic": "安全", "toRisk": True, "notifyCounselor": True},
+                      headers=_mentor("刘强"))
+    assert res.status_code == 200
+    db = get_sessionmaker()()
+    try:
+        from sqlalchemy import select
+        msgs = db.scalars(select(UnifiedMessage).where(
+            UnifiedMessage.tenant_id == TID, UnifiedMessage.receiver_id == 88888,
+            UnifiedMessage.source_module == "internship")).all()
+        assert len(msgs) == 1 and "实习风险提醒" in msgs[0].title
+    finally:
+        db.close()
+
+
 def test_leave_student_withdraw(client, db_mode):
     ids = _seed(db_mode)
     ap = client.post("/api/v1/mobile/internship/leave",

@@ -7,12 +7,13 @@
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import InternshipAuditTrail, InternshipLeave, InternshipRecord, StudentProfile
+from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipLeave,
+                        InternshipRecord, StudentProfile)
 from app.services.db_service import _iso, _tid, session
 
 STATUS_LABEL = {"PENDING": "待审批", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
@@ -203,10 +204,37 @@ def review(user, leave_id, action: str, comment: str = "") -> dict:
         lv.review_at = datetime.utcnow()
         lv.review_comment = (comment or "").strip() or None
         lv.version += 1
-        _trail(db, lv.id, f"REVIEW_{action}", {"comment": (comment or "").strip()},
-               operator=_op_name(user))
+        leave_days = 0
+        if action == "APPROVE":  # 请假↔打卡台账联动：按区间写 LEAVE 留痕，台账显示请假不误判缺卡
+            leave_days = _write_leave_checkins(db, lv)
+        _trail(db, lv.id, f"REVIEW_{action}", {"comment": (comment or "").strip(),
+               "leaveCheckins": leave_days}, operator=_op_name(user))
         db.commit()
-        return {"id": str(lv.id), "status": lv.status, "statusLabel": STATUS_LABEL[lv.status]}
+        return {"id": str(lv.id), "status": lv.status, "statusLabel": STATUS_LABEL[lv.status],
+                "leaveDays": leave_days}
+
+
+def _write_leave_checkins(db, lv) -> int:
+    """请假通过后按日期区间写 result=LEAVE 的打卡留痕（幂等：已有当日打卡则跳过）。
+    使台账把请假日显示为「请假」，不被判为缺卡。返回新写入天数。"""
+    try:
+        d0 = date.fromisoformat(lv.start_date[:10]); d1 = date.fromisoformat(lv.end_date[:10])
+    except ValueError:
+        return 0
+    written = 0
+    d = d0
+    while d <= d1:
+        ds = d.isoformat()
+        exist = db.scalars(select(InternshipCheckin).where(
+            InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == lv.internship_id,
+            InternshipCheckin.checkin_date == ds)).first()
+        if not exist:
+            db.add(InternshipCheckin(tenant_id=_tid(), internship_id=lv.internship_id,
+                                     checkin_date=ds, checkin_at=datetime.utcnow(), result="LEAVE",
+                                     note=f"请假（{TYPE_LABEL.get(lv.leave_type, lv.leave_type)}）：{(lv.reason or '')[:80]}"))
+            written += 1
+        d += timedelta(days=1)
+    return written
 
 
 def export_leaves(status=None, keyword=None, user=None) -> dict:

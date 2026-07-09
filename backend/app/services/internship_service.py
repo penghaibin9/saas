@@ -54,6 +54,27 @@ def _trail(db, target_id: int, target_type: str, action: str, detail: dict | Non
                                 occurred_at=datetime.utcnow()))
 
 
+def notify_counselor_for_student(db, student, title: str, content: str,
+                                 source_biz_id=None, message_type="INTERNSHIP") -> bool:
+    """向学生所在班级辅导员发真实站内信（t_unified_message）。
+
+    解析路径：student.class_id → t_class.counselor_id（辅导员 user_id）。班级未配置
+    辅导员或学生无班级时静默跳过（返回 False，不伪造）。用于指导转风险 / 请假等提醒。
+    """
+    from app.models import SchoolClass, UnifiedMessage
+    if not student or not getattr(student, "class_id", None):
+        return False
+    cls = db.get(SchoolClass, student.class_id)
+    if not cls or not getattr(cls, "counselor_id", None):
+        return False
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(cls.counselor_id),
+                          source_module="internship",
+                          source_biz_id=int(source_biz_id) if source_biz_id else None,
+                          title=title[:500], content=(content or "")[:2000],
+                          message_type=message_type, status="UNREAD"))
+    return True
+
+
 def _parse_dt(v):
     if not v:
         return None
@@ -222,7 +243,8 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
 
 # ═══ 打卡台账（PC 管理端只读，over t_internship_checkin；移动端学生写入，按数据范围收敛） ═══
 
-CHECKIN_RESULT_LABEL = {"RECORDED": "已记录", "NORMAL": "正常", "OUT_OF_RANGE": "超范围", "NO_LOCATION": "无定位"}
+CHECKIN_RESULT_LABEL = {"RECORDED": "已记录", "NORMAL": "正常", "OUT_OF_RANGE": "超范围",
+                        "NO_LOCATION": "无定位", "LEAVE": "请假"}
 
 
 def _checkin_row(c: InternshipCheckin, rec, stu) -> dict:
