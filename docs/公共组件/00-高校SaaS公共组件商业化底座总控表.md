@@ -653,3 +653,42 @@ AppPermissionButton、AppFileUpload、AppFileList、AppBatchActionBar、AppAppro
 
 **验收口径**：统一出口可被多模块 `import`；`/dev/components` 真实渲染并可交互；`npm run build` 通过；无 console 报错。
 **未覆盖（随业务模块对接）**：后端真实数据、导出接口、审批引擎联调；文件中心上传/对象存储（AppFileList/AppFilePreview 上传态）。
+
+---
+
+## 附录：第三批公共组件落地状态（2026-07-09）——页面骨架/表单/选择器/展示/体验
+
+> 本轮新增约 48 个组件（5 组），统一出口 `@/components/common`；子目录 `layout/ form/ picker/ display/ experience/`。
+> 使用手册：`docs/公共组件/03-第二阶段公共组件使用指南.md`。在线预览 `/dev/components`「第三阶段」区块。
+> commit：待用户确认后提交（本轮不 commit、不 push）。
+
+### 第一组 页面骨架（layout）
+| 组件 | 类型 | 状态 |
+|---|---|---|
+| AppPageShell / AppModuleHero / AppToolbar / AppSectionHeader | 既有别名（不重写） | implemented |
+| AppSectionCard / AppActionBar / AppStickyFooter / AppResponsiveGrid / AppDrawerLayout | 新建 | implemented |
+
+### 第二组 通用表单（form）
+| 组件 | 状态 |
+|---|---|
+| AppForm / AppFormItem / AppFormSection / AppTextInput / AppNumberInput / AppTextarea / AppSelect / AppMultiSelect / AppRadioGroup / AppCheckboxGroup / AppSubmitBar | implemented |
+| AppRichTextEditor | **partial**（contenteditable，HTML 未消毒，需后端 XSS 清洗） |
+| AppFormValidator | 已并入 AppForm（rules + validate()），不单独出组件 |
+
+### 第三组 业务选择器（picker）—— 全部 partial（UI 就绪，未接后端/数据范围）
+AppRemoteSelect（基座）、AppStudentPicker、AppTeacherPicker、AppMentorPicker、AppClassPicker、AppMajorPicker、AppCollegePicker、AppCoursePicker、AppRolePicker、AppTenantPicker、AppCompanyPicker、AppPositionPicker、AppBatchPicker、AppOrgCascader、AppAcademicYearPicker、AppTermPicker → **partial**
+
+### 第四组 数据展示（display）
+| 组件 | 状态 |
+|---|---|
+| AppPagination / AppSearchBox / AppQuickFilterChips / AppProgressBar / AppDescriptionList / AppOperationResult / AppColumnConfig | implemented |
+| AppChartCard | **partial**（不强绑图表库，仅外壳+空/加载态） |
+
+### 第五组 体验（experience）
+| 组件 | 状态 |
+|---|---|
+| AppWatermark / AppPrintButton / AppAvatarGroup / AppStepGuide / AppKeyboardShortcut | implemented |
+| AppQRCode | **partial**（未引二维码库，默认占位） |
+
+**验收口径**：统一出口可多模块 import；`npm run build` 通过；`/dev/components` 有示例。
+**未接（随业务/能力对接）**：选择器真实后端与数据范围过滤、图表库、二维码出图、富文本 XSS 清洗、DataTable 列配置真实联动。

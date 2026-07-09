@@ -196,6 +196,91 @@
         </div>
       </div>
 
+      <details class="dev-fold" open>
+        <summary class="dev-h2">第三阶段公共组件（页面骨架 / 表单 / 选择器 / 展示 / 体验）</summary>
+        <p class="dev-sub">高校业务示例；业务选择器为 partial（未接后端，用本地 options 演示）</p>
+
+        <AppSectionCard title="① 页面骨架" subtitle="AppSectionCard + AppToolbar + AppResponsiveGrid + AppMetricCard" index="壳">
+          <AppToolbar
+            :actions="[{ key: 'add', label: '新增题目', variant: 'primary' }, { key: 'imp', label: '导入 Excel' }]"
+            hint="共 128 条"
+            @action="onDemoClick"
+          />
+          <AppResponsiveGrid :min-col-width="170" style="margin-top: 12px">
+            <AppMetricCard title="题目数" :value="128" unit="个" />
+            <AppMetricCard title="已选题" :value="96" unit="人" accent="success" />
+            <AppMetricCard title="待审核" :value="12" unit="个" accent="warning" />
+          </AppResponsiveGrid>
+        </AppSectionCard>
+
+        <AppSectionCard title="② 开题材料审核表单" subtitle="AppForm + AppFormItem + 控件 + AppSubmitBar" style="margin-top: 16px">
+          <AppForm ref="demoForm" :model="formModel" :rules="formRules" label-width="90px">
+            <AppFormItem label="题目名称" prop="title">
+              <template #default="{ status }">
+                <AppTextInput v-model="formModel.title" :status="status" placeholder="请输入题目名称" clearable />
+              </template>
+            </AppFormItem>
+            <AppFormItem label="难度" prop="level">
+              <AppRadioGroup v-model="formModel.level" :options="[{ label: '较易', value: '1' }, { label: '适中', value: '2' }, { label: '较难', value: '3' }]" />
+            </AppFormItem>
+            <AppFormItem label="审核结论" prop="result">
+              <template #default="{ status }">
+                <AppSelect v-model="formModel.result" :status="status" :options="[{ label: '通过', value: 'pass' }, { label: '退回修改', value: 'return' }]" />
+              </template>
+            </AppFormItem>
+            <AppFormItem label="审核意见" prop="comment" hint="退回时必填，便于学生修改">
+              <AppTextarea v-model="formModel.comment" :rows="2" :maxlength="200" show-count />
+            </AppFormItem>
+          </AppForm>
+          <template #footer>
+            <AppSubmitBar :loading="formBusy" submit-text="提交审核" @submit="submitForm" @cancel="onDemoClick('取消')" />
+          </template>
+        </AppSectionCard>
+
+        <AppSectionCard title="③ 高校业务选择器" subtitle="Student / Teacher / Batch / OrgCascader（partial）" style="margin-top: 16px">
+          <AppResponsiveGrid :min-col-width="240">
+            <div><label class="dev-lbl">学生 AppStudentPicker</label><AppStudentPicker v-model="pickStu" :options="stuOptions" /></div>
+            <div><label class="dev-lbl">教师 AppTeacherPicker（多选）</label><AppTeacherPicker v-model="pickTea" multiple :options="teaOptions" /></div>
+            <div><label class="dev-lbl">批次 AppBatchPicker</label><AppBatchPicker v-model="pickBatch" :options="batchOptions" /></div>
+            <div><label class="dev-lbl">组织级联 AppOrgCascader</label><AppOrgCascader v-model="pickOrg" :data="orgTree" /></div>
+          </AppResponsiveGrid>
+        </AppSectionCard>
+
+        <AppSectionCard title="④ 数据展示" subtitle="QuickFilterChips + DescriptionList + Progress + AvatarGroup + Pagination" style="margin-top: 16px">
+          <AppQuickFilterChips v-model="quick" :options="[{ label: '全部', value: '', count: 128 }, { label: '待审', value: 'p', count: 12 }, { label: '已通过', value: 'a', count: 96 }]" />
+          <AppDescriptionList style="margin-top: 12px" :items="descItems" :columns="2" bordered />
+          <div style="margin-top: 12px"><AppProgressBar :value="72" status="auto" /></div>
+          <div style="margin-top: 12px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap">
+            <AppAvatarGroup :avatars="[{ name: '王芳' }, { name: '李明' }, { name: '张伟' }, { name: '陈静' }, { name: '赵磊' }, { name: '孙悦' }]" :max="4" />
+            <AppPagination :total="128" :page="page" :page-size="20" @update:page="page = $event" />
+          </div>
+        </AppSectionCard>
+
+        <AppResponsiveGrid :min-col-width="300" style="margin-top: 16px">
+          <AppSectionCard title="⑤ 导入结果 AppOperationResult" no-padding>
+            <AppOperationResult
+              status="success" title="Excel 导入完成"
+              description="学生名单已导入，失败行可下载核对。"
+              :stats="[{ label: '成功', value: 120, type: 'success' }, { label: '失败', value: 3, type: 'danger' }]"
+            >
+              <template #actions><AppButton>下载错误行 Excel</AppButton></template>
+            </AppOperationResult>
+          </AppSectionCard>
+          <AppSectionCard title="⑥ 体验组件" subtitle="Watermark / Print / 快捷键 / 新手引导">
+            <AppWatermark :text="['示范职业学院', '张老师 · 2026-07-09']" style="border: 1px dashed var(--border-base); border-radius: 8px">
+              <div style="padding: 24px; text-align: center; color: var(--text-secondary)">水印覆盖区（学校名 + 用户 + 时间）</div>
+            </AppWatermark>
+            <div style="margin-top: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
+              <AppPrintButton label="打印台账" @print="onDemoClick('打印')" />
+              <AppKeyboardShortcut keys="ctrl+k" label="搜索" @trigger="onDemoClick('快捷键 ⌘K')" />
+              <AppButton variant="primary" @click="guide = true">开始新手引导</AppButton>
+            </div>
+          </AppSectionCard>
+        </AppResponsiveGrid>
+      </details>
+
+      <AppStepGuide v-model="guide" :steps="guideSteps" @finish="onDemoClick('引导完成')" @skip="onDemoClick('跳过引导')" />
+
       <p class="dev-back"><router-link to="/">← 返回产品概览首页</router-link></p>
     </section>
 
@@ -233,9 +318,33 @@ import {
   AppNotificationPanel,
   AppCopyableText,
   AppHelpTooltip,
-  AppFieldHint
+  AppFieldHint,
+  AppSectionCard,
+  AppToolbar,
+  AppResponsiveGrid,
+  AppForm,
+  AppFormItem,
+  AppTextInput,
+  AppTextarea,
+  AppSelect,
+  AppRadioGroup,
+  AppSubmitBar,
+  AppStudentPicker,
+  AppTeacherPicker,
+  AppBatchPicker,
+  AppOrgCascader,
+  AppQuickFilterChips,
+  AppDescriptionList,
+  AppProgressBar,
+  AppAvatarGroup,
+  AppPagination,
+  AppOperationResult,
+  AppWatermark,
+  AppPrintButton,
+  AppKeyboardShortcut,
+  AppStepGuide
 } from '@/components/common'
-import { AppBadge } from '@/components/ui'
+import { AppBadge, AppButton } from '@/components/ui'
 import { toast } from '@/utils/toast'
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 
@@ -262,13 +371,87 @@ export default {
     AppCopyableText,
     AppHelpTooltip,
     AppFieldHint,
-    AppBadge
+    AppBadge,
+    AppButton,
+    AppSectionCard,
+    AppToolbar,
+    AppResponsiveGrid,
+    AppForm,
+    AppFormItem,
+    AppTextInput,
+    AppTextarea,
+    AppSelect,
+    AppRadioGroup,
+    AppSubmitBar,
+    AppStudentPicker,
+    AppTeacherPicker,
+    AppBatchPicker,
+    AppOrgCascader,
+    AppQuickFilterChips,
+    AppDescriptionList,
+    AppProgressBar,
+    AppAvatarGroup,
+    AppPagination,
+    AppOperationResult,
+    AppWatermark,
+    AppPrintButton,
+    AppKeyboardShortcut,
+    AppStepGuide
   },
   data() {
     return {
       showReturn: false,
       currentState: 'ready',
       batchCount: 0,
+      // —— 第三阶段 demo 数据 ——
+      formModel: { title: '', level: '2', result: '', comment: '' },
+      formRules: {
+        title: [{ required: true, message: '请输入题目名称', min: 4 }],
+        result: [{ required: true, message: '请选择审核结论' }]
+      },
+      formBusy: false,
+      pickStu: '',
+      pickTea: [],
+      pickBatch: '',
+      pickOrg: [],
+      quick: '',
+      page: 1,
+      guide: false,
+      stuOptions: [
+        { label: '李明（S2026-0001）', value: 's1', desc: '计算机2301' },
+        { label: '王芳（S2026-0002）', value: 's2', desc: '计算机2301' },
+        { label: '张伟（S2026-0003）', value: 's3', desc: '软件2302' }
+      ],
+      teaOptions: [
+        { label: '陈静 老师（T0012）', value: 't1' },
+        { label: '赵磊 老师（T0033）', value: 't2' },
+        { label: '孙悦 老师（T0041）', value: 't3' }
+      ],
+      batchOptions: [
+        { label: '2026 届毕业设计（春）', value: 'b1' },
+        { label: '2025 届毕业设计（春）', value: 'b2' }
+      ],
+      orgTree: [
+        { label: '信息工程学院', value: 'c1', children: [
+          { label: '计算机应用技术', value: 'm1', children: [{ label: '计算机2301', value: 'k1' }, { label: '计算机2302', value: 'k2' }] },
+          { label: '软件技术', value: 'm2', children: [{ label: '软件2301', value: 'k3' }] }
+        ] },
+        { label: '经济管理学院', value: 'c2', children: [
+          { label: '会计', value: 'm3', children: [{ label: '会计2301', value: 'k4' }] }
+        ] }
+      ],
+      descItems: [
+        { label: '学号', value: 'S2026-000188' },
+        { label: '姓名', value: '李明' },
+        { label: '班级', value: '计算机2301' },
+        { label: '导师', value: '陈静' },
+        { label: '题目', value: '基于 Vue 的教务管理系统设计', span: 2 }
+      ],
+      guideSteps: [
+        { title: '欢迎使用毕业设计中心', description: '这里集中管理选题、导师分配、开题、过程检查、答辩与归档。' },
+        { title: '先选择批次', description: '大部分操作都以“毕业设计批次”为范围，请先在顶部选择当前批次。' },
+        { title: '按角色办事', description: '导师、评阅、答辩秘书看到的入口不同，系统会按你的角色与数据范围展示。' }
+      ],
       batchActions: [
         { key: 'export', label: '批量导出', icon: '⬇' },
         { key: 'assign', label: '批量分配' },
@@ -343,6 +526,12 @@ export default {
     markAllRead() {
       this.demoNotifs = this.demoNotifs.map((m) => ({ ...m, read: true }))
       toast.success('已全部标为已读')
+    },
+    async submitForm() {
+      const { valid, firstInvalid } = await this.$refs.demoForm.validate()
+      if (!valid) { toast.error(`请检查表单：${firstInvalid}`); return }
+      this.formBusy = true
+      setTimeout(() => { this.formBusy = false; toast.success('审核已提交（演示）') }, 600)
     },
     // 演示环境：不接后端，真实返回失败，绝不伪造导出成功
     async demoExportFn() {
@@ -448,6 +637,21 @@ export default {
   margin: var(--space-3) 0 0;
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
+}
+.dev-fold {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--border-light);
+  padding-top: var(--space-4);
+}
+.dev-fold > summary {
+  cursor: pointer;
+  list-style: revert;
+}
+.dev-lbl {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1);
 }
 .metric-row {
   display: grid;

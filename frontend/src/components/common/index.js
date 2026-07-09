@@ -38,6 +38,77 @@ export { default as AppCopyableText } from './AppCopyableText.vue'
 export { default as AppHelpTooltip } from './AppHelpTooltip.vue'
 export { default as AppFieldHint } from './AppFieldHint.vue'
 
+// —— 第三阶段·第一组 页面骨架（见 ./layout/）——
+export {
+  AppPageShell,
+  AppModuleHero,
+  AppToolbar,
+  AppSectionHeader,
+  AppSectionCard,
+  AppActionBar,
+  AppStickyFooter,
+  AppResponsiveGrid,
+  AppDrawerLayout
+} from './layout'
+
+// —— 第三阶段·第二组 通用表单（见 ./form/）——
+export {
+  AppForm,
+  AppFormItem,
+  AppFormSection,
+  AppTextInput,
+  AppNumberInput,
+  AppTextarea,
+  AppSelect,
+  AppMultiSelect,
+  AppRadioGroup,
+  AppCheckboxGroup,
+  AppSubmitBar,
+  AppRichTextEditor
+} from './form'
+
+// —— 第三阶段·第三组 高校业务选择器（见 ./picker/，全部 partial）——
+export {
+  AppRemoteSelect,
+  AppOrgCascader,
+  AppAcademicYearPicker,
+  AppTermPicker,
+  AppStudentPicker,
+  AppTeacherPicker,
+  AppMentorPicker,
+  AppClassPicker,
+  AppMajorPicker,
+  AppCollegePicker,
+  AppCoursePicker,
+  AppRolePicker,
+  AppTenantPicker,
+  AppCompanyPicker,
+  AppPositionPicker,
+  AppBatchPicker
+} from './picker'
+
+// —— 第三阶段·第四组 数据展示增强（见 ./display/）——
+export {
+  AppPagination,
+  AppSearchBox,
+  AppQuickFilterChips,
+  AppProgressBar,
+  AppDescriptionList,
+  AppOperationResult,
+  AppColumnConfig,
+  AppChartCard
+} from './display'
+
+// —— 第三阶段·第五组 体验增强（见 ./experience/，AppQRCode 为 partial）——
+export {
+  AppWatermark,
+  AppPrintButton,
+  AppAvatarGroup,
+  AppStepGuide,
+  AppKeyboardShortcut,
+  AppQRCode
+} from './experience'
+
 // 公共日期底座（见 ./date/）
 export {
   AppDatePicker,

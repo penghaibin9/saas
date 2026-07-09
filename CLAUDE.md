@@ -1671,3 +1671,31 @@ UI 基元：import { AppButton, AppBadge, AppCard } from '@/components/ui'
 5. 未复用公共组件而自造重复实现的页面，必须写入 `docs/施工记录/历史欠账.md`。
 
 一句话：公共组件是标准零件仓，业务页面只许取零件，不许各造一套。
+
+
+## 41. 公共组件强制调用规则（第三批扩展：骨架/表单/选择器/展示/体验）
+
+在 §40 基础上，第三批公共组件（约 48 个，统一出口 `@/components/common`，子目录 `layout/ form/ picker/ display/ experience/`）同样强制优先复用。使用手册见 `docs/公共组件/03-第二阶段公共组件使用指南.md`。
+
+后续新页面开发必须优先使用：
+
+1. 页面骨架：AppPageShell / AppSectionCard / AppToolbar / AppActionBar / AppStickyFooter / AppResponsiveGrid / AppDrawerLayout。
+2. 表单：AppForm / AppFormItem / AppFormSection + AppTextInput / AppNumberInput / AppTextarea / AppSelect / AppMultiSelect / AppRadioGroup / AppCheckboxGroup / AppSubmitBar。
+3. 业务选择器：AppStudentPicker / AppTeacherPicker / AppMentorPicker / AppClassPicker / AppMajorPicker / AppCollegePicker / AppCoursePicker / AppRolePicker / AppTenantPicker / AppCompanyPicker / AppPositionPicker / AppBatchPicker / AppOrgCascader / AppAcademicYearPicker / AppTermPicker（基座 AppRemoteSelect）。
+4. 数据展示：AppPagination / AppSearchBox / AppQuickFilterChips / AppDescriptionList / AppOperationResult / AppProgressBar / AppColumnConfig / AppChartCard。
+5. 体验：AppWatermark / AppPrintButton / AppAvatarGroup / AppStepGuide / AppKeyboardShortcut / AppQRCode。
+
+**业务页面禁止自写清单**（有公共组件就必须调用，能力不够就增强公共组件，不允许在业务页面绕开）：
+1. 不允许自写权限按钮；2. 不允许自写脱敏函数；3. 不允许自写审计日志展示；4. 不允许自写附件列表；
+5. 不允许自写导出确认；6. 不允许自写状态颜色；7. 不允许自写空/加载/错误状态；8. 不允许自写批量操作条；
+9. 不允许自写审批区域；10. 不允许自写学生/教师/组织/批次选择器；11. 不允许自写分页/搜索框/详情键值表；
+12. 不允许自写页面壳/区块卡/工具栏/表单控件；13. 不允许自写日期选择/截止时间。
+
+**新页面接入检查清单**（不满足只能标 partial 并写入历史欠账，不得标 implemented）：见 `03-第二阶段公共组件使用指南.md` §8（页面壳/工具栏/表格/筛选/日期/状态/权限按钮/确认/脱敏/审计/附件/导出/Picker/表单/三态/build 共 16 项）。
+
+**安全红线（组件不替代后端）**：
+- 业务选择器（AppStudentPicker 等）只做前端 UI，可见的师生/组织/批次必须由后端按数据范围返回，前端不得放大范围；未接后端标 partial。
+- AppPrintButton 不生成正式套打模板；AppRichTextEditor 的 HTML 必须后端 XSS 清洗；AppChartCard/AppQRCode 未接库前 partial。
+- AppWatermark 是展示层防护，不替代后端导出审计与权限。
+
+一句话：第三批公共组件是「页面标准件仓」，业务页面照单取件，缺件先增强公共组件，绝不各造一套。
