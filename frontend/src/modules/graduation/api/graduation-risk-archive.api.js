@@ -40,8 +40,11 @@ export const graduationRiskArchiveApi = {
   submitArchive(gdStudentId) { return call(() => request(`${ARCHIVE}/${gdStudentId}/submit`, { method: 'POST' })) },
   fileArchive(gdStudentId, archiveBatchNo) { return call(() => request(`${ARCHIVE}/${gdStudentId}/file`, { method: 'POST', body: { archiveBatchNo } })) },
   rejectArchive(gdStudentId, reason) { return call(() => request(`${ARCHIVE}/${gdStudentId}/reject`, { method: 'POST', body: { reason } })) },
+  exportArchives(params = {}) {
+    return call(() => request(`${ARCHIVE}/export`, { method: 'POST', params }))
+  },
   async downloadArchiveExport(params = {}) {
-    const res = await call(() => request(`${ARCHIVE}/export`, { method: 'POST', params }))
+    const res = await this.exportArchives(params)
     if (res.code === 0) downloadXlsxFromApi(res.data, '毕设归档台账.xlsx')
     return res
   },

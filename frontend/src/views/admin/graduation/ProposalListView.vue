@@ -6,7 +6,11 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <AppExportButton
+        v-if="exportPerm.visible"
+        :export-fn="exportProposalsFn"
+        :has-permission="exportPerm.allowed"
+      >导出开题材料</AppExportButton>
     </template>
 
     <div class="mp-stack">
@@ -55,16 +59,17 @@
 <script>
 /** 开题材料列表（/admin/graduation/proposals）。 */
 import {
-  ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
+  ModulePageShell, AdvancedFilter, DataTable,
   StatusTag, LoadingState, ErrorState, EmptyState
 } from '@/components/business'
+import { AppExportButton } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ProposalListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
+  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -99,11 +104,9 @@ export default {
         memoryKey: 'graduation.proposals.dateRange', emptyLabel: '全部时间'
       }]
     },
-    toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [{ key: 'exportProposals', label: '导出开题材料' }]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+    exportPerm() {
+      const pa = this.ctx.permissionActions.exportProposals || {}
+      return { visible: !!pa.visible, allowed: !!pa.allowed }
     }
   },
   created() {
@@ -125,10 +128,8 @@ export default {
       this.pagination.page = page
       this.load()
     },
-    async onToolbar() {
-      const res = await graduationApi.downloadProposalsExport(this.filters.status)
-      if (res.code === 0) toast.success('开题材料台账已导出（含导出人/时间抬头），已写入审计日志')
-      else toast.error(res.message || '导出失败')
+    exportProposalsFn() {
+      return graduationApi.exportProposals(this.filters.status)
     },
     async remind(row) {
       const res = await graduationApi.remindProposal(row.projectId || row.gdStudentId)

@@ -9,25 +9,21 @@
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
       <div class="mp-stack">
-        <section class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">开题报告 · {{ detail.version }}</span>
+        <AppSectionCard :title="'开题报告 · ' + detail.version">
+          <template #header-extra>
             <StatusTag v-if="detail.isResubmit" type="info" label="重交件" />
-          </div>
-          <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ detail.studentName }} · {{ detail.className }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ detail.advisorName }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ detail.submitAt }}（学生端 P15）</span></div>
+          </template>
+          <AppDescriptionList :items="proposalMetaItems" :columns="1" />
             <div style="margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8">
               <p style="margin: 0 0 var(--space-2)"><b style="color: var(--text-primary)">选题背景：</b>{{ detail.content.background }}</p>
               <p style="margin: 0 0 var(--space-2)"><b style="color: var(--text-primary)">研究方案与进度：</b>{{ detail.content.plan }}</p>
               <p style="margin: 0"><b style="color: var(--text-primary)">预期成果：</b>{{ detail.content.outcome }}</p>
             </div>
-            <div v-if="detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap">
-              <StatusTag v-for="a in detail.attachments" :key="a" type="info" :label="'📎 ' + a" />
+            <div v-if="detail.attachments.length" style="margin-top: var(--space-3)">
+              <p class="mp-note" style="margin-bottom: var(--space-2)">附件材料</p>
+              <AppFileList :files="attachmentFiles" :previewable="false" :downloadable="false" :removable="false" />
             </div>
-          </div>
-        </section>
+        </AppSectionCard>
 
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">历史版本</span></div>
@@ -71,8 +67,22 @@
               <textarea v-model="comment" class="mp-textarea" :disabled="!canReview" placeholder="批注将随批阅结果同步学生端…"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
-                <AppButton variant="primary" :disabled="!canReview" :title="reviewReason" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过</AppButton>
-                <AppButton variant="warning" :disabled="!canReview" :title="reviewReason" :loading="submitting" style="flex: 1" @click="submit('REJECT')">↩ 驳回修改</AppButton>
+                <AppPermissionButton
+                  :allowed="canReview"
+                  :reason="reviewReason"
+                  variant="primary"
+                  :loading="submitting"
+                  style="flex: 1"
+                  @click="submit('APPROVE')"
+                >✓ 通过</AppPermissionButton>
+                <AppPermissionButton
+                  :allowed="canReview"
+                  :reason="reviewReason"
+                  variant="warning"
+                  :loading="submitting"
+                  style="flex: 1"
+                  @click="submit('REJECT')"
+                >↩ 驳回修改</AppPermissionButton>
               </div>
               <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅动作写入审批留痕，学生端即时同步状态</p>
             </template>
@@ -95,23 +105,9 @@
           </div>
         </section>
 
-        <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">审批留痕</span></div>
-          <div class="mp-card__body">
-            <table class="mp-audit">
-              <thead><tr><th>操作人</th><th>时间</th><th>动作</th><th>说明</th></tr></thead>
-              <tbody>
-                <tr v-for="(t, i) in detail.trail" :key="i">
-                  <td class="is-who">{{ t.who }}</td>
-                  <td>{{ t.time }}</td>
-                  <td>{{ t.action }}</td>
-                  <td>{{ t.affected }}</td>
-                </tr>
-                <tr v-if="!detail.trail.length"><td colspan="4" class="mp-note">暂无批阅记录</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <AppSectionCard title="审批留痕">
+          <AppAuditTrail :records="trailRecords" empty-text="暂无批阅记录" compact :show-ip="false" />
+        </AppSectionCard>
       </div>
     </div>
   </ModulePageShell>
@@ -125,18 +121,39 @@
  */
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
+import { AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList } from '@/components/common'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ProposalReviewDetailView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppButton },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, defenseComment: '' }
   },
   computed: {
+    proposalMetaItems() {
+      if (!this.detail) return []
+      return [
+        { label: '学生', value: `${this.detail.studentName} · ${this.detail.className}` },
+        { label: '指导教师', value: this.detail.advisorName },
+        { label: '提交时间', value: `${this.detail.submitAt}（学生端 P15）` }
+      ]
+    },
+    attachmentFiles() {
+      return (this.detail?.attachments || []).map((name, i) => ({ id: i, name }))
+    },
+    trailRecords() {
+      return (this.detail?.trail || []).map((t, i) => ({
+        id: i,
+        action: t.action,
+        actor: t.who,
+        at: t.time,
+        target: t.affected
+      }))
+    },
     canReview() {
       const pa = this.ctx.permissionActions.reviewProposal
       return !!(pa && pa.visible && pa.allowed)

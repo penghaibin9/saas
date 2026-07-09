@@ -6,7 +6,11 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <AppExportButton
+        v-if="exportPerm.visible"
+        :export-fn="exportFinalsFn"
+        :has-permission="exportPerm.allowed"
+      >导出成果清单</AppExportButton>
     </template>
 
     <div class="mp-stack">
@@ -81,17 +85,18 @@
 <script>
 /** 成果提交列表（/admin/graduation/finals）：成果状态 + 查重状态一屏监管 + 真实批阅/催交/导出。 */
 import {
-  ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
+  ModulePageShell, AdvancedFilter, DataTable,
   StatusTag, LoadingState, ErrorState, EmptyState
 } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppExportButton } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'FinalSubmissionListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay },
+  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -135,11 +140,9 @@ export default {
       const pa = this.ctx.permissionActions.reviewFinal
       return pa && !pa.allowed ? pa.reason : ''
     },
-    toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [{ key: 'exportStats', label: '导出成果清单' }]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+    exportPerm() {
+      const pa = this.ctx.permissionActions.exportStats || {}
+      return { visible: !!pa.visible, allowed: !!pa.allowed }
     }
   },
   created() {
@@ -161,10 +164,8 @@ export default {
       this.pagination.page = page
       this.load()
     },
-    async onToolbar() {
-      const res = await graduationApi.downloadFinalsExport(this.filters.status)
-      if (res.code === 0) toast.success('成果清单已导出（含导出人/时间抬头），已写入审计日志')
-      else toast.error(res.message || '导出失败')
+    exportFinalsFn() {
+      return graduationApi.exportFinals(this.filters.status)
     },
     askReview(row, action) {
       if (!this.canReview) return

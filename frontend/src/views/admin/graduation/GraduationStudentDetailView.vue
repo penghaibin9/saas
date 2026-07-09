@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     :title="detail ? detail.name + ' · 毕设详情' : '毕设详情'"
-    :subtitle="detail ? (detail.className + ' · ' + maskNo(detail.studentNo) + (detail.batchName ? ' · ' + detail.batchName : '')) : ''"
+    :subtitle="detail ? (detail.className + (detail.batchName ? ' · ' + detail.batchName : '')) : ''"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -13,23 +13,19 @@
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
       <div class="mp-stack">
-        <section class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">课题信息</span>
+        <AppSectionCard title="课题信息">
+          <template #header-extra>
             <StatusTag :type="detail.stageTone || 'processing'" :label="detail.stageLabel" dot />
-          </div>
-          <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">毕设批次</span><span class="mp-kv__v">{{ detail.batchName || '未关联' }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">课题名称</span><span class="mp-kv__v">{{ detail.topicTitle }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">课题来源</span><span class="mp-kv__v">{{ detail.topicSource || '—' }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ detail.advisorName || '未分配' }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">任务书</span><span class="mp-kv__v">{{ detail.taskbook }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">联系电话</span><span class="mp-kv__v">{{ detail.phone || '未登记' }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">中期检查</span><span class="mp-kv__v">{{ detail.midterm.conclusion }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">答辩安排</span><span class="mp-kv__v">{{ detail.defense.group }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">风险等级</span><span class="mp-kv__v">{{ detail.riskLabel }}</span></div>
-          </div>
-        </section>
+          </template>
+          <AppDescriptionList :items="topicInfoItems" :columns="1">
+            <template #studentNo>
+              <AppSensitiveText :value="detail.studentNo" type="generic" />
+            </template>
+            <template #phone>
+              <AppSensitiveText :value="detail.phone" type="phone" />
+            </template>
+          </AppDescriptionList>
+        </AppSectionCard>
 
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">主状态进度</span></div>
@@ -93,23 +89,9 @@
           </div>
         </section>
 
-        <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">审计日志（本学生毕设档案）</span></div>
-          <div class="mp-card__body">
-            <table class="mp-audit">
-              <thead><tr><th>操作人</th><th>时间</th><th>动作</th><th>影响数据</th></tr></thead>
-              <tbody>
-                <tr v-if="!detail.auditTrail.length"><td colspan="4" class="mp-note">暂无审计记录</td></tr>
-                <tr v-for="(a, i) in detail.auditTrail" :key="i">
-                  <td class="is-who">{{ a.who }}</td>
-                  <td>{{ a.time }}</td>
-                  <td>{{ a.action }}</td>
-                  <td>{{ a.affected }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <AppSectionCard title="审计日志（本学生毕设档案）">
+          <AppAuditTrail :records="auditRecords" empty-text="暂无审计记录" compact :show-ip="false" />
+        </AppSectionCard>
       </div>
     </div>
 
@@ -142,12 +124,13 @@
 import { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationStudentDetailView',
-  components: { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState, AppDrawer, AppConfirmDialog, AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -163,6 +146,31 @@ export default {
     }
   },
   computed: {
+    topicInfoItems() {
+      if (!this.detail) return []
+      const d = this.detail
+      return [
+        { key: 'studentNo', label: '学号', value: d.studentNo },
+        { key: 'batchName', label: '毕设批次', value: d.batchName || '未关联' },
+        { key: 'topicTitle', label: '课题名称', value: d.topicTitle },
+        { key: 'topicSource', label: '课题来源', value: d.topicSource || '—' },
+        { key: 'advisorName', label: '指导教师', value: d.advisorName || '未分配' },
+        { key: 'taskbook', label: '任务书', value: d.taskbook },
+        { key: 'phone', label: '联系电话', value: d.phone },
+        { key: 'midterm', label: '中期检查', value: d.midterm?.conclusion },
+        { key: 'defense', label: '答辩安排', value: d.defense?.group },
+        { key: 'risk', label: '风险等级', value: d.riskLabel }
+      ]
+    },
+    auditRecords() {
+      return (this.detail?.auditTrail || []).map((a, i) => ({
+        id: i,
+        action: a.action,
+        actor: a.who,
+        at: a.time,
+        target: a.affected
+      }))
+    },
     toolbarActions() {
       if (!this.detail || this.detail.stage === 'ARCHIVED') {
         return [{ key: 'back', label: '返回列表' }]
@@ -180,7 +188,6 @@ export default {
   },
   created() { this.load() },
   methods: {
-    maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
     async load() {
       this.loading = true; this.error = ''
       const res = await gdStudentApi.getStudentDetail(this.$route.params.id)

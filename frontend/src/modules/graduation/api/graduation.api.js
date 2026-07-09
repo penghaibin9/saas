@@ -133,8 +133,12 @@ export const graduationApi = {
     return callStrict(() => request('/graduation/proposals/remind', { method: 'POST', body: { gdStudentId, channel } }))
   },
 
+  exportProposals(status) {
+    return callStrict(() => request('/graduation/proposals/export', { method: 'POST', params: status ? { status } : {} }))
+  },
+
   async downloadProposalsExport(status) {
-    const res = await callStrict(() => request('/graduation/proposals/export', { method: 'POST', params: status ? { status } : {} }))
+    const res = await this.exportProposals(status)
     if (res.code === 0) downloadXlsxFromApi(res.data, '开题材料台账.xlsx')
     return res
   },
@@ -152,8 +156,12 @@ export const graduationApi = {
     return callStrict(() => request('/graduation/finals/remind', { method: 'POST', body: { gdStudentId, channel } }))
   },
 
+  exportFinals(status) {
+    return callStrict(() => request('/graduation/finals/export', { method: 'POST', params: status ? { status } : {} }))
+  },
+
   async downloadFinalsExport(status) {
-    const res = await callStrict(() => request('/graduation/finals/export', { method: 'POST', params: status ? { status } : {} }))
+    const res = await this.exportFinals(status)
     if (res.code === 0) downloadXlsxFromApi(res.data, '成果提交台账.xlsx')
     return res
   },
@@ -191,8 +199,12 @@ export const graduationApi = {
     return callStrict(() => request(`/graduation/defense-groups/${id}/publish`, { method: 'POST', body: {} }))
   },
 
+  exportDefenseGroups() {
+    return callStrict(() => request('/graduation/defense-groups/export', { method: 'POST' }))
+  },
+
   async downloadDefenseExport() {
-    const res = await callStrict(() => request('/graduation/defense-groups/export', { method: 'POST' }))
+    const res = await this.exportDefenseGroups()
     if (res.code === 0) downloadXlsxFromApi(res.data, '答辩安排台账.xlsx')
     return res
   }

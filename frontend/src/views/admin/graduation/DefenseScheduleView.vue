@@ -6,7 +6,14 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <div class="gd-actions">
+        <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+        <AppExportButton
+          v-if="exportPerm.visible"
+          :export-fn="exportDefenseFn"
+          :has-permission="exportPerm.allowed"
+        >导出答辩表</AppExportButton>
+      </div>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -110,6 +117,7 @@
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import { AppDateTimePicker, AppDateDisplay } from '@/components/common/date'
+import { AppExportButton } from '@/components/common'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
@@ -117,7 +125,7 @@ import { toDateTimeInputValue, addDays } from '@/utils/dateUtils'
 
 export default {
   name: 'DefenseScheduleView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppDateTimePicker, AppDateDisplay },
+  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppDateTimePicker, AppDateDisplay, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -156,12 +164,13 @@ export default {
       // 候选区排除"已在本组"的（它们在上方"已分配"里）
       return this.eligible.filter((s) => !s.assignedHere)
     },
+    exportPerm() {
+      const pa = this.ctx.permissionActions.exportDefense || {}
+      return { visible: !!pa.visible, allowed: !!pa.allowed }
+    },
     toolbarActions() {
       const pa = this.ctx.permissionActions
-      return [
-        { key: 'manageDefense', label: '＋ 新增答辩组', variant: 'primary' },
-        { key: 'exportDefense', label: '导出答辩表' }
-      ]
+      return [{ key: 'manageDefense', label: '＋ 新增答辩组', variant: 'primary' }]
         .filter((a) => pa[a.key] && pa[a.key].visible)
         .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
     }
@@ -180,13 +189,12 @@ export default {
       }
     },
     async onToolbar(key) {
-      if (key === 'exportDefense') {
-        const res = await graduationApi.downloadDefenseExport()
-        if (res.code === 0) toast.success('答辩表已导出（含导出留痕）')
-        else toast.error(res.message || '导出失败')
-      } else if (this.canManage) {
+      if (key === 'manageDefense' && this.canManage) {
         this.openCreate()
       }
+    },
+    exportDefenseFn() {
+      return graduationApi.exportDefenseGroups()
     },
     openCreate() {
       this.drawer = { visible: true, id: null }
@@ -299,6 +307,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .dg-sec { margin-top: var(--space-4); }
 .dg-sec__head { display: flex; align-items: center; justify-content: space-between; font-weight: var(--font-weight-medium); color: var(--text-primary); margin-bottom: var(--space-2); font-size: var(--font-size-sm); }
 .dg-search { width: 140px; }

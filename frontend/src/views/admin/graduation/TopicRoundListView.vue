@@ -6,7 +6,10 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <div class="gd-actions">
+        <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+        <AppExportButton v-if="exportVisible" :export-fn="exportRoundsFn">导出 Excel</AppExportButton>
+      </div>
     </template>
 
     <div v-if="activePanel !== 'conflicts'" class="mp-stack">
@@ -165,6 +168,7 @@
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDateTimePicker, AppDeadlinePicker, AppDateDisplay } from '@/components/common/date'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
@@ -191,7 +195,7 @@ export default {
   name: 'TopicRoundListView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppDateTimePicker, AppDeadlinePicker, AppDateDisplay
+    AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppDateTimePicker, AppDeadlinePicker, AppDateDisplay, AppExportButton
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -241,17 +245,17 @@ export default {
     },
     toolbarActions() {
       if (this.activePanel === 'rounds') {
-        return [
-          { key: 'create', label: '＋ 新建轮次', variant: 'primary' },
-          { key: 'export', label: '导出 Excel' }
-        ]
+        return [{ key: 'create', label: '＋ 新建轮次', variant: 'primary' }]
       }
       const actions = [{ key: 'back', label: '返回轮次列表' }]
       if (this.activePanel === 'conflicts') return actions
       if (this.selectedRoundId) {
-        actions.push({ key: 'conflicts', label: '容量冲突复核' }, { key: 'import', label: '导入 Excel' }, { key: 'export', label: '导出 Excel' })
+        actions.push({ key: 'conflicts', label: '容量冲突复核' }, { key: 'import', label: '导入 Excel' })
       }
       return actions
+    },
+    exportVisible() {
+      return this.activePanel === 'rounds' || !!this.selectedRoundId
     },
     pageSubtitle() {
       if (this.activePanel === 'rounds') return `共 ${this.total} 个轮次 · 开启后学生可填志愿，关闭后执行匹配`
@@ -352,7 +356,6 @@ export default {
         if (!this.selectedRoundId) { toast.error('请先选择轮次'); return }
         this.importVisible = true
       }
-      if (key === 'export') this.doExport()
       if (key === 'conflicts') {
         this.activePanel = 'conflicts'
         this.$router.replace('/admin/graduation/topic-rounds?panel=conflicts')
@@ -430,18 +433,19 @@ export default {
       toast.success('志愿导入完成')
       this.load()
     },
-    async doExport() {
+    exportRoundsFn() {
       if (this.activePanel === 'rounds') {
-        const p = { batchId: this.filters.batchId || undefined, status: this.filters.status || undefined }
-        const r = await gdTopicRoundApi.downloadRoundsExport(p)
-        if (r.code !== 0) toast.error(r.message || '导出失败')
-        return
+        return gdTopicRoundApi.exportRounds({
+          batchId: this.filters.batchId || undefined,
+          status: this.filters.status || undefined
+        })
       }
-      if (!this.selectedRoundId) { toast.error('请先选择轮次'); return }
-      const r = await gdTopicRoundApi.downloadChoicesExport(this.selectedRoundId, {
+      if (!this.selectedRoundId) {
+        return Promise.resolve({ code: 1, message: '请先选择轮次' })
+      }
+      return gdTopicRoundApi.exportChoices(this.selectedRoundId, {
         matchedOnly: this.activePanel === 'match'
       })
-      if (r.code !== 0) toast.error(r.message || '导出失败')
     }
   }
 }
@@ -449,6 +453,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .trc-stats { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .trc-stat { display: flex; flex-direction: column; min-width: 84px; }
 .trc-stat b { font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--text-primary); }

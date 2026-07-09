@@ -37,7 +37,7 @@
       <div class="ie-actions" style="justify-content: flex-start">
         <button class="mp-btn mp-btn--primary" @click="doBatchGenerate">批量生成提交</button>
         <button class="mp-btn" @click="doBatchFile">一键核验备案</button>
-        <button class="mp-btn" @click="doArchiveExport">导出台账</button>
+        <AppExportButton :export-fn="exportArchivesFn">导出台账</AppExportButton>
       </div>
       <AdvancedFilter v-model="archiveFilters" :fields="archiveFilterFields" @search="loadArchives" @reset="resetArchiveFilters" />
       <LoadingState v-if="archiveLoading" />
@@ -98,13 +98,14 @@
 /** 问题预警+毕设归档+毕设统计（/admin/graduation/risk-archive）：扫描处置闭环 + 材料核验归档 + 跨模块统计看板。 */
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppExportButton } from '@/components/common'
 import { AppDateRangePicker } from '@/components/common/date'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, EmptyState, AppConfirmDialog, AppDateRangePicker },
+  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -205,10 +206,8 @@ export default {
     doReject(row) {
       this.confirm = { visible: true, title: '驳回归档', message: '', type: 'danger', confirmText: '确认驳回', requireReason: true, reasonLabel: '驳回原因', action: 'reject-archive', row }
     },
-    async doArchiveExport() {
-      const res = await graduationRiskArchiveApi.downloadArchiveExport({ ...this.archiveFilters })
-      if (res.code === 0) toast.success(`已导出 ${res.data.rowCount} 条`)
-      else toast.error(res.message)
+    exportArchivesFn() {
+      return graduationRiskArchiveApi.exportArchives({ ...this.archiveFilters })
     },
     async doBatchGenerate() {
       const res = await graduationRiskArchiveApi.batchGenerateArchive()

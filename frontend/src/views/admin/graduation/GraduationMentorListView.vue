@@ -6,7 +6,10 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <div class="gd-actions">
+        <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+        <AppExportButton v-if="tab === 'mentors'" :export-fn="exportMentorsFn">导出台账</AppExportButton>
+      </div>
     </template>
 
     <div class="gm-tabs">
@@ -109,10 +112,7 @@
           <li v-for="s in detail.students" :key="s.id">{{ s.name }}（{{ s.studentNo }}）· {{ s.topicTitle || '未确认选题' }}</li>
         </ul>
         <div class="gm-section-title" style="margin-top: var(--space-3)" >操作记录</div>
-        <EmptyState v-if="!detail.auditTrail.length" title="暂无操作记录" />
-        <ul v-else class="gm-trail">
-          <li v-for="(a, i) in detail.auditTrail" :key="i" class="gm-trail__item"><span>{{ a.action }}</span><span class="gm-trail__meta">{{ a.operator }} · {{ a.occurredAt }}</span></li>
-        </ul>
+        <AppAuditTrail :records="mentorAuditRecords" compact :show-ip="false" />
       </template>
     </AppDrawer>
 
@@ -204,6 +204,7 @@
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppExportButton, AppAuditTrail } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { MENTOR_QUALIFICATION_STATUS, MENTOR_TYPE } from '@/modules/graduation/constants/graduation-mentor.constants'
@@ -215,7 +216,7 @@ const EMPTY_FORM = () => ({ teacherNo: '', teacherName: '', mentorType: 'INTERNA
 
 export default {
   name: 'GraduationMentorListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppExportButton, AppAuditTrail },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -272,7 +273,15 @@ export default {
     },
     toolbarActions() {
       if (this.tab === 'assign') return [{ key: 'batchAssign', label: '一键批量分配', variant: 'primary' }]
-      return [{ key: 'create', label: '＋ 申报导师', variant: 'primary' }, { key: 'conflicts', label: '分配冲突检测' }, { key: 'batchArchive', label: '批量归档' }, { key: 'import', label: '导入 Excel' }, { key: 'export', label: '导出台账' }]
+      return [{ key: 'create', label: '＋ 申报导师', variant: 'primary' }, { key: 'conflicts', label: '分配冲突检测' }, { key: 'batchArchive', label: '批量归档' }, { key: 'import', label: '导入 Excel' }]
+    },
+    mentorAuditRecords() {
+      return (this.detail?.auditTrail || []).map((a, i) => ({
+        id: i,
+        action: a.action,
+        actor: a.operator,
+        at: a.occurredAt
+      }))
     }
   },
   created() { this.applyPanel(this.$route.query.panel, true) },
@@ -302,7 +311,6 @@ export default {
     onToolbar(key) {
       if (key === 'create') { this.editing = null; this.form = EMPTY_FORM(); this.formError = ''; this.editVisible = true }
       if (key === 'import') this.importVisible = true
-      if (key === 'export') this.doExport()
       if (key === 'conflicts') this.openConflicts()
       if (key === 'batchArchive') this.doBatchArchive()
       if (key === 'batchAssign') this.doBatchAssign()
@@ -411,10 +419,8 @@ export default {
         if (res && res.code === 0) { toast.success('已更新'); this.confirm.visible = false; this.load(); this.loadUnassigned(); this.loadAssignments() } else if (res) toast.error(res.message)
       } finally { this.submitting = false }
     },
-    async doExport() {
-      const res = await graduationMentorApi.downloadMentorExport({ ...this.filters })
-      if (res.code === 0) toast.success(`已导出 ${res.data.rowCount} 位导师台账`)
-      else toast.error(res.message)
+    exportMentorsFn() {
+      return graduationMentorApi.exportMentors({ ...this.filters })
     },
     // ═══ 分配 ═══
     async loadUnassigned() {
@@ -466,6 +472,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .mp-link--danger { color: var(--danger, #dc2626); }
 .gm-full { color: var(--danger, #dc2626); font-weight: 600; }
 .gm-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }

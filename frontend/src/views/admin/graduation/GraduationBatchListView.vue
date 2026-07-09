@@ -6,7 +6,10 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <div class="gd-actions">
+        <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+        <AppExportButton :export-fn="exportBatchesFn">导出台账</AppExportButton>
+      </div>
     </template>
 
     <div class="mp-stack">
@@ -89,10 +92,7 @@
         </div>
 
         <div v-show="dtab === 'audit'" class="gb-sec">
-          <EmptyState v-if="!detail.auditTrail.length" title="暂无操作记录" />
-          <ul v-else class="gb-trail">
-            <li v-for="(a, i) in detail.auditTrail" :key="i" class="gb-trail__item"><span>{{ a.action }}</span><span class="gb-trail__meta">{{ a.operator }} · {{ a.occurredAt }}</span></li>
-          </ul>
+          <AppAuditTrail :records="batchAuditRecords" compact :show-ip="false" />
         </div>
       </template>
     </AppDrawer>
@@ -110,6 +110,7 @@
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppExportButton, AppAuditTrail } from '@/components/common'
 import { AppDatePicker, AppDateDisplay } from '@/components/common/date'
 import { graduationBatchApi } from '@/modules/graduation/api/graduation-batch.api'
 import { BATCH_STATUS } from '@/modules/graduation/constants/graduation-batch.constants'
@@ -129,7 +130,7 @@ export default {
   name: 'GraduationBatchListView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppDrawer, AppConfirmDialog, AppDatePicker, AppDateDisplay
+    AppDrawer, AppConfirmDialog, AppDatePicker, AppDateDisplay, AppExportButton, AppAuditTrail
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -161,7 +162,15 @@ export default {
         }
       ]
     },
-    toolbarActions() { return [{ key: 'create', label: '＋ 新建批次', variant: 'primary' }, { key: 'export', label: '导出台账' }] },
+    toolbarActions() { return [{ key: 'create', label: '＋ 新建批次', variant: 'primary' }] },
+    batchAuditRecords() {
+      return (this.detail?.auditTrail || []).map((a, i) => ({
+        id: i,
+        action: a.action,
+        actor: a.operator,
+        at: a.occurredAt
+      }))
+    },
     configLocked() { return this.detail && ['ARCHIVED', 'VOIDED', 'CLOSED'].includes(this.detail.status) }
   },
   created() { this.applyPanel(this.$route.query.panel, true) },
@@ -179,7 +188,7 @@ export default {
         this.editing = null; this.form = EMPTY_FORM(); this.formError = ''; this.editVisible = true
         return
       }
-      if (panel === 'export') { this.filters.status = ''; this.page = 1; this.load(); this.doExport(); return }
+      if (panel === 'export') { this.filters.status = ''; this.page = 1; this.load(); this.$nextTick(() => this.triggerBatchExport()); return }
       if (panel === 'running' || panel === 'archived') {
         this.filters.status = panel === 'running' ? 'RUNNING' : 'ARCHIVED'; this.page = 1; this.load(); return
       }
@@ -202,7 +211,6 @@ export default {
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) {
       if (key === 'create') { this.editing = null; this.form = EMPTY_FORM(); this.formError = ''; this.editVisible = true }
-      if (key === 'export') this.doExport()
     },
     openEdit(row) {
       this.editing = row
@@ -261,10 +269,16 @@ export default {
         if (res && res.code === 0) { toast.success('已更新'); this.confirm.visible = false; this.load() } else if (res) toast.error(res.message)
       } finally { this.submitting = false }
     },
-    async doExport() {
-      const res = await graduationBatchApi.downloadBatchExport({ ...this.filters })
-      if (res.code === 0) toast.success(`已导出 ${res.data.rowCount} 个批次台账`)
-      else toast.error(res.message)
+    exportBatchesFn() {
+      return graduationBatchApi.exportBatches({ ...this.filters })
+    },
+    async triggerBatchExport() {
+      const res = await this.exportBatchesFn()
+      if (res.code === 0) {
+        const { downloadXlsxFromApi } = await import('@/utils/xlsxDownload')
+        downloadXlsxFromApi(res.data, '毕设批次台账.xlsx')
+        toast.success(`已导出 ${res.data.rowCount} 个批次台账`)
+      } else toast.error(res.message)
     }
   }
 }
@@ -272,6 +286,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .mp-link--danger { color: var(--danger, #dc2626); }
 .ie-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: var(--space-1) 0; }
 .ie-fld { display: flex; flex-direction: column; gap: 4px; }

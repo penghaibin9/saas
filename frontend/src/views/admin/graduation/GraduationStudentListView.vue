@@ -6,7 +6,10 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <div class="gd-actions">
+        <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+        <AppExportButton v-if="exportVisible" :export-fn="exportStudentsFn">导出 Excel</AppExportButton>
+      </div>
     </template>
 
     <div class="mp-stack">
@@ -26,7 +29,7 @@
       >
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.name }}</div>
-          <div class="mp-cell-sub">{{ maskNo(row.studentNo) }} · {{ row.className }}</div>
+          <div class="mp-cell-sub"><AppSensitiveText :value="row.studentNo" type="generic" /> · {{ row.className }}</div>
         </template>
         <template #cell-batch="{ row }">
           <span v-if="row.batchName">{{ row.batchName }}</span>
@@ -234,6 +237,7 @@ import {
 } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppSensitiveText, AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import {
@@ -336,7 +340,7 @@ const STAGE_TONE = {
 
 export default {
   name: 'GraduationStudentListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -394,7 +398,7 @@ export default {
     toolbarActions() {
       const base = []
       if (this.activePanel === 'roster') {
-        base.push({ key: 'create', label: '＋ 建档', variant: 'primary' }, { key: 'import', label: '导入 Excel' }, { key: 'export', label: '导出 Excel' })
+        base.push({ key: 'create', label: '＋ 建档', variant: 'primary' }, { key: 'import', label: '导入 Excel' })
       }
       if (this.activePanel === 'grouping') {
         base.push({ key: 'batchGroup', label: '批量分组', variant: 'primary', disabled: !this.selectedIds.length })
@@ -402,8 +406,11 @@ export default {
       if (this.activePanel === 'archive' && this.filters.archiveView !== 'archived') {
         base.push({ key: 'batchArchive', label: '批量归档', variant: 'primary', disabled: !this.selectedIds.length })
       }
-      if (!base.length) base.push({ key: 'export', label: '导出 Excel' })
       return base
+    },
+    exportVisible() {
+      if (this.activePanel === 'grouping' || this.activePanel === 'archive') return false
+      return true
     },
     pageSubtitle() {
       const hint = PANEL_HINTS[this.activePanel] || ''
@@ -443,7 +450,6 @@ export default {
     stageTone(stage) { return STAGE_TONE[stage] || 'default' },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     gradQualTone(s) { return s === 'PASS' ? 'success' : (s === 'FAIL' ? 'danger' : (s === 'PENDING' ? 'warning' : 'default')) },
-    maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
     async loadBatchOpts() {
       const b = await gdStudentApi.getBatchOptions()
       if (b.code === 0) this.batchOpts = b.data
@@ -460,9 +466,7 @@ export default {
         else if (p[k] === 'false') p[k] = false
         else delete p[k]
       })
-      if (p.archiveView) {
-        p.archiveView = p.archiveView
-      } else {
+      if (!p.archiveView) {
         delete p.archiveView
       }
       ;['batchId', 'stage', 'riskLevel', 'eligibility', 'studentGroup', 'gradQualStatus'].forEach((k) => {
@@ -493,7 +497,6 @@ export default {
         this.createVisible = true
       }
       if (key === 'import') { this.importVisible = true }
-      if (key === 'export') this.doExport()
       if (key === 'batchGroup') { this.groupRow = null; this.groupName = ''; this.groupError = ''; this.groupVisible = true }
       if (key === 'batchArchive') this.askBatchArchive()
     },
@@ -632,14 +635,12 @@ export default {
       toast.success(`已导入 ${data?.created ?? 0} 人`)
       this.load()
     },
-    async doExport() {
+    exportStudentsFn() {
       const p = { ...this.filters }
       ;['batchId', 'stage', 'riskLevel', 'eligibility', 'studentGroup', 'gradQualStatus'].forEach((k) => {
         if (!p[k]) delete p[k]
       })
-      const res = await gdStudentApi.downloadExport(p)
-      if (res.code === 0) toast.success(`已导出 ${res.data.rowCount} 条`)
-      else toast.error(res.message)
+      return gdStudentApi.exportStudents(p)
     }
   }
 }
@@ -647,6 +648,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .ie-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
 .ie-fld { display: flex; flex-direction: column; gap: var(--space-1); }
 .ie-fld--full { grid-column: 1 / -1; }

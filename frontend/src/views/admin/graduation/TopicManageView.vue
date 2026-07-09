@@ -6,7 +6,10 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <div class="gd-actions">
+        <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+        <AppExportButton :export-fn="exportTopicsFn">导出 Excel</AppExportButton>
+      </div>
     </template>
 
     <div class="mp-stack">
@@ -126,6 +129,7 @@ import {
 } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { GD_TOPIC_STATUS } from '@/modules/graduation/constants/graduation-topic.constants'
@@ -137,7 +141,7 @@ export default {
   name: 'TopicManageView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer
+    LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppExportButton
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -176,8 +180,7 @@ export default {
     toolbarActions() {
       return [
         { key: 'topicLib', label: '题目库申报', variant: 'primary' },
-        { key: 'importTopics', label: '导入 Excel' },
-        { key: 'exportTopics', label: '导出 Excel' }
+        { key: 'importTopics', label: '导入 Excel' }
       ]
     },
     pageSubtitle() {
@@ -216,7 +219,6 @@ export default {
     onToolbar(key) {
       if (key === 'topicLib') this.$router.push('/admin/graduation/topic-lib?panel=list')
       if (key === 'importTopics') this.importVisible = true
-      if (key === 'exportTopics') this.doExport()
     },
     openEdit(row) {
       this.editing = row
@@ -264,12 +266,11 @@ export default {
       this.$router.push('/admin/graduation/students?panel=topic')
     },
     onImported() { this.importVisible = false; toast.success('导入完成'); this.load() },
-    async doExport() {
+    exportTopicsFn() {
       const p = this.buildParams()
       delete p.page
       delete p.pageSize
-      const r = await gdTopicApi.downloadExport(p)
-      if (r.code !== 0) toast.error(r.message || '导出失败')
+      return gdTopicApi.exportTopics(p)
     }
   }
 }
@@ -277,6 +278,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .gb-kv { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
 .gb-sec { margin-top: var(--space-4); }
 .gb-trail { list-style: none; padding: 0; margin: 0; }

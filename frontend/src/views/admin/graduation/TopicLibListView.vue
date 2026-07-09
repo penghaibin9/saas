@@ -6,7 +6,13 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <div class="gd-actions">
+        <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+        <AppExportButton
+          v-if="exportVisible"
+          :export-fn="exportTopicsLibFn"
+        >导出 Excel</AppExportButton>
+      </div>
     </template>
 
     <!-- 分类 / 容量概览 -->
@@ -345,6 +351,7 @@
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import {
@@ -429,7 +436,7 @@ const HISTORY_ACTIONS = [
 
 export default {
   name: 'TopicLibListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -552,16 +559,17 @@ export default {
         base.push({ key: 'create', label: labels[this.activePanel], variant: 'primary' })
       }
       if (['list', 'teacher-apply', 'enterprise', 'student-proposed', 'pending', 'archive', 'category', 'capacity', 'requirements', 'attachments', 'history'].includes(this.activePanel)) {
-        if (this.activePanel === 'history') {
-          base.push({ key: 'export', label: '导出 Excel' })
-        } else {
-          base.push({ key: 'import', label: '导入 Excel' }, { key: 'export', label: '导出 Excel' })
+        if (this.activePanel !== 'history') {
+          base.push({ key: 'import', label: '导入 Excel' })
         }
       }
       if (this.activePanel === 'category') {
         base.unshift({ key: 'refreshStats', label: '刷新统计' })
       }
       return base
+    },
+    exportVisible() {
+      return ['list', 'teacher-apply', 'enterprise', 'student-proposed', 'pending', 'archive', 'category', 'capacity', 'requirements', 'attachments', 'history'].includes(this.activePanel)
     },
     pageSubtitle() {
       const gap = this.libStats && this.activePanel === 'requirements'
@@ -696,7 +704,6 @@ export default {
     onToolbar(key) {
       if (key === 'create') this.openCreate()
       if (key === 'import') { this.importVisible = true }
-      if (key === 'export') this.doExport()
       if (key === 'refreshStats') this.loadPanelExtras()
     },
     openCreate() {
@@ -879,20 +886,18 @@ export default {
       this.loadPanelExtras()
       this.load()
     },
-    async doExport() {
+    exportTopicsLibFn() {
       const p = this.buildParams()
       delete p.page
       delete p.pageSize
-      const r = this.isHistoryPanel
-        ? await gdTopicApi.downloadHistoryExport(p)
-        : await gdTopicApi.downloadExport(p)
-      if (r.code !== 0) toast.error(r.message || '导出失败')
+      return this.isHistoryPanel ? gdTopicApi.exportTopicHistory(p) : gdTopicApi.exportTopics(p)
     }
   }
 }
 </script>
 
 <style scoped>
+.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .gb-kv { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
 .gb-sec { margin-top: var(--space-4); }
 .gb-trail { list-style: none; padding: 0; margin: 0; }
