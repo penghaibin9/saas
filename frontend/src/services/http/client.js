@@ -255,6 +255,67 @@ export async function requestUpload(path, file, fieldName = 'file') {
   }
 }
 
+/** 二进制下载（Excel 模板/导出文件等）：复用现有 token/baseURL/401 刷新机制 */
+export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
+  await ensureToken()
+  const qs = params
+    ? '?' +
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&')
+    : ''
+
+  const doFetch = async () => {
+    const headers = {}
+    if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
+    if (body) headers['Content-Type'] = 'application/json'
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 15000)
+    try {
+      const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal
+      })
+      if (res.status === 401) {
+        const err = new Error('未登录，请先登录')
+        err.biz = true
+        err.code = 401001
+        throw err
+      }
+      if (!res.ok) {
+        const err = new Error(`下载失败（HTTP ${res.status}）`)
+        err.biz = true
+        err.code = res.status
+        throw err
+      }
+      return await res.blob()
+    } catch (e) {
+      if (!e.biz) {
+        markOffline()
+        e.biz = true
+        e.code = 503001
+        e.message = '真实接口不可用，下载失败'
+      }
+      throw e
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  try {
+    return await doFetch()
+  } catch (e) {
+    if (e.biz && e.code === 401001) {
+      if (await tryRefresh()) return doFetch()
+      _redirectToLogin()
+    }
+    throw e
+  }
+}
+
 /** mock 兜底包裹：真实调用失败（后端挂/业务错）时执行 mockFn，页面不白屏 */
 export function withFallback(label, realFn, mockFn) {
   if (!shouldTryReal()) {
