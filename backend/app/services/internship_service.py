@@ -444,7 +444,7 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
         return row
 
 
-def review_weekly_report(report_id, action: str, comment: str) -> dict:
+def review_weekly_report(report_id, action: str, comment: str, user=None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     if action == "RETURN" and (not comment or len(comment.strip()) < 5):
@@ -453,6 +453,11 @@ def review_weekly_report(report_id, action: str, comment: str) -> dict:
         w = db.get(WeeklyReport, int(report_id))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("周报不存在")
+        rec = db.get(InternshipRecord, w.internship_id)
+        stu = db.get(StudentProfile, rec.student_id) if rec else None
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):  # P1：owner 级写校验
+            from app.core.exceptions import no_permission
+            raise no_permission("只能批阅本人指导学生的周报")
         if w.status in ("APPROVED", "RETURNED"):
             raise AppException("DATA_CONFLICT", "该周报已批阅，请刷新")
         w.status = "APPROVED" if action == "APPROVE" else "RETURNED"

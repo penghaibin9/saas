@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Float, Integer, String, Text,
+                        UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -133,6 +134,52 @@ class InternshipMakeup(PKMixin, TenantMixin, CommonMixin, Base):
     review_by_name: Mapped[str | None] = mapped_column(String(50), comment="审批人")
     review_at: Mapped[datetime | None] = mapped_column(DateTime)
     review_comment: Mapped[str | None] = mapped_column(String(500))
+
+
+class InternshipGuidance(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_guidance 指导记录（指导教师对本人指导学生的过程指导留痕）。
+    owner：教师只能对本人指导学生（advisor_name）新增/撤销。撤销走软删（status=VOIDED）。"""
+    __tablename__ = "t_internship_guidance"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    advisor_name: Mapped[str | None] = mapped_column(String(50), comment="指导教师")
+    method: Mapped[str] = mapped_column(String(20), nullable=False, default="ONSITE",
+                                        comment="ONLINE/PHONE/ONSITE/ENTERPRISE_FEEDBACK/VIDEO")
+    topic: Mapped[str | None] = mapped_column(String(200), comment="指导主题")
+    content: Mapped[str | None] = mapped_column(Text, comment="指导内容")
+    problem_type: Mapped[str | None] = mapped_column(String(50), comment="问题类型")
+    suggestion: Mapped[str | None] = mapped_column(String(1000), comment="处理建议")
+    next_follow_date: Mapped[str | None] = mapped_column(String(10), comment="下次跟进日期 YYYY-MM-DD")
+    to_risk: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否形成风险")
+    notify_counselor: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                                   comment="是否通知辅导员")
+    file_id: Mapped[str | None] = mapped_column(String(64), comment="附件 file_id 预留（文件中心）")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="NORMAL",
+                                        comment="NORMAL/VOIDED")
+
+
+class InternshipVisit(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_visit 教师巡访记录（含企业/学生反馈、安全隐患与整改跟进）。
+    owner：教师只能对本人指导学生新增巡访；整改状态 NONE→PENDING→DONE。"""
+    __tablename__ = "t_internship_visit"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    advisor_name: Mapped[str | None] = mapped_column(String(50), comment="巡访教师")
+    enterprise_name: Mapped[str | None] = mapped_column(String(200))
+    visit_at: Mapped[datetime | None] = mapped_column(DateTime, comment="巡访时间")
+    method: Mapped[str] = mapped_column(String(20), nullable=False, default="ONSITE",
+                                        comment="ONSITE/ONLINE/PHONE")
+    enterprise_feedback: Mapped[str | None] = mapped_column(String(1000), comment="企业反馈")
+    student_feedback: Mapped[str | None] = mapped_column(String(1000), comment="学生反馈")
+    safety_issue: Mapped[str | None] = mapped_column(String(500), comment="安全隐患")
+    rectify_require: Mapped[str | None] = mapped_column(String(500), comment="整改要求")
+    rectify_deadline: Mapped[str | None] = mapped_column(String(10), comment="整改截止 YYYY-MM-DD")
+    rectify_status: Mapped[str] = mapped_column(String(20), nullable=False, default="NONE",
+                                                comment="NONE/PENDING/DONE")
+    monthly_report: Mapped[str | None] = mapped_column(Text, comment="巡访月报")
+    file_id: Mapped[str | None] = mapped_column(String(64), comment="附件 file_id 预留")
 
 
 class WeeklyReport(PKMixin, TenantMixin, CommonMixin, Base):

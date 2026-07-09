@@ -52,6 +52,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', title: '打卡异常处理', requiresAuth: true, permissionKey: 'internship.checkin.handle' }
     },
     {
+      path: 'guidance',
+      name: 'internship-guidance',
+      component: () => import('@/views/admin/internship/GuidanceVisitView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', title: '指导与巡访', requiresAuth: true, permissionKey: 'internship.guidance.view' }
+    },
+    {
       path: 'reports',
       name: 'internship-reports',
       component: () => import('@/views/admin/internship/WeeklyReportListView.vue'),

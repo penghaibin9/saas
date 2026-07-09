@@ -16,8 +16,10 @@ from app.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, 
                                      VoidBatchRequest)
 from app.services import audit_log
 from app.services import internship_enterprise_service as ent
+from app.services import internship_guidance_service as gd
 from app.services import internship_makeup_service as mk
 from app.services import internship_service as svc
+from app.services import internship_visit_service as vis
 from app.services import xlsx_util
 
 _XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -133,6 +135,78 @@ def makeups_export(status: Optional[str] = None, user=Depends(get_current_user))
     return success(data)
 
 
+# ═══ 指导记录（owner + 数据范围） ═══
+
+@router.get("/guidances", summary="指导记录列表（按数据范围）")
+def guidances(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+              keyword: Optional[str] = None, user=Depends(get_current_user)):
+    items, total = gd.list_guidances(page, pageSize, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/guidances", summary="新增指导记录（owner：仅本人指导学生）")
+def create_guidance(body: dict = Body(...), user=Depends(get_current_user)):
+    result = gd.create(user, body)
+    audit_log.record("新增指导记录", f"internship-guidance:{result['id']}", detail=result)
+    return success(result, message="已保存")
+
+
+@router.get("/guidances/{guidance_id}", summary="指导记录详情")
+def guidance_detail(guidance_id: str, user=Depends(get_current_user)):
+    return success(gd.get_guidance(guidance_id, user=user))
+
+
+@router.post("/guidances/{guidance_id}/void", summary="撤销指导记录（owner）")
+def void_guidance(guidance_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    result = gd.void_guidance(user, guidance_id, (body or {}).get("reason") or "")
+    audit_log.record("撤销指导记录", f"internship-guidance:{guidance_id}", detail=result)
+    return success(result, message="已撤销")
+
+
+@router.post("/guidances/export", summary="指导记录台账导出 Excel(.xlsx)")
+def guidances_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = gd.export_guidances(keyword=keyword, user=user)
+    audit_log.record("导出指导记录台账", "internship-guidance:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+# ═══ 教师巡访（owner + 数据范围 + 整改跟进） ═══
+
+@router.get("/visits", summary="巡访记录列表（按数据范围）")
+def visits(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+           keyword: Optional[str] = None, rectify: Optional[str] = None,
+           user=Depends(get_current_user)):
+    items, total = vis.list_visits(page, pageSize, keyword=keyword, rectify=rectify, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/visits", summary="新增巡访记录（owner：仅本人指导学生）")
+def create_visit(body: dict = Body(...), user=Depends(get_current_user)):
+    result = vis.create(user, body)
+    audit_log.record("新增巡访记录", f"internship-visit:{result['id']}", detail=result)
+    return success(result, message="已保存")
+
+
+@router.get("/visits/{visit_id}", summary="巡访记录详情（含月报/整改留痕）")
+def visit_detail(visit_id: str, user=Depends(get_current_user)):
+    return success(vis.get_visit(visit_id, user=user))
+
+
+@router.post("/visits/{visit_id}/rectify", summary="巡访整改跟进（owner，说明必填）")
+def visit_rectify(visit_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    b = body or {}
+    result = vis.rectify_follow(user, visit_id, (b.get("status") or "").upper(), b.get("note") or "")
+    audit_log.record("巡访整改跟进", f"internship-visit:{visit_id}", detail=result)
+    return success(result, message="已跟进")
+
+
+@router.post("/visits/export", summary="巡访记录台账导出 Excel(.xlsx)")
+def visits_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = vis.export_visits(keyword=keyword, user=user)
+    audit_log.record("导出巡访记录台账", "internship-visit:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
 @router.get("/reports", summary="周报批阅列表")
 def reports(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
             status: Optional[str] = None, keyword: Optional[str] = None,
@@ -148,7 +222,7 @@ def report_detail(report_id: str, user=Depends(get_current_user)):
 
 @router.post("/reports/{report_id}/review", summary="批阅周报（通过/退回，退回原因≥5字）")
 def review_report(report_id: str, body: ReportReviewRequest, user=Depends(get_current_user)):
-    result = svc.review_weekly_report(report_id, body.action, body.comment)
+    result = svc.review_weekly_report(report_id, body.action, body.comment, user=user)
     audit_log.record("批阅周报", f"internship-report:{report_id}", detail={"action": body.action})
     return success(result, message="批阅完成")
 
