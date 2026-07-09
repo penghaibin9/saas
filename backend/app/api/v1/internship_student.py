@@ -6,9 +6,11 @@
 """
 from __future__ import annotations
 
+import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
@@ -18,8 +20,10 @@ from app.schemas.internship_student import (AssignPositionRequest, DestinationRe
                                             StudentStatusRequest, UnassignRequest)
 from app.services import audit_log
 from app.services import internship_student_service as svc
+from app.services import xlsx_util
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-实习学生"])
+_XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @router.get("/intern-students", summary="实习学生列表（分页+筛选：状态/资格/去向/是否已分配岗位）")
@@ -30,7 +34,7 @@ def intern_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
                     hasPosition: Optional[bool] = None, user=Depends(get_current_user)):
     items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
                                      status=status, risk_level=riskLevel, eligibility=eligibility,
-                                     destination=destination, has_position=hasPosition)
+                                     destination=destination, has_position=hasPosition, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -51,10 +55,34 @@ def intern_import_confirm(body: StudentImport, user=Depends(get_current_user)):
     return success(result, message="导入完成")
 
 
-@router.post("/intern-students/export", summary="实习学生台账导出 CSV（脱敏，写审计）")
+@router.get("/intern-students/import/template", summary="实习学生导入·下载 Excel 模板(.xlsx)")
+def intern_import_template(user=Depends(get_current_user)):
+    data = xlsx_util.build_template_xlsx(svc.IMPORT_HEADERS, sample=svc.IMPORT_SAMPLE,
+                                         notes=svc.IMPORT_NOTES, required=svc.IMPORT_REQUIRED)
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA, headers={
+        "Content-Disposition": "attachment; filename=intern_student_import_template.xlsx"})
+
+
+@router.post("/intern-students/import/xlsx", summary="上传 Excel(.xlsx)·解析并预校验（不写库）")
+async def intern_import_xlsx(file: UploadFile = File(...), user=Depends(get_current_user)):
+    content = await file.read()
+    rows = xlsx_util.read_xlsx(content, svc.IMPORT_HEADER_MAP)
+    return success({**svc.import_dry_run(rows), "rows": rows})
+
+
+@router.post("/intern-students/import/errors-xlsx", summary="下载错误行 Excel(.xlsx)")
+def intern_import_errors_xlsx(body: dict = Body(...), user=Depends(get_current_user)):
+    rows = body.get("rows") or []
+    errors = body.get("errors") or []
+    data = xlsx_util.build_error_rows_xlsx(svc.IMPORT_HEADERS, rows, errors, svc._row_values_for_error)
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA, headers={
+        "Content-Disposition": "attachment; filename=intern_student_import_errors.xlsx"})
+
+
+@router.post("/intern-students/export", summary="实习学生台账导出 Excel(.xlsx)（脱敏+水印，写审计）")
 def intern_export(keyword: Optional[str] = None, status: Optional[str] = None,
                   eligibility: Optional[str] = None, user=Depends(get_current_user)):
-    data = svc.export_students(keyword=keyword, status=status, eligibility=eligibility)
+    data = svc.export_students(keyword=keyword, status=status, eligibility=eligibility, user=user)
     audit_log.record("导出实习学生", "internship-student:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -68,7 +96,7 @@ def create_intern_student(body: StudentRecordCreate, user=Depends(get_current_us
 
 @router.get("/intern-students/{record_id}", summary="实习学生详情（企业/岗位/导师/资格/去向/审计）")
 def intern_student_detail(record_id: str, user=Depends(get_current_user)):
-    return success(svc.get_student(record_id))
+    return success(svc.get_student(record_id, user=user))
 
 
 @router.put("/intern-students/{record_id}", summary="编辑实习学生（已归档不可编辑）")

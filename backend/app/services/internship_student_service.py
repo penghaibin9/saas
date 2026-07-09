@@ -52,6 +52,37 @@ def _students_map(db, ids: list[int]) -> dict:
     return {s.id: s for s in rows}
 
 
+# ═══════════ 数据范围（P0-D：管理端按教师范围收敛，不仅租户） ═══════════
+
+def _current_scope(user: dict | None = None) -> dict:
+    """教师数据范围。user 由 API 层显式传入（FastAPI 同步端点在独立线程上下文，contextvar 不可靠传播，
+    故不能只依赖 get_current_user_ctx）；懒加载 resolve_teacher_scope 避免与 mobile_teacher_service 循环 import。
+    ADMIN_TENANT（校级/院级/教务）→ 看全校；SCOPED（指导教师/学院负责人/辅导员）→ 收敛；
+    TENANT_FALLBACK（无范围信息）→ 仅租户（试点可用，标准版应逐步清零）。"""
+    from app.services.mobile_teacher_service import resolve_teacher_scope
+    return resolve_teacher_scope(user or get_current_user_ctx() or {})
+
+
+def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
+    """实习记录是否在教师数据范围内。实习以「本人指导学生」为主关系（record.advisor_name），
+    并兼容 学号 / 班级 / 学院 收敛。非 SCOPED 模式一律放行（含管理员看全校、跨租户已由 _tid 隔离）。"""
+    if scope.get("mode") != "SCOPED":
+        return True
+    from app.services.mobile_teacher_service import scope_match_row
+    class_name = college_name = None
+    if stu is not None:
+        from app.models import College, SchoolClass
+        if getattr(stu, "class_id", None):
+            c = db.get(SchoolClass, stu.class_id)
+            class_name = c.class_name if c else None
+        if getattr(stu, "college_id", None):
+            col = db.get(College, stu.college_id)
+            college_name = col.college_name if col else None
+    return scope_match_row(scope, student_no=(stu.student_no if stu else None),
+                           class_name=class_name, advisor_name=r.advisor_name,
+                           college_name=college_name)
+
+
 def _row(r: InternshipRecord, stu: StudentProfile | None) -> dict:
     return {
         "id": str(r.id), "studentId": str(r.student_id),
@@ -86,7 +117,7 @@ def _row_of(db, r: InternshipRecord) -> dict:
 
 def list_students(page: int, page_size: int, keyword=None, class_id=None, status=None,
                   risk_level=None, eligibility=None, destination=None,
-                  has_position=None) -> tuple[list[dict], int]:
+                  has_position=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
         q = select(InternshipRecord).where(InternshipRecord.tenant_id == _tid(),
                                            InternshipRecord.is_deleted.is_(False))
@@ -104,6 +135,7 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
             q = q.where(InternshipRecord.position_id.is_(None))
         rows = db.scalars(q.order_by(InternshipRecord.id.desc())).all()
         smap = _students_map(db, [r.student_id for r in rows])
+        scope = _current_scope(user)
         items = []
         for r in rows:
             stu = smap.get(r.student_id)
@@ -113,17 +145,22 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
                     continue
             if class_id and (not stu or str(stu.class_id) != str(class_id)):
                 continue
+            if not _rec_in_scope(scope, db, r, stu):  # P0-D：教师只见本人指导/本院范围
+                continue
             items.append(_row(r, stu))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
 
 
-def get_student(rec_id) -> dict:
+def get_student(rec_id, user=None) -> dict:
     """详情：主档 + 企业/岗位/导师关联 + 资格/去向/状态 + 联系电话脱敏 + 审计。"""
     with session() as db:
         r = _get(db, rec_id)
         stu = db.get(StudentProfile, r.student_id)
+        if not _rec_in_scope(_current_scope(user), db, r, stu):  # P0-D：越范围访问详情 → 403
+            from app.core.exceptions import no_permission
+            raise no_permission("该实习学生不在你的数据范围内")
         phone = db.scalars(select(StudentContact).where(
             StudentContact.tenant_id == _tid(), StudentContact.student_id == r.student_id,
             StudentContact.contact_type == "PHONE")).first()
@@ -343,18 +380,38 @@ def student_stats() -> dict:
 
 # ═══════════ 导入 / 导出 ═══════════
 
+def _parse_date(s):
+    """宽松解析日期：支持 2026-03-02 / 2026/3/2 / 2026.3.2；空返回 None；非法返回 False。"""
+    s = (s or "").strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s.split(" ")[0] if fmt != "%Y-%m-%d %H:%M:%S" else s, fmt)
+        except ValueError:
+            continue
+    return False
+
+
 def import_dry_run(rows: list[dict]) -> dict:
-    """按学号建实习学生记录（预校验：学号必填且能匹配学生，批内/库内不重复建档）。"""
+    """xlsx 逐行预校验：学号必填且匹配、不重复建档；企业/岗位/批次如填写须存在；日期格式合法。"""
     with session() as db:
+        from app.models import InternshipBatch
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))).all()}
         existing_sids = {r.student_id for r in db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id.is_(None))).all()}
+        companies = {(c.name or "").strip() for c in db.scalars(select(EmpCompany).where(
+            EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()}
+        positions = {(p.title or "").strip() for p in db.scalars(select(InternshipPosition).where(
+            InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False))).all()}
+        batches = {(b.batch_name or "").strip() for b in db.scalars(select(InternshipBatch).where(
+            InternshipBatch.tenant_id == _tid(), InternshipBatch.is_deleted.is_(False))).all()}
         errors, seen, valid = [], set(), 0
         for i, r in enumerate(rows or []):
-            no = (r.get("studentNo") or "").strip()
             row_no = i + 1
+            no = (r.get("studentNo") or "").strip()
             if not no:
                 errors.append({"rowNo": row_no, "field": "studentNo", "message": "学号必填"})
                 continue
@@ -364,6 +421,26 @@ def import_dry_run(rows: list[dict]) -> dict:
                 continue
             if stu.id in existing_sids or no in seen:
                 errors.append({"rowNo": row_no, "field": "studentNo", "message": f"该学生已建档：{no}"})
+                continue
+            ent = (r.get("enterpriseName") or "").strip()
+            if ent and ent not in companies:
+                errors.append({"rowNo": row_no, "field": "enterpriseName", "message": f"企业不存在：{ent}"})
+                continue
+            pos = (r.get("positionName") or "").strip()
+            if pos and pos not in positions:
+                errors.append({"rowNo": row_no, "field": "positionName", "message": f"岗位不存在：{pos}"})
+                continue
+            bat = (r.get("batchName") or "").strip()
+            if bat and bat not in batches:
+                errors.append({"rowNo": row_no, "field": "batchName", "message": f"实习批次不存在：{bat}"})
+                continue
+            bad_date = False
+            for fld in ("startDate", "endDate"):
+                if _parse_date(r.get(fld)) is False:
+                    errors.append({"rowNo": row_no, "field": fld, "message": "日期格式应为 YYYY-MM-DD"})
+                    bad_date = True
+                    break
+            if bad_date:
                 continue
             seen.add(no)
             valid += 1
@@ -381,26 +458,54 @@ def import_confirm(rows: list[dict]) -> dict:
         created = 0
         for r in rows or []:
             stu = profiles.get((r.get("studentNo") or "").strip())
+            sd, ed = _parse_date(r.get("startDate")), _parse_date(r.get("endDate"))
             rec = InternshipRecord(tenant_id=_tid(), student_id=stu.id,
                                    advisor_name=r.get("advisorName") or None,
+                                   intern_start_date=sd or None, intern_end_date=ed or None,
+                                   remark=(r.get("remark") or None),
                                    status="PREPARING", eligibility_status="PENDING",
                                    destination_type="NONE", risk_level="NONE")
             db.add(rec)
             db.flush()
-            _trail(db, rec.id, "IMPORT", {"studentNo": stu.student_no})
+            _trail(db, rec.id, "IMPORT", {"studentNo": stu.student_no,
+                                          "advisorName": rec.advisor_name or ""})
             created += 1
         db.commit()
         return {"created": created}
 
 
-def export_students(keyword=None, status=None, eligibility=None) -> dict:
-    items, _ = list_students(1, 100000, keyword=keyword, status=status, eligibility=eligibility)
-    header = ["姓名", "学号", "班级", "实习状态", "实习资格", "实习去向", "企业", "岗位",
-              "企业导师", "校内指导教师", "风险"]
-    lines = [",".join(header)]
-    for it in items:
-        lines.append(",".join(str(x).replace(",", "，") for x in [
-            it["name"], it["studentNo"], it["className"], it["statusLabel"], it["eligibilityLabel"],
-            it["destinationLabel"], it["enterpriseName"], it["positionName"], it["mentorName"],
-            it["advisorName"], it["riskLabel"]]))
-    return {"filename": "实习学生导出.csv", "content": "\n".join(lines), "rowCount": len(items)}
+# 导入模板 15 列（表头文字 → 行字段 key）。正式交付以 Excel/xlsx 为准（CLAUDE.md §38）。
+IMPORT_HEADERS = ["学号", "姓名", "学院", "专业", "班级", "指导教师", "企业名称", "岗位名称",
+                  "实习批次", "实习开始日期", "实习结束日期", "联系电话", "实习状态", "就业去向", "备注"]
+IMPORT_REQUIRED = ["学号"]
+IMPORT_HEADER_MAP = {"学号": "studentNo", "姓名": "name", "学院": "collegeName", "专业": "majorName",
+                     "班级": "className", "指导教师": "advisorName", "企业名称": "enterpriseName",
+                     "岗位名称": "positionName", "实习批次": "batchName", "实习开始日期": "startDate",
+                     "实习结束日期": "endDate", "联系电话": "phone", "实习状态": "statusText",
+                     "就业去向": "destinationText", "备注": "remark"}
+IMPORT_SAMPLE = ["2023115001", "赵一凡", "信息工程学院", "软件技术", "软件2301", "刘强",
+                 "湖南智联科技有限公司", "前端开发实习生", "2026 春季顶岗实习",
+                 "2026-03-02", "2026-08-28", "138****0001", "在岗中", "已分配岗位", ""]
+IMPORT_NOTES = ["学号必填，且必须是本校已有学生。", "企业/岗位/批次如填写，必须是系统中已存在的名称，否则该行报错。",
+                "日期格式：YYYY-MM-DD（如 2026-03-02）。", "联系电话仅登记，导出时脱敏。", "仅导入「导入模板」页。"]
+
+
+def _row_values_for_error(r: dict) -> list:
+    return [r.get(IMPORT_HEADER_MAP[h], "") for h in IMPORT_HEADERS]
+
+
+def export_students(keyword=None, status=None, eligibility=None, user=None) -> dict:
+    """导出实习学生台账（xlsx，正式交付格式）：经 list_students → 已按数据范围收敛；含水印 + 导出留痕。
+    敏感字段脱敏（本台账不含手机号明文；如需联系方式请走详情页脱敏查看+审计）。"""
+    from app.services import xlsx_util
+    items, _ = list_students(1, 100000, keyword=keyword, status=status, eligibility=eligibility, user=user)
+    headers = ["学号", "姓名", "班级", "校内指导教师", "企业名称", "岗位名称",
+               "实习状态", "实习资格", "实习去向", "风险"]
+    data_rows = [[it["studentNo"], it["name"], it["className"], it["advisorName"],
+                  it["enterpriseName"], it["positionName"], it["statusLabel"],
+                  it["eligibilityLabel"], it["destinationLabel"], it["riskLabel"]] for it in items]
+    user = get_current_user_ctx() or {}
+    wm = (f"岗位实习中心·实习学生台账 · 导出人：{user.get('realName', '-')} · "
+          f"{datetime.now():%Y-%m-%d %H:%M} · 敏感字段已脱敏，导出留痕")
+    content = xlsx_util.build_ledger_xlsx("实习学生台账", headers, data_rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "实习学生台账.xlsx", len(items))

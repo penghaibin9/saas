@@ -111,6 +111,7 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { STUDENT_STATUS, ELIGIBILITY_STATUS, DESTINATION_TYPE } from '@/modules/internship/constants/internship-student.constants'
 import { toast } from '@/utils/toast'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '' })
 
@@ -267,12 +268,11 @@ export default {
       if (res.code === 0) { toast.success(`已建档 ${res.data.created} 人`); this.importVisible = false; this.load() } else toast.error(res.message)
     },
     async doExport() {
+      // P0-E：正式交付 Excel(.xlsx)，后端返回 base64 + xlsx mediaType，走公共下载工具
       const res = await internStudentApi.exportStudents({ ...this.filters })
       if (res.code !== 0) return toast.error(res.message)
-      const blob = new Blob(['﻿' + res.data.content], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob); const a = document.createElement('a')
-      a.href = url; a.download = res.data.filename || '实习学生导出.csv'; a.click(); URL.revokeObjectURL(url)
-      toast.success(`已导出 ${res.data.rowCount} 人（脱敏，已写审计）`)
+      downloadXlsxFromApi(res.data, '实习学生台账.xlsx')
+      toast.success(`已导出 ${res.data.rowCount} 人（脱敏 + 水印，已写审计）`)
     }
   }
 }

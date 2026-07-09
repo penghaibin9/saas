@@ -140,8 +140,11 @@ def test_stats_and_export(client, auth_headers, db_mode):
     s = client.get(f"{IST}/stats", headers=auth_headers).json()
     assert s["code"] == 0 and s["data"]["total"] >= 1
     assert any(x["status"] == "PREPARING" for x in s["data"]["byStatus"])
+    # P0-E：导出已由 CSV 升级为正式 Excel(.xlsx)（base64 + xlsx mediaType）
     ex = client.post(f"{IST}/export", headers=auth_headers).json()
-    assert ex["code"] == 0 and "姓名" in ex["data"]["content"] and ex["data"]["rowCount"] >= 1
+    assert ex["code"] == 0 and ex["data"]["rowCount"] >= 1
+    assert ex["data"]["filename"].endswith(".xlsx") and "spreadsheetml.sheet" in ex["data"]["mediaType"]
+    assert ex["data"].get("contentBase64")
 
 
 def test_import(client, auth_headers, db_mode):
