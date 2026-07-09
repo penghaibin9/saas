@@ -77,8 +77,12 @@ export const ADMIN_MENU = [
     label: '岗位实习中心',
     icon: '✎',
     children: [
-      { key: 'in-internship', label: '岗位实习', path: '/admin/internship', moduleCode: 'INTERNSHIP', permissionKey: 'internship.dashboard.view' },
-      { key: 'in-employment', label: '就业服务', path: '/admin/employment', moduleCode: 'EMPLOYMENT', permissionKey: 'employment.dashboard.view' }
+      { key: 'in-internship', label: '实习工作台', path: '/admin/internship', moduleCode: 'INTERNSHIP', permissionKey: 'internship.dashboard.view' },
+      { key: 'in-enterprise-position', label: '企业与岗位', path: '/admin/internship/enterprises', moduleCode: 'INTERNSHIP', permissionKey: 'internship.enterprise.view' },
+      { key: 'in-match-assign', label: '匹配与分配', path: '/admin/internship/match', moduleCode: 'INTERNSHIP', permissionKey: 'internship.match.view' },
+      { key: 'in-risk-disposal', label: '风险处置', path: '/admin/internship/risk-disposal', moduleCode: 'INTERNSHIP', permissionKey: 'internship.risk.view' },
+      { key: 'in-eval-score', label: '评价与成绩', path: '/admin/internship/scores', moduleCode: 'INTERNSHIP', permissionKey: 'internship.score.view' },
+      { key: 'in-employment', label: '就业转化与归档统计', path: '/admin/employment', moduleCode: 'EMPLOYMENT', permissionKey: 'employment.dashboard.view' }
     ]
   },
   {

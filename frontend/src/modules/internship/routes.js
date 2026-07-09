@@ -16,6 +16,16 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', title: '岗位实习中心', requiresAuth: true, permissionKey: 'internship.dashboard.view' }
     },
     {
+      path: 'workbench',
+      name: 'internship-workbench',
+      redirect: '/admin/internship'
+    },
+    {
+      path: 'batch-rules',
+      name: 'internship-batch-rules',
+      redirect: '/admin/internship/batches?panel=list'
+    },
+    {
       path: 'batches',
       name: 'internship-batches',
       component: () => import('@/views/admin/internship/InternshipBatchListView.vue'),
@@ -28,6 +38,21 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', title: '实习学生列表', requiresAuth: true, permissionKey: 'internship.student.view' }
     },
     {
+      path: 'enterprise-position',
+      name: 'internship-enterprise-position',
+      redirect: '/admin/internship/enterprises?panel=list'
+    },
+    {
+      path: 'match-assign',
+      name: 'internship-match-assign',
+      redirect: '/admin/internship/match?panel=intention'
+    },
+    {
+      path: 'apply-agreement',
+      name: 'internship-apply-agreement',
+      redirect: '/admin/internship/agreements'
+    },
+    {
       path: 'students/:id',
       name: 'internship-student-detail',
       component: () => import('@/views/admin/internship/InternshipStudentDetailView.vue'),
@@ -38,6 +63,11 @@ const internshipRoutes = {
       name: 'internship-attendance',
       component: () => import('@/views/admin/internship/AttendanceView.vue'),
       meta: { moduleCode: 'INTERNSHIP', title: '打卡与补卡', requiresAuth: true, permissionKey: 'internship.checkin.handle' }
+    },
+    {
+      path: 'attendance-leave',
+      name: 'internship-attendance-leave',
+      redirect: '/admin/internship/attendance'
     },
     {
       path: 'exceptions',
@@ -56,6 +86,16 @@ const internshipRoutes = {
       name: 'internship-guidance',
       component: () => import('@/views/admin/internship/GuidanceVisitView.vue'),
       meta: { moduleCode: 'INTERNSHIP', title: '指导与巡访', requiresAuth: true, permissionKey: 'internship.guidance.view' }
+    },
+    {
+      path: 'weekly-task',
+      name: 'internship-weekly-task',
+      redirect: '/admin/internship/reports'
+    },
+    {
+      path: 'guidance-visit',
+      name: 'internship-guidance-visit',
+      redirect: '/admin/internship/guidance'
     },
     {
       path: 'reports',
@@ -134,6 +174,16 @@ const internshipRoutes = {
       name: 'internship-scores',
       component: () => import('@/views/admin/internship/ScoreView.vue'),
       meta: { moduleCode: 'INTERNSHIP', title: '实习成绩', requiresAuth: true, permissionKey: 'internship.score.view' }
+    },
+    {
+      path: 'eval-score',
+      name: 'internship-eval-score',
+      redirect: '/admin/internship/scores'
+    },
+    {
+      path: 'employment-archive-stats',
+      name: 'internship-employment-archive-stats',
+      redirect: '/admin/employment'
     },
     {
       path: 'agreement-templates',
