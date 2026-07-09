@@ -37,7 +37,7 @@ def _int_row_values(r: dict) -> list:
 def intentions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                keyword: Optional[str] = None, status: Optional[str] = None,
                user=Depends(get_current_user)):
-    items, total = svc.list_intentions(page, pageSize, keyword=keyword, status=status)
+    items, total = svc.list_intentions(page, pageSize, keyword=keyword, status=status, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -152,14 +152,14 @@ def results(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
             keyword: Optional[str] = None, status: Optional[str] = None,
             matchType: Optional[str] = None, user=Depends(get_current_user)):
     items, total = svc.list_matches(page, pageSize, keyword=keyword, status=status,
-                                    match_type=matchType)
+                                    match_type=matchType, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/conflicts", summary="匹配冲突列表")
 def conflicts(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
               keyword: Optional[str] = None, user=Depends(get_current_user)):
-    items, total = svc.list_conflicts(page, pageSize, keyword=keyword)
+    items, total = svc.list_conflicts(page, pageSize, keyword=keyword, user=user)
     return success(paginate(items, total, page, pageSize))
 
 

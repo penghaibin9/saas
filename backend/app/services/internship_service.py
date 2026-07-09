@@ -75,6 +75,36 @@ def _students_map(db, ids: list[int]) -> dict:
     return {s.id: s for s in rows}
 
 
+# ═══════════ 数据范围（P0-D：管理端按教师范围收敛，不仅租户） ═══════════
+# 与 internship_student_service 同一机制：user 由 API 层显式传入（FastAPI 同步端点 contextvar 不可靠）。
+
+def _current_scope(user: dict | None = None) -> dict:
+    from app.services.mobile_teacher_service import resolve_teacher_scope
+    return resolve_teacher_scope(user or get_current_user_ctx() or {})
+
+
+def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
+    """实习记录是否在教师数据范围内。非 SCOPED（管理员全校 / 无范围兜底）一律放行；
+    SCOPED 按 指导教师姓名 / 学号 / 班级 / 学院 收敛。记录缺失（脏数据）时 SCOPED 下不放行。"""
+    if scope.get("mode") != "SCOPED":
+        return True
+    if r is None:
+        return False
+    from app.services.mobile_teacher_service import scope_match_row
+    class_name = college_name = None
+    if stu is not None:
+        from app.models import College, SchoolClass
+        if getattr(stu, "class_id", None):
+            c = db.get(SchoolClass, stu.class_id)
+            class_name = c.class_name if c else None
+        if getattr(stu, "college_id", None):
+            col = db.get(College, stu.college_id)
+            college_name = col.college_name if col else None
+    return scope_match_row(scope, student_no=(stu.student_no if stu else None),
+                           class_name=class_name, advisor_name=r.advisor_name,
+                           college_name=college_name)
+
+
 def _record_row(r: InternshipRecord, stu: StudentProfile | None) -> dict:
     return {
         "id": str(r.id), "studentId": str(r.student_id),
@@ -94,7 +124,7 @@ def _record_row(r: InternshipRecord, stu: StudentProfile | None) -> dict:
 # ═══ 实习学生列表 / 详情 ═══
 
 def list_internship_students(page, page_size, keyword=None, class_id=None,
-                             status=None, risk_level=None):
+                             status=None, risk_level=None, user=None):
     with session() as db:
         q = select(InternshipRecord).where(InternshipRecord.tenant_id == _tid(),
                                            InternshipRecord.is_deleted.is_(False))
@@ -104,6 +134,7 @@ def list_internship_students(page, page_size, keyword=None, class_id=None,
             q = q.where(InternshipRecord.risk_level == risk_level)
         rows = db.scalars(q.order_by(InternshipRecord.id)).all()
         smap = _students_map(db, [r.student_id for r in rows])
+        scope = _current_scope(user)
         items = []
         for r in rows:
             stu = smap.get(r.student_id)
@@ -113,18 +144,23 @@ def list_internship_students(page, page_size, keyword=None, class_id=None,
                     continue
             if class_id and (not stu or str(stu.class_id) != str(class_id)):
                 continue
+            if not _rec_in_scope(scope, db, r, stu):  # P0-D
+                continue
             items.append(_record_row(r, stu))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
 
 
-def get_internship_student_detail(record_id) -> dict:
+def get_internship_student_detail(record_id, user=None) -> dict:
     with session() as db:
         r = db.get(InternshipRecord, int(record_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("实习记录不存在或不在当前数据范围内")
         stu = db.get(StudentProfile, r.student_id)
+        if not _rec_in_scope(_current_scope(user), db, r, stu):  # P0-D：越范围 → 403
+            from app.core.exceptions import no_permission
+            raise no_permission("该实习学生不在你的数据范围内")
         phone = db.scalars(select(StudentContact).where(
             StudentContact.tenant_id == _tid(), StudentContact.student_id == r.student_id,
             StudentContact.contact_type == "PHONE")).first()
@@ -189,7 +225,7 @@ def _exc_ctx(db, c: AttendanceException):
     return rec, stu
 
 
-def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=None):
+def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=None, user=None):
     with session() as db:
         q = select(AttendanceException).where(AttendanceException.tenant_id == _tid(),
                                               AttendanceException.is_deleted.is_(False))
@@ -198,10 +234,13 @@ def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=
         if status:
             q = q.where(AttendanceException.status == status)
         rows = db.scalars(q.order_by(AttendanceException.exception_date.desc())).all()
+        scope = _current_scope(user)
         items = []
         for c in rows:
             rec, stu = _exc_ctx(db, c)
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
+                continue
+            if not _rec_in_scope(scope, db, rec, stu):  # P0-D
                 continue
             items.append(_exc_row(c, rec, stu))
         total = len(items)
@@ -209,12 +248,15 @@ def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=
         return items[start:start + page_size], total
 
 
-def get_exception_detail(exception_id) -> dict:
+def get_exception_detail(exception_id, user=None) -> dict:
     with session() as db:
         c = db.get(AttendanceException, int(exception_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("打卡异常不存在")
         rec, stu = _exc_ctx(db, c)
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):  # P0-D
+            from app.core.exceptions import no_permission
+            raise no_permission("该打卡异常不在你的数据范围内")
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(),
             InternshipAuditTrail.target_id == c.id,
@@ -280,7 +322,7 @@ def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfi
     }
 
 
-def list_weekly_reports(page, page_size, status=None, keyword=None):
+def list_weekly_reports(page, page_size, status=None, keyword=None, user=None):
     with session() as db:
         q = select(WeeklyReport).where(WeeklyReport.tenant_id == _tid(),
                                        WeeklyReport.is_deleted.is_(False))
@@ -289,11 +331,14 @@ def list_weekly_reports(page, page_size, status=None, keyword=None):
         rows = db.scalars(q.order_by(WeeklyReport.submitted_at.is_(None),
                                      WeeklyReport.submitted_at.desc(),
                                      WeeklyReport.id.desc())).all()
+        scope = _current_scope(user)
         items = []
         for w in rows:
             rec = db.get(InternshipRecord, w.internship_id)
             stu = db.get(StudentProfile, rec.student_id) if rec else None
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
+                continue
+            if not _rec_in_scope(scope, db, rec, stu):  # P0-D
                 continue
             items.append(_report_row(w, rec, stu))
         total = len(items)
@@ -301,13 +346,16 @@ def list_weekly_reports(page, page_size, status=None, keyword=None):
         return items[start:start + page_size], total
 
 
-def get_weekly_report_detail(report_id) -> dict:
+def get_weekly_report_detail(report_id, user=None) -> dict:
     with session() as db:
         w = db.get(WeeklyReport, int(report_id))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("周报不存在")
         rec = db.get(InternshipRecord, w.internship_id)
         stu = db.get(StudentProfile, rec.student_id) if rec else None
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):  # P0-D
+            from app.core.exceptions import no_permission
+            raise no_permission("该周报不在你的数据范围内")
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_id == w.id,
             InternshipAuditTrail.target_type == "REPORT").order_by(InternshipAuditTrail.id)).all()
@@ -349,7 +397,7 @@ def review_weekly_report(report_id, action: str, comment: str) -> dict:
 
 # ═══ 风险学生 ═══
 
-def list_risk_students(page, page_size, level=None, status=None):
+def list_risk_students(page, page_size, level=None, status=None, user=None):
     with session() as db:
         q = select(RiskRecord).where(RiskRecord.tenant_id == _tid(),
                                      RiskRecord.is_deleted.is_(False))
@@ -358,10 +406,13 @@ def list_risk_students(page, page_size, level=None, status=None):
         if status:
             q = q.where(RiskRecord.status == status)
         rows = db.scalars(q.order_by(RiskRecord.id.desc())).all()
+        scope = _current_scope(user)
         items = []
         for k in rows:
             rec = db.get(InternshipRecord, k.internship_id)
             stu = db.get(StudentProfile, rec.student_id) if rec else None
+            if not _rec_in_scope(scope, db, rec, stu):  # P0-D
+                continue
             items.append({
                 "id": str(k.id), "internId": str(k.internship_id),
                 "studentName": stu.real_name if stu else "-",
@@ -617,23 +668,31 @@ def export_batches(keyword=None, status=None) -> dict:
 
 # ═══ 看板 ═══
 
-def get_dashboard_summary() -> dict:
+def get_dashboard_summary(user=None) -> dict:
     with session() as db:
         recs = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False))).all()
+        # P0-D：SCOPED（指导教师/学院负责人）只统计本范围；管理员/兜底看全租户。
+        scope = _current_scope(user)
+        scoped = scope.get("mode") == "SCOPED"
+        if scoped:
+            recs = [r for r in recs
+                    if _rec_in_scope(scope, db, r, db.get(StudentProfile, r.student_id))]
+        scoped_ids = [r.id for r in recs] or [0]
         flow_map = {"PREPARING": 0, "READY": 0, "ONBOARD": 0, "ASSESSING": 0, "ARCHIVED": 0}
         for r in recs:
             flow_map[r.status] = flow_map.get(r.status, 0) + 1
-        pending_exc = db.scalar(select(func.count()).select_from(AttendanceException).where(
-            AttendanceException.tenant_id == _tid(), AttendanceException.status == "PENDING_HANDLE",
-            AttendanceException.is_deleted.is_(False))) or 0
-        pending_rep = db.scalar(select(func.count()).select_from(WeeklyReport).where(
-            WeeklyReport.tenant_id == _tid(), WeeklyReport.status == "PENDING_REVIEW",
-            WeeklyReport.is_deleted.is_(False))) or 0
-        risk_cnt = db.scalar(select(func.count()).select_from(RiskRecord).where(
-            RiskRecord.tenant_id == _tid(), RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]),
-            RiskRecord.is_deleted.is_(False))) or 0
+
+        def _cnt(model, *conds):
+            q = select(func.count()).select_from(model).where(
+                model.tenant_id == _tid(), model.is_deleted.is_(False), *conds)
+            if scoped:
+                q = q.where(model.internship_id.in_(scoped_ids))
+            return db.scalar(q) or 0
+        pending_exc = _cnt(AttendanceException, AttendanceException.status == "PENDING_HANDLE")
+        pending_rep = _cnt(WeeklyReport, WeeklyReport.status == "PENDING_REVIEW")
+        risk_cnt = _cnt(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]))
         batch = db.scalars(select(InternshipBatch).where(
             InternshipBatch.tenant_id == _tid(),
             InternshipBatch.is_deleted.is_(False)).order_by(InternshipBatch.id.desc())).first()

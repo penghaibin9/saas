@@ -175,13 +175,55 @@ def _match_row(db, m: InternshipMatch) -> dict:
 
 # ═══════════ 意向 ═══════════
 
-def list_intentions(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
+# ═══════════ 数据范围（P0-D：与 internship_service 同一机制） ═══════════
+
+def _current_scope(user: dict | None = None) -> dict:
+    from app.services.mobile_teacher_service import resolve_teacher_scope
+    return resolve_teacher_scope(user or get_current_user_ctx() or {})
+
+
+def _rec_in_scope(scope: dict, db, rec, stu) -> bool:
+    if scope.get("mode") != "SCOPED":
+        return True
+    if rec is None:
+        return False
+    from app.services.mobile_teacher_service import scope_match_row
+    class_name = college_name = None
+    if stu is not None:
+        from app.models import College, SchoolClass
+        if getattr(stu, "class_id", None):
+            c = db.get(SchoolClass, stu.class_id)
+            class_name = c.class_name if c else None
+        if getattr(stu, "college_id", None):
+            col = db.get(College, stu.college_id)
+            college_name = col.college_name if col else None
+    return scope_match_row(scope, student_no=(stu.student_no if stu else None),
+                           class_name=class_name, advisor_name=rec.advisor_name,
+                           college_name=college_name)
+
+
+def _filter_scope(db, rows, scope):
+    """按记录数据范围过滤 意向/匹配 行（二者均有 record_id + student_id）。"""
+    if scope.get("mode") != "SCOPED":
+        return rows
+    out = []
+    for r in rows:
+        rec = db.get(InternshipRecord, r.record_id)
+        stu = db.get(StudentProfile, r.student_id)
+        if _rec_in_scope(scope, db, rec, stu):
+            out.append(r)
+    return out
+
+
+def list_intentions(page: int, page_size: int, keyword=None, status=None,
+                    user=None) -> tuple[list[dict], int]:
     with session() as db:
         q = select(InternshipIntention).where(
             InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False))
         if status:
             q = q.where(InternshipIntention.status == status)
         rows = db.scalars(q.order_by(InternshipIntention.id.desc())).all()
+        rows = _filter_scope(db, rows, _current_scope(user))  # P0-D
         items = [_intention_row(db, r) for r in rows]
         if keyword:
             kw = keyword.strip().lower()
@@ -511,7 +553,7 @@ def batch_match(pairs: list[dict]) -> dict:
 
 
 def list_matches(page: int, page_size: int, keyword=None, status=None,
-                 match_type=None, conflict_only=False) -> tuple[list[dict], int]:
+                 match_type=None, conflict_only=False, user=None) -> tuple[list[dict], int]:
     with session() as db:
         q = select(InternshipMatch).where(
             InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False))
@@ -523,6 +565,7 @@ def list_matches(page: int, page_size: int, keyword=None, status=None,
             q = q.where(or_(InternshipMatch.conflict_flag.is_(True),
                             InternshipMatch.status == "CONFLICT"))
         rows = db.scalars(q.order_by(InternshipMatch.score.desc(), InternshipMatch.id.desc())).all()
+        rows = _filter_scope(db, rows, _current_scope(user))  # P0-D
         items = [_match_row(db, r) for r in rows]
         if keyword:
             kw = keyword.strip().lower()
@@ -533,8 +576,8 @@ def list_matches(page: int, page_size: int, keyword=None, status=None,
         return items[start:start + page_size], total
 
 
-def list_conflicts(page: int, page_size: int, keyword=None) -> tuple[list[dict], int]:
-    return list_matches(page, page_size, keyword=keyword, conflict_only=True)
+def list_conflicts(page: int, page_size: int, keyword=None, user=None) -> tuple[list[dict], int]:
+    return list_matches(page, page_size, keyword=keyword, conflict_only=True, user=user)
 
 
 def confirm_match(mid) -> dict:
