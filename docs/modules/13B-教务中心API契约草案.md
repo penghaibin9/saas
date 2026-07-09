@@ -587,4 +587,78 @@ AC-016 注册名单（学院核对视图，身份证脱敏）：
 3. 预审运行中再次触发 AC-118 → 409 IDEMPOTENCY_CONFLICT。
 4. 学院教务员初审他院学生结果 → 403 NO_DATA_SCOPE；绕过初审直接终审 → 409。
 
+---
+
+## 十、附录：按 13A 学工 B 包深度补齐的 13B 教务中心施工卡（API 命名规则、B0–B8 分组与缺口清单）
+
+> 口径说明：上文 §三（3.1–3.16）已按 14 个业务域给出完整端点契约，本节不重复罗列端点，只补三样 13A B 包标准要求但上文缺少的东西：①统一命名规则、②把已有端点按 B0–B8 施工顺序重新分组（方便新手按包施工时知道该看哪几节）、③表/字段建议索引、④xlsx 接口清单、⑤接口缺口清单、⑥与既有 `/admin/academic` 模块的融合边界重申。
+
+### 十.1 API 命名规则
+
+- **路径**：`/api/v1/academic-affairs/<domain>[/:id][/<action>]`，domain 用英文小写 kebab-case（如 `status-change`、`teaching-tasks`、`grade-tasks`）；移动端固定 `/api/v1/mobile/academic-affairs/*`（学生）与 `/api/v1/mobile/teacher/academic-affairs/*`（教师）。
+- **动作型端点**：状态流转类统一 `POST /<domain>/:id/<verb>`（`approve`/`publish`/`reject`/`rollback`/`cancel`），禁止用 `PUT` 承担状态机跳转。
+- **权限点**：`academicAffairs.<biz>.<action>`（与 §15 权限点矩阵一致，例如 `academicAffairs.grade.publish`）。
+- **导入导出**：统一走 `/api/v1/excel/import|export`，`domain` 参数注册对应 13B 业务域，禁止每个业务域另起一套导入导出端点（复用 `app/services/excel/`）。
+- **统计**：统一 `/api/v1/stats/*`，多维参数化，不为每个统计维度单开端点。
+
+### 十.2 B0–B8 API 分组（映射到 §三已有端点，与 Opus 入口文档 §16 同一顺序）
+
+| 分包 | 涉及业务域（对应 §三小节） | 端点前缀 |
+|---|---|---|
+| B0 | 无新端点，契约冻结 | — |
+| B1 | 教务首页（3.1）、学年学期与校历（3.2） | `/dashboard`、`/terms` |
+| B2 | 培养方案（3.5）、课程库（3.6）、教学任务（3.7） | `/programs`、`/courses`、`/teaching-tasks` |
+| B3 | 教学任务分配子集（3.7）、选课（3.10，承接） | `/teaching-tasks/:id/check`、`/enrollment` |
+| B4 | 排课与课表发布（3.8）、调停课（3.9） | `/schedule`、`/course-adjustments` |
+| B5 | 考务与缓考（3.11） | `/exam`、`/exam/deferral` |
+| B6 | 成绩（3.12） | `/grade-tasks`、`/grades`、`/grade-correction` |
+| B7 | 补考/重修/免修（3.13）、学业预警（3.14） | `/makeup`、`/retake`、`/exemption`、`/warnings` |
+| B8 | 毕业资格审核（3.15）、教务归档（3.16）、导入导出（四）、移动端（五）、统计（六接口清单统计） | `/graduation-audit`、`/archive`、`/excel/*`、`/mobile/academic-affairs/*`、`/stats/*` |
+| 桥接 | 学籍注册/异动（3.3/3.4）——学籍主档在学生中心，教务只做受控写入口 | `/roll/registration`、`/status-change` |
+
+### 十.3 表/字段建议索引（详见 `13A-13B-数据表与迁移策略草案.md` §4，本节只做索引不重复列字段）
+
+| 表分组 | 归属分包 | 状态 |
+|---|---|---|
+| §4.1 学年学期与校历组 | B1 | V1 新建，已有 Alembic 0009 |
+| §4.2 学籍组（异动新表+student_status 受控扩展） | B1/B3 | V1 新建，已有 Alembic 0010 |
+| §4.3 课程库与培养方案组 | B2 | V1 新建，已有 Alembic 0011 |
+| §4.4 教学任务与课表组 | B2/B3/B4 | V1 新建，已有 Alembic 0011/0012 |
+| §4.5 成绩与预警组（成绩权威=t_acad_grade，预警复用 t_acad_warning） | B6/B7 | V1 新建，已有 Alembic 0013 |
+| §4.6 毕业资格预审组 | B8 | V1 新建，已有 Alembic 0014 |
+| §4.7 审计组 | 全程 | 复用既有 `t_security_audit_log`/`t_export_task`，不新建 |
+| §4.8 13B P2 预留表（教材/教学资源/教室/评价/质量/归档批次/等级考试/国家平台上报） | B8 | 仅锁名，本轮不建 |
+
+### 十.4 xlsx 导入导出接口（详见 `13A-13B-打印导出归档模板设计.md` §2.1–2.10，本节只做接口清单）
+
+| domain 注册名 | 用途 | 模板 | 归属分包 | 状态 |
+|---|---|---|---|---|
+| `aa_status_change` | 学籍异动申请表导出 | §2.1 | B3 | 契约已冻结，前端未接 |
+| `aa_grades` | 成绩单 PDF+xlsx | §2.2 | B6 | 契约已冻结，前端未接 |
+| `aa_makeup_list` | 补考名单 | §2.3 | B7 | 契约已冻结，前端未接 |
+| `aa_retake_list` | 重修名单 | §2.4 | B7 | 契约已冻结，前端未接 |
+| `aa_schedule` | 课表（班级/教师/教室三视图） | §2.5 | B4 | 契约已冻结，前端未接 |
+| `aa_exam_schedule` | 考试安排 | §2.6 | B5 | 契约先冻结，功能随考务 P2 启用 |
+| `aa_graduation_audit` | 毕业资格审核表 | §2.7 | B8 | 契约已冻结，前端未接 |
+| `aa_graduation_lists` | 毕业/结业/延毕名单三变体 | §2.8–2.10 | B8 | 契约已冻结，前端未接 |
+| 错误行下载 | 全部导入 domain 通用能力（复用 `AppImportErrorSummary`） | — | B2/B3/B6 | 后端管线已支持，前端未接 |
+| 导出台账 | 全部导出 domain 通用能力（`t_export_task` 已记录） | — | 全程 | 后端已支持，前端展示未接 |
+
+### 十.5 接口缺口清单
+
+| 缺口 | 现状 | 阻断PC | 阻断上线 |
+|---|---|---|---|
+| 前端零调用 | 全部 §三 端点已在 `academic_affairs.py`（569 行，10 个 service）实现并有 11 个 `test_aa_*.py` 覆盖，`frontend/src` 内 0 处 `request('/academic-affairs/...')` 调用 | 是 | 是 |
+| dashboard 聚合接口 | §3.1 教务首页端点契约已给，后端待确认是否已实现（需 B0 核对） | 是 | 是 |
+| stats 多维统计接口 | §六接口清单统计与实施顺序未见 `/api/v1/stats/*` 教务维度实现确认 | 否 | 是 |
+| 算法排课/排考/抽签选课接口位 | `suggest` 系列端点为接口位设计，未启用时需返回明确"未启用"而非报错 | 否 | 否（P2/P3） |
+| 移动端端点前端接入 | 契约已给（§五），`miniapp/src/pages/student/academic-affairs/*` 现有页面读取的是 t_acad_ 而非 t_aa_，需 B8 核对切换或双轨过渡方案 | 否 | 是 |
+
+### 十.6 与既有 `/admin/academic`（t_acad_）模块的融合边界（重申 §2 结论）
+
+- `t_acad_*`（现有"学业过程"模块）与 `t_aa_*`（本模块）**并存不合并**：`t_acad_*` 保留为学生个人学业过程视图（成绩/学分/补考重修/预警的学生侧只读呈现），`t_aa_*` 是教务处的业务权威源（培养方案/课程/教学任务/排课/考试/成绩录入审核发布的管理侧闭环）。
+- 成绩权威表为 `t_acad_grade`：B6 成绩发布/更正**原子回写** `t_acad_grade`，不新建平行成绩表；学业预警权威表为 `t_acad_warning`，B7 只做扩展 `source` 字段，不新建平行预警表。
+- 现有 `/api/v1/academic/*` 端点（students/grades/credits/makeups/retakes/warnings/audit-logs）及 `/api/v1/mobile/academic/my` **零改动、零重复注册**，CI 路由重复检查覆盖。
+- 前端菜单层面：`navPlan.js` 中"教务中心"分组 `aa-dashboard` 等少数条目当前复用 `/admin/academic` 路由，B1 起需按 §十.2 分组逐条切到 `/admin/academic-affairs/*` 真实路由，替换过程中旧路由保持 redirect 兼容，不破坏在用页面。
+
 （完）
