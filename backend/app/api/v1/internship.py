@@ -17,6 +17,7 @@ from app.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, 
 from app.services import audit_log
 from app.services import internship_enterprise_service as ent
 from app.services import internship_agreement_service as agr
+from app.services import internship_enterprise_eval_service as ee
 from app.services import internship_guidance_service as gd
 from app.services import internship_leave_service as lv
 from app.services import internship_makeup_service as mk
@@ -384,6 +385,45 @@ def agreement_archive(agreement_id: str, user=Depends(get_current_user)):
     result = agr.archive(user, agreement_id)
     audit_log.record("归档三方协议", f"internship-agreement:{agreement_id}", detail=result)
     return success(result, message="已归档")
+
+
+# ═══════════ 企业评价（P2-B：五维评价 + 学校审核，owner + 数据范围）═══════════
+# 企业导师本人提交为门户权限预留（source=ENTERPRISE）；学校录入企业纸质评价 source=SCHOOL_RECORDED。
+
+@router.post("/enterprise-evals/export", summary="企业评价台账导出 Excel(.xlsx)")
+def enterprise_evals_export(reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
+                            user=Depends(get_current_user)):
+    data = ee.export_evals(review_status=reviewStatus, keyword=keyword, user=user)
+    audit_log.record("导出企业评价台账", "internship-enterprise-eval:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+@router.get("/enterprise-evals", summary="企业评价列表（按数据范围）")
+def enterprise_evals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                     reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
+                     user=Depends(get_current_user)):
+    items, total = ee.list_evals(page, pageSize, review_status=reviewStatus, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/enterprise-evals", summary="录入企业评价（学校录入企业纸质评价/企业导师提交）")
+def enterprise_eval_create(body: dict = Body(...), user=Depends(get_current_user)):
+    result = ee.create(user, body)
+    audit_log.record("录入企业评价", f"internship-enterprise-eval:{result['id']}", detail=result)
+    return success(result, message="已录入企业评价")
+
+
+@router.get("/enterprise-evals/{eval_id}", summary="企业评价详情（含五维/评语/审核留痕）")
+def enterprise_eval_detail(eval_id: str, user=Depends(get_current_user)):
+    return success(ee.get_eval(eval_id, user=user))
+
+
+@router.post("/enterprise-evals/{eval_id}/review", summary="学校审核企业评价（通过/退回，退回原因≥5字）")
+def enterprise_eval_review(eval_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    b = body or {}
+    result = ee.review(user, eval_id, (b.get("action") or "").upper(), b.get("comment") or "")
+    audit_log.record("审核企业评价", f"internship-enterprise-eval:{eval_id}", detail=result)
+    return success(result, message="审核完成")
 
 
 # ═══════════ 实习批次（组织时间轴 + 规则骨架，状态机 DRAFT→RUNNING→CLOSED→ARCHIVED）═══════════
