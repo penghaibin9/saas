@@ -17,9 +17,9 @@
         </select>
       </label>
       <label class="ie-fld"><span class="ie-lbl">题目编号</span><input v-model.trim="form.topicNo" class="ie-in" /></label>
-      <label class="ie-fld"><span class="ie-lbl">指导教师</span>
+      <div class="ie-fld"><span class="ie-lbl">指导教师</span>
         <AppMentorPicker v-model="form.advisorName" :remote-search="searchMentors" placeholder="按姓名 / 工号搜索导师" />
-      </label>
+      </div>
       <label class="ie-fld"><span class="ie-lbl">专业</span><input v-model.trim="form.majorName" class="ie-in" /></label>
       <label class="ie-fld"><span class="ie-lbl">分类</span>
         <select v-model="form.category" class="ie-in">

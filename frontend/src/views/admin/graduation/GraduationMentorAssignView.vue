@@ -7,9 +7,9 @@
   >
     <form class="ie-form" @submit.prevent="submit">
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生</span><input class="ie-in" :value="form.studentLabel" disabled /></label>
-      <label class="ie-fld ie-fld--full"><span class="ie-lbl">导师 <i>*</i></span>
+      <div class="ie-fld ie-fld--full"><span class="ie-lbl">导师 <i>*</i></span>
         <AppMentorPicker v-model="form.mentorId" :options="mentorOptions" :remote-search="searchMentors" placeholder="按姓名 / 工号搜索已认证且未满员的导师" />
-      </label>
+      </div>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">{{ form.mode === 'change' ? '调导师原因（≥5字）' : '分配原因' }}<i v-if="form.mode === 'change'">*</i></span><textarea v-model.trim="form.reason" class="ie-in" rows="2" /></label>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>

@@ -9,9 +9,9 @@
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <form v-else class="ie-form" @submit.prevent="submit">
       <p class="ie-hint">答辩组来自「答辩安排」模块真实数据；分配后自动更新组内人数。</p>
-      <label class="ie-fld ie-fld--full"><span class="ie-lbl">答辩组 <i>*</i></span>
+      <div class="ie-fld ie-fld--full"><span class="ie-lbl">答辩组 <i>*</i></span>
         <AppRemoteSelect v-model="defenseGroupId" :options="groupOptions" placeholder="按组名 / 日期 / 地点搜索答辩组" />
-      </label>
+      </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template v-if="student" #footer>

@@ -6,9 +6,9 @@
     :back-to="backTo"
   >
     <form class="ie-form" @submit.prevent="submit">
-      <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
+      <div class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
         <AppStudentPicker v-model="form.studentId" :options="studentOptions" :remote-search="searchStudents" placeholder="按学号 / 姓名搜索学生" />
-      </label>
+      </div>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">毕设批次</span>
         <select v-model="form.batchId" class="ie-in">
           <option value="">不关联批次</option>

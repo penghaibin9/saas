@@ -9,9 +9,9 @@
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <form v-else class="ie-form" @submit.prevent="submit">
       <p class="ie-hint">仅「已确认」且未满员的选题可选（来自选题库真实数据）。</p>
-      <label class="ie-fld ie-fld--full"><span class="ie-lbl">选题 <i>*</i></span>
+      <div class="ie-fld ie-fld--full"><span class="ie-lbl">选题 <i>*</i></span>
         <AppRemoteSelect v-model="assignTopicId" :options="topicOptions" placeholder="按题目名 / 导师搜索选题" />
-      </label>
+      </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template v-if="student" #footer>

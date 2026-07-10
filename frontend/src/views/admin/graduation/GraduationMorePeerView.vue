@@ -7,12 +7,12 @@
   >
     <ErrorState v-if="optsError" :description="optsError" @retry="loadStudents" />
     <form v-else class="ie-form" @submit.prevent="submit">
-      <label class="ie-fld ie-fld--full"><span class="ie-lbl">被评学生 <i>*</i></span>
+      <div class="ie-fld ie-fld--full"><span class="ie-lbl">被评学生 <i>*</i></span>
         <AppStudentPicker v-model="form.gdStudentId" :options="studentOptions" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索被评学生" />
-      </label>
-      <label class="ie-fld ie-fld--full"><span class="ie-lbl">互查学生 <i>*</i></span>
+      </div>
+      <div class="ie-fld ie-fld--full"><span class="ie-lbl">互查学生 <i>*</i></span>
         <AppStudentPicker v-model="form.reviewerGdStudentId" :options="reviewerOptions" :remote-search="searchReviewers" placeholder="按姓名 / 学号搜索互查学生" />
-      </label>
+      </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template #footer>

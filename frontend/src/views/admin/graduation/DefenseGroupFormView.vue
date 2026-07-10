@@ -11,11 +11,11 @@
       </label>
       <AppDateTimePicker v-model="form.defenseDate" class="ie-fld" label="答辩时间" hint="建议提前一周排期" />
       <label class="ie-fld"><span class="ie-lbl">答辩地点</span><input v-model.trim="form.location" class="ie-in" placeholder="如 实训楼 A301" /></label>
-      <label class="ie-fld"><span class="ie-lbl">答辩组长（副高+）</span><AppMentorPicker v-model="form.chair" :remote-search="searchTeachers" placeholder="按姓名 / 工号搜索组长" /></label>
-      <label class="ie-fld"><span class="ie-lbl">答辩秘书</span><AppMentorPicker v-model="form.secretary" :remote-search="searchTeachers" placeholder="按姓名 / 工号搜索秘书" /></label>
-      <label class="ie-fld ie-fld--full"><span class="ie-lbl">评委名单（建议≥5人，可搜索添加）</span>
+      <div class="ie-fld"><span class="ie-lbl">答辩组长（副高+）</span><AppMentorPicker v-model="form.chair" :remote-search="searchTeachers" placeholder="按姓名 / 工号搜索组长" /></div>
+      <div class="ie-fld"><span class="ie-lbl">答辩秘书</span><AppMentorPicker v-model="form.secretary" :remote-search="searchTeachers" placeholder="按姓名 / 工号搜索秘书" /></div>
+      <div class="ie-fld ie-fld--full"><span class="ie-lbl">评委名单（建议≥5人，可搜索添加）</span>
         <AppMentorPicker v-model="memberList" multiple :remote-search="searchTeachers" placeholder="按姓名 / 工号搜索并添加评委" />
-      </label>
+      </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
 
