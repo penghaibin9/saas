@@ -42,13 +42,14 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">版本记录</span></div>
           <div class="mp-card__body">
-            <ul class="mp-timeline">
+            <ul v-if="detail.versions && detail.versions.length" class="mp-timeline">
               <li v-for="(v, i) in detail.versions" :key="i" class="mp-timeline__item" :class="'is-' + (v.tone === 'processing' ? 'warning' : v.tone)">
                 <div class="mp-timeline__title">{{ v.title }}</div>
                 <div v-if="v.desc" class="mp-timeline__desc">{{ v.desc }}</div>
                 <div class="mp-timeline__time">{{ v.time }}</div>
               </li>
             </ul>
+            <p v-else class="mp-note" style="margin: 0">暂无历史版本，本篇为首次提交。</p>
           </div>
         </section>
       </div>
