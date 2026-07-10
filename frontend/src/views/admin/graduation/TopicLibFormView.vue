@@ -17,7 +17,9 @@
         </select>
       </label>
       <label class="ie-fld"><span class="ie-lbl">题目编号</span><input v-model.trim="form.topicNo" class="ie-in" /></label>
-      <label class="ie-fld"><span class="ie-lbl">指导教师</span><input v-model.trim="form.advisorName" class="ie-in" /></label>
+      <label class="ie-fld"><span class="ie-lbl">指导教师</span>
+        <AppMentorPicker v-model="form.advisorName" :remote-search="searchMentors" placeholder="按姓名 / 工号搜索导师" />
+      </label>
       <label class="ie-fld"><span class="ie-lbl">专业</span><input v-model.trim="form.majorName" class="ie-in" /></label>
       <label class="ie-fld"><span class="ie-lbl">分类</span>
         <select v-model="form.category" class="ie-in">
@@ -61,6 +63,8 @@
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
+import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
+import { AppMentorPicker } from '@/components/common'
 import { GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY } from '@/modules/graduation/constants/graduation-topic.constants'
 import { toast } from '@/utils/toast'
 
@@ -78,7 +82,7 @@ const APPLY_TITLES = {
 
 export default {
   name: 'TopicLibFormView',
-  components: { GraduationFormPageShell },
+  components: { GraduationFormPageShell, AppMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -118,6 +122,12 @@ export default {
     }
   },
   methods: {
+    /** 导师远程搜索（导师库真实接口，按姓名/工号） */
+    async searchMentors(keyword) {
+      const res = await graduationMentorApi.getMentors({ keyword, pageSize: 20 })
+      if (res.code !== 0) throw new Error(res.message || "搜索失败")
+      return res.data.list.map((m) => ({ label: m.teacherName + "（" + (m.capacityText || m.collegeName || "教师") + "）", value: m.teacherName }))
+    },
     async submitForm() {
       if (!this.form.title || this.form.title.length < 2) { this.formError = '题目名称至少2字'; return }
       this.submitting = true
