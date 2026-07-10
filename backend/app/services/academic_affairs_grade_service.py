@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -156,22 +156,25 @@ def transcript(student_id, user) -> dict:
 
 
 def fail_list(user, term=None, page=1, page_size=50):
-    """挂科清单（下钻，读侧）。"""
+    """挂科清单（下钻，读侧）。与 t_acad_student 一次性 JOIN 取数 + DB 级分页，
+    避免逐行 db.get(AcademicStudent) 的 N+1 与全量加载后内存切片。"""
     from app.models import AcademicGrade, AcademicStudent
     with session() as db:
+        join = and_(AcademicStudent.id == AcademicGrade.acad_student_id,
+                    AcademicStudent.tenant_id == AcademicGrade.tenant_id)
         conds = [AcademicGrade.tenant_id == _tid(), AcademicGrade.pass_status == "FAIL",
                  AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False)]
         if term:
             conds.append(AcademicGrade.term == term)
-        rows = db.scalars(select(AcademicGrade).where(*conds).order_by(AcademicGrade.id.desc())).all()
-        out = []
-        for g in rows:
-            a = db.get(AcademicStudent, int(g.acad_student_id))
-            out.append({"studentName": a.name if a else "", "studentId": str(a.student_id or "") if a else "",
-                        "courseName": g.course_name, "term": g.term or "", "score": g.score})
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        total = db.scalar(select(func.count()).select_from(AcademicGrade)
+                          .outerjoin(AcademicStudent, join).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.execute(select(AcademicGrade, AcademicStudent)
+                          .outerjoin(AcademicStudent, join).where(*conds)
+                          .order_by(AcademicGrade.id.desc()).offset(offset).limit(page_size)).all()
+        out = [{"studentName": a.name if a else "", "studentId": str(a.student_id or "") if a else "",
+                "courseName": g.course_name, "term": g.term or "", "score": g.score} for g, a in rows]
+        return out, total
 
 
 def grade_analysis(user, term=None):
