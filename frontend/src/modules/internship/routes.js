@@ -195,6 +195,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: P.AGREEMENT, requiresAuth: true, permissionKey: 'internship.agreement.view' }
     },
     {
+      path: 'agreements/:id',
+      name: 'internship-agreement-detail',
+      component: () => import('@/views/admin/internship/AgreementDetailView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '三方协议档案', requiresAuth: true, permissionKey: 'internship.agreement.view' }
+    },
+    {
       path: 'enterprise-evals',
       name: 'internship-enterprise-evals',
       component: () => import('@/views/admin/internship/EnterpriseEvalView.vue'),

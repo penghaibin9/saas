@@ -27,18 +27,10 @@
         </AppStatusTag>
       </template>
       <template #cell-actions="{ row }">
-        <div class="ops">
-          <AppButton variant="ghost" size="sm" @click="openDetail(row)">详情</AppButton>
-          <AppPermissionButton v-if="row.status === 'DRAFT'" code="internship.agreement.issue" variant="secondary" size="sm" @click="confirmAct(row, 'issue')">下发</AppPermissionButton>
-          <AppPermissionButton v-if="row.esignStatus === 'NONE' && canVoid(row.status)" code="internship.agreement.issue" variant="ghost" size="sm" @click="startEsign(row)">发起电子签</AppPermissionButton>
-          <AppPermissionButton v-if="row.esignStatus === 'PENDING' && row.status === 'PENDING_ENTERPRISE'" code="internship.agreement.confirm" variant="ghost" size="sm" @click="esignParty(row, 'ENTERPRISE')">企业电子签</AppPermissionButton>
-          <AppPermissionButton v-if="row.esignStatus === 'PENDING' && row.status === 'PENDING_SCHOOL'" code="internship.agreement.confirm" variant="ghost" size="sm" @click="esignParty(row, 'SCHOOL')">学校电子签</AppPermissionButton>
-          <AppPermissionButton v-if="row.status === 'PENDING_ENTERPRISE'" code="internship.agreement.confirm" variant="secondary" size="sm" @click="openEnterprise(row)">记录企业签署</AppPermissionButton>
-          <AppPermissionButton v-if="row.status === 'PENDING_SCHOOL'" code="internship.agreement.confirm" variant="secondary" size="sm" @click="confirmAct(row, 'school')">学校确认</AppPermissionButton>
-          <AppPermissionButton v-if="row.status === 'EFFECTIVE'" code="internship.agreement.archive" variant="ghost" size="sm" @click="confirmAct(row, 'archive')">归档</AppPermissionButton>
-          <AppPermissionButton v-if="canReject(row.status)" code="internship.agreement.reject" variant="ghost" size="sm" :danger="true" @click="confirmAct(row, 'reject')">驳回</AppPermissionButton>
-          <AppPermissionButton v-if="canVoid(row.status)" code="internship.agreement.void" variant="ghost" size="sm" :danger="true" @click="confirmAct(row, 'void')">作废</AppPermissionButton>
-        </div>
+        <!-- 全部办理动作收口至三方协议档案页（独立页），列表只保留主入口 -->
+        <AppButton variant="secondary" size="sm" @click="openDossier(row)">
+          {{ ['DRAFT', 'PENDING_ENTERPRISE', 'PENDING_SCHOOL', 'EFFECTIVE'].includes(row.status) ? '办理' : '查看档案' }}
+        </AppButton>
       </template>
     </DataTable>
 
@@ -69,72 +61,18 @@
       </div>
     </div>
 
-    <!-- 记录企业签署 -->
-    <div v-if="entDlg.visible" class="modal" @click.self="entDlg.visible = false">
-      <div class="modal__card">
-        <div class="modal__head">记录企业签署</div>
-        <div class="modal__body">
-          <AppFormItem label="企业经办人"><AppTextInput v-model="entForm.confirmBy" placeholder="如：企业 HR 张三" /></AppFormItem>
-          <AppFormItem label="签署扫描件（企业已签的纸质三方协议）" required>
-            <input type="file" class="file" @change="onEntFile" />
-            <span v-if="entForm.fileId" class="att">已上传：{{ entAttachName }}</span>
-            <span v-else-if="uploadingFile" class="att">上传中…</span>
-          </AppFormItem>
-          <p class="hint">无电子签章时，以上传企业已签署的纸质三方协议扫描件为准（电子签章能力预留）。</p>
-        </div>
-        <div class="modal__foot">
-          <AppButton variant="ghost" @click="entDlg.visible = false">取消</AppButton>
-          <AppButton variant="primary" :loading="entDlg.submitting" :disabled="!entForm.fileId" @click="submitEnterprise">确认企业已签署</AppButton>
-        </div>
-      </div>
-    </div>
-
-    <!-- 详情 -->
-    <div v-if="detailDlg.visible" class="modal" @click.self="detailDlg.visible = false">
-      <div class="modal__card">
-        <div class="modal__head">协议详情</div>
-        <div class="modal__body">
-          <div v-if="detailDlg.loading" class="state">加载中…</div>
-          <template v-else-if="detailDlg.data">
-            <AppDescriptionList :items="detailItems" :columns="2" />
-            <template v-if="detailDlg.data.renderedBody">
-              <div class="sec-t">协议正文（模板渲染快照）</div>
-              <pre id="agreement-print-body" class="ag-body">{{ detailDlg.data.renderedBody }}</pre>
-            </template>
-            <template v-if="detailDlg.data.attachment">
-              <div class="sec-t">签署扫描件</div>
-              <AppFilePreview :files="attachmentFiles" @download="downloadAtt" />
-            </template>
-            <div class="sec-t">三方确认留痕</div>
-            <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无确认记录" />
-          </template>
-        </div>
-        <div class="modal__foot">
-          <AppPrintButton v-if="detailDlg.data?.renderedBody" print-selector="#agreement-print-body" label="打印正文" />
-          <AppPermissionButton v-if="detailDlg.data?.renderedBody" code="internship.agreement.view"
-            variant="secondary" :loading="pdfLoading" @click="downloadPdf">下载 PDF 套打</AppPermissionButton>
-          <AppButton variant="secondary" @click="detailDlg.visible = false">关闭</AppButton>
-        </div>
-      </div>
-    </div>
-
-    <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
-      :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
-      reason-label="原因" :submitting="cd.submitting" @confirm="onConfirm" />
   </ModulePageShell>
 </template>
 
 <script>
 import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppSelect, AppTextInput, AppFormItem, AppFilePreview, AppPrintButton,
+import { AppStatusTag, AppExportButton, AppPermissionButton, AppSearchBox, AppSelect, AppFormItem,
   AppStudentPicker } from '@/components/common'
 import { searchInternStudents } from './components/entityPickerAdapters'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { agreementApi } from '@/modules/internship/api/agreement.api'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
-import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
 
 const STATUS_MAP = {
@@ -149,14 +87,6 @@ const COLUMNS = [
   { key: 'status', title: '协议状态' },
   { key: 'actions', title: '操作', width: '280px' }
 ]
-const DETAIL = [
-  { key: 'studentName', label: '学生' }, { key: 'advisorName', label: '指导教师' },
-  { key: 'enterpriseName', label: '企业' }, { key: 'positionName', label: '岗位' },
-  { key: 'templateName', label: '协议模板' },
-  { key: 'studentConfirmLabel', label: '学生确认' }, { key: 'enterpriseConfirmLabel', label: '企业确认' },
-  { key: 'schoolConfirmLabel', label: '学校确认' }, { key: 'statusLabel', label: '协议状态' },
-  { key: 'rejectReason', label: '驳回/作废原因' }
-]
 const PANEL_PRESETS = {
   issue: () => ({ statusFilter: 'DRAFT' }),
   confirm: () => ({ statusFilter: 'PENDING_ENTERPRISE' }),
@@ -170,9 +100,8 @@ const PANEL_PRESETS = {
 
 export default {
   name: 'AgreementView',
-  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton,
-    AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppSelect, AppTextInput, AppFormItem,
-    AppFilePreview, AppPrintButton, AppStudentPicker, ModuleSummaryStrip },
+  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppExportButton,
+    AppPermissionButton, AppSearchBox, AppSelect, AppFormItem, AppStudentPicker, ModuleSummaryStrip },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -180,12 +109,6 @@ export default {
       templateOptions: [],
       previewText: '',
       genForm: { internshipId: '', templateId: '' }, genDlg: { visible: false, submitting: false },
-      entForm: { confirmBy: '', fileId: '' }, entDlg: { visible: false, submitting: false }, entRow: null,
-      entAttachName: '', uploadingFile: false,
-      detailDlg: { visible: false, loading: false, data: null },
-      cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
-      pending: null,
-      pdfLoading: false,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
@@ -200,13 +123,6 @@ export default {
       return [{ value: '', label: '自动使用默认启用模板' }].concat(
         this.templateOptions.map((t) => ({ value: t.id, label: t.label || t.name }))
       )
-    },
-    detailItems() { const d = this.detailDlg.data || {}; return DETAIL.map((f) => ({ label: f.label, value: d[f.key] })) },
-    attachmentFiles() { const a = this.detailDlg.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
-    auditRecords() {
-      return (this.detailDlg.data?.auditTrail || []).map((t, i) => ({
-        id: i, action: t.action, actor: t.operator, reason: t.detail && (t.detail.reason || t.detail.confirmBy || ''), at: t.occurredAt
-      }))
     }
   },
   watch: {
@@ -228,8 +144,7 @@ export default {
       this.load()
     },
     confirmTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'REJECTED' ? 'danger' : 'warning' },
-    canReject(s) { return ['PENDING_STUDENT', 'PENDING_ENTERPRISE', 'PENDING_SCHOOL'].includes(s) },
-    canVoid(s) { return ['DRAFT', 'PENDING_STUDENT', 'PENDING_ENTERPRISE', 'PENDING_SCHOOL'].includes(s) },
+    openDossier(row) { this.$router.push(`/admin/internship/agreements/${row.id}`) },
     exportFn() { return agreementApi.exportAgreements({ keyword: this.keyword, status: this.statusFilter }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     reload() { this.page = 1; this.load() },
@@ -276,82 +191,7 @@ export default {
       if (res.code !== 0) return toast.error(res.message || '生成失败')
       this.genDlg.visible = false; toast.success('已生成协议草稿'); this.load()
     },
-    openEnterprise(r) { this.entRow = r; this.entForm = { confirmBy: '', fileId: '' }; this.entAttachName = ''; this.entDlg.visible = true },
-    async onEntFile(e) {
-      const file = e.target.files && e.target.files[0]
-      if (!file) return
-      this.uploadingFile = true
-      const res = await agreementApi.uploadAttachment(file)
-      this.uploadingFile = false
-      if (res.code !== 0) return toast.error(res.message || '上传失败')
-      this.entForm.fileId = res.data.fileId; this.entAttachName = res.data.fileName || file.name
-      toast.success('扫描件已上传')
-    },
-    async submitEnterprise() {
-      this.entDlg.submitting = true
-      const res = await agreementApi.enterpriseConfirm(this.entRow.id, { confirmBy: this.entForm.confirmBy, fileId: this.entForm.fileId })
-      this.entDlg.submitting = false
-      if (res.code !== 0) return toast.error(res.message || '提交失败')
-      this.entDlg.visible = false; toast.success('已记录企业签署'); this.load()
-    },
-    async openDetail(r) {
-      this.detailDlg = { visible: true, loading: true, data: null }
-      const res = await agreementApi.getDetail(r.id)
-      this.detailDlg.loading = false
-      if (res.code !== 0) { toast.error(res.message); this.detailDlg.visible = false; return }
-      this.detailDlg.data = res.data
-    },
-    async downloadAtt() {
-      const a = this.detailDlg.data?.attachment
-      if (!a) return
-      try { await agreementApi.downloadAttachment(a.fileId, a.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
-    },
-    async downloadPdf() {
-      const id = this.detailDlg.data?.id
-      if (!id || this.pdfLoading) return
-      this.pdfLoading = true
-      const res = await agreementApi.exportAgreementPdf(id)
-      this.pdfLoading = false
-      if (res.code !== 0) return toast.error(res.message || 'PDF 生成失败')
-      downloadXlsxFromApi(res.data)
-      toast.success('PDF 套打已下载（含水印与导出留痕）')
-    },
-    confirmAct(r, kind) {
-      const map = {
-        issue: { title: '下发协议', content: `将「${r.studentName}」的协议下发给学生确认？`, danger: false, confirmText: '下发', requireReason: false },
-        school: { title: '学校确认', content: `确认「${r.studentName}」三方协议生效？`, danger: false, confirmText: '确认生效', requireReason: false },
-        archive: { title: '归档协议', content: `归档「${r.studentName}」的已生效协议？`, danger: false, confirmText: '归档', requireReason: false },
-        reject: { title: '驳回协议', content: `驳回「${r.studentName}」的协议，原因将写入审计。`, danger: true, confirmText: '驳回', requireReason: true },
-        void: { title: '作废协议', content: `作废「${r.studentName}」的协议，原因将写入审计。`, danger: true, confirmText: '作废', requireReason: true }
-      }[kind]
-      this.pending = { id: r.id, kind }
-      this.cd = { visible: true, ...map, submitting: false }
-    },
-    async onConfirm({ reason }) {
-      const p = this.pending
-      this.cd.submitting = true
-      let res
-      if (p.kind === 'issue') res = await agreementApi.issue(p.id)
-      else if (p.kind === 'school') res = await agreementApi.schoolConfirm(p.id)
-      else if (p.kind === 'archive') res = await agreementApi.archive(p.id)
-      else if (p.kind === 'reject') res = await agreementApi.reject(p.id, { reason })
-      else res = await agreementApi.voidAgreement(p.id, { reason })
-      this.cd.submitting = false
-      if (res.code !== 0) return toast.error(res.message || '操作失败')
-      this.cd.visible = false; toast.success('操作成功，已写审计'); this.load()
-    },
-    async startEsign(row) {
-      const res = await agreementApi.startEsign(row.id)
-      if (res.code !== 0) return toast.error(res.message)
-      toast.success(res.data.message || '已发起电子签')
-      this.load()
-    },
-    async esignParty(row, party) {
-      const res = await agreementApi.esignSign(row.id, { party })
-      if (res.code !== 0) return toast.error(res.message)
-      toast.success(`${party === 'SCHOOL' ? '学校' : '企业'}电子签完成`)
-      this.load()
-    }
+    // 详情、企业签署、下发/确认/归档/驳回/作废、电子签、PDF 套打：全部收口至三方协议档案页 AgreementDetailView
   }
 }
 </script>
