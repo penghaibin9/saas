@@ -146,7 +146,18 @@
         <!-- navPlan 驱动的「完整二级 + 三级」施工地图（12 个业务模块 layout：有 ctx、无自定义 #menu）。
              implemented/partial 可点；planned 灰色「待施工」不可点，点击仅 toast；角色可见性见 isPlannerView。 -->
         <nav v-if="ctx && !$slots.menu" class="bpl-tree">
-          <div class="bpl-submods__label">{{ planGroupLabel }}</div>
+          <div class="bpl-submods__label">
+            <span>{{ planGroupLabel }}</span>
+            <!-- 施工地图开关：仅 DEV 构建 + 平台级角色可见（三重限制），学校角色与生产构建不渲染 -->
+            <button
+              v-if="canTogglePlannerMap"
+              type="button"
+              class="bpl-planmap"
+              :class="{ 'is-on': plannerMapOn }"
+              :title="plannerMapOn ? '关闭施工地图（隐藏规划项）' : '开启施工地图（显示规划项）'"
+              @click="togglePlannerMap"
+            >施工地图 {{ plannerMapOn ? '开' : '关' }}</button>
+          </div>
           <template v-for="m in planMods" :key="m.key">
             <!-- 二级模块（有 children 显示展开箭头） -->
             <a
@@ -287,6 +298,15 @@ function readThemePreference() {
   }
 }
 
+/** 施工地图开关持久值（仅作为三重限制的第三重输入，本身不授予任何可见性） */
+function readPlannerMapPreference() {
+  try {
+    return window.localStorage.getItem('plannerMapOn') === '1'
+  } catch {
+    return false
+  }
+}
+
 export default {
   name: 'BasePortalLayout',
   components: { AppIcon, AppUserChip },
@@ -324,7 +344,10 @@ export default {
       /* 侧栏树：各二级模块的展开状态 { modKey: true/false }（未记录时默认展开当前路由所属二级） */
       expandedMods: {},
       /* 三级菜单被点击的唯一 leafKey（用于同 path 多叶子的点击反馈/高亮跟随；路由切换后失效自动回退路由匹配） */
-      clickedLeafKey: ''
+      clickedLeafKey: '',
+      /* 施工地图「用户主动开启」开关（三重限制第三重）；持久在 localStorage，
+         但仅当 DEV 构建 + 平台级角色同时满足时才生效，无权角色残留值一律忽略 */
+      plannerMapOn: readPlannerMapPreference()
     }
   },
   computed: {
@@ -353,9 +376,10 @@ export default {
               })
           )
       matched.forEach((a) => out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' }))
-      // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通「待施工/未开通」不跳
+      // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通仅 DEV 施工地图可见（不给学校正式角色展示）
       if (q) {
         for (const r of searchNavPlan(this.fnQueryDebounced)) {
+          if (!this.isPlannerView && r.status !== 'implemented' && r.status !== 'partial') continue
           const kind =
             r.status === 'planned' ? '规划 · 待施工'
               : r.status === 'partial' ? '页面 · 待补强'
@@ -439,12 +463,22 @@ export default {
       return findActiveMenu(path).groupKey || 'workbench'
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
-    isPlannerView() {
-      // 管理员/开发者视角可见 planned/unauthorized；普通业务角色只见 implemented/partial
-      if (import.meta.env && import.meta.env.DEV) return true
+    isPlatformPlannerRole() {
+      // 复用现有平台级角色（PLATFORM / PLATFORM_SUPER_ADMIN），不新造前端假角色；
+      // 学校侧角色（学校系统管理员、学工处管理员、普通业务角色）一律不属于施工角色。
       const rt =
         (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''
-      return rt === 'SCHOOL_ADMIN' || rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
+      return rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
+    },
+    canTogglePlannerMap() {
+      // 三重限制的前两重：DEV 构建 && 平台级施工角色（生产构建永远为 false，学校角色永远为 false）
+      return !!(import.meta.env && import.meta.env.DEV) && this.isPlatformPlannerRole
+    },
+    isPlannerView() {
+      // 2026-07-10 三重限制收口：DEV 构建 && 平台级角色 && 用户主动开启施工地图，缺一不可。
+      // localStorage 中即使保存过开启状态，前两重条件不满足时一律忽略；
+      // 学校正式菜单与搜索只出现 implemented/partial 真实可用页面。
+      return this.canTogglePlannerMap && this.plannerMapOn
     },
     currentPath() {
       return this.$route ? this.$route.path : ''
@@ -607,6 +641,15 @@ export default {
       this.stuBlurTimer = setTimeout(() => {
         this.stuOpen = false
       }, 150)
+    },
+    /* 施工地图开关（三重限制第三重）：仅 canTogglePlannerMap 渲染时可达 */
+    togglePlannerMap() {
+      this.plannerMapOn = !this.plannerMapOn
+      try {
+        window.localStorage.setItem('plannerMapOn', this.plannerMapOn ? '1' : '0')
+      } catch {
+        /* 隐私模式下存储失败则仅当次生效 */
+      }
     },
     /* 二级模块是否展开：未手动记录时，默认展开「当前路由所属二级」 */
     isExpanded(key) {
@@ -1176,6 +1219,27 @@ export default {
   letter-spacing: 0.08em;
   color: var(--t3);
   padding: 2px 8px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+/* 施工地图开关（仅 DEV+平台级角色渲染）：克制样式，不影响正式角色界面 */
+.bpl-planmap {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--bd, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t3);
+  cursor: pointer;
+  letter-spacing: 0;
+}
+.bpl-planmap.is-on {
+  color: var(--brand, #2563eb);
+  border-color: currentColor;
 }
 .bpl-submods__item {
   display: block;

@@ -43,16 +43,17 @@ export const ADMIN_MENU = [
     ]
   },
   {
-    /* 一级②学工中心：学生画像（原学生主档）/ 数字迎新（承接）/ 在校服务（承接）。
-     * 2026-07-10 学工三级目录重构：二三级树见 navPlan.js（12 业务二级 + 1 迎新承接）；
-     * 本处仅承担一级轨落地路径与 moduleCode 权限过滤，key/path/permissionKey 一律未变（不扩大权限）。 */
+    /* 一级②学工中心：学生画像（原学生主档）/ 数字迎新 / 在校服务（后两者为承接口径，
+     * 正式显示名不出现开发语言）。2026-07-10 学工三级目录重构：二三级树见 navPlan.js
+     * （13 个学工业务二级 + 1 个承接组）；本处仅承担一级轨落地路径与 moduleCode 权限过滤，
+     * key/path/permissionKey 一律未变（不扩大权限）。 */
     key: 'student-affairs',
     label: '学工中心',
     icon: '☰',
     children: [
       { key: 'sa-student', label: '学生画像', path: '/admin/student', moduleCode: 'STUDENT', permissionKey: 'student.profile.view' },
-      { key: 'sa-orientation', label: '数字迎新（承接）', path: '/admin/orientation', moduleCode: 'ORIENTATION', permissionKey: 'orientation.dashboard.view' },
-      { key: 'sa-campus', label: '在校服务（承接）', path: '/admin/campus-service', moduleCode: 'CAMPUS_SERVICE', permissionKey: 'campusService.dashboard.view' }
+      { key: 'sa-orientation', label: '数字迎新', path: '/admin/orientation', moduleCode: 'ORIENTATION', permissionKey: 'orientation.dashboard.view' },
+      { key: 'sa-campus', label: '在校服务', path: '/admin/campus-service', moduleCode: 'CAMPUS_SERVICE', permissionKey: 'campusService.dashboard.view' }
     ]
   },
   {
@@ -200,7 +201,7 @@ export const SEARCH_ALIASES = [
   { keywords: ['工作台', '我的工作台', '首页'], path: '/', label: '工作台 / 我的工作台' },
   { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
-  { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 学工工作台（在校服务承接）' },
+  { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务与迎新' },
   { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 学业过程' },
   { keywords: ['教学实践', '毕业设计', '毕设', '选题', '答辩'], path: '/admin/graduation', label: '毕业设计中心' },
   { keywords: ['岗位实习', '实习', '打卡', '周报'], path: '/admin/internship', label: '岗位实习中心' },
