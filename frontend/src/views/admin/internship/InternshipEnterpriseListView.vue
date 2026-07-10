@@ -55,6 +55,7 @@
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="$router.push('/admin/internship/enterprises/' + row.id)">详情</button>
+          <button class="mp-link" :class="{ 'is-disabled': !can('editEnterprise') }" :title="reason('editEnterprise')" style="margin-left: var(--space-2)" @click="goEdit(row)">编辑</button>
           <button v-if="row.coopStatus === 'PENDING'" class="mp-link" :class="{ 'is-disabled': !can('reviewEnterprise') }" :title="reason('reviewEnterprise')" style="margin-left: var(--space-2)" @click="askReview(row)">审核</button>
           <button v-else-if="row.coopStatus === 'ACTIVE'" class="mp-link" style="margin-left: var(--space-2)" @click="askCoop(row, 'SUSPEND')">暂停</button>
           <button v-else-if="row.coopStatus === 'SUSPENDED'" class="mp-link" style="margin-left: var(--space-2)" @click="askCoop(row, 'RESUME')">恢复</button>
@@ -64,30 +65,7 @@
       </DataTable>
     </div>
 
-    <!-- 新增 / 编辑 -->
-    <AppDrawer v-model:visible="editVisible" :title="editing ? '编辑企业' : '新增企业'">
-      <form class="ie-form" @submit.prevent="submitEdit">
-        <label class="ie-fld"><span class="ie-lbl">企业名称 <i>*</i></span><input v-model.trim="form.name" class="ie-in" placeholder="营业执照全称" /></label>
-        <label class="ie-fld"><span class="ie-lbl">统一社会信用代码</span><input v-model.trim="form.creditCode" class="ie-in" placeholder="租户内唯一" /></label>
-        <label class="ie-fld"><span class="ie-lbl">行业</span>
-          <select v-model="form.industry" class="ie-in"><option value="">请选择</option><option v-for="o in industryOptions" :key="o.value" :value="o.value">{{ o.label }}</option></select>
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">来源</span>
-          <select v-model="form.source" class="ie-in"><option value="">请选择</option><option v-for="o in sourceOptions" :key="o.value" :value="o.value">{{ o.label }}</option></select>
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">地区</span><input v-model.trim="form.region" class="ie-in" placeholder="省/市" /></label>
-        <label class="ie-fld"><span class="ie-lbl">规模</span><input v-model.trim="form.scale" class="ie-in" placeholder="微/小/中/大型" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">详细地址</span><input v-model.trim="form.address" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">联系人</span><input v-model.trim="form.contactPerson" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">联系电话</span><input v-model.trim="form.contactPhone" class="ie-in" placeholder="敏感字段，列表默认脱敏" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="form.remark" class="ie-in" rows="2" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="editVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">{{ submitting ? '提交中…' : '保存' }}</button>
-        </div>
-      </form>
-    </AppDrawer>
+    <!-- 新增 / 编辑：独立表单页 /admin/internship/enterprises/new 与 /:id/edit（EnterpriseFormView） -->
 
     <!-- Excel 导入（正式 xlsx · 公共底座） -->
     <AppExcelImportDrawer
@@ -118,18 +96,16 @@
 </template>
 
 <script>
-/** 企业库列表（/admin/internship/enterprises）：筛选 + 增改抽屉 + 审核/暂停/黑名单状态机 + 真导入导出 + 脱敏。 */
+/** 企业库列表（/admin/internship/enterprises）：筛选 + 审核/暂停/黑名单状态机 + 真导入导出 + 脱敏；新增/编辑走独立表单页 EnterpriseFormView。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppExportButton, AppStatusTag } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', coopStatus: '', industry: '', region: '', blacklist: '' })
-const EMPTY_FORM = () => ({ name: '', creditCode: '', industry: '', source: '', region: '', scale: '', address: '', contactPerson: '', contactPhone: '', remark: '' })
 const ENTERPRISE_PANEL_PRESETS = {
   list: () => EMPTY_FILTERS(),
   detail: () => EMPTY_FILTERS(),
@@ -157,7 +133,7 @@ const ENTERPRISE_PANEL_HINTS = {
 
 export default {
   name: 'InternshipEnterpriseListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, ModuleSummaryStrip },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppConfirmDialog, ModuleSummaryStrip },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -165,7 +141,6 @@ export default {
       loading: true, error: '', submitting: false, activePanel: 'list',
       rows: [], total: 0, page: 1, pageSize: 10,
       filters: EMPTY_FILTERS(),
-      editVisible: false, editing: null, form: EMPTY_FORM(), formError: '',
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null, extra: null },
       entStats: null,
@@ -177,14 +152,13 @@ export default {
         { key: 'coopStatus', title: '合作状态' },
         { key: 'qualification', title: '资质' },
         { key: 'internCount', title: '实习生' },
-        { key: 'actions', title: '操作', width: '220px' }
+        { key: 'actions', title: '操作', width: '260px' }
       ]
     }
   },
   computed: {
     perms() { return this.ctx.permissionActions || {} },
     coopStatusOptions() { return this.ctx.statusOptions.coopStatus || [] },
-    sourceOptions() { return this.ctx.statusOptions.enterpriseSource || [] },
     industryOptions() { return this.ctx.statusOptions.enterpriseIndustry || [] },
     filterFields() {
       return [
@@ -256,8 +230,12 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) {
-      if (key === 'create') { if (!this.can('createEnterprise')) return toast.error(this.reason('createEnterprise')); this.editing = null; this.form = EMPTY_FORM(); this.formError = ''; this.editVisible = true }
+      if (key === 'create') { if (!this.can('createEnterprise')) return toast.error(this.reason('createEnterprise')); this.$router.push('/admin/internship/enterprises/new') }
       if (key === 'import') { if (!this.can('importEnterprises')) return toast.error(this.reason('importEnterprises')); this.importVisible = true }
+    },
+    goEdit(row) {
+      if (!this.can('editEnterprise')) return toast.error(this.reason('editEnterprise'))
+      this.$router.push(`/admin/internship/enterprises/${row.id}/edit`)
     },
     exportFn() {
       return internshipApi.exportEnterprises({ ...this.filters })
@@ -265,18 +243,6 @@ export default {
     onImported(data) {
       toast.success(`已导入 ${data.created || 0} 家（初始待审核）`)
       this.load()
-    },
-    async submitEdit() {
-      this.formError = ''
-      if (!this.form.name) { this.formError = '企业名称必填'; return }
-      this.submitting = true
-      try {
-        const res = this.editing
-          ? await internshipApi.updateEnterprise(this.editing.id, this.form)
-          : await internshipApi.createEnterprise(this.form)
-        if (res.code === 0) { toast.success('已保存并写入留痕'); this.editVisible = false; this.load() }
-        else this.formError = res.message
-      } finally { this.submitting = false }
     },
     askReview(row) {
       if (!this.can('reviewEnterprise')) return toast.error(this.reason('reviewEnterprise'))
@@ -313,24 +279,6 @@ export default {
 
 .ie-bl { margin-left: var(--space-2); font-size: 11px; color: var(--danger, #dc2626); }
 .mp-link--danger { color: var(--danger, #dc2626); }
-.ie-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: var(--space-1) 0; }
-.ie-fld { display: flex; flex-direction: column; gap: 4px; }
-.ie-fld--full { grid-column: 1 / -1; }
-.ie-lbl { font-size: 12px; color: var(--t2, #475569); }
-.ie-lbl i { color: var(--danger, #dc2626); font-style: normal; }
-.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
-.ie-in:focus { outline: none; border-color: var(--pri, #2563eb); }
-.ie-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
-.ie-hint { grid-column: 1 / -1; font-size: 12px; color: var(--t3, #64748b); margin: 0; }
-.ie-xlsx { grid-column: 1 / -1; padding: 10px 12px; border: 1px dashed var(--line, #d9dee8); border-radius: 8px; font-size: 13px; background: var(--bg-subtle, #f8fafc); }
-.ie-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
-.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
-.mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ie-imp { grid-column: 1 / -1; font-size: 12px; }
-.ie-imp__errs { margin: 4px 0 0; padding-left: 18px; color: var(--danger, #dc2626); }
-.ie-ok { color: var(--success, #16a34a); }
-.ie-bad { color: var(--danger, #dc2626); }
 .ie-stats__grid { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .ie-stats__item { min-width: 88px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line, #e2e8f0); border-radius: 8px; text-align: center; }
 .ie-stats__val { display: block; font-size: 20px; font-weight: 600; color: var(--text-primary); }

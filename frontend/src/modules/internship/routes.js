@@ -195,6 +195,18 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: P.ENTERPRISE_LIST, requiresAuth: true, permissionKey: 'internship.enterprise.view' }
     },
     {
+      path: 'enterprises/new',
+      name: 'internship-enterprise-new',
+      component: () => import('@/views/admin/internship/EnterpriseFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: '新增企业', requiresAuth: true, permissionKey: 'internship.enterprise.view' }
+    },
+    {
+      path: 'enterprises/:id/edit',
+      name: 'internship-enterprise-edit',
+      component: () => import('@/views/admin/internship/EnterpriseFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: '编辑企业', requiresAuth: true, permissionKey: 'internship.enterprise.view' }
+    },
+    {
       path: 'enterprises/:id',
       name: 'internship-enterprise-detail',
       component: () => import('@/views/admin/internship/InternshipEnterpriseDetailView.vue'),
@@ -205,6 +217,18 @@ const internshipRoutes = {
       name: 'internship-positions',
       component: () => import('@/views/admin/internship/InternshipPositionListView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: P.POSITION_LIST, requiresAuth: true, permissionKey: 'internship.position.view' }
+    },
+    {
+      path: 'positions/new',
+      name: 'internship-position-new',
+      component: () => import('@/views/admin/internship/PositionFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: '新增岗位', requiresAuth: true, permissionKey: 'internship.position.view' }
+    },
+    {
+      path: 'positions/:id/edit',
+      name: 'internship-position-edit',
+      component: () => import('@/views/admin/internship/PositionFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: '编辑岗位', requiresAuth: true, permissionKey: 'internship.position.view' }
     },
     {
       path: 'positions/:id',
@@ -223,6 +247,12 @@ const internshipRoutes = {
       name: 'internship-agreement-detail',
       component: () => import('@/views/admin/internship/AgreementDetailView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '三方协议档案', requiresAuth: true, permissionKey: 'internship.agreement.view' }
+    },
+    {
+      path: 'enterprise-evals/new',
+      name: 'internship-enterprise-eval-new',
+      component: () => import('@/views/admin/internship/EnterpriseEvalFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EVAL_SCORE, title: '录入企业评价', requiresAuth: true, permissionKey: 'internship.enterpriseEval.view' }
     },
     {
       path: 'enterprise-evals',

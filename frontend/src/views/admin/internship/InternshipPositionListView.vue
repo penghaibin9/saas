@@ -50,6 +50,7 @@
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="$router.push('/admin/internship/positions/' + row.id)">详情</button>
+          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="$router.push('/admin/internship/positions/' + row.id + '/edit')">编辑</button>
           <button v-if="row.status === 'DRAFT'" class="mp-link" style="margin-left: var(--space-2)" @click="askStatus(row, 'SUBMIT')">提交</button>
           <button v-else-if="['PENDING', 'OFFLINE', 'SUSPENDED'].includes(row.status)" class="mp-link" style="margin-left: var(--space-2)" @click="askStatus(row, 'PUBLISH')">上架</button>
           <button v-else-if="row.status === 'PUBLISHED'" class="mp-link" style="margin-left: var(--space-2)" @click="askStatus(row, 'OFFLINE')">下架</button>
@@ -59,46 +60,7 @@
       </DataTable>
     </div>
 
-    <!-- 新增 / 编辑 -->
-    <AppDrawer v-model:visible="editVisible" :title="editing ? '编辑岗位' : '新增岗位'">
-      <form class="ie-form" @submit.prevent="submitEdit">
-        <!-- Picker 不能包在 <label> 里：label 激活会把点击转发给选择器内部按钮 -->
-        <div v-if="!editing" class="ie-fld ie-fld--full"><span class="ie-lbl">所属企业 <i>*</i></span>
-          <AppCompanyPicker
-            v-model="form.companyId"
-            :remote-search="searchEnterprises"
-            :options="companyPresetOpts"
-            placeholder="输入企业名称搜索"
-            search-placeholder="按企业名称搜索"
-            data-scope-hint="仅合作企业 · 黑名单/非合作中企业上架时由后端拦截"
-            @update:model-value="onCompanyChange"
-          />
-        </div>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">岗位名称 <i>*</i></span><input v-model.trim="form.title" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">专业要求</span><input v-model.trim="form.majorRequirement" class="ie-in" placeholder="不填=不限" /></label>
-        <label class="ie-fld"><span class="ie-lbl">年级要求</span><input v-model.trim="form.gradeRequirement" class="ie-in" placeholder="如 2024级" /></label>
-        <label class="ie-fld"><span class="ie-lbl">工作地点</span><input v-model.trim="form.workLocation" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">薪资</span><input v-model.trim="form.salaryRange" class="ie-in" placeholder="如 3k-4k" /></label>
-        <label class="ie-fld"><span class="ie-lbl">补贴</span><input v-model.trim="form.subsidy" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">容量 <i>*</i></span><input v-model.number="form.headcount" type="number" min="1" class="ie-in" /></label>
-        <div v-if="!editing" class="ie-fld"><span class="ie-lbl">企业导师</span>
-          <AppMentorPicker
-            v-model="form.mentorContactId"
-            :options="mentorOpts"
-            placeholder="选择企业导师（可不指定）"
-            search-placeholder="按导师姓名过滤"
-            data-scope-hint="先选择所属企业，再选择该企业的导师"
-          />
-        </div>
-        <label class="ie-fld"><span class="ie-lbl">批次（预留）</span><input class="ie-in" value="按当前实习批次自动关联" disabled /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="form.remark" class="ie-in" rows="2" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="editVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">{{ submitting ? '提交中…' : '保存' }}</button>
-        </div>
-      </form>
-    </AppDrawer>
+    <!-- 新增 / 编辑：独立表单页 /admin/internship/positions/new 与 /:id/edit（PositionFormView） -->
 
     <AppExcelImportDrawer
       v-model:visible="importVisible"
@@ -122,19 +84,16 @@
 </template>
 
 <script>
-/** 岗位库列表（/admin/internship/positions）：筛选 + 增改抽屉(企业/导师选择) + 状态机 + 风险标记 + 真导入导出。 */
+/** 岗位库列表（/admin/internship/positions）：筛选 + 状态机 + 风险标记 + 真导入导出；新增/编辑走独立表单页 PositionFormView。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppExportButton, AppStatusTag, AppCompanyPicker, AppMentorPicker } from '@/components/common'
+import { AppExportButton, AppStatusTag } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { searchEnterprises } from './components/entityPickerAdapters'
 import { positionApi } from '@/modules/internship/api/position.api'
 import { POSITION_STATUS } from '@/modules/internship/constants/position.constants'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', companyId: '', risk: '' })
-const EMPTY_FORM = () => ({ companyId: '', title: '', majorRequirement: '', gradeRequirement: '', workLocation: '', salaryRange: '', subsidy: '', headcount: 1, mentorContactId: '', remark: '' })
 const POSITION_PANEL_PRESETS = {
   list: () => EMPTY_FILTERS(),
   detail: () => EMPTY_FILTERS(),
@@ -160,15 +119,14 @@ const POSITION_PANEL_HINTS = {
 
 export default {
   name: 'InternshipPositionListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppCompanyPicker, AppMentorPicker },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       positionApi,
       loading: true, error: '', submitting: false, activePanel: 'list',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      enterpriseOpts: [], mentorOpts: [], posStats: null,
-      editVisible: false, editing: null, form: EMPTY_FORM(), formError: '',
+      enterpriseOpts: [], posStats: null,
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
@@ -178,7 +136,7 @@ export default {
         { key: 'salaryRange', title: '薪资' },
         { key: 'capacity', title: '已分配/容量' },
         { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作', width: '230px' }
+        { key: 'actions', title: '操作', width: '270px' }
       ],
       statStatusCols: [{ key: 'label', title: '状态' }, { key: 'count', title: '数量' }],
       statMajorCols: [
@@ -191,11 +149,6 @@ export default {
   },
   computed: {
     statusOpts() { return POSITION_STATUS },
-    companyPresetOpts() {
-      // 编辑态回显：把当前岗位所属企业预置进选择器本地选项缓存（合法本地预置，不是一次性全量加载）
-      if (!this.editing || !this.editing.companyId) return []
-      return [{ label: this.editing.companyName, value: this.editing.companyId }]
-    },
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '岗位 / 企业 / 专业' },
@@ -231,8 +184,6 @@ export default {
     if (e.code === 0) this.enterpriseOpts = e.data
   },
   methods: {
-    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchEnterprises,
     applyPanel(panel) {
       const key = POSITION_PANEL_PRESETS[panel] ? panel : 'list'
       this.activePanel = key
@@ -260,7 +211,7 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) {
-      if (key === 'create') { this.editing = null; this.form = EMPTY_FORM(); this.mentorOpts = []; this.formError = ''; this.editVisible = true }
+      if (key === 'create') { this.$router.push('/admin/internship/positions/new') }
       if (key === 'import') { this.importVisible = true }
       if (key === 'refreshStats') this.load()
     },
@@ -270,25 +221,6 @@ export default {
     onImported(data) {
       toast.success(`已导入 ${data.created || 0} 个岗位（草稿）`)
       this.load()
-    },
-    async onCompanyChange() {
-      // 企业变更：清空导师选择并联动加载该企业导师小列表（本地过滤即可，非一次性全量预载）
-      this.form.mentorContactId = ''
-      this.mentorOpts = []
-      if (!this.form.companyId) return
-      const res = await positionApi.getEnterpriseMentors(this.form.companyId)
-      if (res.code === 0) this.mentorOpts = (res.data || []).map((m) => ({ label: m.name, value: m.id }))
-    },
-    async submitEdit() {
-      this.formError = ''
-      if (!this.editing && !this.form.companyId) { this.formError = '请选择所属企业'; return }
-      if (!this.form.title) { this.formError = '岗位名称必填'; return }
-      if (!this.form.headcount || this.form.headcount < 1) { this.formError = '容量至少 1'; return }
-      this.submitting = true
-      try {
-        const res = this.editing ? await positionApi.updatePosition(this.editing.id, this.form) : await positionApi.createPosition(this.form)
-        if (res.code === 0) { toast.success('已保存并写入留痕'); this.editVisible = false; this.load() } else this.formError = res.message
-      } finally { this.submitting = false }
     },
     askStatus(row, action) {
       const map = { SUBMIT: { t: '提交审核', c: '确认提交', type: 'primary' }, PUBLISH: { t: '上架岗位', c: '确认上架', type: 'primary' }, OFFLINE: { t: '下架岗位', c: '确认下架', type: 'warning' } }
@@ -317,22 +249,6 @@ export default {
 @import '@/styles/module-page.css';
 .ip-risk { margin-left: var(--space-2); font-size: 11px; color: var(--danger, #dc2626); }
 .mp-link--danger { color: var(--danger, #dc2626); }
-.ie-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: var(--space-1) 0; }
-.ie-fld { display: flex; flex-direction: column; gap: 4px; }
-.ie-fld--full { grid-column: 1 / -1; }
-.ie-lbl { font-size: 12px; color: var(--t2, #475569); }
-.ie-lbl i { color: var(--danger, #dc2626); font-style: normal; }
-.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
-.ie-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
-.ie-hint { grid-column: 1 / -1; font-size: 12px; color: var(--t3, #64748b); margin: 0; }
-.ie-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
-.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
-.mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ie-imp { grid-column: 1 / -1; font-size: 12px; }
-.ie-imp__errs { margin: 4px 0 0; padding-left: 18px; color: var(--danger, #dc2626); }
-.ie-xlsx { grid-column: 1 / -1; padding: 10px 12px; border: 1px dashed var(--line, #d9dee8); border-radius: 8px; font-size: 13px; background: var(--bg-subtle, #f8fafc); }
-.ie-ok { color: var(--success, #16a34a); } .ie-bad { color: var(--danger, #dc2626); }
 .mp-stats { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
 .mp-stat { min-width: 120px; padding: var(--space-3) var(--space-4); background: #fff; border: 1px solid var(--line, #d9dee8); border-radius: 8px; }
 .mp-stat__val { font-size: 20px; font-weight: 600; }
