@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -36,10 +36,24 @@ def _audit(db, bt, bid, action, detail="", before="", after=""):
                               after_val=after, occurred_at=datetime.utcnow()))
 
 
-def _page(items, page, ps):
-    total = len(items)
-    start = (max(1, page) - 1) * ps
-    return items[start:start + ps], total
+def _off(page, ps):
+    """DB 级分页偏移量。"""
+    return (max(1, page) - 1) * ps
+
+
+def _kw_like(col, kw: str):
+    """安全 LIKE：转义 %/_，避免关键字里的通配符污染查询。"""
+    return col.contains(kw, autoescape=True)
+
+
+def _students_by_ids(db, ids) -> dict:
+    """按主键批量取学生（一次查询），消除列表逐行 _stu_of 的 N+1。"""
+    ids = [i for i in {int(x) for x in ids if x is not None}]
+    if not ids:
+        return {}
+    rows = db.scalars(select(AcademicStudent).where(AcademicStudent.tenant_id == _tid(),
+                      AcademicStudent.id.in_(ids))).all()
+    return {r.id: r for r in rows}
 
 
 def _num(v):
@@ -75,20 +89,21 @@ def _stu_row(s: AcademicStudent) -> dict:
 
 def list_students(page, ps, keyword=None, class_id=None, warning_level=None, academic_status=None):
     with session() as db:
-        q = select(AcademicStudent).where(AcademicStudent.tenant_id == _tid(),
-                                          AcademicStudent.is_deleted.is_(False),
-                                          AcademicStudent.record_status == "ACTIVE")
+        conds = [AcademicStudent.tenant_id == _tid(), AcademicStudent.is_deleted.is_(False),
+                 AcademicStudent.record_status == "ACTIVE"]
         if class_id:
-            q = q.where(AcademicStudent.class_id == class_id)
+            conds.append(AcademicStudent.class_id == class_id)
         if warning_level:
-            q = q.where(AcademicStudent.warning_level == warning_level)
+            conds.append(AcademicStudent.warning_level == warning_level)
         if academic_status:
-            q = q.where(AcademicStudent.academic_status == academic_status)
-        rows = db.scalars(q.order_by(AcademicStudent.id)).all()
-        if keyword:
+            conds.append(AcademicStudent.academic_status == academic_status)
+        if keyword and keyword.strip():
             kw = keyword.strip()
-            rows = [r for r in rows if kw in (r.name or "") or kw in (r.student_no or "")]
-        return _page([_stu_row(r) for r in rows], page, ps)
+            conds.append(or_(_kw_like(AcademicStudent.name, kw), _kw_like(AcademicStudent.student_no, kw)))
+        total = db.scalar(select(func.count()).select_from(AcademicStudent).where(*conds)) or 0
+        rows = db.scalars(select(AcademicStudent).where(*conds)
+                          .order_by(AcademicStudent.id).offset(_off(page, ps)).limit(ps)).all()
+        return [_stu_row(r) for r in rows], total
 
 
 def get_student_detail(sid) -> dict:
@@ -185,24 +200,29 @@ def _pass_of(score):
     return "PASSED" if score >= 60 else "FAILED"
 
 
+def _grade_join():
+    return and_(AcademicStudent.id == AcademicGrade.acad_student_id,
+                AcademicStudent.tenant_id == AcademicGrade.tenant_id)
+
+
 def list_grades(page, ps, keyword=None, term=None, pass_status=None, exam_type=None):
     with session() as db:
-        q = select(AcademicGrade).where(AcademicGrade.tenant_id == _tid(),
-                                        AcademicGrade.is_deleted.is_(False))
+        conds = [AcademicGrade.tenant_id == _tid(), AcademicGrade.is_deleted.is_(False)]
         if term:
-            q = q.where(AcademicGrade.term == term)
+            conds.append(AcademicGrade.term == term)
         if pass_status:
-            q = q.where(AcademicGrade.pass_status == pass_status)
+            conds.append(AcademicGrade.pass_status == pass_status)
         if exam_type:
-            q = q.where(AcademicGrade.exam_type == exam_type)
-        rows = db.scalars(q.order_by(AcademicGrade.id.desc())).all()
-        items = []
-        for x in rows:
-            stu = _stu_of(db, x.acad_student_id)
-            if keyword and (not stu or (keyword.strip() not in (stu.name or "") and keyword.strip() not in x.course_name)):
-                continue
-            items.append(_grade_row(x, stu))
-        return _page(items, page, ps)
+            conds.append(AcademicGrade.exam_type == exam_type)
+        if keyword and keyword.strip():
+            kw = keyword.strip()
+            conds.append(or_(_kw_like(AcademicStudent.name, kw), _kw_like(AcademicGrade.course_name, kw)))
+        total = db.scalar(select(func.count()).select_from(AcademicGrade)
+                          .outerjoin(AcademicStudent, _grade_join()).where(*conds)) or 0
+        rows = db.execute(select(AcademicGrade, AcademicStudent)
+                          .outerjoin(AcademicStudent, _grade_join()).where(*conds)
+                          .order_by(AcademicGrade.id.desc()).offset(_off(page, ps)).limit(ps)).all()
+        return [_grade_row(g, stu) for g, stu in rows], total
 
 
 def create_grade(body: dict) -> dict:
@@ -268,19 +288,20 @@ def _mk_row(x: AcademicMakeup, stu=None) -> dict:
 
 def list_makeups(page, ps, keyword=None, status=None):
     with session() as db:
-        q = select(AcademicMakeup).where(AcademicMakeup.tenant_id == _tid(),
-                                         AcademicMakeup.is_deleted.is_(False),
-                                         AcademicMakeup.record_status == "ACTIVE")
+        join = and_(AcademicStudent.id == AcademicMakeup.acad_student_id,
+                    AcademicStudent.tenant_id == AcademicMakeup.tenant_id)
+        conds = [AcademicMakeup.tenant_id == _tid(), AcademicMakeup.is_deleted.is_(False),
+                 AcademicMakeup.record_status == "ACTIVE"]
         if status:
-            q = q.where(AcademicMakeup.status == status)
-        rows = db.scalars(q.order_by(AcademicMakeup.id.desc())).all()
-        items = []
-        for x in rows:
-            stu = _stu_of(db, x.acad_student_id)
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_mk_row(x, stu))
-        return _page(items, page, ps)
+            conds.append(AcademicMakeup.status == status)
+        if keyword and keyword.strip():
+            conds.append(_kw_like(AcademicStudent.name, keyword.strip()))
+        total = db.scalar(select(func.count()).select_from(AcademicMakeup)
+                          .outerjoin(AcademicStudent, join).where(*conds)) or 0
+        rows = db.execute(select(AcademicMakeup, AcademicStudent)
+                          .outerjoin(AcademicStudent, join).where(*conds)
+                          .order_by(AcademicMakeup.id.desc()).offset(_off(page, ps)).limit(ps)).all()
+        return [_mk_row(m, stu) for m, stu in rows], total
 
 
 def create_makeup(body: dict) -> dict:
@@ -324,19 +345,20 @@ def _rt_row(x: AcademicRetake, stu=None) -> dict:
 
 def list_retakes(page, ps, keyword=None, status=None):
     with session() as db:
-        q = select(AcademicRetake).where(AcademicRetake.tenant_id == _tid(),
-                                         AcademicRetake.is_deleted.is_(False),
-                                         AcademicRetake.record_status == "ACTIVE")
+        join = and_(AcademicStudent.id == AcademicRetake.acad_student_id,
+                    AcademicStudent.tenant_id == AcademicRetake.tenant_id)
+        conds = [AcademicRetake.tenant_id == _tid(), AcademicRetake.is_deleted.is_(False),
+                 AcademicRetake.record_status == "ACTIVE"]
         if status:
-            q = q.where(AcademicRetake.status == status)
-        rows = db.scalars(q.order_by(AcademicRetake.id.desc())).all()
-        items = []
-        for x in rows:
-            stu = _stu_of(db, x.acad_student_id)
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_rt_row(x, stu))
-        return _page(items, page, ps)
+            conds.append(AcademicRetake.status == status)
+        if keyword and keyword.strip():
+            conds.append(_kw_like(AcademicStudent.name, keyword.strip()))
+        total = db.scalar(select(func.count()).select_from(AcademicRetake)
+                          .outerjoin(AcademicStudent, join).where(*conds)) or 0
+        rows = db.execute(select(AcademicRetake, AcademicStudent)
+                          .outerjoin(AcademicStudent, join).where(*conds)
+                          .order_by(AcademicRetake.id.desc()).offset(_off(page, ps)).limit(ps)).all()
+        return [_rt_row(r, stu) for r, stu in rows], total
 
 
 def update_retake_status(rid, status) -> dict:
@@ -356,27 +378,36 @@ def update_retake_status(rid, status) -> dict:
 
 # ═══ 学分（只读聚合）═══
 
+def _credit_status(obt, req):
+    """学分达标口径（与 SQL CASE 一致）：达标 / 严重滞后 / 滞后。"""
+    if obt >= req / 2:
+        return "ON_TRACK"
+    return "SEVERE" if (req - obt) >= 6 else "BEHIND"
+
+
 def list_credits(page, ps, keyword=None, status=None):
     with session() as db:
-        rows = db.scalars(select(AcademicStudent).where(AcademicStudent.tenant_id == _tid(),
-                          AcademicStudent.is_deleted.is_(False),
-                          AcademicStudent.record_status == "ACTIVE").order_by(AcademicStudent.id)).all()
-        if keyword:
-            kw = keyword.strip()
-            rows = [r for r in rows if kw in (r.name or "")]
+        obt_c, req_c = AcademicStudent.obtained_credits, AcademicStudent.required_credits
+        status_expr = case((obt_c >= req_c / 2, "ON_TRACK"),
+                           (req_c - obt_c >= 6, "SEVERE"), else_="BEHIND")
+        conds = [AcademicStudent.tenant_id == _tid(), AcademicStudent.is_deleted.is_(False),
+                 AcademicStudent.record_status == "ACTIVE"]
+        if keyword and keyword.strip():
+            conds.append(_kw_like(AcademicStudent.name, keyword.strip()))
+        if status:
+            conds.append(status_expr == status)
+        total = db.scalar(select(func.count()).select_from(AcademicStudent).where(*conds)) or 0
+        rows = db.scalars(select(AcademicStudent).where(*conds)
+                          .order_by(AcademicStudent.id).offset(_off(page, ps)).limit(ps)).all()
+        labels = {"ON_TRACK": "达标", "BEHIND": "滞后", "SEVERE": "严重滞后"}
         items = []
         for s in rows:
-            obt = _num(s.obtained_credits)
-            req = _num(s.required_credits)
-            gap = max(0.0, req - obt)
-            st = "ON_TRACK" if obt >= req / 2 else ("SEVERE" if gap >= 6 else "BEHIND")
-            if status and st != status:
-                continue
+            obt, req = _num(s.obtained_credits), _num(s.required_credits)
+            st = _credit_status(obt, req)
             items.append({"id": str(s.id), "studentId": str(s.id), "name": s.name,
                           "className": s.class_name or "", "obtained": obt, "required": req,
-                          "gap": gap, "status": st,
-                          "statusLabel": {"ON_TRACK": "达标", "BEHIND": "滞后", "SEVERE": "严重滞后"}[st]})
-        return _page(items, page, ps)
+                          "gap": max(0.0, req - obt), "status": st, "statusLabel": labels[st]})
+        return items, total
 
 
 # ═══ 预警（核心闭环）═══
@@ -395,25 +426,27 @@ def _warn_row(x: AcademicWarning, stu=None) -> dict:
 
 def list_warnings(page, ps, keyword=None, type=None, level=None, status=None, class_id=None):
     with session() as db:
-        q = select(AcademicWarning).where(AcademicWarning.tenant_id == _tid(),
-                                          AcademicWarning.is_deleted.is_(False),
-                                          AcademicWarning.record_status == "ACTIVE")
+        join = and_(AcademicStudent.id == AcademicWarning.acad_student_id,
+                    AcademicStudent.tenant_id == AcademicWarning.tenant_id)
+        conds = [AcademicWarning.tenant_id == _tid(), AcademicWarning.is_deleted.is_(False),
+                 AcademicWarning.record_status == "ACTIVE"]
         if type:
-            q = q.where(AcademicWarning.warn_type == type)
+            conds.append(AcademicWarning.warn_type == type)
         if level:
-            q = q.where(AcademicWarning.level == level)
+            conds.append(AcademicWarning.level == level)
         if status:
-            q = q.where(AcademicWarning.status == status)
-        rows = db.scalars(q.order_by(AcademicWarning.id.desc())).all()
-        items = []
-        for x in rows:
-            stu = _stu_of(db, x.acad_student_id)
-            if class_id and (not stu or stu.class_id != class_id):
-                continue
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_warn_row(x, stu))
-        return _page(items, page, ps)
+            conds.append(AcademicWarning.status == status)
+        if class_id:
+            conds.append(AcademicStudent.class_id == class_id)
+        if keyword and keyword.strip():
+            conds.append(_kw_like(AcademicStudent.name, keyword.strip()))
+        # class_id / keyword 命中学生字段：用 inner join（无学生的预警本就不该出现在按班级/姓名筛选里）
+        joiner = (lambda q: q.join(AcademicStudent, join)) if (class_id or (keyword and keyword.strip())) \
+            else (lambda q: q.outerjoin(AcademicStudent, join))
+        total = db.scalar(joiner(select(func.count()).select_from(AcademicWarning)).where(*conds)) or 0
+        rows = db.execute(joiner(select(AcademicWarning, AcademicStudent)).where(*conds)
+                          .order_by(AcademicWarning.id.desc()).offset(_off(page, ps)).limit(ps)).all()
+        return [_warn_row(w, stu) for w, stu in rows], total
 
 
 def get_warning_detail(wid) -> dict:
@@ -614,14 +647,17 @@ def _log_row(x: AcademicAuditTrail) -> dict:
 
 def list_audit(page, ps, biz_type=None, keyword=None):
     with session() as db:
-        q = select(AcademicAuditTrail).where(AcademicAuditTrail.tenant_id == _tid())
+        conds = [AcademicAuditTrail.tenant_id == _tid()]
         if biz_type:
-            q = q.where(AcademicAuditTrail.biz_type == biz_type)
-        rows = db.scalars(q.order_by(AcademicAuditTrail.id.desc())).all()
-        if keyword:
+            conds.append(AcademicAuditTrail.biz_type == biz_type)
+        if keyword and keyword.strip():
             kw = keyword.strip()
-            rows = [r for r in rows if kw in (r.action or "") or kw in (r.detail or "")]
-        return _page([_log_row(r) for r in rows], page, ps)
+            conds.append(or_(_kw_like(AcademicAuditTrail.action, kw),
+                             _kw_like(AcademicAuditTrail.detail, kw)))
+        total = db.scalar(select(func.count()).select_from(AcademicAuditTrail).where(*conds)) or 0
+        rows = db.scalars(select(AcademicAuditTrail).where(*conds)
+                          .order_by(AcademicAuditTrail.id.desc()).offset(_off(page, ps)).limit(ps)).all()
+        return [_log_row(r) for r in rows], total
 
 
 def get_dashboard() -> dict:
