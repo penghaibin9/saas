@@ -31,6 +31,7 @@
     </div>
 
     <div class="mp-stack">
+      <GraduationBatchStrip />
       <!-- 页内视图页签：同一题目库的来源/审核/维护视图（原三级菜单入口收口至此，?panel= 深链不变） -->
       <div class="mp-tabs">
         <button
@@ -312,9 +313,11 @@ const TOPIC_LIB_INLINE_ROUTES = new Set([
   'graduation-topic-lib-detail'
 ])
 
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
+
 export default {
   name: 'TopicLibListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

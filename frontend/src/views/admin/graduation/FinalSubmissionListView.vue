@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="成果提交"
-    subtitle="初稿 / 定稿版本 + 查重状态 · 查重超标不可直接通过（GD-R09），须退回修改"
+    subtitle="初稿 / 定稿版本与查重状态 · 查重超标的成果不可直接通过，须退回修改"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -14,6 +14,7 @@
     </template>
 
     <div class="mp-stack">
+      <GraduationBatchStrip />
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
       <div class="mp-tabs">
         <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
@@ -65,7 +66,7 @@
         </template>
       </DataTable>
 
-      <p class="mp-note">成果批阅（通过 / 退回修改）由指导教师执行；查重超标（&gt;30%）系统拦截不可直接通过。查重报告在学生毕设详情「查重记录」页签查看（学生端 P16 同步可见）。</p>
+      <p class="mp-note">成果批阅（通过 / 退回修改）由指导教师执行；查重超标（&gt;30%）系统拦截不可直接通过。查重报告在学生毕设详情「查重记录」页签查看，学生端同步可见。</p>
     </div>
 
     <AppConfirmDialog
@@ -94,9 +95,11 @@ import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { toast } from '@/utils/toast'
 
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
+
 export default {
   name: 'FinalSubmissionListView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay, AppExportButton },
+  components: { GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

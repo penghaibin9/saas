@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="毕设统计报表"
-    subtitle="开题 / 指导频次 / 中期 / 查重 / 评阅 / 答辩 / 成绩 / 互查 各阶段统计（接各域真实 /stats）"
+    subtitle="开题 / 指导 / 中期 / 查重 / 评阅 / 答辩 / 成绩 / 互查各阶段进度与质量统计"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -24,7 +24,11 @@
               <b>{{ s.count }}</b><span>{{ s.label }}</span>
             </div>
             <div v-for="e in extras(b)" :key="e.label" class="gs-cell gs-cell--extra"><b>{{ e.value }}</b><span>{{ e.label }}</span></div>
-            <div v-if="!b.data" class="mp-note">加载失败或暂无数据</div>
+            <div v-if="!b.data && b.error" class="mp-note">
+              统计加载失败
+              <button type="button" class="mp-link" @click="loadOne(b)">重试</button>
+            </div>
+            <div v-else-if="!b.data" class="mp-note">暂无统计口径</div>
           </div>
         </section>
       </div>
@@ -72,13 +76,20 @@ export default {
       if (d.excellentCount !== undefined) out.push({ label: '优秀数', value: d.excellentCount })
       return out
     },
+    async loadOne(b) {
+      const res = await graduationMoreApi[b.fn]()
+      if (res.code === 0) {
+        b.data = res.data
+        b.error = ''
+      } else {
+        b.data = null
+        b.error = res.message || '加载失败'
+      }
+    },
     async loadAll() {
       this.loading = true
       // 时间范围默认空=全部时间；后端暂未统一接 dateStart/dateEnd 时前端仍保留筛选 UI 与记忆
-      await Promise.all(this.blocks.map(async (b) => {
-        const res = await graduationMoreApi[b.fn]()
-        b.data = res.code === 0 ? res.data : null
-      }))
+      await Promise.all(this.blocks.map((b) => this.loadOne(b)))
       this.loading = false
     }
   }

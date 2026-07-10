@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="答辩安排"
-    subtitle="分组 / 时间 / 地点 / 评委 · 评委回避导师自动检测 · 发布后学生端 P17 即时可见"
+    subtitle="分组 / 时间 / 地点 / 评委 · 自动检测评委与导师回避 · 发布后学生端即时可见"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -16,6 +16,7 @@
       </div>
     </template>
 
+    <GraduationBatchStrip />
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <EmptyState v-else-if="!rows.length" title="暂无答辩组" description="点击「新增答辩组」创建分组并排期" />
@@ -66,9 +67,11 @@ import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
 
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
+
 export default {
   name: 'DefenseScheduleView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton },
+  components: { GraduationBatchStrip, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -138,7 +141,7 @@ export default {
       if (!this.canPublish || row.conflict) return
       const res = await graduationApi.publishDefenseSchedule(row.id)
       if (res.code === 0) {
-        toast.success(row.groupName + ' 已发布：学生端 P17 即时可见，发布动作已留痕')
+        toast.success(row.groupName + ' 已发布：学生端即时可见，发布动作已留痕')
         this.load()
       } else {
         toast.error(res.message)

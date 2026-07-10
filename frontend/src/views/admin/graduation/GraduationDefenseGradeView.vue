@@ -14,7 +14,8 @@
             <div class="mp-cell-sub">{{ s.studentNo }} · {{ s.advisorName || '未分配导师' }}</div>
           </li>
         </ul>
-        <EmptyState v-if="!studentOptions.length" title="未找到学生" />
+        <ErrorState v-if="sideError" :description="sideError" @retry="searchStudents" />
+        <EmptyState v-else-if="!studentOptions.length" title="未找到学生" />
       </div>
 
       <div class="gp-main">
@@ -28,6 +29,8 @@
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'defense' }" @click="switchTab('defense')">答辩评分</button>
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'grade' }" @click="switchTab('grade')">成绩评定</button>
           </div>
+
+          <ErrorState v-if="loadError" :description="loadError" @retry="loadAll" />
 
           <!-- 查重 -->
           <div v-if="tab === 'plagiarism'" class="gp-panel">
@@ -108,7 +111,7 @@
 
 <script>
 /** 答辩与成绩（/admin/graduation/defense-grade）：查重/评阅/答辩评分/成绩评定，按学生维度处理。 */
-import { ModulePageShell, StatusTag, LoadingState, EmptyState } from '@/components/business'
+import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
@@ -116,11 +119,12 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationDefenseGradeView',
-  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppDateDisplay },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       studentKeyword: '', studentOptions: [], current: null, tab: 'plagiarism',
+      sideError: '', loadError: '',
       plagiarismList: [], reviewList: [], scoreList: [], grade: null, gradeLoading: false,
       reviewerName: '',
       submitting: false
@@ -144,29 +148,31 @@ export default {
       if (this.$route.query.panel !== t) this.$router.replace({ query: { ...this.$route.query, panel: t } })
     },
     async searchStudents() {
+      this.sideError = ''
       const res = await gdStudentApi.getStudents({ keyword: this.studentKeyword, pageSize: 20 })
-      this.studentOptions = res.code === 0 ? res.data.list : []
+      if (res.code === 0) { this.studentOptions = res.data.list } else { this.studentOptions = []; this.sideError = res.message || '学生列表加载失败' }
     },
     selectStudent(s) { this.current = s; this.loadAll() },
     async loadAll() {
+      this.loadError = ''
       await Promise.all([this.loadPlagiarism(), this.loadReview(), this.loadScores(), this.loadGrade()])
     },
     async loadPlagiarism() {
       const res = await graduationDefenseGradeApi.getPlagiarismList({ gdStudentId: this.current.id, pageSize: 50 })
-      this.plagiarismList = res.code === 0 ? res.data.list : []
+      if (res.code === 0) { this.plagiarismList = res.data.list } else { this.plagiarismList = []; this.loadError = res.message || '查重记录加载失败' }
     },
     async loadReview() {
       const res = await graduationDefenseGradeApi.getReviewList({ gdStudentId: this.current.id, pageSize: 50 })
-      this.reviewList = res.code === 0 ? res.data.list : []
+      if (res.code === 0) { this.reviewList = res.data.list } else { this.reviewList = []; this.loadError = res.message || '评阅记录加载失败' }
     },
     async loadScores() {
       const res = await graduationDefenseGradeApi.getScoreList({ gdStudentId: this.current.id, pageSize: 50 })
-      this.scoreList = res.code === 0 ? res.data.list : []
+      if (res.code === 0) { this.scoreList = res.data.list } else { this.scoreList = []; this.loadError = res.message || '评分记录加载失败' }
     },
     async loadGrade() {
       this.gradeLoading = true
       const res = await graduationDefenseGradeApi.getGrade(this.current.id)
-      this.grade = res.code === 0 ? res.data : null
+      if (res.code === 0) { this.grade = res.data } else { this.grade = null; this.loadError = res.message || '成绩加载失败' }
       this.gradeLoading = false
     },
     async doSubmitPlagiarism() {

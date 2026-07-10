@@ -13,6 +13,7 @@
     </template>
 
     <div class="mp-stack">
+      <GraduationBatchStrip />
       <!-- 页内视图页签：同一名单的不同工作视图（原三级菜单入口收口至此，?panel= 深链不变） -->
       <div class="mp-tabs">
         <button
@@ -280,9 +281,11 @@ const STAGE_TONE = {
   MIDTERM: 'warning', FINAL_CHECK: 'processing', DEFENSE: 'warning', ARCHIVED: 'success'
 }
 
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
+
 export default {
   name: 'GraduationStudentListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
+  components: { GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -15,7 +15,8 @@
       <button class="gm-tabs__item" :class="{ 'is-active': tab === 'appeals' }" @click="switchTab('appeals')">成绩更正申诉</button>
     </div>
 
-    <LoadingState v-if="loading" />
+    <ErrorState v-if="error" :description="error" @retry="load" />
+    <LoadingState v-else-if="loading" />
 
     <!-- 成果互查整改 -->
     <div v-else-if="tab === 'peer'" class="mp-stack">
@@ -61,22 +62,22 @@
 
 <script>
 /** 互查整改 / 答辩专家库 / 成绩更正申诉（/admin/graduation/more?panel=peer|experts|appeals）。 */
-import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
+import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMoreView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      tab: 'peer', loading: true, submitting: false, rows: [],
+      tab: 'peer', loading: true, error: '', submitting: false, rows: [],
       appealStatus: '',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确定', requireReason: false, action: '', row: null },
       titleMap: { peer: '成果互查整改', experts: '答辩专家库', appeals: '成绩更正申诉' },
-      subtitleMap: { peer: '学生互评+被评整改闭环', experts: '评委库 + 回避规则（对齐维普专家评审回避）', appeals: '学生对已发布成绩申诉→复核（受理即撤回成绩重核）' },
+      subtitleMap: { peer: '学生互评+被评整改闭环', experts: '评委库与回避规则维护', appeals: '学生对已发布成绩申诉→复核（受理即撤回成绩重核）' },
       appealTabs: [{ value: '', label: '全部' }, { value: 'PENDING', label: '待复核' }, { value: 'APPROVED', label: '已受理' }, { value: 'REJECTED', label: '已驳回' }],
       peerCols: [{ key: 'pair', title: '互查关系 / 意见' }, { key: 'status', title: '状态' }],
       expertCols: [{ key: 'expert', title: '专家' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '100px' }],
@@ -99,11 +100,17 @@ export default {
     },
     async load() {
       this.loading = true
+      this.error = ''
       let res
       if (this.tab === 'peer') res = await graduationMoreApi.getPeerReviews()
       else if (this.tab === 'experts') res = await graduationMoreApi.getExperts()
       else res = await graduationMoreApi.getAppeals(this.appealStatus ? { status: this.appealStatus } : {})
-      this.rows = res.code === 0 ? res.data.list : []
+      if (res.code === 0) {
+        this.rows = res.data.list
+      } else {
+        this.rows = []
+        this.error = res.message || '加载失败，请重试'
+      }
       this.loading = false
     },
     async toggleExpert(row) {

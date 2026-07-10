@@ -5,6 +5,7 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <GraduationBatchStrip />
     <div class="gp-layout">
       <div class="gp-side">
         <input v-model="studentKeyword" class="ie-in" placeholder="搜索学生姓名/学号" @input="searchStudents" />
@@ -14,7 +15,8 @@
             <div class="mp-cell-sub">{{ s.studentNo }} · {{ s.advisorName || '未分配导师' }} · {{ s.stageLabel }}</div>
           </li>
         </ul>
-        <EmptyState v-if="!studentOptions.length" title="未找到学生" description="调整关键词重新搜索" />
+        <ErrorState v-if="sideError" :description="sideError" @retry="searchStudents" />
+        <EmptyState v-else-if="!studentOptions.length" title="未找到学生" description="调整关键词重新搜索" />
       </div>
 
       <div class="gp-main">
@@ -27,6 +29,8 @@
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'guidance' }" @click="switchTab('guidance')">指导记录</button>
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'midterm' }" @click="switchTab('midterm')">中期检查</button>
           </div>
+
+          <ErrorState v-if="loadError" :description="loadError" @retry="loadAll" />
 
           <!-- 任务书 -->
           <div v-if="tab === 'taskbook'" class="gp-panel">
@@ -96,19 +100,21 @@
 
 <script>
 /** 过程指导（/admin/graduation/process）：任务书下达/确认/变更 + 指导记录时间线 + 中期检查三档结论/整改闭环。 */
-import { ModulePageShell, StatusTag, LoadingState, EmptyState } from '@/components/business'
+import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationProcessView',
-  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppDateDisplay },
+  components: { GraduationBatchStrip, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       studentKeyword: '', studentOptions: [], current: null, tab: 'taskbook', submitting: false,
+      sideError: '', loadError: '',
       taskbook: null, tbLoading: false,
       guidanceList: [], guidanceLoading: false,
       midterm: null, mtLoading: false
@@ -126,8 +132,9 @@ export default {
   },
   methods: {
     async searchStudents() {
+      this.sideError = ''
       const res = await gdStudentApi.getStudents({ keyword: this.studentKeyword, pageSize: 20 })
-      this.studentOptions = res.code === 0 ? res.data.list : []
+      if (res.code === 0) { this.studentOptions = res.data.list } else { this.studentOptions = []; this.sideError = res.message || '学生列表加载失败' }
     },
     selectStudent(s) {
       this.current = s
@@ -138,24 +145,25 @@ export default {
       this.$router.replace({ query: { ...this.$route.query, panel: t } })
     },
     async loadAll() {
+      this.loadError = ''
       await Promise.all([this.loadTaskbook(), this.loadGuidance(), this.loadMidterm()])
     },
     async loadTaskbook() {
       this.tbLoading = true
       const res = await graduationTaskbookApi.getTaskbook(this.current.id)
-      this.taskbook = res.code === 0 ? res.data : null
+      if (res.code === 0) { this.taskbook = res.data } else { this.taskbook = null; this.loadError = res.message || '任务书加载失败' }
       this.tbLoading = false
     },
     async loadGuidance() {
       this.guidanceLoading = true
       const res = await graduationTaskbookApi.getGuidanceList({ gdStudentId: this.current.id, pageSize: 50 })
-      this.guidanceList = res.code === 0 ? res.data.list : []
+      if (res.code === 0) { this.guidanceList = res.data.list } else { this.guidanceList = []; this.loadError = res.message || '指导记录加载失败' }
       this.guidanceLoading = false
     },
     async loadMidterm() {
       this.mtLoading = true
       const res = await graduationTaskbookApi.getMidterm(this.current.id)
-      this.midterm = res.code === 0 ? res.data : null
+      if (res.code === 0) { this.midterm = res.data } else { this.midterm = null; this.loadError = res.message || '中期检查加载失败' }
       this.mtLoading = false
     },
     processQuery(extra = {}) {

@@ -5,6 +5,7 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <GraduationBatchStrip />
     <div class="gp-tabs">
       <button class="gp-tabs__item" :class="{ 'is-active': tab === 'risk' }" @click="switchTab('risk')">问题预警</button>
       <button class="gp-tabs__item" :class="{ 'is-active': tab === 'archive' }" @click="switchTab('archive')">毕设归档</button>
@@ -15,14 +16,15 @@
     <div v-if="tab === 'risk'" class="mp-stack">
       <div class="ie-actions" style="justify-content: flex-start"><button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button></div>
       <AdvancedFilter v-model="riskFilters" :fields="riskFilterFields" @search="loadRisks" @reset="resetRiskFilters" />
-      <LoadingState v-if="riskLoading" />
+      <ErrorState v-if="riskError" :description="riskError" @retry="loadRisks" />
+      <LoadingState v-else-if="riskLoading" />
       <EmptyState v-else-if="!riskRows.length" title="暂无风险记录" description="点「扫描生成风险项」按当前数据生成" />
       <DataTable v-else :columns="riskColumns" :rows="riskRows" row-key="id" :pagination="{ page: riskPage, pageSize: riskPageSize, total: riskTotal }" @page-change="p => { riskPage = p; loadRisks() }">
         <template #cell-risk="{ row }">
           <div class="mp-cell-main">{{ row.riskName }}（{{ row.riskCode }}）</div>
           <div class="mp-cell-sub">{{ row.studentName }} · {{ row.studentNo }} · {{ row.advisorName || '未分配导师' }}</div>
         </template>
-        <template #cell-level="{ row }"><StatusTag :type="row.level === 'CRITICAL' || row.level === 'HIGH' ? 'danger' : 'warning'" :label="row.level" dot /></template>
+        <template #cell-level="{ row }"><StatusTag :type="row.level === 'CRITICAL' || row.level === 'HIGH' ? 'danger' : 'warning'" :label="levelLabel(row.level)" dot /></template>
         <template #cell-status="{ row }"><StatusTag :type="row.statusTone" :label="row.statusLabel" dot /></template>
         <template #cell-actions="{ row }">
           <button v-if="row.status === 'OPEN'" class="mp-link" @click="doAccept(row)">受理</button>
@@ -40,7 +42,8 @@
         <AppExportButton :export-fn="exportArchivesFn">导出台账</AppExportButton>
       </div>
       <AdvancedFilter v-model="archiveFilters" :fields="archiveFilterFields" @search="loadArchives" @reset="resetArchiveFilters" />
-      <LoadingState v-if="archiveLoading" />
+      <ErrorState v-if="archiveError" :description="archiveError" @retry="loadArchives" />
+      <LoadingState v-else-if="archiveLoading" />
       <EmptyState v-else-if="!archiveRows.length" title="暂无归档记录" />
       <DataTable v-else :columns="archiveColumns" :rows="archiveRows" row-key="id" :pagination="{ page: archivePage, pageSize: archivePageSize, total: archiveTotal }" @page-change="p => { archivePage = p; loadArchives() }">
         <template #cell-student="{ row }">
@@ -67,7 +70,8 @@
         memory-key="graduation.riskArchive.statsRange"
         @change="onStatsRangeChange"
       />
-      <LoadingState v-if="statsLoading" />
+      <ErrorState v-if="statsError" :description="statsError" @retry="loadStats" />
+      <LoadingState v-else-if="statsLoading" />
       <template v-else-if="overview">
         <div class="gs-cards">
           <div class="gs-card"><div class="gs-card__label">毕设学生</div><div class="gs-card__value">{{ overview.studentTotal }}</div></div>
@@ -96,7 +100,8 @@
 
 <script>
 /** 问题预警+毕设归档+毕设统计（/admin/graduation/risk-archive）：扫描处置闭环 + 材料核验归档 + 跨模块统计看板。 */
-import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
+import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton } from '@/components/common'
 import { AppDateRangePicker } from '@/components/common/date'
@@ -105,13 +110,14 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton },
+  components: { GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       tab: 'risk',
-      riskFilters: { status: '', level: '', dateStart: '', dateEnd: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true,
-      archiveFilters: { keyword: '', status: '', dateStart: '', dateEnd: '' }, archiveRows: [], archiveTotal: 0, archivePage: 1, archivePageSize: 10, archiveLoading: true,
+      riskFilters: { status: '', level: '', dateStart: '', dateEnd: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true, riskError: '',
+      archiveFilters: { keyword: '', status: '', dateStart: '', dateEnd: '' }, archiveRows: [], archiveTotal: 0, archivePage: 1, archivePageSize: 10, archiveLoading: true, archiveError: '',
+      statsError: '',
       statsRange: { start: '', end: '' },
       overview: null, collegeRows: [], statsLoading: true,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
@@ -124,7 +130,7 @@ export default {
     riskFilterFields() {
       return [
         { key: 'status', label: '状态', type: 'select', options: [{ value: 'OPEN', label: '待受理' }, { value: 'PROCESSING', label: '处理中' }, { value: 'CLOSED', label: '已关闭' }] },
-        { key: 'level', label: '等级', type: 'select', options: [{ value: 'LOW', label: 'LOW' }, { value: 'MEDIUM', label: 'MEDIUM' }, { value: 'HIGH', label: 'HIGH' }, { value: 'CRITICAL', label: 'CRITICAL' }] },
+        { key: 'level', label: '等级', type: 'select', options: [{ value: 'LOW', label: '低' }, { value: 'MEDIUM', label: '中' }, { value: 'HIGH', label: '高' }, { value: 'CRITICAL', label: '紧急' }] },
         {
           key: 'date', label: '预警时间', type: 'daterange',
           startKey: 'dateStart', endKey: 'dateEnd',
@@ -165,10 +171,15 @@ export default {
       const res = await graduationRiskArchiveApi.scanRisks()
       if (res.code === 0) { toast.success(res.message || '扫描完成'); this.loadRisks() } else toast.error(res.message)
     },
+    /** 风险等级展示映射（不向老师透出内部英文枚举） */
+    levelLabel(level) {
+      return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || level
+    },
     async loadRisks() {
       this.riskLoading = true
+      this.riskError = ''
       const res = await graduationRiskArchiveApi.getRiskList({ ...this.riskFilters, page: this.riskPage, pageSize: this.riskPageSize })
-      if (res.code === 0) { this.riskRows = res.data.list; this.riskTotal = res.data.total }
+      if (res.code === 0) { this.riskRows = res.data.list; this.riskTotal = res.data.total } else { this.riskRows = []; this.riskError = res.message || '加载失败' }
       this.riskLoading = false
     },
     resetRiskFilters() { this.riskFilters = { status: '', level: '', dateStart: '', dateEnd: '' }; this.riskPage = 1; this.loadRisks() },
@@ -195,8 +206,9 @@ export default {
     },
     async loadArchives() {
       this.archiveLoading = true
+      this.archiveError = ''
       const res = await graduationRiskArchiveApi.getArchiveList({ ...this.archiveFilters, page: this.archivePage, pageSize: this.archivePageSize })
-      if (res.code === 0) { this.archiveRows = res.data.list; this.archiveTotal = res.data.total }
+      if (res.code === 0) { this.archiveRows = res.data.list; this.archiveTotal = res.data.total } else { this.archiveRows = []; this.archiveError = res.message || '加载失败' }
       this.archiveLoading = false
     },
     resetArchiveFilters() { this.archiveFilters = { keyword: '', status: '', dateStart: '', dateEnd: '' }; this.archivePage = 1; this.loadArchives() },
@@ -231,9 +243,11 @@ export default {
     },
     async loadStats() {
       this.statsLoading = true
+      this.statsError = ''
       const [o, c] = await Promise.all([graduationRiskArchiveApi.getOverviewStats(), graduationRiskArchiveApi.getCollegeComparison()])
       this.overview = o.code === 0 ? o.data : null
       this.collegeRows = c.code === 0 ? c.data : []
+      if (o.code !== 0) this.statsError = o.message || '统计加载失败'
       this.statsLoading = false
     }
   }

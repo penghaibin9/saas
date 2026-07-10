@@ -12,6 +12,7 @@
       </div>
     </template>
 
+    <GraduationBatchStrip />
     <div v-if="activePanel !== 'conflicts'" class="mp-stack">
       <AdvancedFilter v-if="activePanel === 'rounds'" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -161,9 +162,11 @@ const PANEL_PRESETS = {
   conflicts: () => ({})
 }
 
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
+
 export default {
   name: 'TopicRoundListView',
-  components: {
+  components: { GraduationBatchStrip,
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppConfirmDialog, AppExcelImportDrawer, AppDateDisplay, AppExportButton
   },

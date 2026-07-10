@@ -139,7 +139,7 @@ export default {
       return [
         { label: '学生', value: `${this.detail.studentName} · ${this.detail.className}` },
         { label: '指导教师', value: this.detail.advisorName },
-        { label: '提交时间', value: `${this.detail.submitAt}（学生端 P15）` }
+        { label: '提交时间', value: this.detail.submitAt }
       ]
     },
     attachmentFiles() {

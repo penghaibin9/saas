@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="开题材料"
-    subtitle="承接学生端 P15 毕设提交 / 教师端 T24 开题批阅 · 驳回原因必填并同步学生端"
+    subtitle="学生提交开题材料，教师在线批阅 · 驳回需填写原因并即时同步学生端"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -14,6 +14,7 @@
     </template>
 
     <div class="mp-stack">
+      <GraduationBatchStrip />
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
       <div class="mp-tabs">
         <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
@@ -67,9 +68,11 @@ import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { toast } from '@/utils/toast'
 
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
+
 export default {
   name: 'ProposalListView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton },
+  components: { GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -133,7 +136,7 @@ export default {
     },
     async remind(row) {
       const res = await graduationApi.remindProposal(row.projectId || row.gdStudentId)
-      if (res.code === 0) toast.success('已向 ' + row.studentName + ' 发送开题催交提醒（GD-R04 联动），催办已留痕')
+      if (res.code === 0) toast.success('已向 ' + row.studentName + ' 发送开题催交提醒，催办已留痕')
       else toast.error(res.message || '催交失败')
     },
     async load() {
