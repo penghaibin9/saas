@@ -47,10 +47,26 @@ export const campusServiceRoutes = {
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.dorm.view', title: '宿舍服务' }
     },
     {
+      /* 2026-07-10 第一批交互改造：单条住宿记录独立详情深链接（与住宿台账双栏复用同一详情组件）。
+         权限 key 沿用住宿台账原 key，不扩大权限；数据范围由既有列表接口按楼栋范围裁剪。 */
+      path: 'dormitory/records/:recordId',
+      name: 'campus-service-dorm-record-detail',
+      component: () => import('@/views/admin/campusService/DormRecordDetailView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.dorm.view', title: '住宿详情' }
+    },
+    {
       path: 'discipline',
       name: 'campus-service-discipline',
       component: () => import('@/views/admin/campusService/DisciplineView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.discipline.view', title: '违纪处分' }
+    },
+    {
+      /* 2026-07-10 第一批交互改造：违纪详情独立页（完整违纪业务不再放右侧抽屉）。
+         权限 key 沿用违纪台账原 key，不扩大权限；数据范围由既有列表接口按学生范围裁剪。 */
+      path: 'discipline/:recordId',
+      name: 'campus-service-discipline-detail',
+      component: () => import('@/views/admin/campusService/DisciplineDetailView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.discipline.view', title: '违纪详情' }
     },
     {
       path: 'work-orders',

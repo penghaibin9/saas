@@ -168,9 +168,23 @@
 
 navPlan 静态配置一次构建：FLAT_NAV_INDEX 行数 293 → **86**（-71%），高亮与搜索遍历同步下降；isPlannerView 由角色判断简化为构建期常量；未新增运行时计算/深 watcher/组件；路由懒加载未触碰，不回退 6d14659 性能优化。
 
-## 10. build / lint 结果（2026-07-10 拍板修正版）
+## 10. build / lint 结果
 
-- `npm run build`：**通过**（vite build，✓ built in 6.74s，exit 0）；
-- `npm run lint`：**通过**（0 errors / 3 warnings，均为 HEAD 基线已有，非本轮引入）；
-- 结构程序化实测：14 个二级 / 72 叶（14 implemented + 58 planned）；正式菜单一/二/三级显示名禁词检查（承接/external-link/待施工/planned/partial/B包/C包/D包）**全部通过**；迎新旧路由高亮命中「在校服务与迎新 / 数字迎新数据」；leafKey/path 唯一性与高亮歧义 0；
-- 本版对应 commit：refactor(student-affairs-nav): finalize business structure and planned isolation（在 3a99cf2 之上的独立第二个 commit，未 squash、未 push、未 tag）。
+（本版验证后填写）
+
+## 11. 第一批复杂抽屉改造（2026-07-10，独立 commit）
+
+范围严格限定 5 个现有真实页面，未扩展 planned 业务，未改 backend / 数据库 / miniapp / 数字迎新 / 其他中心。
+
+| 页面 | 目标形态 | 结果 |
+|---|---|---|
+| 请假审批 | 列表＋详情双栏连续审批 | ✅ 左队列（勾选/分页/第X条/待审计数）+ 右完整详情（学生/事由/附件/冲突/历史/留痕/审批意见），上一条/下一条/通过并下一条，退回走确认弹窗（原因必填），批量通过补确认弹窗；409/冲突提示并刷新 |
+| 助学金审核 | 列表＋详情双栏连续审核 | ✅ 同上；困难等级/历史申请无真实接口，明确显示「暂无相关数据」，不造假 |
+| 违纪详情 | 独立详情页 | ✅ 新路由 `/admin/campus-service/discipline/:recordId?code=…`（可刷新、可深链）；学生摘要/基本信息/违纪事实/处分状态/材料（暂无数据说明）/审计留痕/解除·作废操作；未实现的审批送达申诉不建假 Tab |
+| 宿舍入住 | 双栏＋独立深链接 | ✅ 住宿台账双栏（左名单+右 DormRecordDetail）+ 新路由 `/admin/campus-service/dormitory/records/:recordId?stu=…`，双栏与独立页复用同一详情组件；调宿/退宿历史无接口显示「暂无相关数据」 |
+| 学生360 | 保护性核验 | ✅ 入口均为独立页、无重复完整详情抽屉、敏感 Tab 权限未动；修复 2 个缺陷：activeTab 同步 query（刷新可恢复）、返回按钮优先历史返回（保留来源上下文） |
+
+弹层处置：**停用复杂抽屉 3 个**（请假详情抽屉、资助申请抽屉、宿舍台账原表格+抽屉式编辑动线改双栏）；**保留轻量抽屉**（宿舍编辑/标记异常 FormDrawer ≤6 字段、导入/导出/列设置抽屉、其余学生模块轻量抽屉）；确认弹窗全部保留并新增批量通过确认。
+新增模块局部组件（`modules/campusService/components/`，不动公共组件全局行为）：`SplitWorkspace.vue`（双栏壳+窄屏全屏详情降级）、`DormRecordDetail.vue`（住宿详情复用组件）、`routeState.js`（筛选/页码/选中/页签 ↔ query 同步，URL 不含敏感明文）。
+路由与上下文：新增 2 条详情子路由（权限 key 沿用原列表 key：campus.discipline.view / campus.dorm.view，不扩大权限）；请假/资助/宿舍/违纪列表的筛选、页码、选中项、页签同步 query，刷新/前进后退/从详情返回不丢；旧入口零删除（原列表路由与按钮全部保留）。
+已知取舍（记账）：请假/资助双栏左列为固定摘要列，原「表格列配置」在这两页不再适用（导出字段选择保留）；违纪/住宿详情页暂以列表接口按编号/姓名定位（单条查询接口随 B/C 包接入后替换）；宿舍异常「连续核实双栏」属第二批。
