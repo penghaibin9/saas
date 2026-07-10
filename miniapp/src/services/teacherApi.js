@@ -25,6 +25,7 @@ export const teacherApi = {
   reviewProposal: (id, action, comment) => real.reviewProposalReal(id, action, comment),
   handleWarning: (id, action, note) => real.handleWarningReal(id, action, note),
   handleCheckin: (id, action, comment) => real.handleCheckinReal(id, action, comment),
+  remindWeekly: (id) => real.remindWeeklyReal(id),
   createFollowup: (body) => real.createFollowupReal(body),
   // 13A 学工待办卡 + 13B 教师课表（P7，真实优先无 mock 兜底）
   getAffairs: () => real.teacherAffairs(),
@@ -51,6 +52,10 @@ export const teacherApi = {
     realFirst('teacher.graduation',
       () => real.teacherGraduationReal({ list: M.gdStudents, detail: M.gdReviewDetail }),
       () => mockRequest({ list: M.gdStudents, detail: M.gdReviewDetail })),
+  // 毕设指导：移动端快速新增指导记录（真实接口，不 mock 冒充成功）
+  createGuidance: (gdStudentId, body) => real.teacherGraduationGuidanceCreate(gdStudentId, body),
+  // 毕设开题：批阅前真实查看开题详情（背景/方案/成果+历史版本，范围校验）
+  getGraduationProposalDetail: (id) => real.gdTeacherProposalDetail(id),
   // 就业跟进：mobile 范围真实数据
   getEmployment: () =>
     realFirst('teacher.employment',

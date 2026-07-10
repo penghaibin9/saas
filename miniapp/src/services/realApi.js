@@ -245,6 +245,9 @@ export const gdGrade = () => realRequest('/mobile/graduation/grade')
 export const gdTeacherMyStudents = () => realRequest('/mobile/teacher/graduation/my-students')
 export const gdTeacherGuidanceCreate = (gdStudentId, body) =>
   realRequest(`/mobile/teacher/graduation/${gdStudentId}/guidance`, { method: 'POST', data: body })
+/** 教师·开题详情（批阅前真实查看背景/方案/成果 + 历史版本，范围校验，越权 403/不存在 404） */
+export const gdTeacherProposalDetail = (proposalId) =>
+  realRequest(`/mobile/teacher/graduation/proposal/${proposalId}`)
 
 export async function enrichEmployment(mock) {
   const r = await realRequest('/mobile/employment/my')
@@ -439,25 +442,22 @@ export async function teacherInternshipReal(mock) {
     abnormal: abnormal.length ? abnormal : (mock.abnormal || []), _real: true }
 }
 
-/** 教师·毕设指导页 → {list, detail}。 */
+/** 教师·毕设指导页 → {list, reviewQueue}。reviewQueue=待批阅开题真实队列（含 proposalId，供单页队列批阅）。 */
 export async function teacherGraduationReal(mock) {
   const d = await realRequest('/mobile/teacher/graduation')
   const list = (d.students || []).map((s) => ({
     id: String(s.id || ''), name: s.name || s.studentName || '', className: s.className || '',
     topic: s.topicTitle || s.topic || '（未选题）', node: s.stage || '毕设',
     status: s.status || 'PROCESSING', deadline: s.deadline || '' }))
-  const detail = {}
-  ;(d.reviewDetail || []).forEach((p) => {
-    // 以学生（projectId=gd_student_id）为键，页面用学生行打开批阅；proposalId 供真实批阅接口
-    const key = String(p.projectId || p.id || '')
-    if (!detail[key]) {
-      detail[key] = { student: p.studentName || p.name || '', topic: p.topicTitle || '',
-        node: '开题', submitTime: p.submitAt || p.submittedAt || '—', attachment: '—',
-        abstract: '（详见 PC 端材料附件）', progress: [], proposalId: String(p.id || '') }
-    }
-  })
+  // 待批阅开题队列：仅真实待审(status=PENDING_REVIEW)且有数字 proposalId 的记录，供逐条批阅
+  const reviewQueue = (d.reviewDetail || [])
+    .filter((p) => (p.status || 'PENDING_REVIEW') === 'PENDING_REVIEW' && /^\d+$/.test(String(p.id || '')))
+    .map((p) => ({ proposalId: String(p.id), gdStudentId: String(p.projectId || p.gdStudentId || ''),
+      studentName: p.studentName || p.name || '', className: p.className || '',
+      topicTitle: p.topicTitle || '', submitAt: p.submitAt || p.submittedAt || '',
+      version: p.version || '', isResubmit: !!p.isResubmit }))
   return { list: list.length ? list : (mock.list || []),
-    detail: Object.keys(detail).length ? detail : (mock.detail || {}), _real: true }
+    reviewQueue, _real: !!d.hasData || list.length > 0 }
 }
 
 /** 教师·移动端快速新增指导记录（仅本人指导学生，越权由后端 403 拦截）。 */
