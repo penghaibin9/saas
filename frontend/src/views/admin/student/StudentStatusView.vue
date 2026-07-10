@@ -112,6 +112,18 @@
       </div>
     </AppDrawer>
 
+    <!-- 学籍状态变更 · 高风险二次确认 -->
+    <AppConfirmDialog
+      :visible="confirmDialog.visible"
+      type="danger"
+      title="确认变更学籍状态"
+      :message="'操作对象：' + confirmTargetText() + '。将变更为「' + statusLabel(drawer.toStatus) + '」，变更原因：' + drawer.reason + '。变更立即生效并写入审计与学生360，如需恢复须再次发起变更（不可自动撤销），请确认。'"
+      confirm-text="确认变更"
+      :submitting="confirmDialog.submitting"
+      @update:visible="confirmDialog.visible = $event"
+      @confirm="doSubmitChange"
+    />
+
     <!-- 导出变更记录 -->
     <AppConfirmDialog
       :visible="exportDialog.visible"
@@ -199,7 +211,9 @@ export default {
         error: '',
         submitting: false
       },
-      exportDialog: { visible: false, submitting: false }
+      exportDialog: { visible: false, submitting: false },
+      /* 高风险二次确认（2026-07-10 第二批交互纠偏） */
+      confirmDialog: { visible: false, submitting: false }
     }
   },
   computed: {
@@ -271,7 +285,9 @@ export default {
       const list = this.drawer.studentIds
       this.drawer.studentIds = checked ? [...list, id] : list.filter((x) => x !== id)
     },
-    async submitChange() {
+    /* 2026-07-10 第二批交互纠偏：学籍状态变更属高风险正式状态，提交前必须二次确认
+       （明确操作对象、变更影响、原因回显、不可自动撤销提示），确认后才调用接口 */
+    submitChange() {
       const d = this.drawer
       d.error = ''
       if (!d.toStatus) {
@@ -282,21 +298,30 @@ export default {
         d.error = '变更原因必填且不少于 5 个字'
         return
       }
+      if (d.batch && !d.studentIds.length) {
+        d.error = '请至少勾选一名学生'
+        return
+      }
+      if (!d.batch && !d.studentId) {
+        d.error = '请选择学生'
+        return
+      }
+      this.confirmDialog = { visible: true, submitting: false }
+    },
+    confirmTargetText() {
+      const d = this.drawer
+      if (d.batch) return `已勾选的 ${d.studentIds.length} 名学生`
+      const stu = this.candidates.find((c) => c.studentId === d.studentId)
+      return stu ? `${stu.name}（${stu.className}，当前 ${this.statusLabel(stu.studentStatus)}）` : '所选学生'
+    },
+    async doSubmitChange() {
+      const d = this.drawer
+      this.confirmDialog.submitting = true
       d.submitting = true
       let res
       if (d.batch) {
-        if (!d.studentIds.length) {
-          d.error = '请至少勾选一名学生'
-          d.submitting = false
-          return
-        }
         res = await studentApi.batchChangeStatus(d.studentIds, { toStatus: d.toStatus, reason: d.reason })
       } else {
-        if (!d.studentId) {
-          d.error = '请选择学生'
-          d.submitting = false
-          return
-        }
         res = await studentApi.changeStatus(d.studentId, {
           toStatus: d.toStatus,
           reason: d.reason,
@@ -304,6 +329,8 @@ export default {
         })
       }
       d.submitting = false
+      this.confirmDialog.submitting = false
+      this.confirmDialog.visible = false
       if (res.code === 0) {
         d.visible = false
         toast.success(

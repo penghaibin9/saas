@@ -85,32 +85,88 @@
         </template>
       </SplitWorkspace>
 
-      <!-- 异常管理：台账表格（连续核实工作区随宿舍与公寓模块施工，属第二批） -->
-      <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
-        <template #cell-name="{ row }">
-          <div class="mp-cell-main">{{ row.name }}</div>
-          <div class="mp-cell-sub">{{ row.className }}</div>
+      <!-- 异常管理：列表＋详情双栏连续核实工作区（2026-07-10 第二批交互改造） -->
+      <SplitWorkspace v-else :has-selection="!!selectedId">
+        <template #left>
+          <div class="dmv-queue">
+            <div class="dmv-queue__bar"><span>第 {{ positionText }} 条</span></div>
+            <div class="dmv-queue__list" ref="exList">
+              <div
+                v-for="row in rows"
+                :key="row.id"
+                class="dmv-item"
+                :class="{ 'is-active': row.id === selectedId }"
+                :data-row-id="row.id"
+                @click="selectException(row.id)"
+              >
+                <div class="dmv-item__line1">
+                  <span class="dmv-item__name">{{ row.name }}</span>
+                  <span class="dmv-item__sub">{{ row.className }}</span>
+                  <StatusTag :status="row.status" :label="exStatusLabel(row.status)" dot />
+                </div>
+                <div class="dmv-item__line2">
+                  <StatusTag :type="['NIGHT_OUT', 'NO_RETURN', 'DISCIPLINE'].includes(row.type) ? 'danger' : 'warning'" :label="row.typeLabel" />
+                  {{ row.building }}{{ row.room ? ' · ' + row.room : '' }}
+                </div>
+                <div class="dmv-item__line3">{{ row.code }} · {{ row.happenTime }}</div>
+              </div>
+            </div>
+            <div class="dmv-queue__pager">
+              <button class="mp-link" :class="{ 'is-disabled': pagination.page <= 1 }" @click="gotoPage(pagination.page - 1)">上一页</button>
+              <span class="mp-note">第 {{ pagination.page }} / {{ maxPage }} 页 · 共 {{ pagination.total }} 条</span>
+              <button class="mp-link" :class="{ 'is-disabled': pagination.page >= maxPage }" @click="gotoPage(pagination.page + 1)">下一页</button>
+            </div>
+          </div>
         </template>
-        <template #cell-status="{ row }">
-          <StatusTag :status="row.status" :label="exStatusLabel(row.status)" dot />
+        <template #detail="{ narrow }">
+          <div v-if="!selectedException" class="mp-card dmv-placeholder">
+            <div class="mp-card__body"><p class="mp-note">从左侧选择一条异常记录开始核实</p></div>
+          </div>
+          <div v-else>
+            <div class="dmv-detail__head">
+              <button v-if="narrow" class="mp-link" @click="backToListPane">← 返回列表</button>
+              <div class="dmv-detail__title">
+                {{ selectedException.code }}
+                <StatusTag :status="selectedException.status" :label="exStatusLabel(selectedException.status)" dot />
+              </div>
+              <div class="dmv-detail__nav">
+                <AppButton variant="ghost" :disabled="!hasPrev" @click="step(-1)">上一条</AppButton>
+                <AppButton variant="ghost" :disabled="!hasNext" @click="step(1)">下一条</AppButton>
+              </div>
+            </div>
+            <div class="mp-card">
+              <div class="mp-card__head"><div class="mp-card__title">异常信息</div></div>
+              <div class="mp-card__body">
+                <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ selectedException.name }}（{{ selectedException.className }}）</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">楼栋 / 房间</span><span class="mp-kv__v">{{ selectedException.building }}{{ selectedException.room ? ' · ' + selectedException.room : '' }}</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">类型</span><span class="mp-kv__v"><StatusTag :type="['NIGHT_OUT', 'NO_RETURN', 'DISCIPLINE'].includes(selectedException.type) ? 'danger' : 'warning'" :label="selectedException.typeLabel" /></span></div>
+                <div class="mp-kv"><span class="mp-kv__k">发生时间</span><span class="mp-kv__v">{{ selectedException.happenTime }}</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">情况说明</span><span class="mp-kv__v">{{ selectedException.detail }}</span></div>
+              </div>
+            </div>
+            <div class="mp-card">
+              <div class="mp-card__head"><div class="mp-card__title">处理情况</div></div>
+              <div class="mp-card__body">
+                <div class="mp-kv"><span class="mp-kv__k">处理人</span><span class="mp-kv__v">{{ selectedException.handler || '未分派' }}</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">处理说明</span><span class="mp-kv__v">{{ selectedException.handleNote || '—' }}</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">处理时间</span><span class="mp-kv__v">{{ selectedException.handleTime || '—' }}</span></div>
+              </div>
+            </div>
+            <div class="dmv-actzone">
+              <AppButton variant="ghost" @click="$router.push('/admin/campus-service/students/' + selectedException.studentId)">学生服务</AppButton>
+              <span class="dmv-actzone__sp" />
+              <AppButton
+                v-if="selectedException.status !== 'COMPLETED'"
+                variant="primary"
+                :disabled="!can('campus.dorm.handle')"
+                :title="reason('campus.dorm.handle')"
+                @click="openHandle(selectedException)"
+              >跟进处理</AppButton>
+              <p v-else class="mp-note">该异常已办结</p>
+            </div>
+          </div>
         </template>
-        <template #cell-type="{ row }">
-          <StatusTag :type="['NIGHT_OUT', 'NO_RETURN', 'DISCIPLINE'].includes(row.type) ? 'danger' : 'warning'" :label="row.typeLabel" />
-        </template>
-        <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/campus-service/students/' + row.studentId)">学生服务</button>
-          <button
-            v-if="row.status !== 'COMPLETED'"
-            class="mp-link"
-            :class="{ 'is-disabled': !can('campus.dorm.handle') }"
-            :title="reason('campus.dorm.handle')"
-            @click="openHandle(row)"
-          >
-            跟进处理
-          </button>
-          <span v-else class="mp-note">{{ row.handler }}</span>
-        </template>
-      </DataTable>
+      </SplitWorkspace>
 
       <p class="mp-note">
         住宿台账来自后勤同步/导入；晚归、夜不归宿由门禁数据自动生成并支持人工标记。异常处理留痕，严重违纪可转违纪处分流程。导出住宿名单默认脱敏并含水印。
@@ -163,9 +219,10 @@
  * 统一口径：住宿台账主工作区=列表＋详情双栏（日常连续查看/处理）；单条住宿记录另有独立详情深链接
  * （/dormitory/records/:recordId，双栏与独立页复用 DormRecordDetail 同一业务详情组件）。
  * 编辑住宿信息/标记异常仍为轻量抽屉（字段≤6，符合抽屉适用范围）；异常跟进为确认弹窗（说明必填）。
+ * 2026-07-10 第二批：异常管理页签同步改为列表＋详情双栏连续核实（办结后自动进下一条）。
  * 页签、筛选、页码、选中项同步路由 query；接口与权限零改动，不虚构房源/调宿数据。
  */
-import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, ModuleToolbar, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppButton } from '@/components/ui'
 import { ImportDrawer, ExportDrawer, FormDrawer, SplitWorkspace, DormRecordDetail, readListState, writeListState } from '@/modules/campusService/components'
@@ -181,7 +238,7 @@ const EMPTY_FILTERS = () => ({ keyword: '', buildingId: '', status: '', type: ''
 export default {
   name: 'DormitoryView',
   components: {
-    ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
+    ModulePageShell, ModuleToolbar, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
     AppConfirmDialog, AppButton, ImportDrawer, ExportDrawer, FormDrawer, SplitWorkspace, DormRecordDetail
   },
   props: { ctx: { type: Object, required: true } },
@@ -235,18 +292,6 @@ export default {
         .filter((a) => pa[a.permission] && pa[a.permission].visible)
         .map((a) => ({ ...a, disabled: !pa[a.permission].allowed, disabledReason: pa[a.permission].reason }))
     },
-    columns() {
-      return [
-        { key: 'code', title: '异常编号' },
-        { key: 'name', title: '学生' },
-        { key: 'building', title: '楼栋 / 房间' },
-        { key: 'type', title: '类型' },
-        { key: 'happenTime', title: '发生时间' },
-        { key: 'detail', title: '情况说明' },
-        { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作', width: '180px' }
-      ]
-    },
     dormFields() {
       const f = this.ctx.filterOptions
       const fields = [
@@ -274,7 +319,10 @@ export default {
       return Math.max(1, Math.ceil(this.pagination.total / this.pagination.pageSize))
     },
     selectedRecord() {
-      return this.rows.find((r) => r.id === this.selectedId) || null
+      return this.tab === 'dorm' ? this.rows.find((r) => r.id === this.selectedId) || null : null
+    },
+    selectedException() {
+      return this.tab === 'exception' ? this.rows.find((r) => r.id === this.selectedId) || null : null
     },
     selectedIndex() {
       return this.rows.findIndex((r) => r.id === this.selectedId)
@@ -319,7 +367,7 @@ export default {
       writeListState(this.$router, this.$route, {
         page: this.pagination.page,
         filters: this.filters,
-        selectedId: this.tab === 'dorm' ? this.selectedId : '',
+        selectedId: this.selectedId,
         tab: this.tab === 'exception' ? 'exception' : '',
         filterKeys: FILTER_KEYS
       })
@@ -378,7 +426,7 @@ export default {
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
-        if (this.tab === 'dorm') this.ensureSelection(select)
+        this.ensureSelection(select)
       } else {
         this.error = res.message
       }
@@ -398,11 +446,15 @@ export default {
     select(id) {
       this.selectedId = id
       this.syncQuery()
-      this.loadExceptions()
+      if (this.tab === 'dorm') this.loadExceptions()
       this.$nextTick(() => {
-        const el = this.$refs.list && this.$refs.list.querySelector(`[data-row-id="${id}"]`)
+        const ref = this.tab === 'dorm' ? this.$refs.list : this.$refs.exList
+        const el = ref && ref.querySelector(`[data-row-id="${id}"]`)
         if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' })
       })
+    },
+    selectException(id) {
+      this.select(id)
     },
     backToListPane() {
       this.selectedId = ''
@@ -497,12 +549,21 @@ export default {
     },
     async submitHandle({ reason, notify }) {
       this.handleDialog.submitting = true
+      const prevIndex = this.selectedIndex
       const res = await handleDormException(this.handleDialog.row.id, { note: reason, complete: notify })
       this.handleDialog.submitting = false
       if (res.code === 0) {
         toast.success(notify ? '异常已办结，处理说明已留痕' : '跟进已记录，状态更新为跟进中')
         this.handleDialog.visible = false
-        this.load()
+        if (this.tab === 'exception' && notify) {
+          /* 连续核实：办结后自动定位下一条 */
+          await this.load()
+          const nextIdx = Math.min(prevIndex + (this.rows.some((r) => r.id === this.selectedId) ? 1 : 0), this.rows.length - 1)
+          if (nextIdx >= 0 && this.rows[nextIdx]) this.select(this.rows[nextIdx].id)
+        } else {
+          this.load()
+        }
+        this.loadTotals()
       } else {
         toast.error(res.message)
       }
@@ -607,5 +668,14 @@ export default {
 }
 .dmv-placeholder {
   text-align: center;
+}
+.dmv-actzone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.dmv-actzone__sp {
+  flex: 1;
 }
 </style>
