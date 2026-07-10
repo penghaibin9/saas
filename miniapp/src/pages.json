@@ -49,7 +49,7 @@
     },
     {
       "path": "pages/student/graduation/index",
-      "style": { "navigationBarTitleText": "毕业设计" }
+      "style": { "navigationBarTitleText": "毕业设计", "enablePullDownRefresh": true }
     },
     {
       "path": "pages/student/employment/index",
