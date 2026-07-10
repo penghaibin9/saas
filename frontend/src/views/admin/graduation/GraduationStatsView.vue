@@ -30,6 +30,18 @@
             </div>
             <div v-else-if="!b.data" class="mp-note">暂无统计口径</div>
           </div>
+          <div v-if="chartData(b).length >= 2" class="mp-card__body" style="padding-top: 0">
+            <AppStackedBarChart
+              :title="b.title + ' · 状态分布'"
+              :data="chartData(b)"
+              horizontal
+              :height="Math.max(150, chartData(b).length * 40)"
+              x-field="label"
+              y-field="count"
+              series-field="cat"
+              value-label="数量"
+            />
+          </div>
         </section>
       </div>
     </div>
@@ -39,12 +51,13 @@
 <script>
 /** 毕设统计报表中心（/admin/graduation/stats-report）。接各域真实 /stats，只读聚合。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
+import { AppStackedBarChart } from '@/components/common'
 import { AppDateRangePicker } from '@/components/common/date'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 
 export default {
   name: 'GraduationStatsView',
-  components: { ModulePageShell, LoadingState, AppDateRangePicker },
+  components: { ModulePageShell, LoadingState, AppDateRangePicker, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -65,6 +78,10 @@ export default {
   },
   created() { this.loadAll() },
   methods: {
+    /** 各域 byStatus → 横向条形图数据（全零/单项不出图，不造假） */
+    chartData(b) {
+      return ((b.data && b.data.byStatus) || []).filter((s) => (s.count || 0) > 0).map((s) => ({ label: s.label, count: s.count, cat: '数量' }))
+    },
     extras(b) {
       const d = b.data || {}
       const out = []
