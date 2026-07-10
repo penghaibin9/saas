@@ -21,25 +21,74 @@
         <span class="bar__hint">数据范围内可见</span>
       </div>
       <div v-if="error" class="state is-err">{{ error }} <button @click="load">重试</button></div>
-      <DataTable v-else :columns="studentColumns" :rows="rows" row-key="id" :loading="loading"
-        :pagination="pagination" @page-change="onPageChange">
-        <template #cell-completeness="{ row }">
-          <span class="pct"><span class="pct__bar"><span class="pct__fill" :class="{ 'is-full': row.completeness >= 100 }" :style="{ width: row.completeness + '%' }"></span></span>{{ row.completeness }}%</span>
-        </template>
-        <template #cell-missing="{ row }">
-          <span class="miss">{{ row.missing.length ? row.missing.join('、') : '—' }}</span>
-        </template>
-        <template #cell-archived="{ row }">
-          <AppStatusTag :type="row.archived ? 'success' : 'default'">{{ row.archived ? '已归档' : '未归档' }}</AppStatusTag>
-        </template>
-        <template #cell-actions="{ row }">
-          <div class="ops">
-            <AppButton variant="ghost" size="sm" @click="openDetail(row)">详情</AppButton>
-            <AppPermissionButton v-if="!row.archived" code="internship.archive.handle" variant="secondary" size="sm" @click="doArchive(row)">归档</AppPermissionButton>
-            <AppPermissionButton v-else code="internship.archive.handle" variant="ghost" size="sm" :danger="true" @click="doRevoke(row)">撤销归档</AppPermissionButton>
+      <template v-else>
+        <DataTable :columns="studentColumns" :rows="rows" row-key="id" :loading="loading"
+          :pagination="pagination" row-clickable @row-click="openDetail" @page-change="onPageChange">
+          <template #cell-studentName="{ row }">
+            <span :class="{ 'is-current': row.id === panel.rowId }">{{ row.studentName }}</span>
+          </template>
+          <template #cell-completeness="{ row }">
+            <span class="pct"><span class="pct__bar"><span class="pct__fill" :class="{ 'is-full': row.completeness >= 100 }" :style="{ width: row.completeness + '%' }"></span></span>{{ row.completeness }}%</span>
+          </template>
+          <template #cell-missing="{ row }">
+            <AppStatusTag v-if="!row.missing.length" type="success" size="sm">齐全</AppStatusTag>
+            <span v-else class="miss">{{ row.missing.join('、') }}</span>
+          </template>
+          <template #cell-archived="{ row }">
+            <AppStatusTag :type="row.archived ? 'success' : 'default'">{{ row.archived ? '已归档' : '未归档' }}</AppStatusTag>
+          </template>
+          <template #cell-actions="{ row }">
+            <div class="ops">
+              <AppButton variant="ghost" size="sm" @click="openDetail(row)">核验</AppButton>
+              <AppPermissionButton v-if="!row.archived" code="internship.archive.handle" variant="secondary" size="sm" @click="doArchive(row)">归档</AppPermissionButton>
+              <AppPermissionButton v-else code="internship.archive.handle" variant="ghost" size="sm" :danger="true" @click="doRevoke(row)">撤销归档</AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+
+        <!-- 选中行完整性工作区（替代原「归档材料清单」居中弹窗） -->
+        <div v-if="panel.visible" class="wsp">
+          <div class="wsp__head">
+            <span class="wsp__title">归档完整性核验{{ panelStudentLabel ? ' · ' + panelStudentLabel : '' }}</span>
+            <template v-if="panel.data">
+              <AppStatusTag :type="panel.data.archived ? 'success' : 'default'">{{ panel.data.archived ? '已归档' : '未归档' }}</AppStatusTag>
+              <span v-if="panel.data.missing.length" class="miss-cell">缺 {{ panel.data.missing.length }} 项</span>
+              <AppStatusTag v-else type="success" size="sm">材料齐全</AppStatusTag>
+            </template>
+            <AppButton class="wsp__close" variant="ghost" size="sm" @click="closePanel">收起</AppButton>
           </div>
-        </template>
-      </DataTable>
+          <div v-if="panel.loading" class="state">加载中…</div>
+          <template v-else-if="panel.data">
+            <AppDescriptionList :items="detailItems" :columns="2" />
+
+            <div class="sec-t">① 材料清单核对（{{ panel.data.materialLabels.length }} 项必交）</div>
+            <div class="mat-list">
+              <div v-for="m in panel.data.materialLabels" :key="m.key" class="mat-row" :class="{ 'is-miss': !m.present }">
+                <span class="mat-row__dot">{{ m.present ? '✓' : '✗' }}</span>
+                <span class="mat-row__label">{{ m.label }}</span>
+                <AppStatusTag :type="m.present ? 'success' : 'danger'" size="sm">{{ m.present ? '已交' : '缺失' }}</AppStatusTag>
+              </div>
+            </div>
+
+            <div class="sec-t">② 归档状态与操作</div>
+            <div class="wsp__ops">
+              <AppPermissionButton v-if="!panel.data.archived" code="internship.archive.handle"
+                variant="secondary" size="sm" @click="doArchive(panel.data)">提交归档</AppPermissionButton>
+              <AppPermissionButton v-else code="internship.archive.handle" variant="ghost" size="sm"
+                :danger="true" @click="doRevoke(panel.data)">撤销归档</AppPermissionButton>
+              <template v-if="panel.data.archived">
+                <AppPermissionButton v-if="!panel.data.packageReady" code="internship.archive.handle"
+                  variant="secondary" size="sm" :loading="pkgBusy" @click="buildPackage">生成归档包</AppPermissionButton>
+                <AppButton v-else variant="secondary" size="sm" :loading="pkgBusy" @click="downloadPackage">下载归档包 (zip)</AppButton>
+              </template>
+            </div>
+            <p v-if="!panel.data.archived" class="hint">归档包需在「已归档」后生成；含 manifest + 材料清单 + 已有扫描件。</p>
+
+            <div class="sec-t">③ 归档留痕</div>
+            <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无归档记录" />
+          </template>
+        </div>
+      </template>
     </template>
 
     <!-- 按批次 / 按企业 -->
@@ -49,33 +98,6 @@
         <template #cell-archiveRate="{ row }">{{ row.archiveRate }}%</template>
       </DataTable>
     </template>
-
-    <!-- 详情 -->
-    <div v-if="detailDlg.visible" class="modal" @click.self="detailDlg.visible = false">
-      <div class="modal__card">
-        <div class="modal__head">归档材料清单</div>
-        <div class="modal__body">
-          <div v-if="detailDlg.loading" class="state">加载中…</div>
-          <template v-else-if="detailDlg.data">
-            <AppDescriptionList :items="detailItems" :columns="2" />
-            <div class="mats">
-              <div v-for="m in detailDlg.data.materialLabels" :key="m.key" class="mat" :class="{ 'is-miss': !m.present }">
-                <span class="mat__dot">{{ m.present ? '✓' : '✗' }}</span>{{ m.label }}
-              </div>
-            </div>
-            <div class="sec-t">归档留痕</div>
-            <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无归档记录" />
-            <div v-if="detailDlg.data.archived" class="pkg-bar">
-              <AppPermissionButton v-if="!detailDlg.data.packageReady" code="internship.archive.handle"
-                variant="secondary" size="sm" :loading="pkgBusy" @click="buildPackage">生成归档包</AppPermissionButton>
-              <AppButton v-else variant="secondary" size="sm" :loading="pkgBusy" @click="downloadPackage">下载归档包 (zip)</AppButton>
-            </div>
-            <p v-else class="hint">归档包需在「已归档」后生成；含 manifest + 材料清单 + 已有扫描件。</p>
-          </template>
-        </div>
-        <div class="modal__foot"><AppButton variant="secondary" @click="detailDlg.visible = false">关闭</AppButton></div>
-      </div>
-    </div>
 
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
@@ -113,7 +135,8 @@ export default {
       rows: [], total: 0, page: 1, pageSize: 20, aggRows: [], loading: false, error: '',
       archiveStudentTotal: null,
       keyword: '', onlyIncomplete: false,
-      detailDlg: { visible: false, loading: false, data: null },
+      // 选中行完整性工作区（替代原居中 modal）
+      panel: { visible: false, rowId: '', loading: false, data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
       pending: null,
       pkgBusy: false,
@@ -131,15 +154,24 @@ export default {
         { key: 'archiveRate', title: '归档率' }
       ]
     },
+    panelStudentLabel() {
+      const d = this.panel.data
+      if (d) return `${d.studentName}（${d.studentNo}）`
+      const r = this.rows.find((x) => x.id === this.panel.rowId)
+      return r ? `${r.studentName}（${r.studentNo}）` : ''
+    },
     detailItems() {
-      const d = this.detailDlg.data || {}
+      const d = this.panel.data || {}
       return [
         { label: '学生', value: `${d.studentName || '-'}（${d.studentNo || '-'}）` },
-        { label: '完整度', value: `${d.completeness ?? 0}%` }
+        { label: '完整度', value: `${d.completeness ?? 0}%` },
+        { label: '指导教师', value: d.advisorName || '—' },
+        { label: '企业', value: d.enterpriseName || '—' },
+        { label: '归档时间', value: d.archived ? (d.archivedAt || '—') : '未归档' }
       ]
     },
     auditRecords() {
-      return (this.detailDlg.data?.auditTrail || []).map((t, i) => ({
+      return (this.panel.data?.auditTrail || []).map((t, i) => ({
         id: i, action: t.action, actor: t.operator,
         reason: t.detail && (t.detail.reason || t.detail.note || ''), at: t.occurredAt
       }))
@@ -151,11 +183,16 @@ export default {
       return [{ label: '应归档学生', value: this.archiveStudentTotal }]
     }
   },
-  created() { this.load() },
+  created() {
+    this.load()
+    // 刷新恢复：route query.id 直接回到选中行工作区
+    const qid = this.$route.query.id
+    if (qid) this.openDetailById(String(qid))
+  },
   methods: {
     exportFn() { return archiveApi.exportArchives({ keyword: this.keyword }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
-    switchTab(k) { this.tab = k; this.page = 1; this.load() },
+    switchTab(k) { this.tab = k; this.page = 1; this.closePanel(); this.load() },
     reload() { this.page = 1; this.load() },
     onPageChange(p) { this.page = p; this.load() },
     async load() {
@@ -176,12 +213,30 @@ export default {
         this.aggRows = res.data || []
       }
     },
-    async openDetail(r) {
-      this.detailDlg = { visible: true, loading: true, data: null }
-      const res = await archiveApi.getDetail(r.id)
-      this.detailDlg.loading = false
-      if (res.code !== 0) { toast.error(res.message); this.detailDlg.visible = false; return }
-      this.detailDlg.data = res.data
+    syncQueryId(id) {
+      const cur = String(this.$route.query.id ?? '')
+      if (cur === (id || '')) return
+      const query = { ...this.$route.query }
+      if (id) query.id = id
+      else delete query.id
+      this.$router.replace({ query })
+    },
+    closePanel() {
+      this.panel = { visible: false, rowId: '', loading: false, data: null }
+      this.pkgFile = null
+      this.syncQueryId('')
+    },
+    openDetail(r) { this.openDetailById(r.id) },
+    async openDetailById(id) {
+      id = String(id)
+      this.panel = { visible: true, rowId: id, loading: true, data: null }
+      this.pkgFile = null
+      this.syncQueryId(id)
+      const res = await archiveApi.getDetail(id)
+      if (!this.panel.visible || this.panel.rowId !== id) return
+      this.panel.loading = false
+      if (res.code !== 0) { toast.error(res.message || '加载失败'); this.closePanel(); return }
+      this.panel.data = res.data
     },
     doArchive(r) {
       this.pending = { id: r.id, kind: 'archive', complete: r.completeness >= 100 }
@@ -204,23 +259,26 @@ export default {
         : await archiveApi.revoke(p.id, { reason })
       this.cd.submitting = false
       if (res.code !== 0) return toast.error(res.message || '操作失败')
-      this.cd.visible = false; toast.success('操作成功，已写审计'); this.load()
+      this.cd.visible = false; toast.success('操作成功，已写审计')
+      await this.load()
+      // 工作区正在核验该行时，动作后刷新材料清单与留痕
+      if (this.panel.visible && String(this.panel.rowId) === String(p.id)) this.openDetailById(p.id)
     },
     async buildPackage() {
-      const id = this.detailDlg.data?.id
+      const id = this.panel.data?.id
       if (!id) return
       this.pkgBusy = true
       const res = await archiveApi.buildPackage(id)
       this.pkgBusy = false
       if (res.code !== 0) return toast.error(res.message || '生成失败')
       this.pkgFile = res.data
-      this.detailDlg.data = { ...this.detailDlg.data, packageReady: true }
+      this.panel.data = { ...this.panel.data, packageReady: true }
       toast.success('归档包已生成，可下载')
     },
     async downloadPackage() {
-      const id = this.detailDlg.data?.id
+      const id = this.panel.data?.id
       if (!id) return
-      if (!this.detailDlg.data?.packageReady && !this.pkgFile) {
+      if (!this.panel.data?.packageReady && !this.pkgFile) {
         return this.buildPackage()
       }
       this.pkgBusy = true
@@ -252,21 +310,23 @@ export default {
 .state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); }
 .state.is-err { color: var(--danger-600); }
 .miss { color: var(--danger-600); font-size: var(--font-size-xs); }
+.miss-cell { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); background: var(--danger-50, #fef2f2); color: var(--danger-600, #dc2626); border: 1px solid var(--danger-100, #fecaca); white-space: nowrap; }
+.is-current { color: var(--primary-600, #2563eb); font-weight: var(--font-weight-semibold); }
 .pct { display: flex; align-items: center; gap: var(--space-1); }
 .pct__bar { width: 60px; height: 8px; background: var(--bg-subtle); border-radius: var(--radius-sm); overflow: hidden; }
 .pct__fill { display: block; height: 100%; background: var(--warning-500, #f59e0b); }
 .pct__fill.is-full { background: var(--success-500, #22c55e); }
 .ops { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-2); }
-.modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 1000); padding: var(--space-4); }
-.modal__card { background: var(--bg-card); border-radius: var(--radius-lg); width: min(560px, 100%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
-.modal__head { padding: var(--space-4); font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--border-light); }
-.modal__body { padding: var(--space-4); overflow-y: auto; }
-.modal__foot { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; gap: var(--space-2); }
-.mats { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
-.mat { display: flex; align-items: center; gap: 4px; font-size: var(--font-size-sm); padding: 2px var(--space-2); border-radius: var(--radius-sm); background: var(--success-50, #f0fdf4); color: var(--success-700); }
-.mat.is-miss { background: var(--danger-50, #fef2f2); color: var(--danger-600); }
-.mat__dot { font-weight: bold; }
 .hint { margin-top: var(--space-2); font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.pkg-bar { margin-top: var(--space-3); }
+.wsp { margin-top: var(--space-3); border: 1px solid var(--border-light, #e5e7eb); border-radius: var(--radius-lg, 12px); background: var(--bg-card, #fff); padding: var(--space-4); box-shadow: var(--shadow-sm); }
+.wsp__head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.wsp__title { font-weight: var(--font-weight-semibold); }
+.wsp__close { margin-left: auto; }
+.wsp__ops { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.mat-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.mat-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--success-50, #f0fdf4); color: var(--success-700); }
+.mat-row.is-miss { background: var(--danger-50, #fef2f2); color: var(--danger-600); }
+.mat-row__dot { font-weight: bold; width: 14px; text-align: center; }
+.mat-row__label { flex: 1; }
 </style>
