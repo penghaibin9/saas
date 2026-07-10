@@ -163,7 +163,18 @@
           <div class="gs-card"><div class="gs-card__label">成绩已发布均分</div><div class="gs-card__value">{{ overview.grade.publishedAvg }}</div></div>
         </div>
         <div class="gm-section-title" style="margin-top: var(--space-4)">阶段分布</div>
-        <ul class="gs-stage-list">
+        <AppStackedBarChart
+          v-if="stageChartData.length >= 2"
+          title="各阶段学生数"
+          :data="stageChartData"
+          horizontal
+          :height="Math.max(150, stageChartData.length * 38)"
+          x-field="label"
+          y-field="count"
+          series-field="cat"
+          value-label="人数"
+        />
+        <ul v-else class="gs-stage-list">
           <li v-for="s in overview.byStage" :key="s.stage">{{ s.label }}：{{ s.count }}</li>
         </ul>
         <div class="gm-section-title" style="margin-top: var(--space-4)">学院/专业对比</div>
@@ -184,14 +195,14 @@
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton, AppPagination } from '@/components/common'
+import { AppExportButton, AppPagination, AppStackedBarChart } from '@/components/common'
 import { AppDateRangePicker } from '@/components/common/date'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton, AppPagination },
+  components: { GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton, AppPagination, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -215,6 +226,9 @@ export default {
     },
     riskSelIndex() {
       return this.riskRows.findIndex((r) => String(r.id) === this.riskSelKey)
+    },
+    stageChartData() {
+      return ((this.overview && this.overview.byStage) || []).filter((s) => (s.count || 0) > 0).map((s) => ({ label: s.label, count: s.count, cat: '人数' }))
     },
     selectedArchive() {
       return this.archiveRows.find((r) => String(r.id) === this.archiveSelKey) || null
