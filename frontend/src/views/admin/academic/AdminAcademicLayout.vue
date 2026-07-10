@@ -1,11 +1,8 @@
 <template>
   <BasePortalLayout
     :title="brandTitle"
-    subtitle="教务中心 · 学业过程"
-    :menus="menus"
-    :active-key="activeKey"
+    subtitle="教务中心 · 教学运行"
     :ctx="ctx"
-    @menu-select="onMenuSelect"
   >
     <template #header-right>
       <label v-if="ctx" class="al-role-switch" title="演示环境：切换角色查看权限与数据范围差异">
@@ -31,32 +28,16 @@ import { LoadingState } from '@/components/business'
 import { getAcademicContext, switchAcademicRole } from '@/modules/academic/api/academic.api'
 import { toast } from '@/utils/toast'
 
-const MENUS = [
-  { key: 'acad-dashboard', label: '管理看板', icon: '◫', path: '/admin/academic' },
-  { key: 'acad-students', label: '学业学生', icon: '☰', path: '/admin/academic/students' },
-  { key: 'acad-grades', label: '课程成绩', icon: '✎', path: '/admin/academic/grades' },
-  { key: 'acad-credits', label: '学分修读', icon: '◔', path: '/admin/academic/credits' },
-  { key: 'acad-makeup', label: '补考重修', icon: '↻', path: '/admin/academic/makeup-retake' },
-  { key: 'acad-warnings', label: '学业预警', icon: '◐', path: '/admin/academic/warnings' }
-]
-
 export default {
   name: 'AdminAcademicLayout',
   components: { BasePortalLayout, LoadingState },
   data() {
-    return { menus: MENUS, ctx: null }
+    return { ctx: null }
   },
   computed: {
     brandTitle() {
       if (!this.ctx) return '管理端'
       return this.ctx.tenantBrandConfig.schoolName + ' · 管理端'
-    },
-    activeKey() {
-      const path = this.$route.path
-      const hit = [...this.menus]
-        .sort((a, b) => b.path.length - a.path.length)
-        .find((m) => path === m.path || path.startsWith(m.path + '/'))
-      return hit ? hit.key : 'acad-dashboard'
     }
   },
   async created() {
@@ -64,9 +45,6 @@ export default {
     if (res.code === 0) this.ctx = res.data
   },
   methods: {
-    onMenuSelect(item) {
-      if (item.path && item.path !== this.$route.path) this.$router.push(item.path)
-    },
     async onSwitchRole(roleId) {
       const res = await switchAcademicRole(roleId)
       if (res.code === 0) {

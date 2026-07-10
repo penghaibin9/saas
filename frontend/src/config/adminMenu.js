@@ -54,12 +54,12 @@ export const ADMIN_MENU = [
     ]
   },
   {
-    /* 一级③教务中心：学业过程（原学生中心＞学业过程迁入） */
+    /* 一级③教务中心：12 个业务域由 navPlan 驱动；一级入口落现有 partial 工作台 */
     key: 'academic-affairs',
     label: '教务中心',
     icon: '◈',
     children: [
-      { key: 'aa-academic', label: '学业过程', path: '/admin/academic', moduleCode: 'ACADEMIC', permissionKey: 'academic.dashboard.view' }
+      { key: 'aa-academic', label: '教务工作台', path: '/admin/academic', moduleCode: 'ACADEMIC', permissionKey: 'academic.dashboard.view' }
     ]
   },
   {
@@ -199,7 +199,12 @@ export const SEARCH_ALIASES = [
   { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
-  { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 学业过程' },
+  { keywords: ['教务中心', '教务工作台', '教学运行', '学业过程'], path: '/admin/academic', label: '教务中心 / 教务工作台' },
+  { keywords: ['学生学籍', '学籍管理', '学业学生'], path: '/admin/academic/students', label: '教务中心 / 学籍管理 / 学生学籍（待补强）' },
+  { keywords: ['成绩管理', '成绩查询', '课程成绩'], path: '/admin/academic/grades', label: '教务中心 / 成绩管理 / 成绩查询（待补强）' },
+  { keywords: ['GPA', '绩点', '学分修读'], path: '/admin/academic/credits', label: '教务中心 / 成绩管理 / GPA 与学分修读（待补强）' },
+  { keywords: ['补考', '重修', '缓考'], path: '/admin/academic/makeup-retake', label: '教务中心 / 考务管理 / 补考与重修（待补强）' },
+  { keywords: ['学业预警', '预警学生', '毕业风险'], path: '/admin/academic/warnings', label: '教务中心 / 学业预警 / 预警学生（待补强）' },
   { keywords: ['教学实践', '毕业设计', '毕设', '选题', '答辩'], path: '/admin/graduation', label: '毕业设计中心' },
   { keywords: ['岗位实习', '实习', '打卡', '周报'], path: '/admin/internship', label: '岗位实习中心' },
   { keywords: ['企业库', '合作企业', '企业列表'], path: '/admin/internship/enterprises', label: '岗位实习中心 / 企业库' },

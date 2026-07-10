@@ -25,9 +25,16 @@ function P(...labels) {
   return labels.map((label) => ({ label, status: 'planned', disabled: true, badge: '待施工' }))
 }
 /** 待补强叶子（有旧页面但能力较浅，可点击进旧页面） */
-// eslint-disable-next-line no-unused-vars
 function PA(label, path) {
   return { label, path, status: 'partial', disabled: false, badge: '待补强' }
+}
+/** 隐藏的页面级节点：详情、抽屉、tab、指标下钻只做信息架构盘点，不进入菜单和搜索。 */
+function H(label, extra = {}) {
+  return { label, status: 'planned', disabled: true, badge: '待施工', hidden: true, ...extra }
+}
+/** 已存在但不应挂菜单的详情路由；routeTemplate 只做审计记录，不参与菜单跳转。 */
+function HA(label, routeTemplate) {
+  return { label, routeTemplate, status: 'partial', disabled: true, badge: '待补强', hidden: true }
 }
 /** 未开通叶子（模块未授权，管理员可见「未开通」，普通角色隐藏） */
 // eslint-disable-next-line no-unused-vars
@@ -40,6 +47,10 @@ function mod(key, label, path, children) {
     ? { path, status: 'implemented', disabled: false, badge: '' }
     : { status: 'planned', disabled: true, badge: '待施工' }
   return { key, label, ...s, children: children || [] }
+}
+/** 有真实旧页承接、但尚未达到生产闭环的二级模块。 */
+function PM(key, label, path, children) {
+  return { key, label, path, status: 'partial', disabled: false, badge: '待补强', children: children || [] }
 }
 /** 一级模块 */
 function grp(key, label, moduleKey, children, extra) {
@@ -193,57 +204,71 @@ export const NAV_PLAN = [
     ])
   ]),
 
-  /* ═══════════ 一级③：教务中心 ═══════════ */
+  /* ═══════════ 一级③：教务中心 ═══════════
+   * 2026-07-10 按真实教学运行主线由 27 个碎片二级收敛为 12 个业务域。
+   * 现有 /admin/academic 学业过程页仍依赖 mock fallback，只能标 partial；
+   * 详情、抽屉、tab、指标下钻用 hidden 节点登记，不占正式菜单。
+   */
   grp('academic-affairs', '教务中心', 'academicAffairs', [
-    mod('aa-dashboard', '教务看板', '/admin/academic', [
-      I('教务总览（学业过程中心）', '/admin/academic'),
-      ...P('今日教学运行', '今日课程', '调停课提醒', '成绩提交进度', '考试安排提醒',
-        '学籍异动提醒', '学业预警提醒', '毕业资格预警', '教学资源占用', '教务待办', '教务数据趋势')
+    PM('aa-workbench', '教务工作台', '/admin/academic', [
+      PA('教务总览（现有学业过程承接）', '/admin/academic'),
+      ...P('我的待办', '教学运行监控', '今日课表', '运行异常台账'),
+      H('运行提醒指标组'), H('教务数据趋势'), H('快捷入口面板')
     ]),
-    mod('aa-terms', '学年学期', null, P('学年管理', '学期管理', '当前学期设置', '学期周次', '教学周配置', '学期状态', '学期切换记录', '学期归档')),
-    mod('aa-calendar', '校历节次', null, P('校历管理', '节假日配置', '补课日配置', '作息时间', '节次管理', '上课时间段', '教学周日历', '校历发布', '校历归档')),
-    mod('aa-student-status', '学籍管理', null, [
-      ...P('学籍档案', '学籍状态'),
-      I('在籍学生（现有·学业学生）', '/admin/academic/students'),
-      ...P('休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正',
-        '学籍异动记录', '学籍导入导出', '学籍统计', '学籍归档')
+    mod('aa-plan', '教学计划', null, [
+      ...P('学年学期', '培养方案', '专业教学计划', '开课计划', '教学任务生成', '计划调整', '计划审核'),
+      H('培养方案详情'), H('版本对比与审核记录')
     ]),
-    mod('aa-registration', '注册管理', null, P('入学注册', '学年注册', '学期注册', '注册资格核验', '未注册学生', '暂缓注册', '注册异常', '注册统计', '注册归档')),
-    mod('aa-status-change', '学籍异动', null, P('异动申请', '休学申请', '复学申请', '退学申请', '转专业申请', '转班申请', '保留学籍申请', '异动审批', '异动生效', '异动台账', '异动统计', '异动归档')),
-    mod('aa-orgs', '学院专业班级', null, P('学院管理', '专业管理', '年级管理', '行政班管理', '教学班管理', '专业方向', '班级学生', '班级调整', '组织结构同步', '组织统计')),
-    mod('aa-training', '培养方案', null, P('方案列表', '方案制定', '方案版本', '课程模块', '学分要求', '实践环节', '毕业要求', '方案审核', '方案发布', '方案变更', '方案归档')),
-    mod('aa-courses', '课程库', null, P('课程列表', '新增课程', '课程分类', '课程性质', '学分学时', '课程大纲', '考核方式', '课程负责人', '课程材料', '课程停用', '课程归档')),
-    mod('aa-teaching-plan', '教学计划', null, P('年级教学计划', '专业教学计划', '学期教学计划', '课程开设计划', '实践教学计划', '计划审核', '计划发布', '计划变更', '计划执行进度', '计划归档')),
-    mod('aa-teaching-tasks', '教学任务', null, P('教学任务生成', '教学任务列表', '任课教师分配', '教学班生成', '合班拆班', '教学任务确认', '教师任务确认', '教学任务调整', '教学任务统计', '教学任务归档')),
-    mod('aa-scheduling', '排课管理', null, P('排课批次', '排课规则', '排课约束', '教师可用时间', '教室可用时间', '课程排课', '自动排课预留', '人工排课', '排课冲突检测', '排课结果', '排课调整', '排课发布', '排课归档')),
-    mod('aa-schedule', '课表管理', null, P('班级课表', '教师课表', '学生课表', '教室课表', '教学班课表', '周课表', '学期课表', '课表发布', '课表调整记录', '课表导出')),
-    mod('aa-schedule-change', '调停课', null, P('调课申请', '停课申请', '补课申请', '调停课审批', '调停课通知', '调停课台账', '调停课冲突检测', '调停课统计', '调停课归档')),
-    mod('aa-course-selection', '选课管理', null, P('选课批次', '可选课程', '选课规则', '学生选课', '退课管理', '补选管理', '选课名单', '人数控制', '冲突检测', '选课结果', '选课统计', '选课归档')),
-    mod('aa-exam', '考务管理', null, P('考试批次', '考试课程', '考试安排', '考场安排', '座位安排', '监考安排', '巡考安排', '准考证', '考场异常', '考务通知', '考务统计', '考务归档')),
-    mod('aa-makeup', '补考重修缓考免修', null, [
-      ...P('补考名单', '补考报名', '补考安排', '重修报名', '重修班管理', '缓考申请', '缓考审批', '免修申请', '免修审批'),
-      I('补考重修成绩（现有）', '/admin/academic/makeup-retake'),
-      ...P('统计分析', '材料归档')
+    mod('aa-course-schedule', '课程与排课', null, [
+      ...P('课程库', '开课管理', '排课任务', '手动排课', '课表管理', '调停课申请', '调停课审批', '教室占用', '排课冲突', '课表发布'),
+      H('课程详情与大纲'), H('排课冲突明细'), H('课表发布与回退记录')
     ]),
-    mod('aa-grades', '成绩管理', null, [
-      ...P('成绩录入', '成绩暂存', '成绩提交', '成绩审核', '成绩发布'),
-      I('成绩查询（现有·课程成绩）', '/admin/academic/grades'),
-      I('学分修读（现有）', '/admin/academic/credits'),
-      ...P('成绩单', '成绩导入', '成绩导出', '成绩异常', '成绩统计', '成绩归档')
+    mod('aa-enrollment', '选课与教学班', null, [
+      ...P('选课批次', '选课规则', '学生选课', '退补选', '选课名单', '教学班管理', '重修报名'),
+      H('选课批次详情'), H('教学班详情与合班记录')
     ]),
-    mod('aa-grade-review', '成绩审核发布更正', null, P('待审核成绩', '审核通过', '审核退回', '成绩发布', '成绩更正申请', '成绩更正审核', '成绩复核', '成绩更正记录', '成绩操作审计', '成绩发布归档')),
-    mod('aa-warning', '学业预警', null, [
-      ...P('预警看板', '学分预警', '挂科预警', '绩点预警', '补考重修预警', '毕业风险预警', '预警规则'),
-      I('预警学生（现有）', '/admin/academic/warnings'),
-      ...P('预警通知', '预警处置', '预警跟进', '预警统计')
+    mod('aa-teacher-task', '教师教学任务', null, [
+      ...P('教师任务列表', '任课安排', '教师课表', '教学班学生', '任务确认', '教学材料'),
+      H('教学任务详情'), H('教师工作量指标')
     ]),
-    mod('aa-graduation-qual', '毕业资格审核', null, P('审核批次', '毕业学生名单', '学分达成审核', '课程达成审核', '实践环节审核', '毕设状态联动', '实习状态联动', '欠费状态联动', '处分状态联动', '毕业资格预审', '毕业资格终审', '不通过原因', '审核结果', '审核归档')),
-    mod('aa-textbooks', '教材管理', null, P('教材目录', '教材选用', '教材征订', '教材审核', '教材发放', '教材费用', '教材库存', '教材统计', '教材归档')),
-    mod('aa-resources', '教学资源', null, P('教室资源', '实训室资源', '设备资源', '教室预约', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')),
-    mod('aa-evaluation', '教学评价', null, P('评教批次', '学生评教', '教师自评', '同行评价', '督导评价', '评价结果', '评价申诉', '评价统计', '评价归档')),
-    mod('aa-quality', '教学质量', null, P('督导听课', '巡课记录', '教学检查', '教学事故', '质量整改', '整改跟进', '质量报告', '质量统计', '质量归档')),
-    mod('aa-archive', '教务归档', null, P('学籍归档', '注册归档', '异动归档', '培养方案归档', '教学任务归档', '课表归档', '考务归档', '成绩归档', '毕业资格归档', '归档缺失提醒', '批量归档', '归档导出')),
-    mod('aa-stats', '教务统计', null, P('教务总览', '学籍统计', '注册统计', '课程统计', '教学任务统计', '课表统计', '调停课统计', '选课统计', '考务统计', '成绩统计', '学业预警统计', '毕业资格统计', '教师工作量统计', '教学资源统计', '导出报表'))
+    mod('aa-exam', '考务管理', null, [
+      ...P('考试批次', '排考管理', '考场安排', '监考安排', '准考名单', '缓考管理'),
+      PA('补考与重修（现有承接）', '/admin/academic/makeup-retake'),
+      ...P('考试异常'),
+      H('考试批次详情'), H('考试安排详情'), H('考务统计指标')
+    ]),
+    PM('aa-grade', '成绩管理', '/admin/academic/grades', [
+      ...P('成绩录入', '成绩提交', '成绩审核', '成绩发布'),
+      PA('成绩查询（现有课程成绩）', '/admin/academic/grades'),
+      ...P('成绩更正', '成绩复核'),
+      PA('GPA 与学分修读（现有承接）', '/admin/academic/credits'),
+      ...P('成绩单'),
+      H('成绩任务详情'), H('成绩更正详情'), H('成绩单详情')
+    ]),
+    PM('aa-registration', '学籍管理', '/admin/academic/students', [
+      PA('学生学籍（现有学业台账承接）', '/admin/academic/students'),
+      ...P('学籍注册', '学籍异动', '休学复学', '转专业', '转学退学', '毕业资格预审', '学籍台账'),
+      HA('学生学业详情（现有）', '/admin/academic/students/:id'),
+      H('学籍异动审批详情'), H('毕业资格预审详情')
+    ]),
+    PM('aa-warning', '学业预警', '/admin/academic/warnings', [
+      PA('预警学生（现有承接）', '/admin/academic/warnings'),
+      ...P('预警规则', '预警分派', '预警处置', '跟进记录', '预警统计'),
+      HA('预警跟进详情（现有）', '/admin/academic/warnings/:id'),
+      H('预警来源指标'), H('预警处置时间线')
+    ]),
+    mod('aa-resource', '教材与教学资源', null, [
+      ...P('教材目录', '教材选用', '教材征订', '教材发放', '教室资源', '实训室资源'),
+      H('教材选用详情'), H('教学资源详情')
+    ]),
+    mod('aa-quality', '教学质量', null, [
+      ...P('听课评价', '学生评教', '督导评价', '课堂巡查', '教学事故', '质量问题', '整改跟进'),
+      H('评价结果详情'), H('质量问题整改详情')
+    ]),
+    mod('aa-report-archive', '教务统计与归档', null, [
+      ...P('教务统计', '业务归档中心', '教师工作量统计', '学院汇总', '校级汇总', '教务数据驾驶舱', '导出任务', '验收台账'),
+      H('归档包详情'), H('统计指标下钻'), H('导出与下载审计详情')
+    ])
   ]),
 
   /* ═══════════ 一级④：毕业设计中心（key 对齐 adminMenu 的 graduation，供 rail 高亮联动）═══════════
@@ -715,16 +740,28 @@ export function searchNavPlan(query) {
 /** 统计：各一级下 implemented / planned 数量（供校验报告与开发进度看板用） */
 export function navPlanStats() {
   return NAV_PLAN.map((group) => {
-    let impl = 0
+    let implemented = 0
+    let partial = 0
     let planned = 0
+    let unauthorized = 0
     for (const mod2 of group.children) {
       const nodes = [mod2, ...mod2.children]
       for (const nd of nodes) {
-        if (nd.status === 'implemented') impl++
+        if (nd.status === 'implemented') implemented++
+        else if (nd.status === 'partial') partial++
+        else if (nd.status === 'unauthorized') unauthorized++
         else planned++
       }
     }
-    return { key: group.key, label: group.label, implemented: impl, planned, total: impl + planned }
+    return {
+      key: group.key,
+      label: group.label,
+      implemented,
+      partial,
+      planned,
+      unauthorized,
+      total: implemented + partial + planned + unauthorized
+    }
   })
 }
 
