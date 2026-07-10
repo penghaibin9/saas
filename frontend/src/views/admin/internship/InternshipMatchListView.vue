@@ -90,20 +90,26 @@
 
     <AppDrawer v-model:visible="intentionVisible" title="登记学生意向">
       <form class="ie-form" @submit.prevent="submitIntentionForm">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
-          <select v-model="intentionForm.recordId" class="ie-in">
-            <option value="">请选择</option>
-            <option v-for="s in studentOpts" :key="s.id" :value="s.id">{{ s.label }}</option>
-          </select>
-        </label>
+        <!-- Picker 不能包在 <label> 里：label 激活会把点击转发给选择器内部按钮 -->
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
+          <AppStudentPicker
+            v-model="intentionForm.recordId"
+            :remote-search="searchUnassignedInternStudents"
+            placeholder="输入姓名或学号搜索学生"
+            search-placeholder="按姓名 / 学号搜索"
+            data-scope-hint="仅显示你数据范围内未落实岗位的实习学生"
+          />
+        </div>
         <label class="ie-fld"><span class="ie-lbl">意向城市</span><input v-model.trim="intentionForm.preferredCity" class="ie-in" /></label>
         <label class="ie-fld"><span class="ie-lbl">意向行业</span><input v-model.trim="intentionForm.preferredIndustry" class="ie-in" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">意向企业</span>
-          <select v-model="intentionForm.preferredCompanyId" class="ie-in">
-            <option value="">不指定</option>
-            <option v-for="e in enterpriseOpts" :key="e.id" :value="e.id">{{ e.name }}</option>
-          </select>
-        </label>
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">意向企业</span>
+          <AppCompanyPicker
+            v-model="intentionForm.preferredCompanyId"
+            :remote-search="searchEnterprises"
+            placeholder="输入企业名称搜索（可不指定）"
+            search-placeholder="按企业名称搜索"
+          />
+        </div>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="intentionForm.intentionNote" class="ie-in" rows="2" /></label>
         <p v-if="formError" class="ie-err">{{ formError }}</p>
         <div class="ie-actions">
@@ -115,18 +121,24 @@
 
     <AppDrawer v-model:visible="manualVisible" title="手动匹配">
       <form class="ie-form" @submit.prevent="submitManual">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
-          <select v-model="manualForm.recordId" class="ie-in">
-            <option value="">请选择</option>
-            <option v-for="s in studentOpts" :key="s.id" :value="s.id">{{ s.label }}</option>
-          </select>
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">上架岗位 <i>*</i></span>
-          <select v-model="manualForm.positionId" class="ie-in">
-            <option value="">请选择</option>
-            <option v-for="p in positionOpts" :key="p.id" :value="p.id">{{ p.label }}（余 {{ p.remaining }}）</option>
-          </select>
-        </label>
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
+          <AppStudentPicker
+            v-model="manualForm.recordId"
+            :remote-search="searchUnassignedInternStudents"
+            placeholder="输入姓名或学号搜索学生"
+            search-placeholder="按姓名 / 学号搜索"
+            data-scope-hint="仅显示你数据范围内未落实岗位的实习学生"
+          />
+        </div>
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">上架岗位 <i>*</i></span>
+          <AppPositionPicker
+            v-model="manualForm.positionId"
+            :remote-search="searchPublishedPositions"
+            placeholder="输入岗位或企业名称搜索"
+            search-placeholder="按岗位名称 / 企业搜索"
+            data-scope-hint="仅已上架岗位可选 · 满员（余 0）岗位不可选"
+          />
+        </div>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="manualForm.remark" class="ie-in" rows="2" /></label>
         <p v-if="formError" class="ie-err">{{ formError }}</p>
         <div class="ie-actions">
@@ -177,11 +189,12 @@
 
 <script>
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppExportButton, AppStatusTag } from '@/components/common'
+import { AppExportButton, AppStatusTag, AppStudentPicker, AppPositionPicker, AppCompanyPicker } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import { searchUnassignedInternStudents, searchPublishedPositions, searchEnterprises } from './components/entityPickerAdapters'
 import { matchApi } from '@/modules/internship/api/match.api'
 import { toast } from '@/utils/toast'
 
@@ -202,14 +215,14 @@ const PANEL_HINTS = {
 
 export default {
   name: 'InternshipMatchListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, ModuleSummaryStrip },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, ModuleSummaryStrip, AppStudentPicker, AppPositionPicker, AppCompanyPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       matchApi,
       loading: true, error: '', submitting: false, activePanel: 'intention',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      matchStats: null, studentOpts: [], positionOpts: [], enterpriseOpts: [],
+      matchStats: null,
       intentionVisible: false, intentionForm: { recordId: '', preferredCity: '', preferredIndustry: '', preferredCompanyId: '', intentionNote: '' },
       manualVisible: false, manualForm: { recordId: '', positionId: '', remark: '' },
       batchVisible: false, batchText: '',
@@ -329,18 +342,15 @@ export default {
     }
   },
   async created() {
-    const [s, p, e, st] = await Promise.all([
-      matchApi.getStudentOptions(),
-      matchApi.getPositionOptions(),
-      matchApi.getEnterpriseOptions(),
-      matchApi.getStats()
-    ])
-    if (s.code === 0) this.studentOpts = s.data
-    if (p.code === 0) this.positionOpts = p.data
-    if (e.code === 0) this.enterpriseOpts = e.data
+    // 学生/岗位/企业候选已改为选择器内按关键字远程搜索（后端裁定数据范围），不再一次性预载
+    const st = await matchApi.getStats()
     if (st.code === 0 && !this.matchStats) this.matchStats = st.data
   },
   methods: {
+    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
+    searchUnassignedInternStudents,
+    searchPublishedPositions,
+    searchEnterprises,
     applyPanel(panel) {
       const known = Object.keys(PANEL_HINTS)
       this.activePanel = known.includes(panel) ? panel : 'intention'

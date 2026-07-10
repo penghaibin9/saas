@@ -105,10 +105,10 @@ export const positionApi = {
     }))
   },
 
-  getEnterpriseOptions() {
+  getEnterpriseOptions(keyword, pageSize = 200) {
     return call(() =>
-      request('/internship/enterprises', { params: { page: 1, pageSize: 200 } }).then((d) =>
-        (d.items || []).map((e) => ({ id: e.id, name: e.name, coopStatus: e.coopStatus, blacklist: e.blacklist }))
+      request('/internship/enterprises', { params: { page: 1, pageSize, keyword: keyword || '' } }).then((d) =>
+        (d.items || []).map((e) => ({ id: e.id, name: e.name, industry: e.industry, coopStatus: e.coopStatus, blacklist: e.blacklist }))
       )
     )
   },

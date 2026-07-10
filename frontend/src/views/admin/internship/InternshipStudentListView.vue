@@ -46,12 +46,16 @@
     <!-- 建档 -->
     <AppDrawer v-model:visible="createVisible" title="实习学生建档">
       <form class="ie-form" @submit.prevent="submitCreate">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
-          <select v-model="cform.studentId" class="ie-in">
-            <option value="">请选择学生</option>
-            <option v-for="s in studentOpts" :key="s.id" :value="s.id">{{ s.name }}（{{ s.studentNo }}）</option>
-          </select>
-        </label>
+        <!-- 注意：Picker 不能包在 <label> 里，label 激活会把点击转发给选择器内部按钮（清空/搜索） -->
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
+          <AppStudentPicker
+            v-model="cform.studentId"
+            :remote-search="searchMasterStudents"
+            placeholder="输入姓名或学号搜索学生"
+            search-placeholder="按姓名 / 学号搜索"
+            data-scope-hint="仅显示你数据范围内的学生 · 已建档学生提交时由后端拦截重复"
+          />
+        </div>
         <label class="ie-fld"><span class="ie-lbl">校内指导教师</span><input v-model.trim="cform.advisorName" class="ie-in" /></label>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="cform.remark" class="ie-in" rows="2" /></label>
         <p v-if="cError" class="ie-err">{{ cError }}</p>
@@ -66,12 +70,15 @@
     <AppDrawer v-model:visible="assignVisible" :title="assignRow ? `分配岗位 · ${assignRow.name}` : '分配岗位'">
       <div class="ie-form">
         <p class="ie-hint">仅「已上架」且企业非黑名单、未满员的岗位可选（来自岗位库真实数据）。</p>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
-          <select v-model="assignPositionId" class="ie-in">
-            <option value="">请选择岗位</option>
-            <option v-for="p in positionOpts" :key="p.id" :value="p.id" :disabled="p.remaining <= 0">{{ p.title }} · {{ p.companyName }}（余 {{ p.remaining }}）</option>
-          </select>
-        </label>
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
+          <AppPositionPicker
+            v-model="assignPositionId"
+            :remote-search="searchPublishedPositions"
+            placeholder="输入岗位或企业名称搜索"
+            search-placeholder="按岗位名称 / 企业搜索"
+            data-scope-hint="仅已上架、未满员岗位可选"
+          />
+        </div>
         <p v-if="assignError" class="ie-err">{{ assignError }}</p>
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
@@ -107,7 +114,8 @@
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppSensitiveText, AppStatusTag, AppExportButton } from '@/components/common'
+import { AppSensitiveText, AppStatusTag, AppExportButton, AppStudentPicker, AppPositionPicker } from '@/components/common'
+import { searchMasterStudents, searchPublishedPositions } from './components/entityPickerAdapters'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
@@ -139,14 +147,15 @@ const PANEL_HINTS = {
 export default {
   name: 'InternshipStudentListView',
   components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState,
-    AppDrawer, AppConfirmDialog, AppSensitiveText, AppStatusTag, AppExportButton, AppExcelImportDrawer, ModuleSummaryStrip },
+    AppDrawer, AppConfirmDialog, AppSensitiveText, AppStatusTag, AppExportButton, AppExcelImportDrawer, ModuleSummaryStrip,
+    AppStudentPicker, AppPositionPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', submitting: false, activePanel: 'roster',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      createVisible: false, cform: { studentId: '', advisorName: '', remark: '' }, cError: '', studentOpts: [],
-      assignVisible: false, assignRow: null, assignPositionId: '', assignError: '', positionOpts: [],
+      createVisible: false, cform: { studentId: '', advisorName: '', remark: '' }, cError: '',
+      assignVisible: false, assignRow: null, assignPositionId: '', assignError: '',
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
@@ -195,6 +204,9 @@ export default {
     }
   },
   methods: {
+    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
+    searchMasterStudents,
+    searchPublishedPositions,
     applyPanel(panel) {
       const key = PANEL_PRESETS[panel] ? panel : 'roster'
       this.activePanel = key
@@ -223,9 +235,8 @@ export default {
         return
       }
       if (key === 'create') {
+        // 学生候选改为选择器内按关键字远程搜索（后端裁定数据范围），不再一次性预载
         this.cform = { studentId: '', advisorName: '', remark: '' }; this.cError = ''
-        const s = await internStudentApi.getStudentOptions()
-        if (s.code === 0) this.studentOpts = s.data
         this.createVisible = true
       }
       if (key === 'import') { this.importVisible = true }
@@ -239,11 +250,9 @@ export default {
         if (res.code === 0) { toast.success('已建档'); this.createVisible = false; this.load() } else this.cError = res.message
       } finally { this.submitting = false }
     },
-    async openAssign(row) {
+    openAssign(row) {
+      // 岗位候选改为选择器内按关键字远程搜索，不再一次性预载
       this.assignRow = row; this.assignPositionId = ''; this.assignError = ''
-      const p = await internStudentApi.getPublishedPositions()
-      if (p.code === 0) this.positionOpts = p.data
-      else { this.positionOpts = []; toast.error(p.message) }
       this.assignVisible = true
     },
     async submitAssign() {

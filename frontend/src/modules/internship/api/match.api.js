@@ -119,11 +119,14 @@ export const matchApi = {
     return res
   },
 
-  getStudentOptions() {
+  getStudentOptions(keyword, pageSize = 200) {
     return call(() =>
-      request('/internship/intern-students', { params: { page: 1, pageSize: 200, hasPosition: false } }).then((d) =>
+      request('/internship/intern-students', { params: { page: 1, pageSize, hasPosition: false, keyword: keyword || '' } }).then((d) =>
         (d.items || []).map((s) => ({
           id: s.id,
+          name: s.name,
+          studentNo: s.studentNo,
+          className: s.className,
           label: `${s.name}（${s.studentNo}）`,
           studentId: s.studentId,
           positionId: s.positionId
@@ -131,11 +134,13 @@ export const matchApi = {
       )
     )
   },
-  getPositionOptions() {
+  getPositionOptions(keyword, pageSize = 200) {
     return call(() =>
-      request('/internship/positions', { params: { page: 1, pageSize: 200, status: 'PUBLISHED' } }).then((d) =>
+      request('/internship/positions', { params: { page: 1, pageSize, status: 'PUBLISHED', keyword: keyword || '' } }).then((d) =>
         (d.items || []).map((p) => ({
           id: p.id,
+          title: p.title,
+          companyName: p.companyName,
           label: `${p.title} · ${p.companyName}`,
           companyId: p.companyId,
           remaining: p.remaining
@@ -143,9 +148,9 @@ export const matchApi = {
       )
     )
   },
-  getEnterpriseOptions() {
+  getEnterpriseOptions(keyword, pageSize = 200) {
     return call(() =>
-      request('/internship/enterprises', { params: { page: 1, pageSize: 200 } }).then((d) =>
+      request('/internship/enterprises', { params: { page: 1, pageSize, keyword: keyword || '' } }).then((d) =>
         (d.items || []).map((e) => ({ id: e.id, name: e.name }))
       )
     )

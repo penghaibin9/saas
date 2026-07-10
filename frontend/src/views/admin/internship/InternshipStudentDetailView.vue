@@ -76,12 +76,16 @@
     <AppDrawer v-model:visible="assignVisible" title="分配岗位">
       <div class="ie-form">
         <p class="ie-hint">仅「已上架」且企业非黑名单、未满员的岗位可选。</p>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
-          <select v-model="assignPositionId" class="ie-in">
-            <option value="">请选择岗位</option>
-            <option v-for="p in positionOpts" :key="p.id" :value="p.id" :disabled="p.remaining <= 0">{{ p.title }} · {{ p.companyName }}（余 {{ p.remaining }}）</option>
-          </select>
-        </label>
+        <!-- Picker 不能包在 <label> 里：label 激活会把点击转发给选择器内部按钮 -->
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
+          <AppPositionPicker
+            v-model="assignPositionId"
+            :remote-search="searchPublishedPositions"
+            placeholder="输入岗位或企业名称搜索"
+            search-placeholder="按岗位名称 / 企业搜索"
+            data-scope-hint="仅已上架、未满员岗位可选"
+          />
+        </div>
         <p v-if="assignError" class="ie-err">{{ assignError }}</p>
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
@@ -101,7 +105,8 @@
 <script>
 /** 实习学生详情（/admin/internship/students/:id）：生产级；企业/岗位/导师真实关联 + 分配/退岗/状态机/资格/去向 + 审计。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSensitiveText, AppStatusTag, AppAuditTrail } from '@/components/common'
+import { AppSensitiveText, AppStatusTag, AppAuditTrail, AppPositionPicker } from '@/components/common'
+import { searchPublishedPositions } from './components/entityPickerAdapters'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
@@ -116,12 +121,12 @@ const STATUS_NEXT = {
 
 export default {
   name: 'InternshipStudentDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppAuditTrail, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppAuditTrail, AppDrawer, AppConfirmDialog, AppPositionPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', submitting: false, detail: null,
-      assignVisible: false, assignPositionId: '', assignError: '', positionOpts: [],
+      assignVisible: false, assignPositionId: '', assignError: '',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, extra: null }
     }
   },
@@ -151,10 +156,11 @@ export default {
       if (res.code === 0) this.detail = res.data; else this.error = res.message
       this.loading = false
     },
-    async openAssign() {
+    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
+    searchPublishedPositions,
+    openAssign() {
+      // 岗位候选改为选择器内按关键字远程搜索，不再一次性预载
       this.assignPositionId = ''; this.assignError = ''
-      const p = await internStudentApi.getPublishedPositions()
-      if (p.code === 0) this.positionOpts = p.data; else toast.error(p.message)
       this.assignVisible = true
     },
     async submitAssign() {

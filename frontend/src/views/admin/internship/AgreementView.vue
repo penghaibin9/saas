@@ -48,7 +48,13 @@
         <div class="modal__head">生成三方协议</div>
         <div class="modal__body">
           <AppFormItem label="实习学生" required>
-            <AppSelect v-model="genForm.internshipId" :options="studentSelectOptions" placeholder="请选择本人指导学生" />
+            <AppStudentPicker
+              v-model="genForm.internshipId"
+              :remote-search="searchInternStudents"
+              placeholder="输入姓名或学号搜索实习学生"
+              search-placeholder="按姓名 / 学号搜索"
+              data-scope-hint="指导教师仅本人指导学生；管理员全校"
+            />
           </AppFormItem>
           <AppFormItem label="协议模板">
             <AppSelect v-model="genForm.templateId" :options="templateSelectOptions" placeholder="不选则自动使用默认启用模板" />
@@ -122,11 +128,12 @@
 import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppSelect, AppTextInput, AppFormItem, AppFilePreview, AppPrintButton } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppSelect, AppTextInput, AppFormItem, AppFilePreview, AppPrintButton,
+  AppStudentPicker } from '@/components/common'
+import { searchInternStudents } from './components/entityPickerAdapters'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { agreementApi } from '@/modules/internship/api/agreement.api'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
-import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
 
@@ -165,12 +172,11 @@ export default {
   name: 'AgreementView',
   components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton,
     AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppSelect, AppTextInput, AppFormItem,
-    AppFilePreview, AppPrintButton, ModuleSummaryStrip },
+    AppFilePreview, AppPrintButton, AppStudentPicker, ModuleSummaryStrip },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       keyword: '', statusFilter: '', columns: COLUMNS,
-      studentOptions: [],
       templateOptions: [],
       previewText: '',
       genForm: { internshipId: '', templateId: '' }, genDlg: { visible: false, submitting: false },
@@ -190,7 +196,6 @@ export default {
       return [{ label: '协议/申请总数', value: this.total }]
     },
     statusSelectOptions() { return Object.entries(STATUS_MAP).map(([value, label]) => ({ value, label })) },
-    studentSelectOptions() { return this.studentOptions.map((s) => ({ value: s.id, label: `${s.name}（${s.studentNo}）· ${s.enterpriseName || '未分配企业'}` })) },
     templateSelectOptions() {
       return [{ value: '', label: '自动使用默认启用模板' }].concat(
         this.templateOptions.map((t) => ({ value: t.id, label: t.label || t.name }))
@@ -238,16 +243,13 @@ export default {
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
     },
-    async ensureStudents() {
-      if (this.studentOptions.length) return
-      const res = await internStudentApi.getStudents({ page: 1, pageSize: 200 })
-      if (res.code === 0) this.studentOptions = res.data.list.map((s) => ({ id: s.id, name: s.name, studentNo: s.studentNo, enterpriseName: s.enterpriseName }))
-    },
+    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
+    searchInternStudents,
     async openGenerate() {
+      // 学生候选改为选择器内按关键字远程搜索，不再一次性预载 200 条
       this.genForm = { internshipId: '', templateId: '' }
       this.previewText = ''
       this.genDlg.visible = true
-      await this.ensureStudents()
       if (!this.templateOptions.length) {
         const res = await agreementTemplateApi.getEnabledOptions()
         if (res.code === 0) this.templateOptions = res.data || []

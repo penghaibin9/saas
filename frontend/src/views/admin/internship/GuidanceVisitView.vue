@@ -45,7 +45,13 @@
         <div class="modal__head">新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</div>
         <div class="modal__body">
           <AppFormItem label="实习学生" required>
-            <AppSelect v-model="form.internshipId" :options="studentSelectOptions" placeholder="请选择本人指导学生" />
+            <AppStudentPicker
+              v-model="form.internshipId"
+              :remote-search="searchInternStudents"
+              placeholder="输入姓名或学号搜索实习学生"
+              search-placeholder="按姓名 / 学号搜索"
+              data-scope-hint="指导教师仅本人指导学生；管理员全校"
+            />
           </AppFormItem>
           <AppFormItem label="方式"><AppSelect v-model="form.method" :options="methodOptions" /></AppFormItem>
           <template v-if="tab === 'guidance'">
@@ -112,10 +118,10 @@ import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
   AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppSelect, AppTextInput, AppTextarea, AppFormItem,
-  AppFilePreview, AppDatePicker } from '@/components/common'
+  AppFilePreview, AppDatePicker, AppStudentPicker } from '@/components/common'
+import { searchInternStudents } from './components/entityPickerAdapters'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
-import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { toast } from '@/utils/toast'
 
 const COLS = {
@@ -174,14 +180,14 @@ export default {
   name: 'GuidanceVisitView',
   components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton,
     AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppSelect,
-    AppTextInput, AppTextarea, AppFormItem, AppFilePreview, AppDatePicker, ModuleSummaryStrip },
+    AppTextInput, AppTextarea, AppFormItem, AppFilePreview, AppDatePicker, AppStudentPicker, ModuleSummaryStrip },
   data() {
     return {
       tab: 'guidance',
       tabs: [{ key: 'guidance', label: '指导记录' }, { key: 'visit', label: '教师巡访' }],
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       keyword: '', rectifyFilter: '', rectifyOptions: RECTIFY_OPTIONS,
-      studentOptions: [], form: emptyForm(), attachName: '', uploadingFile: false,
+      form: emptyForm(), attachName: '', uploadingFile: false,
       createDlg: { visible: false, submitting: false },
       detailDlg: { visible: false, loading: false, data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', submitting: false },
@@ -218,7 +224,6 @@ export default {
     detailFields() { return DETAIL[this.tab] },
     methodOptions() { return METHODS[this.tab] },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
-    studentSelectOptions() { return this.studentOptions.map((s) => ({ value: s.id, label: `${s.name}（${s.studentNo}）· ${s.enterpriseName || '未分配企业'}` })) },
     detailItems() { const d = this.detailDlg.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: d[f.key] })) },
     attachmentFiles() { const a = this.detailDlg.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
     auditRecords() {
@@ -297,12 +302,11 @@ export default {
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
     },
-    async openCreate() {
+    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
+    searchInternStudents,
+    openCreate() {
+      // 学生候选改为选择器内按关键字远程搜索，不再一次性预载 200 条
       this.form = emptyForm(); this.attachName = ''; this.form.method = this.methodOptions[0].value; this.createDlg.visible = true
-      if (!this.studentOptions.length) {
-        const res = await internStudentApi.getStudents({ page: 1, pageSize: 200 })
-        if (res.code === 0) this.studentOptions = res.data.list.map((s) => ({ id: s.id, name: s.name, studentNo: s.studentNo, enterpriseName: s.enterpriseName }))
-      }
     },
     async onFilePick(e) {
       const file = e.target.files && e.target.files[0]

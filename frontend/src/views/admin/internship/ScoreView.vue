@@ -48,7 +48,15 @@
         <div class="modal__head">核算实习成绩</div>
         <div class="modal__body">
           <AppFormItem label="实习学生" required>
-            <AppSelect v-model="cForm.internshipId" :options="studentSelectOptions" :disabled="cForm.locked" placeholder="请选择本人指导学生" />
+            <AppStudentPicker
+              v-model="cForm.internshipId"
+              :remote-search="searchInternStudents"
+              :options="lockedStudentOptions"
+              :disabled="cForm.locked"
+              placeholder="输入姓名或学号搜索实习学生"
+              search-placeholder="按姓名 / 学号搜索"
+              data-scope-hint="指导教师仅本人指导学生；管理员全校"
+            />
           </AppFormItem>
           <div class="scores">
             <AppFormItem v-for="s in scoreInputs" :key="s.key" :label="s.label" class="score">
@@ -90,9 +98,9 @@
 import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppSelect, AppNumberInput, AppFormItem } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppNumberInput, AppFormItem, AppStudentPicker } from '@/components/common'
+import { searchInternStudents } from './components/entityPickerAdapters'
 import { scoreApi } from '@/modules/internship/api/score.api'
-import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { toast } from '@/utils/toast'
 
 const WEIGHTS = [
@@ -122,14 +130,14 @@ const DETAIL = [
 export default {
   name: 'ScoreView',
   components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton,
-    AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppSelect, AppNumberInput, AppFormItem },
+    AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppNumberInput, AppFormItem, AppStudentPicker },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       keyword: '', statusFilter: '', columns: COLUMNS, weightDefs: WEIGHTS, scoreInputs: SCORE_INPUTS,
       statusOptions: Object.entries(STATUS_MAP).map(([value, label]) => ({ value, label })),
       cfg: { checkinWeight: 20, weeklyWeight: 20, monthlyWeight: 10, enterpriseWeight: 30, schoolWeight: 20, passLine: 60 },
-      savingCfg: false, studentOptions: [],
+      savingCfg: false, lockedStudentOptions: [],
       cForm: { internshipId: '', locked: false, checkinScore: null, weeklyScore: null, monthlyScore: null, enterpriseScore: null, schoolScore: null },
       computeDlg: { visible: false, submitting: false },
       detailDlg: { visible: false, loading: false, data: null },
@@ -141,7 +149,6 @@ export default {
   computed: {
     weightSum() { return WEIGHTS.reduce((a, w) => a + (Number(this.cfg[w.key]) || 0), 0) },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
-    studentSelectOptions() { return this.studentOptions.map((s) => ({ value: s.id, label: `${s.name}（${s.studentNo}）` })) },
     detailItems() { const d = this.detailDlg.data || {}; return DETAIL.map((f) => ({ label: f.label, value: d[f.key] })) },
     auditRecords() {
       return (this.detailDlg.data?.auditTrail || []).map((t, i) => ({
@@ -173,18 +180,20 @@ export default {
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
     },
-    async openCompute(row) {
+    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
+    searchInternStudents,
+    openCompute(row) {
+      // 学生候选改为选择器内按关键字远程搜索，不再一次性预载 200 条
       this.cForm = { internshipId: '', locked: false, checkinScore: null, weeklyScore: null, monthlyScore: null, enterpriseScore: null, schoolScore: null }
+      this.lockedStudentOptions = []
       if (row && row.internId) {
         this.cForm.internshipId = row.internId; this.cForm.locked = true
+        // 重算时学生锁定：注入本地选项仅用于回显姓名（不放大数据范围）
+        this.lockedStudentOptions = [{ label: `${row.studentName}（${row.studentNo}）`, value: row.internId }]
         this.cForm.checkinScore = row.checkinScore; this.cForm.weeklyScore = row.weeklyScore
         this.cForm.monthlyScore = row.monthlyScore; this.cForm.enterpriseScore = row.enterpriseScore; this.cForm.schoolScore = row.schoolScore
       }
       this.computeDlg.visible = true
-      if (!this.studentOptions.length) {
-        const res = await internStudentApi.getStudents({ page: 1, pageSize: 200 })
-        if (res.code === 0) this.studentOptions = res.data.list.map((s) => ({ id: s.id, name: s.name, studentNo: s.studentNo }))
-      }
     },
     async submitCompute() {
       if (!this.cForm.internshipId) return toast.error('请选择实习学生')

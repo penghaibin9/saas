@@ -62,12 +62,18 @@
     <!-- 新增 / 编辑 -->
     <AppDrawer v-model:visible="editVisible" :title="editing ? '编辑岗位' : '新增岗位'">
       <form class="ie-form" @submit.prevent="submitEdit">
-        <label v-if="!editing" class="ie-fld ie-fld--full"><span class="ie-lbl">所属企业 <i>*</i></span>
-          <select v-model="form.companyId" class="ie-in" @change="onCompanyChange">
-            <option value="">请选择企业</option>
-            <option v-for="e in enterpriseOpts" :key="e.id" :value="e.id" :disabled="e.blacklist || e.coopStatus === 'BLACKLIST'">{{ e.name }}{{ e.blacklist ? '（黑名单）' : (e.coopStatus !== 'ACTIVE' ? '（非合作中）' : '') }}</option>
-          </select>
-        </label>
+        <!-- Picker 不能包在 <label> 里：label 激活会把点击转发给选择器内部按钮 -->
+        <div v-if="!editing" class="ie-fld ie-fld--full"><span class="ie-lbl">所属企业 <i>*</i></span>
+          <AppCompanyPicker
+            v-model="form.companyId"
+            :remote-search="searchEnterprises"
+            :options="companyPresetOpts"
+            placeholder="输入企业名称搜索"
+            search-placeholder="按企业名称搜索"
+            data-scope-hint="仅合作企业 · 黑名单/非合作中企业上架时由后端拦截"
+            @update:model-value="onCompanyChange"
+          />
+        </div>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">岗位名称 <i>*</i></span><input v-model.trim="form.title" class="ie-in" /></label>
         <label class="ie-fld"><span class="ie-lbl">专业要求</span><input v-model.trim="form.majorRequirement" class="ie-in" placeholder="不填=不限" /></label>
         <label class="ie-fld"><span class="ie-lbl">年级要求</span><input v-model.trim="form.gradeRequirement" class="ie-in" placeholder="如 2024级" /></label>
@@ -75,12 +81,15 @@
         <label class="ie-fld"><span class="ie-lbl">薪资</span><input v-model.trim="form.salaryRange" class="ie-in" placeholder="如 3k-4k" /></label>
         <label class="ie-fld"><span class="ie-lbl">补贴</span><input v-model.trim="form.subsidy" class="ie-in" /></label>
         <label class="ie-fld"><span class="ie-lbl">容量 <i>*</i></span><input v-model.number="form.headcount" type="number" min="1" class="ie-in" /></label>
-        <label v-if="!editing" class="ie-fld"><span class="ie-lbl">企业导师</span>
-          <select v-model="form.mentorContactId" class="ie-in">
-            <option value="">不指定</option>
-            <option v-for="m in mentorOpts" :key="m.id" :value="m.id">{{ m.name }}</option>
-          </select>
-        </label>
+        <div v-if="!editing" class="ie-fld"><span class="ie-lbl">企业导师</span>
+          <AppMentorPicker
+            v-model="form.mentorContactId"
+            :options="mentorOpts"
+            placeholder="选择企业导师（可不指定）"
+            search-placeholder="按导师姓名过滤"
+            data-scope-hint="先选择所属企业，再选择该企业的导师"
+          />
+        </div>
         <label class="ie-fld"><span class="ie-lbl">批次（预留）</span><input class="ie-in" value="按当前实习批次自动关联" disabled /></label>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="form.remark" class="ie-in" rows="2" /></label>
         <p v-if="formError" class="ie-err">{{ formError }}</p>
@@ -115,10 +124,11 @@
 <script>
 /** 岗位库列表（/admin/internship/positions）：筛选 + 增改抽屉(企业/导师选择) + 状态机 + 风险标记 + 真导入导出。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppExportButton, AppStatusTag } from '@/components/common'
+import { AppExportButton, AppStatusTag, AppCompanyPicker, AppMentorPicker } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { searchEnterprises } from './components/entityPickerAdapters'
 import { positionApi } from '@/modules/internship/api/position.api'
 import { POSITION_STATUS } from '@/modules/internship/constants/position.constants'
 import { toast } from '@/utils/toast'
@@ -150,7 +160,7 @@ const POSITION_PANEL_HINTS = {
 
 export default {
   name: 'InternshipPositionListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppCompanyPicker, AppMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -181,6 +191,11 @@ export default {
   },
   computed: {
     statusOpts() { return POSITION_STATUS },
+    companyPresetOpts() {
+      // 编辑态回显：把当前岗位所属企业预置进选择器本地选项缓存（合法本地预置，不是一次性全量加载）
+      if (!this.editing || !this.editing.companyId) return []
+      return [{ label: this.editing.companyName, value: this.editing.companyId }]
+    },
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '岗位 / 企业 / 专业' },
@@ -216,6 +231,8 @@ export default {
     if (e.code === 0) this.enterpriseOpts = e.data
   },
   methods: {
+    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
+    searchEnterprises,
     applyPanel(panel) {
       const key = POSITION_PANEL_PRESETS[panel] ? panel : 'list'
       this.activePanel = key
@@ -255,11 +272,12 @@ export default {
       this.load()
     },
     async onCompanyChange() {
+      // 企业变更：清空导师选择并联动加载该企业导师小列表（本地过滤即可，非一次性全量预载）
       this.form.mentorContactId = ''
       this.mentorOpts = []
       if (!this.form.companyId) return
       const res = await positionApi.getEnterpriseMentors(this.form.companyId)
-      if (res.code === 0) this.mentorOpts = res.data
+      if (res.code === 0) this.mentorOpts = (res.data || []).map((m) => ({ label: m.name, value: m.id }))
     },
     async submitEdit() {
       this.formError = ''
