@@ -85,6 +85,7 @@ import {
 import { AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 import { toast } from '@/utils/toast'
 
 const PANEL_STATUS = {
@@ -232,6 +233,16 @@ export default {
   },
   methods: {
     goDetail(row) {
+      // 进入详情前保存连续批阅队列（仅当前页真实行，不伪造全量）
+      const tab = this.activeTabs.find((t) => t.value === this.filters.status)
+      const tabLabel = tab ? tab.label : '全部'
+      saveReviewQueue({
+        kind: this.isProcessReport ? 'process-report' : 'weekly-report',
+        title: this.isProcessReport ? `${tabLabel} · ${this.typeConfig.label}` : tabLabel,
+        listPath: this.$route.path,
+        listQuery: { ...this.$route.query },
+        ids: this.rows.map((r) => r.id)
+      })
       if (this.isProcessReport) {
         this.$router.push(`/admin/internship/process-reports/${row.id}`)
       } else {

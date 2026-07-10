@@ -44,7 +44,7 @@
           <AppStatusTag :status="row.status" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/internship/exceptions/' + row.id)">
+          <button class="mp-link" @click="goDetail(row)">
             {{ row.status === 'COMPLETED' ? '查看留痕' : '处理' }}
           </button>
         </template>
@@ -64,6 +64,7 @@ import {
 import { AppStatusTag, AppExportButton } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
+import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
 
@@ -124,6 +125,19 @@ export default {
     this.load()
   },
   methods: {
+    goDetail(row) {
+      // 进入详情前保存连续核实队列：待处理记录优先，全部已处理时才用当前页全部行
+      const hasStatus = this.rows.some((r) => r.status)
+      const pendingRows = hasStatus ? this.rows.filter((r) => r.status === 'PENDING_HANDLE') : this.rows
+      saveReviewQueue({
+        kind: 'attendance-exception',
+        title: '打卡异常核实',
+        listPath: this.$route.path,
+        listQuery: { ...this.$route.query },
+        ids: (pendingRows.length ? pendingRows : this.rows).map((r) => r.id)
+      })
+      this.$router.push('/admin/internship/exceptions/' + row.id)
+    },
     onPageChange(page) {
       this.pagination.page = page
       this.load()

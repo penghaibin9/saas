@@ -5,6 +5,14 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <ReviewQueueBar
+      ref="queueBar"
+      :current-id="$route.params.id"
+      kind="attendance-exception"
+      :make-path="(id) => '/admin/internship/exceptions/' + id"
+      list-fallback="/admin/internship/exceptions"
+      style="margin-bottom: var(--space-3)"
+    />
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
@@ -22,7 +30,7 @@
             <div class="mp-kv"><span class="mp-kv__k">定位精度</span><span class="mp-kv__v">{{ detail.accuracy }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">打卡地址</span><span class="mp-kv__v">{{ detail.address }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">设备</span><span class="mp-kv__v">{{ detail.device }}（{{ detail.deviceId }}）</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">模拟定位检测</span><span class="mp-kv__v" :style="detail.mockDetect.includes('命中') ? 'color: var(--danger-600)' : 'color: var(--success-600)'">{{ detail.mockDetect }}</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">模拟定位检测</span><span class="mp-kv__v" :style="(detail.mockDetect || '').includes('命中') ? 'color: var(--danger-600)' : 'color: var(--success-600)'">{{ detail.mockDetect || '未检测' }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">系统风险评估</span><span class="mp-kv__v">{{ detail.systemRisk }}</span></div>
             <p class="mp-note" style="margin-top: var(--space-3)">定位仅在学生主动打卡瞬时采集（按隐私保护规则展示）。</p>
           </div>
@@ -35,7 +43,7 @@
           </div>
           <div class="mp-card__body">
             <p style="margin: 0; font-size: var(--font-size-sm); color: var(--text-secondary)">{{ detail.studentNote }}</p>
-            <div v-if="detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2)">
+            <div v-if="detail.attachments && detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2)">
               <AppStatusTag v-for="a in detail.attachments" :key="a" type="info">📎 {{ a }}</AppStatusTag>
             </div>
           </div>
@@ -91,12 +99,13 @@
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppAuditTrail } from '@/components/common'
 import { AppButton } from '@/components/ui'
+import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AttendanceExceptionDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -125,6 +134,17 @@ export default {
       }))
     }
   },
+  watch: {
+    // 连续核实队列跳转（同组件复用）时必须重置本页状态并重新加载
+    '$route.params.id'(id, oldId) {
+      if (!id || id === oldId) return
+      this.detail = null
+      this.action = 'REASONABLE'
+      this.comment = ''
+      this.formError = ''
+      this.load()
+    }
+  },
   created() {
     this.load()
   },
@@ -132,7 +152,9 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
-      const res = await internshipApi.getAttendanceExceptionDetail(this.$route.params.id)
+      const id = this.$route.params.id
+      const res = await internshipApi.getAttendanceExceptionDetail(id)
+      if (id !== this.$route.params.id) return // 队列快速跳转时丢弃过期响应
       if (res.code === 0) this.detail = res.data
       else this.error = res.message
       this.loading = false
@@ -150,6 +172,8 @@ export default {
         toast.success('处理完成：' + res.data.statusLabel + '，已留痕并同步学生端')
         this.comment = ''
         this.load()
+        // 连续核实：有下一条自动跳转，无则提示队列完成
+        this.$refs.queueBar && this.$refs.queueBar.advance()
       } else {
         this.formError = res.message
       }

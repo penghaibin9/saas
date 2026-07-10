@@ -5,6 +5,14 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <ReviewQueueBar
+      ref="queueBar"
+      :current-id="$route.params.id"
+      kind="process-report"
+      :make-path="(id) => '/admin/internship/process-reports/' + id"
+      list-fallback="/admin/internship/reports?type=daily"
+      style="margin-bottom: var(--space-3)"
+    />
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
@@ -57,12 +65,13 @@
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppAuditTrail } from '@/components/common'
 import { AppButton } from '@/components/ui'
+import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ProcessReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
@@ -75,12 +84,25 @@ export default {
       }))
     }
   },
+  watch: {
+    // 连续批阅队列跳转（同组件复用）时必须重置本页状态并重新加载
+    '$route.params.id'(id, oldId) {
+      if (!id || id === oldId) return
+      this.detail = null
+      this.action = 'APPROVE'
+      this.comment = ''
+      this.formError = ''
+      this.load()
+    }
+  },
   created() { this.load() },
   methods: {
     async load() {
       this.loading = true
       this.error = ''
-      const res = await internshipApi.getProcessReportDetail(this.$route.params.id)
+      const id = this.$route.params.id
+      const res = await internshipApi.getProcessReportDetail(id)
+      if (id !== this.$route.params.id) return // 队列快速跳转时丢弃过期响应
       if (res.code === 0) this.detail = res.data
       else this.error = res.message || '加载失败'
       this.loading = false
@@ -97,6 +119,8 @@ export default {
       if (res.code === 0) {
         toast.success('批阅完成')
         this.load()
+        // 连续批阅：有下一条自动跳转，无则提示队列完成
+        this.$refs.queueBar && this.$refs.queueBar.advance()
       } else {
         toast.error(res.message || '批阅失败')
       }

@@ -5,6 +5,14 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <ReviewQueueBar
+      ref="queueBar"
+      :current-id="$route.params.id"
+      kind="weekly-report"
+      :make-path="(id) => '/admin/internship/reports/' + id"
+      list-fallback="/admin/internship/reports"
+      style="margin-bottom: var(--space-3)"
+    />
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
@@ -25,7 +33,7 @@
               <p style="margin: 0 0 var(--space-2)"><b style="color: var(--text-primary)">收获与问题：</b>{{ detail.content.harvest }}</p>
               <p style="margin: 0"><b style="color: var(--text-primary)">下周计划：</b>{{ detail.content.plan }}</p>
             </div>
-            <div v-if="detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap">
+            <div v-if="detail.attachments && detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap">
               <AppStatusTag v-for="a in detail.attachments" :key="a" type="info">📎 {{ a }}</AppStatusTag>
             </div>
           </div>
@@ -98,12 +106,13 @@
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppRiskTag, AppAuditTrail } from '@/components/common'
 import { AppButton } from '@/components/ui'
+import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'WeeklyReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton },
+  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
@@ -119,6 +128,17 @@ export default {
       }))
     }
   },
+  watch: {
+    // 连续批阅队列跳转（同组件复用）时必须重置本页状态并重新加载
+    '$route.params.id'(id, oldId) {
+      if (!id || id === oldId) return
+      this.detail = null
+      this.action = 'APPROVE'
+      this.comment = ''
+      this.formError = ''
+      this.load()
+    }
+  },
   created() {
     this.load()
   },
@@ -126,7 +146,9 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
-      const res = await internshipApi.getWeeklyReportDetail(this.$route.params.id)
+      const id = this.$route.params.id
+      const res = await internshipApi.getWeeklyReportDetail(id)
+      if (id !== this.$route.params.id) return // 队列快速跳转时丢弃过期响应
       if (res.code === 0) this.detail = res.data
       else this.error = res.message
       this.loading = false
@@ -145,6 +167,8 @@ export default {
         toast.success('批阅完成：' + res.data.statusLabel + '，已留痕并同步学生端')
         this.comment = ''
         this.load()
+        // 连续批阅：有下一条自动跳转，无则提示队列完成
+        this.$refs.queueBar && this.$refs.queueBar.advance()
       } else {
         this.formError = res.message
       }
