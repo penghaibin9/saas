@@ -24,6 +24,8 @@ const REVIEW = '/graduation/gd-reviews'
 const SCORE = '/graduation/gd-defense-scores'
 const GRADE = '/graduation/gd-grades'
 
+export const gradeListPath = GRADE
+
 export const graduationDefenseGradeApi = {
   getPlagiarismList(params = {}) { return callList(PLAG, params) },
   submitPlagiarism(gdStudentId, gdFinalId) { return call(() => request(`${PLAG}/${gdStudentId}/submit`, { method: 'POST', body: { gdFinalId } })) },
@@ -41,6 +43,8 @@ export const graduationDefenseGradeApi = {
   confirmScores(gdStudentId) { return call(() => request(`${SCORE}/${gdStudentId}/confirm`, { method: 'POST' })) },
   createSecondDefense(gdStudentId, reason) { return call(() => request(`${SCORE}/${gdStudentId}/second-defense`, { method: 'POST', body: { reason } })) },
 
+  /** 成绩台账列表（分页+keyword/status 筛选，真实后端） */
+  getGrades(params = {}) { return callList(GRADE, params) },
   getGrade(gdStudentId) { return call(() => request(`${GRADE}/${gdStudentId}`)) },
   calculateGrade(gdStudentId, body) { return call(() => request(`${GRADE}/${gdStudentId}/calculate`, { method: 'POST', body })) },
   reviewGrade(gdStudentId, body) { return call(() => request(`${GRADE}/${gdStudentId}/review`, { method: 'POST', body })) },

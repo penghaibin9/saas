@@ -5,7 +5,42 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <div class="gp-layout">
+    <div class="gp-mode">
+      <button class="gp-mode__btn" :class="{ 'is-active': mode === 'single' }" @click="setMode('single')">按学生连续处理</button>
+      <button class="gp-mode__btn" :class="{ 'is-active': mode === 'batch' }" @click="setMode('batch')">成绩台账批量核对</button>
+    </div>
+
+    <!-- 批量核对：全员成绩台账（真实 /gd-grades 列表） -->
+    <div v-if="mode === 'batch'" class="mp-stack">
+      <div class="mp-tabs">
+        <button v-for="s in batchTabs" :key="s.value" class="mp-tab" :class="{ 'is-active': batch.status === s.value }" @click="batch.status = s.value; batch.page = 1; loadGrades()">{{ s.label }}</button>
+        <label class="gp-missing-only"><input v-model="batch.missingOnly" type="checkbox" /> 只看本页缺项</label>
+      </div>
+      <AppSearchBox v-model="batch.keyword" placeholder="搜索学生 / 学号" @search="batch.page = 1; loadGrades()" />
+      <ErrorState v-if="batch.error" :description="batch.error" @retry="loadGrades" />
+      <LoadingState v-else-if="batch.loading" />
+      <EmptyState v-else-if="!batchRows.length" title="暂无成绩记录" description="可调整筛选或先在「按学生连续处理」中核算" />
+      <DataTable v-else :columns="batchColumns" :rows="batchRows" row-key="id" :pagination="{ page: batch.page, pageSize: batch.pageSize, total: batch.total }" @page-change="p => { batch.page = p; loadGrades() }">
+        <template #cell-student="{ row }">
+          <div class="mp-cell-main">{{ row.studentName || '—' }}</div>
+          <div class="mp-cell-sub">{{ row.studentNo || '' }}</div>
+        </template>
+        <template #cell-advisor="{ row }"><span :class="{ 'gp-miss': row.advisorScore == null }">{{ row.advisorScore ?? '缺' }}</span></template>
+        <template #cell-reviewer="{ row }"><span :class="{ 'gp-miss': row.reviewerScore == null }">{{ row.reviewerScore ?? '缺' }}</span></template>
+        <template #cell-defense="{ row }"><span :class="{ 'gp-miss': row.defenseScore == null }">{{ row.defenseScore ?? '缺' }}</span></template>
+        <template #cell-total="{ row }">
+          <b v-if="row.totalScore != null">{{ row.totalScore }}</b><span v-else class="gp-miss">未核算</span>
+          <span v-if="row.gradeLevel" class="mp-cell-sub"> {{ row.gradeLevel }}</span>
+        </template>
+        <template #cell-status="{ row }"><StatusTag :type="row.statusTone" :label="row.statusLabel" dot /></template>
+        <template #cell-actions="{ row }">
+          <button class="mp-link" @click="openFromBatch(row)">处理 →</button>
+        </template>
+      </DataTable>
+      <p class="mp-note">缺项以红色标出；核算 / 复核 / 发布 / 撤回在「按学生连续处理」模式或点「处理 →」完成，全部走真实状态机并留痕。</p>
+    </div>
+
+    <div v-else class="gp-layout">
       <div class="gp-side">
         <input v-model="studentKeyword" class="ie-in" placeholder="搜索学生姓名/学号" @input="searchStudents" />
         <ul class="gp-stu-list">
@@ -111,7 +146,8 @@
 
 <script>
 /** 答辩与成绩（/admin/graduation/defense-grade）：查重/评阅/答辩评分/成绩评定，按学生维度处理。 */
-import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppSearchBox } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
@@ -121,20 +157,47 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationDefenseGradeView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppMentorPicker },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppMentorPicker, AppSearchBox },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       studentKeyword: '', studentOptions: [], current: null, tab: 'plagiarism',
+      mode: 'single',
+      batch: { loading: false, error: '', rows: [], total: 0, page: 1, pageSize: 20, keyword: '', status: '', missingOnly: false, loaded: false },
+      batchTabs: [
+        { value: '', label: '全部' },
+        { value: 'DRAFT', label: '待核算' },
+        { value: 'CALCULATED', label: '已核算' },
+        { value: 'PUBLISHED', label: '已发布' },
+        { value: 'WITHDRAWN', label: '已撤回' }
+      ],
+      batchColumns: [
+        { key: 'student', title: '学生' },
+        { key: 'advisor', title: '导师分' },
+        { key: 'reviewer', title: '评阅分' },
+        { key: 'defense', title: '答辩分' },
+        { key: 'total', title: '综合分' },
+        { key: 'status', title: '状态' },
+        { key: 'actions', title: '操作', width: '90px' }
+      ],
       sideError: '', loadError: '',
       plagiarismList: [], reviewList: [], scoreList: [], grade: null, gradeLoading: false,
       reviewerName: '',
       submitting: false
     }
   },
+  computed: {
+    batchRows() {
+      if (!this.batch.missingOnly) return this.batch.rows
+      return this.batch.rows.filter((r) => r.advisorScore == null || r.reviewerScore == null || r.defenseScore == null || r.totalScore == null)
+    },
+    ...({}
+    )
+  },
   created() {
     const p = this.$route.query.panel
     if (['plagiarism', 'review', 'defense', 'grade'].includes(p)) this.tab = p
+    if ((this.$route.query.view || '') === 'batch') { this.mode = 'batch'; this.loadGrades() }
     this.searchStudents()
   },
   watch: {
@@ -144,6 +207,27 @@ export default {
     }
   },
   methods: {
+    setMode(m) {
+      this.mode = m
+      const q = { ...this.$route.query, view: m === 'batch' ? 'batch' : undefined }
+      this.$router.replace({ query: q })
+      if (m === 'batch' && !this.batch.loaded) this.loadGrades()
+    },
+    async loadGrades() {
+      const B = this.batch
+      B.loading = true; B.error = ''
+      const res = await graduationDefenseGradeApi.getGrades({ keyword: B.keyword, status: B.status || undefined, page: B.page, pageSize: B.pageSize })
+      if (res.code === 0) { B.rows = res.data.list; B.total = res.data.total; B.loaded = true } else { B.rows = []; B.error = res.message || '加载失败' }
+      B.loading = false
+    },
+    /** 台账行 → 切回按学生模式并定位该生成绩页签 */
+    openFromBatch(row) {
+      this.mode = 'single'
+      this.$router.replace({ query: { ...this.$route.query, view: undefined, panel: 'grade' } })
+      this.tab = 'grade'
+      this.current = { id: row.gdStudentId, name: row.studentName, studentNo: row.studentNo, advisorName: row.advisorName }
+      this.loadAll()
+    },
     /** 页签切换同步到 URL，保证刷新/分享/左侧菜单高亮一致 */
     switchTab(t) {
       this.tab = t
@@ -258,6 +342,12 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gp-mode { display: inline-flex; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); overflow: hidden; margin-bottom: var(--space-3); }
+.gp-mode__btn { padding: 7px 16px; border: none; background: #fff; cursor: pointer; font-size: 13px; color: var(--text-secondary, #475569); }
+.gp-mode__btn.is-active { background: var(--brand-primary, #2563eb); color: #fff; }
+.gp-miss { color: var(--danger, #dc2626); font-weight: 600; }
+.gp-missing-only { margin-left: auto; font-size: var(--font-size-sm, 13px); color: var(--text-secondary, #475569); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.mp-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
 .gp-layout { display: flex; gap: var(--space-4); align-items: flex-start; }
 .gp-side { width: 280px; flex: none; }
 .gp-main { flex: 1; min-width: 0; }
