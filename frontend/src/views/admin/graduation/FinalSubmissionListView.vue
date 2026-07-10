@@ -227,6 +227,8 @@ export default {
     }
   },
   created() {
+    const qTab = (this.$route.query.tab || '').toString()
+    if (this.tabs.some((x) => x.value === qTab)) this.filters.status = qTab
     this.selKey = (this.$route.query.sel || '').toString()
     this.loadStats()
     this.load()
@@ -266,7 +268,15 @@ export default {
       const res = await graduationMoreApi.getFinalStats()
       if (res.code === 0) this.stats = res.data
     },
-    switchTab(v) { this.filters.status = v; this.page = 1; this.load() },
+    switchTab(v) {
+      this.filters.status = v
+      this.page = 1
+      this.selKey = ''
+      const q = { ...this.$route.query, tab: v || undefined }
+      delete q.sel
+      this.$router.replace({ query: q })
+      this.load()
+    },
     onFilterSearch() { this.page = 1; this.load() },
     onFilterReset() {
       this.filters = { ...this.filters, keyword: '', dateStart: '', dateEnd: '' }

@@ -181,6 +181,8 @@ export default {
     }
   },
   created() {
+    const qTab = (this.$route.query.tab || '').toString()
+    if (this.tabs.some((x) => x.value === qTab)) this.filters.status = qTab
     this.selKey = (this.$route.query.sel || '').toString()
     this.loadStats()
     this.load()
@@ -224,6 +226,10 @@ export default {
     switchTab(v) {
       this.filters.status = v
       this.page = 1
+      this.selKey = ''
+      const q = { ...this.$route.query, tab: v || undefined }
+      delete q.sel
+      this.$router.replace({ query: q })
       this.load()
     },
     onFilterSearch() { this.page = 1; this.load() },
