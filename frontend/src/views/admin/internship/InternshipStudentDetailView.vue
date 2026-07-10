@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     :title="detail ? detail.name + ' · 实习详情' : '实习详情'"
-    :subtitle="detail ? detail.className + ' · ' + maskNo(detail.studentNo) : '加载中'"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -13,8 +13,8 @@
     <LoadingState v-else-if="loading" />
     <template v-else-if="detail">
       <div class="sd-head">
-        <StatusTag :type="detail.statusTone" :label="detail.statusLabel" dot />
-        <StatusTag :type="eligTone(detail.eligibilityStatus)" :label="detail.eligibilityLabel" />
+        <AppStatusTag :type="detail.statusTone" dot>{{ detail.statusLabel }}</AppStatusTag>
+        <AppStatusTag :type="eligTone(detail.eligibilityStatus)">{{ detail.eligibilityLabel }}</AppStatusTag>
         <span class="sd-dest">去向：{{ detail.destinationLabel }}</span>
         <div class="sd-head__spacer" />
         <button v-if="detail.eligibilityStatus !== 'QUALIFIED' && detail.status !== 'ARCHIVED'" class="mp-btn" @click="askEligibility">认定资格合格</button>
@@ -28,7 +28,7 @@
           <div class="mp-card__head"><span class="mp-card__title">实习信息</span></div>
           <div class="mp-card__body sd-grid">
             <div class="sd-kv"><span class="sd-k">姓名</span><span class="sd-v">{{ detail.name }}</span></div>
-            <div class="sd-kv"><span class="sd-k">学号</span><span class="sd-v">{{ maskNo(detail.studentNo) }}</span></div>
+            <div class="sd-kv"><span class="sd-k">学号</span><span class="sd-v"><AppSensitiveText :value="detail.studentNo" type="generic" /></span></div>
             <div class="sd-kv"><span class="sd-k">班级</span><span class="sd-v">{{ detail.className }}</span></div>
             <div class="sd-kv"><span class="sd-k">联系电话</span><span class="sd-v">{{ detail.phone || '未登记' }}</span></div>
             <div class="sd-kv"><span class="sd-k">校内指导教师</span><span class="sd-v">{{ detail.advisorName || '未指定' }}</span></div>
@@ -67,12 +67,7 @@
       <section class="mp-card">
         <div class="mp-card__head"><span class="mp-card__title">操作留痕</span></div>
         <div class="mp-card__body">
-          <EmptyState v-if="!detail.auditTrail.length" title="暂无操作记录" />
-          <ul v-else class="sd-trail">
-            <li v-for="(a, i) in detail.auditTrail" :key="i" class="sd-trail__item">
-              <span>{{ a.action }}</span><span class="sd-trail__meta">{{ a.operator }} · {{ a.occurredAt }}</span>
-            </li>
-          </ul>
+          <AppAuditTrail :records="auditRecords" empty-text="暂无操作记录" />
         </div>
       </section>
     </template>
@@ -105,7 +100,8 @@
 
 <script>
 /** 实习学生详情（/admin/internship/students/:id）：生产级；企业/岗位/导师真实关联 + 分配/退岗/状态机/资格/去向 + 审计。 */
-import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppSensitiveText, AppStatusTag, AppAuditTrail } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
@@ -120,7 +116,7 @@ const STATUS_NEXT = {
 
 export default {
   name: 'InternshipStudentDetailView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppAuditTrail, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -130,11 +126,24 @@ export default {
     }
   },
   computed: {
-    statusAction() { return this.detail && this.detail.status !== 'ARCHIVED' ? STATUS_NEXT[this.detail.status] : null }
+    statusAction() { return this.detail && this.detail.status !== 'ARCHIVED' ? STATUS_NEXT[this.detail.status] : null },
+    pageSubtitle() {
+      if (!this.detail) return '加载中'
+      const no = this.detail.studentNo
+      const masked = no ? `${String(no).slice(0, -4)}**${String(no).slice(-2)}` : '—'
+      return `${this.detail.className} · ${masked}`
+    },
+    auditRecords() {
+      return (this.detail?.auditTrail || []).map((a, i) => ({
+        id: i,
+        action: a.action,
+        actor: a.operator,
+        at: a.occurredAt
+      }))
+    }
   },
   created() { this.load() },
   methods: {
-    maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     async load() {
       this.loading = true; this.error = ''

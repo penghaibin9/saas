@@ -6,6 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
 
@@ -23,7 +24,7 @@
           <span class="mp-cell-sub">{{ row.scopeSummary }}</span>
         </template>
         <template #cell-status="{ row }">
-          <StatusTag :type="row.statusTone" :label="row.statusLabel" dot />
+          <AppStatusTag :type="row.statusTone" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="openDetail(row)">详情</button>
@@ -76,7 +77,7 @@
       <div v-if="detail" class="at-detail">
         <div class="at-detail__head">
           <h3>{{ detail.name }}<span v-if="detail.isDefault" class="at-default">默认</span></h3>
-          <StatusTag :type="detail.statusTone" :label="detail.statusLabel" dot />
+          <AppStatusTag :type="detail.statusTone" dot>{{ detail.statusLabel }}</AppStatusTag>
         </div>
         <dl class="at-meta">
           <div><dt>协议类型</dt><dd>{{ detail.category || '未分类' }}</dd></div>
@@ -97,11 +98,7 @@
         </div>
         <div class="at-sec">
           <div class="at-sec__t">操作留痕</div>
-          <ul class="at-trail">
-            <li v-for="(a, i) in detail.auditTrail" :key="i">
-              <b>{{ a.action }}</b> · {{ a.operator || '系统' }} · {{ a.occurredAt }}
-            </li>
-          </ul>
+          <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无记录" />
         </div>
       </div>
     </AppDrawer>
@@ -116,7 +113,8 @@
 
 <script>
 /** 实习协议模板库（/admin/internship/agreement-templates）：筛选 + 增改抽屉(适用范围/变量勾选/正文) + 状态机 + 默认模板 + 详情(含审计)。 */
-import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppStatusTag, AppExportButton, AppAuditTrail } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
@@ -138,7 +136,7 @@ const toArr = (s) => (s || '').split(/[,，]/).map((x) => x.trim()).filter(Boole
 
 export default {
   name: 'InternshipAgreementTemplateListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -175,6 +173,11 @@ export default {
     bodyPlaceholder() {
       // 用 braced() 拼占位符，避免在模板里直接写双花括号（Vue 会当插值解析）
       return `甲方：${this.braced('schoolName')}  乙方：${this.braced('companyName')}  实习学生：${this.braced('studentName')} ……`
+    },
+    auditRecords() {
+      return (this.detail?.auditTrail || []).map((t, i) => ({
+        id: i, action: t.action, actor: t.operator, at: t.occurredAt
+      }))
     }
   },
   async created() {
@@ -196,6 +199,8 @@ export default {
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
+    exportFn() { return agreementTemplateApi.exportTemplates({ ...this.filters }) },
+    onExported(data) { toast.success(`已导出 ${data.rowCount} 个模板（已写审计）`) },
     onToolbar(key) {
       if (key === 'create') this.openCreate()
     },

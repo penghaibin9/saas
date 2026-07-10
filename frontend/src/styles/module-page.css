@@ -21,6 +21,8 @@
 }
 .mp-card {
   background: var(--card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--card-b);
   border-radius: var(--r);
   box-shadow: var(--s1);
@@ -47,22 +49,167 @@
 .mp-card__body {
   padding: var(--space-4);
 }
-.mp-link {
+.mp-link,
+button.mp-link,
+a.mp-link {
+  appearance: none;
+  -webkit-appearance: none;
   border: none;
-  background: none;
+  background: transparent;
   padding: 0;
-  color: var(--text-link);
-  font-size: var(--font-size-sm);
+  margin: 0;
+  color: var(--text-link, var(--pri, #2563eb));
+  font: inherit;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: var(--font-weight-medium, 500);
+  line-height: 1.45;
   cursor: pointer;
-  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  transition: color 0.12s ease;
 }
 .mp-link:hover {
+  color: var(--pri-h, #1d4ed8);
   text-decoration: underline;
 }
-.mp-link.is-disabled {
-  color: var(--text-disabled);
+.mp-link:focus-visible {
+  outline: 2px solid var(--pri-100, #dbeafe);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.mp-link.is-disabled,
+.mp-link:disabled {
+  color: var(--text-disabled, var(--t4, #c3cde0));
   cursor: not-allowed;
   text-decoration: none;
+}
+.mp-link--danger {
+  color: var(--err, #dc2626);
+}
+.mp-link--danger:hover {
+  color: #b91c1c;
+}
+/* 表格操作列：多链接横排间距 */
+.mp-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+}
+
+/* ── 抽屉 / 弹层通用表单（ie-* 约定，全模块复用） ── */
+.ie-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3, 12px);
+  padding: var(--space-1, 4px) 0;
+}
+.ie-fld {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ie-fld--full {
+  grid-column: 1 / -1;
+}
+.ie-lbl {
+  font-size: 12px;
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--t2, #44567e);
+}
+.ie-lbl i {
+  color: var(--err, #dc2626);
+  font-style: normal;
+}
+.ie-in,
+.ie-form select,
+.ie-form textarea {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--card-b, rgba(151, 173, 214, 0.32));
+  border-radius: var(--rs, 8px);
+  font: inherit;
+  font-size: 13px;
+  color: var(--t1, #0f1e3d);
+  background: rgba(255, 255, 255, 0.96);
+  box-sizing: border-box;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.ie-in:focus,
+.ie-form select:focus,
+.ie-form textarea:focus {
+  outline: none;
+  border-color: var(--pri, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.ie-form textarea {
+  min-height: 72px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.ie-err {
+  grid-column: 1 / -1;
+  color: var(--err, #dc2626);
+  font-size: 12px;
+  margin: 0;
+}
+.ie-hint {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--t3, #8494b5);
+  margin: 0;
+  line-height: 1.5;
+}
+.ie-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--dv, rgba(120, 144, 190, 0.16));
+}
+.mp-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 16px;
+  border: 1px solid var(--card-b, rgba(151, 173, 214, 0.32));
+  border-radius: var(--rs, 8px);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--t1, #0f1e3d);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium, 500);
+  line-height: 1.2;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.mp-btn:hover:not(:disabled) {
+  border-color: var(--pri-100, #dbeafe);
+  background: var(--pri-bg, rgba(37, 99, 235, 0.06));
+}
+.mp-btn--primary {
+  background: var(--pri, #2563eb);
+  color: #fff;
+  border-color: var(--pri, #2563eb);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+}
+.mp-btn--primary:hover:not(:disabled) {
+  background: var(--pri-h, #1d4ed8);
+  border-color: var(--pri-h, #1d4ed8);
+}
+.mp-btn--danger {
+  color: var(--err, #dc2626);
+  border-color: rgba(220, 38, 38, 0.25);
+}
+.mp-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .mp-cell-main {
   font-weight: var(--font-weight-medium);

@@ -3,6 +3,7 @@
     :title="brandTitle"
     subtitle="岗位实习中心"
     :ctx="ctx"
+    @menu-select="onMenuSelect"
   >
     <router-view v-if="ctx" :ctx="ctx" />
     <LoadingState v-else text="正在加载岗位实习中心…" />
@@ -18,6 +19,7 @@
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import router from '@/router'
 
 export default {
   name: 'AdminInternshipLayout',
@@ -34,6 +36,13 @@ export default {
   async created() {
     const res = await internshipApi.getContext()
     if (res.code === 0) this.ctx = res.data
+  },
+  methods: {
+    onMenuSelect(item) {
+      if (item?.path && item.path !== this.$route.fullPath.split('#')[0]) {
+        router.push(item.path).catch(() => {})
+      }
+    }
   }
 }
 </script>

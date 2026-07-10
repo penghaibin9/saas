@@ -1,13 +1,17 @@
 <template>
   <ModulePageShell
-    title="批次与规则"
+    title="实习批次设置"
     :subtitle="pageSubtitle"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="实习批次管理"
   >
+    <template #actions>
+      <AppExportButton :export-fn="exportFn">⬇ 导出 Excel 台账</AppExportButton>
+    </template>
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
+      <ModuleSummaryStrip :metrics="summaryMetrics" />
       <ModuleToolbar :actions="toolbarActions" :hint="`共 ${total} 个批次 · 状态流转全程留痕`" @action="onToolbar" />
 
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
@@ -26,7 +30,7 @@
         @row-click="openDetail"
       >
         <template #cell-status="{ row }">
-          <StatusTag :type="statusTagType[row.status] || 'default'" :label="row.statusLabel" dot />
+          <AppStatusTag :type="statusTagType[row.status] || 'default'" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-term="{ row }">
           <span>{{ row.academicYear || '—' }}{{ row.term ? ' · ' + row.term : '' }}</span>
@@ -59,7 +63,7 @@
             <h4>基本信息</h4>
             <dl class="bd__grid">
               <div><dt>批次编号</dt><dd>{{ detailRow.batchNo }}</dd></div>
-              <div><dt>状态</dt><dd><StatusTag :type="statusTagType[detailRow.status] || 'default'" :label="detailRow.statusLabel" dot /></dd></div>
+              <div><dt>状态</dt><dd><AppStatusTag :type="statusTagType[detailRow.status] || 'default'" dot>{{ detailRow.statusLabel }}</AppStatusTag></dd></div>
               <div><dt>计划 / 实际人数</dt><dd>{{ detailRow.plannedCount }} / {{ detailRow.actualCount }}</dd></div>
               <div><dt>报名窗口</dt><dd>{{ dateShort(detailRow.signupStartDate) || '—' }} ~ {{ dateShort(detailRow.signupEndDate) || '—' }}</dd></div>
               <div v-if="detailRow.transitionReason"><dt>作废原因</dt><dd>{{ detailRow.transitionReason }}</dd></div>
@@ -85,7 +89,7 @@
 
           <section class="bd__section">
             <h4>操作留痕</h4>
-            <AuditTrailPanel :logs="auditLogRows" />
+            <AppAuditTrail :records="auditRecords" />
           </section>
         </div>
       </AppDrawer>
@@ -107,10 +111,11 @@
 
 <script>
 /** /admin/internship/batches 实习批次（列表 / 新建 / 编辑 / 启用 / 结束 / 归档 / 作废；真实走后端 /internship/batches）。 */
-import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
-import { AppConfirmDialog, AppTimeline } from '@/components/common'
+import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, EmptyState, LoadingState, ErrorState } from '@/components/business'
+import { AppConfirmDialog, AppTimeline, AppStatusTag, AppExportButton, AppAuditTrail } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
-import { EditDrawer, TableActionColumn, AuditTrailPanel, NoPermissionState } from '@/modules/internship/components'
+import { EditDrawer, TableActionColumn, NoPermissionState } from '@/modules/internship/components'
+import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
@@ -138,8 +143,9 @@ const STATUS_OPTIONS = [
 export default {
   name: 'InternshipBatchListView',
   components: {
-    ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState,
-    AppConfirmDialog, AppTimeline, AppDrawer, EditDrawer, TableActionColumn, AuditTrailPanel, NoPermissionState
+    ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, EmptyState, LoadingState, ErrorState,
+    AppConfirmDialog, AppTimeline, AppStatusTag, AppExportButton, AppAuditTrail, AppDrawer, EditDrawer, TableActionColumn, NoPermissionState,
+    ModuleSummaryStrip
   },
   data() {
     return {
@@ -181,8 +187,7 @@ export default {
     toolbarActions() {
       const p = this.perms.createBatch
       return [
-        { key: 'create', label: '新建批次', disabled: p ? !p.allowed : false, disabledReason: p && !p.allowed ? p.reason : '' },
-        { key: 'export', label: '导出 Excel 台账' }
+        { key: 'create', label: '新建批次', disabled: p ? !p.allowed : false, disabledReason: p && !p.allowed ? p.reason : '' }
       ]
     },
     filterFields() {
@@ -238,10 +243,16 @@ export default {
       const comps = (this.detailRow && this.detailRow.rules.score.components) || []
       return comps.map((c) => `${c.name} ${this.pct(c.weight)}`).join(' + ')
     },
-    auditLogRows() {
+    auditRecords() {
       const trail = (this.detailRow && this.detailRow.auditTrail) || []
       const ACTION_LABEL = { CREATE: '新建批次', UPDATE: '编辑批次', ACTIVATE: '启用批次', CLOSE: '结束批次', ARCHIVE: '归档批次', VOID: '作废批次' }
-      return trail.map((t) => ({ id: t.id, time: t.time, operator: t.operator, action: ACTION_LABEL[t.action] || t.action, detail: t.detail }))
+      return trail.map((t) => ({
+        id: t.id,
+        action: ACTION_LABEL[t.action] || t.action,
+        actor: t.operator,
+        at: t.time,
+        reason: t.detail
+      }))
     },
     confirmConf() {
       const r = this.confirmRow
@@ -261,7 +272,14 @@ export default {
     },
     pageSubtitle() {
       const hint = BATCH_PANEL_HINTS[this.activePanel] || BATCH_PANEL_HINTS.list
-      return `共 ${this.total} 个批次 · ${hint}`
+      return `创建和管理实习批次，并设置打卡、周报、指导、评价和成绩规则 · ${hint}`
+    },
+    summaryMetrics() {
+      if (this.loading || this.error) return []
+      const m = [{ label: '批次总数', value: this.total }]
+      const running = this.rows.filter((r) => r.status === 'RUNNING').length
+      if (running) m.push({ label: '本页进行中', value: running, tone: 'good' })
+      return m
     }
   },
   watch: {
@@ -320,12 +338,9 @@ export default {
     },
     onToolbar(key) {
       if (key === 'create') this.openCreate()
-      else if (key === 'export') this.doExport()
     },
-    async doExport() {
-      const res = await internshipApi.downloadBatchExport({ ...this.filters })
-      if (res.code === 0) toast.success(`已导出 Excel 台账 ${res.data.rowCount} 个批次（已写审计）`)
-      else toast.error(res.message)
+    exportFn() {
+      return internshipApi.exportBatches({ ...this.filters })
     },
     openCreate() {
       this.editing = null

@@ -1,13 +1,15 @@
 <template>
   <ModulePageShell
-    title="风险处置"
-    :subtitle="'风险来源统一挂 INT-R 编码 · 关闭风险需填写原因并留痕'"
+    title="风险异常处置"
+    :subtitle="'发现并处理学生实习中的安全、失联、打卡、协议和企业风险 · 风险来源统一挂 INT-R 编码 · 关闭风险需填写原因并留痕'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出风险名单</AppExportButton>
     </template>
+
+    <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
     <div class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
@@ -25,13 +27,13 @@
           <div class="mp-cell-sub">{{ row.sourceDetail }}</div>
         </template>
         <template #cell-level="{ row }">
-          <RiskTag :level="row.level" />
+          <AppRiskTag :level="row.level" />
         </template>
         <template #cell-deadline="{ row }">
           <span :style="isUrgent(row.deadline) ? 'color: var(--danger-600); font-weight: 500' : ''">{{ row.deadline }}</span>
         </template>
         <template #cell-status="{ row }">
-          <StatusTag :status="row.status" :label="row.statusLabel" dot />
+          <AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="$router.push('/admin/internship/students/' + row.internId)">查看学生</button>
@@ -47,17 +49,28 @@
 <script>
 /** 风险学生列表（/admin/internship/risks）：风险等级 / 跟进状态 / 责任人 / 处理期限。 */
 import {
-  ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
-  StatusTag, RiskTag, LoadingState, ErrorState, EmptyState
+  ModulePageShell, AdvancedFilter, DataTable,
+  LoadingState, ErrorState, EmptyState
 } from '@/components/business'
+import { AppStatusTag, AppRiskTag, AppExportButton } from '@/components/common'
+import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { riskApi } from '@/modules/internship/api/leave-risk.api'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ level: '', status: '' })
+const EMPTY_FILTERS = () => ({ level: '', status: '', riskCode: '' })
+const PANEL_PRESETS = {
+  board: () => EMPTY_FILTERS(),
+  'no-position': () => ({ level: '', status: '', riskCode: 'INT-R02' }),
+  'no-checkin': () => ({ level: '', status: '', riskCode: 'INT-R07' }),
+  'report-overdue': () => ({ level: '', status: '', riskCode: 'INT-R10' }),
+  'leave-post': () => ({ level: '', status: '', riskCode: 'INT-R06' })
+}
 
 export default {
   name: 'InternshipRiskView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, AdvancedFilter, DataTable, AppStatusTag, AppRiskTag, AppExportButton,
+    LoadingState, ErrorState, EmptyState, ModuleSummaryStrip },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -91,20 +104,28 @@ export default {
         }
       ]
     },
-    toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [
-        { key: 'batchRemind', label: '批量发送提醒' },
-        { key: 'exportRiskList', label: '导出风险名单' }
-      ]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+    summaryMetrics() {
+      if (this.loading || this.error) return []
+      return [{ label: '风险学生', value: this.pagination.total, tone: this.pagination.total ? 'warn' : undefined }]
     }
   },
-  created() {
-    this.load()
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.applyPanel((panel || 'board').toString())
+      }
+    }
   },
   methods: {
+    exportFn() { return riskApi.exportRisks({ ...this.filters }) },
+    onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
+    applyPanel(panel) {
+      const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.board
+      this.filters = { ...preset() }
+      this.pagination.page = 1
+      this.load()
+    },
     isUrgent(d) {
       return d && d <= '07-05'
     },
@@ -121,12 +142,15 @@ export default {
       this.pagination.page = 1
       this.load()
     },
-    onToolbar(key) {
-      if (key === 'batchRemind') toast.success('已向全部风险学生责任人发送提醒，已留痕')
-      if (key === 'exportRiskList') toast.success('风险名单导出任务已创建（仅限当前数据范围、含水印），已留痕')
-    },
     remind(row) {
-      toast.success('已提醒 ' + row.owner + ' 跟进 ' + row.studentName + ' 的风险记录，已留痕')
+      riskApi.remind(row.id).then((res) => {
+        if (res.code === 0) {
+          const owner = (res.data && res.data.ownerName) || row.owner || '责任人'
+          toast.success(`已提醒 ${owner} 跟进 ${row.studentName} 的风险记录，已留痕`)
+        } else {
+          toast.error(res.message || '提醒失败')
+        }
+      })
     },
     async load() {
       this.loading = true

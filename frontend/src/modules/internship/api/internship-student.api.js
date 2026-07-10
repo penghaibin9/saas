@@ -2,7 +2,8 @@
  * 岗位实习中心 · 实习学生 API（生产级：仅走真实后端，不回退 mock）。
  * 端点 /internship/intern-students/*（避开旧 /internship/students/*）。
  */
-import { request } from '@/services/http/client'
+import { request, requestBlob, requestUpload } from '@/services/http/client'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })
@@ -71,6 +72,44 @@ export const internStudentApi = {
   },
   exportStudents(params = {}) {
     return call(() => request(`${BASE}/export`, { method: 'POST', params }))
+  },
+  async downloadImportTemplate() {
+    const blob = await requestBlob(`${BASE}/import/template`)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '实习学生导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+  async uploadImportXlsx(file) {
+    try {
+      return ok(await requestUpload(`${BASE}/import/xlsx`, file))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  async downloadImportErrors(rows, errors) {
+    try {
+      const blob = await requestBlob(`${BASE}/import/errors-xlsx`, {
+        method: 'POST',
+        body: { rows, errors }
+      })
+      const buf = await blob.arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i])
+      return ok({
+        contentBase64: btoa(binary),
+        filename: 'intern_student_import_errors.xlsx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  importConfirmRows(rows) {
+    return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows } }))
   },
   // 建档用：可选学生（学生主档）；分配用：已上架岗位
   getStudentOptions(keyword) {

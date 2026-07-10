@@ -568,3 +568,88 @@ export const enterpriseContactsMap = {
   'ent-002': [],
   'ent-003': []
 }
+
+// ═══════════ 统计中心 / 归档中心（开发环境后端不可达时的兜底数据）═══════════
+export const statsDimensionsMock = {
+  colleges: ['信息工程学院'],
+  majors: ['软件技术'],
+  classes: ['软件2301', '软件2302']
+}
+
+export const statsOverviewMock = {
+  dimensions: { college: '', major: '', className: '', scopeMode: 'SCOPED' },
+  counters: [
+    { key: 'totalStudents', label: '实习学生数', value: 8 },
+    { key: 'onboardStudents', label: '在岗学生数', value: 6 },
+    { key: 'riskStudents', label: '风险学生数', value: 2, warn: true }
+  ],
+  metrics: [
+    { key: 'placementRate', label: '实习落实率', numerator: 7, denominator: 8, rate: 87.5, threshold: 95, warn: true, note: '' },
+    { key: 'matchRate', label: '岗位匹配率', numerator: 7, denominator: 8, rate: 87.5, threshold: 90, warn: true, note: '' },
+    { key: 'agreementSignRate', label: '协议签署率', numerator: 6, denominator: 8, rate: 75, threshold: 95, warn: true, note: '' },
+    { key: 'checkinComplyRate', label: '打卡合规率', numerator: 42, denominator: 48, rate: 87.5, threshold: 85, warn: false, note: '' },
+    { key: 'weeklyReviewRate', label: '周报批阅率', numerator: 9, denominator: 12, rate: 75, threshold: 90, warn: true, note: '' },
+    { key: 'riskCloseRate', label: '风险闭环率', numerator: 1, denominator: 3, rate: 33.3, threshold: 95, warn: true, note: '' }
+  ],
+  scoreDistribution: [
+    { bucket: '优(90-100)', count: 2 },
+    { bucket: '良(80-89)', count: 3 },
+    { bucket: '中(70-79)', count: 1 },
+    { bucket: '及格(60-69)', count: 0 },
+    { bucket: '不及格(<60)', count: 0 }
+  ],
+  partial: [
+    { key: 'employmentRate', label: '就业转化率', reason: '依赖就业模块台账，待就业中心对接' },
+    { key: 'helpCoverRate', label: '未就业帮扶覆盖率', reason: '依赖就业帮扶记录，待就业中心对接' },
+    { key: 'archiveRate', label: '归档完成率', reason: '依赖实习归档中心聚合' }
+  ],
+  generatedAt: '2026-07-09 21:00:00'
+}
+
+function _archiveMissingForStudent(s) {
+  const missing = []
+  if (!s.enterpriseId) missing.push('三方协议', '打卡记录', '周报')
+  else if (s.riskLevel === 'HIGH') missing.push('周报', '企业评价')
+  return missing
+}
+
+export const archiveByStudentMock = internshipStudents.map((s) => {
+  const missing = _archiveMissingForStudent(s)
+  const present = 7 - missing.length
+  return {
+    id: s.id,
+    studentNo: s.studentNo,
+    studentName: s.name,
+    advisorName: s.advisorName,
+    enterpriseName: s.enterpriseName || '—',
+    completeness: Math.round(present / 7 * 100),
+    missing,
+    archived: s.status === 'ARCHIVED'
+  }
+})
+
+export const archiveByBatchMock = [
+  { group: '2026 届春季岗位实习', total: 6, complete: 2, avgCompleteness: 71, archived: 0, archiveRate: 0 },
+  { group: '2025 届秋季岗位实习', total: 2, complete: 2, avgCompleteness: 100, archived: 2, archiveRate: 100 }
+]
+
+export const archiveByEnterpriseMock = [
+  { group: '华信智能科技有限公司', total: 5, complete: 1, avgCompleteness: 68, archived: 0, archiveRate: 0 },
+  { group: '星辰网络技术有限公司', total: 1, complete: 1, avgCompleteness: 86, archived: 0, archiveRate: 0 }
+]
+
+export const archiveDetailMock = {
+  'int-001': {
+    studentName: '赵一凡', studentNo: 'S2026-000001', completeness: 57,
+    materialLabels: [
+      { key: 'agreement', label: '三方协议', present: true },
+      { key: 'checkin', label: '打卡记录', present: true },
+      { key: 'weekly', label: '周报', present: false },
+      { key: 'enterpriseEval', label: '企业评价', present: false },
+      { key: 'studentEval', label: '学生自评', present: true },
+      { key: 'score', label: '实习成绩', present: false },
+      { key: 'guidance', label: '指导记录', present: true }
+    ],
+    auditTrail: []
+  }
+}

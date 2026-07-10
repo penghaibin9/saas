@@ -1,65 +1,64 @@
 <template>
-  <ModulePageShell title="申请与协议" subtitle="三方协议 · 协议生成 · 学生/企业/学校确认 · 签署扫描件留痕"
+  <ModulePageShell title="申请与协议办理" subtitle="审核学生实习申请，并完成协议发起、确认、变更和归档 · 三方协议 · 协议生成 · 学生/企业/学校确认 · 签署扫描件留痕"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppButton variant="primary" @click="openGenerate">＋ 生成协议</AppButton>
-      <AppButton variant="secondary" :loading="exporting" @click="doExport">⬇ 导出 Excel 台账</AppButton>
+      <AppPermissionButton code="internship.agreement.create" variant="primary" @click="openGenerate">＋ 生成协议</AppPermissionButton>
+      <AppButton variant="ghost" @click="$router.push('/admin/internship/agreement-templates')">协议模板</AppButton>
+      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
+    <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
+
     <div class="bar">
-      <input v-model="keyword" class="bar__kw" placeholder="按学生姓名搜索" @keyup.enter="load" />
-      <select v-model="statusFilter" class="bar__sel" @change="load">
-        <option value="">全部状态</option>
-        <option v-for="(l, k) in statusMap" :key="k" :value="k">{{ l }}</option>
-      </select>
-      <button class="bar__go" @click="load">查询</button>
-      <span class="bar__hint">共 {{ total }} 条 · 数据范围内可见</span>
+      <AppSearchBox v-model="keyword" placeholder="按学生姓名搜索" @search="reload" />
+      <AppSelect v-model="statusFilter" :options="statusSelectOptions" placeholder="全部状态" @change="reload" />
     </div>
 
-    <div v-if="loading" class="state">加载中…</div>
-    <div v-else-if="error" class="state is-err">{{ error }} <button @click="load">重试</button></div>
-    <div v-else-if="!rows.length" class="state">暂无协议</div>
-
-    <table v-else class="tbl">
-      <thead>
-        <tr><th>学号</th><th>姓名</th><th>企业</th><th>岗位</th><th>学生</th><th>企业</th><th>学校</th><th>协议状态</th><th>操作</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in rows" :key="r.id">
-          <td>{{ r.studentNo }}</td><td>{{ r.studentName }}</td><td>{{ r.enterpriseName }}</td><td>{{ r.positionName }}</td>
-          <td><AppStatusTag :type="confirmTone(r.studentConfirm)">{{ r.studentConfirmLabel }}</AppStatusTag></td>
-          <td><AppStatusTag :type="confirmTone(r.enterpriseConfirm)">{{ r.enterpriseConfirmLabel }}</AppStatusTag></td>
-          <td><AppStatusTag :type="confirmTone(r.schoolConfirm)">{{ r.schoolConfirmLabel }}</AppStatusTag></td>
-          <td><AppStatusTag :status="r.status">{{ r.statusLabel }}</AppStatusTag></td>
-          <td class="tbl__ops">
-            <button class="op" @click="openDetail(r)">详情</button>
-            <button v-if="r.status === 'DRAFT'" class="op op--ok" @click="confirmAct(r, 'issue')">下发</button>
-            <button v-if="r.status === 'PENDING_ENTERPRISE'" class="op op--ok" @click="openEnterprise(r)">记录企业签署</button>
-            <button v-if="r.status === 'PENDING_SCHOOL'" class="op op--ok" @click="confirmAct(r, 'school')">学校确认</button>
-            <button v-if="r.status === 'EFFECTIVE'" class="op" @click="confirmAct(r, 'archive')">归档</button>
-            <button v-if="canReject(r.status)" class="op op--danger" @click="confirmAct(r, 'reject')">驳回</button>
-            <button v-if="canVoid(r.status)" class="op op--danger" @click="confirmAct(r, 'void')">作废</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-if="error" class="state is-err">{{ error }} <button @click="load">重试</button></div>
+    <DataTable v-else :columns="columns" :rows="rows" row-key="id" :loading="loading"
+      :pagination="pagination" @page-change="onPageChange">
+      <template #cell-studentConfirm="{ row }"><AppStatusTag :type="confirmTone(row.studentConfirm)">{{ row.studentConfirmLabel }}</AppStatusTag></template>
+      <template #cell-enterpriseConfirm="{ row }"><AppStatusTag :type="confirmTone(row.enterpriseConfirm)">{{ row.enterpriseConfirmLabel }}</AppStatusTag></template>
+      <template #cell-schoolConfirm="{ row }"><AppStatusTag :type="confirmTone(row.schoolConfirm)">{{ row.schoolConfirmLabel }}</AppStatusTag></template>
+      <template #cell-status="{ row }"><AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag></template>
+      <template #cell-esignStatus="{ row }">
+        <AppStatusTag :type="row.esignStatus === 'SIGNED' ? 'success' : row.esignStatus === 'PENDING' ? 'warning' : 'default'">
+          {{ row.esignStatus === 'SIGNED' ? '已签' : row.esignStatus === 'PENDING' ? '签署中' : '未发起' }}
+        </AppStatusTag>
+      </template>
+      <template #cell-actions="{ row }">
+        <div class="ops">
+          <AppButton variant="ghost" size="sm" @click="openDetail(row)">详情</AppButton>
+          <AppPermissionButton v-if="row.status === 'DRAFT'" code="internship.agreement.issue" variant="secondary" size="sm" @click="confirmAct(row, 'issue')">下发</AppPermissionButton>
+          <AppPermissionButton v-if="row.esignStatus === 'NONE' && canVoid(row.status)" code="internship.agreement.issue" variant="ghost" size="sm" @click="startEsign(row)">发起电子签</AppPermissionButton>
+          <AppPermissionButton v-if="row.esignStatus === 'PENDING' && row.status === 'PENDING_ENTERPRISE'" code="internship.agreement.confirm" variant="ghost" size="sm" @click="esignParty(row, 'ENTERPRISE')">企业电子签</AppPermissionButton>
+          <AppPermissionButton v-if="row.esignStatus === 'PENDING' && row.status === 'PENDING_SCHOOL'" code="internship.agreement.confirm" variant="ghost" size="sm" @click="esignParty(row, 'SCHOOL')">学校电子签</AppPermissionButton>
+          <AppPermissionButton v-if="row.status === 'PENDING_ENTERPRISE'" code="internship.agreement.confirm" variant="secondary" size="sm" @click="openEnterprise(row)">记录企业签署</AppPermissionButton>
+          <AppPermissionButton v-if="row.status === 'PENDING_SCHOOL'" code="internship.agreement.confirm" variant="secondary" size="sm" @click="confirmAct(row, 'school')">学校确认</AppPermissionButton>
+          <AppPermissionButton v-if="row.status === 'EFFECTIVE'" code="internship.agreement.archive" variant="ghost" size="sm" @click="confirmAct(row, 'archive')">归档</AppPermissionButton>
+          <AppPermissionButton v-if="canReject(row.status)" code="internship.agreement.reject" variant="ghost" size="sm" :danger="true" @click="confirmAct(row, 'reject')">驳回</AppPermissionButton>
+          <AppPermissionButton v-if="canVoid(row.status)" code="internship.agreement.void" variant="ghost" size="sm" :danger="true" @click="confirmAct(row, 'void')">作废</AppPermissionButton>
+        </div>
+      </template>
+    </DataTable>
 
     <!-- 生成 -->
     <div v-if="genDlg.visible" class="modal" @click.self="genDlg.visible = false">
       <div class="modal__card">
         <div class="modal__head">生成三方协议</div>
         <div class="modal__body">
-          <label class="fld"><span class="fld__lb">实习学生 *</span>
-            <select v-model="genForm.internshipId" class="fld__ct">
-              <option value="">请选择本人指导学生</option>
-              <option v-for="s in studentOptions" :key="s.id" :value="s.id">{{ s.name }}（{{ s.studentNo }}）· {{ s.enterpriseName || '未分配企业' }}</option>
-            </select>
-          </label>
-          <p class="modal__hint">生成后为草稿，需依次「下发→学生确认→企业签署(上传扫描件)→学校确认」方可生效。仅可对本人指导学生生成。</p>
+          <AppFormItem label="实习学生" required>
+            <AppSelect v-model="genForm.internshipId" :options="studentSelectOptions" placeholder="请选择本人指导学生" />
+          </AppFormItem>
+          <AppFormItem label="协议模板">
+            <AppSelect v-model="genForm.templateId" :options="templateSelectOptions" placeholder="不选则自动使用默认启用模板" />
+          </AppFormItem>
+          <p v-if="previewText" class="preview">{{ previewText }}</p>
+          <p class="hint">生成后为草稿，需依次「下发→学生确认→企业签署(上传扫描件)→学校确认」方可生效。仅可对本人指导学生生成。</p>
         </div>
         <div class="modal__foot">
-          <button class="mbtn" @click="genDlg.visible = false">取消</button>
-          <button class="mbtn mbtn--primary" :disabled="genDlg.submitting" @click="submitGenerate">{{ genDlg.submitting ? '生成中…' : '生成' }}</button>
+          <AppButton variant="ghost" @click="genDlg.visible = false">取消</AppButton>
+          <AppButton variant="primary" :loading="genDlg.submitting" @click="submitGenerate">生成</AppButton>
         </div>
       </div>
     </div>
@@ -69,17 +68,17 @@
       <div class="modal__card">
         <div class="modal__head">记录企业签署</div>
         <div class="modal__body">
-          <label class="fld"><span class="fld__lb">企业经办人</span><input v-model="entForm.confirmBy" class="fld__ct" placeholder="如：企业 HR 张三" /></label>
-          <label class="fld"><span class="fld__lb">签署扫描件 *（企业已签的纸质三方协议）</span>
-            <input type="file" class="fld__ct fld__file" @change="onEntFile" />
-            <span v-if="entForm.fileId" class="fld__att">已上传：{{ entAttachName }}</span>
-            <span v-else-if="uploadingFile" class="fld__att">上传中…</span>
-          </label>
-          <p class="modal__hint">无电子签章时，以上传企业已签署的纸质三方协议扫描件为准（电子签章能力预留）。</p>
+          <AppFormItem label="企业经办人"><AppTextInput v-model="entForm.confirmBy" placeholder="如：企业 HR 张三" /></AppFormItem>
+          <AppFormItem label="签署扫描件（企业已签的纸质三方协议）" required>
+            <input type="file" class="file" @change="onEntFile" />
+            <span v-if="entForm.fileId" class="att">已上传：{{ entAttachName }}</span>
+            <span v-else-if="uploadingFile" class="att">上传中…</span>
+          </AppFormItem>
+          <p class="hint">无电子签章时，以上传企业已签署的纸质三方协议扫描件为准（电子签章能力预留）。</p>
         </div>
         <div class="modal__foot">
-          <button class="mbtn" @click="entDlg.visible = false">取消</button>
-          <button class="mbtn mbtn--primary" :disabled="entDlg.submitting || !entForm.fileId" @click="submitEnterprise">{{ entDlg.submitting ? '提交中…' : '确认企业已签署' }}</button>
+          <AppButton variant="ghost" @click="entDlg.visible = false">取消</AppButton>
+          <AppButton variant="primary" :loading="entDlg.submitting" :disabled="!entForm.fileId" @click="submitEnterprise">确认企业已签署</AppButton>
         </div>
       </div>
     </div>
@@ -91,21 +90,25 @@
         <div class="modal__body">
           <div v-if="detailDlg.loading" class="state">加载中…</div>
           <template v-else-if="detailDlg.data">
-            <div v-for="f in detailFields" :key="f.key" class="dline">
-              <span class="dline__lb">{{ f.label }}</span><span class="dline__ct">{{ detailDlg.data[f.key] || '—' }}</span>
-            </div>
-            <div v-if="detailDlg.data.attachment" class="dline">
-              <span class="dline__lb">签署扫描件</span>
-              <span class="dline__ct"><button class="op" @click="downloadAtt(detailDlg.data.attachment)">⬇ {{ detailDlg.data.attachment.fileName }}</button></span>
-            </div>
-            <div class="dtrail">
-              <div class="dtrail__t">三方确认留痕</div>
-              <div v-for="(t, i) in (detailDlg.data.auditTrail || [])" :key="i" class="dtrail__i"><b>{{ t.action }}</b> · {{ t.operator }} · {{ t.occurredAt }}</div>
-              <div v-if="!(detailDlg.data.auditTrail || []).length" class="tbl__muted">暂无</div>
-            </div>
+            <AppDescriptionList :items="detailItems" :columns="2" />
+            <template v-if="detailDlg.data.renderedBody">
+              <div class="sec-t">协议正文（模板渲染快照）</div>
+              <pre id="agreement-print-body" class="ag-body">{{ detailDlg.data.renderedBody }}</pre>
+            </template>
+            <template v-if="detailDlg.data.attachment">
+              <div class="sec-t">签署扫描件</div>
+              <AppFilePreview :files="attachmentFiles" @download="downloadAtt" />
+            </template>
+            <div class="sec-t">三方确认留痕</div>
+            <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无确认记录" />
           </template>
         </div>
-        <div class="modal__foot"><button class="mbtn" @click="detailDlg.visible = false">关闭</button></div>
+        <div class="modal__foot">
+          <AppPrintButton v-if="detailDlg.data?.renderedBody" print-selector="#agreement-print-body" label="打印正文" />
+          <AppPermissionButton v-if="detailDlg.data?.renderedBody" code="internship.agreement.view"
+            variant="secondary" :loading="pdfLoading" @click="downloadPdf">下载 PDF 套打</AppPermissionButton>
+          <AppButton variant="secondary" @click="detailDlg.visible = false">关闭</AppButton>
+        </div>
       </div>
     </div>
 
@@ -116,10 +119,13 @@
 </template>
 
 <script>
-import { ModulePageShell } from '@/components/business'
+import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
+  AppAuditTrail, AppSearchBox, AppSelect, AppTextInput, AppFormItem, AppFilePreview, AppPrintButton } from '@/components/common'
+import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { agreementApi } from '@/modules/internship/api/agreement.api'
+import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
@@ -128,63 +134,147 @@ const STATUS_MAP = {
   DRAFT: '草稿', PENDING_STUDENT: '待学生确认', PENDING_ENTERPRISE: '待企业确认',
   PENDING_SCHOOL: '待学校确认', EFFECTIVE: '已生效', REJECTED: '已驳回', VOIDED: '已作废', ARCHIVED: '已归档'
 }
+const COLUMNS = [
+  { key: 'studentNo', title: '学号', width: '100px' }, { key: 'studentName', title: '姓名' },
+  { key: 'enterpriseName', title: '企业' }, { key: 'positionName', title: '岗位' },
+  { key: 'studentConfirm', title: '学生' }, { key: 'enterpriseConfirm', title: '企业' },
+  { key: 'schoolConfirm', title: '学校' }, { key: 'esignStatus', title: '电子签' },
+  { key: 'status', title: '协议状态' },
+  { key: 'actions', title: '操作', width: '280px' }
+]
 const DETAIL = [
   { key: 'studentName', label: '学生' }, { key: 'advisorName', label: '指导教师' },
   { key: 'enterpriseName', label: '企业' }, { key: 'positionName', label: '岗位' },
+  { key: 'templateName', label: '协议模板' },
   { key: 'studentConfirmLabel', label: '学生确认' }, { key: 'enterpriseConfirmLabel', label: '企业确认' },
   { key: 'schoolConfirmLabel', label: '学校确认' }, { key: 'statusLabel', label: '协议状态' },
   { key: 'rejectReason', label: '驳回/作废原因' }
 ]
+const PANEL_PRESETS = {
+  issue: () => ({ statusFilter: 'DRAFT' }),
+  confirm: () => ({ statusFilter: 'PENDING_ENTERPRISE' }),
+  change: () => ({ statusFilter: '' }),
+  archive: () => ({ statusFilter: 'ARCHIVED' }),
+  'student-apply': () => ({ statusFilter: 'PENDING_STUDENT' }),
+  'self-apply': () => ({ statusFilter: 'PENDING_STUDENT' }),
+  'position-apply': () => ({ statusFilter: 'PENDING_ENTERPRISE' }),
+  'audit-ledger': () => ({ statusFilter: '' })
+}
 
 export default {
   name: 'AgreementView',
-  components: { ModulePageShell, AppButton, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton,
+    AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppSelect, AppTextInput, AppFormItem,
+    AppFilePreview, AppPrintButton, ModuleSummaryStrip },
   data() {
     return {
-      rows: [], total: 0, loading: false, error: '', exporting: false,
-      keyword: '', statusFilter: '', statusMap: STATUS_MAP, detailFields: DETAIL,
+      rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
+      keyword: '', statusFilter: '', columns: COLUMNS,
       studentOptions: [],
-      genForm: { internshipId: '' }, genDlg: { visible: false, submitting: false },
+      templateOptions: [],
+      previewText: '',
+      genForm: { internshipId: '', templateId: '' }, genDlg: { visible: false, submitting: false },
       entForm: { confirmBy: '', fileId: '' }, entDlg: { visible: false, submitting: false }, entRow: null,
       entAttachName: '', uploadingFile: false,
       detailDlg: { visible: false, loading: false, data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
       pending: null,
+      pdfLoading: false,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
-  created() { this.load() },
+  computed: {
+    pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
+    summaryMetrics() {
+      if (this.loading || this.error) return []
+      return [{ label: '协议/申请总数', value: this.total }]
+    },
+    statusSelectOptions() { return Object.entries(STATUS_MAP).map(([value, label]) => ({ value, label })) },
+    studentSelectOptions() { return this.studentOptions.map((s) => ({ value: s.id, label: `${s.name}（${s.studentNo}）· ${s.enterpriseName || '未分配企业'}` })) },
+    templateSelectOptions() {
+      return [{ value: '', label: '自动使用默认启用模板' }].concat(
+        this.templateOptions.map((t) => ({ value: t.id, label: t.label || t.name }))
+      )
+    },
+    detailItems() { const d = this.detailDlg.data || {}; return DETAIL.map((f) => ({ label: f.label, value: d[f.key] })) },
+    attachmentFiles() { const a = this.detailDlg.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
+    auditRecords() {
+      return (this.detailDlg.data?.auditTrail || []).map((t, i) => ({
+        id: i, action: t.action, actor: t.operator, reason: t.detail && (t.detail.reason || t.detail.confirmBy || ''), at: t.occurredAt
+      }))
+    }
+  },
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.applyPanel((panel || 'issue').toString())
+      }
+    },
+    'genForm.internshipId'() { this.loadPreview() },
+    'genForm.templateId'() { this.loadPreview() }
+  },
   methods: {
+    applyPanel(panel) {
+      const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.issue
+      this.statusFilter = preset().statusFilter
+      this.keyword = ''
+      this.page = 1
+      this.load()
+    },
     confirmTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'REJECTED' ? 'danger' : 'warning' },
     canReject(s) { return ['PENDING_STUDENT', 'PENDING_ENTERPRISE', 'PENDING_SCHOOL'].includes(s) },
     canVoid(s) { return ['DRAFT', 'PENDING_STUDENT', 'PENDING_ENTERPRISE', 'PENDING_SCHOOL'].includes(s) },
+    exportFn() { return agreementApi.exportAgreements({ keyword: this.keyword, status: this.statusFilter }) },
+    onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
+    reload() { this.page = 1; this.load() },
+    onPageChange(p) { this.page = p; this.load() },
     async load() {
       this.loading = true; this.error = ''
-      const params = { page: 1, pageSize: 50, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
       if (this.statusFilter) params.status = this.statusFilter
       const res = await agreementApi.getAgreements(params)
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
     },
+    async ensureStudents() {
+      if (this.studentOptions.length) return
+      const res = await internStudentApi.getStudents({ page: 1, pageSize: 200 })
+      if (res.code === 0) this.studentOptions = res.data.list.map((s) => ({ id: s.id, name: s.name, studentNo: s.studentNo, enterpriseName: s.enterpriseName }))
+    },
     async openGenerate() {
-      this.genForm = { internshipId: '' }; this.genDlg.visible = true
-      if (!this.studentOptions.length) {
-        const res = await internStudentApi.getStudents({ page: 1, pageSize: 200 })
-        if (res.code === 0) this.studentOptions = res.data.list.map((s) => ({ id: s.id, name: s.name, studentNo: s.studentNo, enterpriseName: s.enterpriseName }))
+      this.genForm = { internshipId: '', templateId: '' }
+      this.previewText = ''
+      this.genDlg.visible = true
+      await this.ensureStudents()
+      if (!this.templateOptions.length) {
+        const res = await agreementTemplateApi.getEnabledOptions()
+        if (res.code === 0) this.templateOptions = res.data || []
+      }
+    },
+    async loadPreview() {
+      this.previewText = ''
+      if (!this.genForm.internshipId) return
+      const tplId = this.genForm.templateId || (this.templateOptions.find((t) => t.isDefault) || this.templateOptions[0])?.id
+      if (!tplId) return
+      const res = await agreementTemplateApi.previewTemplate(tplId, { internshipId: this.genForm.internshipId })
+      if (res.code === 0 && res.data?.renderedBody) {
+        const body = res.data.renderedBody
+        this.previewText = body.length > 120 ? body.slice(0, 120) + '…' : body
       }
     },
     async submitGenerate() {
       if (!this.genForm.internshipId) return toast.error('请选择实习学生')
       this.genDlg.submitting = true
-      const res = await agreementApi.generate({ internshipId: this.genForm.internshipId })
+      const payload = { internshipId: this.genForm.internshipId }
+      if (this.genForm.templateId) payload.templateId = this.genForm.templateId
+      const res = await agreementApi.generate(payload)
       this.genDlg.submitting = false
       if (res.code !== 0) return toast.error(res.message || '生成失败')
       this.genDlg.visible = false; toast.success('已生成协议草稿'); this.load()
     },
-    openEnterprise(r) {
-      this.entRow = r; this.entForm = { confirmBy: '', fileId: '' }; this.entAttachName = ''; this.entDlg.visible = true
-    },
+    openEnterprise(r) { this.entRow = r; this.entForm = { confirmBy: '', fileId: '' }; this.entAttachName = ''; this.entDlg.visible = true },
     async onEntFile(e) {
       const file = e.target.files && e.target.files[0]
       if (!file) return
@@ -209,8 +299,20 @@ export default {
       if (res.code !== 0) { toast.error(res.message); this.detailDlg.visible = false; return }
       this.detailDlg.data = res.data
     },
-    async downloadAtt(att) {
-      try { await agreementApi.downloadAttachment(att.fileId, att.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
+    async downloadAtt() {
+      const a = this.detailDlg.data?.attachment
+      if (!a) return
+      try { await agreementApi.downloadAttachment(a.fileId, a.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
+    },
+    async downloadPdf() {
+      const id = this.detailDlg.data?.id
+      if (!id || this.pdfLoading) return
+      this.pdfLoading = true
+      const res = await agreementApi.exportAgreementPdf(id)
+      this.pdfLoading = false
+      if (res.code !== 0) return toast.error(res.message || 'PDF 生成失败')
+      downloadXlsxFromApi(res.data)
+      toast.success('PDF 套打已下载（含水印与导出留痕）')
     },
     confirmAct(r, kind) {
       const map = {
@@ -236,52 +338,36 @@ export default {
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.cd.visible = false; toast.success('操作成功，已写审计'); this.load()
     },
-    async doExport() {
-      this.exporting = true
-      const res = await agreementApi.exportAgreements({ keyword: this.keyword, status: this.statusFilter })
-      this.exporting = false
+    async startEsign(row) {
+      const res = await agreementApi.startEsign(row.id)
       if (res.code !== 0) return toast.error(res.message)
-      downloadXlsxFromApi(res.data, '三方协议台账.xlsx')
-      toast.success(`已导出 ${res.data.rowCount} 条（水印 + 导出留痕）`)
+      toast.success(res.data.message || '已发起电子签')
+      this.load()
+    },
+    async esignParty(row, party) {
+      const res = await agreementApi.esignSign(row.id, { party })
+      if (res.code !== 0) return toast.error(res.message)
+      toast.success(`${party === 'SCHOOL' ? '学校' : '企业'}电子签完成`)
+      this.load()
     }
   }
 }
 </script>
 
 <style scoped>
-.bar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
-.bar__kw, .bar__sel { height: 32px; border: 1px solid var(--border-base); border-radius: var(--radius-base); padding: 0 var(--space-2); font-size: var(--font-size-sm); }
-.bar__go { height: 32px; padding: 0 var(--space-3); border: 1px solid var(--primary-600); background: var(--primary-600); color: #fff; border-radius: var(--radius-base); cursor: pointer; font-size: var(--font-size-sm); }
-.bar__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); margin-left: auto; }
+.bar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); }
 .state.is-err { color: var(--danger-600); }
-.tbl { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
-.tbl th, .tbl td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-light); }
-.tbl th { color: var(--text-tertiary); font-weight: var(--font-weight-medium); background: var(--bg-subtle); }
-.tbl__muted { color: var(--text-disabled); }
-.tbl__ops { display: flex; gap: var(--space-1); flex-wrap: wrap; }
-.op { border: 1px solid var(--border-base); background: var(--bg-card); border-radius: var(--radius-sm); padding: 2px var(--space-2); font-size: var(--font-size-xs); cursor: pointer; color: var(--text-secondary); }
-.op:hover { border-color: var(--primary-500); color: var(--primary-600); }
-.op--ok { border-color: var(--success-100); color: var(--success-700); }
-.op--danger { border-color: var(--danger-100); color: var(--danger-600); }
+.ops { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+.sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-2); }
+.hint { margin: var(--space-2) 0 0; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.preview { margin: var(--space-2) 0 0; padding: var(--space-2); background: var(--bg-subtle, #f8fafc); border-radius: 6px; font-size: var(--font-size-xs); color: var(--text-secondary); white-space: pre-wrap; }
+.ag-body { white-space: pre-wrap; word-break: break-word; background: var(--bg-subtle, #f8fafc); border: 1px solid var(--border-light); border-radius: 8px; padding: 10px; font-size: 12px; max-height: 240px; overflow: auto; margin: 0; }
+.file { font-size: var(--font-size-xs); }
+.att { font-size: var(--font-size-xs); color: var(--success-700); margin-left: var(--space-2); }
 .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 1000); padding: var(--space-4); }
-.modal__card { background: var(--bg-card); border-radius: var(--radius-lg); width: min(540px, 100%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
+.modal__card { background: var(--bg-card); border-radius: var(--radius-lg); width: min(560px, 100%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
 .modal__head { padding: var(--space-4); font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--border-light); }
 .modal__body { padding: var(--space-4); overflow-y: auto; }
 .modal__foot { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; gap: var(--space-2); }
-.modal__hint { margin: var(--space-2) 0 0; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.mbtn { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--border-base); background: var(--bg-card); border-radius: var(--radius-base); cursor: pointer; font-size: var(--font-size-sm); }
-.mbtn--primary { background: var(--primary-600); border-color: var(--primary-600); color: #fff; }
-.mbtn--primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.fld { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
-.fld__lb { font-size: var(--font-size-xs); color: var(--text-secondary); }
-.fld__ct { height: 34px; border: 1px solid var(--border-base); border-radius: var(--radius-base); padding: 0 var(--space-2); font-size: var(--font-size-sm); }
-.fld__file { height: auto; padding: var(--space-1) 0; border: none; font-size: var(--font-size-xs); }
-.fld__att { font-size: var(--font-size-xs); color: var(--success-700); }
-.dline { display: flex; gap: var(--space-3); padding: var(--space-1) 0; font-size: var(--font-size-sm); }
-.dline__lb { width: 96px; flex-shrink: 0; color: var(--text-tertiary); }
-.dline__ct { color: var(--text-primary); word-break: break-all; }
-.dtrail { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px dashed var(--border-light); }
-.dtrail__t { font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: var(--space-2); }
-.dtrail__i { font-size: var(--font-size-xs); color: var(--text-secondary); padding: 2px 0; }
 </style>

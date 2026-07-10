@@ -35,5 +35,8 @@ export const agreementApi = {
   reject(id, { reason }) { return call(() => request(`${B}/${id}/reject`, { method: 'POST', body: { reason } })) },
   voidAgreement(id, { reason } = {}) { return call(() => request(`${B}/${id}/void`, { method: 'POST', body: { reason: reason || '' } })) },
   archive(id) { return call(() => request(`${B}/${id}/archive`, { method: 'POST', body: {} })) },
-  exportAgreements(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) }
+  startEsign(id) { return call(() => request(`${B}/${id}/esign/start`, { method: 'POST', body: {} })) },
+  esignSign(id, { party }) { return call(() => request(`${B}/${id}/esign/sign`, { method: 'POST', body: { party } })) },
+  exportAgreements(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) },
+  exportAgreementPdf(id) { return call(() => request(`${B}/${id}/pdf`, { method: 'POST', body: {} })) }
 }

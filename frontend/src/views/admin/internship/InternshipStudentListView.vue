@@ -1,15 +1,17 @@
 <template>
   <ModulePageShell
-    title="实习学生"
+    title="学生实习管理"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel</AppExportButton>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
 
     <div class="mp-stack">
+      <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -17,7 +19,7 @@
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.name }}</div>
-          <div class="mp-cell-sub">{{ maskNo(row.studentNo) }} · {{ row.className }}</div>
+          <div class="mp-cell-sub"><AppSensitiveText :value="row.studentNo" /> · {{ row.className }}</div>
         </template>
         <template #cell-placement="{ row }">
           <template v-if="row.positionId">
@@ -27,11 +29,11 @@
           <span v-else class="mp-note">未分配岗位</span>
         </template>
         <template #cell-eligibility="{ row }">
-          <StatusTag :type="eligTone(row.eligibilityStatus)" :label="row.eligibilityLabel" />
+          <AppStatusTag :type="eligTone(row.eligibilityStatus)">{{ row.eligibilityLabel }}</AppStatusTag>
         </template>
         <template #cell-destination="{ row }">{{ row.destinationLabel }}</template>
         <template #cell-status="{ row }">
-          <StatusTag :type="row.statusTone" :label="row.statusLabel" dot />
+          <AppStatusTag :type="row.statusTone" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="$router.push('/admin/internship/students/' + row.id)">详情</button>
@@ -78,22 +80,19 @@
       </div>
     </AppDrawer>
 
-    <!-- 导入 -->
-    <AppDrawer v-model:visible="importVisible" title="导入实习学生（CSV 粘贴）">
-      <div class="ie-form">
-        <p class="ie-hint">每行一个学号（须已在学生主档）：<b>学号</b>；也可加校内导师：<b>学号,校内导师</b></p>
-        <textarea v-model="importText" class="ie-in" rows="6" placeholder="示例：2023115001" />
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="dryRunImport">预校验</button>
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="!importChecked || submitting" @click="confirmImport">确认导入</button>
-        </div>
-        <div v-if="importResult" class="ie-imp">
-          <p>共 {{ importResult.total }} 行 · 通过 <b class="ie-ok">{{ importResult.validRows }}</b> · 失败 <b class="ie-bad">{{ importResult.invalidRows }}</b></p>
-          <ul v-if="importResult.errors.length" class="ie-imp__errs"><li v-for="(e, i) in importResult.errors" :key="i">第 {{ e.rowNo }} 行 · {{ e.field }}：{{ e.message }}</li></ul>
-          <p v-else class="ie-ok">全部通过，可确认导入。</p>
-        </div>
-      </div>
-    </AppDrawer>
+    <!-- Excel 导入（P0-E 正式 xlsx） -->
+    <AppExcelImportDrawer
+      v-model:visible="importVisible"
+      title="导入实习学生"
+      template-name="实习学生导入模板.xlsx"
+      :required-fields="['学号']"
+      :preview-fields="['studentNo', 'advisorName', 'enterpriseName', 'batchName']"
+      :download-template-fn="() => internStudentApi.downloadImportTemplate()"
+      :upload-fn="(file) => internStudentApi.uploadImportXlsx(file)"
+      :confirm-fn="({ rows }) => internStudentApi.importConfirmRows(rows)"
+      :download-errors-fn="({ rows, errors }) => internStudentApi.downloadImportErrors(rows, errors)"
+      @imported="onImported"
+    />
 
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
@@ -105,13 +104,15 @@
 
 <script>
 /** 实习学生列表（/admin/internship/students）：生产级只走真实后端；建档/分配岗位(岗位库)/资格/状态/导入导出。 */
-import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppSensitiveText, AppStatusTag, AppExportButton } from '@/components/common'
+import { AppExcelImportDrawer } from '@/components/common/excel'
+import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { STUDENT_STATUS, ELIGIBILITY_STATUS, DESTINATION_TYPE } from '@/modules/internship/constants/internship-student.constants'
 import { toast } from '@/utils/toast'
-import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '' })
 
@@ -137,7 +138,8 @@ const PANEL_HINTS = {
 
 export default {
   name: 'InternshipStudentListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState,
+    AppDrawer, AppConfirmDialog, AppSensitiveText, AppStatusTag, AppExportButton, AppExcelImportDrawer, ModuleSummaryStrip },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -145,7 +147,7 @@ export default {
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       createVisible: false, cform: { studentId: '', advisorName: '', remark: '' }, cError: '', studentOpts: [],
       assignVisible: false, assignRow: null, assignPositionId: '', assignError: '', positionOpts: [],
-      importVisible: false, importText: '', importChecked: false, importResult: null,
+      importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
         { key: 'student', title: '学生' },
@@ -169,11 +171,19 @@ export default {
       ]
     },
     toolbarActions() {
-      return [{ key: 'create', label: '＋ 建档', variant: 'primary' }, { key: 'import', label: '导入' }, { key: 'export', label: '导出' }]
+      return [
+        { key: 'create', label: '＋ 建档', variant: 'primary' },
+        { key: 'import', label: '导入 Excel' },
+        { key: 'insurance', label: '保险核验', variant: 'ghost' }
+      ]
     },
     pageSubtitle() {
       const hint = PANEL_HINTS[this.activePanel] || ''
-      return `共 ${this.total} 人 · ${hint} · 学号默认脱敏`
+      return `查看和管理本批次学生的实习落实、在岗状态和材料情况 · 共 ${this.total} 人 · ${hint} · 学号默认脱敏`
+    },
+    summaryMetrics() {
+      if (this.loading || this.error) return []
+      return [{ label: '实习学生', value: this.total }]
     }
   },
   watch: {
@@ -192,8 +202,10 @@ export default {
       this.page = 1
       this.load()
     },
-    maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
+    exportFn() { return internStudentApi.exportStudents({ ...this.filters }) },
+    onExported(data) { toast.success(`已导出 ${data.rowCount} 人（脱敏 + 水印，已写审计）`) },
+    onImported(data) { toast.success(`已导入 ${data.created || 0} 人`); this.load() },
     async load() {
       this.loading = true; this.error = ''
       const p = { ...this.filters, page: this.page, pageSize: this.pageSize }
@@ -206,14 +218,17 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     async onToolbar(key) {
+      if (key === 'insurance') {
+        this.$router.push('/admin/internship/insurance')
+        return
+      }
       if (key === 'create') {
         this.cform = { studentId: '', advisorName: '', remark: '' }; this.cError = ''
         const s = await internStudentApi.getStudentOptions()
         if (s.code === 0) this.studentOpts = s.data
         this.createVisible = true
       }
-      if (key === 'import') { this.importText = ''; this.importResult = null; this.importChecked = false; this.importVisible = true }
-      if (key === 'export') this.doExport()
+      if (key === 'import') { this.importVisible = true }
     },
     async submitCreate() {
       this.cError = ''
@@ -250,29 +265,6 @@ export default {
         if (action === 'ELIG_QUALIFIED') res = await internStudentApi.setEligibility(row.id, { status: 'QUALIFIED', reason: reason || '' })
         if (res && res.code === 0) { toast.success('已更新'); this.confirm.visible = false; this.load() } else if (res) toast.error(res.message)
       } finally { this.submitting = false }
-    },
-    _parse() {
-      return this.importText.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
-        const [studentNo, advisorName] = l.split(',').map((x) => (x || '').trim())
-        return { studentNo, advisorName }
-      })
-    },
-    async dryRunImport() {
-      const rows = this._parse()
-      if (!rows.length) return toast.error('请粘贴至少一行')
-      const res = await internStudentApi.importDryRun(rows)
-      if (res.code === 0) { this.importResult = res.data; this.importChecked = res.data.invalidRows === 0 } else toast.error(res.message)
-    },
-    async confirmImport() {
-      const res = await internStudentApi.importConfirm(this._parse())
-      if (res.code === 0) { toast.success(`已建档 ${res.data.created} 人`); this.importVisible = false; this.load() } else toast.error(res.message)
-    },
-    async doExport() {
-      // P0-E：正式交付 Excel(.xlsx)，后端返回 base64 + xlsx mediaType，走公共下载工具
-      const res = await internStudentApi.exportStudents({ ...this.filters })
-      if (res.code !== 0) return toast.error(res.message)
-      downloadXlsxFromApi(res.data, '实习学生台账.xlsx')
-      toast.success(`已导出 ${res.data.rowCount} 人（脱敏 + 水印，已写审计）`)
     }
   }
 }

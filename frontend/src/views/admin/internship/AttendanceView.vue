@@ -1,9 +1,12 @@
 <template>
-  <ModulePageShell title="打卡与请假" subtitle="打卡台账 · 打卡异常 · 补卡审批 · 实习请假"
+  <ModulePageShell title="打卡请假处理" subtitle="查看学生出勤情况，集中处理缺卡、定位异常、请假和超期未归 · 打卡台账 · 打卡异常 · 补卡审批 · 实习请假"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppButton :variant="'secondary'" :loading="exporting" @click="doExport">⬇ 导出 Excel 台账</AppButton>
+      <AppButton variant="ghost" @click="$router.push('/admin/internship/leaves')">请假审批</AppButton>
+      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
+
+    <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
     <div class="tabs">
       <button v-for="t in tabs" :key="t.key" class="tabs__btn" :class="{ 'is-active': tab === t.key }"
@@ -37,13 +40,13 @@
           </td>
           <td class="tbl__ops">
             <template v-if="tab === 'exceptions' && r.status === 'PENDING_HANDLE'">
-              <button class="op" @click="openHandle(r, 'REASONABLE')">合理</button>
-              <button class="op" @click="openHandle(r, 'ABNORMAL')">异常</button>
-              <button class="op op--danger" @click="openHandle(r, 'TO_RISK')">转风险</button>
+              <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" @click="openHandle(r, 'REASONABLE')">合理</AppPermissionButton>
+              <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" @click="openHandle(r, 'ABNORMAL')">异常</AppPermissionButton>
+              <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" :danger="true" @click="openHandle(r, 'TO_RISK')">转风险</AppPermissionButton>
             </template>
             <template v-else-if="tab === 'makeups' && r.status === 'PENDING'">
-              <button class="op op--ok" @click="openApprove(r)">通过</button>
-              <button class="op op--danger" @click="openReject(r)">驳回</button>
+              <AppPermissionButton code="internship.checkin.handle" variant="secondary" size="sm" @click="openApprove(r)">通过</AppPermissionButton>
+              <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" :danger="true" @click="openReject(r)">驳回</AppPermissionButton>
             </template>
             <span v-else class="tbl__muted">—</span>
           </td>
@@ -60,9 +63,9 @@
 <script>
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton } from '@/components/common'
+import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
-import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
 
 const COLS = {
@@ -87,15 +90,23 @@ const STATUS_OPTS = {
   makeups: [{ value: 'PENDING', label: '待审核' }, { value: 'APPROVED', label: '已通过' },
     { value: 'REJECTED', label: '已驳回' }, { value: 'WITHDRAWN', label: '已撤回' }]
 }
+const PANEL_PRESETS = {
+  checkins: () => ({ tab: 'checkins', statusFilter: '' }),
+  'makeup-apply': () => ({ tab: 'makeups', statusFilter: '' }),
+  'makeup-review': () => ({ tab: 'makeups', statusFilter: 'PENDING' }),
+  exceptions: () => ({ tab: 'exceptions', statusFilter: '' })
+}
+const TAB_PANEL = { checkins: 'checkins', exceptions: 'exceptions', makeups: 'makeup-review' }
 
 export default {
   name: 'AttendanceView',
-  components: { ModulePageShell, AppButton, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, ModuleSummaryStrip },
   data() {
     return {
       tab: 'checkins',
       tabs: [{ key: 'checkins', label: '打卡台账' }, { key: 'exceptions', label: '打卡异常' }, { key: 'makeups', label: '补卡审批' }],
-      rows: [], total: 0, loading: false, error: '', exporting: false,
+      rows: [], total: 0, loading: false, error: '',
+      tabTotals: { checkins: null, exceptions: null, makeupsAll: null, makeupsPending: null },
       keyword: '', statusFilter: '',
       dlg: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: true, submitting: false },
       pending: null,
@@ -104,11 +115,43 @@ export default {
   },
   computed: {
     columns() { return COLS[this.tab] },
-    statusOptions() { return STATUS_OPTS[this.tab] || [] }
+    statusOptions() { return STATUS_OPTS[this.tab] || [] },
+    summaryMetrics() {
+      // 只展示已真实加载过的 Tab 的服务端 total，不触发额外请求，不用分页行数冒充
+      const t = this.tabTotals
+      const m = []
+      if (t.checkins != null) m.push({ label: '打卡记录', value: t.checkins })
+      if (t.exceptions != null) m.push({ label: '打卡异常', value: t.exceptions, tone: 'warn' })
+      if (t.makeupsPending != null) m.push({ label: '补卡待审批', value: t.makeupsPending })
+      else if (t.makeupsAll != null) m.push({ label: '补卡申请', value: t.makeupsAll })
+      return m
+    }
   },
-  created() { this.load() },
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.applyPanel((panel || 'checkins').toString())
+      }
+    }
+  },
   methods: {
-    switchTab(k) { this.tab = k; this.keyword = ''; this.statusFilter = ''; this.load() },
+    applyPanel(panel) {
+      const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.checkins
+      const { tab, statusFilter } = preset()
+      this.tab = tab
+      this.keyword = ''
+      this.statusFilter = statusFilter
+      this.load()
+    },
+    switchTab(k) {
+      const panel = TAB_PANEL[k] || k
+      if (this.$route.query.panel !== panel) {
+        this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
+      } else {
+        this.applyPanel(panel)
+      }
+    },
     async load() {
       this.loading = true; this.error = ''
       const params = { page: 1, pageSize: 50, keyword: this.keyword }
@@ -118,16 +161,19 @@ export default {
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
+      // 无关键词筛选时，缓存该 Tab 的服务端全量计数（补卡区分「全部/待审批」两种口径）
+      if (!this.keyword) {
+        if (this.tab === 'checkins' && !this.statusFilter) this.tabTotals.checkins = res.data.total
+        else if (this.tab === 'exceptions' && !this.statusFilter) this.tabTotals.exceptions = res.data.total
+        else if (this.tab === 'makeups' && !this.statusFilter) this.tabTotals.makeupsAll = res.data.total
+        else if (this.tab === 'makeups' && this.statusFilter === 'PENDING') this.tabTotals.makeupsPending = res.data.total
+      }
     },
-    async doExport() {
-      this.exporting = true
+    exportFn() {
       const api = { checkins: 'exportCheckins', exceptions: 'exportExceptions', makeups: 'exportMakeups' }[this.tab]
-      const res = await attendanceApi[api]({ keyword: this.keyword, status: this.statusFilter })
-      this.exporting = false
-      if (res.code !== 0) return toast.error(res.message)
-      downloadXlsxFromApi(res.data, '台账.xlsx')
-      toast.success(`已导出 ${res.data.rowCount} 条（脱敏 + 水印，已写审计）`)
+      return attendanceApi[api]({ keyword: this.keyword, status: this.statusFilter })
     },
+    onExported(data) { toast.success(`已导出 ${data.rowCount} 条（脱敏 + 水印，已写审计）`) },
     openHandle(r, action) {
       const label = { REASONABLE: '标记合理', ABNORMAL: '记为异常', TO_RISK: '转风险跟进' }[action]
       this.pending = { kind: 'handle', id: r.id, action }

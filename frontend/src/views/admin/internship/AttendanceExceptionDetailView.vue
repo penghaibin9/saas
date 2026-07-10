@@ -12,7 +12,7 @@
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">异常打卡信息</span>
-            <StatusTag :status="detail.status" :label="detail.status === 'COMPLETED' ? '已处理' : '待核实'" dot />
+            <AppStatusTag :status="detail.status" dot>{{ detail.status === 'COMPLETED' ? '已处理' : '待核实' }}</AppStatusTag>
           </div>
           <div class="mp-card__body">
             <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ detail.studentName }} · {{ detail.className }}</span></div>
@@ -24,19 +24,19 @@
             <div class="mp-kv"><span class="mp-kv__k">设备</span><span class="mp-kv__v">{{ detail.device }}（{{ detail.deviceId }}）</span></div>
             <div class="mp-kv"><span class="mp-kv__k">模拟定位检测</span><span class="mp-kv__v" :style="detail.mockDetect.includes('命中') ? 'color: var(--danger-600)' : 'color: var(--success-600)'">{{ detail.mockDetect }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">系统风险评估</span><span class="mp-kv__v">{{ detail.systemRisk }}</span></div>
-            <p class="mp-note" style="margin-top: var(--space-3)">定位仅在学生主动打卡瞬时采集（隐私冻结规则）。</p>
+            <p class="mp-note" style="margin-top: var(--space-3)">定位仅在学生主动打卡瞬时采集（按隐私保护规则展示）。</p>
           </div>
         </section>
 
         <section class="mp-card">
           <div class="mp-card__head">
-            <span class="mp-card__title">学生说明（来自小程序 P11）</span>
+            <span class="mp-card__title">学生说明（来自学生端）</span>
             <span v-if="detail.noteTime" class="mp-note">提交于 {{ detail.noteTime }}</span>
           </div>
           <div class="mp-card__body">
             <p style="margin: 0; font-size: var(--font-size-sm); color: var(--text-secondary)">{{ detail.studentNote }}</p>
             <div v-if="detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2)">
-              <StatusTag v-for="a in detail.attachments" :key="a" type="info" :label="'📎 ' + a" />
+              <AppStatusTag v-for="a in detail.attachments" :key="a" type="info">📎 {{ a }}</AppStatusTag>
             </div>
           </div>
         </section>
@@ -66,7 +66,7 @@
               <AppButton variant="primary" :loading="submitting" style="width: 100%; margin-top: var(--space-3)" @click="submit">
                 提交处理结果
               </AppButton>
-              <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">提交后留痕，并实时同步学生小程序 P11 打卡状态</p>
+              <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">提交后留痕，并实时同步学生端打卡状态</p>
             </template>
             <EmptyState v-else title="该异常已处理完成" description="处理结果已同步学生端，全部动作见下方处理留痕" />
           </div>
@@ -75,13 +75,7 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">处理留痕</span></div>
           <div class="mp-card__body">
-            <ul class="mp-timeline">
-              <li v-for="(t, i) in detail.trail" :key="i" class="mp-timeline__item" :class="'is-' + (t.tone === 'processing' ? 'warning' : t.tone)">
-                <div class="mp-timeline__title">{{ t.title }}</div>
-                <div v-if="t.desc" class="mp-timeline__desc">{{ t.desc }}</div>
-                <div class="mp-timeline__time">{{ t.time }}</div>
-              </li>
-            </ul>
+            <AppAuditTrail :records="trailRecords" empty-text="暂无处理记录" />
           </div>
         </section>
       </div>
@@ -94,14 +88,15 @@
  * 打卡异常处理详情（/admin/internship/exceptions/:id）。
  * 闭环：查看定位/设备/说明 → 标记合理 / 记为异常 / 转风险 → 留痕 → 学生端同步。
  */
-import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppStatusTag, AppAuditTrail } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AttendanceExceptionDetailView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppButton },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -117,6 +112,17 @@ export default {
         { value: 'ABNORMAL', title: '记为异常', desc: '核实不通过，计入异常统计，影响打卡率与考核' },
         { value: 'TO_RISK', title: '转风险跟进', desc: '生成风险单并指派责任人，进入风险闭环' }
       ]
+    }
+  },
+  computed: {
+    trailRecords() {
+      return (this.detail?.trail || []).map((t, i) => ({
+        id: i,
+        action: t.title,
+        reason: t.desc,
+        at: t.time,
+        result: t.tone
+      }))
     }
   },
   created() {

@@ -13,7 +13,7 @@
     <LoadingState v-else-if="loading" />
     <template v-else-if="detail">
       <div class="ed-head">
-        <StatusTag :type="detail.statusTone" :label="detail.statusLabel" dot />
+        <AppStatusTag :type="detail.statusTone" dot>{{ detail.statusLabel }}</AppStatusTag>
         <span v-if="detail.riskFlag" class="ed-bl">⚠ 风险岗位 · {{ detail.riskNote }}</span>
         <span class="ed-cap">已分配 {{ detail.allocatedCount }} / 容量 {{ detail.headcount }}</span>
         <div class="ed-head__spacer" />
@@ -46,18 +46,13 @@
           <div class="ed-kv"><span class="ed-k">所属企业</span><span class="ed-v">{{ detail.companyName }}</span></div>
           <div class="ed-kv"><span class="ed-k">企业合作状态</span><span class="ed-v">{{ detail.company ? detail.company.coopStatusLabel : '—' }}</span></div>
           <div class="ed-kv"><span class="ed-k">企业导师</span><span class="ed-v">{{ detail.mentorName || '未指定' }}</span></div>
-          <div class="ed-kv"><span class="ed-k">实习批次</span><span class="ed-v">{{ detail.batchId || '待批次模块联调' }}</span></div>
+          <div class="ed-kv"><span class="ed-k">实习批次</span><span class="ed-v">{{ detail.batchId || '未关联批次' }}</span></div>
         </div>
       </section>
 
       <section v-show="tab === 'audit'" class="mp-card">
         <div class="mp-card__body">
-          <EmptyState v-if="!detail.auditTrail.length" title="暂无操作记录" />
-          <ul v-else class="ed-trail">
-            <li v-for="(a, i) in detail.auditTrail" :key="i" class="ed-trail__item">
-              <span>{{ a.action }}</span><span class="ed-trail__meta">{{ a.operator }} · {{ a.occurredAt }}</span>
-            </li>
-          </ul>
+          <AppAuditTrail :records="auditRecords" empty-text="暂无操作记录" />
         </div>
       </section>
     </template>
@@ -89,7 +84,8 @@
 
 <script>
 /** 岗位详情（/admin/internship/positions/:id）：主档 + 企业导师 + 审计 + 状态机 + 编辑（已归档不可编辑）。 */
-import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
+import { AppStatusTag, AppAuditTrail } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { positionApi } from '@/modules/internship/api/position.api'
@@ -97,7 +93,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'InternshipPositionDetailView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -117,6 +113,14 @@ export default {
         { label: '容量', value: String(d.headcount) }, { label: '已分配', value: String(d.allocatedCount) },
         { label: '备注', value: d.remark }
       ]
+    },
+    auditRecords() {
+      return (this.detail?.auditTrail || []).map((a, i) => ({
+        id: i,
+        action: a.action,
+        actor: a.operator,
+        at: a.occurredAt
+      }))
     }
   },
   created() { this.load() },

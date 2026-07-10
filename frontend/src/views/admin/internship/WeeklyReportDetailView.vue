@@ -13,8 +13,8 @@
           <div class="mp-card__head">
             <span class="mp-card__title">{{ detail.week }}周报 · {{ detail.version }}</span>
             <span>
-              <StatusTag v-if="detail.isResubmit" type="info" label="重交件" />
-              <RiskTag v-if="detail.riskFlag" :level="detail.riskFlag" label="风险学生" style="margin-left: var(--space-2)" />
+              <AppStatusTag v-if="detail.isResubmit" type="info">重交件</AppStatusTag>
+              <AppRiskTag v-if="detail.riskFlag" :level="detail.riskFlag" label="风险学生" style="margin-left: var(--space-2)" />
             </span>
           </div>
           <div class="mp-card__body">
@@ -26,7 +26,7 @@
               <p style="margin: 0"><b style="color: var(--text-primary)">下周计划：</b>{{ detail.content.plan }}</p>
             </div>
             <div v-if="detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap">
-              <StatusTag v-for="a in detail.attachments" :key="a" type="info" :label="'📎 ' + a" />
+              <AppStatusTag v-for="a in detail.attachments" :key="a" type="info">📎 {{ a }}</AppStatusTag>
             </div>
           </div>
         </section>
@@ -73,7 +73,7 @@
                 <AppButton variant="primary" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过</AppButton>
                 <AppButton variant="warning" :loading="submitting" style="flex: 1" @click="submit('RETURN')">↩ 退回修改</AppButton>
               </div>
-              <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅动作写入审批留痕，学生小程序 P12 即时同步状态</p>
+              <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅动作写入审批留痕，学生端即时同步状态</p>
             </template>
             <EmptyState v-else :title="'该周报' + (detail.status === 'APPROVED' ? '已通过' : '已退回')" description="批阅结果已同步学生端，留痕见下方审批记录" />
           </div>
@@ -82,20 +82,7 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">审批留痕</span></div>
           <div class="mp-card__body">
-            <table class="mp-audit">
-              <thead><tr><th>操作人</th><th>时间</th><th>动作</th><th>说明</th></tr></thead>
-              <tbody>
-                <tr v-for="(t, i) in detail.trail" :key="i">
-                  <td class="is-who">{{ t.who }}</td>
-                  <td>{{ t.time }}</td>
-                  <td>{{ t.action }}</td>
-                  <td>{{ t.affected }}</td>
-                </tr>
-                <tr v-if="!detail.trail.length">
-                  <td colspan="4" class="mp-note">暂无批阅记录</td>
-                </tr>
-              </tbody>
-            </table>
+            <AppAuditTrail :records="trailRecords" empty-text="暂无批阅记录" />
           </div>
         </section>
       </div>
@@ -108,17 +95,29 @@
  * 周报批阅详情（/admin/internship/reports/:id）。
  * 闭环：查看正文/附件/版本 → 通过 / 退回（原因必填）→ 留痕 → 学生端同步。
  */
-import { ModulePageShell, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppStatusTag, AppRiskTag, AppAuditTrail } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'WeeklyReportDetailView',
-  components: { ModulePageShell, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppButton },
+  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
+  },
+  computed: {
+    trailRecords() {
+      return (this.detail?.trail || []).map((t, i) => ({
+        id: i,
+        actor: t.who,
+        at: t.time,
+        action: t.action,
+        reason: t.affected
+      }))
+    }
   },
   created() {
     this.load()

@@ -1,13 +1,16 @@
 <template>
   <ModulePageShell
-    title="匹配与分配"
+    title="岗位与导师分配"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppExportButton v-if="!isStatsPanel" :export-fn="exportFn">⬇ 导出 Excel 台账</AppExportButton>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
+
+    <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
     <div v-if="activePanel === 'stats' && matchStats" class="mp-stats">
       <div class="mp-stat"><div class="mp-stat__val">{{ matchStats.total }}</div><div class="mp-stat__lbl">匹配总数</div></div>
@@ -61,7 +64,7 @@
           <span v-else>-</span>
         </template>
         <template #cell-status="{ row }">
-          <StatusTag :type="row.statusTone || 'default'" :label="row.statusLabel" dot />
+          <AppStatusTag :type="row.statusTone || 'default'" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
           <template v-if="isIntentionPanel">
@@ -145,30 +148,18 @@
       </div>
     </AppDrawer>
 
-    <AppDrawer v-model:visible="importVisible" title="导入学生意向">
-      <div class="ie-form">
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="downloadTpl">下载 Excel 模板</button>
-          <label class="mp-btn mp-btn--primary" style="cursor: pointer">
-            上传 Excel
-            <input type="file" accept=".xlsx" style="display: none" @change="onXlsxFile" />
-          </label>
-        </div>
-        <div v-if="importResult" class="ie-imp">
-          <p>共 {{ importResult.total }} 行 · 通过 <b class="ie-ok">{{ importResult.validRows }}</b> · 失败 <b class="ie-bad">{{ importResult.invalidRows }}</b></p>
-          <ul v-if="importResult.errors && importResult.errors.length" class="ie-imp__errs">
-            <li v-for="(e, i) in importResult.errors" :key="i">第 {{ e.rowNo }} 行 · {{ e.field }}：{{ e.message }}</li>
-          </ul>
-          <button
-            v-if="importResult.validRows && !importResult.invalidRows"
-            type="button"
-            class="mp-btn mp-btn--primary"
-            :disabled="submitting"
-            @click="confirmImport"
-          >确认导入</button>
-        </div>
-      </div>
-    </AppDrawer>
+    <AppExcelImportDrawer
+      v-model:visible="importVisible"
+      title="导入学生意向"
+      template-name="意向导入模板.xlsx"
+      :required-fields="['学号']"
+      :preview-fields="['studentNo', 'city', 'industry', 'company', 'note']"
+      :download-template-fn="() => matchApi.downloadIntentionTemplate()"
+      :upload-fn="(file) => matchApi.importIntentionsXlsx(file)"
+      :confirm-fn="({ rows }) => matchApi.importIntentionsConfirm(rows)"
+      :download-errors-fn="({ rows, errors }) => matchApi.downloadIntentionImportErrors(rows, errors)"
+      @imported="onImported"
+    />
 
     <AppConfirmDialog
       v-model:visible="confirm.visible"
@@ -185,9 +176,12 @@
 </template>
 
 <script>
-import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppExportButton, AppStatusTag } from '@/components/common'
+import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { matchApi } from '@/modules/internship/api/match.api'
 import { toast } from '@/utils/toast'
 
@@ -208,17 +202,18 @@ const PANEL_HINTS = {
 
 export default {
   name: 'InternshipMatchListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, ModuleSummaryStrip },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      matchApi,
       loading: true, error: '', submitting: false, activePanel: 'intention',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       matchStats: null, studentOpts: [], positionOpts: [], enterpriseOpts: [],
       intentionVisible: false, intentionForm: { recordId: '', preferredCity: '', preferredIndustry: '', preferredCompanyId: '', intentionNote: '' },
       manualVisible: false, manualForm: { recordId: '', positionId: '', remark: '' },
       batchVisible: false, batchText: '',
-      importVisible: false, importResult: null, importRows: [],
+      importVisible: false,
       formError: '',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       statStatusCols: [{ key: 'label', title: '状态' }, { key: 'count', title: '数量' }],
@@ -274,45 +269,49 @@ export default {
       if (this.isIntentionPanel) {
         return [
           { key: 'createIntention', label: '＋ 登记意向', variant: 'primary' },
-          { key: 'import', label: '导入 Excel' },
-          { key: 'exportIntention', label: '导出 Excel 台账' }
+          { key: 'import', label: '导入 Excel' }
         ]
       }
       if (this.activePanel === 'major') {
         return [
-          { key: 'runMajor', label: '跑专业匹配', variant: 'primary' },
-          { key: 'export', label: '导出 Excel 台账' }
+          { key: 'runMajor', label: '跑专业匹配', variant: 'primary' }
         ]
       }
       if (this.activePanel === 'enterprise') {
         return [
-          { key: 'runEnterprise', label: '跑企业匹配', variant: 'primary' },
-          { key: 'export', label: '导出 Excel 台账' }
+          { key: 'runEnterprise', label: '跑企业匹配', variant: 'primary' }
         ]
       }
       if (this.activePanel === 'manual') {
         return [
-          { key: 'manual', label: '＋ 手动匹配', variant: 'primary' },
-          { key: 'export', label: '导出 Excel 台账' }
+          { key: 'manual', label: '＋ 手动匹配', variant: 'primary' }
         ]
       }
       if (this.activePanel === 'batch') {
         return [
-          { key: 'batch', label: '批量匹配', variant: 'primary' },
-          { key: 'export', label: '导出 Excel 台账' }
+          { key: 'batch', label: '批量匹配', variant: 'primary' }
         ]
       }
       if (this.isStatsPanel) {
         return [{ key: 'refreshStats', label: '刷新统计', variant: 'primary' }]
       }
-      return [
-        { key: 'export', label: '导出 Excel 台账' }
-      ]
+      return []
     },
     pageSubtitle() {
+      const intro = '为学生安排实习岗位和指导老师，处理匹配冲突、调岗和退岗'
       const hint = PANEL_HINTS[this.activePanel] || ''
-      if (this.isStatsPanel) return hint
-      return `共 ${this.total} 条 · ${hint}`
+      if (this.isStatsPanel) return `${intro} · ${hint}`
+      return `${intro} · 共 ${this.total} 条 · ${hint}`
+    },
+    summaryMetrics() {
+      const s = this.matchStats
+      if (!s) return []
+      return [
+        { label: '匹配总数', value: s.total },
+        { label: '已确认落岗', value: s.confirmedCount },
+        { label: '冲突', value: s.conflictCount },
+        { label: '已提交意向', value: s.intentionSubmitted }
+      ]
     },
     emptyTitle() {
       return this.isIntentionPanel ? '暂无学生意向' : '暂无匹配记录'
@@ -330,14 +329,16 @@ export default {
     }
   },
   async created() {
-    const [s, p, e] = await Promise.all([
+    const [s, p, e, st] = await Promise.all([
       matchApi.getStudentOptions(),
       matchApi.getPositionOptions(),
-      matchApi.getEnterpriseOptions()
+      matchApi.getEnterpriseOptions(),
+      matchApi.getStats()
     ])
     if (s.code === 0) this.studentOpts = s.data
     if (p.code === 0) this.positionOpts = p.data
     if (e.code === 0) this.enterpriseOpts = e.data
+    if (st.code === 0 && !this.matchStats) this.matchStats = st.data
   },
   methods: {
     applyPanel(panel) {
@@ -382,23 +383,17 @@ export default {
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
+    exportFn() {
+      if (this.isIntentionPanel) return matchApi.exportIntentions({ ...this.filters })
+      return matchApi.exportMatches({ ...this.filters })
+    },
     async onToolbar(key) {
       this.formError = ''
       if (key === 'createIntention') {
         this.intentionForm = { recordId: '', preferredCity: '', preferredIndustry: '', preferredCompanyId: '', intentionNote: '' }
         this.intentionVisible = true
       }
-      if (key === 'import') { this.importResult = null; this.importRows = []; this.importVisible = true }
-      if (key === 'exportIntention') {
-        const res = await matchApi.downloadIntentionExport(this.filters)
-        if (res.code !== 0) toast.error(res.message)
-        else toast.success('已导出')
-      }
-      if (key === 'export') {
-        const res = await matchApi.downloadMatchExport(this.filters)
-        if (res.code !== 0) toast.error(res.message)
-        else toast.success('已导出')
-      }
+      if (key === 'import') { this.importVisible = true }
       if (key === 'runMajor') {
         this.submitting = true
         try {
@@ -467,26 +462,10 @@ export default {
         } else this.formError = res.message
       } finally { this.submitting = false }
     },
-    async downloadTpl() {
-      try { await matchApi.downloadIntentionTemplate() } catch (e) { toast.error(e.message || '下载失败') }
-    },
-    async onXlsxFile(ev) {
-      const file = ev.target.files && ev.target.files[0]
-      ev.target.value = ''
-      if (!file) return
-      const res = await matchApi.importIntentionsXlsx(file)
-      if (res.code === 0) {
-        this.importResult = res.data
-        this.importRows = res.data.rows || []
-      } else toast.error(res.message)
-    },
-    async confirmImport() {
-      this.submitting = true
-      try {
-        const res = await matchApi.importIntentionsConfirm(this.importRows)
-        if (res.code === 0) { toast.success('导入完成'); this.importVisible = false; this.load() }
-        else toast.error(res.message)
-      } finally { this.submitting = false }
+    onImported() {
+      toast.success('导入完成')
+      this.importVisible = false
+      this.load()
     },
     askConfirm(row) {
       this.confirm = {

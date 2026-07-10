@@ -32,7 +32,18 @@ export const attendanceApi = {
   handleException(id, { action, comment }) {
     return call(() => request(`${B}/exceptions/${id}/handle`, { method: 'POST', body: { action, comment } }))
   },
-  exportExceptions(params = {}) { return call(() => request(`${B}/exceptions/export`, { method: 'POST', params })) },
+  batchHandleExceptions(ids, { action = 'REASONABLE', comment = '' } = {}) {
+    return call(() => request(`${B}/exceptions/batch-handle`, {
+      method: 'POST', body: { ids, action, comment }
+    }))
+  },
+  exportExceptions(params = {}) {
+    const { ids, ...rest } = params
+    if (ids && ids.length) {
+      return call(() => request(`${B}/exceptions/export`, { method: 'POST', params: rest, body: { ids } }))
+    }
+    return call(() => request(`${B}/exceptions/export`, { method: 'POST', params: rest }))
+  },
   // 补卡审批
   getMakeups(params = {}) { return callList(`${B}/makeups`, params) },
   getMakeupDetail(id) { return call(() => request(`${B}/makeups/${id}`)) },

@@ -40,6 +40,9 @@ export const riskApi = {
   follow(id, { note }) {
     return call(() => request(`${B}/risks/${id}/follow`, { method: 'POST', body: { note } }))
   },
+  remind(id, { channel = '站内消息' } = {}) {
+    return call(() => request(`${B}/risks/${id}/remind`, { method: 'POST', body: { channel } }))
+  },
   escalate(id, { level, note }) {
     return call(() => request(`${B}/risks/${id}/escalate`, { method: 'POST', body: { level, note } }))
   },

@@ -1,12 +1,12 @@
 <template>
   <ModulePageShell
     title="打卡与请假"
-    :subtitle="'待核实 ' + pendingCount + ' 条 · 承接学生小程序 P11 打卡异常说明'"
+    :subtitle="'待核实 ' + pendingCount + ' 条 · 学生端提交的打卡异常说明会同步到这里'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <AppExportButton :export-fn="exportFn" :has-permission="exportPermission">⬇ 导出异常记录</AppExportButton>
     </template>
 
     <div class="mp-stack">
@@ -34,14 +34,14 @@
           <div class="mp-cell-sub">{{ row.className }} · {{ row.enterpriseName }}</div>
         </template>
         <template #cell-type="{ row }">
-          <StatusTag :type="row.type === 'MISSING' ? 'warning' : 'danger'" :label="row.typeLabel" />
+          <AppStatusTag :type="row.type === 'MISSING' ? 'warning' : 'danger'">{{ row.typeLabel }}</AppStatusTag>
           <div v-if="row.streak" class="mp-cell-sub" style="color: var(--danger-600)">{{ row.streak }}</div>
         </template>
         <template #cell-deviceRisk="{ row }">
           <span :style="row.deviceRisk !== '正常' ? 'color: var(--danger-600); font-weight: 500' : ''">{{ row.deviceRisk }}</span>
         </template>
         <template #cell-status="{ row }">
-          <StatusTag :status="row.status" :label="row.statusLabel" dot />
+          <AppStatusTag :status="row.status" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="$router.push('/admin/internship/exceptions/' + row.id)">
@@ -50,7 +50,7 @@
         </template>
       </DataTable>
 
-      <p class="mp-note">规则（冻结）：超范围不直接定性作弊，允许学生说明；模拟定位命中建议转风险；缺卡与审批中请假自动联动豁免。</p>
+      <p class="mp-note">处理规则：超范围不直接定性作弊，允许学生说明；模拟定位命中建议转风险；缺卡与审批中请假自动联动豁免。</p>
     </div>
   </ModulePageShell>
 </template>
@@ -58,17 +58,20 @@
 <script>
 /** 打卡异常列表（/admin/internship/exceptions）：P11 → T18/T19 → PC 完整处理入口。 */
 import {
-  ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
-  StatusTag, LoadingState, ErrorState, EmptyState
+  ModulePageShell, AdvancedFilter, DataTable,
+  LoadingState, ErrorState, EmptyState
 } from '@/components/business'
+import { AppStatusTag, AppExportButton } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { attendanceApi } from '@/modules/internship/api/attendance.api'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', type: '', status: '' })
 
 export default {
   name: 'AttendanceExceptionListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -76,6 +79,7 @@ export default {
       error: '',
       rows: [],
       selected: [],
+      batchSubmitting: false,
       filters: EMPTY_FILTERS(),
       pagination: { page: 1, pageSize: 10, total: 0 },
       columns: [
@@ -111,11 +115,9 @@ export default {
         }
       ]
     },
-    toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [{ key: 'exportExceptions', label: '导出异常记录' }]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+    exportPermission() {
+      const pa = this.ctx.permissionActions?.exportExceptions
+      return !pa || pa.allowed
     }
   },
   created() {
@@ -135,18 +137,39 @@ export default {
       this.pagination.page = 1
       this.load()
     },
-    onToolbar() {
-      toast.success('异常记录导出任务已创建（脱敏 + 水印），已写入审计日志')
+    exportFn() {
+      return attendanceApi.exportExceptions({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
     },
     batchMark() {
-      if (this.batchHasMock) return
-      toast.success('已批量标记 ' + this.selected.length + ' 条为合理，处理结果已同步学生端并留痕')
-      this.selected = []
-      this.load()
+      if (this.batchHasMock || !this.selected.length || this.batchSubmitting) return
+      this.batchSubmitting = true
+      attendanceApi.batchHandleExceptions(this.selected, {
+        action: 'REASONABLE',
+        comment: '经批量核实，打卡情况合理'
+      }).then((res) => {
+        if (res.code === 0) {
+          const d = res.data || {}
+          toast.success(`已处理 ${d.processedCount || 0} 条，跳过 ${d.skippedCount || 0} 条（已留痕）`)
+          this.selected = []
+          this.load()
+        } else {
+          toast.error(res.message || '批量处理失败')
+        }
+      }).finally(() => { this.batchSubmitting = false })
     },
-    exportSelected() {
-      toast.success('已导出所选 ' + this.selected.length + ' 条异常记录，已留痕')
-      this.selected = []
+    async exportSelected() {
+      if (!this.selected.length) {
+        toast.error('请先选择要导出的记录')
+        return
+      }
+      const res = await attendanceApi.exportExceptions({ ids: this.selected })
+      if (res.code === 0) {
+        downloadXlsxFromApi(res.data, res.data.filename || '打卡异常所选台账.xlsx')
+        toast.success(`已导出所选 ${this.selected.length} 条异常记录，已留痕`)
+        this.selected = []
+      } else {
+        toast.error(res.message || '导出失败')
+      }
     },
     async load() {
       this.loading = true

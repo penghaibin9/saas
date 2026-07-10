@@ -71,6 +71,9 @@ export const matchApi = {
   importIntentionsConfirm(rows) {
     return call(() => request(`${BASE}/intentions/import/confirm`, { method: 'POST', body: { rows } }))
   },
+  downloadIntentionImportErrors(rows, errors) {
+    return call(() => request(`${BASE}/intentions/import/errors-xlsx`, { method: 'POST', body: { rows, errors } }))
+  },
   exportIntentions(params = {}) {
     return call(() => request(`${BASE}/intentions/export`, { method: 'POST', params }))
   },

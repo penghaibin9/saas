@@ -13,9 +13,9 @@
     <LoadingState v-else-if="loading" />
     <template v-else-if="detail">
       <div class="ed-head">
-        <StatusTag :type="detail.coopStatusTone" :label="detail.coopStatusLabel" dot />
+        <AppStatusTag :type="detail.coopStatusTone" dot>{{ detail.coopStatusLabel }}</AppStatusTag>
         <span v-if="detail.blacklist" class="ed-bl">黑名单 · {{ detail.blacklistReason }}</span>
-        <StatusTag :type="detail.qualificationStatus === 'PASSED' ? 'success' : (detail.qualificationStatus === 'FAILED' ? 'danger' : 'default')" :label="detail.qualificationLabel" />
+        <AppStatusTag :type="detail.qualificationStatus === 'PASSED' ? 'success' : (detail.qualificationStatus === 'FAILED' ? 'danger' : 'default')">{{ detail.qualificationLabel }}</AppStatusTag>
         <div class="ed-head__spacer" />
         <button v-if="detail.coopStatus === 'PENDING'" class="mp-btn mp-btn--primary" :disabled="!can('reviewEnterprise')" :title="reason('reviewEnterprise')" @click="askReview">审核</button>
         <button v-else-if="detail.coopStatus === 'ACTIVE'" class="mp-btn" @click="askCoop('SUSPEND')">暂停合作</button>
@@ -88,7 +88,7 @@
               <tr v-for="p in positions" :key="p.id">
                 <td>{{ p.title }}</td><td>{{ p.majorRequirement || '不限' }}</td>
                 <td>{{ p.allocatedCount }}/{{ p.headcount }}</td>
-                <td><StatusTag :type="p.statusTone" :label="p.statusLabel" /></td>
+                <td><AppStatusTag :type="p.statusTone">{{ p.statusLabel }}</AppStatusTag></td>
                 <td><button class="mp-link" @click="$router.push('/admin/internship/positions/' + p.id)">详情</button></td>
               </tr>
             </tbody>
@@ -145,7 +145,8 @@
 
 <script>
 /** 企业详情（/admin/internship/enterprises/:id）：主档 + 联系人/导师 CRUD + 合作资质 + 审计 + 状态机动作。 */
-import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppStatusTag } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -156,7 +157,7 @@ const EMPTY_CFORM = () => ({ contactType: 'CONTACT', name: '', title: '', phone:
 
 export default {
   name: 'InternshipEnterpriseDetailView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, AppStatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

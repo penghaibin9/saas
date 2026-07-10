@@ -46,6 +46,13 @@ export const guidanceVisitApi = {
     return call(() => request(`${B}/guidances/${id}/void`, { method: 'POST', body: { reason: reason || '' } }))
   },
   exportGuidances(params = {}) { return call(() => request(`${B}/guidances/export`, { method: 'POST', params })) },
+  getGuidanceStats(threshold = 2) {
+    return call(() => request(`${B}/guidances/stats`, { params: { threshold } }))
+  },
+  getGuidancePlans(params = {}) { return callList(`${B}/guidance-plans`, params) },
+  exportGuidancePlans(params = {}) {
+    return call(() => request(`${B}/guidance-plans/export`, { method: 'POST', params }))
+  },
   // 教师巡访
   getVisits(params = {}) { return callList(`${B}/visits`, params) },
   getVisitDetail(id) { return call(() => request(`${B}/visits/${id}`)) },
@@ -53,7 +60,8 @@ export const guidanceVisitApi = {
   rectifyVisit(id, { status, note }) {
     return call(() => request(`${B}/visits/${id}/rectify`, { method: 'POST', body: { status, note } }))
   },
-  exportVisits(params = {}) { return call(() => request(`${B}/visits/export`, { method: 'POST', params })) }
+  exportVisits(params = {}) { return call(() => request(`${B}/visits/export`, { method: 'POST', params })) },
+  getVisitStats() { return call(() => request(`${B}/visits/stats`)) }
 }
 
 export default guidanceVisitApi
