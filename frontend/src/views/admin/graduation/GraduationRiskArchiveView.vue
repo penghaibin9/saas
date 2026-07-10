@@ -68,7 +68,7 @@
         </section>
       </div>
     </div>
-    <!-- 毕设归档 -->
+    <!-- 毕设归档：连续双栏核验（左队列 + 右缺件清单与状态机动作） -->
     <div v-if="tab === 'archive'" class="mp-stack">
       <div class="ie-actions" style="justify-content: flex-start">
         <button class="mp-btn mp-btn--primary" @click="doBatchGenerate">批量生成提交</button>
@@ -79,21 +79,68 @@
       <ErrorState v-if="archiveError" :description="archiveError" @retry="loadArchives" />
       <LoadingState v-else-if="archiveLoading" />
       <EmptyState v-else-if="!archiveRows.length" title="暂无归档记录" />
-      <DataTable v-else :columns="archiveColumns" :rows="archiveRows" row-key="id" :pagination="{ page: archivePage, pageSize: archivePageSize, total: archiveTotal }" @page-change="p => { archivePage = p; loadArchives() }">
-        <template #cell-student="{ row }">
-          <div class="mp-cell-main">{{ row.studentName }}</div>
-          <div class="mp-cell-sub">{{ row.studentNo }} · 缺 {{ row.missingItems.length }} 项</div>
-        </template>
-        <template #cell-status="{ row }"><StatusTag :type="row.statusTone" :label="row.statusLabel" dot /></template>
-        <template #cell-actions="{ row }">
-          <button v-if="['NOT_GENERATED', 'REJECTED'].includes(row.status)" class="mp-link" @click="doGenerate(row)">生成清单</button>
-          <button v-if="row.status === 'PENDING_SUBMIT' && !row.missingItems.length" class="mp-link" @click="doSubmit(row)">提交</button>
-          <button v-if="row.status === 'SUBMITTED'" class="mp-link" @click="doFile(row)">核验归档</button>
-          <button v-if="row.status === 'SUBMITTED'" class="mp-link mp-link--danger" @click="doReject(row)">驳回</button>
-        </template>
-      </DataTable>
+      <div v-else class="rk-split">
+        <aside class="rk-list">
+          <ul class="rk-rows">
+            <li v-for="(row, i) in archiveRows" :key="row.id" class="rk-row" :class="{ 'is-active': String(row.id) === archiveSelKey }" @click="selectArchive(row)">
+              <div class="rk-row__main">
+                <span class="rk-row__name">{{ row.studentName }}</span>
+                <StatusTag :type="row.statusTone" :label="row.statusLabel" dot />
+              </div>
+              <div class="rk-row__sub">{{ row.studentNo }}</div>
+              <div class="rk-row__meta">
+                <span :style="row.missingItems.length ? 'color: var(--danger, #dc2626)' : 'color: var(--success-600, #16a34a)'">{{ row.missingItems.length ? '缺 ' + row.missingItems.length + ' 项' : '材料齐全' }}</span>
+                <span class="rk-row__idx">{{ (archivePage - 1) * archivePageSize + i + 1 }}</span>
+              </div>
+            </li>
+          </ul>
+          <div style="display: flex; justify-content: center"><AppPagination :total="archiveTotal" :page="archivePage" :page-size="archivePageSize" :show-size-changer="false" @update:page="p => { archivePage = p; loadArchives() }" /></div>
+        </aside>
+        <section class="rk-pane">
+          <div class="rk-pane__bar">
+            <span>本页第 {{ archiveSelIndex + 1 }} / {{ archiveRows.length }} 条 · 共 {{ archiveTotal }} 条</span>
+            <span class="rk-pane__nav">
+              <button class="mp-link" :disabled="archiveSelIndex <= 0" @click="stepArchive(-1)">← 上一条</button>
+              <button class="mp-link" :disabled="archiveSelIndex >= archiveRows.length - 1" @click="stepArchive(1)">下一条 →</button>
+            </span>
+          </div>
+          <EmptyState v-if="!selectedArchive" title="从左侧选择一名学生" description="逐个核验材料完整性并办理归档" />
+          <section v-else class="mp-card">
+            <div class="mp-card__head">
+              <span class="mp-card__title">{{ selectedArchive.studentName }} · 归档核验</span>
+              <button v-if="selectedArchive.gdStudentId" class="mp-link" @click="$router.push('/admin/graduation/students/' + selectedArchive.gdStudentId)">查看学生档案 →</button>
+            </div>
+            <div class="mp-card__body">
+              <div class="mp-kv"><span class="mp-kv__k">学号</span><span class="mp-kv__v">{{ selectedArchive.studentNo }}</span></div>
+              <div class="mp-kv"><span class="mp-kv__k">归档状态</span><span class="mp-kv__v"><StatusTag :type="selectedArchive.statusTone" :label="selectedArchive.statusLabel" dot /></span></div>
+              <div class="mp-kv"><span class="mp-kv__k">材料完整性</span>
+                <span class="mp-kv__v" :style="selectedArchive.missingItems.length ? 'color: var(--danger, #dc2626)' : 'color: var(--success-600, #16a34a)'">
+                  {{ selectedArchive.missingItems.length ? '缺失 ' + selectedArchive.missingItems.length + ' 项' : '必备材料齐全' }}
+                </span>
+              </div>
+              <template v-if="selectedArchive.missingItems.length">
+                <p class="mp-note" style="margin-top: var(--space-2); font-weight: 600; color: var(--text-primary)">缺件明细（点击直达补齐入口）</p>
+                <ul class="ar-missing">
+                  <li v-for="m in selectedArchive.missingItems" :key="m" class="ar-missing__item">
+                    <span class="ar-missing__name">✕ {{ m }}</span>
+                    <button class="mp-link" @click="goFix(m, selectedArchive)">去补齐 →</button>
+                  </li>
+                </ul>
+              </template>
+              <div class="ie-actions" style="justify-content: flex-start; margin-top: var(--space-3)">
+                <button v-if="['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" class="mp-btn mp-btn--primary" @click="doGenerate(selectedArchive)">生成清单</button>
+                <button v-if="selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" class="mp-btn mp-btn--primary" @click="doSubmit(selectedArchive)">提交归档</button>
+                <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">缺件补齐后方可提交归档</span>
+                <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" @click="doFile(selectedArchive)">核验归档</button>
+                <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn" @click="doReject(selectedArchive)">驳回</button>
+                <span v-if="selectedArchive.status === 'FILED'" class="mp-note">已正式归档备案，记录只读</span>
+              </div>
+              <p class="mp-note" style="margin-top: var(--space-2)">生成 / 提交 / 核验 / 驳回均写入审计留痕；完整性以后端清单核验为准。</p>
+            </div>
+          </section>
+        </section>
+      </div>
     </div>
-
     <!-- 毕设统计 -->
     <div v-if="tab === 'stats'" class="mp-stack">
       <AppDateRangePicker
@@ -150,6 +197,7 @@ export default {
     return {
       tab: 'risk',
       riskSelKey: '', riskAutoNext: true,
+      archiveSelKey: '',
       riskFilters: { status: '', level: '', dateStart: '', dateEnd: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true, riskError: '',
       archiveFilters: { keyword: '', status: '', dateStart: '', dateEnd: '' }, archiveRows: [], archiveTotal: 0, archivePage: 1, archivePageSize: 10, archiveLoading: true, archiveError: '',
       statsError: '',
@@ -167,6 +215,12 @@ export default {
     },
     riskSelIndex() {
       return this.riskRows.findIndex((r) => String(r.id) === this.riskSelKey)
+    },
+    selectedArchive() {
+      return this.archiveRows.find((r) => String(r.id) === this.archiveSelKey) || null
+    },
+    archiveSelIndex() {
+      return this.archiveRows.findIndex((r) => String(r.id) === this.archiveSelKey)
     },
     riskFilterFields() {
       return [
@@ -195,6 +249,7 @@ export default {
     const p = this.$route.query.panel
     if (['risk', 'archive', 'stats'].includes(p)) this.tab = p
     this.riskSelKey = (this.$route.query.rsel || '').toString()
+    this.archiveSelKey = (this.$route.query.asel || '').toString()
     this.loadRisks(); this.loadArchives(); this.loadStats()
   },
   watch: {
@@ -270,11 +325,42 @@ export default {
         if (action === 'reject-archive') this.loadArchives(); else this.loadRisks()
       } else if (res) toast.error(res.message)
     },
+    selectArchive(row) {
+      this.archiveSelKey = String(row.id)
+      this.$router.replace({ query: { ...this.$route.query, asel: this.archiveSelKey } })
+    },
+    stepArchive(d) {
+      const i = this.archiveSelIndex + d
+      if (i >= 0 && i < this.archiveRows.length) this.selectArchive(this.archiveRows[i])
+    },
+    ensureArchiveSelection() {
+      if (!this.archiveRows.length) { this.archiveSelKey = ''; return }
+      if (!this.selectedArchive) {
+        const target = this.archiveRows.find((r) => r.status !== 'FILED') || this.archiveRows[0]
+        if (target) this.selectArchive(target)
+      }
+    },
+    /** 缺件补齐入口：按材料名称映射到真实业务工作区（带学生上下文） */
+    goFix(item, row) {
+      const sid = row.gdStudentId
+      const name = (item || '').toString()
+      if (name.includes('任务书')) return this.$router.push('/admin/graduation/process?panel=taskbook')
+      if (name.includes('开题')) return this.$router.push('/admin/graduation/proposals')
+      if (name.includes('中期')) return this.$router.push('/admin/graduation/process?panel=midterm')
+      if (name.includes('指导')) return this.$router.push('/admin/graduation/process?panel=guidance')
+      if (name.includes('查重')) return this.$router.push('/admin/graduation/defense-grade?panel=plagiarism')
+      if (name.includes('评阅')) return this.$router.push('/admin/graduation/defense-grade?panel=review')
+      if (name.includes('答辩')) return this.$router.push('/admin/graduation/defense')
+      if (name.includes('成绩')) return this.$router.push('/admin/graduation/defense-grade?panel=grade')
+      if (name.includes('成果') || name.includes('论文')) return this.$router.push('/admin/graduation/finals')
+      if (sid) return this.$router.push('/admin/graduation/students/' + sid)
+      this.$router.push('/admin/graduation/students')
+    },
     async loadArchives() {
       this.archiveLoading = true
       this.archiveError = ''
       const res = await graduationRiskArchiveApi.getArchiveList({ ...this.archiveFilters, page: this.archivePage, pageSize: this.archivePageSize })
-      if (res.code === 0) { this.archiveRows = res.data.list; this.archiveTotal = res.data.total } else { this.archiveRows = []; this.archiveError = res.message || '加载失败' }
+      if (res.code === 0) { this.archiveRows = res.data.list; this.archiveTotal = res.data.total; this.ensureArchiveSelection() } else { this.archiveRows = []; this.archiveError = res.message || '加载失败' }
       this.archiveLoading = false
     },
     resetArchiveFilters() { this.archiveFilters = { keyword: '', status: '', dateStart: '', dateEnd: '' }; this.archivePage = 1; this.loadArchives() },
@@ -339,6 +425,9 @@ export default {
 .rk-pane__auto { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .rk-pane__nav { margin-left: auto; display: inline-flex; gap: var(--space-3); }
 .rk-pane__nav .mp-link:disabled { opacity: 0.4; cursor: not-allowed; }
+.ar-missing { list-style: none; margin: var(--space-1) 0 0; padding: 0; }
+.ar-missing__item { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border: 1px dashed var(--danger, #fca5a5); border-radius: var(--radius-md, 8px); margin-bottom: 6px; background: var(--danger-50, #fef2f2); font-size: var(--font-size-sm, 13px); }
+.ar-missing__name { color: var(--danger, #dc2626); }
 .mp-link--danger { color: var(--danger, #dc2626); }
 .gp-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }
 .gp-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
