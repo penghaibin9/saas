@@ -11,44 +11,68 @@
           {{ t.label }}
         </button>
       </div>
-      <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无变更申请" description="学生可在小程序发起换岗/换单位申请" />
-      <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
-        <template #cell-student="{ row }">
-          <div class="mp-cell-main">{{ row.studentName }}</div>
-          <div class="mp-cell-sub">{{ row.studentNo }}</div>
-        </template>
-        <template #cell-change="{ row }">
-          <div class="mp-cell-main">{{ row.changeTypeLabel }}</div>
-          <div class="mp-cell-sub">{{ row.currentEnterprise }} / {{ row.currentPosition }}</div>
-        </template>
-        <template #cell-target="{ row }">
-          <div class="mp-cell-main">{{ row.targetEnterpriseName || '—' }}</div>
-          <div class="mp-cell-sub">{{ row.targetPositionName || '—' }}</div>
-        </template>
-        <template #cell-status="{ row }">
-          <AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag>
-        </template>
-        <template #cell-actions="{ row }">
-          <template v-if="row.status === 'PENDING'">
-            <button class="mp-link" @click="openReview(row, 'APPROVE')">通过</button>
-            <button class="mp-link mp-link--danger" @click="openReview(row, 'REJECT')">驳回</button>
-          </template>
-          <button v-else class="mp-link" @click="openDetail(row)">查看</button>
-        </template>
-      </DataTable>
-    </div>
 
-    <div v-if="detailDlg.visible" class="modal" @click.self="detailDlg.visible = false">
-      <div class="modal__card">
-        <div class="modal__head">变更申请详情</div>
-        <div class="modal__body">
-          <AppDescriptionList v-if="detailDlg.data" :items="detailItems" :columns="1" />
-          <AppAuditTrail v-if="detailDlg.data" :records="auditRecords" compact empty-text="暂无留痕" />
-        </div>
-        <div class="modal__foot"><AppButton variant="secondary" @click="detailDlg.visible = false">关闭</AppButton></div>
-      </div>
+      <DualPaneWorkspace aside-title="变更申请" :aside-count="pagination.total">
+        <!-- 左栏：变更申请队列（紧凑列表，连续审核） -->
+        <template #aside>
+          <div v-if="loading" class="state">加载中…</div>
+          <div v-else-if="error" class="state is-err">{{ error }} <button type="button" class="mp-link" @click="load">重试</button></div>
+          <div v-else-if="!rows.length" class="state">暂无变更申请，学生可在小程序发起换岗/换单位申请</div>
+          <ul v-else class="lv-list">
+            <li v-for="r in rows" :key="r.id">
+              <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
+                <div class="lv-item__row">
+                  <span class="lv-item__name">{{ r.studentName }}</span>
+                  <AppStatusTag :status="r.status">{{ r.statusLabel }}</AppStatusTag>
+                </div>
+                <div class="lv-item__sub">{{ r.studentNo }} · {{ r.changeTypeLabel }}</div>
+                <div class="lv-item__sub">{{ r.currentEnterprise }} / {{ r.currentPosition }}<template v-if="r.targetEnterpriseName"> → {{ r.targetEnterpriseName }}</template></div>
+              </button>
+            </li>
+          </ul>
+        </template>
+        <template #aside-foot>
+          <div class="lv-pager">
+            <button type="button" class="mp-link" :disabled="pagination.page <= 1 || loading" @click="onPageChange(pagination.page - 1)">上一页</button>
+            <span class="mp-note">第 {{ pagination.page }} / 共 {{ pageCount }} 页</span>
+            <button type="button" class="mp-link" :disabled="pagination.page >= pageCount || loading" @click="onPageChange(pagination.page + 1)">下一页</button>
+          </div>
+        </template>
+
+        <!-- 右栏：当前变更申请详情与审核操作 -->
+        <section class="mp-card lv-main">
+          <template v-if="!selectedId">
+            <EmptyState v-if="doneHint" title="当前列表变更申请已全部处理"
+              description="可翻页或切换页签，继续审核其他变更申请" />
+            <EmptyState v-else title="从左侧选择一条变更申请开始审核"
+              description="点击列表项查看变更详情与审计留痕，通过或驳回后自动跳到下一条待审核" />
+          </template>
+          <div v-else-if="detail.loading" class="state lv-main__state">详情加载中…</div>
+          <div v-else-if="detail.error" class="state is-err lv-main__state">
+            {{ detail.error }} <button type="button" class="mp-link" @click="loadDetail(selectedId)">重试</button>
+          </div>
+          <template v-else-if="detail.data">
+            <div class="lv-main__body">
+              <div class="lv-head">
+                <span class="lv-head__name">{{ detail.data.studentName }}</span>
+                <span class="mp-note">{{ detail.data.studentNo }}</span>
+                <AppStatusTag :status="detail.data.status">{{ detail.data.statusLabel }}</AppStatusTag>
+              </div>
+
+              <div class="sec-t">变更申请</div>
+              <AppDescriptionList :items="detailItems" :columns="2" />
+
+              <div class="sec-t">审计留痕</div>
+              <AppAuditTrail :records="auditRecords" compact empty-text="暂无留痕" />
+            </div>
+
+            <div v-if="detail.data.status === 'PENDING'" class="lv-foot">
+              <AppButton variant="danger" @click="openReview(detail.data, 'REJECT')">驳回</AppButton>
+              <AppButton variant="secondary" @click="openReview(detail.data, 'APPROVE')">通过</AppButton>
+            </div>
+          </template>
+        </section>
+      </DualPaneWorkspace>
     </div>
 
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
@@ -58,16 +82,23 @@
 </template>
 
 <script>
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+/**
+ * 实习变更审核 — 双栏连续审核工作区（原「列表 + 详情弹窗」收口为 DualPaneWorkspace）。
+ * 左栏队列点选写入 query.id（可深链恢复），右栏展示变更 6 字段 + 审计留痕，
+ * 通过/驳回沿用原 AppConfirmDialog 流程（驳回必填意见），审核后自动跳下一条待审核。
+ * 页签（panel 深链 pending/approved/rejected/all）沿用原映射。
+ */
+import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail } from '@/components/common'
 import { AppButton } from '@/components/ui'
+import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ChangeRequestListView',
-  components: { ModulePageShell, DataTable, AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail,
-    AppButton, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog,
+    AppDescriptionList, AppAuditTrail, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -80,23 +111,16 @@ export default {
         { value: 'REJECTED', label: '已驳回' },
         { value: '', label: '全部' }
       ],
-      columns: [
-        { key: 'student', title: '学生' },
-        { key: 'change', title: '变更类型 / 当前岗位' },
-        { key: 'target', title: '目标企业 / 岗位' },
-        { key: 'reason', title: '原因' },
-        { key: 'createdAt', title: '申请时间' },
-        { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作', width: '100px' }
-      ],
-      detailDlg: { visible: false, data: null },
+      selectedId: '', doneHint: false,
+      detail: { loading: false, error: '', data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
       pending: null
     }
   },
   computed: {
+    pageCount() { return Math.max(1, Math.ceil(this.pagination.total / this.pagination.pageSize)) },
     detailItems() {
-      const d = this.detailDlg.data || {}
+      const d = this.detail.data || {}
       return [
         { label: '学生', value: d.studentName },
         { label: '变更类型', value: d.changeTypeLabel },
@@ -107,7 +131,7 @@ export default {
       ]
     },
     auditRecords() {
-      return (this.detailDlg.data?.auditTrail || []).map((t, i) => ({
+      return (this.detail.data?.auditTrail || []).map((t, i) => ({
         id: i, action: t.action, actor: t.operator, at: t.occurredAt,
         reason: t.detail && (t.detail.comment || '')
       }))
@@ -120,7 +144,17 @@ export default {
         const map = { pending: 'PENDING', approved: 'APPROVED', rejected: 'REJECTED', all: '' }
         this.filters.status = map[(panel || 'pending').toString()] ?? 'PENDING'
         this.pagination.page = 1
+        this.doneHint = false
         this.load()
+      }
+    },
+    '$route.query.id': {
+      immediate: true,
+      handler(id) {
+        const sid = (id || '').toString()
+        if (sid === this.selectedId) return
+        this.selectedId = sid
+        if (sid) { this.doneHint = false; this.loadDetail(sid) } else { this.detail = { loading: false, error: '', data: null } }
       }
     }
   },
@@ -136,7 +170,10 @@ export default {
         this.load()
       }
     },
-    onPageChange(page) { this.pagination.page = page; this.load() },
+    onPageChange(page) {
+      if (page < 1 || page > this.pageCount || page === this.pagination.page) return
+      this.pagination.page = page; this.load()
+    },
     async load() {
       this.loading = true
       this.error = ''
@@ -148,13 +185,38 @@ export default {
         this.pagination.total = res.data.total
       } else {
         this.error = res.message
+        this.rows = []
+        this.pagination.total = 0
       }
       this.loading = false
+      // 处理完当前页最后一条后翻页越界（如页签=待审核时该页清空）：自动回到最后一个有效页
+      const pc = Math.max(1, Math.ceil(this.pagination.total / this.pagination.pageSize))
+      if (!this.error && !this.rows.length && this.pagination.total > 0 && this.pagination.page > pc) {
+        this.pagination.page = pc
+        return this.load()
+      }
     },
-    async openDetail(row) {
-      const res = await internshipApi.getChangeRequestDetail(row.id)
-      if (res.code !== 0) return toast.error(res.message)
-      this.detailDlg = { visible: true, data: res.data }
+    select(id) {
+      const sid = String(id)
+      this.doneHint = false
+      if (String(this.$route.query.id || '') === sid) {
+        if (this.selectedId !== sid) { this.selectedId = sid; this.loadDetail(sid) }
+        return
+      }
+      this.$router.replace({ query: { ...this.$route.query, id: sid } })
+    },
+    clearSelection() {
+      const query = { ...this.$route.query }
+      delete query.id
+      this.$router.replace({ query })
+    },
+    async loadDetail(id) {
+      this.detail = { loading: true, error: '', data: null }
+      const res = await internshipApi.getChangeRequestDetail(id)
+      if (String(this.selectedId) !== String(id)) return
+      this.detail.loading = false
+      if (res.code !== 0) { this.detail.error = res.message || '详情加载失败'; return }
+      this.detail.data = res.data
     },
     openReview(row, action) {
       const ap = action === 'APPROVE'
@@ -175,7 +237,21 @@ export default {
       if (res.code !== 0) return toast.error(res.message)
       this.cd.visible = false
       toast.success('审核完成')
-      this.load()
+      await this.advanceAfterReview(this.pending.id)
+    },
+    /** 审核成功后：刷新当前页并自动选中下一条待审核；无下一条则清空选中并提示已处理完 */
+    async advanceAfterReview(oldId) {
+      const oldIndex = Math.max(0, this.rows.findIndex((r) => String(r.id) === String(oldId)))
+      await this.load()
+      let after = null, before = null
+      this.rows.forEach((r, i) => {
+        if (r.status !== 'PENDING' || String(r.id) === String(oldId)) return
+        if (i >= oldIndex) { if (!after) after = r } else if (!before) before = r
+      })
+      const next = after || before
+      if (next) { this.select(next.id); return }
+      this.clearSelection()
+      this.doneHint = true
     }
   }
 }
@@ -183,10 +259,26 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.modal { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: var(--space-4); }
-.modal__card { background: var(--bg-card); border-radius: var(--radius-lg); width: min(520px,100%); max-height: 88vh; display: flex; flex-direction: column; }
-.modal__head { padding: var(--space-4); font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--border-light); }
-.modal__body { padding: var(--space-4); overflow-y: auto; }
-.modal__foot { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; }
-.mp-link--danger { color: var(--danger-600); }
+
+.state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); margin: var(--space-3); }
+.state.is-err { color: var(--danger-600); }
+.sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
+
+/* 左栏紧凑列表 */
+.lv-list { list-style: none; margin: 0; padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
+.lv-item { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; background: transparent; border: 1px solid transparent; border-radius: var(--radius-md, 8px); padding: var(--space-2) var(--space-3); transition: background 0.12s ease, border-color 0.12s ease; }
+.lv-item:hover { background: var(--primary-50, #eff6ff); }
+.lv-item.is-active { background: var(--primary-50, #eff6ff); border-color: var(--primary-600, #2563eb); }
+.lv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.lv-item__name { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
+.lv-item__sub { margin-top: 2px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.lv-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+
+/* 右栏详情与固定操作区 */
+.lv-main { display: flex; flex-direction: column; min-height: 320px; }
+.lv-main__body { flex: 1; padding: var(--space-4); min-width: 0; }
+.lv-main__state { margin: var(--space-4); }
+.lv-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.lv-head__name { font-size: var(--font-size-md, 15px); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
+.lv-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); background: var(--bg-card, #fff); border-radius: 0 0 var(--r, 12px) var(--r, 12px); }
 </style>

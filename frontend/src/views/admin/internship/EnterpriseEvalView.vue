@@ -4,7 +4,8 @@
     <template #actions>
       <AppButton variant="ghost" @click="$router.push('/admin/internship/student-evals')">学生自评与教师评价</AppButton>
       <AppButton variant="ghost" @click="$router.push('/admin/internship/scores')">综合成绩</AppButton>
-      <AppPermissionButton code="internship.enterpriseEval.create" variant="primary" @click="openCreate">＋ 录入企业评价</AppPermissionButton>
+      <AppPermissionButton code="internship.enterpriseEval.create" variant="primary"
+        @click="$router.push('/admin/internship/enterprise-evals/new')">＋ 录入企业评价</AppPermissionButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
@@ -99,44 +100,6 @@
       </DualPaneWorkspace>
     </div>
 
-    <!-- 录入企业评价（保留 modal 形态：属独立编辑页范畴，下一轮迁移） -->
-    <div v-if="createDlg.visible" class="modal" @click.self="createDlg.visible = false">
-      <div class="modal__card">
-        <div class="modal__head">录入企业评价</div>
-        <div class="modal__body">
-          <AppFormItem label="实习学生" required>
-            <AppStudentPicker
-              v-model="form.internshipId"
-              :remote-search="searchInternStudents"
-              placeholder="输入姓名或学号搜索实习学生"
-              search-placeholder="按姓名 / 学号搜索"
-              data-scope-hint="指导教师仅本人指导学生；管理员全校"
-            />
-          </AppFormItem>
-          <AppFormItem label="企业导师姓名（来源可追溯）" required>
-            <AppTextInput v-model="form.mentorName" placeholder="填写企业导师真实姓名" />
-          </AppFormItem>
-          <div class="scores">
-            <AppFormItem v-for="s in scoreDefs" :key="s.key" :label="s.label" class="score">
-              <AppNumberInput v-model="form[s.key]" :min="0" :max="100" />
-            </AppFormItem>
-          </div>
-          <AppFormItem label="综合评语"><AppTextarea v-model="form.overallComment" :rows="2" placeholder="企业对学生的综合评语" /></AppFormItem>
-          <label class="chk"><input v-model="form.recommendHire" type="checkbox" />建议录用</label>
-          <AppFormItem label="评价扫描件（可选，企业签署）">
-            <input type="file" class="file" @change="onFile" />
-            <span v-if="form.fileId" class="att">已上传：{{ attachName }}</span>
-            <span v-else-if="uploadingFile" class="att">上传中…</span>
-          </AppFormItem>
-          <p class="hint">五维评分均 0-100。学校录入的企业纸质评价来源标记为「学校录入」，请如实转录企业导师评价，勿代填虚构。</p>
-        </div>
-        <div class="modal__foot">
-          <AppButton variant="ghost" @click="createDlg.visible = false">取消</AppButton>
-          <AppButton variant="primary" :loading="createDlg.submitting" @click="submitCreate">提交</AppButton>
-        </div>
-      </div>
-    </div>
-
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
       reason-label="审核意见" :submitting="cd.submitting" @confirm="onConfirm" />
@@ -147,18 +110,12 @@
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTextInput, AppNumberInput,
-  AppTextarea, AppFormItem, AppFilePreview, AppStudentPicker } from '@/components/common'
-import { searchInternStudents } from './components/entityPickerAdapters'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
 import { toast } from '@/utils/toast'
 
-const SCORES = [
-  { key: 'attendanceScore', label: '出勤' }, { key: 'skillScore', label: '技能' },
-  { key: 'attitudeScore', label: '态度' }, { key: 'collaborationScore', label: '协作' }, { key: 'safetyScore', label: '安全纪律' }
-]
 const STATUS_OPTIONS = [{ label: '待审核', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' }, { label: '已退回', value: 'RETURNED' }]
 /* 右栏只渲染 /internship/enterprise-evals/{id} 真实返回字段（见 internship_enterprise_eval_service._row + get_eval） */
 const SUMMARY_FIELDS = [
@@ -179,25 +136,17 @@ const REVIEW_FIELDS = [
   { key: 'reviewStatusLabel', label: '审核状态' }, { key: 'reviewComment', label: '审核意见' }
 ]
 
-function emptyForm() {
-  return { internshipId: '', mentorName: '', attendanceScore: null, skillScore: null,
-    attitudeScore: null, collaborationScore: null, safetyScore: null, overallComment: '', recommendHire: false, fileId: '' }
-}
-
 export default {
   name: 'EnterpriseEvalView',
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTextInput, AppNumberInput, AppTextarea,
-    AppFormItem, AppFilePreview, AppStudentPicker },
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
-      keyword: '', statusFilter: 'PENDING', statusOptions: STATUS_OPTIONS, scoreDefs: SCORES,
+      keyword: '', statusFilter: 'PENDING', statusOptions: STATUS_OPTIONS,
       selectedId: '', doneHint: false,
       detail: { loading: false, error: '', data: null },
-      form: emptyForm(), attachName: '', uploadingFile: false,
-      createDlg: { visible: false, submitting: false },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
       pending: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
@@ -279,34 +228,6 @@ export default {
       if (res.code !== 0) { this.detail.error = res.message || '详情加载失败'; return }
       this.detail.data = res.data
     },
-    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchInternStudents,
-    openCreate() {
-      // 学生候选改为选择器内按关键字远程搜索，不再一次性预载 200 条
-      this.form = emptyForm(); this.attachName = ''; this.createDlg.visible = true
-    },
-    async onFile(e) {
-      const file = e.target.files && e.target.files[0]
-      if (!file) return
-      this.uploadingFile = true
-      const res = await enterpriseEvalApi.uploadAttachment(file)
-      this.uploadingFile = false
-      if (res.code !== 0) return toast.error(res.message || '上传失败')
-      this.form.fileId = res.data.fileId; this.attachName = res.data.fileName || file.name
-    },
-    async submitCreate() {
-      if (!this.form.internshipId) return toast.error('请选择实习学生')
-      if (!this.form.mentorName.trim()) return toast.error('请填写企业导师姓名')
-      for (const s of SCORES) {
-        const v = this.form[s.key]
-        if (v === null || v === '' || v < 0 || v > 100) return toast.error(`${s.label}评分须为 0-100`)
-      }
-      this.createDlg.submitting = true
-      const res = await enterpriseEvalApi.create(this.form)
-      this.createDlg.submitting = false
-      if (res.code !== 0) return toast.error(res.message || '提交失败')
-      this.createDlg.visible = false; toast.success('已录入并写审计'); this.load()
-    },
     async downloadAtt() {
       const a = this.detail.data?.attachment
       if (!a) return
@@ -352,7 +273,6 @@ export default {
 .state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); margin: var(--space-3); }
 .state.is-err { color: var(--danger-600); }
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
-.hint { margin: var(--space-2) 0 0; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 
 /* 左栏紧凑列表 */
 .lv-list { list-style: none; margin: 0; padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
@@ -371,17 +291,4 @@ export default {
 .lv-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .lv-head__name { font-size: var(--font-size-md, 15px); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
 .lv-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); background: var(--bg-card, #fff); border-radius: 0 0 var(--r, 12px) var(--r, 12px); }
-
-/* 录入企业评价 modal（保留形态，下一轮迁独立编辑页） */
-.scores { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.score { width: calc(20% - var(--space-2)); min-width: 90px; }
-.chk { display: flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-3); }
-.file { font-size: var(--font-size-xs); }
-.att { font-size: var(--font-size-xs); color: var(--success-700); margin-left: var(--space-2); }
-.modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 1000); padding: var(--space-4); }
-.modal__card { background: var(--bg-card); border-radius: var(--radius-lg); width: min(600px, 100%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
-.modal__head { padding: var(--space-4); font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--border-light); }
-.modal__body { padding: var(--space-4); overflow-y: auto; }
-.modal__foot { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; gap: var(--space-2); }
-
 </style>
