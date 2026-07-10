@@ -8,10 +8,7 @@
     <form class="ie-form" @submit.prevent="submit">
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生</span><input class="ie-in" :value="form.studentLabel" disabled /></label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">导师 <i>*</i></span>
-        <select v-model="form.mentorId" class="ie-in">
-          <option value="">请选择已认证且未满员的导师</option>
-          <option v-for="m in availableMentors" :key="m.id" :value="m.id">{{ m.teacherName }}（{{ m.capacityText }}）</option>
-        </select>
+        <AppMentorPicker v-model="form.mentorId" :options="mentorOptions" :remote-search="searchMentors" placeholder="按姓名 / 工号搜索已认证且未满员的导师" />
       </label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">{{ form.mode === 'change' ? '调导师原因（≥5字）' : '分配原因' }}<i v-if="form.mode === 'change'">*</i></span><textarea v-model.trim="form.reason" class="ie-in" rows="2" /></label>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
@@ -25,13 +22,14 @@
 
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
+import { AppMentorPicker } from '@/components/common'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMentorAssignView',
-  components: { GraduationFormPageShell },
+  components: { GraduationFormPageShell, AppMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -40,7 +38,10 @@ export default {
     }
   },
   computed: {
-    backTo() { return '/admin/graduation/mentors?panel=assign' }
+    backTo() { return '/admin/graduation/mentors?panel=assign' },
+    mentorOptions() {
+      return this.availableMentors.map((m) => ({ label: `${m.teacherName}（${m.capacityText}）`, value: m.id }))
+    }
   },
   async created() {
     const studentId = this.$route.params.studentId || this.$route.query.studentId
@@ -56,6 +57,12 @@ export default {
     await this.loadAvailableMentors()
   },
   methods: {
+    /** 导师远程搜索：服务端过滤「已认证 + 未满员」，前端不放大范围 */
+    async searchMentors(keyword) {
+      const res = await graduationMentorApi.getMentors({ keyword, qualificationStatus: 'QUALIFIED', hasCapacity: 'true', pageSize: 20 })
+      if (res.code !== 0) throw new Error(res.message || '搜索失败')
+      return res.data.list.map((m) => ({ label: `${m.teacherName}（${m.capacityText}）`, value: m.id }))
+    },
     async loadAvailableMentors() {
       const res = await graduationMentorApi.getMentors({ qualificationStatus: 'QUALIFIED', hasCapacity: 'true', pageSize: 200 })
       this.availableMentors = res.code === 0 ? res.data.list : []

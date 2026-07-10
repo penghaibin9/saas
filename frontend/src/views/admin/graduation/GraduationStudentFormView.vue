@@ -7,10 +7,7 @@
   >
     <form class="ie-form" @submit.prevent="submit">
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
-        <select v-model="form.studentId" class="ie-in">
-          <option value="">请选择学生</option>
-          <option v-for="s in studentOpts" :key="s.id" :value="s.id">{{ s.name }}（{{ s.studentNo }}）</option>
-        </select>
+        <AppStudentPicker v-model="form.studentId" :options="studentOptions" :remote-search="searchStudents" placeholder="按学号 / 姓名搜索学生" />
       </label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">毕设批次</span>
         <select v-model="form.batchId" class="ie-in">
@@ -30,12 +27,15 @@
 
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
+import { AppStudentPicker } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
+const mapStu = (s) => ({ label: `${s.name}（${s.studentNo}）`, value: s.id })
+
 export default {
   name: 'GraduationStudentFormView',
-  components: { GraduationFormPageShell },
+  components: { GraduationFormPageShell, AppStudentPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -47,6 +47,9 @@ export default {
     backTo() {
       const panel = this.$route.query.returnPanel || 'roster'
       return `/admin/graduation/students?panel=${panel}`
+    },
+    studentOptions() {
+      return this.studentOpts.map(mapStu)
     }
   },
   async created() {
@@ -55,6 +58,12 @@ export default {
     if (b.code === 0) this.batchOpts = b.data
   },
   methods: {
+    /** 学生远程搜索（学籍库真实接口，按姓名/学号，数据范围由后端裁定） */
+    async searchStudents(keyword) {
+      const res = await gdStudentApi.getStudentOptions(keyword)
+      if (res.code !== 0) throw new Error(res.message || '搜索失败')
+      return res.data.map(mapStu)
+    },
     async submit() {
       this.formError = ''
       if (!this.form.studentId) { this.formError = '请选择学生'; return }

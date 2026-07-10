@@ -7,20 +7,11 @@
   >
     <ErrorState v-if="optsError" :description="optsError" @retry="loadStudents" />
     <form v-else class="ie-form" @submit.prevent="submit">
-      <label class="ie-fld ie-fld--full"><span class="ie-lbl">搜索学生</span>
-        <input v-model.trim="kw" class="ie-in" placeholder="按姓名 / 学号搜索后再选择" @input="loadStudents" />
-      </label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">被评学生 <i>*</i></span>
-        <select v-model="form.gdStudentId" class="ie-in">
-          <option value="">请选择被评学生</option>
-          <option v-for="s in studentOpts" :key="s.id" :value="s.id">{{ s.name }}（{{ s.studentNo }}）{{ s.topicTitle ? ' · ' + s.topicTitle : '' }}</option>
-        </select>
+        <AppStudentPicker v-model="form.gdStudentId" :options="studentOptions" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索被评学生" />
       </label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">互查学生 <i>*</i></span>
-        <select v-model="form.reviewerGdStudentId" class="ie-in">
-          <option value="">请选择互查学生</option>
-          <option v-for="s in studentOpts" :key="s.id" :value="s.id" :disabled="s.id === form.gdStudentId">{{ s.name }}（{{ s.studentNo }}）</option>
-        </select>
+        <AppStudentPicker v-model="form.reviewerGdStudentId" :options="reviewerOptions" :remote-search="searchReviewers" placeholder="按姓名 / 学号搜索互查学生" />
       </label>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -34,13 +25,14 @@
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { ErrorState } from '@/components/business'
+import { AppStudentPicker } from '@/components/common'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMorePeerView',
-  components: { GraduationFormPageShell, ErrorState },
+  components: { GraduationFormPageShell, ErrorState, AppStudentPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -49,10 +41,31 @@ export default {
       formError: '', submitting: false
     }
   },
+  computed: {
+    studentOptions() {
+      return this.studentOpts.map(this.mapStu)
+    },
+    reviewerOptions() {
+      return this.studentOpts.map((s) => ({ ...this.mapStu(s), disabled: s.id === this.form.gdStudentId }))
+    }
+  },
   created() {
     this.loadStudents()
   },
   methods: {
+    mapStu(s) {
+      return { label: `${s.name}（${s.studentNo}）${s.topicTitle ? ' · ' + s.topicTitle : ''}`, value: s.id }
+    },
+    async searchStudents(keyword) {
+      const res = await gdStudentApi.getStudents({ keyword, pageSize: 20 })
+      if (res.code !== 0) throw new Error(res.message || '搜索失败')
+      return res.data.list.map(this.mapStu)
+    },
+    async searchReviewers(keyword) {
+      const res = await gdStudentApi.getStudents({ keyword, pageSize: 20 })
+      if (res.code !== 0) throw new Error(res.message || '搜索失败')
+      return res.data.list.map((s) => ({ ...this.mapStu(s), disabled: s.id === this.form.gdStudentId }))
+    },
     async loadStudents() {
       this.optsError = ''
       const res = await gdStudentApi.getStudents({ keyword: this.kw, pageSize: 100 })

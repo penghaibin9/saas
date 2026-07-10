@@ -20,10 +20,9 @@
         <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}<span v-if="tabCount(t.value) !== null" class="fr-tab-count">{{ tabCount(t.value) }}</span>
         </button>
-        <div class="fr-tabs-side">
-          <AdvancedFilter v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
-        </div>
       </div>
+
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
 
       <!-- 连续批阅双栏：左队列 + 右批阅面板；窄屏降级为「列表 ⇄ 整屏详情」切换 -->
       <div class="fr-split" :class="{ 'is-narrow': isNarrow }">

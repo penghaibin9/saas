@@ -10,12 +10,7 @@
     <form v-else class="ie-form" @submit.prevent="submit">
       <p class="ie-hint">仅「已确认」且未满员的选题可选（来自选题库真实数据）。</p>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">选题 <i>*</i></span>
-        <select v-model="assignTopicId" class="ie-in">
-          <option value="">请选择选题</option>
-          <option v-for="t in topicOpts" :key="t.id" :value="t.id" :disabled="t.remaining <= 0">
-            {{ t.title }} · {{ t.advisorName }}（余 {{ t.remaining }}）
-          </option>
-        </select>
+        <AppRemoteSelect v-model="assignTopicId" :options="topicOptions" placeholder="按题目名 / 导师搜索选题" />
       </label>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -29,12 +24,13 @@
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
+import { AppRemoteSelect } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationStudentAssignTopicView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState },
+  components: { GraduationFormPageShell, LoadingState, ErrorState, AppRemoteSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -43,6 +39,9 @@ export default {
     }
   },
   computed: {
+    topicOptions() {
+      return this.topicOpts.map((x) => ({ label: `${x.title} · ${x.advisorName}（余 ${x.remaining}）`, value: x.id, disabled: x.remaining <= 0 }))
+    },
     backTo() {
       const panel = this.$route.query.returnPanel || 'topic'
       return `/admin/graduation/students?panel=${panel}`

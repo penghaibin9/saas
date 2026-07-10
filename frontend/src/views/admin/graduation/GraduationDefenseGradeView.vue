@@ -52,7 +52,7 @@
           <!-- 评阅 -->
           <div v-if="tab === 'review'" class="gp-panel">
             <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)">
-              <input v-model="reviewerName" class="ie-in" placeholder="评阅人姓名" style="width:160px" />
+              <AppMentorPicker v-model="reviewerName" :remote-search="searchReviewers" placeholder="搜索评阅教师（自动回避该生导师）" style="width: 260px" />
               <button class="mp-btn mp-btn--primary" @click="doAssignReview">分配评阅</button>
             </div>
             <ul class="gp-timeline">
@@ -115,11 +115,13 @@ import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
+import { AppMentorPicker } from '@/components/common'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationDefenseGradeView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -146,6 +148,17 @@ export default {
     switchTab(t) {
       this.tab = t
       if (this.$route.query.panel !== t) this.$router.replace({ query: { ...this.$route.query, panel: t } })
+    },
+    /** 评阅教师远程搜索：排除该生指导教师（SoD），最终由后端再次校验 */
+    async searchReviewers(keyword) {
+      const res = await graduationMentorApi.getMentors({ keyword, qualificationStatus: 'QUALIFIED', pageSize: 20 })
+      if (res.code !== 0) throw new Error(res.message || '搜索失败')
+      const advisor = this.current && this.current.advisorName
+      return res.data.list.map((m) => ({
+        label: m.teacherName === advisor ? `${m.teacherName}（该生导师 · 回避）` : `${m.teacherName}（${m.capacityText || m.collegeName || '教师'}）`,
+        value: m.teacherName,
+        disabled: m.teacherName === advisor
+      }))
     },
     async searchStudents() {
       this.sideError = ''

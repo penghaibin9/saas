@@ -10,12 +10,7 @@
     <form v-else class="ie-form" @submit.prevent="submit">
       <p class="ie-hint">答辩组来自「答辩安排」模块真实数据；分配后自动更新组内人数。</p>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">答辩组 <i>*</i></span>
-        <select v-model="defenseGroupId" class="ie-in">
-          <option value="">请选择答辩组</option>
-          <option v-for="g in defenseOpts" :key="g.id" :value="g.id">
-            {{ g.groupName }} · {{ g.defenseDate || '日期待定' }} · {{ g.location || '地点待定' }}（{{ g.studentCount }}人）
-          </option>
-        </select>
+        <AppRemoteSelect v-model="defenseGroupId" :options="groupOptions" placeholder="按组名 / 日期 / 地点搜索答辩组" />
       </label>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -29,12 +24,13 @@
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
+import { AppRemoteSelect } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationStudentDefenseView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState },
+  components: { GraduationFormPageShell, LoadingState, ErrorState, AppRemoteSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -43,6 +39,9 @@ export default {
     }
   },
   computed: {
+    groupOptions() {
+      return this.defenseOpts.map((g) => ({ label: `${g.groupName} · ${g.defenseDate || '日期待定'} · ${g.location || '地点待定'}（${g.studentCount}人）`, value: g.id }))
+    },
     backTo() {
       const panel = this.$route.query.returnPanel || 'defense'
       return `/admin/graduation/students?panel=${panel}`

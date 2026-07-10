@@ -75,7 +75,7 @@ export const graduationApi = {
    * - ADMIN：保持管理员口径（批阅置灰，仅指导教师可批）。
    * 品牌与细粒度 permissionCode 仍待后端上下文接口（历史欠账），前端不伪造具体人数等数据。
    */
-  getContext() {
+  async getContext() {
     const u = currentUserFromToken()
     const isTeacher = u && u.userType === 'TEACHER'
     const pa = JSON.parse(JSON.stringify(permissionActions))
@@ -86,9 +86,23 @@ export const graduationApi = {
         if (pa[k]) pa[k] = { ...pa[k], allowed: false, reason: '需毕设管理员角色，教师身份仅查看' }
       })
     }
+    // 品牌与姓名优先取真实 /auth/me（含 tenantName），后端不可达时回退 token/静态兜底，不阻塞页面
+    const brand = { ...tenantBrandConfig }
+    let roleName = isTeacher ? '指导教师' : currentRole.roleName
+    try {
+      if (shouldTryReal()) {
+        const me = await request('/auth/me')
+        const tenantName = me?.tenantName || me?.user?.tenantName || me?.tenant?.name
+        if (tenantName) brand.schoolName = tenantName
+        const realName = me?.realName || me?.user?.realName
+        if (realName) roleName = `${realName} · ${roleName}`
+      }
+    } catch {
+      /* 离线/未登录场景静默回退 */
+    }
     return ok({
-      tenantBrandConfig: { ...tenantBrandConfig },
-      currentRole: { ...currentRole, roleName: isTeacher ? '指导教师' : currentRole.roleName },
+      tenantBrandConfig: brand,
+      currentRole: { ...currentRole, roleName },
       dataScope: { ...dataScope, scopeName: isTeacher ? '本人指导学生' : '本校毕设数据（按后端数据范围）' },
       permissionActions: pa,
       statusOptions: JSON.parse(JSON.stringify(statusOptions))
