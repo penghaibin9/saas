@@ -39,6 +39,24 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.BATCH_RULES, title: M.BATCH_RULES, requiresAuth: true, permissionKey: 'internship.batch.manage' }
     },
     {
+      path: 'batches/new',
+      name: 'internship-batch-new',
+      component: () => import('@/views/admin/internship/BatchFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.BATCH_RULES, title: '新建实习批次', requiresAuth: true, permissionKey: 'internship.batch.manage' }
+    },
+    {
+      path: 'batches/:id/edit',
+      name: 'internship-batch-edit',
+      component: () => import('@/views/admin/internship/BatchFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.BATCH_RULES, title: '编辑实习批次', requiresAuth: true, permissionKey: 'internship.batch.manage' }
+    },
+    {
+      path: 'batches/:id',
+      name: 'internship-batch-detail',
+      component: () => import('@/views/admin/internship/BatchDetailView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.BATCH_RULES, title: '批次详情', requiresAuth: true, permissionKey: 'internship.batch.manage' }
+    },
+    {
       path: 'students',
       name: 'internship-students',
       component: () => import('@/views/admin/internship/InternshipStudentListView.vue'),
@@ -93,6 +111,12 @@ const internshipRoutes = {
       name: 'internship-guidance',
       component: () => import('@/views/admin/internship/GuidanceVisitView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: M.GUIDANCE_VISIT, requiresAuth: true, permissionKey: 'internship.guidance.view' }
+    },
+    {
+      path: 'guidance/new',
+      name: 'internship-guidance-new',
+      component: () => import('@/views/admin/internship/GuidanceRecordFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: '新增指导/巡访记录', requiresAuth: true, permissionKey: 'internship.guidance.view' }
     },
     {
       path: 'guidance-plan',

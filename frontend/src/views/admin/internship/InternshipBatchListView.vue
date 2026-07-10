@@ -46,53 +46,7 @@
         </template>
       </DataTable>
 
-      <!-- 新建 / 编辑 -->
-      <EditDrawer
-        v-model:visible="editVisible"
-        :title="editing ? '编辑实习批次' : '新建实习批次'"
-        :fields="editFields"
-        :model="editingModel"
-        :submitting="submitting"
-        @submit="onEditSubmit"
-      />
-
-      <!-- 详情：阶段时间轴 + 规则配置 + 审计留痕 -->
-      <AppDrawer v-model:visible="detailVisible" :title="detailRow ? `${detailRow.batchName} · 详情` : '批次详情'">
-        <div v-if="detailRow" class="bd">
-          <section class="bd__section">
-            <h4>基本信息</h4>
-            <dl class="bd__grid">
-              <div><dt>批次编号</dt><dd>{{ detailRow.batchNo }}</dd></div>
-              <div><dt>状态</dt><dd><AppStatusTag :type="statusTagType[detailRow.status] || 'default'" dot>{{ detailRow.statusLabel }}</AppStatusTag></dd></div>
-              <div><dt>计划 / 实际人数</dt><dd>{{ detailRow.plannedCount }} / {{ detailRow.actualCount }}</dd></div>
-              <div><dt>报名窗口</dt><dd>{{ dateShort(detailRow.signupStartDate) || '—' }} ~ {{ dateShort(detailRow.signupEndDate) || '—' }}</dd></div>
-              <div v-if="detailRow.transitionReason"><dt>作废原因</dt><dd>{{ detailRow.transitionReason }}</dd></div>
-              <div v-if="detailRow.archiveBatchNo"><dt>归档批次号</dt><dd>{{ detailRow.archiveBatchNo }}（{{ detailRow.archivedBy }} · {{ detailRow.archivedAt }}）</dd></div>
-            </dl>
-          </section>
-
-          <section class="bd__section">
-            <h4>阶段时间轴</h4>
-            <AppTimeline :items="stageTimelineItems" />
-          </section>
-
-          <section class="bd__section">
-            <h4>规则配置</h4>
-            <ul class="bd__rules">
-              <li>打卡：{{ detailRow.rules.checkin.requireDaily ? '每日必打卡' : '不强制每日' }}，电子围栏 {{ detailRow.rules.checkin.geofenceRadiusM }} 米</li>
-              <li>周报：{{ detailRow.rules.weeklyReport.frequency === 'WEEKLY' ? '每周 1 次' : '每两周 1 次' }}，正文 ≥ {{ detailRow.rules.weeklyReport.minWordCount }} 字，周{{ detailRow.rules.weeklyReport.deadlineWeekday }}前提交</li>
-              <li>指导：每学期现场巡访 ≥ {{ detailRow.rules.guidance.minVisitsPerTerm }} 次，每月沟通 ≥ {{ detailRow.rules.guidance.minCommunicationsPerMonth }} 次</li>
-              <li>评价权重：企业 {{ pct(detailRow.rules.evaluation.enterpriseWeight) }} / 教师 {{ pct(detailRow.rules.evaluation.teacherWeight) }} / 自评 {{ pct(detailRow.rules.evaluation.selfWeight) }}</li>
-              <li>成绩：及格线 {{ detailRow.rules.score.passThreshold }} 分，构成 {{ scoreComponentsText }}</li>
-            </ul>
-          </section>
-
-          <section class="bd__section">
-            <h4>操作留痕</h4>
-            <AppAuditTrail :records="auditRecords" />
-          </section>
-        </div>
-      </AppDrawer>
+      <!-- 新建/编辑/详情已升级为独立页：/batches/new、/batches/:id/edit、/batches/:id -->
 
       <!-- 启用 / 结束 / 归档 / 作废 二次确认 -->
       <AppConfirmDialog
@@ -110,11 +64,13 @@
 </template>
 
 <script>
-/** /admin/internship/batches 实习批次（列表 / 新建 / 编辑 / 启用 / 结束 / 归档 / 作废；真实走后端 /internship/batches）。 */
+/**
+ * /admin/internship/batches 实习批次列表（筛选 / 台账导出 / 启用 / 结束 / 归档 / 作废；真实走后端 /internship/batches）。
+ * 新建/编辑入口跳独立页 BatchFormView（/batches/new、/batches/:id/edit）；详情跳 BatchDetailView（/batches/:id）。
+ */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, EmptyState, LoadingState, ErrorState } from '@/components/business'
-import { AppConfirmDialog, AppTimeline, AppStatusTag, AppExportButton, AppAuditTrail } from '@/components/common'
-import { AppDrawer } from '@/components/ui'
-import { EditDrawer, TableActionColumn, NoPermissionState } from '@/modules/internship/components'
+import { AppConfirmDialog, AppStatusTag, AppExportButton } from '@/components/common'
+import { TableActionColumn, NoPermissionState } from '@/modules/internship/components'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
@@ -144,7 +100,7 @@ export default {
   name: 'InternshipBatchListView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, EmptyState, LoadingState, ErrorState,
-    AppConfirmDialog, AppTimeline, AppStatusTag, AppExportButton, AppAuditTrail, AppDrawer, EditDrawer, TableActionColumn, NoPermissionState,
+    AppConfirmDialog, AppStatusTag, AppExportButton, TableActionColumn, NoPermissionState,
     ModuleSummaryStrip
   },
   data() {
@@ -152,18 +108,12 @@ export default {
       ctx: null,
       loading: true,
       error: '',
-      submitting: false,
       activePanel: 'list',
       rows: [],
       total: 0,
       page: 1,
       pageSize: 10,
       filters: EMPTY_FILTERS(),
-      editVisible: false,
-      editing: null,
-      editingModel: null,
-      detailVisible: false,
-      detailRow: null,
       confirmVisible: false,
       confirmMode: '',
       confirmRow: null,
@@ -207,52 +157,6 @@ export default {
         { key: 'updateTime', title: '更新时间' },
         { key: 'actions', title: '操作' }
       ]
-    },
-    editFields() {
-      return [
-        { key: 'batchName', label: '批次名称', type: 'text', required: true, placeholder: '如：2026 届春季岗位实习' },
-        { key: 'batchNo', label: '批次编号', type: 'text', required: true, placeholder: '如：INT-2026S', disabled: !!this.editing },
-        { key: 'academicYear', label: '学年', type: 'text', placeholder: '如：2025-2026' },
-        { key: 'term', label: '学期', type: 'text', placeholder: '如：第二学期' },
-        { key: 'startDate', label: '实习开始', type: 'date' },
-        { key: 'endDate', label: '实习结束', type: 'date' },
-        { key: 'signupStartDate', label: '报名开始', type: 'date' },
-        { key: 'signupEndDate', label: '报名结束', type: 'date' },
-        { key: 'plannedCount', label: '计划人数', type: 'number' },
-        { key: 'remark', label: '备注', type: 'textarea', placeholder: '批次说明（可选）' },
-        {
-          key: 'stagesJson', label: '阶段时间轴（JSON，可选）', type: 'textarea', rows: 4,
-          placeholder: '[{"code":"PREP","name":"岗前准备","startDate":"","endDate":""}]',
-          hint: '留空则使用默认三阶段：岗前准备 / 在岗实习 / 总结考核'
-        },
-        {
-          key: 'rulesJson', label: '规则配置（JSON，可选）', type: 'textarea', rows: 4,
-          placeholder: '{"checkin":{"geofenceRadiusM":500}, ...}',
-          hint: '留空则使用默认规则；仅需覆盖的字段可局部提交'
-        }
-      ]
-    },
-    stageTimelineItems() {
-      const stages = (this.detailRow && this.detailRow.stages) || []
-      return stages.map((s) => ({
-        id: s.code, title: s.name, type: 'primary',
-        time: (s.startDate || s.endDate) ? `${this.dateShort(s.startDate) || '—'} ~ ${this.dateShort(s.endDate) || '—'}` : '未设置具体日期'
-      }))
-    },
-    scoreComponentsText() {
-      const comps = (this.detailRow && this.detailRow.rules.score.components) || []
-      return comps.map((c) => `${c.name} ${this.pct(c.weight)}`).join(' + ')
-    },
-    auditRecords() {
-      const trail = (this.detailRow && this.detailRow.auditTrail) || []
-      const ACTION_LABEL = { CREATE: '新建批次', UPDATE: '编辑批次', ACTIVATE: '启用批次', CLOSE: '结束批次', ARCHIVE: '归档批次', VOID: '作废批次' }
-      return trail.map((t) => ({
-        id: t.id,
-        action: ACTION_LABEL[t.action] || t.action,
-        actor: t.operator,
-        at: t.time,
-        reason: t.detail
-      }))
     },
     confirmConf() {
       const r = this.confirmRow
@@ -302,9 +206,6 @@ export default {
       this.page = 1
       this.load()
     },
-    pct(v) {
-      return `${Math.round((v || 0) * 100)}%`
-    },
     async load() {
       this.loading = true
       this.error = ''
@@ -343,65 +244,18 @@ export default {
       return internshipApi.exportBatches({ ...this.filters })
     },
     openCreate() {
-      this.editing = null
-      this.editingModel = { plannedCount: 0 }
-      this.editVisible = true
+      this.$router.push('/admin/internship/batches/new')
     },
     openEdit(row) {
-      this.editing = row
-      this.editingModel = {
-        batchName: row.batchName, batchNo: row.batchNo, academicYear: row.academicYear, term: row.term,
-        startDate: this.dateShort(row.startDate), endDate: this.dateShort(row.endDate),
-        signupStartDate: this.dateShort(row.signupStartDate), signupEndDate: this.dateShort(row.signupEndDate),
-        plannedCount: row.plannedCount, remark: row.remark, stagesJson: '', rulesJson: ''
-      }
-      this.editVisible = true
+      this.$router.push(`/admin/internship/batches/${row.id}/edit`)
     },
-    async openDetail(row) {
-      const res = await internshipApi.getBatchDetail(row.id)
-      if (res.code === 0) {
-        this.detailRow = res.data
-        this.detailVisible = true
-      } else toast.error(res.message || '加载详情失败')
-    },
-    async onEditSubmit(form) {
-      const body = { ...form }
-      delete body.stagesJson
-      delete body.rulesJson
-      if (form.stagesJson && form.stagesJson.trim()) {
-        try {
-          body.stages = JSON.parse(form.stagesJson)
-        } catch {
-          return toast.error('阶段时间轴 JSON 格式错误，请检查后重试')
-        }
-      }
-      if (form.rulesJson && form.rulesJson.trim()) {
-        try {
-          body.rules = JSON.parse(form.rulesJson)
-        } catch {
-          return toast.error('规则配置 JSON 格式错误，请检查后重试')
-        }
-      }
-      this.submitting = true
-      try {
-        const res = this.editing
-          ? await internshipApi.updateBatch(this.editing.id, body)
-          : await internshipApi.createBatch(body)
-        if (res.code === 0) {
-          toast.success(this.editing ? '已保存' : '已新建批次')
-          this.editVisible = false
-          await this.load()
-        } else {
-          toast.error(res.message || '保存失败')
-        }
-      } finally {
-        this.submitting = false
-      }
+    openDetail(row) {
+      this.$router.push(`/admin/internship/batches/${row.id}`)
     },
     rowActions(row) {
       return [
         { key: 'detail', label: '详情' },
-        { key: 'edit', label: '编辑', disabled: !['DRAFT', 'RUNNING'].includes(row.status), disabledReason: '仅草稿/进行中批次可编辑' },
+        { key: 'edit', label: '编辑', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿批次可编辑' },
         { key: 'activate', label: '启用', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿可启用' },
         { key: 'close', label: '结束', disabled: row.status !== 'RUNNING', disabledReason: '仅进行中可结束' },
         { key: 'archive', label: '归档', disabled: row.status !== 'CLOSED', disabledReason: '仅已结束可归档' },
@@ -435,41 +289,3 @@ export default {
   }
 }
 </script>
-
-<style scoped>
-.bd {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-.bd__section h4 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-secondary);
-}
-.bd__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2) var(--space-4);
-  margin: 0;
-}
-.bd__grid dt {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-}
-.bd__grid dd {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-}
-.bd__rules {
-  margin: 0;
-  padding-left: var(--space-5);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-</style>
