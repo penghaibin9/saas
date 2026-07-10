@@ -12,28 +12,62 @@
       <button class="gp-tabs__item" :class="{ 'is-active': tab === 'stats' }" @click="switchTab('stats')">毕设统计</button>
     </div>
 
-    <!-- 问题预警 -->
+    <!-- 问题预警：连续双栏处置 -->
     <div v-if="tab === 'risk'" class="mp-stack">
       <div class="ie-actions" style="justify-content: flex-start"><button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button></div>
       <AdvancedFilter v-model="riskFilters" :fields="riskFilterFields" @search="loadRisks" @reset="resetRiskFilters" />
       <ErrorState v-if="riskError" :description="riskError" @retry="loadRisks" />
       <LoadingState v-else-if="riskLoading" />
       <EmptyState v-else-if="!riskRows.length" title="暂无风险记录" description="点「扫描生成风险项」按当前数据生成" />
-      <DataTable v-else :columns="riskColumns" :rows="riskRows" row-key="id" :pagination="{ page: riskPage, pageSize: riskPageSize, total: riskTotal }" @page-change="p => { riskPage = p; loadRisks() }">
-        <template #cell-risk="{ row }">
-          <div class="mp-cell-main">{{ row.riskName }}（{{ row.riskCode }}）</div>
-          <div class="mp-cell-sub">{{ row.studentName }} · {{ row.studentNo }} · {{ row.advisorName || '未分配导师' }}</div>
-        </template>
-        <template #cell-level="{ row }"><StatusTag :type="row.level === 'CRITICAL' || row.level === 'HIGH' ? 'danger' : 'warning'" :label="levelLabel(row.level)" dot /></template>
-        <template #cell-status="{ row }"><StatusTag :type="row.statusTone" :label="row.statusLabel" dot /></template>
-        <template #cell-actions="{ row }">
-          <button v-if="row.status === 'OPEN'" class="mp-link" @click="doAccept(row)">受理</button>
-          <button v-if="row.status === 'PROCESSING'" class="mp-link" @click="doProcess(row)">记录处理</button>
-          <button v-if="row.status === 'PROCESSING'" class="mp-link" @click="doClose(row)">关闭</button>
-        </template>
-      </DataTable>
+      <div v-else class="rk-split">
+        <aside class="rk-list">
+          <ul class="rk-rows">
+            <li v-for="(row, i) in riskRows" :key="row.id" class="rk-row" :class="{ 'is-active': String(row.id) === riskSelKey }" @click="selectRisk(row)">
+              <div class="rk-row__main">
+                <span class="rk-row__name">{{ row.riskName }}</span>
+                <StatusTag :type="row.level === 'CRITICAL' || row.level === 'HIGH' ? 'danger' : 'warning'" :label="levelLabel(row.level)" dot />
+              </div>
+              <div class="rk-row__sub">{{ row.studentName }} · {{ row.studentNo }}</div>
+              <div class="rk-row__meta"><StatusTag :type="row.statusTone" :label="row.statusLabel" dot /><span class="rk-row__idx">{{ (riskPage - 1) * riskPageSize + i + 1 }}</span></div>
+            </li>
+          </ul>
+          <div style="display: flex; justify-content: center"><AppPagination :total="riskTotal" :page="riskPage" :page-size="riskPageSize" :show-size-changer="false" @update:page="p => { riskPage = p; loadRisks() }" /></div>
+        </aside>
+        <section class="rk-pane">
+          <div class="rk-pane__bar">
+            <span>本页第 {{ riskSelIndex + 1 }} / {{ riskRows.length }} 条 · 共 {{ riskTotal }} 条</span>
+            <label class="rk-pane__auto"><input v-model="riskAutoNext" type="checkbox" /> 处置后自动进入下一条</label>
+            <span class="rk-pane__nav">
+              <button class="mp-link" :disabled="riskSelIndex <= 0" @click="stepRisk(-1)">← 上一条</button>
+              <button class="mp-link" :disabled="riskSelIndex >= riskRows.length - 1" @click="stepRisk(1)">下一条 →</button>
+            </span>
+          </div>
+          <EmptyState v-if="!selectedRisk" title="从左侧选择一条风险" description="处置后可自动进入下一条待办风险" />
+          <section v-else class="mp-card">
+            <div class="mp-card__head">
+              <span class="mp-card__title">{{ selectedRisk.riskName }}</span>
+              <button v-if="selectedRisk.gdStudentId" class="mp-link" @click="$router.push('/admin/graduation/students/' + selectedRisk.gdStudentId)">查看学生档案 →</button>
+            </div>
+            <div class="mp-card__body">
+              <div class="mp-kv"><span class="mp-kv__k">等级</span><span class="mp-kv__v"><StatusTag :type="selectedRisk.level === 'CRITICAL' || selectedRisk.level === 'HIGH' ? 'danger' : 'warning'" :label="levelLabel(selectedRisk.level)" dot /></span></div>
+              <div class="mp-kv"><span class="mp-kv__k">状态</span><span class="mp-kv__v"><StatusTag :type="selectedRisk.statusTone" :label="selectedRisk.statusLabel" dot /></span></div>
+              <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ selectedRisk.studentName }} · {{ selectedRisk.studentNo }}</span></div>
+              <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ selectedRisk.advisorName || '未分配导师' }}</span></div>
+              <div v-if="selectedRisk.detail" class="mp-kv"><span class="mp-kv__k">风险详情</span><span class="mp-kv__v">{{ selectedRisk.detail }}</span></div>
+              <div v-if="selectedRisk.createdAt" class="mp-kv"><span class="mp-kv__k">首次触发</span><span class="mp-kv__v">{{ (selectedRisk.createdAt || '').replace('T', ' ').slice(0, 16) }}</span></div>
+              <div v-if="selectedRisk.handleNote" class="mp-kv"><span class="mp-kv__k">处理记录</span><span class="mp-kv__v">{{ selectedRisk.handleNote }}</span></div>
+              <div class="ie-actions" style="justify-content: flex-start; margin-top: var(--space-3)">
+                <button v-if="selectedRisk.status === 'OPEN'" class="mp-btn mp-btn--primary" @click="doAccept(selectedRisk)">受理</button>
+                <button v-if="selectedRisk.status === 'PROCESSING'" class="mp-btn mp-btn--primary" @click="doProcess(selectedRisk)">记录处理</button>
+                <button v-if="selectedRisk.status === 'PROCESSING'" class="mp-btn" @click="doClose(selectedRisk)">关闭风险</button>
+                <span v-if="selectedRisk.status === 'CLOSED'" class="mp-note">该风险已关闭</span>
+              </div>
+              <p class="mp-note" style="margin-top: var(--space-2)">受理 / 处理 / 关闭均写入审计留痕；关闭需填写原因。</p>
+            </div>
+          </section>
+        </section>
+      </div>
     </div>
-
     <!-- 毕设归档 -->
     <div v-if="tab === 'archive'" class="mp-stack">
       <div class="ie-actions" style="justify-content: flex-start">
@@ -103,18 +137,19 @@
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton } from '@/components/common'
+import { AppExportButton, AppPagination } from '@/components/common'
 import { AppDateRangePicker } from '@/components/common/date'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton },
+  components: { GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton, AppPagination },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       tab: 'risk',
+      riskSelKey: '', riskAutoNext: true,
       riskFilters: { status: '', level: '', dateStart: '', dateEnd: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true, riskError: '',
       archiveFilters: { keyword: '', status: '', dateStart: '', dateEnd: '' }, archiveRows: [], archiveTotal: 0, archivePage: 1, archivePageSize: 10, archiveLoading: true, archiveError: '',
       statsError: '',
@@ -127,6 +162,12 @@ export default {
     }
   },
   computed: {
+    selectedRisk() {
+      return this.riskRows.find((r) => String(r.id) === this.riskSelKey) || null
+    },
+    riskSelIndex() {
+      return this.riskRows.findIndex((r) => String(r.id) === this.riskSelKey)
+    },
     riskFilterFields() {
       return [
         { key: 'status', label: '状态', type: 'select', options: [{ value: 'OPEN', label: '待受理' }, { value: 'PROCESSING', label: '处理中' }, { value: 'CLOSED', label: '已关闭' }] },
@@ -153,6 +194,7 @@ export default {
   created() {
     const p = this.$route.query.panel
     if (['risk', 'archive', 'stats'].includes(p)) this.tab = p
+    this.riskSelKey = (this.$route.query.rsel || '').toString()
     this.loadRisks(); this.loadArchives(); this.loadStats()
   },
   watch: {
@@ -175,11 +217,35 @@ export default {
     levelLabel(level) {
       return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || level
     },
+    selectRisk(row) {
+      this.riskSelKey = String(row.id)
+      this.$router.replace({ query: { ...this.$route.query, rsel: this.riskSelKey } })
+    },
+    stepRisk(d) {
+      const i = this.riskSelIndex + d
+      if (i >= 0 && i < this.riskRows.length) this.selectRisk(this.riskRows[i])
+    },
+    /** 保持/推进选中：处置后若开启自动下一条且当前已关闭，则跳到下一条待办风险 */
+    ensureRiskSelection() {
+      if (!this.riskRows.length) { this.riskSelKey = ''; return }
+      const cur = this.selectedRisk
+      const actionable = (r) => r.status === 'OPEN' || r.status === 'PROCESSING'
+      if (cur && this.riskAutoNext && cur.status === 'CLOSED') {
+        const from = this.riskSelIndex
+        for (let i = from + 1; i < this.riskRows.length; i++) if (actionable(this.riskRows[i])) { this.selectRisk(this.riskRows[i]); return }
+        for (let i = 0; i < from; i++) if (actionable(this.riskRows[i])) { this.selectRisk(this.riskRows[i]); return }
+        return
+      }
+      if (!cur) {
+        const target = this.riskRows.find(actionable) || this.riskRows[0]
+        if (target) this.selectRisk(target)
+      }
+    },
     async loadRisks() {
       this.riskLoading = true
       this.riskError = ''
       const res = await graduationRiskArchiveApi.getRiskList({ ...this.riskFilters, page: this.riskPage, pageSize: this.riskPageSize })
-      if (res.code === 0) { this.riskRows = res.data.list; this.riskTotal = res.data.total } else { this.riskRows = []; this.riskError = res.message || '加载失败' }
+      if (res.code === 0) { this.riskRows = res.data.list; this.riskTotal = res.data.total; this.ensureRiskSelection() } else { this.riskRows = []; this.riskError = res.message || '加载失败' }
       this.riskLoading = false
     },
     resetRiskFilters() { this.riskFilters = { status: '', level: '', dateStart: '', dateEnd: '' }; this.riskPage = 1; this.loadRisks() },
@@ -256,6 +322,23 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.rk-split { display: flex; gap: var(--space-4); align-items: flex-start; }
+.rk-list { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); }
+.rk-pane { flex: 1; min-width: 0; }
+.rk-rows { list-style: none; margin: 0; padding: 0; max-height: 600px; overflow-y: auto; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); }
+.rk-row { padding: 10px 12px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; }
+.rk-row:last-child { border-bottom: none; }
+.rk-row:hover { background: var(--gray-50, #f8fafc); }
+.rk-row.is-active { background: var(--primary-50, #eff6ff); box-shadow: inset 2px 0 0 var(--brand-primary, #2563eb); }
+.rk-row__main { display: flex; align-items: center; gap: var(--space-2); }
+.rk-row__name { font-weight: var(--font-weight-medium, 500); color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-row__sub { margin-top: 2px; font-size: var(--font-size-sm); color: var(--text-secondary); }
+.rk-row__meta { margin-top: 2px; display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.rk-row__idx { margin-left: auto; }
+.rk-pane__bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); background: var(--gray-50, #f8fafc); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); font-size: var(--font-size-sm); color: var(--text-secondary); }
+.rk-pane__auto { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.rk-pane__nav { margin-left: auto; display: inline-flex; gap: var(--space-3); }
+.rk-pane__nav .mp-link:disabled { opacity: 0.4; cursor: not-allowed; }
 .mp-link--danger { color: var(--danger, #dc2626); }
 .gp-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }
 .gp-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
