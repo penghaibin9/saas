@@ -255,16 +255,18 @@ docs/modules/13B-教务中心移动端入口设计.md
 docs/modules/13B-教务中心-商业化对标审计与补丁建议(第一轮).md
 docs/modules/13B-教务中心-商业化补强-Opus开发输入包.md
 ```
-毕业设计中心读取：
+毕业设计中心读取（2026-07-11 起：先读模块 README，再按 README 推荐顺序；**生产级商业化开发总册为模块施工唯一总控**）：
 ```text
-docs/modules/05-毕业设计中心反向建模与深化设计.md
+docs/毕业设计中心/README.md
+docs/毕业设计中心/05-毕业设计中心生产级商业化开发总册.md
 ```
-以及当前仓库中对应的毕业设计中心页面、API、状态机、权限矩阵文档。
-岗位实习中心读取：
+以及 README 索引的来源文档、施工记录、代码事实（navPlan.js、graduation*.py、models/graduation.py）。
+岗位实习中心读取（2026-07-11 起：先读模块 README，再按 README 推荐顺序；**生产级商业化开发总册为模块施工唯一总控**）：
 ```text
-docs/modules/06-岗位实习中心反向建模与深化设计.md
+docs/岗位实习中心/README.md
+docs/岗位实习中心/06-岗位实习中心生产级商业化开发总册.md
 ```
-以及当前仓库中对应的岗位实习中心页面、API、状态机、权限矩阵文档。
+以及 README 索引的页面树/升级总册/api/施工记录、代码事实（navPlan.js、internship*.py、models/internship.py）。
 公共配置读取：
 ```text
 docs/modules/13A-13B-学校参数配置中心设计.md
