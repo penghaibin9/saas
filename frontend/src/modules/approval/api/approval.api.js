@@ -22,7 +22,9 @@ import {
   auditLogs
 } from '@/mocks/approval/approval.mock'
 
-const DELAY = 120
+import { MOCK_DELAY_MS } from '@/utils/mockDelay'
+
+const DELAY = MOCK_DELAY_MS
 const URGENCY_WEIGHT = { OVERDUE: 0, URGENT: 1, NORMAL: 2 }
 
 /** 演示默认角色：学院管理员（可通过 switchRole 切换体验其余 4 个角色） */

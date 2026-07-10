@@ -31,7 +31,9 @@ import {
 } from '@/mocks/dataCenter/dataCenter.mock'
 import { request, shouldTryReal } from '@/services/http/client'
 
-const DELAY = 120
+import { MOCK_DELAY_MS } from '@/utils/mockDelay'
+
+const DELAY = MOCK_DELAY_MS
 
 function ok(data) {
   return new Promise((resolve) => {

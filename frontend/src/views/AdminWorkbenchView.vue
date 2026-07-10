@@ -79,7 +79,7 @@
       </div>
 
       <!-- 我的常用：老师自定义置顶的高频模块（本机记忆，按登录人区分），无需去二/三级菜单找 -->
-      <section v-if="favoriteLeaves.length" class="awb-group awb-group--fav">
+      <section v-if="showModuleCards && favoriteLeaves.length" class="awb-group awb-group--fav">
         <div class="awb-group__title">
           <span class="awb-group__t">⭐ 我的常用</span>
           <span class="awb-group__n">{{ favoriteLeaves.length }} 个 · 点 ★ 可移除</span>
@@ -107,7 +107,7 @@
         </div>
       </section>
 
-      <section v-for="group in visibleMenu" :key="group.key" class="awb-group">
+      <section v-for="group in visibleMenu" v-show="showModuleCards" :key="group.key" class="awb-group">
         <div class="awb-group__title">
           <span class="awb-group__t">{{ group.label }}</span>
           <span class="awb-group__n">{{ group.children.length }} 个入口</span>
@@ -174,7 +174,9 @@ export default {
       /* 默认视角 = 当前登录角色类型（mock 为 SCHOOL_ADMIN），普通学校角色默认看不到平台运营 */
       viewAsRoleType: (auth.roles && auth.roles[0]) || ROLE_TYPE.SCHOOL_ADMIN,
       /* 我的常用：老师自定义置顶的模块 key 列表（本机记忆，按登录人区分） */
-      favorites: []
+      favorites: [],
+      /* 首屏先渲染 Hero/提醒条，模块卡片下一帧再挂载，减轻登录后 Long Task */
+      showModuleCards: false
     }
   },
   computed: {
@@ -211,6 +213,11 @@ export default {
   },
   created() {
     this.loadFavorites()
+  },
+  mounted() {
+    requestAnimationFrame(() => {
+      this.showModuleCards = true
+    })
   },
   methods: {
     go(path) {
@@ -374,7 +381,6 @@ export default {
   font-size: 12px;
   color: var(--hero-chip-tx);
   font-weight: var(--font-weight-medium);
-  backdrop-filter: blur(4px);
   white-space: nowrap;
 }
 .awb-chip--hot {
@@ -427,9 +433,12 @@ export default {
   font-size: 14px;
   font-weight: var(--font-weight-bold);
   color: var(--hero-dot-tx);
-  backdrop-filter: blur(4px);
   font-variant-numeric: tabular-nums;
-  transition: all 0.12s;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .awb-orbit__n:hover .awb-orbit__dot {
   background: var(--hero-dot-hot-bg);
@@ -498,15 +507,19 @@ export default {
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
+  /* 卡片数 = 全部可见叶子模块数，随系统模块增长；backdrop-filter 会让每张卡都单独合成+模糊采样，
+     模块越多越卡，故这里改用纯色半透明背景，不做 backdrop-filter */
   background: var(--card);
-  backdrop-filter: blur(10px);
   border: 1px solid var(--card-b);
   border-radius: var(--r);
   box-shadow: var(--s1);
   cursor: pointer;
   text-align: left;
   font-family: inherit;
-  transition: all 0.15s;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 .awb-card:hover {
   border-color: var(--glow);

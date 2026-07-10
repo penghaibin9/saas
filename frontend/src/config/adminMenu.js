@@ -149,21 +149,20 @@ function canSeeLeaf(leaf, ctx) {
   return true
 }
 
-/**
- * 按 ctx（品牌/角色/权限）过滤出当前角色可见的菜单树。
- * ctx 缺省时返回「学校侧默认视图」（隐藏平台运营），不暴露平台能力。
- * @param {object} ctx getContext() 返回体（含 currentRole / permissionActions）
- * @returns {Array} 过滤后的菜单树（已剔除空分组）
- */
+/** 按 ctx（品牌/角色/权限）过滤出当前角色可见的菜单树。结果按 roleType 缓存，避免壳层重复过滤。 */
+const _adminMenuVisibleCache = new Map()
 export function getVisibleAdminMenu(ctx) {
-  const rt = roleType(ctx)
-  return ADMIN_MENU
+  const rt = roleType(ctx) || '__default__'
+  if (_adminMenuVisibleCache.has(rt)) return _adminMenuVisibleCache.get(rt)
+  const result = ADMIN_MENU
     .filter((group) => {
       if (group.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
       return true
     })
     .map((group) => ({ ...group, children: group.children.filter((leaf) => canSeeLeaf(leaf, ctx)) }))
     .filter((group) => group.children.length > 0)
+  _adminMenuVisibleCache.set(rt, result)
+  return result
 }
 
 /** 依据当前路径定位激活的一级/二级 key（供壳高亮使用） */

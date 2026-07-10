@@ -122,12 +122,13 @@ export default {
 /* 母版 .tbl 数据表：玻璃卡容器 + 淡蓝表头 + 行 hover */
 .dt {
   background: var(--card);
-  backdrop-filter: blur(10px);
   border: 1px solid var(--card-b);
   border-radius: var(--r);
   box-shadow: var(--s1);
   overflow: hidden;
-  transition: all 0.15s;
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 .dt:hover {
   box-shadow: var(--s2);

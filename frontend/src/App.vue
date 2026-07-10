@@ -1,17 +1,15 @@
 <template>
-  <!-- UI-P1.5 最小应用壳：路由出口 + 全局登录态胶囊（退出登录入口） -->
+  <!-- UI-P1.5 最小应用壳：路由出口 + 全局 Toast；登录态/退出由 BasePortalLayout 顶栏承载 -->
   <router-view />
-  <AppUserChip />
   <AppToast />
 </template>
 
 <script>
 import AppToast from '@/components/common/AppToast.vue'
-import AppUserChip from '@/components/common/AppUserChip.vue'
 
 export default {
   name: 'App',
-  components: { AppToast, AppUserChip }
+  components: { AppToast }
 }
 </script>
 

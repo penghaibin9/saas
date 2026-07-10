@@ -23,7 +23,7 @@
   --info: #2563eb;
   --info-l: #eff6ff;
   --bg: #edf2fa;
-  --card: rgba(255, 255, 255, 0.88);
+  --card: rgba(255, 255, 255, 0.94);
   --card-b: rgba(151, 173, 214, 0.32);
   --dv: rgba(120, 144, 190, 0.16);
   --t1: #0f1e3d;
@@ -46,7 +46,7 @@
 
   /* ═══════════ 主题感知的壳 / Hero 辅助令牌（th-e / th-f 反转深色区域用） ═══════════ */
   /* 顶栏（玻璃） */
-  --topbar-bg: rgba(255, 255, 255, 0.75);
+  --topbar-bg: rgba(255, 255, 255, 0.92);
   --topbar-bd: rgba(151, 173, 214, 0.28);
   /* 左一级图标轨（深蓝渐变） */
   --rail-bg: linear-gradient(180deg, var(--deep1), var(--deep2));

@@ -35,7 +35,9 @@ import {
   auditLogs
 } from '@/mocks/platform/platform.mock'
 
-const DELAY = 120
+import { MOCK_DELAY_MS } from '@/utils/mockDelay'
+
+const DELAY = MOCK_DELAY_MS
 
 function ok(data) {
   return new Promise((resolve) => {

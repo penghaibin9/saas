@@ -10,8 +10,27 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/@antv/g2')) return 'vendor-g2'
+          if (id.includes('node_modules/vue/') || id.includes('node_modules/@vue/')) return 'vendor-vue'
+          if (id.includes('node_modules/vue-router')) return 'vendor-vue-router'
+          if (id.includes('node_modules/pinia')) return 'vendor-pinia'
+        }
+      }
+    }
+  },
   server: {
     port: 5173,
-    host: true
+    host: true,
+    // 开发态 API 走同源 /api → 后端，避免端口变化（5174/5175）触发 CORS 拦截导致登录失败
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true
+      }
+    }
   }
 })

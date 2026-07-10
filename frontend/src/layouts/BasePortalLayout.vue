@@ -116,9 +116,9 @@
           </svg>
           <span v-if="pendingCount" class="bpl-bell__b">{{ pendingCount }}</span>
         </span>
-        <!-- 顶栏用户身份/退出由全局 AppUserChip 统一承载（见 App.vue），
-             此处不再渲染重复的角色胶囊，避免与右上角悬浮胶囊重影。 -->
-        <slot name="user" />
+        <slot name="user">
+          <AppUserChip embedded />
+        </slot>
       </div>
     </header>
 
@@ -220,10 +220,12 @@
 
 <script>
 import { AppIcon } from '@/components/ui'
+import AppUserChip from '@/components/common/AppUserChip.vue'
 import { getVisibleAdminMenu, findActiveMenu, SEARCH_ALIASES } from '@/config/adminMenu'
 import { searchHelp } from '@/config/helpContent'
 import { getVisibleNavPlan, findActiveInPlan, searchNavPlan, navRefMatches } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
+import router from '@/router'
 
 /**
  * BasePortalLayout 门户壳基座（PC-UI v2 · 视觉母版 docs/ui/pc-ui-v2/00-基准-管理端v6三主题.dc.html）
@@ -287,7 +289,7 @@ function readThemePreference() {
 
 export default {
   name: 'BasePortalLayout',
-  components: { AppIcon },
+  components: { AppIcon, AppUserChip },
   props: {
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },
@@ -314,6 +316,8 @@ export default {
       stuBlurTimer: null,
       /* ② 功能 / 帮助搜索框（功能页面 + 帮助文档 + 业务流程图） */
       fnQuery: '',
+      fnQueryDebounced: '',
+      fnSearchTimer: null,
       fnOpen: false,
       fnActive: 0,
       fnBlurTimer: null,
@@ -334,7 +338,7 @@ export default {
         const gk = findActiveMenu(p).groupKey
         return !gk || this.visibleGroupKeys.has(gk)
       }
-      const q = this.fnQuery.trim().toLowerCase()
+      const q = this.fnQueryDebounced.trim().toLowerCase()
       const out = []
       // 旧一级名兼容（数据中心/学生中心/教学实践/权限与流程 → 新归属）
       const pool = SEARCH_ALIASES.filter((a) => inScope(a.path))
@@ -351,7 +355,7 @@ export default {
       matched.forEach((a) => out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' }))
       // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通「待施工/未开通」不跳
       if (q) {
-        for (const r of searchNavPlan(this.fnQuery)) {
+        for (const r of searchNavPlan(this.fnQueryDebounced)) {
           const kind =
             r.status === 'planned' ? '规划 · 待施工'
               : r.status === 'partial' ? '页面 · 待补强'
@@ -508,8 +512,13 @@ export default {
       }
     },
     onRailSelect(item) {
-      if (!item.path) return
-      this.$emit('menu-select', { key: item.key, label: item.label, path: item.path })
+      if (!item?.path) return
+      const target = item.path
+      this.clickedLeafKey = ''
+      this.$emit('menu-select', { key: item.key, label: item.label, path: target })
+      if (target !== this.currentNavRef) {
+        router.push(target).catch(() => {})
+      }
     },
     onSelect(item) {
       if (item.disabled) {
@@ -646,8 +655,17 @@ export default {
     }
   },
   watch: {
-    fnQuery() {
+    fnQuery(q) {
       this.fnActive = 0
+      clearTimeout(this.fnSearchTimer)
+      const text = String(q || '').trim()
+      if (!text) {
+        this.fnQueryDebounced = ''
+        return
+      }
+      this.fnSearchTimer = setTimeout(() => {
+        this.fnQueryDebounced = text
+      }, 200)
     },
     stuQuery(q) {
       this.queueStuSearch(q)
@@ -655,12 +673,14 @@ export default {
   },
   mounted() {
     window.addEventListener('keydown', this.onGlobalKeydown)
+    this.fnQueryDebounced = ''
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.onGlobalKeydown)
     if (this.stuBlurTimer) clearTimeout(this.stuBlurTimer)
     if (this.stuTimer) clearTimeout(this.stuTimer)
     if (this.fnBlurTimer) clearTimeout(this.fnBlurTimer)
+    if (this.fnSearchTimer) clearTimeout(this.fnSearchTimer)
   }
 }
 </script>
@@ -681,12 +701,11 @@ export default {
   flex-shrink: 0;
 }
 
-/* ── 顶栏 56px 玻璃 ── */
+/* ── 顶栏 56px：半透明实底（去掉 backdrop-filter 以减轻 GPU 合成，视觉与玻璃态接近） ── */
 .bpl-topbar {
   height: 56px;
   flex-shrink: 0;
   background: var(--topbar-bg);
-  backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--topbar-bd);
   display: flex;
   align-items: center;
@@ -867,14 +886,7 @@ export default {
   align-items: center;
   gap: 8px;
   margin-left: auto;
-  /* 为右上角全局悬浮的退出胶囊（AppUserChip · fixed）让出空间，避免相互压叠 */
-  margin-right: 144px;
   flex-shrink: 0;
-}
-@media (max-width: 900px) {
-  .bpl-top-r {
-    margin-right: 120px;
-  }
 }
 .bpl-thdots {
   display: flex;

@@ -116,7 +116,6 @@ export default {
 <style scoped>
 .af {
   background: var(--card);
-  backdrop-filter: blur(10px);
   border: 1px solid var(--card-b);
   border-radius: var(--r);
   padding: var(--space-3) var(--space-4);
@@ -157,7 +156,9 @@ export default {
   font-size: 13px;
   padding: 0 var(--space-3);
   outline: none;
-  transition: all 0.12s;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .af__control:hover {
   border-color: var(--glow);

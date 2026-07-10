@@ -547,19 +547,24 @@ export const PLATFORM_PLAN = grp('platform', '平台运营', 'platform', [
  * @param {object} opts.includePlanned 管理员/开发者视角=true（可见 planned），普通业务角色=false（隐藏 planned）
  * @returns {Array} 过滤后的规划树（planned 节点在 includePlanned=false 时剔除）
  */
+const _navPlanVisibleCache = new Map()
 export function getVisibleNavPlan({ includePlanned = false } = {}) {
+  const cacheKey = includePlanned ? '1' : '0'
+  if (_navPlanVisibleCache.has(cacheKey)) return _navPlanVisibleCache.get(cacheKey)
   // 普通业务角色：只见 implemented / partial；管理员/开发者视角：additionally 见 planned / unauthorized
   // hidden 叶子：任何视角都不进菜单（如旧兼容入口），仅保留路由/高亮
   const keepLeaf = (leaf) =>
     !leaf.hidden && (includePlanned || leaf.status === 'implemented' || leaf.status === 'partial')
   const keepMod = (mod2) =>
     includePlanned || mod2.status === 'implemented' || mod2.status === 'partial' || mod2.children.some(keepLeaf)
-  return NAV_PLAN.map((group) => ({
+  const result = NAV_PLAN.map((group) => ({
     ...group,
     children: group.children
       .filter(keepMod)
       .map((mod2) => ({ ...mod2, children: mod2.children.filter(keepLeaf) }))
   })).filter((group) => group.children.length > 0)
+  _navPlanVisibleCache.set(cacheKey, result)
+  return result
 }
 
 /**
@@ -607,6 +612,50 @@ export function navRefMatches(currentRef, candidateRef) {
 }
 
 /**
+ * NAV_PLAN 拍平索引（模块加载时只构建一次）。
+ * findActiveInPlan / searchNavPlan 原来都是「每次调用都重新嵌套遍历整棵树」，
+ * 随着规划的模块越来越多，每次路由切换 / 每次按键搜索都要重新扫一遍全树，会越用越慢。
+ * 这里预先拍平成一个扁平数组，两个函数只做单层遍历，匹配逻辑与原实现逐字对齐、不改变任何结果。
+ */
+const FLAT_NAV_INDEX = (() => {
+  const rows = []
+  for (const group of NAV_PLAN) {
+    for (const mod2 of group.children) {
+      rows.push({
+        groupKey: group.key,
+        groupLabel: group.label,
+        modKey: mod2.key,
+        modLabel: mod2.label,
+        label: mod2.label,
+        path: mod2.path || null,
+        status: mod2.status,
+        disabled: mod2.disabled,
+        badge: mod2.badge,
+        isLeaf: false,
+        hidden: false
+      })
+      mod2.children.forEach((leaf, i) => {
+        rows.push({
+          groupKey: group.key,
+          groupLabel: group.label,
+          modKey: mod2.key,
+          modLabel: mod2.label,
+          leafKey: `${mod2.key}:${i}`,
+          label: leaf.label,
+          path: leaf.path || null,
+          status: leaf.status,
+          disabled: leaf.disabled,
+          badge: leaf.badge,
+          isLeaf: true,
+          hidden: !!leaf.hidden
+        })
+      })
+    }
+  }
+  return rows
+})()
+
+/**
  * 依当前路由在规划树中定位所属 一级/二级/三级（用于侧栏高亮）。
  * @param {string} path 路由 path
  * @param {string} [fullPath] 含 query 的完整路径（三级菜单带 ?panel= 时必须）
@@ -616,27 +665,19 @@ export function findActiveInPlan(path, fullPath = '') {
   if (!path) return { groupKey: '', modKey: '', leafKey: '' }
   const ref = normalizeNavRef(fullPath || path)
   let best = { groupKey: '', modKey: '', leafKey: '', score: -1 }
-  for (const group of NAV_PLAN) {
-    for (const mod2 of group.children) {
-      const cands = [{ key: mod2.key, path: mod2.path, isLeaf: false, label: '' }]
-      mod2.children.forEach((leaf, i) => {
-        if (leaf.path) cands.push({ key: `${mod2.key}:${i}`, path: leaf.path, isLeaf: true, label: leaf.label })
-      })
-      for (const c of cands) {
-        if (!c.path) continue
-        let score = -1
-        if (navRefMatches(ref, c.path)) {
-          score = c.path.length + (splitNavRef(c.path).query ? 1000 : 0)
-        } else {
-          const { path: cp, query: cq } = splitNavRef(c.path)
-          if (!cq && (cp === '/' ? path === '/' : path === cp || path.startsWith(`${cp}/`))) {
-            score = cp.length
-          }
-        }
-        if (score > best.score) {
-          best = { groupKey: group.key, modKey: mod2.key, leafKey: c.isLeaf ? c.label : '', score }
-        }
+  for (const row of FLAT_NAV_INDEX) {
+    if (!row.path) continue
+    let score = -1
+    if (navRefMatches(ref, row.path)) {
+      score = row.path.length + (splitNavRef(row.path).query ? 1000 : 0)
+    } else {
+      const { path: cp, query: cq } = splitNavRef(row.path)
+      if (!cq && (cp === '/' ? path === '/' : path === cp || path.startsWith(`${cp}/`))) {
+        score = cp.length
       }
+    }
+    if (score > best.score) {
+      best = { groupKey: row.groupKey, modKey: row.modKey, leafKey: row.isLeaf ? row.label : '', score }
     }
   }
   return { groupKey: best.groupKey, modKey: best.modKey, leafKey: best.leafKey }
@@ -647,39 +688,28 @@ export function findActiveInPlan(path, fullPath = '') {
  * @param {string} query
  * @returns {Array} [{ label, path, status, disabled, badge, trail }]
  */
+const _navSearchCache = new Map()
 export function searchNavPlan(query) {
   const q = (query || '').trim().toLowerCase()
   if (!q) return []
+  if (_navSearchCache.has(q)) return _navSearchCache.get(q)
   const out = []
-  for (const group of NAV_PLAN) {
-    for (const mod2 of group.children) {
-      const hitMod = mod2.label.toLowerCase().includes(q)
-      if (hitMod) {
-        out.push({
-          label: mod2.label,
-          path: mod2.path || null,
-          status: mod2.status,
-          disabled: mod2.disabled,
-          badge: mod2.badge,
-          trail: `${group.label} / ${mod2.label}`
-        })
-      }
-      for (const leaf of mod2.children) {
-        if (leaf.hidden) continue  // 隐藏的兼容入口不进搜索
-        if (leaf.label.toLowerCase().includes(q)) {
-          out.push({
-            label: leaf.label,
-            path: leaf.path || null,
-            status: leaf.status,
-            disabled: leaf.disabled,
-            badge: leaf.badge,
-            trail: `${group.label} / ${mod2.label} / ${leaf.label}`
-          })
-        }
-      }
-    }
+  for (const row of FLAT_NAV_INDEX) {
+    if (row.hidden) continue  // 隐藏的兼容入口不进搜索
+    if (!row.label.toLowerCase().includes(q)) continue
+    out.push({
+      label: row.label,
+      path: row.path,
+      status: row.status,
+      disabled: row.disabled,
+      badge: row.badge,
+      trail: row.isLeaf ? `${row.groupLabel} / ${row.modLabel} / ${row.label}` : `${row.groupLabel} / ${row.label}`
+    })
+    if (out.length >= 20) break  // 与原 slice(0, 20) 结果一致（同一遍历顺序），提前终止避免扫完全表
   }
-  return out.slice(0, 20)
+  if (_navSearchCache.size > 64) _navSearchCache.clear()
+  _navSearchCache.set(q, out)
+  return out
 }
 
 /** 统计：各一级下 implemented / planned 数量（供校验报告与开发进度看板用） */

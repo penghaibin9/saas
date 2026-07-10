@@ -20,6 +20,36 @@ function _save(key, val) {
 
 const state = { token: _load(TOKEN_KEY), refreshToken: _load(REFRESH_KEY), offlineUntil: 0, notified: false }
 
+/** 开发态首次探测超时更短，避免后端未启动时每页白等 4s */
+const REQUEST_TIMEOUT_MS =
+  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV ? 2000 : 4000
+
+/** 后端不可达后的冷却窗口（ms）；冷却内读请求跳过 fetch，直接让 mock fallback 接管 */
+const OFFLINE_COOLDOWN_MS = 15000
+
+export function isBackendOffline() {
+  return Date.now() < state.offlineUntil
+}
+
+function clearOfflineState() {
+  state.offlineUntil = 0
+  state.notified = false
+}
+
+/** 冷却期内跳过真实 fetch，供 mock 层立即回退（不再重复等待超时） */
+function throwOfflineSkip(method) {
+  const err = new Error('后端离线冷却中')
+  err.offlineSkip = true
+  if (!canUseMockFallback() || isWriteMethod(method)) {
+    err.biz = true
+    err.code = isWriteMethod(method) ? 503002 : 503001
+    err.message = isWriteMethod(method)
+      ? '真实接口不可用，写操作禁止 mock 成功'
+      : '真实接口不可用，生产环境已禁用 mock fallback'
+  }
+  throw err
+}
+
 function _holdTokens(access, refresh) {
   state.token = access || ''
   state.refreshToken = refresh || ''
@@ -47,7 +77,7 @@ function strictFailure(label, e) {
 }
 
 function markOffline() {
-  state.offlineUntil = Date.now() + 15000
+  state.offlineUntil = Date.now() + OFFLINE_COOLDOWN_MS
   if (!state.notified) {
     state.notified = true
     try {
@@ -58,7 +88,11 @@ function markOffline() {
   }
 }
 
-async function rawRequest(path, { method = 'GET', params, body, auth = true } = {}) {
+async function rawRequest(path, { method = 'GET', params, body, auth = true, forceProbe = false } = {}) {
+  const methodUp = String(method || 'GET').toUpperCase()
+  if (!forceProbe && isBackendOffline() && canUseMockFallback() && !isWriteMethod(methodUp)) {
+    throwOfflineSkip(methodUp)
+  }
   const qs = params
     ? '?' +
       Object.entries(params)
@@ -69,7 +103,7 @@ async function rawRequest(path, { method = 'GET', params, body, auth = true } = 
   const headers = { 'Content-Type': 'application/json' }
   if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 4000)
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
     const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
       method,
@@ -88,9 +122,10 @@ async function rawRequest(path, { method = 'GET', params, body, auth = true } = 
       err.traceId = payload.traceId
       throw err
     }
-    state.notified = false
+    clearOfflineState()
     return payload.data
   } catch (e) {
+    if (e.offlineSkip) throw e
     if (!e.biz) {
       markOffline()
       if (!canUseMockFallback() || isWriteMethod(method)) {
@@ -132,6 +167,7 @@ async function tryRefresh() {
     const d = await rawRequest('/auth/refresh', {
       method: 'POST',
       auth: false,
+      forceProbe: true,
       body: { refreshToken: state.refreshToken }
     })
     _holdTokens(d.accessToken, d.refreshToken || '')
@@ -187,9 +223,11 @@ export function isPlatformSuperAdmin() {
 
 /** 账号密码登录（POST /api/v1/auth/login，真实校验）；成功后自动持有 token */
 export async function loginWithPassword(loginName, password) {
+  clearOfflineState()
   const data = await rawRequest('/auth/login', {
     method: 'POST',
     auth: false,
+    forceProbe: true,
     body: { loginName, password }
   })
   _holdTokens(data.accessToken, data.refreshToken || '')
@@ -322,6 +360,7 @@ export function withFallback(label, realFn, mockFn) {
     if (canUseMockFallback()) return mockFn()
     return Promise.reject(strictFailure(label, new Error('生产环境已禁用 mock fallback')))
   }
+  if (canUseMockFallback() && isBackendOffline()) return mockFn()
   return realFn().catch((e) => {
     if (e.biz || !canUseMockFallback()) throw strictFailure(label, e)
     // eslint-disable-next-line no-console
@@ -335,6 +374,7 @@ export async function realFirst(label, realFn, mockFn, { write = false } = {}) {
     if (!write && canUseMockFallback()) return mockFn()
     throw strictFailure(label, new Error(write ? '写操作禁止 mock 成功' : '生产环境已禁用 mock fallback'))
   }
+  if (!write && canUseMockFallback() && isBackendOffline()) return mockFn()
   try {
     return await realFn()
   } catch (e) {

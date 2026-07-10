@@ -114,7 +114,6 @@ export default {
   font-size: 12px;
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
-  backdrop-filter: blur(4px);
 }
 .mh__stats {
   display: flex;
@@ -195,7 +194,6 @@ export default {
   font-size: 14px;
   font-weight: var(--font-weight-bold);
   font-variant-numeric: var(--font-numeric);
-  backdrop-filter: blur(4px);
 }
 .mh__flow-node.is-active .mh__flow-count {
   background: var(--hero-dot-hot-bg);
