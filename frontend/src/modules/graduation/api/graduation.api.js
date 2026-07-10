@@ -3,7 +3,7 @@
  * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功；方法签名冻结不变。
  * 真实接口 /api/v1/graduation/*；后端不可达时自动回退 mock，页面不白屏；业务错误透出。
  */
-import { request, shouldTryReal } from '@/services/http/client'
+import { request, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import {
   tenantBrandConfig,
@@ -69,12 +69,28 @@ async function listStrict(path, params = {}) {
 }
 
 export const graduationApi = {
+  /**
+   * 上下文：角色/数据范围/权限动作按「真实登录用户」（JWT payload）派生，不再对所有人写死管理员视角。
+   * - TEACHER（指导教师）：可批阅开题/成果；批次/导入/答辩发布等管理动作置灰并说明原因；
+   * - ADMIN：保持管理员口径（批阅置灰，仅指导教师可批）。
+   * 品牌与细粒度 permissionCode 仍待后端上下文接口（历史欠账），前端不伪造具体人数等数据。
+   */
   getContext() {
+    const u = currentUserFromToken()
+    const isTeacher = u && u.userType === 'TEACHER'
+    const pa = JSON.parse(JSON.stringify(permissionActions))
+    if (isTeacher) {
+      pa.reviewProposal = { visible: true, allowed: true, reason: '' }
+      pa.reviewFinal = { visible: true, allowed: true, reason: '' }
+      ;['createBatch', 'importStudents', 'batchAssignAdvisor', 'batchArchive', 'voidProject', 'manageDefense', 'publishDefense', 'importTopics'].forEach((k) => {
+        if (pa[k]) pa[k] = { ...pa[k], allowed: false, reason: '需毕设管理员角色，教师身份仅查看' }
+      })
+    }
     return ok({
       tenantBrandConfig: { ...tenantBrandConfig },
-      currentRole: { ...currentRole },
-      dataScope: { ...dataScope },
-      permissionActions: JSON.parse(JSON.stringify(permissionActions)),
+      currentRole: { ...currentRole, roleName: isTeacher ? '指导教师' : currentRole.roleName },
+      dataScope: { ...dataScope, scopeName: isTeacher ? '本人指导学生' : '本校毕设数据（按后端数据范围）' },
+      permissionActions: pa,
       statusOptions: JSON.parse(JSON.stringify(statusOptions))
     })
   },

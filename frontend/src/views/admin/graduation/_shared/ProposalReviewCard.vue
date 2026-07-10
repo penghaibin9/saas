@@ -10,9 +10,9 @@
         </template>
         <AppDescriptionList :items="proposalMetaItems" :columns="compact ? 1 : 2" />
         <div class="prc-content">
-          <p><b>选题背景：</b>{{ detail.content.background }}</p>
-          <p><b>研究方案与进度：</b>{{ detail.content.plan }}</p>
-          <p style="margin-bottom: 0"><b>预期成果：</b>{{ detail.content.outcome }}</p>
+          <p><b>选题背景：</b>{{ detail.content.background || '—' }}</p>
+          <p><b>研究方案与进度：</b>{{ detail.content.plan || '—' }}</p>
+          <p style="margin-bottom: 0"><b>预期成果：</b>{{ detail.content.outcome || '—' }}</p>
         </div>
         <div v-if="detail.attachments.length" style="margin-top: var(--space-3)">
           <p class="mp-note" style="margin-bottom: var(--space-2)">附件材料</p>
@@ -68,7 +68,7 @@
               <li v-for="(v, i) in detail.versions" :key="i" class="mp-timeline__item" :class="'is-' + (v.tone === 'processing' ? 'warning' : v.tone)">
                 <div class="mp-timeline__title">{{ v.title }}</div>
                 <div v-if="v.desc" class="mp-timeline__desc">{{ v.desc }}</div>
-                <div class="mp-timeline__time">{{ v.time }}</div>
+                <div class="mp-timeline__time">{{ fmtTime(v.time) }}</div>
               </li>
             </ul>
           </div>
@@ -111,18 +111,19 @@ export default {
   computed: {
     proposalMetaItems() {
       if (!this.detail) return []
+      const cls = this.detail.className ? ' · ' + this.detail.className : ''
       return [
-        { label: '学生', value: `${this.detail.studentName} · ${this.detail.className}` },
-        { label: '课题', value: this.detail.topicTitle },
-        { label: '指导教师', value: this.detail.advisorName },
-        { label: '提交时间', value: this.detail.submitAt }
+        { label: '学生', value: `${this.detail.studentName}${cls}` },
+        { label: '课题', value: this.detail.topicTitle || '—' },
+        { label: '指导教师', value: this.detail.advisorName || '—' },
+        { label: '提交时间', value: this.fmtTime(this.detail.submitAt) || '—' }
       ]
     },
     attachmentFiles() {
       return (this.detail?.attachments || []).map((name, i) => ({ id: i, name }))
     },
     trailRecords() {
-      return (this.detail?.trail || []).map((t, i) => ({ id: i, action: t.action, actor: t.who, at: t.time, target: t.affected }))
+      return (this.detail?.trail || []).map((t, i) => ({ id: i, action: t.action, actor: t.who, at: this.fmtTime(t.time), target: t.affected }))
     },
     canReview() {
       const pa = this.ctx.permissionActions.reviewProposal
@@ -137,6 +138,10 @@ export default {
     proposalId: { immediate: true, handler() { this.load() } }
   },
   methods: {
+    /** ISO 时间转老师可读格式（2026-07-06T18:57:14 → 2026-07-06 18:57） */
+    fmtTime(s) {
+      return (s || '').toString().replace('T', ' ').slice(0, 16)
+    },
     async load() {
       this.loading = true
       this.error = ''
