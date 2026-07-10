@@ -80,3 +80,19 @@ def test_stats_overview_and_college_comparison(client, auth_headers, db_mode):
 
     comp = client.get(f"{GD_STATS}/college-comparison", headers=h).json()["data"]
     assert isinstance(comp, list)
+
+def test_risk_list_filter_by_student(client, auth_headers, db_mode):
+    """gdStudentId 过滤：只返回该生风险，不串其他学生。"""
+    h = auth_headers
+    sid_a = _gd_student(client, h, "RKF01", "过滤生甲")
+    sid_b = _gd_student(client, h, "RKF02", "过滤生乙")
+    client.post(f"{GD_RISK}/scan", headers=h)
+
+    only_a = client.get(GD_RISK, headers=h, params={"gdStudentId": sid_a}).json()["data"]["items"]
+    assert len(only_a) >= 1
+    assert all(str(r["gdStudentId"]) == str(sid_a) for r in only_a)
+
+    only_b = client.get(GD_RISK, headers=h, params={"gdStudentId": sid_b}).json()["data"]["items"]
+    assert all(str(r["gdStudentId"]) == str(sid_b) for r in only_b)
+    a_ids = {r["id"] for r in only_a}
+    assert a_ids.isdisjoint({r["id"] for r in only_b})

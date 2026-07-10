@@ -149,6 +149,47 @@
                 <p class="mp-note" style="margin-top: var(--space-2)">评阅分配与成绩核算在「答辩成绩」工作区办理</p>
               </template>
             </div>
+
+            <!-- 风险（真实按学生过滤） -->
+            <div v-else-if="tab === 'risk'">
+              <ErrorState v-if="lazy.risk.error" :description="lazy.risk.error" @retry="loadRiskTab" />
+              <LoadingState v-else-if="lazy.risk.loading" />
+              <p v-else-if="!lazy.risk.list.length" class="mp-note">该生暂无风险记录</p>
+              <template v-else>
+                <ul class="mp-timeline">
+                  <li v-for="r in lazy.risk.list" :key="r.id" class="mp-timeline__item" :class="r.status === 'CLOSED' ? 'is-success' : 'is-danger'">
+                    <div class="mp-timeline__title">{{ r.riskName }} · {{ levelLabel(r.level) }} · {{ r.statusLabel }}</div>
+                    <div v-if="r.handleNote" class="mp-timeline__desc">{{ r.handleNote }}</div>
+                  </li>
+                </ul>
+                <p class="mp-note" style="margin-top: var(--space-2)">
+                  <button class="mp-link" @click="$router.push('/admin/graduation/risk-archive?panel=risk')">去风险处置工作区 →</button>
+                </p>
+              </template>
+            </div>
+
+            <!-- 归档（按学生真实核验记录） -->
+            <div v-else-if="tab === 'archive'">
+              <ErrorState v-if="lazy.archive.error" :description="lazy.archive.error" @retry="loadArchiveTab" />
+              <LoadingState v-else-if="lazy.archive.loading" />
+              <template v-else-if="lazy.archive.data">
+                <div class="mp-kv"><span class="mp-kv__k">归档状态</span><span class="mp-kv__v"><StatusTag :type="lazy.archive.data.statusTone" :label="lazy.archive.data.statusLabel" dot /></span></div>
+                <div class="mp-kv"><span class="mp-kv__k">材料完整性</span>
+                  <span class="mp-kv__v" :style="(lazy.archive.data.missingItems || []).length ? 'color: var(--danger, #dc2626)' : 'color: var(--success-600, #16a34a)'">
+                    {{ (lazy.archive.data.missingItems || []).length ? '缺失 ' + lazy.archive.data.missingItems.length + ' 项' : '必备材料齐全' }}
+                  </span>
+                </div>
+                <ul v-if="(lazy.archive.data.missingItems || []).length" class="mp-timeline" style="margin-top: var(--space-1)">
+                  <li v-for="m in lazy.archive.data.missingItems" :key="m" class="mp-timeline__item is-danger">
+                    <div class="mp-timeline__title">缺：{{ m }}</div>
+                  </li>
+                </ul>
+                <p class="mp-note" style="margin-top: var(--space-2)">
+                  <button class="mp-link" @click="$router.push('/admin/graduation/risk-archive?panel=archive')">去归档核验工作区 →</button>
+                </p>
+              </template>
+              <p v-else class="mp-note">暂无归档记录</p>
+            </div>
           </div>
         </section>
 
@@ -174,6 +215,7 @@ import { AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList } f
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
+import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -191,13 +233,17 @@ export default {
         { key: 'midterm', label: '中期' },
         { key: 'finals', label: '成果' },
         { key: 'plagiarisms', label: '查重' },
-        { key: 'review', label: '评阅与成绩' }
+        { key: 'review', label: '评阅与成绩' },
+        { key: 'risk', label: '风险' },
+        { key: 'archive', label: '归档' }
       ],
       lazy: {
         taskbook: { loading: false, error: '', data: null, loaded: false },
         guidance: { loading: false, error: '', list: [], loaded: false },
         midterm: { loading: false, error: '', data: null, loaded: false },
-        review: { loading: false, error: '', list: [], grade: null, loaded: false }
+        review: { loading: false, error: '', list: [], grade: null, loaded: false },
+        risk: { loading: false, error: '', list: [], loaded: false },
+        archive: { loading: false, error: '', data: null, loaded: false }
       },
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null }
     }
@@ -261,6 +307,8 @@ export default {
       if (k === 'guidance' && !this.lazy.guidance.loaded) this.loadGuidance()
       if (k === 'midterm' && !this.lazy.midterm.loaded) this.loadMidterm()
       if (k === 'review' && !this.lazy.review.loaded) this.loadReview()
+      if (k === 'risk' && !this.lazy.risk.loaded) this.loadRiskTab()
+      if (k === 'archive' && !this.lazy.archive.loaded) this.loadArchiveTab()
     },
     async loadTaskbook() {
       const L = this.lazy.taskbook
@@ -293,6 +341,23 @@ export default {
       if (r.code === 0) { L.list = r.data.list; L.loaded = true } else L.error = r.message || '加载失败'
       L.grade = g.code === 0 ? g.data : null
       L.loading = false
+    },
+    async loadRiskTab() {
+      const L = this.lazy.risk
+      L.loading = true; L.error = ''
+      const res = await graduationRiskArchiveApi.getRiskList({ gdStudentId: this.$route.params.id, pageSize: 50 })
+      if (res.code === 0) { L.list = res.data.list; L.loaded = true } else L.error = res.message || '加载失败'
+      L.loading = false
+    },
+    async loadArchiveTab() {
+      const L = this.lazy.archive
+      L.loading = true; L.error = ''
+      const res = await graduationRiskArchiveApi.getArchiveByStudent(this.$route.params.id)
+      if (res.code === 0) { L.data = res.data; L.loaded = true } else L.error = res.message || '加载失败'
+      L.loading = false
+    },
+    levelLabel(level) {
+      return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || level
     },
     async load() {
       this.loading = true; this.error = ''

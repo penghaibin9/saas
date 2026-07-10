@@ -145,10 +145,13 @@ def _row(r: GraduationRiskCase, stu=None) -> dict:
             "detectedAt": _iso(r.detected_at), "closedAt": _iso(r.closed_at)}
 
 
-def list_risks(page: int, page_size: int, risk_code=None, level=None, status=None) -> tuple[list[dict], int]:
+def list_risks(page: int, page_size: int, risk_code=None, level=None, status=None,
+               gd_student_id=None) -> tuple[list[dict], int]:
     with session() as db:
         q = select(GraduationRiskCase).where(GraduationRiskCase.tenant_id == _tid(),
                                              GraduationRiskCase.is_deleted.is_(False))
+        if gd_student_id:
+            q = q.where(GraduationRiskCase.gd_student_id == int(gd_student_id))
         if risk_code:
             q = q.where(GraduationRiskCase.risk_code == risk_code)
         if level:

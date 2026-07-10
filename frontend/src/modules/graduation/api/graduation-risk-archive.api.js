@@ -27,6 +27,8 @@ const STATS = '/graduation/gd-stats'
 export const graduationRiskArchiveApi = {
   scanRisks() { return call(() => request(`${RISK}/scan`, { method: 'POST' })) },
   getRiskList(params = {}) { return callList(RISK, params) },
+  /** 按学生取归档记录（不存在则后端返回待生成态） */
+  getArchiveByStudent(gdStudentId) { return call(() => request(ARCHIVE + '/' + gdStudentId)) },
   getRiskStats() { return call(() => request(`${RISK}/stats`)) },
   acceptRisk(id, assignee) { return call(() => request(`${RISK}/${id}/accept`, { method: 'POST', body: { assignee } })) },
   processRisk(id, note) { return call(() => request(`${RISK}/${id}/process`, { method: 'POST', body: { note } })) },
