@@ -43,7 +43,7 @@
       <div class="mp-stack">
         <section class="mp-card">
           <div class="mp-tabs" style="padding: 0 var(--space-4)">
-            <button v-for="t in tabs" :key="t.key" class="mp-tab" :class="{ 'is-active': tab === t.key }" @click="tab = t.key">
+            <button v-for="t in tabs" :key="t.key" class="mp-tab" :class="{ 'is-active': tab === t.key }" @click="switchTab(t.key)">
               {{ t.label }}
             </button>
           </div>
@@ -74,7 +74,7 @@
                 </tr>
               </tbody>
             </table>
-            <table v-else class="mp-audit">
+            <table v-else-if="tab === 'plagiarisms'" class="mp-audit">
               <thead><tr><th>检测对象</th><th>查重率</th><th>状态</th><th>时间</th></tr></thead>
               <tbody>
                 <tr v-if="!detail.plagiarisms.length"><td colspan="4" class="mp-note">暂无查重记录</td></tr>
@@ -86,6 +86,69 @@
                 </tr>
               </tbody>
             </table>
+
+            <!-- 任务书（真实 taskbook API，懒加载） -->
+            <div v-else-if="tab === 'taskbook'">
+              <ErrorState v-if="lazy.taskbook.error" :description="lazy.taskbook.error" @retry="loadTaskbook" />
+              <LoadingState v-else-if="lazy.taskbook.loading" />
+              <template v-else-if="lazy.taskbook.data && lazy.taskbook.data.exists">
+                <div class="mp-kv"><span class="mp-kv__k">状态</span><span class="mp-kv__v"><StatusTag :type="lazy.taskbook.data.statusTone" :label="lazy.taskbook.data.statusLabel" dot /></span></div>
+                <div class="mp-kv"><span class="mp-kv__k">版本</span><span class="mp-kv__v">v{{ lazy.taskbook.data.taskbookVersion }}</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">任务目标</span><span class="mp-kv__v">{{ lazy.taskbook.data.objective || '—' }}</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">任务内容</span><span class="mp-kv__v">{{ lazy.taskbook.data.content || '—' }}</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">截止时间</span><span class="mp-kv__v">{{ fmtTime(lazy.taskbook.data.deadline) || '未设置' }}</span></div>
+                <p class="mp-note" style="margin-top: var(--space-2)">任务书下达 / 确认 / 变更在「过程指导」工作区办理</p>
+              </template>
+              <p v-else class="mp-note">尚未下达任务书，可在「过程指导」为该生下达</p>
+            </div>
+
+            <!-- 指导记录 -->
+            <div v-else-if="tab === 'guidance'">
+              <ErrorState v-if="lazy.guidance.error" :description="lazy.guidance.error" @retry="loadGuidance" />
+              <LoadingState v-else-if="lazy.guidance.loading" />
+              <p v-else-if="!lazy.guidance.list.length" class="mp-note">暂无指导记录</p>
+              <ul v-else class="mp-timeline">
+                <li v-for="g in lazy.guidance.list" :key="g.id" class="mp-timeline__item is-success">
+                  <div class="mp-timeline__title">{{ fmtTime(g.guidanceDate) }} · {{ g.methodLabel }}</div>
+                  <div class="mp-timeline__desc">{{ g.content }}</div>
+                  <div v-if="g.issues" class="mp-timeline__desc" style="color: var(--danger, #dc2626)">问题：{{ g.issues }}</div>
+                </li>
+              </ul>
+            </div>
+
+            <!-- 中期检查 -->
+            <div v-else-if="tab === 'midterm'">
+              <ErrorState v-if="lazy.midterm.error" :description="lazy.midterm.error" @retry="loadMidterm" />
+              <LoadingState v-else-if="lazy.midterm.loading" />
+              <template v-else-if="lazy.midterm.data">
+                <div class="mp-kv"><span class="mp-kv__k">状态</span><span class="mp-kv__v"><StatusTag :type="lazy.midterm.data.statusTone" :label="lazy.midterm.data.statusLabel" dot /></span></div>
+                <div v-if="lazy.midterm.data.conclusionLabel" class="mp-kv"><span class="mp-kv__k">结论</span><span class="mp-kv__v">{{ lazy.midterm.data.conclusionLabel }}</span></div>
+                <div v-if="lazy.midterm.data.checkComment" class="mp-kv"><span class="mp-kv__k">检查意见</span><span class="mp-kv__v">{{ lazy.midterm.data.checkComment }}</span></div>
+                <div v-if="lazy.midterm.data.rectifyContent" class="mp-kv"><span class="mp-kv__k">整改内容</span><span class="mp-kv__v">{{ lazy.midterm.data.rectifyContent }}</span></div>
+                <p class="mp-note" style="margin-top: var(--space-2)">中期检查与整改在「过程指导」工作区办理</p>
+              </template>
+              <p v-else class="mp-note">暂无中期检查记录</p>
+            </div>
+
+            <!-- 评阅与成绩 -->
+            <div v-else-if="tab === 'review'">
+              <ErrorState v-if="lazy.review.error" :description="lazy.review.error" @retry="loadReview" />
+              <LoadingState v-else-if="lazy.review.loading" />
+              <template v-else>
+                <p v-if="!lazy.review.list.length" class="mp-note">暂无评阅任务</p>
+                <ul v-else class="mp-timeline">
+                  <li v-for="r in lazy.review.list" :key="r.id" class="mp-timeline__item is-warning">
+                    <div class="mp-timeline__title">{{ r.reviewerName }} · {{ r.statusLabel }}</div>
+                    <div v-if="r.opinion" class="mp-timeline__desc">评分 {{ r.score }} · {{ r.opinion }}</div>
+                  </li>
+                </ul>
+                <template v-if="lazy.review.grade">
+                  <div class="mp-kv" style="margin-top: var(--space-2)"><span class="mp-kv__k">成绩状态</span><span class="mp-kv__v"><StatusTag :type="lazy.review.grade.statusTone" :label="lazy.review.grade.statusLabel" dot /></span></div>
+                  <div class="mp-kv"><span class="mp-kv__k">综合分</span><span class="mp-kv__v">{{ lazy.review.grade.totalScore ?? '—' }}{{ lazy.review.grade.gradeLevel ? '（' + lazy.review.grade.gradeLevel + '）' : '' }}</span></div>
+                </template>
+                <p class="mp-note" style="margin-top: var(--space-2)">评阅分配与成绩核算在「答辩成绩」工作区办理</p>
+              </template>
+            </div>
           </div>
         </section>
 
@@ -109,6 +172,8 @@ import { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState } f
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
+import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -120,10 +185,20 @@ export default {
       loading: true, error: '', submitting: false, detail: null,
       tab: 'proposals',
       tabs: [
-        { key: 'proposals', label: '开题记录' },
-        { key: 'finals', label: '成果提交' },
-        { key: 'plagiarisms', label: '查重记录' }
+        { key: 'proposals', label: '开题' },
+        { key: 'taskbook', label: '任务书' },
+        { key: 'guidance', label: '指导记录' },
+        { key: 'midterm', label: '中期' },
+        { key: 'finals', label: '成果' },
+        { key: 'plagiarisms', label: '查重' },
+        { key: 'review', label: '评阅与成绩' }
       ],
+      lazy: {
+        taskbook: { loading: false, error: '', data: null, loaded: false },
+        guidance: { loading: false, error: '', list: [], loaded: false },
+        midterm: { loading: false, error: '', data: null, loaded: false },
+        review: { loading: false, error: '', list: [], grade: null, loaded: false }
+      },
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null }
     }
   },
@@ -168,8 +243,57 @@ export default {
       return actions
     }
   },
-  created() { this.load() },
+  created() {
+    const qTab = (this.$route.query.tab || '').toString()
+    if (this.tabs.some((x) => x.key === qTab)) this.tab = qTab
+    this.load()
+    this.ensureTabData(this.tab)
+  },
   methods: {
+    fmtTime(s) { return (s || '').toString().replace('T', ' ').slice(0, 16) },
+    switchTab(k) {
+      this.tab = k
+      this.$router.replace({ query: { ...this.$route.query, tab: k } })
+      this.ensureTabData(k)
+    },
+    ensureTabData(k) {
+      if (k === 'taskbook' && !this.lazy.taskbook.loaded) this.loadTaskbook()
+      if (k === 'guidance' && !this.lazy.guidance.loaded) this.loadGuidance()
+      if (k === 'midterm' && !this.lazy.midterm.loaded) this.loadMidterm()
+      if (k === 'review' && !this.lazy.review.loaded) this.loadReview()
+    },
+    async loadTaskbook() {
+      const L = this.lazy.taskbook
+      L.loading = true; L.error = ''
+      const res = await graduationTaskbookApi.getTaskbook(this.$route.params.id)
+      if (res.code === 0) { L.data = res.data; L.loaded = true } else L.error = res.message || '加载失败'
+      L.loading = false
+    },
+    async loadGuidance() {
+      const L = this.lazy.guidance
+      L.loading = true; L.error = ''
+      const res = await graduationTaskbookApi.getGuidanceList({ gdStudentId: this.$route.params.id, pageSize: 50 })
+      if (res.code === 0) { L.list = res.data.list; L.loaded = true } else L.error = res.message || '加载失败'
+      L.loading = false
+    },
+    async loadMidterm() {
+      const L = this.lazy.midterm
+      L.loading = true; L.error = ''
+      const res = await graduationTaskbookApi.getMidterm(this.$route.params.id)
+      if (res.code === 0) { L.data = res.data; L.loaded = true } else L.error = res.message || '加载失败'
+      L.loading = false
+    },
+    async loadReview() {
+      const L = this.lazy.review
+      L.loading = true; L.error = ''
+      const [r, g] = await Promise.all([
+        graduationDefenseGradeApi.getReviewList({ gdStudentId: this.$route.params.id, pageSize: 50 }),
+        graduationDefenseGradeApi.getGrade(this.$route.params.id)
+      ])
+      if (r.code === 0) { L.list = r.data.list; L.loaded = true } else L.error = r.message || '加载失败'
+      L.grade = g.code === 0 ? g.data : null
+      L.loading = false
+    },
     async load() {
       this.loading = true; this.error = ''
       const res = await gdStudentApi.getStudentDetail(this.$route.params.id)
