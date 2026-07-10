@@ -113,29 +113,6 @@
       </section>
     </div>
 
-    <AppDrawer v-model:visible="createVisible" title="新建选题轮次">
-      <form class="ie-form" @submit.prevent="submitCreate">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">轮次名称 <i>*</i></span>
-          <input v-model.trim="cform.roundName" class="ie-in" placeholder="如 2026届第一轮选题" />
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">毕设批次</span>
-          <select v-model="cform.batchId" class="ie-in">
-            <option value="">不关联批次</option>
-            <option v-for="b in batchOpts" :key="b.id" :value="b.id">{{ b.batchName }}</option>
-          </select>
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">轮次序号</span><input v-model.number="cform.roundNo" type="number" min="1" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">最多志愿数</span><input v-model.number="cform.maxChoices" type="number" min="1" max="10" class="ie-in" /></label>
-        <AppDateTimePicker v-model="cform.startAt" class="ie-fld" label="开始时间" role="start" :end-value="cform.endAt" hint="选题开放时间" />
-        <AppDeadlinePicker v-model="cform.endAt" class="ie-fld" label="结束时间（截止）" :batch="selectedBatch" hint="选题截止，默认 23:59" />
-        <p v-if="cError" class="ie-err">{{ cError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="createVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">创建</button>
-        </div>
-      </form>
-    </AppDrawer>
-
     <AppConfirmDialog
       v-model:visible="confirm.visible"
       :title="confirm.title"
@@ -166,23 +143,16 @@
 <script>
 /** 选题轮次（/admin/graduation/topic-rounds）：轮次管理 + 志愿查看 + 贪心匹配 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
-import { AppDateTimePicker, AppDeadlinePicker, AppDateDisplay } from '@/components/common/date'
+import { AppDateDisplay } from '@/components/common/date'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { GD_ROUND_STATUS } from '@/modules/graduation/constants/graduation-topic-round.constants'
 import { toast } from '@/utils/toast'
-import { toDateTimeInputValue, withDeadlineTime, addDays, validateRange } from '@/utils/dateUtils'
 
 const EMPTY_FILTERS = () => ({ batchId: '', status: '', dateStart: '', dateEnd: '' })
-const EMPTY_CFORM = () => ({
-  roundName: '', batchId: '', roundNo: 1, maxChoices: 3,
-  startAt: toDateTimeInputValue(new Date()),
-  endAt: withDeadlineTime(addDays(new Date(), 14))
-})
 
 const PANEL_PRESETS = {
   rounds: () => EMPTY_FILTERS(),
@@ -195,7 +165,7 @@ export default {
   name: 'TopicRoundListView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppDateTimePicker, AppDeadlinePicker, AppDateDisplay, AppExportButton
+    AppConfirmDialog, AppExcelImportDrawer, AppDateDisplay, AppExportButton
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -203,7 +173,6 @@ export default {
       loading: true, error: '', submitting: false, activePanel: 'rounds',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       batchOpts: [], selectedRoundId: '', selectedRoundName: '',
-      createVisible: false, cform: EMPTY_CFORM(), cError: '',
       importVisible: false, conflicts: [], stats: null,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', action: null, row: null }
     }
@@ -227,9 +196,6 @@ export default {
       ]
       if (this.activePanel === 'choices') cols.push({ key: 'actions', title: '操作', width: '140px' })
       return cols
-    },
-    selectedBatch() {
-      return this.batchOpts.find((b) => b.id === this.cform.batchId) || null
     },
     filterFields() {
       const batchOpts = this.batchOpts.map((b) => ({ value: b.id, label: b.batchName }))
@@ -351,7 +317,7 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage({ page }) { this.page = page; this.load() },
     onToolbar(key) {
-      if (key === 'create') { this.cform = EMPTY_CFORM(); this.cError = ''; this.createVisible = true }
+      if (key === 'create') this.$router.push('/admin/graduation/topic-rounds/create')
       if (key === 'import') {
         if (!this.selectedRoundId) { toast.error('请先选择轮次'); return }
         this.importVisible = true
@@ -395,21 +361,6 @@ export default {
     },
     askRejectChoice(row) {
       this.confirm = { visible: true, title: '驳回志愿', message: `驳回「${row.studentName}」对「${row.topicTitle}」的志愿？`, type: 'danger', confirmText: '驳回', requireReason: true, reasonLabel: '驳回理由', action: 'rejectChoice', row }
-    },
-    async submitCreate() {
-      if (!this.cform.roundName || this.cform.roundName.length < 2) { this.cError = '名称至少2字'; return }
-      const range = validateRange(this.cform.startAt, this.cform.endAt)
-      if (!range.ok) { this.cError = range.message; return }
-      this.submitting = true
-      const body = { ...this.cform, batchId: this.cform.batchId || null,
-        startAt: this.cform.startAt ? new Date(this.cform.startAt).toISOString() : null,
-        endAt: this.cform.endAt ? new Date(this.cform.endAt).toISOString() : null }
-      const r = await gdTopicRoundApi.createRound(body)
-      this.submitting = false
-      if (r.code !== 0) { this.cError = r.message; return }
-      toast.success('轮次已创建')
-      this.createVisible = false
-      this.load()
     },
     async onConfirm({ reason } = {}) {
       const row = this.confirm.row

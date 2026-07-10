@@ -251,133 +251,82 @@ export const NAV_PLAN = [
   ]),
 
   /* ═══════════ 一级④：毕业设计中心（key 对齐 adminMenu 的 graduation，供 rail 高亮联动）═══════════
-   * 2026-07-09 按三家成熟商业系统对标重新分组（详见 docs/施工记录/毕业设计中心-导航重构对标记录.md）：
-   * 同方知网(CNKI)大学生毕业论文管理系统 / 强智科技教学微服务平台 / 维普毕业论文管理系统，
-   * 三家均按"选题→过程指导→成果检查→答辩成绩→归档"阶段分组二级菜单，不按数据实体逐个拆二级模块。
-   * 本轮把 2026-07-08 夜间新增模块里"同一页面被拆成多个二级菜单"的部分合并回页面实际的 tab 结构；
-   * 已验收的题目库/选题管理/毕设批次/毕设学生保持不变，不在本轮合并范围内。 */
+   * 2026-07-09 按三家成熟商业系统对标重新分组（详见 docs/施工记录/毕业设计中心-导航重构对标记录.md）。
+   * 2026-07-10 二级模块任务化与三级去重收口：
+   *   1) 三级只保留「真实独立的工作队列 / 工作区 / 配置页」；同一页面的状态筛选、动作按钮、
+   *      统计跳转不再挂菜单——能力全部保留在页面内（视图页签 / 筛选 / 工具栏按钮），
+   *      旧 ?panel= 深链继续可用（各页面 $route.query.panel 均已处理，路由未删）；
+   *   2) 叶子标签只用老师能理解的业务名称，不再出现施工口径与内部编码；
+   *   3) 每个二级模块 path 均为真实默认落点（列表 / 工作区），不依赖 ID、无空壳。 */
   grp('graduation', '毕业设计中心', 'graduationDesign', [
-    mod('gd-dashboard', '毕设看板', '/admin/graduation', [
-      I('毕设总览（管理看板，含阶段进度条/待办/风险提示，已实现）', '/admin/graduation'),
-      I('跨模块统计报表（导师/指导/中期/评阅/成绩/归档等 9 域统计中心）', '/admin/graduation/stats-report')
+    mod('gd-dashboard', '毕设工作台', '/admin/graduation', [
+      I('毕设总览', '/admin/graduation'),
+      I('毕设统计报表', '/admin/graduation/stats-report')
     ]),
-    // 毕设批次为单页多视图：各三级带 ?panel= 指向同一页的不同视图/动作，页面按 panel 响应
-    // （新建→开抽屉、阶段/规则→详情默认落到对应 tab、进行中/已归档→按状态筛选、导出→下载台账）。
-    // 每个三级是不同 ref，点击都能导航、都有反应，避免多叶子同 path「点了没反应」。（对齐实习批次写法）
+    // 毕设批次：新建/导出为页面按钮，进行中/已归档为状态筛选，不再挂菜单（?panel=create/export/running/archived 深链仍可用）
     mod('gd-batches', '毕设批次', '/admin/graduation/batches?panel=list', [
-      I('批次列表（新建/编辑/启停/作废）', '/admin/graduation/batches?panel=list'),
-      I('新建批次', '/admin/graduation/batches?panel=create'),
+      I('批次列表', '/admin/graduation/batches?panel=list'),
       I('阶段时间轴配置', '/admin/graduation/batches?panel=stages'),
-      I('规则配置（查重/答辩/成绩权重）', '/admin/graduation/batches?panel=rules'),
-      I('进行中批次', '/admin/graduation/batches?panel=running'),
-      I('已归档批次', '/admin/graduation/batches?panel=archived'),
-      I('毕设批次台账导出', '/admin/graduation/batches?panel=export'),
-      I('材料模板（模板中心·材料类）', '/admin/graduation/templates?type=MATERIAL')
+      I('规则配置', '/admin/graduation/batches?panel=rules'),
+      I('材料模板', '/admin/graduation/templates?type=MATERIAL')
     ]),
+    // 毕设学生：风险/导师/分组/材料/答辩组/毕业资格/归档等视图改为页内视图页签（?panel= 深链仍可用）；
+    // 学生风险并入「预警 · 归档 · 统计」、学生导师并入「导师管理与分配」，不再重复挂菜单。
     mod('gd-students', '毕设学生', '/admin/graduation/students', [
-      I('学生名单（建档/导入导出）', '/admin/graduation/students?panel=roster'),
-      I('学生进度（节点筛选）', '/admin/graduation/students?panel=progress'),
-      I('学生风险', '/admin/graduation/students?panel=risk'),
-      I('学生导师（已选题）', '/admin/graduation/students?panel=mentor'),
-      I('未选题学生（分配选题）', '/admin/graduation/students?panel=topic'),
-      I('学生资格', '/admin/graduation/students?panel=eligibility'),
-      I('学生分组', '/admin/graduation/students?panel=grouping'),
-      I('学生材料', '/admin/graduation/students?panel=materials'),
-      I('学生答辩组', '/admin/graduation/students?panel=defense'),
-      I('学生毕业资格联动', '/admin/graduation/students?panel=grad-qual'),
-      I('学生归档（roster 归档状态字段，区别于下方"预警与归档"的材料清单核验）', '/admin/graduation/students?panel=archive')
+      I('学生名单', '/admin/graduation/students?panel=roster'),
+      I('学生进度', '/admin/graduation/students?panel=progress'),
+      I('未选题学生', '/admin/graduation/students?panel=topic'),
+      I('毕设资格认定', '/admin/graduation/students?panel=eligibility')
     ]),
+    // 题目库：来源（教师/企业/学生自拟）与维护视图（分类/容量/要求/附件/历史/归档）改为页内视图页签。
     mod('gd-topic-lib', '题目库', '/admin/graduation/topic-lib', [
       I('题目列表', '/admin/graduation/topic-lib?panel=list'),
-      I('教师申报题目', '/admin/graduation/topic-lib?panel=teacher-apply'),
-      I('企业题目', '/admin/graduation/topic-lib?panel=enterprise'),
-      I('学生自拟题目', '/admin/graduation/topic-lib?panel=student-proposed'),
-      I('待审核题目', '/admin/graduation/topic-lib?panel=pending'),
-      I('题目分类', '/admin/graduation/topic-lib?panel=category'),
-      I('题目容量', '/admin/graduation/topic-lib?panel=capacity'),
-      I('题目要求', '/admin/graduation/topic-lib?panel=requirements'),
-      I('题目附件', '/admin/graduation/topic-lib?panel=attachments'),
-      I('题目历史', '/admin/graduation/topic-lib?panel=history'),
-      I('题目归档', '/admin/graduation/topic-lib?panel=archive')
+      I('待审核题目', '/admin/graduation/topic-lib?panel=pending')
     ]),
+    // 选题管理：教师确认/退选重选＝「学生志愿与确认」同一工作区的动作；选题归档＝轮次状态；统计并入统计报表。
     mod('gd-topics', '选题管理', '/admin/graduation/topics', [
+      I('学生选题结果', '/admin/graduation/topics'),
       I('选题轮次', '/admin/graduation/topic-rounds?panel=rounds'),
-      I('学生志愿', '/admin/graduation/topic-rounds?panel=choices'),
+      I('学生志愿与确认', '/admin/graduation/topic-rounds?panel=choices'),
       I('匹配结果', '/admin/graduation/topic-rounds?panel=match'),
-      I('学生选题（选题管理）', '/admin/graduation/topics'),
-      I('教师确认（志愿一对一确认/驳回）', '/admin/graduation/topic-rounds?panel=choices'),
-      I('题目调整（选题变更申请审核）', '/admin/graduation/topic-changes'),
-      // 已删除的旧占位项及原因：选题开放＝选题轮次页内"开放轮次"按钮（已实现，非独立页面）；
-      // 题目审核＝题目库"待审核题目"面板重复；选题结果＝本组"匹配结果"重复。均非真实缺口。
-      I('退选重选（学生撤回志愿后重填，管理端可代退）', '/admin/graduation/topic-rounds?panel=choices'),
-      I('容量冲突人工复核（过热题目+竞争学生确认/驳回）', '/admin/graduation/topic-rounds?panel=conflicts'),
-      I('选题统计报表（志愿分布/参与/过热题目）', '/admin/graduation/topic-rounds?panel=conflicts'),
-      I('选题归档（已关闭/已匹配轮次归档）', '/admin/graduation/topic-rounds?panel=rounds')
+      I('容量冲突复核', '/admin/graduation/topic-rounds?panel=conflicts'),
+      I('题目调整申请', '/admin/graduation/topic-changes')
     ]),
-    // 导师管理 + 导师分配：原为 2 个二级模块，均指向同一页 GraduationMentorListView.vue 的不同 panel，
-    // 已合并为 1 个二级模块 + 2 个三级页签（对齐 CNKI/强智"导师"作为选题任务书阶段的一个子域，不单列多个二级）。
+    // 导师管理与分配：容量/评价/批量分配/归档均为名单与分配页签内的列与动作，不再重复挂菜单。
     mod('gd-mentors', '导师管理与分配', '/admin/graduation/mentors?panel=list', [
-      I('导师名单（申报/审核/编辑/导入导出）', '/admin/graduation/mentors?panel=list'),
-      I('导师容量与工作量', '/admin/graduation/mentors?panel=list'),
-      I('未分配导师学生（发起分配）', '/admin/graduation/mentors?panel=assign'),
-      I('分配调整记录（调导师/取消分配）', '/admin/graduation/mentors?panel=assign'),
-      I('导师评价（评分0-100+等级+意见，含历史）', '/admin/graduation/mentors?panel=list'),
-      I('批量分配（一键把未分配学生分给已认证导师）', '/admin/graduation/mentors?panel=assign'),
-      I('分配冲突自动检测（超容量/进阶段无导师/导师非认证）', '/admin/graduation/mentors?panel=list'),
-      I('导师归档批量（批量归档已停用/驳回导师）', '/admin/graduation/mentors?panel=list')
+      I('导师名单', '/admin/graduation/mentors?panel=list'),
+      I('学生分配', '/admin/graduation/mentors?panel=assign'),
+      I('分配冲突检测', '/admin/graduation/mentors/conflicts')
     ]),
-    // 任务书 + 指导过程 + 中期检查：原为 3 个二级模块，均指向同一页 GraduationProcessView.vue 的不同 panel，
-    // 已合并为 1 个二级模块 + 3 个三级页签（对齐三家系统"过程指导"统一分组，含指导记录+中期检查+整改跟踪）。
     mod('gd-process', '过程指导', '/admin/graduation/process?panel=taskbook', [
-      I('任务书下达/确认/变更', '/admin/graduation/process?panel=taskbook'),
-      I('指导记录（时间线/新增/撤销）', '/admin/graduation/process?panel=guidance'),
-      I('中期检查（三档结论/整改跟踪）', '/admin/graduation/process?panel=midterm'),
-      I('任务书模板（模板中心·任务书类）', '/admin/graduation/templates?type=TASKBOOK'),
-      I('指导频次统计报表（统计中心）', '/admin/graduation/stats-report'),
-      I('中期统计报表（统计中心）', '/admin/graduation/stats-report'),
-      I('过程归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive')
+      I('任务书', '/admin/graduation/process?panel=taskbook'),
+      I('指导记录', '/admin/graduation/process?panel=guidance'),
+      I('中期检查', '/admin/graduation/process?panel=midterm'),
+      I('任务书模板', '/admin/graduation/templates?type=TASKBOOK')
     ]),
-    mod('gd-proposal', '开题材料', '/admin/graduation/proposals', [
-      I('开题报告列表与批阅（提交/导师审核通过或驳回，点击进入详情页操作，已实现）', '/admin/graduation/proposals'),
-      I('开题模板（模板中心·开题类）', '/admin/graduation/templates?type=PROPOSAL'),
-      I('开题附件（详情页附件清单）', '/admin/graduation/proposals'),
-      I('开题答辩（现场答辩·详情页录入 PASS/FAIL）', '/admin/graduation/proposals'),
-      I('开题整改跟踪（已驳回页签→学生重交）', '/admin/graduation/proposals'),
-      I('开题统计（统计中心）', '/admin/graduation/stats-report'),
-      I('开题归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive')
+    // 开题审核：附件/开题答辩/整改跟踪均在批阅详情页内完成；统计并入统计报表。
+    mod('gd-proposal', '开题审核', '/admin/graduation/proposals', [
+      I('开题报告批阅', '/admin/graduation/proposals'),
+      I('开题模板', '/admin/graduation/templates?type=PROPOSAL')
     ]),
-    // 成果提交 + 查重记录 + 教师评阅：对齐三家系统"成果检查"统一分组（提交/查重/评阅同阶段）。
-    // 查重与评阅共用 GraduationDefenseGradeView.vue 的 panel；成果提交沿用既有独立页面。
     mod('gd-final-review', '成果检查', '/admin/graduation/finals', [
-      I('论文提交（现有·成果提交）', '/admin/graduation/finals'),
-      I('查重记录（发起/回填/复查）', '/admin/graduation/defense-grade?panel=plagiarism'),
-      I('教师评阅（分配/提交/退回，SoD 校验）', '/admin/graduation/defense-grade?panel=review'),
-      I('版本记录（成果初稿/定稿版本）', '/admin/graduation/finals'),
-      I('互查整改（学生互评+被评整改）', '/admin/graduation/more?panel=peer'),
-      I('查重报告归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive'),
-      I('评阅统计报表（统计中心）', '/admin/graduation/stats-report'),
-      I('成果归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive')
+      I('成果提交与批阅', '/admin/graduation/finals'),
+      I('查重记录', '/admin/graduation/defense-grade?panel=plagiarism'),
+      I('教师评阅', '/admin/graduation/defense-grade?panel=review'),
+      I('成果互查整改', '/admin/graduation/more?panel=peer')
     ]),
-    // 答辩安排 + 答辩评分 + 成绩评定：对齐三家系统"答辩成绩"统一分组。
-    // 答辩评分与成绩评定共用 GraduationDefenseGradeView.vue 的 panel；答辩安排沿用既有独立页面。
+    // 答辩成绩：答辩分组/答辩通知＝答辩安排页内动作；归档统一走「预警 · 归档 · 统计」。
     mod('gd-defense', '答辩成绩', '/admin/graduation/defense', [
-      I('答辩批次（现有·答辩安排）', '/admin/graduation/defense'),
-      I('答辩评分（评委录入/缺席/确认/二次答辩）', '/admin/graduation/defense-grade?panel=defense'),
-      I('成绩评定（核算/复核/发布/撤回）', '/admin/graduation/defense-grade?panel=grade'),
-      I('答辩分组（现有·答辩安排分组/学生分配）', '/admin/graduation/defense'),
-      I('答辩专家（评委库+回避）', '/admin/graduation/more?panel=experts'),
-      I('答辩通知（对已发布答辩组学生通知，留痕）', '/admin/graduation/defense'),
-      I('成绩更正申诉（学生申诉→复核）', '/admin/graduation/more?panel=appeals'),
-      I('答辩与成绩归档（并入中央·预警归档统计）', '/admin/graduation/risk-archive?panel=archive')
+      I('答辩安排', '/admin/graduation/defense'),
+      I('答辩评分', '/admin/graduation/defense-grade?panel=defense'),
+      I('成绩评定', '/admin/graduation/defense-grade?panel=grade'),
+      I('答辩专家库', '/admin/graduation/more?panel=experts'),
+      I('成绩更正申诉', '/admin/graduation/more?panel=appeals')
     ]),
-    // 问题预警 + 毕设归档 + 毕设统计：对齐三家系统"归档与统计"收尾阶段，三者共用 GraduationRiskArchiveView.vue。
     mod('gd-risk-archive', '预警 · 归档 · 统计', '/admin/graduation/risk-archive?panel=risk', [
-      I('问题预警（GD-R01/R04/R06/R07/R08/R09/R13 扫描+受理+处理+关闭）', '/admin/graduation/risk-archive?panel=risk'),
-      I('学生归档包（自动核验清单/提交/核验/驳回/导出台账）', '/admin/graduation/risk-archive?panel=archive'),
-      I('毕设总览统计（跨模块聚合）与学院/专业对比', '/admin/graduation/risk-archive?panel=stats'),
-      I('剩余风险编码补齐（GD-R02/R03/R05/R10/R11 已接扫描）', '/admin/graduation/risk-archive?panel=risk'),
-      I('批量归档一键操作（批量生成提交 / 一键核验备案）', '/admin/graduation/risk-archive?panel=archive'),
-      I('开题/中期/查重/答辩细分报表（统计中心）', '/admin/graduation/stats-report')
+      I('问题预警', '/admin/graduation/risk-archive?panel=risk'),
+      I('毕设材料归档', '/admin/graduation/risk-archive?panel=archive'),
+      I('毕设统计', '/admin/graduation/risk-archive?panel=stats')
     ])
   ]),
 

@@ -58,42 +58,6 @@
       <p class="mp-note">展示已审核入池课题及关联学生；停用不影响已选学生；分配请跳转「毕设学生 · 未选题」。</p>
     </div>
 
-    <AppDrawer v-model:visible="editVisible" :title="editing ? '编辑课题' : '编辑课题'">
-      <form class="ie-form" @submit.prevent="submitEdit">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">题目名称 <i>*</i></span>
-          <input v-model.trim="form.title" class="ie-in" />
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">指导教师</span><input v-model.trim="form.advisorName" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">容量</span>
-          <input v-model.number="form.capacity" type="number" min="1" max="99" class="ie-in" />
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">题目要求</span>
-          <textarea v-model.trim="form.requirements" class="ie-in" rows="3" />
-        </label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="editVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <AppDrawer v-model:visible="detailVisible" :title="detail ? detail.title : '课题详情'">
-      <template v-if="detail">
-        <div class="gb-kv"><span>指导教师</span><span>{{ detail.advisorName || '—' }}</span></div>
-        <div class="gb-kv"><span>容量</span><span>{{ detail.selected }}/{{ detail.capacity }}</span></div>
-        <div class="gb-sec">
-          <p class="ie-hint">已选学生</p>
-          <EmptyState v-if="!assigned.length" title="暂无" />
-          <ul v-else class="gb-trail">
-            <li v-for="s in assigned" :key="s.id" class="gb-trail__item">
-              <span>{{ s.name }}（{{ s.studentNo }}）</span>
-            </li>
-          </ul>
-        </div>
-      </template>
-    </AppDrawer>
-
     <AppExcelImportDrawer
       v-model:visible="importVisible"
       title="导入题目库"
@@ -127,7 +91,6 @@ import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
   StatusTag, LoadingState, ErrorState, EmptyState
 } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
@@ -141,7 +104,7 @@ export default {
   name: 'TopicManageView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppExportButton
+    LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -149,8 +112,6 @@ export default {
       loading: true, error: '', submitting: false,
       rows: [], filters: EMPTY_FILTERS(),
       pagination: { page: 1, pageSize: 10, total: 0 },
-      editVisible: false, editing: null, form: { title: '', advisorName: '', capacity: 1, requirements: '' }, formError: '',
-      detailVisible: false, detail: null, assigned: [],
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null }
     }
@@ -221,28 +182,10 @@ export default {
       if (key === 'importTopics') this.importVisible = true
     },
     openEdit(row) {
-      this.editing = row
-      this.form = { title: row.title, advisorName: row.advisorName || '', capacity: row.capacity, requirements: row.requirements || '' }
-      this.formError = ''
-      this.editVisible = true
+      this.$router.push(`/admin/graduation/topics/${row.id}/edit`)
     },
-    async submitEdit() {
-      if (!this.form.title || this.form.title.length < 2) { this.formError = '题目至少2字'; return }
-      this.submitting = true
-      const r = await gdTopicApi.updateTopic(this.editing.id, this.form)
-      this.submitting = false
-      if (r.code !== 0) { this.formError = r.message; return }
-      toast.success('已保存')
-      this.editVisible = false
-      this.load()
-    },
-    async openDetail(row) {
-      const d = await gdTopicApi.getTopicDetail(row.id)
-      if (d.code !== 0) { toast.error(d.message); return }
-      this.detail = d.data
-      const a = await gdTopicApi.getAssignedStudents(row.id)
-      this.assigned = a.code === 0 ? (a.data || []) : []
-      this.detailVisible = true
+    openDetail(row) {
+      this.$router.push(`/admin/graduation/topics/${row.id}`)
     },
     askDisable(row) {
       this.confirm = { visible: true, title: '停用课题', message: `停用「${row.title}」后不可再分配新学生。`, type: 'warning', confirmText: '停用', requireReason: true, reasonLabel: '停用原因', action: 'disable', row }
@@ -279,8 +222,4 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.gb-kv { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
-.gb-sec { margin-top: var(--space-4); }
-.gb-trail { list-style: none; padding: 0; margin: 0; }
-.gb-trail__item { padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
 </style>

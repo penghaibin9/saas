@@ -55,29 +55,6 @@
       </DataTable>
     </div>
 
-    <!-- 分配互查抽屉 -->
-    <AppDrawer v-model:visible="peerDrawer" title="分配成果互查">
-      <form class="ie-form" @submit.prevent="submitPeer">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">被评学生（毕设学生ID）<i>*</i></span><input v-model.trim="peerForm.gdStudentId" class="ie-in" placeholder="被互查学生 t_gd_student.id" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">互查学生（毕设学生ID）<i>*</i></span><input v-model.trim="peerForm.reviewerGdStudentId" class="ie-in" placeholder="互查人 t_gd_student.id" /></label>
-        <p v-if="err" class="ie-err">{{ err }}</p>
-        <div class="ie-actions"><button type="button" class="mp-btn" @click="peerDrawer = false">取消</button><button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">分配</button></div>
-      </form>
-    </AppDrawer>
-
-    <!-- 新增专家抽屉 -->
-    <AppDrawer v-model:visible="expertDrawer" title="新增答辩专家">
-      <form class="ie-form" @submit.prevent="submitExpert">
-        <label class="ie-fld"><span class="ie-lbl">专家姓名 <i>*</i></span><input v-model.trim="expertForm.expertName" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">职称</span><input v-model.trim="expertForm.title" class="ie-in" placeholder="如 教授/副教授" /></label>
-        <label class="ie-fld"><span class="ie-lbl">所属学院</span><input v-model.trim="expertForm.collegeName" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">是否校外</span><select v-model="expertForm.isExternal" class="ie-in"><option :value="false">校内</option><option :value="true">校外</option></select></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">回避说明</span><input v-model.trim="expertForm.avoidNote" class="ie-in" placeholder="如 不评本院学生 / 回避亲属" /></label>
-        <p v-if="err" class="ie-err">{{ err }}</p>
-        <div class="ie-actions"><button type="button" class="mp-btn" @click="expertDrawer = false">取消</button><button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button></div>
-      </form>
-    </AppDrawer>
-
     <AppConfirmDialog v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message" :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason" reason-label="驳回理由" :submitting="submitting" @confirm="onConfirmAppeal" />
   </ModulePageShell>
 </template>
@@ -85,21 +62,18 @@
 <script>
 /** 互查整改 / 答辩专家库 / 成绩更正申诉（/admin/graduation/more?panel=peer|experts|appeals）。 */
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMoreView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, EmptyState, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      tab: 'peer', loading: true, submitting: false, rows: [], err: '',
+      tab: 'peer', loading: true, submitting: false, rows: [],
       appealStatus: '',
-      peerDrawer: false, peerForm: { gdStudentId: '', reviewerGdStudentId: '' },
-      expertDrawer: false, expertForm: { expertName: '', title: '', collegeName: '', isExternal: false, avoidNote: '' },
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确定', requireReason: false, action: '', row: null },
       titleMap: { peer: '成果互查整改', experts: '答辩专家库', appeals: '成绩更正申诉' },
       subtitleMap: { peer: '学生互评+被评整改闭环', experts: '评委库 + 回避规则（对齐维普专家评审回避）', appeals: '学生对已发布成绩申诉→复核（受理即撤回成绩重核）' },
@@ -120,8 +94,8 @@ export default {
   methods: {
     switchTab(t) { this.tab = t; this.$router.replace({ query: { panel: t } }); this.load() },
     onToolbar(k) {
-      if (k === 'assignPeer') { this.peerForm = { gdStudentId: '', reviewerGdStudentId: '' }; this.err = ''; this.peerDrawer = true }
-      if (k === 'addExpert') { this.expertForm = { expertName: '', title: '', collegeName: '', isExternal: false, avoidNote: '' }; this.err = ''; this.expertDrawer = true }
+      if (k === 'assignPeer') this.$router.push('/admin/graduation/more/peer-assign')
+      if (k === 'addExpert') this.$router.push('/admin/graduation/more/expert/create')
     },
     async load() {
       this.loading = true
@@ -131,22 +105,6 @@ export default {
       else res = await graduationMoreApi.getAppeals(this.appealStatus ? { status: this.appealStatus } : {})
       this.rows = res.code === 0 ? res.data.list : []
       this.loading = false
-    },
-    async submitPeer() {
-      this.err = ''
-      if (!this.peerForm.gdStudentId || !this.peerForm.reviewerGdStudentId) { this.err = '两个学生ID必填'; return }
-      this.submitting = true
-      const res = await graduationMoreApi.assignPeer(this.peerForm.gdStudentId, this.peerForm.reviewerGdStudentId)
-      this.submitting = false
-      if (res.code === 0) { toast.success('已分配互查'); this.peerDrawer = false; this.load() } else this.err = res.message
-    },
-    async submitExpert() {
-      this.err = ''
-      if (!this.expertForm.expertName) { this.err = '专家姓名必填'; return }
-      this.submitting = true
-      const res = await graduationMoreApi.createExpert(this.expertForm)
-      this.submitting = false
-      if (res.code === 0) { toast.success('已新增专家'); this.expertDrawer = false; this.load() } else this.err = res.message
     },
     async toggleExpert(row) {
       const res = await graduationMoreApi.setExpertStatus(row.id, row.status === 'ACTIVE' ? 'DISABLE' : 'ENABLE')

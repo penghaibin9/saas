@@ -39,31 +39,6 @@
       </DataTable>
     </div>
 
-    <AppDrawer v-model:visible="drawer.visible" :title="drawer.id ? '编辑' + typeLabel : '新建' + typeLabel">
-      <form class="ie-form" @submit.prevent="save">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">模板名称 <i>*</i></span>
-          <input v-model.trim="form.name" class="ie-in" :placeholder="'如 2026届' + typeLabel" />
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">版本号</span><input v-model.trim="form.version" class="ie-in" placeholder="v1" /></label>
-        <label class="ie-fld"><span class="ie-lbl">适用范围说明</span><input v-model.trim="form.applicableNote" class="ie-in" placeholder="如 软件学院/全校" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">模板正文</span>
-          <textarea v-model="form.content" class="ie-in" rows="6" :placeholder="'可用占位变量：' + varHint"></textarea>
-        </label>
-        <div class="ie-fld ie-fld--full" v-if="variables.length">
-          <span class="ie-lbl">可用占位变量</span>
-          <div class="tpl-vars">
-            <button type="button" v-for="v in variables" :key="v" class="tpl-var" @click="insertVar(v)">{{ '{' + v + '}' }}</button>
-          </div>
-        </div>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><input v-model.trim="form.remark" class="ie-in" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="drawer.visible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">{{ drawer.id ? '保存' : '创建' }}</button>
-        </div>
-      </form>
-    </AppDrawer>
-
     <AppConfirmDialog
       v-model:visible="confirm.visible"
       :title="confirm.title"
@@ -79,7 +54,6 @@
 <script>
 /** 毕设模板中心（/admin/graduation/templates?type=MATERIAL|TASKBOOK|PROPOSAL）。 */
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { graduationTemplateApi } from '@/modules/graduation/api/graduation-template.api'
 import { toast } from '@/utils/toast'
@@ -88,17 +62,13 @@ const TYPE_LABEL = { MATERIAL: '材料模板', TASKBOOK: '任务书模板', PROP
 
 export default {
   name: 'GraduationTemplateView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', rows: [], submitting: false,
       filters: { status: '' },
       pagination: { page: 1, pageSize: 10, total: 0 },
-      drawer: { visible: false, id: null },
-      form: { name: '', version: 'v1', applicableNote: '', content: '', remark: '' },
-      formError: '',
-      variables: [],
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确定', action: '', row: null },
       tabs: [
         { value: '', label: '全部' },
@@ -117,49 +87,23 @@ export default {
   },
   computed: {
     templateType() { return this.$route.query.type || 'MATERIAL' },
-    typeLabel() { return TYPE_LABEL[this.templateType] || '材料模板' },
-    varHint() { return this.variables.map((v) => '{' + v + '}').join(' ') }
+    typeLabel() { return TYPE_LABEL[this.templateType] || '材料模板' }
   },
   watch: {
-    '$route.query.type'() { this.pagination.page = 1; this.filters.status = ''; this.loadVariables(); this.load() }
+    '$route.query.type'() { this.pagination.page = 1; this.filters.status = ''; this.load() }
   },
   created() {
-    this.loadVariables()
     this.load()
   },
   methods: {
     statusTone(s) { return { ENABLED: 'success', DRAFT: 'warning', DISABLED: 'default', ARCHIVED: 'info' }[s] || 'default' },
-    async loadVariables() {
-      const res = await graduationTemplateApi.getVariables()
-      if (res.code === 0) this.variables = res.data[this.templateType] || []
-    },
     switchTab(v) { this.filters.status = v; this.pagination.page = 1; this.load() },
     onPageChange(p) { this.pagination.page = p; this.load() },
     openCreate() {
-      this.drawer = { visible: true, id: null }
-      this.form = { name: '', version: 'v1', applicableNote: '', content: '', remark: '' }
-      this.formError = ''
+      this.$router.push({ path: '/admin/graduation/templates/create', query: { type: this.templateType } })
     },
-    async openEdit(row) {
-      const res = await graduationTemplateApi.getTemplate(row.id)
-      if (res.code !== 0) { toast.error(res.message); return }
-      const d = res.data
-      this.drawer = { visible: true, id: d.id }
-      this.form = { name: d.name, version: d.version, applicableNote: d.applicableNote, content: d.content, remark: d.remark }
-      this.formError = ''
-    },
-    insertVar(v) { this.form.content = (this.form.content || '') + '{' + v + '}' },
-    async save() {
-      this.formError = ''
-      if (!this.form.name) { this.formError = '模板名称必填'; return }
-      this.submitting = true
-      const body = { templateType: this.templateType, ...this.form }
-      const res = this.drawer.id
-        ? await graduationTemplateApi.updateTemplate(this.drawer.id, body)
-        : await graduationTemplateApi.createTemplate(body)
-      this.submitting = false
-      if (res.code === 0) { toast.success(this.drawer.id ? '已保存' : '已创建'); this.drawer.visible = false; this.load() }
-      else this.formError = res.message || '保存失败'
+    openEdit(row) {
+      this.$router.push({ path: `/admin/graduation/templates/${row.id}/edit`, query: { type: this.templateType } })
     },
     doStatus(row, action) {
       const map = { ENABLE: { t: '启用模板', m: `启用「${row.name}」？`, tone: 'primary', c: '启用' },
@@ -198,6 +142,4 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.tpl-vars { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
-.tpl-var { font-size: var(--font-size-xs); color: var(--brand-primary); background: var(--primary-50); border: 1px solid var(--primary-100); padding: 3px 8px; border-radius: var(--radius-sm); cursor: pointer; }
 </style>

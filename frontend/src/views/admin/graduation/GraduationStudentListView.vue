@@ -13,6 +13,16 @@
     </template>
 
     <div class="mp-stack">
+      <!-- 页内视图页签：同一名单的不同工作视图（原三级菜单入口收口至此，?panel= 深链不变） -->
+      <div class="mp-tabs">
+        <button
+          v-for="p in panelTabs"
+          :key="p.key"
+          class="mp-tab"
+          :class="{ 'is-active': activePanel === p.key }"
+          @click="switchPanel(p.key)"
+        >{{ p.label }}</button>
+      </div>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -126,88 +136,6 @@
       </DataTable>
     </div>
 
-    <!-- 建档 -->
-    <AppDrawer v-model:visible="createVisible" title="毕设学生建档">
-      <form class="ie-form" @submit.prevent="submitCreate">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
-          <select v-model="cform.studentId" class="ie-in">
-            <option value="">请选择学生</option>
-            <option v-for="s in studentOpts" :key="s.id" :value="s.id">{{ s.name }}（{{ s.studentNo }}）</option>
-          </select>
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">毕设批次</span>
-          <select v-model="cform.batchId" class="ie-in">
-            <option value="">不关联批次</option>
-            <option v-for="b in batchOpts" :key="b.id" :value="b.id">{{ b.batchName }}（{{ b.batchNo }}）</option>
-          </select>
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">指导教师</span><input v-model.trim="cform.advisorName" class="ie-in" /></label>
-        <p v-if="cError" class="ie-err">{{ cError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="createVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">建档</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 分配选题 -->
-    <AppDrawer v-model:visible="assignVisible" :title="assignRow ? `分配选题 · ${assignRow.name}` : '分配选题'">
-      <div class="ie-form">
-        <p class="ie-hint">仅「已确认」且未满员的选题可选（来自选题库真实数据）。</p>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">选题 <i>*</i></span>
-          <select v-model="assignTopicId" class="ie-in">
-            <option value="">请选择选题</option>
-            <option v-for="t in topicOpts" :key="t.id" :value="t.id" :disabled="t.remaining <= 0">
-              {{ t.title }} · {{ t.advisorName }}（余 {{ t.remaining }}）
-            </option>
-          </select>
-        </label>
-        <p v-if="assignError" class="ie-err">{{ assignError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !assignTopicId" @click="submitAssign">确认分配</button>
-        </div>
-      </div>
-    </AppDrawer>
-
-    <!-- 设置分组 -->
-    <AppDrawer v-model:visible="groupVisible" :title="groupRow ? `过程分组 · ${groupRow.name}` : '批量设置分组'">
-      <div class="ie-form">
-        <p v-if="!groupRow" class="ie-hint">已选 {{ selectedIds.length }} 人，将统一写入过程分组名称。</p>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">分组名称 <i>*</i></span>
-          <input v-model.trim="groupName" class="ie-in" list="gd-group-suggest" placeholder="如：第1组 / A组答辩预备" />
-          <datalist id="gd-group-suggest">
-            <option v-for="g in groupOpts" :key="g" :value="g" />
-          </datalist>
-        </label>
-        <p v-if="groupError" class="ie-err">{{ groupError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="groupVisible = false">取消</button>
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !groupName" @click="submitGroup">确认</button>
-        </div>
-      </div>
-    </AppDrawer>
-
-    <!-- 分配答辩组 -->
-    <AppDrawer v-model:visible="defenseVisible" :title="defenseRow ? `答辩组 · ${defenseRow.name}` : '分配答辩组'">
-      <div class="ie-form">
-        <p class="ie-hint">答辩组来自「答辩安排」模块真实数据；分配后自动更新组内人数。</p>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">答辩组 <i>*</i></span>
-          <select v-model="defenseGroupId" class="ie-in">
-            <option value="">请选择答辩组</option>
-            <option v-for="g in defenseOpts" :key="g.id" :value="g.id">
-              {{ g.groupName }} · {{ g.defenseDate || '日期待定' }} · {{ g.location || '地点待定' }}（{{ g.studentCount }}人）
-            </option>
-          </select>
-        </label>
-        <p v-if="defenseError" class="ie-err">{{ defenseError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="defenseVisible = false">取消</button>
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !defenseGroupId" @click="submitDefense">确认分配</button>
-        </div>
-      </div>
-    </AppDrawer>
-
     <AppExcelImportDrawer
       v-model:visible="importVisible"
       title="导入毕设学生"
@@ -235,7 +163,6 @@ import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
   StatusTag, RiskTag, LoadingState, ErrorState, EmptyState
 } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppSensitiveText, AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
@@ -265,6 +192,21 @@ const PANEL_PRESETS = {
   'grad-qual': () => ({ ...EMPTY_FILTERS(), gradQualStatus: 'UNKNOWN' }),
   archive: () => ({ ...EMPTY_FILTERS(), archiveView: 'candidates' })
 }
+
+/** 页内视图页签（与 PANEL_PRESETS 一一对应；风险/导师视图保留在页内供跨模块联动） */
+const PANEL_TABS = [
+  { key: 'roster', label: '学生名单' },
+  { key: 'progress', label: '学生进度' },
+  { key: 'topic', label: '未选题' },
+  { key: 'eligibility', label: '资格认定' },
+  { key: 'grouping', label: '过程分组' },
+  { key: 'materials', label: '材料缺口' },
+  { key: 'defense', label: '答辩组' },
+  { key: 'grad-qual', label: '毕业资格联动' },
+  { key: 'archive', label: '归档' },
+  { key: 'risk', label: '风险学生' },
+  { key: 'mentor', label: '已选题导师' }
+]
 
 const PANEL_HINTS = {
   roster: '建档、导入、导出全量名单',
@@ -340,18 +282,15 @@ const STAGE_TONE = {
 
 export default {
   name: 'GraduationStudentListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', submitting: false, activePanel: 'roster',
+      panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       selectedIds: [],
-      createVisible: false, cform: { studentId: '', batchId: '', advisorName: '' }, cError: '',
-      studentOpts: [], batchOpts: [], groupOpts: [], defenseOpts: [],
-      assignVisible: false, assignRow: null, assignTopicId: '', assignError: '', topicOpts: [],
-      groupVisible: false, groupRow: null, groupName: '', groupError: '',
-      defenseVisible: false, defenseRow: null, defenseGroupId: '', defenseError: '',
+      batchOpts: [], groupOpts: [],
       importVisible: false,
       gdStudentApi,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null, payload: null }
@@ -439,13 +378,25 @@ export default {
     this.loadGroupOpts()
   },
   methods: {
+    /** 页内页签切换：改路由 query，由 $route.query.panel watcher 统一应用视图 */
+    switchPanel(p) {
+      if (p === this.activePanel) return
+      this.$router.replace({ query: { ...this.$route.query, panel: p } })
+    },
     applyPanel(panel) {
       const key = PANEL_PRESETS[panel] ? panel : 'roster'
       this.activePanel = key
       this.filters = (PANEL_PRESETS[key] || PANEL_PRESETS.roster)()
       this.selectedIds = []
       this.page = 1
+      if (panel === 'create') {
+        this.$router.push({ path: '/admin/graduation/students/create', query: { returnPanel: key } })
+        return
+      }
       this.load()
+    },
+    studentReturnQuery() {
+      return { returnPanel: this.activePanel }
     },
     stageTone(stage) { return STAGE_TONE[stage] || 'default' },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
@@ -488,50 +439,27 @@ export default {
       this.load()
     },
     turnPage(p) { this.page = p; this.load() },
-    async onToolbar(key) {
+    onToolbar(key) {
       if (key === 'create') {
-        this.cform = { studentId: '', batchId: '', advisorName: '' }; this.cError = ''
-        const [s, b] = await Promise.all([gdStudentApi.getStudentOptions(), gdStudentApi.getBatchOptions()])
-        if (s.code === 0) this.studentOpts = s.data
-        if (b.code === 0) this.batchOpts = b.data
-        this.createVisible = true
+        this.$router.push({ path: '/admin/graduation/students/create', query: this.studentReturnQuery() })
       }
       if (key === 'import') { this.importVisible = true }
-      if (key === 'batchGroup') { this.groupRow = null; this.groupName = ''; this.groupError = ''; this.groupVisible = true }
+      if (key === 'batchGroup') {
+        this.$router.push({
+          path: '/admin/graduation/students/_batch/group',
+          query: { ids: this.selectedIds.join(','), ...this.studentReturnQuery() }
+        })
+      }
       if (key === 'batchArchive') this.askBatchArchive()
     },
-    async submitCreate() {
-      this.cError = ''
-      if (!this.cform.studentId) { this.cError = '请选择学生'; return }
-      this.submitting = true
-      try {
-        const body = { studentId: this.cform.studentId, advisorName: this.cform.advisorName || undefined }
-        if (this.cform.batchId) body.batchId = this.cform.batchId
-        const res = await gdStudentApi.createStudent(body)
-        if (res.code === 0) { toast.success('已建档'); this.createVisible = false; this.load() } else this.cError = res.message
-      } finally { this.submitting = false }
-    },
-    async openAssignTopic(row) {
-      this.assignRow = row; this.assignTopicId = row.topicId || ''; this.assignError = ''
-      const t = await gdStudentApi.getConfirmedTopics()
-      if (t.code === 0) this.topicOpts = t.data
-      else { this.topicOpts = []; toast.error(t.message) }
-      this.assignVisible = true
-    },
-    async submitAssign() {
-      this.assignError = ''
-      this.submitting = true
-      try {
-        const res = await gdStudentApi.assignTopic(this.assignRow.id, { topicId: this.assignTopicId })
-        if (res.code === 0) { toast.success('已分配选题'); this.assignVisible = false; this.load() } else this.assignError = res.message
-      } finally { this.submitting = false }
+    openAssignTopic(row) {
+      this.$router.push({
+        path: `/admin/graduation/students/${row.id}/assign-topic`,
+        query: this.studentReturnQuery()
+      })
     },
     openAdvisor(row) {
-      this.confirm = {
-        visible: true, title: '分配指导教师', message: `为「${row.name}」指定指导教师`,
-        type: 'primary', confirmText: '确认分配', requireReason: true, reasonLabel: '指导教师姓名',
-        action: 'ADVISOR', row
-      }
+      this.$router.push(`/admin/graduation/mentors/assign/${row.id}`)
     },
     askEligibility(row, status) {
       const label = status === 'QUALIFIED' ? '资格合格' : '资格不合格'
@@ -542,42 +470,16 @@ export default {
       }
     },
     openGroup(row) {
-      this.groupRow = row; this.groupName = row.studentGroup || ''; this.groupError = ''; this.groupVisible = true
+      this.$router.push({
+        path: `/admin/graduation/students/${row.id}/group`,
+        query: this.studentReturnQuery()
+      })
     },
-    async submitGroup() {
-      this.groupError = ''
-      if (!this.groupName) { this.groupError = '请填写分组名称'; return }
-      this.submitting = true
-      try {
-        let res
-        if (this.groupRow) {
-          res = await gdStudentApi.setStudentGroup(this.groupRow.id, { groupName: this.groupName, reason: '' })
-        } else {
-          res = await gdStudentApi.batchSetStudentGroup({ recordIds: this.selectedIds, groupName: this.groupName, reason: '批量分组' })
-        }
-        if (res.code === 0) {
-          toast.success(this.groupRow ? '已更新分组' : `已更新 ${res.data.updated} 人`)
-          this.groupVisible = false
-          this.selectedIds = []
-          this.loadGroupOpts()
-          this.load()
-        } else this.groupError = res.message
-      } finally { this.submitting = false }
-    },
-    async openDefense(row) {
-      this.defenseRow = row; this.defenseGroupId = row.defenseGroupId || ''; this.defenseError = ''
-      const d = await gdStudentApi.getDefenseGroups()
-      if (d.code === 0) this.defenseOpts = d.data
-      else { this.defenseOpts = []; toast.error(d.message) }
-      this.defenseVisible = true
-    },
-    async submitDefense() {
-      this.defenseError = ''
-      this.submitting = true
-      try {
-        const res = await gdStudentApi.assignDefenseGroup(this.defenseRow.id, { defenseGroupId: this.defenseGroupId, reason: '' })
-        if (res.code === 0) { toast.success('已分配答辩组'); this.defenseVisible = false; this.load() } else this.defenseError = res.message
-      } finally { this.submitting = false }
+    openDefense(row) {
+      this.$router.push({
+        path: `/admin/graduation/students/${row.id}/defense-group`,
+        query: this.studentReturnQuery()
+      })
     },
     askGradQual(row, status) {
       const label = status === 'PASS' ? '毕业资格通过' : '毕业资格不通过'
@@ -606,11 +508,6 @@ export default {
       this.submitting = true
       try {
         let res
-        if (action === 'ADVISOR') {
-          const name = (reason || '').trim()
-          if (!name) { toast.error('请填写指导教师姓名'); return }
-          res = await gdStudentApi.assignAdvisor(row.id, { advisorName: name })
-        }
         if (action === 'ELIGIBILITY') {
           res = await gdStudentApi.setEligibility(row.id, { status: payload.status, reason: reason || '' })
         }
@@ -649,13 +546,4 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.ie-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
-.ie-fld { display: flex; flex-direction: column; gap: var(--space-1); }
-.ie-fld--full { grid-column: 1 / -1; }
-.ie-lbl { font-size: var(--font-size-sm); color: var(--text-secondary); }
-.ie-lbl i { color: var(--danger-600); font-style: normal; }
-.ie-in { padding: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: var(--font-size-sm); }
-.ie-hint { font-size: var(--font-size-sm); color: var(--text-secondary); margin: 0; }
-.ie-err { color: var(--danger-600); font-size: var(--font-size-sm); margin: 0; }
-.ie-actions { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
 </style>

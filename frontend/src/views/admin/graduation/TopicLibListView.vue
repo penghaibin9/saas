@@ -31,7 +31,22 @@
     </div>
 
     <div class="mp-stack">
+      <!-- 页内视图页签：同一题目库的来源/审核/维护视图（原三级菜单入口收口至此，?panel= 深链不变） -->
+      <div class="mp-tabs">
+        <button
+          v-for="p in panelTabs"
+          :key="p.key"
+          class="mp-tab"
+          :class="{ 'is-active': activePanel === p.key }"
+          @click="switchPanel(p.key)"
+        >{{ p.label }}</button>
+      </div>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+
+      <!-- 内嵌表单/详情：固定在筛选栏下方，替换表格区域 -->
+      <router-view v-if="inlineOpen" :ctx="ctx" />
+
+      <template v-else>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
@@ -40,6 +55,8 @@
         :columns="columns"
         :rows="rows"
         row-key="id"
+        :virtual-scroll="rows.length > 15"
+        :virtual-height="560"
         :pagination="{ page, pageSize, total }"
         @page-change="turnPage"
       >
@@ -159,165 +176,8 @@
           </template>
         </template>
       </DataTable>
-    </div>
-
-    <!-- 申报 / 编辑 -->
-    <AppDrawer v-model:visible="editVisible" :title="editing ? '编辑题目' : applyTitle">
-      <form class="ie-form" @submit.prevent="submitForm">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">题目名称 <i>*</i></span>
-          <input v-model.trim="form.title" class="ie-in" placeholder="2~300字" />
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">毕设批次</span>
-          <select v-model="form.batchId" class="ie-in">
-            <option value="">不关联批次</option>
-            <option v-for="b in batchOpts" :key="b.id" :value="b.id">{{ b.batchName }}</option>
-          </select>
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">题目编号</span><input v-model.trim="form.topicNo" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">指导教师</span><input v-model.trim="form.advisorName" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">专业</span><input v-model.trim="form.majorName" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">分类</span>
-          <select v-model="form.category" class="ie-in">
-            <option value="">请选择</option>
-            <option v-for="c in GD_TOPIC_CATEGORY" :key="c" :value="c">{{ c }}</option>
-          </select>
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">难度</span>
-          <select v-model="form.difficulty" class="ie-in">
-            <option value="">请选择</option>
-            <option v-for="d in GD_TOPIC_DIFFICULTY" :key="d.value" :value="d.value">{{ d.label }}</option>
-          </select>
-        </label>
-        <label v-if="form.sourceType === 'ENTERPRISE'" class="ie-fld ie-fld--full">
-          <span class="ie-lbl">企业名称</span><input v-model.trim="form.enterpriseName" class="ie-in" />
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">容量</span>
-          <input v-model.number="form.capacity" type="number" min="1" max="99" class="ie-in" />
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">题目要求</span>
-          <textarea v-model.trim="form.requirements" class="ie-in" rows="3" />
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">预期成果</span>
-          <textarea v-model.trim="form.outcome" class="ie-in" rows="2" />
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">技能要求</span>
-          <textarea v-model.trim="form.skills" class="ie-in" rows="2" />
-        </label>
-        <label v-if="!editing" class="ie-fld ie-fld--full">
-          <input v-model="form.submitReview" type="checkbox" /> 保存后直接提交审核
-        </label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="editVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 调容量 -->
-    <AppDrawer v-model:visible="capacityVisible" title="调整题目容量">
-      <form v-if="capacityRow" class="ie-form" @submit.prevent="submitCapacity">
-        <p class="ie-hint">{{ capacityRow.title }}</p>
-        <div class="gb-kv"><span>当前已选</span><span>{{ capacityRow.selected }} 人</span></div>
-        <label class="ie-fld"><span class="ie-lbl">新容量 <i>*</i></span>
-          <input v-model.number="capacityForm.capacity" type="number" :min="capacityRow.selected || 1" max="99" class="ie-in" />
-        </label>
-        <p v-if="capacityError" class="ie-err">{{ capacityError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="capacityVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 补要求 -->
-    <AppDrawer v-model:visible="reqVisible" title="维护题目要求">
-      <form v-if="reqRow" class="ie-form" @submit.prevent="submitRequirements">
-        <p class="ie-hint">{{ reqRow.title }}</p>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">题目要求 <i>*</i></span>
-          <textarea v-model.trim="reqForm.requirements" class="ie-in" rows="4" placeholder="不少于10字，说明研究/开发目标与验收标准" />
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">预期成果</span>
-          <textarea v-model.trim="reqForm.outcome" class="ie-in" rows="2" />
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">技能要求</span>
-          <textarea v-model.trim="reqForm.skills" class="ie-in" rows="2" />
-        </label>
-        <p v-if="reqError" class="ie-err">{{ reqError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="reqVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 管附件 -->
-    <AppDrawer v-model:visible="attVisible" title="题目附件管理">
-      <div v-if="attRow">
-        <p class="ie-hint">{{ attRow.title }} · 已挂 {{ attForm.attachments.length }} 个附件</p>
-        <div v-for="(a, idx) in attForm.attachments" :key="idx" class="att-row">
-          <input v-model.trim="a.name" class="ie-in" placeholder="附件名称" />
-          <input v-model.trim="a.url" class="ie-in" placeholder="文件地址 / 存储路径" />
-          <button type="button" class="mp-link" @click="removeAttachment(idx)">删除</button>
-        </div>
-        <button type="button" class="mp-btn" style="margin-top: var(--space-3)" @click="addAttachment">＋ 添加附件</button>
-        <p v-if="attError" class="ie-err">{{ attError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="attVisible = false">取消</button>
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submitAttachments">保存</button>
-        </div>
-      </div>
-    </AppDrawer>
-
-    <!-- 改分类 -->
-    <AppDrawer v-model:visible="catVisible" title="调整题目分类">
-      <form v-if="catRow" class="ie-form" @submit.prevent="submitCategory">
-        <p class="ie-hint">{{ catRow.title }}</p>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">分类 <i>*</i></span>
-          <select v-model="catForm.category" class="ie-in">
-            <option value="">请选择</option>
-            <option v-for="c in GD_TOPIC_CATEGORY" :key="c" :value="c">{{ c }}</option>
-          </select>
-        </label>
-        <p v-if="catError" class="ie-err">{{ catError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="catVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 详情 -->
-    <AppDrawer v-model:visible="detailVisible" :title="detail ? detail.title : '题目详情'">
-      <template v-if="detail">
-        <div class="gb-kv"><span>来源</span><span>{{ detail.sourceLabel }}</span></div>
-        <div class="gb-kv"><span>分类</span><span>{{ detail.category || '未分类' }}</span></div>
-        <div class="gb-kv"><span>指导教师</span><span>{{ detail.advisorName || '—' }}</span></div>
-        <div class="gb-kv"><span>审核</span><span>{{ detail.reviewLabel }} / {{ detail.statusLabel }}</span></div>
-        <div class="gb-kv"><span>容量</span><span>{{ detail.selected }}/{{ detail.capacity }}（余 {{ detail.remaining }}）</span></div>
-        <div v-if="detail.requirements" class="gb-sec"><p class="ie-hint">题目要求</p><p>{{ detail.requirements }}</p></div>
-        <div v-if="detail.outcome" class="gb-sec"><p class="ie-hint">预期成果</p><p>{{ detail.outcome }}</p></div>
-        <div v-if="detail.attachments && detail.attachments.length" class="gb-sec">
-          <p class="ie-hint">附件（{{ detail.attachments.length }}）</p>
-          <ul class="gb-trail">
-            <li v-for="(a, i) in detail.attachments" :key="i" class="gb-trail__item">
-              <span>{{ a.name || '未命名' }}</span>
-              <span class="gb-trail__meta">{{ a.url || '—' }}</span>
-            </li>
-          </ul>
-        </div>
-        <div class="gb-sec">
-          <p class="ie-hint">已选学生（{{ assigned.length }}）</p>
-          <EmptyState v-if="!assigned.length" title="暂无学生" />
-          <ul v-else class="gb-trail">
-            <li v-for="s in assigned" :key="s.id" class="gb-trail__item">
-              <span>{{ s.name }}（{{ s.studentNo }}）</span>
-              <span class="gb-trail__meta">{{ s.className || '—' }}</span>
-            </li>
-          </ul>
-        </div>
       </template>
-    </AppDrawer>
+    </div>
 
     <AppConfirmDialog
       v-model:visible="confirm.visible"
@@ -349,14 +209,13 @@
 <script>
 /** 题目库（/admin/graduation/topic-lib）：申报/审核/分类/容量/要求/附件/历史/归档 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import {
   GD_TOPIC_SOURCE, GD_TOPIC_REVIEW, GD_TOPIC_STATUS, GD_TOPIC_CATEGORY,
-  GD_TOPIC_DIFFICULTY, IS_FULL, ARCHIVE_VIEW
+  GD_TOPIC_DIFFICULTY, IS_FULL
 } from '@/modules/graduation/constants/graduation-topic.constants'
 import { toast } from '@/utils/toast'
 
@@ -365,12 +224,6 @@ const EMPTY_FILTERS = () => ({
   status: '', isFull: '', archiveView: 'active',
   hasRequirements: '', hasAttachments: '', missingCategory: '',
   topicId: '', action: ''
-})
-
-const EMPTY_FORM = (sourceType = 'TEACHER') => ({
-  title: '', batchId: '', topicNo: '', sourceType, advisorName: '', majorName: '',
-  category: '', difficulty: '', enterpriseName: '', capacity: 1,
-  requirements: '', outcome: '', skills: '', submitReview: false
 })
 
 const PANEL_PRESETS = {
@@ -386,6 +239,21 @@ const PANEL_PRESETS = {
   history: () => ({ ...EMPTY_FILTERS(), keyword: '', topicId: '', action: '', archiveView: '' }),
   archive: () => ({ ...EMPTY_FILTERS(), archiveView: 'archived' })
 }
+
+/** 页内视图页签（与 PANEL_PRESETS 一一对应） */
+const PANEL_TABS = [
+  { key: 'list', label: '全部题目' },
+  { key: 'pending', label: '待审核' },
+  { key: 'teacher-apply', label: '教师申报' },
+  { key: 'enterprise', label: '企业题目' },
+  { key: 'student-proposed', label: '学生自拟' },
+  { key: 'category', label: '分类维护' },
+  { key: 'capacity', label: '容量余量' },
+  { key: 'requirements', label: '待补要求' },
+  { key: 'attachments', label: '待挂附件' },
+  { key: 'history', label: '操作历史' },
+  { key: 'archive', label: '已归档' }
+]
 
 const PANEL_HINTS = {
   list: '全部在库题目',
@@ -434,27 +302,35 @@ const HISTORY_ACTIONS = [
   { value: 'ARCHIVE', label: '归档' }
 ]
 
+const TOPIC_LIB_INLINE_ROUTES = new Set([
+  'graduation-topic-lib-create',
+  'graduation-topic-lib-edit',
+  'graduation-topic-lib-capacity',
+  'graduation-topic-lib-requirements',
+  'graduation-topic-lib-attachments',
+  'graduation-topic-lib-category',
+  'graduation-topic-lib-detail'
+])
+
 export default {
   name: 'TopicLibListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY,
       loading: true, error: '', submitting: false, activePanel: 'list',
+      panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       batchOpts: [], categoryStats: [], libStats: null,
-      editVisible: false, editing: null, form: EMPTY_FORM(), formError: '',
-      capacityVisible: false, capacityRow: null, capacityForm: { capacity: 1 }, capacityError: '',
-      reqVisible: false, reqRow: null, reqForm: { requirements: '', outcome: '', skills: '' }, reqError: '',
-      attVisible: false, attRow: null, attForm: { attachments: [] }, attError: '',
-      catVisible: false, catRow: null, catForm: { category: '' }, catError: '',
-      detailVisible: false, detail: null, assigned: [],
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null, payload: null }
     }
   },
   computed: {
+    inlineOpen() {
+      return TOPIC_LIB_INLINE_ROUTES.has(this.$route.name)
+    },
     isHistoryPanel() { return this.activePanel === 'history' },
     panelOnlyOps() { return ['category', 'capacity', 'requirements', 'attachments'].includes(this.activePanel) },
     columns() {
@@ -502,7 +378,7 @@ export default {
       if (this.isHistoryPanel) {
         return [
           { key: 'keyword', label: '关键词', type: 'text', placeholder: '题目 / 操作 / 详情' },
-          { key: 'topicId', label: '题目ID', type: 'text', placeholder: '精确题目ID' },
+          { key: 'topicId', label: '题目编号', type: 'text', placeholder: '按题目编号精确筛选' },
           { key: 'action', label: '操作类型', type: 'select', options: HISTORY_ACTIONS }
         ]
       }
@@ -595,10 +471,6 @@ export default {
       if (this.activePanel === 'history') return '题目创建、审核、容量调整等操作均会留痕'
       return '可调整筛选条件'
     },
-    applyTitle() {
-      const m = { 'teacher-apply': '教师申报题目', enterprise: '企业题目申报', 'student-proposed': '学生自拟题目', list: '申报题目' }
-      return m[this.activePanel] || '申报题目'
-    },
     defaultSourceType() {
       const m = { 'teacher-apply': 'TEACHER', enterprise: 'ENTERPRISE', 'student-proposed': 'STUDENT' }
       return m[this.activePanel] || 'TEACHER'
@@ -609,6 +481,12 @@ export default {
       immediate: true,
       handler(panel) {
         this.applyPanel((panel || 'list').toString())
+      }
+    },
+    inlineOpen(val, oldVal) {
+      if (oldVal && !val) {
+        this.loadPanelExtras()
+        this.load()
       }
     }
   },
@@ -623,6 +501,11 @@ export default {
     sourceTone(t) { return SOURCE_TONE[t] || 'default' },
     canEdit(row) {
       return row.status !== 'ARCHIVED' && row.reviewStatus !== 'PENDING_REVIEW' && !(row.selected > 0 && row.reviewStatus === 'APPROVED')
+    },
+    /** 页内页签切换：统一回到列表路由并改 query，由 watcher 应用视图（内嵌子路由打开时也能返回） */
+    switchPanel(p) {
+      if (p === this.activePanel && !this.inlineOpen) return
+      this.$router.push({ path: '/admin/graduation/topic-lib', query: { panel: p } })
     },
     applyPanel(panel) {
       const key = PANEL_PRESETS[panel] ? panel : 'list'
@@ -700,148 +583,68 @@ export default {
       this.page = 1
       this.load()
     },
-    turnPage({ page, pageSize }) { this.page = page; this.pageSize = pageSize; this.load() },
+    turnPage(p) {
+      const page = typeof p === 'number' ? p : p?.page
+      const pageSize = typeof p === 'object' && p ? p.pageSize : this.pageSize
+      if (page) this.page = page
+      if (pageSize) this.pageSize = pageSize
+      this.load()
+    },
     onToolbar(key) {
       if (key === 'create') this.openCreate()
       if (key === 'import') { this.importVisible = true }
       if (key === 'refreshStats') this.loadPanelExtras()
     },
+    topicReturnQuery() {
+      return { returnPanel: this.activePanel }
+    },
     openCreate() {
-      this.editing = null
-      this.form = EMPTY_FORM(this.defaultSourceType)
-      this.formError = ''
-      this.editVisible = true
+      this.$router.push({
+        path: '/admin/graduation/topic-lib/create',
+        query: { sourceType: this.defaultSourceType, ...this.topicReturnQuery() }
+      })
     },
     openEdit(row) {
-      this.editing = row
-      this.form = {
-        title: row.title, batchId: row.batchId || '', topicNo: row.topicNo || '',
-        sourceType: row.sourceType, advisorName: row.advisorName || '', majorName: row.majorName || '',
-        category: row.category || '', difficulty: row.difficulty || '', enterpriseName: row.enterpriseName || '',
-        capacity: row.capacity, requirements: row.requirements || '', outcome: row.outcome || '',
-        skills: row.skills || '', submitReview: false
-      }
-      this.formError = ''
-      this.editVisible = true
+      this.$router.push({
+        path: `/admin/graduation/topic-lib/${row.id}/edit`,
+        query: this.topicReturnQuery()
+      })
     },
     openCapacity(row) {
-      this.capacityRow = row
-      this.capacityForm = { capacity: row.capacity }
-      this.capacityError = ''
-      this.capacityVisible = true
-    },
-    async submitCapacity() {
-      const cap = Number(this.capacityForm.capacity)
-      if (!cap || cap < (this.capacityRow.selected || 1)) {
-        this.capacityError = `容量不能小于已选人数（${this.capacityRow.selected || 0}）`
-        return
-      }
-      this.submitting = true
-      const r = await gdTopicApi.updateCapacity(this.capacityRow.id, cap)
-      this.submitting = false
-      if (r.code !== 0) { this.capacityError = r.message; return }
-      toast.success('容量已更新')
-      this.capacityVisible = false
-      this.loadPanelExtras()
-      this.load()
+      this.$router.push({
+        path: `/admin/graduation/topic-lib/${row.id}/capacity`,
+        query: this.topicReturnQuery()
+      })
     },
     openRequirements(row) {
-      this.reqRow = row
-      this.reqForm = { requirements: row.requirements || '', outcome: row.outcome || '', skills: row.skills || '' }
-      this.reqError = ''
-      this.reqVisible = true
-    },
-    async submitRequirements() {
-      if (!this.reqForm.requirements || this.reqForm.requirements.length < 10) {
-        this.reqError = '题目要求至少10字'
-        return
-      }
-      this.submitting = true
-      const r = await gdTopicApi.updateTopic(this.reqRow.id, {
-        title: this.reqRow.title,
-        requirements: this.reqForm.requirements,
-        outcome: this.reqForm.outcome,
-        skills: this.reqForm.skills
+      this.$router.push({
+        path: `/admin/graduation/topic-lib/${row.id}/requirements`,
+        query: this.topicReturnQuery()
       })
-      this.submitting = false
-      if (r.code !== 0) { this.reqError = r.message; return }
-      toast.success('要求已保存')
-      this.reqVisible = false
-      this.loadPanelExtras()
-      this.load()
     },
     openAttachments(row) {
-      this.attRow = row
-      this.attForm = { attachments: (row.attachments || []).map((a) => ({ ...a })) }
-      if (!this.attForm.attachments.length) this.addAttachment()
-      this.attError = ''
-      this.attVisible = true
-    },
-    addAttachment() {
-      this.attForm.attachments.push({ name: '', url: '', size: 0, uploadedAt: new Date().toISOString() })
-    },
-    removeAttachment(idx) {
-      this.attForm.attachments.splice(idx, 1)
-    },
-    async submitAttachments() {
-      const valid = this.attForm.attachments.filter((a) => (a.name || '').trim() && (a.url || '').trim())
-      if (!valid.length) { this.attError = '至少填写一个有效附件（名称+地址）'; return }
-      this.submitting = true
-      const r = await gdTopicApi.updateAttachments(this.attRow.id, valid)
-      this.submitting = false
-      if (r.code !== 0) { this.attError = r.message; return }
-      toast.success('附件已保存')
-      this.attVisible = false
-      this.loadPanelExtras()
-      this.load()
+      this.$router.push({
+        path: `/admin/graduation/topic-lib/${row.id}/attachments`,
+        query: this.topicReturnQuery()
+      })
     },
     openCategoryEdit(row) {
-      this.catRow = row
-      this.catForm = { category: row.category || '' }
-      this.catError = ''
-      this.catVisible = true
+      this.$router.push({
+        path: `/admin/graduation/topic-lib/${row.id}/category`,
+        query: this.topicReturnQuery()
+      })
     },
-    async submitCategory() {
-      if (!this.catForm.category) { this.catError = '请选择分类'; return }
-      this.submitting = true
-      const r = await gdTopicApi.updateTopic(this.catRow.id, { title: this.catRow.title, category: this.catForm.category })
-      this.submitting = false
-      if (r.code !== 0) { this.catError = r.message; return }
-      toast.success('分类已更新')
-      this.catVisible = false
-      this.loadPanelExtras()
-      this.load()
+    openDetail(row) {
+      this.$router.push({
+        path: `/admin/graduation/topic-lib/${row.id}`,
+        query: this.topicReturnQuery()
+      })
     },
-    async submitForm() {
-      if (!this.form.title || this.form.title.length < 2) { this.formError = '题目名称至少2字'; return }
-      this.submitting = true
-      this.formError = ''
-      const body = { ...this.form, batchId: this.form.batchId || null }
-      const r = this.editing
-        ? await gdTopicApi.updateTopic(this.editing.id, body)
-        : await gdTopicApi.createTopic(body)
-      this.submitting = false
-      if (r.code !== 0) { this.formError = r.message; return }
-      toast.success(this.editing ? '已保存' : '已创建')
-      this.editVisible = false
-      this.loadPanelExtras()
-      this.load()
-    },
-    async openDetail(row) {
-      const d = await gdTopicApi.getTopicDetail(row.id)
-      if (d.code !== 0) { toast.error(d.message); return }
-      this.detail = d.data
-      const a = await gdTopicApi.getAssignedStudents(row.id)
-      this.assigned = a.code === 0 ? (a.data || []) : []
-      this.detailVisible = true
-    },
-    async openDetailById(topicId) {
-      const d = await gdTopicApi.getTopicDetail(topicId)
-      if (d.code !== 0) { toast.error(d.message); return }
-      this.detail = d.data
-      const a = await gdTopicApi.getAssignedStudents(topicId)
-      this.assigned = a.code === 0 ? (a.data || []) : []
-      this.detailVisible = true
+    openDetailById(topicId) {
+      this.$router.push({
+        path: `/admin/graduation/topic-lib/${topicId}`,
+        query: this.topicReturnQuery()
+      })
     },
     askSubmitReview(row) {
       this.confirm = { visible: true, title: '提交审核', message: `确认提交「${row.title}」进入审核？`, type: 'primary', confirmText: '提交', requireReason: false, action: 'submitReview', row }
@@ -897,16 +700,11 @@ export default {
 </script>
 
 <style scoped>
+@import '@/styles/module-page.css';
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.gb-kv { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
-.gb-sec { margin-top: var(--space-4); }
-.gb-trail { list-style: none; padding: 0; margin: 0; }
-.gb-trail__item { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
-.gb-trail__meta { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
 .mp-stats { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
 .mp-stat { flex: 1; min-width: 120px; padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md); cursor: pointer; }
 .mp-stat__val { font-size: var(--font-size-xl); font-weight: 600; }
 .mp-stat__lbl { color: var(--color-text-secondary); font-size: var(--font-size-sm); margin-top: var(--space-1); }
 .mp-stat__sub { color: var(--color-text-tertiary); font-size: var(--font-size-xs); margin-top: var(--space-1); }
-.att-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--space-2); margin-bottom: var(--space-2); align-items: center; }
 </style>

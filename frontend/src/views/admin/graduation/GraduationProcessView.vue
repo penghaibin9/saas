@@ -91,100 +91,38 @@
       </div>
     </div>
 
-    <!-- 下达/变更任务书 -->
-    <AppDrawer v-model:visible="tbFormVisible" :title="tbFormMode === 'change' ? '变更任务书' : '下达任务书'">
-      <form class="ie-form" @submit.prevent="submitTaskbookForm">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">任务目标 <i>*</i></span><textarea v-model.trim="tbForm.objective" class="ie-in" rows="2" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">任务内容 <i>*</i></span><textarea v-model.trim="tbForm.content" class="ie-in" rows="2" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">进度计划</span><textarea v-model.trim="tbForm.progressPlan" class="ie-in" rows="2" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">成果要求</span><textarea v-model.trim="tbForm.outcomeRequirement" class="ie-in" rows="2" /></label>
-        <label v-if="tbFormMode === 'change'" class="ie-fld ie-fld--full"><span class="ie-lbl">变更原因（≥5字）<i>*</i></span><textarea v-model.trim="tbForm.reason" class="ie-in" rows="2" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="tbFormVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 新增指导记录 -->
-    <AppDrawer v-model:visible="guidanceFormVisible" title="新增指导记录">
-      <form class="ie-form" @submit.prevent="submitGuidanceForm">
-        <label class="ie-fld"><span class="ie-lbl">指导方式</span>
-          <select v-model="guidanceForm.method" class="ie-in"><option value="ONLINE">线上</option><option value="OFFLINE">线下</option></select>
-        </label>
-        <AppDateTimePicker v-model="guidanceForm.guidanceDate" class="ie-fld" label="指导时间" hint="默认当前时间" />
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">指导内容 <i>*</i></span><textarea v-model.trim="guidanceForm.content" class="ie-in" rows="2" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">发现的问题</span><textarea v-model.trim="guidanceForm.issues" class="ie-in" rows="2" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="guidanceFormVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 中期检查 -->
-    <AppDrawer v-model:visible="mtFormVisible" title="发起中期检查">
-      <form class="ie-form" @submit.prevent="submitMidtermCheck">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">结论 <i>*</i></span>
-          <select v-model="mtForm.conclusion" class="ie-in">
-            <option value="PASS">通过</option><option value="RECTIFY">限期整改</option><option value="FAIL">不通过</option>
-          </select>
-        </label>
-        <AppDeadlinePicker v-if="mtForm.conclusion === 'RECTIFY'" v-model="mtForm.rectifyDeadline" class="ie-fld ie-fld--full" label="整改截止日期" hint="限期整改默认 23:59" />
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">检查意见</span><textarea v-model.trim="mtForm.comment" class="ie-in" rows="2" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="mtFormVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">提交</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 提交整改 -->
-    <AppDrawer v-model:visible="rectifyVisible" title="提交整改">
-      <form class="ie-form" @submit.prevent="submitRectifyForm">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">整改内容 <i>*</i></span><textarea v-model.trim="rectifyContent" class="ie-in" rows="3" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="rectifyVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">提交</button>
-        </div>
-      </form>
-    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
 /** 过程指导（/admin/graduation/process）：任务书下达/确认/变更 + 指导记录时间线 + 中期检查三档结论/整改闭环。 */
 import { ModulePageShell, StatusTag, LoadingState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
-import { AppDateTimePicker, AppDeadlinePicker, AppDateDisplay } from '@/components/common/date'
+import { AppDateDisplay } from '@/components/common/date'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
-import { toDateTimeInputValue, daysFromNowDeadline } from '@/utils/dateUtils'
 
 export default {
   name: 'GraduationProcessView',
-  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppDrawer, AppDateTimePicker, AppDeadlinePicker, AppDateDisplay },
+  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      studentKeyword: '', studentOptions: [], current: null, tab: 'taskbook', submitting: false, formError: '',
+      studentKeyword: '', studentOptions: [], current: null, tab: 'taskbook', submitting: false,
       taskbook: null, tbLoading: false,
       guidanceList: [], guidanceLoading: false,
-      midterm: null, mtLoading: false,
-      tbFormVisible: false, tbFormMode: 'issue', tbForm: { objective: '', content: '', progressPlan: '', outcomeRequirement: '', reason: '' },
-      guidanceFormVisible: false, guidanceForm: { method: 'ONLINE', guidanceDate: '', content: '', issues: '' },
-      mtFormVisible: false, mtForm: { conclusion: 'PASS', comment: '', rectifyDeadline: '' },
-      rectifyVisible: false, rectifyContent: ''
+      midterm: null, mtLoading: false
     }
   },
   created() {
     this.tab = ['taskbook', 'guidance', 'midterm'].includes(this.$route.query.panel) ? this.$route.query.panel : 'taskbook'
     this.searchStudents()
+  },
+  watch: {
+    // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
+    '$route.query.panel'(p) {
+      if (['taskbook', 'guidance', 'midterm'].includes(p) && p !== this.tab) this.tab = p
+    }
   },
   methods: {
     async searchStudents() {
@@ -220,71 +158,47 @@ export default {
       this.midterm = res.code === 0 ? res.data : null
       this.mtLoading = false
     },
+    processQuery(extra = {}) {
+      return { panel: this.tab, ...extra }
+    },
     openIssueTaskbook() {
-      this.tbFormMode = 'issue'
-      this.tbForm = { objective: '', content: '', progressPlan: '', outcomeRequirement: '', reason: '' }
-      this.formError = ''; this.tbFormVisible = true
+      if (!this.current) return
+      this.$router.push({
+        path: `/admin/graduation/process/${this.current.id}/taskbook`,
+        query: this.processQuery()
+      })
     },
     openChangeTaskbook() {
-      this.tbFormMode = 'change'
-      this.tbForm = { objective: this.taskbook.objective, content: this.taskbook.content, progressPlan: this.taskbook.progressPlan, outcomeRequirement: this.taskbook.outcomeRequirement, reason: '' }
-      this.formError = ''; this.tbFormVisible = true
-    },
-    async submitTaskbookForm() {
-      this.formError = ''
-      if (this.tbFormMode === 'change' && this.tbForm.reason.length < 5) { this.formError = '变更原因至少 5 字'; return }
-      this.submitting = true
-      try {
-        const res = this.tbFormMode === 'change'
-          ? await graduationTaskbookApi.changeTaskbook(this.current.id, this.tbForm)
-          : await graduationTaskbookApi.issueTaskbook(this.current.id, this.tbForm)
-        if (res.code === 0) { toast.success('已保存'); this.tbFormVisible = false; this.loadTaskbook() } else this.formError = res.message
-      } finally { this.submitting = false }
+      if (!this.current) return
+      this.$router.push({
+        path: `/admin/graduation/process/${this.current.id}/taskbook`,
+        query: this.processQuery({ mode: 'change' })
+      })
     },
     async doConfirmTaskbook() {
       const res = await graduationTaskbookApi.confirmTaskbook(this.current.id)
       if (res.code === 0) { toast.success('已确认'); this.loadTaskbook() } else toast.error(res.message)
     },
     openGuidanceCreate() {
-      this.guidanceForm = { method: 'ONLINE', guidanceDate: toDateTimeInputValue(new Date()), content: '', issues: '' }
-      this.formError = ''; this.guidanceFormVisible = true
-    },
-    async submitGuidanceForm() {
-      this.formError = ''
-      if (!this.guidanceForm.content) { this.formError = '指导内容必填'; return }
-      this.submitting = true
-      try {
-        const res = await graduationTaskbookApi.createGuidance(this.current.id, this.guidanceForm)
-        if (res.code === 0) { toast.success('已记录'); this.guidanceFormVisible = false; this.loadGuidance() } else this.formError = res.message
-      } finally { this.submitting = false }
+      if (!this.current) return
+      this.$router.push({
+        path: `/admin/graduation/process/${this.current.id}/guidance`,
+        query: this.processQuery()
+      })
     },
     openMidtermCheck() {
-      this.mtForm = { conclusion: 'PASS', comment: '', rectifyDeadline: daysFromNowDeadline(7) }
-      this.formError = ''; this.mtFormVisible = true
-    },
-    async submitMidtermCheck() {
-      this.submitting = true
-      try {
-        const payload = {
-          ...this.mtForm,
-          rectifyDeadline: this.mtForm.rectifyDeadline
-            ? (String(this.mtForm.rectifyDeadline).slice(0, 10))
-            : ''
-        }
-        const res = await graduationTaskbookApi.checkMidterm(this.current.id, payload)
-        if (res.code === 0) { toast.success('已提交'); this.mtFormVisible = false; this.loadMidterm() } else this.formError = res.message
-      } finally { this.submitting = false }
+      if (!this.current) return
+      this.$router.push({
+        path: `/admin/graduation/process/${this.current.id}/midterm`,
+        query: this.processQuery()
+      })
     },
     openRectifySubmit() {
-      this.rectifyContent = ''; this.formError = ''; this.rectifyVisible = true
-    },
-    async submitRectifyForm() {
-      if (!this.rectifyContent) { this.formError = '整改内容必填'; return }
-      this.submitting = true
-      try {
-        const res = await graduationTaskbookApi.submitRectification(this.current.id, this.rectifyContent)
-        if (res.code === 0) { toast.success('已提交整改'); this.rectifyVisible = false; this.loadMidterm() } else this.formError = res.message
-      } finally { this.submitting = false }
+      if (!this.current) return
+      this.$router.push({
+        path: `/admin/graduation/process/${this.current.id}/rectify`,
+        query: this.processQuery()
+      })
     },
     async doReviewRectify(action) {
       const res = await graduationTaskbookApi.reviewRectification(this.current.id, { action })

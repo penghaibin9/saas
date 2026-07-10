@@ -23,10 +23,10 @@
         </template>
         <template v-else>
           <div class="gp-tabs">
-            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'plagiarism' }" @click="tab = 'plagiarism'">查重记录</button>
-            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'review' }" @click="tab = 'review'">教师评阅</button>
-            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'defense' }" @click="tab = 'defense'">答辩评分</button>
-            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'grade' }" @click="tab = 'grade'">成绩评定</button>
+            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'plagiarism' }" @click="switchTab('plagiarism')">查重记录</button>
+            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'review' }" @click="switchTab('review')">教师评阅</button>
+            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'defense' }" @click="switchTab('defense')">答辩评分</button>
+            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'grade' }" @click="switchTab('grade')">成绩评定</button>
           </div>
 
           <!-- 查重 -->
@@ -103,28 +103,12 @@
       </div>
     </div>
 
-    <AppDrawer v-model:visible="genericFormVisible" :title="genericFormTitle">
-      <form class="ie-form" @submit.prevent="submitGenericForm">
-        <template v-for="f in genericFormFields" :key="f.key">
-          <label class="ie-fld ie-fld--full"><span class="ie-lbl">{{ f.label }} <i v-if="f.required">*</i></span>
-            <textarea v-if="f.type === 'textarea'" v-model.trim="genericForm[f.key]" class="ie-in" rows="2" />
-            <input v-else v-model="genericForm[f.key]" class="ie-in" />
-          </label>
-        </template>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="genericFormVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">提交</button>
-        </div>
-      </form>
-    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
 /** 答辩与成绩（/admin/graduation/defense-grade）：查重/评阅/答辩评分/成绩评定，按学生维度处理。 */
 import { ModulePageShell, StatusTag, LoadingState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
@@ -132,15 +116,14 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationDefenseGradeView',
-  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppDrawer, AppDateDisplay },
+  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       studentKeyword: '', studentOptions: [], current: null, tab: 'plagiarism',
       plagiarismList: [], reviewList: [], scoreList: [], grade: null, gradeLoading: false,
       reviewerName: '',
-      genericFormVisible: false, genericFormTitle: '', genericFormFields: [], genericForm: {}, genericFormAction: null,
-      formError: '', submitting: false
+      submitting: false
     }
   },
   created() {
@@ -148,7 +131,18 @@ export default {
     if (['plagiarism', 'review', 'defense', 'grade'].includes(p)) this.tab = p
     this.searchStudents()
   },
+  watch: {
+    // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
+    '$route.query.panel'(p) {
+      if (['plagiarism', 'review', 'defense', 'grade'].includes(p) && p !== this.tab) this.tab = p
+    }
+  },
   methods: {
+    /** 页签切换同步到 URL，保证刷新/分享/左侧菜单高亮一致 */
+    switchTab(t) {
+      this.tab = t
+      if (this.$route.query.panel !== t) this.$router.replace({ query: { ...this.$route.query, panel: t } })
+    },
     async searchStudents() {
       const res = await gdStudentApi.getStudents({ keyword: this.studentKeyword, pageSize: 20 })
       this.studentOptions = res.code === 0 ? res.data.list : []
@@ -179,24 +173,23 @@ export default {
       const res = await graduationDefenseGradeApi.submitPlagiarism(this.current.id)
       if (res.code === 0) { toast.success('已提交检测'); this.loadPlagiarism() } else toast.error(res.message)
     },
-    openForm(title, fields, action) {
-      this.genericFormTitle = title; this.genericFormFields = fields
-      this.genericForm = {}; fields.forEach(f => { this.genericForm[f.key] = '' })
-      this.genericFormAction = action; this.formError = ''; this.genericFormVisible = true
+    openForm(formKey, recordId = '') {
+      if (!this.current) return
+      this.$router.push({
+        path: '/admin/graduation/defense-grade/form',
+        query: {
+          formKey,
+          recordId: recordId || undefined,
+          studentId: this.current.id,
+          panel: this.tab
+        }
+      })
     },
     fillResult(p) {
-      this.openForm('回填查重结果', [{ key: 'rate', label: '重复率(%)', required: true }, { key: 'reportUrl', label: '报告链接' }],
-        async () => {
-          const res = await graduationDefenseGradeApi.setPlagiarismResult(p.id, this.genericForm.rate, this.genericForm.reportUrl)
-          if (res.code === 0) { toast.success('已回填'); this.loadPlagiarism() } else this.formError = res.message
-        })
+      this.openForm('plagiarismResult', p.id)
     },
     doDispute(p) {
-      this.openForm('申请复查', [{ key: 'reason', label: '复查理由(≥5字)', required: true, type: 'textarea' }],
-        async () => {
-          const res = await graduationDefenseGradeApi.disputePlagiarism(p.id, this.genericForm.reason)
-          if (res.code === 0) { toast.success('已提交复查申请'); this.loadPlagiarism() } else this.formError = res.message
-        })
+      this.openForm('dispute', p.id)
     },
     async doDisputeReview(p, action) {
       const res = await graduationDefenseGradeApi.reviewDispute(p.id, action, action === 'REJECT' ? '维持原查重结果' : '核实无误')
@@ -208,73 +201,37 @@ export default {
       if (res.code === 0) { toast.success('已分配'); this.reviewerName = ''; this.loadReview() } else toast.error(res.message)
     },
     openReviewSubmit(r) {
-      this.openForm('提交评阅', [{ key: 'score', label: '评分(0-100)', required: true }, { key: 'opinion', label: '评阅意见', required: true, type: 'textarea' }],
-        async () => {
-          const res = await graduationDefenseGradeApi.submitReview(r.id, Number(this.genericForm.score), this.genericForm.opinion)
-          if (res.code === 0) { toast.success('已提交'); this.loadReview() } else this.formError = res.message
-        })
+      this.openForm('reviewSubmit', r.id)
     },
     openReviewReturn(r) {
-      this.openForm('退回重评', [{ key: 'reason', label: '退回原因(≥5字)', required: true, type: 'textarea' }],
-        async () => {
-          const res = await graduationDefenseGradeApi.returnReview(r.id, this.genericForm.reason)
-          if (res.code === 0) { toast.success('已退回'); this.loadReview() } else this.formError = res.message
-        })
+      this.openForm('reviewReturn', r.id)
     },
     openScoreEntry() {
-      this.openForm('录入评委评分', [{ key: 'judgeName', label: '评委姓名', required: true }, { key: 'score', label: '评分(0-100)' }, { key: 'comment', label: '评语', type: 'textarea' }],
-        async () => {
-          const res = await graduationDefenseGradeApi.enterScore({ gdStudentId: this.current.id, judgeName: this.genericForm.judgeName, score: this.genericForm.score ? Number(this.genericForm.score) : undefined, comment: this.genericForm.comment })
-          if (res.code === 0) { toast.success('已保存'); this.loadScores() } else this.formError = res.message
-        })
+      this.openForm('scoreEntry')
     },
     async doConfirmScores() {
       const res = await graduationDefenseGradeApi.confirmScores(this.current.id)
       if (res.code === 0) { toast.success('已确认'); this.loadScores() } else toast.error(res.message)
     },
     openSecondDefense() {
-      this.openForm('创建二次答辩', [{ key: 'reason', label: '原因(≥5字)', required: true, type: 'textarea' }],
-        async () => {
-          const res = await graduationDefenseGradeApi.createSecondDefense(this.current.id, this.genericForm.reason)
-          if (res.code === 0) { toast.success('已创建二次答辩'); this.loadScores() } else this.formError = res.message
-        })
+      this.openForm('secondDefense')
     },
     openCalculate() {
-      this.openForm('核算成绩', [{ key: 'advisorScore', label: '导师分', required: true }, { key: 'reviewerScore', label: '评阅分' }, { key: 'defenseScore', label: '答辩分', required: true }],
-        async () => {
-          const res = await graduationDefenseGradeApi.calculateGrade(this.current.id, {
-            advisorScore: this.genericForm.advisorScore ? Number(this.genericForm.advisorScore) : undefined,
-            reviewerScore: this.genericForm.reviewerScore ? Number(this.genericForm.reviewerScore) : undefined,
-            defenseScore: this.genericForm.defenseScore ? Number(this.genericForm.defenseScore) : undefined
-          })
-          if (res.code === 0) { toast.success('已核算'); this.loadGrade() } else this.formError = res.message
-        })
+      this.openForm('calculate')
     },
     async doReview(action) {
       const res = await graduationDefenseGradeApi.reviewGrade(this.current.id, { action })
       if (res.code === 0) { toast.success('已复核'); this.loadGrade() } else toast.error(res.message)
     },
     openReturnGrade() {
-      this.openForm('复核退回', [{ key: 'comment', label: '退回原因(≥5字)', required: true, type: 'textarea' }],
-        async () => {
-          const res = await graduationDefenseGradeApi.reviewGrade(this.current.id, { action: 'RETURN', comment: this.genericForm.comment })
-          if (res.code === 0) { toast.success('已退回'); this.loadGrade() } else this.formError = res.message
-        })
+      this.openForm('returnGrade')
     },
     async doPublish() {
       const res = await graduationDefenseGradeApi.publishGrade(this.current.id)
       if (res.code === 0) { toast.success('已发布'); this.loadGrade() } else toast.error(res.message)
     },
     openWithdraw() {
-      this.openForm('撤回成绩', [{ key: 'reason', label: '撤回原因(≥5字)', required: true, type: 'textarea' }],
-        async () => {
-          const res = await graduationDefenseGradeApi.withdrawGrade(this.current.id, this.genericForm.reason)
-          if (res.code === 0) { toast.success('已撤回'); this.loadGrade() } else this.formError = res.message
-        })
-    },
-    async submitGenericForm() {
-      this.submitting = true
-      try { await this.genericFormAction(); if (!this.formError) this.genericFormVisible = false } finally { this.submitting = false }
+      this.openForm('withdraw')
     }
   }
 }

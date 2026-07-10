@@ -37,66 +37,6 @@
       </DataTable>
     </div>
 
-    <!-- 新建 / 编辑 -->
-    <AppDrawer v-model:visible="editVisible" :title="editing ? '编辑批次' : '新建毕设批次'">
-      <form class="ie-form" @submit.prevent="submitEdit">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">批次名称 <i>*</i></span><input v-model.trim="form.batchName" class="ie-in" placeholder="如 2026届毕业设计" /></label>
-        <label class="ie-fld"><span class="ie-lbl">批次编号 <i>*</i></span><input v-model.trim="form.batchNo" class="ie-in" :disabled="!!editing" placeholder="租户内唯一" /></label>
-        <label class="ie-fld"><span class="ie-lbl">届</span><input v-model.trim="form.gradeYear" class="ie-in" placeholder="如 2026届" /></label>
-        <label class="ie-fld"><span class="ie-lbl">学年</span><input v-model.trim="form.academicYear" class="ie-in" placeholder="如 2025-2026" /></label>
-        <label class="ie-fld"><span class="ie-lbl">计划人数</span><input v-model.number="form.plannedCount" type="number" min="0" class="ie-in" /></label>
-        <AppDatePicker v-model="form.startDate" class="ie-fld" label="开始日期" role="start" :end-value="form.endDate" hint="批次启动日" />
-        <AppDatePicker v-model="form.endDate" class="ie-fld" label="结束日期" role="end" :start-value="form.startDate" hint="批次收口日" />
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">适用范围</span><input v-model.trim="form.collegeScope" class="ie-in" placeholder="学院/专业范围，留空=全校" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="form.remark" class="ie-in" rows="2" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="editVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 详情 / 阶段+规则配置 -->
-    <AppDrawer v-model:visible="detailVisible" :title="detail ? detail.batchName : '批次详情'">
-      <template v-if="detail">
-        <div class="gb-tabs">
-          <button v-for="t in detailTabs" :key="t.key" class="gb-tabs__item" :class="{ 'is-active': dtab === t.key }" @click="dtab = t.key">{{ t.label }}</button>
-        </div>
-
-        <div v-show="dtab === 'stages'" class="gb-sec">
-          <p class="ie-hint">阶段时间轴（编辑后点「保存阶段」）。{{ configLocked ? '已结束/归档/作废批次不可改。' : '' }}</p>
-          <table class="gb-tbl">
-            <thead><tr><th>阶段</th><th>开始</th><th>结束</th></tr></thead>
-            <tbody>
-              <tr v-for="(s, i) in stages" :key="i">
-                <td>{{ s.name }}</td>
-                <td><AppDatePicker v-model="s.startDate" role="start" :end-value="s.endDate" :disabled="configLocked" /></td>
-                <td><AppDatePicker v-model="s.endDate" role="end" :start-value="s.startDate" :disabled="configLocked" /></td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="ie-actions"><button class="mp-btn mp-btn--primary" :disabled="configLocked || submitting" @click="saveStages">保存阶段</button></div>
-        </div>
-
-        <div v-show="dtab === 'rules'" class="gb-sec">
-          <p class="ie-hint">规则配置（查重/答辩/成绩权重）。</p>
-          <label class="gb-kv"><span>查重阈值(%)</span><input v-model.number="rules.plagiarism.thresholdPercent" type="number" min="0" max="100" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-          <label class="gb-kv"><span>查重通过才可答辩</span><input v-model="rules.plagiarism.mustPassToDefense" type="checkbox" :disabled="configLocked" /></label>
-          <label class="gb-kv"><span>答辩组人数</span><input v-model.number="rules.defense.groupSize" type="number" min="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-          <label class="gb-kv"><span>答辩及格分</span><input v-model.number="rules.defense.passScore" type="number" min="0" max="100" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-          <label class="gb-kv"><span>导师权重</span><input v-model.number="rules.score.advisorWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-          <label class="gb-kv"><span>评阅权重</span><input v-model.number="rules.score.reviewerWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-          <label class="gb-kv"><span>答辩权重</span><input v-model.number="rules.score.defenseWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-          <div class="ie-actions"><button class="mp-btn mp-btn--primary" :disabled="configLocked || submitting" @click="saveRules">保存规则</button></div>
-        </div>
-
-        <div v-show="dtab === 'audit'" class="gb-sec">
-          <AppAuditTrail :records="batchAuditRecords" compact :show-ip="false" />
-        </div>
-      </template>
-    </AppDrawer>
-
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
@@ -108,38 +48,27 @@
 <script>
 /** 毕设批次列表（/admin/graduation/batches）：生产级只走真实后端；建/改/阶段+规则配置/状态机/作废/Excel台账导出。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton, AppAuditTrail } from '@/components/common'
-import { AppDatePicker, AppDateDisplay } from '@/components/common/date'
+import { AppExportButton } from '@/components/common'
+import { AppDateDisplay } from '@/components/common/date'
 import { graduationBatchApi } from '@/modules/graduation/api/graduation-batch.api'
 import { BATCH_STATUS } from '@/modules/graduation/constants/graduation-batch.constants'
 import { toast } from '@/utils/toast'
-import { todayDate, formatDate, addDays, validateRange } from '@/utils/dateUtils'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', dateStart: '', dateEnd: '' })
-const EMPTY_FORM = () => ({
-  batchName: '', batchNo: '', gradeYear: '', academicYear: '', plannedCount: 0,
-  startDate: todayDate(),
-  endDate: formatDate(addDays(new Date(), 180)),
-  collegeScope: '', remark: ''
-})
-const DEFAULT_RULES = () => ({ plagiarism: { thresholdPercent: 30, mustPassToDefense: true }, defense: { groupSize: 5, passScore: 60 }, score: { advisorWeight: 0.4, reviewerWeight: 0.3, defenseWeight: 0.3 } })
 
 export default {
   name: 'GraduationBatchListView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppDrawer, AppConfirmDialog, AppDatePicker, AppDateDisplay, AppExportButton, AppAuditTrail
+    AppConfirmDialog, AppDateDisplay, AppExportButton
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', submitting: false,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      editVisible: false, editing: null, form: EMPTY_FORM(), formError: '',
-      detailVisible: false, detail: null, dtab: 'stages', preferredTab: 'stages', stages: [], rules: DEFAULT_RULES(),
-      detailTabs: [{ key: 'stages', label: '阶段时间轴' }, { key: 'rules', label: '规则配置' }, { key: 'audit', label: '审计' }],
+      preferredTab: 'stages',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
         { key: 'batch', title: '批次 / 编号' },
@@ -162,16 +91,7 @@ export default {
         }
       ]
     },
-    toolbarActions() { return [{ key: 'create', label: '＋ 新建批次', variant: 'primary' }] },
-    batchAuditRecords() {
-      return (this.detail?.auditTrail || []).map((a, i) => ({
-        id: i,
-        action: a.action,
-        actor: a.operator,
-        at: a.occurredAt
-      }))
-    },
-    configLocked() { return this.detail && ['ARCHIVED', 'VOIDED', 'CLOSED'].includes(this.detail.status) }
+    toolbarActions() { return [{ key: 'create', label: '＋ 新建批次', variant: 'primary' }] }
   },
   created() { this.applyPanel(this.$route.query.panel, true) },
   watch: {
@@ -182,10 +102,9 @@ export default {
     /** 按左侧三级菜单的 ?panel= 切换到对应视图/动作（每个 panel 是独立 ref，点击都能导航） */
     applyPanel(panel, initial) {
       panel = panel || 'list'
-      if (panel !== 'create') this.editVisible = false
       if (panel === 'create') {
         this.filters.status = ''; this.page = 1; this.load()
-        this.editing = null; this.form = EMPTY_FORM(); this.formError = ''; this.editVisible = true
+        this.$router.push('/admin/graduation/batches/create')
         return
       }
       if (panel === 'export') { this.filters.status = ''; this.page = 1; this.load(); this.$nextTick(() => this.triggerBatchExport()); return }
@@ -210,45 +129,14 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) {
-      if (key === 'create') { this.editing = null; this.form = EMPTY_FORM(); this.formError = ''; this.editVisible = true }
+      if (key === 'create') this.$router.push('/admin/graduation/batches/create')
     },
     openEdit(row) {
-      this.editing = row
-      this.form = { batchName: row.batchName, batchNo: row.batchNo, gradeYear: row.gradeYear, academicYear: row.academicYear, plannedCount: row.plannedCount, startDate: (row.startDate || '').slice(0, 10), endDate: (row.endDate || '').slice(0, 10), collegeScope: row.collegeScope, remark: row.remark }
-      this.formError = ''; this.editVisible = true
+      this.$router.push(`/admin/graduation/batches/${row.id}/edit`)
     },
-    async submitEdit() {
-      this.formError = ''
-      if (!this.form.batchName || !this.form.batchNo) { this.formError = '批次名称与编号必填'; return }
-      const range = validateRange(this.form.startDate, this.form.endDate)
-      if (!range.ok) { this.formError = range.message; return }
-      this.submitting = true
-      try {
-        const res = this.editing ? await graduationBatchApi.updateBatch(this.editing.id, this.form) : await graduationBatchApi.createBatch(this.form)
-        if (res.code === 0) { toast.success('已保存'); this.editVisible = false; this.load() } else this.formError = res.message
-      } finally { this.submitting = false }
-    },
-    async openDetail(row) {
-      const res = await graduationBatchApi.getBatchDetail(row.id)
-      if (res.code !== 0) return toast.error(res.message)
-      this.detail = res.data
-      this.stages = JSON.parse(JSON.stringify(res.data.stages || []))
-      this.rules = { ...DEFAULT_RULES(), ...(res.data.rules || {}), plagiarism: { ...DEFAULT_RULES().plagiarism, ...(res.data.rules?.plagiarism || {}) }, defense: { ...DEFAULT_RULES().defense, ...(res.data.rules?.defense || {}) }, score: { ...DEFAULT_RULES().score, ...(res.data.rules?.score || {}) } }
-      this.dtab = this.preferredTab || 'stages'; this.detailVisible = true
-    },
-    async saveStages() {
-      this.submitting = true
-      try {
-        const res = await graduationBatchApi.setStages(this.detail.id, this.stages)
-        if (res.code === 0) { toast.success('阶段已保存'); this.detail = res.data } else toast.error(res.message)
-      } finally { this.submitting = false }
-    },
-    async saveRules() {
-      this.submitting = true
-      try {
-        const res = await graduationBatchApi.setRules(this.detail.id, this.rules)
-        if (res.code === 0) { toast.success('规则已保存'); this.detail = res.data } else toast.error(res.message)
-      } finally { this.submitting = false }
+    openDetail(row) {
+      const tab = this.preferredTab === 'rules' ? 'rules' : 'stages'
+      this.$router.push({ path: `/admin/graduation/batches/${row.id}`, query: { tab } })
     },
     askState(row, action) {
       const m = { activate: { t: '启用批次', c: '确认启用', type: 'primary' }, close: { t: '结束批次', c: '确认结束', type: 'warning' }, archive: { t: '归档批次', c: '确认归档', type: 'primary' } }[action]

@@ -36,21 +36,6 @@
       </DataTable>
     </div>
 
-    <AppDrawer v-model:visible="detailVisible" title="变更申请详情">
-      <div v-if="detail" class="tc-detail">
-        <dl class="tc-meta">
-          <div><dt>学生</dt><dd>{{ detail.studentName }}（{{ detail.studentNo }}）</dd></div>
-          <div><dt>原题目</dt><dd>{{ detail.oldTopicTitle }} · 导师 {{ detail.oldAdvisorName || '—' }}</dd></div>
-          <div><dt>目标题目</dt><dd>{{ detail.newTopicTitle }} · 导师 {{ detail.newAdvisorName || '—' }}</dd></div>
-          <div><dt>变更理由</dt><dd>{{ detail.reason }}</dd></div>
-          <div><dt>状态</dt><dd><StatusTag :type="detail.statusTone" :label="detail.statusLabel" dot /></dd></div>
-          <div v-if="detail.reviewComment"><dt>审核意见</dt><dd>{{ detail.reviewComment }}</dd></div>
-          <div v-if="detail.reviewerName"><dt>审核人</dt><dd>{{ detail.reviewerName }} · {{ detail.reviewedAt }}</dd></div>
-          <div><dt>发起人</dt><dd>{{ detail.requestedBy }} · {{ detail.requestedAt }}</dd></div>
-        </dl>
-      </div>
-    </AppDrawer>
-
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
@@ -64,7 +49,6 @@
  * 学生获批题目后换题的唯一合法途径——发起变更申请→教师/管理员重新审核（通过即迁移分配，驳回须≥5字理由）。
  */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { gdTopicChangeApi } from '@/modules/graduation/api/graduation-topic-change.api'
 import { toast } from '@/utils/toast'
@@ -79,13 +63,12 @@ const EMPTY_FILTERS = () => ({ status: '' })
 
 export default {
   name: 'TopicChangeRequestListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', submitting: false,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      detailVisible: false, detail: null,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '理由', action: null, row: null }
     }
   },
@@ -120,9 +103,8 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) { if (key === 'refresh') this.load() },
-    async openDetail(row) {
-      const res = await gdTopicChangeApi.getChangeRequestDetail(row.id)
-      if (res.code === 0) { this.detail = res.data; this.detailVisible = true } else toast.error(res.message)
+    openDetail(row) {
+      this.$router.push(`/admin/graduation/topic-changes/${row.id}`)
     },
     askApprove(row) {
       this.confirm = { visible: true, title: '通过变更申请', message: `确认通过「${row.studentName}」由「${row.oldTopicTitle}」变更至「${row.newTopicTitle}」？将立即迁移选题分配。`, type: 'primary', confirmText: '通过', requireReason: false, action: 'APPROVE', row }

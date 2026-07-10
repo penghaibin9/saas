@@ -95,22 +95,6 @@
       </div>
     </div>
 
-    <AppDrawer v-model:visible="assignVisible" title="分配选题">
-      <div class="ie-form">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">选题</span>
-          <select v-model="assignTopicId" class="ie-in">
-            <option value="">请选择</option>
-            <option v-for="t in topicOpts" :key="t.id" :value="t.id" :disabled="t.remaining <= 0">{{ t.title }}（余 {{ t.remaining }}）</option>
-          </select>
-        </label>
-        <p v-if="actionError" class="ie-err">{{ actionError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submitAssign">确认</button>
-        </div>
-      </div>
-    </AppDrawer>
-
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
@@ -122,7 +106,6 @@
 <script>
 /** 毕设学生详情（/admin/graduation/students/:id）：批次/选题/节点 + 材料/成果/查重 + 状态机操作 + 审计。 */
 import { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
@@ -130,7 +113,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationStudentDetailView',
-  components: { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState, AppDrawer, AppConfirmDialog, AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList },
+  components: { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState, AppConfirmDialog, AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -141,7 +124,6 @@ export default {
         { key: 'finals', label: '成果提交' },
         { key: 'plagiarisms', label: '查重记录' }
       ],
-      assignVisible: false, assignTopicId: '', topicOpts: [], actionError: '',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null }
     }
   },
@@ -198,9 +180,7 @@ export default {
     async onToolbar(key) {
       if (key === 'back') { this.$router.push('/admin/graduation/students'); return }
       if (key === 'assignTopic') {
-        const t = await gdStudentApi.getConfirmedTopics()
-        if (t.code === 0) { this.topicOpts = t.data; this.assignTopicId = ''; this.actionError = ''; this.assignVisible = true }
-        else toast.error(t.message)
+        this.$router.push(`/admin/graduation/students/${this.detail.id}/assign-topic`)
       }
       if (key === 'assignAdvisor') {
         this.confirm = { visible: true, title: '分配指导教师', message: '填写指导教师姓名', type: 'primary', confirmText: '确认', requireReason: true, reasonLabel: '指导教师', action: 'ADVISOR' }
@@ -214,13 +194,6 @@ export default {
       if (key === 'risk') {
         this.confirm = { visible: true, title: '标记高风险', message: '将学生标记为高风险并留痕', type: 'warning', confirmText: '标记', requireReason: true, reasonLabel: '风险原因', action: 'RISK_HIGH' }
       }
-    },
-    async submitAssign() {
-      this.actionError = ''; this.submitting = true
-      try {
-        const res = await gdStudentApi.assignTopic(this.detail.id, { topicId: this.assignTopicId })
-        if (res.code === 0) { toast.success('已分配选题'); this.assignVisible = false; this.load() } else this.actionError = res.message
-      } finally { this.submitting = false }
     },
     async onConfirm({ reason } = {}) {
       this.submitting = true
@@ -240,10 +213,4 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.ie-form { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
-.ie-fld { display: flex; flex-direction: column; gap: var(--space-1); }
-.ie-lbl { font-size: var(--font-size-sm); }
-.ie-in { padding: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
-.ie-err { color: var(--danger-600); font-size: var(--font-size-sm); }
-.ie-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 </style>

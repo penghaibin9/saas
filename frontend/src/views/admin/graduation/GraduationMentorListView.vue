@@ -72,112 +72,6 @@
       </DataTable>
     </div>
 
-    <!-- 新建 / 编辑导师 -->
-    <AppDrawer v-model:visible="editVisible" :title="editing ? '编辑导师' : '申报导师'">
-      <form class="ie-form" @submit.prevent="submitEdit">
-        <label class="ie-fld"><span class="ie-lbl">教师工号 <i>*</i></span><input v-model.trim="form.teacherNo" class="ie-in" :disabled="!!editing" /></label>
-        <label class="ie-fld"><span class="ie-lbl">教师姓名 <i>*</i></span><input v-model.trim="form.teacherName" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">导师类型</span>
-          <select v-model="form.mentorType" class="ie-in">
-            <option v-for="o in MENTOR_TYPE" :key="o.value" :value="o.value">{{ o.label }}</option>
-          </select>
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">职称</span><input v-model.trim="form.title" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">所属学院</span><input v-model.trim="form.collegeName" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">所属专业</span><input v-model.trim="form.majorName" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">最大指导人数</span><input v-model.number="form.maxCapacity" type="number" min="1" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">联系电话</span><input v-model.trim="form.phone" class="ie-in" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">指导方向</span><input v-model.trim="form.researchDirection" class="ie-in" placeholder="如 Web 开发 / 嵌入式系统" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="form.remark" class="ie-in" rows="2" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="editVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 详情 -->
-    <AppDrawer v-model:visible="detailVisible" :title="detail ? detail.teacherName : '导师详情'">
-      <template v-if="detail">
-        <div class="gm-detail-kv"><span>资格状态</span><StatusTag :type="detail.qualificationTone" :label="detail.qualificationLabel" dot /></div>
-        <div class="gm-detail-kv"><span>工作量</span><span>{{ detail.capacityText }}</span></div>
-        <div class="gm-detail-kv"><span>指导方向</span><span>{{ detail.researchDirection || '—' }}</span></div>
-        <div class="gm-detail-kv"><span>联系电话</span><span>{{ detail.phone || '—' }}</span></div>
-        <div v-if="detail.reviewComment" class="gm-detail-kv"><span>审核意见</span><span>{{ detail.reviewComment }}</span></div>
-        <div v-if="detail.latestEval" class="gm-detail-kv"><span>最新评价</span><span>{{ detail.latestEval.level }} · {{ detail.latestEval.score }}分（{{ detail.latestEval.evaluatedBy }}）</span></div>
-        <div class="gm-section-title" style="margin-top: var(--space-3)" >在指导学生</div>
-        <EmptyState v-if="!detail.students.length" title="暂无在指导学生" />
-        <ul v-else class="gm-stu-list">
-          <li v-for="s in detail.students" :key="s.id">{{ s.name }}（{{ s.studentNo }}）· {{ s.topicTitle || '未确认选题' }}</li>
-        </ul>
-        <div class="gm-section-title" style="margin-top: var(--space-3)" >操作记录</div>
-        <AppAuditTrail :records="mentorAuditRecords" compact :show-ip="false" />
-      </template>
-    </AppDrawer>
-
-    <!-- 分配 / 调导师 -->
-    <AppDrawer v-model:visible="assignVisible" :title="assignForm.mode === 'change' ? '调导师' : '分配导师'">
-      <form class="ie-form" @submit.prevent="submitAssign">
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生</span><input class="ie-in" :value="assignForm.studentLabel" disabled /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">导师 <i>*</i></span>
-          <select v-model="assignForm.mentorId" class="ie-in">
-            <option value="">请选择已认证且未满员的导师</option>
-            <option v-for="m in availableMentors" :key="m.id" :value="m.id">{{ m.teacherName }}（{{ m.capacityText }}）</option>
-          </select>
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">{{ assignForm.mode === 'change' ? '调导师原因（≥5字）' : '分配原因' }}<i v-if="assignForm.mode === 'change'">*</i></span><textarea v-model.trim="assignForm.reason" class="ie-in" rows="2" /></label>
-        <p v-if="formError" class="ie-err">{{ formError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">确认</button>
-        </div>
-      </form>
-    </AppDrawer>
-
-    <!-- 导师评价 -->
-    <AppDrawer v-model:visible="evalVisible" :title="evalMentor ? evalMentor.teacherName + ' · 导师评价' : '导师评价'">
-      <form class="ie-form" @submit.prevent="submitEval">
-        <label class="ie-fld"><span class="ie-lbl">评价周期</span><input v-model.trim="evalForm.period" class="ie-in" placeholder="如 2026春" /></label>
-        <label class="ie-fld"><span class="ie-lbl">评分（0-100）<i>*</i></span><input v-model.number="evalForm.score" type="number" min="0" max="100" class="ie-in" /></label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">评价等级 <i>*</i></span>
-          <select v-model="evalForm.level" class="ie-in">
-            <option v-for="l in ['优秀','良好','合格','不合格']" :key="l" :value="l">{{ l }}</option>
-          </select>
-        </label>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">评价意见</span><textarea v-model.trim="evalForm.note" class="ie-in" rows="3" /></label>
-        <p v-if="evalError" class="ie-err">{{ evalError }}</p>
-        <div class="ie-actions">
-          <button type="button" class="mp-btn" @click="evalVisible = false">取消</button>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">提交评价</button>
-        </div>
-      </form>
-      <div class="gm-section-title" style="margin-top: var(--space-3)">评价历史</div>
-      <EmptyState v-if="!evalHistory.length" title="暂无评价记录" />
-      <ul v-else class="gm-trail">
-        <li v-for="e in evalHistory" :key="e.id" class="gm-trail__item">
-          <span>{{ e.level }} · {{ e.score }}分 {{ e.period ? '（' + e.period + '）' : '' }}{{ e.note ? ' · ' + e.note : '' }}</span>
-          <span class="gm-trail__meta">{{ e.evaluatedBy }} · {{ e.evaluatedAt }}</span>
-        </li>
-      </ul>
-    </AppDrawer>
-
-    <!-- 分配冲突检测 -->
-    <AppDrawer v-model:visible="conflictsVisible" title="分配冲突自动检测">
-      <template v-if="conflicts">
-        <div class="gm-assign-hint">共检出 <b>{{ conflicts.total }}</b> 项分配冲突，请及时处理。</div>
-        <div class="gm-section-title" style="margin-top: var(--space-3)">导师超容量（{{ conflicts.overCapacity.length }}）</div>
-        <EmptyState v-if="!conflicts.overCapacity.length" title="无超容量导师" />
-        <ul v-else class="gm-stu-list"><li v-for="m in conflicts.overCapacity" :key="m.mentorId">{{ m.teacherName }}：{{ m.current }}/{{ m.capacity }}</li></ul>
-        <div class="gm-section-title" style="margin-top: var(--space-3)">进入指导阶段却无导师（{{ conflicts.advancedNoMentor.length }}）</div>
-        <EmptyState v-if="!conflicts.advancedNoMentor.length" title="无此类学生" />
-        <ul v-else class="gm-stu-list"><li v-for="s in conflicts.advancedNoMentor" :key="s.gdStudentId">{{ s.name }}（{{ s.className }}）· {{ s.stage }}</li></ul>
-        <div class="gm-section-title" style="margin-top: var(--space-3)">学生导师非「已认证」（{{ conflicts.unqualifiedMentor.length }}）</div>
-        <EmptyState v-if="!conflicts.unqualifiedMentor.length" title="无此类学生" />
-        <ul v-else class="gm-stu-list"><li v-for="s in conflicts.unqualifiedMentor" :key="s.gdStudentId">{{ s.name }} → {{ s.mentorName }}（{{ s.mentorStatus }}）</li></ul>
-      </template>
-    </AppDrawer>
-
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
@@ -202,9 +96,8 @@
 <script>
 /** 导师管理 + 导师分配（/admin/graduation/mentors）：生产级只走真实后端；申报/审核/停用/启用/归档 + 分配/调导师/取消 + Excel。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton, AppAuditTrail } from '@/components/common'
+import { AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { MENTOR_QUALIFICATION_STATUS, MENTOR_TYPE } from '@/modules/graduation/constants/graduation-mentor.constants'
@@ -212,11 +105,10 @@ import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', qualificationStatus: '', mentorType: '', dateStart: '', dateEnd: '' })
 const EMPTY_U_FILTERS = () => ({ keyword: '', dateStart: '', dateEnd: '' })
-const EMPTY_FORM = () => ({ teacherNo: '', teacherName: '', mentorType: 'INTERNAL', title: '', collegeName: '', majorName: '', researchDirection: '', maxCapacity: 8, phone: '', remark: '' })
 
 export default {
   name: 'GraduationMentorListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, AppExcelImportDrawer, AppExportButton, AppAuditTrail },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -224,8 +116,6 @@ export default {
       tab: 'mentors',
       loading: true, error: '', submitting: false,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      editVisible: false, editing: null, form: EMPTY_FORM(), formError: '',
-      detailVisible: false, detail: null,
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
@@ -240,12 +130,7 @@ export default {
       unassignedTotal: 0,
       aRows: [], aTotal: 0, aPage: 1, aPageSize: 10,
       uColumns: [{ key: 'student', title: '学生' }, { key: 'actions', title: '操作', width: '120px' }],
-      aColumns: [{ key: 'pair', title: '学生 ← 导师' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '160px' }],
-      assignVisible: false, assignForm: { mode: 'assign', studentId: '', studentLabel: '', mentorId: '', reason: '', assignmentId: '' },
-      availableMentors: [],
-      // Batch 4：评价 / 冲突
-      evalVisible: false, evalMentor: null, evalForm: { period: '', score: 90, level: '良好', note: '' }, evalError: '', evalHistory: [],
-      conflictsVisible: false, conflicts: null
+      aColumns: [{ key: 'pair', title: '学生 ← 导师' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '160px' }]
     }
   },
   computed: {
@@ -274,14 +159,6 @@ export default {
     toolbarActions() {
       if (this.tab === 'assign') return [{ key: 'batchAssign', label: '一键批量分配', variant: 'primary' }]
       return [{ key: 'create', label: '＋ 申报导师', variant: 'primary' }, { key: 'conflicts', label: '分配冲突检测' }, { key: 'batchArchive', label: '批量归档' }, { key: 'import', label: '导入 Excel' }]
-    },
-    mentorAuditRecords() {
-      return (this.detail?.auditTrail || []).map((a, i) => ({
-        id: i,
-        action: a.action,
-        actor: a.operator,
-        at: a.occurredAt
-      }))
     }
   },
   created() { this.applyPanel(this.$route.query.panel, true) },
@@ -290,7 +167,7 @@ export default {
     applyPanel(panel, initial) {
       panel = panel || 'list'
       this.tab = panel === 'assign' ? 'assign' : 'mentors'
-      if (panel === 'create') { this.tab = 'mentors'; this.load(); this.onToolbar('create'); return }
+      if (panel === 'create') { this.tab = 'mentors'; this.load(); this.$router.push('/admin/graduation/mentors/create'); return }
       if (this.tab === 'mentors') this.load(); else { this.loadUnassigned(); this.loadAssignments() }
       if (!initial) { /* 切换 panel 已在上面处理 */ }
     },
@@ -309,40 +186,14 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) {
-      if (key === 'create') { this.editing = null; this.form = EMPTY_FORM(); this.formError = ''; this.editVisible = true }
+      if (key === 'create') this.$router.push('/admin/graduation/mentors/create')
       if (key === 'import') this.importVisible = true
-      if (key === 'conflicts') this.openConflicts()
+      if (key === 'conflicts') this.$router.push('/admin/graduation/mentors/conflicts')
       if (key === 'batchArchive') this.doBatchArchive()
       if (key === 'batchAssign') this.doBatchAssign()
     },
-    async openEval(row) {
-      this.evalMentor = row
-      this.evalForm = { period: '', score: 90, level: '良好', note: '' }
-      this.evalError = ''
-      this.evalHistory = []
-      this.evalVisible = true
-      const res = await graduationMentorApi.getEvals(row.id)
-      if (res.code === 0) this.evalHistory = res.data.list
-    },
-    async submitEval() {
-      this.evalError = ''
-      if (this.evalForm.score === '' || this.evalForm.score < 0 || this.evalForm.score > 100) { this.evalError = '评分须 0-100'; return }
-      this.submitting = true
-      const res = await graduationMentorApi.createEval(this.evalMentor.id, this.evalForm)
-      this.submitting = false
-      if (res.code === 0) {
-        toast.success('已评价')
-        const h = await graduationMentorApi.getEvals(this.evalMentor.id)
-        if (h.code === 0) this.evalHistory = h.data.list
-        this.evalForm.note = ''
-      } else this.evalError = res.message
-    },
-    async openConflicts() {
-      this.conflicts = null
-      this.conflictsVisible = true
-      const res = await graduationMentorApi.getConflicts()
-      if (res.code === 0) this.conflicts = res.data
-      else toast.error(res.message)
+    openEval(row) {
+      this.$router.push(`/admin/graduation/mentors/${row.id}/eval`)
     },
     async doBatchArchive() {
       const ids = this.rows.filter((m) => ['DISABLED', 'REJECTED'].includes(m.qualificationStatus)).map((m) => m.id)
@@ -376,23 +227,10 @@ export default {
     },
     onImported() { this.importVisible = false; this.load(); toast.success('导入完成') },
     openEdit(row) {
-      this.editing = row
-      this.form = { teacherNo: row.teacherNo, teacherName: row.teacherName, mentorType: row.mentorType, title: row.title, collegeName: row.collegeName, majorName: row.majorName, researchDirection: row.researchDirection, maxCapacity: row.maxCapacity, phone: '', remark: '' }
-      this.formError = ''; this.editVisible = true
+      this.$router.push(`/admin/graduation/mentors/${row.id}/edit`)
     },
-    async submitEdit() {
-      this.formError = ''
-      if (!this.form.teacherNo || !this.form.teacherName) { this.formError = '教师工号与姓名必填'; return }
-      this.submitting = true
-      try {
-        const res = this.editing ? await graduationMentorApi.updateMentor(this.editing.id, this.form) : await graduationMentorApi.createMentor(this.form)
-        if (res.code === 0) { toast.success('已保存'); this.editVisible = false; this.load() } else this.formError = res.message
-      } finally { this.submitting = false }
-    },
-    async openDetail(row) {
-      const res = await graduationMentorApi.getMentorDetail(row.id)
-      if (res.code !== 0) return toast.error(res.message)
-      this.detail = res.data; this.detailVisible = true
+    openDetail(row) {
+      this.$router.push(`/admin/graduation/mentors/${row.id}`)
     },
     askReview(row) {
       this.confirm = { visible: true, title: '审核导师资格', message: `确认「${row.teacherName}」资格审核通过？`, type: 'primary', confirmText: '通过', requireReason: false, action: 'review-approve', row }
@@ -437,34 +275,14 @@ export default {
       if (res.code === 0) { this.aRows = res.data.list; this.aTotal = res.data.total }
     },
     turnAssignPage(p) { this.aPage = p; this.loadAssignments() },
-    async loadAvailableMentors() {
-      const res = await graduationMentorApi.getMentors({ qualificationStatus: 'QUALIFIED', hasCapacity: 'true', pageSize: 200 })
-      this.availableMentors = res.code === 0 ? res.data.list : []
+    openAssign(row) {
+      this.$router.push(`/admin/graduation/mentors/assign/${row.id}`)
     },
-    async openAssign(row) {
-      await this.loadAvailableMentors()
-      this.assignForm = { mode: 'assign', studentId: row.id, studentLabel: `${row.name}（${row.studentNo}）`, mentorId: '', reason: '', assignmentId: '' }
-      this.formError = ''; this.assignVisible = true
-    },
-    async openChange(row) {
-      await this.loadAvailableMentors()
-      this.assignForm = { mode: 'change', studentId: row.gdStudentId, studentLabel: row.studentName, mentorId: '', reason: '', assignmentId: row.id }
-      this.formError = ''; this.assignVisible = true
+    openChange(row) {
+      this.$router.push({ path: `/admin/graduation/mentors/assign/${row.gdStudentId}`, query: { mode: 'change' } })
     },
     askCancel(row) {
       this.confirm = { visible: true, title: '取消分配', message: `确认取消「${row.studentName}」与「${row.mentorName}」的分配关系？`, type: 'danger', confirmText: '确认取消', requireReason: true, reasonLabel: '取消原因', action: 'cancel-assign', row }
-    },
-    async submitAssign() {
-      this.formError = ''
-      if (!this.assignForm.mentorId) { this.formError = '请选择导师'; return }
-      if (this.assignForm.mode === 'change' && (!this.assignForm.reason || this.assignForm.reason.length < 5)) { this.formError = '调导师原因至少 5 字'; return }
-      this.submitting = true
-      try {
-        const res = this.assignForm.mode === 'change'
-          ? await graduationMentorApi.changeMentor(this.assignForm.studentId, this.assignForm.mentorId, this.assignForm.reason)
-          : await graduationMentorApi.assignMentor(this.assignForm.studentId, this.assignForm.mentorId, this.assignForm.reason)
-        if (res.code === 0) { toast.success('已保存'); this.assignVisible = false; this.loadUnassigned(); this.loadAssignments() } else this.formError = res.message
-      } finally { this.submitting = false }
     }
   }
 }

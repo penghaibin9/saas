@@ -149,8 +149,18 @@ export default {
     if (['risk', 'archive', 'stats'].includes(p)) this.tab = p
     this.loadRisks(); this.loadArchives(); this.loadStats()
   },
+  watch: {
+    // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
+    '$route.query.panel'(p) {
+      if (['risk', 'archive', 'stats'].includes(p) && p !== this.tab) this.tab = p
+    }
+  },
   methods: {
-    switchTab(t) { this.tab = t },
+    /** 页签切换同步到 URL，保证刷新/分享/左侧菜单高亮一致 */
+    switchTab(t) {
+      this.tab = t
+      if (this.$route.query.panel !== t) this.$router.replace({ query: { ...this.$route.query, panel: t } })
+    },
     async doScan() {
       const res = await graduationRiskArchiveApi.scanRisks()
       if (res.code === 0) { toast.success(res.message || '扫描完成'); this.loadRisks() } else toast.error(res.message)
