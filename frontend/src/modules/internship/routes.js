@@ -295,6 +295,24 @@ const internshipRoutes = {
       redirect: '/admin/employment'
     },
     {
+      path: 'agreement-templates/new',
+      name: 'internship-agreement-template-new',
+      component: () => import('@/views/admin/internship/AgreementTemplateFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '新建协议模板', requiresAuth: true, permissionKey: 'internship.agreementTemplate.view' }
+    },
+    {
+      path: 'agreement-templates/:id/edit',
+      name: 'internship-agreement-template-edit',
+      component: () => import('@/views/admin/internship/AgreementTemplateFormView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '编辑协议模板', requiresAuth: true, permissionKey: 'internship.agreementTemplate.view' }
+    },
+    {
+      path: 'agreement-templates/:id',
+      name: 'internship-agreement-template-detail',
+      component: () => import('@/views/admin/internship/AgreementTemplateDetailView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '协议模板详情', requiresAuth: true, permissionKey: 'internship.agreementTemplate.view' }
+    },
+    {
       path: 'agreement-templates',
       name: 'internship-agreement-templates',
       component: () => import('@/views/admin/internship/InternshipAgreementTemplateListView.vue'),
