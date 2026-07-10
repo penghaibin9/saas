@@ -4,3 +4,9 @@ dist/
 .hbuilderx/
 *.log
 .DS_Store
+# 本地环境变量（含服务器地址/开关），勿提交；仅保留 .env.example 作为文档
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
