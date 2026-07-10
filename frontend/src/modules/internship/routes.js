@@ -95,6 +95,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: M.GUIDANCE_VISIT, requiresAuth: true, permissionKey: 'internship.guidance.view' }
     },
     {
+      path: 'guidance-plan',
+      name: 'internship-guidance-plan',
+      component: () => import('@/views/admin/internship/GuidancePlanView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: '指导计划', requiresAuth: true, permissionKey: 'internship.guidance.view' }
+    },
+    {
       path: 'weekly-task',
       name: 'internship-weekly-task',
       redirect: '/admin/internship/reports'
@@ -115,6 +121,30 @@ const internshipRoutes = {
       name: 'internship-report-detail',
       component: () => import('@/views/admin/internship/WeeklyReportDetailView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.WEEKLY_TASK, title: '周报批阅详情', requiresAuth: true, permissionKey: 'internship.report.review' }
+    },
+    {
+      path: 'process-reports/:id',
+      name: 'internship-process-report-detail',
+      component: () => import('@/views/admin/internship/ProcessReportDetailView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.WEEKLY_TASK, title: '过程报告批阅', requiresAuth: true, permissionKey: 'internship.report.review' }
+    },
+    {
+      path: 'changes',
+      name: 'internship-changes',
+      component: () => import('@/views/admin/internship/ChangeRequestListView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: P.CHANGE_LEDGER, requiresAuth: true, permissionKey: 'internship.student.manage' }
+    },
+    {
+      path: 'plans',
+      name: 'internship-plans',
+      component: () => import('@/views/admin/internship/InternshipPlanView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.WEEKLY_TASK, title: '实习计划书', requiresAuth: true, permissionKey: 'internship.batch.manage' }
+    },
+    {
+      path: 'insurance',
+      name: 'internship-insurance',
+      component: () => import('@/views/admin/internship/InsuranceVerifyView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.STUDENTS, title: '实习保险核验', requiresAuth: true, permissionKey: 'internship.student.view' }
     },
     {
       path: 'risks',
@@ -186,6 +216,18 @@ const internshipRoutes = {
       path: 'eval-score',
       name: 'internship-eval-score',
       redirect: '/admin/internship/scores'
+    },
+    {
+      path: 'stats',
+      name: 'internship-stats',
+      component: () => import('@/views/admin/internship/StatsView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EMPLOYMENT_ARCHIVE, title: '实习统计', requiresAuth: true, permissionKey: 'internship.stats.view' }
+    },
+    {
+      path: 'archive',
+      name: 'internship-archive',
+      component: () => import('@/views/admin/internship/ArchiveView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EMPLOYMENT_ARCHIVE, title: '实习归档', requiresAuth: true, permissionKey: 'internship.archive.view' }
     },
     {
       path: 'employment-archive-stats',

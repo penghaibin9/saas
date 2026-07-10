@@ -77,18 +77,20 @@ export const ADMIN_MENU = [
     label: '岗位实习中心',
     icon: '✎',
     children: [
-      { key: 'in-workbench', label: '实习工作台', path: '/admin/internship', moduleCode: 'INTERNSHIP', permissionKey: 'internship.dashboard.view' },
-      { key: 'in-batch-rules', label: '批次与规则', path: '/admin/internship/batches', moduleCode: 'INTERNSHIP', permissionKey: 'internship.batch.manage' },
-      { key: 'in-students', label: '实习学生', path: '/admin/internship/students', moduleCode: 'INTERNSHIP', permissionKey: 'internship.student.view' },
-      { key: 'in-enterprise-position', label: '企业与岗位', path: '/admin/internship/enterprises', moduleCode: 'INTERNSHIP', permissionKey: 'internship.enterprise.view' },
-      { key: 'in-match-assign', label: '匹配与分配', path: '/admin/internship/match', moduleCode: 'INTERNSHIP', permissionKey: 'internship.match.view' },
-      { key: 'in-apply-agreement', label: '申请与协议', path: '/admin/internship/agreements', moduleCode: 'INTERNSHIP', permissionKey: 'internship.agreement.view' },
-      { key: 'in-attendance-leave', label: '打卡与请假', path: '/admin/internship/attendance', moduleCode: 'INTERNSHIP', permissionKey: 'internship.checkin.handle' },
-      { key: 'in-weekly-task', label: '周报与任务', path: '/admin/internship/reports', moduleCode: 'INTERNSHIP', permissionKey: 'internship.report.review' },
-      { key: 'in-guidance-visit', label: '指导与巡访', path: '/admin/internship/guidance', moduleCode: 'INTERNSHIP', permissionKey: 'internship.guidance.view' },
-      { key: 'in-risk-disposal', label: '风险处置', path: '/admin/internship/risk-disposal', moduleCode: 'INTERNSHIP', permissionKey: 'internship.risk.view' },
-      { key: 'in-eval-score', label: '评价与成绩', path: '/admin/internship/scores', moduleCode: 'INTERNSHIP', permissionKey: 'internship.score.view' },
-      { key: 'in-employment-archive-stats', label: '就业转化与归档统计', path: '/admin/employment', moduleCode: 'EMPLOYMENT', permissionKey: 'employment.dashboard.view' }
+      /* 12 个二级模块显示名与 navPlan.js 保持一致（2026-07-10 信息架构收口）；key/path/moduleCode/permissionKey 不变 */
+      { key: 'in-workbench', label: '今日工作', path: '/admin/internship', moduleCode: 'INTERNSHIP', permissionKey: 'internship.dashboard.view' },
+      { key: 'in-batch-rules', label: '实习批次设置', path: '/admin/internship/batches', moduleCode: 'INTERNSHIP', permissionKey: 'internship.batch.manage' },
+      { key: 'in-students', label: '学生实习管理', path: '/admin/internship/students', moduleCode: 'INTERNSHIP', permissionKey: 'internship.student.view' },
+      { key: 'in-enterprise-position', label: '企业岗位库', path: '/admin/internship/enterprises', moduleCode: 'INTERNSHIP', permissionKey: 'internship.enterprise.view' },
+      { key: 'in-match-assign', label: '岗位与导师分配', path: '/admin/internship/match', moduleCode: 'INTERNSHIP', permissionKey: 'internship.match.view' },
+      { key: 'in-apply-agreement', label: '申请与协议办理', path: '/admin/internship/agreements', moduleCode: 'INTERNSHIP', permissionKey: 'internship.agreement.view' },
+      { key: 'in-attendance-leave', label: '打卡请假处理', path: '/admin/internship/attendance', moduleCode: 'INTERNSHIP', permissionKey: 'internship.checkin.handle' },
+      { key: 'in-weekly-task', label: '周报任务批阅', path: '/admin/internship/reports', moduleCode: 'INTERNSHIP', permissionKey: 'internship.report.review' },
+      { key: 'in-guidance-visit', label: '指导巡访管理', path: '/admin/internship/guidance', moduleCode: 'INTERNSHIP', permissionKey: 'internship.guidance.view' },
+      { key: 'in-risk-disposal', label: '风险异常处置', path: '/admin/internship/risk-disposal', moduleCode: 'INTERNSHIP', permissionKey: 'internship.risk.view' },
+      { key: 'in-eval-score', label: '评价成绩审核', path: '/admin/internship/scores', moduleCode: 'INTERNSHIP', permissionKey: 'internship.score.view' },
+      /* 就业中心页面的一级归属映射（rail 高亮用），实习正常菜单本轮不挂就业跨中心入口 */
+      { key: 'in-employment-archive-stats', label: '归档与统计', path: '/admin/employment', moduleCode: 'EMPLOYMENT', permissionKey: 'employment.dashboard.view' }
     ]
   },
   {
@@ -201,16 +203,72 @@ export const SEARCH_ALIASES = [
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
   { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 学业过程' },
   { keywords: ['教学实践', '毕业设计', '毕设', '选题', '答辩'], path: '/admin/graduation', label: '毕业设计中心' },
-  { keywords: ['岗位实习', '实习', '打卡', '周报'], path: '/admin/internship', label: '岗位实习中心' },
-  { keywords: ['企业库', '合作企业', '企业列表'], path: '/admin/internship/enterprises', label: '岗位实习中心 / 企业库' },
-  { keywords: ['企业岗位', '岗位库', '岗位资源'], path: '/admin/internship/positions', label: '岗位实习中心 / 岗位库' },
-  { keywords: ['岗位匹配', '学生意向', '专业匹配', '匹配确认'], path: '/admin/internship/match', label: '岗位实习中心 / 岗位匹配' },
-  { keywords: ['就业服务', '就业', '未就业帮扶'], path: '/admin/employment', label: '岗位实习中心 / 就业服务' },
+  { keywords: ['岗位实习', '实习', '打卡', '周报', '实习工作台', '今日工作'], path: '/admin/internship', label: '岗位实习中心 / 今日工作' },
+  { keywords: ['企业库', '合作企业', '企业列表', '企业与岗位'], path: '/admin/internship/enterprises', label: '岗位实习中心 / 企业岗位库' },
+  { keywords: ['企业岗位', '岗位库', '岗位资源'], path: '/admin/internship/positions', label: '岗位实习中心 / 岗位管理' },
+  { keywords: ['岗位匹配', '学生意向', '专业匹配', '匹配确认', '匹配与分配', '导师分配'], path: '/admin/internship/match', label: '岗位实习中心 / 岗位与导师分配' },
+  { keywords: ['协议模板'], path: '/admin/internship/agreement-templates', label: '岗位实习中心 / 协议模板' },
+  { keywords: ['指导计划', '指导频次'], path: '/admin/internship/guidance-plan', label: '岗位实习中心 / 指导计划' },
+  { keywords: ['实习保险', '保险核验', '保单'], path: '/admin/internship/insurance', label: '岗位实习中心 / 实习保险核验' },
+  { keywords: ['学生自评', '学生鉴定', '教师评价'], path: '/admin/internship/student-evals', label: '岗位实习中心 / 学生自评与教师评价' },
+  { keywords: ['调岗', '退岗', '实习变更'], path: '/admin/internship/changes', label: '岗位实习中心 / 调岗退岗台账' },
+  { keywords: ['实习计划书', '实习任务'], path: '/admin/internship/plans', label: '岗位实习中心 / 任务与计划' },
+  { keywords: ['实习归档', '归档'], path: '/admin/internship/archive', label: '岗位实习中心 / 实习归档' },
+  { keywords: ['实习统计'], path: '/admin/internship/stats', label: '岗位实习中心 / 实习统计' },
+  { keywords: ['就业服务', '就业', '未就业帮扶', '就业转化'], path: '/admin/employment', label: '就业服务（就业中心）' },
   { keywords: ['数据中心', '数据驾驶舱', '领导驾驶舱', '生命周期'], path: '/admin/data-center', label: '工作台 / 领导驾驶舱' },
   { keywords: ['审批中心', '我的待办', '待办', '已办'], path: '/admin/approval', label: '工作台 / 审批中心' },
   { keywords: ['权限与流程', '流程配置', '审批模板', '角色', '权限'], path: '/admin/workflow', label: '系统管理 / 权限与流程' },
   { keywords: ['系统管理', '用户', '菜单', '数据范围', '品牌'], path: '/admin/system', label: '系统管理' },
   { keywords: ['安全审计', '日志', '安全与审计'], path: '/admin/system/logs', label: '系统管理 / 安全与审计' }
 ]
+
+/** 别名搜索预索引（模块加载时构建一次） */
+const ALIAS_SEARCH_INDEX = SEARCH_ALIASES.map((a) => ({
+  label: a.label,
+  path: a.path,
+  keywords: a.keywords || [],
+  labelLower: a.label.toLowerCase(),
+  keywordsLower: (a.keywords || []).map((k) => k.toLowerCase())
+}))
+
+const _aliasSearchCache = new Map()
+
+function aliasMatchesEntry(entry, q) {
+  if (entry.labelLower.includes(q)) return true
+  return entry.keywordsLower.some((kk) => kk.includes(q) || q.includes(kk))
+}
+
+/**
+ * 顶部搜索：旧名称兼容别名（拍平索引 + LRU 缓存，与 searchNavPlan 同级）。
+ * @param {string} query
+ * @param {{ scopeGroupKeys?: Set<string>, emptyLimit?: number }} [opts]
+ */
+export function searchSearchAliases(query, { scopeGroupKeys = null, emptyLimit = 4 } = {}) {
+  const q = (query || '').trim().toLowerCase()
+  const scopeKey = scopeGroupKeys ? [...scopeGroupKeys].sort().join(',') : '*'
+  const cacheKey = `${q}|${scopeKey}|${emptyLimit}`
+  if (_aliasSearchCache.has(cacheKey)) return _aliasSearchCache.get(cacheKey)
+  const inScope = (entry) => {
+    if (!scopeGroupKeys) return true
+    const gk = findActiveMenu(entry.path).groupKey
+    return !gk || scopeGroupKeys.has(gk)
+  }
+  let matched
+  if (!q) {
+    matched = ALIAS_SEARCH_INDEX.filter(inScope).slice(0, emptyLimit)
+  } else {
+    matched = []
+    for (const entry of ALIAS_SEARCH_INDEX) {
+      if (!inScope(entry)) continue
+      if (aliasMatchesEntry(entry, q)) matched.push(entry)
+      if (matched.length >= 20) break
+    }
+  }
+  const result = matched.map((e) => ({ label: e.label, path: e.path }))
+  if (_aliasSearchCache.size > 64) _aliasSearchCache.clear()
+  _aliasSearchCache.set(cacheKey, result)
+  return result
+}
 
 export default ADMIN_MENU
