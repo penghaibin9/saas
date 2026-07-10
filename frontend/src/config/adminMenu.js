@@ -54,12 +54,13 @@ export const ADMIN_MENU = [
     ]
   },
   {
-    /* 一级③教务中心：学业过程（原学生中心＞学业过程迁入） */
+    /* 一级③教务中心：教务工作台（原学生中心＞学业过程迁入承接；三级目录纠偏见
+       docs/施工记录/13B-教务中心PC前端三级目录重构记录.md。key/moduleCode/permissionKey 不变，不动权限） */
     key: 'academic-affairs',
     label: '教务中心',
     icon: '◈',
     children: [
-      { key: 'aa-academic', label: '学业过程', path: '/admin/academic', moduleCode: 'ACADEMIC', permissionKey: 'academic.dashboard.view' }
+      { key: 'aa-academic', label: '教务工作台', path: '/admin/academic', moduleCode: 'ACADEMIC', permissionKey: 'academic.dashboard.view' }
     ]
   },
   {
@@ -199,7 +200,7 @@ export const SEARCH_ALIASES = [
   { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
-  { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 学业过程' },
+  { keywords: ['教务工作台', '学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 教务工作台' },
   { keywords: ['教学实践', '毕业设计', '毕设', '选题', '答辩'], path: '/admin/graduation', label: '毕业设计中心' },
   { keywords: ['岗位实习', '实习', '打卡', '周报'], path: '/admin/internship', label: '岗位实习中心' },
   { keywords: ['企业库', '合作企业', '企业列表'], path: '/admin/internship/enterprises', label: '岗位实习中心 / 企业库' },

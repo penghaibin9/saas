@@ -440,11 +440,14 @@ export default {
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
     isPlannerView() {
-      // 管理员/开发者视角可见 planned/unauthorized；普通业务角色只见 implemented/partial
+      // 施工地图视角（可见 planned/unauthorized 灰条）仅限 DEV 环境与平台侧角色。
+      // 2026-07-10 纠偏：SCHOOL_ADMIN 移出施工视角——学校侧正式菜单只显示真实可用页面
+      // （implemented/partial），长期规划以设计文档为准，不在学校侧渲染大量 planned 节点
+      // （减少误导，同时少渲染数百个灰条叶子，认知与渲染开销双收益）。
       if (import.meta.env && import.meta.env.DEV) return true
       const rt =
         (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''
-      return rt === 'SCHOOL_ADMIN' || rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
+      return rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
     },
     currentPath() {
       return this.$route ? this.$route.path : ''
