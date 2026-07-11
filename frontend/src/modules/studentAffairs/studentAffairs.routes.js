@@ -141,6 +141,17 @@ export const studentAffairsRoutes = {
         requiresAuth: true,
         permissionKey: 'studentAffairs.archive.view'
       }
+    },
+    {
+      path: 'stats',
+      name: 'student-affairs-stats',
+      component: () => import('@/views/admin/studentAffairs/StudentAffairsStatsView.vue'),
+      meta: {
+        moduleCode: 'STUDENT_AFFAIRS',
+        title: '学工统计',
+        requiresAuth: true,
+        permissionKey: 'studentAffairs.stats.view'
+      }
     }
   ]
 }
