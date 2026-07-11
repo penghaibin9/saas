@@ -62,7 +62,7 @@ Write-Host '[OK] PC 前端构建完成。' -ForegroundColor Green
 Write-Host "     产物目录：$Dir\dist" -ForegroundColor Green
 Write-Host '     本地 docker-compose 预演：nginx 已按 deploy/docker/docker-compose.local.yml' -ForegroundColor Green
 Write-Host '       只读挂载 frontend/dist → /usr/share/nginx/html/pc，构建完成后直接生效。'
-Write-Host '     传统 Nginx 部署：把 dist\ 内容拷到服务器 root 指向的目录（见 docs/deploy/03、09）。'
+Write-Host '     传统 Nginx 部署：把 dist\ 内容拷到服务器 root 指向的目录（见 docs/07-部署运维交付与商业化/deploy/03、09）。'
 Write-Host ''
 Read-Host '按回车键关闭'
 exit 0

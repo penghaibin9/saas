@@ -76,10 +76,10 @@ if ($h5Ok) {
     Write-Host "     H5 产物目录：$Dir\dist\build\h5" -ForegroundColor Green
     Write-Host '     本地 docker-compose 预演：nginx 已按 deploy/docker/docker-compose.local.yml' -ForegroundColor Green
     Write-Host '       只读挂载 miniapp/dist/build/h5 → /usr/share/nginx/html/miniapp，构建完成后直接生效。'
-    Write-Host '     传统 Nginx 部署：把 dist\build\h5\ 内容拷到服务器 root 指向的目录（见 docs/deploy/04、09）。'
+    Write-Host '     传统 Nginx 部署：把 dist\build\h5\ 内容拷到服务器 root 指向的目录（见 docs/07-部署运维交付与商业化/deploy/04、09）。'
 }
 if ($mpOk) {
-    Write-Host "     微信小程序产物目录：$Dir\dist\build\mp-weixin（用微信开发者工具打开上传体验版，见 docs/deploy/04）" -ForegroundColor Green
+    Write-Host "     微信小程序产物目录：$Dir\dist\build\mp-weixin（用微信开发者工具打开上传体验版，见 docs/07-部署运维交付与商业化/deploy/04）" -ForegroundColor Green
 }
 Write-Host ''
 Read-Host '按回车键关闭'

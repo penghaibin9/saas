@@ -1,5 +1,5 @@
 """
-待办与消息（对齐 docs/api/04-待办审批消息API.md）
+待办与消息（对齐 docs/05-数据接口权限与安全/api/04-待办审批消息API.md）
 ────────────────────────────────────────────────────────────
 契约路径为 /api/v1/{端}/todos、/api/v1/{端}/messages（端 = admin / student-mini / teacher-mobile）。
 用工厂函数为每个端生成独立 router，避免 operationId 冲突；数据源为 mock（t_unified_todo / t_unified_message 占位）。

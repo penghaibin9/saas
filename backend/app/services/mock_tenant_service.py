@@ -1,7 +1,7 @@
 """
 mock 租户 / 品牌配置服务
 ────────────────────────────────────────────────────────────
-对应 UI 的 tenantBrandConfig（唯一来源），字段对齐 docs/api/01 §1.5、
+对应 UI 的 tenantBrandConfig（唯一来源），字段对齐 docs/05-数据接口权限与安全/api/01 §1.5、
 DB 冻结册 t_tenant_brand_config。真实接库后此处改为查表 + file_id 转签名 URL。
 """
 from __future__ import annotations
