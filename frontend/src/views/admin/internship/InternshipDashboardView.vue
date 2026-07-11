@@ -115,7 +115,7 @@ export default {
       const def = [
         { key: 'createBatch', label: '＋ 新增实习批次', variant: 'primary' },
         { key: 'importStudents', label: '导入实习学生' },
-        { key: 'exportGroup', label: '导出统计数据' },
+        { key: 'exportGroup', label: '统计报表' },
         { key: 'viewAuditLog', label: '操作日志', variant: 'ghost' }
       ]
       return def

@@ -103,7 +103,7 @@
           <ul v-else class="ed-trail">
             <li v-for="(a, i) in detail.auditTrail" :key="i" class="ed-trail__item">
               <span class="ed-trail__act">{{ a.action }}</span>
-              <span class="ed-trail__meta">{{ a.operator }} · {{ a.occurredAt }}</span>
+              <span class="ed-trail__meta">{{ a.operator }} · {{ fmtTime(a.occurredAt) }}</span>
             </li>
           </ul>
         </div>
@@ -152,6 +152,7 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { positionApi } from '@/modules/internship/api/position.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 
 const EMPTY_CFORM = () => ({ contactType: 'CONTACT', name: '', title: '', phone: '', email: '', isPrimary: false })
 
@@ -193,6 +194,8 @@ export default {
   methods: {
     can(key) { const p = this.perms[key]; return !!(p && p.allowed) },
     reason(key) { const p = this.perms[key]; return p && !p.allowed ? p.reason : '' },
+    /* 审计时间统一格式化（后端原始 ISO「2026-07-07T13:52:01」→ YYYY-MM-DD HH:mm）；解析不了则原样保留 */
+    fmtTime(v) { if (!v) return ''; const s = formatDateTime(v, ''); return s || String(v) },
     async load() {
       this.loading = true; this.error = ''
       const res = await internshipApi.getEnterpriseDetail(this.$route.params.id)

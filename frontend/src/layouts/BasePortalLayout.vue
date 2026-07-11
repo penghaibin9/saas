@@ -101,7 +101,16 @@
             @click="setTheme(t.key)"
           />
         </div>
-        <span v-if="envLabel" class="bpl-env">{{ envLabel }}</span>
+        <span
+          v-if="envLabel"
+          class="bpl-env"
+          :class="{ 'bpl-env--planner': devPlannerView }"
+          :title="envPlannerHint"
+          @click="toggleDevPlanner"
+        >
+          {{ envLabel }}
+          <span v-if="devPlannerView" class="bpl-env__dot" aria-hidden="true" />
+        </span>
         <span v-if="scopeName" class="bpl-scope">
           <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-3z" />
@@ -121,6 +130,16 @@
         </slot>
       </div>
     </header>
+
+    <!-- 窄屏（<900px，含平板竖屏）左侧一/二级导航整体隐藏；给一句友好引导替代「无导航空白」。
+         仅在有管理台一级导航轨（railItems）时显示，避免误伤走移动端的学生/外部身份门户。CSS 仅 <900px 渲染。 -->
+    <div v-if="railItems.length" class="bpl-mobilehint" role="note">
+      <svg class="bpl-mobilehint__ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <path d="M8 21h8M12 17v4" />
+      </svg>
+      <span class="bpl-mobilehint__tx"><strong>建议在电脑上使用管理控制台。</strong>当前屏幕较窄，左侧导航已隐藏；请使用电脑或将浏览器窗口调宽，以获得完整菜单与导航。</span>
+    </div>
 
     <div class="bpl-body">
       <!-- 左一级 82px 深蓝渐变图标轨（菜单数据消费 config/adminMenu.js，本组件不写死业务菜单） -->
@@ -221,9 +240,9 @@
 <script>
 import { AppIcon } from '@/components/ui'
 import AppUserChip from '@/components/common/AppUserChip.vue'
-import { getVisibleAdminMenu, findActiveMenu, SEARCH_ALIASES } from '@/config/adminMenu'
+import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/config/adminMenu'
 import { searchHelp } from '@/config/helpContent'
-import { getVisibleNavPlan, findActiveInPlan, searchNavPlan, navRefMatches } from '@/config/navPlan'
+import { getVisibleNavPlan, findActiveInPlan, searchNavPlan, navRefMatches, navRefExactMatch } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -324,7 +343,9 @@ export default {
       /* 侧栏树：各二级模块的展开状态 { modKey: true/false }（未记录时默认展开当前路由所属二级） */
       expandedMods: {},
       /* 三级菜单被点击的唯一 leafKey（用于同 path 多叶子的点击反馈/高亮跟随；路由切换后失效自动回退路由匹配） */
-      clickedLeafKey: ''
+      clickedLeafKey: '',
+      /* DEV：是否展示 navPlan 全部 planned 菜单（默认关，点击顶栏 DEV 徽标切换） */
+      devPlannerView: false
     }
   },
   computed: {
@@ -334,25 +355,11 @@ export default {
     },
     /** 功能/帮助搜索结果：旧名兼容 + 完整目录(navPlan) + 帮助文档/流程图；planned 显示「待施工」不跳转 */
     fnResults() {
-      const inScope = (p) => {
-        const gk = findActiveMenu(p).groupKey
-        return !gk || this.visibleGroupKeys.has(gk)
-      }
       const q = this.fnQueryDebounced.trim().toLowerCase()
       const out = []
-      // 旧一级名兼容（数据中心/学生中心/教学实践/权限与流程 → 新归属）
-      const pool = SEARCH_ALIASES.filter((a) => inScope(a.path))
-      const matched = !q
-        ? pool.slice(0, 4)
-        : pool.filter(
-            (a) =>
-              a.label.toLowerCase().includes(q) ||
-              a.keywords.some((k) => {
-                const kk = k.toLowerCase()
-                return kk.includes(q) || q.includes(kk)
-              })
-          )
-      matched.forEach((a) => out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' }))
+      searchSearchAliases(this.fnQueryDebounced, { scopeGroupKeys: this.visibleGroupKeys }).forEach((a) => {
+        out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' })
+      })
       // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通「待施工/未开通」不跳
       if (q) {
         for (const r of searchNavPlan(this.fnQueryDebounced)) {
@@ -389,6 +396,12 @@ export default {
     },
     envLabel() {
       return import.meta.env && import.meta.env.DEV ? 'DEV' : ''
+    },
+    envPlannerHint() {
+      if (!(import.meta.env && import.meta.env.DEV)) return ''
+      return this.devPlannerView
+        ? '当前显示全部 planned 菜单；点击关闭'
+        : '当前仅显示已实现菜单；点击开启 planned 施工地图'
     },
     schoolName() {
       return (this.ctx && this.ctx.tenantBrandConfig && this.ctx.tenantBrandConfig.schoolName) || ''
@@ -440,8 +453,8 @@ export default {
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
     isPlannerView() {
-      // 管理员/开发者视角可见 planned/unauthorized；普通业务角色只见 implemented/partial
-      if (import.meta.env && import.meta.env.DEV) return true
+      // DEV 默认隐藏 planned（避免 100+ 叶子拖慢侧栏）；点击顶栏 DEV 可临时开启施工地图
+      if (import.meta.env && import.meta.env.DEV) return this.devPlannerView
       const rt =
         (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''
       return rt === 'SCHOOL_ADMIN' || rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
@@ -469,19 +482,12 @@ export default {
     planActiveModKey() {
       return this.planActive.modKey || (this.planMods[0] && this.planMods[0].key) || ''
     },
-    /* 按当前路由定位应高亮的唯一三级叶子：取「最具体」匹配（路径越长越具体、带 query 精确匹配优先），
-       避免形如 /admin/graduation 的看板叶子用前缀规则抢占所有子页；同 path 多叶子取其中第一个。 */
+    /* 按当前路由定位应高亮的唯一三级叶子（复用 findActiveInPlan 拍平索引，避免遍历 planMods 全部叶子） */
     routeActiveLeafKey() {
-      let best = { key: '', score: -1 }
-      for (const m of this.planMods) {
-        for (const leaf of (m.children || [])) {
-          if (leaf.disabled || !leaf.path) continue
-          if (!navRefMatches(this.currentNavRef, leaf.path)) continue
-          const score = leaf.path.length + (leaf.path.indexOf('?') >= 0 ? 1000 : 0)
-          if (score > best.score) best = { key: m.key + '/' + leaf.label, score }
-        }
-      }
-      return best.key
+      const { modKey, leafKey, groupKey } = this.planActive
+      if (!modKey || !leafKey || groupKey !== this.railActiveKey) return ''
+      if (!this.planMods.some((m) => m.key === modKey)) return ''
+      return `${modKey}/${leafKey}`
     },
     /* 生效高亮：优先「用户刚点且该叶子仍在当前路由上」的 leafKey（点击反馈/同 path 兄弟切换），
        否则回退路由首个匹配叶子；始终只有一个叶子高亮。 */
@@ -490,8 +496,11 @@ export default {
       if (ck) {
         for (const m of this.planMods) {
           for (const leaf of (m.children || [])) {
-            if (m.key + '/' + leaf.label === ck) {
-              return leaf.path && navRefMatches(this.currentNavRef, leaf.path) ? ck : this.routeActiveLeafKey
+            if (this.leafKey(m, leaf) === ck) {
+              // 禁止 navRefMatches 前缀规则：否则 /admin/internship 会粘住所有子页高亮
+              return leaf.path && navRefExactMatch(this.currentNavRef, leaf.path)
+                ? ck
+                : this.routeActiveLeafKey
             }
           }
         }
@@ -500,6 +509,15 @@ export default {
     }
   },
   methods: {
+    toggleDevPlanner() {
+      if (!(import.meta.env && import.meta.env.DEV)) return
+      this.devPlannerView = !this.devPlannerView
+      try {
+        window.localStorage.setItem('navPlannerView', this.devPlannerView ? '1' : '0')
+      } catch {
+        /* 忽略隐私模式 */
+      }
+    },
     railIcon(key) {
       return RAIL_ICONS[key] || RAIL_ICONS.home
     },
@@ -626,8 +644,7 @@ export default {
         }
         return
       }
-      // 精确比较目标与当前完整 URL：避免 /admin/graduation 这类「前缀」被 navRefMatches
-      // 判为「已在此」而跳过跳转（导致从子页点看板/总览时点了不动）。
+      this.clickedLeafKey = ''
       if (m.path && m.path !== this.currentNavRef) this.$router.push(m.path)
     },
     navRefMatches,
@@ -649,9 +666,9 @@ export default {
         return
       }
       if (m) this.clickedLeafKey = this.leafKey(m, leaf)
-      // 精确比较：只要目标与当前完整 URL 不同就跳转，避免 /admin/graduation 这类前缀路径
-      // 被 navRefMatches 判为「已在此」而跳过跳转（这是「点毕设总览看不了东西」的真因）。
-      if (leaf.path && leaf.path !== this.currentNavRef) this.$router.push(leaf.path)
+      if (leaf.path && leaf.path !== this.currentNavRef) {
+        router.push(leaf.path).catch(() => {})
+      }
     }
   },
   watch: {
@@ -674,6 +691,13 @@ export default {
   mounted() {
     window.addEventListener('keydown', this.onGlobalKeydown)
     this.fnQueryDebounced = ''
+    if (import.meta.env && import.meta.env.DEV) {
+      try {
+        this.devPlannerView = window.localStorage.getItem('navPlannerView') === '1'
+      } catch {
+        this.devPlannerView = false
+      }
+    }
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.onGlobalKeydown)
@@ -701,11 +725,13 @@ export default {
   flex-shrink: 0;
 }
 
-/* ── 顶栏 56px：半透明实底（去掉 backdrop-filter 以减轻 GPU 合成，视觉与玻璃态接近） ── */
+/* ── 顶栏 56px：玻璃态（仅顶栏保留 blur，避免滚动区大面积 GPU 合成） ── */
 .bpl-topbar {
   height: 56px;
   flex-shrink: 0;
   background: var(--topbar-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--topbar-bd);
   display: flex;
   align-items: center;
@@ -928,6 +954,9 @@ export default {
   background: linear-gradient(135deg, #4b5563, #111827);
 }
 .bpl-env {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 10px;
@@ -936,6 +965,23 @@ export default {
   color: var(--warning-700);
   letter-spacing: 0.4px;
   border: 1px solid rgba(217, 119, 6, 0.25);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.bpl-env--planner {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--pri, #2563eb);
+  border-color: rgba(37, 99, 235, 0.22);
+}
+.bpl-env__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 .bpl-scope {
   display: flex;
@@ -1036,6 +1082,11 @@ export default {
   font-size: 10px;
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
+}
+
+/* ── 窄屏管理台导航隐藏时的友好引导（默认不渲染，仅 <900px 显示，见底部媒体查询） ── */
+.bpl-mobilehint {
+  display: none;
 }
 
 /* ── 主体 ── */
@@ -1478,6 +1529,32 @@ export default {
   }
   .bpl-brand__sch {
     display: none;
+  }
+  /* 导航隐藏后，用一条友好引导条替代「空白无导航」 */
+  .bpl-mobilehint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    padding: 10px 16px;
+    background: var(--pri-bg);
+    border-bottom: 1px solid var(--card-b);
+    color: var(--t2);
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  .bpl-mobilehint__ic {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: var(--pri);
+  }
+  .bpl-mobilehint__tx {
+    min-width: 0;
+  }
+  .bpl-mobilehint__tx strong {
+    color: var(--pri);
+    font-weight: var(--font-weight-semibold);
   }
 }
 </style>

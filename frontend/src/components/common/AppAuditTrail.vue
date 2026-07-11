@@ -38,7 +38,7 @@
               {{ r.actor }}<template v-if="r.actorRole"> · {{ r.actorRole }}</template>
             </span>
             <span v-if="r.target"> · {{ r.target }}</span>
-            <span v-if="r.at" class="app-audit-trail__time"> · {{ r.at }}</span>
+            <span v-if="r.at" class="app-audit-trail__time"> · {{ fmtTime(r.at) }}</span>
           </div>
           <div v-if="r.reason" class="app-audit-trail__reason">事由：{{ r.reason }}</div>
           <div v-if="showIp && r.ip" class="app-audit-trail__ip">IP {{ r.ip }}</div>
@@ -64,6 +64,8 @@
  *  - showIp: 是否展示 IP（默认展示，敏感场景可关闭）
  * Emits: retry（error 态点击重试）
  */
+import { formatDateTime } from '@/utils/dateUtils'
+
 export default {
   name: 'AppAuditTrail',
   props: {
@@ -76,6 +78,13 @@ export default {
   },
   emits: ['retry'],
   methods: {
+    /* 时间展示：能解析成日期的（含后端原始 ISO「2026-07-07T13:52:01」）统一格式化为 YYYY-MM-DD HH:mm；
+       解析不了的（如已格式化字符串或「2天前」相对时间）原样透传，避免误判为「未设置」。 */
+    fmtTime(at) {
+      if (!at) return ''
+      const s = formatDateTime(at, '')
+      return s || String(at)
+    },
     resultKind(r) {
       const t = String(r.result || r.kind || '').toLowerCase()
       if (/(成功|通过|完成|发布|success|pass|ok)/.test(t)) return 'success'
