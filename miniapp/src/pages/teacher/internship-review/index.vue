@@ -15,16 +15,28 @@
                     <text class="t-md t-bold">{{ w.student }}</text>
                     <text class="ir__week">{{ w.week }}</text>
                   </view>
-                  <text class="ir__company">{{ w.company }} · {{ w.post }}</text>
+                  <text class="ir__company">{{ w.company }}{{ w.post ? ' · ' + w.post : '' }}</text>
                 </view>
                 <MobileStatusTag :status="w.status" />
               </view>
 
               <MobileInlineAlert v-if="w.overdue" type="danger" description="本周周报逾期未提交，建议催交或记录风险。" />
               <template v-else>
-                <view class="ir__section"><text class="ir__label">本周工作</text><text class="ir__text">{{ w.tasks }}</text></view>
-                <view class="ir__section"><text class="ir__label">收获</text><text class="ir__text">{{ w.gain }}</text></view>
-                <view class="ir__section"><text class="ir__label">问题</text><text class="ir__text">{{ w.problem }}</text></view>
+                <!-- 摘要（列表已回：字数/是否重交/风险提示），无需等正文即可判断 -->
+                <view class="ir__meta">
+                  <text class="ir__meta-item">字数 {{ w.wordCount || 0 }}</text>
+                  <text v-if="w.isResubmit" class="ir__meta-item">重交第 {{ w.version || 1 }} 版</text>
+                  <text v-if="w.riskFlag" class="ir__meta-item is-danger">⚠ 风险提示</text>
+                </view>
+                <!-- 正文：列表接口只回摘要，正文按需向范围安全详情接口拉取 -->
+                <view v-if="w._body === 'ready'">
+                  <view class="ir__section"><text class="ir__label">本周工作</text><text class="ir__text">{{ w.tasks || '—' }}</text></view>
+                  <view class="ir__section"><text class="ir__label">收获</text><text class="ir__text">{{ w.gain || '—' }}</text></view>
+                  <view class="ir__section"><text class="ir__label">问题</text><text class="ir__text">{{ w.problem || '—' }}</text></view>
+                </view>
+                <view v-else-if="w._body === 'loading'" class="ir__bodyhint">正文加载中…</view>
+                <view v-else-if="w._body === 'error'" class="ir__bodyhint is-link" @click="loadBody(w)">正文加载失败，点击重试</view>
+                <view v-else class="ir__bodybtn" @click="loadBody(w)"><text>展开查看周报正文 ▾</text></view>
                 <view v-if="w.feedback" class="ir__feedback">
                   <text class="ir__feedback-label">我的评阅</text>
                   <text class="ir__feedback-text">{{ w.feedback }}</text>
@@ -93,12 +105,33 @@ export default {
     load(done) {
       this.state = 'loading'
       teacherApi.getWeeklyReports().then((d) => {
+        d.reports.forEach((r) => { if (!r._body) r._body = 'idle' })
         this.data = d
         this.tabs[0].badge = d.reports.filter((r) => r.status === 'PENDING_REVIEW').length
         this.tabs[1].badge = d.abnormal.filter((a) => a.status === 'PENDING_HANDLE').length
         this.state = 'ready'
+        // 预载前若干条正文（其余点击再加载，避免大队列一次拉全部）；
+        // 必须遍历 this.data.reports（响应式代理），直接改 d.reports 原始对象不会触发重渲染
+        this.data.reports.slice(0, 12).forEach((r) => this.loadBody(r))
       }).catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
+    },
+    /** 按需拉取单条周报正文（范围安全详情接口）；幂等，加载中/已就绪不重发。 */
+    loadBody(w) {
+      if (!w || w._body === 'loading' || w._body === 'ready') return
+      if (!/^\d+$/.test(String(w.id))) { w._body = 'error'; return }
+      w._body = 'loading'
+      teacherApi.getWeeklyDetail(w.id).then((d) => {
+        w.tasks = d.work
+        w.gain = d.harvest
+        w.problem = d.plan
+        if (d.positionName) w.post = d.positionName
+        if (d.reviewComment && !w.feedback) w.feedback = d.reviewComment
+        w._body = 'ready'
+      }).catch((e) => {
+        w._body = 'error'
+        toast(normalizeError(e).text)
+      })
     },
     _actErr(e, refresh) {
       if (e && String(e.code).startsWith('409')) {
@@ -180,6 +213,13 @@ export default {
 .ir__week { font-size: var(--font-size-xs); color: var(--teacher-700); background: var(--teacher-50); padding: 2px 8px; border-radius: var(--radius-full); }
 .ir__company { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 3px; }
 .ir__section { margin-top: var(--space-3); }
+.ir__meta { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.ir__meta-item { font-size: var(--font-size-xs); color: var(--text-secondary); background: var(--gray-50); padding: 2px 8px; border-radius: var(--radius-full); }
+.ir__meta-item.is-danger { color: var(--danger-600); background: var(--danger-50); }
+.ir__bodybtn { margin-top: var(--space-3); text-align: center; }
+.ir__bodybtn text { font-size: var(--font-size-sm); color: var(--teacher-700); }
+.ir__bodyhint { margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-tertiary); text-align: center; padding: var(--space-2) 0; }
+.ir__bodyhint.is-link { color: var(--danger-600); }
 .ir__label { font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .ir__text { display: block; font-size: var(--font-size-base); color: var(--text-primary); margin-top: 3px; line-height: 1.5; }
 .ir__text.is-danger { color: var(--danger-600); }
