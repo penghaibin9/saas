@@ -1,10 +1,9 @@
 /**
  * 岗位实习中心 API（生产级：仅走真实后端，不回退 mock）。
  * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功；方法签名冻结不变。
- * 真实接口 /api/v1/internship/*；字典/权限动作仍从静态配置加载，品牌/角色/范围在线时由 enrichContext 合入。
+ * 真实接口 /api/v1/internship/*；字典/权限动作从静态配置加载，角色/范围由 JWT 身份推导（见 getContext），品牌取 /auth/me。
  */
-import { request, requestUpload, requestBlob, shouldTryReal } from '@/services/http/client'
-import { enrichContext } from '@/services/http/adapters'
+import { request, requestUpload, requestBlob, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import {
   tenantBrandConfig,
@@ -50,16 +49,36 @@ function clone(v) {
 
 export const internshipApi = {
   /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典（布局初始化）；后端在线时合入真实品牌/角色/范围 */
-  getContext() {
+  async getContext() {
+    // 角色/范围/权限动作由 JWT 身份推导（对齐毕设中心做法），不依赖已 404 的 /rbac/current-context。
+    // 真实数据范围与细粒度按钮权限仍以后端接口校验为准；此处仅裁剪前端展示与可点态。
+    const u = currentUserFromToken()
+    const isTeacher = !!(u && u.userType === 'TEACHER')
+    const pa = clone(permissionActions)
+    let roleName = isTeacher ? '实习指导教师' : '实习管理员'
+    const scopeName = isTeacher ? '本人指导的实习学生' : '本校实习数据（按后端数据范围）'
+    if (!isTeacher) {
+      // 管理员：放开各项管理动作（越权拦截由后端接口兜底）
+      Object.keys(pa).forEach((k) => { pa[k] = { ...pa[k], visible: true, allowed: true, reason: '' } })
+    }
+    const brand = { ...tenantBrandConfig }
+    try {
+      if (shouldTryReal()) {
+        const me = await request('/auth/me')
+        const tenantName = me?.tenantName || me?.user?.tenantName || me?.tenant?.name
+        if (tenantName) brand.schoolName = tenantName
+        const realName = me?.realName || me?.user?.realName
+        if (realName) roleName = `${realName} · ${roleName}`
+      }
+    } catch {
+      /* 离线/未登录静默回退，不阻塞布局 */
+    }
     return ok({
-      tenantBrandConfig: clone(tenantBrandConfig),
-      currentRole: clone(currentRole),
-      dataScope: clone(dataScope),
-      permissionActions: clone(permissionActions),
+      tenantBrandConfig: brand,
+      currentRole: { ...currentRole, roleName },
+      dataScope: { ...dataScope, scopeName, name: scopeName },
+      permissionActions: pa,
       statusOptions: clone(statusOptions)
-    }).then((res) => {
-      if (!shouldTryReal()) return res
-      return enrichContext(res).catch(() => res)
     })
   },
 
