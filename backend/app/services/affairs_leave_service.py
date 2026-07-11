@@ -37,6 +37,14 @@ L_AFF = {
     "OVERDUE": "已逾期", "ARCHIVED": "已归档",
 }
 
+# 请假类型标签（表单字段与校验规则 §3.1 枚举）
+L_TYPE = {"SICK": "病假", "PERSONAL": "事假", "HOME": "探亲假", "HOSPITAL": "住院假",
+          "GOOUT": "外出", "OTHER": "其他"}
+
+# 台账/延期销假页可处理的"后续处理"活动态（请假审批终态后进入本模块）
+FOLLOWUP_STATES = ("APPROVED", "EXTENSION_REVIEW", "WAIT_CANCEL_LEAVE", "OVERDUE")
+OVERDUE_HANDLE_TYPES = {"CONTACT": "联系学生", "TO_HOME_SCHOOL": "转家校联系", "CLOSE": "处置完毕关闭"}
+
 
 def _project(aff: str | None) -> str:
     """affairs_status → 旧 status 投影（双状态列一致，C3 §5.3）。"""
@@ -168,8 +176,10 @@ def _msg(db, receiver_id, title, content, mtype, leave_id):
 def _row(x, s=None) -> dict:
     return {
         "id": str(x.id), "studentId": str(x.student_id or ""),
+        "studentNo": (s.student_no if s else "") or "",
         "studentName": s.real_name if s else "", "className": str(s.class_id or "") if s else "",
-        "leaveType": x.leave_type, "days": float(x.days or 0),
+        "leaveType": x.leave_type, "leaveTypeLabel": L_TYPE.get(x.leave_type or "", x.leave_type or ""),
+        "days": float(x.days or 0),
         "startTime": _iso(x.start_time), "endTime": _iso(x.end_time), "reason": x.reason or "",
         "affairsStatus": x.affairs_status,
         "affairsStatusLabel": L_AFF.get(x.affairs_status or "", x.affairs_status or ""),
@@ -177,6 +187,21 @@ def _row(x, s=None) -> dict:
         "workflowInstanceId": str(x.workflow_instance_id or ""),
         "expectedReturnAt": _iso(x.expected_return_at), "actualReturnAt": _iso(x.actual_return_at),
     }
+
+
+def _resolve_class_names(db, rows: list[dict]) -> list[dict]:
+    """把 _row 里的 className（当前为 class_id 字符串）解析成真实班级名（台账/列表可读性）。"""
+    from app.models import SchoolClass
+    ids = {r.get("className") for r in rows if r.get("className")}
+    if not ids:
+        return rows
+    cmap = {str(c.id): c.class_name for c in db.scalars(
+        select(SchoolClass).where(SchoolClass.tenant_id == _tid())).all()}
+    for r in rows:
+        cid = r.get("className")
+        if cid and cid in cmap:
+            r["className"] = cmap[cid]
+    return rows
 
 
 def _load(db, leave_id):
@@ -380,7 +405,13 @@ def submit_cancel(leave_id, user, proof_note="") -> dict:
         return _row(x, s)
 
 
-def confirm_cancel(leave_id, user, note="") -> dict:
+def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reason="", note="") -> dict:
+    """销假确认(CONFIRM→CLOSED进360) / 销假退回(RETURN→APPROVED，证明不符重新销假)。契约 #23。"""
+    action = (action or "CONFIRM").upper()
+    if action not in ("CONFIRM", "RETURN"):
+        raise AppException("VALIDATION_ERROR", "action 仅支持 CONFIRM / RETURN")
+    if action == "RETURN" and (not reason or len(reason.strip()) < 5):
+        raise AppException("VALIDATION_ERROR", "销假退回原因必填且不少于 5 字")
     with session() as db:
         from app.models import AffairsLeaveCancelRecord, StudentStageEvent
         x, s = _load(db, leave_id)
@@ -393,9 +424,37 @@ def confirm_cancel(leave_id, user, note="") -> dict:
             AffairsLeaveCancelRecord.is_deleted.is_(False)).order_by(
             AffairsLeaveCancelRecord.id.desc())).first()
         n, _r, _u = _op()
+        if action == "RETURN":
+            if rec:
+                rec.status, rec.confirm_by, rec.confirm_at, rec.confirm_note = (
+                    "RETURNED", n, datetime.utcnow(), reason.strip())
+                rec.version += 1
+            # 退回：回到 APPROVED 允许重新销假；若已过期则清逾期标记待重新扫描
+            x.affairs_status, x.status = "APPROVED", "APPROVED"
+            if x.expected_return_at and x.expected_return_at < datetime.utcnow():
+                x.overdue_pushed_at = None
+            x.version += 1
+            _todo_done(db, x.id, todo_type="LEAVE_CANCEL")
+            _msg(db, x.student_id, "销假被退回", reason.strip(), "RETURNED_NOTICE", x.id)
+            _audit(db, x.id, "CANCEL_RETURN", reason.strip())
+            db.commit()
+            db.refresh(x)
+            return _row(x, s)
+        # CONFIRM：辅导员可校对/更正实际返校时间
+        ret = _parse_dt(actual_return_at) if actual_return_at else None
+        if ret:
+            if x.start_time and ret < x.start_time:
+                raise AppException("VALIDATION_ERROR", "实际返校时间不能早于请假开始时间")
+            if ret > datetime.utcnow():
+                raise AppException("VALIDATION_ERROR", "实际返校时间不能晚于当前时间")
         if rec:
-            rec.status, rec.confirm_by, rec.confirm_at, rec.confirm_note = "CONFIRMED", n, datetime.utcnow(), note
+            if ret:
+                rec.actual_return_at = ret
+            rec.status, rec.confirm_by, rec.confirm_at, rec.confirm_note = (
+                "CONFIRMED", n, datetime.utcnow(), note)
             rec.version += 1
+        if ret:
+            x.actual_return_at = ret
         x.affairs_status, x.status = "CLOSED", "APPROVED"
         x.version += 1
         # 进学生 360（成长时间线）
@@ -439,7 +498,13 @@ def apply_extension(leave_id, user, new_end, reason="") -> dict:
         return _row(x, s)
 
 
-def approve_extension(leave_id, user) -> dict:
+def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
+    """续假审批：APPROVE（更新结束时间→APPROVED）/ REJECT（维持原假期与原到期日）。契约 #24。"""
+    action = (action or "APPROVE").upper()
+    if action not in ("APPROVE", "REJECT"):
+        raise AppException("VALIDATION_ERROR", "action 仅支持 APPROVE / REJECT")
+    if action == "REJECT" and (not reason or len(reason.strip()) < 5):
+        raise AppException("VALIDATION_ERROR", "续假驳回原因必填且不少于 5 字")
     with session() as db:
         from app.models import AffairsLeaveExtension
         x, s = _load(db, leave_id)
@@ -451,6 +516,19 @@ def approve_extension(leave_id, user) -> dict:
             AffairsLeaveExtension.status == "SUBMITTED",
             AffairsLeaveExtension.is_deleted.is_(False)).order_by(
             AffairsLeaveExtension.id.desc())).first()
+        if action == "REJECT":
+            if ext:
+                ext.status = "REJECTED"
+                ext.version += 1
+            # 维持原假期与原到期日，仅回到 APPROVED
+            x.affairs_status, x.status = "APPROVED", "APPROVED"
+            x.version += 1
+            _todo_done(db, x.id, todo_type="LEAVE_EXTENSION")
+            _msg(db, x.student_id, "续假被驳回", reason.strip(), "WORKFLOW_RESULT", x.id)
+            _audit(db, x.id, "EXTENSION_REJECTED", reason.strip())
+            db.commit()
+            db.refresh(x)
+            return _row(x, s)
         if ext:
             ext.status = "APPROVED"
             ext.version += 1
@@ -462,6 +540,74 @@ def approve_extension(leave_id, user) -> dict:
         _todo_done(db, x.id, todo_type="LEAVE_EXTENSION")
         _msg(db, x.student_id, "续假已通过", f"续假已通过，新结束时间 {_iso(x.end_time)}", "WORKFLOW_RESULT", x.id)
         _audit(db, x.id, "EXTENSION_APPROVED")
+        db.commit()
+        db.refresh(x)
+        return _row(x, s)
+
+
+# ═══════════ 代登记销假 + 逾期处置 ═══════════
+
+def proxy_cancel(leave_id, user, actual_return_at, note="") -> dict:
+    """辅导员代登记销假（学生无法操作时）→ WAIT_CANCEL_LEAVE。契约 #26。"""
+    with session() as db:
+        from app.models import AffairsLeaveCancelRecord
+        x, s = _load(db, leave_id)
+        _scope_or_403(db, x, user)
+        if x.affairs_status not in ("APPROVED", "OVERDUE"):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过/逾期的请假可代登记销假")
+        ret = _parse_dt(actual_return_at)
+        if not ret:
+            raise AppException("VALIDATION_ERROR", "实际返校时间必填")
+        if x.start_time and ret < x.start_time:
+            raise AppException("VALIDATION_ERROR", "实际返校时间不能早于请假开始时间")
+        if ret > datetime.utcnow():
+            raise AppException("VALIDATION_ERROR", "实际返校时间不能晚于当前时间")
+        exist = db.scalars(select(AffairsLeaveCancelRecord).where(
+            AffairsLeaveCancelRecord.tenant_id == _tid(), AffairsLeaveCancelRecord.leave_id == x.id,
+            AffairsLeaveCancelRecord.status == "SUBMITTED",
+            AffairsLeaveCancelRecord.is_deleted.is_(False))).first()
+        if exist:
+            raise AppException("DATA_CONFLICT", "该请假已有进行中的销假记录")
+        rec = AffairsLeaveCancelRecord(tenant_id=_tid(), leave_id=x.id, student_id=x.student_id,
+                                       actual_return_at=ret, proof_note=note, status="SUBMITTED",
+                                       workflow_instance_id=x.workflow_instance_id)
+        db.add(rec)
+        x.affairs_status, x.status, x.actual_return_at = "WAIT_CANCEL_LEAVE", _project("WAIT_CANCEL_LEAVE"), ret
+        x.version += 1
+        assignee = _assignee_for(db, "COUNSELOR_REVIEW", x.student_id)
+        _todo_upsert(db, x.id, assignee, x.student_id,
+                     f"销假待确认（代登记）：{s.real_name if s else ''}", todo_type="LEAVE_CANCEL")
+        _audit(db, x.id, "CANCEL_PROXY", f"actual_return={_iso(ret)}")
+        db.commit()
+        db.refresh(x)
+        return _row(x, s)
+
+
+def handle_overdue(leave_id, user, handle_type, note="") -> dict:
+    """逾期处置登记：CONTACT/TO_HOME_SCHOOL 留痕不改状态；CLOSE→CLOSED 进360。契约 #25 / 状态机 §1 OVERDUE 分支。"""
+    handle_type = (handle_type or "").upper()
+    if handle_type not in OVERDUE_HANDLE_TYPES:
+        raise AppException("VALIDATION_ERROR", "handleType 仅支持 CONTACT / TO_HOME_SCHOOL / CLOSE")
+    if not note or len(note.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "处置说明必填且不少于 5 字")
+    with session() as db:
+        from app.models import StudentStageEvent
+        x, s = _load(db, leave_id)
+        _scope_or_403(db, x, user)
+        if x.affairs_status != "OVERDUE":
+            raise AppException("APPROVAL_VERSION_CONFLICT", "仅逾期未销假的请假可登记逾期处置")
+        if handle_type == "CLOSE":
+            x.affairs_status, x.status = "CLOSED", "APPROVED"
+            x.version += 1
+            if x.student_id:
+                db.add(StudentStageEvent(tenant_id=_tid(), student_id=int(x.student_id), from_stage=None,
+                                         to_stage="LEAVE_CLOSED", reason=f"逾期请假处置关闭（{x.days}天）",
+                                         source_module="student-affairs"))
+            _todo_done(db, x.id, todo_type="LEAVE_OVERDUE")
+            _msg(db, x.student_id, "逾期请假已处置关闭", note.strip(), "STATUS_CHANGED", x.id)
+            _audit(db, x.id, "OVERDUE_CLOSED", note.strip())
+        else:
+            _audit(db, x.id, f"OVERDUE_{handle_type}", note.strip())
         db.commit()
         db.refresh(x)
         return _row(x, s)
@@ -495,9 +641,205 @@ def scan_overdue() -> dict:
 
 def get_detail(leave_id, user) -> dict:
     with session() as db:
+        from app.models import (AffairsAuditTrail, AffairsLeaveCancelRecord, AffairsLeaveExtension)
         x, s = _load(db, leave_id)
         _scope_or_403(db, x, user)
-        return _row(x, s)
+        row = _resolve_class_names(db, [_row(x, s)])[0]
+        cancels = db.scalars(select(AffairsLeaveCancelRecord).where(
+            AffairsLeaveCancelRecord.tenant_id == _tid(), AffairsLeaveCancelRecord.leave_id == x.id,
+            AffairsLeaveCancelRecord.is_deleted.is_(False)).order_by(
+            AffairsLeaveCancelRecord.id.desc())).all()
+        exts = db.scalars(select(AffairsLeaveExtension).where(
+            AffairsLeaveExtension.tenant_id == _tid(), AffairsLeaveExtension.leave_id == x.id,
+            AffairsLeaveExtension.is_deleted.is_(False)).order_by(
+            AffairsLeaveExtension.id.desc())).all()
+        trail = db.scalars(select(AffairsAuditTrail).where(
+            AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "LEAVE",
+            AffairsAuditTrail.biz_id == x.id).order_by(AffairsAuditTrail.id.asc())).all()
+        row["cancelRecords"] = [{
+            "id": str(c.id), "actualReturnAt": _iso(c.actual_return_at), "proofNote": c.proof_note or "",
+            "status": c.status, "confirmBy": c.confirm_by or "", "confirmAt": _iso(c.confirm_at),
+            "confirmNote": c.confirm_note or "",
+        } for c in cancels]
+        row["extensions"] = [{
+            "id": str(e.id), "oldEndTime": _iso(e.old_end_time), "newEndTime": _iso(e.new_end_time),
+            "extendDays": float(e.extend_days or 0), "reason": e.reason or "", "status": e.status,
+        } for e in exts]
+        row["auditTrail"] = [{
+            "action": t.action, "operator": t.operator or "", "roleName": t.role_name or "",
+            "detail": t.detail or "", "occurredAt": _iso(t.occurred_at),
+        } for t in trail]
+        return row
+
+
+# ═══════════ 请假台账 / 统计 / 导出（本模块新增：13A-05 台账 + 统计口径）═══════════
+
+def list_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
+                date_start=None, date_end=None, followup_only=False, page=1, page_size=20):
+    """请假台账/后续处理列表：全状态可筛，数据范围裁剪。followup_only=只取延期销假可处理的活动态。"""
+    from app.models import CsLeave, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        q_rows = db.scalars(select(CsLeave).where(
+            CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
+            CsLeave.affairs_status.is_not(None)).order_by(CsLeave.id.desc())).all()
+        ds, de = _parse_dt(date_start), _parse_dt(date_end)
+        out = []
+        for x in q_rows:
+            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            if followup_only and x.affairs_status not in FOLLOWUP_STATES:
+                continue
+            if status and x.affairs_status != status:
+                continue
+            if leave_type and x.leave_type != leave_type:
+                continue
+            if class_id and (not s or str(s.class_id or "") != str(class_id)):
+                continue
+            if keyword:
+                k = str(keyword)
+                if not (s and (k in (s.real_name or "") or k in (s.student_no or ""))):
+                    continue
+            if ds and x.start_time and x.start_time < ds:
+                continue
+            if de and x.start_time and x.start_time > de:
+                continue
+            out.append(_row(x, s))
+        _resolve_class_names(db, out)
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
+    """请假统计：人数/天数/在假/待审/待销假/逾期/已销假 + 按班级/类型/状态下钻。契约 #27。"""
+    from app.models import CsLeave, SchoolClass, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    gb = (group_by or "CLASS").upper()
+    if gb not in ("CLASS", "TYPE", "STATUS"):
+        gb = "CLASS"
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        rows = db.scalars(select(CsLeave).where(
+            CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
+            CsLeave.affairs_status.is_not(None))).all()
+        ds, de = _parse_dt(date_start), _parse_dt(date_end)
+        now = datetime.utcnow()
+        stu_cache: dict = {}
+
+        def _stu(sid):
+            if sid not in stu_cache:
+                stu_cache[sid] = db.get(StudentProfile, int(sid)) if sid else None
+            return stu_cache[sid]
+
+        students, total_days = set(), 0.0
+        m = {"pendingReview": 0, "waitCancel": 0, "overdue": 0, "closed": 0, "onLeave": 0}
+        buckets: dict = {}
+        for x in rows:
+            s = _stu(x.student_id)
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            if ds and x.start_time and x.start_time < ds:
+                continue
+            if de and x.start_time and x.start_time > de:
+                continue
+            aff = x.affairs_status
+            if x.student_id:
+                students.add(x.student_id)
+            if aff in ("APPROVED", "CLOSED", "ARCHIVED", "OVERDUE", "WAIT_CANCEL_LEAVE", "EXTENSION_REVIEW"):
+                total_days += float(x.days or 0)
+            if aff in _REVIEW_NODES:
+                m["pendingReview"] += 1
+            elif aff == "WAIT_CANCEL_LEAVE":
+                m["waitCancel"] += 1
+            elif aff == "OVERDUE":
+                m["overdue"] += 1
+            elif aff == "CLOSED":
+                m["closed"] += 1
+            if aff == "APPROVED" and x.start_time and x.end_time and x.start_time <= now <= x.end_time:
+                m["onLeave"] += 1
+            key = (str(s.class_id or "") if s else "") if gb == "CLASS" else (
+                (x.leave_type or "OTHER") if gb == "TYPE" else (aff or ""))
+            b = buckets.setdefault(key, {"count": 0, "days": 0.0, "students": set()})
+            b["count"] += 1
+            b["days"] += float(x.days or 0)
+            if x.student_id:
+                b["students"].add(x.student_id)
+        cls_names = {}
+        if gb == "CLASS":
+            cls_names = {str(c.id): c.class_name for c in db.scalars(
+                select(SchoolClass).where(SchoolClass.tenant_id == _tid())).all()}
+
+        def _label(key):
+            if gb == "CLASS":
+                return cls_names.get(key, f"班级{key}" if key else "未分班")
+            if gb == "TYPE":
+                return L_TYPE.get(key, key or "其他")
+            return L_AFF.get(key, key)
+
+        breakdown = [{
+            "key": k, "label": _label(k), "count": v["count"],
+            "days": round(v["days"], 1), "studentCount": len(v["students"]),
+        } for k, v in sorted(buckets.items(), key=lambda kv: -kv[1]["count"])]
+        return {
+            "groupBy": gb,
+            "metrics": [
+                {"key": "leaveStudentCount", "label": "请假人数", "value": len(students), "unit": "人"},
+                {"key": "totalDays", "label": "请假总天数", "value": round(total_days, 1), "unit": "天"},
+                {"key": "onLeave", "label": "当前在假", "value": m["onLeave"], "unit": "人次"},
+                {"key": "pendingReview", "label": "待审批", "value": m["pendingReview"], "unit": "件"},
+                {"key": "waitCancel", "label": "待销假", "value": m["waitCancel"], "unit": "件"},
+                {"key": "overdue", "label": "逾期未销", "value": m["overdue"], "unit": "件"},
+                {"key": "closed", "label": "已销假", "value": m["closed"], "unit": "件"},
+            ],
+            "breakdown": breakdown,
+        }
+
+
+def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
+                  date_start=None, date_end=None) -> dict:
+    """请假台账导出（xlsx，水印 + 导出留痕）。契约 §16.2 affairs_leave 导出。"""
+    from app.services import excel
+    items_all, _ = list_leaves(user, status, leave_type, class_id, keyword,
+                               date_start, date_end, page=1, page_size=1_000_000)
+    export_items = [{
+        "studentNo": it.get("studentNo", ""),
+        "studentName": it.get("studentName", ""),
+        "className": it.get("className", ""),
+        "leaveType": it.get("leaveTypeLabel", ""),
+        "days": it.get("days", 0),
+        "startTime": it.get("startTime", ""),
+        "endTime": it.get("endTime", ""),
+        "expectedReturnAt": it.get("expectedReturnAt", ""),
+        "actualReturnAt": it.get("actualReturnAt", ""),
+        "statusLabel": it.get("affairsStatusLabel", ""),
+        "reason": it.get("reason", ""),
+    } for it in items_all]
+    spec = excel.ExportSpec(
+        module_key="student-affairs", biz_type="leave", sheet_title="请假台账",
+        columns=[
+            excel.ColumnSpec("studentNo", "学号"),
+            excel.ColumnSpec("studentName", "姓名"),
+            excel.ColumnSpec("className", "班级"),
+            excel.ColumnSpec("leaveType", "请假类型"),
+            excel.ColumnSpec("days", "天数"),
+            excel.ColumnSpec("startTime", "开始时间"),
+            excel.ColumnSpec("endTime", "结束时间"),
+            excel.ColumnSpec("expectedReturnAt", "应返校时间"),
+            excel.ColumnSpec("actualReturnAt", "实际返校时间"),
+            excel.ColumnSpec("statusLabel", "状态"),
+            excel.ColumnSpec("reason", "事由"),
+        ],
+        file_name="请假台账.xlsx",
+    )
+    n, _r, _u = _op()
+    packed = excel.build_export(spec, export_items, operator_name=n, tenant_label=str(_tid()))
+    with session() as db:
+        _audit(db, None, "EXPORT", f"rows={packed.get('rowCount', len(export_items))}")
+        db.commit()
+    return packed
 
 
 def list_pending(user, page=1, page_size=20):

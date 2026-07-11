@@ -168,3 +168,155 @@ def test_legacy_campus_leave_endpoints_unaffected(client, db_mode):
     _seed(db_mode)
     r = client.get("/api/v1/campus-service/leaves", headers=_hdr(client, "school_admin01"))
     assert r.status_code == 200 and r.json()["code"] == 0
+
+
+# ═══════════ 本轮新增：销假退回 / 续假驳回 / 逾期处置 / 代登记销假 / 台账 / 统计 / 导出 ═══════════
+
+def _approved_leave(client, hdr, sid, start="2026-03-01", end="2026-03-02"):
+    lid = _apply(client, hdr, sid, start, end).json()["data"]["id"]
+    client.post(f"/api/v1/student-affairs/leave/{lid}/approve", headers=hdr)
+    return lid
+
+
+def test_l9_proxy_cancel_then_return(client, db_mode):
+    """代登记销假→WAIT_CANCEL_LEAVE；销假退回(RETURN)→回到 APPROVED，可重新销假。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    lid = _approved_leave(client, hdr, ids["sa"])
+    # 代登记销假（辅导员填实际返校时间）
+    r = client.post(f"/api/v1/student-affairs/leave/{lid}/proxy-cancel", headers=hdr,
+                    json={"actualReturnAt": "2026-03-02 10:00:00", "note": "本人已返校"}).json()
+    assert r["data"]["affairsStatus"] == "WAIT_CANCEL_LEAVE"
+    # 重复代登记 → 409（已有进行中销假）
+    assert client.post(f"/api/v1/student-affairs/leave/{lid}/proxy-cancel", headers=hdr,
+                       json={"actualReturnAt": "2026-03-02 10:00:00"}).status_code == 409
+    # 销假退回：原因<5字 → 400
+    assert client.post(f"/api/v1/student-affairs/leave/{lid}/cancel-confirm", headers=hdr,
+                       json={"action": "RETURN", "reason": "不符"}).status_code == 400
+    # 销假退回成功 → 回到 APPROVED
+    r2 = client.post(f"/api/v1/student-affairs/leave/{lid}/cancel-confirm", headers=hdr,
+                     json={"action": "RETURN", "reason": "返校证明与实际不符，请重新上传"}).json()
+    assert r2["data"]["affairsStatus"] == "APPROVED"
+
+
+def test_l10_proxy_cancel_validations(client, db_mode):
+    """代登记销假实际返校时间校验：未来时间/早于开始时间 → 400。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    lid = _approved_leave(client, hdr, ids["sa"])
+    # 未来时间 → 400
+    assert client.post(f"/api/v1/student-affairs/leave/{lid}/proxy-cancel", headers=hdr,
+                       json={"actualReturnAt": "2099-01-01"}).status_code == 400
+    # 早于开始时间 → 400
+    assert client.post(f"/api/v1/student-affairs/leave/{lid}/proxy-cancel", headers=hdr,
+                       json={"actualReturnAt": "2026-02-01"}).status_code == 400
+
+
+def test_l11_extension_reject_keeps_original(client, db_mode):
+    """续假驳回(REJECT)→维持原假期与原到期日（不改 endTime）。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    lid = _approved_leave(client, hdr, ids["sa"])
+    client.post(f"/api/v1/student-affairs/leave/{lid}/extension", headers=hdr,
+                json={"newEnd": "2026-03-05", "reason": "延后返校"})
+    # 驳回原因<5字 → 400
+    assert client.post(f"/api/v1/student-affairs/leave/{lid}/extension-approve", headers=hdr,
+                       json={"action": "REJECT", "reason": "no"}).status_code == 400
+    r = client.post(f"/api/v1/student-affairs/leave/{lid}/extension-approve", headers=hdr,
+                    json={"action": "REJECT", "reason": "无正当理由，不予续假"}).json()
+    assert r["data"]["affairsStatus"] == "APPROVED"
+    assert r["data"]["endTime"].startswith("2026-03-02")  # 原到期日不变
+
+
+def test_l12_overdue_handle(client, db_mode):
+    """逾期处置：CONTACT 留痕不改状态；CLOSE→CLOSED 进360。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    lid = _apply(client, hdr, ids["sa"], "2020-01-01", "2020-01-02").json()["data"]["id"]
+    client.post(f"/api/v1/student-affairs/leave/{lid}/approve", headers=hdr)
+    client.post("/api/v1/student-affairs/leave/scan-overdue", headers=hdr)
+    # 说明<5字 → 400
+    assert client.post(f"/api/v1/student-affairs/leave/{lid}/overdue-handle", headers=hdr,
+                       json={"handleType": "CONTACT", "note": "已联"}).status_code == 400
+    # CONTACT：仍 OVERDUE
+    r1 = client.post(f"/api/v1/student-affairs/leave/{lid}/overdue-handle", headers=hdr,
+                     json={"handleType": "CONTACT", "note": "已电话联系，学生称明日返校"}).json()
+    assert r1["data"]["affairsStatus"] == "OVERDUE"
+    # CLOSE：→ CLOSED + 进360
+    r2 = client.post(f"/api/v1/student-affairs/leave/{lid}/overdue-handle", headers=hdr,
+                     json={"handleType": "CLOSE", "note": "学生已返校，逾期处置完毕"}).json()
+    assert r2["data"]["affairsStatus"] == "CLOSED"
+    from app.db.session import get_sessionmaker
+    from app.models import StudentStageEvent
+    db = get_sessionmaker()()
+    assert db.query(StudentStageEvent).filter_by(student_id=ids["sa"], to_stage="LEAVE_CLOSED").count() == 1
+    db.close()
+
+
+def test_l13_ledger_list_and_filters(client, db_mode):
+    """请假台账：全状态列表 + 状态/关键词筛选 + followupOnly。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    _approved_leave(client, hdr, ids["sa"], "2026-03-01", "2026-03-02")   # A 班 APPROVED
+    _apply(client, hdr, ids["sb"], "2026-03-01", "2026-03-02")            # B 班 待审
+    # 全量台账
+    all_r = client.get("/api/v1/student-affairs/leave", headers=hdr).json()
+    assert all_r["code"] == 0 and all_r["data"]["total"] == 2
+    # 状态筛选 APPROVED
+    ap = client.get("/api/v1/student-affairs/leave?status=APPROVED", headers=hdr).json()
+    assert ap["data"]["total"] == 1
+    # followupOnly：只取后续处理活动态（APPROVED 在内，COUNSELOR_REVIEW 不在）
+    fo = client.get("/api/v1/student-affairs/leave?followupOnly=true", headers=hdr).json()
+    assert fo["data"]["total"] == 1
+    # 关键词
+    kw = client.get("/api/v1/student-affairs/leave?keyword=甲一", headers=hdr).json()
+    assert kw["data"]["total"] == 1
+    # 台账行含学号/班级名/类型标签
+    row = all_r["data"]["items"][0]
+    assert "studentNo" in row and row["className"] and "affairsStatusLabel" in row
+
+
+def test_l14_ledger_scope_403_and_stats(client, db_mode):
+    """台账数据范围裁剪：辅导员只见本班；统计 metrics + breakdown。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _approved_leave(client, admin, ids["sa"])   # A 班
+    _apply(client, admin, ids["sb"], "2026-03-01", "2026-03-02")  # B 班
+    # 辅导员(范围=A班) 台账只见 1 条
+    couns = _hdr(client, "counselor01")
+    r = client.get("/api/v1/student-affairs/leave", headers=couns).json()
+    assert r["data"]["total"] == 1
+    # 统计 by CLASS
+    s = client.get("/api/v1/student-affairs/leave/stats?groupBy=CLASS", headers=admin).json()
+    assert s["code"] == 0
+    metrics = {m["key"]: m["value"] for m in s["data"]["metrics"]}
+    assert metrics["leaveStudentCount"] == 2
+    assert len(s["data"]["breakdown"]) >= 1
+
+
+def test_l15_ledger_export(client, db_mode):
+    """请假台账导出：返回 xlsx（base64 + 水印 + 行数），写导出审计。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    _approved_leave(client, hdr, ids["sa"])
+    r = client.post("/api/v1/student-affairs/leave/export", headers=hdr).json()
+    assert r["code"] == 0
+    d = r["data"]
+    assert d["rowCount"] == 1 and d["contentBase64"] and d["filename"].endswith(".xlsx")
+    # 导出审计已落 t_affairs_audit_trail
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsAuditTrail
+    db = get_sessionmaker()()
+    assert db.query(AffairsAuditTrail).filter_by(biz_type="LEAVE", action="EXPORT").count() >= 1
+    db.close()
+
+
+def test_l16_proxy_cancel_cross_class_403(client, db_mode):
+    """越权：辅导员(范围=A班)对 B 班请假代登记销假 → 403 NO_DATA_SCOPE。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    lid = _approved_leave(client, admin, ids["sb"])  # B 班 APPROVED
+    r = client.post(f"/api/v1/student-affairs/leave/{lid}/proxy-cancel",
+                    headers=_hdr(client, "counselor01"),
+                    json={"actualReturnAt": "2026-03-02"})
+    assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"

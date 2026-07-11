@@ -76,11 +76,29 @@ class ExtensionBody(BaseModel):
     reason: Optional[str] = Field(None, max_length=500)
 
 
+class ExtensionReviewBody(BaseModel):
+    action: str = Field("APPROVE", description="APPROVE 续假通过 / REJECT 续假驳回")
+    reason: Optional[str] = Field("", max_length=500, description="驳回原因≥5字")
+
+
 class CancelBody(BaseModel):
     proofNote: Optional[str] = Field("", max_length=500)
 
 
+class ProxyCancelBody(BaseModel):
+    actualReturnAt: str = Field(..., description="实际返校时间 YYYY-MM-DD[ HH:MM:SS]")
+    note: Optional[str] = Field("", max_length=500)
+
+
+class OverdueHandleBody(BaseModel):
+    handleType: str = Field(..., description="CONTACT 联系 / TO_HOME_SCHOOL 转家校 / CLOSE 处置关闭")
+    note: str = Field(..., min_length=1, description="处置说明≥5字")
+
+
 class ConfirmBody(BaseModel):
+    action: str = Field("CONFIRM", description="CONFIRM 销假确认 / RETURN 销假退回")
+    actualReturnAt: Optional[str] = Field(None, description="确认时可校对实际返校时间")
+    reason: Optional[str] = Field("", max_length=500, description="退回原因≥5字")
     note: Optional[str] = Field("", max_length=500)
 
 
@@ -95,7 +113,33 @@ def leave_pending(page: int = 1, pageSize: int = 20, user=Depends(require_staff)
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/leave/{leaveId}", summary="请假详情")
+@router.get("/leave", summary="请假台账（全状态，按数据范围，可筛类型/班级/关键词/日期）")
+def leave_ledger(status: Optional[str] = None, leaveType: Optional[str] = None,
+                 classId: Optional[str] = None, keyword: Optional[str] = None,
+                 dateStart: Optional[str] = None, dateEnd: Optional[str] = None,
+                 followupOnly: bool = False, page: int = 1, pageSize: int = 20,
+                 user=Depends(require_staff)):
+    items, total = leave_svc.list_leaves(user, status, leaveType, classId, keyword,
+                                         dateStart, dateEnd, followupOnly, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/leave/stats", summary="请假统计（人数/天数/逾期未销，按班级/类型/状态下钻）")
+def leave_stats(groupBy: str = "CLASS", dateStart: Optional[str] = None,
+                dateEnd: Optional[str] = None, user=Depends(require_staff)):
+    return success(leave_svc.leave_stats(user, groupBy, dateStart, dateEnd))
+
+
+@router.post("/leave/export", summary="请假台账导出（xlsx 水印 + 导出留痕）")
+def leave_export(status: Optional[str] = None, leaveType: Optional[str] = None,
+                 classId: Optional[str] = None, keyword: Optional[str] = None,
+                 dateStart: Optional[str] = None, dateEnd: Optional[str] = None,
+                 user=Depends(require_staff)):
+    return success(leave_svc.export_leaves(user, status, leaveType, classId, keyword,
+                                           dateStart, dateEnd))
+
+
+@router.get("/leave/{leaveId}", summary="请假详情（含销假/续假记录 + 审批留痕）")
 def leave_detail(leaveId: int = Path(...), user=Depends(require_staff)):
     return success(leave_svc.get_detail(leaveId, user))
 
@@ -125,10 +169,25 @@ def leave_cancel(body: CancelBody = CancelBody(), leaveId: int = Path(...), user
     return success(leave_svc.submit_cancel(leaveId, user, body.proofNote or ""), message="销假已提交")
 
 
-@router.post("/leave/{leaveId}/cancel-confirm", summary="销假确认（辅导员）→ CLOSED 进360")
+@router.post("/leave/{leaveId}/cancel-confirm", summary="销假确认/退回（辅导员）→ CLOSED 进360 / 退回 APPROVED")
 def leave_cancel_confirm(body: ConfirmBody = ConfirmBody(), leaveId: int = Path(...),
                          user=Depends(require_staff)):
-    return success(leave_svc.confirm_cancel(leaveId, user, body.note or ""), message="已销假")
+    r = leave_svc.confirm_cancel(leaveId, user, action=body.action,
+                                 actual_return_at=body.actualReturnAt, reason=body.reason or "",
+                                 note=body.note or "")
+    return success(r, message="已退回" if (body.action or "").upper() == "RETURN" else "已销假")
+
+
+@router.post("/leave/{leaveId}/proxy-cancel", summary="辅导员代登记销假 → WAIT_CANCEL_LEAVE")
+def leave_proxy_cancel(body: ProxyCancelBody, leaveId: int = Path(...), user=Depends(require_staff)):
+    return success(leave_svc.proxy_cancel(leaveId, user, body.actualReturnAt, body.note or ""),
+                   message="已代登记销假")
+
+
+@router.post("/leave/{leaveId}/overdue-handle", summary="逾期处置登记（联系/转家校/处置关闭）")
+def leave_overdue_handle(body: OverdueHandleBody, leaveId: int = Path(...), user=Depends(require_staff)):
+    return success(leave_svc.handle_overdue(leaveId, user, body.handleType, body.note),
+                   message="已登记")
 
 
 @router.post("/leave/{leaveId}/extension", summary="发起续假")
@@ -137,9 +196,11 @@ def leave_extension(body: ExtensionBody, leaveId: int = Path(...), user=Depends(
                    message="续假已提交")
 
 
-@router.post("/leave/{leaveId}/extension-approve", summary="续假审批通过")
-def leave_extension_approve(leaveId: int = Path(...), user=Depends(require_staff)):
-    return success(leave_svc.approve_extension(leaveId, user), message="续假已通过")
+@router.post("/leave/{leaveId}/extension-approve", summary="续假审批（通过/驳回）")
+def leave_extension_approve(body: ExtensionReviewBody = ExtensionReviewBody(), leaveId: int = Path(...),
+                            user=Depends(require_staff)):
+    r = leave_svc.approve_extension(leaveId, user, action=body.action, reason=body.reason or "")
+    return success(r, message="续假已驳回" if (body.action or "").upper() == "REJECT" else "续假已通过")
 
 
 @router.post("/leave/scan-overdue", summary="逾期扫描（定时/手动触发，幂等）")

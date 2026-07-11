@@ -118,10 +118,14 @@ export const NAV_PLAN = [
       I('迎新归档', '/admin/orientation/archive')
     ]),
     mod('sa-leave', '请假销假', null, [
-      ...P('请假看板', '请假申请'),
+      ...P('请假看板', '请假申请', '续假申请'),
       I('请假审批', '/admin/campus-service/leave'),
-      ...P('续假申请', '续假审批', '销假管理', '归寝核验', '长假审批', '外出备案',
-        '请假异常', '超期未销假', '请假规则配置', '请假台账', '请假统计', '请假归档')
+      I('续假审批', '/admin/campus-service/leave-extensions'),
+      I('销假管理', '/admin/campus-service/leave-extensions'),
+      ...P('归寝核验', '长假审批', '外出备案', '请假异常', '超期未销假', '请假规则配置'),
+      I('请假台账', '/admin/campus-service/leave-ledger'),
+      I('请假统计', '/admin/campus-service/leave-stats'),
+      ...P('请假归档')
     ]),
     mod('sa-difficulty', '困难认定', null, P(
       '认定批次', '学生申请', '材料上传', '材料审核', '辅导员初审', '班级民主评议', '学院审核',

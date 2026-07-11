@@ -35,6 +35,24 @@ export const campusServiceRoutes = {
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假审批' }
     },
     {
+      path: 'leave-extensions',
+      name: 'campus-service-leave-extensions',
+      component: () => import('@/views/admin/student-affairs/leave/LeaveExtensionCancelView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '延期销假' }
+    },
+    {
+      path: 'leave-ledger',
+      name: 'campus-service-leave-ledger',
+      component: () => import('@/views/admin/student-affairs/leave/LeaveLedgerView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假台账' }
+    },
+    {
+      path: 'leave-stats',
+      name: 'campus-service-leave-stats',
+      component: () => import('@/views/admin/student-affairs/leave/LeaveStatsView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假统计' }
+    },
+    {
       path: 'grants',
       name: 'campus-service-grants',
       component: () => import('@/views/admin/campusService/GrantApplicationView.vue'),
