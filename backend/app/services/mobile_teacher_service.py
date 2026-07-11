@@ -481,6 +481,7 @@ def graduation(user: dict) -> dict:
     scope = resolve_teacher_scope(u)
     students, stotal = _safe_list(graduation_service.list_students, 1, 50)
     proposals, ptotal = _safe_list(graduation_service.list_proposals, 1, 50, status="PENDING_REVIEW")
+    finals, ftotal = _safe_list(graduation_service.list_finals, 1, 50, status="PENDING_REVIEW")
     # SCOPED：严格按范围收敛（导师姓名/别名、班级、学号），不再"过滤为空就放全量"
     if scope["mode"] == "SCOPED":
         students = [s for s in students if scope_match_row(
@@ -489,14 +490,16 @@ def graduation(user: dict) -> dict:
         proposals = [p for p in proposals if scope_match_row(
             scope, advisor_name=p.get("advisorName"),
             class_name=p.get("className"), student_no=p.get("studentNo"))]
-        stotal, ptotal = len(students), len(proposals)
+        finals = [f for f in finals if scope_match_row(
+            scope, advisor_name=f.get("advisorName"), class_name=f.get("className"))]
+        stotal, ptotal, ftotal = len(students), len(proposals), len(finals)
     stats = {}
     try:
         stats = graduation_service.get_dashboard()
     except Exception:  # noqa: BLE001
         stats = {"pendingProposals": ptotal}
-    return {"hasData": (stotal + ptotal) > 0, "students": students, "reviewDetail": proposals,
-            "stats": stats, "scopeMode": scope["mode"]}
+    return {"hasData": (stotal + ptotal + ftotal) > 0, "students": students, "reviewDetail": proposals,
+            "finalDetail": finals, "stats": stats, "scopeMode": scope["mode"]}
 
 
 def employment(user: dict) -> dict:
@@ -747,7 +750,51 @@ def proposal_detail(user: dict, proposal_id: str) -> dict:
             "background": content.get("background") or "", "plan": content.get("plan") or "",
             "outcome": content.get("outcome") or "", "reviewComment": detail.get("reviewComment") or "",
             "attachments": int(detail.get("attachments") or 0),
+            "attachmentsList": detail.get("attachmentsList") or [],
             "versions": detail.get("versions") or []}
+
+
+def final_detail(user: dict, final_id: str) -> dict:
+    """毕设成果详情（移动端批阅前真实查看：类型/版本/查重 + 历史版本 + 退回意见 + 真实附件）。
+    SCOPED 教师只能查看指导范围内学生的成果，越权 403，不存在 404。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实成果材料")
+    detail = graduation_service.get_final_detail(final_id)  # 不存在 → 404
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "SCOPED" and not scope_match_row(
+            scope, class_name=detail.get("className"), advisor_name=detail.get("advisorName"),
+            student_no=detail.get("studentNo")):
+        raise AppException("NO_PERMISSION", "该成果不在你的指导范围内")
+    return {"id": str(detail.get("id") or final_id),
+            "studentName": detail.get("studentName") or "", "className": detail.get("className") or "",
+            "topicTitle": detail.get("topicTitle") or "", "type": detail.get("type") or "",
+            "version": detail.get("version") or "", "submitAt": detail.get("submitAt") or "",
+            "status": detail.get("status"), "statusLabel": detail.get("statusLabel"),
+            "plagiarismRate": detail.get("plagiarismRate") or "—",
+            "plagiarismStatus": detail.get("plagiarismStatus") or "未检测",
+            "plagiarismTone": detail.get("plagiarismTone") or "success",
+            "reviewComment": detail.get("reviewComment") or "",
+            "attachmentsList": detail.get("attachmentsList") or [],
+            "versions": detail.get("versions") or []}
+
+
+def final_review(user: dict, final_id: str, action: str, comment: str | None = None) -> dict:
+    """毕设成果批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生；查重超标 GD-R09 不可直接通过（后端拒绝）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "SCOPED":
+        detail = graduation_service.get_final_detail(final_id)  # 不存在 → 404
+        if not scope_match_row(scope, class_name=detail.get("className"),
+                               advisor_name=detail.get("advisorName"),
+                               student_no=detail.get("studentNo")):
+            raise AppException("NO_PERMISSION", "该成果不在你的指导范围内")
+    result = graduation_service.review_final(final_id, action, comment)
+    _audit_write("MOBILE_FINAL_REVIEW", f"graduation/final:{final_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
 
 
 def graduation_choices_pending(user: dict) -> list:
@@ -902,4 +949,192 @@ def graduation_guidance_create(user: dict, gd_student_id: str, body: dict) -> di
     result = guidance_svc.create_guidance(gd_student_id, body)
     _audit_write("MOBILE_GUIDANCE_CREATE", f"graduation-guidance:{result.get('id')}",
                  {"operator": u.get("realName"), "gdStudentId": str(gd_student_id)})
+    return result
+
+
+def _require_gd_student_scope(u: dict, scope: dict, gd_student_id) -> dict:
+    """加载毕设学生并做范围校验（非 ADMIN 只能本人指导学生）。不存在 404、越权 403。返回轻量快照。"""
+    from app.models import GraduationStudent
+    with _session() as db:
+        s = db.get(GraduationStudent, int(gd_student_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise AppException("DATA_NOT_FOUND", "毕设学生不存在")
+        if scope.get("mode") != "ADMIN_TENANT" and (s.advisor_name or "") != (u.get("realName") or ""):
+            raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+        return {"id": s.id, "name": s.name, "className": s.class_name or "",
+                "studentNo": s.student_no or "", "advisorName": s.advisor_name or ""}
+
+
+# ══════════ 中期检查（教师移动端：待办队列 + 详情 + 检查/复核整改） ══════════
+
+def graduation_midterm_queue(user: dict) -> list:
+    """中期检查·本人指导学生中待检查(PENDING)/待复核整改(RECTIFY_SUBMITTED)的队列。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return []
+    scope = resolve_teacher_scope(u)
+    from app.services import graduation_midterm_service as mt
+    rows, _ = _safe_list(mt.list_midterms, 1, 100)
+    actionable = {"PENDING", "RECTIFY_SUBMITTED"}
+    out = []
+    for r in rows:
+        if r.get("status") not in actionable:
+            continue
+        if scope["mode"] == "SCOPED" and not scope_match_row(
+                scope, advisor_name=r.get("advisorName"), student_no=r.get("studentNo")):
+            continue
+        out.append(r)
+    return out
+
+
+def graduation_midterm_detail(user: dict, gd_student_id: str) -> dict:
+    """中期检查·按学生查看真实记录（结论/检查意见/整改内容/复核）。范围校验。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实中期记录")
+    from app.services import graduation_midterm_service as mt
+    d = mt.get_midterm(gd_student_id)  # 学生不存在 → 404
+    scope = resolve_teacher_scope(u)
+    if scope["mode"] == "SCOPED" and not scope_match_row(
+            scope, advisor_name=d.get("advisorName"), student_no=d.get("studentNo")):
+        raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+    return d
+
+
+def graduation_midterm_check(user: dict, gd_student_id: str, conclusion: str,
+                             comment: str | None = None, rectify_deadline: str | None = None) -> dict:
+    """中期检查·教师给出三档结论 PASS/RECTIFY/FAIL（后端校验状态机）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实中期检查")
+    from app.services import graduation_midterm_service as mt
+    d = mt.get_midterm(gd_student_id)
+    scope = resolve_teacher_scope(u)
+    if scope["mode"] == "SCOPED" and not scope_match_row(
+            scope, advisor_name=d.get("advisorName"), student_no=d.get("studentNo")):
+        raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+    result = mt.conduct_check(gd_student_id, str(conclusion or "").upper(), comment, rectify_deadline)
+    _audit_write("MOBILE_MIDTERM_CHECK", f"graduation/midterm:{gd_student_id}",
+                 {"operator": u.get("realName"), "conclusion": conclusion, "comment": (comment or "")[:200]})
+    return result
+
+
+def graduation_midterm_rectify_review(user: dict, gd_student_id: str, action: str,
+                                      comment: str | None = None) -> dict:
+    """中期检查·教师复核学生整改 PASS/FAIL（须处于 RECTIFY_SUBMITTED）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实复核")
+    from app.services import graduation_midterm_service as mt
+    d = mt.get_midterm(gd_student_id)
+    scope = resolve_teacher_scope(u)
+    if scope["mode"] == "SCOPED" and not scope_match_row(
+            scope, advisor_name=d.get("advisorName"), student_no=d.get("studentNo")):
+        raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+    result = mt.review_rectification(gd_student_id, str(action or "").upper(), comment)
+    _audit_write("MOBILE_MIDTERM_RECTIFY_REVIEW", f"graduation/midterm:{gd_student_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
+# ══════════ 评阅（评阅教师移动端：本人评阅任务 + 提交评分/意见；SoD 回避后端已在分配时强制） ══════════
+
+def graduation_my_reviews(user: dict) -> list:
+    """评阅·本人作为评阅教师的待提交任务（ASSIGNED/REVIEWING/RETURNED）。评阅人身份即范围。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return []
+    from app.services import graduation_review_service as rv
+    rows, _ = _safe_list(rv.list_reviews, 1, 100, reviewer_name=u.get("realName") or "")
+    return [r for r in rows if r.get("status") in ("ASSIGNED", "REVIEWING", "RETURNED")]
+
+
+def graduation_review_submit(user: dict, review_id: str, score, opinion: str | None = None) -> dict:
+    """评阅·提交评分(0-100)+意见。仅任务的评阅人本人可提交（ADMIN 不限）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实评阅")
+    try:
+        s = int(score)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "评分必须是 0-100 的整数")
+    if s < 0 or s > 100:
+        raise AppException("VALIDATION_ERROR", "评分必须在 0-100 之间")
+    if not opinion or len(str(opinion).strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "评阅意见必填且不少于 5 字")
+    from app.services import graduation_review_service as rv
+    scope = resolve_teacher_scope(u)
+    mine, _ = rv.list_reviews(1, 500, reviewer_name=u.get("realName") or "")
+    target = next((r for r in mine if str(r.get("id")) == str(review_id)), None)
+    if not target and scope["mode"] == "ADMIN_TENANT":
+        allr, _ = rv.list_reviews(1, 500)
+        target = next((r for r in allr if str(r.get("id")) == str(review_id)), None)
+    if not target:
+        raise AppException("NO_PERMISSION", "该评阅任务不属于你或不存在")
+    result = rv.submit_review(review_id, s, str(opinion).strip())
+    _audit_write("MOBILE_REVIEW_SUBMIT", f"graduation/review:{review_id}",
+                 {"operator": u.get("realName"), "score": s})
+    return result
+
+
+# ══════════ 答辩安排（教师移动端只读：本人指导学生答辩编排，已发布才展示时间/地点/评委） ══════════
+
+def graduation_defense_arrangements(user: dict) -> list:
+    """答辩安排·本人指导学生的答辩编排（只读）。未编排/未发布只给状态提示。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return []
+    students = graduation_my_students(user)  # 已按范围收敛
+    from app.services import graduation_service as gd
+    out = []
+    for s in students:
+        try:
+            v = gd.student_defense_view(int(s["gdStudentId"]))
+        except Exception:  # noqa: BLE001
+            v = None
+        if not v or not v.get("hasData"):
+            continue
+        out.append({"gdStudentId": s["gdStudentId"], "studentName": s.get("name") or s.get("studentName") or "",
+                    "className": s.get("className") or "", "topicTitle": s.get("topicTitle") or "", **v})
+    return out
+
+
+# ══════════ 成绩（教师移动端：待复核队列 + 三段构成详情 + 复核 APPROVE/RETURN） ══════════
+
+def graduation_grade_queue(user: dict) -> list:
+    """成绩·本人指导学生中待复核(CALCULATED)的成绩队列。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return []
+    scope = resolve_teacher_scope(u)
+    from app.services import graduation_grade_service as gr
+    rows, _ = _safe_list(gr.list_grades, 1, 100, status="CALCULATED")
+    if scope["mode"] == "SCOPED":
+        mine = {s.get("studentNo") for s in graduation_my_students(user) if s.get("studentNo")}
+        rows = [r for r in rows if r.get("studentNo") in mine]
+    return rows
+
+
+def graduation_grade_detail(user: dict, gd_student_id: str) -> dict:
+    """成绩·按学生查看三段构成（导师/评阅/答辩/综合/等级/状态）。范围校验。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实成绩")
+    scope = resolve_teacher_scope(u)
+    _require_gd_student_scope(u, scope, gd_student_id)  # 404/403
+    from app.services import graduation_grade_service as gr
+    return gr.get_grade(gd_student_id)
+
+
+def graduation_grade_review(user: dict, gd_student_id: str, action: str, comment: str | None = None) -> dict:
+    """成绩·教师复核 APPROVE/RETURN（RETURN 原因≥5 字，后端校验；仅 CALCULATED 可复核）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实复核")
+    scope = resolve_teacher_scope(u)
+    _require_gd_student_scope(u, scope, gd_student_id)
+    from app.services import graduation_grade_service as gr
+    result = gr.review_grade(gd_student_id, str(action or "").upper(), comment)
+    _audit_write("MOBILE_GRADE_REVIEW", f"graduation/grade:{gd_student_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result
