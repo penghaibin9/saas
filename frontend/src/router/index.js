@@ -76,6 +76,13 @@ const router = createRouter({
       meta: { title: '帮助中心' }
     },
     {
+      /* §42 规划占位页：planned 菜单统一入口（只读展示 navPlan+施工图规划信息，无业务 API、无假按钮假数据） */
+      path: '/admin/planned/:groupKey/:modKey/:leafIdx?',
+      name: 'planned-placeholder',
+      component: () => import('../views/admin/planned/PlannedPlaceholderView.vue'),
+      meta: { title: '规划模块（待施工）' }
+    },
+    {
       /* 登录页（账号密码走 /api/v1/auth/login；「进入演示环境」回工作台，不影响既有演示流程） */
       path: '/login',
       name: 'login',

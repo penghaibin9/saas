@@ -205,3 +205,23 @@ navPlan 静态配置一次构建：FLAT_NAV_INDEX 行数 293 → **86**（-71%�
 上下文与路由：更正/核验/工单/宿舍/学生主档五个列表全部接入 query 同步（筛选/页码/选中项/页签），从编辑页/详情返回不丢；新增 3 条路由（student-create / student-edit / 既有二批前路由），meta permissionKey 沿用 student.profile.view（页面内动作仍按 createStudent/editStudent 门禁，与原抽屉一致，不扩大权限）。
 组件：继续复用 SplitWorkspace / routeState（现位于 campusService 模块组件目录，学工域内共享；B 包建立 modules/student-affairs 后上移为学工域共享件——记账）。
 保留的轻量抽屉：批量分班/分配辅导员、表格列设置、工单新建/分派、宿舍编辑/标记异常、360 编辑基础信息、风险标签编辑、导入/导出抽屉。学工相关复杂抽屉清零：**13 个原抽屉中 8 个复杂抽屉全部改造完毕，5 个轻量抽屉合规保留**（风险跟进双栏随风险中心 B 包）。
+
+## 十三、规划占位页（2026-07-11，CLAUDE.md §42）
+
+甲方拍板：planned 菜单项全部可点击，统一进入公共「规划占位页」，实现「做完一个模块、亮一个模块、测一个模块」的推进节奏。CLAUDE.md 新增 §42 并修订 §1.1/§8/§9.3 冲突表述（独立 commit）。
+
+本批改动（全部前端，零后端/零数据库/零权限扩大）：
+
+| 文件 | 改动 |
+|---|---|
+| frontend/src/config/navPlan.js | NAV_PLAN 定义后统一为 planned 且无 path 的三级叶子分配占位路由 /admin/planned/&lt;groupKey&gt;/&lt;modKey&gt;/&lt;叶子序号&gt;；叶子保持 disabled=true（描灰、待施工 badge 不变）；findActiveInPlan 因叶子有 path 自动支持占位路由高亮，刷新不丢 |
+| frontend/src/config/constructionMap.js | 新增。总施工图数据（85 个二级模块卡：顺序/任务包/业务定位/推进指令），数据源 docs/00-项目入口与总控/施工图/*.html，由脚本生成 |
+| frontend/src/config/adminMenu.js | findActiveMenu 头部增加 /admin/planned/&lt;groupKey&gt; 段解析，保证一级深蓝导航与侧栏树在占位页下正确高亮；ROLE_MODULE_ALLOW 与权限过滤零改动 |
+| frontend/src/layouts/BasePortalLayout.vue | onPlanLeaf：planned+有 path 的 disabled 叶子点击 → 记录 clickedLeafKey 并跳占位页；「未开通」叶子行为不变（仅 toast） |
+| frontend/src/router/index.js | 新增路由 /admin/planned/:groupKey/:modKey/:leafIdx? → PlannedPlaceholderView；beforeEach 登录守卫覆盖本路由；无 permissionKey（页面无业务数据） |
+| frontend/src/views/admin/planned/PlannedPlaceholderView.vue | 新增。唯一公共占位页：面包屑、规划中badge、业务定位、三级清单（已实现项可直接跳真实页面）、施工卡（顺序/任务包/推进指令+复制按钮，仅 DEV 或 SCHOOL_ADMIN/PLATFORM/PLATFORM_SUPER_ADMIN 可见，与施工地图开关同口径）；不调用任何业务 API |
+
+红线自查：无假按钮/假数据/假写操作；无业务 API 调用；权限 key、moduleCode、数据范围、脱敏、审计零改动；planned 状态零改动；旧路由零改动；「未开通」入口行为不变。
+
+验收口径：施工地图开启时点击任意灰色三级 → 打开占位页且侧栏高亮正确、刷新不丢；已实现叶子行为不变；模块施工完成后将叶子改回 I(label, path)，占位路径自动让位、菜单变亮。
+

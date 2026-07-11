@@ -170,6 +170,11 @@ export function getVisibleAdminMenu(ctx) {
 
 /** 依据当前路径定位激活的一级/二级 key（供壳高亮使用） */
 export function findActiveMenu(path) {
+  // §42 规划占位页：/admin/planned/<groupKey>/... 直接按 URL 段定位一级模块（保证左侧深蓝导航与侧栏树正确高亮）
+  if (path && path.startsWith('/admin/planned/')) {
+    const gk = path.split('/')[3] || ''
+    if (ADMIN_MENU.some((g) => g.key === gk)) return { groupKey: gk, leafKey: '' }
+  }
   for (const group of ADMIN_MENU) {
     const leaf = [...group.children]
       .sort((a, b) => b.path.length - a.path.length)

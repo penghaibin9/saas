@@ -515,6 +515,22 @@ export const NAV_PLAN = [
  * 平台运营（隐藏一级，仅平台超管可见；不属学校侧 6 个一级）。
  * 单列，避免混入学校导航；仅登记已实现页面，保持旧路由可访问。
  */
+/* ── 规划占位页路径分配（CLAUDE.md §42，2026-07-11 甲方拍板）──────────────
+ * planned 且无 path 的三级叶子，统一分配公共占位页路由：
+ *   /admin/planned/<一级groupKey>/<二级modKey>/<叶子序号>
+ * 叶子保持 disabled=true（侧栏仍描灰、badge 仍「待施工」），点击行为由
+ * BasePortalLayout.onPlanLeaf 判定：planned+有 path → 进占位页；「未开通」→ 仍 toast。
+ * 占位页只展示 navPlan + 施工图规划信息，无假按钮、无假数据、无业务 API（§42）。 */
+for (const group of NAV_PLAN) {
+  for (const m of group.children) {
+    m.children.forEach((leaf, i) => {
+      if (leaf.status === 'planned' && !leaf.path) {
+        leaf.path = `/admin/planned/${group.key}/${m.key}/${i}`
+      }
+    })
+  }
+}
+
 export const PLATFORM_PLAN = grp('platform', '平台运营', 'platform', [
   mod('plt-overview', '平台总控台', '/admin/platform/overview', []),
   mod('plt-tenants', '租户学校', '/admin/platform/tenants', []),

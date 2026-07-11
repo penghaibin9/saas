@@ -505,7 +505,8 @@ export default {
       let best = { key: '', score: -1 }
       for (const m of this.planMods) {
         for (const leaf of (m.children || [])) {
-          if (leaf.disabled || !leaf.path) continue
+          /* §42：planned 叶子也有占位 path，参与高亮定位（原 disabled 跳过条件对无 path 旧数据行为等价） */
+          if (!leaf.path) continue
           if (!navRefMatches(this.currentNavRef, leaf.path)) continue
           const score = leaf.path.length + (leaf.path.indexOf('?') >= 0 ? 1000 : 0)
           if (score > best.score) best = { key: m.key + '/' + leaf.label, score }
@@ -684,6 +685,12 @@ export default {
     onPlanLeaf(leaf, m) {
       if (!leaf) return
       if (leaf.disabled) {
+        // §42 规划占位页：待施工叶子可点击进入公共占位页（描灰与 badge 保持不变）；「未开通」仍仅提示。
+        if (leaf.status === 'planned' && leaf.path) {
+          if (m) this.clickedLeafKey = this.leafKey(m, leaf)
+          if (leaf.path !== this.currentNavRef) this.$router.push(leaf.path)
+          return
+        }
         toast.info(leaf.badge === '未开通' ? '该功能未开通' : '该功能待施工，敬请期待')
         return
       }
