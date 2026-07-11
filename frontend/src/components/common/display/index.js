@@ -10,3 +10,15 @@ export { default as AppDescriptionList } from './AppDescriptionList.vue'
 export { default as AppOperationResult } from './AppOperationResult.vue'
 export { default as AppColumnConfig } from './AppColumnConfig.vue'
 export { default as AppChartCard } from './AppChartCard.vue'
+export { default as AppG2Chart } from './AppG2Chart.vue'
+export { default as AppStackedBarChart } from './AppStackedBarChart.vue'
+export { default as AppFunnelChart } from './AppFunnelChart.vue'
+export { default as AppRankingChart } from './AppRankingChart.vue'
+export { default as AppDrilldownChartCard } from './AppDrilldownChartCard.vue'
+export {
+  buildBarChartSpec,
+  buildStackedBarChartSpec,
+  buildTrendChartSpec,
+  buildFunnelChartSpec,
+  buildDonutChartSpec
+} from './chartPresets'

@@ -96,7 +96,17 @@ export {
   AppDescriptionList,
   AppOperationResult,
   AppColumnConfig,
-  AppChartCard
+  AppChartCard,
+  AppG2Chart,
+  AppStackedBarChart,
+  AppFunnelChart,
+  AppRankingChart,
+  AppDrilldownChartCard,
+  buildBarChartSpec,
+  buildStackedBarChartSpec,
+  buildTrendChartSpec,
+  buildFunnelChartSpec,
+  buildDonutChartSpec
 } from './display'
 
 // —— 第三阶段·第五组 体验增强（见 ./experience/，AppQRCode 为 partial）——
