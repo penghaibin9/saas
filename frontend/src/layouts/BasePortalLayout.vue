@@ -466,12 +466,9 @@ export default {
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
     canTogglePlannerMap() {
-      // 2026-07-10 甲方二次拍板：规划项默认放出来（没做的描灰），便于区分「已做 / 未做」——
-      // DEV 构建全员可见；生产构建限学校管理员/平台角色（与重构前可见范围一致），普通教师角色不显示。
-      if (import.meta.env && import.meta.env.DEV) return true
-      const rt =
-        (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''
-      return rt === 'SCHOOL_ADMIN' || rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
+      // 2026-07-11 甲方三次拍板：施工期开关对所有构建、所有角色恒显示（规划项必须一眼可见、可点进占位页）；
+      // 正式交付学校前如需按角色收紧，再恢复 DEV/管理员判断（原实现见 git 历史 e11737d 之前版本）。
+      return true
     },
     isPlannerView() {
       // 施工地图 = 可见角色 && 开关打开（默认开）；关闭后菜单只剩 implemented/partial 真实页面。
