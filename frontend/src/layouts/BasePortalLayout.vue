@@ -148,7 +148,7 @@
         <nav v-if="ctx && !$slots.menu" class="bpl-tree">
           <div class="bpl-submods__label">
             <span>{{ planGroupLabel }}</span>
-            <!-- 施工地图开关：仅 DEV 构建 + 平台级角色可见（三重限制），学校角色与生产构建不渲染 -->
+            <!-- 施工地图开关（默认开）：规划项描灰显示以区分已做/未做；DEV 全员可见，生产构建限管理员/平台角色 -->
             <button
               v-if="canTogglePlannerMap"
               type="button"
@@ -298,12 +298,12 @@ function readThemePreference() {
   }
 }
 
-/** 施工地图开关持久值（仅作为三重限制的第三重输入，本身不授予任何可见性） */
+/** 施工地图开关持久值：默认开启（甲方 2026-07-10 拍板：规划项默认描灰显示，便于区分已做/未做；可手动关闭） */
 function readPlannerMapPreference() {
   try {
-    return window.localStorage.getItem('plannerMapOn') === '1'
+    return window.localStorage.getItem('plannerMapOn') !== '0'
   } catch {
-    return false
+    return true
   }
 }
 
@@ -463,21 +463,17 @@ export default {
       return findActiveMenu(path).groupKey || 'workbench'
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
-    isPlatformPlannerRole() {
-      // 复用现有平台级角色（PLATFORM / PLATFORM_SUPER_ADMIN），不新造前端假角色；
-      // 学校侧角色（学校系统管理员、学工处管理员、普通业务角色）一律不属于施工角色。
+    canTogglePlannerMap() {
+      // 2026-07-10 甲方二次拍板：规划项默认放出来（没做的描灰），便于区分「已做 / 未做」——
+      // DEV 构建全员可见；生产构建限学校管理员/平台角色（与重构前可见范围一致），普通教师角色不显示。
+      if (import.meta.env && import.meta.env.DEV) return true
       const rt =
         (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''
-      return rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
-    },
-    canTogglePlannerMap() {
-      // 三重限制的前两重：DEV 构建 && 平台级施工角色（生产构建永远为 false，学校角色永远为 false）
-      return !!(import.meta.env && import.meta.env.DEV) && this.isPlatformPlannerRole
+      return rt === 'SCHOOL_ADMIN' || rt === 'PLATFORM' || rt === 'PLATFORM_SUPER_ADMIN'
     },
     isPlannerView() {
-      // 2026-07-10 三重限制收口：DEV 构建 && 平台级角色 && 用户主动开启施工地图，缺一不可。
-      // localStorage 中即使保存过开启状态，前两重条件不满足时一律忽略；
-      // 学校正式菜单与搜索只出现 implemented/partial 真实可用页面。
+      // 施工地图 = 可见角色 && 开关打开（默认开）；关闭后菜单只剩 implemented/partial 真实页面。
+      // planned 恒为无 path、不注册路由的灰色「待施工」项，不产生任何假页面、不改变权限。
       return this.canTogglePlannerMap && this.plannerMapOn
     },
     currentPath() {

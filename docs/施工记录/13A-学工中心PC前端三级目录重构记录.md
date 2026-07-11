@@ -114,7 +114,7 @@
 ## 6. planned 可见性收口（本版新增代码修改）
 
 `BasePortalLayout.vue` 最小修改（不动菜单结构、不动权限过滤）：
-1. `isPlannerView` **三重限制**：`import.meta.env.DEV`（生产构建永不显示）&& 平台级角色（复用现有 PLATFORM / PLATFORM_SUPER_ADMIN，不新造前端假角色；学校系统管理员/学工处管理员/普通业务角色一律不可见）&& 用户主动开启施工地图（侧栏「施工地图 开/关」按钮，持久于 localStorage `plannerMapOn`，但无权角色/生产构建残留值一律忽略），三项缺一不可；
+1. `isPlannerView` 口径（2026-07-10 甲方二次拍板：**规划项默认放出来、没做的描灰**，便于区分已做/未做）：可见角色（DEV 构建全员；生产构建限学校管理员/平台角色，普通教师不可见）&& 侧栏「施工地图 开/关」开关（**默认开**，localStorage `plannerMapOn`，演示可一键关闭）；planned 恒为无 path、不注册路由的灰色「待施工」项，全中心统一生效；
 2. 顶部 ⌘K 搜索：非施工地图视角过滤 planned/unauthorized 结果，与侧栏同口径；planned 无 path 不注册路由，面包屑与路由高亮天然不会命中 planned；
 3. 正式界面用语收口：菜单显示名不出现「承接 / external-link / 待施工 / planned / partial / B包 / C包 / D包」等开发语言（「在校服务与迎新」「数字迎新数据」为正式显示名；承接/external-link 仅作为内部状态与文档口径，统计口径不变）。
 
