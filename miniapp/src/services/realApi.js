@@ -248,6 +248,31 @@ export const gdTeacherGuidanceCreate = (gdStudentId, body) =>
 /** 教师·开题详情（批阅前真实查看背景/方案/成果 + 历史版本，范围校验，越权 403/不存在 404） */
 export const gdTeacherProposalDetail = (proposalId) =>
   realRequest(`/mobile/teacher/graduation/proposal/${proposalId}`)
+/** 教师·成果详情 + 批阅（类型/版本/查重/真实附件；查重超标 GD-R09 不可直接通过） */
+export const gdTeacherFinalDetail = (finalId) =>
+  realRequest(`/mobile/teacher/graduation/final/${finalId}`)
+export const gdTeacherFinalReview = (finalId, action, comment) =>
+  realRequest(`/mobile/teacher/graduation/final/${finalId}/review`, { method: 'POST', data: { action, comment: comment || '' } })
+/** 教师·中期检查：待办队列 / 详情 / 结论 PASS-RECTIFY-FAIL / 复核整改 */
+export const gdTeacherMidtermQueue = () => realRequest('/mobile/teacher/graduation/midterm/queue')
+export const gdTeacherMidtermDetail = (gdStudentId) => realRequest(`/mobile/teacher/graduation/midterm/${gdStudentId}`)
+export const gdTeacherMidtermCheck = (gdStudentId, conclusion, comment, rectifyDeadline) =>
+  realRequest(`/mobile/teacher/graduation/midterm/${gdStudentId}/check`,
+    { method: 'POST', data: { conclusion, comment: comment || '', rectifyDeadline: rectifyDeadline || '' } })
+export const gdTeacherMidtermRectifyReview = (gdStudentId, action, comment) =>
+  realRequest(`/mobile/teacher/graduation/midterm/${gdStudentId}/rectify-review`,
+    { method: 'POST', data: { action, comment: comment || '' } })
+/** 教师·评阅：本人任务 / 提交评分+意见 */
+export const gdTeacherReviewsMy = () => realRequest('/mobile/teacher/graduation/reviews/my')
+export const gdTeacherReviewSubmit = (reviewId, score, opinion) =>
+  realRequest(`/mobile/teacher/graduation/review/${reviewId}/submit`, { method: 'POST', data: { score, opinion: opinion || '' } })
+/** 教师·答辩安排（本人指导学生，只读） */
+export const gdTeacherDefenseArrangements = () => realRequest('/mobile/teacher/graduation/defense/arrangements')
+/** 教师·成绩：待复核队列 / 三段构成详情 / 复核 APPROVE-RETURN */
+export const gdTeacherGradeQueue = () => realRequest('/mobile/teacher/graduation/grade/queue')
+export const gdTeacherGradeDetail = (gdStudentId) => realRequest(`/mobile/teacher/graduation/grade/${gdStudentId}`)
+export const gdTeacherGradeReview = (gdStudentId, action, comment) =>
+  realRequest(`/mobile/teacher/graduation/grade/${gdStudentId}/review`, { method: 'POST', data: { action, comment: comment || '' } })
 
 export async function enrichEmployment(mock) {
   const r = await realRequest('/mobile/employment/my')
@@ -456,8 +481,15 @@ export async function teacherGraduationReal(mock) {
       studentName: p.studentName || p.name || '', className: p.className || '',
       topicTitle: p.topicTitle || '', submitAt: p.submitAt || p.submittedAt || '',
       version: p.version || '', isResubmit: !!p.isResubmit }))
+  // 待批阅成果队列：真实待审成果（含类型/版本/查重）
+  const finalQueue = (d.finalDetail || [])
+    .filter((f) => (f.status || 'PENDING_REVIEW') === 'PENDING_REVIEW' && /^\d+$/.test(String(f.id || '')))
+    .map((f) => ({ finalId: String(f.id), gdStudentId: String(f.projectId || f.gdStudentId || ''),
+      studentName: f.studentName || f.name || '', className: f.className || '',
+      topicTitle: f.topicTitle || '', submitAt: f.submitAt || '', type: f.type || '',
+      version: f.version || '', plagiarismRate: f.plagiarismRate || '—' }))
   return { list: list.length ? list : (mock.list || []),
-    reviewQueue, _real: !!d.hasData || list.length > 0 }
+    reviewQueue, finalQueue, _real: !!d.hasData || list.length > 0 }
 }
 
 /** 教师·移动端快速新增指导记录（仅本人指导学生，越权由后端 403 拦截）。 */

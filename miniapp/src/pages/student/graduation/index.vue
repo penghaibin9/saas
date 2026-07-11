@@ -101,6 +101,9 @@
           </view>
           <MobileInlineAlert v-if="proposal.latest && proposal.latest.status === 'REJECTED' && proposal.latest.reviewComment"
                              type="danger" title="开题被驳回" :description="proposal.latest.reviewComment" />
+          <view v-if="proposal.latest && proposal.latest.attachmentsList && proposal.latest.attachmentsList.length" class="gd__atts">
+            <text v-for="a in proposal.latest.attachmentsList" :key="a.fileId" class="gd__att" @click="downloadAtt(a)">📎 {{ a.fileName }}</text>
+          </view>
           <text v-if="!proposal.canSubmit && proposal.reason" class="gd__hint">{{ proposal.reason }}</text>
           <button v-if="proposal.canSubmit && !showProposalForm" class="btn btn-primary" @click="startProposal">
             {{ proposal.latest && proposal.latest.status === 'REJECTED' ? '修改后重交开题报告' : '提交开题报告' }}
@@ -109,6 +112,10 @@
             <textarea class="gd__reason" v-model="propForm.background" :maxlength="2000" placeholder="选题背景（必填）" placeholder-class="wr__ph" />
             <textarea class="gd__reason" v-model="propForm.plan" :maxlength="2000" placeholder="研究方案与进度（必填）" placeholder-class="wr__ph" />
             <textarea class="gd__reason" v-model="propForm.outcome" :maxlength="2000" placeholder="预期成果（选填）" placeholder-class="wr__ph" />
+            <view class="gd__atts">
+              <text v-for="(a, i) in propAtts" :key="a.fileId" class="gd__att gd__att--pending">📎 {{ a.fileName }}<text class="gd__att-x" @click.stop="removeAtt('prop', i)"> ×</text></text>
+              <button class="btn btn-ghost gd__att-add" :disabled="uploading" @click="pickUpload('prop')">{{ uploading ? '上传中…' : '+ 添加附件' }}</button>
+            </view>
             <button class="btn btn-primary" :disabled="!propForm.background.trim() || !propForm.plan.trim() || proposalSubmitting" @click="submitProposal">
               {{ proposalSubmitting ? '提交中…' : '提交开题报告' }}
             </button>
@@ -139,13 +146,22 @@
         <!-- 成果提交（论文初稿/定稿） -->
         <view v-if="final && final.hasData" id="gd-final" class="section-head"><text class="section-head__title">成果提交</text></view>
         <view v-if="final && final.hasData" class="card stack-sm">
-          <view v-for="it in final.items" :key="it.id" class="gd__choice-row">
-            <text class="gd__choice-title">{{ it.type }} {{ it.version }} · 查重 {{ it.plagiarismRate }}</text>
-            <MobileStatusTag :label="it.statusLabel"
-                             :type="it.status === 'APPROVED' ? 'success' : it.status === 'REJECTED' ? 'danger' : 'warning'" />
+          <view v-for="it in final.items" :key="it.id" class="gd__final-item">
+            <view class="gd__choice-row">
+              <text class="gd__choice-title">{{ it.type }} {{ it.version }} · 查重 {{ it.plagiarismRate }}</text>
+              <MobileStatusTag :label="it.statusLabel"
+                               :type="it.status === 'APPROVED' ? 'success' : it.status === 'REJECTED' ? 'danger' : 'warning'" />
+            </view>
+            <view v-if="it.attachmentsList && it.attachmentsList.length" class="gd__atts">
+              <text v-for="a in it.attachmentsList" :key="a.fileId" class="gd__att" @click="downloadAtt(a)">📎 {{ a.fileName }}</text>
+            </view>
           </view>
           <MobileInlineAlert v-if="finalRejected" type="danger" title="成果被退回" :description="finalRejected" />
           <text class="gd__hint">{{ final.hint }}</text>
+          <view v-if="final.canSubmitDraft || final.canSubmitFinal" class="gd__atts">
+            <text v-for="(a, i) in finalAtts" :key="a.fileId" class="gd__att gd__att--pending">📎 {{ a.fileName }}<text class="gd__att-x" @click.stop="removeAtt('final', i)"> ×</text></text>
+            <button class="btn btn-ghost gd__att-add" :disabled="uploading" @click="pickUpload('final')">{{ uploading ? '上传中…' : '+ 添加论文附件' }}</button>
+          </view>
           <button v-if="final.canSubmitDraft" class="btn btn-primary" :disabled="finalSubmitting" @click="submitFinal('初稿')">
             {{ finalSubmitting ? '提交中…' : '提交论文初稿' }}
           </button>
@@ -204,8 +220,9 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { createSubmitLock, normalizeError } from '@/services/request'
+import { createSubmitLock, normalizeError, getToken } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { ENV } from '@/config/env'
 
 const choiceLock = createSubmitLock(1500)
 const changeLock = createSubmitLock(1500)
@@ -223,6 +240,7 @@ export default {
       showChangeForm: false, changeTargetTopicId: '', changeReason: '', changeSubmitting: false,
       proposal: null, showProposalForm: false, proposalSubmitting: false,
       propForm: { background: '', plan: '', outcome: '' },
+      propAtts: [], finalAtts: [], uploading: false,
       final: null, finalSubmitting: false,
       taskbook: null, taskbookSubmitting: false,
       midterm: null, rectifyContent: '', rectifySubmitting: false,
@@ -297,11 +315,13 @@ export default {
       if (!f.background.trim() || !f.plan.trim() || this.proposalSubmitting) return
       this.proposalSubmitting = true
       studentApi.submitGraduationProposal({
-        background: f.background.trim(), plan: f.plan.trim(), outcome: f.outcome.trim()
+        background: f.background.trim(), plan: f.plan.trim(), outcome: f.outcome.trim(),
+        attachments: this.propAtts.map((a) => a.fileId)
       }).then(() => {
         uni.showToast({ title: '开题报告已提交', icon: 'success' })
         this.showProposalForm = false
         this.propForm = { background: '', plan: '', outcome: '' }
+        this.propAtts = []
         this.loadProcess()
       }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
         .finally(() => { this.proposalSubmitting = false })
@@ -320,11 +340,65 @@ export default {
     submitFinal(finalType) {
       if (this.finalSubmitting) return
       this.finalSubmitting = true
-      studentApi.submitGraduationFinal({ finalType }).then(() => {
+      studentApi.submitGraduationFinal({ finalType, attachments: this.finalAtts.map((a) => a.fileId) }).then(() => {
         uni.showToast({ title: finalType + '已提交', icon: 'success' })
+        this.finalAtts = []
         this.loadProcess()
       }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
         .finally(() => { this.finalSubmitting = false })
+    },
+    // 附件：选择 → 真实上传文件中心 → 记录 file_id（提交时随材料一起提交）
+    pickUpload(target) {
+      if (this.uploading) return
+      const arr = target === 'prop' ? 'propAtts' : 'finalAtts'
+      const doUpload = (path, name) => {
+        this.uploading = true
+        const token = getToken()
+        uni.uploadFile({
+          url: ENV.apiBaseUrl + ENV.apiPrefix + '/files/upload', filePath: path, name: 'file',
+          header: token ? { Authorization: 'Bearer ' + token } : {},
+          success: (res) => {
+            try {
+              const body = JSON.parse(res.data)
+              if (body && body.code === 0 && body.data) {
+                this[arr].push({ fileId: body.data.fileId, fileName: body.data.fileName || name || '附件' })
+              } else { toast((body && body.message) || '上传失败') }
+            } catch (e) { toast('上传失败') }
+          },
+          fail: () => { toast('上传失败，请检查网络') },
+          complete: () => { this.uploading = false }
+        })
+      }
+      // #ifdef H5 || APP-PLUS
+      uni.chooseFile ? uni.chooseFile({ count: 1, success: (r) => { const f = r.tempFiles && r.tempFiles[0]; doUpload(r.tempFilePaths[0], f && f.name) } })
+        : uni.chooseImage({ count: 1, success: (r) => doUpload(r.tempFilePaths[0], 'image.png') })
+      // #endif
+      // #ifdef MP-WEIXIN
+      uni.chooseMessageFile({ count: 1, type: 'file', success: (r) => { const f = r.tempFiles[0]; doUpload(f.path, f.name) } })
+      // #endif
+    },
+    removeAtt(target, i) {
+      const arr = target === 'prop' ? 'propAtts' : 'finalAtts'
+      this[arr].splice(i, 1)
+    },
+    downloadAtt(a) {
+      const token = getToken()
+      uni.showLoading({ title: '下载中' })
+      uni.downloadFile({
+        url: ENV.apiBaseUrl + ENV.apiPrefix + '/files/download/' + a.fileId,
+        header: token ? { Authorization: 'Bearer ' + token } : {},
+        success: (res) => {
+          uni.hideLoading()
+          if (res.statusCode !== 200) { toast('下载失败或无权限'); return }
+          // #ifdef H5
+          try { const link = document.createElement('a'); link.href = res.tempFilePath; link.download = a.fileName; link.click() } catch (e) { toast('已下载') }
+          // #endif
+          // #ifndef H5
+          uni.openDocument({ filePath: res.tempFilePath, showMenu: true, fail: () => toast('已下载，暂无法预览此类型') })
+          // #endif
+        },
+        fail: () => { uni.hideLoading(); toast('下载失败，请检查网络') }
+      })
     },
     confirmTaskbook() {
       if (this.taskbookSubmitting) return
@@ -435,6 +509,13 @@ export default {
 .gd__log-text { display: block; font-size: var(--font-size-base); color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
 .gd__log-issue { display: block; font-size: var(--font-size-sm); color: var(--warning-600); margin-top: 4px; line-height: 1.5; }
 .gd__hint { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); margin-bottom: var(--space-2); }
+.gd__final-item { padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-light); }
+.gd__final-item:last-of-type { border-bottom: none; }
+.gd__atts { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: var(--space-2) 0; }
+.gd__att { font-size: var(--font-size-sm); color: var(--brand-primary); background: var(--primary-50); border: 1px solid var(--primary-100); padding: 5px 10px; border-radius: var(--radius-md); }
+.gd__att--pending { color: var(--text-secondary); background: var(--gray-50); border-color: var(--border-base); }
+.gd__att-x { color: var(--danger-500); font-weight: var(--font-weight-semibold); }
+.gd__att-add { min-height: 34px; padding: 0 var(--space-3); font-size: var(--font-size-sm); }
 .gd__choice-row { display: flex; align-items: center; justify-content: space-between; }
 .gd__choice-title { font-size: var(--font-size-base); color: var(--text-primary); }
 .gd__topic-row { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--border-light); }
