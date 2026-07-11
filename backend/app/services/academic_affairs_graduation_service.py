@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -272,17 +272,20 @@ def list_results(batch_id, user, status=None, overall=None, page=1, page_size=50
             conds.append(AaGraduationAuditResult.status == status)
         if overall:
             conds.append(AaGraduationAuditResult.overall == overall)
-        rows = db.scalars(select(AaGraduationAuditResult).where(*conds).order_by(
-            AaGraduationAuditResult.id.desc())).all()
+        join = and_(StudentProfile.id == AaGraduationAuditResult.student_id,
+                    StudentProfile.tenant_id == AaGraduationAuditResult.tenant_id)
+        total = db.scalar(select(func.count()).select_from(AaGraduationAuditResult)
+                          .outerjoin(StudentProfile, join).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.execute(select(AaGraduationAuditResult, StudentProfile)
+                          .outerjoin(StudentProfile, join).where(*conds)
+                          .order_by(AaGraduationAuditResult.id.desc()).offset(offset).limit(page_size)).all()
         out = []
-        for r in rows:
-            s = db.get(StudentProfile, int(r.student_id))
+        for r, s in rows:
             d = _row(r)
             d["realName"] = s.real_name if s else ""
             out.append(d)
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total
 
 
 def rosters(batch_id, user) -> dict:

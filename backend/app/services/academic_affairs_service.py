@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -283,18 +283,20 @@ def register_student(batch_id, user, student_id) -> dict:
 def list_registrations(batch_id, user, page=1, page_size=50):
     from app.models import AaRegistration, StudentProfile
     with session() as db:
-        rows = db.scalars(select(AaRegistration).where(
-            AaRegistration.tenant_id == _tid(), AaRegistration.batch_id == int(batch_id),
-            AaRegistration.is_deleted.is_(False)).order_by(AaRegistration.id.desc())).all()
-        out = []
-        for x in rows:
-            s = db.get(StudentProfile, int(x.student_id))
-            out.append({"registrationId": str(x.id), "studentId": str(x.student_id),
-                        "realName": s.real_name if s else "", "status": x.status,
-                        "registerAt": _iso(x.register_at)})
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        join = and_(StudentProfile.id == AaRegistration.student_id,
+                    StudentProfile.tenant_id == AaRegistration.tenant_id)
+        conds = [AaRegistration.tenant_id == _tid(), AaRegistration.batch_id == int(batch_id),
+                 AaRegistration.is_deleted.is_(False)]
+        total = db.scalar(select(func.count()).select_from(AaRegistration)
+                          .outerjoin(StudentProfile, join).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.execute(select(AaRegistration, StudentProfile)
+                          .outerjoin(StudentProfile, join).where(*conds)
+                          .order_by(AaRegistration.id.desc()).offset(offset).limit(page_size)).all()
+        out = [{"registrationId": str(x.id), "studentId": str(x.student_id),
+                "realName": s.real_name if s else "", "status": x.status,
+                "registerAt": _iso(x.register_at)} for x, s in rows]
+        return out, total
 
 
 # ═══════════ 教务首页（四角色视图占位聚合）═══════════

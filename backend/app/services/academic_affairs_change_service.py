@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -279,11 +279,13 @@ def list_changes(user, change_type=None, status=None, student_id=None, page=1, p
             conds.append(AaStatusChange.status == status)
         if student_id:
             conds.append(AaStatusChange.student_id == int(student_id))
-        rows = db.scalars(select(AaStatusChange).where(*conds).order_by(AaStatusChange.id.desc())).all()
-        out = []
-        for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-            out.append(_row(x, s))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        join = and_(StudentProfile.id == AaStatusChange.student_id,
+                    StudentProfile.tenant_id == AaStatusChange.tenant_id)
+        total = db.scalar(select(func.count()).select_from(AaStatusChange)
+                          .outerjoin(StudentProfile, join).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.execute(select(AaStatusChange, StudentProfile)
+                          .outerjoin(StudentProfile, join).where(*conds)
+                          .order_by(AaStatusChange.id.desc()).offset(offset).limit(page_size)).all()
+        out = [_row(x, s) for x, s in rows]
+        return out, total
