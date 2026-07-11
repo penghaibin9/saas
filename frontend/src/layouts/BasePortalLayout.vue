@@ -344,8 +344,8 @@ export default {
       expandedMods: {},
       /* 三级菜单被点击的唯一 leafKey（用于同 path 多叶子的点击反馈/高亮跟随；路由切换后失效自动回退路由匹配） */
       clickedLeafKey: '',
-      /* DEV：是否展示 navPlan 全部 planned 菜单（默认关，点击顶栏 DEV 徽标切换） */
-      devPlannerView: false
+      /* DEV：是否展示 navPlan 全部 planned 菜单（甲方拍板默认开，让小白看全 2级/3级 施工地图把控进度；点击顶栏徽标可临时关闭） */
+      devPlannerView: true
     }
   },
   computed: {
@@ -699,9 +699,10 @@ export default {
     this.fnQueryDebounced = ''
     if (import.meta.env && import.meta.env.DEV) {
       try {
-        this.devPlannerView = window.localStorage.getItem('navPlannerView') === '1'
+        // 甲方拍板默认开：未显式关闭('0')时都展示完整 planned 施工地图，方便非技术甲方看全菜单把控进度
+        this.devPlannerView = window.localStorage.getItem('navPlannerView') !== '0'
       } catch {
-        this.devPlannerView = false
+        this.devPlannerView = true
       }
     }
   },
