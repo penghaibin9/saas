@@ -1,0 +1,45 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>全系统目录施工总图（6 个中心）</title><style>
+ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; margin:0; background:#f5f7fa; color:#1f2937; line-height:1.6; }
+ .wrap { max-width:1150px; margin:0 auto; padding:24px 20px 70px; }
+ h1 { font-size:22px; margin:0 0 4px; }
+ .sub { color:#6b7280; font-size:13px; margin-bottom:12px; }
+ .howto { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 16px; font-size:13px; margin:12px 0 20px; }
+ .howto b { color:#1d4ed8; }
+ .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+ .card.done { border-left:4px solid #10b981; }
+ .card.part { border-left:4px solid #f59e0b; }
+ .card.todo { border-left:4px solid #9ca3af; }
+ .card__head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+ .ord { background:#1f2937; color:#fff; border-radius:8px; min-width:26px; text-align:center; padding:2px 7px; font-weight:700; }
+ .ord.done { background:#10b981; } .ord.part { background:#f59e0b; }
+ .card__t { font-size:16px; font-weight:700; }
+ .pkg { font-size:11px; border-radius:5px; padding:2px 7px; background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; }
+ .why { color:#6b7280; font-size:12.5px; margin:6px 0 8px; }
+ .ls { margin:0 0 10px; padding-left:20px; font-size:13px; columns:2; }
+ .ls li { margin:2px 0; break-inside:avoid; }
+ .lf-plan { color:#b0b6bf; } .lf-pa { color:#b45309; }
+ .b { font-size:10px; border-radius:4px; padding:1px 5px; }
+ .b-ok { background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }
+ .b-pa { background:#fffbeb; color:#d97706; border:1px solid #fde68a; }
+ .b-plan { background:#f3f4f6; color:#9ca3af; border:1px solid #e5e7eb; }
+ details { background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:8px 12px; }
+ summary { cursor:pointer; font-size:13px; font-weight:600; color:#1d4ed8; }
+ pre { white-space:pre-wrap; font-family:inherit; font-size:12.5px; background:#fff; border:1px dashed #cbd5e1; border-radius:8px; padding:10px 12px; margin:8px 0 4px; }
+ .copy { font-size:12px; border:1px solid #2563eb; color:#2563eb; background:#fff; border-radius:6px; padding:3px 12px; cursor:pointer; }
+ .copy:active { background:#2563eb; color:#fff; }
+ .nav { font-size:13px; margin-bottom:8px; }
+ .nav a { color:#2563eb; text-decoration:none; }
+ .flow { display:flex; gap:8px; flex-wrap:wrap; font-size:12.5px; margin-top:8px; }
+ .flow span { background:#fff; border:1px solid #cbd5e1; border-radius:999px; padding:3px 10px; }
+</style></head><body><div class="wrap">
+<h1>全系统目录施工总图（6 个中心）</h1><div class="sub">共 76 个二级 · 593 个三级 ｜ 已实现 197 · 待补强 23 · 待施工 373 ｜ 与 docs/README.md 六步文档体系配套 · 2026-07-11</div>
+<div class="howto"><b>如何引用（读文档）：</b>永远走六步口诀 —— CLAUDE.md → docs/README.md → 00-项目入口与总控/00-文档总导航.md → 中心 README → 中心「文档关联索引」任务路由表 → 任务文档。旧 docs/modules 路径已废弃。<br><b>如何规划（定顺序）：</b>本总图定战役顺序：<b>学工 B包(5步)→C包(4步)→D包(3步) → 实习收口(23项) → 教务(27步) → 系统管理(6项) → 工作台消息</b>；各中心施工图内已按依赖排好每一步的序号，菜单事实源=navPlan.js。<br><b>如何开发（干活）：</b>点开中心施工图 → 找序号最小的灰卡片 → 复制「推进指令」发给 Claude → 自动全流程（读文档→前后端+MySQL+权限+审计→测试→build/lint→施工记录+历史欠账→1 个 commit，永不 push）→ 刷新 localhost:5174 该模块变绿即验收，灰色项演示时可一键「施工地图 关」。<div class='flow'><span>① 复制指令</span><span>② Claude 施工</span><span>③ build/lint/pytest</span><span>④ commit（您审）</span><span>⑤ 前端变绿</span><span>⑥ 下一张卡</span></div><div style="margin:14px 0 18px;padding:14px 16px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px;font-size:13px;line-height:1.8;color:#1e293b"><div style="font-weight:700;color:#312e81;margin-bottom:6px">📚 六大中心文档快速索引（L3 README ＋ L4 任务路由表）</div><div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12.5px"><tr style="color:#3730a3;text-align:left"><th style="padding:6px 10px">中心</th><th style="padding:6px 10px">入口（L3＋L4）</th><th style="padding:6px 10px">唯一主文档 / 当前施工卡</th><th style="padding:6px 10px">要点</th></tr><tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;white-space:nowrap">学工中心</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">docs/03-业务模块设计/学工中心/README.md ＋ 文档关联索引.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">13A-学工中心四大任务包施工总图.md（当前 B包）</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;color:#475569">13A-…B包-PC高频主线生产级施工卡.md</td></tr><tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;white-space:nowrap">教务中心</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">docs/03-业务模块设计/教务中心/README.md ＋ 文档关联索引.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">13B-教务中心V1范围与开发顺序.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;color:#475569">13B 四件套（总册/页面树/API/状态机）</td></tr><tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;white-space:nowrap">数字迎新中心</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">docs/03-业务模块设计/数字迎新中心/README.md ＋ 文档关联索引.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">02A-数字迎新-生产级施工审计与续接说明.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;color:#475569">欠账在学工 D包收口</td></tr><tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;white-space:nowrap">毕业设计中心</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">docs/03-业务模块设计/毕业设计中心/README.md ＋ 文档关联索引.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">05-毕业设计中心生产级商业化开发总册.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;color:#475569">反向建模 V1.0＝字段/状态机证据</td></tr><tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;white-space:nowrap">岗位实习中心</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">docs/03-业务模块设计/岗位实习中心/README.md ＋ 文档关联索引.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">06-岗位实习中心生产级商业化开发总册.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;color:#475569">API 以 internship*.py 代码为准</td></tr><tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;white-space:nowrap">系统管理中心</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">docs/03-业务模块设计/系统管理中心/README.md ＋ 文档关联索引.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">00-…权限角色模块授权与权责边界设计.md</td><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;color:#475569">全系统权限最高约束</td></tr></table></div><div style="margin-top:8px;color:#475569">每张施工图的「推进指令」都已内置六步阅读顺序；施工时 Claude 会按上表自动读齐当前模块的主文档、四件套、权限总控与验收依据 —— 你只需复制指令发出即可。</div></div></div>
+<div class="card part"><div class="card__head"><span class="card__t"><a href="施工图-02-学工中心.html" style="color:#1d4ed8;text-decoration:none">学工中心（13A） →</a></span>
+ <span style="font-size:12px;color:#6b7280">14 二级 / 72 三级 · 14 已实现 · 58 待施工</span></div><div class="why">🔥 当前主战场（README 标注：B包施工中），12 步干穿</div></div><div class="card part"><div class="card__head"><span class="card__t"><a href="施工图-03-教务中心.html" style="color:#1d4ed8;text-decoration:none">教务中心（13B） →</a></span>
+ <span style="font-size:12px;color:#6b7280">27 二级 / 295 三级 · 6 已实现 · 289 待施工</span></div><div class="why">第二战役，先做时间与组织底座（27 步）</div></div><div class="card part"><div class="card__head"><span class="card__t"><a href="施工图-05-岗位实习中心.html" style="color:#1d4ed8;text-decoration:none">岗位实习中心 →</a></span>
+ <span style="font-size:12px;color:#6b7280">12 二级 / 99 三级 · 76 已实现 · 23 待补强</span></div><div class="why">收口仗：补实黄色待补强项</div></div><div class="card part"><div class="card__head"><span class="card__t"><a href="施工图-04-毕业设计中心.html" style="color:#1d4ed8;text-decoration:none">毕业设计中心 →</a></span>
+ <span style="font-size:12px;color:#6b7280">11 二级 / 86 三级 · 86 全部完成</span></div><div class="why">✅ 样板中心，回归即可</div></div><div class="card part"><div class="card__head"><span class="card__t"><a href="施工图-01-工作台.html" style="color:#1d4ed8;text-decoration:none">工作台 →</a></span>
+ <span style="font-size:12px;color:#6b7280">6 二级 / 15 三级 · 10 已实现 · 5 待施工</span></div><div class="why">消息通知随学工 B包</div></div><div class="card part"><div class="card__head"><span class="card__t"><a href="施工图-06-系统管理.html" style="color:#1d4ed8;text-decoration:none">系统管理 →</a></span>
+ <span style="font-size:12px;color:#6b7280">15 二级 / 26 三级 · 5 已实现 · 21 待施工</span></div><div class="why">权限红线区</div></div>
+</div><script>function cp(btn){var pre=btn.previousElementSibling;navigator.clipboard.writeText(pre.textContent).then(function(){btn.textContent='已复制 ✓';setTimeout(function(){btn.textContent='复制这段指令发给 Claude';},1500)});}</script></body></html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>毕业设计中心 · 目录施工图</title><style>
+ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; margin:0; background:#f5f7fa; color:#1f2937; line-height:1.6; }
+ .wrap { max-width:1150px; margin:0 auto; padding:24px 20px 70px; }
+ h1 { font-size:22px; margin:0 0 4px; }
+ .sub { color:#6b7280; font-size:13px; margin-bottom:12px; }
+ .howto { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 16px; font-size:13px; margin:12px 0 20px; }
+ .howto b { color:#1d4ed8; }
+ .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+ .card.done { border-left:4px solid #10b981; }
+ .card.part { border-left:4px solid #f59e0b; }
+ .card.todo { border-left:4px solid #9ca3af; }
+ .card__head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+ .ord { background:#1f2937; color:#fff; border-radius:8px; min-width:26px; text-align:center; padding:2px 7px; font-weight:700; }
+ .ord.done { background:#10b981; } .ord.part { background:#f59e0b; }
+ .card__t { font-size:16px; font-weight:700; }
+ .pkg { font-size:11px; border-radius:5px; padding:2px 7px; background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; }
+ .why { color:#6b7280; font-size:12.5px; margin:6px 0 8px; }
+ .ls { margin:0 0 10px; padding-left:20px; font-size:13px; columns:2; }
+ .ls li { margin:2px 0; break-inside:avoid; }
+ .lf-plan { color:#b0b6bf; } .lf-pa { color:#b45309; }
+ .b { font-size:10px; border-radius:4px; padding:1px 5px; }
+ .b-ok { background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }
+ .b-pa { background:#fffbeb; color:#d97706; border:1px solid #fde68a; }
+ .b-plan { background:#f3f4f6; color:#9ca3af; border:1px solid #e5e7eb; }
+ details { background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:8px 12px; }
+ summary { cursor:pointer; font-size:13px; font-weight:600; color:#1d4ed8; }
+ pre { white-space:pre-wrap; font-family:inherit; font-size:12.5px; background:#fff; border:1px dashed #cbd5e1; border-radius:8px; padding:10px 12px; margin:8px 0 4px; }
+ .copy { font-size:12px; border:1px solid #2563eb; color:#2563eb; background:#fff; border-radius:6px; padding:3px 12px; cursor:pointer; }
+ .copy:active { background:#2563eb; color:#fff; }
+ .nav { font-size:13px; margin-bottom:8px; }
+ .nav a { color:#2563eb; text-decoration:none; }
+ .flow { display:flex; gap:8px; flex-wrap:wrap; font-size:12.5px; margin-top:8px; }
+ .flow span { background:#fff; border:1px solid #cbd5e1; border-radius:999px; padding:3px 10px; }
+</style></head><body><div class="wrap">
+<div class='nav'><a href='施工图-00-总览.html'>← 返回总览</a></div><h1>毕业设计中心 · 目录施工图</h1><div class="sub">11 个二级 · 86 个三级 · 全部已实现 ✅ ｜ 系统样板中心：其他中心做到什么标准，看它</div>
+<div class="howto"><b>状态：</b>已打穿全闭环，不需要新开发；文档在 docs/03-业务模块设计/毕业设计中心/（含施工与验收归档、走查截图）。</div><div style="margin:14px 0 18px;padding:14px 16px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px;font-size:13px;line-height:1.8;color:#1e293b"><div style="font-weight:700;color:#312e81;margin-bottom:6px">📚 毕业设计中心 · 开发文档导航（来自 文档关联索引.md）<span style="font-weight:400;color:#64748b">（推进指令第⑤步到这查任务路由表，禁止猜文件名）</span></div><div><b style="color:#3730a3">任务路由表</b>　docs/03-业务模块设计/毕业设计中心/文档关联索引.md §1</div><div><b style="color:#3730a3">唯一主文档</b>　05-毕业设计中心生产级商业化开发总册.md（施工主入口）；业务来源：05-毕业设计中心反向建模与深化设计 V1.0.md（老系统证据，字段/状态机细节）</div><div><b style="color:#3730a3">交付与证据</b>　毕业设计中心-业务流程与操作手册.md（培训/验收演示）｜毕业设计中心-施工与验收归档.md（替代 11 份分散施工记录）</div><div><b style="color:#3730a3">横切必读</b>　权限总控（导师/评阅/答辩专家按任务授权）｜数据库冻结总册｜公共组件总册</div><div><b style="color:#3730a3">允许写入</b>　backend/app/api/v1/graduation*.py、models/graduation.py、services/graduation_*、frontend/src/views/admin/graduation/、miniapp/…/graduation/</div><div><b style="color:#3730a3">禁止</b>　实习企业库、学工处分/心理明细、教务成绩录入、系统 RBAC 表</div><div><b style="color:#3730a3">验收依据</b>　backend/tests/test_graduation*.py ＋ 施工归档 §页面级验收</div></div>
+<div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">毕设看板</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 2 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>毕设总览（管理看板，含阶段进度条/待办/风险提示，已实现） <span class="b b-ok">已实现</span></li><li class='lf-ok'>跨模块统计报表（导师/指导/中期/评阅/成绩/归档等 9 域统计中心） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·毕设看板做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">毕设批次</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 8 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>批次列表（新建/编辑/启停/作废） <span class="b b-ok">已实现</span></li><li class='lf-ok'>新建批次 <span class="b b-ok">已实现</span></li><li class='lf-ok'>阶段时间轴配置 <span class="b b-ok">已实现</span></li><li class='lf-ok'>规则配置（查重/答辩/成绩权重） <span class="b b-ok">已实现</span></li><li class='lf-ok'>进行中批次 <span class="b b-ok">已实现</span></li><li class='lf-ok'>已归档批次 <span class="b b-ok">已实现</span></li><li class='lf-ok'>毕设批次台账导出 <span class="b b-ok">已实现</span></li><li class='lf-ok'>材料模板（模板中心·材料类） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·毕设批次做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">毕设学生</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 11 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>学生名单（建档/导入导出） <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生进度（节点筛选） <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生风险 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生导师（已选题） <span class="b b-ok">已实现</span></li><li class='lf-ok'>未选题学生（分配选题） <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生资格 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生分组 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生材料 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生答辩组 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生毕业资格联动 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生归档（roster 归档状态字段，区别于下方&quot;预警与归档&quot;的材料清单核验） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·毕设学生做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">题目库</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 11 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>题目列表 <span class="b b-ok">已实现</span></li><li class='lf-ok'>教师申报题目 <span class="b b-ok">已实现</span></li><li class='lf-ok'>企业题目 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生自拟题目 <span class="b b-ok">已实现</span></li><li class='lf-ok'>待审核题目 <span class="b b-ok">已实现</span></li><li class='lf-ok'>题目分类 <span class="b b-ok">已实现</span></li><li class='lf-ok'>题目容量 <span class="b b-ok">已实现</span></li><li class='lf-ok'>题目要求 <span class="b b-ok">已实现</span></li><li class='lf-ok'>题目附件 <span class="b b-ok">已实现</span></li><li class='lf-ok'>题目历史 <span class="b b-ok">已实现</span></li><li class='lf-ok'>题目归档 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·题目库做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">选题管理</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 10 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>选题轮次 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生志愿 <span class="b b-ok">已实现</span></li><li class='lf-ok'>匹配结果 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生选题（选题管理） <span class="b b-ok">已实现</span></li><li class='lf-ok'>教师确认（志愿一对一确认/驳回） <span class="b b-ok">已实现</span></li><li class='lf-ok'>题目调整（选题变更申请审核） <span class="b b-ok">已实现</span></li><li class='lf-ok'>退选重选（学生撤回志愿后重填，管理端可代退） <span class="b b-ok">已实现</span></li><li class='lf-ok'>容量冲突人工复核（过热题目+竞争学生确认/驳回） <span class="b b-ok">已实现</span></li><li class='lf-ok'>选题统计报表（志愿分布/参与/过热题目） <span class="b b-ok">已实现</span></li><li class='lf-ok'>选题归档（已关闭/已匹配轮次归档） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·选题管理做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">导师管理与分配</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 8 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>导师名单（申报/审核/编辑/导入导出） <span class="b b-ok">已实现</span></li><li class='lf-ok'>导师容量与工作量 <span class="b b-ok">已实现</span></li><li class='lf-ok'>未分配导师学生（发起分配） <span class="b b-ok">已实现</span></li><li class='lf-ok'>分配调整记录（调导师/取消分配） <span class="b b-ok">已实现</span></li><li class='lf-ok'>导师评价（评分0-100+等级+意见，含历史） <span class="b b-ok">已实现</span></li><li class='lf-ok'>批量分配（一键把未分配学生分给已认证导师） <span class="b b-ok">已实现</span></li><li class='lf-ok'>分配冲突自动检测（超容量/进阶段无导师/导师非认证） <span class="b b-ok">已实现</span></li><li class='lf-ok'>导师归档批量（批量归档已停用/驳回导师） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·导师管理与分配做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">过程指导</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 7 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>任务书下达/确认/变更 <span class="b b-ok">已实现</span></li><li class='lf-ok'>指导记录（时间线/新增/撤销） <span class="b b-ok">已实现</span></li><li class='lf-ok'>中期检查（三档结论/整改跟踪） <span class="b b-ok">已实现</span></li><li class='lf-ok'>任务书模板（模板中心·任务书类） <span class="b b-ok">已实现</span></li><li class='lf-ok'>指导频次统计报表（统计中心） <span class="b b-ok">已实现</span></li><li class='lf-ok'>中期统计报表（统计中心） <span class="b b-ok">已实现</span></li><li class='lf-ok'>过程归档（并入中央·预警归档统计） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·过程指导做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">开题材料</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 7 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>开题报告列表与批阅（提交/导师审核通过或驳回，点击进入详情页操作，已实现） <span class="b b-ok">已实现</span></li><li class='lf-ok'>开题模板（模板中心·开题类） <span class="b b-ok">已实现</span></li><li class='lf-ok'>开题附件（详情页附件清单） <span class="b b-ok">已实现</span></li><li class='lf-ok'>开题答辩（现场答辩·详情页录入 PASS/FAIL） <span class="b b-ok">已实现</span></li><li class='lf-ok'>开题整改跟踪（已驳回页签→学生重交） <span class="b b-ok">已实现</span></li><li class='lf-ok'>开题统计（统计中心） <span class="b b-ok">已实现</span></li><li class='lf-ok'>开题归档（并入中央·预警归档统计） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·开题材料做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">成果检查</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 8 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>论文提交（现有·成果提交） <span class="b b-ok">已实现</span></li><li class='lf-ok'>查重记录（发起/回填/复查） <span class="b b-ok">已实现</span></li><li class='lf-ok'>教师评阅（分配/提交/退回，SoD 校验） <span class="b b-ok">已实现</span></li><li class='lf-ok'>版本记录（成果初稿/定稿版本） <span class="b b-ok">已实现</span></li><li class='lf-ok'>互查整改（学生互评+被评整改） <span class="b b-ok">已实现</span></li><li class='lf-ok'>查重报告归档（并入中央·预警归档统计） <span class="b b-ok">已实现</span></li><li class='lf-ok'>评阅统计报表（统计中心） <span class="b b-ok">已实现</span></li><li class='lf-ok'>成果归档（并入中央·预警归档统计） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·成果检查做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">答辩成绩</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 8 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>答辩批次（现有·答辩安排） <span class="b b-ok">已实现</span></li><li class='lf-ok'>答辩评分（评委录入/缺席/确认/二次答辩） <span class="b b-ok">已实现</span></li><li class='lf-ok'>成绩评定（核算/复核/发布/撤回） <span class="b b-ok">已实现</span></li><li class='lf-ok'>答辩分组（现有·答辩安排分组/学生分配） <span class="b b-ok">已实现</span></li><li class='lf-ok'>答辩专家（评委库+回避） <span class="b b-ok">已实现</span></li><li class='lf-ok'>答辩通知（对已发布答辩组学生通知，留痕） <span class="b b-ok">已实现</span></li><li class='lf-ok'>成绩更正申诉（学生申诉→复核） <span class="b b-ok">已实现</span></li><li class='lf-ok'>答辩与成绩归档（并入中央·预警归档统计） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·答辩成绩做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">预警 · 归档 · 统计</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 6 个三级</span></div>
+      <div class="why">已全部实现并验收，只做回归与欠账收口。</div>
+      <ul class='ls'><li class='lf-ok'>问题预警（GD-R01/R04/R06/R07/R08/R09/R13 扫描+受理+处理+关闭） <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生归档包（自动核验清单/提交/核验/驳回/导出台账） <span class="b b-ok">已实现</span></li><li class='lf-ok'>毕设总览统计（跨模块聚合）与学院/专业对比 <span class="b b-ok">已实现</span></li><li class='lf-ok'>剩余风险编码补齐（GD-R02/R03/R05/R10/R11 已接扫描） <span class="b b-ok">已实现</span></li><li class='lf-ok'>批量归档一键操作（批量生成提交 / 一键核验备案） <span class="b b-ok">已实现</span></li><li class='lf-ok'>开题/中期/查重/答辩细分报表（统计中心） <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对毕业设计中心·预警 · 归档 · 统计做页面级回归点检（逐三级点击/权限抽查/核对 docs/06-开发施工与质量验收/施工记录/历史欠账.md 毕设欠账），只修缺陷，build/lint 后出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div>
+</div><script>function cp(btn){var pre=btn.previousElementSibling;navigator.clipboard.writeText(pre.textContent).then(function(){btn.textContent='已复制 ✓';setTimeout(function(){btn.textContent='复制这段指令发给 Claude';},1500)});}</script></body></html>

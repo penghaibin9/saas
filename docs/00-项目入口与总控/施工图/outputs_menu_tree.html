@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>学工中心菜单：现在有什么 · 原来的都去哪了</title>
+<style>
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; margin: 0; background:#f5f7fa; color:#1f2937; line-height:1.6; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 34px 0 12px; padding-left:10px; border-left: 4px solid #2563eb; }
+  .sub { color:#6b7280; font-size: 13px; margin-bottom: 18px; }
+  .stats { display:flex; gap:12px; flex-wrap:wrap; margin: 14px 0 6px; }
+  .st { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 16px; }
+  .st b { font-size:20px; display:block; }
+  .note { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:10px 14px; font-size:13px; margin:14px 0; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:12px; }
+  .mod { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; }
+  .mod__t { font-weight:600; font-size:14px; }
+  .mod__n { color:#6b7280; font-weight:400; font-size:12px; }
+  .mod__ls { margin:8px 0 0; padding-left:18px; font-size:13px; }
+  .mod__ls li { margin: 2px 0; }
+  .lf-plan { color:#9ca3af; }
+  .b { font-size:10px; border-radius:4px; padding:1px 5px; vertical-align:1px; }
+  .b-ok { background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }
+  .b-plan { background:#f3f4f6; color:#9ca3af; border:1px solid #e5e7eb; }
+  .b-bridge { background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; }
+  .gone { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+  .gone__t { font-weight:600; font-size:14px; }
+  .gone__h { color:#6b7280; font-size:12px; margin:2px 0 6px; }
+  .gone__ls { margin:0; padding-left:18px; font-size:13px; color:#374151; }
+  .gone__ls li { margin:3px 0; }
+</style></head><body><div class="wrap">
+  <h1>学工中心菜单 · 现在有什么，原来的都去哪了</h1>
+  <div class="sub">生成自 worktree 当前代码（navPlan.js）· 2026-07-10 · <b>没有任何页面或能力被删除</b>，只有「合并、下沉、隐藏规划项」三种处理</div>
+
+  <div class="stats">
+    <div class="st"><b>14</b>二级模块（13 业务 + 1 承接）</div>
+    <div class="st"><b>72</b>三级菜单项</div>
+    <div class="st"><b>14</b>已实现·随时可点</div>
+    <div class="st"><b>58</b>规划中（藏在施工地图里）</div>
+    <div class="st"><b>19</b>数字迎新页面全保留（1 个入口进）</div>
+  </div>
+
+  <div class="note">⚠️ 您现在觉得"空"，主要不是因为合并，而是因为您上一轮要求的「planned 不给学校正式角色展示」——灰色的规划项（含教务中心的几百个规划项）整棵藏起来了。只要把显示口径放宽为「开发环境可看施工地图」，侧栏立刻恢复"大系统"观感，正式打包仍然干净。等您确认口径我一行改回。</div>
+
+  <h2>一、现在的学工中心菜单树（72 项全列）</h2>
+  <div class="grid">
+    <div class="mod">
+      <div class="mod__t">1. 学工工作台 <span class="mod__n">2 项（全部规划中）</span></div>
+      <ul class="mod__ls"><li class="lf-plan">学工总览 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">辅导员工作台 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">2. 学生画像 <span class="mod__n">6 项，其中 6 项已实现</span></div>
+      <ul class="mod__ls"><li class="lf-ok">学生列表（学生主档） <span class="b b-ok">已实现·可点</span></li><li class="lf-ok">学籍状态摘要 <span class="b b-ok">已实现·可点</span></li><li class="lf-ok">风险标签 <span class="b b-ok">已实现·可点</span></li><li class="lf-ok">信息更正审核 <span class="b b-ok">已实现·可点</span></li><li class="lf-ok">身份核验（现有） <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li><li class="lf-ok">导入导出（现有） <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">3. 班级与辅导员 <span class="mod__n">4 项（全部规划中）</span></div>
+      <ul class="mod__ls"><li class="lf-plan">班级列表 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">班级画像 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">班级材料 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">辅导员考评 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">4. 宿舍与公寓 <span class="mod__n">6 项，其中 1 项已实现</span></div>
+      <ul class="mod__ls"><li class="lf-plan">房源管理（楼栋/房间/床位） <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-ok">入住管理（现有·宿舍服务） <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li><li class="lf-plan">调宿与退宿 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">宿舍检查 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">宿舍异常（含夜不归宿） <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">宿舍统计 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">5. 请假销假 <span class="mod__n">4 项，其中 1 项已实现</span></div>
+      <ul class="mod__ls"><li class="lf-ok">请假审批 <span class="b b-ok">已实现·可点</span></li><li class="lf-plan">销假与续假 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">请假台账 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">请假统计 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">6. 困难认定 <span class="mod__n">6 项（全部规划中）</span></div>
+      <ul class="mod__ls"><li class="lf-plan">认定批次 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">认定申请 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">认定审核 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">公示与异议 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">困难学生库 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">认定统计 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">7. 奖助勤贷补 <span class="mod__n">8 项，其中 1 项已实现</span></div>
+      <ul class="mod__ls"><li class="lf-plan">奖学金管理 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-ok">助学金管理（现有·奖助资助） <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li><li class="lf-plan">勤工助学 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">助学贷款 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">减免与临时补助 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">名单审核与公示 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">发放台账 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">资助统计 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">8. 违纪处分 <span class="mod__n">7 项，其中 1 项已实现</span></div>
+      <ul class="mod__ls"><li class="lf-ok">违纪登记（现有） <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li><li class="lf-plan">处分审批 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">处分决定与送达 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">处分解除 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">申诉复核 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">违纪台账 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">处分统计 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">9. 心理关注 <span class="mod__n">5 项（全部规划中）</span></div>
+      <ul class="mod__ls"><li class="lf-plan">心理关注名单 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">心理预警摘要 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">谈话转介与回访 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">危机升级 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">心理统计 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">10. 谈心家校 <span class="mod__n">6 项（全部规划中）</span></div>
+      <ul class="mod__ls"><li class="lf-plan">谈话计划 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">谈话记录 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">重点学生跟进 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">家校联系人 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">家校联系记录 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">谈心统计 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">11. 活动二课与社团 <span class="mod__n">8 项（全部规划中）</span></div>
+      <ul class="mod__ls"><li class="lf-plan">活动管理 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">活动报名与签到 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">第二课堂积分 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">志愿服务 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">社团管理 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">学生干部与组织 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">党团建设 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">活动统计 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">12. 风险预警与处置 <span class="mod__n">3 项（全部规划中）</span></div>
+      <ul class="mod__ls"><li class="lf-plan">风险看板 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">风险学生 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">风险处置 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">13. 统计与档案 <span class="mod__n">3 项（全部规划中）</span></div>
+      <ul class="mod__ls"><li class="lf-plan">学工统计 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">学工归档 <span class="b b-plan">规划中·施工地图可见</span></li><li class="lf-plan">学生档案包 <span class="b b-plan">规划中·施工地图可见</span></li></ul>
+    </div>
+    <div class="mod">
+      <div class="mod__t">14. 在校服务与迎新 <span class="mod__n">4 项，其中 4 项已实现</span></div>
+      <ul class="mod__ls"><li class="lf-ok">服务工作台 <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li><li class="lf-ok">学生服务 <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li><li class="lf-ok">服务工单 <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li><li class="lf-ok">数字迎新数据 <span class="b b-ok">已实现·可点</span> <span class="b b-bridge">承接</span></li></ul>
+    </div></div>
+
+  <h2>二、原来 272 项里其余 200 项去哪了（一个都没丢）</h2>
+  
+    <div class="gone">
+      <div class="gone__t">变成页面里的区块/统计卡（不再单独占菜单）</div>
+      <div class="gone__h">这些以前是一个个菜单项，其实是同一张看板/统计页上的数字卡片</div>
+      <ul class="gone__ls"><li>学工看板的 12 项（今日待办/风险概览/请假概览/奖助进度/宿舍异常/心理关注/违纪概览/数据趋势/重点学生提醒/待归档提醒等）→ 学工总览页的区块</li><li>班级风险/请假/宿舍/奖助/活动统计 5 项 → 班级画像页的指标</li><li>学工统计的 13 个切片（学生结构/请假/奖助/困难/宿舍/心理/违纪/活动/二课/风险/辅导员工作量/学院对比等）→ 学工统计页的下钻维度</li><li>各业务「××看板」（请假看板/奖助看板/心理看板/宿舍看板/归档看板/考评看板/活动看板/二课看板）→ 各自统计页或学工总览区块</li></ul>
+    </div>
+    <div class="gone">
+      <div class="gone__t">变成详情页/页签（点列表里的一条进去看，不占菜单）</div>
+      <div class="gone__h">同一个学生/班级/单据的不同信息，放进详情页的标签页</div>
+      <ul class="gone__ls"><li>学生画像的 11 项（基础信息/班级信息/家庭与联系人/家校联系记录/奖助摘要/请假摘要/宿舍摘要/处分摘要/心理关注摘要/成长档案/数据变更日志）→ 学生360 详情页的页签与「学工摘要」卡（已实现）</li><li>班级详情/班干部管理/班级通讯录 → 班级详情页页签</li><li>调宿审批/归寝核验/材料上传/困难等级调整/风险跟进/风险关闭/批量归档/归档导出/导出报表 → 各详情页里的操作按钮</li><li>调查取证 → 处分详情页材料区</li></ul>
+    </div>
+    <div class="gone">
+      <div class="gone__t">多个审批节点合并成一个页面（同页分节点）</div>
+      <div class="gone__h">以前一个流程的每一步都是一个菜单，现在是同一页面里的流程步骤</div>
+      <ul class="gone__ls"><li>困难认定：材料审核/辅导员初审/班级民主评议/学院审核/学校复核 5 项 → 「认定审核」一页</li><li>请假：续假申请/续假审批/销假管理 → 「销假与续假」；长假审批 → 请假审批节点升级</li><li>违纪：处分决定/处分送达/处分公示 → 「处分决定与送达」；解除申请/解除审核 → 「处分解除」；学生申诉/复核处理 → 「申诉复核」</li><li>奖学金：国家奖学金/国家励志/校级奖学金 → 「奖学金管理」的项目类型；勤工岗位/勤工报名审核 → 「勤工助学」</li><li>心理：咨询预约/咨询记录/转介记录/回访记录 → 「谈话转介与回访」；危机预警/危机干预 → 「危机升级」</li><li>二课：项目库/项目发布/学生报名/签到认定/积分规则/积分审核/积分台账/积分查询/积分申诉/证书生成 → 「活动管理+报名签到+第二课堂积分」3 项</li><li>社团：列表/成员/活动/审核/换届/经费 → 「社团管理」；学生会/学生干部/组织考核 → 「学生干部与组织」；党团 7 项 → 「党团建设」</li><li>辅导员考评 10 项 → 「辅导员考评」一项</li></ul>
+    </div>
+    <div class="gone">
+      <div class="gone__t">变成列表的筛选条件（选一下状态就是原来那个&#x27;页面&#x27;）</div>
+      <div class="gone__h">状态和风险类型放筛选，不再一个状态一个菜单</div>
+      <ul class="gone__ls"><li>超期未销假/外出备案/请假异常 → 请假台账的状态筛选（超期同时进风险来源）</li><li>学业风险/请假异常风险/夜不归宿风险/心理关注风险/违纪风险/经济困难风险/实习异常风险 7 项 → 风险学生列表的来源筛选</li><li>重点学生谈话/风险学生谈话/谈话跟进/待回访 → 谈话计划与记录的筛选</li></ul>
+    </div>
+    <div class="gone">
+      <div class="gone__t">统一进「统计与档案」（归档不再每个业务挂一个）</div>
+      <div class="gone__h">各业务的归档材料统一进归档批次的材料清单</div>
+      <ul class="gone__ls"><li>请假归档/奖助归档/处分归档/心理归档/宿舍归档/活动归档/二课归档/社团归档/党团归档/考评归档/班级归档/认定材料归档 → 学工归档批次内容项 + 学生档案包</li></ul>
+    </div>
+    <div class="gone">
+      <div class="gone__t">跨中心承接（页面都在，换了入口位置）</div>
+      <div class="gone__h">不是学工自己开发的能力，保留入口不冒充学工完成</div>
+      <ul class="gone__ls"><li>数字迎新 19 个页面 → 全部保留、路由不变，学工菜单里保留 1 个「数字迎新数据」入口（迎新看板内部还有自己的导航）</li><li>绿色通道 → 复用迎新绿色通道页；宿舍维修 → 服务工单页</li><li>在校服务的服务工作台/学生服务/服务工单 → 「在校服务与迎新」组 3 个入口</li></ul>
+    </div>
+    <div class="gone">
+      <div class="gone__t">暂缓（没有业务设计依据，先不挂菜单）</div>
+      <div class="gone__h">等业务设计冻结后再施工，不做空壳</div>
+      <ul class="gone__ls"><li>心理测评/测评结果（P3 接口位）、公寓纪律/文明寝室/智能排宿（能力池）、家校通知/回执/紧急联系/家长授权（能力池）、请假/风险规则配置（进模块设置）、日常考勤（无设计依据已撤）</li></ul>
+    </div>
+
+  <div class="note">完整逐条映射表在仓库文档：docs/施工记录/13A-学工中心PC前端三级目录重构记录.md（第 5 节）。想恢复任何一项为独立菜单，指出名字即可，一行配置改回。</div>
+</div></body></html>

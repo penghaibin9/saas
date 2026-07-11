@@ -1,0 +1,111 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>岗位实习中心 · 目录施工图</title><style>
+ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; margin:0; background:#f5f7fa; color:#1f2937; line-height:1.6; }
+ .wrap { max-width:1150px; margin:0 auto; padding:24px 20px 70px; }
+ h1 { font-size:22px; margin:0 0 4px; }
+ .sub { color:#6b7280; font-size:13px; margin-bottom:12px; }
+ .howto { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 16px; font-size:13px; margin:12px 0 20px; }
+ .howto b { color:#1d4ed8; }
+ .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+ .card.done { border-left:4px solid #10b981; }
+ .card.part { border-left:4px solid #f59e0b; }
+ .card.todo { border-left:4px solid #9ca3af; }
+ .card__head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+ .ord { background:#1f2937; color:#fff; border-radius:8px; min-width:26px; text-align:center; padding:2px 7px; font-weight:700; }
+ .ord.done { background:#10b981; } .ord.part { background:#f59e0b; }
+ .card__t { font-size:16px; font-weight:700; }
+ .pkg { font-size:11px; border-radius:5px; padding:2px 7px; background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; }
+ .why { color:#6b7280; font-size:12.5px; margin:6px 0 8px; }
+ .ls { margin:0 0 10px; padding-left:20px; font-size:13px; columns:2; }
+ .ls li { margin:2px 0; break-inside:avoid; }
+ .lf-plan { color:#b0b6bf; } .lf-pa { color:#b45309; }
+ .b { font-size:10px; border-radius:4px; padding:1px 5px; }
+ .b-ok { background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }
+ .b-pa { background:#fffbeb; color:#d97706; border:1px solid #fde68a; }
+ .b-plan { background:#f3f4f6; color:#9ca3af; border:1px solid #e5e7eb; }
+ details { background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:8px 12px; }
+ summary { cursor:pointer; font-size:13px; font-weight:600; color:#1d4ed8; }
+ pre { white-space:pre-wrap; font-family:inherit; font-size:12.5px; background:#fff; border:1px dashed #cbd5e1; border-radius:8px; padding:10px 12px; margin:8px 0 4px; }
+ .copy { font-size:12px; border:1px solid #2563eb; color:#2563eb; background:#fff; border-radius:6px; padding:3px 12px; cursor:pointer; }
+ .copy:active { background:#2563eb; color:#fff; }
+ .nav { font-size:13px; margin-bottom:8px; }
+ .nav a { color:#2563eb; text-decoration:none; }
+ .flow { display:flex; gap:8px; flex-wrap:wrap; font-size:12.5px; margin-top:8px; }
+ .flow span { background:#fff; border:1px solid #cbd5e1; border-radius:999px; padding:3px 10px; }
+</style></head><body><div class="wrap">
+<div class='nav'><a href='施工图-00-总览.html'>← 返回总览</a></div><h1>岗位实习中心 · 目录施工图</h1><div class="sub">12 个二级 · 99 个三级 · 已实现 76 · 待补强 23 ｜ 主链路已打穿，剩收口仗</div>
+<div class="howto"><b>注意：</b>主工作区另有实习 WIP 分支（internship-page-refactor 等），收口前先告知 Claude 在哪个工作区做，避免冲突。</div><div style="margin:14px 0 18px;padding:14px 16px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px;font-size:13px;line-height:1.8;color:#1e293b"><div style="font-weight:700;color:#312e81;margin-bottom:6px">📚 岗位实习中心 · 开发文档导航（来自 文档关联索引.md）<span style="font-weight:400;color:#64748b">（推进指令第⑤步到这查任务路由表，禁止猜文件名）</span></div><div><b style="color:#3730a3">任务路由表</b>　docs/03-业务模块设计/岗位实习中心/文档关联索引.md §1</div><div><b style="color:#3730a3">唯一主文档</b>　06-岗位实习中心生产级商业化开发总册.md（施工总控）；蓝图：06-岗位实习中心设计补强与升级总册.md（对标/差距）；路由主文档：06-岗位实习中心页面树与路由重构设计.md</div><div><b style="color:#3730a3">API</b>　05-岗位实习API.md 仅部分有效——<b>以代码 backend/app/api/v1/internship*.py 为准</b></div><div><b style="color:#3730a3">横切必读</b>　权限总控（企业导师＝外部身份，ENTERPRISE_STUDENT 数据范围）｜数据库冻结总册｜Excel 导入导出底座接入说明</div><div><b style="color:#3730a3">允许写入</b>　backend/app/api/v1/internship*.py、models/internship.py、services/internship_*、frontend/src/views/admin/internship/、miniapp/…/internship/</div><div><b style="color:#3730a3">禁止</b>　学工请假主流程、教务成绩、毕设、学生主档核心 schema 单方面修改；不与就业重复建企业平行库</div><div><b style="color:#3730a3">验收依据</b>　岗位实习中心-施工与验收归档.md ＋ backend/tests/test_internship*.py（含 staff_gate 越权用例）</div></div>
+<div class="card part">
+      <div class="card__head"><span class="ord part">补</span><span class="card__t">实习工作台</span>
+        <span class="pkg">待补强收口</span><span style="font-size:12px;color:#6b7280">🟡 部分完成（5/5） · 5 个三级</span></div>
+      <div class="why">主链路已实现；黄色待补强项需收口。</div>
+      <ul class='ls'><li class='lf-ok'>实习总览 <span class="b b-ok">已实现</span></li><li class='lf-pa'>当前批次进度 <span class="b b-pa">待补强</span></li><li class='lf-pa'>我的待办 <span class="b b-pa">待补强</span></li><li class='lf-ok'>风险提醒 <span class="b b-ok">已实现</span></li><li class='lf-pa'>数据趋势 <span class="b b-pa">待补强</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>收口岗位实习中心·实习工作台的待补强项：当前批次进度、我的待办、数据趋势。按 docs/README.md 六步阅读顺序执行（禁止跳步、禁止用旧 docs/modules 路径）：① CLAUDE.md → ② docs/README.md → ③ docs/00-项目入口与总控/00-文档总导航.md → ④ docs/03-业务模块设计/岗位实习中心/README.md → ⑤ 同目录 文档关联索引.md 的【任务路由表】按本任务取必读文档 → ⑥ 只读当前任务相关章节——按设计补强与升级总册和施工与验收归档补齐真实接口与页面能力（不 mock 冒充）。要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">批次与规则</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 8 个三级</span></div>
+      <div class="why">已实现，回归即可。</div>
+      <ul class='ls'><li class='lf-ok'>批次列表 <span class="b b-ok">已实现</span></li><li class='lf-ok'>批次详情 <span class="b b-ok">已实现</span></li><li class='lf-ok'>阶段配置 <span class="b b-ok">已实现</span></li><li class='lf-ok'>打卡规则 <span class="b b-ok">已实现</span></li><li class='lf-ok'>周报规则 <span class="b b-ok">已实现</span></li><li class='lf-ok'>指导规则 <span class="b b-ok">已实现</span></li><li class='lf-ok'>评价规则 <span class="b b-ok">已实现</span></li><li class='lf-ok'>成绩规则 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对岗位实习中心·批次与规则做回归点检与欠账核对，只修缺陷，出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">实习学生</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 5 个三级</span></div>
+      <div class="why">已实现，回归即可。</div>
+      <ul class='ls'><li class='lf-ok'>实习名单 <span class="b b-ok">已实现</span></li><li class='lf-ok'>实习资格认定 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生实习状态 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生实习详情 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生材料 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对岗位实习中心·实习学生做回归点检与欠账核对，只修缺陷，出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card part">
+      <div class="card__head"><span class="ord part">补</span><span class="card__t">企业与岗位</span>
+        <span class="pkg">待补强收口</span><span style="font-size:12px;color:#6b7280">🟡 部分完成（10/10） · 10 个三级</span></div>
+      <div class="why">主链路已实现；黄色待补强项需收口。</div>
+      <ul class='ls'><li class='lf-ok'>企业列表 <span class="b b-ok">已实现</span></li><li class='lf-ok'>企业详情 <span class="b b-ok">已实现</span></li><li class='lf-ok'>企业联系人 <span class="b b-ok">已实现</span></li><li class='lf-ok'>企业导师 <span class="b b-ok">已实现</span></li><li class='lf-ok'>企业资质审核 <span class="b b-ok">已实现</span></li><li class='lf-pa'>企业黑名单 <span class="b b-pa">待补强</span></li><li class='lf-ok'>岗位列表 <span class="b b-ok">已实现</span></li><li class='lf-ok'>岗位详情 <span class="b b-ok">已实现</span></li><li class='lf-ok'>岗位发布 <span class="b b-ok">已实现</span></li><li class='lf-ok'>岗位专业匹配 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>收口岗位实习中心·企业与岗位的待补强项：企业黑名单。按 docs/README.md 六步阅读顺序执行（禁止跳步、禁止用旧 docs/modules 路径）：① CLAUDE.md → ② docs/README.md → ③ docs/00-项目入口与总控/00-文档总导航.md → ④ docs/03-业务模块设计/岗位实习中心/README.md → ⑤ 同目录 文档关联索引.md 的【任务路由表】按本任务取必读文档 → ⑥ 只读当前任务相关章节——按设计补强与升级总册和施工与验收归档补齐真实接口与页面能力（不 mock 冒充）。要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">匹配与分配</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 9 个三级</span></div>
+      <div class="why">已实现，回归即可。</div>
+      <ul class='ls'><li class='lf-ok'>学生意向 <span class="b b-ok">已实现</span></li><li class='lf-ok'>岗位推荐 <span class="b b-ok">已实现</span></li><li class='lf-ok'>手动匹配 <span class="b b-ok">已实现</span></li><li class='lf-ok'>批量匹配 <span class="b b-ok">已实现</span></li><li class='lf-ok'>匹配冲突 <span class="b b-ok">已实现</span></li><li class='lf-ok'>匹配结果 <span class="b b-ok">已实现</span></li><li class='lf-ok'>指导老师分配 <span class="b b-ok">已实现</span></li><li class='lf-ok'>调岗退岗 <span class="b b-ok">已实现</span></li><li class='lf-ok'>分配日志 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对岗位实习中心·匹配与分配做回归点检与欠账核对，只修缺陷，出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card part">
+      <div class="card__head"><span class="ord part">补</span><span class="card__t">申请与协议</span>
+        <span class="pkg">待补强收口</span><span style="font-size:12px;color:#6b7280">🟡 部分完成（9/9） · 9 个三级</span></div>
+      <div class="why">主链路已实现；黄色待补强项需收口。</div>
+      <ul class='ls'><li class='lf-pa'>学生申请 <span class="b b-pa">待补强</span></li><li class='lf-pa'>自主实习申请 <span class="b b-pa">待补强</span></li><li class='lf-pa'>岗位申请 <span class="b b-pa">待补强</span></li><li class='lf-pa'>审核台账 <span class="b b-pa">待补强</span></li><li class='lf-ok'>协议模板 <span class="b b-ok">已实现</span></li><li class='lf-ok'>协议发起 <span class="b b-ok">已实现</span></li><li class='lf-ok'>三方确认 <span class="b b-ok">已实现</span></li><li class='lf-ok'>协议变更 <span class="b b-ok">已实现</span></li><li class='lf-ok'>协议归档 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>收口岗位实习中心·申请与协议的待补强项：学生申请、自主实习申请、岗位申请、审核台账。按 docs/README.md 六步阅读顺序执行（禁止跳步、禁止用旧 docs/modules 路径）：① CLAUDE.md → ② docs/README.md → ③ docs/00-项目入口与总控/00-文档总导航.md → ④ docs/03-业务模块设计/岗位实习中心/README.md → ⑤ 同目录 文档关联索引.md 的【任务路由表】按本任务取必读文档 → ⑥ 只读当前任务相关章节——按设计补强与升级总册和施工与验收归档补齐真实接口与页面能力（不 mock 冒充）。要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">打卡与请假</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 9 个三级</span></div>
+      <div class="why">已实现，回归即可。</div>
+      <ul class='ls'><li class='lf-ok'>打卡记录 <span class="b b-ok">已实现</span></li><li class='lf-ok'>补卡申请 <span class="b b-ok">已实现</span></li><li class='lf-ok'>补卡审批 <span class="b b-ok">已实现</span></li><li class='lf-ok'>缺卡异常 <span class="b b-ok">已实现</span></li><li class='lf-ok'>连续未打卡 <span class="b b-ok">已实现</span></li><li class='lf-ok'>实习请假 <span class="b b-ok">已实现</span></li><li class='lf-ok'>请假审批 <span class="b b-ok">已实现</span></li><li class='lf-ok'>销假管理 <span class="b b-ok">已实现</span></li><li class='lf-ok'>超期未归 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对岗位实习中心·打卡与请假做回归点检与欠账核对，只修缺陷，出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card part">
+      <div class="card__head"><span class="ord part">补</span><span class="card__t">周报与任务</span>
+        <span class="pkg">待补强收口</span><span style="font-size:12px;color:#6b7280">🟡 部分完成（8/8） · 8 个三级</span></div>
+      <div class="why">主链路已实现；黄色待补强项需收口。</div>
+      <ul class='ls'><li class='lf-pa'>实习计划 <span class="b b-pa">待补强</span></li><li class='lf-pa'>实习任务 <span class="b b-pa">待补强</span></li><li class='lf-pa'>日报提交 <span class="b b-pa">待补强</span></li><li class='lf-ok'>周报提交 <span class="b b-ok">已实现</span></li><li class='lf-pa'>月报提交 <span class="b b-pa">待补强</span></li><li class='lf-ok'>周报批阅 <span class="b b-ok">已实现</span></li><li class='lf-ok'>周报退回 <span class="b b-ok">已实现</span></li><li class='lf-pa'>周报问题 <span class="b b-pa">待补强</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>收口岗位实习中心·周报与任务的待补强项：实习计划、实习任务、日报提交、月报提交、周报问题。按 docs/README.md 六步阅读顺序执行（禁止跳步、禁止用旧 docs/modules 路径）：① CLAUDE.md → ② docs/README.md → ③ docs/00-项目入口与总控/00-文档总导航.md → ④ docs/03-业务模块设计/岗位实习中心/README.md → ⑤ 同目录 文档关联索引.md 的【任务路由表】按本任务取必读文档 → ⑥ 只读当前任务相关章节——按设计补强与升级总册和施工与验收归档补齐真实接口与页面能力（不 mock 冒充）。要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card part">
+      <div class="card__head"><span class="ord part">补</span><span class="card__t">指导与巡访</span>
+        <span class="pkg">待补强收口</span><span style="font-size:12px;color:#6b7280">🟡 部分完成（8/8） · 8 个三级</span></div>
+      <div class="why">主链路已实现；黄色待补强项需收口。</div>
+      <ul class='ls'><li class='lf-pa'>指导计划 <span class="b b-pa">待补强</span></li><li class='lf-ok'>指导记录 <span class="b b-ok">已实现</span></li><li class='lf-ok'>企业沟通 <span class="b b-ok">已实现</span></li><li class='lf-pa'>指导不足预警 <span class="b b-pa">待补强</span></li><li class='lf-pa'>巡访计划 <span class="b b-pa">待补强</span></li><li class='lf-ok'>巡访记录 <span class="b b-ok">已实现</span></li><li class='lf-ok'>巡访问题 <span class="b b-ok">已实现</span></li><li class='lf-ok'>整改跟进 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>收口岗位实习中心·指导与巡访的待补强项：指导计划、指导不足预警、巡访计划。按 docs/README.md 六步阅读顺序执行（禁止跳步、禁止用旧 docs/modules 路径）：① CLAUDE.md → ② docs/README.md → ③ docs/00-项目入口与总控/00-文档总导航.md → ④ docs/03-业务模块设计/岗位实习中心/README.md → ⑤ 同目录 文档关联索引.md 的【任务路由表】按本任务取必读文档 → ⑥ 只读当前任务相关章节——按设计补强与升级总册和施工与验收归档补齐真实接口与页面能力（不 mock 冒充）。要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">✓</span><span class="card__t">风险处置</span>
+        <span class="pkg">已完成</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 11 个三级</span></div>
+      <div class="why">已实现，回归即可。</div>
+      <ul class='ls'><li class='lf-ok'>风险看板 <span class="b b-ok">已实现</span></li><li class='lf-ok'>未落实岗位 <span class="b b-ok">已实现</span></li><li class='lf-ok'>长期未打卡 <span class="b b-ok">已实现</span></li><li class='lf-ok'>周报逾期 <span class="b b-ok">已实现</span></li><li class='lf-ok'>离岗异常 <span class="b b-ok">已实现</span></li><li class='lf-ok'>企业投诉 <span class="b b-ok">已实现</span></li><li class='lf-ok'>安全风险 <span class="b b-ok">已实现</span></li><li class='lf-ok'>实习中断 <span class="b b-ok">已实现</span></li><li class='lf-ok'>风险处置 <span class="b b-ok">已实现</span></li><li class='lf-ok'>风险跟进 <span class="b b-ok">已实现</span></li><li class='lf-ok'>风险关闭 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对岗位实习中心·风险处置做回归点检与欠账核对，只修缺陷，出报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card part">
+      <div class="card__head"><span class="ord part">补</span><span class="card__t">评价与成绩</span>
+        <span class="pkg">待补强收口</span><span style="font-size:12px;color:#6b7280">🟡 部分完成（9/9） · 9 个三级</span></div>
+      <div class="why">主链路已实现；黄色待补强项需收口。</div>
+      <ul class='ls'><li class='lf-ok'>企业评价 <span class="b b-ok">已实现</span></li><li class='lf-ok'>学生自评 <span class="b b-ok">已实现</span></li><li class='lf-pa'>学生对企业评价 <span class="b b-pa">待补强</span></li><li class='lf-pa'>学生对岗位评价 <span class="b b-pa">待补强</span></li><li class='lf-ok'>指导老师评价 <span class="b b-ok">已实现</span></li><li class='lf-ok'>综合成绩 <span class="b b-ok">已实现</span></li><li class='lf-ok'>成绩审核 <span class="b b-ok">已实现</span></li><li class='lf-ok'>成绩发布 <span class="b b-ok">已实现</span></li><li class='lf-ok'>成绩复核 <span class="b b-ok">已实现</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>收口岗位实习中心·评价与成绩的待补强项：学生对企业评价、学生对岗位评价。按 docs/README.md 六步阅读顺序执行（禁止跳步、禁止用旧 docs/modules 路径）：① CLAUDE.md → ② docs/README.md → ③ docs/00-项目入口与总控/00-文档总导航.md → ④ docs/03-业务模块设计/岗位实习中心/README.md → ⑤ 同目录 文档关联索引.md 的【任务路由表】按本任务取必读文档 → ⑥ 只读当前任务相关章节——按设计补强与升级总册和施工与验收归档补齐真实接口与页面能力（不 mock 冒充）。要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card part">
+      <div class="card__head"><span class="ord part">补</span><span class="card__t">就业转化与归档统计</span>
+        <span class="pkg">待补强收口</span><span style="font-size:12px;color:#6b7280">🟡 部分完成（8/8） · 8 个三级</span></div>
+      <div class="why">主链路已实现；黄色待补强项需收口。</div>
+      <ul class='ls'><li class='lf-ok'>就业跟进 <span class="b b-ok">已实现</span></li><li class='lf-ok'>未就业帮扶 <span class="b b-ok">已实现</span></li><li class='lf-pa'>实习归档 <span class="b b-pa">待补强</span></li><li class='lf-pa'>实习档案包 <span class="b b-pa">待补强</span></li><li class='lf-pa'>实习统计 <span class="b b-pa">待补强</span></li><li class='lf-pa'>企业统计 <span class="b b-pa">待补强</span></li><li class='lf-ok'>岗位统计 <span class="b b-ok">已实现</span></li><li class='lf-pa'>学生成绩统计 <span class="b b-pa">待补强</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>收口岗位实习中心·就业转化与归档统计的待补强项：实习归档、实习档案包、实习统计、企业统计、学生成绩统计。按 docs/README.md 六步阅读顺序执行（禁止跳步、禁止用旧 docs/modules 路径）：① CLAUDE.md → ② docs/README.md → ③ docs/00-项目入口与总控/00-文档总导航.md → ④ docs/03-业务模块设计/岗位实习中心/README.md → ⑤ 同目录 文档关联索引.md 的【任务路由表】按本任务取必读文档 → ⑥ 只读当前任务相关章节——按设计补强与升级总册和施工与验收归档补齐真实接口与页面能力（不 mock 冒充）。要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div>
+</div><script>function cp(btn){var pre=btn.previousElementSibling;navigator.clipboard.writeText(pre.textContent).then(function(){btn.textContent='已复制 ✓';setTimeout(function(){btn.textContent='复制这段指令发给 Claude';},1500)});}</script></body></html>

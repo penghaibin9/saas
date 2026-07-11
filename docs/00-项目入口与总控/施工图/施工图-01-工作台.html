@@ -1,0 +1,79 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>工作台 · 目录施工图</title><style>
+ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; margin:0; background:#f5f7fa; color:#1f2937; line-height:1.6; }
+ .wrap { max-width:1150px; margin:0 auto; padding:24px 20px 70px; }
+ h1 { font-size:22px; margin:0 0 4px; }
+ .sub { color:#6b7280; font-size:13px; margin-bottom:12px; }
+ .howto { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 16px; font-size:13px; margin:12px 0 20px; }
+ .howto b { color:#1d4ed8; }
+ .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+ .card.done { border-left:4px solid #10b981; }
+ .card.part { border-left:4px solid #f59e0b; }
+ .card.todo { border-left:4px solid #9ca3af; }
+ .card__head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+ .ord { background:#1f2937; color:#fff; border-radius:8px; min-width:26px; text-align:center; padding:2px 7px; font-weight:700; }
+ .ord.done { background:#10b981; } .ord.part { background:#f59e0b; }
+ .card__t { font-size:16px; font-weight:700; }
+ .pkg { font-size:11px; border-radius:5px; padding:2px 7px; background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; }
+ .why { color:#6b7280; font-size:12.5px; margin:6px 0 8px; }
+ .ls { margin:0 0 10px; padding-left:20px; font-size:13px; columns:2; }
+ .ls li { margin:2px 0; break-inside:avoid; }
+ .lf-plan { color:#b0b6bf; } .lf-pa { color:#b45309; }
+ .b { font-size:10px; border-radius:4px; padding:1px 5px; }
+ .b-ok { background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }
+ .b-pa { background:#fffbeb; color:#d97706; border:1px solid #fde68a; }
+ .b-plan { background:#f3f4f6; color:#9ca3af; border:1px solid #e5e7eb; }
+ details { background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:8px 12px; }
+ summary { cursor:pointer; font-size:13px; font-weight:600; color:#1d4ed8; }
+ pre { white-space:pre-wrap; font-family:inherit; font-size:12.5px; background:#fff; border:1px dashed #cbd5e1; border-radius:8px; padding:10px 12px; margin:8px 0 4px; }
+ .copy { font-size:12px; border:1px solid #2563eb; color:#2563eb; background:#fff; border-radius:6px; padding:3px 12px; cursor:pointer; }
+ .copy:active { background:#2563eb; color:#fff; }
+ .nav { font-size:13px; margin-bottom:8px; }
+ .nav a { color:#2563eb; text-decoration:none; }
+ .flow { display:flex; gap:8px; flex-wrap:wrap; font-size:12.5px; margin-top:8px; }
+ .flow span { background:#fff; border:1px solid #cbd5e1; border-radius:999px; padding:3px 10px; }
+</style></head><body><div class="wrap">
+<div class='nav'><a href='施工图-00-总览.html'>← 返回总览</a></div><h1>工作台 · 目录施工图</h1><div class="sub">6 个二级 · 15 个三级 · 已实现 10 · 待施工 5</div>
+<div class="howto"><b>说明：</b>大部分已可用；「消息通知」排在学工 B包之后。</div><div style="margin:14px 0 18px;padding:14px 16px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px;font-size:13px;line-height:1.8;color:#1e293b"><div style="font-weight:700;color:#312e81;margin-bottom:6px">📚 工作台 · 开发文档导航<span style="font-weight:400;color:#64748b">（推进指令第⑤步到这查任务路由表，禁止猜文件名）</span></div><div><b style="color:#3730a3">无独立中心索引</b>　工作台属平台底座（todos / approval / 消息 / 驾驶舱），任务路由查 docs/00-项目入口与总控/00-文档总导航.md §任务类型 ＋ 公共文档触发矩阵</div><div><b style="color:#3730a3">权限必读</b>　docs/03-业务模块设计/系统管理中心/00-系统管理中心-权限角色模块授权与权责边界设计.md（待办/审批节点权限 ≠ 永久业务权）</div><div><b style="color:#3730a3">公共底座</b>　docs/02-总体架构与公共底座/公共组件/公共组件-使用指南总册.md（AppTodoPanel / AppNotificationPanel / AppMetricCard 强制复用）</div><div><b style="color:#3730a3">跨中心汇聚</b>　各业务中心待办/统计的口径以各中心四件套为准；跨模块清单见 docs/03-业务模块设计/跨模块融合/README.md</div></div>
+<div class="card done">
+      <div class="card__head"><span class="ord done">1</span><span class="card__t">我的工作台</span>
+        <span class="pkg">已实现</span><span style="font-size:12px;color:#6b7280">✅ 已实现 · 单页模块</span></div>
+      <div class="why">已实现。</div>
+      <div class='why'>（单页模块，无三级子项）</div>
+      
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对工作台·我的工作台做页面级回归与欠账检查：逐页点检现有功能，核对权限/数据范围/脱敏/审计与 docs/06-开发施工与质量验收/施工记录/历史欠账.md 中本模块欠账，只修缺陷不加功能，cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint 通过后输出报告，不提交、不 push。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">2</span><span class="card__t">我的待办</span>
+        <span class="pkg">已实现</span><span style="font-size:12px;color:#6b7280">✅ 已实现 · 单页模块</span></div>
+      <div class="why">已实现（审批中心承接）。</div>
+      <div class='why'>（单页模块，无三级子项）</div>
+      
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对工作台·我的待办做页面级回归与欠账检查：逐页点检现有功能，核对权限/数据范围/脱敏/审计与 docs/06-开发施工与质量验收/施工记录/历史欠账.md 中本模块欠账，只修缺陷不加功能，cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint 通过后输出报告，不提交、不 push。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">3</span><span class="card__t">审批中心</span>
+        <span class="pkg">已实现</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 5 个三级</span></div>
+      <div class="why">已实现。</div>
+      <ul class='ls'><li class='lf-ok'>待办看板 <span class="b b-ok">已实现</span></li><li class='lf-ok'>我的待办 <span class="b b-ok">已实现</span></li><li class='lf-ok'>已办 · 抄送 <span class="b b-ok">已实现</span></li><li class='lf-ok'>退回记录 <span class="b b-ok">已实现</span></li><li class='lf-ok'>审批模板 <span class="b b-ok">已实现</span></li></ul>
+      
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对工作台·审批中心做页面级回归与欠账检查：逐页点检现有功能，核对权限/数据范围/脱敏/审计与 docs/06-开发施工与质量验收/施工记录/历史欠账.md 中本模块欠账，只修缺陷不加功能，cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint 通过后输出报告，不提交、不 push。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card todo">
+      <div class="card__head"><span class="ord todo">4</span><span class="card__t">消息通知</span>
+        <span class="pkg">待施工</span><span style="font-size:12px;color:#6b7280">⬜ 未开工 · 4 个三级</span></div>
+      <div class="why">统一消息中心，建议随学工 B包一起做（才有真实消息源）。</div>
+      <ul class='ls'><li class='lf-plan'>通知中心 <span class="b b-plan">待施工</span></li><li class='lf-plan'>公告 <span class="b b-plan">待施工</span></li><li class='lf-plan'>待办提醒 <span class="b b-plan">待施工</span></li><li class='lf-plan'>消息设置 <span class="b b-plan">待施工</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>开发工作台·消息通知：按统一待办/消息底座（t_unified_todo / t_unified_message）实现，要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card done">
+      <div class="card__head"><span class="ord done">5</span><span class="card__t">领导驾驶舱</span>
+        <span class="pkg">已实现</span><span style="font-size:12px;color:#6b7280">✅ 已完成 · 5 个三级</span></div>
+      <div class="why">已实现（数据中心承接）。</div>
+      <ul class='ls'><li class='lf-ok'>数据驾驶舱 <span class="b b-ok">已实现</span></li><li class='lf-ok'>生命周期总览 <span class="b b-ok">已实现</span></li><li class='lf-ok'>排行分析 <span class="b b-ok">已实现</span></li><li class='lf-ok'>风险预警 <span class="b b-ok">已实现</span></li><li class='lf-ok'>专题报表 <span class="b b-ok">已实现</span></li></ul>
+      
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>对工作台·领导驾驶舱做页面级回归与欠账检查：逐页点检现有功能，核对权限/数据范围/脱敏/审计与 docs/06-开发施工与质量验收/施工记录/历史欠账.md 中本模块欠账，只修缺陷不加功能，cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint 通过后输出报告，不提交、不 push。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div><div class="card todo">
+      <div class="card__head"><span class="ord todo">6</span><span class="card__t">最近访问</span>
+        <span class="pkg">待施工</span><span style="font-size:12px;color:#6b7280">⬜ 未开工 · 1 个三级</span></div>
+      <div class="why">低优先级体验增强。</div>
+      <ul class='ls'><li class='lf-plan'>最近访问 <span class="b b-plan">待施工</span></li></ul>
+      <details><summary>▶ 推进指令（复制发给 Claude 即可开工）</summary><pre>开发工作台·最近访问：按统一待办/消息底座（t_unified_todo / t_unified_message）实现，要求：前端按已冻结交互形态基准（连续处理=列表+详情双栏、复杂详情=独立页、确认弹窗、复用公共组件、planned 不建空页面）+ 后端接口 + MySQL（Alembic 迁移、utf8mb4、tenant_id）+ 权限与数据范围（不扩大任何角色权限）+ 敏感字段脱敏与审计 + pytest。完成后 cd frontend &amp;&amp; npm run build &amp;&amp; npm run lint、后端 pytest，更新 docs/06-开发施工与质量验收/施工记录/（新增本模块施工记录）与 docs/06-开发施工与质量验收/施工记录/历史欠账.md，精确暂存本模块文件提交 1 个 commit（禁止 git add -A），不 push、不 tag，输出验收报告。</pre><button class="copy" onclick="cp(this)">复制这段指令发给 Claude</button></details>
+    </div>
+</div><script>function cp(btn){var pre=btn.previousElementSibling;navigator.clipboard.writeText(pre.textContent).then(function(){btn.textContent='已复制 ✓';setTimeout(function(){btn.textContent='复制这段指令发给 Claude';},1500)});}</script></body></html>
