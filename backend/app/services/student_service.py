@@ -173,3 +173,20 @@ def get_risk_summary(student_id: str) -> dict:
              "level": row["riskLevel"], "occurredAt": _now()},
         ],
     }
+
+
+def get_affairs_summary(student_id: str) -> dict:
+    """学生360·学工摘要（请假/奖助/违纪/宿舍/心理/家校 跨域计数）。"""
+    if db_enabled():
+        from app.services import db_service
+        return db_service.get_affairs_summary(student_id)
+    row = _find(student_id)  # 校验存在 + 数据范围
+    return {
+        "studentId": row["id"],
+        "leave": {"total": 0, "pending": 0},
+        "grant": {"total": 0, "approvedAmount": 0.0},
+        "discipline": {"total": 0},
+        "dorm": {"building": "", "room": ""},
+        "mental": {"total": 0, "flag": False, "careLevel": "NORMAL"},
+        "family": {"total": 0},
+    }

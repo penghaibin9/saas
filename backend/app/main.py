@@ -37,7 +37,8 @@ def create_app() -> FastAPI:
     # 生产环境 DEBUG 必须关闭；mock-login 不得显式开启。
     assert_prod_flags_safe()
     # 生产环境关闭 /docs、/redoc、/openapi.json，不把接口蓝图暴露公网。
-    _is_prod = settings.APP_ENV.strip().lower() in ("prod", "production")
+    # 【安全修复 P1-5】口径统一为 settings.is_prod（识别 APP_ENV/ENV/ENVIRONMENT）。
+    _is_prod = settings.is_prod
     app = FastAPI(
         title=settings.APP_NAME,
         version=APP_VERSION,

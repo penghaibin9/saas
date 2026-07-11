@@ -132,6 +132,44 @@ def resolve_download(file_id: str):
     return path, m.get("fileName") or path.name
 
 
+def store_bytes(content: bytes, filename: str, biz_type: str = "ATTACHMENT",
+                mime_type: str | None = None) -> dict:
+    """同步落盘 + 登记（供归档 zip 等后端生成的二进制文件）。"""
+    _ensure_upload_allowed()
+    max_size = _upload_max_size()
+    if len(content) > max_size:
+        raise AppException("FILE_TOO_LARGE",
+                           f"文件超过 {max_size // (1024 * 1024)}MB 上限（平台规则中心配置）")
+    ext = validate_ext(filename)
+    sha = hashlib.sha256(content).hexdigest()
+    key = f"{datetime.now():%Y%m%d}/{uuid.uuid4().hex}.{ext}"
+    target = upload_dir() / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+    meta = {"fileName": filename, "ext": ext, "sizeBytes": len(content), "sha256": sha,
+            "fileKey": key, "bizType": biz_type,
+            "storedAt": datetime.now().isoformat(timespec="seconds")}
+    if db_enabled():
+        from app.models import FileObject
+        db = get_sessionmaker()()
+        try:
+            row = FileObject(tenant_id=int(current_tenant_id() or 0) or 1000000000000000001,
+                             file_key=key, file_name=filename, ext=ext,
+                             mime_type=mime_type or "application/octet-stream",
+                             size_bytes=len(content), sha256=sha, biz_type=biz_type, status="STORED")
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+            meta["fileId"] = str(row.id)
+        finally:
+            db.close()
+    else:
+        meta["fileId"] = f"mem-{uuid.uuid4().hex[:12]}"
+        _MEM_REGISTRY[meta["fileId"]] = meta
+        _MEM_TENANT[meta["fileId"]] = int(current_tenant_id() or 0)
+    return meta
+
+
 # ── P6 规则中心 / 功能开关接入 ──
 
 def _upload_max_size() -> int:

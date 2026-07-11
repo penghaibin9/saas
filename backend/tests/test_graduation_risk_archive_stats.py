@@ -96,3 +96,47 @@ def test_risk_list_filter_by_student(client, auth_headers, db_mode):
     assert all(str(r["gdStudentId"]) == str(sid_b) for r in only_b)
     a_ids = {r["id"] for r in only_a}
     assert a_ids.isdisjoint({r["id"] for r in only_b})
+
+
+def _seed_topic(title="预警课题", capacity=5):
+    """直接落一条已入池题目（题目库无 POST API，与 test_graduation_student 同法）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationTopic
+    MAIN_TID = 1000000000000000001
+    db = get_sessionmaker()()
+    try:
+        t = GraduationTopic(tenant_id=MAIN_TID, title=title, source="教师申报", source_type="TEACHER",
+                            advisor_name="王芳", major_name="软件技术", capacity=capacity, selected=0,
+                            review_status="APPROVED", status="CONFIRMED")
+        db.add(t)
+        db.commit()
+        db.refresh(t)
+        return str(t.id)
+    finally:
+        db.close()
+
+
+def test_risk_scan_r06_insufficient_guidance(client, auth_headers, db_mode):
+    """GD-R06 指导记录不足：学生推进到中期但指导记录 < 3 → 扫描生成 R06。"""
+    h = auth_headers
+    gid = _gd_student(client, h, "R06A", "指导不足生")
+    tid = _seed_topic("R06课题")
+    client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
+    client.post(f"{GD_STU}/{gid}/assign-advisor", headers=h, json={"advisorName": "王芳"})
+    assert client.post(f"{GD_STU}/{gid}/stage", headers=h, json={"action": "ADVANCE"}).json()["data"]["stage"] == "GUIDING"
+    assert client.post(f"{GD_STU}/{gid}/stage", headers=h, json={"action": "ADVANCE"}).json()["data"]["stage"] == "MIDTERM"
+
+    client.post(f"{GD_RISK}/scan", headers=h)
+    items = client.get(GD_RISK, headers=h, params={"riskCode": "GD-R06", "gdStudentId": gid}).json()["data"]["items"]
+    assert len(items) >= 1 and items[0]["riskCode"] == "GD-R06"
+
+
+def test_risk_scan_r12_materials_not_archived(client, auth_headers, db_mode):
+    """GD-R12 材料未归档：学生节点已归档但归档记录未 FILED → 扫描生成 R12。"""
+    h = auth_headers
+    gid = _gd_student(client, h, "R12A", "未归档生")
+    assert client.post(f"{GD_STU}/{gid}/stage", headers=h, json={"action": "ARCHIVE"}).json()["data"]["stage"] == "ARCHIVED"
+
+    client.post(f"{GD_RISK}/scan", headers=h)
+    items = client.get(GD_RISK, headers=h, params={"riskCode": "GD-R12", "gdStudentId": gid}).json()["data"]["items"]
+    assert len(items) >= 1 and items[0]["riskCode"] == "GD-R12"

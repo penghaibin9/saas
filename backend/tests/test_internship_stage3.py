@@ -74,6 +74,17 @@ def _seed_risk(rec_id, level="MEDIUM"):
 
 # ══════════════ 风险处置闭环 ══════════════
 
+def test_risk_remind(client, db_mode):
+    ids = _seed(db_mode)
+    rid = _seed_risk(ids["rec_a"])
+    h = _mentor("刘强")
+    r = client.post(f"{INT}/risks/{rid}/remind", json={"channel": "站内消息"}, headers=h)
+    assert r.status_code == 200 and r.json()["code"] == 0
+    assert r.json()["data"]["reminded"] is True
+    detail = client.get(f"{INT}/risks/{rid}", headers=h).json()["data"]
+    assert any(t.get("action") == "REMIND" for t in (detail.get("auditTrail") or []))
+
+
 def test_risk_lifecycle_handle_follow_escalate_close(client, db_mode):
     ids = _seed(db_mode)
     rid = _seed_risk(ids["rec_a"])

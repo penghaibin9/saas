@@ -74,9 +74,12 @@ def list_midterms(page: int, page_size: int, keyword=None, status=None) -> tuple
         if status:
             q = q.where(GraduationMidterm.status == status)
         rows = db.scalars(q.order_by(GraduationMidterm.id.desc())).all()
+        sids = {m.gd_student_id for m in rows}
+        smap = {s.id: s for s in db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id.in_(sids))).all()} if sids else {}
         items = []
         for m in rows:
-            stu = db.get(GraduationStudent, m.gd_student_id)
+            stu = smap.get(m.gd_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_row(m, stu))

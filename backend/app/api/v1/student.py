@@ -61,3 +61,9 @@ def student_timeline(student_id: str, user=Depends(require_staff)):
 @router.get("/{student_id}/risk-summary", summary="学生风险摘要（学业/实习/就业三维信号）")
 def student_risk(student_id: str, user=Depends(require_staff)):
     return success(svc.get_risk_summary(student_id))
+
+
+@router.get("/{student_id}/affairs-summary",
+            summary="学生360·学工摘要（请假/奖助/违纪/宿舍/心理/家校 跨域计数；涉密明细不返回）")
+def student_affairs_summary(student_id: str, user=Depends(require_staff)):
+    return success(svc.get_affairs_summary(student_id))

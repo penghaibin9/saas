@@ -357,10 +357,16 @@ def list_assignments(page: int, page_size: int, mentor_id=None, gd_student_id=No
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationMentorAssignment.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        sids = {a.gd_student_id for a in rows}
+        mids = {a.mentor_id for a in rows}
+        smap = {s.id: s for s in db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id.in_(sids))).all()} if sids else {}
+        mmap = {m.id: m for m in db.scalars(select(GraduationMentor).where(
+            GraduationMentor.id.in_(mids))).all()} if mids else {}
         items = []
         for a in rows:
-            stu = db.get(GraduationStudent, a.gd_student_id)
-            mentor = db.get(GraduationMentor, a.mentor_id)
+            stu = smap.get(a.gd_student_id)
+            mentor = mmap.get(a.mentor_id)
             items.append({
                 "id": str(a.id), "gdStudentId": str(a.gd_student_id),
                 "studentName": stu.name if stu else "", "studentNo": stu.student_no if stu else "",

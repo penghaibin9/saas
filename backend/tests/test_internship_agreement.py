@@ -141,3 +141,36 @@ def test_export(client, db_mode):
     assert res.status_code == 200
     d = res.json()["data"]
     assert d["filename"].endswith(".xlsx") and d["rowCount"] == 1 and d["contentBase64"]
+
+
+def test_generate_with_template_rendered_body(client, db_mode):
+    ids = _seed(db_mode)
+    h = _mentor("刘强")
+    tpl = client.post("/api/v1/internship/agreement-templates", headers=_admin(client), json={
+        "name": "测试三方协议", "category": "三方协议", "version": "v1.0",
+        "body": "甲方{{schoolName}} 乙方{{companyName}} 学生{{studentName}}",
+        "variables": [{"key": "studentName", "label": "学生姓名", "example": "甲"}]
+    }).json()
+    tid = tpl["data"]["id"]
+    client.post(f"/api/v1/internship/agreement-templates/{tid}/status",
+                headers=_admin(client), json={"action": "ENABLE"})
+    gen = client.post(f"{INT}/agreements",
+                      json={"internshipId": str(ids["rec_a"]), "templateId": tid}, headers=h)
+    assert gen.status_code == 200 and gen.json()["data"]["hasRenderedBody"] is True
+    aid = gen.json()["data"]["id"]
+    detail = client.get(f"{INT}/agreements/{aid}", headers=h).json()["data"]
+    assert "甲" in detail["renderedBody"]
+    assert "测试企业" in detail["renderedBody"]
+    # PDF 套打
+    pdf = client.post(f"{INT}/agreements/{aid}/pdf", headers=h)
+    assert pdf.status_code == 200
+    pd = pdf.json()["data"]
+    assert pd["filename"].endswith(".pdf") and pd["contentBase64"]
+    import base64
+    assert base64.b64decode(pd["contentBase64"])[:4] == b"%PDF"
+    # 下发后学生端可见渲染正文
+    client.post(f"{INT}/agreements/{aid}/issue", headers=h)
+    my = client.get("/api/v1/mobile/internship/agreements", headers=_student("AG-A")).json()["data"]
+    assert my and my[0]["renderedBody"] and "甲" in my[0]["renderedBody"]
+    stu_detail = client.get(f"/api/v1/mobile/internship/agreements/{aid}", headers=_student("AG-A")).json()["data"]
+    assert "甲" in stu_detail["renderedBody"] and stu_detail["status"] == "PENDING_STUDENT"

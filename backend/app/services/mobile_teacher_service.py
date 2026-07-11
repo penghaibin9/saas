@@ -444,7 +444,15 @@ def internship(user: dict) -> dict:
         return {"hasData": False, "weeklyReports": [], "abnormalCheckins": [], "stats": {}}
     scope = resolve_teacher_scope(u)
     reports, rtotal = _safe_list(internship_service.list_weekly_reports, 1, 50, status="PENDING_REVIEW")
+    overdue, ototal = _safe_list(internship_service.list_weekly_reports, 1, 50, status="OVERDUE")
     excs, etotal = _safe_list(internship_service.list_attendance_exceptions, 1, 50, status="PENDING_HANDLE")
+    # 合并待批阅与逾期未交（去重 id）
+    seen = {str(r.get("id")) for r in reports}
+    for r in overdue:
+        if str(r.get("id")) not in seen:
+            reports.append(r)
+            seen.add(str(r.get("id")))
+    rtotal = len(reports)
     # 范围收敛：列表里只保留自己能处理的（看得见 = 批得了），与写操作范围一致
     if scope["mode"] == "SCOPED":
         adv = _advisor_map([int(r.get("internId") or 0) for r in reports] +
@@ -718,6 +726,71 @@ def proposal_review(user: dict, proposal_id: str, action: str, comment: str | No
     return result
 
 
+def graduation_choices_pending(user: dict) -> list:
+    """选题·本人指导题目下待确认的志愿（一对一人工复核队列）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return []
+    from app.services import graduation_topic_round_service as round_svc
+    return round_svc.list_pending_choices_for_advisor(u.get("realName") or "")
+
+
+def _can_review_topic(u: dict, advisor_name: str) -> bool:
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "ADMIN_TENANT":
+        return True
+    return bool(advisor_name) and advisor_name.strip() == (u.get("realName") or "").strip()
+
+
+def graduation_choice_review(user: dict, choice_id: str, action: str, reason: str | None = None) -> dict:
+    """选题·教师确认/驳回单个志愿（CONFIRM/REJECT）。仅本人指导题目可操作。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import graduation_topic_round_service as round_svc
+    detail = round_svc.get_choice_detail(choice_id)  # 不存在 → 404
+    if not _can_review_topic(u, detail.get("advisorName")):
+        raise AppException("NO_PERMISSION", "该志愿关联题目不在你的指导范围内")
+    action = (action or "").upper()
+    if action == "CONFIRM":
+        result = round_svc.confirm_choice(choice_id, operator_name=u.get("realName"))
+    elif action == "REJECT":
+        result = round_svc.reject_choice(choice_id, reason or "", operator_name=u.get("realName"))
+    else:
+        raise AppException("VALIDATION_ERROR", "action 必须是 CONFIRM/REJECT")
+    _audit_write("MOBILE_CHOICE_REVIEW", f"graduation-topic-choice:{choice_id}",
+                 {"operator": u.get("realName"), "action": action, "reason": (reason or "")[:200]})
+    return result
+
+
+def graduation_change_requests_pending(user: dict) -> list:
+    """选题·与本人相关（原/新题目导师为本人）的待审变更申请。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return []
+    from app.services import graduation_topic_change_service as change_svc
+    return change_svc.list_pending_for_advisor(u.get("realName") or "")
+
+
+def graduation_change_request_review(user: dict, request_id: str, action: str,
+                                     comment: str | None = None) -> dict:
+    """选题·教师/管理员审核变更申请（APPROVE/REJECT）。仅涉及本人指导题目可操作。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import graduation_topic_change_service as change_svc
+    detail = change_svc.get_change_request(request_id)  # 不存在 → 404
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") != "ADMIN_TENANT":
+        name = (u.get("realName") or "").strip()
+        if name not in (detail.get("oldAdvisorName") or "", detail.get("newAdvisorName") or ""):
+            raise AppException("NO_PERMISSION", "该变更申请不在你的指导范围内")
+    result = change_svc.review_change(request_id, action, comment or "", reviewer_name=u.get("realName"))
+    _audit_write("MOBILE_CHANGE_REQUEST_REVIEW", f"graduation-topic-change:{request_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
 def warning_handle(user: dict, warning_id: str, action: str, note: str | None = None) -> dict:
     """学业预警处理：CLOSE（关闭）/ ESCALATE（升级）。"""
     u = _require_teacher(user)
@@ -764,4 +837,45 @@ def followup_create(user: dict, body: dict) -> dict:
     result = employment_service.create_followup(body)
     _audit_write("MOBILE_EMP_FOLLOWUP", f"employment/followup:{result.get('id')}",
                  {"operator": u.get("realName"), "studentId": str(sid or "")})
+    return result
+
+
+def graduation_my_students(user: dict) -> list:
+    """过程指导·本人指导的毕设学生列表（ADMIN_TENANT 可见全部）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return []
+    from sqlalchemy import select as _select
+
+    from app.models import GraduationStudent
+    scope = resolve_teacher_scope(u)
+    with _session() as db:
+        q = _select(GraduationStudent).where(GraduationStudent.tenant_id == _tid(),
+                                             GraduationStudent.is_deleted.is_(False),
+                                             GraduationStudent.record_status == "ACTIVE")
+        if scope.get("mode") != "ADMIN_TENANT":
+            q = q.where(GraduationStudent.advisor_name == (u.get("realName") or ""))
+        rows = db.scalars(q.order_by(GraduationStudent.id.desc())).all()
+        return [{"gdStudentId": str(s.id), "name": s.name, "studentNo": s.student_no or "",
+                "className": s.class_name or "", "stage": s.stage,
+                "topicTitle": s.topic_title or "（未选题）"} for s in rows]
+
+
+def graduation_guidance_create(user: dict, gd_student_id: str, body: dict) -> dict:
+    """过程指导·教师移动端快速新增指导记录。仅本人指导学生可操作（ADMIN_TENANT 不限）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
+    from app.models import GraduationStudent
+    scope = resolve_teacher_scope(u)
+    with _session() as db:
+        s = db.get(GraduationStudent, int(gd_student_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise AppException("DATA_NOT_FOUND", "毕设学生不存在")
+        if scope.get("mode") != "ADMIN_TENANT" and (s.advisor_name or "") != (u.get("realName") or ""):
+            raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+    from app.services import graduation_guidance_service as guidance_svc
+    result = guidance_svc.create_guidance(gd_student_id, body)
+    _audit_write("MOBILE_GUIDANCE_CREATE", f"graduation-guidance:{result.get('id')}",
+                 {"operator": u.get("realName"), "gdStudentId": str(gd_student_id)})
     return result

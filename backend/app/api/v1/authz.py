@@ -64,6 +64,12 @@ def _issue_tokens(user: dict, tenant_code: str, ctx: dict) -> dict:
 # ────────────────── 1.1 登录（mock）──────────────────
 @router.post("/login", summary="1.1 登录（mock：任意非空密码）")
 def login(body: LoginBody):
+    # 【安全修复 P0-1】mock 免密登录（任意非空密码即签发正式令牌）必须受生产门禁保护，
+    # 否则等同免密管理员后门。与 /auth/mock-login 口径一致：生产（或显式关闭）一律 403，绝不签发令牌。
+    if not settings.mock_login_enabled:
+        audit_log.record("LOGIN_DENIED", f"user:{body.loginName}",
+                         {"reason": "演示登录已关闭（生产禁用免密登录）"}, result="DENIED")
+        raise AppException("NO_PERMISSION", "演示登录已关闭，请使用账号密码登录（/api/v1/auth/login）")
     user = get_user_by_login(body.loginName)
     if not user:
         audit_log.record("LOGIN", f"user:{body.loginName}", {"reason": "用户不存在"}, result="FAIL")

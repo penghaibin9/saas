@@ -211,7 +211,15 @@ class InternshipAgreement(PKMixin, TenantMixin, CommonMixin, Base):
     reject_reason: Mapped[str | None] = mapped_column(String(500))
     file_id: Mapped[str | None] = mapped_column(String(64), comment="签署扫描件 file_id（文件中心）")
     esign_status: Mapped[str] = mapped_column(String(20), nullable=False, default="NONE",
-                                              comment="电子签章预留 NONE/PENDING/SIGNED")
+                                              comment="电子签 NONE/PENDING/SIGNED")
+    esign_provider: Mapped[str] = mapped_column(String(30), nullable=False, default="INTERNAL",
+                                                 comment="INTERNAL/THIRD_PARTY预留")
+    esign_initiated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    esign_initiated_by: Mapped[str | None] = mapped_column(String(50))
+    esign_student_at: Mapped[datetime | None] = mapped_column(DateTime)
+    esign_enterprise_at: Mapped[datetime | None] = mapped_column(DateTime)
+    esign_school_at: Mapped[datetime | None] = mapped_column(DateTime)
+    rendered_body: Mapped[str | None] = mapped_column(Text, comment="生成时模板变量渲染快照")
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -268,6 +276,124 @@ class InternshipStudentEval(PKMixin, TenantMixin, CommonMixin, Base):
     reviewed_by_name: Mapped[str | None] = mapped_column(String(50))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     file_id: Mapped[str | None] = mapped_column(String(64), comment="鉴定表扫描件 file_id")
+    enterprise_rating: Mapped[int | None] = mapped_column(Integer, comment="对企业评分 1-5")
+    position_rating: Mapped[int | None] = mapped_column(Integer, comment="对岗位评分 1-5")
+    enterprise_feedback: Mapped[str | None] = mapped_column(String(1000), comment="对企业评价")
+    position_feedback: Mapped[str | None] = mapped_column(String(1000), comment="对岗位评价")
+
+
+class InternshipProcessReport(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_process_report 实习过程报告（日报/月报/实习总结，对标工学云/顶岗实习）。"""
+    __tablename__ = "t_internship_process_report"
+    __table_args__ = (UniqueConstraint("tenant_id", "internship_id", "report_type", "period_key",
+                                       name="uk_intern_process_report"),)
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    report_type: Mapped[str] = mapped_column(String(20), nullable=False,
+                                             comment="DAILY/MONTHLY/SUMMARY")
+    period_key: Mapped[str] = mapped_column(String(20), nullable=False,
+                                            comment="YYYY-MM-DD / YYYY-MM / FINAL")
+    content: Mapped[str | None] = mapped_column(Text, comment="正文")
+    word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_REVIEW",
+                                        comment="PENDING_REVIEW/APPROVED/RETURNED")
+    review_action: Mapped[str | None] = mapped_column(String(50))
+    review_comment: Mapped[str | None] = mapped_column(String(500))
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class InternshipChangeRequest(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_change_request 实习变更申请（换岗/换单位/自主实习，对标工学云三级审核简化版）。"""
+    __tablename__ = "t_internship_change_request"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    change_type: Mapped[str] = mapped_column(String(30), nullable=False,
+                                             comment="CHANGE_POSITION/CHANGE_ENTERPRISE/SELF_ARRANGED")
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    target_enterprise_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    target_position_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    target_enterprise_name: Mapped[str | None] = mapped_column(String(200))
+    target_position_name: Mapped[str | None] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                        comment="PENDING/APPROVED/REJECTED/WITHDRAWN")
+    review_comment: Mapped[str | None] = mapped_column(String(500))
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(50))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class InternshipBatchPlan(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_batch_plan 批次实习计划书（管理员编制→发布→学生确认）。"""
+    __tablename__ = "t_internship_batch_plan"
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", name="uk_intern_batch_plan"),)
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    objectives: Mapped[str | None] = mapped_column(Text, comment="实习目标")
+    content: Mapped[str | None] = mapped_column(Text, comment="计划正文")
+    tasks_json: Mapped[list | None] = mapped_column(JSON, comment="任务清单 [{name,requirement,deadline}]")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT",
+                                        comment="DRAFT/PUBLISHED")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    published_by_name: Mapped[str | None] = mapped_column(String(50))
+
+
+class InternshipPlanAck(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_plan_ack 学生实习计划确认（批次发布后为每生生成待确认记录）。"""
+    __tablename__ = "t_internship_plan_ack"
+    __table_args__ = (UniqueConstraint("tenant_id", "internship_id", "plan_id",
+                                       name="uk_intern_plan_ack"),)
+
+    plan_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                        comment="PENDING/ACKNOWLEDGED")
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class InternshipPlanTaskProgress(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_plan_task_progress 实习计划任务完成度（学生提交→指导教师确认）。"""
+    __tablename__ = "t_internship_plan_task_progress"
+    __table_args__ = (UniqueConstraint("tenant_id", "internship_id", "plan_id", "task_sort_order",
+                                       name="uk_intern_plan_task_prog"),)
+
+    plan_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    task_sort_order: Mapped[int] = mapped_column(Integer, nullable=False, comment="对应 tasks_json.sortOrder")
+    task_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="任务名称快照")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="NOT_STARTED",
+                                        comment="NOT_STARTED/SUBMITTED/APPROVED/REJECTED")
+    student_note: Mapped[str | None] = mapped_column(String(500))
+    evidence_file_id: Mapped[str | None] = mapped_column(String(64))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(50))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    review_comment: Mapped[str | None] = mapped_column(String(500))
+
+
+class InternshipInsurance(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_insurance 实习保险投保/核验（学生提交→学校核验）。"""
+    __tablename__ = "t_internship_insurance"
+    __table_args__ = (UniqueConstraint("tenant_id", "internship_id", name="uk_intern_insurance"),)
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    policy_no: Mapped[str | None] = mapped_column(String(100), comment="保单号")
+    insurer_name: Mapped[str | None] = mapped_column(String(200), comment="承保单位")
+    coverage_type: Mapped[str | None] = mapped_column(String(100), comment="险种")
+    effective_date: Mapped[str | None] = mapped_column(String(10), comment="生效 YYYY-MM-DD")
+    expiry_date: Mapped[str | None] = mapped_column(String(10), comment="到期 YYYY-MM-DD")
+    file_id: Mapped[str | None] = mapped_column(String(64), comment="保单扫描件")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="NOT_SUBMITTED",
+                                        comment="NOT_SUBMITTED/PENDING_VERIFY/VERIFIED/REJECTED")
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    verify_comment: Mapped[str | None] = mapped_column(String(500))
+    verified_by_name: Mapped[str | None] = mapped_column(String(50))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class InternshipScoreConfig(PKMixin, TenantMixin, CommonMixin, Base):
@@ -314,6 +440,25 @@ class InternshipFinalScore(PKMixin, TenantMixin, CommonMixin, Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     published_by_name: Mapped[str | None] = mapped_column(String(50))
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class InternshipArchive(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_archive 实习归档（一名学生一条）。归档时快照材料完整性。
+    归档包 package_file_id 预留（打包 zip 能力接文件中心后启用，当前 partial）。"""
+    __tablename__ = "t_internship_archive"
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    completeness: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="完整度 0-100")
+    missing_items: Mapped[str | None] = mapped_column(String(500), comment="缺失材料清单")
+    material_snapshot: Mapped[dict | None] = mapped_column(JSON, comment="归档时各材料在否快照")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ARCHIVED",
+                                        comment="ARCHIVED/REVOKED")
+    package_file_id: Mapped[str | None] = mapped_column(String(64), comment="归档包 file_id 预留")
+    archived_by_name: Mapped[str | None] = mapped_column(String(50))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime)
     remark: Mapped[str | None] = mapped_column(String(500))
 
 

@@ -61,7 +61,10 @@ def list_scores(page: int, page_size: int, gd_student_id=None, judge_name=None,
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationDefenseScore.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_row(d, db.get(GraduationStudent, d.gd_student_id)) for d in rows]
+        sids = {d.gd_student_id for d in rows}
+        smap = {s.id: s for s in db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id.in_(sids))).all()} if sids else {}
+        items = [_row(d, smap.get(d.gd_student_id)) for d in rows]
         return items, total
 
 

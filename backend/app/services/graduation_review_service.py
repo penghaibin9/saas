@@ -64,7 +64,10 @@ def list_plagiarism(page: int, page_size: int, gd_student_id=None, status=None) 
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationPlagiarismCheck.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_plag_row(p, db.get(GraduationStudent, p.gd_student_id)) for p in rows]
+        sids = {p.gd_student_id for p in rows}
+        smap = {s.id: s for s in db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id.in_(sids))).all()} if sids else {}
+        items = [_plag_row(p, smap.get(p.gd_student_id)) for p in rows]
         return items, total
 
 
@@ -173,7 +176,10 @@ def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=No
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationReview.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_review_row(r, db.get(GraduationStudent, r.gd_student_id)) for r in rows]
+        sids = {r.gd_student_id for r in rows}
+        smap = {s.id: s for s in db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id.in_(sids))).all()} if sids else {}
+        items = [_review_row(r, smap.get(r.gd_student_id)) for r in rows]
         return items, total
 
 

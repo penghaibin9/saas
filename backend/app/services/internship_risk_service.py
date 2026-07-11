@@ -97,6 +97,24 @@ def handle(user, risk_id, owner_name=None, deadline=None, comment="") -> dict:
         return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status]}
 
 
+def remind(user, risk_id, channel="站内消息") -> dict:
+    """催办责任人跟进风险（写审计，不 mock 成功）。"""
+    with session() as db:
+        r = _get(db, risk_id)
+        _owner_or_403(db, r, user, "只能催办本人指导学生的风险")
+        if r.status in ("CLOSED", "RESOLVED"):
+            raise AppException("DATA_CONFLICT", "风险已关闭/已化解，无需催办")
+        owner = r.owner_name or "责任人"
+        note = f"【催办提醒】请 {owner} 尽快跟进该风险学生（{channel or '站内消息'}）"
+        r.last_follow_at = datetime.utcnow()
+        r.last_follow_note = note
+        r.version += 1
+        _trail(db, r.id, "REMIND", {"channel": channel or "站内消息", "owner": owner},
+               operator=_op_name(user))
+        db.commit()
+        return {"id": str(r.id), "ownerName": owner, "reminded": True}
+
+
 def follow(user, risk_id, note="") -> dict:
     """跟进：追加一条跟进记录（不改状态，必须处理中）。"""
     if not (note or "").strip() or len(note.strip()) < 2:
@@ -161,7 +179,7 @@ def close(user, risk_id, result="RESOLVED", comment="") -> dict:
         return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status]}
 
 
-def list_risks(page, page_size, level=None, status=None, keyword=None, user=None):
+def list_risks(page, page_size, level=None, status=None, keyword=None, risk_code=None, user=None):
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         q = select(RiskRecord).where(RiskRecord.tenant_id == _tid(),
@@ -170,6 +188,8 @@ def list_risks(page, page_size, level=None, status=None, keyword=None, user=None
             q = q.where(RiskRecord.risk_level == level)
         if status:
             q = q.where(RiskRecord.status == status)
+        if risk_code:
+            q = q.where(RiskRecord.risk_code == risk_code)
         rows = db.scalars(q.order_by(RiskRecord.id.desc())).all()
         items = []
         for r in rows:

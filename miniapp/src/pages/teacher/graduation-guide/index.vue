@@ -29,6 +29,9 @@
             <view v-else-if="g.status === 'OVERDUE'" class="gg__actions">
               <button class="gg__urge" @click.stop="toast('催交提醒将随消息推送功能开放，可先线下联系')">催交学生</button>
             </view>
+            <view class="gg__actions">
+              <button class="btn btn-ghost" @click.stop="addGuidance(g)">记录指导</button>
+            </view>
           </view>
         </view>
       </view>
@@ -93,6 +96,19 @@ export default {
       teacherApi.getGdStudents().then((d) => { this.data = d; this.state = 'ready' })
         .catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
+    },
+    addGuidance(g) {
+      if (this.acting) return
+      if (!/^\d+$/.test(String(g.id))) { toast('当前为离线数据，无法记录指导'); return }
+      uni.showModal({ title: '记录指导', editable: true, placeholderText: '填写本次指导内容', success: (r) => {
+        if (!r.confirm || this.acting) return
+        if (!r.content || r.content.trim().length < 2) { toast('指导内容至少 2 字'); return }
+        this.acting = true
+        teacherApi.createGuidance(g.id, { content: r.content.trim(), method: 'ONLINE' })
+          .then(() => { toast('已记录') })
+          .catch((e) => { toast(normalizeError(e).text) })
+          .finally(() => { this.acting = false })
+      } })
     },
     openReview(g) {
       if (g.status === 'OVERDUE') return toast('学生尚未提交，可催交')

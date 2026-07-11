@@ -62,7 +62,13 @@ def query(page: int = 1, page_size: int = 20, action: str | None = None,
     if db_enabled():
         from app.services import db_service
         return db_service.audit_query(page, page_size, action, operator, date_from, date_to)
-    items = [x for x in _LOGS if not action or x["action"] == action]
+    # 【安全修复】内存审计查询按当前租户过滤，避免多租户共享内存队列跨租户泄露
+    # （与 DB 路径 db_service.audit_query 的 tenant_id 过滤对齐）；租户未绑定时不额外过滤。
+    from app.core.context import current_tenant_id
+    _tid = current_tenant_id()
+    items = [x for x in _LOGS
+             if (not action or x["action"] == action)
+             and (_tid is None or x.get("tenantId") == _tid)]
     total = len(items)
     start = (page - 1) * page_size
     return items[start:start + page_size], total

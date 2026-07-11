@@ -63,6 +63,14 @@ class IdsBody(BaseModel):
     ids: List[str] = Field(default_factory=list)
 
 
+class BatchRemindBody(IdsBody):
+    message: Optional[str] = Field(default="迎新报到提醒")
+
+
+class AssignCounselorBody(IdsBody):
+    counselor: str = Field(..., min_length=1)
+
+
 class FollowUpBody(BaseModel):
     content: str = Field(..., min_length=1)
     way: Optional[str] = Field(default="PHONE")
@@ -130,3 +138,18 @@ class ArchiveCreate(BaseModel):
     batchNo: Optional[str] = None
     scope: Optional[str] = None
     remark: Optional[str] = None
+
+
+class StudentImport(BaseModel):
+    rows: List[dict]
+
+
+class StudentExportRequest(BaseModel):
+    purpose: str = Field(..., min_length=5)
+    keyword: Optional[str] = None
+    classId: Optional[str] = None
+    stage: Optional[str] = None
+    reportStatus: Optional[str] = None
+    paymentStatus: Optional[str] = None
+    riskLevel: Optional[str] = None
+    mask: bool = True

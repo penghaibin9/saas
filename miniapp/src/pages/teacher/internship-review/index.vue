@@ -34,8 +34,8 @@
 
               <view class="ir__actions">
                 <template v-if="w.overdue">
-                  <button class="btn btn-ghost flex-1" @click="toast('催交提醒将随消息推送功能开放，可先线下联系')">催交周报</button>
-                  <button class="ir__risk flex-1" @click="toast('可在「打卡异常」中将异常转为风险跟进')">记录风险</button>
+                  <button class="btn btn-ghost flex-1" @click="remind(w)">催交周报</button>
+                  <button class="ir__risk flex-1" @click="toast('可在 PC 端「风险处置」中登记风险跟进')">记录风险</button>
                 </template>
                 <template v-else-if="w.status === 'PENDING_REVIEW'">
                   <button class="btn btn-ghost flex-1" @click="review(w, 'return')">退回</button>
@@ -107,6 +107,19 @@ export default {
       } else {
         toast(normalizeError(e).text)
       }
+    },
+    remind(w) {
+      if (this.acting || !w?.id) return
+      if (!/^\d+$/.test(String(w.id))) {
+        toast('当前为离线数据，无法催交，请恢复网络后重试')
+        return
+      }
+      this.acting = true
+      teacherApi.remindWeekly(w.id).then((res) => {
+        toast((res && res.message) || '已发送催交通知')
+      }).catch((e) => {
+        toast(normalizeError(e).text)
+      }).finally(() => { this.acting = false })
     },
     review(w, type) {
       if (this.acting) return

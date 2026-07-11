@@ -69,6 +69,7 @@ def _row(e, rec, stu):
         "submitStatus": e.submit_status, "submitStatusLabel": SUBMIT_LABEL.get(e.submit_status),
         "reviewStatus": e.school_review_status, "reviewStatusLabel": REVIEW_LABEL.get(e.school_review_status),
         "hasAdvisorOpinion": bool(e.advisor_opinion), "hasMentorOpinion": bool(e.mentor_opinion),
+        "enterpriseRating": e.enterprise_rating, "positionRating": e.position_rating,
         "createdAt": _iso(e.created_at) or "",
     }
 
@@ -76,7 +77,9 @@ def _row(e, rec, stu):
 def _full(e):
     return {"selfSummary": e.self_summary or "", "selfHarvest": e.self_harvest or "",
             "selfProblem": e.self_problem or "", "advisorOpinion": e.advisor_opinion or "",
-            "mentorOpinion": e.mentor_opinion or "", "reviewComment": e.school_review_comment or ""}
+            "mentorOpinion": e.mentor_opinion or "", "reviewComment": e.school_review_comment or "",
+            "enterpriseRating": e.enterprise_rating, "positionRating": e.position_rating,
+            "enterpriseFeedback": e.enterprise_feedback or "", "positionFeedback": e.position_feedback or ""}
 
 
 # ═══════════ 学生本人（移动端） ═══════════
@@ -115,6 +118,20 @@ def student_submit(user, body) -> dict:
         e.self_summary = (b.get("selfSummary") or "").strip()
         e.self_harvest = b.get("selfHarvest")
         e.self_problem = b.get("selfProblem")
+        if b.get("enterpriseRating") is not None:
+            er = int(b["enterpriseRating"])
+            if er < 1 or er > 5:
+                raise AppException("VALIDATION_ERROR", "对企业评分须在 1-5 分")
+            e.enterprise_rating = er
+        if b.get("positionRating") is not None:
+            pr = int(b["positionRating"])
+            if pr < 1 or pr > 5:
+                raise AppException("VALIDATION_ERROR", "对岗位评分须在 1-5 分")
+            e.position_rating = pr
+        if b.get("enterpriseFeedback") is not None:
+            e.enterprise_feedback = (b.get("enterpriseFeedback") or "").strip() or None
+        if b.get("positionFeedback") is not None:
+            e.position_feedback = (b.get("positionFeedback") or "").strip() or None
         e.submit_status = "SUBMITTED"
         e.submitted_at = datetime.utcnow()
         if e.school_review_status == "RETURNED":  # 退回后重交，回到待审

@@ -1,17 +1,32 @@
 """数字迎新域 API（/api/v1/orientation/*）。真实走库；写操作落域审计。"""
 from __future__ import annotations
 
+import io
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchUpdate, BlockedBody,
+from app.schemas.internship import ImportErrorsExport
+from app.schemas.orientation import (ArchiveCreate, AssignCounselorBody, BatchCreate, BatchRemindBody, BatchUpdate, BlockedBody,
                                       CommentBody, DormBody, FlowUpdate, FollowUpBody, IdsBody,
                                       NoteBody, NoticeCreate, PointCreate, PointUpdate, ReasonBody,
-                                      RemarkBody, StudentCreate, StudentUpdate, VerifyBody)
+                                      RemarkBody, StudentCreate, StudentExportRequest, StudentImport,
+                                      StudentUpdate, VerifyBody)
+from app.services import audit_log
 from app.services import orientation_service as svc
+from app.services import xlsx_util
+
+_ORI_STU_HEADERS = ["录取编号", "姓名", "身份证号", "录取专业", "联系电话", "班级"]
+_ORI_STU_MAP = {"录取编号": "admissionNo", "姓名": "name", "身份证号": "idCard",
+                "录取专业": "majorName", "联系电话": "phone", "班级": "className"}
+
+
+def _ori_stu_row_values(r: dict) -> list:
+    return [r.get("admissionNo", ""), r.get("name", ""), r.get("idCard", ""),
+            r.get("majorName", ""), r.get("phone", ""), r.get("className", "")]
 
 router = APIRouter(prefix="/orientation", tags=["数字迎新"])
 
@@ -30,6 +45,62 @@ def students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200)
                                      report_status=reportStatus, payment_status=paymentStatus,
                                      risk_level=riskLevel)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/students/import/template", summary="新生导入·下载 Excel 模板(.xlsx)")
+def student_import_template(user=Depends(get_current_user)):
+    data = xlsx_util.build_template_xlsx(
+        _ORI_STU_HEADERS,
+        required=["录取编号", "姓名", "录取专业"],
+        samples=[["LQ2026010001", "李明", "330102200801011234", "软件技术", "13800001111", "软件2401"]],
+        notes=[
+            "1. 只导入「导入模板」页；录取编号租户内唯一。",
+            "2. 身份证号、联系电话为敏感字段，导入后列表默认脱敏。",
+            "3. 保存为 .xlsx 后上传，系统预校验通过方可确认导入。",
+        ])
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=orientation_student_import_template.xlsx"})
+
+
+@router.post("/students/import/xlsx", summary="新生导入·上传 Excel 解析+预校验")
+async def student_import_xlsx(file: UploadFile = File(...), user=Depends(get_current_user)):
+    content = await file.read()
+    rows = xlsx_util.read_xlsx(content, _ORI_STU_MAP)
+    dry = svc.import_students_dry_run(rows)
+    return success({"rows": rows, **dry})
+
+
+@router.post("/students/import/dry-run", summary="新生导入·高级粘贴预校验")
+def student_import_dry_run(body: StudentImport, user=Depends(get_current_user)):
+    return success(svc.import_students_dry_run(body.rows))
+
+
+@router.post("/students/import/errors-xlsx", summary="新生导入·下载错误行 Excel")
+def student_import_errors_xlsx(body: ImportErrorsExport, user=Depends(get_current_user)):
+    content = xlsx_util.build_error_rows_xlsx(
+        _ORI_STU_HEADERS, body.rows, body.errors, _ori_stu_row_values)
+    packed = xlsx_util.pack_xlsx_result(content, "新生导入错误行.xlsx", len(body.errors))
+    return success(packed)
+
+
+@router.post("/students/import/confirm", summary="新生导入·确认（整批事务）")
+def student_import_confirm(body: StudentImport, user=Depends(get_current_user)):
+    result = svc.import_students_confirm(body.rows)
+    audit_log.record("导入新生台账", "orientation-student:import", detail=result)
+    return success(result, message="导入完成")
+
+
+@router.post("/students/export", summary="新生台账导出 Excel（脱敏+水印+审计）")
+def student_export(body: StudentExportRequest, user=Depends(get_current_user)):
+    data = svc.export_students_xlsx(
+        keyword=body.keyword, class_id=body.classId, stage=body.stage,
+        report_status=body.reportStatus, payment_status=body.paymentStatus,
+        risk_level=body.riskLevel, purpose=body.purpose, mask=body.mask)
+    audit_log.record("导出新生台账", "orientation-student:export",
+                     detail={"rowCount": data["rowCount"], "purpose": body.purpose})
+    return success(data)
 
 
 @router.get("/students/{sid}", summary="新生详情")
@@ -55,6 +126,16 @@ def student_void(sid: str, body: ReasonBody, user=Depends(get_current_user)):
 @router.post("/students/{sid}/verify", summary="新生信息核验（通过/不通过；不通过原因≥5字）")
 def student_verify(sid: str, body: VerifyBody, user=Depends(get_current_user)):
     return success(svc.verify_student(sid, body.passed, body.reason), message="已核验")
+
+
+@router.post("/students/batch-remind", summary="批量提醒新生")
+def student_batch_remind(body: BatchRemindBody, user=Depends(get_current_user)):
+    return success(svc.batch_remind_students(body.ids, body.message), message="已记录提醒")
+
+
+@router.post("/students/batch-assign-counselor", summary="批量分配辅导员")
+def student_batch_assign_counselor(body: AssignCounselorBody, user=Depends(get_current_user)):
+    return success(svc.batch_assign_counselor(body.ids, body.counselor), message="已分配辅导员")
 
 
 @router.get("/progress", summary="报到进度")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 DASH = "/api/v1/graduation/dashboard"
 DG = "/api/v1/graduation/defense-groups"
+GD_BATCH = "/api/v1/graduation/batches"
 
 
 def _todo(data, tid):
@@ -35,3 +36,18 @@ def test_pending_defense_count_reflects_new_group(client, auth_headers, db_mode)
 
     stat = next(s for s in client.get(DASH, headers=h).json()["data"]["stats"] if s["label"] == "答辩待发布")
     assert int(stat["value"]) == after
+
+
+def test_dashboard_batch_info_reflects_running_batch(client, auth_headers, db_mode):
+    """看板批次信息回真：进行中批次的名称/起止/状态如实反映，而非硬编码。"""
+    h = auth_headers
+    bid = client.post(GD_BATCH, headers=h, json={
+        "batchName": "看板回真专用批次2027", "batchNo": "DASH-RUN-1", "gradeYear": "2027届",
+        "startDate": "2026-09-01", "endDate": "2027-06-30", "plannedCount": 30
+    }).json()["data"]["id"]
+    client.post(f"{GD_BATCH}/{bid}/activate", headers=h)
+
+    data = client.get(DASH, headers=h).json()["data"]
+    assert data["batchName"] == "看板回真专用批次2027"
+    assert data["batchStatus"] == "进行中"
+    assert "2026-09-01" in data["batchRange"] and "2027-06-30" in data["batchRange"]

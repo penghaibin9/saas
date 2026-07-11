@@ -54,6 +54,26 @@ def _trail(db, target_id: int, target_type: str, action: str, detail: dict | Non
                                 occurred_at=datetime.utcnow()))
 
 
+def notify_student_by_profile(db, student, title: str, content: str,
+                              source_biz_id=None, message_type="INTERNSHIP") -> bool:
+    """向学生账号发真实站内信（login_name=学号，user_type=STUDENT）。无账号时静默跳过。"""
+    from app.models import UnifiedMessage, User
+    if not student or not getattr(student, "student_no", None):
+        return False
+    u = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.is_deleted.is_(False),
+        User.login_name == student.student_no,
+        User.user_type == "STUDENT")).first()
+    if not u:
+        return False
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(u.id),
+                          source_module="internship",
+                          source_biz_id=int(source_biz_id) if source_biz_id else None,
+                          title=title[:500], content=(content or "")[:2000],
+                          message_type=message_type, status="UNREAD"))
+    return True
+
+
 def notify_counselor_for_student(db, student, title: str, content: str,
                                  source_biz_id=None, message_type="INTERNSHIP") -> bool:
     """向学生所在班级辅导员发真实站内信（t_unified_message）。
@@ -296,17 +316,21 @@ def export_checkins(result=None, keyword=None, user=None) -> dict:
     return xlsx_util.pack_xlsx_result(content, "打卡台账.xlsx", len(items))
 
 
-def export_exceptions(type=None, status=None, keyword=None, user=None) -> dict:
+def export_exceptions(type=None, status=None, keyword=None, ids=None, user=None) -> dict:
     from app.services import xlsx_util
     items, _ = list_attendance_exceptions(1, 100000, type=type, status=status, keyword=keyword, user=user)
+    if ids:
+        id_set = {str(x) for x in ids}
+        items = [it for it in items if it["id"] in id_set]
     headers = ["姓名", "班级", "企业", "异常类型", "异常时间", "距离", "连续", "设备", "处理状态"]
     data_rows = [[it["studentName"], it["className"], it["enterpriseName"], it["typeLabel"],
                   it["date"], it["distance"], it["streak"], it["deviceRisk"], it["statusLabel"]]
                  for it in items]
-    wm = (f"岗位实习中心·打卡异常台账 · 导出人：{(get_current_user_ctx() or {}).get('realName', '-')} · "
+    label = "打卡异常所选台账" if ids else "打卡异常台账"
+    wm = (f"岗位实习中心·{label} · 导出人：{(get_current_user_ctx() or {}).get('realName', '-')} · "
           f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
-    content = xlsx_util.build_ledger_xlsx("打卡异常台账", headers, data_rows, watermark=wm)
-    return xlsx_util.pack_xlsx_result(content, "打卡异常台账.xlsx", len(items))
+    content = xlsx_util.build_ledger_xlsx(label, headers, data_rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, f"{label}.xlsx", len(items))
 
 
 def _exc_ctx(db, c: AttendanceException):
@@ -401,6 +425,42 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
                                 "TO_RISK": "已转风险"}[action]}
 
 
+def batch_handle_attendance_exceptions(ids: list[str], action: str, comment: str, user=None) -> dict:
+    if action != "REASONABLE":
+        raise AppException("VALIDATION_ERROR", "批量处理仅支持 REASONABLE")
+    if not comment or len(comment.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "处理意见必填且不少于 5 字")
+    processed, skipped = [], []
+    scope = _current_scope(user)
+    with session() as db:
+        for eid in ids or []:
+            c = db.get(AttendanceException, int(eid))
+            if not c or c.is_deleted or c.tenant_id != _tid():
+                skipped.append({"id": str(eid), "reason": "异常记录不存在"})
+                continue
+            rec, stu = _exc_ctx(db, c)
+            if not _rec_in_scope(scope, db, rec, stu):
+                skipped.append({"id": str(c.id), "reason": "不在数据范围内"})
+                continue
+            if c.exception_type == "MOCK_LOCATION":
+                skipped.append({"id": str(c.id), "reason": "模拟定位须逐条核实"})
+                continue
+            if c.status == "COMPLETED":
+                skipped.append({"id": str(c.id), "reason": "已处理"})
+                continue
+            c.status = "COMPLETED"
+            c.handle_action = action
+            c.handle_comment = comment.strip()
+            c.handled_by_name = _op_name()
+            c.handled_at = datetime.utcnow()
+            c.version += 1
+            _trail(db, c.id, "EXCEPTION", f"HANDLE_{action}", {"comment": comment.strip(), "batch": True})
+            processed.append(str(c.id))
+        db.commit()
+    return {"processed": processed, "processedCount": len(processed),
+            "skipped": skipped, "skippedCount": len(skipped)}
+
+
 # ═══ 周报 ═══
 
 def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfile | None) -> dict:
@@ -438,6 +498,91 @@ def list_weekly_reports(page, page_size, status=None, keyword=None, user=None):
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
+
+
+def export_weekly_reports(status=None, keyword=None, user=None) -> dict:
+    from app.services import xlsx_util
+    items, _ = list_weekly_reports(1, 100000, status=status, keyword=keyword, user=user)
+    with session() as db:
+        rows = []
+        for it in items:
+            w = db.get(WeeklyReport, int(it["id"]))
+            rec = db.get(InternshipRecord, w.internship_id) if w else None
+            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            sno = (stu.student_no if stu else "") or ""
+            masked_no = sno[:3] + "****" + sno[-2:] if len(sno) > 5 else sno
+            rows.append([
+                masked_no, it.get("studentName", ""), it.get("className", ""),
+                it.get("enterpriseName", ""), it.get("week", ""), it.get("submitAt", ""),
+                it.get("version", ""), it.get("wordCount", ""), it.get("riskFlag") or "—",
+                it.get("statusLabel", ""), (w.review_comment or "") if w else "",
+            ])
+    headers = ["学号(脱敏)", "姓名", "班级", "企业", "周次", "提交时间", "版本",
+               "字数", "风险标记", "状态", "批阅意见"]
+    wm = (f"岗位实习中心·周报批阅台账 · 导出人：{_op_name()} · "
+          f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx("周报批阅台账", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "周报批阅台账.xlsx", len(items))
+
+
+def batch_review_weekly_reports(ids: list[str], action: str = "APPROVE",
+                                comment: str | None = None, user=None) -> dict:
+    if action != "APPROVE":
+        raise AppException("VALIDATION_ERROR", "批量批阅仅支持 APPROVE")
+    approved, skipped = [], []
+    scope = _current_scope(user)
+    with session() as db:
+        for rid in ids or []:
+            w = db.get(WeeklyReport, int(rid))
+            if not w or w.is_deleted or w.tenant_id != _tid():
+                skipped.append({"id": str(rid), "reason": "周报不存在"})
+                continue
+            rec = db.get(InternshipRecord, w.internship_id)
+            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            if not _rec_in_scope(scope, db, rec, stu):
+                skipped.append({"id": str(rid), "reason": "不在数据范围内"})
+                continue
+            if w.risk_flag:
+                skipped.append({"id": str(rid), "reason": "风险学生周报须逐篇批阅"})
+                continue
+            if w.status != "PENDING_REVIEW":
+                skipped.append({"id": str(rid), "reason": f"状态为{REPORT_STATUS_LABEL.get(w.status, w.status)}，不可批量通过"})
+                continue
+            w.status = "APPROVED"
+            w.review_action = "APPROVE"
+            w.review_comment = (comment or "批量通过").strip()
+            w.reviewed_by_name = _op_name()
+            w.reviewed_at = datetime.utcnow()
+            w.version += 1
+            _trail(db, w.id, "REPORT", "REVIEW_APPROVE", {"comment": w.review_comment, "batch": True})
+            approved.append(str(w.id))
+        db.commit()
+    return {"approved": approved, "approvedCount": len(approved),
+            "skipped": skipped, "skippedCount": len(skipped)}
+
+
+def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
+    """逾期未交周报催交：写审计 + 尝试向学生账号发站内信。"""
+    with session() as db:
+        w = db.get(WeeklyReport, int(report_id))
+        if not w or w.is_deleted or w.tenant_id != _tid():
+            raise not_found("周报不存在")
+        if w.status != "OVERDUE":
+            raise AppException("DATA_CONFLICT", "仅逾期未交周报可催交")
+        rec = db.get(InternshipRecord, w.internship_id)
+        stu = db.get(StudentProfile, rec.student_id) if rec else None
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):
+            from app.core.exceptions import no_permission
+            raise no_permission("只能催交本人指导学生的周报")
+        title = f"第 {w.week_number} 周周报催交通知"
+        content = (f"您的第 {w.week_number} 周实习周报尚未提交，请尽快在小程序完成提交。"
+                   f"（{channel or '站内消息'}）")
+        notified = notify_student_by_profile(db, stu, title, content, w.id)
+        _trail(db, w.id, "REPORT", "REMIND",
+               {"channel": channel or "站内消息", "week": w.week_number, "notified": notified})
+        db.commit()
+        return {"id": str(w.id), "studentName": stu.real_name if stu else "-",
+                "weekNumber": w.week_number, "reminded": True, "notified": notified}
 
 
 def get_weekly_report_detail(report_id, user=None) -> dict:
@@ -496,7 +641,7 @@ def review_weekly_report(report_id, action: str, comment: str, user=None) -> dic
 
 # ═══ 风险学生 ═══
 
-def list_risk_students(page, page_size, level=None, status=None, user=None):
+def list_risk_students(page, page_size, level=None, status=None, risk_code=None, user=None):
     with session() as db:
         q = select(RiskRecord).where(RiskRecord.tenant_id == _tid(),
                                      RiskRecord.is_deleted.is_(False))
@@ -504,6 +649,8 @@ def list_risk_students(page, page_size, level=None, status=None, user=None):
             q = q.where(RiskRecord.risk_level == level)
         if status:
             q = q.where(RiskRecord.status == status)
+        if risk_code:
+            q = q.where(RiskRecord.risk_code == risk_code)
         rows = db.scalars(q.order_by(RiskRecord.id.desc())).all()
         scope = _current_scope(user)
         items = []
@@ -791,17 +938,47 @@ def get_dashboard_summary(user=None) -> dict:
             return db.scalar(q) or 0
         pending_exc = _cnt(AttendanceException, AttendanceException.status == "PENDING_HANDLE")
         pending_rep = _cnt(WeeklyReport, WeeklyReport.status == "PENDING_REVIEW")
+        overdue_rep = _cnt(WeeklyReport, WeeklyReport.status == "OVERDUE")
         risk_cnt = _cnt(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]))
         batch = db.scalars(select(InternshipBatch).where(
             InternshipBatch.tenant_id == _tid(),
             InternshipBatch.is_deleted.is_(False)).order_by(InternshipBatch.id.desc())).first()
+
+        risk_q = select(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(), RiskRecord.is_deleted.is_(False),
+            RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]))
+        if scoped:
+            risk_q = risk_q.where(RiskRecord.internship_id.in_(scoped_ids))
+        risk_rows = db.scalars(risk_q.order_by(RiskRecord.id.desc()).limit(5)).all()
+        risk_alerts = []
+        for k in risk_rows:
+            rec = db.get(InternshipRecord, k.internship_id)
+            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            if scoped and rec and not _rec_in_scope(scope, db, rec, stu):
+                continue
+            stu_label = f"{stu.real_name}（{stu.student_no}）" if stu else "—"
+            risk_alerts.append({
+                "id": str(k.id),
+                "code": k.risk_code,
+                "level": k.risk_level,
+                "title": k.risk_title,
+                "detail": f"{stu_label} · {k.last_follow_note or '待跟进'}",
+                "time": _iso(k.last_follow_at or k.created_at)[:16].replace("T", " ") if (k.last_follow_at or k.created_at) else "—",
+            })
+
+        onboard = flow_map["ONBOARD"]
+        total_students = sum(flow_map.values()) or 1
+        onboard_pct = round(onboard * 100 / total_students)
+
         return {
             "batchName": batch.batch_name if batch else "实习批次",
             "batchRange": (f"{_iso(batch.start_date)[:10]} ~ {_iso(batch.end_date)[:10]}"
                            if batch and batch.start_date and batch.end_date else ""),
-            "batchStatus": "进行中" if batch and batch.status == "RUNNING" else "—",
+            "batchStatus": BATCH_STATUS_LABEL.get(batch.status, "—") if batch else "—",
+            "batchProgress": onboard_pct,
             "stats": [
-                {"label": "在岗学生", "value": str(flow_map["ONBOARD"]), "trend": "", "trendQuality": "neutral"},
+                {"label": "在岗学生", "value": str(onboard),
+                 "trend": f"占比 {onboard_pct}%", "trendQuality": "neutral"},
                 {"label": "待处理打卡异常", "value": str(pending_exc),
                  "trend": f"待核实 {pending_exc}", "trendQuality": "bad" if pending_exc else "good"},
                 {"label": "待批阅周报", "value": str(pending_rep),
@@ -813,11 +990,14 @@ def get_dashboard_summary(user=None) -> dict:
                      for k, lbl in STATUS_LABEL.items()],
             "todos": [
                 {"id": "todo-1", "label": "待批阅周报", "count": pending_rep, "tone": "danger",
-                 "route": "/admin/internship/reports"},
+                 "hint": f"含逾期 {overdue_rep} 条" if overdue_rep else "暂无逾期",
+                 "route": "/admin/internship/reports?panel=review"},
                 {"id": "todo-2", "label": "待核实打卡异常", "count": pending_exc, "tone": "warning",
+                 "hint": "含超范围/模拟定位/缺卡" if pending_exc else "暂无待核实",
                  "route": "/admin/internship/exceptions"},
                 {"id": "todo-3", "label": "风险学生待跟进", "count": risk_cnt, "tone": "warning",
-                 "route": "/admin/internship/risks"},
+                 "hint": "待处理与跟进中" if risk_cnt else "暂无开放风险",
+                 "route": "/admin/internship/risks?panel=board"},
             ],
-            "riskAlerts": [],
+            "riskAlerts": risk_alerts,
         }

@@ -52,9 +52,11 @@ def test_students_and_detail(client, auth_headers, db_mode):
 def test_create_and_void_student(client, auth_headers, db_mode):
     _seed(db_mode)
     c = client.post("/api/v1/orientation/students", headers=auth_headers,
-                    json={"name": "新生乙", "admissionNo": "LQ2026999002"}).json()
+                    json={"name": "新生乙", "admissionNo": "LQ2026999002", "classId": "NCL01"}).json()
     assert c["code"] == 0
     sid = c["data"]["id"]
+    det = client.get(f"/api/v1/orientation/students/{sid}", headers=auth_headers).json()
+    assert det["data"]["student"]["className"] == "软件2601班"
     dup = client.post("/api/v1/orientation/students", headers=auth_headers,
                       json={"name": "x", "admissionNo": "LQ2026999002"}).json()
     assert dup["code"] == 409001
@@ -64,6 +66,18 @@ def test_create_and_void_student(client, auth_headers, db_mode):
     ok = client.post(f"/api/v1/orientation/students/{sid}/void", headers=auth_headers,
                      json={"reason": "录取信息重复，作废该记录"}).json()
     assert ok["code"] == 0
+
+
+def test_student_batch_remind_and_assign(client, auth_headers, db_mode):
+    ids = _seed(db_mode)
+    remind = client.post("/api/v1/orientation/students/batch-remind", headers=auth_headers,
+                         json={"ids": [str(ids["student"])], "message": "请尽快完成报到"}).json()
+    assert remind["code"] == 0 and remind["data"]["count"] == 1
+    assign = client.post("/api/v1/orientation/students/batch-assign-counselor", headers=auth_headers,
+                         json={"ids": [str(ids["student"])], "counselor": "王辅导"}).json()
+    assert assign["code"] == 0 and assign["data"]["count"] == 1
+    det = client.get(f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers).json()
+    assert det["data"]["student"]["counselor"] == "王辅导"
 
 
 def test_green_channel_closed_loop(client, auth_headers, db_mode):
@@ -282,3 +296,30 @@ def test_archive_run(client, auth_headers, db_mode):
     r = client.post(f"/api/v1/orientation/archives/{aid}/run", headers=auth_headers).json()
     assert r["code"] == 0 and r["data"]["status"] == "DONE" and r["data"]["itemCount"] >= 1
     assert client.post(f"/api/v1/orientation/archives/{aid}/run", headers=auth_headers).json()["code"] != 0
+
+
+def test_student_xlsx_import_export(client, auth_headers, db_mode):
+    import base64
+    import io
+    from openpyxl import Workbook
+
+    tpl = client.get("/api/v1/orientation/students/import/template", headers=auth_headers)
+    assert tpl.status_code == 200 and tpl.content[:2] == b"PK"
+    adm = "LQ2026XLS0001"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["录取编号", "姓名", "身份证号", "录取专业", "联系电话", "班级"])
+    ws.append([adm, "导入测试生", "330102200801011234", "软件技术", "13800009999", "软件2601"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    up = client.post("/api/v1/orientation/students/import/xlsx", headers=auth_headers,
+                     files={"file": ("s.xlsx", buf.getvalue(),
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}).json()
+    assert up["code"] == 0 and up["data"]["validRows"] == 1
+    ok = client.post("/api/v1/orientation/students/import/confirm", headers=auth_headers,
+                     json={"rows": up["data"]["rows"]}).json()
+    assert ok["code"] == 0 and ok["data"]["created"] == 1
+    ex = client.post("/api/v1/orientation/students/export", headers=auth_headers,
+                     json={"purpose": "新生台账导出测试备案", "keyword": adm}).json()
+    assert ex["code"] == 0 and ex["data"]["filename"].endswith(".xlsx")
+    assert base64.b64decode(ex["data"]["contentBase64"])[:2] == b"PK"

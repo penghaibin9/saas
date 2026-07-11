@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import (GraduationAuditTrail, GraduationDefenseGroup, GraduationFinal,
+from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic)
 from app.services import graduation_student_service as gd_stu_svc
 from app.services.db_service import _iso, _mask_phone, _tid, session
@@ -858,9 +858,27 @@ def get_dashboard() -> dict:
             ]
         except Exception:  # noqa: BLE001 - 统计异常不影响看板主体
             module_stats = []
-        return {"batchName": "2026 届毕业设计批次", "batchRange": "2025-11-01 ~ 2026-06-30",
+        # 当前批次信息回真：优先取进行中(RUNNING)批次，否则取最近一个未作废批次；无批次时兜底
+        _BATCH_LABEL = {"DRAFT": "草稿", "RUNNING": "进行中", "CLOSED": "已结束",
+                        "ARCHIVED": "已归档", "VOIDED": "已作废"}
+        cur_batch = db.scalars(select(GraduationBatch).where(
+            GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False),
+            GraduationBatch.status == "RUNNING").order_by(GraduationBatch.id.desc())).first()
+        if not cur_batch:
+            cur_batch = db.scalars(select(GraduationBatch).where(
+                GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False),
+                GraduationBatch.status != "VOIDED").order_by(GraduationBatch.id.desc())).first()
+        if cur_batch:
+            _bs, _be = cur_batch.start_date, cur_batch.end_date
+            batch_range = " ~ ".join(d.strftime("%Y-%m-%d") for d in (_bs, _be) if d) \
+                or (cur_batch.academic_year or "")
+            batch_name = cur_batch.batch_name
+            batch_status = _BATCH_LABEL.get(cur_batch.status, cur_batch.status)
+        else:
+            batch_name, batch_range, batch_status = "暂无毕设批次", "", "未开始"
+        return {"batchName": batch_name, "batchRange": batch_range,
                 "moduleStats": module_stats,
-                "batchStatus": "进行中",
+                "batchStatus": batch_status,
                 "stats": [
                     {"label": "毕设学生", "value": str(total), "trend": "", "trendQuality": "neutral"},
                     {"label": "开题待审阅", "value": str(pend_prop),

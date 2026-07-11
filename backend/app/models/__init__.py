@@ -10,10 +10,13 @@ from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401
 from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAgreement,  # noqa: F401
-                                    InternshipAuditTrail, InternshipBatch,
+                                    InternshipArchive, InternshipAuditTrail, InternshipBatch,
                                     InternshipCheckin, InternshipEnterpriseEval,
                                     InternshipFinalScore, InternshipGuidance, InternshipLeave,
-                                    InternshipMakeup, InternshipRecord, InternshipScoreConfig,
+                                    InternshipMakeup, InternshipProcessReport, InternshipChangeRequest,
+                                    InternshipBatchPlan, InternshipPlanAck, InternshipPlanTaskProgress,
+                                    InternshipInsurance,
+                                    InternshipRecord, InternshipScoreConfig,
                                     InternshipStudentEval, InternshipVisit, RiskRecord, WeeklyReport)
 from app.models.internship_position import InternshipPosition  # noqa: F401  (岗位库·独立文件)
 from app.models.internship_match import InternshipIntention, InternshipMatch  # noqa: F401  (岗位匹配)

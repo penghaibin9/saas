@@ -10,6 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.config import settings
 from app.core.exceptions import no_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
@@ -56,5 +57,8 @@ def audit_logs(action: Optional[str] = Query(default=None),
 @alias_router.post("/mock-record", summary="写入一条演示审计记录（联调用）")
 def mock_record(user=Depends(get_current_user)):
     _ensure_staff(user)
+    # 【安全修复】联调用审计写入端点在生产环境禁用，避免任意教职工向审计队列注入记录。
+    if settings.is_prod:
+        raise no_permission("联调端点已在生产环境禁用")
     audit_log.record("MOCK", "demo", detail={"path": "/api/v1/audit/mock-record", "method": "POST"})
     return success({"recorded": True}, message="已写入内存审计队列（DB_ENABLED=true 后写 t_security_audit_log）")

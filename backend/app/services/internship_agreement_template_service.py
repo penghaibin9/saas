@@ -289,3 +289,132 @@ def set_default(template_id: str, on: bool = True) -> dict:
         db.commit()
         db.refresh(t)
         return _row(t, full=True)
+
+
+# ═══════════ 模板渲染 / 预览 / 导出 ═══════════
+
+def render_template_body(body: str | None, ctx: dict) -> str:
+    """将 {{key}} 占位符替换为上下文变量（未命中保留原占位）。"""
+    if not body:
+        return ""
+    out = body
+    for k, v in (ctx or {}).items():
+        out = out.replace("{{" + k + "}}", str(v if v is not None else ""))
+    return out
+
+
+def build_agreement_context(db, rec, stu) -> dict:
+    """按实习记录 + 学生主档组装协议变量字典。"""
+    from app.models import College, InternshipBatch, Major, SchoolClass, Tenant
+    class_name = major_name = college_name = ""
+    if stu:
+        if getattr(stu, "class_id", None):
+            cls = db.get(SchoolClass, stu.class_id)
+            class_name = cls.class_name if cls else ""
+        if not class_name and stu.grade:
+            class_name = f"{stu.grade}级"
+        if getattr(stu, "major_id", None):
+            m = db.get(Major, stu.major_id)
+            major_name = m.major_name if m else ""
+        if getattr(stu, "college_id", None):
+            c = db.get(College, stu.college_id)
+            college_name = c.college_name if c else ""
+    start = end = ""
+    if rec and rec.intern_start_date:
+        start = str(rec.intern_start_date)[:10]
+    elif rec and rec.batch_id:
+        b = db.get(InternshipBatch, rec.batch_id)
+        if b and b.start_date:
+            start = str(b.start_date)[:10]
+    if rec and rec.intern_end_date:
+        end = str(rec.intern_end_date)[:10]
+    elif rec and rec.batch_id:
+        b = db.get(InternshipBatch, rec.batch_id)
+        if b and b.end_date:
+            end = str(b.end_date)[:10]
+    period = f"{start} 至 {end}" if start and end else (start or end or "")
+    school_name = "本校"
+    tenant = db.get(Tenant, _tid())
+    if tenant and tenant.school_name:
+        school_name = tenant.school_name
+    return {
+        "studentName": stu.real_name if stu else "",
+        "studentNo": stu.student_no if stu else "",
+        "className": class_name,
+        "collegeName": college_name,
+        "majorName": major_name,
+        "companyName": (rec.enterprise_name if rec else "") or "",
+        "positionName": (rec.position_name if rec else "") or "",
+        "mentorName": (rec.enterprise_mentor_name if rec else "") or "",
+        "teacherName": (rec.advisor_name if rec else "") or "",
+        "internStartDate": start,
+        "internEndDate": end,
+        "internPeriod": period,
+        "schoolName": school_name,
+        "signDate": datetime.now().strftime("%Y-%m-%d"),
+    }
+
+
+def resolve_template_for_record(db, rec, stu, template_id=None):
+    """解析协议模板：显式 templateId 优先，否则取启用中的默认模板。"""
+    if template_id:
+        tpl = db.get(InternshipAgreementTemplate, int(template_id))
+        if not tpl or tpl.is_deleted or tpl.tenant_id != _tid():
+            raise not_found("协议模板不存在")
+        if tpl.status != "ENABLED":
+            raise AppException("STATUS_CONFLICT", "只能使用启用中的协议模板")
+        return tpl
+    q = select(InternshipAgreementTemplate).where(
+        InternshipAgreementTemplate.tenant_id == _tid(),
+        InternshipAgreementTemplate.is_deleted.is_(False),
+        InternshipAgreementTemplate.status == "ENABLED").order_by(
+        InternshipAgreementTemplate.is_default.desc(),
+        InternshipAgreementTemplate.id.desc())
+    return db.scalars(q).first()
+
+
+def list_enabled_options() -> list[dict]:
+    with session() as db:
+        rows = db.scalars(select(InternshipAgreementTemplate).where(
+            InternshipAgreementTemplate.tenant_id == _tid(),
+            InternshipAgreementTemplate.is_deleted.is_(False),
+            InternshipAgreementTemplate.status == "ENABLED").order_by(
+            InternshipAgreementTemplate.is_default.desc(),
+            InternshipAgreementTemplate.id.desc())).all()
+        return [{"id": str(r.id), "name": r.name, "category": r.category or "",
+                 "version": r.template_version, "isDefault": bool(r.is_default),
+                 "label": f"{r.name}（{r.template_version}）{' · 默认' if r.is_default else ''}"}
+                for r in rows]
+
+
+def preview_template(template_id: str, internship_id: str, user=None) -> dict:
+    from app.models import InternshipRecord, StudentProfile
+    from app.services.internship_service import _current_scope, _rec_in_scope
+    scope = _current_scope(user)
+    with session() as db:
+        tpl = _get(db, template_id)
+        rec = db.get(InternshipRecord, int(internship_id))
+        if not rec or rec.is_deleted or rec.tenant_id != _tid():
+            raise not_found("实习记录不存在")
+        stu = db.get(StudentProfile, rec.student_id)
+        if not _rec_in_scope(scope, db, rec, stu):
+            from app.core.exceptions import no_permission
+            raise no_permission("该实习记录不在你的数据范围内")
+        ctx = build_agreement_context(db, rec, stu)
+        rendered = render_template_body(tpl.body, ctx)
+        return {"templateId": str(tpl.id), "templateName": tpl.name,
+                "variables": ctx, "renderedBody": rendered}
+
+
+def export_templates(keyword=None, status=None, category=None) -> dict:
+    from app.services import xlsx_util
+    items, _ = list_templates(1, 100000, keyword=keyword, status=status, category=category)
+    headers = ["模板名称", "协议类型", "版本", "适用范围", "状态", "是否默认", "备注"]
+    rows = [[it["name"], it.get("category") or "", it.get("version") or "",
+             it.get("scopeSummary") or "", it.get("statusLabel") or "",
+             "是" if it.get("isDefault") else "否", it.get("remark") or ""]
+            for it in items]
+    wm = (f"岗位实习中心·协议模板台账 · 导出人：{_op_name()} · "
+          f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx("协议模板台账", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "协议模板台账.xlsx", len(items))

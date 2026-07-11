@@ -110,7 +110,12 @@ def list_peer(gd_student_id=None, status=None) -> list:
             q = q.where(GraduationPeerReview.gd_student_id == int(gd_student_id))
         if status:
             q = q.where(GraduationPeerReview.status == status)
-        return [_peer_row(db, p) for p in db.scalars(q.order_by(GraduationPeerReview.id.desc())).all()]
+        rows = db.scalars(q.order_by(GraduationPeerReview.id.desc())).all()
+        # 预热 session 身份映射：一次批量加载涉及学生，_peer_row 内的 db.get 变为缓存命中（消除 N+1）
+        _ids = {p.gd_student_id for p in rows} | {p.reviewer_gd_student_id for p in rows if p.reviewer_gd_student_id}
+        if _ids:
+            db.scalars(select(GraduationStudent).where(GraduationStudent.id.in_(_ids))).all()
+        return [_peer_row(db, p) for p in rows]
 
 
 def peer_stats() -> dict:
@@ -216,7 +221,12 @@ def list_appeals(status=None) -> list:
                                                GraduationGradeAppeal.is_deleted.is_(False))
         if status:
             q = q.where(GraduationGradeAppeal.status == status)
-        return [_appeal_row(db, a) for a in db.scalars(q.order_by(GraduationGradeAppeal.id.desc())).all()]
+        rows = db.scalars(q.order_by(GraduationGradeAppeal.id.desc())).all()
+        # 预热 session 身份映射：一次批量加载涉及学生，_appeal_row 内的 db.get 变为缓存命中（消除 N+1）
+        _ids = {a.gd_student_id for a in rows if a.gd_student_id}
+        if _ids:
+            db.scalars(select(GraduationStudent).where(GraduationStudent.id.in_(_ids))).all()
+        return [_appeal_row(db, a) for a in rows]
 
 
 def review_appeal(aid, action, comment=None) -> dict:

@@ -1,7 +1,7 @@
 """体验沙箱租户（sandbox-school）种子与重置 —— 脚本与每晚 0 点定时任务共用同一实现。
 ────────────────────────────────────────────────────────────
 安全边界（写死，不接受参数覆盖）：
-- 只操作 tenant_id == SANDBOX_TID（1000000000000000007）的行；
+- 只操作 tenant_id == SANDBOX_TID（1000000000000000004）的行；
 - 保留 t_tenant / t_tenant_brand_config 行（租户身份不删）；
 - 绝不无租户条件删除、绝不 truncate、绝不触碰 demo-school 与正式租户。
 """
@@ -14,7 +14,9 @@ from sqlalchemy import delete, func, select
 
 logger = logging.getLogger("app.sandbox")
 
-SANDBOX_TID = 1000000000000000007
+# 修正（2026-07-11）：沙箱真实租户为 ...004（见 scripts/_seed_two_tenants.py 与数据库），
+# 原值 ...007 与库不符，导致每晚重置打到不存在的租户、真实沙箱 ...004 从不被清理。
+SANDBOX_TID = 1000000000000000004
 SANDBOX_CODE = "sandbox-school"
 SANDBOX_NAME = "体验沙箱学校"
 DEMO_TID = 1000000000000000003  # 保护对象：任何情况下不得删除
@@ -89,7 +91,7 @@ def seed_sandbox(db) -> dict:
     """沙箱租户全量种子（幂等；重置后重建基础组织/账号/教师范围/六域最小数据）。"""
     from app.core.security import hash_password
     from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, College, CsLeave,
-                            CsServiceStudent, EmpJob, EmpStudent, GraduationProposal,
+                            CsServiceStudent, EmpJob, EmpStudent, GraduationBatch, GraduationProposal,
                             GraduationStudent, InternshipRecord, Major, OrientationStudent,
                             SchoolClass, StudentContact, StudentProfile, TeacherStudentScope,
                             Tenant, TenantBrandConfig, UnifiedMessage, UnifiedTodo, User,
@@ -186,7 +188,13 @@ def seed_sandbox(db) -> dict:
                             work_content="体验周报：熟悉店铺后台与商品上架流程。",
                             status="PENDING_REVIEW", word_count=20, report_version=1,
                             submitted_at=now - timedelta(days=1)))
-        gd = GraduationStudent(tenant_id=SANDBOX_TID, name=SBX_STUDENT_NAME, student_no=SBX_STUDENT_NO,
+        gbatch = GraduationBatch(tenant_id=SANDBOX_TID, batch_name="2026 届毕业设计", batch_no="GD2026",
+                                 academic_year="2025-2026", grade_year="2026届", planned_count=6,
+                                 status="RUNNING", start_date=datetime(2025, 11, 1),
+                                 end_date=datetime(2026, 6, 30), archive_status="NOT_ARCHIVED")
+        db.add(gbatch); db.flush()
+        gd = GraduationStudent(tenant_id=SANDBOX_TID, batch_id=gbatch.id, name=SBX_STUDENT_NAME,
+                               student_no=SBX_STUDENT_NO,
                                class_name=SBX_CLASS, topic_title="社区团购运营方案设计",
                                topic_source="学生自拟", advisor_name=SBX_TEACHER_NAME,
                                stage="PROPOSAL", risk_level="LOW", record_status="ACTIVE")

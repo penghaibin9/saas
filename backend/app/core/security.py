@@ -23,7 +23,9 @@ from app.core.exceptions import AppException, no_permission, unauthorized
 
 def assert_secret_safe() -> None:
     """生产环境禁止默认 JWT 密钥（JWT_SECRET_KEY/JWT_SECRET 必须来自环境变量）。"""
-    if settings.APP_ENV in ("prod", "production"):
+    # 【安全修复 P1-5】口径统一为 settings.is_prod（同时识别 APP_ENV/ENV/ENVIRONMENT），
+    # 避免仅以 ENV=production 部署时窄口径判定跳过、沿用默认弱密钥启动。
+    if settings.is_prod:
         weak = {"change-me-in-production", "school-lifecycle-dev-secret-change-me-please-32", ""}
         if settings.jwt_secret in weak or len(settings.jwt_secret) < 32:
             raise RuntimeError("生产环境必须通过环境变量设置 ≥32 位随机 JWT_SECRET_KEY")

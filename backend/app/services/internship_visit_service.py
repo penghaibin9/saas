@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipRecord, InternshipVisit, StudentProfile)
@@ -168,3 +168,29 @@ def export_visits(keyword=None, user=None) -> dict:
     wm = f"岗位实习中心·巡访记录台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
     content = xlsx_util.build_ledger_xlsx("巡访记录台账", headers, rows, watermark=wm)
     return xlsx_util.pack_xlsx_result(content, "巡访记录台账.xlsx", len(items))
+
+
+def visit_stats(user=None) -> dict:
+    """巡访整改统计：待整改 / 已整改 / 无需整改。"""
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        rows = db.scalars(select(InternshipVisit).where(
+            InternshipVisit.tenant_id == _tid(), InternshipVisit.is_deleted.is_(False))).all()
+        pending, done, none_cnt, total = 0, 0, 0, 0
+        for v in rows:
+            rec, stu = _ctx(db, v)
+            if not in_scope(scope, db, rec, stu):
+                continue
+            total += 1
+            if v.rectify_status == "PENDING":
+                pending += 1
+            elif v.rectify_status == "DONE":
+                done += 1
+            else:
+                none_cnt += 1
+        return {
+            "totalVisits": total,
+            "pendingRectify": pending,
+            "doneRectify": done,
+            "noRectifyNeeded": none_cnt,
+        }

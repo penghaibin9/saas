@@ -1,6 +1,8 @@
 """数字迎新域真实数据服务。租户过滤 + is_deleted + 脱敏 + 审计留痕。"""
 from __future__ import annotations
 
+import re
+import uuid
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -42,6 +44,13 @@ REGISTRATION_STEPS = [
     {"key": "CHECKIN", "label": "现场报到"},
     {"key": "CONFIRM", "label": "学院确认"},
 ]
+
+CLASS_LABELS = {
+    "NCL01": "软件2601班",
+    "NCL02": "软件2602班",
+    "NCL03": "大数据2601班",
+    "NCL04": "机电2601班",
+}
 
 
 def _default_steps_json() -> dict:
@@ -174,9 +183,11 @@ def create_student(body: dict) -> dict:
             OrientationStudent.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", f"录取编号 {adm} 已存在")
+        class_id = body.get("classId")
+        class_name = body.get("className") or CLASS_LABELS.get(class_id or "")
         s = OrientationStudent(
             tenant_id=_tid(), name=name, admission_no=adm, major_name=body.get("majorName"),
-            class_id=body.get("classId"), class_name=body.get("className"),
+            class_id=class_id, class_name=class_name,
             phone_encrypted=body.get("phone"), id_card_encrypted=body.get("idCard"),
             origin=body.get("origin"), counselor=body.get("counselor"),
             stage="ADMITTED", report_status="NOT_REPORTED",
@@ -191,6 +202,8 @@ def create_student(body: dict) -> dict:
 def update_student(sid, body: dict) -> dict:
     with session() as db:
         s = _get_student(db, sid)
+        if body.get("classId") is not None and not body.get("className"):
+            body["className"] = CLASS_LABELS.get(body.get("classId") or "", "")
         field_map = {
             "name": "name", "majorName": "major_name", "classId": "class_id",
             "className": "class_name", "origin": "origin", "counselor": "counselor",
@@ -206,6 +219,42 @@ def update_student(sid, body: dict) -> dict:
         _audit(db, "STUDENT", s.id, "编辑报到信息")
         db.commit()
         return {"id": str(s.id)}
+
+
+def _active_students_by_ids(db, ids: list[str]) -> list[OrientationStudent]:
+    clean_ids = [int(x) for x in ids or [] if str(x).isdigit()]
+    if not clean_ids:
+        return []
+    return db.scalars(select(OrientationStudent).where(
+        OrientationStudent.tenant_id == _tid(),
+        OrientationStudent.id.in_(clean_ids),
+        OrientationStudent.is_deleted.is_(False),
+        OrientationStudent.record_status == "ACTIVE")).all()
+
+
+def batch_remind_students(ids: list[str], message: str = "") -> dict:
+    text = (message or "迎新报到提醒").strip()
+    with session() as db:
+        rows = _active_students_by_ids(db, ids)
+        for s in rows:
+            _audit(db, "STUDENT", s.id, "批量提醒新生", text)
+        db.commit()
+        return {"count": len(rows)}
+
+
+def batch_assign_counselor(ids: list[str], counselor: str) -> dict:
+    name = (counselor or "").strip()
+    if not name:
+        raise AppException("VALIDATION_ERROR", "辅导员姓名必填")
+    with session() as db:
+        rows = _active_students_by_ids(db, ids)
+        for s in rows:
+            before = s.counselor or ""
+            s.counselor = name
+            s.version += 1
+            _audit(db, "STUDENT", s.id, "批量分配辅导员", before=before, after=name)
+        db.commit()
+        return {"count": len(rows), "counselor": name}
 
 
 def void_student(sid, reason: str) -> dict:
@@ -1154,3 +1203,114 @@ def run_archive(aid):
         _audit(db, "ARCHIVE", a.id, "执行归档", after="DONE", detail=f"归档 {cnt} 名新生")
         db.commit()
         return {"id": str(a.id), "status": a.status, "itemCount": int(cnt)}
+
+
+# ═══ 新生导入 / 导出（Excel/xlsx）═══
+
+_ID_CARD_RE = re.compile(r"^(\d{15}|\d{17}[\dXx])$")
+
+
+def _validate_id_card(v: str) -> str | None:
+    if not v:
+        return None
+    if not _ID_CARD_RE.match(v.strip()):
+        return "身份证号格式不合法（15 或 18 位）"
+    return None
+
+
+def import_students_dry_run(rows: list[dict]) -> dict:
+    """新生 Excel/粘贴导入预校验：录取编号、姓名必填；批内+库内录取编号去重。"""
+    with session() as db:
+        existing = {s.admission_no for s in db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.is_deleted.is_(False))).all()}
+        errors, seen, valid = [], set(), 0
+        for i, r in enumerate(rows or []):
+            row_no = i + 1
+            adm = (r.get("admissionNo") or "").strip()
+            name = (r.get("name") or "").strip()
+            id_card = (r.get("idCard") or "").strip()
+            major = (r.get("majorName") or "").strip()
+            if not adm:
+                errors.append({"rowNo": row_no, "field": "admissionNo", "message": "录取编号必填"})
+                continue
+            if not name:
+                errors.append({"rowNo": row_no, "field": "name", "message": "姓名必填"})
+                continue
+            if not major:
+                errors.append({"rowNo": row_no, "field": "majorName", "message": "录取专业必填"})
+                continue
+            id_err = _validate_id_card(id_card)
+            if id_err:
+                errors.append({"rowNo": row_no, "field": "idCard", "message": id_err})
+                continue
+            if adm in existing:
+                errors.append({"rowNo": row_no, "field": "admissionNo",
+                               "message": f"录取编号库内已存在：{adm}"})
+                continue
+            if adm in seen:
+                errors.append({"rowNo": row_no, "field": "admissionNo",
+                               "message": f"文件内录取编号重复：{adm}"})
+                continue
+            seen.add(adm)
+            valid += 1
+        return {"total": len(rows or []), "validRows": valid,
+                "invalidRows": len(errors), "errors": errors}
+
+
+def import_students_confirm(rows: list[dict]) -> dict:
+    pre = import_students_dry_run(rows)
+    if pre["invalidRows"] > 0:
+        raise AppException("DATA_CONFLICT", "存在未通过预校验的行，禁止确认导入")
+    receipt_id = f"ORI-IMP-{uuid.uuid4().hex[:12].upper()}"
+    with session() as db:
+        created = 0
+        for r in rows or []:
+            s = OrientationStudent(
+                tenant_id=_tid(),
+                name=(r.get("name") or "").strip(),
+                admission_no=(r.get("admissionNo") or "").strip(),
+                major_name=(r.get("majorName") or "").strip() or None,
+                class_name=(r.get("className") or "").strip() or None,
+                phone_encrypted=(r.get("phone") or "").strip() or None,
+                id_card_encrypted=(r.get("idCard") or "").strip() or None,
+                stage="ADMITTED", report_status="NOT_REPORTED",
+                steps_json=_default_steps_json())
+            db.add(s)
+            db.flush()
+            _audit(db, "STUDENT", s.id, "Excel导入新生", detail=f"{s.name}（{s.admission_no}）")
+            created += 1
+        db.commit()
+        return {"created": created, "imported": created, "receiptId": receipt_id}
+
+
+def export_students_xlsx(keyword=None, class_id=None, stage=None, report_status=None,
+                         payment_status=None, risk_level=None, purpose: str = "",
+                         mask: bool = True) -> dict:
+    """新生台账 Excel 导出（按筛选；敏感字段脱敏 + 水印）。"""
+    from app.services import xlsx_util
+
+    if not purpose or len(purpose.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填且不少于 5 字")
+    items, total = list_students(1, 5000, keyword=keyword, class_id=class_id, stage=stage,
+                                 report_status=report_status, payment_status=payment_status,
+                                 risk_level=risk_level)
+    headers = ["姓名", "录取编号", "录取专业", "班级", "学生阶段", "报到状态", "缴费状态",
+               "宿舍状态", "风险等级", "手机号", "身份证号"]
+    data_rows = []
+    for it in items:
+        phone = it["phone"] if mask else (it.get("phonePlain") or it["phone"])
+        idc = it["idCard"] if mask else (it.get("idCardPlain") or it["idCard"])
+        data_rows.append([
+            it["name"], it["admissionNo"], it["majorName"], it["className"],
+            it["stageLabel"], it["reportStatusLabel"], it["paymentStatusLabel"],
+            it["dormStatusLabel"], it["riskLabel"], phone, idc])
+    user = get_current_user_ctx() or {}
+    wm = (f"数字迎新·新生台账 · 导出人：{user.get('realName', '-')} · "
+          f"{datetime.now():%Y-%m-%d %H:%M} · 用途：{purpose.strip()} · 敏感字段已脱敏")
+    content = xlsx_util.build_ledger_xlsx("新生台账", headers, data_rows, watermark=wm)
+    packed = xlsx_util.pack_xlsx_result(content, "新生台账.xlsx", total)
+    packed["auditId"] = f"ORI-EXP-{uuid.uuid4().hex[:10].upper()}"
+    packed["watermarkText"] = wm
+    packed["purpose"] = purpose.strip()
+    return packed

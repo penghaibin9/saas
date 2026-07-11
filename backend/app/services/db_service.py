@@ -14,8 +14,10 @@ from sqlalchemy import func, select
 from app.core.context import current_tenant_id, get_current_user_ctx, get_request_meta, get_trace_id
 from app.core.exceptions import AppException, not_found
 from app.db.session import get_sessionmaker
-from app.models import (SecurityAuditLog, StudentContact, StudentProfile, StudentStageEvent,
-                        UnifiedMessage, UnifiedTodo, WorkflowInstance, WorkflowTask)
+from app.models import (CsDiscipline, CsGrant, CsLeave, CsMentalRecord, CsServiceStudent,
+                        FamilyContactLog, SecurityAuditLog, StudentContact, StudentProfile,
+                        StudentStageEvent, UnifiedMessage, UnifiedTodo, WorkflowInstance,
+                        WorkflowTask)
 
 DEFAULT_TENANT = 1000000000000000001
 
@@ -216,6 +218,56 @@ def get_risk_summary(student_id) -> dict:
     return {"studentId": row["id"], "riskLevel": level,
             "signals": [] if level == "NONE" else [{"type": "GENERAL", "title": "存在风险信号（演示）",
                                                     "level": level, "occurredAt": row["updatedAt"]}]}
+
+
+def get_affairs_summary(student_id) -> dict:
+    """学生360·学工摘要：跨域聚合请假/奖助/违纪/宿舍/心理/家校（只出计数与状态，涉密明细不返回）。
+
+    关联口径：CsServiceStudent.student_id == 学生主档.id → 取其 id 作 cs_student_id；
+    请假/家校另有直连 student_id。全部 tenant 过滤，逻辑删除排除，越权（不在数据范围）由 _get_profile 拦。
+    """
+    with session() as db:
+        s = _get_profile(db, student_id)
+        cs_rows = db.scalars(select(CsServiceStudent).where(
+            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.student_id == s.id,
+            CsServiceStudent.is_deleted.is_(False))).all()
+        cs_ids = [c.id for c in cs_rows]
+        cs0 = cs_rows[0] if cs_rows else None
+
+        def _cnt(model, *conds):
+            return int(db.scalar(select(func.count()).select_from(model).where(
+                model.tenant_id == _tid(), model.is_deleted.is_(False), *conds)) or 0)
+
+        # 请假（CsLeave 直连 student_id）
+        leave_total = _cnt(CsLeave, CsLeave.student_id == s.id)
+        leave_pending = _cnt(CsLeave, CsLeave.student_id == s.id,
+                             CsLeave.status == "PENDING_REVIEW")
+        # 奖助（经 cs_student_id）
+        grant_total = _cnt(CsGrant, CsGrant.cs_student_id.in_(cs_ids)) if cs_ids else 0
+        grant_amount = 0.0
+        if cs_ids:
+            grant_amount = float(db.scalar(select(func.coalesce(func.sum(CsGrant.amount), 0)).where(
+                CsGrant.tenant_id == _tid(), CsGrant.is_deleted.is_(False),
+                CsGrant.cs_student_id.in_(cs_ids), CsGrant.status == "APPROVED")) or 0)
+        # 违纪处分（生效中）
+        disc_total = _cnt(CsDiscipline, CsDiscipline.cs_student_id.in_(cs_ids),
+                          CsDiscipline.record_status == "ACTIVE") if cs_ids else 0
+        # 心理关注（只出计数与关注旗标，辅导员备注涉密不返回）
+        mental_total = _cnt(CsMentalRecord, CsMentalRecord.cs_student_id.in_(cs_ids)) if cs_ids else 0
+        # 家校联系（append-only，无逻辑删除列，直连 student_id）
+        family_total = int(db.scalar(select(func.count()).select_from(FamilyContactLog).where(
+            FamilyContactLog.tenant_id == _tid(), FamilyContactLog.student_id == s.id)) or 0)
+        return {
+            "studentId": str(s.id),
+            "leave": {"total": leave_total, "pending": leave_pending},
+            "grant": {"total": grant_total, "approvedAmount": grant_amount},
+            "discipline": {"total": disc_total},
+            "dorm": {"building": (cs0.building if cs0 else "") or "",
+                     "room": (cs0.room if cs0 else "") or ""},
+            "mental": {"total": mental_total, "flag": bool(cs0.mental_flag) if cs0 else False,
+                       "careLevel": (cs0.care_level if cs0 else "NORMAL")},
+            "family": {"total": family_total},
+        }
 
 
 # ═══════════ 审批任务 ═══════════

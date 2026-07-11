@@ -139,15 +139,41 @@ export async function enrichAcademic(mock) {
 export async function enrichInternship(mock) {
   const r = await realRequest('/mobile/internship/my')
   if (!r || !r.hasData) return { ...mock, hasBatch: false, _real: false }
+  const reports = r.weeklyReports || []
+  const latest = reports[0]
+  let weekNo = 1
+  let submitted = false
+  let lastFeedback = ''
+  if (latest && latest.week != null) {
+    const st = latest.status
+    lastFeedback = latest.reviewComment || ''
+    if (st === 'RETURNED') {
+      weekNo = Number(latest.week)
+      submitted = false
+    } else if (st === 'APPROVED') {
+      weekNo = Number(latest.week) + 1
+      submitted = false
+    } else {
+      weekNo = Number(latest.week)
+      submitted = ['PENDING_REVIEW', 'APPROVED'].includes(st)
+    }
+  }
   const out = { ...mock, hasBatch: true, company: r.enterpriseName || mock.company,
     post: r.positionName || mock.post, schoolMentor: r.advisorName || mock.schoolMentor,
     statusText: r.status, riskLevel: r.riskLevel,
-    weeklyList: r.weeklyReports || [], checkinExceptions: r.attendanceExceptions || [], _real: true }
+    weeklyList: reports, checkinExceptions: r.attendanceExceptions || [], _real: true,
+    weekly: {
+      ...(mock.weekly || {}),
+      week: `第 ${weekNo} 周`,
+      submitted,
+      lastFeedback: lastFeedback || (mock.weekly && mock.weekly.lastFeedback) || ''
+    } }
   // 真实打卡状态覆盖 mock 骨架
   if (r.todayCheckin) {
     out.checkin = { ...(mock.checkin || {}), done: !!r.todayCheckin.done,
       time: r.todayCheckin.time || '', totalDays: r.todayCheckin.totalDays || 0 }
-    out.status = { ...(mock.status || {}), todayCheckin: r.todayCheckin.done ? 'COMPLETED' : 'PENDING' }
+    out.status = { ...(mock.status || {}), todayCheckin: r.todayCheckin.done ? 'COMPLETED' : 'PENDING',
+      weekly: submitted ? 'COMPLETED' : (mock.status && mock.status.weekly) || 'PENDING_SUBMIT' }
   }
   return out
 }
@@ -157,8 +183,50 @@ export async function enrichGraduation(mock) {
   if (!r || !r.hasData) return { ...mock, hasBatch: false, _real: false }
   return { ...mock, hasBatch: true, topic: r.topicTitle || mock.topic, mentor: r.advisorName || mock.mentor,
     stage: r.stage, defenseGroup: r.defenseGroup, plagiarismRate: r.plagiarismRate,
+    hasTopic: !!r.topicTitle && r.topicTitle !== '（未选题）',
     proposals: r.proposals || [], finals: r.finals || [], _real: true }
 }
+
+/* ══════════ 选题管理：浏览题目库 / 提交志愿 / 课题变更申请（学生自服务，真实接口，不 mock 冒充） ══════════ */
+
+export const gdTopics = () => realRequest('/mobile/graduation/topics')
+export const gdActiveRound = () => realRequest('/mobile/graduation/active-round')
+export const gdSubmitChoices = (roundId, choices) =>
+  realRequest('/mobile/graduation/choices', { method: 'POST', data: { roundId, choices } })
+export const gdWithdrawChoices = (roundId) =>
+  realRequest('/mobile/graduation/withdraw-choices', { method: 'POST', data: { roundId } })
+export const gdRequestChange = (newTopicId, reason) =>
+  realRequest('/mobile/graduation/change-request', { method: 'POST', data: { newTopicId, reason } })
+export const gdMyChangeRequests = () => realRequest('/mobile/graduation/change-requests/my')
+
+/* ══════════ 过程指导：任务书 / 中期检查 / 成绩（学生自服务，真实接口，不 mock 冒充） ══════════ */
+
+export const gdProposal = () => realRequest('/mobile/graduation/proposal')
+export const gdSubmitProposal = (data) =>
+  realRequest('/mobile/graduation/proposal', { method: 'POST', data })
+export const gdFinal = () => realRequest('/mobile/graduation/final')
+export const gdSubmitFinal = (data) =>
+  realRequest('/mobile/graduation/final', { method: 'POST', data })
+export const gdTaskbook = () => realRequest('/mobile/graduation/taskbook')
+export const gdTaskbookConfirm = () => realRequest('/mobile/graduation/taskbook/confirm', { method: 'POST' })
+export const gdMidterm = () => realRequest('/mobile/graduation/midterm')
+export const gdMidtermRectify = (content) =>
+  realRequest('/mobile/graduation/midterm/rectify', { method: 'POST', data: { content } })
+export const gdDefense = () => realRequest('/mobile/graduation/defense')
+export const gdGradeAppeal = (reason) =>
+  realRequest('/mobile/graduation/grade/appeal', { method: 'POST', data: { reason } })
+export const gdPeerTasks = () => realRequest('/mobile/graduation/peer-tasks')
+export const gdPeerSubmit = (pid, opinion) =>
+  realRequest(`/mobile/graduation/peer/${pid}/submit`, { method: 'POST', data: { opinion } })
+export const gdPeerRectify = (pid, note) =>
+  realRequest(`/mobile/graduation/peer/${pid}/rectify`, { method: 'POST', data: { note } })
+export const gdGrade = () => realRequest('/mobile/graduation/grade')
+
+/* ══════════ 过程指导：教师端本人指导学生 + 快速新增指导记录 ══════════ */
+
+export const gdTeacherMyStudents = () => realRequest('/mobile/teacher/graduation/my-students')
+export const gdTeacherGuidanceCreate = (gdStudentId, body) =>
+  realRequest(`/mobile/teacher/graduation/${gdStudentId}/guidance`, { method: 'POST', data: body })
 
 export async function enrichEmployment(mock) {
   const r = await realRequest('/mobile/employment/my')
@@ -204,6 +272,59 @@ export const submitWeeklyReport = (body) =>
 /** 实习每日打卡（真实落库，一天一次，409=今日已打） */
 export const submitCheckin = (body) =>
   realRequest('/mobile/internship/checkin', { method: 'POST', data: body || {} })
+
+/** 本人三方协议列表 / 详情 / 确认（含渲染正文，业务错误透出） */
+export const internshipAgreements = () => realRequest('/mobile/internship/agreements')
+export const internshipAgreementDetail = (id) =>
+  realRequest(`/mobile/internship/agreements/${id}`)
+export const confirmInternshipAgreement = (id, body) =>
+  realRequest(`/mobile/internship/agreements/${id}/confirm`, { method: 'POST', data: body })
+
+export const internshipLeaves = () => realRequest('/mobile/internship/leaves')
+export const applyInternshipLeave = (body) =>
+  realRequest('/mobile/internship/leave', { method: 'POST', data: body })
+export const withdrawInternshipLeave = (id) =>
+  realRequest(`/mobile/internship/leave/${id}/withdraw`, { method: 'POST' })
+
+export const internshipSelfEval = () => realRequest('/mobile/internship/self-eval')
+export const submitInternshipSelfEval = (body) =>
+  realRequest('/mobile/internship/self-eval', { method: 'POST', data: body })
+
+/** 本人实习意向：查看 / 保存草稿 / 提交 / 撤回 */
+export const internshipIntentionMy = () => realRequest('/mobile/internship/intention')
+export const saveInternshipIntention = (body) =>
+  realRequest('/mobile/internship/intention', { method: 'PUT', data: body })
+export const submitInternshipIntention = () =>
+  realRequest('/mobile/internship/intention/submit', { method: 'POST' })
+export const withdrawInternshipIntention = () =>
+  realRequest('/mobile/internship/intention/withdraw', { method: 'POST' })
+
+export const submitProcessReport = (body) =>
+  realRequest('/mobile/internship/process-report', { method: 'POST', data: body })
+
+export const internshipChangeRequests = () => realRequest('/mobile/internship/change-requests')
+
+export const applyInternshipChange = (body) =>
+  realRequest('/mobile/internship/change-request', { method: 'POST', data: body })
+
+export const withdrawInternshipChange = (id) =>
+  realRequest(`/mobile/internship/change-request/${id}/withdraw`, { method: 'POST' })
+
+export const submitInternshipInsurance = (body) =>
+  realRequest('/mobile/internship/insurance', { method: 'POST', data: body })
+
+export const internshipPlanMy = () => realRequest('/mobile/internship/plan')
+export const ackInternshipPlan = () => realRequest('/mobile/internship/plan/acknowledge', { method: 'POST' })
+export const internshipPlanTasksMy = () => realRequest('/mobile/internship/plan/tasks')
+export const submitInternshipPlanTask = (sortOrder, body) =>
+  realRequest(`/mobile/internship/plan/tasks/${sortOrder}/submit`, { method: 'POST', data: body })
+export const internshipInsuranceMy = () => realRequest('/mobile/internship/insurance')
+export const signInternshipAgreementEsign = (id) =>
+  realRequest(`/mobile/internship/agreements/${id}/esign/sign`, { method: 'POST' })
+
+/** 教师·逾期未交周报催交 */
+export const remindWeeklyReal = (reportId) =>
+  realRequest(`/mobile/teacher/internship/weekly/${reportId}/remind`, { method: 'POST' })
 
 /** 标记本人消息已读（严格本人校验） */
 export const markMessageRead = (id) =>
@@ -320,6 +441,9 @@ export async function teacherGraduationReal(mock) {
   return { list: list.length ? list : (mock.list || []),
     detail: Object.keys(detail).length ? detail : (mock.detail || {}), _real: true }
 }
+
+/** 教师·移动端快速新增指导记录（仅本人指导学生，越权由后端 403 拦截）。 */
+export const teacherGraduationGuidanceCreate = (gdStudentId, body) => gdTeacherGuidanceCreate(gdStudentId, body)
 
 /** 教师·就业跟进页 → {stats, tabs, list, jobs}。 */
 export async function teacherEmploymentReal(mock) {

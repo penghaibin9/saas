@@ -133,3 +133,34 @@ def test_intention_import_dry_run(client, auth_headers, db_mode):
         ],
     }).json()
     assert dry["code"] == 0 and dry["data"]["validRows"] == 1 and dry["data"]["invalidRows"] == 2
+
+
+def _mobile_student(sno):
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{sno}", "realName": "匹配学生", "userType": "STUDENT", "tid": "x",
+        "tenantId": "1000000000000000001", "studentNo": sno, "currentRoleCode": "STUDENT", "clientType": "MP"})}
+
+
+def test_mobile_intention_self_service(client, auth_headers, db_mode):
+    sno = "S-MATCH-MOB-001"
+    sid = _student(client, auth_headers, sno)
+    rid = _record(client, auth_headers, sid)
+    assert rid
+    h = _mobile_student(sno)
+    mb = "/api/v1/mobile/internship/intention"
+    empty = client.get(mb, headers=h).json()
+    assert empty["code"] == 0 and empty["data"]["hasData"] is True
+    assert empty["data"]["intention"] is None
+    save = client.put(mb, headers=h, json={
+        "preferredCity": "杭州", "preferredIndustry": "软件", "intentionNote": "希望做后端开发",
+    }).json()
+    assert save["code"] == 0 and save["data"]["status"] == "DRAFT"
+    sub = client.post(f"{mb}/submit", headers=h).json()
+    assert sub["code"] == 0 and sub["data"]["status"] == "SUBMITTED"
+    got = client.get(mb, headers=h).json()
+    assert got["data"]["intention"]["status"] == "SUBMITTED"
+    wd = client.post(f"{mb}/withdraw", headers=h).json()
+    assert wd["code"] == 0 and wd["data"]["status"] == "WITHDRAWN"
+    again = client.put(mb, headers=h, json={"preferredCity": "上海"}).json()
+    assert again["code"] == 0 and again["data"]["status"] == "DRAFT"

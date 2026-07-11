@@ -113,3 +113,37 @@ def test_stats(client, auth_headers, db_mode):
 def test_not_found(client, auth_headers, db_mode):
     assert client.get(f"{BASE}/99999999", headers=auth_headers).json()["code"] != 0
     assert client.put(f"{BASE}/99999999", headers=auth_headers, json={"name": "X"}).json()["code"] != 0
+
+
+def test_export_and_options(client, auth_headers, db_mode):
+    tid = _mk(client, auth_headers)["data"]["id"]
+    _enable(client, auth_headers, tid)
+    opts = client.get(f"{BASE}/options", headers=auth_headers).json()
+    assert opts["code"] == 0 and any(x["id"] == tid for x in opts["data"])
+    exp = client.post(f"{BASE}/export", headers=auth_headers).json()
+    assert exp["code"] == 0 and exp["data"]["contentBase64"]
+
+
+def test_preview_render(client, auth_headers, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentProfile
+    TID = 1000000000000000001
+    db = get_sessionmaker()()
+    try:
+        s = StudentProfile(tenant_id=TID, student_no="TPL-PV", real_name="预览生",
+                           current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
+        db.add(s); db.flush()
+        r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name="刘强",
+                             enterprise_name="华信公司", position_name="开发岗", status="ONBOARD")
+        db.add(r); db.flush()
+        rec_id = r.id
+        db.commit()
+    finally:
+        db.close()
+    tid = _mk(client, auth_headers, body="学生{{studentName}}企业{{companyName}}")["data"]["id"]
+    _enable(client, auth_headers, tid)
+    pv = client.post(f"{BASE}/{tid}/preview", headers=auth_headers,
+                     json={"internshipId": str(rec_id)}).json()
+    assert pv["code"] == 0
+    assert "预览生" in pv["data"]["renderedBody"]
+    assert "华信公司" in pv["data"]["renderedBody"]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipGuidance, InternshipRecord, StudentProfile)
@@ -197,3 +197,147 @@ def export_guidances(keyword=None, user=None) -> dict:
     wm = f"岗位实习中心·指导记录台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
     content = xlsx_util.build_ledger_xlsx("指导记录台账", headers, rows, watermark=wm)
     return xlsx_util.pack_xlsx_result(content, "指导记录台账.xlsx", len(items))
+
+
+PLAN_STATUS_LABEL = {
+    "OK": "达标",
+    "INSUFFICIENT_MONTH": "本月不足",
+    "INSUFFICIENT_TERM": "学期不足",
+    "INSUFFICIENT_BOTH": "月/学期均不足",
+}
+
+
+def _batch_guidance_rules(db, batch_id):
+    from app.models import InternshipBatch
+    from app.services.internship_service import DEFAULT_RULES
+    rules = DEFAULT_RULES.get("guidance") or {}
+    if batch_id:
+        b = db.get(InternshipBatch, batch_id)
+        if b and b.rules_config and b.rules_config.get("guidance"):
+            rules = {**rules, **b.rules_config["guidance"]}
+    return {
+        "minVisitsPerTerm": int(rules.get("minVisitsPerTerm") or 2),
+        "minCommunicationsPerMonth": int(rules.get("minCommunicationsPerMonth") or 2),
+    }
+
+
+def _month_start_utc():
+    now = datetime.utcnow()
+    return datetime(now.year, now.month, 1)
+
+
+def _plan_status(month_cnt, term_cnt, min_month, min_term):
+    month_ok = month_cnt >= min_month
+    term_ok = term_cnt >= min_term
+    if month_ok and term_ok:
+        return "OK"
+    if not month_ok and not term_ok:
+        return "INSUFFICIENT_BOTH"
+    if not month_ok:
+        return "INSUFFICIENT_MONTH"
+    return "INSUFFICIENT_TERM"
+
+
+def list_guidance_plans(page, page_size, keyword=None, plan_status=None, insufficient_only=False,
+                        user=None) -> tuple[list[dict], int]:
+    """指导计划台账：按批次规则对比学生指导频次与下次跟进。"""
+    from app.models import InternshipRecord
+    scope, in_scope = _scope_ctx(user)
+    month_start = _month_start_utc()
+    with session() as db:
+        recs = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.status.in_(("ONBOARD", "ASSESSING", "READY")))).all()
+        items = []
+        for rec in recs:
+            stu = db.get(StudentProfile, rec.student_id)
+            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
+                continue
+            if not in_scope(scope, db, rec, stu):
+                continue
+            rules = _batch_guidance_rules(db, rec.batch_id)
+            min_month = rules["minCommunicationsPerMonth"]
+            min_term = rules["minVisitsPerTerm"]
+            term_cnt = int(db.scalar(select(func.count()).select_from(InternshipGuidance).where(
+                InternshipGuidance.tenant_id == _tid(), InternshipGuidance.internship_id == rec.id,
+                InternshipGuidance.is_deleted.is_(False))) or 0)
+            month_cnt = int(db.scalar(select(func.count()).select_from(InternshipGuidance).where(
+                InternshipGuidance.tenant_id == _tid(), InternshipGuidance.internship_id == rec.id,
+                InternshipGuidance.is_deleted.is_(False),
+                InternshipGuidance.created_at >= month_start)) or 0)
+            latest = db.scalars(select(InternshipGuidance).where(
+                InternshipGuidance.tenant_id == _tid(), InternshipGuidance.internship_id == rec.id,
+                InternshipGuidance.is_deleted.is_(False)).order_by(InternshipGuidance.id.desc())).first()
+            status = _plan_status(month_cnt, term_cnt, min_month, min_term)
+            if insufficient_only and status == "OK":
+                continue
+            if plan_status and status != plan_status:
+                continue
+            items.append({
+                "internId": str(rec.id),
+                "studentName": stu.real_name if stu else "-",
+                "studentNo": stu.student_no if stu else "-",
+                "advisorName": rec.advisor_name or "",
+                "enterpriseName": rec.enterprise_name or "",
+                "batchId": str(rec.batch_id) if rec.batch_id else "",
+                "minMonth": min_month,
+                "minTerm": min_term,
+                "monthCount": month_cnt,
+                "termCount": term_cnt,
+                "nextFollowDate": latest.next_follow_date if latest else "",
+                "lastGuidanceAt": _iso(latest.created_at) if latest else "",
+                "planStatus": status,
+                "planStatusLabel": PLAN_STATUS_LABEL.get(status, status),
+            })
+        total = len(items)
+        start = (max(1, page) - 1) * page_size
+        return items[start:start + page_size], total
+
+
+def export_guidance_plans(keyword=None, user=None) -> dict:
+    from app.services import xlsx_util
+    items, _ = list_guidance_plans(1, 100000, keyword=keyword, user=user)
+    headers = ["学号", "姓名", "指导教师", "企业", "月最低次数", "学期最低次数",
+               "本月次数", "学期次数", "下次跟进", "计划状态"]
+    rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
+             it["minMonth"], it["minTerm"], it["monthCount"], it["termCount"],
+             it["nextFollowDate"], it["planStatusLabel"]] for it in items]
+    wm = f"岗位实习中心·指导计划台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
+    content = xlsx_util.build_ledger_xlsx("指导计划台账", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "指导计划台账.xlsx", len(items))
+
+
+def guidance_stats(threshold: int = 2, user=None) -> dict:
+    """指导频次统计（INT 指导不足预警口径）：统计在岗学生指导次数，低于阈值标记不足。"""
+    from app.models import InternshipRecord
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        recs = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.status.in_(("ONBOARD", "ASSESSING", "READY")))).all()
+        insufficient, total_count, student_count = [], 0, 0
+        for rec in recs:
+            stu = db.get(StudentProfile, rec.student_id)
+            if not in_scope(scope, db, rec, stu):
+                continue
+            student_count += 1
+            cnt = int(db.scalar(select(func.count()).select_from(InternshipGuidance).where(
+                InternshipGuidance.tenant_id == _tid(), InternshipGuidance.internship_id == rec.id,
+                InternshipGuidance.is_deleted.is_(False))) or 0)
+            total_count += cnt
+            if cnt < threshold:
+                insufficient.append({
+                    "internId": str(rec.id),
+                    "studentName": stu.real_name if stu else "-",
+                    "studentNo": stu.student_no if stu else "-",
+                    "advisorName": rec.advisor_name or "",
+                    "enterpriseName": rec.enterprise_name or "",
+                    "count": cnt,
+                })
+        return {
+            "threshold": threshold,
+            "studentCount": student_count,
+            "avgCount": round(total_count / student_count, 1) if student_count else 0,
+            "insufficientCount": len(insufficient),
+            "insufficientStudents": insufficient[:50],
+        }

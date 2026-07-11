@@ -45,3 +45,7 @@ class StatusAction(BaseModel):
 
 class SetDefaultRequest(BaseModel):
     on: bool = True
+
+
+class TemplatePreviewRequest(BaseModel):
+    internshipId: str = Field(..., description="实习记录 ID，用于填充变量预览")

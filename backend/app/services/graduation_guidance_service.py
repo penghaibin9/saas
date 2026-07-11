@@ -54,9 +54,12 @@ def list_guidance(page: int, page_size: int, gd_student_id=None, keyword=None) -
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationGuidance.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        sids = {g.gd_student_id for g in rows}
+        smap = {s.id: s for s in db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id.in_(sids))).all()} if sids else {}
         items = []
         for g in rows:
-            stu = db.get(GraduationStudent, g.gd_student_id)
+            stu = smap.get(g.gd_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_row(g, stu))
@@ -113,12 +116,15 @@ def guidance_stats(threshold: int = 3) -> dict:
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE",
             GraduationStudent.stage.notin_(("TOPIC_SELECTING", "TASKBOOK_CONFIRM")))).all()
+        # 一次 GROUP BY 统计每个学生的指导次数，避免逐学生 count（消除 N+1）
+        counts = dict(db.execute(
+            select(GraduationGuidance.gd_student_id, func.count())
+            .where(GraduationGuidance.tenant_id == _tid(), GraduationGuidance.is_deleted.is_(False))
+            .group_by(GraduationGuidance.gd_student_id)).all())
         insufficient = []
         total_count = 0
         for s in students:
-            cnt = int(db.scalar(select(func.count()).select_from(GraduationGuidance).where(
-                GraduationGuidance.tenant_id == _tid(), GraduationGuidance.gd_student_id == s.id,
-                GraduationGuidance.is_deleted.is_(False))) or 0)
+            cnt = int(counts.get(s.id, 0))
             total_count += cnt
             if cnt < threshold:
                 insufficient.append({"gdStudentId": str(s.id), "studentName": s.name,

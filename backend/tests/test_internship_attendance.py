@@ -106,6 +106,31 @@ def test_exception_handle_owner(client, db_mode):
     assert _audit_count("EXCEPTION", ids["exc_a"]) >= 1
 
 
+def test_exception_batch_handle_and_export_selected(client, db_mode):
+    ids = _seed(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import AttendanceException
+    db = get_sessionmaker()()
+    try:
+        exc2 = AttendanceException(tenant_id=TID, internship_id=ids["a"], exception_type="OUT_OF_RANGE",
+                                   exception_date=datetime.utcnow(), status="PENDING_HANDLE")
+        db.add(exc2); db.flush()
+        ids["exc_b"] = exc2.id
+        db.commit()
+    finally:
+        db.close()
+    payload = {"ids": [str(ids["exc_a"]), str(ids["exc_b"])], "action": "REASONABLE",
+               "comment": "经批量核实，打卡情况合理"}
+    ok = client.post(f"{INT}/exceptions/batch-handle", json=payload, headers=_mentor("刘强"))
+    assert ok.status_code == 200 and ok.json()["code"] == 0
+    body = ok.json()["data"]
+    assert body["processedCount"] == 2
+    exp = client.post(f"{INT}/exceptions/export", json={"ids": [str(ids["exc_a"])]},
+                      headers=_admin(client))
+    assert exp.status_code == 200 and exp.json()["code"] == 0
+    assert exp.json()["data"]["rowCount"] == 1
+
+
 # ── 补卡工作流 ──
 
 def test_makeup_apply_and_owner_review(client, db_mode):

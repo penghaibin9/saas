@@ -82,11 +82,16 @@ def _row(a, rec, stu):
         "enterpriseName": a.enterprise_name or (rec.enterprise_name if rec else ""),
         "positionName": a.position_name or (rec.position_name if rec else ""),
         "templateId": str(a.template_id) if a.template_id else "",
+        "templateName": "",
         "studentConfirm": a.student_confirm_status, "studentConfirmLabel": CONFIRM_LABEL.get(a.student_confirm_status),
         "enterpriseConfirm": a.enterprise_confirm_status, "enterpriseConfirmLabel": CONFIRM_LABEL.get(a.enterprise_confirm_status),
         "schoolConfirm": a.school_confirm_status, "schoolConfirmLabel": CONFIRM_LABEL.get(a.school_confirm_status),
         "status": a.status, "statusLabel": STATUS_LABEL.get(a.status, a.status),
         "esignStatus": a.esign_status, "hasFile": bool(a.file_id),
+        "esignProvider": getattr(a, "esign_provider", None) or "INTERNAL",
+        "esignStudentSigned": bool(getattr(a, "esign_student_at", None)),
+        "esignEnterpriseSigned": bool(getattr(a, "esign_enterprise_at", None)),
+        "esignSchoolSigned": bool(getattr(a, "esign_school_at", None)),
         "createdAt": _iso(a.created_at) or "",
     }
 
@@ -119,10 +124,13 @@ def generate(user, body) -> dict:
         stu = db.get(StudentProfile, rec.student_id)
         if not in_scope(scope, db, rec, stu):
             raise no_permission("只能为本人指导学生生成协议")
-        if tpl_id:
-            tpl = db.get(InternshipAgreementTemplate, int(tpl_id))
-            if not tpl or tpl.is_deleted or tpl.tenant_id != _tid():
-                raise not_found("协议模板不存在")
+        from app.services import internship_agreement_template_service as tpl_svc
+        tpl = tpl_svc.resolve_template_for_record(db, rec, stu, tpl_id)
+        rendered = ""
+        if tpl:
+            ctx = tpl_svc.build_agreement_context(db, rec, stu)
+            rendered = tpl_svc.render_template_body(tpl.body, ctx)
+            tpl_id = tpl.id
         exist = db.scalars(select(InternshipAgreement).where(
             InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == rec.id,
             InternshipAgreement.status.notin_(["VOIDED", "REJECTED"]),
@@ -132,11 +140,15 @@ def generate(user, body) -> dict:
         a = InternshipAgreement(
             tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
             template_id=int(tpl_id) if tpl_id else None, batch_id=rec.batch_id,
-            enterprise_name=rec.enterprise_name, position_name=rec.position_name, status="DRAFT")
+            enterprise_name=rec.enterprise_name, position_name=rec.position_name,
+            rendered_body=rendered or None, status="DRAFT")
         db.add(a); db.flush()
-        _trail(db, a.id, "GENERATE", {"templateId": str(tpl_id) if tpl_id else ""}, operator=_op_name(user))
+        _trail(db, a.id, "GENERATE",
+               {"templateId": str(tpl_id) if tpl_id else "", "hasRenderedBody": bool(rendered)},
+               operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "status": a.status}
+        return {"id": str(a.id), "status": a.status, "templateId": str(tpl_id) if tpl_id else "",
+                "hasRenderedBody": bool(rendered)}
 
 
 def issue(user, aid) -> dict:
@@ -154,21 +166,24 @@ def issue(user, aid) -> dict:
 
 
 def enterprise_confirm(user, aid, body) -> dict:
-    """记录企业签署：PENDING_ENTERPRISE → PENDING_SCHOOL。要求上传纸质签署扫描件(file_id)。"""
+    """记录企业签署：PENDING_ENTERPRISE → PENDING_SCHOOL。电子签已签时可免扫描件。"""
     b = body or {}
-    file_id = _validate_file(b.get("fileId"), required=True, msg="企业签署的三方协议扫描件")
     with session() as db:
         a = _get(db, aid)
         _owner_or_403(db, a, user, "只能推进本人指导学生的协议")
         if a.status != "PENDING_ENTERPRISE":
             raise AppException("DATA_CONFLICT", "当前状态不可记录企业确认")
+        need_file = not getattr(a, "esign_enterprise_at", None)
+        file_id = _validate_file(b.get("fileId"), required=need_file, msg="企业签署的三方协议扫描件")
         a.enterprise_confirm_status = "CONFIRMED"
         a.enterprise_confirm_at = datetime.utcnow()
         a.enterprise_confirm_by = (b.get("confirmBy") or "").strip() or None
-        a.file_id = file_id
+        if file_id:
+            a.file_id = file_id
         a.status = "PENDING_SCHOOL"
         a.version += 1
-        _trail(db, a.id, "ENTERPRISE_CONFIRM", {"confirmBy": a.enterprise_confirm_by, "hasFile": True},
+        _trail(db, a.id, "ENTERPRISE_CONFIRM", {"confirmBy": a.enterprise_confirm_by,
+                                                  "hasFile": bool(file_id), "esignSigned": not need_file},
                operator=_op_name(user))
         db.commit()
         return {"id": str(a.id), "status": a.status, "statusLabel": STATUS_LABEL[a.status]}
@@ -267,7 +282,13 @@ def get_agreement(aid, user=None) -> dict:
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",
             InternshipAuditTrail.target_id == a.id).order_by(InternshipAuditTrail.id)).all()
-        return {**_row(a, rec, stu), "rejectReason": a.reject_reason or "",
+        tpl_name = ""
+        if a.template_id:
+            tpl = db.get(InternshipAgreementTemplate, a.template_id)
+            tpl_name = tpl.name if tpl else ""
+        return {**_row(a, rec, stu), "templateName": tpl_name,
+                "renderedBody": a.rendered_body or "",
+                "rejectReason": a.reject_reason or "",
                 "attachment": file_service.attachment_view(a.file_id),
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
@@ -286,7 +307,39 @@ def export_agreements(status=None, keyword=None, user=None) -> dict:
     return xlsx_util.pack_xlsx_result(content, "三方协议台账.xlsx", len(items))
 
 
+def export_agreement_pdf(aid, user=None) -> dict:
+    """三方协议 PDF 套打：基于 rendered_body 快照生成可下载 PDF（含水印）。"""
+    from app.services import pdf_util
+    with session() as db:
+        a = _get(db, aid)
+        rec, stu = _ctx(db, a)
+        _owner_or_403(db, a, user, "该协议不在你的数据范围内")
+        body = (a.rendered_body or "").strip()
+        if not body:
+            raise AppException("VALIDATION_ERROR", "协议正文尚未生成，请先生成或重新下发协议")
+        tpl_name = ""
+        if a.template_id:
+            tpl = db.get(InternshipAgreementTemplate, a.template_id)
+            tpl_name = tpl.name if tpl else ""
+        title = f"岗位实习三方协议 · {stu.real_name if stu else ''}（{stu.student_no if stu else ''}）"
+        wm = (f"岗位实习中心·三方协议套打 · 导出人：{_op_name(user)} · "
+              f"{datetime.now():%Y-%m-%d %H:%M} · 协议编号 {a.id}")
+        content = pdf_util.build_text_pdf(title, body, watermark=wm)
+        fname = f"三方协议_{stu.student_no if stu else a.id}_{tpl_name or '套打'}.pdf"
+        return pdf_util.pack_pdf_result(content, fname)
+
+
 # ═══════════ 学生本人（移动端） ═══════════
+
+def _student_row(a, rec, stu, db):
+    tpl_name = ""
+    if a.template_id:
+        tpl = db.get(InternshipAgreementTemplate, a.template_id)
+        tpl_name = tpl.name if tpl else ""
+    return {**_row(a, rec, stu), "templateName": tpl_name,
+            "renderedBody": a.rendered_body or "",
+            "rejectReason": a.reject_reason or ""}
+
 
 def my_agreements(user) -> list[dict]:
     with session() as db:
@@ -296,7 +349,22 @@ def my_agreements(user) -> list[dict]:
         rows = db.scalars(select(InternshipAgreement).where(
             InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == rec.id,
             InternshipAgreement.is_deleted.is_(False)).order_by(InternshipAgreement.id.desc())).all()
-        return [_row(a, rec, stu) for a in rows]
+        return [_student_row(a, rec, stu, db) for a in rows]
+
+
+def get_student_agreement(user, aid) -> dict:
+    """学生本人协议详情（含渲染正文，供确认前阅读）。"""
+    with session() as db:
+        a = _get(db, aid)
+        rec, stu = _student_record(db, user)
+        if not rec or a.internship_id != rec.id:
+            raise no_permission("只能查看本人的协议")
+        trail = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",
+            InternshipAuditTrail.target_id == a.id).order_by(InternshipAuditTrail.id)).all()
+        return {**_student_row(a, rec, stu, db),
+                "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
+                                "occurredAt": _iso(t.occurred_at)} for t in trail]}
 
 
 def student_confirm(user, aid, action: str, reason="") -> dict:
@@ -325,3 +393,77 @@ def student_confirm(user, aid, action: str, reason="") -> dict:
                operator=(user or {}).get("realName") or "学生")
         db.commit()
         return {"id": str(a.id), "status": a.status, "statusLabel": STATUS_LABEL[a.status]}
+
+
+def _esign_complete(a) -> bool:
+    return bool(getattr(a, "esign_student_at", None) and getattr(a, "esign_enterprise_at", None)
+                and getattr(a, "esign_school_at", None))
+
+
+def start_esign(user, aid) -> dict:
+    """发起校内电子签流程（INTERNAL 提供方，留痕可审计；第三方 CA 预留 esign_provider=THIRD_PARTY）。"""
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能对本人指导学生的协议发起电子签")
+        if a.status in ("REJECTED", "VOIDED", "ARCHIVED"):
+            raise AppException("DATA_CONFLICT", "当前协议状态不可发起电子签")
+        if a.esign_status == "SIGNED":
+            raise AppException("DATA_CONFLICT", "电子签已完成")
+        a.esign_status = "PENDING"
+        a.esign_provider = "INTERNAL"
+        a.esign_initiated_at = datetime.utcnow()
+        a.esign_initiated_by = _op_name(user)
+        _trail(db, a.id, "ESIGN_START", {"provider": a.esign_provider}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "esignStatus": a.esign_status, "message": "已发起电子签，请各方依次签署"}
+
+
+def esign_sign(user, aid, party: str) -> dict:
+    """电子签签署：STUDENT / ENTERPRISE / SCHOOL。"""
+    party = (party or "").upper()
+    if party not in ("STUDENT", "ENTERPRISE", "SCHOOL"):
+        raise AppException("VALIDATION_ERROR", "party 必须是 STUDENT/ENTERPRISE/SCHOOL")
+    with session() as db:
+        a = _get(db, aid)
+        if a.esign_status != "PENDING":
+            raise AppException("DATA_CONFLICT", "电子签未发起或已完成")
+        now = datetime.utcnow()
+        op = _op_name(user)
+        if party == "STUDENT":
+            rec, stu = _student_record(db, user)
+            if not rec or a.internship_id != rec.id:
+                raise no_permission("只能签署本人的协议")
+            if getattr(a, "esign_student_at", None):
+                raise AppException("DATA_CONFLICT", "学生已电子签署")
+            a.esign_student_at = now
+            if a.status == "PENDING_STUDENT":
+                a.student_confirm_status = "CONFIRMED"
+                a.student_confirm_at = now
+                a.status = "PENDING_ENTERPRISE"
+        elif party == "ENTERPRISE":
+            _owner_or_403(db, a, user, "只能代企业签署本人指导学生的协议")
+            if getattr(a, "esign_enterprise_at", None):
+                raise AppException("DATA_CONFLICT", "企业方已电子签署")
+            a.esign_enterprise_at = now
+            if a.status == "PENDING_ENTERPRISE":
+                a.enterprise_confirm_status = "CONFIRMED"
+                a.enterprise_confirm_at = now
+                a.status = "PENDING_SCHOOL"
+        else:
+            _owner_or_403(db, a, user, "只能学校签署本人指导学生的协议")
+            if getattr(a, "esign_school_at", None):
+                raise AppException("DATA_CONFLICT", "学校方已电子签署")
+            a.esign_school_at = now
+            if a.status == "PENDING_SCHOOL":
+                a.school_confirm_status = "CONFIRMED"
+                a.school_confirm_at = now
+                a.status = "EFFECTIVE"
+        if _esign_complete(a):
+            a.esign_status = "SIGNED"
+        a.version += 1
+        _trail(db, a.id, f"ESIGN_{party}", {}, operator=op)
+        db.commit()
+        return {
+            "id": str(a.id), "status": a.status, "statusLabel": STATUS_LABEL.get(a.status),
+            "esignStatus": a.esign_status, "esignComplete": _esign_complete(a),
+        }

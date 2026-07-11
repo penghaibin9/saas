@@ -77,8 +77,10 @@ def login_with_password(login_name: str, password: str) -> dict:
                 audit_log.record("LOGIN_TENANT_DISABLED", login_name,
                                  detail={"tenantId": str(user.tenant_id)}, result="DENIED")
                 raise AppException("NO_PERMISSION", "该学校服务已停用，无法登录，请联系平台方 13549666867")
+        # 【安全修复 P0-2】未在 ROLE_BY_LOGIN 显式登记的真实账号，禁止兜底成校级管理员+全校数据范围。
+        # 改为最小权限兜底（无数据范围），真实角色/范围应由 t_user_role + 数据范围授权解析后覆盖。
         role_code, role_name, scope, scope_label = ROLE_BY_LOGIN.get(
-            user.login_name, ("SCHOOL_ADMIN", "管理员", "SCHOOL", "全校"))
+            user.login_name, ("STAFF", "教职工（未分配角色，请管理员授权）", "SELF", "未分配数据范围"))
         if user.user_type == "PLATFORM_SUPER_ADMIN":
             role_code, role_name, scope, scope_label = (
                 "PLATFORM_SUPER_ADMIN", "平台超级管理员", "PLATFORM", "全平台（跨租户）")

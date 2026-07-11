@@ -106,9 +106,12 @@ def list_archives(page: int, page_size: int, keyword=None, status=None) -> tuple
         if status:
             q = q.where(GraduationArchiveRecord.status == status)
         rows = db.scalars(q.order_by(GraduationArchiveRecord.id.desc())).all()
+        sids = {a.gd_student_id for a in rows}
+        smap = {s.id: s for s in db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id.in_(sids))).all()} if sids else {}
         items = []
         for a in rows:
-            stu = db.get(GraduationStudent, a.gd_student_id)
+            stu = smap.get(a.gd_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_row(a, stu))

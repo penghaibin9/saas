@@ -12,18 +12,28 @@ from app.core.security import get_current_user
 from app.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, ContactCreate,
                                      ContactUpdate, CoopActionRequest, EnterpriseCreate,
                                      EnterpriseImport, EnterpriseReview, EnterpriseUpdate,
-                                     ExceptionHandleRequest, ImportErrorsExport, ReportReviewRequest,
+                                     ExceptionBatchHandleRequest, ExceptionExportRequest,
+                                     ExceptionHandleRequest, ImportErrorsExport,
+                                     ReportBatchReviewRequest, ReportRemindRequest,
+                                     ReportReviewRequest,
                                      VoidBatchRequest)
 from app.services import audit_log
 from app.services import internship_enterprise_service as ent
 from app.services import internship_agreement_service as agr
+from app.services import internship_archive_service as arch
 from app.services import internship_enterprise_eval_service as ee
 from app.services import internship_guidance_service as gd
 from app.services import internship_leave_service as lv
 from app.services import internship_makeup_service as mk
 from app.services import internship_risk_service as risk
+from app.services import internship_process_report_service as pr
+from app.services import internship_change_service as chg
+from app.services import internship_plan_service as plan
+from app.services import internship_plan_task_service as plan_task
+from app.services import internship_insurance_service as ins
 from app.services import internship_score_service as score
 from app.services import internship_service as svc
+from app.services import internship_stats_service as stats
 from app.services import internship_student_eval_service as se
 from app.services import internship_visit_service as vis
 from app.services import xlsx_util
@@ -84,11 +94,23 @@ def exceptions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=20
 
 @router.post("/exceptions/export", summary="打卡异常台账导出 Excel(.xlsx)")
 def exceptions_export(type: Optional[str] = None, status: Optional[str] = None,
-                      keyword: Optional[str] = None, user=Depends(get_current_user)):
-    data = svc.export_exceptions(type=type, status=status, keyword=keyword, user=user)
+                      keyword: Optional[str] = None,
+                      body: Optional[ExceptionExportRequest] = Body(None),
+                      user=Depends(get_current_user)):
+    ids = body.ids if body else None
+    data = svc.export_exceptions(type=type, status=status, keyword=keyword, ids=ids, user=user)
     audit_log.record("导出打卡异常台账", "internship-exception:export",
-                     detail={"rowCount": data["rowCount"]})
+                     detail={"rowCount": data["rowCount"], "selectedOnly": bool(ids)})
     return success(data)
+
+
+@router.post("/exceptions/batch-handle", summary="批量处理打卡异常（仅标记合理）")
+def batch_handle_exceptions(body: ExceptionBatchHandleRequest, user=Depends(get_current_user)):
+    result = svc.batch_handle_attendance_exceptions(body.ids, body.action, body.comment, user=user)
+    audit_log.record("批量处理打卡异常", "internship-exception:batch-handle",
+                     detail={"processedCount": result["processedCount"],
+                             "skippedCount": result["skippedCount"]})
+    return success(result, message=f"已处理 {result['processedCount']} 条，跳过 {result['skippedCount']} 条")
 
 
 @router.get("/exceptions/{exception_id}", summary="打卡异常详情（含处理留痕）")
@@ -150,6 +172,27 @@ def guidances(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/guidances/stats", summary="指导频次统计（指导不足预警）")
+def guidances_stats(threshold: int = Query(2, ge=1, le=50), user=Depends(get_current_user)):
+    return success(gd.guidance_stats(threshold, user=user))
+
+
+@router.get("/guidance-plans", summary="指导计划台账（批次规则 vs 实际频次）")
+def guidance_plans(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                   keyword: Optional[str] = None, planStatus: Optional[str] = None,
+                   insufficientOnly: bool = Query(False), user=Depends(get_current_user)):
+    items, total = gd.list_guidance_plans(page, pageSize, keyword=keyword, plan_status=planStatus,
+                                          insufficient_only=insufficientOnly, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/guidance-plans/export", summary="指导计划台账导出 Excel(.xlsx)")
+def guidance_plans_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = gd.export_guidance_plans(keyword=keyword, user=user)
+    audit_log.record("导出指导计划台账", "internship-guidance-plan:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
 @router.post("/guidances", summary="新增指导记录（owner：仅本人指导学生）")
 def create_guidance(body: dict = Body(...), user=Depends(get_current_user)):
     result = gd.create(user, body)
@@ -184,6 +227,11 @@ def visits(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            user=Depends(get_current_user)):
     items, total = vis.list_visits(page, pageSize, keyword=keyword, rectify=rectify, user=user)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/visits/stats", summary="巡访整改统计")
+def visits_stats(user=Depends(get_current_user)):
+    return success(vis.visit_stats(user=user))
 
 
 @router.post("/visits", summary="新增巡访记录（owner：仅本人指导学生）")
@@ -221,6 +269,31 @@ def reports(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
     return success(paginate(items, total, page, pageSize))
 
 
+@router.post("/reports/export", summary="周报批阅台账导出 Excel(.xlsx)")
+def reports_export(status: Optional[str] = None, keyword: Optional[str] = None,
+                   user=Depends(get_current_user)):
+    data = svc.export_weekly_reports(status=status, keyword=keyword, user=user)
+    audit_log.record("导出周报批阅台账", "internship-report:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+@router.post("/reports/batch-review", summary="批量批阅周报（仅通过；风险/非待批阅跳过）")
+def batch_review_reports(body: ReportBatchReviewRequest, user=Depends(get_current_user)):
+    result = svc.batch_review_weekly_reports(body.ids, body.action, body.comment, user=user)
+    audit_log.record("批量批阅周报", "internship-report:batch-review",
+                     detail={"approvedCount": result["approvedCount"], "skippedCount": result["skippedCount"]})
+    return success(result, message=f"已通过 {result['approvedCount']} 篇，跳过 {result['skippedCount']} 篇")
+
+
+@router.post("/reports/{report_id}/remind", summary="催交逾期未交周报（写审计+站内信）")
+def remind_report(report_id: str, body: ReportRemindRequest = Body(default=ReportRemindRequest()),
+                  user=Depends(get_current_user)):
+    result = svc.remind_weekly_report(report_id, body.channel or "站内消息", user=user)
+    audit_log.record("催交实习周报", f"internship-report:{report_id}",
+                     detail={"weekNumber": result.get("weekNumber"), "notified": result.get("notified")})
+    return success(result, message="已催交")
+
+
 @router.get("/reports/{report_id}", summary="周报详情（含批阅留痕）")
 def report_detail(report_id: str, user=Depends(get_current_user)):
     return success(svc.get_weekly_report_detail(report_id, user=user))
@@ -233,11 +306,65 @@ def review_report(report_id: str, body: ReportReviewRequest, user=Depends(get_cu
     return success(result, message="批阅完成")
 
 
+@router.get("/process-reports", summary="过程报告批阅列表（日报/月报/实习总结）")
+def process_reports(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                    reportType: Optional[str] = None, status: Optional[str] = None,
+                    keyword: Optional[str] = None, user=Depends(get_current_user)):
+    items, total = pr.list_reports(page, pageSize, report_type=reportType, status=status,
+                                   keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/process-reports/export", summary="过程报告台账导出 Excel(.xlsx)")
+def process_reports_export(reportType: Optional[str] = None, status: Optional[str] = None,
+                           keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = pr.export_reports(report_type=reportType, status=status, keyword=keyword, user=user)
+    audit_log.record("导出过程报告台账", "internship-process-report:export",
+                     detail={"rowCount": data["rowCount"], "reportType": reportType})
+    return success(data)
+
+
+@router.get("/process-reports/{report_id}", summary="过程报告详情（含批阅留痕）")
+def process_report_detail(report_id: str, user=Depends(get_current_user)):
+    return success(pr.get_report(report_id, user=user))
+
+
+@router.post("/process-reports/{report_id}/review", summary="批阅过程报告（通过/退回）")
+def process_report_review(report_id: str, body: ReportReviewRequest, user=Depends(get_current_user)):
+    result = pr.review_report(report_id, body.action, body.comment, user=user)
+    audit_log.record("批阅过程报告", f"internship-process-report:{report_id}",
+                     detail={"action": body.action})
+    return success(result, message="批阅完成")
+
+
+@router.get("/change-requests", summary="实习变更申请列表（换岗/换单位/自主实习）")
+def change_requests(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                    status: Optional[str] = None, keyword: Optional[str] = None,
+                    user=Depends(get_current_user)):
+    items, total = chg.list_changes(page, pageSize, status=status, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/change-requests/{change_id}", summary="实习变更申请详情")
+def change_request_detail(change_id: str, user=Depends(get_current_user)):
+    return success(chg.get_change(change_id, user=user))
+
+
+@router.post("/change-requests/{change_id}/review", summary="审核实习变更（通过/驳回）")
+def change_request_review(change_id: str, body: ReportReviewRequest, user=Depends(get_current_user)):
+    action = "APPROVE" if body.action == "APPROVE" else "REJECT"
+    result = chg.review_change(change_id, action, body.comment, user=user)
+    audit_log.record("审核实习变更", f"internship-change:{change_id}", detail={"action": action})
+    return success(result, message="审核完成")
+
+
 @router.get("/risks", summary="实习风险学生列表")
 def risks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
           level: Optional[str] = None, status: Optional[str] = None,
+          riskCode: Optional[str] = None,
           user=Depends(get_current_user)):
-    items, total = svc.list_risk_students(page, pageSize, level=level, status=status, user=user)
+    items, total = svc.list_risk_students(page, pageSize, level=level, status=status,
+                                          risk_code=riskCode, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -270,6 +397,14 @@ def risk_follow(risk_id: str, body: dict = Body(...), user=Depends(get_current_u
     result = risk.follow(user, risk_id, (body or {}).get("note") or "")
     audit_log.record("跟进实习风险", f"internship-risk:{risk_id}", detail=result)
     return success(result, message="已跟进")
+
+
+@router.post("/risks/{risk_id}/remind", summary="催办风险跟进（写审计）")
+def risk_remind(risk_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    b = body or {}
+    result = risk.remind(user, risk_id, b.get("channel") or "站内消息")
+    audit_log.record("催办实习风险", f"internship-risk:{risk_id}", detail=result)
+    return success(result, message="已提醒")
 
 
 @router.post("/risks/{risk_id}/escalate", summary="风险升级（提升等级，owner）")
@@ -349,6 +484,14 @@ def agreement_detail(agreement_id: str, user=Depends(get_current_user)):
     return success(agr.get_agreement(agreement_id, user=user))
 
 
+@router.post("/agreements/{agreement_id}/pdf", summary="三方协议 PDF 套打下载")
+def agreement_pdf(agreement_id: str, user=Depends(get_current_user)):
+    data = agr.export_agreement_pdf(agreement_id, user=user)
+    audit_log.record("导出三方协议PDF套打", f"internship-agreement:{agreement_id}",
+                     detail={"filename": data.get("filename")})
+    return success(data)
+
+
 @router.post("/agreements/{agreement_id}/issue", summary="下发协议（DRAFT→待学生确认）")
 def agreement_issue(agreement_id: str, user=Depends(get_current_user)):
     return success(agr.issue(user, agreement_id), message="已下发")
@@ -387,6 +530,90 @@ def agreement_archive(agreement_id: str, user=Depends(get_current_user)):
     result = agr.archive(user, agreement_id)
     audit_log.record("归档三方协议", f"internship-agreement:{agreement_id}", detail=result)
     return success(result, message="已归档")
+
+
+@router.post("/agreements/{agreement_id}/esign/start", summary="发起三方协议电子签（INTERNAL 校内签）")
+def agreement_esign_start(agreement_id: str, user=Depends(get_current_user)):
+    result = agr.start_esign(user, agreement_id)
+    audit_log.record("发起协议电子签", f"internship-agreement:{agreement_id}", detail=result)
+    return success(result, message=result.get("message") or "已发起")
+
+
+@router.post("/agreements/{agreement_id}/esign/sign", summary="电子签签署（party=STUDENT/ENTERPRISE/SCHOOL）")
+def agreement_esign_sign(agreement_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = agr.esign_sign(user, agreement_id, (body or {}).get("party") or "")
+    audit_log.record("协议电子签签署", f"internship-agreement:{agreement_id}",
+                     detail={"party": (body or {}).get("party"), "esignStatus": result.get("esignStatus")})
+    return success(result, message="签署成功")
+
+
+@router.get("/plans/batch/{batch_id}", summary="批次实习计划书")
+def batch_plan_get(batch_id: str, user=Depends(get_current_user)):
+    return success(plan.get_plan_by_batch(batch_id, user=user))
+
+
+@router.put("/plans/batch/{batch_id}", summary="保存批次实习计划书（草稿）")
+def batch_plan_save(batch_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = plan.save_plan(batch_id, body, user=user)
+    audit_log.record("保存实习计划书", f"internship-plan:batch:{batch_id}", detail={"planId": result.get("id")})
+    return success(result, message="计划已保存")
+
+
+@router.post("/plans/batch/{batch_id}/publish", summary="发布实习计划书并下发学生确认")
+def batch_plan_publish(batch_id: str, user=Depends(get_current_user)):
+    result = plan.publish_plan(batch_id, user=user)
+    audit_log.record("发布实习计划书", f"internship-plan:batch:{batch_id}",
+                     detail={"ackCount": result.get("ackCount")})
+    return success(result, message=f"已发布，待确认 {result.get('ackCount', 0)} 人")
+
+
+@router.get("/plan-acks", summary="实习计划确认台账")
+def plan_acks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+              batchId: Optional[str] = None, status: Optional[str] = None,
+              keyword: Optional[str] = None, user=Depends(get_current_user)):
+    items, total = plan.list_acks(page, pageSize, batch_id=batchId, status=status,
+                                  keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/plan-task-progress", summary="实习计划任务完成度台账")
+def plan_task_progress(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                       batchId: Optional[str] = None, status: Optional[str] = None,
+                       taskSortOrder: Optional[int] = None, keyword: Optional[str] = None,
+                       user=Depends(get_current_user)):
+    items, total = plan_task.list_progress(page, pageSize, batch_id=batchId, status=status,
+                                           keyword=keyword, task_sort_order=taskSortOrder, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/plan-task-progress/{progress_id}/review", summary="确认/退回任务完成")
+def plan_task_review(progress_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = plan_task.review_progress(progress_id, (body or {}).get("action") or "",
+                                       (body or {}).get("comment") or "", user=user)
+    audit_log.record("任务完成度批阅", f"internship-plan-task:{progress_id}",
+                     detail={"action": (body or {}).get("action"), "status": result.get("status")})
+    return success(result, message="批阅成功")
+
+
+@router.get("/plans/batch/{batch_id}/task-summary", summary="批次任务完成度汇总")
+def plan_task_summary(batch_id: str, user=Depends(get_current_user)):
+    return success(plan_task.batch_summary(batch_id, user=user))
+
+
+@router.get("/insurances", summary="实习保险核验台账")
+def insurances(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+               status: Optional[str] = None, keyword: Optional[str] = None,
+               user=Depends(get_current_user)):
+    items, total = ins.list_insurances(page, pageSize, status=status, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/insurances/{insurance_id}/verify", summary="核验实习保险（通过/驳回）")
+def insurance_verify(insurance_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    action = "APPROVE" if (body or {}).get("action") == "APPROVE" else "REJECT"
+    result = ins.verify_insurance(insurance_id, action, (body or {}).get("comment") or "", user=user)
+    audit_log.record("核验实习保险", f"internship-insurance:{insurance_id}", detail={"action": action})
+    return success(result, message="核验完成")
 
 
 # ═══════════ 企业评价（P2-B：五维评价 + 学校审核，owner + 数据范围）═══════════
@@ -534,6 +761,85 @@ def score_archive(score_id: str, user=Depends(get_current_user)):
     result = score.archive(user, score_id)
     audit_log.record("归档实习成绩", f"internship-score:{score_id}", detail=result)
     return success(result, message="已归档")
+
+
+# ═══════════ 归档中心（P3-A：材料完整性 + 按学生/批次/企业聚合 + 归档动作，owner + 数据范围）═══════════
+
+@router.post("/archive/export", summary="实习归档台账导出 Excel(.xlsx)")
+def archive_export(keyword: Optional[str] = None, batchId: Optional[str] = None,
+                   user=Depends(get_current_user)):
+    data = arch.export_archives(user=user, keyword=keyword, batch_id=batchId)
+    audit_log.record("导出实习归档台账", "internship-archive:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
+@router.get("/archive/by-batch", summary="归档完整度·按批次聚合")
+def archive_by_batch(user=Depends(get_current_user)):
+    return success(arch.by_batch(user=user))
+
+
+@router.get("/archive/by-enterprise", summary="归档完整度·按企业聚合")
+def archive_by_enterprise(user=Depends(get_current_user)):
+    return success(arch.by_enterprise(user=user))
+
+
+@router.get("/archive", summary="归档中心·按学生（材料完整性 + 缺失提醒）")
+def archive_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                 keyword: Optional[str] = None, batchId: Optional[str] = None,
+                 onlyIncomplete: bool = False, user=Depends(get_current_user)):
+    items, total = arch.list_by_student(page, pageSize, keyword=keyword, batch_id=batchId,
+                                        only_incomplete=onlyIncomplete, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/archive/{internship_id}", summary="学生归档详情（材料清单 + 归档留痕）")
+def archive_detail(internship_id: str, user=Depends(get_current_user)):
+    return success(arch.get_archive(internship_id, user=user))
+
+
+@router.post("/archive/{internship_id}/archive", summary="归档学生（完整性快照，缺失需 force）")
+def archive_do(internship_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    result = arch.archive_student(user, internship_id, force=bool((body or {}).get("force")))
+    audit_log.record("归档实习学生", f"internship-archive:{internship_id}", detail=result)
+    return success(result, message="已归档")
+
+
+@router.post("/archive/{internship_id}/revoke", summary="撤销归档（原因≥5字）")
+def archive_revoke(internship_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    result = arch.revoke_archive(user, internship_id, (body or {}).get("reason") or "")
+    audit_log.record("撤销实习归档", f"internship-archive:{internship_id}", detail=result)
+    return success(result, message="已撤销归档")
+
+
+@router.post("/archive/{internship_id}/package", summary="生成归档包 zip（manifest + 材料清单 + 已有扫描件）")
+def archive_package(internship_id: str, user=Depends(get_current_user)):
+    result = arch.build_package(user, internship_id)
+    audit_log.record("生成实习归档包", f"internship-archive:{internship_id}", detail=result)
+    return success(result, message="归档包已生成")
+
+
+# ═══════════ 统计中心（P3-B：15 项指标 + 成绩分布 + 学院/专业/班级维度，owner + 数据范围）═══════════
+
+@router.get("/stats/overview", summary="实习统计总览（指标口径对齐 06 矩阵，按数据范围）")
+def stats_overview(college: Optional[str] = None, major: Optional[str] = None,
+                   className: Optional[str] = None, user=Depends(get_current_user)):
+    data = stats.overview(user, college=college, major=major, class_name=className)
+    audit_log.record("查看实习统计", "internship-stats:overview",
+                     detail={"dim": {"college": college, "major": major, "className": className}})
+    return success(data)
+
+
+@router.get("/stats/dimensions", summary="统计可选维度（数据范围内学院/专业/班级）")
+def stats_dimensions(user=Depends(get_current_user)):
+    return success(stats.dimension_options(user))
+
+
+@router.post("/stats/export", summary="实习统计报表导出 Excel(.xlsx)")
+def stats_export(college: Optional[str] = None, major: Optional[str] = None,
+                 className: Optional[str] = None, user=Depends(get_current_user)):
+    data = stats.export_stats(user, college=college, major=major, class_name=className)
+    audit_log.record("导出实习统计报表", "internship-stats:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
 
 
 # ═══════════ 实习批次（组织时间轴 + 规则骨架，状态机 DRAFT→RUNNING→CLOSED→ARCHIVED）═══════════

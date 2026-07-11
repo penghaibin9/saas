@@ -107,6 +107,12 @@ def internship_my_agreements(user=Depends(get_current_user)):
     return success(agr.my_agreements(user))
 
 
+@router.get("/internship/agreements/{agreement_id}", summary="本人三方协议详情（含渲染正文）")
+def internship_agreement_detail(agreement_id: str, user=Depends(get_current_user)):
+    from app.services import internship_agreement_service as agr
+    return success(agr.get_student_agreement(user, agreement_id))
+
+
 @router.post("/internship/agreements/{agreement_id}/confirm", summary="本人确认/驳回三方协议")
 def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user=Depends(get_current_user)):
     from app.services import internship_agreement_service as agr
@@ -125,6 +131,88 @@ def internship_my_self_eval(user=Depends(get_current_user)):
 def internship_submit_self_eval(body: dict = Body(...), user=Depends(get_current_user)):
     from app.services import internship_student_eval_service as se
     return success(se.student_submit(user, body or {}), message="自评已提交")
+
+
+@router.get("/internship/intention", summary="本人实习意向（含可选岗位列表）")
+def internship_intention_my(user=Depends(get_current_user)):
+    return success(stu.internship_intention_my(user))
+
+
+@router.put("/internship/intention", summary="保存本人实习意向（草稿）")
+def internship_intention_save(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.internship_intention_save(user, body or {}), message="意向已保存")
+
+
+@router.post("/internship/intention/submit", summary="提交本人实习意向")
+def internship_intention_submit(user=Depends(get_current_user)):
+    return success(stu.internship_intention_submit(user), message="意向已提交")
+
+
+@router.post("/internship/intention/withdraw", summary="撤回本人实习意向")
+def internship_intention_withdraw(user=Depends(get_current_user)):
+    return success(stu.internship_intention_withdraw(user), message="意向已撤回")
+
+
+@router.post("/internship/process-report", summary="提交日报/月报/实习总结（本人）")
+def internship_process_report(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.internship_process_report_submit(user, body or {}))
+
+
+@router.get("/internship/change-requests", summary="本人实习变更申请列表")
+def internship_my_change_requests(user=Depends(get_current_user)):
+    return success(stu.internship_change_list(user))
+
+
+@router.post("/internship/change-request", summary="发起实习变更申请（换岗/换单位/自主实习）")
+def internship_change_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.internship_change_apply(user, body or {}), message="变更申请已提交")
+
+
+@router.post("/internship/change-request/{change_id}/withdraw", summary="撤回本人待审核变更申请")
+def internship_change_withdraw(change_id: str, user=Depends(get_current_user)):
+    return success(stu.internship_change_withdraw(user, change_id), message="已撤回")
+
+
+@router.get("/internship/plan", summary="本人实习计划书（已发布）")
+def internship_my_plan(user=Depends(get_current_user)):
+    from app.services import internship_plan_service as plan
+    return success(plan.student_my_plan(user))
+
+
+@router.post("/internship/plan/acknowledge", summary="确认本人实习计划书")
+def internship_plan_ack(user=Depends(get_current_user)):
+    from app.services import internship_plan_service as plan
+    return success(plan.student_acknowledge(user), message="已确认实习计划")
+
+
+@router.get("/internship/plan/tasks", summary="本人实习计划任务及完成度")
+def internship_plan_tasks(user=Depends(get_current_user)):
+    from app.services import internship_plan_task_service as pt
+    return success(pt.student_tasks(user))
+
+
+@router.post("/internship/plan/tasks/{sort_order}/submit", summary="提交任务完成")
+def internship_plan_task_submit(sort_order: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import internship_plan_task_service as pt
+    return success(pt.student_submit_task(user, sort_order, body or {}), message="已提交，待指导教师确认")
+
+
+@router.get("/internship/insurance", summary="本人实习保险")
+def internship_my_insurance(user=Depends(get_current_user)):
+    from app.services import internship_insurance_service as ins
+    return success(ins.student_my_insurance(user))
+
+
+@router.post("/internship/insurance", summary="提交本人实习保险信息")
+def internship_insurance_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import internship_insurance_service as ins
+    return success(ins.student_submit(user, body or {}), message="保险信息已提交，待学校核验")
+
+
+@router.post("/internship/agreements/{agreement_id}/esign/sign", summary="学生电子签签署")
+def internship_agreement_esign_sign(agreement_id: str, user=Depends(get_current_user)):
+    from app.services import internship_agreement_service as agr
+    return success(agr.esign_sign(user, agreement_id, "STUDENT"), message="电子签已完成")
 
 
 @router.post("/me/messages/{message_id}/read", summary="标记本人消息已读")
@@ -155,6 +243,109 @@ def internship_my(user=Depends(get_current_user)):
 @router.get("/graduation/my", summary="我的毕业设计")
 def graduation_my(user=Depends(get_current_user)):
     return success(stu.graduation_my(user))
+
+
+@router.get("/graduation/topics", summary="选题·浏览可选题目库（已入池未满员）")
+def graduation_topics(batchId: str = None, user=Depends(get_current_user)):
+    return success(stu.graduation_topics(user, batch_id=batchId))
+
+
+@router.get("/graduation/active-round", summary="选题·当前进行中轮次 + 我的志愿")
+def graduation_active_round(user=Depends(get_current_user)):
+    return success(stu.graduation_active_round(user))
+
+
+@router.post("/graduation/choices", summary="选题·本人提交/调整志愿（对齐提交=进入待处理语义）")
+def graduation_submit_choices(body: dict = Body(...), user=Depends(get_current_user)):
+    round_id = body.get("roundId")
+    choices = body.get("choices") or []
+    return success(stu.graduation_submit_choices(user, round_id, choices), message="志愿已提交")
+
+
+@router.post("/graduation/withdraw-choices", summary="选题·本人退选（撤回本轮全部待处理志愿）")
+def graduation_withdraw_choices(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.graduation_withdraw_choices(user, body.get("roundId")), message="已退选")
+
+
+@router.post("/graduation/change-request", summary="选题·发起课题变更申请（已有选题换题的唯一途径）")
+def graduation_request_change(body: dict = Body(...), user=Depends(get_current_user)):
+    result = stu.graduation_request_change(user, body.get("newTopicId"), body.get("reason") or "")
+    return success(result, message="已提交，等待审核")
+
+
+@router.get("/graduation/change-requests/my", summary="选题·我的历史变更申请")
+def graduation_my_change_requests(user=Depends(get_current_user)):
+    return success(stu.graduation_my_change_requests(user))
+
+
+@router.get("/graduation/proposal", summary="开题·查看本人开题报告状态")
+def graduation_proposal(user=Depends(get_current_user)):
+    return success(stu.graduation_proposal(user))
+
+
+@router.post("/graduation/proposal", summary="开题·本人提交/重交开题报告")
+def graduation_submit_proposal(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.graduation_submit_proposal(user, body), message="开题报告已提交")
+
+
+@router.get("/graduation/final", summary="成果·查看本人论文提交状态")
+def graduation_final(user=Depends(get_current_user)):
+    return success(stu.graduation_final(user))
+
+
+@router.post("/graduation/final", summary="成果·本人提交/重交论文（初稿/定稿）")
+def graduation_submit_final(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.graduation_submit_final(user, body), message="论文成果已提交")
+
+
+@router.get("/graduation/taskbook", summary="任务书·查看本人任务书")
+def graduation_taskbook(user=Depends(get_current_user)):
+    return success(stu.graduation_taskbook(user))
+
+
+@router.post("/graduation/taskbook/confirm", summary="任务书·本人确认（含变更后重新确认）")
+def graduation_taskbook_confirm(user=Depends(get_current_user)):
+    return success(stu.graduation_taskbook_confirm(user), message="已确认")
+
+
+@router.get("/graduation/midterm", summary="中期检查·查看本人状态")
+def graduation_midterm(user=Depends(get_current_user)):
+    return success(stu.graduation_midterm(user))
+
+
+@router.post("/graduation/midterm/rectify", summary="中期检查·本人提交整改")
+def graduation_midterm_rectify(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.graduation_midterm_rectify(user, body.get("content") or ""), message="已提交整改")
+
+
+@router.get("/graduation/defense", summary="答辩·查看本人答辩安排")
+def graduation_defense(user=Depends(get_current_user)):
+    return success(stu.graduation_defense(user))
+
+
+@router.get("/graduation/grade", summary="成绩·查看本人已发布成绩")
+def graduation_grade(user=Depends(get_current_user)):
+    return success(stu.graduation_grade(user))
+
+
+@router.post("/graduation/grade/appeal", summary="成绩·发起更正申诉（须已发布）")
+def graduation_grade_appeal(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.graduation_grade_appeal(user, body.get("reason") or ""), message="申诉已提交")
+
+
+@router.get("/graduation/peer-tasks", summary="互查·本人待互查+待整改任务")
+def graduation_peer_tasks(user=Depends(get_current_user)):
+    return success(stu.graduation_peer_tasks(user))
+
+
+@router.post("/graduation/peer/{pid}/submit", summary="互查·提交互查意见")
+def graduation_peer_submit(pid: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.graduation_peer_submit(user, pid, body.get("opinion") or ""), message="已提交")
+
+
+@router.post("/graduation/peer/{pid}/rectify", summary="互查·提交整改")
+def graduation_peer_rectify(pid: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.graduation_peer_rectify(user, pid, body.get("note") or ""), message="已提交整改")
 
 
 @router.get("/employment/my", summary="我的就业服务")
@@ -247,6 +438,13 @@ def teacher_weekly_review(report_id: str, body: dict = Body(...),
                                      body.get("comment") or ""), message="批阅完成")
 
 
+@router.post("/teacher/internship/weekly/{report_id}/remind",
+             summary="教师·逾期未交周报催交（范围校验+站内信+审计）")
+def teacher_weekly_remind(report_id: str, user=Depends(get_current_user)):
+    from app.services import internship_service as svc
+    return success(svc.remind_weekly_report(report_id, user=user), message="已催交")
+
+
 @router.post("/teacher/internship/exception/{exception_id}/handle",
              summary="教师·打卡异常处理（REASONABLE/ABNORMAL/TO_RISK，审计）")
 def teacher_exception_handle(exception_id: str, body: dict = Body(...),
@@ -261,6 +459,43 @@ def teacher_proposal_review(proposal_id: str, body: dict = Body(...),
                             user=Depends(get_current_user)):
     return success(tea.proposal_review(user, proposal_id, str(body.get("action") or "").upper(),
                                        body.get("comment") or ""), message="批阅完成")
+
+
+@router.get("/teacher/graduation/choices/pending", summary="教师·本人指导题目下待确认的选题志愿")
+def teacher_graduation_choices_pending(user=Depends(get_current_user)):
+    return success(tea.graduation_choices_pending(user))
+
+
+@router.post("/teacher/graduation/choices/{choice_id}/review",
+             summary="教师·确认/驳回选题志愿（CONFIRM/REJECT，范围校验+审计）")
+def teacher_graduation_choice_review(choice_id: str, body: dict = Body(...),
+                                     user=Depends(get_current_user)):
+    return success(tea.graduation_choice_review(user, choice_id, str(body.get("action") or "").upper(),
+                                                body.get("reason") or ""), message="处理完成")
+
+
+@router.get("/teacher/graduation/change-requests/pending", summary="教师·与本人相关的待审选题变更申请")
+def teacher_graduation_change_requests_pending(user=Depends(get_current_user)):
+    return success(tea.graduation_change_requests_pending(user))
+
+
+@router.post("/teacher/graduation/change-requests/{request_id}/review",
+             summary="教师·审核选题变更申请（APPROVE/REJECT，范围校验+审计）")
+def teacher_graduation_change_request_review(request_id: str, body: dict = Body(...),
+                                             user=Depends(get_current_user)):
+    return success(tea.graduation_change_request_review(
+        user, request_id, str(body.get("action") or "").upper(), body.get("comment") or ""),
+        message="处理完成")
+
+
+@router.get("/teacher/graduation/my-students", summary="过程指导·本人指导的毕设学生列表")
+def teacher_graduation_my_students(user=Depends(get_current_user)):
+    return success(tea.graduation_my_students(user))
+
+
+@router.post("/teacher/graduation/{gd_student_id}/guidance", summary="过程指导·快速新增指导记录（仅本人指导学生）")
+def teacher_graduation_guidance_create(gd_student_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.graduation_guidance_create(user, gd_student_id, body), message="已记录")
 
 
 @router.post("/teacher/academic/warning/{warning_id}/handle",

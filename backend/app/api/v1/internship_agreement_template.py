@@ -14,7 +14,8 @@ from fastapi import APIRouter, Depends, Query
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.schemas.internship_agreement_template import (AgreementTemplateCreate, AgreementTemplateUpdate,
-                                                       SetDefaultRequest, StatusAction)
+                                                       SetDefaultRequest, StatusAction,
+                                                       TemplatePreviewRequest)
 from app.services import audit_log
 from app.services import internship_agreement_template_service as svc
 
@@ -45,6 +46,20 @@ def template_variables(user=Depends(get_current_user)):
     return success(svc.variable_presets())
 
 
+@router.get(f"{_BASE}/options", summary="启用中的协议模板选项（生成协议下拉）")
+def template_options(user=Depends(get_current_user)):
+    return success(svc.list_enabled_options())
+
+
+@router.post(f"{_BASE}/export", summary="协议模板台账导出 Excel(.xlsx)")
+def template_export(keyword: Optional[str] = None, status: Optional[str] = None,
+                    category: Optional[str] = None, user=Depends(get_current_user)):
+    data = svc.export_templates(keyword=keyword, status=status, category=category)
+    audit_log.record("导出协议模板台账", "internship-agreement-template:export",
+                     detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
 @router.post(_BASE, summary="新建协议模板（初始草稿）")
 def create_template(body: AgreementTemplateCreate, user=Depends(get_current_user)):
     result = svc.create_template(body)
@@ -56,6 +71,14 @@ def create_template(body: AgreementTemplateCreate, user=Depends(get_current_user
 @router.get(f"{_BASE}/{{template_id}}", summary="协议模板详情（含正文/变量/适用范围/审计）")
 def template_detail(template_id: str, user=Depends(get_current_user)):
     return success(svc.get_template(template_id))
+
+
+@router.post(f"{_BASE}/{{template_id}}/preview", summary="协议模板变量渲染预览（按实习学生填充）")
+def template_preview(template_id: str, body: TemplatePreviewRequest, user=Depends(get_current_user)):
+    result = svc.preview_template(template_id, body.internshipId, user=user)
+    audit_log.record("预览协议模板渲染", f"internship-agreement-template:{template_id}",
+                     detail={"internshipId": body.internshipId})
+    return success(result)
 
 
 @router.put(f"{_BASE}/{{template_id}}", summary="编辑协议模板（已归档不可编辑）")

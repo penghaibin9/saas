@@ -100,9 +100,29 @@ class ExceptionHandleRequest(BaseModel):
     comment: str = Field(..., min_length=1, description="处理意见（后端强制 ≥5 字）")
 
 
+class ExceptionBatchHandleRequest(BaseModel):
+    ids: list[str] = Field(..., min_length=1, description="异常记录 ID 列表")
+    action: str = Field("REASONABLE", description="批量仅支持 REASONABLE")
+    comment: str = Field(..., min_length=1, description="处理意见（后端强制 ≥5 字）")
+
+
+class ExceptionExportRequest(BaseModel):
+    ids: Optional[list[str]] = Field(None, description="仅导出所选 ID；为空则按筛选条件导出")
+
+
+class ReportRemindRequest(BaseModel):
+    channel: Optional[str] = Field("站内消息", description="催交通知渠道（留痕）")
+
+
 class ReportReviewRequest(BaseModel):
     action: str = Field(..., description="APPROVE / RETURN")
     comment: Optional[str] = Field(None, description="退回时必填 ≥5 字")
+
+
+class ReportBatchReviewRequest(BaseModel):
+    ids: list[str] = Field(..., min_length=1, description="周报 ID 列表")
+    action: str = Field("APPROVE", description="批量仅支持 APPROVE")
+    comment: Optional[str] = Field(None, description="批量通过评语（选填）")
 
 
 # ═══════════ 企业库 ═══════════

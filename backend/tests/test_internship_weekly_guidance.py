@@ -77,6 +77,71 @@ def test_weekly_review_own_ok(client, db_mode):
     assert r.json()["data"]["status"] == "APPROVED"
 
 
+def test_weekly_export_and_batch_review(client, db_mode):
+    ids = _seed(db_mode)
+    exp = client.post(f"{INT}/reports/export", params={"status": "PENDING_REVIEW"},
+                      headers=_admin(client))
+    assert exp.status_code == 200 and exp.json()["code"] == 0
+    assert exp.json()["data"]["rowCount"] == 2
+    assert exp.json()["data"]["contentBase64"]
+    # 批量通过：刘强 只能批阅 rep_a；rep_b 跳过（非本人学生）
+    batch = client.post(f"{INT}/reports/batch-review",
+                        json={"ids": [str(ids["rep_a"]), str(ids["rep_b"])], "action": "APPROVE",
+                              "comment": "批量通过"},
+                        headers=_mentor("刘强"))
+    assert batch.status_code == 200 and batch.json()["code"] == 0
+    body = batch.json()["data"]
+    assert body["approvedCount"] == 1 and body["skippedCount"] == 1
+    assert str(ids["rep_a"]) in body["approved"]
+
+
+def test_weekly_remind_overdue(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentProfile, WeeklyReport
+    db = get_sessionmaker()()
+    try:
+        s = StudentProfile(tenant_id=TID, student_no="WG-OD", real_name="逾期生",
+                           current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
+        db.add(s); db.flush()
+        r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name="刘强",
+                             enterprise_name="测试企业", status="ONBOARD", risk_level="NONE")
+        db.add(r); db.flush()
+        w = WeeklyReport(tenant_id=TID, internship_id=r.id, week_number=5, word_count=0,
+                         report_version=1, status="OVERDUE")
+        db.add(w); db.flush()
+        rid = w.id
+        db.commit()
+    finally:
+        db.close()
+    ok = client.post(f"{INT}/reports/{rid}/remind", json={"channel": "站内消息"},
+                     headers=_mentor("刘强"))
+    assert ok.status_code == 200 and ok.json()["code"] == 0
+    assert ok.json()["data"]["reminded"] is True
+    # 非 OVERDUE 不可催
+    ids = _seed(db_mode)
+    bad = client.post(f"{INT}/reports/{ids['rep_a']}/remind", headers=_mentor("刘强"))
+    assert bad.status_code == 409 or bad.json()["code"] != 0
+
+
+def test_guidance_stats_insufficient(client, db_mode):
+    ids = _seed(db_mode)
+    stats = client.get(f"{INT}/guidances/stats", params={"threshold": 2}, headers=_mentor("刘强")).json()
+    assert stats["code"] == 0
+    assert stats["data"]["studentCount"] >= 1
+    assert stats["data"]["insufficientCount"] >= 1
+
+
+def test_visit_stats(client, db_mode):
+    ids = _seed(db_mode)
+    ok = client.post(f"{INT}/visits", headers=_mentor("刘强"), json={
+        "internshipId": str(ids["rec_a"]), "method": "ONSITE",
+        "safetyIssue": "消防通道堆放杂物", "rectifyRequire": "立即清理"
+    })
+    assert ok.status_code == 200
+    stats = client.get(f"{INT}/visits/stats", headers=_mentor("刘强")).json()
+    assert stats["code"] == 0 and stats["data"]["pendingRectify"] >= 1
+
+
 # ══════════════ 指导记录 ══════════════
 
 def test_guidance_create_owner_and_scope(client, db_mode):
@@ -171,3 +236,21 @@ def test_visit_list_scope_and_student_403(client, db_mode):
     assert client.get(f"{INT}/visits", headers=_admin(client)).json()["data"]["total"] == 2
     assert client.get(f"{INT}/visits", headers=_mentor("刘强")).json()["data"]["total"] == 1
     assert client.get(f"{INT}/visits", headers=_student()).status_code == 403
+
+
+def test_guidance_plans_and_export(client, db_mode):
+    ids = _seed(db_mode)
+    h = _mentor("刘强")
+    # 无指导记录 → 计划状态不足
+    plans = client.get(f"{INT}/guidance-plans", headers=h).json()["data"]
+    assert plans["total"] == 1
+    assert plans["items"][0]["planStatus"] in ("INSUFFICIENT_MONTH", "INSUFFICIENT_TERM", "INSUFFICIENT_BOTH")
+    # 新增一条指导后计数变化
+    client.post(f"{INT}/guidances", json={"internshipId": str(ids["rec_a"]), "content": "首次指导"},
+                headers=h)
+    plans2 = client.get(f"{INT}/guidance-plans", headers=h).json()["data"]
+    assert plans2["items"][0]["termCount"] >= 1
+    exp = client.post(f"{INT}/guidance-plans/export", headers=h)
+    assert exp.status_code == 200
+    assert exp.json()["data"]["filename"].endswith(".xlsx")
+    assert client.get(f"{INT}/guidance-plans", headers=_student()).status_code == 403

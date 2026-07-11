@@ -88,8 +88,23 @@ export default {
       studentApi.getInternship().then((d) => { this.i = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
     entryTap(e) {
-      if (String(e).indexOf('周报') >= 0) return this.weekly()
-      toast(e + '：入口即将开放')
+      const label = String(e)
+      if (label.indexOf('周报') >= 0) return this.weekly()
+      if (label.indexOf('协议') >= 0) return go('/pages/student/internship/agreement/index')
+      if (label.indexOf('意向') >= 0) return go('/pages/student/internship/intention/index')
+      if (label.indexOf('日报') >= 0) return go('/pages/student/internship/process-report/index?type=daily')
+      if (label.indexOf('月报') >= 0) return go('/pages/student/internship/process-report/index?type=monthly')
+      if (label.indexOf('总结') >= 0) return go('/pages/student/internship/process-report/index?type=summary')
+      if (label.indexOf('变更') >= 0 || label.indexOf('换岗') >= 0) return go('/pages/student/internship/change/index')
+      if (label.indexOf('计划') >= 0) return go('/pages/student/internship/plan/index')
+      if (label.indexOf('保险') >= 0) return go('/pages/student/internship/insurance/index')
+      if (label.indexOf('打卡') >= 0) return this.checkin()
+      if (label.indexOf('请假') >= 0) return go('/pages/student/internship/leave/index')
+      if (label.indexOf('自评') >= 0 || label.indexOf('成绩') >= 0 || label.indexOf('鉴定') >= 0) {
+        return go('/pages/student/internship/self-eval/index')
+      }
+      if (label.indexOf('我的实习') >= 0) return
+      toast(label + '：请通过上方主任务或 PC 端完成')
     },
     checkin() {
       if (this.i.checkin.done) return toast('今日已打卡')

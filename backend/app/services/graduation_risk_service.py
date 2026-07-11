@@ -1,4 +1,4 @@
-"""毕业设计中心 · 问题预警服务（GD-R01~R13 对齐 source-design §13 冻结编码，本轮实现可由现有数据判定的 8 项）。
+"""毕业设计中心 · 问题预警服务（GD-R01~R13 对齐 source-design §13 冻结编码，13 项全部由现有业务数据自动判定）。
 
 扫描现有业务数据生成/更新风险台账（幂等 upsert，按 risk_code+gd_student_id 唯一），
 再走"受理→处理→关闭"闭环。扫描本身是只读推导，不修改业务表。
@@ -13,9 +13,15 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import (GraduationAuditTrail, GraduationDefenseScore, GraduationFinal, GraduationGrade,
-                        GraduationMidterm, GraduationProposal, GraduationRiskCase, GraduationStudent)
+from app.models import (GraduationArchiveRecord, GraduationAuditTrail, GraduationDefenseScore, GraduationFinal,
+                        GraduationGrade, GraduationGuidance, GraduationMidterm, GraduationProposal,
+                        GraduationRiskCase, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
+
+# GD-R06 指导记录不足阈值：与 graduation_guidance_service.guidance_stats(threshold=3) 保持一致。
+R06_MIN_GUIDANCE = 3
+# R06 仅对"已进入中期及以后仍指导不足"的学生预警，避免刚进入指导阶段即误报。
+R06_STAGES = ("MIDTERM", "FINAL_CHECK", "DEFENSE")
 
 STATUS_LABEL = {"OPEN": "待受理", "PROCESSING": "处理中", "CLOSED": "已关闭"}
 STATUS_TONE = {"OPEN": "danger", "PROCESSING": "warning", "CLOSED": "success"}
@@ -112,6 +118,13 @@ def scan_risks() -> dict:
                     GraduationMidterm.tenant_id == _tid(), GraduationMidterm.gd_student_id == s.id)).first()
                 if not m or m.status in ("PENDING", "RECTIFYING", "RECTIFY_SUBMITTED", "CHECKED_FAIL"):
                     _upsert(db, "GD-R07", s.id)
+            # R06 指导记录不足：已进入中期及以后但有效指导记录少于阈值
+            if s.stage in R06_STAGES:
+                gcnt = int(db.scalar(select(func.count()).select_from(GraduationGuidance).where(
+                    GraduationGuidance.tenant_id == _tid(), GraduationGuidance.gd_student_id == s.id,
+                    GraduationGuidance.is_deleted.is_(False))) or 0)
+                if gcnt < R06_MIN_GUIDANCE:
+                    _upsert(db, "GD-R06", s.id)
             if s.stage in ("DEFENSE",):
                 has_final = db.scalars(select(GraduationFinal).where(
                     GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == s.id,
@@ -128,6 +141,13 @@ def scan_risks() -> dict:
             if g and g.status == "PUBLISHED":
                 if g.total_score is not None and g.total_score < 60:
                     _upsert(db, "GD-R13", s.id)
+            # R12 材料未归档：流程已完成(成绩已发布，或学生节点已归档)但归档记录尚未备案(FILED)
+            if (g and g.status == "PUBLISHED") or s.stage == "ARCHIVED":
+                a = db.scalars(select(GraduationArchiveRecord).where(
+                    GraduationArchiveRecord.tenant_id == _tid(), GraduationArchiveRecord.gd_student_id == s.id,
+                    GraduationArchiveRecord.is_deleted.is_(False))).first()
+                if not a or a.status != "FILED":
+                    _upsert(db, "GD-R12", s.id)
         db.commit()
         after_count = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
             GraduationRiskCase.tenant_id == _tid())) or 0)
@@ -161,7 +181,10 @@ def list_risks(page: int, page_size: int, risk_code=None, level=None, status=Non
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationRiskCase.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_row(r, db.get(GraduationStudent, r.gd_student_id)) for r in rows]
+        sids = {r.gd_student_id for r in rows}
+        smap = {s.id: s for s in db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id.in_(sids))).all()} if sids else {}
+        items = [_row(r, smap.get(r.gd_student_id)) for r in rows]
         return items, total
 
 
