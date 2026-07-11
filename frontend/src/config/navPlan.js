@@ -75,11 +75,14 @@ export const NAV_PLAN = [
 
   /* ═══════════ 一级②：学工中心 ═══════════ */
   grp('student-affairs', '学工中心', 'studentAffairs', [
+    // 学工首页（13A 门面）：三角色 dashboard，真实对接 /api/v1/student-affairs/dashboard
+    mod('sa-home', '学工首页', '/admin/student-affairs', []),
     mod('sa-dashboard', '学工看板', null, P(
       '学工总览', '今日待办', '辅导员待办', '学生风险概览', '请假审批概览', '奖助进度概览',
       '宿舍异常概览', '心理关注概览', '违纪处分概览', '学工数据趋势', '重点学生提醒', '待归档材料提醒'
     )),
     mod('sa-profile', '学生画像', '/admin/student', [
+      I('学生画像 360', '/admin/student-affairs/profile'),
       I('学生主档', '/admin/student/list'),
       ...P('基础信息'),
       I('学籍状态摘要', '/admin/student/status'),
@@ -92,10 +95,11 @@ export const NAV_PLAN = [
       I('身份核验（现有）', '/admin/student/identity'),
       I('导入导出（现有）', '/admin/student/import-export')
     ]),
-    mod('sa-classes', '班级管理', null, P(
-      '班级列表', '班级详情', '班级学生', '辅导员绑定', '班主任绑定', '班干部管理', '班级通讯录',
-      '班级风险概览', '班级请假统计', '班级宿舍统计', '班级奖助统计', '班级活动统计', '班级档案'
-    )),
+    mod('sa-classes', '班级管理', '/admin/student-affairs/classes', [
+      I('班级与班干部', '/admin/student-affairs/classes'),
+      ...P('班级详情', '班级学生', '辅导员绑定', '班主任绑定', '班级通讯录',
+        '班级风险概览', '班级请假统计', '班级宿舍统计', '班级奖助统计', '班级活动统计', '班级档案')
+    ]),
     mod('sa-orientation', '数字迎新', '/admin/orientation', [
       I('迎新看板', '/admin/orientation'),
       I('迎新批次', '/admin/orientation/batches'),
@@ -117,48 +121,51 @@ export const NAV_PLAN = [
       I('迎新统计', '/admin/orientation/statistics'),
       I('迎新归档', '/admin/orientation/archive')
     ]),
-    mod('sa-leave', '请假销假', null, [
+    mod('sa-leave', '请假销假', '/admin/student-affairs/leave', [
+      I('请假审批工作台', '/admin/student-affairs/leave'),
       ...P('请假看板', '请假申请'),
-      I('请假审批', '/admin/campus-service/leave'),
+      I('请假审批（现有·过渡）', '/admin/campus-service/leave'),
       ...P('续假申请', '续假审批', '销假管理', '归寝核验', '长假审批', '外出备案',
         '请假异常', '超期未销假', '请假规则配置', '请假台账', '请假统计', '请假归档')
     ]),
-    mod('sa-difficulty', '困难认定', null, P(
-      '认定批次', '学生申请', '材料上传', '材料审核', '辅导员初审', '班级民主评议', '学院审核',
-      '学校复核', '公示管理', '异议处理', '认定结果', '困难等级调整', '认定台账', '认定统计', '材料归档'
-    )),
-    mod('sa-aid', '奖助勤贷补', null, [
-      ...P('奖助看板', '奖学金管理'),
-      I('助学金管理（现有·奖助资助）', '/admin/campus-service/grants'),
-      ...P('国家奖学金', '国家励志奖学金', '校级奖学金', '勤工助学岗位', '勤工报名审核', '助学贷款',
-        '学费减免', '临时困难补助', '绿色通道', '名单公示', '发放台账', '异议处理', '奖助统计', '奖助归档')
+    mod('sa-difficulty', '困难认定', '/admin/student-affairs/aid', [
+      I('困难认定工作台', '/admin/student-affairs/aid'),
+      ...P('认定批次', '材料上传', '材料审核', '公示管理', '异议处理', '困难学生库',
+        '认定台账', '认定统计', '材料归档')
     ]),
-    mod('sa-discipline', '违纪处分', null, [
-      I('违纪登记（现有）', '/admin/campus-service/discipline'),
-      ...P('调查取证', '处分审批', '处分决定', '处分送达', '处分公示', '处分台账', '处分解除申请',
-        '处分解除审核', '学生申诉', '复核处理', '处分统计', '处分归档')
+    mod('sa-aid', '奖助勤贷补', '/admin/student-affairs/funding', [
+      I('奖助管理工作台', '/admin/student-affairs/funding'),
+      I('助学金管理（现有·过渡）', '/admin/campus-service/grants'),
+      ...P('勤工助学岗位', '勤工报名审核', '助学贷款', '学费减免', '临时困难补助',
+        '绿色通道', '发放台账', '奖助统计', '奖助归档')
+    ]),
+    mod('sa-discipline', '违纪处分', '/admin/student-affairs/discipline', [
+      I('违纪处分工作台', '/admin/student-affairs/discipline'),
+      I('违纪登记（现有·过渡）', '/admin/campus-service/discipline'),
+      ...P('调查取证', '处分公示', '处分台账', '学生申诉', '复核处理', '处分统计', '处分归档')
     ]),
     mod('sa-mental', '心理健康', null, P(
       '心理看板', '心理测评', '测评结果', '重点关注学生', '咨询预约', '咨询记录', '危机预警',
       '危机干预', '转介记录', '回访记录', '心理活动', '心理档案', '心理权限审计', '心理统计'
     )),
-    mod('sa-risk', '风险预警', null, P(
-      '风险看板', '风险学生', '学业风险摘要', '请假异常风险', '夜不归宿风险', '心理关注风险',
-      '违纪风险', '经济困难风险', '实习异常风险', '多维风险合并', '风险处置', '风险跟进',
-      '风险关闭', '风险规则配置', '风险统计'
-    )),
-    mod('sa-talks', '谈心谈话', null, P(
-      '谈话计划', '谈话记录', '重点学生谈话', '风险学生谈话', '家校联动谈话', '谈话跟进',
-      '待回访学生', '批量导入谈话', '谈话统计', '谈话归档'
-    )),
-    mod('sa-home-school', '家校联系', null, P(
-      '家长信息', '联系人维护', '联系记录', '家校通知', '通知回执', '紧急联系',
-      '重点学生家校沟通', '家长授权记录', '家校联系统计', '家校材料归档'
-    )),
-    mod('sa-dorm', '宿舍管理', null, [
-      ...P('宿舍看板', '楼栋管理', '房间管理', '床位管理'),
-      I('入住管理（现有·宿舍服务）', '/admin/campus-service/dormitory'),
-      ...P('退宿管理', '调宿申请', '调宿审批', '宿舍检查', '夜不归宿', '公寓纪律', '宿舍维修',
+    mod('sa-risk', '风险预警', '/admin/student-affairs/risk', [
+      I('风险处置工作台', '/admin/student-affairs/risk'),
+      ...P('风险看板', '风险学生', '学业风险摘要', '请假异常风险', '夜不归宿风险', '心理关注风险',
+        '违纪风险', '经济困难风险', '实习异常风险', '多维风险合并', '风险跟进',
+        '风险关闭', '风险规则配置', '风险统计')
+    ]),
+    mod('sa-talks', '谈心谈话', '/admin/student-affairs/talks', [
+      I('谈心谈话工作台', '/admin/student-affairs/talks'),
+      ...P('重点学生谈话', '风险学生谈话', '家校联动谈话', '待回访学生', '批量导入谈话', '谈话统计', '谈话归档')
+    ]),
+    mod('sa-home-school', '家校联系', '/admin/student-affairs/family', [
+      I('家校联系记录', '/admin/student-affairs/family'),
+      ...P('家长信息', '家校通知', '通知回执', '紧急联系', '家长授权记录', '家校联系统计', '家校材料归档')
+    ]),
+    mod('sa-dorm', '宿舍管理', '/admin/student-affairs/dorm', [
+      I('宿舍房源与入住', '/admin/student-affairs/dorm'),
+      I('入住管理（现有·过渡）', '/admin/campus-service/dormitory'),
+      ...P('调宿申请', '调宿审批', '宿舍检查', '夜不归宿', '公寓纪律', '宿舍维修',
         '文明寝室', '宿舍异常', '宿舍统计', '宿舍归档')
     ]),
     mod('sa-activities', '学生活动', null, P(
@@ -181,10 +188,10 @@ export const NAV_PLAN = [
       '考评看板', '工作量统计', '谈话记录统计', '宿舍走访统计', '风险处置统计', '请假审批统计',
       '班级建设统计', '学生满意度', '学院评分', '考评结果', '考评归档'
     )),
-    mod('sa-archive', '学工归档', null, P(
-      '归档看板', '学生个人归档', '班级归档', '奖助归档', '处分归档', '心理归档', '请假归档',
-      '宿舍归档', '活动归档', '归档缺失提醒', '批量归档', '归档导出', '归档审计'
-    )),
+    mod('sa-archive', '学工归档', '/admin/student-affairs/archive', [
+      I('归档批次与档案包', '/admin/student-affairs/archive'),
+      ...P('归档看板', '学生个人归档', '班级归档', '归档缺失提醒', '归档导出', '归档审计')
+    ]),
     mod('sa-stats', '学工统计', null, P(
       '学工总览', '学生结构统计', '请假统计', '奖助统计', '困难学生统计', '宿舍统计', '心理关注统计',
       '违纪处分统计', '活动统计', '第二课堂统计', '风险学生统计', '辅导员工作统计', '学院对比分析', '导出报表'
@@ -251,7 +258,7 @@ export const NAV_PLAN = [
   ]),
 
   /* ═══════════ 一级④：毕业设计中心（key 对齐 adminMenu 的 graduation，供 rail 高亮联动）═══════════
-   * 2026-07-09 按三家成熟商业系统对标重新分组（详见 docs/施工记录/毕业设计中心-导航重构对标记录.md）。
+   * 2026-07-09 按三家成熟商业系统对标重新分组（详见 docs/毕业设计中心/施工记录/毕业设计中心-导航重构对标记录.md）。
    * 2026-07-10 二级模块任务化与三级去重收口：
    *   1) 三级只保留「真实独立的工作队列 / 工作区 / 配置页」；同一页面的状态筛选、动作按钮、
    *      统计跳转不再挂菜单——能力全部保留在页面内（视图页签 / 筛选 / 工具栏按钮），
@@ -558,10 +565,14 @@ const FLAT_NAV_INDEX = (() => {
 export function findActiveInPlan(path, fullPath = '') {
   if (!path) return { groupKey: '', modKey: '', leafKey: '' }
   const ref = normalizeNavRef(fullPath || path)
-  let best = { groupKey: '', modKey: '', leafKey: '', score: -1 }
+  // 哨兵与「未匹配」默认分都用 -Infinity：详情页 /xxx/:id 只能命中父级「前缀匹配」，其分数是负数
+  // （cand.path.length - 500）。若哨兵是 -1，负分前缀永远打不过 -1 → 返回空 modKey → 侧栏回退高亮
+  // 到二级第一项（今日工作）。用 -Infinity 后，无精确/带 query 匹配时让「最长父级前缀」正常归属所属
+  // 二级模块；精确匹配仍是正分照常压过前缀，未匹配行保持 -Infinity 不会被误选。
+  let best = { groupKey: '', modKey: '', leafKey: '', score: -Infinity }
   for (const row of FLAT_NAV_INDEX) {
     if (!row.path) continue
-    let score = -1
+    let score = -Infinity
     if (navRefMatches(ref, row.path)) {
       const cand = splitNavRef(row.path)
       const cur = splitNavRef(ref)
@@ -570,7 +581,12 @@ export function findActiveInPlan(path, fullPath = '') {
         // 父路径（如 /admin/internship）不可抢占子路由高亮
         score = cand.path.length - 500
       } else {
-        score = row.path.length + (cand.query ? 1000 : 0)
+        // 精确命中：同一 path 同时挂在「二级模块行」和它的首个「概览叶子」上时（如
+        // /admin/graduation 既是 gd-dashboard 模块 path、也是「毕设总览」叶子 path），
+        // 二者 path.length 相等会平局，而 FLAT_NAV_INDEX 中模块行在前 → 严格大于比较下
+        // 叶子永远抢不到，导致概览页三级叶子不高亮（违背 §9.4）。给叶子加 0.5 极小 tiebreak，
+        // 让概览叶子在与同路径模块行平局时胜出并高亮；模块行高亮仍由 modKey 保证，不受影响。
+        score = row.path.length + (cand.query ? 1000 : 0) + (row.isLeaf ? 0.5 : 0)
       }
     } else {
       const { path: cp, query: cq } = splitNavRef(row.path)

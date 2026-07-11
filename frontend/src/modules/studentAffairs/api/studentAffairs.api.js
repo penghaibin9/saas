@@ -1,0 +1,597 @@
+/**
+ * 13A 学工中心 API（生产级：真实对接 /api/v1/student-affairs/*，业务数据不回退 mock）。
+ *
+ * 本轮范围 = 学工首页（dashboard 三角色视图 + 9 统计卡 + 13 模块卡）。
+ * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功；业务错误透出后端 message。
+ * 后端已就绪（backend/app/api/v1/student_affairs.py），数据全部真实按数据范围聚合。
+ */
+import { request } from '@/services/http/client'
+
+function ok(data) {
+  return { code: 0, data, message: 'ok' }
+}
+
+function toErr(e) {
+  // e.biz=true 表示后端返回的业务错误码（403/409/422 等），透出其 message；否则归为接口不可用。
+  if (e?.biz) return { code: e.code || 1, data: null, message: e.message }
+  return { code: e?.code || 503001, data: null, message: e?.message || '真实接口不可用' }
+}
+
+async function callStrict(fn) {
+  try {
+    return { code: 0, data: await fn(), message: 'ok' }
+  } catch (e) {
+    return toErr(e)
+  }
+}
+
+/**
+ * 门户壳兜底品牌（仅当共享端点 /tenant/brand 不可达时使用，保证布局壳不崩）。
+ * 非业务假数据：学生数/待办等真实指标一律来自 dashboard 后端。
+ */
+const FALLBACK_BRAND = {
+  schoolName: '学工中心',
+  platformDisplayName: '高校学生全生命周期管理平台',
+  watermarkText: ''
+}
+
+export const studentAffairsApi = {
+  /**
+   * 门户上下文：品牌 + 当前角色 + 数据范围，全部来自真实共享端点
+   * （/tenant/brand、/rbac/current-context）。任一端点不可达时静默回退，
+   * 保证学工首页壳可渲染；三角色视图与统计仍由 dashboard 后端按登录身份裁定。
+   */
+  async getContext() {
+    let brand = { ...FALLBACK_BRAND }
+    let currentRole = { roleCode: '', roleName: '', userName: '' }
+    let dataScope = { scopeName: '' }
+    try {
+      const b = await request('/tenant/brand')
+      brand = {
+        ...brand,
+        ...b,
+        schoolName: b.schoolName || brand.schoolName,
+        platformDisplayName: b.platformDisplayName || brand.platformDisplayName
+      }
+    } catch {
+      /* 离线/未登录静默回退品牌兜底 */
+    }
+    try {
+      const ctx = await request('/rbac/current-context')
+      if (ctx.currentRole) currentRole = { ...currentRole, ...ctx.currentRole }
+      if (ctx.dataScope) {
+        dataScope = {
+          ...dataScope,
+          ...ctx.dataScope,
+          scopeName: ctx.dataScope.scopeName || ctx.dataScope.scopeLabel || ''
+        }
+      }
+    } catch {
+      /* 静默回退，dashboard 仍会返回真实 viewLabel/scopeMode */
+    }
+    return ok({ tenantBrandConfig: brand, currentRole, dataScope })
+  },
+
+  /**
+   * 学工首页：三角色视图（学工处/学院学工/辅导员）+ 9 张统计卡 + 13 张业务模块卡。
+   * 真实聚合、按数据范围过滤；返回体形如
+   * { view, viewLabel, scopeMode, updatedAt, summaryCards:[{key,label,value,unit}], moduleCards:[{key,label,status,empty,emptyHint}] }
+   */
+  getDashboard() {
+    return callStrict(() => request('/student-affairs/dashboard'))
+  },
+
+  // ─────────────── 班级（供选择器/代录用） ───────────────
+
+  /** 班级列表（按数据范围）。 */
+  getClasses() {
+    return callStrict(() => request('/student-affairs/classes'))
+  },
+
+  /** 班干部列表（某班级）。 */
+  getClassCadres(classId) {
+    return callStrict(() => request(`/student-affairs/classes/${classId}/cadres`))
+  },
+
+  /** 任命班干部。body: { studentId, position, termCode? }（同班同职务在任 → 409）。 */
+  appointCadre(classId, body) {
+    return callStrict(() => request(`/student-affairs/classes/${classId}/cadres`, { method: 'POST', body }))
+  },
+
+  /** 免去班干部。 */
+  dismissCadre(cadreId) {
+    return callStrict(() => request(`/student-affairs/classes/cadres/${cadreId}`, { method: 'DELETE' }))
+  },
+
+  /**
+   * 学生搜索（供 AppStudentPicker remoteSearch 注入）：真实 /students 端点，按数据范围返回。
+   * 返回 [{ label, value, desc }]，label=姓名+学号，value=学生 id。
+   */
+  async searchStudents(keyword) {
+    const d = await request('/students', { params: { keyword, page: 1, pageSize: 20 } })
+    return (d.items || []).map((s) => ({
+      value: String(s.id),
+      label: `${s.realName}（${s.studentNo}）`,
+      desc: s.className || s.grade || ''
+    }))
+  },
+
+  // ─────────────── 请假闭环（P3 · /student-affairs/leave/*） ───────────────
+
+  /** 待审批请假队列（按数据范围；仅返回三个审批节点态）。 */
+  getPendingLeaves({ page = 1, pageSize = 50 } = {}) {
+    return callStrict(() => request('/student-affairs/leave/pending', { params: { page, pageSize } }))
+  },
+
+  /** 请假详情（任意状态可查，供动作后刷新详情面板）。 */
+  getLeaveDetail(id) {
+    return callStrict(() => request(`/student-affairs/leave/${id}`))
+  },
+
+  /** 代录请假（教师代学生发起）。body: { studentId, leaveType, startTime, endTime, reason } */
+  applyLeave(body) {
+    return callStrict(() => request('/student-affairs/leave', { method: 'POST', body }))
+  },
+
+  /** 审批通过（多级逐节点推进；comment 可选）。 */
+  approveLeave(id, comment = '') {
+    return callStrict(() => request(`/student-affairs/leave/${id}/approve`, { method: 'POST', body: { comment } }))
+  },
+
+  /** 驳回（终态，原因≥5字）。 */
+  rejectLeave(id, reason) {
+    return callStrict(() => request(`/student-affairs/leave/${id}/reject`, { method: 'POST', body: { reason } }))
+  },
+
+  /** 退回重提（原因≥5字）。 */
+  returnLeave(id, reason) {
+    return callStrict(() => request(`/student-affairs/leave/${id}/return`, { method: 'POST', body: { reason } }))
+  },
+
+  /** 退回后重新提交。 */
+  resubmitLeave(id) {
+    return callStrict(() => request(`/student-affairs/leave/${id}/resubmit`, { method: 'POST', body: {} }))
+  },
+
+  /** 发起销假（APPROVED/OVERDUE 可发起）。 */
+  cancelLeave(id, proofNote = '') {
+    return callStrict(() => request(`/student-affairs/leave/${id}/cancel`, { method: 'POST', body: { proofNote } }))
+  },
+
+  /** 销假确认（辅导员）→ CLOSED 进 360。 */
+  confirmCancelLeave(id, note = '') {
+    return callStrict(() => request(`/student-affairs/leave/${id}/cancel-confirm`, { method: 'POST', body: { note } }))
+  },
+
+  /** 发起续假（newEnd 必须晚于原结束）。 */
+  extendLeave(id, newEnd, reason = '') {
+    return callStrict(() => request(`/student-affairs/leave/${id}/extension`, { method: 'POST', body: { newEnd, reason } }))
+  },
+
+  /** 续假审批通过。 */
+  approveExtension(id) {
+    return callStrict(() => request(`/student-affairs/leave/${id}/extension-approve`, { method: 'POST', body: {} }))
+  },
+
+  /** 逾期扫描（幂等，返回 { count }）。 */
+  scanOverdueLeaves() {
+    return callStrict(() => request('/student-affairs/leave/scan-overdue', { method: 'POST', body: {} }))
+  },
+
+  // ─────────────── 风险预警（P5 · /student-affairs/risk/*） ───────────────
+
+  /** 风险列表（服务端支持 source/status/riskLevel 过滤；心理来源明细按角色脱敏）。 */
+  getRisks({ source = '', status = '', riskLevel = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (source) params.source = source
+    if (status) params.status = status
+    if (riskLevel) params.riskLevel = riskLevel
+    return callStrict(() => request('/student-affairs/risk/records', { params }))
+  },
+
+  /** 风险详情。 */
+  getRiskDetail(id) {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}`))
+  },
+
+  /** 建风险单。body: { studentId, source, riskLevel, title, detail, sourceRefId? }（同来源单据去重 409）。 */
+  createRisk(body) {
+    return callStrict(() => request('/student-affairs/risk/records', { method: 'POST', body }))
+  },
+
+  /** 分派责任人（NEW/REOPENED/TRANSFERRED → ASSIGNED）。 */
+  assignRisk(id, ownerId) {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}/assign`, { method: 'POST', body: { ownerId: String(ownerId) } }))
+  },
+
+  /** 处置（内容≥5字；ASSIGNED/PROCESSING → PROCESSING）。 */
+  processRisk(id, content) {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}/process`, { method: 'POST', body: { content } }))
+  },
+
+  /** 转持续跟进（PROCESSING/FOLLOWING → FOLLOWING）。 */
+  followRisk(id, content = '') {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}/follow`, { method: 'POST', body: { content } }))
+  },
+
+  /** 转办（换责任人；PROCESSING/FOLLOWING → ASSIGNED）。 */
+  transferRisk(id, newOwnerId, reason = '') {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}/transfer`, { method: 'POST', body: { newOwnerId: String(newOwnerId), reason } }))
+  },
+
+  /** 升级（等级+1；PROCESSING/FOLLOWING → ESCALATED）。 */
+  escalateRisk(id, reason = '') {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}/escalate`, { method: 'POST', body: { reason } }))
+  },
+
+  /** 上级接管（ESCALATED → PROCESSING）。 */
+  takeoverRisk(id, content = '') {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}/takeover`, { method: 'POST', body: { content } }))
+  },
+
+  /** 关闭（结论≥5字，需≥1条处置记录；→ CLOSED 进360）。 */
+  closeRisk(id, conclusion) {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}/close`, { method: 'POST', body: { conclusion } }))
+  },
+
+  /** 复发重开（CLOSED → REOPENED）。 */
+  reopenRisk(id, reason = '') {
+    return callStrict(() => request(`/student-affairs/risk/records/${id}/reopen`, { method: 'POST', body: { reason } }))
+  },
+
+  /** 风险超时扫描（幂等，返回 { escalated, assigned }）。 */
+  scanRiskTimeout() {
+    return callStrict(() => request('/student-affairs/risk/scan-timeout', { method: 'POST', body: {} }))
+  },
+
+  // ─────────────── 违纪处分（P5 · /student-affairs/discipline/*） ───────────────
+
+  /** 处分列表（服务端支持 status/discType 过滤）。 */
+  getDisciplineCases({ status = '', discType = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    if (discType) params.discType = discType
+    return callStrict(() => request('/student-affairs/discipline/cases', { params }))
+  },
+
+  /** 处分详情。 */
+  getDisciplineDetail(id) {
+    return callStrict(() => request(`/student-affairs/discipline/cases/${id}`))
+  },
+
+  /** 投影一致性对账（EFFECTIVE case 数 == ACTIVE 投影行数）。 */
+  reconcileDiscipline() {
+    return callStrict(() => request('/student-affairs/discipline/reconcile'))
+  },
+
+  /** 登记违纪处分。body: { studentId, discType, reason(≥5), docNo? } */
+  registerDiscipline(body) {
+    return callStrict(() => request('/student-affairs/discipline/cases', { method: 'POST', body }))
+  },
+
+  /** 提交学院初审（REGISTERED/RETURNED → COLLEGE_REVIEW）。 */
+  submitDiscipline(id) {
+    return callStrict(() => request(`/student-affairs/discipline/cases/${id}/submit`, { method: 'POST', body: {} }))
+  },
+
+  /** 撤销登记（REGISTERED/RETURNED → CANCELLED）。 */
+  cancelDiscipline(id) {
+    return callStrict(() => request(`/student-affairs/discipline/cases/${id}/cancel`, { method: 'POST', body: {} }))
+  },
+
+  /** 处分审批。action: APPROVE / REJECT / RETURN（REJECT/RETURN 原因≥5字）。 */
+  reviewDiscipline(id, action, reason = '') {
+    return callStrict(() => request(`/student-affairs/discipline/cases/${id}/review`, { method: 'POST', body: { action, reason } }))
+  },
+
+  /** 发起处分解除（EFFECTIVE → REMOVE_REVIEW；理由≥5字）。 */
+  submitRemoveDiscipline(id, reason) {
+    return callStrict(() => request(`/student-affairs/discipline/cases/${id}/remove`, { method: 'POST', body: { reason } }))
+  },
+
+  /** 处分解除审批（辅→院→处三节点）。action: APPROVE / REJECT（REJECT 原因≥5字）。 */
+  reviewRemoveDiscipline(id, action, reason = '') {
+    return callStrict(() => request(`/student-affairs/discipline/cases/${id}/remove-review`, { method: 'POST', body: { action, reason } }))
+  },
+
+  // ─────────────── 困难认定（P4 · /student-affairs/aid/*，含强敏感家庭经济） ───────────────
+
+  /** 认定批次列表。 */
+  getAidBatches({ schoolYear = '', status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (schoolYear) params.schoolYear = schoolYear
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/aid/batches', { params }))
+  },
+
+  /** 建/发布认定批次。body: { batchName, schoolYear, applyStart?, applyEnd?, publicityDays?, publish } */
+  createAidBatch(body) {
+    return callStrict(() => request('/student-affairs/aid/batches', { method: 'POST', body }))
+  },
+
+  /** 认定申请列表（家庭经济默认脱敏）。 */
+  getAidApplications({ batchId = '', status = '', level = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }
+    if (batchId) params.batchId = batchId
+    if (status) params.status = status
+    if (level) params.level = level
+    return callStrict(() => request('/student-affairs/aid/applications', { params }))
+  },
+
+  /** 受理困难认定申请（直达班级评议）。body 含 batchId/studentId/applyLevel/statement(10-500)/家庭经济。 */
+  applyAid(body) {
+    return callStrict(() => request('/student-affairs/aid/applications', { method: 'POST', body }))
+  },
+
+  /** 认定申请详情（家庭经济脱敏）。 */
+  getAidDetail(id) {
+    return callStrict(() => request(`/student-affairs/aid/applications/${id}`))
+  },
+
+  /** 各级评审。action: APPROVE / REJECT / RETURN；level 用于初审建议/终审核定等级。 */
+  reviewAid(id, action, level = null, reason = '') {
+    const body = { action, reason }
+    if (level) body.level = level
+    return callStrict(() => request(`/student-affairs/aid/applications/${id}/review`, { method: 'POST', body }))
+  },
+
+  /** 退回后重新提交。 */
+  resubmitAid(id) {
+    return callStrict(() => request(`/student-affairs/aid/applications/${id}/resubmit`, { method: 'POST', body: {} }))
+  },
+
+  /** 人工确认公示期满 → 通过（进困难库 + 360）。 */
+  confirmAidPublicity(id) {
+    return callStrict(() => request(`/student-affairs/aid/applications/${id}/publicity-confirm`, { method: 'POST', body: {} }))
+  },
+
+  /** 公示期满扫描（幂等，返回 { count }）。 */
+  scanAidPublicity() {
+    return callStrict(() => request('/student-affairs/aid/scan-publicity', { method: 'POST', body: {} }))
+  },
+
+  /** 发起困难等级动态调整（仅 APPROVED；原因≥5字）。 */
+  adjustAid(id, targetLevel, reason) {
+    return callStrict(() => request(`/student-affairs/aid/applications/${id}/adjust`, { method: 'POST', body: { targetLevel, reason } }))
+  },
+
+  /** 动态调整审批。action: APPROVE / REJECT。 */
+  approveAidAdjust(id, action = 'APPROVE') {
+    return callStrict(() => request(`/student-affairs/aid/applications/${id}/adjust-approve`, { method: 'POST', body: { action } }))
+  },
+
+  /**
+   * 查看完整家庭经济（强敏感）：sensitiveView 鉴权 + 强制 SENSITIVE 审计。
+   * 非授权角色返回 403；reason 落审计。返回 { familyEconomy: { annualIncome, debt, familyMembers, ... } }。
+   */
+  revealAidFamily(id, reason = '') {
+    return callStrict(() => request(`/student-affairs/aid/applications/${id}/reveal`, { method: 'POST', body: { reason } }))
+  },
+
+  /** 困难学生库（APPROVED 最新等级聚合）。 */
+  getDifficultStudents({ level = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (level) params.level = level
+    return callStrict(() => request('/student-affairs/aid/difficult-students', { params }))
+  },
+
+  // ─────────────── 谈心谈话（P6 · /student-affairs/talks/*） ───────────────
+
+  /** 谈话列表（心理类明细按角色脱敏；服务端 talkType/status/studentId 过滤）。 */
+  getTalks({ talkType = '', status = '', studentId = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }
+    if (talkType) params.talkType = talkType
+    if (status) params.status = status
+    if (studentId) params.studentId = studentId
+    return callStrict(() => request('/student-affairs/talks', { params }))
+  },
+
+  /** 建谈话计划（批量圈定学生，每生一条）。body: { studentIds[], talkType, topic, scheduledAt? }。返回 { planId, talkIds }。 */
+  createTalk(body) {
+    return callStrict(() => request('/student-affairs/talks', { method: 'POST', body }))
+  },
+
+  /** 谈话详情。 */
+  getTalkDetail(id) {
+    return callStrict(() => request(`/student-affairs/talks/${id}`))
+  },
+
+  /** 填写谈话记录（内容≥20字；needFollowUp=true→跟进中，否则已谈话；进360）。 */
+  recordTalk(id, content, result = '', needFollowUp = false) {
+    return callStrict(() => request(`/student-affairs/talks/${id}/record`, { method: 'POST', body: { content, result, needFollowUp } }))
+  },
+
+  /** 跟进/办结/转风险/转家校。action: FOLLOW / CLOSE / TO_RISK / TO_HOME_SCHOOL。 */
+  followUpTalk(id, action, content = '') {
+    return callStrict(() => request(`/student-affairs/talks/${id}/follow-up`, { method: 'POST', body: { action, content } }))
+  },
+
+  /** 谈话工作量统计（完成率）。 */
+  getTalkStats(groupBy = 'TYPE') {
+    return callStrict(() => request('/student-affairs/talks/stats', { params: { groupBy } }))
+  },
+
+  // ─────────────── 学生画像 360（P6 · /student-affairs/students/{id}/*） ───────────────
+
+  /** 学工画像（各域沉淀汇总：请假/困难认定/奖助/处分/风险/心理/谈话）。处分/心理按角色权限。 */
+  getStudentProfile(studentId) {
+    return callStrict(() => request(`/student-affairs/students/${studentId}/profile`))
+  },
+
+  /** 成长时间线（360，各域进360事件倒序）。eventType 按 module 过滤（leave/aid/funding/discipline/risk/talk）。 */
+  getStudentTimeline(studentId, { eventType = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (eventType) params.eventType = eventType
+    return callStrict(() => request(`/student-affairs/students/${studentId}/timeline`, { params }))
+  },
+
+  // ─────────────── 奖助管理（P4 · /student-affairs/funding/*，含资格硬校验） ───────────────
+
+  /** 资助项目列表（SCHOLARSHIP 奖学金 / GRANT 助学金）。 */
+  getFundingProjects({ projectType = '', status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (projectType) params.projectType = projectType
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/funding/projects', { params }))
+  },
+
+  /** 建资助项目。body: { projectName, projectType, amount?, quota? } */
+  createFundingProject(body) {
+    return callStrict(() => request('/student-affairs/funding/projects', { method: 'POST', body }))
+  },
+
+  /** 资助批次列表。 */
+  getFundingBatches({ projectId = '', status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (projectId) params.projectId = projectId
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/funding/batches', { params }))
+  },
+
+  /** 建/发布资助批次。body: { projectId, schoolYear, publicityDays?, quota?, publish } */
+  createFundingBatch(body) {
+    return callStrict(() => request('/student-affairs/funding/batches', { method: 'POST', body }))
+  },
+
+  /** 资助申请列表（金额按角色脱敏）。 */
+  getFundingApplications({ batchId = '', projectType = '', status = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }
+    if (batchId) params.batchId = batchId
+    if (projectType) params.projectType = projectType
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/funding/applications', { params }))
+  },
+
+  /**
+   * 发起资助申请（含资格硬校验：助学金需在困难库，奖学金需学籍正常/无未解除处分/无挂科）。
+   * 资格不通过后端 409 拦截并透出原因。body: { batchId, studentId, applySource?, amount?, statement? }。
+   */
+  applyFunding(body) {
+    return callStrict(() => request('/student-affairs/funding/applications', { method: 'POST', body }))
+  },
+
+  /** 资助申请详情（含资格校验快照）。 */
+  getFundingDetail(id) {
+    return callStrict(() => request(`/student-affairs/funding/applications/${id}`))
+  },
+
+  /** 各级评审。action: APPROVE / REJECT / RETURN（REJECT/RETURN 原因≥5字）。 */
+  reviewFunding(id, action, reason = '') {
+    return callStrict(() => request(`/student-affairs/funding/applications/${id}/review`, { method: 'POST', body: { action, reason } }))
+  },
+
+  /** 确认公示期满 → 获资助（进360）。 */
+  confirmFundingPublicity(id) {
+    return callStrict(() => request(`/student-affairs/funding/applications/${id}/publicity-confirm`, { method: 'POST', body: {} }))
+  },
+
+  /** 资助公示扫描（幂等）。 */
+  scanFundingPublicity() {
+    return callStrict(() => request('/student-affairs/funding/scan-publicity', { method: 'POST', body: {} }))
+  },
+
+  // ─────────────── 家校联系（P6 · /student-affairs/students/{id}/family-contacts） ───────────────
+
+  /** 家校联系记录列表（append-only）。 */
+  getFamilyContacts(studentId, { page = 1, pageSize = 100 } = {}) {
+    return callStrict(() => request(`/student-affairs/students/${studentId}/family-contacts`, { params: { page, pageSize } }))
+  },
+
+  /**
+   * 登记家校联系。body: { contactType PHONE/WECHAT/VISIT/MESSAGE, reason, result, fullPhoneView, viewReason }。
+   * 查看完整号码(fullPhoneView=true)需 viewReason≥5字，后端落 SENSITIVE 审计。
+   */
+  createFamilyContact(studentId, body) {
+    return callStrict(() => request(`/student-affairs/students/${studentId}/family-contacts`, { method: 'POST', body }))
+  },
+
+  // ─────────────── 宿舍管理（P7 · /student-affairs/dorm/*） ───────────────
+
+  /** 楼栋列表（gender 过滤）。 */
+  getBuildings({ gender = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (gender) params.gender = gender
+    return callStrict(() => request('/student-affairs/dorm/buildings', { params }))
+  },
+
+  /** 新建楼栋（带 floors/roomsPerFloor/bedsPerRoom 则一键铺满床位）。 */
+  createBuilding(body) {
+    return callStrict(() => request('/student-affairs/dorm/buildings', { method: 'POST', body }))
+  },
+
+  /** 铺房+床（层数×每层房数×每间床位）。 */
+  generateLayout(buildingId, { floors, roomsPerFloor, bedsPerRoom }) {
+    return callStrict(() => request(`/student-affairs/dorm/buildings/${buildingId}/generate`, { method: 'POST', body: { floors, roomsPerFloor, bedsPerRoom } }))
+  },
+
+  /** 房间列表（floor 过滤，带空床数）。 */
+  getRooms(buildingId, { floor = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }
+    if (floor) params.floor = floor
+    return callStrict(() => request(`/student-affairs/dorm/buildings/${buildingId}/rooms`, { params }))
+  },
+
+  /** 床位列表（标空/已住）。 */
+  getBeds(roomId) {
+    return callStrict(() => request(`/student-affairs/dorm/rooms/${roomId}/beds`))
+  },
+
+  /** 宿舍入住率统计。 */
+  getOccupancy() {
+    return callStrict(() => request('/student-affairs/dorm/occupancy'))
+  },
+
+  /** 学生入住某床（回写我的宿舍）。 */
+  checkinBed(bedId, studentId) {
+    return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkin`, { method: 'POST', body: { studentId: String(studentId) } }))
+  },
+
+  /** 退宿（释放床位）。 */
+  checkoutBed(bedId) {
+    return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST', body: {} }))
+  },
+
+  /** 发起调宿（原床释放/新床占用走审批）。body: { studentId, toBedId, reason } */
+  submitDormTransfer(body) {
+    return callStrict(() => request('/student-affairs/dorm/transfers', { method: 'POST', body }))
+  },
+
+  /** 调宿审批（辅导员→宿管→执行）。action: APPROVE / REJECT（REJECT 原因≥5字）。 */
+  reviewDormTransfer(transferId, action, reason = '') {
+    return callStrict(() => request(`/student-affairs/dorm/transfers/${transferId}/review`, { method: 'POST', body: { action, reason } }))
+  },
+
+  /** 建宿舍检查任务。body: { taskName, buildingId?, checkType HYGIENE/SAFETY/CONTRABAND/NIGHT_ABSENCE, checkerKey? } */
+  createDormCheckTask(body) {
+    return callStrict(() => request('/student-affairs/dorm/check-tasks', { method: 'POST', body }))
+  },
+
+  /** 录检查结果（ABNORMAL 异常说明≥5字 → 回写异常表 + 生成风险单）。body: { roomId?, result NORMAL/ABNORMAL, issueType?, detail } */
+  submitDormCheckRecord(taskId, body) {
+    return callStrict(() => request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { method: 'POST', body }))
+  },
+
+  // ─────────────── 学工归档（P7 · /student-affairs/archive/*） ───────────────
+
+  /** 建归档批次。body: { batchName, yearCode?, scope? } */
+  createArchiveBatch(body) {
+    return callStrict(() => request('/student-affairs/archive/batches', { method: 'POST', body }))
+  },
+
+  /** 归档批次详情（含档案包清单）。 */
+  getArchiveBatch(batchId) {
+    return callStrict(() => request(`/student-affairs/archive/batches/${batchId}`))
+  },
+
+  /** 圈定学生生成档案包（批次 → COLLECTING）。studentIds: 学生 id 数组。 */
+  collectArchive(batchId, studentIds) {
+    return callStrict(() => request(`/student-affairs/archive/batches/${batchId}/collect`, { method: 'POST', body: { studentIds: studentIds.map(String) } }))
+  },
+
+  /** 批次流转（COLLECTING→COLLEGE_REVIEW→SA_CONFIRM→ARCHIVED；归档登记水印包）。 */
+  advanceArchive(batchId, action = 'APPROVE') {
+    return callStrict(() => request(`/student-affairs/archive/batches/${batchId}/advance`, { method: 'POST', body: { action } }))
+  }
+}
+
+export default studentAffairsApi

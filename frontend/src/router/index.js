@@ -11,6 +11,7 @@ import { getToken, isPlatformSuperAdmin } from '@/services/http/client'
  */
 
 /* 10 个 PC 业务模块路由（复用模块内 routes 文件，最小接入） */
+import { studentAffairsRoutes } from '@/modules/studentAffairs/studentAffairs.routes'
 import { studentRoutes } from '@/modules/student/student.routes'
 import orientationRoutes from '@/modules/orientation/orientation.routes'
 import campusServiceRoutes from '@/modules/campusService/campusService.routes'
@@ -30,6 +31,7 @@ import platformRoutes from '@/modules/platform/platform.routes'
  * 兜底注册以 router.hasRoute 为前置判断，正式接入后自动跳过，不会重复注册。
  */
 const moduleRoutes = [
+  studentAffairsRoutes,
   studentRoutes,
   orientationRoutes,
   campusServiceRoutes,

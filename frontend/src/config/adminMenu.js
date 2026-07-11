@@ -43,11 +43,13 @@ export const ADMIN_MENU = [
     ]
   },
   {
-    /* 一级②学工中心：学生画像（原学生主档）/ 数字迎新 / 在校服务（原学生中心迁入） */
+    /* 一级②学工中心：学工首页（13A 门面）/ 学生画像 / 数字迎新 / 在校服务 */
     key: 'student-affairs',
     label: '学工中心',
     icon: '☰',
     children: [
+      // 首叶=学工首页：点击学工中心一级默认落到 /admin/student-affairs（13A 三角色 dashboard）
+      { key: 'sa-home', label: '学工首页', path: '/admin/student-affairs', moduleCode: 'STUDENT_AFFAIRS', permissionKey: 'studentAffairs.home.view' },
       { key: 'sa-student', label: '学生画像', path: '/admin/student', moduleCode: 'STUDENT', permissionKey: 'student.profile.view' },
       { key: 'sa-orientation', label: '数字迎新', path: '/admin/orientation', moduleCode: 'ORIENTATION', permissionKey: 'orientation.dashboard.view' },
       { key: 'sa-campus', label: '在校服务', path: '/admin/campus-service', moduleCode: 'CAMPUS_SERVICE', permissionKey: 'campusService.dashboard.view' }
