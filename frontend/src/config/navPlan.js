@@ -92,11 +92,12 @@ export const NAV_PLAN = [
       I('身份核验（现有）', '/admin/student/identity'),
       I('导入导出（现有）', '/admin/student/import-export')
     ]),
-    mod('sa-classes', '班级管理', null, [
+    mod('sa-classes', '班级与辅导员', null, [
       I('班级列表', '/admin/campus-service/classes'),
-      // 班级画像/学生名单/班级材料/班干部 = 班级列表点入的画像独立页 Tab（param 路由，无独立菜单）
-      ...P('班级详情', '班级学生', '辅导员绑定', '班主任绑定', '班干部管理', '班级通讯录',
-        '班级风险概览', '班级请假统计', '班级宿舍统计', '班级奖助统计', '班级活动统计', '班级档案')
+      // 班级画像/班级材料 = 班级列表点入的画像独立页（学生/材料/班干部 Tab）；此处入口均落班级列表再下钻
+      I('班级画像', '/admin/campus-service/classes'),
+      I('班级材料', '/admin/campus-service/classes'),
+      I('辅导员考评', '/admin/campus-service/counselor-assessment')
     ]),
     mod('sa-orientation', '数字迎新', '/admin/orientation', [
       I('迎新看板', '/admin/orientation'),
@@ -120,14 +121,10 @@ export const NAV_PLAN = [
       I('迎新归档', '/admin/orientation/archive')
     ]),
     mod('sa-leave', '请假销假', null, [
-      ...P('请假看板', '请假申请', '续假申请'),
       I('请假审批', '/admin/campus-service/leave'),
-      I('续假审批', '/admin/campus-service/leave-extensions'),
-      I('销假管理', '/admin/campus-service/leave-extensions'),
-      ...P('归寝核验', '长假审批', '外出备案', '请假异常', '超期未销假', '请假规则配置'),
+      I('销假与续假', '/admin/campus-service/leave-extensions'),
       I('请假台账', '/admin/campus-service/leave-ledger'),
-      I('请假统计', '/admin/campus-service/leave-stats'),
-      ...P('请假归档')
+      I('请假统计', '/admin/campus-service/leave-stats')
     ]),
     mod('sa-difficulty', '困难认定', null, P(
       '认定批次', '学生申请', '材料上传', '材料审核', '辅导员初审', '班级民主评议', '学院审核',
@@ -183,11 +180,7 @@ export const NAV_PLAN = [
       '团员管理', '团组织管理', '主题团日', '推优入党', '入党积极分子', '党团活动',
       '思政活动', '党团统计', '党团归档'
     )),
-    mod('sa-counselor-eval', '辅导员考评', null, [
-      I('考评看板', '/admin/campus-service/counselor-assessment'),
-      ...P('工作量统计', '谈话记录统计', '宿舍走访统计', '风险处置统计', '请假审批统计',
-        '班级建设统计', '学生满意度', '学院评分', '考评结果', '考评归档')
-    ]),
+    // 辅导员考评已并入「班级与辅导员」二级为叶子（对齐施工图菜单结构），此处不再单列二级
     mod('sa-archive', '学工归档', null, P(
       '归档看板', '学生个人归档', '班级归档', '奖助归档', '处分归档', '心理归档', '请假归档',
       '宿舍归档', '活动归档', '归档缺失提醒', '批量归档', '归档导出', '归档审计'
