@@ -1,18 +1,32 @@
-# docs 文档目录说明
+# docs 目录说明
 
-> **开发唯一入口**：[`00-只看这个-项目入口.md`](./00-只看这个-项目入口.md)
+> **一眼看清全部文档** → **[文档导航总览.md](./文档导航总览.md)**（推荐）  
+> **开工必读** → **[00-只看这个-项目入口.md](./00-只看这个-项目入口.md)**
 
-## 目录用途
+## 三层入口
 
-- `project-map/` — 施工总控（索引、状态、规则、下一步）
-- `modules/` — 当前有效模块设计（13A/13B/06/02A/00）
-- `公共组件/` — 公共组件总控 + 使用指南总册（4 份 MD，见该目录 README）
-- `毕业设计中心/` `岗位实习中心/` — 模块专属文档（各见 README）
-- `api/` `database/` — 参考（注意 MySQL 口径）
-- `archive/` `ai-handoff/` — 禁止作当前施工依据
+| 层 | 文档 |
+|---|---|
+| 导航 | [文档导航总览.md](./文档导航总览.md) |
+| 规则 | 根目录 `CLAUDE.md` |
+| 状态 | [project-map/模块状态总表.md](./project-map/模块状态总表.md) |
+| 欠账 | [施工记录/历史欠账.md](./施工记录/历史欠账.md) |
 
-## 阅读优先级
+## 12 类文件夹（摘要）
 
-1. `00-只看这个-项目入口.md` → 2. `CLAUDE.md` → 3. `project-map/` → 4. 权限总控 → 5. 历史欠账 → 6. 当前模块 modules 文档
+| 类 | 文件夹 |
+|---|---|
+| 施工总控 | `project-map/` |
+| 模块设计 | `modules/`（见 [modules/README.md](./modules/README.md)） |
+| 业务中心 | `毕业设计中心/` `岗位实习中心/` `公共组件/` |
+| 施工事实 | `施工记录/`（6 份，已归档合并） |
+| 接口数据 | `api/` `database/` `backend-integration/` |
+| 权限安全 | `rbac/` `security/` |
+| 部署运维 | `deploy/` `ops/` `dev-run/` |
+| 测试验收 | `testing/`（含 `质量与风险台账.md`） |
+| 交付销售 | `delivery/` `sales/` `commercialization/` |
+| 演示模板 | `demo/` `demo-data/` `templates/` |
+| UI 参考 | `ui/` `frontend/` `design/` |
+| 历史归档 | `archive/` `source-design/` ❌ |
 
-详见 `project-map/当前有效文档索引.md`。
+完整表格与场景跳转见 **[文档导航总览.md](./文档导航总览.md)**。
