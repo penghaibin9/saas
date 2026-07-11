@@ -1643,7 +1643,7 @@ D. 可删除候选：确认无引用、无数据依赖、无路由依赖、无�
 UI 基元：import { AppButton, AppBadge, AppCard } from '@/components/ui'
 ```
 
-使用手册：`docs/公共组件/02-第一阶段交付级公共组件使用指南.md`
+使用手册：`docs/公共组件/公共组件-使用指南总册.md`
 在线预览：登录后访问 `/dev/components`
 总控表：`docs/公共组件/00-高校SaaS公共组件商业化底座总控表.md`
 
@@ -1677,7 +1677,7 @@ UI 基元：import { AppButton, AppBadge, AppCard } from '@/components/ui'
 
 ## 41. 公共组件强制调用规则（第三批扩展：骨架/表单/选择器/展示/体验）
 
-在 §40 基础上，第三批公共组件（约 48 个，统一出口 `@/components/common`，子目录 `layout/ form/ picker/ display/ experience/`）同样强制优先复用。使用手册见 `docs/公共组件/03-第二阶段公共组件使用指南.md`。
+在 §40 基础上，第三批公共组件（约 48 个，统一出口 `@/components/common`，子目录 `layout/ form/ picker/ display/ experience/`）同样强制优先复用。使用手册见 `docs/公共组件/公共组件-使用指南总册.md` 第二篇。
 
 后续新页面开发必须优先使用：
 
@@ -1693,7 +1693,7 @@ UI 基元：import { AppButton, AppBadge, AppCard } from '@/components/ui'
 9. 不允许自写审批区域；10. 不允许自写学生/教师/组织/批次选择器；11. 不允许自写分页/搜索框/详情键值表；
 12. 不允许自写页面壳/区块卡/工具栏/表单控件；13. 不允许自写日期选择/截止时间。
 
-**新页面接入检查清单**（不满足只能标 partial 并写入历史欠账，不得标 implemented）：见 `03-第二阶段公共组件使用指南.md` §8（页面壳/工具栏/表格/筛选/日期/状态/权限按钮/确认/脱敏/审计/附件/导出/Picker/表单/三态/build 共 16 项）。
+**新页面接入检查清单**（不满足只能标 partial 并写入历史欠账，不得标 implemented）：见 `公共组件-使用指南总册.md` 第二篇 §8（页面壳/工具栏/表格/筛选/日期/状态/权限按钮/确认/脱敏/审计/附件/导出/Picker/表单/三态/build 共 16 项）。
 
 **安全红线（组件不替代后端）**：
 - 业务选择器（AppStudentPicker 等）只做前端 UI，可见的师生/组织/批次必须由后端按数据范围返回，前端不得放大范围；未接后端标 partial。

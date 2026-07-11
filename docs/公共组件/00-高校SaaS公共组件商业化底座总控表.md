@@ -83,7 +83,7 @@
 
 ## 2. 六层总览统计
 
-> **2026-07-08 盘点更新**：详见附录 C 与 `01-前端组件资产盘点报告.md`。
+> **2026-07-08 盘点更新**：详见附录 C 与 `公共组件-前端资产盘点报告.md`。
 
 | 层 | 名称 | 组件数 | implemented | partial | page-only | duplicate | missing | blocked |
 |----|------|--------|-------------|---------|-----------|-----------|---------|---------|
@@ -436,9 +436,9 @@ AppPermissionButton、AppFileUpload、AppFileList、AppBatchActionBar、AppAppro
 
 | 项 | 内容 |
 |----|------|
-| 最新动作（2026-07-08） | 只读盘点 + 更新附录 C + 新增 `01-前端组件资产盘点报告.md` |
+| 最新动作（2026-07-08） | 只读盘点 + 更新附录 C + 新增 `公共组件-前端资产盘点报告.md` |
 | 规划文档 | `docs/公共组件/00-高校SaaS公共组件商业化底座总控表.md` |
-| 盘点报告 | `docs/公共组件/01-前端组件资产盘点报告.md` |
+| 盘点报告 | `docs/公共组件/公共组件-前端资产盘点报告.md` |
 | 六层组件总数 | **82** |
 | 背景假设 | 公共日期底座 `431c389`；毕设 PC 试点 `graduation-pc-trial-v1`；公共组件冲刺在干净 worktree `components-foundation-sprint` |
 | 未改 | 业务代码、后端、数据库、路由；未提交 git |
@@ -457,7 +457,7 @@ AppPermissionButton、AppFileUpload、AppFileList、AppBatchActionBar、AppAppro
 8. **第一阶段先做**：PermissionButton、AuditTrail 抽公共、SensitiveText 推广、Excel 导出入口统一、ConfirmDialog 扫尾  
 9. **禁止重写**：DataTable、AdvancedFilter、AppDrawer、AppConfirmDialog、公共日期组件族（及 Excel 管道）  
 10. **开发顺序提醒**：第 0 清理 → 第 1 交付级 → 第 2 展示 → 第 3 选择器 → 第 4 录入 → 第 5 骨架 → 第 6 体验  
-11. **详细盘点**：见 `01-前端组件资产盘点报告.md` 与附录 C  
+11. **详细盘点**：见 `公共组件-前端资产盘点报告.md` 与附录 C  
 
 ---
 
@@ -482,7 +482,7 @@ AppPermissionButton、AppFileUpload、AppFileList、AppBatchActionBar、AppAppro
 ## 附录 C：2026-07-08 前端组件资产盘点结果（82 项全表）
 
 > 盘点方式：只读扫描 `frontend/src/components/`、`modules/*/components/`、`security/components/`、`utils/`。  
-> 详细说明见：`docs/公共组件/01-前端组件资产盘点报告.md`  
+> 详细说明见：`docs/公共组件/公共组件-前端资产盘点报告.md`  
 > **成熟度口径**：`implemented` / `partial` / `page-only` / `duplicate` / `missing` / `blocked`  
 > **视觉口径**：`商业级` / `可用但普通` / `粗糙` / `不统一` / `缺失`  
 > **处理建议**：`禁止重写，只增强` / `增强现有组件` / `抽成公共组件` / `新建公共组件` / `暂缓` / `正式上线前必须做`
@@ -618,7 +618,7 @@ AppPermissionButton、AppFileUpload、AppFileList、AppBatchActionBar、AppAppro
 ## 附录：第一/二阶段交付级公共组件落地状态（2026-07-09）
 
 > 本轮已按「交付级公共组件底座」施工完成 20 个组件；统一出口 `@/components/common`（UI 基元在 `@/components/ui`）。
-> 在线预览：`/dev/components`。使用手册：`docs/公共组件/02-第一阶段交付级公共组件使用指南.md`。
+> 在线预览：`/dev/components`。使用手册：`docs/公共组件/公共组件-使用指南总册.md` 第一篇。
 > commit：待用户确认后提交（本轮不 commit、不 push）。
 
 ### 第一阶段（12 个）
@@ -659,7 +659,7 @@ AppPermissionButton、AppFileUpload、AppFileList、AppBatchActionBar、AppAppro
 ## 附录：第三批公共组件落地状态（2026-07-09）——页面骨架/表单/选择器/展示/体验
 
 > 本轮新增约 48 个组件（5 组），统一出口 `@/components/common`；子目录 `layout/ form/ picker/ display/ experience/`。
-> 使用手册：`docs/公共组件/03-第二阶段公共组件使用指南.md`。在线预览 `/dev/components`「第三阶段」区块。
+> 使用手册：`docs/公共组件/公共组件-使用指南总册.md` 第二篇。在线预览 `/dev/components`「第三阶段」区块。
 > commit：待用户确认后提交（本轮不 commit、不 push）。
 
 ### 第一组 页面骨架（layout）
@@ -699,5 +699,5 @@ AppRemoteSelect（基座）、AppStudentPicker、AppTeacherPicker、AppMentorPic
 
 用户反馈「第 2 批只显示 10 个组件」经查为**场景式展示、非组件缺失**。本轮把 `/dev/components` 从 6 个业务场景卡
 重构为 **9 组、每个组件一个高校业务示例** 的完整画廊，并加 partial（部分完成）/后端负责/统一别名标签，新手可逐组验收。
-完整《展示覆盖表》+《5 星 UI 验收表》见 `docs/公共组件/03-第二阶段公共组件使用指南.md` 附录。
+完整《展示覆盖表》+《5 星 UI 验收表》见 `docs/公共组件/公共组件-使用指南总册.md` 第二篇附录。
 验证：`npm run build` 通过、`npm run lint` 零报错；登录态截图因本地后端未运行未采集（已 build+lint+props 静态核对佐证）。
