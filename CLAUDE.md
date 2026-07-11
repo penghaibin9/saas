@@ -188,9 +188,11 @@ README.md
 ```
 存在 docs 目录下的入口文件时，也要读取：
 ```text
+docs/文档导航总览.md
 docs/00-只看这个-项目入口.md
 docs/README.md
 ```
+业务中心文档（学工/教务/毕设/实习/公共组件）各自以 `docs/<中心名>/README.md` 为模块入口；跨学工+教务共享契约与权限总控在 `docs/跨模块共享/`。
 ### 2.2 第二优先级：权限总控文档
 凡是涉及以下内容：
 - 工作台；
@@ -225,36 +227,43 @@ docs/README.md
 - 家长 / 监护人 / 企业导师外部身份；
 必须先读取：
 ```text
-docs/modules/00-系统管理中心-权限角色模块授权与权责边界设计.md
+docs/跨模块共享/00-系统管理中心-权限角色模块授权与权责边界设计.md
 ```
 该文档是本项目关于权限、角色、模块授权、数据范围、业务关系授权、敏感字段、审计责任的最高约束文档。
 当前任务涉及权限但没有读取该文档时，必须停止开发。
 ### 2.3 第三优先级：当前模块文档
 根据当前任务读取对应模块文档。
-学工中心读取：
+学工中心读取（2026-07-11 起：先读模块 README，再按 README 推荐顺序；**四大任务包施工总图 + 当前 B 包施工卡为施工总控**）：
 ```text
-docs/modules/13A-学工中心全业务流程设计总册.md
-docs/modules/13A-学工中心页面树与路由设计.md
-docs/modules/13A-学工中心API契约草案.md
-docs/modules/13A-学工中心状态机与权限矩阵.md
-docs/modules/13A-学工中心表单字段与校验规则.md
-docs/modules/13A-学工中心页面级交互与按钮动作矩阵.md
-docs/modules/13A-学工中心移动端入口设计.md
-docs/modules/13A-学工中心-商业化对标审计与补丁建议(第一轮).md
-docs/modules/13A-学工中心-商业化补强-Opus开发输入包.md
+docs/学工中心/README.md
+docs/学工中心/13A-学工中心四大任务包施工总图.md
+docs/学工中心/13A-学工中心B包-PC高频主线生产级施工卡.md
+docs/学工中心/13A-学工中心全业务流程设计总册.md
+docs/学工中心/13A-学工中心页面树与路由设计.md
+docs/学工中心/13A-学工中心API契约草案.md
+docs/学工中心/13A-学工中心状态机与权限矩阵.md
+docs/学工中心/13A-学工中心表单字段与校验规则.md
+docs/学工中心/13A-学工中心页面级交互与按钮动作矩阵.md
+docs/学工中心/13A-学工中心移动端入口设计.md
+docs/学工中心/13A-学工中心-商业化对标审计与补丁建议（第一轮）.md
+docs/学工中心/13A-学工中心-商业化补强-Opus开发输入包.md
 ```
-教务中心读取：
+以及 README 索引的数字迎新 02A、施工记录、代码事实（navPlan.js、student/orientation 相关 API）。
+教务中心读取（2026-07-11 起：先读模块 README，再按 README 推荐顺序；**V1 范围与开发顺序为施工入口**）：
 ```text
-docs/modules/13B-教务中心全业务流程设计总册.md
-docs/modules/13B-教务中心页面树与路由设计.md
-docs/modules/13B-教务中心API契约草案.md
-docs/modules/13B-教务中心状态机与权限矩阵.md
-docs/modules/13B-教务中心表单字段与校验规则.md
-docs/modules/13B-教务中心页面级交互与按钮动作矩阵.md
-docs/modules/13B-教务中心移动端入口设计.md
-docs/modules/13B-教务中心-商业化对标审计与补丁建议(第一轮).md
-docs/modules/13B-教务中心-商业化补强-Opus开发输入包.md
+docs/教务中心/README.md
+docs/教务中心/13B-教务中心V1范围与开发顺序.md
+docs/教务中心/13B-教务中心全业务流程设计总册.md
+docs/教务中心/13B-教务中心页面树与路由设计.md
+docs/教务中心/13B-教务中心API契约草案.md
+docs/教务中心/13B-教务中心状态机与权限矩阵.md
+docs/教务中心/13B-教务中心表单字段与校验规则.md
+docs/教务中心/13B-教务中心页面级交互与按钮动作矩阵.md
+docs/教务中心/13B-教务中心移动端入口设计.md
+docs/教务中心/13B-教务中心-商业化对标审计与补丁建议（第一轮）.md
+docs/教务中心/13B-教务中心-商业化补强-Opus开发输入包.md
 ```
+以及 README 索引的共享文档、代码事实（navPlan.js、academic 相关 API）。
 毕业设计中心读取（2026-07-11 起：先读模块 README，再按 README 推荐顺序；**生产级商业化开发总册为模块施工唯一总控**）：
 ```text
 docs/毕业设计中心/README.md
@@ -267,10 +276,16 @@ docs/岗位实习中心/README.md
 docs/岗位实习中心/06-岗位实习中心生产级商业化开发总册.md
 ```
 以及 README 索引的页面树/升级总册/api/施工记录、代码事实（navPlan.js、internship*.py、models/internship.py）。
-公共配置读取：
+公共配置读取（学工+教务共享，在跨模块共享夹）：
 ```text
-docs/modules/13A-13B-学校参数配置中心设计.md
-docs/modules/13A-13B-数据表与迁移策略草案.md
+docs/跨模块共享/13A-13B-学校参数配置中心设计.md
+docs/跨模块共享/13A-13B-数据表与迁移策略草案.md
+```
+公共组件读取：
+```text
+docs/公共组件/README.md
+docs/公共组件/00-高校SaaS公共组件商业化底座总控表.md
+docs/公共组件/公共组件-使用指南总册.md
 ```
 ### 2.4 文档缺失处理
 如果上述文档不存在：
