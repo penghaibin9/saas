@@ -300,8 +300,10 @@ function readThemePreference() {
 
 /** 施工地图开关持久值：默认开启（甲方 2026-07-10 拍板：规划项默认描灰显示，便于区分已做/未做；可手动关闭） */
 function readPlannerMapPreference() {
+  /* v2：换存储键，作废旧 'plannerMapOn' 里存过的「关」——施工期一律默认开启，
+     只有本轮显式点过「关」才记住（甲方 2026-07-11：规划项必须一眼可见）。 */
   try {
-    return window.localStorage.getItem('plannerMapOn') !== '0'
+    return window.localStorage.getItem('plannerMapOn.v2') !== '0'
   } catch {
     return true
   }
@@ -643,7 +645,7 @@ export default {
     togglePlannerMap() {
       this.plannerMapOn = !this.plannerMapOn
       try {
-        window.localStorage.setItem('plannerMapOn', this.plannerMapOn ? '1' : '0')
+        window.localStorage.setItem('plannerMapOn.v2', this.plannerMapOn ? '1' : '0')
       } catch {
         /* 隐私模式下存储失败则仅当次生效 */
       }
@@ -1230,9 +1232,10 @@ export default {
 /* 施工地图开关（仅 DEV+平台级角色渲染）：克制样式，不影响正式角色界面 */
 .bpl-planmap {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1;
-  padding: 3px 6px;
+  padding: 5px 10px;
   border: 1px solid var(--bd, rgba(0, 0, 0, 0.12));
   border-radius: 6px;
   background: transparent;
