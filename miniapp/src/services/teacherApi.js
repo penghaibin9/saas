@@ -56,6 +56,23 @@ export const teacherApi = {
   createGuidance: (gdStudentId, body) => real.teacherGraduationGuidanceCreate(gdStudentId, body),
   // 毕设开题：批阅前真实查看开题详情（背景/方案/成果+历史版本，范围校验）
   getGraduationProposalDetail: (id) => real.gdTeacherProposalDetail(id),
+  // 毕设成果：详情 + 批阅（查重超标不可通过）
+  getGraduationFinalDetail: (id) => real.gdTeacherFinalDetail(id),
+  reviewFinal: (id, action, comment) => real.gdTeacherFinalReview(id, action, comment),
+  // 毕设中期检查：队列 / 详情 / 结论 / 复核整改
+  getGraduationMidtermQueue: () => real.gdTeacherMidtermQueue(),
+  getGraduationMidtermDetail: (id) => real.gdTeacherMidtermDetail(id),
+  midtermCheck: (id, conclusion, comment, deadline) => real.gdTeacherMidtermCheck(id, conclusion, comment, deadline),
+  midtermRectifyReview: (id, action, comment) => real.gdTeacherMidtermRectifyReview(id, action, comment),
+  // 毕设评阅：本人任务 / 提交评分+意见
+  getGraduationMyReviews: () => real.gdTeacherReviewsMy(),
+  submitReview: (id, score, opinion) => real.gdTeacherReviewSubmit(id, score, opinion),
+  // 毕设答辩安排（只读）
+  getGraduationDefenseArrangements: () => real.gdTeacherDefenseArrangements(),
+  // 毕设成绩：队列 / 详情 / 复核
+  getGraduationGradeQueue: () => real.gdTeacherGradeQueue(),
+  getGraduationGradeDetail: (id) => real.gdTeacherGradeDetail(id),
+  reviewGrade: (id, action, comment) => real.gdTeacherGradeReview(id, action, comment),
   // 就业跟进：mobile 范围真实数据
   getEmployment: () =>
     realFirst('teacher.employment',
