@@ -293,6 +293,7 @@ class GraduationFinal(PKMixin, TenantMixin, CommonMixin, Base):
     reviewer: Mapped[str | None] = mapped_column(String(100))
     review_comment: Mapped[str | None] = mapped_column(String(500))
     review_time: Mapped[datetime | None] = mapped_column(DateTime)
+    attachments_json: Mapped[list | None] = mapped_column(JSON, comment="论文/材料附件 file_id 列表（文件中心 t_file_object.id）")
 
 
 class GraduationDefenseGroup(PKMixin, TenantMixin, CommonMixin, Base):

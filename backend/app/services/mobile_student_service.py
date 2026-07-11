@@ -579,6 +579,7 @@ def graduation_proposal(user: dict) -> dict:
     if not db_enabled():
         return _empty("演示模式")
     from app.models import GraduationProposal
+    from app.services import graduation_service as gd_svc
     with _session() as db:
         g = _resolve_gd_student(db, u)
         if not g:
@@ -600,7 +601,8 @@ def graduation_proposal(user: dict) -> dict:
                                     "REJECTED": "已驳回，请修改后重交"}.get(latest.status, latest.status),
                     "reviewComment": latest.review_comment or "", "isResubmit": latest.is_resubmit,
                     "background": latest.background or "", "plan": latest.plan or "",
-                    "outcome": latest.outcome or ""},
+                    "outcome": latest.outcome or "",
+                    "attachmentsList": gd_svc._resolve_attachments(latest.attachments_json or [])},
                 "history": [{"version": p.version or "", "status": p.status,
                              "reviewComment": p.review_comment or ""} for p in props]}
 
@@ -628,6 +630,7 @@ def graduation_final(user: dict) -> dict:
     if not db_enabled():
         return _empty("演示模式")
     from app.models import GraduationFinal
+    from app.services import graduation_service as gd_svc
     with _session() as db:
         g = _resolve_gd_student(db, u)
         if not g:
@@ -648,7 +651,8 @@ def graduation_final(user: dict) -> dict:
                 "items": [{"id": str(f.id), "type": f.final_type, "version": f.version or "",
                            "status": f.status, "statusLabel": {"PENDING_REVIEW": "待审阅",
                            "APPROVED": "已通过", "REJECTED": "已退回修改"}.get(f.status, f.status),
-                           "reviewComment": f.review_comment or "", "plagiarismRate": f.plagiarism_rate or "—"}
+                           "reviewComment": f.review_comment or "", "plagiarismRate": f.plagiarism_rate or "—",
+                           "attachmentsList": gd_svc._resolve_attachments(f.attachments_json or [])}
                           for f in finals]}
 
 
@@ -662,7 +666,8 @@ def graduation_submit_final(user: dict, body: dict) -> dict:
     if not g:
         raise AppException("VALIDATION_ERROR", "未找到你的毕设学生档案，请联系毕设管理员")
     from app.services import graduation_service as gd_svc
-    result = gd_svc.submit_final(g.id, body.get("finalType") or "初稿", body.get("plagiarismRate"))
+    result = gd_svc.submit_final(g.id, body.get("finalType") or "初稿", body.get("plagiarismRate"),
+                                 body.get("attachments") or [])
     audit_log.record("学生提交论文成果", f"graduation-final:{result['id']}",
                      detail={"studentName": u.get("realName"), "finalType": result.get("finalType")})
     return result

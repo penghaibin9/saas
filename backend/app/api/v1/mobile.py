@@ -467,6 +467,83 @@ def teacher_proposal_review(proposal_id: str, body: dict = Body(...),
                                        body.get("comment") or ""), message="批阅完成")
 
 
+@router.get("/teacher/graduation/final/{final_id}",
+            summary="教师·毕设成果详情（批阅前真实查看：类型/版本/查重+历史版本+真实附件，范围校验）")
+def teacher_final_detail(final_id: str, user=Depends(get_current_user)):
+    return success(tea.final_detail(user, final_id))
+
+
+@router.post("/teacher/graduation/final/{final_id}/review",
+             summary="教师·毕设成果批阅（APPROVE/REJECT，查重超标不可通过，范围校验+审计）")
+def teacher_final_review(final_id: str, body: dict = Body(...),
+                         user=Depends(get_current_user)):
+    return success(tea.final_review(user, final_id, str(body.get("action") or "").upper(),
+                                    body.get("comment") or ""), message="批阅完成")
+
+
+# ── 中期检查（教师移动端）──
+@router.get("/teacher/graduation/midterm/queue", summary="教师·中期待检查/待复核整改队列")
+def teacher_midterm_queue(user=Depends(get_current_user)):
+    return success(tea.graduation_midterm_queue(user))
+
+
+@router.get("/teacher/graduation/midterm/{gd_student_id}", summary="教师·中期检查详情（范围校验）")
+def teacher_midterm_detail(gd_student_id: str, user=Depends(get_current_user)):
+    return success(tea.graduation_midterm_detail(user, gd_student_id))
+
+
+@router.post("/teacher/graduation/midterm/{gd_student_id}/check",
+             summary="教师·中期检查结论 PASS/RECTIFY/FAIL（范围校验+审计）")
+def teacher_midterm_check(gd_student_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.graduation_midterm_check(user, gd_student_id, body.get("conclusion") or "",
+                                                body.get("comment") or "", body.get("rectifyDeadline")),
+                   message="已提交中期结论")
+
+
+@router.post("/teacher/graduation/midterm/{gd_student_id}/rectify-review",
+             summary="教师·复核中期整改 PASS/FAIL（范围校验+审计）")
+def teacher_midterm_rectify_review(gd_student_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.graduation_midterm_rectify_review(user, gd_student_id, body.get("action") or "",
+                                                         body.get("comment") or ""), message="复核完成")
+
+
+# ── 评阅（评阅教师移动端）──
+@router.get("/teacher/graduation/reviews/my", summary="教师·本人评阅待办任务")
+def teacher_reviews_my(user=Depends(get_current_user)):
+    return success(tea.graduation_my_reviews(user))
+
+
+@router.post("/teacher/graduation/review/{review_id}/submit",
+             summary="教师·提交评阅评分(0-100)+意见（本人任务，审计）")
+def teacher_review_submit(review_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.graduation_review_submit(user, review_id, body.get("score"),
+                                                body.get("opinion") or ""), message="评阅已提交")
+
+
+# ── 答辩安排（教师移动端只读）──
+@router.get("/teacher/graduation/defense/arrangements", summary="教师·本人指导学生答辩编排（只读）")
+def teacher_defense_arrangements(user=Depends(get_current_user)):
+    return success(tea.graduation_defense_arrangements(user))
+
+
+# ── 成绩（教师移动端：待复核队列 + 详情 + 复核）──
+@router.get("/teacher/graduation/grade/queue", summary="教师·成绩待复核队列")
+def teacher_grade_queue(user=Depends(get_current_user)):
+    return success(tea.graduation_grade_queue(user))
+
+
+@router.get("/teacher/graduation/grade/{gd_student_id}", summary="教师·成绩三段构成详情（范围校验）")
+def teacher_grade_detail(gd_student_id: str, user=Depends(get_current_user)):
+    return success(tea.graduation_grade_detail(user, gd_student_id))
+
+
+@router.post("/teacher/graduation/grade/{gd_student_id}/review",
+             summary="教师·复核成绩 APPROVE/RETURN（RETURN 原因≥5字，范围校验+审计）")
+def teacher_grade_review(gd_student_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.graduation_grade_review(user, gd_student_id, body.get("action") or "",
+                                               body.get("comment") or ""), message="复核完成")
+
+
 @router.get("/teacher/graduation/choices/pending", summary="教师·本人指导题目下待确认的选题志愿")
 def teacher_graduation_choices_pending(user=Depends(get_current_user)):
     return success(tea.graduation_choices_pending(user))

@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import (GraduationAuditTrail, GraduationDefenseGroup, GraduationFinal,
+from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic)
 from app.services import graduation_student_service as gd_stu_svc
 from app.services.db_service import _iso, _mask_phone, _tid, session
@@ -35,6 +35,35 @@ def _page(items, page, ps):
     total = len(items)
     start = (max(1, page) - 1) * ps
     return items[start:start + ps], total
+
+
+def _att_id(x) -> str:
+    """兼容附件存储形态：既支持裸 file_id，也支持 {fileId|id} 对象。"""
+    if isinstance(x, dict):
+        return str(x.get("fileId") or x.get("id") or "")
+    return str(x or "")
+
+
+def _resolve_attachments(ids) -> list:
+    """把附件 file_id 列表解析为可下载展示项（文件中心 t_file_object，租户内可见）。
+    解析不到（跨租户/已删/非法 id）的一律跳过，绝不返回伪造链接；下载走真实鉴权+审计接口
+    GET /api/v1/files/download/{id}（file_service.resolve_download 校验租户并写 FILE_DOWNLOAD 审计）。"""
+    out = []
+    if not ids:
+        return out
+    from app.services import file_service
+    for raw in ids:
+        fid = _att_id(raw)
+        if not fid:
+            continue
+        try:
+            v = file_service.attachment_view(fid)
+        except Exception:  # noqa: BLE001
+            v = None
+        if not v:
+            continue
+        out.append({**v, "downloadUrl": f"/api/v1/files/download/{v['fileId']}"})
+    return out
 
 
 def _stu_of(db, sid):
@@ -178,7 +207,8 @@ def get_proposal_detail(pid) -> dict:
         row = _prop_row(p, stu)
         row.update({"content": {"background": p.background or "", "plan": p.plan or "",
                                 "outcome": p.outcome or ""},
-                    "attachmentsList": p.attachments_json or [], "reviewComment": p.review_comment or "",
+                    "attachmentsList": _resolve_attachments(p.attachments_json or []),
+                    "reviewComment": p.review_comment or "",
                     "defenseResult": p.defense_result or "", "defenseComment": p.defense_comment or "",
                     "defenseAt": _iso(p.defense_at) or "",
                     "versions": [{"title": (v.version or "v?") + " · " + L_MAT.get(v.status, v.status)
@@ -413,8 +443,9 @@ def _not_submitted_finals(db, keyword=None) -> list:
     return rows
 
 
-def submit_final(gd_student_id, final_type, plagiarism_rate=None) -> dict:
-    """学生提交/重交论文成果。初稿→定稿有序（定稿须初稿已通过）；有待审时不可重复提交。"""
+def submit_final(gd_student_id, final_type, plagiarism_rate=None, attachments=None) -> dict:
+    """学生提交/重交论文成果。初稿→定稿有序（定稿须初稿已通过）；有待审时不可重复提交。
+    attachments：论文/材料附件 file_id 列表（文件中心 t_file_object.id），存 attachments_json。"""
     if final_type not in FINAL_TYPES:
         raise AppException("VALIDATION_ERROR", "成果类型必须是 初稿/定稿")
     with session() as db:
@@ -438,6 +469,7 @@ def submit_final(gd_student_id, final_type, plagiarism_rate=None) -> dict:
                             version=version, submit_at=datetime.utcnow(),
                             plagiarism_rate=plagiarism_rate or None,
                             plagiarism_status="已检测" if plagiarism_rate else "未检测",
+                            attachments_json=list(attachments) if attachments else [],
                             status="PENDING_REVIEW")
         db.add(f)
         db.flush()
@@ -473,6 +505,29 @@ def review_final(fid, action, comment=None) -> dict:
                (comment or "").strip(), before, target)
         db.commit()
         return {"id": str(f.id), "status": target, "statusLabel": L_MAT.get(target, target)}
+
+
+def get_final_detail(fid) -> dict:
+    """成果批阅详情：本条 + 同生历史版本 + 退回意见 + 真实附件（文件中心解析）。供教师移动端批阅前查看。"""
+    with session() as db:
+        f = db.get(GraduationFinal, int(fid))
+        if not f or f.is_deleted or f.tenant_id != _tid():
+            raise not_found("成果不存在")
+        stu = _stu_of(db, f.gd_student_id)
+        vers = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == f.gd_student_id,
+            GraduationFinal.is_deleted.is_(False)).order_by(GraduationFinal.id)).all()
+        version_tone = {"APPROVED": "success", "REJECTED": "danger", "PENDING_REVIEW": "processing"}
+        row = _final_row(f, stu)
+        row.update({"studentNo": stu.student_no if stu else "",
+                    "reviewComment": f.review_comment or "",
+                    "attachmentsList": _resolve_attachments(f.attachments_json or []),
+                    "versions": [{"title": (v.final_type or "") + " " + (v.version or "") + " · "
+                                  + L_MAT.get(v.status, v.status),
+                                  "desc": (v.review_comment or "") if v.status == "REJECTED" else "",
+                                  "time": _iso(v.submit_at) or "", "tone": version_tone.get(v.status, "info")}
+                                 for v in vers]})
+        return row
 
 
 def remind_final(gd_student_id, channel="站内消息") -> dict:
@@ -858,9 +913,27 @@ def get_dashboard() -> dict:
             ]
         except Exception:  # noqa: BLE001 - 统计异常不影响看板主体
             module_stats = []
-        return {"batchName": "2026 届毕业设计批次", "batchRange": "2025-11-01 ~ 2026-06-30",
+        # 当前批次信息回真：优先取进行中(RUNNING)批次，否则取最近一个未作废批次；无批次时兜底
+        _BATCH_LABEL = {"DRAFT": "草稿", "RUNNING": "进行中", "CLOSED": "已结束",
+                        "ARCHIVED": "已归档", "VOIDED": "已作废"}
+        cur_batch = db.scalars(select(GraduationBatch).where(
+            GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False),
+            GraduationBatch.status == "RUNNING").order_by(GraduationBatch.id.desc())).first()
+        if not cur_batch:
+            cur_batch = db.scalars(select(GraduationBatch).where(
+                GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False),
+                GraduationBatch.status != "VOIDED").order_by(GraduationBatch.id.desc())).first()
+        if cur_batch:
+            _bs, _be = cur_batch.start_date, cur_batch.end_date
+            batch_range = " ~ ".join(d.strftime("%Y-%m-%d") for d in (_bs, _be) if d) \
+                or (cur_batch.academic_year or "")
+            batch_name = cur_batch.batch_name
+            batch_status = _BATCH_LABEL.get(cur_batch.status, cur_batch.status)
+        else:
+            batch_name, batch_range, batch_status = "暂无毕设批次", "", "未开始"
+        return {"batchName": batch_name, "batchRange": batch_range,
                 "moduleStats": module_stats,
-                "batchStatus": "进行中",
+                "batchStatus": batch_status,
                 "stats": [
                     {"label": "毕设学生", "value": str(total), "trend": "", "trendQuality": "neutral"},
                     {"label": "开题待审阅", "value": str(pend_prop),
