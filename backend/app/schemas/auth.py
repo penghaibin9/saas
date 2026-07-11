@@ -1,4 +1,4 @@
-"""认证相关请求体（mock 阶段）。字段命名对齐 docs/api/01。"""
+"""认证相关请求体（mock 阶段）。字段命名对齐 docs/05-数据接口权限与安全/api/01。"""
 from __future__ import annotations
 
 from typing import Optional

@@ -4,7 +4,7 @@
             403002 数据范围越权；404001 不存在；409001 冲突；422001 校验失败；500001 系统异常。
             与 frontend（res.code === 0）及本任务规范对齐。
 - `bizCode` 冻结契约字符串码（SUCCESS / NO_PERMISSION / ...），保持与
-            docs/api/00-API契约冻结总册 §二/§三 兼容，不破坏既有契约。
+            docs/05-数据接口权限与安全/api/00-API契约冻结总册 §二/§三 兼容，不破坏既有契约。
 
 成功：{ "code":"SUCCESS", "message":"success", "data":{...}, "traceId":"req-...", "timestamp":"...+08:00" }
 失败：{ "code":"NO_PERMISSION", "message":"...", "data":null, "details":{...}, "traceId":"...", "timestamp":"..." }

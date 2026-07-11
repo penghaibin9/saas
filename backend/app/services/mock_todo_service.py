@@ -1,4 +1,4 @@
-"""mock 待办服务。字段对齐 docs/api/04 §4.1（t_unified_todo）。"""
+"""mock 待办服务。字段对齐 docs/05-数据接口权限与安全/api/04 §4.1（t_unified_todo）。"""
 from __future__ import annotations
 
 from app.core.response import paginate

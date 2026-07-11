@@ -1,4 +1,4 @@
-"""mock 消息服务。字段对齐 docs/api/04 §4.13（t_unified_message）。"""
+"""mock 消息服务。字段对齐 docs/05-数据接口权限与安全/api/04 §4.13（t_unified_message）。"""
 from __future__ import annotations
 
 from app.core.response import paginate

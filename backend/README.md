@@ -30,7 +30,7 @@ uvicorn app.main:app --reload --port 8000
 
 `code` 数字码：0 成功 / 400001 参数错误 / 401001 未登录 / 403001 无权限 / 403002 数据范围越权 /
 404001 不存在 / 409001 冲突 / 422001 校验失败 / 500001 系统异常。
-`bizCode` 字符串码：兼容 docs/api/00-API契约冻结总册（SUCCESS / NO_PERMISSION / ...）。
+`bizCode` 字符串码：兼容 docs/05-数据接口权限与安全/api/00-API契约冻结总册（SUCCESS / NO_PERMISSION / ...）。
 
 ## 数据库（默认关闭）
 
@@ -60,9 +60,9 @@ employment01/academic01/college_admin01/school_admin01/platform_admin01，密码
 SQLAlchemy 第一批 19 模型 + Alembic 0001；pytest 27 用例。
 
 仍是 mock/TODO：真实登录与密码哈希（P1/P2）；DB_ENABLED=true 的真实 CRUD（P3）；流程引擎；
-对象存储（MinIO/OSS）；Excel 解析生成；消息渠道下发；国密与字段加密（见 docs/security/03）。
+对象存储（MinIO/OSS）；Excel 解析生成；消息渠道下发；国密与字段加密（见 docs/05-数据接口权限与安全/security/03）。
 
 ## 后续开发顺序
 
 P3：真实 PostgreSQL 初始化 + 学生主档真实 CRUD 联调 → 审批接流程引擎 → RBAC 真实权限表 →
-文件接 MinIO → 导入导出接 Excel → 审计落库。详见 docs/backend-integration/后端下一阶段任务清单.md。
+文件接 MinIO → 导入导出接 Excel → 审计落库。详见 docs/02-总体架构与公共底座/backend-integration/后端下一阶段任务清单.md。
