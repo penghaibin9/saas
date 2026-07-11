@@ -69,6 +69,13 @@ const router = createRouter({
       redirect: '/admin/internship/enterprises'
     },
     {
+      /* §42 规划占位页：planned 菜单统一入口（只读展示 navPlan+施工图规划信息，无业务 API、无假按钮假数据） */
+      path: '/admin/planned/:groupKey/:modKey/:leafIdx?',
+      name: 'planned-placeholder',
+      component: () => import('../views/admin/planned/PlannedPlaceholderView.vue'),
+      meta: { title: '规划模块（待施工）' }
+    },
+    {
       /* 帮助中心（PC-HELP-CENTER）：功能帮助 + 业务流程图，由顶部「功能/帮助」搜索命中进入 */
       path: '/admin/help',
       name: 'admin-help',

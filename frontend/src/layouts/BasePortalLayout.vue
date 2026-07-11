@@ -662,6 +662,12 @@ export default {
     onPlanLeaf(leaf, m) {
       if (!leaf) return
       if (leaf.disabled) {
+        // §42 规划占位页：planned 且有占位 path → 进公共占位页（侧栏描灰与 badge 不变）；「未开通」仍仅提示。
+        if (leaf.status === 'planned' && leaf.path) {
+          if (m) this.clickedLeafKey = this.leafKey(m, leaf)
+          if (leaf.path !== this.currentNavRef) router.push(leaf.path).catch(() => {})
+          return
+        }
         toast.info(leaf.badge === '未开通' ? '该功能未开通' : '该功能待施工，敬请期待')
         return
       }
