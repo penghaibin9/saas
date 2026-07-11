@@ -1,3 +1,0 @@
-.row { display: flex; justify-content: space-between; align-items: center; }
-.row .m { font-weight: 600; font-size: 30rpx; }
-.row .d { color: #9AA7B8; font-size: 24rpx; margin-top: 6rpx; }

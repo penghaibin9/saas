@@ -1,4 +1,0 @@
-.grid3 { display: flex; gap: 16rpx; }
-.grid3 .metric { flex: 1; background: #fff; border-radius: 20rpx; padding: 28rpx 0; text-align: center; box-shadow: 0 2rpx 12rpx rgba(0,0,0,.04); }
-.metric .v { font-size: 44rpx; font-weight: 700; color: #111; }
-.metric .l { font-size: 22rpx; color: #888; margin-top: 6rpx; }

@@ -1,7 +1,0 @@
-.footer-ver {
-  text-align: center;
-  color: #9CA3AF;
-  font-size: 22rpx;
-  margin-top: 32rpx;
-  padding-bottom: 24rpx;
-}
