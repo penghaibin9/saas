@@ -34,6 +34,8 @@ import { toast } from '@/utils/toast'
 const MENUS = [
   { key: 'cs-dashboard', label: '服务工作台', icon: '◫', path: '/admin/campus-service' },
   { key: 'cs-students', label: '学生服务', icon: '☰', path: '/admin/campus-service/students' },
+  { key: 'cs-classes', label: '班级管理', icon: '❑', path: '/admin/campus-service/classes' },
+  { key: 'cs-counselor-eval', label: '辅导员考评', icon: '✦', path: '/admin/campus-service/counselor-assessment' },
   { key: 'cs-leave', label: '请假审批', icon: '✈', path: '/admin/campus-service/leave' },
   { key: 'cs-leave-ext', label: '延期销假', icon: '↺', path: '/admin/campus-service/leave-extensions' },
   { key: 'cs-leave-ledger', label: '请假台账', icon: '▤', path: '/admin/campus-service/leave-ledger' },

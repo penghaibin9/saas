@@ -47,6 +47,9 @@ from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup,  # no
 from app.models.teacher_scope import TeacherStudentScope  # noqa: F401
 from app.models.affairs import (AffairsAuditTrail, AffairsClassCadre,  # noqa: F401
                                 AffairsLeaveCancelRecord, AffairsLeaveExtension)
+from app.models.affairs_class import (AffairsClassMaterial,  # noqa: F401
+                                      AffairsCounselorAssessment,
+                                      AffairsCounselorAssessmentPeriod)
 from app.models.affairs_aid import (AidApply, AidBatch, AidFamilyEconomy,  # noqa: F401
                                     AidLevelHistory, FundingApplication,
                                     FundingBatch, FundingProject)

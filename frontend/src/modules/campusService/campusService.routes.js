@@ -53,6 +53,24 @@ export const campusServiceRoutes = {
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假统计' }
     },
     {
+      path: 'classes',
+      name: 'campus-service-classes',
+      component: () => import('@/views/admin/student-affairs/class/ClassListView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '班级管理' }
+    },
+    {
+      path: 'classes/:classId',
+      name: 'campus-service-class-profile',
+      component: () => import('@/views/admin/student-affairs/class/ClassProfileView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '班级画像' }
+    },
+    {
+      path: 'counselor-assessment',
+      name: 'campus-service-counselor-assessment',
+      component: () => import('@/views/admin/student-affairs/class/CounselorAssessmentView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '辅导员考评' }
+    },
+    {
       path: 'grants',
       name: 'campus-service-grants',
       component: () => import('@/views/admin/campusService/GrantApplicationView.vue'),

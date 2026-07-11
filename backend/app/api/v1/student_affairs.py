@@ -10,6 +10,7 @@ from app.core.response import success, paginate
 from app.core.security import require_staff
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_archive_service as archive_svc
+from app.services import affairs_class_service as class_svc
 from app.services import affairs_dashboard_service as svc
 from app.services import affairs_discipline_service as disc_svc
 from app.services import affairs_dorm_service as dorm_svc
@@ -27,9 +28,24 @@ def dashboard(user=Depends(require_staff)):
     return success(svc.get_dashboard(user))
 
 
-@router.get("/classes", summary="班级列表（按数据范围）")
-def classes(user=Depends(require_staff)):
-    return success({"items": svc.list_classes(user)})
+@router.get("/classes", summary="班级列表（名称+指标，按数据范围，可筛学院/专业/年级/关键词）")
+def classes(collegeId: Optional[str] = None, majorId: Optional[str] = None,
+            grade: Optional[str] = None, keyword: Optional[str] = None,
+            page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = class_svc.class_list(user, collegeId, majorId, grade, keyword, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/classes/{classId}/profile", summary="班级画像（人数/男女/请假/风险/困难/处分/班干部/材料聚合）")
+def class_profile(classId: int = Path(...), user=Depends(require_staff)):
+    return success(class_svc.class_profile(classId, user))
+
+
+@router.get("/classes/{classId}/students", summary="班级学生列表（联系方式脱敏）")
+def class_students(classId: int = Path(...), keyword: Optional[str] = None,
+                   page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = class_svc.class_students(classId, user, keyword, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/classes/{classId}/cadres", summary="班干部列表")
@@ -51,6 +67,78 @@ def add_cadre(body: CadreCreate, classId: int = Path(...), user=Depends(require_
 @router.delete("/classes/cadres/{cadreId}", summary="免去班干部")
 def remove_cadre(cadreId: int = Path(...), user=Depends(require_staff)):
     return success(svc.remove_cadre(cadreId, user), message="已免去")
+
+
+# ── 班级材料 ──
+
+class MaterialCreate(BaseModel):
+    materialType: str = Field(..., description="CLASS_MEETING/THEME_ACTIVITY/EVALUATION/ATTENDANCE/SUMMARY/OTHER")
+    title: str = Field(..., min_length=1, max_length=200)
+    fileId: Optional[str] = Field(None, description="附件 file_id（文件中心）")
+    fileName: Optional[str] = None
+    materialAt: Optional[str] = Field(None, description="材料日期 YYYY-MM-DD")
+    remark: Optional[str] = Field(None, max_length=500)
+
+
+@router.get("/classes/{classId}/materials", summary="班级材料列表")
+def class_materials(classId: int = Path(...), materialType: Optional[str] = None,
+                    page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = class_svc.list_materials(classId, user, materialType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/classes/{classId}/materials", summary="新增班级材料（附件走文件中心 file_id）")
+def add_class_material(body: MaterialCreate, classId: int = Path(...), user=Depends(require_staff)):
+    return success(class_svc.add_material(classId, user, body), message="已新增")
+
+
+@router.delete("/classes/materials/{materialId}", summary="作废班级材料（逻辑删除）")
+def void_class_material(materialId: int = Path(...), user=Depends(require_staff)):
+    return success(class_svc.void_material(materialId, user), message="已作废")
+
+
+# ── 辅导员考评 ──
+
+class PeriodCreate(BaseModel):
+    periodName: str = Field(..., min_length=1, max_length=100)
+    semester: Optional[str] = None
+    remark: Optional[str] = Field(None, max_length=500)
+
+
+class ScoreBody(BaseModel):
+    collegeScore: float = Field(..., ge=0, le=100, description="学院评分 0-100")
+
+
+@router.post("/counselor-assessment/periods", summary="新建辅导员考评周期")
+def counselor_period_create(body: PeriodCreate, user=Depends(require_staff)):
+    return success(class_svc.create_period(user, body.periodName, body.semester, body.remark),
+                   message="已创建")
+
+
+@router.get("/counselor-assessment/periods", summary="考评周期列表")
+def counselor_periods(page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = class_svc.list_periods(user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/counselor-assessment/periods/{periodId}/collect", summary="生成/刷新考评指标（系统抓取工作量，幂等）")
+def counselor_collect(periodId: int = Path(...), user=Depends(require_staff)):
+    return success(class_svc.collect_assessments(periodId, user), message="已生成")
+
+
+@router.get("/counselor-assessment/periods/{periodId}/assessments", summary="考评记录（含自动指标+评分+排名）")
+def counselor_assessments(periodId: int = Path(...), user=Depends(require_staff)):
+    return success({"items": class_svc.list_assessments(periodId, user)})
+
+
+@router.post("/counselor-assessment/periods/{periodId}/publish", summary="发布考评周期")
+def counselor_publish(periodId: int = Path(...), user=Depends(require_staff)):
+    return success(class_svc.publish_period(periodId, user), message="已发布")
+
+
+@router.post("/counselor-assessment/assessments/{assessmentId}/score", summary="学院评分（综合分=自动*0.6+学院*0.4）")
+def counselor_score(body: ScoreBody, assessmentId: int = Path(...), user=Depends(require_staff)):
+    return success(class_svc.score_assessment(assessmentId, user, body.collegeScore), message="已评分")
 
 
 # ═══════════ 请假闭环（P2）═══════════
