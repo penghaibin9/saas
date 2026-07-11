@@ -47,6 +47,8 @@ export const teacherApi = {
     realFirst('teacher.internship',
       () => real.teacherInternshipReal({ reports: M.weeklyReports, abnormal: M.abnormalCheckins }),
       () => mockRequest({ reports: M.weeklyReports, abnormal: M.abnormalCheckins })),
+  // 单份周报正文（列表只回摘要，正文按需拉取，范围安全）；业务错误透出，不 mock 兜底
+  getWeeklyDetail: (id) => real.teacherWeeklyDetail(id),
   // 毕设指导：mobile 范围真实数据
   getGdStudents: () =>
     realFirst('teacher.graduation',

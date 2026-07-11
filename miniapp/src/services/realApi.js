@@ -467,6 +467,20 @@ export async function teacherInternshipReal(mock) {
     abnormal: abnormal.length ? abnormal : (mock.abnormal || []), _real: true }
 }
 
+/** 教师·单份周报正文详情（范围安全）。
+ * 列表接口 /mobile/teacher/internship 只回摘要（字数/风险/状态），正文经后端
+ * get_weekly_report_detail（已做 _rec_in_scope 范围校验：非本人范围→403/404）暴露于
+ * /internship/reports/{id}；该接口仅教师可访问（学生调用返回 403），故移动端教师批阅
+ * 可安全按需拉取正文。理想是补 /mobile/teacher/internship/weekly/{id}（见历史欠账）。 */
+export async function teacherWeeklyDetail(reportId) {
+  const d = await realRequest('/internship/reports/' + reportId)
+  const c = (d && d.content) || {}
+  return {
+    work: c.work || '', harvest: c.harvest || '', plan: c.plan || '',
+    positionName: (d && d.positionName) || '', reviewComment: (d && d.reviewComment) || ''
+  }
+}
+
 /** 教师·毕设指导页 → {list, reviewQueue}。reviewQueue=待批阅开题真实队列（含 proposalId，供单页队列批阅）。 */
 export async function teacherGraduationReal(mock) {
   const d = await realRequest('/mobile/teacher/graduation')
