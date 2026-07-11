@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+.iw{--pri-100:#DBEAFE;--pri:#2563EB;--pri-bg:rgba(37,99,235,.06);
+--ok:#059669;--ok-l:#ECFDF5;--warn:#D97706;--warn-l:#FFFBEB;--err:#DC2626;--err-l:#FEF2F2;
+--bg:#EDF2FA;--card:rgba(255,255,255,.9);--card-b:rgba(151,173,214,.32);--dv:rgba(120,144,190,.16);
+--t1:#0F1E3D;--t2:#44567E;--t3:#8494B5;--t4:#C3CDE0;--r:14px;
+--g1:#60A5FA;--g2:#2F6BFF;--deep1:#0B2352;--deep2:#123A80;--glow:rgba(96,165,250,.5);
+--f:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+--s2:0 1px 3px rgba(15,40,90,.06),0 10px 28px -18px rgba(23,58,138,.28);
+font-family:var(--f);color:var(--t1);-webkit-font-smoothing:antialiased}
+.iw .ic{width:16px;height:16px;flex-shrink:0;stroke-width:1.8}
+.iw .nw{white-space:nowrap}
+</style>
+</helmet>
+
+<div class="iw" style="width:1360px;margin:0 auto;background:var(--bg);border-radius:18px;overflow:hidden;box-shadow:0 40px 100px -50px rgba(15,40,90,.55),0 0 0 1px rgba(151,173,214,.3);display:flex;flex-direction:column;height:900px">
+
+  <!-- 顶栏 -->
+  <div style="height:56px;background:rgba(255,255,255,.75);backdrop-filter:blur(18px);border-bottom:1px solid rgba(151,173,214,.28);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;z-index:30">
+    <div style="display:flex;align-items:center;gap:9px;flex-shrink:0">
+      <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--g1),var(--g2));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;box-shadow:0 4px 12px -4px var(--glow)">高</div>
+      <div style="line-height:1.25"><div style="font-size:12.5px;font-weight:700">高校学生全生命周期管理平台</div><div style="font-size:10.5px;color:var(--t3)">南京职业技术学院</div></div>
+    </div>
+    <div style="flex:1;min-width:180px;max-width:430px;height:34px;margin:0 14px;display:flex;align-items:center;gap:8px;padding:0 14px;border-radius:12px;background:rgba(237,242,250,.85);border:1px solid rgba(151,173,214,.3);color:var(--t3);font-size:12.5px">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>搜索学生 / 课程 / 班级…
+      <kbd style="margin-left:auto;font-size:10px;padding:2px 6px;border-radius:5px;background:#fff;border:1px solid var(--card-b);color:var(--t3)">⌘K</kbd>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0">
+      <span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(217,119,6,.1);color:#B45309;letter-spacing:.4px;border:1px solid rgba(217,119,6,.25)">DEV</span>
+      <span class="nw" style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:16px;background:var(--pri-bg);border:1px solid var(--pri-100);font-size:11.5px;color:var(--pri);font-weight:500">
+        <svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3.5"></circle></svg>数据范围 · 信息工程学院 · 教学口径</span>
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 10px 4px 5px;border-radius:10px;border:1px solid var(--pri-100);background:#fff">
+        <div style="width:27px;height:27px;border-radius:8px;background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:600">吴</div>
+        <div style="line-height:1.25"><div style="font-size:12px;font-weight:600">吴敏华</div><div style="font-size:10px;color:var(--pri);font-weight:500">教务老师 ⌄</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;overflow:hidden">
+    <!-- 图标轨 -->
+    <div style="width:82px;flex-shrink:0;background:linear-gradient(180deg,var(--deep1),var(--deep2));display:flex;flex-direction:column;align-items:center;padding:14px 0 12px;gap:4px">
+      <div style="width:64px;padding:9px 0 7px;border-radius:13px;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(199,219,255,.6);font-size:10px;font-weight:500"><svg style="width:19px;height:19px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7"></path><path d="M5 10v10h14V10"></path></svg>工作台</div>
+      <div style="width:64px;padding:9px 0 7px;border-radius:13px;display:flex;flex-direction:column;align-items:center;gap:5px;color:#fff;font-size:10px;font-weight:600;background:linear-gradient(180deg,rgba(96,165,250,.26),rgba(37,99,235,.12));box-shadow:inset 0 0 0 1px rgba(96,165,250,.35);position:relative"><span style="position:absolute;top:5px;right:9px;min-width:14px;height:14px;border-radius:7px;background:#F87171;color:#fff;font-size:8.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px">8</span><svg style="width:19px;height:19px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5"></path><path d="M16 8h5M16 12h5"></path></svg>学生中心</div>
+      <div style="width:64px;padding:9px 0 7px;border-radius:13px;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(199,219,255,.6);font-size:10px;font-weight:500"><svg style="width:19px;height:19px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>教学实习</div>
+      <div style="width:64px;padding:9px 0 7px;border-radius:13px;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(199,219,255,.6);font-size:10px;font-weight:500"><svg style="width:19px;height:19px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"></path></svg>数据中心</div>
+      <div style="width:64px;padding:9px 0 7px;border-radius:13px;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(199,219,255,.6);font-size:10px;font-weight:500;position:relative"><span style="position:absolute;top:5px;right:11px;min-width:14px;height:14px;border-radius:7px;background:#F87171;color:#fff;font-size:8.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px">3</span><svg style="width:19px;height:19px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3 8-8"></path><path d="M20 12v6a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h9"></path></svg>审批</div>
+      <div style="width:64px;padding:9px 0 7px;border-radius:13px;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(199,219,255,.6);font-size:10px;font-weight:500"><svg style="width:19px;height:19px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="3" width="12" height="18" rx="2"></rect><path d="M11 18h2"></path></svg>小程序</div>
+      <div style="flex:1"></div>
+      <div style="width:64px;padding:9px 0 7px;border-radius:13px;display:flex;flex-direction:column;align-items:center;gap:5px;color:rgba(199,219,255,.6);font-size:10px;font-weight:500"><svg style="width:19px;height:19px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 005 12a7 7 0 00.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2L10 21h4l.4-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6z"></path></svg>系统</div>
+    </div>
+
+    <!-- 二级导航 -->
+    <div style="width:196px;flex-shrink:0;border-right:1px solid var(--dv);background:rgba(255,255,255,.55);padding:16px 12px;overflow-y:auto">
+      <div style="padding:2px 8px 12px;border-bottom:1px solid var(--dv);margin-bottom:8px">
+        <div style="font-size:15px;font-weight:700;letter-spacing:-.01em">学业过程中心</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:3px">第 18 教学周 · 期末季</div>
+      </div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--t3);padding:8px 8px 5px">概览</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--pri);background:var(--pri-bg);font-weight:600">学业看板</div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--t3);padding:12px 8px 5px">成绩管理</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--t2);font-weight:500">成绩录入<span class="nw" style="margin-left:auto;min-width:17px;height:16px;border-radius:8px;background:var(--warn-l);color:var(--warn);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">18%</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--t2);font-weight:500">成绩审核</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--t2);font-weight:500">补考与重修<span class="nw" style="margin-left:auto;min-width:17px;height:16px;border-radius:8px;background:var(--warn-l);color:var(--warn);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">34</span></div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--t3);padding:12px 8px 5px">学业干预</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--t2);font-weight:500">学业预警<span class="nw" style="margin-left:auto;min-width:17px;height:16px;border-radius:8px;background:var(--err-l);color:var(--err);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">8</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--t2);font-weight:500">谈话与帮扶</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--t2);font-weight:500">学分预审</div>
+    </div>
+
+    <!-- 内容 -->
+    <div style="flex:1;overflow-y:auto;padding:20px 24px 30px;min-width:0">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:20px;font-weight:700;letter-spacing:-.01em">学业看板</div>
+          <div style="font-size:12.5px;color:var(--t3);margin-top:4px">期末季 · <b style="color:var(--pri)">128</b> 个教学班 · 数据更新至 14:00</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span class="nw" style="font-size:12.5px;font-weight:500;color:var(--t2);padding:8px 14px;border-radius:10px;border:1px solid var(--card-b);background:#fff">教学报表 · 导出</span>
+          <span class="nw" style="font-size:12.5px;font-weight:600;color:#fff;padding:8px 16px;border-radius:10px;background:var(--pri);box-shadow:0 6px 16px -6px var(--glow)">催录成绩</span>
+        </div>
+      </div>
+
+      <!-- 玻璃 Hero -->
+      <div style="position:relative;border-radius:16px;overflow:hidden;background:linear-gradient(115deg,var(--deep1) 0%,var(--deep2) 55%,#2F6BFF 130%);color:#fff;padding:22px 26px;margin-bottom:16px;box-shadow:var(--s2)">
+        <div style="position:absolute;inset:0;background:linear-gradient(rgba(147,197,253,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(147,197,253,.06) 1px,transparent 1px);background-size:30px 30px;pointer-events:none"></div>
+        <div style="position:relative;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+          <span style="font-size:13px;color:rgba(191,214,255,.82)">期末成绩录入 <strong style="font-size:22px;color:#fff;font-variant-numeric:tabular-nums;margin:0 4px">82%</strong> · 截止还有 3 天，23 个教学班未开始</span>
+          <span class="nw" style="margin-left:auto;font-size:11px;color:rgba(191,214,255,.7);letter-spacing:.2em">过程性评价 · 全程留痕</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;position:relative;margin-top:20px;padding:0 4px">
+          <div style="position:absolute;left:34px;right:34px;top:22px;height:2px;background:rgba(147,197,253,.3)"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:1;flex:1"><div style="min-width:46px;height:46px;padding:0 8px;border-radius:23px;background:rgba(147,197,253,.14);border:1.5px solid rgba(147,197,253,.3);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">128</div><div class="nw" style="font-size:11px;color:rgba(191,214,255,.82)">教学班</div></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:1;flex:1"><div style="min-width:46px;height:46px;padding:0 8px;border-radius:23px;background:linear-gradient(135deg,var(--g1),var(--g2));border:1.5px solid rgba(255,255,255,.5);box-shadow:0 0 16px var(--glow);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">82%</div><div class="nw" style="font-size:11px;color:rgba(191,214,255,.82)">成绩录入</div><div class="nw" style="font-size:9.5px;color:#FCD34D;font-weight:600">23 班未开始</div></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:1;flex:1"><div style="min-width:46px;height:46px;padding:0 8px;border-radius:23px;background:rgba(147,197,253,.14);border:1.5px solid rgba(147,197,253,.3);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">8</div><div class="nw" style="font-size:11px;color:rgba(191,214,255,.82)">学业预警</div><div class="nw" style="font-size:9.5px;color:#FCA5A5;font-weight:600">3 例谈话超期</div></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:1;flex:1"><div style="min-width:46px;height:46px;padding:0 8px;border-radius:23px;background:rgba(147,197,253,.14);border:1.5px solid rgba(147,197,253,.3);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">34</div><div class="nw" style="font-size:11px;color:rgba(191,214,255,.82)">补考重修</div><div class="nw" style="font-size:9.5px;color:#FCD34D;font-weight:600">下周开考</div></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:1;flex:1"><div style="min-width:46px;height:46px;padding:0 8px;border-radius:23px;background:rgba(147,197,253,.14);border:1.5px solid rgba(147,197,253,.3);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">96%</div><div class="nw" style="font-size:11px;color:rgba(191,214,255,.82)">学分达标率</div></div>
+        </div>
+      </div>
+
+      <!-- 提醒条 -->
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:11px;font-size:12.5px;font-weight:500;margin-bottom:16px;border:1px solid rgba(220,38,38,.22);background:var(--err-l);color:#98262B">
+        <svg class="ic" style="width:14px;height:14px;color:var(--err)" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>
+        3 例学业预警谈话超期未完成（口径：预警生成后 7 日内），涉及毕业年级学生 1 人，请督促辅导员完成并上传记录。
+        <span style="margin-left:auto;font-weight:600;color:var(--err)">去督办 →</span>
+      </div>
+
+      <!-- 双栏 -->
+      <div style="display:grid;grid-template-columns:1.62fr 1fr;gap:16px">
+        <!-- 预警处理队列 -->
+        <div style="background:var(--card);backdrop-filter:blur(10px);border:1px solid var(--card-b);border-radius:var(--r);box-shadow:var(--s2);padding:16px 18px 8px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:14.5px;font-weight:700">学业预警处理队列</span>
+            <span style="display:flex;gap:5px;margin-left:6px">
+              <span class="nw" style="font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:11px;background:var(--deep1);color:#fff">在办 8</span>
+              <span class="nw" style="font-size:10.5px;font-weight:500;padding:2px 9px;border-radius:11px;background:var(--pri-bg);color:var(--t2)">本学期解除 15</span>
+            </span>
+            <span style="margin-left:auto;font-size:11.5px;font-weight:500;color:var(--pri)">预警列表 →</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 2px;border-top:1px solid var(--dv)">
+            <div style="width:30px;height:30px;border-radius:9px;background:var(--err-l);color:var(--err);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">王</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600">王晨 · 两门核心课不及格 <span class="nw" style="font-size:10px;font-weight:600;color:var(--err);background:var(--err-l);border:1px solid rgba(220,38,38,.2);padding:1px 6px;border-radius:4px;margin-left:4px">谈话超期 3 天</span></div>
+              <div style="font-size:11px;color:var(--t3);margin-top:2px">22护理1班 · 毕业年级 · 规则 R-06 · 辅导员 张伟 · 同时在毕设阶段</div>
+            </div>
+            <span class="nw" style="font-size:11.5px;font-weight:500;color:var(--t2);padding:5px 11px;border-radius:8px;border:1px solid var(--card-b)">催辅导员</span>
+            <span class="nw" style="font-size:11.5px;font-weight:600;color:#fff;padding:5px 13px;border-radius:8px;background:var(--pri)">查看档案</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 2px;border-top:1px solid var(--dv)">
+            <div style="width:30px;height:30px;border-radius:9px;background:var(--warn-l);color:var(--warn);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">陈</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600">陈明 · 本学期新增预警 <span class="nw" style="font-size:10px;font-weight:600;color:var(--warn);background:var(--warn-l);border:1px solid rgba(217,119,6,.25);padding:1px 6px;border-radius:4px;margin-left:4px">待首谈</span></div>
+              <div style="font-size:11px;color:var(--t3);margin-top:2px">23大数据1班 · 缺勤率 22% + 一科不及格 · 已通知家长（留痕）</div>
+            </div>
+            <span class="nw" style="font-size:11.5px;font-weight:500;color:var(--t2);padding:5px 11px;border-radius:8px;border:1px solid var(--card-b)">安排谈话</span>
+            <span class="nw" style="font-size:11.5px;font-weight:600;color:#fff;padding:5px 13px;border-radius:8px;background:var(--pri)">查看档案</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 2px;border-top:1px solid var(--dv)">
+            <div style="width:30px;height:30px;border-radius:9px;background:var(--warn-l);color:var(--warn);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">李</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600">李强 · 上次补考缺考 <span class="nw" style="font-size:10px;font-weight:600;color:var(--warn);background:var(--warn-l);border:1px solid rgba(217,119,6,.25);padding:1px 6px;border-radius:4px;margin-left:4px">重修在读</span></div>
+              <div style="font-size:11px;color:var(--t3);margin-top:2px">23软件1班 · 高等数学重修 · 本次补考名单已含</div>
+            </div>
+            <span class="nw" style="font-size:11.5px;font-weight:500;color:var(--t2);padding:5px 11px;border-radius:8px;border:1px solid var(--card-b)">发提醒</span>
+            <span class="nw" style="font-size:11.5px;font-weight:600;color:#fff;padding:5px 13px;border-radius:8px;background:var(--pri)">查看档案</span>
+          </div>
+          <div style="padding:9px 2px 6px;border-top:1px solid var(--dv);display:flex;align-items:center;font-size:11px;color:var(--t3)">
+            预警由规则引擎生成（成绩/缺勤/学分 6 条规则）· 谈话与帮扶记录写入学生 360
+            <span style="margin-left:auto;color:var(--pri);font-weight:500">全部 8 例 →</span>
+          </div>
+        </div>
+
+        <!-- 右列 -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div style="background:var(--card);backdrop-filter:blur(10px);border:1px solid var(--card-b);border-radius:var(--r);box-shadow:var(--s2);padding:16px 18px 12px">
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px">
+              <span style="font-size:14.5px;font-weight:700">成绩录入进度</span>
+              <span style="font-size:11px;color:var(--t3)">按专业</span>
+              <span style="margin-left:auto;font-size:11.5px;font-weight:500;color:var(--pri)">催录 →</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
+              <div style="display:flex;align-items:center;gap:10px"><span class="nw" style="width:56px;color:var(--t2)">软件技术</span><span style="flex:1;height:14px;border-radius:4px;background:var(--pri-bg);overflow:hidden"><span style="display:block;width:94%;height:100%;background:linear-gradient(90deg,var(--g1),var(--g2));border-radius:4px"></span></span><span class="nw" style="width:34px;font-variant-numeric:tabular-nums;color:var(--t1);font-weight:600;text-align:right">94%</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span class="nw" style="width:56px;color:var(--t2)">大数据</span><span style="flex:1;height:14px;border-radius:4px;background:var(--pri-bg);overflow:hidden"><span style="display:block;width:88%;height:100%;background:linear-gradient(90deg,var(--g1),var(--g2));border-radius:4px"></span></span><span class="nw" style="width:34px;font-variant-numeric:tabular-nums;color:var(--t1);font-weight:600;text-align:right">88%</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span class="nw" style="width:56px;color:var(--err);font-weight:600">电子商务</span><span style="flex:1;height:14px;border-radius:4px;background:var(--err-l);overflow:hidden"><span style="display:block;width:61%;height:100%;background:var(--err);opacity:.75;border-radius:4px"></span></span><span class="nw" style="width:34px;font-variant-numeric:tabular-nums;color:var(--err);font-weight:600;text-align:right">61%</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span class="nw" style="width:56px;color:var(--t2)">网络技术</span><span style="flex:1;height:14px;border-radius:4px;background:var(--pri-bg);overflow:hidden"><span style="display:block;width:79%;height:100%;background:linear-gradient(90deg,var(--g1),var(--g2));border-radius:4px"></span></span><span class="nw" style="width:34px;font-variant-numeric:tabular-nums;color:var(--t1);font-weight:600;text-align:right">79%</span></div>
+            </div>
+            <div style="margin-top:11px;padding:8px 10px;border-radius:8px;background:var(--pri-bg);font-size:11px;color:var(--t3);line-height:1.6">成绩提交后进入复核流，改动需走异动审批并留痕。</div>
+          </div>
+          <div style="background:var(--card);backdrop-filter:blur(10px);border:1px solid var(--card-b);border-radius:var(--r);box-shadow:var(--s2);padding:16px 18px 12px;flex:1">
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">
+              <span style="font-size:14.5px;font-weight:700">补考安排 · 下周</span>
+              <span style="font-size:11px;color:var(--t3)">34 人次</span>
+              <span style="margin-left:auto;font-size:11.5px;font-weight:500;color:var(--pri)">考务表 →</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--dv);font-size:12px">
+              <span class="nw" style="font-family:ui-monospace,Menlo,monospace;font-weight:700;color:var(--pri);width:64px">周一 14:30</span>
+              <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12.5px">高等数学 · 18 人</div><div style="font-size:10.5px;color:var(--t3)">教学楼 A201 · 监考已排</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--dv);font-size:12px">
+              <span class="nw" style="font-family:ui-monospace,Menlo,monospace;font-weight:700;color:var(--pri);width:64px">周二 09:00</span>
+              <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12.5px">数据结构 · 11 人</div><div style="font-size:10.5px;color:var(--t3)">实训楼 B305 · 监考已排</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--dv);font-size:12px">
+              <span class="nw" style="font-family:ui-monospace,Menlo,monospace;font-weight:700;color:var(--warn);width:64px">周三 14:30</span>
+              <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12.5px">电路基础 · 5 人</div><div style="font-size:10.5px;color:#B45309">监考缺 1 人 · 待协调</div></div>
+              <span class="nw" style="font-size:11.5px;font-weight:600;color:var(--pri)">协调</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
