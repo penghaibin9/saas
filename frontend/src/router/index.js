@@ -22,6 +22,7 @@ import dataCenterRoutes from '@/modules/dataCenter/dataCenter.routes'
 import approvalRoutes from '@/modules/approval/approval.routes'
 import systemRoutes from '@/modules/system/system.routes'
 import platformRoutes from '@/modules/platform/platform.routes'
+import studentAffairsRoutes from '@/modules/student-affairs/studentAffairs.routes'
 
 /**
  * 模块 routes 文件形态不一（部分为数组、部分为单个父路由对象），
@@ -40,7 +41,8 @@ const moduleRoutes = [
   dataCenterRoutes,
   approvalRoutes,
   systemRoutes,
-  platformRoutes
+  platformRoutes,
+  studentAffairsRoutes
 ].flatMap((def) => (Array.isArray(def) ? def : [def]))
 
 const router = createRouter({
