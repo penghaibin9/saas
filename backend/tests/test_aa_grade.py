@@ -88,3 +88,29 @@ def test_g5_analysis(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     a = client.get(f"{BASE}/grade-views/analysis", headers=hdr).json()["data"]
     assert a["total"] == 1 and a["passRate"] == 1.0
+
+
+def test_g6_fail_list_no_n_plus_one(client, db_mode):
+    """挂科清单读侧：命中 t_acad_student 次数与挂科行数无关（JOIN 批量，非逐行 db.get）。"""
+    from sqlalchemy import event
+    from app.db.session import get_engine
+    sids = _seed(db_mode, 6)
+    hdr = _hdr(client, "school_admin01")
+    tid = _task(client, hdr)
+    for sid in sids:
+        client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+                    json={"studentId": str(sid), "usualScore": 30, "finalScore": 30})  # 30 FAIL
+    client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
+    hits = []
+    engine = get_engine()
+
+    def _rec(conn, cursor, statement, parameters, context, executemany):
+        if "t_acad_student" in statement:
+            hits.append(statement)
+
+    event.listen(engine, "before_cursor_execute", _rec)
+    try:
+        fl = client.get(f"{BASE}/grade-views/fail-list?pageSize=50", headers=hdr).json()["data"]
+    finally:
+        event.remove(engine, "before_cursor_execute", _rec)
+    assert fl["total"] >= 6 and len(hits) <= 2, f"疑似 N+1：命中 t_acad_student {len(hits)} 次"
