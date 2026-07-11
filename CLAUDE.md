@@ -1699,3 +1699,17 @@ UI 基元：import { AppButton, AppBadge, AppCard } from '@/components/ui'
 - AppWatermark 是展示层防护，不替代后端导出审计与权限。
 
 一句话：第三批公共组件是「页面标准件仓」，业务页面照单取件，缺件先增强公共组件，绝不各造一套。
+
+## 42. 规划占位页规则（2026-07-11 甲方拍板，修订 §1.1 / §8 / §9.3 对应条款）
+
+经甲方明确决定：规划中（planned）的菜单项允许出现在菜单中并可点击，统一进入公共「规划占位页」，让甲方随时看清哪些做了、哪些没做，做完一个模块即可测试一个模块。
+
+规则：
+
+1. 全系统只允许一个公共占位页组件（frontend/src/views/admin/planned/PlannedPlaceholderView.vue，路由 /admin/planned/:groupKey/:modKey/:leafIdx?），按 navPlan.js + constructionMap.js 数据渲染；禁止为每个 planned 菜单单独新建空 Vue 页面。
+2. 占位页必须明确标注「规划中 · 待施工」，展示该模块的真实规划信息：所属中心、三级页面清单与真实状态、业务定位；DEV 构建或 SCHOOL_ADMIN / PLATFORM / PLATFORM_SUPER_ADMIN 角色额外可见施工顺序、任务包与推进指令（与施工地图开关同一角色口径），普通正式角色只见中性说明。
+3. 占位页禁止假业务按钮、假数据、假写操作；不得调用任何业务 API，不得 mock 成功。
+4. planned 菜单项在侧栏保持描灰与「待施工」badge；planned 状态不因占位页存在而改变，不得把带占位页的模块标 implemented / partial。
+5. 模块真实施工完成后，navPlan 中该叶子改为 I(label, 真实path)，占位路径自动让位——这就是「做完一个、亮一个」的验收信号。
+6. 原 §1.1「新建空页面」、§8「不创建空页面 / 不显示可点击入口 / 不能点击进入空白页」、§9.3「未开发目录不进正式菜单」中与本条冲突的表述，以本条为准；其余红线（假按钮、假数据、权限、脱敏、审计、后端校验）全部不变。
+
