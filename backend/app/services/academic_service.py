@@ -537,6 +537,8 @@ def void_warning(wid, reason) -> dict:
         if s:
             _sync_student_warning(db, s)
         _audit(db, "WARNING", w.id, "作废预警", reason.strip())
+        from app.services import academic_affairs_warning_service as _aaw
+        _aaw.mark_todos_done(db, w.id)  # 闭环：误报作废同步消除辅导员待办
         db.commit()
         return {"id": str(w.id)}
 
@@ -614,6 +616,8 @@ def close_warning(wid, result) -> dict:
         if s:
             _sync_student_warning(db, s)
         _audit(db, "WARNING", w.id, "关闭预警", result.strip(), before, "CLOSED")
+        from app.services import academic_affairs_warning_service as _aaw
+        _aaw.mark_todos_done(db, w.id)  # 闭环：消除辅导员工作台该预警待办
         db.commit()
         return {"id": str(w.id)}
 
