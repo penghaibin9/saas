@@ -46,6 +46,50 @@ const studentAffairsRoutes = [
         name: 'student-affairs-risk-detail',
         component: () => import('@/views/admin/student-affairs/StudentAffairsRiskDetailView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '风险处置', requiresAuth: true, permissionKey: 'studentAffairs.risk.view' }
+      },
+      /* 以下 7 个工作台捞自 feat/student-affairs-13a-frontend（Chrome 真机验证版，master 此前缺）；
+       * 页面文件在 views/admin/studentAffairs/（驼峰），统一挂到本 /admin/student-affairs/* 一棵路由树，不再另开路径。 */
+      {
+        path: 'aid',
+        name: 'student-affairs-aid',
+        component: () => import('@/views/admin/studentAffairs/AidWorkbenchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '困难认定', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
+      },
+      {
+        path: 'funding',
+        name: 'student-affairs-funding',
+        component: () => import('@/views/admin/studentAffairs/FundingWorkbenchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '奖助勤贷补', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+      },
+      {
+        path: 'discipline',
+        name: 'student-affairs-discipline',
+        component: () => import('@/views/admin/studentAffairs/DisciplineWorkbenchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '违纪处分', requiresAuth: true, permissionKey: 'studentAffairs.discipline.view' }
+      },
+      {
+        path: 'talk',
+        name: 'student-affairs-talk',
+        component: () => import('@/views/admin/studentAffairs/TalkWorkbenchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈心谈话', requiresAuth: true, permissionKey: 'studentAffairs.talk.view' }
+      },
+      {
+        path: 'family',
+        name: 'student-affairs-family',
+        component: () => import('@/views/admin/studentAffairs/FamilyContactView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '家校联系', requiresAuth: true, permissionKey: 'studentAffairs.homeSchool.view' }
+      },
+      {
+        path: 'archive',
+        name: 'student-affairs-archive',
+        component: () => import('@/views/admin/studentAffairs/ArchiveManageView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工归档', requiresAuth: true, permissionKey: 'studentAffairs.archive.view' }
+      },
+      {
+        path: 'stats',
+        name: 'student-affairs-stats',
+        component: () => import('@/views/admin/studentAffairs/StudentAffairsStatsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       }
     ]
   }

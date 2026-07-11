@@ -14,12 +14,19 @@ export default {
   name: 'AdminStudentAffairsLayout',
   data() {
     return {
-      // 班级/请假已由 master 上的正式模块承接（/admin/campus-service/classes、/leave 系列），此处不重复
+      // 班级/请假已由 master 正式模块承接（/admin/campus-service/classes、/leave 系列），此处不重复
       tabs: [
         { label: '学工看板', path: '/admin/student-affairs/dashboard' },
         { label: '学生画像', path: '/admin/student-affairs/profile' },
         { label: '宿舍管理', path: '/admin/student-affairs/dormitory' },
-        { label: '风险预警', path: '/admin/student-affairs/risk' }
+        { label: '风险预警', path: '/admin/student-affairs/risk' },
+        { label: '困难认定', path: '/admin/student-affairs/aid' },
+        { label: '奖助勤贷补', path: '/admin/student-affairs/funding' },
+        { label: '违纪处分', path: '/admin/student-affairs/discipline' },
+        { label: '谈心谈话', path: '/admin/student-affairs/talk' },
+        { label: '家校联系', path: '/admin/student-affairs/family' },
+        { label: '学工归档', path: '/admin/student-affairs/archive' },
+        { label: '学工统计', path: '/admin/student-affairs/stats' }
       ]
     }
   }
