@@ -132,54 +132,6 @@
     </div>
 
     <!-- 新增 / 编辑学生 -->
-    <AppDrawer :visible="editDrawer.visible" :title="editDrawer.isCreate ? '新增学生主档' : '编辑学生信息'" @update:visible="editDrawer.visible = $event">
-      <div class="mp-stack">
-        <label class="sl-field">
-          <span class="sl-field__label">姓名 *</span>
-          <input v-model="editDrawer.form.name" class="sl-field__control" placeholder="与身份证一致" />
-        </label>
-        <label class="sl-field">
-          <span class="sl-field__label">学号 *</span>
-          <input
-            v-model="editDrawer.form.studentNo"
-            class="sl-field__control"
-            :disabled="!editDrawer.isCreate"
-            placeholder="全校唯一"
-          />
-        </label>
-        <label class="sl-field">
-          <span class="sl-field__label">性别</span>
-          <select v-model="editDrawer.form.gender" class="sl-field__control">
-            <option value="男">男</option>
-            <option value="女">女</option>
-          </select>
-        </label>
-        <label class="sl-field">
-          <span class="sl-field__label">班级 *</span>
-          <select v-model="editDrawer.form.classId" class="sl-field__control">
-            <option value="">请选择班级</option>
-            <option v-for="c in ctx.filterOptions.classes" :key="c.value" :value="c.value">{{ c.label }}</option>
-          </select>
-        </label>
-        <label class="sl-field">
-          <span class="sl-field__label">手机号</span>
-          <input v-model="editDrawer.form.phone" class="sl-field__control" placeholder="学生本人手机号" />
-        </label>
-        <label class="sl-field">
-          <span class="sl-field__label">身份证号</span>
-          <input v-model="editDrawer.form.idCard" class="sl-field__control" placeholder="用于实名核验" />
-        </label>
-        <p v-if="editDrawer.error" class="mp-form-err">{{ editDrawer.error }}</p>
-        <div class="sl-drawer-ops">
-          <AppButton variant="ghost" @click="editDrawer.visible = false">取消</AppButton>
-          <AppButton variant="primary" :disabled="editDrawer.submitting" @click="submitEdit">
-            {{ editDrawer.isCreate ? '确认建档' : '保存变更' }}
-          </AppButton>
-        </div>
-        <p class="mp-note">提交后写入审计留痕；新增学生默认「已录取 / 待核验」，进入迎新与身份核验流程。</p>
-      </div>
-    </AppDrawer>
-
     <!-- 批量分班 / 分配辅导员 -->
     <AppDrawer :visible="batchDrawer.visible" :title="batchDrawer.mode === 'assignClass' ? '批量分班' : '批量分配辅导员'" @update:visible="batchDrawer.visible = $event">
       <div class="mp-stack">
@@ -270,6 +222,7 @@ import {
 import { AppGlobalState, AppConfirmDialog } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { studentApi } from '@/modules/student/api/student.api'
+import { readListState, writeListState } from '@/modules/campusService/components'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({
@@ -284,7 +237,8 @@ const EMPTY_FILTERS = () => ({
   includeVoided: false
 })
 
-const EMPTY_FORM = () => ({ name: '', studentNo: '', gender: '男', classId: '', phone: '', idCard: '' })
+/* 主档表单已迁移至独立编辑页 StudentEditView（2026-07-10 第二批交互改造） */
+const LIST_FILTER_KEYS = ['keyword', 'collegeId', 'majorId', 'classId', 'grade', 'studentStatus', 'identityVerifyStatus', 'riskLevel', 'includeVoided']
 
 export default {
   name: 'StudentListView',
@@ -313,7 +267,7 @@ export default {
       filters: EMPTY_FILTERS(),
       pagination: { page: 1, pageSize: 10, total: 0 },
       columns: [],
-      editDrawer: { visible: false, isCreate: true, form: EMPTY_FORM(), targetId: '', error: '', submitting: false },
+
       batchDrawer: { visible: false, mode: 'assignClass', value: '', error: '', submitting: false },
       columnDrawer: { visible: false, draft: [] },
       voidDialog: { visible: false, target: null, submitting: false },
@@ -358,6 +312,10 @@ export default {
   async created() {
     const colRes = await studentApi.getFieldColumns('studentList')
     if (colRes.code === 0) this.columns = colRes.data
+    /* 列表上下文同步 query（2026-07-10 第二批）：从编辑页/360 返回不丢筛选页码 */
+    const st = readListState(this.$route, LIST_FILTER_KEYS)
+    this.filters = { ...this.filters, ...st.filters, includeVoided: st.filters.includeVoided === '1' }
+    this.pagination.page = st.page
     if (!this.forbidden) await this.load()
     else this.loading = false
     if (this.$route.query.action === 'create' && this.can('createStudent')) this.openCreate()
@@ -415,41 +373,13 @@ export default {
     },
     /* ---- 新增 / 编辑 ---- */
     openCreate() {
-      this.editDrawer = { visible: true, isCreate: true, form: EMPTY_FORM(), targetId: '', error: '', submitting: false }
+      if (!this.can('createStudent')) return
+      this.$router.push('/admin/student/list/new')
     },
     openEdit(row) {
       if (!this.can('editStudent')) return
-      this.editDrawer = {
-        visible: true,
-        isCreate: false,
-        targetId: row.studentId,
-        error: '',
-        submitting: false,
-        form: {
-          name: row.name,
-          studentNo: row.studentNo,
-          gender: row.gender,
-          classId: row.classId,
-          phone: row.phone,
-          idCard: row.idCard
-        }
-      }
-    },
-    async submitEdit() {
-      const d = this.editDrawer
-      d.submitting = true
-      d.error = ''
-      const res = d.isCreate
-        ? await studentApi.createStudent(d.form)
-        : await studentApi.updateStudent(d.targetId, d.form)
-      d.submitting = false
-      if (res.code === 0) {
-        d.visible = false
-        toast.success(d.isCreate ? '建档成功，已进入待核验队列（已留痕）' : '学生信息已更新（已留痕）')
-        this.load()
-      } else {
-        d.error = res.message
-      }
+      /* 独立编辑页（2026-07-10）：携带学号 query 供刷新定位；列表 query 已同步，返回不丢筛选页码 */
+      this.$router.push({ path: '/admin/student/' + row.studentId + '/edit', query: { no: row.studentNo } })
     },
     /* ---- 作废 ---- */
     openVoid(row) {
@@ -551,6 +481,11 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
+      writeListState(this.$router, this.$route, {
+        page: this.pagination.page,
+        filters: { ...this.filters, includeVoided: this.filters.includeVoided ? '1' : '' },
+        filterKeys: LIST_FILTER_KEYS
+      })
       const res = await studentApi.getStudents({
         ...this.filters,
         page: this.pagination.page,

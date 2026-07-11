@@ -29,6 +29,13 @@ export const studentRoutes = [
         meta: { moduleCode: 'STUDENT', title: '学生主档', requiresAuth: true, permissionKey: 'student.profile.view' }
       },
       {
+        /* 2026-07-10 第二批交互改造：新增主档独立编辑页（原列表抽屉表单字段多，改独立页） */
+        path: 'list/new',
+        name: 'student-create',
+        component: () => import('@/views/admin/student/StudentEditView.vue'),
+        meta: { moduleCode: 'STUDENT', title: '新增学生主档', requiresAuth: true, permissionKey: 'student.profile.view' }
+      },
+      {
         path: 'status',
         name: 'student-status',
         component: () => import('@/views/admin/student/StudentStatusView.vue'),
@@ -57,6 +64,13 @@ export const studentRoutes = [
         name: 'student-import-export',
         component: () => import('@/views/admin/student/StudentImportExportView.vue'),
         meta: { moduleCode: 'STUDENT', title: '导入导出管理', requiresAuth: true, permissionKey: 'student.export' }
+      },
+      {
+        /* 2026-07-10 第二批交互改造：编辑主档独立编辑页（?no=学号 供刷新定位；页面内按 editStudent 权限控制） */
+        path: ':studentId/edit',
+        name: 'student-edit',
+        component: () => import('@/views/admin/student/StudentEditView.vue'),
+        meta: { moduleCode: 'STUDENT', title: '编辑学生信息', requiresAuth: true, permissionKey: 'student.profile.view' }
       },
       {
         path: ':studentId',

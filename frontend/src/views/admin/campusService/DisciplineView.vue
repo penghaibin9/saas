@@ -34,6 +34,7 @@
           <StatusTag :type="row.status === 'EFFECTIVE' ? 'danger' : 'default'" :label="row.status === 'EFFECTIVE' ? '生效中' : '已解除'" dot />
         </template>
         <template #cell-actions="{ row }">
+          <button class="mp-link" @click="openDetail(row)">详情</button>
           <button class="mp-link" @click="$router.push('/admin/campus-service/students/' + row.studentId)">学生服务</button>
           <button
             v-if="row.status === 'EFFECTIVE' && row.recordStatus === 'ACTIVE'"
@@ -104,17 +105,19 @@
 <script>
 /**
  * 违纪 / 处分记录管理（/admin/campus-service/discipline）。
- * 管理能力：新增（说明必填）/ 解除（编辑状态，说明留痕）/ 作废（逻辑删除留痕）/ 导出（脱敏+水印+审计）/ 高级筛选。
+ * 管理能力：详情（独立详情页，2026-07-10 第一批交互改造）/ 新增（说明必填）/ 解除（说明留痕）/
+ * 作废（逻辑删除留痕）/ 导出（脱敏+水印+审计）/ 高级筛选；筛选与页码同步路由 query，从详情返回不丢上下文。
  */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { ExportDrawer, FormDrawer } from '@/modules/campusService/components'
+import { ExportDrawer, FormDrawer, readListState, writeListState } from '@/modules/campusService/components'
 import {
   getDisciplineRecords, createDisciplineRecord, updateDisciplineRecord, voidDisciplineRecord,
   getFieldColumns, getExportOptions, createExport, getServiceStudents
 } from '@/modules/campusService/api/campusService.api'
 import { toast } from '@/utils/toast'
 
+const FILTER_KEYS = ['keyword', 'type', 'status', 'recordStatus']
 const EMPTY_FILTERS = () => ({ keyword: '', type: '', status: '', recordStatus: '' })
 
 export default {
@@ -172,6 +175,9 @@ export default {
   async created() {
     const cols = await getFieldColumns('disciplineList')
     if (cols.code === 0) this.columns = cols.data.filter((c) => c.locked || c.default).map((c) => ({ key: c.key, title: c.title }))
+    const st = readListState(this.$route, FILTER_KEYS)
+    this.filters = { ...EMPTY_FILTERS(), ...st.filters }
+    this.pagination.page = st.page
     this.load()
   },
   methods: {
@@ -206,6 +212,7 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
+      writeListState(this.$router, this.$route, { page: this.pagination.page, filters: this.filters, filterKeys: FILTER_KEYS })
       const res = await getDisciplineRecords({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
       if (res.code === 0) {
         this.rows = res.data.list
@@ -214,6 +221,10 @@ export default {
         this.error = res.message
       }
       this.loading = false
+    },
+    /* 独立详情页（第一批交互改造）：携带编号 query 供刷新定位；列表 query 已同步，返回不丢筛选页码 */
+    openDetail(row) {
+      this.$router.push({ path: '/admin/campus-service/discipline/' + row.id, query: { code: row.code } })
     },
     async onToolbar(key) {
       if (key === 'create') {

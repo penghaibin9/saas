@@ -83,6 +83,20 @@ export const campusServiceRoutes = {
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.dorm.view', title: '宿舍服务' }
     },
     {
+      /* 第一批交互改造：单条住宿记录独立详情深链接（与住宿台账双栏复用同一详情组件）。权限沿用住宿台账 key，不扩大权限。 */
+      path: 'dormitory/records/:recordId',
+      name: 'campus-service-dorm-record-detail',
+      component: () => import('@/views/admin/campusService/DormRecordDetailView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.dorm.view', title: '住宿详情' }
+    },
+    {
+      /* 第一批交互改造：违纪详情独立页（完整违纪业务不再放右侧抽屉）。权限沿用违纪台账 key，不扩大权限。 */
+      path: 'discipline/:recordId',
+      name: 'campus-service-discipline-detail',
+      component: () => import('@/views/admin/campusService/DisciplineDetailView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.discipline.view', title: '违纪详情' }
+    },
+    {
       path: 'discipline',
       name: 'campus-service-discipline',
       component: () => import('@/views/admin/campusService/DisciplineView.vue'),

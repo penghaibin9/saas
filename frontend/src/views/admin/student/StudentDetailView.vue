@@ -51,7 +51,7 @@
           type="button"
           class="sd-tab"
           :class="{ 'is-active': activeTab === t.key }"
-          @click="activeTab = t.key"
+          @click="setTab(t.key)"
         >
           {{ t.label }}
         </button>
@@ -337,7 +337,8 @@ export default {
       loading: true,
       error: '',
       detail: null,
-      activeTab: 'basic',
+      /* 2026-07-10 保护性核验：activeTab 从路由 query 恢复（刷新/分享链接不丢页签；不含敏感明文） */
+      activeTab: String(this.$route.query.tab || 'basic'),
       tabs: [
         { key: 'basic', label: '基础信息' },
         { key: 'status', label: '学籍状态' },
@@ -393,6 +394,13 @@ export default {
     this.load()
   },
   methods: {
+    /* 页签切换同步路由 query（replace 不产生历史噪音），刷新后可恢复 */
+    setTab(key) {
+      this.activeTab = key
+      const query = { ...this.$route.query, tab: key === 'basic' ? undefined : key }
+      if (!query.tab) delete query.tab
+      this.$router.replace({ query }).catch(() => {})
+    },
     mask(v, type) {
       if (!v) return '未登记'
       if (this.canSensitive) return v
@@ -419,7 +427,12 @@ export default {
       return hit ? hit.label : v
     },
     onToolbar(key) {
-      if (key === 'back') this.$router.push('/admin/student/list')
+      if (key === 'back') {
+        /* 2026-07-10 保护性核验：优先历史返回，保留来源页（列表/搜索/其他模块跳转）上下文 */
+        const back = this.$router.options.history.state && this.$router.options.history.state.back
+        if (back && String(back).startsWith('/admin/')) this.$router.back()
+        else this.$router.push('/admin/student/list')
+      }
       if (key === 'edit' && this.detail) {
         this.editDrawer = {
           visible: true,
