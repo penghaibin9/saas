@@ -33,7 +33,7 @@ def _trail(db, rid, action, detail=None, operator="系统"):
 
 
 def _scope(user):
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     return _current_scope(user), _rec_in_scope
 
 

@@ -14,7 +14,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpCompany, InternshipAuditTrail, InternshipIntention, InternshipMatch,
                         InternshipPosition, InternshipRecord, Major, StudentProfile)
-from app.services import internship_student_service as student_svc
+from app.modules.internship.services import internship_student_service as student_svc
 from app.services import xlsx_util
 from app.services.db_service import _iso, _tid, session
 

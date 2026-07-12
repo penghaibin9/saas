@@ -100,7 +100,7 @@ def _merge_tasks_with_progress(plan, progress_rows):
 
 
 def student_tasks(user) -> dict:
-    from app.services.internship_agreement_service import _student_record
+    from app.modules.internship.services.internship_agreement_service import _student_record
     with session() as db:
         rec, stu = _student_record(db, user)
         if not rec or not rec.batch_id:
@@ -137,7 +137,7 @@ def student_tasks(user) -> dict:
 
 
 def student_submit_task(user, sort_order: int, body: dict) -> dict:
-    from app.services.internship_agreement_service import _student_record
+    from app.modules.internship.services.internship_agreement_service import _student_record
     sort_order = int(sort_order)
     note = (body.get("studentNote") or body.get("note") or "").strip()
     if len(note) < 5:
@@ -171,7 +171,7 @@ def student_submit_task(user, sort_order: int, body: dict) -> dict:
 
 
 def list_progress(page, page_size, batch_id=None, status=None, keyword=None, task_sort_order=None, user=None):
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     scope, in_scope = _current_scope(user), _rec_in_scope
     with session() as db:
         q = select(InternshipPlanTaskProgress).where(
@@ -200,7 +200,7 @@ def list_progress(page, page_size, batch_id=None, status=None, keyword=None, tas
 
 
 def review_progress(prog_id, action: str, comment: str = "", user=None) -> dict:
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     action = (action or "").upper()
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE 或 REJECT")
@@ -233,7 +233,7 @@ def review_progress(prog_id, action: str, comment: str = "", user=None) -> dict:
 
 
 def batch_summary(batch_id, user=None) -> dict:
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     scope, in_scope = _current_scope(user), _rec_in_scope
     with session() as db:
         plan = db.scalars(select(InternshipBatchPlan).where(

@@ -11,7 +11,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import (AttendanceException, InternshipAuditTrail, InternshipBatch,
                         InternshipCheckin, InternshipRecord, RiskRecord, StudentContact,
                         StudentProfile, WeeklyReport)
-from app.schemas.internship import RulesConfig, StageItem
+from app.modules.internship.schemas.internship import RulesConfig, StageItem
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
 STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在岗中",

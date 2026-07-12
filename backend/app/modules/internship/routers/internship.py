@@ -9,23 +9,23 @@ from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, ContactCreate,
+from app.modules.internship.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, ContactCreate,
                                      ContactUpdate, CoopActionRequest, EnterpriseCreate,
                                      EnterpriseImport, EnterpriseReview, EnterpriseUpdate,
                                      ExceptionHandleRequest, ImportErrorsExport, ReportReviewRequest,
                                      VoidBatchRequest)
 from app.services import audit_log
-from app.services import internship_enterprise_service as ent
-from app.services import internship_agreement_service as agr
-from app.services import internship_enterprise_eval_service as ee
-from app.services import internship_guidance_service as gd
-from app.services import internship_leave_service as lv
-from app.services import internship_makeup_service as mk
-from app.services import internship_risk_service as risk
-from app.services import internship_score_service as score
-from app.services import internship_service as svc
-from app.services import internship_student_eval_service as se
-from app.services import internship_visit_service as vis
+from app.modules.internship.services import internship_enterprise_service as ent
+from app.modules.internship.services import internship_agreement_service as agr
+from app.modules.internship.services import internship_enterprise_eval_service as ee
+from app.modules.internship.services import internship_guidance_service as gd
+from app.modules.internship.services import internship_leave_service as lv
+from app.modules.internship.services import internship_makeup_service as mk
+from app.modules.internship.services import internship_risk_service as risk
+from app.modules.internship.services import internship_score_service as score
+from app.modules.internship.services import internship_service as svc
+from app.modules.internship.services import internship_student_eval_service as se
+from app.modules.internship.services import internship_visit_service as vis
 from app.services import xlsx_util
 
 _XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

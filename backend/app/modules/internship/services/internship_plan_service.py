@@ -150,7 +150,7 @@ def publish_plan(batch_id, user=None) -> dict:
             db.add(InternshipPlanAck(tenant_id=_tid(), plan_id=p.id, internship_id=rec.id,
                                      student_id=rec.student_id, status="PENDING"))
             ack_count += 1
-        from app.services.internship_plan_task_service import init_progress_for_plan
+        from app.modules.internship.services.internship_plan_task_service import init_progress_for_plan
         task_prog_count = init_progress_for_plan(db, p, recs)
         _trail(db, p.id, "PUBLISH", {"ackCount": ack_count, "taskProgressInit": task_prog_count},
                _op_name(user))
@@ -159,7 +159,7 @@ def publish_plan(batch_id, user=None) -> dict:
 
 
 def list_acks(page, page_size, batch_id=None, status=None, keyword=None, user=None):
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     scope, in_scope = _current_scope(user), _rec_in_scope
     with session() as db:
         q = select(InternshipPlanAck).where(
@@ -192,7 +192,7 @@ def list_acks(page, page_size, batch_id=None, status=None, keyword=None, user=No
 
 
 def student_my_plan(user) -> dict | None:
-    from app.services.internship_agreement_service import _student_record
+    from app.modules.internship.services.internship_agreement_service import _student_record
     with session() as db:
         rec, stu = _student_record(db, user)
         if not rec or not rec.batch_id:
@@ -206,7 +206,7 @@ def student_my_plan(user) -> dict | None:
             InternshipPlanAck.tenant_id == _tid(), InternshipPlanAck.plan_id == p.id,
             InternshipPlanAck.internship_id == rec.id, InternshipPlanAck.is_deleted.is_(False))).first()
         from app.models import InternshipPlanTaskProgress
-        from app.services.internship_plan_task_service import PROG_LABEL, _merge_tasks_with_progress
+        from app.modules.internship.services.internship_plan_task_service import PROG_LABEL, _merge_tasks_with_progress
         prog_rows = db.scalars(select(InternshipPlanTaskProgress).where(
             InternshipPlanTaskProgress.tenant_id == _tid(), InternshipPlanTaskProgress.plan_id == p.id,
             InternshipPlanTaskProgress.internship_id == rec.id,
@@ -227,7 +227,7 @@ def student_my_plan(user) -> dict | None:
 
 
 def student_acknowledge(user) -> dict:
-    from app.services.internship_agreement_service import _student_record
+    from app.modules.internship.services.internship_agreement_service import _student_record
     with session() as db:
         rec, stu = _student_record(db, user)
         if not rec:

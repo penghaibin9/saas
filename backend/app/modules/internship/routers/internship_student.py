@@ -14,12 +14,12 @@ from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.internship_student import (AssignPositionRequest, DestinationRequest,
+from app.modules.internship.schemas.internship_student import (AssignPositionRequest, DestinationRequest,
                                             EligibilityRequest, StudentImport,
                                             StudentRecordCreate, StudentRecordUpdate,
                                             StudentStatusRequest, UnassignRequest)
 from app.services import audit_log
-from app.services import internship_student_service as svc
+from app.modules.internship.services import internship_student_service as svc
 from app.services import xlsx_util
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-实习学生"])

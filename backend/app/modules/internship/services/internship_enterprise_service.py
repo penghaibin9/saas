@@ -154,7 +154,7 @@ def get_enterprise(company_id) -> dict:
             InternshipAuditTrail.target_id == c.id).order_by(
             InternshipAuditTrail.occurred_at.desc()).limit(30)).all()
         # 反向补：企业岗位摘要（岗位库完成后接入；延迟导入避免循环）
-        from app.services import internship_position_service as _pos
+        from app.modules.internship.services import internship_position_service as _pos
         position_summary = _pos.count_for_enterprise(c.id)
         return {
             **_row(c),

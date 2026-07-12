@@ -13,10 +13,10 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.internship_agreement_template import (AgreementTemplateCreate, AgreementTemplateUpdate,
+from app.modules.internship.schemas.internship_agreement_template import (AgreementTemplateCreate, AgreementTemplateUpdate,
                                                        SetDefaultRequest, StatusAction)
 from app.services import audit_log
-from app.services import internship_agreement_template_service as svc
+from app.modules.internship.services import internship_agreement_template_service as svc
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-协议模板库"])
 

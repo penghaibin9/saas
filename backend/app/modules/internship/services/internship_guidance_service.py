@@ -52,7 +52,7 @@ def _row(g, rec, stu):
 
 
 def _scope_ctx(user):
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     return _current_scope(user), _rec_in_scope
 
 
@@ -80,7 +80,7 @@ def _spawn_risk(db, rec, stu, g, user):
     db.add(risk); db.flush()
     notified = False
     if g.notify_counselor:
-        from app.services.internship_service import notify_counselor_for_student
+        from app.modules.internship.services.internship_service import notify_counselor_for_student
         notified = notify_counselor_for_student(
             db, stu, title=f"实习风险提醒：{stu.real_name if stu else '学生'}",
             content=f"指导教师 {_op_name(user)} 在指导中发现问题「{g.topic or g.problem_type or '需跟进'}」，"
@@ -126,7 +126,7 @@ def create(user, body) -> dict:
         if risk_id:
             _trail(db, g.id, "SPAWN_RISK", {"riskId": str(risk_id)}, operator=_op_name(user))
         elif g.notify_counselor:  # 仅通知辅导员、未形成风险
-            from app.services.internship_service import notify_counselor_for_student
+            from app.modules.internship.services.internship_service import notify_counselor_for_student
             if notify_counselor_for_student(
                     db, stu, title=f"实习指导提醒：{stu.real_name if stu else '学生'}",
                     content=f"指导教师 {_op_name(user)} 反馈：{(g.content or '')[:200]}",

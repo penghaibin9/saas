@@ -145,7 +145,7 @@ def my_leaves(user) -> list[dict]:
 # ═══════════ 指导教师 / 管理员（PC 管理端，owner + 数据范围） ═══════════
 
 def list_leaves(page, page_size, status=None, keyword=None, user=None) -> tuple[list[dict], int]:
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         q = select(InternshipLeave).where(InternshipLeave.tenant_id == _tid(),
                                           InternshipLeave.is_deleted.is_(False))
@@ -169,7 +169,7 @@ def list_leaves(page, page_size, status=None, keyword=None, user=None) -> tuple[
 
 def get_leave(leave_id, user=None) -> dict:
     from app.services import file_service
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         lv = _get(db, leave_id)
         rec = db.get(InternshipRecord, lv.internship_id)
@@ -190,7 +190,7 @@ def review(user, leave_id, action: str, comment: str = "") -> dict:
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         lv = _get(db, leave_id)
         rec = db.get(InternshipRecord, lv.internship_id)

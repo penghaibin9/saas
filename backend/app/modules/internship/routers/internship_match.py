@@ -12,11 +12,11 @@ from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.internship_match import (BatchMatchBody, IntentionCreate, IntentionImport,
+from app.modules.internship.schemas.internship_match import (BatchMatchBody, IntentionCreate, IntentionImport,
                                           IntentionImportErrors, IntentionUpdate, ManualMatchBody,
                                           MatchActionBody)
 from app.services import audit_log
-from app.services import internship_match_service as svc
+from app.modules.internship.services import internship_match_service as svc
 from app.services import xlsx_util
 
 router = APIRouter(prefix="/internship/match", tags=["岗位实习-岗位匹配"])

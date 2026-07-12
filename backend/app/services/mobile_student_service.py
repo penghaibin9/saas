@@ -1138,7 +1138,7 @@ def internship_intention_my(user: dict) -> dict:
         it = _active_intention(db, rec.id)
         intention = None
         if it:
-            from app.services.internship_match_service import _intention_row
+            from app.modules.internship.services.internship_match_service import _intention_row
             intention = _intention_row(db, it)
         return {
             "hasData": True,
@@ -1155,8 +1155,8 @@ def internship_intention_save(user: dict, body: dict) -> dict:
     from types import SimpleNamespace
 
     from app.core.exceptions import no_permission
-    from app.schemas.internship_match import IntentionUpdate
-    from app.services import internship_match_service as match_svc
+    from app.modules.internship.schemas.internship_match import IntentionUpdate
+    from app.modules.internship.services import internship_match_service as match_svc
 
     u = _require_student(user)
     if not db_enabled():
@@ -1201,7 +1201,7 @@ def internship_intention_save(user: dict, body: dict) -> dict:
 
 def internship_intention_submit(user: dict) -> dict:
     from app.core.exceptions import no_permission
-    from app.services import internship_match_service as match_svc
+    from app.modules.internship.services import internship_match_service as match_svc
 
     u = _require_student(user)
     if not db_enabled():
@@ -1224,7 +1224,7 @@ def internship_intention_submit(user: dict) -> dict:
 
 def internship_intention_withdraw(user: dict) -> dict:
     from app.core.exceptions import no_permission
-    from app.services import internship_match_service as match_svc
+    from app.modules.internship.services import internship_match_service as match_svc
 
     u = _require_student(user)
     if not db_enabled():
@@ -1255,7 +1255,7 @@ def internship_process_report_submit(user: dict, body: dict) -> dict:
         rec, stu = _internship_record(db, u)
         if not rec:
             raise AppException("NOT_FOUND", "你暂无实习档案，无法提交")
-    from app.services import internship_process_report_service as pr
+    from app.modules.internship.services import internship_process_report_service as pr
     result = pr.student_submit(rec, body.get("reportType"), body.get("periodKey"), body.get("content"))
     audit_log.record("MOBILE_PROCESS_REPORT", f"internship:process:{body.get('reportType')}",
                      {"studentNo": u.get("studentNo"), "periodKey": body.get("periodKey")})
@@ -1272,7 +1272,7 @@ def internship_change_list(user: dict) -> list:
         rec, stu = _internship_record(db, u)
         if not rec:
             return []
-    from app.services import internship_change_service as chg
+    from app.modules.internship.services import internship_change_service as chg
     return chg.list_my_changes(rec, stu)
 
 
@@ -1284,7 +1284,7 @@ def internship_change_apply(user: dict, body: dict) -> dict:
         rec, stu = _internship_record(db, u)
         if not rec:
             raise AppException("NOT_FOUND", "你暂无实习档案")
-    from app.services import internship_change_service as chg
+    from app.modules.internship.services import internship_change_service as chg
     return chg.student_apply(rec, stu, body)
 
 
@@ -1296,5 +1296,5 @@ def internship_change_withdraw(user: dict, change_id: str) -> dict:
         rec, stu = _internship_record(db, u)
         if not rec:
             raise AppException("NOT_FOUND", "你暂无实习档案")
-    from app.services import internship_change_service as chg
+    from app.modules.internship.services import internship_change_service as chg
     return chg.withdraw_change(change_id, rec, stu)

@@ -25,7 +25,7 @@ def _trail(db, iid, action, detail=None, operator="系统"):
 
 
 def _scope(user):
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     return _current_scope(user), _rec_in_scope
 
 
@@ -67,7 +67,7 @@ def list_insurances(page, page_size, status=None, keyword=None, user=None):
 
 
 def student_submit(user, body) -> dict:
-    from app.services.internship_agreement_service import _student_record
+    from app.modules.internship.services.internship_agreement_service import _student_record
     b = body or {}
     policy_no = (b.get("policyNo") or "").strip()
     insurer = (b.get("insurerName") or "").strip()
@@ -133,7 +133,7 @@ def verify_insurance(iid, action: str, comment: str = "", user=None) -> dict:
 
 
 def student_my_insurance(user) -> dict | None:
-    from app.services.internship_agreement_service import _student_record
+    from app.modules.internship.services.internship_agreement_service import _student_record
     with session() as db:
         rec, stu = _student_record(db, user)
         if not rec:

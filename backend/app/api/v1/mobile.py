@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends
 
 from app.core.response import success
 from app.core.security import get_current_user
-from app.services import internship_makeup_service as mk
+from app.modules.internship.services import internship_makeup_service as mk
 from app.services import mobile_academic_affairs_service as aa
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_student_service as stu
@@ -85,37 +85,37 @@ def internship_makeup_withdraw(makeup_id: str, user=Depends(get_current_user)):
 
 @router.get("/internship/leaves", summary="本人实习请假列表")
 def internship_my_leaves(user=Depends(get_current_user)):
-    from app.services import internship_leave_service as lv
+    from app.modules.internship.services import internship_leave_service as lv
     return success(lv.my_leaves(user))
 
 
 @router.post("/internship/leave", summary="实习请假申请（本人，待指导教师审批）")
 def internship_leave_apply(body: dict = Body(...), user=Depends(get_current_user)):
-    from app.services import internship_leave_service as lv
+    from app.modules.internship.services import internship_leave_service as lv
     return success(lv.apply(user, body or {}), message="请假申请已提交")
 
 
 @router.post("/internship/leave/{leave_id}/withdraw", summary="撤回本人请假申请")
 def internship_leave_withdraw(leave_id: str, user=Depends(get_current_user)):
-    from app.services import internship_leave_service as lv
+    from app.modules.internship.services import internship_leave_service as lv
     return success(lv.withdraw(user, leave_id), message="已撤回")
 
 
 @router.get("/internship/agreements", summary="本人三方协议列表")
 def internship_my_agreements(user=Depends(get_current_user)):
-    from app.services import internship_agreement_service as agr
+    from app.modules.internship.services import internship_agreement_service as agr
     return success(agr.my_agreements(user))
 
 
 @router.get("/internship/agreements/{agreement_id}", summary="本人三方协议详情（含渲染正文）")
 def internship_agreement_detail(agreement_id: str, user=Depends(get_current_user)):
-    from app.services import internship_agreement_service as agr
+    from app.modules.internship.services import internship_agreement_service as agr
     return success(agr.get_student_agreement(user, agreement_id))
 
 
 @router.post("/internship/agreements/{agreement_id}/confirm", summary="本人确认/驳回三方协议")
 def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user=Depends(get_current_user)):
-    from app.services import internship_agreement_service as agr
+    from app.modules.internship.services import internship_agreement_service as agr
     b = body or {}
     return success(agr.student_confirm(user, agreement_id, (b.get("action") or "").upper(),
                                        b.get("reason") or ""), message="已提交")
@@ -123,13 +123,13 @@ def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user
 
 @router.get("/internship/self-eval", summary="本人实习自评/鉴定")
 def internship_my_self_eval(user=Depends(get_current_user)):
-    from app.services import internship_student_eval_service as se
+    from app.modules.internship.services import internship_student_eval_service as se
     return success(se.my_eval(user))
 
 
 @router.post("/internship/self-eval", summary="提交/重交本人实习自评（总结/收获/问题）")
 def internship_submit_self_eval(body: dict = Body(...), user=Depends(get_current_user)):
-    from app.services import internship_student_eval_service as se
+    from app.modules.internship.services import internship_student_eval_service as se
     return success(se.student_submit(user, body or {}), message="自评已提交")
 
 
@@ -175,43 +175,43 @@ def internship_change_withdraw(change_id: str, user=Depends(get_current_user)):
 
 @router.get("/internship/plan", summary="本人实习计划书（已发布）")
 def internship_my_plan(user=Depends(get_current_user)):
-    from app.services import internship_plan_service as plan
+    from app.modules.internship.services import internship_plan_service as plan
     return success(plan.student_my_plan(user))
 
 
 @router.post("/internship/plan/acknowledge", summary="确认本人实习计划书")
 def internship_plan_ack(user=Depends(get_current_user)):
-    from app.services import internship_plan_service as plan
+    from app.modules.internship.services import internship_plan_service as plan
     return success(plan.student_acknowledge(user), message="已确认实习计划")
 
 
 @router.get("/internship/plan/tasks", summary="本人实习计划任务及完成度")
 def internship_plan_tasks(user=Depends(get_current_user)):
-    from app.services import internship_plan_task_service as pt
+    from app.modules.internship.services import internship_plan_task_service as pt
     return success(pt.student_tasks(user))
 
 
 @router.post("/internship/plan/tasks/{sort_order}/submit", summary="提交任务完成")
 def internship_plan_task_submit(sort_order: int, body: dict = Body(...), user=Depends(get_current_user)):
-    from app.services import internship_plan_task_service as pt
+    from app.modules.internship.services import internship_plan_task_service as pt
     return success(pt.student_submit_task(user, sort_order, body or {}), message="已提交，待指导教师确认")
 
 
 @router.get("/internship/insurance", summary="本人实习保险")
 def internship_my_insurance(user=Depends(get_current_user)):
-    from app.services import internship_insurance_service as ins
+    from app.modules.internship.services import internship_insurance_service as ins
     return success(ins.student_my_insurance(user))
 
 
 @router.post("/internship/insurance", summary="提交本人实习保险信息")
 def internship_insurance_submit(body: dict = Body(...), user=Depends(get_current_user)):
-    from app.services import internship_insurance_service as ins
+    from app.modules.internship.services import internship_insurance_service as ins
     return success(ins.student_submit(user, body or {}), message="保险信息已提交，待学校核验")
 
 
 @router.post("/internship/agreements/{agreement_id}/esign/sign", summary="学生电子签签署")
 def internship_agreement_esign_sign(agreement_id: str, user=Depends(get_current_user)):
-    from app.services import internship_agreement_service as agr
+    from app.modules.internship.services import internship_agreement_service as agr
     return success(agr.esign_sign(user, agreement_id, "STUDENT"), message="电子签已完成")
 
 
@@ -441,7 +441,7 @@ def teacher_weekly_review(report_id: str, body: dict = Body(...),
 @router.post("/teacher/internship/weekly/{report_id}/remind",
              summary="教师·逾期未交周报催交（范围校验+站内信+审计）")
 def teacher_weekly_remind(report_id: str, user=Depends(get_current_user)):
-    from app.services import internship_service as svc
+    from app.modules.internship.services import internship_service as svc
     return success(svc.remind_weekly_report(report_id, user=user), message="已催交")
 
 

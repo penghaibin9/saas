@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipChangeRequest, InternshipRecord, StudentProfile
-from app.services import internship_student_service as stu_svc
+from app.modules.internship.services import internship_student_service as stu_svc
 from app.services.db_service import _iso, _tid, session
 
 TYPE_LABEL = {"CHANGE_POSITION": "换岗", "CHANGE_ENTERPRISE": "换实习单位", "SELF_ARRANGED": "自主实习变更"}
@@ -31,7 +31,7 @@ def _trail(db, cid, action, detail=None, operator="系统"):
 
 
 def _scope(user):
-    from app.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     return _current_scope(user), _rec_in_scope
 
 

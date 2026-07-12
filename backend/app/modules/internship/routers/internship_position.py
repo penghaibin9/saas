@@ -13,10 +13,10 @@ from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.internship_position import (PositionCreate, PositionImport, PositionImportErrors,
+from app.modules.internship.schemas.internship_position import (PositionCreate, PositionImport, PositionImportErrors,
                                              PositionRiskRequest, PositionStatusAction, PositionUpdate)
 from app.services import audit_log
-from app.services import internship_position_service as pos
+from app.modules.internship.services import internship_position_service as pos
 from app.services import xlsx_util
 
 _POS_XLSX_HEADERS = ["岗位名称", "关联企业", "岗位类型", "专业要求", "年级要求", "工作地点",
