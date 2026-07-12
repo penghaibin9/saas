@@ -151,10 +151,14 @@ export const NAV_PLAN = [
     mod('sa-talks', '谈心家校', null, P(
       '谈话计划', '谈话记录', '重点学生跟进', '家校联系人', '家校联系记录', '谈心统计'
     )),
-    // 施工图卡·心理关注（D包第10步·待施工·强敏感红线）
-    mod('sa-mental', '心理关注', null, P(
-      '心理关注名单', '心理预警摘要', '谈话转介与回访', '危机升级', '心理统计'
-    )),
+    // 施工图卡·心理关注（D包第10步·强敏感红线·2026-07-12 前端5页接通 /student-affairs/mental/*）
+    mod('sa-mental', '心理关注', null, [
+      I('心理关注名单', '/admin/student-affairs/mental'),
+      I('心理预警摘要', '/admin/student-affairs/mental/summary'),
+      I('谈话转介与回访', '/admin/student-affairs/mental/referrals'),
+      I('危机升级', '/admin/student-affairs/mental/crisis'),
+      I('心理统计', '/admin/student-affairs/mental/stats')
+    ]),
     // 施工图卡·活动二课与社团（D包第11步·待施工）
     mod('sa-activities', '活动二课与社团', null, P(
       '活动管理', '活动报名与签到', '第二课堂积分', '志愿服务', '社团管理', '学生干部与组织', '党团建设', '活动统计'

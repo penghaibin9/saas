@@ -253,6 +253,55 @@ export const studentAffairsApi = {
     return ok(await request('/student-affairs/risk/scan-timeout', { method: 'POST' }))
   },
 
+  // ── 心理关注（强敏感·PSY_STUDENT·危机接风险中枢）──
+  async listMentalAttention(params = {}) {
+    const data = await request('/student-affairs/mental/list', {
+      params: { level: params.level, page: params.page || 1, pageSize: params.pageSize || 50 }
+    })
+    return ok({
+      items: data.items || [],
+      total: data.total || 0,
+      page: data.page || params.page || 1,
+      pageSize: data.pageSize || params.pageSize || 50
+    })
+  },
+
+  async getMentalReferral(refId, reason) {
+    return ok(await request(`/student-affairs/mental/referrals/${refId}`, {
+      params: reason ? { reason } : {}
+    }))
+  },
+
+  async getMentalSummary(studentId) {
+    return ok(await request(`/student-affairs/mental/students/${studentId}/summary`))
+  },
+
+  async createMentalReferral(body) {
+    return ok(await request('/student-affairs/mental/referrals', { method: 'POST', body }))
+  },
+
+  async followMentalReferral(refId, content) {
+    return ok(await request(`/student-affairs/mental/referrals/${refId}/follow`, {
+      method: 'POST', body: { content }
+    }))
+  },
+
+  async escalateMentalReferral(refId, content = '') {
+    return ok(await request(`/student-affairs/mental/referrals/${refId}/escalate`, {
+      method: 'POST', body: { content }
+    }))
+  },
+
+  async closeMentalReferral(refId, conclusion) {
+    return ok(await request(`/student-affairs/mental/referrals/${refId}/close`, {
+      method: 'POST', body: { conclusion }
+    }))
+  },
+
+  async getMentalStats() {
+    return ok(await request('/student-affairs/mental/stats'))
+  },
+
   async getStudentBasic(studentId) {
     return ok(normalizeStudent(await request(`/students/${studentId}`)))
   },

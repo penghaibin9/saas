@@ -90,6 +90,37 @@ const studentAffairsRoutes = [
         name: 'student-affairs-stats',
         component: () => import('@/views/admin/studentAffairs/StudentAffairsStatsView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
+      /* 心理关注 5 页（强敏感·PSY_STUDENT·危机接风险中枢）——对接 /student-affairs/mental/* 后端 */
+      {
+        path: 'mental',
+        name: 'student-affairs-mental',
+        component: () => import('@/views/admin/student-affairs/mental/MentalAttentionListView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理关注名单', requiresAuth: true, permissionKey: 'studentAffairs.risk.psyDetail.view' }
+      },
+      {
+        path: 'mental/summary',
+        name: 'student-affairs-mental-summary',
+        component: () => import('@/views/admin/student-affairs/mental/MentalWarningSummaryView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理预警摘要', requiresAuth: true, permissionKey: 'studentAffairs.risk.view' }
+      },
+      {
+        path: 'mental/referrals',
+        name: 'student-affairs-mental-referrals',
+        component: () => import('@/views/admin/student-affairs/mental/MentalReferralFollowView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话转介与回访', requiresAuth: true, permissionKey: 'studentAffairs.risk.psyDetail.view' }
+      },
+      {
+        path: 'mental/crisis',
+        name: 'student-affairs-mental-crisis',
+        component: () => import('@/views/admin/student-affairs/mental/MentalCrisisView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理危机升级', requiresAuth: true, permissionKey: 'studentAffairs.risk.psyDetail.view' }
+      },
+      {
+        path: 'mental/stats',
+        name: 'student-affairs-mental-stats',
+        component: () => import('@/views/admin/student-affairs/mental/MentalStatsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       }
     ]
   }
