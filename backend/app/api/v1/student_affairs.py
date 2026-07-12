@@ -17,6 +17,7 @@ from app.services import affairs_discipline_service as disc_svc
 from app.services import affairs_dorm_service as dorm_svc
 from app.services import affairs_funding_service as funding_svc
 from app.services import affairs_leave_service as leave_svc
+from app.services import affairs_mental_service as mental_svc
 from app.services import affairs_profile_service as profile_svc
 from app.services import affairs_risk_service as risk_svc
 from app.services import affairs_talk_service as talk_svc
@@ -669,6 +670,72 @@ def risk_reopen(body: RiskReasonBody = RiskReasonBody(), riskId: int = Path(...)
 @router.post("/risk/scan-timeout", summary="风险超时扫描（分派/升级，幂等）")
 def risk_scan_timeout(user=Depends(require_permission("studentAffairs.risk.handle"))):
     return success(risk_svc.scan_timeout())
+
+
+# ═══════════ 心理关注（强敏感·PSY_STUDENT 逐生授权·危机接风险中枢）═══════════
+
+class PsyReferralCreate(BaseModel):
+    studentId: str = Field(..., description="学生ID")
+    level: str = Field("FOCUS", description="GENERAL/FOCUS/CRISIS（人工登记）")
+    channel: Optional[str] = Field(None, description="转介去向：校医院/专业机构/家长/校内咨询")
+    reasonSummary: str = Field(..., min_length=1, description="转介事由摘要≥5字（非诊断结论）")
+    note: Optional[str] = Field(None, description="涉密明细")
+
+
+class PsyContentBody(BaseModel):
+    content: str = Field("", description="回访/升级说明")
+
+
+class PsyCloseBody(BaseModel):
+    conclusion: str = Field(..., min_length=1, description="关闭结论≥5字")
+
+
+@router.get("/mental/list", summary="心理关注名单（PSY_STUDENT 数据范围，列表仅摘要）")
+def mental_list(level: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+    items, total = mental_svc.list_attention(user, level=level, page=page, page_size=pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/mental/referrals/{refId}", summary="转介详情（心理明细须原因+SENSITIVE_VIEW）")
+def mental_referral(refId: int = Path(...), reason: Optional[str] = None,
+                    user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+    return success(mental_svc.get_referral(user, refId, reason))
+
+
+@router.get("/mental/students/{studentId}/summary", summary="心理预警摘要（仅需关注标记，无明细）")
+def mental_summary(studentId: int = Path(...),
+                   user=Depends(require_permission("studentAffairs.risk.view"))):
+    return success(mental_svc.student_summary(user, studentId))
+
+
+@router.post("/mental/referrals", summary="登记心理转介（人工，无自动诊断）")
+def mental_refer(body: PsyReferralCreate,
+                 user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+    return success(mental_svc.create_referral(user, body), message="已转介")
+
+
+@router.post("/mental/referrals/{refId}/follow", summary="回访（→FOLLOWING）")
+def mental_follow(body: PsyContentBody, refId: int = Path(...),
+                  user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+    return success(mental_svc.follow_referral(user, refId, body.content or ""), message="已回访")
+
+
+@router.post("/mental/referrals/{refId}/escalate", summary="危机升级（接风险中枢，幂等）")
+def mental_escalate(body: PsyContentBody = PsyContentBody(), refId: int = Path(...),
+                    user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+    return success(mental_svc.escalate_crisis(user, refId, body.content or ""), message="已升级危机")
+
+
+@router.post("/mental/referrals/{refId}/close", summary="关闭转介（结论≥5字）")
+def mental_close(body: PsyCloseBody, refId: int = Path(...),
+                 user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+    return success(mental_svc.close_referral(user, refId, body.conclusion), message="已关闭")
+
+
+@router.get("/mental/stats", summary="心理统计（仅聚合，禁个体明细）")
+def mental_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+    return success(mental_svc.stats(user))
 
 
 # ═══════════ 谈心谈话 + 家校 + 画像/时间线（P5）═══════════

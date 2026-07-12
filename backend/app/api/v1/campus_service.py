@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
+from app.core.permissions import require_permission
 from app.core.security import get_current_user
 from app.schemas.campus_service import (AssignBody, CommentBody, DisciplineCreate, DisciplineUpdate,
                                         DormExcHandle, DormExcMark, HandleBody, IdsBody, NoteBody,
@@ -200,10 +201,13 @@ def work_order_close(wid: str, body: ReasonBody, user=Depends(get_current_user))
 
 
 # 心理关怀 + 审计
-@router.get("/mental-records", summary="心理关怀记录（涉密，访问留痕）")
+@router.get("/mental-records", summary="心理关怀记录（涉密：细粒度权限+明细遮蔽+原因审计）")
 def mental_records(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                   keyword: Optional[str] = None, user=Depends(get_current_user)):
-    i, t = svc.list_mental(page, pageSize, keyword=keyword)
+                   keyword: Optional[str] = None, reason: Optional[str] = None,
+                   user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+    # SEC-1：由零门禁 get_current_user 改为 psyDetail.view 细粒度权限；counselorNote 明细默认遮蔽，
+    # 仅授权角色 + 原因(≥5字) 方返回明文并写 SENSITIVE_VIEW（见 svc.list_mental）。
+    i, t = svc.list_mental(page, pageSize, keyword=keyword, user=user, reason=reason)
     return _p(i, t, page, pageSize)
 
 

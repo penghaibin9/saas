@@ -58,6 +58,7 @@ from app.models.affairs_discipline import (AffairsRiskHandle,  # noqa: F401
                                            DisciplineRemoveApply)
 from app.models.affairs_talk import (FamilyContactLog, TalkPlan,  # noqa: F401
                                      TalkRecord)
+from app.models.affairs_mental import PsyReferral  # noqa: F401
 from app.models.affairs_dorm import (DormBed, DormBuilding,  # noqa: F401
                                      DormCheckRecord, DormCheckTask, DormRoom,
                                      DormTransfer)

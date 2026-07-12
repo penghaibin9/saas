@@ -621,7 +621,14 @@ def close_work_order(wid, reason) -> dict:
 
 # ═══ 心理关怀 ═══
 
-def list_mental(page, page_size, keyword=None):
+def list_mental(page, page_size, keyword=None, user=None, reason=None):
+    # SEC-1/SEC-2：counselorNote 涉密明细默认遮蔽；仅授权角色(心理老师/校·平台超管，**不含学工处管理员**)
+    # + 原因(≥5字) 方返回明文，并写 t_security_audit_log(SENSITIVE_VIEW)。端点已加 psyDetail.view 细粒度门禁。
+    from app.core.context import get_current_user_ctx
+    u = user or (get_current_user_ctx() or {})
+    role = (u or {}).get("currentRoleCode") or ""
+    can = role in {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "ADMIN"}
+    reveal = bool(can and reason and len(str(reason).strip()) >= 5)
     with session() as db:
         rows = db.scalars(select(CsMentalRecord).where(CsMentalRecord.tenant_id == _tid(),
                           CsMentalRecord.is_deleted.is_(False)).order_by(CsMentalRecord.id.desc())).all()
@@ -635,9 +642,18 @@ def list_mental(page, page_size, keyword=None):
                           "level": x.level, "levelLabel": "重点关注" if x.level == "FOCUS" else "常规关注",
                           "lastFollowTime": _iso(x.last_follow_time) or "",
                           "nextFollowTime": _iso(x.next_follow_time) or "", "summary": x.summary or "",
-                          "counselorNote": x.counselor_note or "", "operator": x.operator or "",
-                          "status": x.status})
+                          "counselorNote": (x.counselor_note or "") if reveal else "[心理明细·受限，需授权+原因]",
+                          "noteMasked": not reveal,
+                          "operator": x.operator or "", "status": x.status})
         _audit_view_mental(db)
+        if reveal:
+            try:
+                from app.services import audit_log
+                audit_log.record("SENSITIVE_VIEW", "cs_mental_records",
+                                 detail={"domain": "MENTAL", "reason": str(reason)[:200],
+                                         "count": len(items)}, result="SUCCESS")
+            except Exception:  # noqa: BLE001
+                pass
         return _page(items, page, page_size)
 
 
