@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.core.response import success, paginate
 from app.core.permissions import require_permission
-from app.core.security import require_staff
+from app.core.security import require_staff  # 仅敏感 reveal 等「服务层自鉴权+落 DENY 审计」端点用粗粒度门禁，避免网关短路吞掉越权审计
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_archive_service as archive_svc
 from app.services import affairs_class_service as class_svc
@@ -26,32 +26,32 @@ router = APIRouter(prefix="/student-affairs", tags=["学工中心"])
 
 
 @router.get("/dashboard", summary="学工首页（三角色视图，按数据范围聚合）")
-def dashboard(user=Depends(require_staff)):
+def dashboard(user=Depends(require_permission("studentAffairs.dashboard.view"))):
     return success(svc.get_dashboard(user))
 
 
 @router.get("/classes", summary="班级列表（名称+指标，按数据范围，可筛学院/专业/年级/关键词）")
 def classes(collegeId: Optional[str] = None, majorId: Optional[str] = None,
             grade: Optional[str] = None, keyword: Optional[str] = None,
-            page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+            page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.class.view"))):
     items, total = class_svc.class_list(user, collegeId, majorId, grade, keyword, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/classes/{classId}/profile", summary="班级画像（人数/男女/请假/风险/困难/处分/班干部/材料聚合）")
-def class_profile(classId: int = Path(...), user=Depends(require_staff)):
+def class_profile(classId: int = Path(...), user=Depends(require_permission("studentAffairs.class.view"))):
     return success(class_svc.class_profile(classId, user))
 
 
 @router.get("/classes/{classId}/students", summary="班级学生列表（联系方式脱敏）")
 def class_students(classId: int = Path(...), keyword: Optional[str] = None,
-                   page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                   page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.class.view"))):
     items, total = class_svc.class_students(classId, user, keyword, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/classes/{classId}/cadres", summary="班干部列表")
-def cadres(classId: int = Path(...), user=Depends(require_staff)):
+def cadres(classId: int = Path(...), user=Depends(require_permission("studentAffairs.class.view"))):
     return success({"items": svc.list_cadres(classId, user)})
 
 
@@ -62,12 +62,12 @@ class CadreCreate(BaseModel):
 
 
 @router.post("/classes/{classId}/cadres", summary="任命班干部")
-def add_cadre(body: CadreCreate, classId: int = Path(...), user=Depends(require_staff)):
+def add_cadre(body: CadreCreate, classId: int = Path(...), user=Depends(require_permission("studentAffairs.class.cadre.manage"))):
     return success(svc.add_cadre(classId, body, user), message="已任命")
 
 
 @router.delete("/classes/cadres/{cadreId}", summary="免去班干部")
-def remove_cadre(cadreId: int = Path(...), user=Depends(require_staff)):
+def remove_cadre(cadreId: int = Path(...), user=Depends(require_permission("studentAffairs.class.cadre.manage"))):
     return success(svc.remove_cadre(cadreId, user), message="已免去")
 
 
@@ -84,18 +84,18 @@ class MaterialCreate(BaseModel):
 
 @router.get("/classes/{classId}/materials", summary="班级材料列表")
 def class_materials(classId: int = Path(...), materialType: Optional[str] = None,
-                    page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                    page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.class.view"))):
     items, total = class_svc.list_materials(classId, user, materialType, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/classes/{classId}/materials", summary="新增班级材料（附件走文件中心 file_id）")
-def add_class_material(body: MaterialCreate, classId: int = Path(...), user=Depends(require_staff)):
+def add_class_material(body: MaterialCreate, classId: int = Path(...), user=Depends(require_permission("studentAffairs.class.create"))):
     return success(class_svc.add_material(classId, user, body), message="已新增")
 
 
 @router.delete("/classes/materials/{materialId}", summary="作废班级材料（逻辑删除）")
-def void_class_material(materialId: int = Path(...), user=Depends(require_staff)):
+def void_class_material(materialId: int = Path(...), user=Depends(require_permission("studentAffairs.class.create"))):
     return success(class_svc.void_material(materialId, user), message="已作废")
 
 
@@ -112,34 +112,34 @@ class ScoreBody(BaseModel):
 
 
 @router.post("/counselor-assessment/periods", summary="新建辅导员考评周期")
-def counselor_period_create(body: PeriodCreate, user=Depends(require_staff)):
+def counselor_period_create(body: PeriodCreate, user=Depends(require_permission("studentAffairs.class.create"))):
     return success(class_svc.create_period(user, body.periodName, body.semester, body.remark),
                    message="已创建")
 
 
 @router.get("/counselor-assessment/periods", summary="考评周期列表")
-def counselor_periods(page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+def counselor_periods(page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.class.view"))):
     items, total = class_svc.list_periods(user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/counselor-assessment/periods/{periodId}/collect", summary="生成/刷新考评指标（系统抓取工作量，幂等）")
-def counselor_collect(periodId: int = Path(...), user=Depends(require_staff)):
+def counselor_collect(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.class.create"))):
     return success(class_svc.collect_assessments(periodId, user), message="已生成")
 
 
 @router.get("/counselor-assessment/periods/{periodId}/assessments", summary="考评记录（含自动指标+评分+排名）")
-def counselor_assessments(periodId: int = Path(...), user=Depends(require_staff)):
+def counselor_assessments(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.class.view"))):
     return success({"items": class_svc.list_assessments(periodId, user)})
 
 
 @router.post("/counselor-assessment/periods/{periodId}/publish", summary="发布考评周期")
-def counselor_publish(periodId: int = Path(...), user=Depends(require_staff)):
+def counselor_publish(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.class.create"))):
     return success(class_svc.publish_period(periodId, user), message="已发布")
 
 
 @router.post("/counselor-assessment/assessments/{assessmentId}/score", summary="学院评分（综合分=自动*0.6+学院*0.4）")
-def counselor_score(body: ScoreBody, assessmentId: int = Path(...), user=Depends(require_staff)):
+def counselor_score(body: ScoreBody, assessmentId: int = Path(...), user=Depends(require_permission("studentAffairs.class.create"))):
     return success(class_svc.score_assessment(assessmentId, user, body.collegeScore), message="已评分")
 
 
@@ -193,12 +193,12 @@ class ConfirmBody(BaseModel):
 
 
 @router.post("/leave", summary="发起请假")
-def leave_apply(body: LeaveApply, user=Depends(require_staff)):
+def leave_apply(body: LeaveApply, user=Depends(require_permission("studentAffairs.leave.create"))):
     return success(leave_svc.apply_leave(body, user), message="已提交")
 
 
 @router.get("/leave/pending", summary="待审批请假（按数据范围）")
-def leave_pending(page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+def leave_pending(page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.leave.view"))):
     items, total = leave_svc.list_pending(user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
@@ -208,7 +208,7 @@ def leave_ledger(status: Optional[str] = None, leaveType: Optional[str] = None,
                  classId: Optional[str] = None, keyword: Optional[str] = None,
                  dateStart: Optional[str] = None, dateEnd: Optional[str] = None,
                  followupOnly: bool = False, page: int = 1, pageSize: int = 20,
-                 user=Depends(require_staff)):
+                 user=Depends(require_permission("studentAffairs.leave.view"))):
     items, total = leave_svc.list_leaves(user, status, leaveType, classId, keyword,
                                          dateStart, dateEnd, followupOnly, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -216,7 +216,7 @@ def leave_ledger(status: Optional[str] = None, leaveType: Optional[str] = None,
 
 @router.get("/leave/stats", summary="请假统计（人数/天数/逾期未销，按班级/类型/状态下钻）")
 def leave_stats(groupBy: str = "CLASS", dateStart: Optional[str] = None,
-                dateEnd: Optional[str] = None, user=Depends(require_staff)):
+                dateEnd: Optional[str] = None, user=Depends(require_permission("studentAffairs.leave.view"))):
     return success(leave_svc.leave_stats(user, groupBy, dateStart, dateEnd))
 
 
@@ -224,44 +224,44 @@ def leave_stats(groupBy: str = "CLASS", dateStart: Optional[str] = None,
 def leave_export(status: Optional[str] = None, leaveType: Optional[str] = None,
                  classId: Optional[str] = None, keyword: Optional[str] = None,
                  dateStart: Optional[str] = None, dateEnd: Optional[str] = None,
-                 user=Depends(require_staff)):
+                 user=Depends(require_permission("studentAffairs.leave.export"))):
     return success(leave_svc.export_leaves(user, status, leaveType, classId, keyword,
                                            dateStart, dateEnd))
 
 
 @router.get("/leave/{leaveId}", summary="请假详情（含销假/续假记录 + 审批留痕）")
-def leave_detail(leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_detail(leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.view"))):
     return success(leave_svc.get_detail(leaveId, user))
 
 
 @router.post("/leave/{leaveId}/approve", summary="请假审批通过（多级逐节点推进）")
-def leave_approve(body: CommentBody = CommentBody(), leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_approve(body: CommentBody = CommentBody(), leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.approve"))):
     return success(leave_svc.approve(leaveId, user, body.comment or ""), message="已通过")
 
 
 @router.post("/leave/{leaveId}/reject", summary="请假驳回（原因≥5字，终态）")
-def leave_reject(body: ReasonBody, leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_reject(body: ReasonBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.approve"))):
     return success(leave_svc.reject(leaveId, user, body.reason), message="已驳回")
 
 
 @router.post("/leave/{leaveId}/return", summary="请假退回重提（原因≥5字）")
-def leave_return(body: ReasonBody, leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_return(body: ReasonBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.approve"))):
     return success(leave_svc.return_leave(leaveId, user, body.reason), message="已退回")
 
 
 @router.post("/leave/{leaveId}/resubmit", summary="退回后重新提交")
-def leave_resubmit(leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_resubmit(leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.create"))):
     return success(leave_svc.resubmit(leaveId, user), message="已重新提交")
 
 
 @router.post("/leave/{leaveId}/cancel", summary="发起销假")
-def leave_cancel(body: CancelBody = CancelBody(), leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_cancel(body: CancelBody = CancelBody(), leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.create"))):
     return success(leave_svc.submit_cancel(leaveId, user, body.proofNote or ""), message="销假已提交")
 
 
 @router.post("/leave/{leaveId}/cancel-confirm", summary="销假确认/退回（辅导员）→ CLOSED 进360 / 退回 APPROVED")
 def leave_cancel_confirm(body: ConfirmBody = ConfirmBody(), leaveId: int = Path(...),
-                         user=Depends(require_staff)):
+                         user=Depends(require_permission("studentAffairs.leave.cancelLeaveConfirm"))):
     r = leave_svc.confirm_cancel(leaveId, user, action=body.action,
                                  actual_return_at=body.actualReturnAt, reason=body.reason or "",
                                  note=body.note or "")
@@ -269,32 +269,32 @@ def leave_cancel_confirm(body: ConfirmBody = ConfirmBody(), leaveId: int = Path(
 
 
 @router.post("/leave/{leaveId}/proxy-cancel", summary="辅导员代登记销假 → WAIT_CANCEL_LEAVE")
-def leave_proxy_cancel(body: ProxyCancelBody, leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_proxy_cancel(body: ProxyCancelBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.cancelLeaveConfirm"))):
     return success(leave_svc.proxy_cancel(leaveId, user, body.actualReturnAt, body.note or ""),
                    message="已代登记销假")
 
 
 @router.post("/leave/{leaveId}/overdue-handle", summary="逾期处置登记（联系/转家校/处置关闭）")
-def leave_overdue_handle(body: OverdueHandleBody, leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_overdue_handle(body: OverdueHandleBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.overdue.handle"))):
     return success(leave_svc.handle_overdue(leaveId, user, body.handleType, body.note),
                    message="已登记")
 
 
 @router.post("/leave/{leaveId}/extension", summary="发起续假")
-def leave_extension(body: ExtensionBody, leaveId: int = Path(...), user=Depends(require_staff)):
+def leave_extension(body: ExtensionBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.create"))):
     return success(leave_svc.apply_extension(leaveId, user, body.newEnd, body.reason or ""),
                    message="续假已提交")
 
 
 @router.post("/leave/{leaveId}/extension-approve", summary="续假审批（通过/驳回）")
 def leave_extension_approve(body: ExtensionReviewBody = ExtensionReviewBody(), leaveId: int = Path(...),
-                            user=Depends(require_staff)):
+                            user=Depends(require_permission("studentAffairs.leave.extension.approve"))):
     r = leave_svc.approve_extension(leaveId, user, action=body.action, reason=body.reason or "")
     return success(r, message="续假已驳回" if (body.action or "").upper() == "REJECT" else "续假已通过")
 
 
 @router.post("/leave/scan-overdue", summary="逾期扫描（定时/手动触发，幂等）")
-def leave_scan_overdue(user=Depends(require_staff)):
+def leave_scan_overdue(user=Depends(require_permission("studentAffairs.leave.overdue.handle"))):
     return success(leave_svc.scan_overdue())
 
 
@@ -338,70 +338,70 @@ class AidRevealBody(BaseModel):
 
 
 @router.post("/aid/batches", summary="建/发布认定批次")
-def aid_batch_create(body: AidBatchCreate, user=Depends(require_staff)):
+def aid_batch_create(body: AidBatchCreate, user=Depends(require_permission("studentAffairs.aid.batch.manage"))):
     return success(aid_svc.create_batch(body, user), message="已保存")
 
 
 @router.get("/aid/batches", summary="认定批次列表")
 def aid_batches(schoolYear: Optional[str] = None, status: Optional[str] = None,
-                page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.aid.view"))):
     items, total = aid_svc.list_batches(user, schoolYear, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/aid/applications", summary="发起困难认定申请（含家庭经济，直达班级评议）")
-def aid_apply(body: AidApplyBody, user=Depends(require_staff)):
+def aid_apply(body: AidApplyBody, user=Depends(require_permission("studentAffairs.aid.create"))):
     return success(aid_svc.apply(body, user), message="已提交")
 
 
 @router.get("/aid/applications", summary="认定申请列表（家庭经济默认脱敏）")
 def aid_applications(batchId: Optional[str] = None, status: Optional[str] = None,
                      level: Optional[str] = None, page: int = 1, pageSize: int = 20,
-                     user=Depends(require_staff)):
+                     user=Depends(require_permission("studentAffairs.aid.view"))):
     items, total = aid_svc.list_applications(user, batchId, status, level, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/aid/difficult-students", summary="困难学生库（供助学金/绿通引用）")
 def aid_difficult_students(level: Optional[str] = None, page: int = 1, pageSize: int = 50,
-                           user=Depends(require_staff)):
+                           user=Depends(require_permission("studentAffairs.aid.view"))):
     items, total = aid_svc.difficult_students(user, level, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/aid/applications/{applyId}", summary="认定申请详情（家庭经济脱敏）")
-def aid_application(applyId: int = Path(...), user=Depends(require_staff)):
+def aid_application(applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.view"))):
     return success(aid_svc.get_application(applyId, user))
 
 
 @router.post("/aid/applications/{applyId}/review", summary="各级评审（评议/初审/复审/终审）")
-def aid_review(body: AidReviewBody, applyId: int = Path(...), user=Depends(require_staff)):
+def aid_review(body: AidReviewBody, applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.approve"))):
     return success(aid_svc.review(applyId, user, body.action, body.level, body.reason or ""),
                    message="已处理")
 
 
 @router.post("/aid/applications/{applyId}/resubmit", summary="退回后重新提交")
-def aid_resubmit(applyId: int = Path(...), user=Depends(require_staff)):
+def aid_resubmit(applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.create"))):
     return success(aid_svc.resubmit(applyId, user), message="已重新提交")
 
 
 @router.post("/aid/applications/{applyId}/publicity-confirm", summary="人工确认公示期满→通过")
-def aid_publicity_confirm(applyId: int = Path(...), user=Depends(require_staff)):
+def aid_publicity_confirm(applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.approve"))):
     return success(aid_svc.confirm_publicity(applyId, user), message="已通过")
 
 
 @router.post("/aid/scan-publicity", summary="公示期满扫描（定时/手动，幂等）")
-def aid_scan_publicity(user=Depends(require_staff)):
+def aid_scan_publicity(user=Depends(require_permission("studentAffairs.aid.approve"))):
     return success(aid_svc.scan_publicity())
 
 
 @router.post("/aid/applications/{applyId}/adjust", summary="发起困难等级动态调整")
-def aid_adjust(body: AidAdjustBody, applyId: int = Path(...), user=Depends(require_staff)):
+def aid_adjust(body: AidAdjustBody, applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.adjust"))):
     return success(aid_svc.adjust(applyId, user, body.targetLevel, body.reason), message="调整已提交")
 
 
 @router.post("/aid/applications/{applyId}/adjust-approve", summary="动态调整审批")
-def aid_adjust_approve(body: AidReviewBody = None, applyId: int = Path(...), user=Depends(require_staff)):
+def aid_adjust_approve(body: AidReviewBody = None, applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.adjust"))):
     action = body.action if body else "APPROVE"
     return success(aid_svc.approve_adjust(applyId, user, action), message="已处理")
 
@@ -409,6 +409,8 @@ def aid_adjust_approve(body: AidReviewBody = None, applyId: int = Path(...), use
 @router.post("/aid/applications/{applyId}/reveal", summary="查看完整家庭经济（sensitiveView+审计）")
 def aid_reveal(body: AidRevealBody = AidRevealBody(), applyId: int = Path(...),
                user=Depends(require_staff)):
+    # 粗粒度只挡学生；aid.sensitiveView 的授权判定与「SUCCESS/DENY 双向 SENSITIVE_VIEW 审计」由服务层
+    # reveal_family_economy() 负责——网关不得在此短路，否则越权 reveal 的 DENY 审计会丢失。
     return success(aid_svc.reveal_family_economy(applyId, user, body.reason or ""))
 
 
@@ -446,60 +448,60 @@ class FundingReviewBody(BaseModel):
 
 
 @router.post("/funding/projects", summary="建资助项目（奖学金/助学金）")
-def funding_project_create(body: FundingProjectCreate, user=Depends(require_staff)):
+def funding_project_create(body: FundingProjectCreate, user=Depends(require_permission("studentAffairs.funding.project.manage"))):
     return success(funding_svc.create_project(body, user), message="已创建")
 
 
 @router.get("/funding/projects", summary="资助项目列表")
 def funding_projects(projectType: Optional[str] = None, status: Optional[str] = None,
-                     page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                     page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.funding.view"))):
     items, total = funding_svc.list_projects(user, projectType, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/funding/batches", summary="建/发布资助批次")
-def funding_batch_create(body: FundingBatchCreate, user=Depends(require_staff)):
+def funding_batch_create(body: FundingBatchCreate, user=Depends(require_permission("studentAffairs.funding.project.manage"))):
     return success(funding_svc.create_batch(body, user), message="已保存")
 
 
 @router.get("/funding/batches", summary="资助批次列表")
 def funding_batches(projectId: Optional[str] = None, status: Optional[str] = None,
-                    page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                    page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.funding.view"))):
     items, total = funding_svc.list_batches(user, projectId, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/funding/applications", summary="发起资助申请（含资格硬校验）")
-def funding_apply(body: FundingApplyBody, user=Depends(require_staff)):
+def funding_apply(body: FundingApplyBody, user=Depends(require_permission("studentAffairs.funding.create"))):
     return success(funding_svc.apply(body, user), message="已提交")
 
 
 @router.get("/funding/applications", summary="资助申请列表（金额按角色脱敏）")
 def funding_applications(batchId: Optional[str] = None, projectType: Optional[str] = None,
                          status: Optional[str] = None, page: int = 1, pageSize: int = 20,
-                         user=Depends(require_staff)):
+                         user=Depends(require_permission("studentAffairs.funding.view"))):
     items, total = funding_svc.list_applications(user, batchId, projectType, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/funding/applications/{applicationId}", summary="资助申请详情（含校验快照）")
-def funding_application(applicationId: int = Path(...), user=Depends(require_staff)):
+def funding_application(applicationId: int = Path(...), user=Depends(require_permission("studentAffairs.funding.view"))):
     return success(funding_svc.get_application(applicationId, user))
 
 
 @router.post("/funding/applications/{applicationId}/review", summary="各级评审")
-def funding_review(body: FundingReviewBody, applicationId: int = Path(...), user=Depends(require_staff)):
+def funding_review(body: FundingReviewBody, applicationId: int = Path(...), user=Depends(require_permission("studentAffairs.funding.approve"))):
     return success(funding_svc.review(applicationId, user, body.action, body.reason or ""),
                    message="已处理")
 
 
 @router.post("/funding/applications/{applicationId}/publicity-confirm", summary="确认公示期满→获资助")
-def funding_publicity_confirm(applicationId: int = Path(...), user=Depends(require_staff)):
+def funding_publicity_confirm(applicationId: int = Path(...), user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
     return success(funding_svc.confirm_publicity(applicationId, user), message="已通过")
 
 
 @router.post("/funding/scan-publicity", summary="资助公示扫描（定时/手动，幂等）")
-def funding_scan_publicity(user=Depends(require_staff)):
+def funding_scan_publicity(user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
     return success(funding_svc.scan_publicity())
 
 
@@ -522,49 +524,49 @@ class DiscRemoveBody(BaseModel):
 
 
 @router.post("/discipline/cases", summary="登记违纪处分")
-def discipline_register(body: DisciplineRegister, user=Depends(require_staff)):
+def discipline_register(body: DisciplineRegister, user=Depends(require_permission("studentAffairs.discipline.create"))):
     return success(disc_svc.register(body, user), message="已登记")
 
 
 @router.get("/discipline/cases", summary="处分列表（学生端仅数量，此为教师侧明细）")
 def discipline_cases(status: Optional[str] = None, discType: Optional[str] = None,
-                     page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                     page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.discipline.view"))):
     items, total = disc_svc.list_cases(user, status, discType, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/discipline/reconcile", summary="处分投影一致性对账")
-def discipline_reconcile(user=Depends(require_staff)):
+def discipline_reconcile(user=Depends(require_permission("studentAffairs.discipline.view"))):
     return success(disc_svc.projection_reconcile())
 
 
 @router.get("/discipline/cases/{caseId}", summary="处分详情")
-def discipline_case(caseId: int = Path(...), user=Depends(require_staff)):
+def discipline_case(caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.view"))):
     return success(disc_svc.get_case(caseId, user))
 
 
 @router.post("/discipline/cases/{caseId}/submit", summary="提交学院初审")
-def discipline_submit(caseId: int = Path(...), user=Depends(require_staff)):
+def discipline_submit(caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.create"))):
     return success(disc_svc.submit(caseId, user), message="已提交")
 
 
 @router.post("/discipline/cases/{caseId}/cancel", summary="撤销登记")
-def discipline_cancel(caseId: int = Path(...), user=Depends(require_staff)):
+def discipline_cancel(caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.create"))):
     return success(disc_svc.cancel(caseId, user), message="已撤销")
 
 
 @router.post("/discipline/cases/{caseId}/review", summary="处分审批（学院初审/学工处复核/校级）")
-def discipline_review(body: DiscReviewBody, caseId: int = Path(...), user=Depends(require_staff)):
+def discipline_review(body: DiscReviewBody, caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.approve"))):
     return success(disc_svc.review(caseId, user, body.action, body.reason or ""), message="已处理")
 
 
 @router.post("/discipline/cases/{caseId}/remove", summary="发起处分解除申请")
-def discipline_remove(body: DiscRemoveBody, caseId: int = Path(...), user=Depends(require_staff)):
+def discipline_remove(body: DiscRemoveBody, caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.remove.create"))):
     return success(disc_svc.submit_remove(caseId, user, body.reason), message="解除已提交")
 
 
 @router.post("/discipline/cases/{caseId}/remove-review", summary="处分解除审批（辅→院→处）")
-def discipline_remove_review(body: DiscReviewBody, caseId: int = Path(...), user=Depends(require_staff)):
+def discipline_remove_review(body: DiscReviewBody, caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.remove.approve"))):
     return success(disc_svc.review_remove(caseId, user, body.action, body.reason or ""), message="已处理")
 
 
@@ -767,13 +769,13 @@ class ContactCreate(BaseModel):
 
 
 @router.get("/students/{studentId}/profile", summary="学工画像（各域沉淀汇总）")
-def student_profile(studentId: int = Path(...), user=Depends(require_staff)):
+def student_profile(studentId: int = Path(...), user=Depends(require_permission("studentAffairs.student.view"))):
     return success(profile_svc.get_profile(studentId, user))
 
 
 @router.get("/students/{studentId}/timeline", summary="成长时间线（360，各域进360事件倒序）")
 def student_timeline(studentId: int = Path(...), eventType: Optional[str] = None,
-                     page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                     page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.student.view"))):
     items, total = profile_svc.get_timeline(studentId, user, eventType, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
@@ -781,46 +783,46 @@ def student_timeline(studentId: int = Path(...), eventType: Optional[str] = None
 @router.get("/talks", summary="谈话列表（管理侧默认摘要，心理类按权限）")
 def talks(talkType: Optional[str] = None, status: Optional[str] = None,
           studentId: Optional[str] = None, page: int = 1, pageSize: int = 20,
-          user=Depends(require_staff)):
+          user=Depends(require_permission("studentAffairs.talk.view"))):
     items, total = talk_svc.list_talks(user, talkType, status, studentId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/talks", summary="建谈话计划（批量圈定学生）")
-def talk_create(body: TalkCreate, user=Depends(require_staff)):
+def talk_create(body: TalkCreate, user=Depends(require_permission("studentAffairs.talk.create"))):
     return success(talk_svc.create_talk(body, user), message="已创建")
 
 
 @router.get("/talks/stats", summary="谈话工作量统计（完成率）")
-def talk_stats(groupBy: str = "TYPE", user=Depends(require_staff)):
+def talk_stats(groupBy: str = "TYPE", user=Depends(require_permission("studentAffairs.talk.view"))):
     return success(talk_svc.talk_stats(user, groupBy))
 
 
 @router.get("/talks/{talkId}", summary="谈话详情（心理类全文按权限）")
-def talk_detail(talkId: int = Path(...), user=Depends(require_staff)):
+def talk_detail(talkId: int = Path(...), user=Depends(require_permission("studentAffairs.talk.view"))):
     return success(talk_svc.get_talk(talkId, user))
 
 
 @router.post("/talks/{talkId}/record", summary="填写谈话记录（→COMPLETED，进360）")
-def talk_record(body: TalkRecordBody, talkId: int = Path(...), user=Depends(require_staff)):
+def talk_record(body: TalkRecordBody, talkId: int = Path(...), user=Depends(require_permission("studentAffairs.talk.create"))):
     return success(talk_svc.record_talk(talkId, user, body.content, body.result or "", body.needFollowUp),
                    message="已记录")
 
 
 @router.post("/talks/{talkId}/follow-up", summary="跟进/办结/转风险/转家校")
-def talk_follow(body: TalkFollowBody, talkId: int = Path(...), user=Depends(require_staff)):
+def talk_follow(body: TalkFollowBody, talkId: int = Path(...), user=Depends(require_permission("studentAffairs.talk.create"))):
     return success(talk_svc.follow_up(talkId, user, body.action, body.content or ""), message="已处理")
 
 
 @router.get("/students/{studentId}/family-contacts", summary="家校联系记录列表")
 def family_contacts(studentId: int = Path(...), page: int = 1, pageSize: int = 20,
-                    user=Depends(require_staff)):
+                    user=Depends(require_permission("studentAffairs.homeSchool.view"))):
     items, total = talk_svc.list_contacts(studentId, user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/students/{studentId}/family-contacts", summary="登记家校联系（完整号码必填原因+审计）")
-def family_contact_create(body: ContactCreate, studentId: int = Path(...), user=Depends(require_staff)):
+def family_contact_create(body: ContactCreate, studentId: int = Path(...), user=Depends(require_permission("studentAffairs.homeSchool.record.create"))):
     return success(talk_svc.create_contact(studentId, user, body), message="已登记")
 
 
@@ -1025,20 +1027,20 @@ class AdvanceBody(BaseModel):
 
 
 @router.post("/archive/batches", summary="建归档批次")
-def archive_batch_create(body: ArchiveBatchCreate, user=Depends(require_staff)):
+def archive_batch_create(body: ArchiveBatchCreate, user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
     return success(archive_svc.create_batch(body, user), message="已创建")
 
 
 @router.get("/archive/batches/{batchId}", summary="归档批次详情（含档案包）")
-def archive_batch(batchId: int = Path(...), user=Depends(require_staff)):
+def archive_batch(batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.view"))):
     return success(archive_svc.get_batch(batchId, user))
 
 
 @router.post("/archive/batches/{batchId}/collect", summary="圈定学生生成档案包")
-def archive_collect(body: CollectBody, batchId: int = Path(...), user=Depends(require_staff)):
+def archive_collect(body: CollectBody, batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
     return success(archive_svc.collect(batchId, user, body.studentIds), message="已收集")
 
 
 @router.post("/archive/batches/{batchId}/advance", summary="批次流转（→归档时登记水印包）")
-def archive_advance(body: AdvanceBody = AdvanceBody(), batchId: int = Path(...), user=Depends(require_staff)):
+def archive_advance(body: AdvanceBody = AdvanceBody(), batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
     return success(archive_svc.advance(batchId, user, body.action or "APPROVE"), message="已流转")

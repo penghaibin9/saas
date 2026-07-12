@@ -47,8 +47,17 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.talk.*", "studentAffairs.stats.view",
                            "studentAffairs.archive.psySensitive", "studentAffairs.student.view"},  # 心理老师：数据范围限授权学生(PSY_STUDENT)
     "DORM_MANAGER": {"studentAffairs.dorm.*"},  # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分
-    "COUNSELOR": {"studentAffairs.leave.*", "studentAffairs.risk.*",
-                  "studentAffairs.talk.*", "studentAffairs.aid.view"},
+    # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
+    # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
+    "COUNSELOR": {
+        "studentAffairs.dashboard.view",
+        "studentAffairs.class.view", "studentAffairs.class.create", "studentAffairs.class.cadre.manage",
+        "studentAffairs.student.view",
+        "studentAffairs.leave.*", "studentAffairs.risk.*", "studentAffairs.talk.*",
+        "studentAffairs.homeSchool.*",
+        "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.discipline.view",
+        "studentAffairs.archive.view", "studentAffairs.stats.view",
+    },
     "GD_MENTOR": {"graduationDesign.guide.*"},
     "INTERN_MENTOR": {"internship.guide.*"},
     "EMPLOYMENT_TEACHER": {"employment.*"},
