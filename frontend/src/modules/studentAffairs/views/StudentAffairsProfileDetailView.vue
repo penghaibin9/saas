@@ -89,7 +89,7 @@ import {
   AppSensitiveText,
   AppStatusTag
 } from '@/components/common'
-import studentAffairsApi from '@/modules/student-affairs/api/studentAffairs.api'
+import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 export default {
   name: 'StudentAffairsProfileDetailView',

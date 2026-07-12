@@ -57,7 +57,7 @@ import {
   AppSectionCard,
   AppStatusTag
 } from '@/components/common'
-import { studentAffairsApi } from '@/modules/student-affairs/api/studentAffairs.api'
+import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 const STATUS = [
   { key: 'REFERRED', label: '已转介', kind: 'info' },
