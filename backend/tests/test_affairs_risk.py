@@ -96,17 +96,33 @@ def test_r5_escalate_and_scan_idempotent(client, db_mode):
     assert r2["data"]["escalated"] == 0
 
 
-def test_r6_mental_detail_masked_by_role(client, db_mode):
+def test_r6_mental_detail_mask_reveal_reason_audit(client, db_mode):
+    """心理来源明细：默认遮蔽（含列表）；授权角色+原因方可查看明文并写 SENSITIVE_VIEW 审计；非授权角色恒遮蔽。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     rid = _create(client, admin, ids["sa"], source="MENTAL", ref="3001",
                   detail="心理咨询详细记录").json()["data"]["riskId"]
-    # 学工处（授权）见明细
-    d_admin = client.get(f"{BASE}/risk/records/{rid}", headers=admin).json()["data"]
-    assert d_admin["detail"] == "心理咨询详细记录" and d_admin["mentalMasked"] is False
-    # 辅导员（普通教师）明细受限
-    d_c = client.get(f"{BASE}/risk/records/{rid}", headers=_hdr(client, "counselor01")).json()["data"]
+    # 授权角色(SCHOOL_ADMIN) 无原因 → 明细仍遮蔽（详情默认仅摘要）
+    d0 = client.get(f"{BASE}/risk/records/{rid}", headers=admin).json()["data"]
+    assert d0["mentalMasked"] is True and "心理咨询详细记录" not in d0["detail"]
+    # 列表恒遮蔽心理明细
+    lst = client.get(f"{BASE}/risk/records", params={"source": "MENTAL"}, headers=admin).json()["data"]["items"]
+    assert lst and all(it["mentalMasked"] is True for it in lst)
+    # 授权角色 + 原因(≥5字) → 明细可见
+    d1 = client.get(f"{BASE}/risk/records/{rid}", params={"reason": "危机干预需核对记录"},
+                    headers=admin).json()["data"]
+    assert d1["detail"] == "心理咨询详细记录" and d1["mentalMasked"] is False
+    # 辅导员(普通教师，不在授权集) → 恒遮蔽，即便带原因
+    d_c = client.get(f"{BASE}/risk/records/{rid}", params={"reason": "想看一下明细"},
+                     headers=_hdr(client, "counselor01")).json()["data"]
     assert d_c["mentalMasked"] is True and "心理咨询详细记录" not in d_c["detail"]
+    # SENSITIVE_VIEW 已落 t_security_audit_log
+    from app.db.session import get_sessionmaker
+    from app.models import SecurityAuditLog
+    db = get_sessionmaker()()
+    cnt = db.query(SecurityAuditLog).filter_by(action="SENSITIVE_VIEW").count()
+    db.close()
+    assert cnt >= 1
 
 
 def test_r7_cross_class_403(client, db_mode):
@@ -115,3 +131,58 @@ def test_r7_cross_class_403(client, db_mode):
     rid = _create(client, admin, ids["sb"], ref="4001").json()["data"]["riskId"]
     r = client.get(f"{BASE}/risk/records/{rid}", headers=_hdr(client, "counselor01"))
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
+
+
+def test_r8_unauthenticated_401(client, db_mode):
+    _seed(db_mode)
+    r = client.get(f"{BASE}/risk/records")  # 无 Authorization
+    assert r.status_code == 401 and r.json()["bizCode"] == "UNAUTHORIZED"
+
+
+def test_r9_no_permission_403001(client, db_mode):
+    _seed(db_mode)
+    # 就业老师(EMPLOYMENT_TEACHER) 无 studentAffairs.risk.* → 403 NO_PERMISSION
+    r = client.get(f"{BASE}/risk/records", headers=_hdr(client, "employment01"))
+    assert r.status_code == 403 and r.json()["bizCode"] == "NO_PERMISSION"
+
+
+def test_r10_sec2_student_affairs_admin_masked(client, db_mode):
+    """SEC-2：学工处管理员(STUDENT_AFFAIRS_ADMIN) 默认不得查看心理原始明细，即便带原因。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    rid = _create(client, admin, ids["sa"], source="MENTAL", ref="3002",
+                  detail="心理危机明细").json()["data"]["riskId"]
+    sa = _hdr(client, "sa_admin01")
+    d = client.get(f"{BASE}/risk/records/{rid}", params={"reason": "学工处例行检查"}, headers=sa).json()["data"]
+    assert d["mentalMasked"] is True and "心理危机明细" not in d["detail"]
+
+
+def test_r11_invalid_source_ref_400_not_500(client, db_mode):
+    """sourceRefId 非数字（旧 manual-<ts> 会 int() 抛 500）→ 现校验 400 VALIDATION_ERROR。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    r = client.post(f"{BASE}/risk/records", headers=admin, json={
+        "studentId": str(ids["sa"]), "source": "ACADEMIC_WARNING",
+        "sourceRefId": "manual-abc", "riskLevel": "MEDIUM", "title": "x", "detail": "y"})
+    assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"
+    # MANUAL 来源无来源单据：忽略 sourceRefId、不去重、正常建单
+    r2 = client.post(f"{BASE}/risk/records", headers=admin, json={
+        "studentId": str(ids["sa"]), "source": "MANUAL", "riskLevel": "LOW",
+        "title": "人工", "detail": "人工标记"})
+    assert r2.status_code == 200 and r2.json()["data"]["source"] == "MANUAL"
+
+
+def test_r12_cross_tenant_isolation_404(client, db_mode):
+    """跨租户隔离：他租户风险记录对本租户不可见（_load tenant 校验 → 404）。"""
+    ids = _seed(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsRiskRecord
+    db = get_sessionmaker()()
+    other = AffairsRiskRecord(tenant_id=TID + 1, student_id=ids["sa"], source="MANUAL",
+                              risk_level="HIGH", title="他租户", detail="他租户明细", status="NEW")
+    db.add(other); db.commit(); other_id = other.id; db.close()
+    admin = _hdr(client, "school_admin01")
+    assert client.get(f"{BASE}/risk/records/{other_id}", headers=admin).status_code == 404
+    # 列表也不含他租户记录
+    items = client.get(f"{BASE}/risk/records", headers=admin).json()["data"]["items"]
+    assert all(str(it["riskId"]) != str(other_id) for it in items)

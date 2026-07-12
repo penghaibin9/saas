@@ -17,7 +17,10 @@ from app.services.db_service import _iso, _tid, session
 SOURCES = ("LEAVE_OVERDUE", "ACADEMIC_WARNING", "DORM", "MENTAL", "DISCIPLINE", "INTERNSHIP",
            "GRADUATION_DESIGN", "EMPLOYMENT", "FAMILY", "MANUAL")
 LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
-_MENTAL_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "PSYCHOLOGY_TEACHER", "ADMIN"}
+# SEC-2 修复：学工处管理员(STUDENT_AFFAIRS_ADMIN)默认不得查看心理原始明细（权限总控 §7.3 /
+# 13A §13 心理行）；需专项授权(PSY_STUDENT，见心理关注模块)方可。此处仅按角色保留心理老师与
+# 校/平台超管（超管查看心理明细仍强制填写原因 + 写 SENSITIVE_VIEW 审计，见 get_risk）。
+_MENTAL_ROLES = {"SCHOOL_ADMIN", "PSYCHOLOGY_TEACHER", "PLATFORM_SUPER_ADMIN", "ADMIN"}
 
 L_RISK = {
     "NEW": "新建", "ASSIGNED": "已分派", "PROCESSING": "处置中", "FOLLOWING": "持续跟进",
@@ -92,8 +95,20 @@ def _can_view_mental(user) -> bool:
     return (user or {}).get("currentRoleCode") in _MENTAL_ROLES
 
 
-def _row(x, user, s=None) -> dict:
-    mental_masked = (x.source == "MENTAL" and not _can_view_mental(user))
+def _sensitive_view_audit(x, reason: str) -> None:
+    """查看心理来源风险明细 → 写 t_security_audit_log(SENSITIVE_VIEW)。审计绝不阻塞主流程。"""
+    try:
+        from app.services import audit_log
+        audit_log.record("SENSITIVE_VIEW", f"risk:{x.id}",
+                         detail={"source": x.source, "studentId": str(x.student_id),
+                                 "reason": str(reason)[:200]}, result="SUCCESS")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _row(x, user, s=None, reveal=False) -> dict:
+    # 列表恒遮蔽心理明细（仅摘要）；明细页须经授权角色 + 填写原因，get_risk 内 reveal=True 且写 SENSITIVE_VIEW。
+    mental_masked = (x.source == "MENTAL" and not (reveal and _can_view_mental(user)))
     return {
         "riskId": str(x.id), "studentId": str(x.student_id),
         "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
@@ -135,17 +150,25 @@ def create_risk(body, user) -> dict:
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
         _scope_or_403(db, s.id, user)
+        # sourceRefId 合法性：非数字直接 422（修复 manual-<ts> → int() 抛 500）。
+        # MANUAL 人工建单无来源单据，忽略 sourceRefId、不参与去重。
         ref = getattr(body, "sourceRefId", None)
-        # (source, source_ref_id) 唯一防重复建单 → 409
-        if ref:
+        ref_int = None
+        if body.source != "MANUAL" and ref is not None and str(ref).strip() != "":
+            rs = str(ref).strip()
+            if not rs.isdigit():
+                raise AppException("VALIDATION_ERROR", "sourceRefId 非法：须为来源单据的数字ID")
+            ref_int = int(rs)
+        # (source, source_ref_id) 唯一防重复建单 → 409（来源幂等）
+        if ref_int is not None:
             dup = db.scalars(select(AffairsRiskRecord).where(
                 AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.source == body.source,
-                AffairsRiskRecord.source_ref_id == int(ref),
+                AffairsRiskRecord.source_ref_id == ref_int,
                 AffairsRiskRecord.is_deleted.is_(False))).first()
             if dup:
                 raise AppException("DATA_CONFLICT", "该来源单据已建风险记录，不可重复")
         x = AffairsRiskRecord(tenant_id=_tid(), student_id=s.id, source=body.source,
-                              source_ref_id=(int(ref) if ref else None),
+                              source_ref_id=ref_int,
                               risk_level=(body.riskLevel or "MEDIUM"), title=getattr(body, "title", None),
                               detail=getattr(body, "detail", None), status="NEW")
         db.add(x)
@@ -328,11 +351,18 @@ def scan_timeout() -> dict:
 
 # ═══════════ 查询 ═══════════
 
-def get_risk(risk_id, user) -> dict:
+def get_risk(risk_id, user, reason: str | None = None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
-        return _row(x, user, s)
+        reveal = False
+        # 心理来源明细=敏感：仅授权角色 + 填写原因(≥5字) 方可查看明文，并写 SENSITIVE_VIEW 审计；
+        # 无原因则返回遮蔽摘要（不报错，前端另起"查看明细"动作带原因）。
+        if x.source == "MENTAL" and _can_view_mental(user):
+            if reason and len(str(reason).strip()) >= 5:
+                reveal = True
+                _sensitive_view_audit(x, reason.strip())
+        return _row(x, user, s, reveal=reveal)
 
 
 def list_risks(user, source=None, status=None, risk_level=None, page=1, page_size=20):

@@ -43,6 +43,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "audit.view"},  # 本院（范围另行收敛）
     "ACADEMIC_TEACHER": {"academicAffairs.*"},
     "STUDENT_AFFAIRS": {"studentAffairs.*"},
+    "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "audit.view"},  # 学工处管理员：全校学工（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
+    "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.talk.*", "studentAffairs.stats.view",
+                           "studentAffairs.archive.psySensitive", "studentAffairs.student.view"},  # 心理老师：数据范围限授权学生(PSY_STUDENT)
     "COUNSELOR": {"studentAffairs.leave.*", "studentAffairs.risk.*",
                   "studentAffairs.talk.*", "studentAffairs.aid.view"},
     "GD_MENTOR": {"graduationDesign.guide.*"},

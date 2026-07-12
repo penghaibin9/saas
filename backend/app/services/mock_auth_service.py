@@ -95,6 +95,8 @@ DEMO_USERS.update({
     "u_academic01": _mk_user("u_academic01", "academic01", "赵敏", "TEACHER", "ACADEMIC_TEACHER", "教务老师", "教务处", "SCHOOL", "全校教学过程", 9800),
     "u_college_admin01": _mk_user("u_college_admin01", "college_admin01", "张晓明", "ADMIN", "COLLEGE_ADMIN", "学院管理员", "软件学院", "COLLEGE", "本学院全体学生", 1260),
     "u_school_admin01": _mk_user("u_school_admin01", "school_admin01", "陈校", "ADMIN", "SCHOOL_ADMIN", "学校管理员", "示范职院", "SCHOOL", "全校学生", 9800),
+    "u_sa_admin01": _mk_user("u_sa_admin01", "sa_admin01", "学工处·周", "ADMIN", "STUDENT_AFFAIRS_ADMIN", "学工处管理员", "学生工作处", "SCHOOL", "全校学生（学工）", 9800),
+    "u_psych01": _mk_user("u_psych01", "psych01", "心理·孙", "TEACHER", "PSYCHOLOGY_TEACHER", "心理老师", "心理健康中心", "PSY_STUDENT", "授权心理关注学生", 30),
     "u_platform_admin01": _mk_user("u_platform_admin01", "platform_admin01", "平台运营", "PLATFORM_OP", "PLATFORM_OP", "平台运营人员", "平台运营中心", "PLATFORM", "全平台租户（不含学生敏感明文）", 0),
 })
 _LOGIN_INDEX.update({u["loginName"]: uid for uid, u in DEMO_USERS.items()})

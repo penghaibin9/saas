@@ -41,7 +41,7 @@
             <option value="">全部来源</option>
             <option value="ACADEMIC_WARNING">学业预警</option>
             <option value="LEAVE_OVERDUE">请假异常</option>
-            <option value="DORM_ABNORMAL">宿舍异常</option>
+            <option value="DORM">宿舍异常</option>
             <option value="MENTAL">心理关注</option>
           </select>
           <select v-model="filters.riskLevel" @change="reload">
@@ -255,7 +255,7 @@ export default {
       return ({
         ACADEMIC_WARNING: '学业预警',
         LEAVE_OVERDUE: '请假异常',
-        DORM_ABNORMAL: '宿舍异常',
+        DORM: '宿舍异常',
         MENTAL: '心理关注',
         MANUAL: '人工建单'
       })[source] || source || '未设置'
