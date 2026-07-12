@@ -46,6 +46,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "audit.view"},  # 学工处管理员：全校学工（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
     "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.talk.*", "studentAffairs.stats.view",
                            "studentAffairs.archive.psySensitive", "studentAffairs.student.view"},  # 心理老师：数据范围限授权学生(PSY_STUDENT)
+    "DORM_MANAGER": {"studentAffairs.dorm.*"},  # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分
     "COUNSELOR": {"studentAffairs.leave.*", "studentAffairs.risk.*",
                   "studentAffairs.talk.*", "studentAffairs.aid.view"},
     "GD_MENTOR": {"graduationDesign.guide.*"},

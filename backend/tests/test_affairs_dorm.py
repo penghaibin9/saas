@@ -115,7 +115,8 @@ def test_m4_transfer_executes(client, db_mode):
     db.close()
 
 
-def test_m5_check_abnormal_creates_risk(client, db_mode):
+def test_m5_room_abnormal_exception_no_orphan_risk(client, db_mode):
+    """SEC-4：纯房间级卫生异常(无涉事学生) → 建异常记录，但不再生成 student_id=0 孤儿风险。"""
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     bid = _make_building(client, hdr)
@@ -125,13 +126,67 @@ def test_m5_check_abnormal_creates_risk(client, db_mode):
     r = client.post(f"{BASE}/dorm/check-tasks/{task}/records", headers=hdr, json={
         "roomId": str(rid), "result": "ABNORMAL", "issueType": "HYGIENE",
         "detail": "卫生不合格，垃圾未清理"}).json()
-    assert r["data"]["relatedRiskId"] and r["data"]["relatedExceptionId"]
+    assert r["data"]["relatedExceptionId"] and not r["data"]["relatedRiskId"]  # 异常在、无孤儿风险
     from app.db.session import get_sessionmaker
     from app.models import AffairsRiskRecord, CsDormException
     db = get_sessionmaker()()
-    assert db.query(AffairsRiskRecord).filter_by(source="DORM").count() == 1
+    assert db.query(AffairsRiskRecord).filter_by(source="DORM").count() == 0  # 不再有 student_id=0 孤儿
     assert db.query(CsDormException).count() == 1
     db.close()
+
+
+def test_m8_student_abnormal_binds_real_risk(client, db_mode):
+    """SEC-4：异常指定涉事学生 → 风险绑真实 student_id（非 0），列表按范围可见。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    bid = _make_building(client, hdr)
+    rid, _ = _first_bed(client, hdr, bid)
+    task = client.post(f"{BASE}/dorm/check-tasks", headers=hdr, json={
+        "taskName": "夜查", "buildingId": str(bid), "checkType": "NIGHT_ABSENCE"}).json()["data"]["taskId"]
+    # 夜不归宿不指定学生 → 400
+    assert client.post(f"{BASE}/dorm/check-tasks/{task}/records", headers=hdr, json={
+        "roomId": str(rid), "result": "ABNORMAL", "issueType": "NIGHT_ABSENCE",
+        "detail": "23:00 未归宿且失联"}).status_code == 400
+    # 指定真实学生 → 生成绑该生的风险
+    r = client.post(f"{BASE}/dorm/check-tasks/{task}/records", headers=hdr, json={
+        "roomId": str(rid), "result": "ABNORMAL", "issueType": "NIGHT_ABSENCE",
+        "detail": "23:00 未归宿且失联", "studentId": str(ids["sm"])}).json()
+    assert r["data"]["relatedRiskId"]
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsRiskRecord
+    db = get_sessionmaker()()
+    risk = db.query(AffairsRiskRecord).filter_by(source="DORM").first()
+    assert risk and risk.student_id == ids["sm"]  # 绑真实学生，非 0
+    db.close()
+
+
+def test_m9_dorm_permission_least_privilege(client, db_mode):
+    """宿管仅宿舍权限：能访问 /dorm/*，但看不到心理/风险明细端点；无宿舍权限角色被 403。"""
+    _seed(db_mode)
+    dorm = _hdr(client, "dorm01")
+    assert client.get(f"{BASE}/dorm/buildings", headers=dorm).status_code == 200  # 宿管可用宿舍
+    assert client.get(f"{BASE}/mental/list", headers=dorm).status_code == 403     # 宿管不得见心理
+    assert client.get(f"{BASE}/risk/records", headers=dorm).status_code == 403    # 宿管不得见风险明细
+    # 无宿舍权限的就业老师 → /dorm/* 403
+    assert client.get(f"{BASE}/dorm/buildings", headers=_hdr(client, "employment01")).status_code == 403
+
+
+def test_m10_dorm_building_scope(client, db_mode):
+    """DORM_BUILDING：宿管只看到自己负责的楼栋。"""
+    _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    # A 楼归 dorm01；B 楼不归
+    a = client.post(f"{BASE}/dorm/buildings", headers=admin, json={
+        "buildingName": "紫荆A", "genderLimit": "MALE", "managerTeacherKey": "dorm01"}).json()["data"]["buildingId"]
+    client.post(f"{BASE}/dorm/buildings", headers=admin, json={
+        "buildingName": "梅苑B", "genderLimit": "FEMALE", "managerTeacherKey": "other"})
+    # 学工处看到 2 栋
+    admin_bs = client.get(f"{BASE}/dorm/buildings", headers=admin).json()["data"]["items"]
+    assert len(admin_bs) >= 2
+    # 宿管 dorm01 只看到 A
+    dorm_bs = client.get(f"{BASE}/dorm/buildings", headers=_hdr(client, "dorm01")).json()["data"]["items"]
+    bids = {b["buildingId"] for b in dorm_bs}
+    assert a in bids and all(b["buildingName"] == "紫荆A" for b in dorm_bs)
 
 
 def test_m6_one_step_building(client, db_mode):
