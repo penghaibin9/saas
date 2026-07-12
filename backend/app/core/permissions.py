@@ -38,15 +38,15 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "PLATFORM_SUPER_ADMIN": {"*"},
     "SCHOOL_ADMIN": {"*"},                       # 学校管理员：本校全权（接库后再按需收敛）
     "SYS_ADMIN": {"systemAdmin.*", "audit.*"},
-    "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*"},
-    "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱
-    "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "audit.view"},  # 本院（范围另行收敛）
+    "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view"},
+    "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱（含 campusService.*.view）
+    "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "audit.view"},  # 本院（范围另行收敛）
     "ACADEMIC_TEACHER": {"academicAffairs.*"},
-    "STUDENT_AFFAIRS": {"studentAffairs.*"},
-    "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "audit.view"},  # 学工处管理员：全校学工（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
+    "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*"},
+    "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
     "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.talk.*", "studentAffairs.stats.view",
                            "studentAffairs.archive.psySensitive", "studentAffairs.student.view"},  # 心理老师：数据范围限授权学生(PSY_STUDENT)
-    "DORM_MANAGER": {"studentAffairs.dorm.*"},  # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分
+    "DORM_MANAGER": {"studentAffairs.dorm.*", "campusService.dorm.*"},  # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
     # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
     "COUNSELOR": {
@@ -57,6 +57,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.homeSchool.*",
         "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.discipline.view",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
+        # 旧「在校服务」面：本班范围广读 + 请假审批；资助/违纪/工单/学生台账写操作归学工处/院
+        "campusService.dashboard.view", "campusService.student.view", "campusService.leave.*",
+        "campusService.dorm.view", "campusService.grant.view", "campusService.discipline.view",
+        "campusService.workOrder.view",
     },
     "GD_MENTOR": {"graduationDesign.guide.*"},
     "INTERN_MENTOR": {"internship.guide.*"},

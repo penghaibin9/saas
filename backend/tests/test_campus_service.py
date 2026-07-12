@@ -131,3 +131,25 @@ def test_dashboard_mental_audit(client, auth_headers, db_mode):
 
 def test_requires_login(client):
     assert client.get("/api/v1/campus-service/dashboard").json()["code"] == 401001
+
+
+def _hdr(client, login):
+    data = client.post("/api/v1/auth/mock-login",
+                       json={"loginName": login, "password": "any"}).json()["data"]
+    return {"Authorization": f"Bearer {data['accessToken']}"}
+
+
+def test_sec6_non_authorized_denied(client, db_mode):
+    """SEC-6 回归：旧在校服务面已由 get_current_user 收紧到 campusService.* 细粒度权限。
+    ① 学生令牌不再可达（原 get_current_user 只认证不鉴别身份，学生可读全校处分/资助）；
+    ② 无 campusService.* 授权的教职工（就业老师）同样 403——对齐登记的越权实证。"""
+    # ① 学生 → 403（PC 管理端一律拒学生）
+    r_stu = client.get("/api/v1/campus-service/disciplines", headers=_hdr(client, "student01"))
+    assert r_stu.status_code == 403
+    # ② 就业老师（EMPLOYMENT_TEACHER，无 campusService.*）读资助 → 403（原实证为 200 越权）
+    r_emp = client.get("/api/v1/campus-service/grants", headers=_hdr(client, "employment01"))
+    assert r_emp.status_code == 403
+    assert r_emp.json()["bizCode"] == "NO_PERMISSION"
+    # ③ 学工处管理员正常放行（授权路径未误伤）
+    r_ok = client.get("/api/v1/campus-service/grants", headers=_hdr(client, "sa_admin01"))
+    assert r_ok.status_code == 200 and r_ok.json()["code"] == 0
