@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
+from app.core.permissions import require_permission
 from app.schemas.excel import ExcelErrorRows, ExcelImportRows
 from app.schemas.graduation_topic import (GdTopicArchiveRequest, GdTopicAttachmentsUpdate, GdTopicCapacityUpdate,
                                           GdTopicCreate, GdTopicDisableRequest, GdTopicReviewRequest, GdTopicUpdate)
@@ -156,14 +157,14 @@ def update_gd_topic(topic_id: str, body: GdTopicUpdate, user=Depends(get_current
 
 
 @router.post("/gd-topics/{topic_id}/submit-review", summary="提交审核")
-def submit_gd_topic_review(topic_id: str, user=Depends(get_current_user)):
+def submit_gd_topic_review(topic_id: str, user=Depends(require_permission("graduationDesign.topic.submit"))):
     result = svc.submit_review(topic_id)
     audit_log.record("提交题目审核", f"graduation-topic:{topic_id}")
     return success(result, message="已提交审核")
 
 
 @router.post("/gd-topics/{topic_id}/review", summary="审核题目（通过/驳回，驳回≥5字）")
-def review_gd_topic(topic_id: str, body: GdTopicReviewRequest, user=Depends(get_current_user)):
+def review_gd_topic(topic_id: str, body: GdTopicReviewRequest, user=Depends(require_permission("graduationDesign.topic.review"))):
     result = svc.review_topic(topic_id, body.action, body.comment or "")
     audit_log.record("审核毕设题目", f"graduation-topic:{topic_id}", detail={"action": body.action})
     return success(result, message="已审核")

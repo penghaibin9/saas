@@ -30,7 +30,10 @@ function resolveApiBaseUrl() {
  */
 function resolveUseMock() {
   try {
-    const v = import.meta && import.meta.env && import.meta.env.VITE_USE_MOCK
+    const env = import.meta && import.meta.env
+    // 生产构建的数据真实性是硬约束：即使运维误配 VITE_USE_MOCK=true，也不得展示演示数据。
+    if (env && env.PROD) return false
+    const v = env && env.VITE_USE_MOCK
     if (v !== undefined && v !== null && String(v).trim() !== '') {
       const s = String(v).trim().toLowerCase()
       return !(s === 'false' || s === '0' || s === 'no' || s === 'off')
@@ -43,6 +46,10 @@ export const ENV = {
   // true=纯 mock 演示（无需后端，秒开，用于独立演示）；false=优先真实后端，失败回退 mock。
   // 可被构建期环境变量 VITE_USE_MOCK 覆盖（见 resolveUseMock）；默认保持纯 mock 演示。
   useMock: resolveUseMock(),
+  // Mock 回退仅是本地开发便利能力，不是离线产品能力。
+  allowMockFallback: (() => {
+    try { return !!(import.meta && import.meta.env && import.meta.env.DEV) } catch (e) { return false }
+  })(),
   apiBaseUrl: resolveApiBaseUrl(), // 后端地址（可被 VITE_API_BASE_URL 覆盖）
   apiPrefix: '/api/v1',
   requestTimeout: 8000, // 校园弱网下 4s 偏紧；8s 内无响应按网络失败处理（读兜底/写明确报错）

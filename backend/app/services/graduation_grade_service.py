@@ -15,6 +15,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationAuditTrail, GraduationBatch, GraduationGrade, GraduationStudent
 from app.services.db_service import _iso, _tid, session
+from app.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 STATUS_LABEL = {"DRAFT": "待核算", "CALCULATED": "已核算", "PUBLISHED": "已发布", "WITHDRAWN": "已撤回待重发"}
 STATUS_TONE = {"DRAFT": "default", "CALCULATED": "warning", "PUBLISHED": "success", "WITHDRAWN": "danger"}
@@ -37,7 +38,7 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return s
+    return assert_student_access(db, s, "grade")
 
 
 def _weights(db, stu: GraduationStudent) -> dict:
@@ -88,8 +89,10 @@ def _row(g: GraduationGrade, stu=None) -> dict:
 
 def list_grades(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationGrade).where(GraduationGrade.tenant_id == _tid(),
-                                          GraduationGrade.is_deleted.is_(False))
+                                           GraduationGrade.is_deleted.is_(False),
+                                           GraduationGrade.gd_student_id.in_(scope_ids or [-1]))
         if status:
             q = q.where(GraduationGrade.status == status)
         rows = db.scalars(q.order_by(GraduationGrade.id.desc())).all()
@@ -198,7 +201,9 @@ def withdraw_grade(gd_student_id, reason: str) -> dict:
 
 def grade_stats() -> dict:
     with session() as db:
-        base = [GraduationGrade.tenant_id == _tid(), GraduationGrade.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationGrade.tenant_id == _tid(), GraduationGrade.is_deleted.is_(False),
+                GraduationGrade.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationGrade).where(*base)) or 0)
         by_status = [{"status": s, "label": STATUS_LABEL[s],
                       "count": int(db.scalar(select(func.count()).select_from(GraduationGrade).where(

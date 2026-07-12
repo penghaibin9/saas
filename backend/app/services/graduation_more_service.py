@@ -5,13 +5,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationDefenseExpert, GraduationGrade,
                         GraduationGradeAppeal, GraduationPeerReview, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
+from app.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 
 def _op():
@@ -29,7 +30,7 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在")
-    return s
+    return assert_student_access(db, s, "graduation.more")
 
 
 # ═══════════ 成果互查整改（互评） ═══════════
@@ -76,6 +77,7 @@ def submit_peer(pid, opinion) -> dict:
         p = db.get(GraduationPeerReview, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("互查记录不存在")
+        assert_student_access(db, db.get(GraduationStudent, p.reviewer_gd_student_id), "peer.review.submit")
         if p.status not in ("ASSIGNED",):
             raise AppException("DATA_CONFLICT", "该互查已提交")
         p.opinion = opinion.strip()
@@ -93,6 +95,7 @@ def rectify_peer(pid, note) -> dict:
         p = db.get(GraduationPeerReview, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("互查记录不存在")
+        assert_student_access(db, db.get(GraduationStudent, p.gd_student_id), "peer.rectify")
         if p.status != "REVIEWED":
             raise AppException("DATA_CONFLICT", "仅「已互查」的记录可提交整改")
         p.rectify_note = note.strip()
@@ -104,8 +107,11 @@ def rectify_peer(pid, note) -> dict:
 
 def list_peer(gd_student_id=None, status=None) -> list:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationPeerReview).where(GraduationPeerReview.tenant_id == _tid(),
-                                              GraduationPeerReview.is_deleted.is_(False))
+                                              GraduationPeerReview.is_deleted.is_(False),
+                                              or_(GraduationPeerReview.gd_student_id.in_(scope_ids or [-1]),
+                                                  GraduationPeerReview.reviewer_gd_student_id.in_(scope_ids or [-1])))
         if gd_student_id:
             q = q.where(GraduationPeerReview.gd_student_id == int(gd_student_id))
         if status:
@@ -115,7 +121,10 @@ def list_peer(gd_student_id=None, status=None) -> list:
 
 def peer_stats() -> dict:
     with session() as db:
-        base = [GraduationPeerReview.tenant_id == _tid(), GraduationPeerReview.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationPeerReview.tenant_id == _tid(), GraduationPeerReview.is_deleted.is_(False),
+                or_(GraduationPeerReview.gd_student_id.in_(scope_ids or [-1]),
+                    GraduationPeerReview.reviewer_gd_student_id.in_(scope_ids or [-1]))]
         total = int(db.scalar(select(func.count()).select_from(GraduationPeerReview).where(*base)) or 0)
         by_status = [{"status": s, "label": PEER_LABEL[s],
                      "count": int(db.scalar(select(func.count()).select_from(GraduationPeerReview).where(
@@ -212,8 +221,10 @@ def create_appeal(gd_student_id, reason) -> dict:
 
 def list_appeals(status=None) -> list:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationGradeAppeal).where(GraduationGradeAppeal.tenant_id == _tid(),
-                                               GraduationGradeAppeal.is_deleted.is_(False))
+                                               GraduationGradeAppeal.is_deleted.is_(False),
+                                               GraduationGradeAppeal.gd_student_id.in_(scope_ids or [-1]))
         if status:
             q = q.where(GraduationGradeAppeal.status == status)
         return [_appeal_row(db, a) for a in db.scalars(q.order_by(GraduationGradeAppeal.id.desc())).all()]
@@ -229,6 +240,7 @@ def review_appeal(aid, action, comment=None) -> dict:
         a = db.get(GraduationGradeAppeal, int(aid))
         if not a or a.is_deleted or a.tenant_id != _tid():
             raise not_found("申诉不存在")
+        assert_student_access(db, db.get(GraduationStudent, a.gd_student_id), "grade.appeal.review")
         if a.status != "PENDING":
             raise AppException("DATA_CONFLICT", "该申诉已复核")
         n, _ = _op()

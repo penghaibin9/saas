@@ -40,7 +40,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "SYS_ADMIN": {"systemAdmin.*", "audit.*"},
     "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view"},
     "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱（含 campusService.*.view）
-    "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "audit.view"},  # 本院（范围另行收敛）
+    "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*", "audit.view"},  # 本院（范围另行收敛）
     "ACADEMIC_TEACHER": {"academicAffairs.*"},
     "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*"},
     "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
@@ -62,7 +62,20 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "campusService.dorm.view", "campusService.grant.view", "campusService.discipline.view",
         "campusService.workOrder.view",
     },
-    "GD_MENTOR": {"graduationDesign.guide.*"},
+    # 毕设角色权限只决定“能做什么”；具体学生/评阅/答辩组必须再由业务关系收敛。
+    "GRADUATION_ADMIN": {"graduationDesign.*"},
+    "GD_COLLEGE_ADMIN": {"graduationDesign.*"},
+    "GD_MAJOR_ADMIN": {
+        "graduationDesign.view", "graduationDesign.topic.*", "graduationDesign.mentor.assign",
+        "graduationDesign.proposal.review", "graduationDesign.stats.view",
+    },
+    "GD_MENTOR": {
+        "graduationDesign.view", "graduationDesign.guide.*",
+        "graduationDesign.proposal.review", "graduationDesign.final.review",
+    },
+    "GD_REVIEWER": {"graduationDesign.view", "graduationDesign.final.review"},
+    "GD_DEFENSE_SECRETARY": {"graduationDesign.view", "graduationDesign.defense.manage"},
+    "GD_DEFENSE_EXPERT": {"graduationDesign.view", "graduationDesign.defense.score"},
     "INTERN_MENTOR": {"internship.guide.*"},
     "EMPLOYMENT_TEACHER": {"employment.*"},
     "STAFF": set(),      # 最小权限兜底（未分配角色的真实账号，对齐 P0-2 修复）

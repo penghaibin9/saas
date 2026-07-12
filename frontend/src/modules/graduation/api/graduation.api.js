@@ -3,7 +3,7 @@
  * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功；方法签名冻结不变。
  * 真实接口 /api/v1/graduation/*；后端不可达时自动回退 mock，页面不白屏；业务错误透出。
  */
-import { request, shouldTryReal, currentUserFromToken } from '@/services/http/client'
+import { request, shouldTryReal, canUseMockFallback, currentUserFromToken } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import {
   tenantBrandConfig,
@@ -31,24 +31,32 @@ function paginate(list, { page = 1, pageSize = 10 } = {}) {
 }
 
 async function real(realFn, mockFn) {
-  if (!shouldTryReal()) return mockFn()
+  if (!shouldTryReal()) {
+    if (canUseMockFallback()) return mockFn()
+    return toErr({ code: 503001, message: '真实接口不可用，生产环境已禁用 mock fallback' })
+  }
   try {
     return { code: 0, data: await realFn(), message: 'ok' }
   } catch (e) {
     if (e.biz) return { code: e.code || 1, data: null, message: e.message }
-    return mockFn()
+    if (canUseMockFallback()) return mockFn()
+    return toErr(e)
   }
 }
 
 async function realList(path, params, mockFn) {
-  if (!shouldTryReal()) return mockFn()
+  if (!shouldTryReal()) {
+    if (canUseMockFallback()) return mockFn()
+    return toErr({ code: 503001, message: '真实接口不可用，生产环境已禁用 mock fallback' })
+  }
   try {
     const d = await request(path, { params })
     return { code: 0, message: 'ok',
       data: { list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 } }
   } catch (e) {
     if (e.biz) return { code: e.code || 1, data: null, message: e.message }
-    return mockFn()
+    if (canUseMockFallback()) return mockFn()
+    return toErr(e)
   }
 }
 

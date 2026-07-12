@@ -7,12 +7,12 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
-from app.core.context import get_current_user_ctx  # noqa: F401  (预留：后续数据范围过滤)
 from app.models import GraduationStudent
 from app.services import (graduation_archive_service, graduation_batch_service, graduation_grade_service,
                           graduation_guidance_service, graduation_mentor_service, graduation_midterm_service,
                           graduation_review_service, graduation_risk_service)
 from app.services.db_service import _tid, session
+from app.services.graduation_scope_service import accessible_student_ids, can_access_student, has_full_scope
 
 STAGE_LABEL = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
               "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩中", "ARCHIVED": "已归档"}
@@ -20,20 +20,24 @@ STAGE_LABEL = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确
 
 def overview_stats() -> dict:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         base = [GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-                GraduationStudent.record_status == "ACTIVE"]
+                GraduationStudent.record_status == "ACTIVE",
+                GraduationStudent.id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(*base)) or 0)
         by_stage = [{"stage": s, "label": STAGE_LABEL[s],
                     "count": int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
                         *base, GraduationStudent.stage == s)) or 0)} for s in STAGE_LABEL]
         by_risk = [{"level": lv, "count": int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
             *base, GraduationStudent.risk_level == lv)) or 0)} for lv in ("NONE", "LOW", "MEDIUM", "HIGH")]
+    full_scope = has_full_scope()
     return {
         "studentTotal": total,
         "byStage": by_stage,
         "byRisk": by_risk,
-        "batch": graduation_batch_service.batch_stats(),
-        "mentor": graduation_mentor_service.mentor_stats(),
+        # 批次和导师库总量无法按学生关系准确切分，非全量角色不下发，避免统计侧信道。
+        "batch": graduation_batch_service.batch_stats() if full_scope else {"restricted": True},
+        "mentor": graduation_mentor_service.mentor_stats() if full_scope else {"restricted": True},
         "guidance": graduation_guidance_service.guidance_stats(),
         "midterm": graduation_midterm_service.midterm_stats(),
         "review": graduation_review_service.review_stats(),
@@ -49,6 +53,7 @@ def college_comparison() -> list[dict]:
         rows = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE")).all()
+        rows = [student for student in rows if can_access_student(db, student)]
         buckets: dict[str, dict] = {}
         for s in rows:
             key = s.class_name.split("-")[0] if s.class_name and "-" in s.class_name else "未分类"

@@ -13,6 +13,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationAuditTrail, GraduationGuidance, GraduationStudent
 from app.services.db_service import _iso, _tid, session
+from app.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 
 METHOD_LABEL = {"ONLINE": "线上", "OFFLINE": "线下"}
 
@@ -33,7 +34,7 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return s
+    return assert_student_access(db, s, "guidance")
 
 
 def _row(g: GraduationGuidance, stu=None) -> dict:
@@ -47,8 +48,10 @@ def _row(g: GraduationGuidance, stu=None) -> dict:
 
 def list_guidance(page: int, page_size: int, gd_student_id=None, keyword=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationGuidance).where(GraduationGuidance.tenant_id == _tid(),
-                                             GraduationGuidance.is_deleted.is_(False))
+                                              GraduationGuidance.is_deleted.is_(False),
+                                              GraduationGuidance.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationGuidance.gd_student_id == int(gd_student_id))
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
@@ -101,6 +104,7 @@ def void_guidance(gid, reason: str) -> dict:
 
 def guidance_count(gd_student_id) -> int:
     with session() as db:
+        _stu(db, gd_student_id)
         return int(db.scalar(select(func.count()).select_from(GraduationGuidance).where(
             GraduationGuidance.tenant_id == _tid(), GraduationGuidance.gd_student_id == int(gd_student_id),
             GraduationGuidance.is_deleted.is_(False))) or 0)
@@ -113,6 +117,7 @@ def guidance_stats(threshold: int = 3) -> dict:
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE",
             GraduationStudent.stage.notin_(("TOPIC_SELECTING", "TASKBOOK_CONFIRM")))).all()
+        students = [student for student in students if can_access_student(db, student)]
         insufficient = []
         total_count = 0
         for s in students:

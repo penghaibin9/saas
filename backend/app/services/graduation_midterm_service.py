@@ -15,6 +15,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationAuditTrail, GraduationMidterm, GraduationStudent
 from app.services.db_service import _iso, _tid, session
+from app.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 STATUS_LABEL = {"PENDING": "待检查", "CHECKED_PASS": "已通过", "RECTIFYING": "限期整改中",
                 "RECTIFY_SUBMITTED": "整改待复核", "RECTIFIED_PASS": "整改已通过", "CHECKED_FAIL": "不通过"}
@@ -39,7 +40,7 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return s
+    return assert_student_access(db, s, "midterm")
 
 
 def _get_or_create(db, stu: GraduationStudent) -> GraduationMidterm:
@@ -69,8 +70,10 @@ def _row(m: GraduationMidterm, stu=None) -> dict:
 
 def list_midterms(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationMidterm).where(GraduationMidterm.tenant_id == _tid(),
-                                            GraduationMidterm.is_deleted.is_(False))
+                                             GraduationMidterm.is_deleted.is_(False),
+                                             GraduationMidterm.gd_student_id.in_(scope_ids or [-1]))
         if status:
             q = q.where(GraduationMidterm.status == status)
         rows = db.scalars(q.order_by(GraduationMidterm.id.desc())).all()
@@ -165,12 +168,15 @@ def review_rectification(gd_student_id, action: str, comment: str = None) -> dic
 
 def midterm_stats() -> dict:
     with session() as db:
-        base = [GraduationMidterm.tenant_id == _tid(), GraduationMidterm.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationMidterm.tenant_id == _tid(), GraduationMidterm.is_deleted.is_(False),
+                GraduationMidterm.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationMidterm).where(*base)) or 0)
         by_status = [{"status": s, "label": STATUS_LABEL[s],
                       "count": int(db.scalar(select(func.count()).select_from(GraduationMidterm).where(
                           *base, GraduationMidterm.status == s)) or 0)} for s in STATUS_LABEL]
         not_started = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE", GraduationStudent.stage == "MIDTERM")) or 0)
+            GraduationStudent.record_status == "ACTIVE", GraduationStudent.stage == "MIDTERM",
+            GraduationStudent.id.in_(scope_ids or [-1]))) or 0)
         return {"total": total, "byStatus": by_status, "studentsAtMidtermStage": not_started}

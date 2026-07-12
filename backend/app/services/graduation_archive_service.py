@@ -15,6 +15,7 @@ from app.models import (GraduationArchiveRecord, GraduationAuditTrail, Graduatio
                         GraduationFinal, GraduationGrade, GraduationMidterm, GraduationProposal,
                         GraduationStudent, GraduationTaskBook)
 from app.services.db_service import _iso, _tid, session
+from app.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 
 STATUS_LABEL = {"NOT_GENERATED": "待生成", "PENDING_SUBMIT": "待提交", "SUBMITTED": "已提交",
                 "FILED": "已备案", "REJECTED": "已驳回"}
@@ -43,7 +44,7 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return s
+    return assert_student_access(db, s, "archive")
 
 
 def _get_or_create(db, stu: GraduationStudent) -> GraduationArchiveRecord:
@@ -101,8 +102,10 @@ def _row(a: GraduationArchiveRecord, stu=None) -> dict:
 
 def list_archives(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationArchiveRecord).where(GraduationArchiveRecord.tenant_id == _tid(),
-                                                   GraduationArchiveRecord.is_deleted.is_(False))
+                                                   GraduationArchiveRecord.is_deleted.is_(False),
+                                                   GraduationArchiveRecord.gd_student_id.in_(scope_ids or [-1]))
         if status:
             q = q.where(GraduationArchiveRecord.status == status)
         rows = db.scalars(q.order_by(GraduationArchiveRecord.id.desc())).all()
@@ -212,6 +215,7 @@ def batch_generate_submit() -> dict:
         stus = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE")).all()
+        stus = [stu for stu in stus if can_access_student(db, stu)]
         submitted, skipped = 0, 0
         for stu in stus:
             a = _get_or_create(db, stu)
@@ -235,16 +239,16 @@ def batch_generate_submit() -> dict:
 
 def archive_stats() -> dict:
     with session() as db:
-        base = [GraduationArchiveRecord.tenant_id == _tid(), GraduationArchiveRecord.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationArchiveRecord.tenant_id == _tid(), GraduationArchiveRecord.is_deleted.is_(False),
+                GraduationArchiveRecord.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationArchiveRecord).where(*base)) or 0)
         by_status = [{"status": s, "label": STATUS_LABEL[s],
                       "count": int(db.scalar(select(func.count()).select_from(GraduationArchiveRecord).where(
                           *base, GraduationArchiveRecord.status == s)) or 0)} for s in STATUS_LABEL]
         filed = int(db.scalar(select(func.count()).select_from(GraduationArchiveRecord).where(
             *base, GraduationArchiveRecord.status == "FILED")) or 0)
-        student_total = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE")) or 0)
+        student_total = len(scope_ids)
         rate = round(filed / student_total * 100, 1) if student_total else 0
         return {"total": total, "byStatus": by_status, "filedCount": filed, "studentTotal": student_total,
                 "archiveRate": rate}

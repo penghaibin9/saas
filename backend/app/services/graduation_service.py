@@ -10,6 +10,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic)
 from app.services import graduation_student_service as gd_stu_svc
+from app.services.graduation_scope_service import assert_student_access, can_access_student
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
 L_STAGE = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
@@ -157,6 +158,8 @@ def list_proposals(page, ps, keyword=None, status=None):
         items = []
         for p in rows:
             stu = _stu_of(db, p.gd_student_id)
+            if not stu or not can_access_student(db, stu):
+                continue
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_prop_row(p, stu))
@@ -175,6 +178,8 @@ def _not_submitted_proposals(db, keyword=None) -> list:
         GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
     rows = []
     for s in stus:
+        if not can_access_student(db, s):
+            continue
         if s.id in have:
             continue
         confirmed_topic = bool(s.topic_id) or s.stage not in ("TOPIC_SELECTING", None, "")
@@ -196,6 +201,7 @@ def get_proposal_detail(pid) -> dict:
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
         stu = _stu_of(db, p.gd_student_id)
+        assert_student_access(db, stu, "proposal.detail")
         logs = db.scalars(select(GraduationAuditTrail).where(GraduationAuditTrail.tenant_id == _tid(),
                           GraduationAuditTrail.biz_type == "PROPOSAL",
                           GraduationAuditTrail.biz_id == str(p.id)).order_by(GraduationAuditTrail.id)).all()
@@ -230,6 +236,8 @@ def review_proposal(pid, action, comment=None) -> dict:
         p = db.get(GraduationProposal, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
+        stu = _stu_of(db, p.gd_student_id)
+        assert_student_access(db, stu, "proposal.review")
         if p.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该开题已批阅，请刷新")
         before = p.status
@@ -413,6 +421,8 @@ def list_finals(page, ps, keyword=None, status=None):
         items = []
         for f in rows:
             stu = _stu_of(db, f.gd_student_id)
+            if not stu or not can_access_student(db, stu):
+                continue
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_final_row(f, stu))
@@ -430,6 +440,8 @@ def _not_submitted_finals(db, keyword=None) -> list:
         GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
     rows = []
     for s in stus:
+        if not can_access_student(db, s):
+            continue
         if s.id in have or s.stage not in ("GUIDING", "MIDTERM", "FINAL_CHECK", "DEFENSE"):
             continue
         if keyword and keyword.strip() not in (s.name or ""):
@@ -488,6 +500,8 @@ def review_final(fid, action, comment=None) -> dict:
         f = db.get(GraduationFinal, int(fid))
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("成果不存在")
+        stu = _stu_of(db, f.gd_student_id)
+        assert_student_access(db, stu, "final.review")
         if f.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该成果已批阅，请刷新")
         # GD-R09：查重超标不允许直接通过，必须退回修改
@@ -514,6 +528,7 @@ def get_final_detail(fid) -> dict:
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("成果不存在")
         stu = _stu_of(db, f.gd_student_id)
+        assert_student_access(db, stu, "final.detail")
         vers = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == f.gd_student_id,
             GraduationFinal.is_deleted.is_(False)).order_by(GraduationFinal.id)).all()

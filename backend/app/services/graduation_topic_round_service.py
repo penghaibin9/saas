@@ -5,11 +5,13 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic,
                         GraduationTopicChoice, GraduationTopicRound)
 from app.services.db_service import _iso, _tid, session
 from app.services import graduation_student_service as gd_stu_svc
+from app.services.graduation_scope_service import accessible_student_ids, assert_student_access, has_full_scope
 
 ROUND_LABEL = {"DRAFT": "草稿", "OPEN": "进行中", "CLOSED": "已关闭", "MATCHED": "已匹配",
                "ARCHIVED": "已归档"}
@@ -47,6 +49,20 @@ def _get_round(db, rid) -> GraduationTopicRound:
     if not r or r.is_deleted or r.tenant_id != _tid():
         raise not_found("选题轮次不存在")
     return r
+
+
+def _assert_choice_decision_access(db, choice: GraduationTopicChoice, action: str) -> None:
+    """Limit a decision to graduation managers or the advisor owning the topic."""
+    if has_full_scope():
+        return
+    user = get_current_user_ctx() or {}
+    role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
+    real_name = (user.get("realName") or "").strip()
+    topic = db.get(GraduationTopic, choice.topic_id)
+    if (role == "GD_MENTOR" and real_name and topic and not topic.is_deleted
+            and topic.tenant_id == _tid() and (topic.advisor_name or "").strip() == real_name):
+        return
+    raise no_permission(f"Choice is outside the current graduation-design scope ({action})")
 
 
 def _row_round(r: GraduationTopicRound, batch: GraduationBatch | None = None, *, choice_count: int = 0) -> dict:
@@ -155,6 +171,8 @@ def list_choices(round_id, gd_student_id=None) -> list[dict]:
         q = select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
             GraduationTopicChoice.is_deleted.is_(False))
+        scope_ids = accessible_student_ids(db, _tid())
+        q = q.where(GraduationTopicChoice.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationTopicChoice.gd_student_id == int(gd_student_id))
         choices = db.scalars(q.order_by(GraduationTopicChoice.gd_student_id, GraduationTopicChoice.choice_order)).all()
@@ -178,6 +196,7 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
         stu = db.get(GraduationStudent, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生不存在")
+        assert_student_access(db, stu, "topic.choice.submit")
         orders = set()
         for ch in choices:
             order = int(ch.get("choiceOrder") or ch.get("choice_order") or 0)
@@ -214,6 +233,7 @@ def get_choice_detail(choice_id) -> dict:
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("志愿不存在")
         stu = db.get(GraduationStudent, c.gd_student_id)
+        assert_student_access(db, stu, "topic.choice.detail")
         topic = db.get(GraduationTopic, c.topic_id)
         return _choice_row(c, stu, topic)
 
@@ -222,6 +242,12 @@ def list_pending_choices_for_advisor(advisor_name: str) -> list[dict]:
     """教师端·本人指导题目下待确认的志愿（PENDING）。"""
     if not advisor_name:
         return []
+    if not has_full_scope():
+        user = get_current_user_ctx() or {}
+        role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
+        real_name = (user.get("realName") or "").strip()
+        if role != "GD_MENTOR" or not real_name or real_name != advisor_name.strip():
+            raise no_permission("Cannot query pending choices for another advisor")
     with session() as db:
         topic_ids = [t.id for t in db.scalars(select(GraduationTopic).where(
             GraduationTopic.tenant_id == _tid(), GraduationTopic.is_deleted.is_(False),
@@ -247,12 +273,13 @@ def confirm_choice(choice_id, operator_name: str = "") -> dict:
         c = db.get(GraduationTopicChoice, int(choice_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("志愿不存在")
+        _assert_choice_decision_access(db, c, "topic.choice.confirm")
         if c.status != "PENDING":
             raise AppException("DATA_CONFLICT",
                                f"仅待确认志愿可确认（当前：{CHOICE_LABEL.get(c.status, c.status)}）")
         gd_student_id, topic_id, round_id = c.gd_student_id, c.topic_id, c.round_id
     # assign_topic 自带容量/审核态校验 + 独立事务提交
-    gd_stu_svc.assign_topic(str(gd_student_id), str(topic_id))
+    gd_stu_svc.assign_topic(str(gd_student_id), str(topic_id), relationship_authorized=True)
     with session() as db:
         c = db.get(GraduationTopicChoice, int(choice_id))
         c.status = "CONFIRMED"
@@ -276,6 +303,7 @@ def reject_choice(choice_id, reason: str = "", operator_name: str = "") -> dict:
         c = db.get(GraduationTopicChoice, int(choice_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("志愿不存在")
+        _assert_choice_decision_access(db, c, "topic.choice.reject")
         if c.status != "PENDING":
             raise AppException("DATA_CONFLICT",
                                f"仅待确认志愿可驳回（当前：{CHOICE_LABEL.get(c.status, c.status)}）")
@@ -289,6 +317,8 @@ def reject_choice(choice_id, reason: str = "", operator_name: str = "") -> dict:
 
 
 def match_round(round_id) -> dict:
+    if not has_full_scope():
+        raise no_permission("Only graduation managers can execute automatic topic matching")
     with session() as db:
         r = _get_round(db, round_id)
         if r.status not in ("OPEN", "CLOSED"):
@@ -311,7 +341,9 @@ def match_round(round_id) -> dict:
         errors: list[str] = []
         for w in winners:
             try:
-                gd_stu_svc.assign_topic(str(w["gd_student_id"]), str(w["topic_id"]))
+                gd_stu_svc.assign_topic(
+                    str(w["gd_student_id"]), str(w["topic_id"]), relationship_authorized=True
+                )
                 matched += 1
                 success_ids.add(int(w["id"]))
             except AppException as e:
@@ -340,6 +372,8 @@ def withdraw_choices(round_id, gd_student_id) -> dict:
         r = _get_round(db, round_id)
         if r.status != "OPEN":
             raise AppException("DATA_CONFLICT", "仅进行中的轮次可退选")
+        stu = db.get(GraduationStudent, int(gd_student_id))
+        assert_student_access(db, stu, "topic.choice.withdraw")
         chs = db.scalars(select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
             GraduationTopicChoice.gd_student_id == int(gd_student_id),
@@ -350,7 +384,6 @@ def withdraw_choices(round_id, gd_student_id) -> dict:
             raise AppException("DATA_CONFLICT", "已被确认/匹配的选题不可自助退选，请走「课题变更」流程")
         for c in chs:
             c.is_deleted = True
-        stu = db.get(GraduationStudent, int(gd_student_id))
         _audit(db, round_id, "WITHDRAW_CHOICES", f"学生 {stu.name if stu else gd_student_id} 退选 {len(chs)} 个志愿")
         db.commit()
         return {"withdrawn": len(chs)}

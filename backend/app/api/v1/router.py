@@ -4,6 +4,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.core.security import require_staff
+from app.core.permissions import require_module
+from app.core.graduation_permissions import require_graduation_request_permission
 from app.api.v1 import academic, approval, audit, auth, authz, campus_service, dashboard, employment, files, graduation, internship, orientation, platform, rbac, student, system, tenant, transfer
 from app.api.v1 import file as file_simple
 from app.api.v1 import import_export
@@ -42,7 +44,11 @@ from app.api.v1.todos import make_router as make_todos_router
 api_router = APIRouter()
 
 # 毕设中心 PC 管理端统一角色门禁：学生令牌一律 403（学生合法入口是 /mobile/graduation/*）。
-_GD_DEP = [Depends(require_staff)]
+_GD_DEP = [
+    Depends(require_staff),
+    Depends(require_module("module.graduationDesign.enabled")),
+    Depends(require_graduation_request_permission),
+]
 
 # 岗位实习中心 / 就业服务 PC 管理端统一角色门禁：学生令牌一律 403。
 # 学生的合法入口是 /mobile/internship/*（打卡/周报/我的实习），不受此门禁影响。

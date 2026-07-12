@@ -17,6 +17,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationStudent, GraduationTopic,
                         GraduationTopicChangeRequest)
 from app.services.db_service import _iso, _tid, session
+from app.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 STATUS_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回", "CANCELLED": "已撤销"}
 STATUS_TONE = {"PENDING": "warning", "APPROVED": "success", "REJECTED": "danger", "CANCELLED": "default"}
@@ -66,9 +67,11 @@ def _get(db, request_id) -> GraduationTopicChangeRequest:
 def list_change_requests(page: int = 1, page_size: int = 20, *, gd_student_id=None,
                          status=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationTopicChangeRequest).where(
             GraduationTopicChangeRequest.tenant_id == _tid(),
-            GraduationTopicChangeRequest.is_deleted.is_(False))
+            GraduationTopicChangeRequest.is_deleted.is_(False),
+            GraduationTopicChangeRequest.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationTopicChangeRequest.gd_student_id == int(gd_student_id))
         if status:
@@ -83,6 +86,7 @@ def list_change_requests(page: int = 1, page_size: int = 20, *, gd_student_id=No
 def get_change_request(request_id) -> dict:
     with session() as db:
         r = _get(db, request_id)
+        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "topic.change.detail")
         return _row_of(db, r)
 
 
@@ -112,6 +116,7 @@ def request_change(gd_student_id, new_topic_id, reason: str, requested_by: str =
         stu = db.get(GraduationStudent, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生不存在")
+        assert_student_access(db, stu, "topic.change.create")
         if not stu.topic_id:
             raise AppException("DATA_CONFLICT", "尚未分配选题，无需变更申请，请直接选题")
         new_tid = int(new_topic_id)
@@ -155,6 +160,7 @@ def review_change(request_id, action: str, comment: str = "", reviewer_name: str
             raise AppException("DATA_CONFLICT",
                                f"仅待审核申请可处理（当前：{STATUS_LABEL.get(r.status, r.status)}）")
         stu = db.get(GraduationStudent, r.gd_student_id)
+        assert_student_access(db, stu, "topic.change.review")
         if not stu or stu.topic_id != r.old_topic_id:
             raise AppException("DATA_CONFLICT", "学生当前题目已变化，请驳回后引导重新发起")
         if action == "REJECT":

@@ -16,6 +16,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic, StudentContact, StudentProfile)
 from app.services import excel
+from app.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
 STAGE_LABEL = {
@@ -190,6 +191,8 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, batch_
             GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False))).all()}
         items = []
         for s in rows:
+            if not can_access_student(db, s):
+                continue
             if keyword:
                 kw = keyword.strip()
                 if kw not in (s.name or "") and kw not in (s.student_no or "") and kw not in (s.topic_title or ""):
@@ -209,6 +212,7 @@ def get_student(sid) -> dict:
     """详情：主档 + 批次/选题关联 + 开题/成果/查重 + 状态流 + 审计。"""
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.detail")
         batch = db.get(GraduationBatch, s.batch_id) if s.batch_id else None
         topic = db.get(GraduationTopic, s.topic_id) if s.topic_id else None
         props = db.scalars(select(GraduationProposal).where(
@@ -302,6 +306,7 @@ def create_student_record(body) -> dict:
 def update_student_record(sid, body) -> dict:
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.update")
         if s.stage == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可编辑")
         if getattr(body, "advisorName", None) is not None:
@@ -314,9 +319,11 @@ def update_student_record(sid, body) -> dict:
 
 # ═══════════ 学生-选题分配（选题库 selected 收口）═══════════
 
-def assign_topic(sid, topic_id) -> dict:
+def assign_topic(sid, topic_id, *, relationship_authorized: bool = False) -> dict:
     with session() as db:
         s = _get(db, sid)
+        if not relationship_authorized:
+            assert_student_access(db, s, "student.assign_topic")
         if s.stage == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可分配选题")
         t = db.get(GraduationTopic, int(topic_id))
@@ -350,6 +357,7 @@ def assign_topic(sid, topic_id) -> dict:
 def unassign_topic(sid, reason: str = "") -> dict:
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.unassign_topic")
         if not s.topic_id:
             raise AppException("DATA_CONFLICT", "该学生未分配选题")
         if s.stage not in ("TOPIC_SELECTING", "TASKBOOK_CONFIRM"):
@@ -369,6 +377,7 @@ def unassign_topic(sid, reason: str = "") -> dict:
 def assign_advisor(sid, advisor_name: str) -> dict:
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.assign_advisor")
         if s.stage == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可分配导师")
         before = s.advisor_name or ""
@@ -384,6 +393,7 @@ def set_stage(sid, action: str, reason: str = "") -> dict:
     """ADVANCE 推进节点；ARCHIVE 归档（需成果已通过或管理员强制）。"""
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.stage")
         if action == "ADVANCE":
             if s.stage == "ARCHIVED":
                 raise AppException("DATA_CONFLICT", "已归档不可再推进")
@@ -414,6 +424,7 @@ def set_risk(sid, risk_level: str, reason: str = "") -> dict:
         raise AppException("VALIDATION_ERROR", "非法风险等级")
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.risk")
         before = s.risk_level
         s.risk_level = risk_level
         _audit(db, s.id, "SET_RISK", reason or risk_level, before, risk_level)
@@ -440,6 +451,7 @@ def set_eligibility(sid, status: str, reason: str = "") -> dict:
         raise AppException("VALIDATION_ERROR", "非法资格状态")
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.eligibility")
         if s.stage == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档不可修改资格")
         before = s.eligibility_status
@@ -452,6 +464,7 @@ def set_eligibility(sid, status: str, reason: str = "") -> dict:
 def set_student_group(sid, group_name: str, reason: str = "") -> dict:
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.group")
         if s.stage == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档不可修改分组")
         before = s.student_group or ""
@@ -469,6 +482,7 @@ def batch_set_student_group(record_ids: list[str], group_name: str, reason: str 
     with session() as db:
         for rid in record_ids or []:
             s = _get(db, rid)
+            assert_student_access(db, s, "student.batch_group")
             if s.stage == "ARCHIVED":
                 continue
             before = s.student_group or ""
@@ -481,8 +495,10 @@ def batch_set_student_group(record_ids: list[str], group_name: str, reason: str 
 
 def list_student_groups() -> list[str]:
     with session() as db:
+        scope_ids = [int(x) for x in accessible_student_ids(db, _tid())]
         rows = db.scalars(select(GraduationStudent.student_group).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.id.in_(scope_ids or [-1]),
             GraduationStudent.student_group.is_not(None), GraduationStudent.student_group != "")).all()
         return sorted({r for r in rows if r})
 
@@ -490,6 +506,7 @@ def list_student_groups() -> list[str]:
 def assign_defense_group(sid, group_id: str, reason: str = "") -> dict:
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.defense_group")
         if s.stage == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档不可分配答辩组")
         g = db.get(GraduationDefenseGroup, int(group_id))
@@ -513,6 +530,7 @@ def set_grad_qual(sid, status: str, note: str = "", reason: str = "") -> dict:
         raise AppException("VALIDATION_ERROR", "非法毕业资格联动状态")
     with session() as db:
         s = _get(db, sid)
+        assert_student_access(db, s, "student.grad_qualification")
         before = s.grad_qual_status
         s.grad_qual_status = status
         if note is not None:
@@ -527,6 +545,7 @@ def batch_archive(record_ids: list[str], reason: str = "") -> dict:
     with session() as db:
         for rid in record_ids or []:
             s = _get(db, rid)
+            assert_student_access(db, s, "student.batch_archive")
             if s.stage == "ARCHIVED":
                 continue
             before = s.stage
@@ -541,8 +560,9 @@ def batch_archive(record_ids: list[str], reason: str = "") -> dict:
 
 def student_stats() -> dict:
     with session() as db:
+        scope_ids = [int(x) for x in accessible_student_ids(db, _tid())]
         base = [GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-                GraduationStudent.record_status == "ACTIVE"]
+                GraduationStudent.record_status == "ACTIVE", GraduationStudent.id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(*base)) or 0)
         by_stage = [{"stage": st, "label": STAGE_LABEL[st],
                      "count": int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
@@ -557,7 +577,8 @@ def student_stats() -> dict:
             *base, GraduationStudent.defense_group_id.is_(None), GraduationStudent.stage != "ARCHIVED")) or 0)
         archived = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE", GraduationStudent.stage == "ARCHIVED")) or 0)
+            GraduationStudent.record_status == "ACTIVE", GraduationStudent.id.in_(scope_ids or [-1]),
+            GraduationStudent.stage == "ARCHIVED")) or 0)
         return {"total": total, "byStage": by_stage, "withTopic": with_topic,
                 "withoutTopic": total - with_topic, "highRisk": high_risk,
                 "pendingEligibility": pending_elig, "withoutDefenseGroup": no_defense, "archived": archived}
