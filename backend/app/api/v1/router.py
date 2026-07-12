@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.core.security import require_staff
-from app.api.v1 import academic, approval, audit, auth, authz, campus_service, dashboard, employment, files, orientation, platform, rbac, student, system, tenant, transfer
+from app.api.v1 import academic, approval, audit, auth, authz, campus_service, dashboard, files, orientation, platform, rbac, student, system, tenant, transfer
 from app.api.v1 import file as file_simple
 from app.api.v1 import import_export
 from app.api.v1 import message as message_simple
@@ -15,6 +15,7 @@ from app.api.v1 import onboarding
 from app.modules.academic_affairs.routers import academic_affairs
 from app.api.v1 import stats
 from app.api.v1 import student_affairs
+from app.modules.employment.routers import employment  # 就业/实习转化中心主路由（/employment/*）
 from app.modules.internship.routers import internship  # 岗位实习中心主路由（/internship/*）
 from app.modules.internship.routers import internship_position  # 岗位库（独立 router，/internship/positions/*）
 from app.modules.internship.routers import internship_student  # 实习学生（独立 router，/internship/intern-students/*）

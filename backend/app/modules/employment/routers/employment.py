@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.employment import (AssignTeacherBody, CommentBody, CompanyCreate, FollowUpCreate,
+from app.modules.employment.schemas.employment import (AssignTeacherBody, CommentBody, CompanyCreate, FollowUpCreate,
                                      IdsBody, JobCreate, MarkDestBody, ReasonBody, StudentCreate,
                                      StudentUpdate)
-from app.services import employment_service as svc
+from app.modules.employment.services import employment_service as svc
 
 router = APIRouter(prefix="/employment", tags=["就业服务"])
 

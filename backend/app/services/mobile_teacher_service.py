@@ -11,8 +11,8 @@ from sqlalchemy import func, select
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import (academic_service, approval_service, campus_service_service,
-                          employment_service,
                           orientation_service)
+from app.modules.employment.services import employment_service
 from app.modules.internship.services import internship_service
 from app.modules.graduation.services import graduation_service
 from app.services.db_service import _iso, _tid
