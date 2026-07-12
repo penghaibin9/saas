@@ -43,11 +43,15 @@ export const ADMIN_MENU = [
     ]
   },
   {
-    /* 一级②学工中心：学生画像（原学生主档）/ 数字迎新 / 在校服务（原学生中心迁入） */
+    /* 一级②学工中心：sa-home(navPlan驱动学工壳) + 学生画像 / 数字迎新 / 在校服务 */
     key: 'student-affairs',
     label: '学工中心',
     icon: '☰',
     children: [
+      // sa-home 置首叶：rail「学工中心」落点 = /admin/student-affairs（navPlan 驱动学工壳），
+      // 且让 findActiveMenu 把 /admin/student-affairs/* 归到本组（groupKey=student-affairs），
+      // 侧栏才会渲染 navPlan 学工中心 14 二级；moduleCode 复用 STUDENT（在各角色白名单内）。
+      { key: 'sa-home', label: '学工看板', path: '/admin/student-affairs', moduleCode: 'STUDENT', permissionKey: 'student.profile.view' },
       { key: 'sa-student', label: '学生画像', path: '/admin/student', moduleCode: 'STUDENT', permissionKey: 'student.profile.view' },
       { key: 'sa-orientation', label: '数字迎新', path: '/admin/orientation', moduleCode: 'ORIENTATION', permissionKey: 'orientation.dashboard.view' },
       { key: 'sa-campus', label: '在校服务', path: '/admin/campus-service', moduleCode: 'CAMPUS_SERVICE', permissionKey: 'campusService.dashboard.view' }
