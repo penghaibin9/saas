@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.services import audit_log
-from app.services import graduation_template_service as svc
+from app.modules.graduation.services import graduation_template_service as svc
 
 router = APIRouter(prefix="/graduation/gd-templates", tags=["毕业设计-模板中心"])
 

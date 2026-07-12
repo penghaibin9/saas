@@ -9,7 +9,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic)
-from app.services import graduation_student_service as gd_stu_svc
+from app.modules.graduation.services import graduation_student_service as gd_stu_svc
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
 L_STAGE = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
@@ -116,7 +116,7 @@ def get_student_detail(sid) -> dict:
 # ═══ 选题 ═══
 
 def list_topics(page, ps, keyword=None, status=None):
-    from app.services import graduation_topic_service as topic_svc
+    from app.modules.graduation.services import graduation_topic_service as topic_svc
     review_status = None
     op_status = status
     if status == "CONFIRMED":
@@ -872,7 +872,7 @@ def get_dashboard() -> dict:
         # 真实风险预警（未关闭的风险项，取前若干）
         risk_alerts = []
         try:
-            from app.services import graduation_risk_service as risk_svc
+            from app.modules.graduation.services import graduation_risk_service as risk_svc
             items, _ = risk_svc.list_risks(1, 50)
             for r in items:
                 if r.get("status") == "CLOSED":
@@ -890,7 +890,7 @@ def get_dashboard() -> dict:
         # 跨模块统计接入（导师/指导/中期/评阅/成绩/归档，复用 overview_stats 聚合）
         module_stats = []
         try:
-            from app.services import graduation_stats_service as stats_svc
+            from app.modules.graduation.services import graduation_stats_service as stats_svc
             ov = stats_svc.overview_stats()
             m, gu, mt = ov.get("mentor", {}), ov.get("guidance", {}), ov.get("midterm", {})
             rv, gr, ar = ov.get("review", {}), ov.get("grade", {}), ov.get("archive", {})

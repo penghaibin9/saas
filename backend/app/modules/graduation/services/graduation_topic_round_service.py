@@ -9,7 +9,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic,
                         GraduationTopicChoice, GraduationTopicRound)
 from app.services.db_service import _iso, _tid, session
-from app.services import graduation_student_service as gd_stu_svc
+from app.modules.graduation.services import graduation_student_service as gd_stu_svc
 
 ROUND_LABEL = {"DRAFT": "草稿", "OPEN": "进行中", "CLOSED": "已关闭", "MATCHED": "已匹配",
                "ARCHIVED": "已归档"}

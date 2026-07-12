@@ -14,11 +14,11 @@ from fastapi.responses import StreamingResponse
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.schemas.excel import ExcelErrorRows, ExcelImportRows
-from app.schemas.graduation_mentor import (MentorAssignCancelRequest, MentorAssignRequest,
+from app.modules.graduation.schemas.graduation_mentor import (MentorAssignCancelRequest, MentorAssignRequest,
                                            MentorChangeRequest, MentorCreate, MentorDisableRequest,
                                            MentorReviewRequest, MentorUpdate)
 from app.services import audit_log
-from app.services import graduation_mentor_service as svc
+from app.modules.graduation.services import graduation_mentor_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-导师管理与分配"])
 

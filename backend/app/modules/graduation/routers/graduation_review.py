@@ -9,11 +9,11 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.schemas.graduation_review import (PlagiarismDisputeRequest, PlagiarismDisputeReview,
+from app.modules.graduation.schemas.graduation_review import (PlagiarismDisputeRequest, PlagiarismDisputeReview,
                                            PlagiarismResultRequest, PlagiarismSubmitRequest,
                                            ReviewAssignRequest, ReviewReturnRequest, ReviewSubmitRequest)
 from app.services import audit_log
-from app.services import graduation_review_service as svc
+from app.modules.graduation.services import graduation_review_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-查重与评阅"])
 

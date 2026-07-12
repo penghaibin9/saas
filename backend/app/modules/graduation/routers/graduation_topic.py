@@ -14,10 +14,10 @@ from fastapi.responses import StreamingResponse
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.schemas.excel import ExcelErrorRows, ExcelImportRows
-from app.schemas.graduation_topic import (GdTopicArchiveRequest, GdTopicAttachmentsUpdate, GdTopicCapacityUpdate,
+from app.modules.graduation.schemas.graduation_topic import (GdTopicArchiveRequest, GdTopicAttachmentsUpdate, GdTopicCapacityUpdate,
                                           GdTopicCreate, GdTopicDisableRequest, GdTopicReviewRequest, GdTopicUpdate)
 from app.services import audit_log
-from app.services import graduation_topic_service as svc
+from app.modules.graduation.services import graduation_topic_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-题目库"])
 

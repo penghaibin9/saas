@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.core.security import require_staff
-from app.api.v1 import academic, approval, audit, auth, authz, campus_service, dashboard, employment, files, graduation, internship, orientation, platform, rbac, student, system, tenant, transfer
+from app.api.v1 import academic, approval, audit, auth, authz, campus_service, dashboard, employment, files, internship, orientation, platform, rbac, student, system, tenant, transfer
 from app.api.v1 import file as file_simple
 from app.api.v1 import import_export
 from app.api.v1 import message as message_simple
@@ -18,23 +18,24 @@ from app.api.v1 import student_affairs
 from app.api.v1 import internship_position  # 岗位库（独立 router，/internship/positions/*）
 from app.api.v1 import internship_student  # 实习学生（独立 router，/internship/intern-students/*）
 from app.api.v1 import internship_match  # 岗位匹配（独立 router，/internship/match/*）
-from app.api.v1 import graduation_batch  # 毕设批次（独立 router，/graduation/batches/*）
-from app.api.v1 import graduation_student  # 毕设学生（独立 router，/graduation/gd-students/*）
-from app.api.v1 import graduation_topic  # 题目库（独立 router，/graduation/gd-topics/*）
-from app.api.v1 import graduation_topic_round  # 选题轮次（/graduation/gd-topic-rounds/*）
-from app.api.v1 import graduation_topic_change  # 选题变更申请（/graduation/gd-topic-change-requests/*）
-from app.api.v1 import graduation_mentor  # 导师管理+导师分配（/graduation/gd-mentors/*、/gd-mentor-assignments/*）
-from app.api.v1 import graduation_taskbook  # 任务书（/graduation/gd-taskbooks/*）
-from app.api.v1 import graduation_guidance  # 指导过程记录（/graduation/gd-guidances/*）
-from app.api.v1 import graduation_midterm  # 中期检查（/graduation/gd-midterms/*）
-from app.api.v1 import graduation_review  # 查重记录+教师评阅（/graduation/gd-plagiarism/*、/gd-reviews/*）
-from app.api.v1 import graduation_defense_score  # 答辩评分（/graduation/gd-defense-scores/*）
-from app.api.v1 import graduation_grade  # 成绩评定（/graduation/gd-grades/*）
-from app.api.v1 import graduation_risk  # 问题预警（/graduation/gd-risks/*）
-from app.api.v1 import graduation_archive  # 毕设归档（/graduation/gd-archives/*）
-from app.api.v1 import graduation_stats  # 毕设统计（/graduation/gd-stats/*）
-from app.api.v1 import graduation_template  # 模板中心（/graduation/gd-templates/*）
-from app.api.v1 import graduation_more  # 互查整改/答辩专家/成绩申诉（Batch 7/8）
+from app.modules.graduation.routers import graduation  # 毕设中心主路由（/graduation/*）
+from app.modules.graduation.routers import graduation_batch  # 毕设批次（独立 router，/graduation/batches/*）
+from app.modules.graduation.routers import graduation_student  # 毕设学生（独立 router，/graduation/gd-students/*）
+from app.modules.graduation.routers import graduation_topic  # 题目库（独立 router，/graduation/gd-topics/*）
+from app.modules.graduation.routers import graduation_topic_round  # 选题轮次（/graduation/gd-topic-rounds/*）
+from app.modules.graduation.routers import graduation_topic_change  # 选题变更申请（/graduation/gd-topic-change-requests/*）
+from app.modules.graduation.routers import graduation_mentor  # 导师管理+导师分配（/graduation/gd-mentors/*、/gd-mentor-assignments/*）
+from app.modules.graduation.routers import graduation_taskbook  # 任务书（/graduation/gd-taskbooks/*）
+from app.modules.graduation.routers import graduation_guidance  # 指导过程记录（/graduation/gd-guidances/*）
+from app.modules.graduation.routers import graduation_midterm  # 中期检查（/graduation/gd-midterms/*）
+from app.modules.graduation.routers import graduation_review  # 查重记录+教师评阅（/graduation/gd-plagiarism/*、/gd-reviews/*）
+from app.modules.graduation.routers import graduation_defense_score  # 答辩评分（/graduation/gd-defense-scores/*）
+from app.modules.graduation.routers import graduation_grade  # 成绩评定（/graduation/gd-grades/*）
+from app.modules.graduation.routers import graduation_risk  # 问题预警（/graduation/gd-risks/*）
+from app.modules.graduation.routers import graduation_archive  # 毕设归档（/graduation/gd-archives/*）
+from app.modules.graduation.routers import graduation_stats  # 毕设统计（/graduation/gd-stats/*）
+from app.modules.graduation.routers import graduation_template  # 模板中心（/graduation/gd-templates/*）
+from app.modules.graduation.routers import graduation_more  # 互查整改/答辩专家/成绩申诉（Batch 7/8）
 from app.api.v1 import excel  # 公共 Excel 底座（/excel/*，通用导入记录）
 from app.api.v1 import internship_agreement_template  # 实习协议模板库（/internship/agreement-templates/*）
 from app.api.v1.todos import make_router as make_todos_router

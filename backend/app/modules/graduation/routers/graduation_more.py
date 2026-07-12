@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.response import success
 from app.core.security import get_current_user
 from app.services import audit_log
-from app.services import graduation_more_service as svc
+from app.modules.graduation.services import graduation_more_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-互查/专家/申诉"])
 
@@ -76,7 +76,7 @@ def appeal_review(aid: str, body: dict = Body(...), user=Depends(get_current_use
 # ── 答辩通知（对已发布答辩组批量通知，留痕） ──
 @router.post("/gd-defense-notify", summary="答辩通知（对已发布答辩组学生发送通知，留痕）")
 def defense_notify(body: dict = Body(...), user=Depends(get_current_user)):
-    from app.services import graduation_service as gd_svc
+    from app.modules.graduation.services import graduation_service as gd_svc
     gid = body.get("defenseGroupId")
     detail = gd_svc.get_defense_group_detail(gid)
     if not detail.get("published"):

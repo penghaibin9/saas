@@ -488,7 +488,7 @@ def graduation_topics(user: dict, batch_id: str | None = None) -> list:
     _require_student(user)
     if not db_enabled():
         return []
-    from app.services import graduation_topic_service as topic_svc
+    from app.modules.graduation.services import graduation_topic_service as topic_svc
     items, _ = topic_svc.list_topics(1, 500, batch_id=batch_id, review_status="APPROVED",
                                      status="CONFIRMED", is_full=False)
     return items
@@ -499,7 +499,7 @@ def graduation_active_round(user: dict) -> dict | None:
     u = _require_student(user)
     if not db_enabled():
         return None
-    from app.services import graduation_topic_round_service as round_svc
+    from app.modules.graduation.services import graduation_topic_round_service as round_svc
     with _session() as db:
         g = _resolve_gd_student(db, u)
     r = round_svc.active_round(batch_id=g.batch_id if g else None)
@@ -520,7 +520,7 @@ def graduation_submit_choices(user: dict, round_id: str, choices: list) -> dict:
         g = _resolve_gd_student(db, u)
     if not g:
         raise AppException("VALIDATION_ERROR", "未找到你的毕设学生档案，请联系毕设管理员")
-    from app.services import graduation_topic_round_service as round_svc
+    from app.modules.graduation.services import graduation_topic_round_service as round_svc
     result = round_svc.submit_choices(round_id, g.id, choices)
     audit_log.record("学生提交选题志愿", f"graduation-topic-round:{round_id}",
                      detail={"studentName": u.get("realName"), "count": result.get("submitted")})
@@ -536,7 +536,7 @@ def graduation_withdraw_choices(user: dict, round_id: str) -> dict:
         g = _resolve_gd_student(db, u)
     if not g:
         raise AppException("VALIDATION_ERROR", "未找到你的毕设学生档案，请联系毕设管理员")
-    from app.services import graduation_topic_round_service as round_svc
+    from app.modules.graduation.services import graduation_topic_round_service as round_svc
     result = round_svc.withdraw_choices(round_id, g.id)
     audit_log.record("学生退选", f"graduation-topic-round:{round_id}",
                      detail={"studentName": u.get("realName"), "withdrawn": result.get("withdrawn")})
@@ -552,7 +552,7 @@ def graduation_request_change(user: dict, new_topic_id: str, reason: str) -> dic
         g = _resolve_gd_student(db, u)
     if not g:
         raise AppException("VALIDATION_ERROR", "未找到你的毕设学生档案，请联系毕设管理员")
-    from app.services import graduation_topic_change_service as change_svc
+    from app.modules.graduation.services import graduation_topic_change_service as change_svc
     result = change_svc.request_change(g.id, new_topic_id, reason, requested_by=u.get("realName") or "学生本人")
     audit_log.record("学生发起选题变更申请", f"graduation-topic-change:{result['id']}",
                      detail={"studentName": u.get("realName")})
@@ -568,7 +568,7 @@ def graduation_my_change_requests(user: dict) -> list:
         g = _resolve_gd_student(db, u)
     if not g:
         return []
-    from app.services import graduation_topic_change_service as change_svc
+    from app.modules.graduation.services import graduation_topic_change_service as change_svc
     items, _ = change_svc.list_change_requests(1, 50, gd_student_id=g.id)
     return items
 
@@ -579,7 +579,7 @@ def graduation_proposal(user: dict) -> dict:
     if not db_enabled():
         return _empty("演示模式")
     from app.models import GraduationProposal
-    from app.services import graduation_service as gd_svc
+    from app.modules.graduation.services import graduation_service as gd_svc
     with _session() as db:
         g = _resolve_gd_student(db, u)
         if not g:
@@ -616,7 +616,7 @@ def graduation_submit_proposal(user: dict, body: dict) -> dict:
         g = _resolve_gd_student(db, u)
     if not g:
         raise AppException("VALIDATION_ERROR", "未找到你的毕设学生档案，请联系毕设管理员")
-    from app.services import graduation_service as gd_svc
+    from app.modules.graduation.services import graduation_service as gd_svc
     result = gd_svc.submit_proposal(g.id, body.get("background") or "", body.get("plan") or "",
                                     body.get("outcome") or "", body.get("attachments") or [])
     audit_log.record("学生提交开题报告", f"graduation-proposal:{result['id']}",
@@ -630,7 +630,7 @@ def graduation_final(user: dict) -> dict:
     if not db_enabled():
         return _empty("演示模式")
     from app.models import GraduationFinal
-    from app.services import graduation_service as gd_svc
+    from app.modules.graduation.services import graduation_service as gd_svc
     with _session() as db:
         g = _resolve_gd_student(db, u)
         if not g:
@@ -665,7 +665,7 @@ def graduation_submit_final(user: dict, body: dict) -> dict:
         g = _resolve_gd_student(db, u)
     if not g:
         raise AppException("VALIDATION_ERROR", "未找到你的毕设学生档案，请联系毕设管理员")
-    from app.services import graduation_service as gd_svc
+    from app.modules.graduation.services import graduation_service as gd_svc
     result = gd_svc.submit_final(g.id, body.get("finalType") or "初稿", body.get("plagiarismRate"),
                                  body.get("attachments") or [])
     audit_log.record("学生提交论文成果", f"graduation-final:{result['id']}",
@@ -682,7 +682,7 @@ def graduation_taskbook(user: dict) -> dict:
         g = _resolve_gd_student(db, u)
         if not g:
             return _empty("你暂无毕设记录")
-    from app.services import graduation_taskbook_service as tb_svc
+    from app.modules.graduation.services import graduation_taskbook_service as tb_svc
     detail = tb_svc.get_taskbook(g.id)
     if not detail.get("exists"):
         return {"hasData": False, "message": "导师尚未下达任务书"}
@@ -696,7 +696,7 @@ def graduation_taskbook_confirm(user: dict) -> dict:
         g = _resolve_gd_student(db, u)
         if not g:
             raise AppException("NOT_FOUND", "你暂无毕设记录")
-    from app.services import graduation_taskbook_service as tb_svc
+    from app.modules.graduation.services import graduation_taskbook_service as tb_svc
     return tb_svc.confirm_taskbook(g.id)
 
 
@@ -709,7 +709,7 @@ def graduation_midterm(user: dict) -> dict:
         g = _resolve_gd_student(db, u)
         if not g:
             return _empty("你暂无毕设记录")
-    from app.services import graduation_midterm_service as mt_svc
+    from app.modules.graduation.services import graduation_midterm_service as mt_svc
     return {"hasData": True, **mt_svc.get_midterm(g.id)}
 
 
@@ -720,7 +720,7 @@ def graduation_midterm_rectify(user: dict, content: str) -> dict:
         g = _resolve_gd_student(db, u)
         if not g:
             raise AppException("NOT_FOUND", "你暂无毕设记录")
-    from app.services import graduation_midterm_service as mt_svc
+    from app.modules.graduation.services import graduation_midterm_service as mt_svc
     return mt_svc.submit_rectification(g.id, content)
 
 
@@ -730,7 +730,7 @@ def graduation_peer_tasks(user: dict) -> dict:
     if not db_enabled():
         return {"toReview": [], "myRectify": []}
     from app.models import GraduationPeerReview
-    from app.services import graduation_more_service as more
+    from app.modules.graduation.services import graduation_more_service as more
     with _session() as db:
         g = _resolve_gd_student(db, u)
         if not g:
@@ -749,7 +749,7 @@ def graduation_peer_tasks(user: dict) -> dict:
 def graduation_peer_submit(user: dict, pid: str, opinion: str) -> dict:
     """互查·学生提交互查意见。"""
     _require_student(user)
-    from app.services import graduation_more_service as more
+    from app.modules.graduation.services import graduation_more_service as more
     result = more.submit_peer(pid, opinion)
     audit_log.record("学生提交互查意见", f"graduation-peer:{pid}")
     return result
@@ -758,7 +758,7 @@ def graduation_peer_submit(user: dict, pid: str, opinion: str) -> dict:
 def graduation_peer_rectify(user: dict, pid: str, note: str) -> dict:
     """互查·被评学生提交整改。"""
     _require_student(user)
-    from app.services import graduation_more_service as more
+    from app.modules.graduation.services import graduation_more_service as more
     result = more.rectify_peer(pid, note)
     audit_log.record("学生提交互查整改", f"graduation-peer:{pid}")
     return result
@@ -772,7 +772,7 @@ def graduation_grade_appeal(user: dict, reason: str) -> dict:
         if not g:
             raise AppException("NOT_FOUND", "你暂无毕设记录")
         gid = g.id
-    from app.services import graduation_more_service as more
+    from app.modules.graduation.services import graduation_more_service as more
     result = more.create_appeal(gid, reason)
     audit_log.record("学生发起成绩申诉", f"graduation-grade-appeal:{result['id']}")
     return result
@@ -787,7 +787,7 @@ def graduation_defense(user: dict) -> dict:
         g = _resolve_gd_student(db, u)
         if not g:
             return _empty("你暂无毕设记录")
-    from app.services import graduation_service as gd_svc
+    from app.modules.graduation.services import graduation_service as gd_svc
     return gd_svc.student_defense_view(g.id)
 
 
@@ -800,7 +800,7 @@ def graduation_grade(user: dict) -> dict:
         g = _resolve_gd_student(db, u)
         if not g:
             return _empty("你暂无毕设记录")
-    from app.services import graduation_grade_service as grade_svc
+    from app.modules.graduation.services import graduation_grade_service as grade_svc
     detail = grade_svc.get_grade(g.id)
     if detail.get("status") != "PUBLISHED":
         return {"hasData": True, "published": False, "statusLabel": detail.get("statusLabel")}

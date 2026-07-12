@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx  # noqa: F401  (预留：后续数据范围过滤)
 from app.models import GraduationStudent
-from app.services import (graduation_archive_service, graduation_batch_service, graduation_grade_service,
+from app.modules.graduation.services import (graduation_archive_service, graduation_batch_service, graduation_grade_service,
                           graduation_guidance_service, graduation_mentor_service, graduation_midterm_service,
                           graduation_review_service, graduation_risk_service)
 from app.services.db_service import _tid, session
