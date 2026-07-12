@@ -11,8 +11,10 @@ from sqlalchemy import func, select
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import (academic_service, approval_service, campus_service_service,
-                          employment_service, graduation_service, internship_service,
                           orientation_service)
+from app.modules.employment.services import employment_service
+from app.modules.internship.services import internship_service
+from app.modules.graduation.services import graduation_service
 from app.services.db_service import _iso, _tid
 
 
@@ -802,7 +804,7 @@ def graduation_choices_pending(user: dict) -> list:
     u = _require_teacher(user)
     if not db_enabled():
         return []
-    from app.services import graduation_topic_round_service as round_svc
+    from app.modules.graduation.services import graduation_topic_round_service as round_svc
     return round_svc.list_pending_choices_for_advisor(u.get("realName") or "")
 
 
@@ -818,7 +820,7 @@ def graduation_choice_review(user: dict, choice_id: str, action: str, reason: st
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
-    from app.services import graduation_topic_round_service as round_svc
+    from app.modules.graduation.services import graduation_topic_round_service as round_svc
     detail = round_svc.get_choice_detail(choice_id)  # 不存在 → 404
     if not _can_review_topic(u, detail.get("advisorName")):
         raise AppException("NO_PERMISSION", "该志愿关联题目不在你的指导范围内")
@@ -839,7 +841,7 @@ def graduation_change_requests_pending(user: dict) -> list:
     u = _require_teacher(user)
     if not db_enabled():
         return []
-    from app.services import graduation_topic_change_service as change_svc
+    from app.modules.graduation.services import graduation_topic_change_service as change_svc
     return change_svc.list_pending_for_advisor(u.get("realName") or "")
 
 
@@ -849,7 +851,7 @@ def graduation_change_request_review(user: dict, request_id: str, action: str,
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
-    from app.services import graduation_topic_change_service as change_svc
+    from app.modules.graduation.services import graduation_topic_change_service as change_svc
     detail = change_svc.get_change_request(request_id)  # 不存在 → 404
     scope = resolve_teacher_scope(u)
     if scope.get("mode") != "ADMIN_TENANT":
@@ -945,7 +947,7 @@ def graduation_guidance_create(user: dict, gd_student_id: str, body: dict) -> di
             raise AppException("DATA_NOT_FOUND", "毕设学生不存在")
         if scope.get("mode") != "ADMIN_TENANT" and (s.advisor_name or "") != (u.get("realName") or ""):
             raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
-    from app.services import graduation_guidance_service as guidance_svc
+    from app.modules.graduation.services import graduation_guidance_service as guidance_svc
     result = guidance_svc.create_guidance(gd_student_id, body)
     _audit_write("MOBILE_GUIDANCE_CREATE", f"graduation-guidance:{result.get('id')}",
                  {"operator": u.get("realName"), "gdStudentId": str(gd_student_id)})
@@ -973,7 +975,7 @@ def graduation_midterm_queue(user: dict) -> list:
     if not db_enabled():
         return []
     scope = resolve_teacher_scope(u)
-    from app.services import graduation_midterm_service as mt
+    from app.modules.graduation.services import graduation_midterm_service as mt
     rows, _ = _safe_list(mt.list_midterms, 1, 100)
     actionable = {"PENDING", "RECTIFY_SUBMITTED"}
     out = []
@@ -992,7 +994,7 @@ def graduation_midterm_detail(user: dict, gd_student_id: str) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实中期记录")
-    from app.services import graduation_midterm_service as mt
+    from app.modules.graduation.services import graduation_midterm_service as mt
     d = mt.get_midterm(gd_student_id)  # 学生不存在 → 404
     scope = resolve_teacher_scope(u)
     if scope["mode"] == "SCOPED" and not scope_match_row(
@@ -1007,7 +1009,7 @@ def graduation_midterm_check(user: dict, gd_student_id: str, conclusion: str,
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实中期检查")
-    from app.services import graduation_midterm_service as mt
+    from app.modules.graduation.services import graduation_midterm_service as mt
     d = mt.get_midterm(gd_student_id)
     scope = resolve_teacher_scope(u)
     if scope["mode"] == "SCOPED" and not scope_match_row(
@@ -1025,7 +1027,7 @@ def graduation_midterm_rectify_review(user: dict, gd_student_id: str, action: st
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实复核")
-    from app.services import graduation_midterm_service as mt
+    from app.modules.graduation.services import graduation_midterm_service as mt
     d = mt.get_midterm(gd_student_id)
     scope = resolve_teacher_scope(u)
     if scope["mode"] == "SCOPED" and not scope_match_row(
@@ -1044,7 +1046,7 @@ def graduation_my_reviews(user: dict) -> list:
     u = _require_teacher(user)
     if not db_enabled():
         return []
-    from app.services import graduation_review_service as rv
+    from app.modules.graduation.services import graduation_review_service as rv
     rows, _ = _safe_list(rv.list_reviews, 1, 100, reviewer_name=u.get("realName") or "")
     return [r for r in rows if r.get("status") in ("ASSIGNED", "REVIEWING", "RETURNED")]
 
@@ -1062,7 +1064,7 @@ def graduation_review_submit(user: dict, review_id: str, score, opinion: str | N
         raise AppException("VALIDATION_ERROR", "评分必须在 0-100 之间")
     if not opinion or len(str(opinion).strip()) < 5:
         raise AppException("VALIDATION_ERROR", "评阅意见必填且不少于 5 字")
-    from app.services import graduation_review_service as rv
+    from app.modules.graduation.services import graduation_review_service as rv
     scope = resolve_teacher_scope(u)
     mine, _ = rv.list_reviews(1, 500, reviewer_name=u.get("realName") or "")
     target = next((r for r in mine if str(r.get("id")) == str(review_id)), None)
@@ -1085,7 +1087,7 @@ def graduation_defense_arrangements(user: dict) -> list:
     if not db_enabled():
         return []
     students = graduation_my_students(user)  # 已按范围收敛
-    from app.services import graduation_service as gd
+    from app.modules.graduation.services import graduation_service as gd
     out = []
     for s in students:
         try:
@@ -1107,7 +1109,7 @@ def graduation_grade_queue(user: dict) -> list:
     if not db_enabled():
         return []
     scope = resolve_teacher_scope(u)
-    from app.services import graduation_grade_service as gr
+    from app.modules.graduation.services import graduation_grade_service as gr
     rows, _ = _safe_list(gr.list_grades, 1, 100, status="CALCULATED")
     if scope["mode"] == "SCOPED":
         mine = {s.get("studentNo") for s in graduation_my_students(user) if s.get("studentNo")}
@@ -1122,7 +1124,7 @@ def graduation_grade_detail(user: dict, gd_student_id: str) -> dict:
         raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实成绩")
     scope = resolve_teacher_scope(u)
     _require_gd_student_scope(u, scope, gd_student_id)  # 404/403
-    from app.services import graduation_grade_service as gr
+    from app.modules.graduation.services import graduation_grade_service as gr
     return gr.get_grade(gd_student_id)
 
 
@@ -1133,7 +1135,7 @@ def graduation_grade_review(user: dict, gd_student_id: str, action: str, comment
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实复核")
     scope = resolve_teacher_scope(u)
     _require_gd_student_scope(u, scope, gd_student_id)
-    from app.services import graduation_grade_service as gr
+    from app.modules.graduation.services import graduation_grade_service as gr
     result = gr.review_grade(gd_student_id, str(action or "").upper(), comment)
     _audit_write("MOBILE_GRADE_REVIEW", f"graduation/grade:{gd_student_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})

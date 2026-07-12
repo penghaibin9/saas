@@ -8,7 +8,7 @@ import pytest
 from app.core.context import set_current_user
 from app.core.exceptions import AppException
 from app.models import GraduationDefenseGroup, GraduationStudent
-from app.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
+from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 
 
 class FakeDb:

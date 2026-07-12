@@ -42,10 +42,29 @@ DOMAINS = {
 MAX_EXPORT_ROWS = 5000  # 单次导出上限：防止一次拉全表拖垮内存/阻塞主接口
 
 
+def _import_service(mod_name):
+    """定位服务模块：兼容旧 app.services.* 与目录收拢后的 app.modules.<中心>.services.*。
+
+    仅改变“到哪里找模块”，不改导出数据/字段/函数行为（目录收拢后的接线兼容）。
+    """
+    import importlib
+    import pkgutil
+    try:
+        return importlib.import_module(f"app.services.{mod_name}")
+    except ModuleNotFoundError:
+        pass
+    import app.modules as _modules
+    for _sub in pkgutil.iter_modules(_modules.__path__):
+        try:
+            return importlib.import_module(f"app.modules.{_sub.name}.services.{mod_name}")
+        except ModuleNotFoundError:
+            continue
+    raise ModuleNotFoundError(f"服务模块未找到：app.services.{mod_name} 或 app.modules.*.services.{mod_name}")
+
+
 def _call_list(path):
     mod_name, fn_name = path.split(".")
-    import importlib
-    mod = importlib.import_module(f"app.services.{mod_name}")
+    mod = _import_service(mod_name)
     fn = getattr(mod, fn_name)
     items, total = fn(1, MAX_EXPORT_ROWS)
     if total > MAX_EXPORT_ROWS:

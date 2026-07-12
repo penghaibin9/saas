@@ -62,7 +62,7 @@ def test_submit_requires_open_round(client, auth_headers, db_mode):
 
 
 def test_plan_matches_unit():
-    from app.services.graduation_topic_round_service import plan_topic_matches
+    from app.modules.graduation.services.graduation_topic_round_service import plan_topic_matches
     choices = [
         {"id": 1, "gd_student_id": 10, "topic_id": 100, "choice_order": 1},
         {"id": 2, "gd_student_id": 10, "topic_id": 101, "choice_order": 2},

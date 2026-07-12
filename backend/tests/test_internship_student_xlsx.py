@@ -34,7 +34,7 @@ def _seed(db_mode):
 def _make_xlsx(rows: list[dict]) -> bytes:
     """按 15 列模板表头构造上传用 .xlsx（sheet 名 = 导入模板，与 read_xlsx 对齐）。"""
     from openpyxl import Workbook
-    from app.services.internship_student_service import IMPORT_HEADERS, IMPORT_HEADER_MAP
+    from app.modules.internship.services.internship_student_service import IMPORT_HEADERS, IMPORT_HEADER_MAP
     wb = Workbook()
     ws = wb.active
     ws.title = "导入模板"

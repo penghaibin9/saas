@@ -64,6 +64,17 @@ def _bind_token_tenant(request: Request) -> None:
         from app.core.context import set_tenant
         from app.core.security import decode_token
         claims = decode_token(auth[7:].strip())
+        # 在 async 上下文绑定当前用户，确保 currentRoleCode 等随 contextvar 传播到 threadpool 内的
+        # 同步 service（如 campus_service 的数据范围解析依赖 get_current_user_ctx()）。get_current_user
+        # 依赖仍会再 set 一次同样的完整用户（幂等），此处解决「服务层拿到无角色用户」的传播缺口。
+        set_current_user({
+            "userId": claims.get("userId"), "realName": claims.get("realName"),
+            "userType": claims.get("userType"), "tenantCode": claims.get("tid"),
+            "activeContextId": claims.get("activeContextId"),
+            "currentRoleCode": claims.get("currentRoleCode"),
+            "loginName": claims.get("loginName") or claims.get("username"),
+            "studentNo": claims.get("studentNo"),
+        })
         if claims.get("tenantId"):
             set_tenant({"tenantId": str(claims["tenantId"]),
                         "tenantCode": claims.get("tid") or "",

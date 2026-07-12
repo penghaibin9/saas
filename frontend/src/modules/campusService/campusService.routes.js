@@ -37,37 +37,37 @@ export const campusServiceRoutes = {
     {
       path: 'leave-extensions',
       name: 'campus-service-leave-extensions',
-      component: () => import('@/views/admin/student-affairs/leave/LeaveExtensionCancelView.vue'),
+      component: () => import('@/modules/studentAffairs/views/leave/LeaveExtensionCancelView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '延期销假' }
     },
     {
       path: 'leave-ledger',
       name: 'campus-service-leave-ledger',
-      component: () => import('@/views/admin/student-affairs/leave/LeaveLedgerView.vue'),
+      component: () => import('@/modules/studentAffairs/views/leave/LeaveLedgerView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假台账' }
     },
     {
       path: 'leave-stats',
       name: 'campus-service-leave-stats',
-      component: () => import('@/views/admin/student-affairs/leave/LeaveStatsView.vue'),
+      component: () => import('@/modules/studentAffairs/views/leave/LeaveStatsView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假统计' }
     },
     {
       path: 'classes',
       name: 'campus-service-classes',
-      component: () => import('@/views/admin/student-affairs/class/ClassListView.vue'),
+      component: () => import('@/modules/studentAffairs/views/class/ClassListView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '班级管理' }
     },
     {
       path: 'classes/:classId',
       name: 'campus-service-class-profile',
-      component: () => import('@/views/admin/student-affairs/class/ClassProfileView.vue'),
+      component: () => import('@/modules/studentAffairs/views/class/ClassProfileView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '班级画像' }
     },
     {
       path: 'counselor-assessment',
       name: 'campus-service-counselor-assessment',
-      component: () => import('@/views/admin/student-affairs/class/CounselorAssessmentView.vue'),
+      component: () => import('@/modules/studentAffairs/views/class/CounselorAssessmentView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '辅导员考评' }
     },
     {

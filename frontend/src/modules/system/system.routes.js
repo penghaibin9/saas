@@ -8,55 +8,55 @@
  */
 const systemRoutes = {
   path: '/admin/system',
-  component: () => import('@/views/admin/system/AdminSystemLayout.vue'),
+  component: () => import('@/modules/system/views/AdminSystemLayout.vue'),
   meta: { moduleCode: 'SYSTEM' },
   children: [
     {
       path: '',
       name: 'system-dashboard',
-      component: () => import('@/views/admin/system/SystemDashboardView.vue'),
+      component: () => import('@/modules/system/views/SystemDashboardView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '系统管理中心', requiresAuth: true, permissionKey: 'system.dashboard.view' }
     },
     {
       path: 'users',
       name: 'system-users',
-      component: () => import('@/views/admin/system/SystemUserListView.vue'),
+      component: () => import('@/modules/system/views/SystemUserListView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '用户账号管理', requiresAuth: true, permissionKey: 'system.user.view' }
     },
     {
       path: 'roles',
       name: 'system-roles',
-      component: () => import('@/views/admin/system/SystemRoleListView.vue'),
+      component: () => import('@/modules/system/views/SystemRoleListView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '角色权限管理', requiresAuth: true, permissionKey: 'system.role.view' }
     },
     {
       path: 'menus',
       name: 'system-menus',
-      component: () => import('@/views/admin/system/SystemMenuView.vue'),
+      component: () => import('@/modules/system/views/SystemMenuView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '菜单权限管理', requiresAuth: true, permissionKey: 'system.menu.view' }
     },
     {
       path: 'scopes',
       name: 'system-scopes',
-      component: () => import('@/views/admin/system/SystemDataScopeView.vue'),
+      component: () => import('@/modules/system/views/SystemDataScopeView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '数据范围管理', requiresAuth: true, permissionKey: 'system.scope.view' }
     },
     {
       path: 'org',
       name: 'system-org',
-      component: () => import('@/views/admin/system/SystemOrgView.vue'),
+      component: () => import('@/modules/system/views/SystemOrgView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '组织结构管理', requiresAuth: true, permissionKey: 'system.org.view' }
     },
     {
       path: 'config',
       name: 'system-config',
-      component: () => import('@/views/admin/system/SystemConfigView.vue'),
+      component: () => import('@/modules/system/views/SystemConfigView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '系统与品牌配置', requiresAuth: true, permissionKey: 'system.config.view' }
     },
     {
       path: 'logs',
       name: 'system-logs',
-      component: () => import('@/views/admin/system/SystemLogView.vue'),
+      component: () => import('@/modules/system/views/SystemLogView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '日志中心', requiresAuth: true, permissionKey: 'system.log.view' }
     }
   ]

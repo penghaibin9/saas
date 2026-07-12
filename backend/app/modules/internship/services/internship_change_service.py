@@ -1,0 +1,198 @@
+"""岗位实习 · 实习变更申请（换岗/换单位/自主实习）。
+
+对标工学云「中途变更实习单位」：学生发起 → 指导教师审核 → 落岗/更新冗余字段。
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import select
+
+from app.core.exceptions import AppException, no_permission, not_found
+from app.models import InternshipAuditTrail, InternshipChangeRequest, InternshipRecord, StudentProfile
+from app.modules.internship.services import internship_student_service as stu_svc
+from app.services.db_service import _iso, _tid, session
+
+TYPE_LABEL = {"CHANGE_POSITION": "换岗", "CHANGE_ENTERPRISE": "换实习单位", "SELF_ARRANGED": "自主实习变更"}
+STATUS_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
+
+
+def _op_name(user=None) -> str:
+    if user:
+        return user.get("realName") or "系统"
+    from app.core.context import get_current_user_ctx
+    return (get_current_user_ctx() or {}).get("realName") or "系统"
+
+
+def _trail(db, cid, action, detail=None, operator="系统"):
+    db.add(InternshipAuditTrail(tenant_id=_tid(), target_id=cid, target_type="CHANGE_REQ",
+                                action=action, operator_name=operator, detail_json=detail or {},
+                                occurred_at=datetime.utcnow()))
+
+
+def _scope(user):
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    return _current_scope(user), _rec_in_scope
+
+
+def _row(c, rec, stu):
+    return {
+        "id": str(c.id), "internId": str(c.internship_id),
+        "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
+        "changeType": c.change_type, "changeTypeLabel": TYPE_LABEL.get(c.change_type, c.change_type),
+        "reason": c.reason,
+        "targetEnterpriseName": c.target_enterprise_name or "",
+        "targetPositionName": c.target_position_name or "",
+        "currentEnterprise": rec.enterprise_name if rec else "",
+        "currentPosition": rec.position_name if rec else "",
+        "status": c.status, "statusLabel": STATUS_LABEL.get(c.status, c.status),
+        "createdAt": _iso(c.created_at) or "",
+    }
+
+
+def list_changes(page, page_size, status=None, keyword=None, user=None):
+    with session() as db:
+        q = select(InternshipChangeRequest).where(
+            InternshipChangeRequest.tenant_id == _tid(), InternshipChangeRequest.is_deleted.is_(False))
+        if status:
+            q = q.where(InternshipChangeRequest.status == status)
+        rows = db.scalars(q.order_by(InternshipChangeRequest.id.desc())).all()
+        scope, in_scope = _scope(user)
+        items = []
+        for c in rows:
+            rec = db.get(InternshipRecord, c.internship_id)
+            stu = db.get(StudentProfile, c.student_id)
+            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
+                continue
+            if not in_scope(scope, db, rec, stu):
+                continue
+            items.append(_row(c, rec, stu))
+        total = len(items)
+        start = (max(1, page) - 1) * page_size
+        return items[start:start + page_size], total
+
+
+def get_change(cid, user=None):
+    with session() as db:
+        c = db.get(InternshipChangeRequest, int(cid))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("变更申请不存在")
+        rec = db.get(InternshipRecord, c.internship_id)
+        stu = db.get(StudentProfile, c.student_id)
+        scope, in_scope = _scope(user)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("不在数据范围内")
+        trail = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "CHANGE_REQ",
+            InternshipAuditTrail.target_id == c.id).order_by(InternshipAuditTrail.id)).all()
+        return {
+            **_row(c, rec, stu),
+            "reviewComment": c.review_comment or "",
+            "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
+                            "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
+                           for t in trail],
+        }
+
+
+def list_my_changes(rec, stu):
+    with session() as db:
+        rows = db.scalars(select(InternshipChangeRequest).where(
+            InternshipChangeRequest.tenant_id == _tid(), InternshipChangeRequest.internship_id == rec.id,
+            InternshipChangeRequest.student_id == stu.id, InternshipChangeRequest.is_deleted.is_(False)
+        ).order_by(InternshipChangeRequest.id.desc())).all()
+        return [_row(c, rec, stu) for c in rows]
+
+
+def student_apply(rec, stu, body) -> dict:
+    b = body or {}
+    ctype = (b.get("changeType") or "").upper()
+    if ctype not in TYPE_LABEL:
+        raise AppException("VALIDATION_ERROR", "changeType 无效")
+    reason = (b.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "变更原因必填且不少于 5 字")
+    with session() as db:
+        pending = db.scalars(select(InternshipChangeRequest).where(
+            InternshipChangeRequest.tenant_id == _tid(), InternshipChangeRequest.internship_id == rec.id,
+            InternshipChangeRequest.status == "PENDING", InternshipChangeRequest.is_deleted.is_(False))).first()
+        if pending:
+            raise AppException("DATA_CONFLICT", "已有待审核的变更申请，请等待处理或撤回")
+        c = InternshipChangeRequest(
+            tenant_id=_tid(), internship_id=rec.id, student_id=stu.id, change_type=ctype, reason=reason,
+            target_enterprise_id=int(b["targetEnterpriseId"]) if b.get("targetEnterpriseId") else None,
+            target_position_id=int(b["targetPositionId"]) if b.get("targetPositionId") else None,
+            target_enterprise_name=(b.get("targetEnterpriseName") or "").strip() or None,
+            target_position_name=(b.get("targetPositionName") or "").strip() or None,
+            status="PENDING")
+        db.add(c)
+        db.flush()
+        _trail(db, c.id, "APPLY", {"changeType": ctype})
+        db.commit()
+        return _row(c, rec, stu)
+
+
+def withdraw_change(cid, rec, stu) -> dict:
+    with session() as db:
+        c = db.get(InternshipChangeRequest, int(cid))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("变更申请不存在")
+        if c.internship_id != rec.id or c.student_id != stu.id:
+            raise no_permission("只能撤回本人的变更申请")
+        if c.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "仅待审核申请可撤回")
+        c.status = "WITHDRAWN"
+        _trail(db, c.id, "WITHDRAW", {})
+        db.commit()
+        return {"id": str(c.id), "status": "WITHDRAWN"}
+
+
+def review_change(cid, action: str, comment: str = "", user=None) -> dict:
+    if action not in ("APPROVE", "REJECT"):
+        raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
+    if action == "REJECT" and len((comment or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+    with session() as db:
+        c = db.get(InternshipChangeRequest, int(cid))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("变更申请不存在")
+        if c.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "仅待审核申请可处理")
+        rec = db.get(InternshipRecord, c.internship_id)
+        stu = db.get(StudentProfile, c.student_id)
+        scope, in_scope = _scope(user)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("不在数据范围内")
+        c.status = "APPROVED" if action == "APPROVE" else "REJECTED"
+        c.review_comment = (comment or "").strip()
+        c.reviewed_by_name = _op_name(user)
+        c.reviewed_at = datetime.utcnow()
+        _trail(db, c.id, action, {"comment": c.review_comment})
+        ctype = c.change_type
+        teid = c.target_enterprise_id
+        tpid = c.target_position_id
+        ten = c.target_enterprise_name
+        tpn = c.target_position_name
+        reason = c.reason
+        cid = str(c.id)
+        cstatus = c.status
+        db.commit()
+        rid = str(rec.id)
+    if action == "APPROVE":
+        if ctype == "CHANGE_POSITION" and tpid:
+            stu_svc.assign_position(rid, str(tpid))
+        elif ctype in ("CHANGE_ENTERPRISE", "SELF_ARRANGED"):
+            if ctype == "SELF_ARRANGED":
+                stu_svc.set_destination(rid, "SELF_ARRANGED", reason)
+            with session() as db:
+                r = db.get(InternshipRecord, int(rid))
+                if r:
+                    if ten:
+                        r.enterprise_name = ten
+                    if tpn:
+                        r.position_name = tpn
+                    if teid:
+                        r.enterprise_id = teid
+                    if tpid:
+                        r.position_id = tpid
+                    db.commit()
+    return {"id": cid, "status": cstatus, "statusLabel": STATUS_LABEL.get(cstatus)}

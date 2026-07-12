@@ -58,26 +58,18 @@ def _students_in_classes(db, class_ids):
     return list(rows) or [-1]
 
 
+_MODE_OF = {"TENANT_ALL": "ADMIN_TENANT", "NONE": "NONE", "SELF": "SELF"}
+
+
 def _allowed_class_ids(db, user: dict):
-    """返回 (allowed_class_ids, scope)。allowed 为 None 表示全租户可见（管理层/兜底）。"""
-    from app.services.mobile_teacher_service import resolve_teacher_scope
-    scope = resolve_teacher_scope(user)
-    if scope["mode"] == "ADMIN_TENANT":
-        return None, scope
-    class_names = scope.get("classNames") or set()
-    college_names = scope.get("collegeNames") or set()
-    if not class_names and not college_names:
-        return None, scope  # TENANT_FALLBACK：试点期租户级可见
-    from app.models import College, Major, SchoolClass
-    classes = db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == _tid())).all()
-    allowed = {c.id for c in classes if c.class_name in class_names}
-    if college_names:
-        colleges = db.scalars(select(College).where(College.tenant_id == _tid())).all()
-        col_ids = {c.id for c in colleges if c.college_name in college_names}
-        majors = db.scalars(select(Major).where(Major.tenant_id == _tid())).all()
-        major_ids = {m.id for m in majors if m.college_id in col_ids}
-        allowed |= {c.id for c in classes if c.major_id in major_ids}
-    return allowed, scope
+    """返回 (allowed_class_ids, scope_shim)。allowed=None 仅当角色为 TENANT_ALL；
+    未配范围的非管理角色返回**空集合**（fail-closed，绝不回退全租户）。统一走 StudentAffairsSecurityContext。"""
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    allowed = ctx.allowed_class_ids(db)
+    mode = _MODE_OF.get(ctx.scope_type, "SCOPED")
+    return allowed, {"mode": mode, "ctx": ctx, "scopeType": ctx.scope_type,
+                     "isScopeConfigured": ctx.is_scope_configured}
 
 
 # ═══════════ 学工首页 ═══════════
