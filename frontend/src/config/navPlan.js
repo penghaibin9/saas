@@ -124,11 +124,14 @@ export const NAV_PLAN = [
       I('请假台账', '/admin/campus-service/leave-ledger'),
       I('请假统计', '/admin/campus-service/leave-stats')
     ]),
-    // 施工图卡·宿舍与公寓（B包第3步·1/6）
+    // 施工图卡·宿舍与公寓（2026-07-12 前端6页接通 /student-affairs/dorm/*；宿管 DORM_BUILDING 范围）
     mod('sa-dorm', '宿舍与公寓', null, [
-      ...P('房源管理（楼栋/房间/床位）'),
-      I('入住管理（现有·宿舍服务）', '/admin/campus-service/dormitory'),
-      ...P('调宿与退宿', '宿舍检查', '宿舍异常（含夜不归宿）', '宿舍统计')
+      I('房源管理', '/admin/student-affairs/dorm/resource'),
+      I('入住管理', '/admin/student-affairs/dorm/checkin'),
+      I('调宿与退宿', '/admin/student-affairs/dorm/transfer'),
+      I('宿舍检查', '/admin/student-affairs/dorm/check'),
+      I('宿舍异常（含夜不归宿）', '/admin/student-affairs/dorm/exception'),
+      I('宿舍统计', '/admin/student-affairs/dorm/stats')
     ]),
     // 施工图卡·风险预警与处置（B包第4步·待施工）
     mod('sa-risk', '风险预警与处置', null, P('风险看板', '风险学生', '风险处置')),

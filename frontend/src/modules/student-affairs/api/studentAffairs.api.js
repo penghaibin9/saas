@@ -93,6 +93,78 @@ export const studentAffairsApi = {
     return ok(await request('/student-affairs/dorm/config'))
   },
 
+  async createDormBuilding(body) {
+    return ok(await request('/student-affairs/dorm/buildings', { method: 'POST', body }))
+  },
+
+  async generateDormLayout(buildingId, body) {
+    return ok(await request(`/student-affairs/dorm/buildings/${buildingId}/generate`, { method: 'POST', body }))
+  },
+
+  async dormCheckin(bedId, studentId) {
+    return ok(await request(`/student-affairs/dorm/beds/${bedId}/checkin`, { method: 'POST', body: { studentId } }))
+  },
+
+  async dormCheckout(bedId) {
+    return ok(await request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST' }))
+  },
+
+  async setDormSelfSelect(enabled) {
+    return ok(await request('/student-affairs/dorm/config/self-select', { method: 'PUT', body: { enabled } }))
+  },
+
+  async listDormTransfers(params = {}) {
+    const data = await request('/student-affairs/dorm/transfers', {
+      params: { status: params.status, page: params.page || 1, pageSize: params.pageSize || 50 }
+    })
+    return ok({ items: data.items || [], total: data.total || 0 })
+  },
+
+  async submitDormTransfer(body) {
+    return ok(await request('/student-affairs/dorm/transfers', { method: 'POST', body }))
+  },
+
+  async reviewDormTransfer(transferId, action, reason = '') {
+    return ok(await request(`/student-affairs/dorm/transfers/${transferId}/review`, {
+      method: 'POST', body: { action, reason }
+    }))
+  },
+
+  async listDormCheckTasks(params = {}) {
+    const data = await request('/student-affairs/dorm/check-tasks', {
+      params: { status: params.status, page: params.page || 1, pageSize: params.pageSize || 50 }
+    })
+    return ok({ items: data.items || [], total: data.total || 0 })
+  },
+
+  async createDormCheckTask(body) {
+    return ok(await request('/student-affairs/dorm/check-tasks', { method: 'POST', body }))
+  },
+
+  async listDormCheckRecords(taskId, params = {}) {
+    const data = await request(`/student-affairs/dorm/check-tasks/${taskId}/records`, {
+      params: { page: params.page || 1, pageSize: params.pageSize || 100 }
+    })
+    return ok({ items: data.items || [], total: data.total || 0 })
+  },
+
+  async submitDormCheckRecord(taskId, body) {
+    return ok(await request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { method: 'POST', body }))
+  },
+
+  async listDormExceptions(params = {}) {
+    const data = await request('/student-affairs/dorm/exceptions', {
+      params: { status: params.status, page: params.page || 1, pageSize: params.pageSize || 50 }
+    })
+    return ok({ items: data.items || [], total: data.total || 0 })
+  },
+
+  async handleDormException(exceptionId, reason) {
+    return ok(await request(`/student-affairs/dorm/exceptions/${exceptionId}/handle`, {
+      method: 'POST', body: { reason }
+    }))
+  },
+
   async listPendingLeaves(params = {}) {
     const data = await request('/student-affairs/leave/pending', {
       params: {

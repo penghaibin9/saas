@@ -121,6 +121,43 @@ const studentAffairsRoutes = [
         name: 'student-affairs-mental-stats',
         component: () => import('@/views/admin/student-affairs/mental/MentalStatsView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
+      /* 宿舍与公寓 6 页（房源/入住/调宿退宿/检查/异常/统计）——对接 /student-affairs/dorm/* 后端，宿管 DORM_BUILDING 范围 */
+      {
+        path: 'dorm/resource',
+        name: 'student-affairs-dorm-resource',
+        component: () => import('@/views/admin/student-affairs/dorm/DormResourceView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '房源管理', requiresAuth: true, permissionKey: 'studentAffairs.dorm.view' }
+      },
+      {
+        path: 'dorm/checkin',
+        name: 'student-affairs-dorm-checkin',
+        component: () => import('@/views/admin/student-affairs/dorm/DormCheckinView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '入住管理', requiresAuth: true, permissionKey: 'studentAffairs.dorm.view' }
+      },
+      {
+        path: 'dorm/transfer',
+        name: 'student-affairs-dorm-transfer',
+        component: () => import('@/views/admin/student-affairs/dorm/DormTransferView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '调宿与退宿', requiresAuth: true, permissionKey: 'studentAffairs.dorm.view' }
+      },
+      {
+        path: 'dorm/check',
+        name: 'student-affairs-dorm-check',
+        component: () => import('@/views/admin/student-affairs/dorm/DormCheckView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '宿舍检查', requiresAuth: true, permissionKey: 'studentAffairs.dorm.view' }
+      },
+      {
+        path: 'dorm/exception',
+        name: 'student-affairs-dorm-exception',
+        component: () => import('@/views/admin/student-affairs/dorm/DormExceptionView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '宿舍异常', requiresAuth: true, permissionKey: 'studentAffairs.dorm.view' }
+      },
+      {
+        path: 'dorm/stats',
+        name: 'student-affairs-dorm-stats',
+        component: () => import('@/views/admin/student-affairs/dorm/DormStatsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '宿舍统计', requiresAuth: true, permissionKey: 'studentAffairs.dorm.view' }
       }
     ]
   }
