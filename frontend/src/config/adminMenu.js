@@ -43,7 +43,9 @@ export const ADMIN_MENU = [
     ]
   },
   {
-    /* 一级②学工中心：sa-home(navPlan驱动学工壳) + 学生画像 / 数字迎新 / 在校服务 */
+    /* 一级②学工中心：sa-home(navPlan驱动学工壳) + 学生画像 / 数字迎新。
+     * 「在校服务」已退出正式二级（裁决：仅作 legacy 兼容层，不再作为学工正式模块入口）；
+     * 其页面暂经 navPlan 叶子/直达 URL 兼容，旧后端接口已接统一权限门禁+数据范围（SEC-6 + 安全底座）。 */
     key: 'student-affairs',
     label: '学工中心',
     icon: '☰',
@@ -53,8 +55,7 @@ export const ADMIN_MENU = [
       // 侧栏才会渲染 navPlan 学工中心 14 二级；moduleCode 复用 STUDENT（在各角色白名单内）。
       { key: 'sa-home', label: '学工看板', path: '/admin/student-affairs', moduleCode: 'STUDENT', permissionKey: 'student.profile.view' },
       { key: 'sa-student', label: '学生画像', path: '/admin/student', moduleCode: 'STUDENT', permissionKey: 'student.profile.view' },
-      { key: 'sa-orientation', label: '数字迎新', path: '/admin/orientation', moduleCode: 'ORIENTATION', permissionKey: 'orientation.dashboard.view' },
-      { key: 'sa-campus', label: '在校服务', path: '/admin/campus-service', moduleCode: 'CAMPUS_SERVICE', permissionKey: 'campusService.dashboard.view' }
+      { key: 'sa-orientation', label: '数字迎新', path: '/admin/orientation', moduleCode: 'ORIENTATION', permissionKey: 'orientation.dashboard.view' }
     ]
   },
   {

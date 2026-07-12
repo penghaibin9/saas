@@ -119,6 +119,7 @@ async function rawRequest(path, { method = 'GET', params, body, auth = true, for
       const err = new Error(payload.message || `业务错误 ${payload.code}`)
       err.biz = true
       err.code = payload.code
+      err.bizCode = payload.bizCode           // NO_PERMISSION / NO_DATA_SCOPE：供页面渲染统一无权限/无范围态
       err.traceId = payload.traceId
       throw err
     }
@@ -367,6 +368,21 @@ export function withFallback(label, realFn, mockFn) {
     console.warn(`[realApi] ${label} 回退 mock：`, e.message)
     return mockFn()
   })
+}
+
+/**
+ * 统一 无权限 / 无数据范围 前端态文案（§10）。页面三态（AppGlobalState）据此渲染干净空态，
+ * 不白屏、不直出后端技术异常。返回 null 表示非权限/范围类错误，走各页常规错误处理。
+ */
+export function bizStateHint(err) {
+  const bc = err && (err.bizCode || '')
+  if (bc === 'NO_PERMISSION' || err?.code === 403001) {
+    return { kind: 'no-permission', title: '无访问权限', desc: '你的角色未开通该功能，请联系管理员。' }
+  }
+  if (bc === 'NO_DATA_SCOPE' || err?.code === 403002) {
+    return { kind: 'no-scope', title: '尚未配置管理范围', desc: '你还没有被分配可管理的班级/学院/楼栋，请联系管理员配置后再试。' }
+  }
+  return null
 }
 
 export async function realFirst(label, realFn, mockFn, { write = false } = {}) {
