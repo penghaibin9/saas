@@ -41,7 +41,7 @@ def _latest_published_batch(db):
 # ═══════════ 学生自视图 ═══════════
 
 def schedule_my(user) -> dict:
-    from app.services import academic_affairs_schedule_service as sched
+    from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched
     with session() as db:
         stu = _me(db, user)
         b = _latest_published_batch(db)
@@ -53,7 +53,7 @@ def schedule_my(user) -> dict:
 
 
 def transcript_my(user) -> dict:
-    from app.services import academic_affairs_grade_service as grade
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
     with session() as db:
         stu = _me(db, user)
         sid = stu.id
@@ -63,7 +63,7 @@ def transcript_my(user) -> dict:
 def status_my(user) -> dict:
     """我的学籍状态 + 我的异动记录。"""
     from app.models import AaStatusChange
-    from app.services.academic_affairs_status_service import is_enrolled
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
     with session() as db:
         stu = _me(db, user)
         rows = db.scalars(select(AaStatusChange).where(
@@ -79,7 +79,7 @@ def status_my(user) -> dict:
 
 def submit_status_change_my(user, body) -> dict:
     """学生本人发起异动申请（唯一学生写入口，只能给自己）。"""
-    from app.services import academic_affairs_change_service as change
+    from app.modules.academic_affairs.services import academic_affairs_change_service as change
     with session() as db:
         stu = _me(db, user)
         sid = stu.id
@@ -122,7 +122,7 @@ def exam_my(user) -> dict:
 # ═══════════ 教师端 ═══════════
 
 def teacher_schedule_my(user) -> dict:
-    from app.services import academic_affairs_schedule_service as sched
+    from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
     with session() as db:

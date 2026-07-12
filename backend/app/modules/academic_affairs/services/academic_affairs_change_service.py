@@ -12,7 +12,7 @@ from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.services.academic_affairs_status_service import (audit_status_change,
+from app.modules.academic_affairs.services.academic_affairs_status_service import (audit_status_change,
                                                           change_student_status, is_enrolled)
 from app.services.db_service import _iso, _tid, session
 

@@ -12,7 +12,7 @@ from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.services.academic_affairs_status_service import (audit_status_change,
+from app.modules.academic_affairs.services.academic_affairs_status_service import (audit_status_change,
                                                           change_student_status)
 from app.services.db_service import _iso, _mask_id_card, _tid, session
 
@@ -170,7 +170,7 @@ def list_time_slots(user):
 
 def roster(user, keyword=None, status=None, page=1, page_size=20):
     from app.models import StudentProfile
-    from app.services.academic_affairs_status_service import is_enrolled
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
     with session() as db:
         conds = [StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
         if status:

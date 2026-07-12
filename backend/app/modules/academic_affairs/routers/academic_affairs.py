@@ -8,15 +8,15 @@ from pydantic import BaseModel, Field
 
 from app.core.response import paginate, success
 from app.core.security import require_staff
-from app.services import academic_affairs_change_service as change_svc
-from app.services import academic_affairs_course_service as course_svc
-from app.services import academic_affairs_grade_service as grade_svc
-from app.services import academic_affairs_graduation_service as grad_svc
-from app.services import academic_affairs_program_service as prog_svc
-from app.services import academic_affairs_schedule_service as sched_svc
-from app.services import academic_affairs_warning_service as warn_svc
-from app.services import academic_affairs_service as svc
-from app.services import academic_affairs_task_service as task_svc
+from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
+from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
+from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
+from app.modules.academic_affairs.services import academic_affairs_graduation_service as grad_svc
+from app.modules.academic_affairs.services import academic_affairs_program_service as prog_svc
+from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
+from app.modules.academic_affairs.services import academic_affairs_warning_service as warn_svc
+from app.modules.academic_affairs.services import academic_affairs_service as svc
+from app.modules.academic_affairs.services import academic_affairs_task_service as task_svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
 

@@ -86,7 +86,7 @@ def test_r5_illegal_transition_422(client, db_mode):
     ids = _seed(db_mode)
     from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
-    from app.services.academic_affairs_status_service import change_student_status
+    from app.modules.academic_affairs.services.academic_affairs_status_service import change_student_status
     from app.core.exceptions import AppException
     set_tenant({"tenantId": str(TID)})
     db = get_sessionmaker()()
@@ -104,6 +104,6 @@ def test_r5_illegal_transition_422(client, db_mode):
 
 
 def test_r6_is_enrolled():
-    from app.services.academic_affairs_status_service import is_enrolled
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
     assert is_enrolled("REGISTERED") and is_enrolled("NORMAL") and is_enrolled("RETAINED")
     assert not is_enrolled("SUSPENDED") and not is_enrolled("WITHDRAWN") and not is_enrolled("GRADUATED")

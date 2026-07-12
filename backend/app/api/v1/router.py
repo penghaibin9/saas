@@ -12,7 +12,7 @@ from app.api.v1 import todo as todo_simple
 from app.api.v1 import mobile
 from app.api.v1 import notification
 from app.api.v1 import onboarding
-from app.api.v1 import academic_affairs
+from app.modules.academic_affairs.routers import academic_affairs
 from app.api.v1 import stats
 from app.api.v1 import student_affairs
 from app.api.v1 import internship_position  # 岗位库（独立 router，/internship/positions/*）
