@@ -161,13 +161,12 @@ def get_referral(user, ref_id, reason=None) -> dict:
 
 
 def student_summary(user, student_id) -> dict:
-    """心理预警摘要：仅"需关注"标记 + 风险等级摘要，不含任何明细（供非心理角色/画像消费）。"""
+    """心理预警摘要：仅"需关注"标记 + 风险等级摘要，不含任何明细（供非心理角色/画像消费）。
+    虽无明细，仍按调用者数据范围收敛：越租户→not_found、越范围→403002（心理老师仅授权 PSY_STUDENT）。"""
+    from app.core.affairs_security import build_affairs_context
     from app.models import AffairsRiskRecord, PsyReferral
     with session() as db:
-        scope = psy_scope_ids(db, user)
-        s = _stu(db, student_id)
-        if not s or s.is_deleted or s.tenant_id != _tid():
-            raise not_found("学生不存在")
+        s = build_affairs_context(user, db).require_student(db, student_id)
         refs = db.scalars(select(PsyReferral).where(
             PsyReferral.tenant_id == _tid(), PsyReferral.student_id == int(student_id),
             PsyReferral.is_deleted.is_(False))).all()
