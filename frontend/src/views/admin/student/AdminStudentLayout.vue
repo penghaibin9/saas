@@ -2,8 +2,6 @@
   <BasePortalLayout
     :title="brandTitle"
     subtitle="学工中心 · 学生画像"
-    :menus="menus"
-    :active-key="activeKey"
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
@@ -31,35 +29,16 @@ import { LoadingState } from '@/components/business'
 import { studentApi } from '@/modules/student/api/student.api'
 import { registerStudentRoutes } from '@/modules/student/student.routes'
 
-const MENUS = [
-  { key: 'stu-overview', label: '中心看板', icon: '◫', path: '/admin/student' },
-  { key: 'stu-list', label: '学生主档', icon: '☰', path: '/admin/student/list' },
-  { key: 'stu-status', label: '学籍状态', icon: '◐', path: '/admin/student/status' },
-  { key: 'stu-identity', label: '身份核验', icon: '◈', path: '/admin/student/identity' },
-  { key: 'stu-corrections', label: '信息更正审核', icon: '✎', path: '/admin/student/corrections' },
-  { key: 'stu-risk-tags', label: '风险标签', icon: '◔', path: '/admin/student/risk-tags' },
-  { key: 'stu-import-export', label: '导入导出', icon: '⇅', path: '/admin/student/import-export' }
-]
-
 export default {
   name: 'AdminStudentLayout',
   components: { BasePortalLayout, LoadingState },
   data() {
-    return { menus: MENUS, ctx: null, ctxVersion: 0 }
+    return { ctx: null, ctxVersion: 0 }
   },
   computed: {
     brandTitle() {
       if (!this.ctx) return '管理端'
       return this.ctx.tenantBrandConfig.schoolName + ' · 管理端'
-    },
-    activeKey() {
-      const path = this.$route.path
-      const hit = [...this.menus]
-        .sort((a, b) => b.path.length - a.path.length)
-        .find((m) => path === m.path || path.startsWith(m.path + '/'))
-      if (hit) return hit.key
-      // 详情页 /admin/student/:studentId 归于学生主档
-      return path.startsWith('/admin/student/') ? 'stu-list' : 'stu-overview'
     }
   },
   async created() {

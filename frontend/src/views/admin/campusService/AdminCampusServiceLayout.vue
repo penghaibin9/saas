@@ -2,8 +2,6 @@
   <BasePortalLayout
     :title="brandTitle"
     subtitle="学工中心 · 在校服务"
-    :menus="menus"
-    :active-key="activeKey"
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
@@ -31,38 +29,16 @@ import { LoadingState } from '@/components/business'
 import { getCampusServiceContext, switchCampusServiceRole } from '@/modules/campusService/api/campusService.api'
 import { toast } from '@/utils/toast'
 
-const MENUS = [
-  { key: 'cs-dashboard', label: '服务工作台', icon: '◫', path: '/admin/campus-service' },
-  { key: 'cs-students', label: '学生服务', icon: '☰', path: '/admin/campus-service/students' },
-  { key: 'cs-classes', label: '班级管理', icon: '❑', path: '/admin/campus-service/classes' },
-  { key: 'cs-counselor-eval', label: '辅导员考评', icon: '✦', path: '/admin/campus-service/counselor-assessment' },
-  { key: 'cs-leave', label: '请假审批', icon: '✈', path: '/admin/campus-service/leave' },
-  { key: 'cs-leave-ext', label: '延期销假', icon: '↺', path: '/admin/campus-service/leave-extensions' },
-  { key: 'cs-leave-ledger', label: '请假台账', icon: '▤', path: '/admin/campus-service/leave-ledger' },
-  { key: 'cs-leave-stats', label: '请假统计', icon: '◔', path: '/admin/campus-service/leave-stats' },
-  { key: 'cs-grants', label: '奖助资助', icon: '❖', path: '/admin/campus-service/grants' },
-  { key: 'cs-dorm', label: '宿舍服务', icon: '⌂', path: '/admin/campus-service/dormitory' },
-  { key: 'cs-discipline', label: '违纪处分', icon: '§', path: '/admin/campus-service/discipline' },
-  { key: 'cs-workorders', label: '服务工单', icon: '✎', path: '/admin/campus-service/work-orders' }
-]
-
 export default {
   name: 'AdminCampusServiceLayout',
   components: { BasePortalLayout, LoadingState },
   data() {
-    return { menus: MENUS, ctx: null }
+    return { ctx: null }
   },
   computed: {
     brandTitle() {
       if (!this.ctx) return '管理端'
       return this.ctx.tenantBrandConfig.schoolName + ' · 管理端'
-    },
-    activeKey() {
-      const path = this.$route.path
-      const hit = [...this.menus]
-        .sort((a, b) => b.path.length - a.path.length)
-        .find((m) => path === m.path || path.startsWith(m.path + '/'))
-      return hit ? hit.key : 'cs-dashboard'
     }
   },
   async created() {
