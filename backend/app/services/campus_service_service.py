@@ -55,10 +55,34 @@ def _amt_range(v):
     return f"{lo}-{lo + 1000} 元"
 
 
+def _cs_scope_student_ids(db):
+    """当前调用者可见的 CsServiceStudent.id 集合。None=TENANT_ALL(不过滤)；set()=fail-closed(看不到)。
+    与 student_affairs 共用 StudentAffairsSecurityContext，保证「在校服务」legacy 面与新学工面同一数据范围口径
+    （未配范围的辅导员在两处都 fail-closed，绝不回退全租户）。宿舍域按楼栋范围另判，不走此班级口径。"""
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(get_current_user_ctx() or {}, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return None
+    names = ctx.allowed_class_names(db)
+    if not names:
+        return set()
+    rows = db.scalars(select(CsServiceStudent.id).where(
+        CsServiceStudent.tenant_id == _tid(), CsServiceStudent.class_name.in_(list(names)))).all()
+    return set(rows)
+
+
+def _require_cs_scope(db, cs_student_id, scope_ids="__q__"):
+    """记录级数据范围校验：越范围→403002 NO_DATA_SCOPE。scope_ids 传入可复用（省重复查）。"""
+    ids = _cs_scope_student_ids(db) if scope_ids == "__q__" else scope_ids
+    if ids is not None and cs_student_id is not None and int(cs_student_id) not in ids:
+        raise AppException("NO_DATA_SCOPE", "该记录不在您的数据范围内")
+
+
 def _get_stu(db, sid) -> CsServiceStudent:
     s = db.get(CsServiceStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("学生服务记录不存在或不在当前数据范围内")
+    _require_cs_scope(db, s.id)
     return s
 
 
@@ -85,6 +109,9 @@ def list_students(page, page_size, keyword=None, class_id=None, care_level=None,
         q = select(CsServiceStudent).where(CsServiceStudent.tenant_id == _tid(),
                                            CsServiceStudent.is_deleted.is_(False),
                                            CsServiceStudent.record_status == "ACTIVE")
+        scope_ids = _cs_scope_student_ids(db)
+        if scope_ids is not None:
+            q = q.where(CsServiceStudent.id.in_(scope_ids or {-1}))
         if class_id:
             q = q.where(CsServiceStudent.class_id == class_id)
         if care_level:
@@ -185,8 +212,11 @@ def list_leaves(page, page_size, keyword=None, type=None, status=None):
         if status:
             q = q.where(CsLeave.status == status)
         rows = db.scalars(q.order_by(CsLeave.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
         items = []
         for x in rows:
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
             stu = _stu_of(db, x.cs_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
@@ -199,6 +229,7 @@ def get_leave_detail(lid) -> dict:
         x = db.get(CsLeave, int(lid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("请假申请不存在")
+        _require_cs_scope(db, x.cs_student_id)
         stu = _stu_of(db, x.cs_student_id)
         hist = db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
                           CsLeave.cs_student_id == x.cs_student_id,
@@ -214,6 +245,7 @@ def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=Non
         x = db.get(CsLeave, int(lid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("请假申请不存在")
+        _require_cs_scope(db, x.cs_student_id)
         if x.status in ("APPROVED", "RETURNED"):
             raise AppException("DATA_CONFLICT", "该请假已处理，请刷新")
         before = x.status
@@ -272,8 +304,11 @@ def list_grants(page, page_size, keyword=None, type=None, status=None):
         if status:
             q = q.where(CsGrant.status == status)
         rows = db.scalars(q.order_by(CsGrant.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
         items = []
         for x in rows:
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
             stu = _stu_of(db, x.cs_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
@@ -286,6 +321,7 @@ def get_grant_detail(gid) -> dict:
         x = db.get(CsGrant, int(gid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("资助申请不存在")
+        _require_cs_scope(db, x.cs_student_id)
         stu = _stu_of(db, x.cs_student_id)
         return {"grant": _grant_row(x, stu, mask=False), "student": _stu_row(stu) if stu else None}
 
@@ -297,6 +333,7 @@ def _grant_act(gid, target, need_reason=False, reason=None, node="", action=""):
         x = db.get(CsGrant, int(gid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("资助申请不存在")
+        _require_cs_scope(db, x.cs_student_id)
         if x.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该资助已终审，请刷新")
         before = x.status
@@ -444,8 +481,11 @@ def list_disciplines(page, page_size, keyword=None, type=None, status=None):
         if status:
             q = q.where(CsDiscipline.status == status)
         rows = db.scalars(q.order_by(CsDiscipline.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
         items = []
         for x in rows:
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
             stu = _stu_of(db, x.cs_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
@@ -475,6 +515,7 @@ def update_discipline(did, body: dict) -> dict:
         d = db.get(CsDiscipline, int(did))
         if not d or d.is_deleted or d.tenant_id != _tid():
             raise not_found("处分记录不存在")
+        _require_cs_scope(db, d.cs_student_id)
         if body.get("status") == "REVOKED":
             d.status = "REVOKED"
             d.revoke_date = datetime.utcnow()
@@ -495,6 +536,7 @@ def void_discipline(did, reason) -> dict:
         d = db.get(CsDiscipline, int(did))
         if not d or d.is_deleted or d.tenant_id != _tid():
             raise not_found("处分记录不存在")
+        _require_cs_scope(db, d.cs_student_id)
         d.record_status = "VOIDED"
         d.void_reason = reason.strip()
         d.is_deleted = True

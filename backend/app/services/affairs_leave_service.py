@@ -839,6 +839,12 @@ def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=Non
     with session() as db:
         _audit(db, None, "EXPORT", f"rows={packed.get('rowCount', len(export_items))}")
         db.commit()
+    # 敏感导出安全审计（t_security_audit_log）：导出含学号/事由等个人信息，落 SENSITIVE_EXPORT。
+    from app.services.db_service import audit_insert
+    audit_insert("SENSITIVE_EXPORT", "leave_ledger",
+                 {"rows": packed.get("rowCount", len(export_items)),
+                  "filters": {"status": status, "leaveType": leave_type, "classId": class_id,
+                              "keyword": keyword}}, "SUCCESS")
     return packed
 
 

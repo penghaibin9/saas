@@ -167,3 +167,63 @@ def test_sensitive_psy_scope_and_audit(client, db_mode):
     # 未授权学生 D → 403（不得通过 id 绕过）
     rd = client.get(f"{BASE}/mental/students/{ids['D']}/summary", headers=hdr)
     assert rd.status_code == 403
+
+
+# ════════════ 五、兼容层一致（legacy campus_service 同一范围口径） ════════════
+
+def _seed_campus(db_mode, counselor_scope=True):
+    """在 _base 之上补 CsServiceStudent：软件2101(在辅导员范围) + 机械2101(范围外)。"""
+    ids = _base(db_mode, counselor_scope=counselor_scope)
+    from app.db.session import get_sessionmaker
+    from app.models import CsServiceStudent
+    db = get_sessionmaker()()
+    try:
+        in_scope = CsServiceStudent(tenant_id=TID, name="校服甲", student_no="A001",
+                                    class_id="CLA", class_name="软件2101", record_status="ACTIVE")
+        out_scope = CsServiceStudent(tenant_id=TID, name="校服丙", student_no="C001",
+                                     class_id="CLC", class_name="机械2101", record_status="ACTIVE")
+        db.add_all([in_scope, out_scope]); db.commit()
+        ids["csIn"], ids["csOut"] = in_scope.id, out_scope.id
+        return ids
+    finally:
+        db.close()
+
+
+def _hdr_login(client, login):
+    return _hdr(client, login)
+
+
+def test_legacy_campus_scope_consistency(client, db_mode):
+    """兼容层一致：/campus-service/students 与新学工面共用范围。
+    配班辅导员只见本班校服记录、TENANT_ALL 全见、未配辅导员 fail-closed 看 0。"""
+    ids = _seed_campus(db_mode)
+    CS = "/api/v1/campus-service/students"
+    # 配班辅导员：只见 软件2101 的校服记录，不见 机械2101
+    r = client.get(CS, headers=_hdr(client, "counselor01")).json()
+    got = {it["id"] for it in r["data"]["items"]}
+    assert str(ids["csIn"]) in got and str(ids["csOut"]) not in got, got
+    # 学工处管理员（TENANT_ALL）两条都见
+    ra = client.get(CS, headers=_hdr(client, "sa_admin01")).json()
+    assert ra["data"]["total"] >= 2
+
+
+def test_legacy_campus_unconfigured_fail_closed(client, db_mode):
+    ids = _seed_campus(db_mode, counselor_scope=False)
+    r = client.get("/api/v1/campus-service/students", headers=_hdr(client, "counselor01")).json()
+    assert r["data"]["total"] == 0, "未配范围辅导员在 legacy 面同样 fail-closed"
+
+
+# ════════════ 六、敏感导出审计 ════════════
+
+def test_leave_export_sensitive_audit(client, db_mode):
+    _base(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import SecurityAuditLog
+    r = client.post(f"{BASE}/leave/export", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200
+    db = get_sessionmaker()()
+    try:
+        n = db.query(SecurityAuditLog).filter_by(action="SENSITIVE_EXPORT").count()
+    finally:
+        db.close()
+    assert n >= 1, "请假台账导出必须落 SENSITIVE_EXPORT 安全审计"
