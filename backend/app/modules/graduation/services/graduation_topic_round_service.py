@@ -272,7 +272,11 @@ def confirm_choice(choice_id, operator_name: str = "") -> dict:
     """教师/管理员·确认志愿：录入该学生到题目（复用 assign_topic 校验+容量），
     并把该生在同一轮次内其余 PENDING 志愿自动关闭为 REJECTED（一人一题，避免重复处理）。"""
     with session() as db:
-        c = db.get(GraduationTopicChoice, int(choice_id))
+        c = db.scalars(select(GraduationTopicChoice).where(
+            GraduationTopicChoice.id == int(choice_id),
+            GraduationTopicChoice.tenant_id == _tid(),
+            GraduationTopicChoice.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("志愿不存在")
         _assert_choice_decision_access(db, c, "topic.choice.confirm")
@@ -280,15 +284,15 @@ def confirm_choice(choice_id, operator_name: str = "") -> dict:
             raise AppException("DATA_CONFLICT",
                                f"仅待确认志愿可确认（当前：{CHOICE_LABEL.get(c.status, c.status)}）")
         gd_student_id, topic_id, round_id = c.gd_student_id, c.topic_id, c.round_id
-    # assign_topic 自带容量/审核态校验 + 独立事务提交
-    gd_stu_svc.assign_topic(str(gd_student_id), str(topic_id), relationship_authorized=True)
-    with session() as db:
-        c = db.get(GraduationTopicChoice, int(choice_id))
+        gd_stu_svc.assign_topic_in_session(
+            db, str(gd_student_id), str(topic_id), relationship_authorized=True
+        )
         c.status = "CONFIRMED"
         others = db.scalars(select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == round_id,
             GraduationTopicChoice.gd_student_id == gd_student_id, GraduationTopicChoice.id != c.id,
-            GraduationTopicChoice.is_deleted.is_(False), GraduationTopicChoice.status == "PENDING")).all()
+            GraduationTopicChoice.is_deleted.is_(False), GraduationTopicChoice.status == "PENDING")
+            .with_for_update()).all()
         for o in others:
             o.status = "REJECTED"
         _audit(db, round_id, "CONFIRM_CHOICE",
@@ -302,7 +306,11 @@ def confirm_choice(choice_id, operator_name: str = "") -> dict:
 def reject_choice(choice_id, reason: str = "", operator_name: str = "") -> dict:
     """教师/管理员·驳回志愿：不落定分配，学生可等待其余志愿或重新提交。"""
     with session() as db:
-        c = db.get(GraduationTopicChoice, int(choice_id))
+        c = db.scalars(select(GraduationTopicChoice).where(
+            GraduationTopicChoice.id == int(choice_id),
+            GraduationTopicChoice.tenant_id == _tid(),
+            GraduationTopicChoice.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("志愿不存在")
         _assert_choice_decision_access(db, c, "topic.choice.reject")
@@ -322,17 +330,25 @@ def match_round(round_id) -> dict:
     if not has_full_scope():
         raise no_permission("Only graduation managers can execute automatic topic matching")
     with session() as db:
-        r = _get_round(db, round_id)
+        r = db.scalars(select(GraduationTopicRound).where(
+            GraduationTopicRound.id == int(round_id),
+            GraduationTopicRound.tenant_id == _tid(),
+            GraduationTopicRound.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not r:
+            raise not_found("选题轮次不存在")
         if r.status not in ("OPEN", "CLOSED"):
             raise AppException("DATA_CONFLICT", "仅进行中或已关闭轮次可执行匹配")
         pending = db.scalars(select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
-            GraduationTopicChoice.is_deleted.is_(False), GraduationTopicChoice.status == "PENDING")).all()
+            GraduationTopicChoice.is_deleted.is_(False), GraduationTopicChoice.status == "PENDING")
+            .with_for_update()).all()
         if not pending:
             raise AppException("DATA_CONFLICT", "暂无待匹配志愿")
         topic_ids = {c.topic_id for c in pending}
         topics = {t.id: t for t in db.scalars(select(GraduationTopic).where(
-            GraduationTopic.id.in_(topic_ids))).all()}
+            GraduationTopic.tenant_id == _tid(), GraduationTopic.id.in_(topic_ids))
+            .order_by(GraduationTopic.id).with_for_update()).all()}
         remaining = {tid: max(0, int(topics[tid].capacity) - int(topics[tid].selected or 0))
                      for tid in topic_ids if tid in topics}
         payload = [{"id": c.id, "gd_student_id": int(c.gd_student_id), "topic_id": int(c.topic_id),
@@ -343,8 +359,8 @@ def match_round(round_id) -> dict:
         errors: list[str] = []
         for w in winners:
             try:
-                gd_stu_svc.assign_topic(
-                    str(w["gd_student_id"]), str(w["topic_id"]), relationship_authorized=True
+                gd_stu_svc.assign_topic_in_session(
+                    db, str(w["gd_student_id"]), str(w["topic_id"]), relationship_authorized=True
                 )
                 matched += 1
                 success_ids.add(int(w["id"]))
@@ -352,12 +368,7 @@ def match_round(round_id) -> dict:
                 errors.append(str(e.message if hasattr(e, "message") else e))
             except Exception as e:
                 errors.append(str(e))
-    with session() as db:
-        r = _get_round(db, round_id)
-        choices = db.scalars(select(GraduationTopicChoice).where(
-            GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
-            GraduationTopicChoice.is_deleted.is_(False), GraduationTopicChoice.status == "PENDING")).all()
-        for c in choices:
+        for c in pending:
             c.status = "MATCHED" if int(c.id) in success_ids else "UNMATCHED"
         r.status = "MATCHED"
         _audit(db, round_id, "MATCH", f"匹配成功 {matched} 人")

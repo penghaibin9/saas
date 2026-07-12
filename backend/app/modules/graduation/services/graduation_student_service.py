@@ -57,6 +57,18 @@ def _get(db, sid) -> GraduationStudent:
     return s
 
 
+def _get_for_update(db, sid) -> GraduationStudent:
+    s = db.scalars(select(GraduationStudent).where(
+        GraduationStudent.id == int(sid),
+        GraduationStudent.tenant_id == _tid(),
+        GraduationStudent.is_deleted.is_(False),
+        GraduationStudent.record_status == "ACTIVE",
+    ).with_for_update()).first()
+    if not s:
+        raise not_found("毕设学生记录不存在或不在当前数据范围内")
+    return s
+
+
 def _rate_over(r, threshold=30):
     try:
         return float(str(r).replace("%", "")) > threshold
@@ -319,56 +331,81 @@ def update_student_record(sid, body) -> dict:
 
 # ═══════════ 学生-选题分配（选题库 selected 收口）═══════════
 
+def assign_topic_in_session(db, sid, topic_id, *, relationship_authorized: bool = False) -> GraduationStudent:
+    """Assign under row locks. Caller owns commit, allowing larger workflows to stay atomic."""
+    # Lock order is topic -> student across both direct assignment and round matching.
+    # A stable order prevents capacity oversubscription and reduces deadlock risk.
+    t = db.scalars(select(GraduationTopic).where(
+        GraduationTopic.id == int(topic_id),
+        GraduationTopic.tenant_id == _tid(),
+        GraduationTopic.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if not t:
+        raise not_found("选题不存在或不在当前数据范围内")
+    s = _get_for_update(db, sid)
+    if not relationship_authorized:
+        assert_student_access(db, s, "student.assign_topic")
+    if s.stage == "ARCHIVED":
+        raise AppException("DATA_CONFLICT", "已归档记录不可分配选题")
+    if s.topic_id == t.id:
+        raise AppException("DATA_CONFLICT", "该学生已分配到此选题")
+    if t.status == "DISABLED":
+        raise AppException("DATA_CONFLICT", "已停用选题不可分配")
+    if getattr(t, "review_status", "APPROVED") != "APPROVED" or t.status != "CONFIRMED":
+        raise AppException("DATA_CONFLICT", "仅「已审核入池」选题可分配")
+    if int(t.selected or 0) >= int(t.capacity or 0):
+        raise AppException("DATA_CONFLICT", "该选题已满员，不能再分配")
+    if s.topic_id:
+        old = db.scalars(select(GraduationTopic).where(
+            GraduationTopic.id == s.topic_id,
+            GraduationTopic.tenant_id == _tid(),
+        ).with_for_update()).first()
+        if old and old.selected > 0:
+            old.selected -= 1
+            old.version += 1
+    s.topic_id = t.id
+    s.topic_title = t.title
+    s.topic_source = t.source or ""
+    if not s.advisor_name and t.advisor_name:
+        s.advisor_name = t.advisor_name
+    if s.stage == "TOPIC_SELECTING":
+        s.stage = "TASKBOOK_CONFIRM"
+    t.selected = int(t.selected or 0) + 1
+    s.version += 1
+    t.version += 1
+    _audit(db, s.id, "ASSIGN_TOPIC", t.title, "", str(t.id))
+    return s
+
+
 def assign_topic(sid, topic_id, *, relationship_authorized: bool = False) -> dict:
     with session() as db:
-        s = _get(db, sid)
-        if not relationship_authorized:
-            assert_student_access(db, s, "student.assign_topic")
-        if s.stage == "ARCHIVED":
-            raise AppException("DATA_CONFLICT", "已归档记录不可分配选题")
-        t = db.get(GraduationTopic, int(topic_id))
-        if not t or t.is_deleted or t.tenant_id != _tid():
-            raise not_found("选题不存在或不在当前数据范围内")
-        if s.topic_id == t.id:
-            raise AppException("DATA_CONFLICT", "该学生已分配到此选题")
-        if t.status == "DISABLED":
-            raise AppException("DATA_CONFLICT", "已停用选题不可分配")
-        if getattr(t, "review_status", "APPROVED") != "APPROVED" or t.status != "CONFIRMED":
-            raise AppException("DATA_CONFLICT", "仅「已审核入池」选题可分配")
-        if t.selected >= t.capacity:
-            raise AppException("DATA_CONFLICT", "该选题已满员，不能再分配")
-        if s.topic_id:
-            old = db.get(GraduationTopic, s.topic_id)
-            if old and old.selected > 0:
-                old.selected -= 1
-        s.topic_id = t.id
-        s.topic_title = t.title
-        s.topic_source = t.source or ""
-        if not s.advisor_name and t.advisor_name:
-            s.advisor_name = t.advisor_name
-        if s.stage == "TOPIC_SELECTING":
-            s.stage = "TASKBOOK_CONFIRM"
-        t.selected += 1
-        _audit(db, s.id, "ASSIGN_TOPIC", t.title, "", str(t.id))
+        s = assign_topic_in_session(
+            db, sid, topic_id, relationship_authorized=relationship_authorized
+        )
         db.commit()
         return _row_of(db, s)
 
 
 def unassign_topic(sid, reason: str = "") -> dict:
     with session() as db:
-        s = _get(db, sid)
+        s = _get_for_update(db, sid)
         assert_student_access(db, s, "student.unassign_topic")
         if not s.topic_id:
             raise AppException("DATA_CONFLICT", "该学生未分配选题")
         if s.stage not in ("TOPIC_SELECTING", "TASKBOOK_CONFIRM"):
             raise AppException("DATA_CONFLICT", "已进入指导阶段，不能退选（需走选题调整流程）")
-        t = db.get(GraduationTopic, s.topic_id)
+        t = db.scalars(select(GraduationTopic).where(
+            GraduationTopic.id == s.topic_id,
+            GraduationTopic.tenant_id == _tid(),
+        ).with_for_update()).first()
         if t and t.selected > 0:
             t.selected -= 1
+            t.version += 1
         s.topic_id = None
         s.topic_title = None
         s.topic_source = None
         s.stage = "TOPIC_SELECTING"
+        s.version += 1
         _audit(db, s.id, "UNASSIGN_TOPIC", reason or "退选")
         db.commit()
         return _row_of(db, s)
