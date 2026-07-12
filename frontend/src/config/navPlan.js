@@ -25,7 +25,6 @@ function P(...labels) {
   return labels.map((label) => ({ label, status: 'planned', disabled: true, badge: '待施工' }))
 }
 /** 待补强叶子（有旧页面但能力较浅，可点击进旧页面） */
-// eslint-disable-next-line no-unused-vars
 function PA(label, path) {
   return { label, path, status: 'partial', disabled: false, badge: '待补强' }
 }
@@ -303,64 +302,135 @@ export const NAV_PLAN = [
     ])
   ]),
 
-  /* ═══════════ 一级⑤：岗位实习中心（固定12个二级模块）═══════════
-   * 收口规则（2026-07-10 信息架构收口）：
-   * 1) 三级只挂真实、独立、高频的工作队列；同一页面的状态/类型/方式/流程环节一律页内 Tab 或筛选，不再平铺菜单；
-   * 2) 详情页、依赖对象 ID 的页面、低频设置页不进正常菜单（H 隐藏叶子仅保留归属高亮，入口在页内）；
-   * 3) 每个二级模块本身可点击，落到该模块业务主页；
-   * 4) 旧 ?panel= 菜单地址仍是真实路由，刷新/书签不受影响。 */
+  /* ═══════════ 一级⑤：岗位实习中心（12个二级）═══════════
+   * 2026-07-12 甲方拍板「菜单全展开」：本组 1:1 对齐 施工图-05-岗位实习中心（12二级×99三级）。
+   * 已实现=I(真实路由)，待补强=PA(灰橙「待补强」，可点进现有页/所属工作区)。
+   * 多个三级指向同一页面（状态/类型/流程变体）由 §9.4 唯一 leafKey 高亮/点击支持；?panel= 为真实路由。
+   * 二级 key 不变（供 rail/adminMenu 兼容），仅 label 改为施工图名。 */
   grp('internship', '岗位实习中心', 'internship', [
-    // 今日工作：总览·待办·风险提醒为同一聚合页的区块，只保留一个入口
-    mod('in-workbench', '今日工作', '/admin/internship', []),
-    // 实习批次设置：批次列表即模块主页；阶段/打卡/周报/指导/评价/成绩规则在批次详情与编辑抽屉维护
-    mod('in-batch-rules', '实习批次设置', '/admin/internship/batches', []),
-    mod('in-students', '学生实习管理', '/admin/internship/students', [
-      I('学生名单', '/admin/internship/students?panel=roster'),
-      I('资格认定', '/admin/internship/students?panel=eligibility'),
+    mod('in-workbench', '实习工作台', '/admin/internship', [
+      I('实习总览', '/admin/internship'),
+      PA('当前批次进度', '/admin/internship'),
+      PA('我的待办', '/admin/internship'),
+      I('风险提醒', '/admin/internship/risks'),
+      PA('数据趋势', '/admin/internship/stats')
+    ]),
+    mod('in-batch-rules', '批次与规则', '/admin/internship/batches', [
+      I('批次列表', '/admin/internship/batches'),
+      I('批次详情', '/admin/internship/batches'),
+      I('阶段配置', '/admin/internship/batches'),
+      I('打卡规则', '/admin/internship/batches'),
+      I('周报规则', '/admin/internship/batches'),
+      I('指导规则', '/admin/internship/batches'),
+      I('评价规则', '/admin/internship/batches'),
+      I('成绩规则', '/admin/internship/batches')
+    ]),
+    mod('in-students', '实习学生', '/admin/internship/students', [
+      I('实习名单', '/admin/internship/students?panel=roster'),
+      I('实习资格认定', '/admin/internship/students?panel=eligibility'),
+      I('学生实习状态', '/admin/internship/students'),
+      I('学生实习详情', '/admin/internship/students'),
+      I('学生材料', '/admin/internship/students'),
       H('实习保险核验', '/admin/internship/insurance')
     ]),
-    mod('in-enterprise-position', '企业岗位库', '/admin/internship/enterprises', [
-      I('企业管理', '/admin/internship/enterprises'),
-      I('岗位管理', '/admin/internship/positions')
+    mod('in-enterprise-position', '企业与岗位', '/admin/internship/enterprises', [
+      I('企业列表', '/admin/internship/enterprises'),
+      I('企业详情', '/admin/internship/enterprises'),
+      I('企业联系人', '/admin/internship/enterprises'),
+      I('企业导师', '/admin/internship/enterprises'),
+      I('企业资质审核', '/admin/internship/enterprises'),
+      PA('企业黑名单', '/admin/internship/enterprises'),
+      I('岗位列表', '/admin/internship/positions'),
+      I('岗位详情', '/admin/internship/positions'),
+      I('岗位发布', '/admin/internship/positions'),
+      I('岗位专业匹配', '/admin/internship/positions')
     ]),
-    mod('in-match-assign', '岗位与导师分配', '/admin/internship/match', [
-      I('岗位与导师分配', '/admin/internship/match'),
-      I('调岗退岗台账', '/admin/internship/changes')
+    mod('in-match-assign', '匹配与分配', '/admin/internship/match', [
+      I('学生意向', '/admin/internship/match?panel=intention'),
+      I('岗位推荐', '/admin/internship/match'),
+      I('手动匹配', '/admin/internship/match'),
+      I('批量匹配', '/admin/internship/match'),
+      I('匹配冲突', '/admin/internship/match'),
+      I('匹配结果', '/admin/internship/match'),
+      I('指导老师分配', '/admin/internship/match'),
+      I('调岗退岗', '/admin/internship/changes'),
+      I('分配日志', '/admin/internship/match')
     ]),
-    mod('in-apply-agreement', '申请与协议办理', '/admin/internship/agreements', [
-      I('申请审核', '/admin/internship/agreements?panel=student-apply'),
-      I('协议办理', '/admin/internship/agreements?panel=issue'),
-      H('协议模板', '/admin/internship/agreement-templates')
+    mod('in-apply-agreement', '申请与协议', '/admin/internship/agreements', [
+      PA('学生申请', '/admin/internship/agreements?panel=student-apply'),
+      PA('自主实习申请', '/admin/internship/agreements'),
+      PA('岗位申请', '/admin/internship/agreements'),
+      PA('审核台账', '/admin/internship/agreements'),
+      I('协议模板', '/admin/internship/agreement-templates'),
+      I('协议发起', '/admin/internship/agreements?panel=issue'),
+      I('三方确认', '/admin/internship/agreements'),
+      I('协议变更', '/admin/internship/agreements'),
+      I('协议归档', '/admin/internship/agreements')
     ]),
-    mod('in-attendance-leave', '打卡请假处理', '/admin/internship/attendance', [
-      I('打卡台账', '/admin/internship/attendance'),
-      I('异常处理', '/admin/internship/exceptions'),
-      I('请假审批', '/admin/internship/leaves')
+    mod('in-attendance-leave', '打卡与请假', '/admin/internship/attendance', [
+      I('打卡记录', '/admin/internship/attendance'),
+      I('补卡申请', '/admin/internship/exceptions'),
+      I('补卡审批', '/admin/internship/exceptions'),
+      I('缺卡异常', '/admin/internship/exceptions'),
+      I('连续未打卡', '/admin/internship/exceptions'),
+      I('实习请假', '/admin/internship/leaves'),
+      I('请假审批', '/admin/internship/leaves'),
+      I('销假管理', '/admin/internship/leaves'),
+      I('超期未归', '/admin/internship/exceptions')
     ]),
-    mod('in-weekly-task', '周报任务批阅', '/admin/internship/reports', [
-      I('报告批阅', '/admin/internship/reports'),
-      I('任务与计划', '/admin/internship/plans'),
-      H('过程报告批阅', '/admin/internship/process-reports')
+    mod('in-weekly-task', '周报与任务', '/admin/internship/reports', [
+      PA('实习计划', '/admin/internship/plans'),
+      PA('实习任务', '/admin/internship/plans'),
+      PA('日报提交', '/admin/internship/reports'),
+      I('周报提交', '/admin/internship/reports'),
+      PA('月报提交', '/admin/internship/reports'),
+      I('周报批阅', '/admin/internship/reports'),
+      I('周报退回', '/admin/internship/reports'),
+      PA('周报问题', '/admin/internship/reports')
     ]),
-    mod('in-guidance-visit', '指导巡访管理', '/admin/internship/guidance', [
+    mod('in-guidance-visit', '指导与巡访', '/admin/internship/guidance', [
+      PA('指导计划', '/admin/internship/guidance-plan'),
       I('指导记录', '/admin/internship/guidance?panel=guidance'),
-      I('巡访管理', '/admin/internship/guidance?panel=visit'),
-      I('整改跟进', '/admin/internship/guidance?panel=rectify'),
-      H('指导计划', '/admin/internship/guidance-plan')
+      I('企业沟通', '/admin/internship/guidance'),
+      PA('指导不足预警', '/admin/internship/guidance'),
+      PA('巡访计划', '/admin/internship/guidance?panel=visit'),
+      I('巡访记录', '/admin/internship/guidance?panel=visit'),
+      I('巡访问题', '/admin/internship/guidance'),
+      I('整改跟进', '/admin/internship/guidance?panel=rectify')
     ]),
-    mod('in-risk', '风险异常处置', '/admin/internship/risks', [
+    mod('in-risk', '风险处置', '/admin/internship/risks', [
       I('风险看板', '/admin/internship/risks'),
-      I('风险处置', '/admin/internship/risk-disposal')
+      I('未落实岗位', '/admin/internship/risks'),
+      I('长期未打卡', '/admin/internship/risks'),
+      I('周报逾期', '/admin/internship/risks'),
+      I('离岗异常', '/admin/internship/risks'),
+      I('企业投诉', '/admin/internship/risks'),
+      I('安全风险', '/admin/internship/risks'),
+      I('实习中断', '/admin/internship/risks'),
+      I('风险处置', '/admin/internship/risk-disposal'),
+      I('风险跟进', '/admin/internship/risk-disposal'),
+      I('风险关闭', '/admin/internship/risk-disposal')
     ]),
-    mod('in-eval-score', '评价成绩审核', '/admin/internship/enterprise-evals', [
-      I('评价管理', '/admin/internship/enterprise-evals'),
+    mod('in-eval-score', '评价与成绩', '/admin/internship/enterprise-evals', [
+      I('企业评价', '/admin/internship/enterprise-evals'),
+      I('学生自评', '/admin/internship/student-evals'),
+      PA('学生对企业评价', '/admin/internship/student-evals'),
+      PA('学生对岗位评价', '/admin/internship/student-evals'),
+      I('指导老师评价', '/admin/internship/student-evals'),
       I('综合成绩', '/admin/internship/scores'),
-      H('学生自评与教师评价', '/admin/internship/student-evals')
+      I('成绩审核', '/admin/internship/scores'),
+      I('成绩发布', '/admin/internship/scores'),
+      I('成绩复核', '/admin/internship/scores')
     ]),
-    // 归档与统计：就业跟进属就业中心，本轮不在实习菜单挂跨中心入口（搜索仍可达 /admin/employment）
-    mod('in-employment-archive-stats', '归档与统计', '/admin/internship/archive', [
-      I('实习归档', '/admin/internship/archive'),
-      I('实习统计', '/admin/internship/stats')
+    mod('in-employment-archive-stats', '就业转化与归档统计', '/admin/internship/archive', [
+      I('就业跟进', '/admin/employment'),
+      I('未就业帮扶', '/admin/employment'),
+      PA('实习归档', '/admin/internship/archive'),
+      PA('实习档案包', '/admin/internship/archive'),
+      PA('实习统计', '/admin/internship/stats'),
+      PA('企业统计', '/admin/internship/stats'),
+      I('岗位统计', '/admin/internship/stats'),
+      PA('学生成绩统计', '/admin/internship/stats')
     ])
   ]),
 
