@@ -2,7 +2,7 @@
   <ModulePageShell title="指导巡访管理" subtitle="记录指导教师联系学生、企业沟通、现场巡访和问题整改情况 · 指导记录 · 教师巡访 · 安全隐患整改跟进"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppPermissionButton code="internship.guidance.create" variant="primary" @click="goCreate">＋ 新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</AppPermissionButton>
+      <AppPermissionButton code="internship.guidance.manage" :allowed="canBtn('internship.guidance.manage')" variant="primary" @click="goCreate">＋ 新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</AppPermissionButton>
       <AppButton variant="ghost" @click="$router.push('/admin/internship/guidance-plan')">指导计划</AppButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
@@ -88,9 +88,9 @@
             </div>
 
             <div v-if="tab === 'guidance' || detail.data.rectifyStatus === 'PENDING'" class="gv-foot">
-              <AppPermissionButton v-if="tab === 'guidance'" code="internship.guidance.void" variant="ghost" :danger="true"
+              <AppPermissionButton v-if="tab === 'guidance'" code="internship.guidance.manage" :allowed="canBtn('internship.guidance.manage')" variant="ghost" :danger="true"
                 @click="openVoid(detail.data)">撤销</AppPermissionButton>
-              <AppPermissionButton v-if="tab === 'visit' && detail.data.rectifyStatus === 'PENDING'" code="internship.visit.rectify" variant="secondary"
+              <AppPermissionButton v-if="tab === 'visit' && detail.data.rectifyStatus === 'PENDING'" code="internship.visit.manage" :allowed="canBtn('internship.visit.manage')" variant="secondary"
                 @click="openRectify(detail.data)">整改跟进</AppPermissionButton>
             </div>
           </template>
@@ -117,6 +117,7 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 /* 右栏只渲染详情接口真实返回字段（/internship/guidances/{id}、/internship/visits/{id}） */
@@ -148,6 +149,7 @@ const TAB_PANEL = { guidance: 'guidance', visit: 'visit' }
 
 export default {
   name: 'GuidanceVisitView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
     AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview },
@@ -228,6 +230,7 @@ export default {
     }
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.guidance
       const cfg = preset()

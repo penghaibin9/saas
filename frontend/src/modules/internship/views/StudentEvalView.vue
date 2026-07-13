@@ -76,7 +76,7 @@
                     <AppTextarea v-model="cmtForm.mentorOpinion" :rows="3" placeholder="企业导师对学生的意见" />
                   </AppFormItem>
                   <div class="cmt__actions">
-                    <AppPermissionButton code="internship.studentEval.comment" variant="primary" size="sm"
+                    <AppPermissionButton code="internship.eval.advisor.manage" :allowed="canBtn('internship.eval.advisor.manage')" variant="primary" size="sm"
                       :loading="cmtSubmitting" @click="submitComment">保存意见</AppPermissionButton>
                   </div>
                 </div>
@@ -87,9 +87,9 @@
             </div>
 
             <div v-if="canReview" class="lv-foot">
-              <AppPermissionButton code="internship.studentEval.review" variant="ghost" :danger="true"
+              <AppPermissionButton code="internship.eval.self.review" :allowed="canBtn('internship.eval.self.review')" variant="ghost" :danger="true"
                 @click="openReview(detail.data, 'RETURN')">退回</AppPermissionButton>
-              <AppPermissionButton code="internship.studentEval.review" variant="secondary"
+              <AppPermissionButton code="internship.eval.self.review" :allowed="canBtn('internship.eval.self.review')" variant="secondary"
                 @click="openReview(detail.data, 'APPROVE')">通过</AppPermissionButton>
             </div>
           </template>
@@ -111,6 +111,7 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { studentEvalApi } from '@/modules/internship/api/student-eval.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 /* 右栏只渲染 /internship/student-evals/{id} 真实返回字段（见 internship_student_eval_service._row + _full + get_eval） */
@@ -128,6 +129,7 @@ const STATUS_OPTIONS = [{ label: '待审核', value: 'PENDING' }, { label: '已�
 
 export default {
   name: 'StudentEvalView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
     AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTextarea, AppFormItem },
@@ -186,6 +188,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
     exportFn() { return studentEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },

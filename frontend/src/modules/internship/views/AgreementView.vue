@@ -2,7 +2,7 @@
   <ModulePageShell title="申请与协议办理" subtitle="审核学生实习申请，并完成协议发起、确认、变更和归档 · 三方协议 · 协议生成 · 学生/企业/学校确认 · 签署扫描件留痕"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppPermissionButton code="internship.agreement.create" variant="primary" @click="openGenerate">＋ 生成协议</AppPermissionButton>
+      <AppPermissionButton code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')" variant="primary" @click="openGenerate">＋ 生成协议</AppPermissionButton>
       <AppButton variant="ghost" @click="$router.push('/admin/internship/agreement-templates')">协议模板</AppButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
@@ -88,6 +88,7 @@ import { searchInternStudents } from './components/entityPickerAdapters'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { agreementApi } from '@/modules/internship/api/agreement.api'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const STATUS_MAP = {
@@ -116,6 +117,7 @@ const PANEL_PRESETS = {
 
 export default {
   name: 'AgreementView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppExportButton,
     AppPermissionButton, AppSearchBox, AppSelect, AppFormItem, AppStudentPicker, ModuleSummaryStrip },
   data() {
@@ -161,6 +163,7 @@ export default {
     'genForm.templateId'() { this.loadPreview() }
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.issue
       this.activePanel = PANEL_PRESETS[panel] ? panel : 'issue'

@@ -48,9 +48,9 @@
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="$router.push('/admin/internship/students/' + row.id)">详情</button>
-          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="openAssign(row)">{{ row.positionId ? '调岗' : '分配岗位' }}</button>
-          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="openAssignAdvisor(row)">{{ row.advisorName ? '变更指导老师' : '分配指导老师' }}</button>
-          <button v-if="row.eligibilityStatus !== 'QUALIFIED' && row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="askEligibility(row)">认定资格</button>
+          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" :disabled="!canStudentManage" :title="canStudentManage ? '' : '无学生管理权限'" @click="openAssign(row)">{{ row.positionId ? '调岗' : '分配岗位' }}</button>
+          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" :disabled="!canStudentManage" :title="canStudentManage ? '' : '无学生管理权限'" @click="openAssignAdvisor(row)">{{ row.advisorName ? '变更指导老师' : '分配指导老师' }}</button>
+          <button v-if="row.eligibilityStatus !== 'QUALIFIED' && row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" :disabled="!canEligibility" :title="canEligibility ? '' : '无资格认定权限'" @click="askEligibility(row)">认定资格</button>
         </template>
       </DataTable>
     </div>
@@ -152,6 +152,7 @@ import { AppExcelImportDrawer } from '@/components/common/excel'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { STUDENT_STATUS, ELIGIBILITY_STATUS, DESTINATION_TYPE } from '@/modules/internship/constants/internship-student.constants'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '' })
@@ -221,11 +222,15 @@ export default {
         { key: 'hasPosition', label: '岗位', type: 'select', options: [{ value: 'true', label: '已分配' }, { value: 'false', label: '未分配' }] }
       ]
     },
+    canStudentManage() { return canCode(this.ctx, 'internship.student.manage') },
+    canEligibility() { return canCode(this.ctx, 'internship.student.eligibility.review') },
+    canInsuranceView() { return canCode(this.ctx, 'internship.insurance.view') },
     toolbarActions() {
+      const denyManage = !this.canStudentManage
       return [
-        { key: 'create', label: '＋ 建档', variant: 'primary' },
-        { key: 'import', label: '导入 Excel' },
-        { key: 'insurance', label: '保险核验', variant: 'ghost' }
+        { key: 'create', label: '＋ 建档', variant: 'primary', disabled: denyManage, disabledReason: '无学生建档权限' },
+        { key: 'import', label: '导入 Excel', disabled: denyManage, disabledReason: '无学生导入权限' },
+        { key: 'insurance', label: '保险核验', variant: 'ghost', disabled: !this.canInsuranceView, disabledReason: '无保险查看权限' }
       ]
     },
     pageSubtitle() {
@@ -277,9 +282,11 @@ export default {
     turnPage(p) { this.page = p; this.load() },
     async onToolbar(key) {
       if (key === 'insurance') {
+        if (!this.canInsuranceView) return toast.error('无保险查看权限')
         this.$router.push('/admin/internship/insurance')
         return
       }
+      if ((key === 'create' || key === 'import') && !this.canStudentManage) return toast.error('无学生管理权限')
       if (key === 'create') {
         // 学生候选改为选择器内按关键字远程搜索（后端裁定数据范围），不再一次性预载
         this.cform = { studentId: '', advisorUserId: '', remark: '' }; this.cError = ''
@@ -303,6 +310,7 @@ export default {
       else { this.advisorOptions = []; this.cError = res.message }
     },
     openAssign(row) {
+      if (!this.canStudentManage) return toast.error('无学生管理权限')
       // 岗位候选改为选择器内按关键字远程搜索，不再一次性预载
       this.assignRow = row; this.assignPositionId = ''; this.assignError = ''
       this.assignVisible = true
@@ -316,6 +324,7 @@ export default {
       } finally { this.submitting = false }
     },
     async openAssignAdvisor(row) {
+      if (!this.canStudentManage) return toast.error('无学生管理权限')
       this.advisorRow = row
       this.advisorAssignmentUserId = row.advisorUserId || ''
       this.advisorAssignmentReason = ''
@@ -340,6 +349,7 @@ export default {
       } finally { this.submitting = false }
     },
     askEligibility(row) {
+      if (!this.canEligibility) return toast.error('无资格认定权限')
       this.confirm = { visible: true, title: '实习资格认定', message: `确认「${row.name}」实习资格合格？（合格后方可待上岗）`, type: 'primary', confirmText: '认定合格', requireReason: false, reasonLabel: '认定意见', action: 'ELIG_QUALIFIED', row }
     },
     async onConfirm({ reason } = {}) {

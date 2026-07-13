@@ -83,19 +83,23 @@
         </template>
         <template #cell-actions="{ row }">
           <template v-if="isIntentionPanel">
-            <button v-if="row.status === 'DRAFT' || row.status === 'WITHDRAWN'" class="mp-link" @click="doSubmitIntention(row)">提交</button>
-            <button v-if="row.status === 'SUBMITTED'" class="mp-link" style="margin-left: var(--space-2)" @click="doWithdrawIntention(row)">撤回</button>
+            <button v-if="row.status === 'DRAFT' || row.status === 'WITHDRAWN'" class="mp-link" :disabled="!canIntentionManage" @click="doSubmitIntention(row)">提交</button>
+            <button v-if="row.status === 'SUBMITTED'" class="mp-link" style="margin-left: var(--space-2)" :disabled="!canIntentionManage" @click="doWithdrawIntention(row)">撤回</button>
           </template>
           <template v-else>
             <button
               v-if="['RECOMMENDED', 'PENDING_CONFIRM', 'CONFLICT'].includes(row.status)"
               class="mp-link"
+              :disabled="!canMatchManual"
+              :title="canMatchManual ? '' : '无匹配落岗权限'"
               @click="askConfirm(row)"
             >确认落岗</button>
             <button
               v-if="['RECOMMENDED', 'PENDING_CONFIRM', 'CONFLICT'].includes(row.status)"
               class="mp-link mp-link--danger"
               style="margin-left: var(--space-2)"
+              :disabled="!canMatchManual"
+              :title="canMatchManual ? '' : '无匹配落岗权限'"
               @click="askReject(row)"
             >驳回</button>
           </template>
@@ -211,6 +215,7 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { searchUnassignedInternStudents, searchPublishedPositions, searchEnterprises } from './components/entityPickerAdapters'
 import { matchApi } from '@/modules/internship/api/match.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', matchType: '' })
@@ -249,6 +254,9 @@ export default {
     }
   },
   computed: {
+    canMatchManual() { return canCode(this.ctx, 'internship.match.manual') },
+    canMatchBatch() { return canCode(this.ctx, 'internship.match.batch') },
+    canIntentionManage() { return canCode(this.ctx, 'internship.match.intention.manage') },
     panelStages() {
       return [
         { key: 'intention', label: '意向登记' },
@@ -303,30 +311,33 @@ export default {
       ]
     },
     toolbarActions() {
+      const denyIntention = !this.canIntentionManage
+      const denyManual = !this.canMatchManual
+      const denyBatch = !this.canMatchBatch
       if (this.isIntentionPanel) {
         return [
-          { key: 'createIntention', label: '＋ 登记意向', variant: 'primary' },
-          { key: 'import', label: '导入 Excel' }
+          { key: 'createIntention', label: '＋ 登记意向', variant: 'primary', disabled: denyIntention, disabledReason: '无意向管理权限' },
+          { key: 'import', label: '导入 Excel', disabled: denyIntention, disabledReason: '无意向管理权限' }
         ]
       }
       if (this.activePanel === 'major') {
         return [
-          { key: 'runMajor', label: '跑专业匹配', variant: 'primary' }
+          { key: 'runMajor', label: '跑专业匹配', variant: 'primary', disabled: denyManual, disabledReason: '无匹配操作权限' }
         ]
       }
       if (this.activePanel === 'enterprise') {
         return [
-          { key: 'runEnterprise', label: '跑企业匹配', variant: 'primary' }
+          { key: 'runEnterprise', label: '跑企业匹配', variant: 'primary', disabled: denyManual, disabledReason: '无匹配操作权限' }
         ]
       }
       if (this.activePanel === 'manual') {
         return [
-          { key: 'manual', label: '＋ 手动匹配', variant: 'primary' }
+          { key: 'manual', label: '＋ 手动匹配', variant: 'primary', disabled: denyManual, disabledReason: '无手动匹配权限' }
         ]
       }
       if (this.activePanel === 'batch') {
         return [
-          { key: 'batch', label: '批量匹配', variant: 'primary' }
+          { key: 'batch', label: '批量匹配', variant: 'primary', disabled: denyBatch, disabledReason: '无批量匹配权限' }
         ]
       }
       if (this.isStatsPanel) {
@@ -427,6 +438,13 @@ export default {
     },
     async onToolbar(key) {
       this.formError = ''
+      // 前端二次拦截（后端 require_permission 仍是最终边界）
+      const perm = {
+        createIntention: this.canIntentionManage, import: this.canIntentionManage,
+        runMajor: this.canMatchManual, runEnterprise: this.canMatchManual,
+        manual: this.canMatchManual, batch: this.canMatchBatch
+      }
+      if (key in perm && !perm[key]) return toast.error('当前角色无此匹配操作权限')
       if (key === 'createIntention') {
         this.intentionForm = { recordId: '', preferredCity: '', preferredIndustry: '', preferredCompanyId: '', intentionNote: '' }
         this.intentionVisible = true
@@ -466,10 +484,12 @@ export default {
       } finally { this.submitting = false }
     },
     async doSubmitIntention(row) {
+      if (!this.canIntentionManage) return toast.error('无意向管理权限')
       const res = await matchApi.submitIntention(row.id)
       if (res.code === 0) { toast.success('已提交'); this.load() } else toast.error(res.message)
     },
     async doWithdrawIntention(row) {
+      if (!this.canIntentionManage) return toast.error('无意向管理权限')
       const res = await matchApi.withdrawIntention(row.id)
       if (res.code === 0) { toast.success('已撤回'); this.load() } else toast.error(res.message)
     },
@@ -506,6 +526,7 @@ export default {
       this.load()
     },
     askConfirm(row) {
+      if (!this.canMatchManual) return toast.error('无匹配落岗权限')
       this.confirm = {
         visible: true, title: '确认匹配并落岗',
         message: `确认将「${row.studentName}」分配到「${row.positionTitle}」？将占用岗位名额。`,
@@ -513,6 +534,7 @@ export default {
       }
     },
     askReject(row) {
+      if (!this.canMatchManual) return toast.error('无匹配落岗权限')
       this.confirm = {
         visible: true, title: '驳回匹配', message: `确认驳回「${row.studentName} / ${row.positionTitle}」？`,
         type: 'danger', confirmText: '确认驳回', requireReason: true, reasonLabel: '驳回原因', action: 'REJECT', row

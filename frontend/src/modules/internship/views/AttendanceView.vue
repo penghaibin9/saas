@@ -44,13 +44,13 @@
             </td>
             <td class="tbl__ops">
               <template v-if="tab === 'exceptions' && r.status === 'PENDING_HANDLE'">
-                <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" @click="openHandle(r, 'REASONABLE')">合理</AppPermissionButton>
-                <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" @click="openHandle(r, 'ABNORMAL')">异常</AppPermissionButton>
-                <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" :danger="true" @click="openHandle(r, 'TO_RISK')">转风险</AppPermissionButton>
+                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" @click="openHandle(r, 'REASONABLE')">合理</AppPermissionButton>
+                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" @click="openHandle(r, 'ABNORMAL')">异常</AppPermissionButton>
+                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" :danger="true" @click="openHandle(r, 'TO_RISK')">转风险</AppPermissionButton>
               </template>
               <template v-else-if="tab === 'makeups' && r.status === 'PENDING'">
-                <AppPermissionButton code="internship.checkin.handle" variant="secondary" size="sm" @click="openApprove(r)">通过</AppPermissionButton>
-                <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" :danger="true" @click="openReject(r)">驳回</AppPermissionButton>
+                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="secondary" size="sm" @click="openApprove(r)">通过</AppPermissionButton>
+                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" :danger="true" @click="openReject(r)">驳回</AppPermissionButton>
               </template>
               <span v-else class="tbl__muted">—</span>
             </td>
@@ -71,6 +71,7 @@ import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const COLS = {
@@ -105,6 +106,7 @@ const TAB_PANEL = { checkins: 'checkins', exceptions: 'exceptions', makeups: 'ma
 
 export default {
   name: 'AttendanceView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, ModuleSummaryStrip },
   data() {
     return {
@@ -141,6 +143,7 @@ export default {
     }
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.checkins
       const { tab, statusFilter } = preset()

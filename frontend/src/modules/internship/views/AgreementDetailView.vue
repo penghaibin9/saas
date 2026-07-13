@@ -31,7 +31,7 @@
             <span class="mp-card__title">协议正文（模板渲染快照）</span>
             <div class="agd-ops">
               <AppPrintButton v-if="detail.renderedBody" print-selector="#agreement-print-body" label="打印正文" />
-              <AppPermissionButton v-if="detail.renderedBody" code="internship.agreement.view"
+              <AppPermissionButton v-if="detail.renderedBody" code="internship.agreement.view" :allowed="canBtn('internship.agreement.view')"
                 variant="ghost" size="sm" :loading="pdfLoading" @click="downloadPdf">下载 PDF 套打</AppPermissionButton>
             </div>
           </div>
@@ -95,24 +95,24 @@
             </template>
 
             <div class="agd-actions">
-              <AppPermissionButton v-if="detail.status === 'DRAFT'" code="internship.agreement.issue"
+              <AppPermissionButton v-if="detail.status === 'DRAFT'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="primary" @click="confirmAct('issue')">下发给学生确认</AppPermissionButton>
-              <AppPermissionButton v-if="detail.esignStatus === 'NONE' && canVoid" code="internship.agreement.issue"
+              <AppPermissionButton v-if="detail.esignStatus === 'NONE' && canVoid" code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')"
                 variant="ghost" @click="startEsign">发起电子签</AppPermissionButton>
               <AppPermissionButton v-if="detail.esignStatus === 'PENDING' && detail.status === 'PENDING_ENTERPRISE'"
-                code="internship.agreement.confirm" variant="ghost" @click="esignParty('ENTERPRISE')">企业电子签</AppPermissionButton>
+                code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')" variant="ghost" @click="esignParty('ENTERPRISE')">企业电子签</AppPermissionButton>
               <AppPermissionButton v-if="detail.esignStatus === 'PENDING' && detail.status === 'PENDING_SCHOOL'"
-                code="internship.agreement.confirm" variant="ghost" @click="esignParty('SCHOOL')">学校电子签</AppPermissionButton>
-              <AppPermissionButton v-if="detail.status === 'PENDING_ENTERPRISE'" code="internship.agreement.confirm"
+                code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')" variant="ghost" @click="esignParty('SCHOOL')">学校电子签</AppPermissionButton>
+              <AppPermissionButton v-if="detail.status === 'PENDING_ENTERPRISE'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="primary" :disabled="!entForm.fileId" :loading="entSubmitting"
                 @click="submitEnterprise">确认企业已签署</AppPermissionButton>
-              <AppPermissionButton v-if="detail.status === 'PENDING_SCHOOL'" code="internship.agreement.confirm"
+              <AppPermissionButton v-if="detail.status === 'PENDING_SCHOOL'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="primary" @click="confirmAct('school')">学校确认生效</AppPermissionButton>
-              <AppPermissionButton v-if="detail.status === 'EFFECTIVE'" code="internship.agreement.archive"
+              <AppPermissionButton v-if="detail.status === 'EFFECTIVE'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="secondary" @click="confirmAct('archive')">归档</AppPermissionButton>
-              <AppPermissionButton v-if="canReject" code="internship.agreement.reject"
+              <AppPermissionButton v-if="canReject" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="ghost" :danger="true" @click="confirmAct('reject')">驳回</AppPermissionButton>
-              <AppPermissionButton v-if="canVoid" code="internship.agreement.void"
+              <AppPermissionButton v-if="canVoid" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="ghost" :danger="true" @click="confirmAct('void')">作废</AppPermissionButton>
             </div>
             <p v-if="isFinal" class="mp-note" style="margin-top: var(--space-2)">
@@ -148,6 +148,7 @@ import { AppStatusTag, AppConfirmDialog, AppPermissionButton, AppDescriptionList
   AppTextInput, AppFormItem, AppFilePreview, AppPrintButton } from '@/components/common'
 import { agreementApi } from '@/modules/internship/api/agreement.api'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const INFO = [
@@ -158,6 +159,7 @@ const INFO = [
 
 export default {
   name: 'AgreementDetailView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppStatusTag, AppConfirmDialog,
     AppPermissionButton, AppDescriptionList, AppAuditTrail, AppTextInput, AppFormItem, AppFilePreview, AppPrintButton },
   data() {
@@ -189,6 +191,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     confirmTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'REJECTED' ? 'danger' : 'warning' },
     backToList() {
       // 从列表进入时走历史返回（保留筛选/页码/panel）；深链直入时兜底到列表

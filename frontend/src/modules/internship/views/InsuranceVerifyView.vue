@@ -10,8 +10,8 @@
       <template #cell-status="{ row }"><AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag></template>
       <template #cell-actions="{ row }">
         <template v-if="row.status === 'PENDING_VERIFY'">
-          <AppButton variant="secondary" size="sm" @click="openVerify(row, 'APPROVE')">通过</AppButton>
-          <AppButton variant="ghost" size="sm" :danger="true" @click="openVerify(row, 'REJECT')">驳回</AppButton>
+          <AppPermissionButton :allowed="canVerify" code="internship.insurance.verify" variant="secondary" size="sm" @click="openVerify(row, 'APPROVE')">通过</AppPermissionButton>
+          <AppPermissionButton :allowed="canVerify" code="internship.insurance.verify" variant="ghost" size="sm" :danger="true" @click="openVerify(row, 'REJECT')">驳回</AppPermissionButton>
         </template>
         <span v-else class="muted">—</span>
       </template>
@@ -23,14 +23,14 @@
 
 <script>
 import { ModulePageShell, DataTable } from '@/components/business'
-import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppConfirmDialog, AppSearchBox, AppQuickFilterChips } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppSearchBox, AppQuickFilterChips, AppPermissionButton } from '@/components/common'
 import { insuranceApi } from '@/modules/internship/api/plan-insurance.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'InsuranceVerifyView',
-  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppConfirmDialog, AppSearchBox, AppQuickFilterChips },
+  components: { ModulePageShell, DataTable, AppStatusTag, AppConfirmDialog, AppSearchBox, AppQuickFilterChips, AppPermissionButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -50,7 +50,10 @@ export default {
       scopeHint: '指导教师仅本人指导学生'
     }
   },
-  computed: { pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } } },
+  computed: {
+    pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
+    canVerify() { return canCode(this.ctx, 'internship.insurance.verify') }
+  },
   created() { this.load() },
   methods: {
     reload() { this.page = 1; this.load() },
@@ -64,6 +67,7 @@ export default {
       if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total }
     },
     openVerify(row, action) {
+      if (!this.canVerify) return toast.error('无实习保险核验权限')
       this.pending = { id: row.id, action }
       const ap = action === 'APPROVE'
       this.cd = {

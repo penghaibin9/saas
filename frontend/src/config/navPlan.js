@@ -141,13 +141,17 @@ export const NAV_PLAN = [
     ]),
     // 施工图卡·风险预警与处置（B包第4步·待施工）
     mod('sa-risk', '风险预警与处置', null, P('风险看板', '风险学生', '风险处置')),
-    // 施工图卡·困难认定（C包第6步·待施工）
-    mod('sa-difficulty', '困难认定', null, P(
-      '认定批次', '认定申请', '认定审核', '公示与异议', '困难学生库', '认定统计'
-    )),
-    // 施工图卡·奖助勤贷补（C包第7步·1/8）
+    // 施工图卡·困难认定（C包第6步·2026-07-13 夜间接通 /student-affairs/aid/*：批次管理/工作台/困难库）
+    mod('sa-difficulty', '困难认定', null, [
+      I('认定批次', '/admin/student-affairs/aid/batches'),
+      I('认定申请与审核（工作台）', '/admin/student-affairs/aid'),
+      I('困难学生库', '/admin/student-affairs/aid/difficult-students'),
+      ...P('公示与异议', '认定统计')
+    ]),
+    // 施工图卡·奖助勤贷补（C包第7步·2026-07-13 夜间接通 /student-affairs/funding/*：项目管理/申请评审工作台）
     mod('sa-aid', '奖助勤贷补', null, [
-      ...P('奖学金管理'),
+      I('资助项目', '/admin/student-affairs/funding/projects'),
+      I('申请评审（工作台）', '/admin/student-affairs/funding'),
       I('助学金管理（现有·奖助资助）', '/admin/campus-service/grants'),
       ...P('勤工助学', '助学贷款', '减免与临时补助', '名单审核与公示', '发放台账', '资助统计')
     ]),
@@ -379,11 +383,11 @@ export const NAV_PLAN = [
     ]),
     mod('in-attendance-leave', '打卡与请假', '/admin/internship/attendance', [
       I('打卡记录', '/admin/internship/attendance?panel=checkins', 'internship.attendance.view', 'WORKBENCH'),
-      I('补卡申请', '/admin/internship/attendance?panel=makeup-apply', 'internship.makeup.view', 'WORKBENCH'),
+      I('补卡申请台账', '/admin/internship/attendance?panel=makeup-apply', 'internship.makeup.view', 'WORKBENCH'),
       I('补卡审批', '/admin/internship/attendance?panel=makeup-review', 'internship.makeup.review', 'TASK_QUEUE'),
       I('缺卡异常', '/admin/internship/attendance?panel=exceptions', 'internship.attendance.exception.handle', 'TASK_QUEUE'),
       I('连续未打卡', '/admin/internship/exceptions?status=PENDING_HANDLE', 'internship.attendance.exception.handle', 'TASK_QUEUE'),
-      I('实习请假', '/admin/internship/leaves?panel=all', 'internship.leave.view', 'WORKBENCH'),
+      I('请假台账', '/admin/internship/leaves?panel=all', 'internship.leave.view', 'WORKBENCH'),
       I('请假审批', '/admin/internship/leaves?panel=pending', 'internship.leave.review', 'TASK_QUEUE'),
       I('销假管理', '/admin/internship/leaves?panel=approved', 'internship.leave.resume', 'TASK_QUEUE'),
       I('超期未归', '/admin/internship/risks?panel=leave-overdue', 'internship.risk.view', 'TASK_QUEUE')
@@ -391,9 +395,9 @@ export const NAV_PLAN = [
     mod('in-weekly-task', '周报与任务', '/admin/internship/reports', [
       I('实习计划', '/admin/internship/plans', 'internship.plan.view', 'CONFIG_VIEW'),
       I('实习任务', '/admin/internship/plans?panel=tasks', 'internship.task.view', 'WORKBENCH'),
-      I('日报提交', '/admin/internship/reports?type=daily&panel=all', 'internship.report.view', 'WORKBENCH'),
-      I('周报提交', '/admin/internship/reports?panel=all', 'internship.report.view', 'WORKBENCH'),
-      I('月报提交', '/admin/internship/reports?type=monthly&panel=all', 'internship.report.view', 'WORKBENCH'),
+      I('日报台账', '/admin/internship/reports?type=daily&panel=all', 'internship.report.view', 'WORKBENCH'),
+      I('周报台账', '/admin/internship/reports?panel=all', 'internship.report.view', 'WORKBENCH'),
+      I('月报台账', '/admin/internship/reports?type=monthly&panel=all', 'internship.report.view', 'WORKBENCH'),
       I('周报批阅', '/admin/internship/reports?panel=review', 'internship.report.review', 'TASK_QUEUE'),
       I('周报退回', '/admin/internship/reports?panel=returned', 'internship.report.review', 'TASK_QUEUE'),
       H('周报问题', '/admin/internship/reports?panel=issues', 'internship.report.issue.handle', 'TASK_QUEUE')
@@ -423,7 +427,7 @@ export const NAV_PLAN = [
     ]),
     mod('in-eval-score', '评价与成绩', '/admin/internship/enterprise-evals', [
       I('企业评价', '/admin/internship/enterprise-evals', 'internship.eval.enterprise.view', 'WORKBENCH'),
-      I('学生自评', '/admin/internship/student-evals?view=self', 'internship.eval.self.view', 'WORKBENCH'),
+      I('学生自评台账', '/admin/internship/student-evals?view=self', 'internship.eval.self.view', 'WORKBENCH'),
       I('学生对企业评价', '/admin/internship/student-evals?view=enterprise', 'internship.eval.enterprise_by_student.view', 'ANALYTICS_VIEW'),
       I('学生对岗位评价', '/admin/internship/student-evals?view=position', 'internship.eval.position_by_student.view', 'ANALYTICS_VIEW'),
       I('指导老师评价', '/admin/internship/student-evals?view=advisor', 'internship.eval.advisor.manage', 'TASK_QUEUE'),

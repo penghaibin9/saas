@@ -79,8 +79,8 @@
               <textarea v-model="comment" class="mp-textarea" :placeholder="action === 'RETURN' ? '请写明退回原因，将原样同步学生端…' : '例如：联调记录完整，下周补充量化数据…'"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
-                <AppButton variant="primary" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过</AppButton>
-                <AppButton variant="warning" :loading="submitting" style="flex: 1" @click="submit('RETURN')">↩ 退回修改</AppButton>
+                <AppButton variant="primary" :disabled="!canReview" :title="canReview ? '' : '无周报批阅权限'" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过</AppButton>
+                <AppButton variant="warning" :disabled="!canReview" :title="canReview ? '' : '无周报批阅权限'" :loading="submitting" style="flex: 1" @click="submit('RETURN')">↩ 退回修改</AppButton>
               </div>
               <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅动作写入审批留痕，学生端即时同步状态</p>
             </template>
@@ -109,6 +109,7 @@ import { AppStatusTag, AppRiskTag, AppAuditTrail } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -119,6 +120,7 @@ export default {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
   },
   computed: {
+    canReview() { return canCode(this.ctx, 'internship.report.review') },
     trailRecords() {
       return (this.detail?.trail || []).map((t, i) => ({
         id: i,
@@ -155,6 +157,7 @@ export default {
       this.loading = false
     },
     async submit(action) {
+      if (!this.canReview) return toast.error('无周报批阅权限')
       this.action = action
       this.formError = ''
       if (action === 'RETURN' && (!this.comment || this.comment.trim().length < 5)) {

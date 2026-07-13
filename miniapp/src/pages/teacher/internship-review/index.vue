@@ -17,7 +17,7 @@
                   </view>
                   <text class="ir__company">{{ w.company }}{{ w.post ? ' · ' + w.post : '' }}</text>
                 </view>
-                <MobileStatusTag :status="w.status" />
+                <MobileStatusTag :status="w.status" :label="w.statusLabel" />
               </view>
 
               <MobileInlineAlert v-if="w.overdue" type="danger" description="本周周报逾期未提交，建议催交或记录风险。" />
@@ -64,7 +64,7 @@
             <view v-for="c in data.abnormal" :key="c.id" class="ir card">
               <view class="row-between">
                 <text class="t-md t-bold">{{ c.student }}</text>
-                <MobileStatusTag :status="c.status" />
+                <MobileStatusTag :status="c.status" :label="c.statusLabel" />
               </view>
               <view class="ir__ck">
                 <view class="ir__ck-row"><text class="ir__label">异常类型</text><text class="ir__text is-danger">{{ c.type }}</text></view>

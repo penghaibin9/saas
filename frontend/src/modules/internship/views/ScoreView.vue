@@ -2,7 +2,7 @@
   <ModulePageShell title="综合成绩" subtitle="实习成绩 · 五项权重核算 · 整批核对工作区 · 缺项不可发布"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppPermissionButton code="internship.score.compute" variant="primary" @click="openCompute()">＋ 核算成绩</AppPermissionButton>
+      <AppPermissionButton code="internship.score.manage" :allowed="canBtn('internship.score.manage')" variant="primary" @click="openCompute()">＋ 核算成绩</AppPermissionButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
@@ -17,7 +17,7 @@
         </div>
         <div class="cfg__item"><span>及格线</span><AppNumberInput v-model="cfg.passLine" :min="0" :max="100" size="sm" /></div>
         <span class="cfg__sum" :class="{ 'is-bad': weightSum !== 100 }">合计 {{ weightSum }}/100</span>
-        <AppPermissionButton code="internship.score.config" variant="secondary" size="sm" :loading="savingCfg" @click="saveConfig">保存配置</AppPermissionButton>
+        <AppPermissionButton code="internship.score.config" :allowed="canBtn('internship.score.config')" variant="secondary" size="sm" :loading="savingCfg" @click="saveConfig">保存配置</AppPermissionButton>
       </div>
 
       <!-- 快捷筛选行：状态（后端过滤）+ 仅看缺项（当前页内前端过滤） -->
@@ -63,11 +63,11 @@
           <template #cell-actions="{ row }">
             <div class="ops">
               <AppButton variant="ghost" size="sm" @click="openDetail(row)">核对</AppButton>
-              <AppPermissionButton v-if="canRecalc(row)" code="internship.score.compute" variant="ghost" size="sm" @click="openCompute(row)">核算/重算</AppPermissionButton>
-              <AppPermissionButton v-if="row.status === 'PENDING_REVIEW'" code="internship.score.publish" variant="secondary" size="sm" :disabled="row.incomplete" @click="confirmAct(row, 'publish')">发布</AppPermissionButton>
-              <AppPermissionButton v-if="row.status === 'PENDING_REVIEW'" code="internship.score.publish" variant="ghost" size="sm" @click="confirmAct(row, 'return')">退回</AppPermissionButton>
-              <AppPermissionButton v-if="row.status === 'PUBLISHED'" code="internship.score.publish" variant="ghost" size="sm" :danger="true" @click="confirmAct(row, 'withdraw')">撤回</AppPermissionButton>
-              <AppPermissionButton v-if="row.status === 'PUBLISHED'" code="internship.score.publish" variant="ghost" size="sm" @click="confirmAct(row, 'archive')">归档</AppPermissionButton>
+              <AppPermissionButton v-if="canRecalc(row)" code="internship.score.manage" :allowed="canBtn('internship.score.manage')" variant="ghost" size="sm" @click="openCompute(row)">核算/重算</AppPermissionButton>
+              <AppPermissionButton v-if="row.status === 'PENDING_REVIEW'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="secondary" size="sm" :disabled="row.incomplete" @click="confirmAct(row, 'publish')">发布</AppPermissionButton>
+              <AppPermissionButton v-if="row.status === 'PENDING_REVIEW'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="ghost" size="sm" @click="confirmAct(row, 'return')">退回</AppPermissionButton>
+              <AppPermissionButton v-if="row.status === 'PUBLISHED'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="ghost" size="sm" :danger="true" @click="confirmAct(row, 'withdraw')">撤回</AppPermissionButton>
+              <AppPermissionButton v-if="row.status === 'PUBLISHED'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="ghost" size="sm" @click="confirmAct(row, 'archive')">归档</AppPermissionButton>
             </div>
           </template>
         </DataTable>
@@ -90,7 +90,7 @@
             <div class="sec-t">核算/发布留痕</div>
             <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无记录" />
             <div v-if="panelRow && canRecalc(panelRow)" class="wsp__ops">
-              <AppPermissionButton code="internship.score.compute" variant="secondary" size="sm" @click="openCompute(panelRow)">转入核算</AppPermissionButton>
+              <AppPermissionButton code="internship.score.manage" :allowed="canBtn('internship.score.manage')" variant="secondary" size="sm" @click="openCompute(panelRow)">转入核算</AppPermissionButton>
             </div>
           </template>
         </template>
@@ -134,6 +134,7 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { searchInternStudents } from './components/entityPickerAdapters'
 import { scoreApi } from '@/modules/internship/api/score.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const WEIGHTS = [
@@ -163,6 +164,7 @@ const DETAIL = [
 
 export default {
   name: 'ScoreView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DataTable, ModuleSummaryStrip, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton,
     AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppNumberInput, AppFormItem, AppStudentPicker },
   data() {
@@ -212,6 +214,7 @@ export default {
   },
   created() { this.loadConfig(); this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     exportFn() { return scoreApi.exportScores({ keyword: this.keyword, status: this.statusFilter }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     async loadConfig() { const res = await scoreApi.getConfig(); if (res.code === 0) this.cfg = { ...this.cfg, ...res.data } },
