@@ -12,6 +12,7 @@ from app.core.security import require_staff  # 仅敏感 reveal 等「服务层�
 from app.services import affairs_activity_service as activity_svc
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_club_service as club_svc
+from app.services import affairs_org_service as org_svc
 from app.services import affairs_archive_service as archive_svc
 from app.services import affairs_class_service as class_svc
 from app.services import affairs_dashboard_service as svc
@@ -1143,6 +1144,20 @@ class ClubAnnualReviewBody(BaseModel):
     comment: Optional[str] = None
 
 
+class OrgBody(BaseModel):
+    orgName: str = Field(..., min_length=1)
+    orgType: Optional[str] = Field("STUDENT_UNION")
+    level: Optional[str] = Field("SCHOOL", description="SCHOOL/COLLEGE")
+    collegeId: Optional[int] = None
+    advisorName: Optional[str] = None
+
+
+class OrgPositionBody(BaseModel):
+    studentId: int = Field(...)
+    position: str = Field(..., min_length=1)
+    termCode: Optional[str] = None
+
+
 @router.get("/activities", summary="活动列表（type/status 过滤）")
 def activities(activityType: Optional[str] = None, status: Optional[str] = None,
                page: int = 1, pageSize: int = 20,
@@ -1305,3 +1320,40 @@ def club_annual_reviews(clubId: int = Path(...),
 def club_annual_review_create(body: ClubAnnualReviewBody, clubId: int = Path(...),
                               user=Depends(require_permission("studentAffairs.club.manage"))):
     return success(club_svc.annual_review(clubId, body, user), message="年审已记录")
+
+
+# ── 学生干部与组织（06 卡）──
+@router.get("/organizations", summary="学生组织列表（level/status 过滤）")
+def organizations(level: Optional[str] = None, status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                  user=Depends(require_permission("studentAffairs.org.view"))):
+    items, total = org_svc.list_orgs(user, level, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/organizations", summary="建学生组织")
+def organization_create(body: OrgBody, user=Depends(require_permission("studentAffairs.org.manage"))):
+    return success(org_svc.create_org(body, user), message="已创建")
+
+
+@router.get("/organizations/{orgId}/positions", summary="组织在任成员")
+def organization_positions(orgId: int = Path(...),
+                           user=Depends(require_permission("studentAffairs.org.view"))):
+    return success({"items": org_svc.list_positions(orgId, user)})
+
+
+@router.post("/organizations/{orgId}/positions", summary="任命组织成员")
+def organization_appoint(body: OrgPositionBody, orgId: int = Path(...),
+                         user=Depends(require_permission("studentAffairs.org.manage"))):
+    return success(org_svc.appoint(orgId, body, user), message="已任命")
+
+
+@router.post("/organizations/positions/{positionId}/dismiss", summary="卸任组织成员")
+def organization_dismiss(positionId: int = Path(...),
+                         user=Depends(require_permission("studentAffairs.org.manage"))):
+    return success(org_svc.dismiss(positionId, user), message="已卸任")
+
+
+@router.get("/students/{studentId}/cadre-resume", summary="学生干部履历（组织任职+班级班干部）")
+def student_cadre_resume(studentId: int = Path(...),
+                         user=Depends(require_permission("studentAffairs.org.view"))):
+    return success({"items": org_svc.student_resume(studentId, user)})
