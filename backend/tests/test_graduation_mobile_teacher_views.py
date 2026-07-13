@@ -136,7 +136,30 @@ def test_grade_detail_queue_and_review(client, auth_headers, db_mode):
     h = auth_headers
     name, advisor = "成绩学生", "成绩导师"
     gid = _gd_student_with_topic(client, h, "GR001", name, advisor)
-    # PC 核算三段成绩
+    # 成绩证据完整性：核算前必须存在真实的定稿+已完成评阅+已确认答辩分来源记录
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationDefenseScore, GraduationFinal, GraduationReview
+    db = get_sessionmaker()()
+    final = GraduationFinal(
+        tenant_id=MAIN, gd_student_id=int(gid), final_type="定稿",
+        version="v1", submit_at=datetime.utcnow(), status="APPROVED",
+        plagiarism_rate="10.0%", plagiarism_status="已检测", attachments_json=["test-file"],
+    )
+    db.add(final)
+    db.flush()
+    db.add(GraduationReview(
+        tenant_id=MAIN, gd_student_id=int(gid), gd_final_id=final.id,
+        reviewer_name="成绩评阅人",
+        status="COMPLETED", score=80, opinion="评阅完成", reviewed_at=datetime.utcnow(),
+    ))
+    db.add(GraduationDefenseScore(
+        tenant_id=MAIN, gd_student_id=int(gid), judge_name="成绩评委",
+        score=90, absent=False, round_no=1, status="CONFIRMED", confirmed_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
+    # PC 核算三段成绩（与来源记录一致）
     calc = client.post(f"/api/v1/graduation/gd-grades/{gid}/calculate", headers=h,
                        json={"advisorScore": 85, "reviewerScore": 80, "defenseScore": 90})
     assert calc.json()["code"] == 0

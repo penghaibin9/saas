@@ -23,6 +23,36 @@ def _ctx() -> tuple[str, str]:
     return role, real_name
 
 
+def _has_review_relation(db, student: GraduationStudent, real_name: str) -> bool:
+    return db.scalar(select(GraduationReview.id).where(
+        GraduationReview.tenant_id == student.tenant_id,
+        GraduationReview.gd_student_id == student.id,
+        GraduationReview.reviewer_name == real_name,
+        GraduationReview.is_deleted.is_(False),
+    ).limit(1)) is not None
+
+
+def _student_self_identity(db, tenant_id: int) -> tuple[str, int | None]:
+    """学生登录者的稳定本人身份：令牌 studentNo 优先；缺失时在租户内按姓名唯一匹配
+    学籍主档（与登录签发 studentNo 同源的映射）。重名或找不到一律 fail-closed。"""
+    user = get_current_user_ctx() or {}
+    student_no = str(user.get("studentNo") or "").strip()
+    if student_no:
+        return student_no, None
+    real_name = (user.get("realName") or "").strip()
+    if not real_name:
+        return "", None
+    from app.models import StudentProfile
+    rows = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == tenant_id,
+        StudentProfile.real_name == real_name,
+        StudentProfile.is_deleted.is_(False),
+    ).limit(2)).all()
+    if len(rows) != 1:
+        return "", None
+    return str(rows[0].student_no or ""), int(rows[0].id)
+
+
 def has_full_scope() -> bool:
     role, _ = _ctx()
     return role in FULL_SCOPE_ROLES
@@ -38,19 +68,20 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         return False
 
     if role == "STUDENT":
-        user = get_current_user_ctx() or {}
-        return bool(user.get("studentNo")) and str(student.student_no or "") == str(user.get("studentNo"))
+        student_no, profile_id = _student_self_identity(db, student.tenant_id)
+        if student_no and str(student.student_no or "") == student_no:
+            return True
+        return (profile_id is not None and student.student_id is not None
+                and int(student.student_id) == profile_id)
 
     if role == "GD_MENTOR":
-        return (student.advisor_name or "").strip() == real_name
+        if (student.advisor_name or "").strip() == real_name:
+            return True
+        # 教师移动端单令牌承载多重业务身份：被指派为评阅人时，凭真实评阅指派关系访问
+        return _has_review_relation(db, student, real_name)
 
     if role == "GD_REVIEWER":
-        return db.scalar(select(GraduationReview.id).where(
-            GraduationReview.tenant_id == student.tenant_id,
-            GraduationReview.gd_student_id == student.id,
-            GraduationReview.reviewer_name == real_name,
-            GraduationReview.is_deleted.is_(False),
-        ).limit(1)) is not None
+        return _has_review_relation(db, student, real_name)
 
     if role in {"GD_DEFENSE_SECRETARY", "GD_DEFENSE_EXPERT"}:
         if not student.defense_group_id:
@@ -64,7 +95,6 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         return real_name in panel
 
     # 学院/专业负责人需要可验证的 collegeId/majorId 上下文；当前缺失时 fail-closed。
-    return False
     return False
 
 

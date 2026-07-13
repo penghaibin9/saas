@@ -229,13 +229,15 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
 
 
 def get_choice_detail(choice_id) -> dict:
-    """志愿详情（含关联题目导师姓名，供教师端范围校验）。"""
+    """志愿详情（含关联题目导师姓名，供教师端范围校验）。
+    确认志愿前学生尚未形成导师关系，因此按「管理员或题目归属导师」裁决，
+    不得要求 student.advisor_name 已经等于当前教师。"""
     with session() as db:
         c = db.get(GraduationTopicChoice, int(choice_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("志愿不存在")
+        _assert_choice_decision_access(db, c, "topic.choice.detail")
         stu = db.get(GraduationStudent, c.gd_student_id)
-        assert_student_access(db, stu, "topic.choice.detail")
         topic = db.get(GraduationTopic, c.topic_id)
         return _choice_row(c, stu, topic)
 
