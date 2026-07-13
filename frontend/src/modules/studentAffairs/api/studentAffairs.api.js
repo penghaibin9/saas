@@ -673,6 +673,24 @@ export const studentAffairsApi = {
   /** 活动与第二课堂统计（仅聚合）。 */
   getActivityStats() {
     return callStrict(() => request('/student-affairs/activity-stats'))
+  },
+  /** 志愿时长补录列表。 */
+  getVolunteerRecords({ status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/volunteer/records', { params }))
+  },
+  /** 补录志愿时长。body: { studentId, serviceName, hours, orgName?, serviceDate? } */
+  createVolunteerRecord(body) {
+    return callStrict(() => request('/student-affairs/volunteer/records', { method: 'POST', body }))
+  },
+  /** 认定志愿时长→生成学分。 */
+  confirmVolunteerRecord(id) {
+    return callStrict(() => request(`/student-affairs/volunteer/records/${id}/confirm`, { method: 'POST', body: {} }))
+  },
+  /** 驳回志愿时长补录（原因≥5字）。 */
+  rejectVolunteerRecord(id, reason) {
+    return callStrict(() => request(`/student-affairs/volunteer/records/${id}/reject`, { method: 'POST', body: { reason } }))
   }
 }
 

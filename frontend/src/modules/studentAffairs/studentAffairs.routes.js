@@ -176,6 +176,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '活动统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
       {
+        path: 'activity/volunteer',
+        name: 'student-affairs-volunteer',
+        component: () => import('@/modules/studentAffairs/views/activity/VolunteerRecordView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '志愿服务', requiresAuth: true, permissionKey: 'studentAffairs.activity.view' }
+      },
+      {
         path: 'family',
         name: 'student-affairs-family',
         component: () => import('@/modules/studentAffairs/views/FamilyContactView.vue'),
