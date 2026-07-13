@@ -120,11 +120,11 @@
  */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { ImportDrawer, ExportDrawer, ColumnSettingsDrawer, FormDrawer } from '@/modules/academic/components'
+import { ImportDrawer, ExportDrawer, ColumnSettingsDrawer, FormDrawer } from '@/modules/academicAffairs/components'
 import {
   getCourseRecords, getGradeRecords, createGradeRecord, updateGradeRecord, voidGradeRecord, getAcademicStudents,
   getFieldColumns, getImportTemplate, getExportOptions, validateImport, confirmImport, createExport
-} from '@/modules/academic/api/academic.api'
+} from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', courseId: '', term: '', passStatus: '', examType: '', recordStatus: '' })

@@ -7,7 +7,7 @@
  *  - 数据范围：CLASS 只见本班（CL01/CL02）、COLLEGE 见本院（C01）、COURSE 见任教课程学生、SCHOOL 见全部。
  *  - 敏感字段（手机号/身份证）出口一律脱敏，页面不得反解。
  */
-import * as db from '@/mocks/academic/academic.mock'
+import * as db from '@/mocks/academicAffairs/academic.mock'
 import { maskPhone, maskIdCard } from '@/security'
 import { request, shouldTryReal } from '@/services/http/client'
 

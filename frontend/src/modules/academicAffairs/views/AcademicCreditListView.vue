@@ -62,8 +62,8 @@
 <script>
 /** 学分修读管理（/admin/academic/credits）：学分完成情况 → 下钻学生 / 对滞后学生发起预警 / 导出台账。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { ExportDrawer } from '@/modules/academic/components'
-import { getCreditRecords, getFieldColumns, getExportOptions, createExport } from '@/modules/academic/api/academic.api'
+import { ExportDrawer } from '@/modules/academicAffairs/components'
+import { getCreditRecords, getFieldColumns, getExportOptions, createExport } from '@/modules/academicAffairs/api/academic.api'
 
 const EMPTY_FILTERS = () => ({ keyword: '', classId: '', status: '' })
 

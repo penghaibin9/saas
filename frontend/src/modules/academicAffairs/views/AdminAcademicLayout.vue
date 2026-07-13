@@ -28,7 +28,7 @@
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
-import { getAcademicContext, switchAcademicRole } from '@/modules/academic/api/academic.api'
+import { getAcademicContext, switchAcademicRole } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
 
 const MENUS = [

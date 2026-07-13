@@ -96,7 +96,7 @@
 <script>
 /** 学业过程中心 · 管理看板（/admin/academic）。指标按角色数据范围动态计算，数据全部来自 academic.api。 */
 import { ModulePageShell, ModuleHero, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { getAcademicDashboard, createExport } from '@/modules/academic/api/academic.api'
+import { getAcademicDashboard, createExport } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
 
 export default {

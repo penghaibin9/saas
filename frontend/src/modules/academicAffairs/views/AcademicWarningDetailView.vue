@@ -170,8 +170,8 @@
  */
 import { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { FormDrawer } from '@/modules/academic/components'
-import { getWarningDetail, createIntervention, closeWarning, escalateWarning, remindWarnings } from '@/modules/academic/api/academic.api'
+import { FormDrawer } from '@/modules/academicAffairs/components'
+import { getWarningDetail, createIntervention, closeWarning, escalateWarning, remindWarnings } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
 
 export default {

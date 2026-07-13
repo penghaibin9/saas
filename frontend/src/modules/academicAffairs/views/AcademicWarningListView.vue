@@ -118,11 +118,11 @@
  */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { ExportDrawer, ColumnSettingsDrawer, FormDrawer } from '@/modules/academic/components'
+import { ExportDrawer, ColumnSettingsDrawer, FormDrawer } from '@/modules/academicAffairs/components'
 import {
   getAcademicWarnings, createWarning, updateWarningLevel, voidWarning, assignWarnings, remindWarnings,
   getFieldColumns, getExportOptions, createExport, getAcademicStudents
-} from '@/modules/academic/api/academic.api'
+} from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', type: '', level: '', status: '', classId: '', recordStatus: '' })

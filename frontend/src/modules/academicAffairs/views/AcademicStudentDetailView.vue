@@ -172,7 +172,7 @@
 <script>
 /** 学生学业详情（/admin/academic/students/:id）：画像 + 学分 + 预警 + 四页签（成绩/考试/补考重修/干预）+ 审计留痕。 */
 import { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { getStudentAcademicDetail, batchRemindStudents } from '@/modules/academic/api/academic.api'
+import { getStudentAcademicDetail, batchRemindStudents } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
 
 export default {
