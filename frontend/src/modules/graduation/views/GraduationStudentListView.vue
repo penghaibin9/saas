@@ -549,4 +549,8 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.mp-tabs { overflow-x: auto; scrollbar-width: thin; flex-wrap: nowrap; padding-bottom: 1px; }
+.mp-tab { flex: 0 0 auto; white-space: nowrap; }
+.mp-tab:hover:not(.is-active) { color: var(--text-primary); background: var(--gray-50, #f8fafc); border-radius: var(--radius-sm); }
+@media (max-width: 700px) { .gd-actions { width: 100%; justify-content: space-between; } }
 </style>

@@ -44,7 +44,7 @@
       <div class="gp-side">
         <input v-model="studentKeyword" class="ie-in" placeholder="搜索学生姓名/学号" @input="searchStudents" />
         <ul class="gp-stu-list">
-          <li v-for="s in studentOptions" :key="s.id" class="gp-stu-item" :class="{ 'is-active': current && current.id === s.id }" @click="selectStudent(s)">
+          <li v-for="s in studentOptions" :key="s.id" class="gp-stu-item" :class="{ 'is-active': current && current.id === s.id }" tabindex="0" @click="selectStudent(s)" @keydown.enter.prevent="selectStudent(s)" @keydown.space.prevent="selectStudent(s)">
             <div class="mp-cell-main">{{ s.name }}</div>
             <div class="mp-cell-sub">{{ s.studentNo }} · {{ s.advisorName || '未分配导师' }}</div>
           </li>
@@ -58,6 +58,14 @@
           <EmptyState title="请先从左侧选择一名毕设学生" />
         </template>
         <template v-else>
+          <section class="gp-context" aria-label="当前处理学生">
+            <div class="gp-context__avatar">{{ (current.name || '学').slice(0, 1) }}</div>
+            <div class="gp-context__identity">
+              <strong>{{ current.name }}</strong>
+              <span>{{ current.studentNo || '未关联学号' }} · {{ current.advisorName || '未分配指导教师' }}</span>
+            </div>
+            <div class="gp-context__hint">按阶段完成查重、评阅、答辩与成绩发布</div>
+          </section>
           <div class="gp-tabs">
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'plagiarism' }" @click="switchTab('plagiarism')">查重记录</button>
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'review' }" @click="switchTab('review')">教师评阅</button>
@@ -342,19 +350,27 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gp-mode { display: inline-flex; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); overflow: hidden; margin-bottom: var(--space-3); }
-.gp-mode__btn { padding: 7px 16px; border: none; background: #fff; cursor: pointer; font-size: 13px; color: var(--text-secondary, #475569); }
+.gp-mode { display: inline-flex; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); overflow: hidden; margin-bottom: var(--space-3); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.gp-mode__btn { padding: 8px 16px; border: none; background: #fff; cursor: pointer; font-size: 13px; color: var(--text-secondary, #475569); transition: background .15s ease, color .15s ease; }
+.gp-mode__btn:hover:not(.is-active) { background: var(--gray-50, #f8fafc); }
+.gp-mode__btn:focus-visible, .gp-tabs__item:focus-visible, .gp-stu-item:focus-visible { outline: 2px solid var(--primary-400, #60a5fa); outline-offset: -2px; }
 .gp-mode__btn.is-active { background: var(--brand-primary, #2563eb); color: #fff; }
 .gp-miss { color: var(--danger, #dc2626); font-weight: 600; }
 .gp-missing-only { margin-left: auto; font-size: var(--font-size-sm, 13px); color: var(--text-secondary, #475569); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .mp-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
 .gp-layout { display: flex; gap: var(--space-4); align-items: flex-start; }
-.gp-side { width: 280px; flex: none; }
-.gp-main { flex: 1; min-width: 0; }
+.gp-side { width: 280px; flex: none; padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
+.gp-main { flex: 1; min-width: 0; padding: var(--space-4); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .gp-stu-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; max-height: 560px; overflow-y: auto; }
-.gp-stu-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+.gp-stu-item { padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: background .12s ease, border-color .12s ease; }
 .gp-stu-item:hover { background: var(--bg2, #f8fafc); }
 .gp-stu-item.is-active { background: var(--pri-bg, #eff6ff); border-color: var(--pri, #2563eb); }
+.gp-context { display: flex; align-items: center; gap: var(--space-3); padding: 0 0 var(--space-3); margin-bottom: var(--space-1); border-bottom: 1px solid var(--border-light, #e2e8f0); }
+.gp-context__avatar { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border-radius: var(--radius-full); background: var(--primary-50, #eff6ff); color: var(--primary-700, #1d4ed8); font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }
+.gp-context__identity { display: grid; gap: 2px; min-width: 0; }
+.gp-context__identity strong { color: var(--text-primary); font-size: var(--font-size-md); }
+.gp-context__identity span { overflow: hidden; color: var(--text-tertiary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
+.gp-context__hint { margin-left: auto; max-width: 235px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; text-align: right; }
 .gp-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .gp-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
 .gp-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
@@ -375,4 +391,13 @@ export default {
 .mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+@media (max-width: 960px) {
+  .gp-layout { flex-direction: column; }
+  .gp-side, .gp-main { width: 100%; box-sizing: border-box; }
+  .gp-stu-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); max-height: 260px; gap: var(--space-1); }
+}
+@media (max-width: 640px) {
+  .gp-context__hint { display: none; }
+  .gp-main { padding: var(--space-3); }
+}
 </style>
