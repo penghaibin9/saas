@@ -62,13 +62,13 @@ export default {
 }
 .mps__title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.01em;
 }
 .mps__subtitle {
   margin: var(--space-1) 0 0;
-  font-size: 12.5px;
+  font-size: var(--font-size-sm);
   color: var(--t3);
 }
 .mps__meta {
@@ -86,7 +86,7 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  height: 26px;
+  height: 28px;
   padding: 0 var(--space-3);
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);

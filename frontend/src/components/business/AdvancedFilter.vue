@@ -148,12 +148,12 @@ export default {
   color: var(--t3);
 }
 .af__control {
-  height: 34px;
+  height: 38px;
   border: 1px solid var(--card-b);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.9);
   color: var(--t1);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   padding: 0 var(--space-3);
   outline: none;
   transition:

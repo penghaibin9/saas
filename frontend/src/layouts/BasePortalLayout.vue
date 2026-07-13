@@ -774,12 +774,12 @@ export default {
   min-width: 0;
 }
 .bpl-brand__nm {
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: var(--font-weight-bold);
   white-space: nowrap;
 }
 .bpl-brand__sch {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--t3);
   white-space: nowrap;
 }
@@ -847,7 +847,7 @@ export default {
   outline: none;
   background: transparent;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--t1);
   padding: 0;
 }
@@ -1229,11 +1229,20 @@ export default {
   gap: 1px;
 }
 .bpl-submods__label {
-  font-size: 10.5px;
+  /* 当前一级业务域标题（如「毕业设计中心」）：必须明显大于下方二级工作台名称。 */
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  box-sizing: border-box;
+  font-size: 16px;
   font-weight: var(--font-weight-bold);
-  letter-spacing: 0.08em;
-  color: var(--t3);
-  padding: 2px 8px 6px;
+  letter-spacing: -0.015em;
+  color: var(--t1);
+  padding: 7px 10px 8px;
+  border: 1px solid var(--primary-100, #dbeafe);
+  border-radius: var(--radius-sm, 6px);
+  background: linear-gradient(100deg, var(--primary-50, #eff6ff), rgba(255, 255, 255, .72));
+  box-shadow: 0 1px 1px rgba(15, 23, 42, .02);
 }
 .bpl-submods__item {
   display: block;
@@ -1321,7 +1330,8 @@ export default {
 /* ══ 侧栏施工地图：二级(分组标题) ↔ 三级(具体页面) 强层级区分 ══ */
 /* 二级模块：像“分组标题”——更大更粗、颜色最深、组间留白，箭头醒目 */
 .bpl-tree .bpl-tree__mod {
-  font-size: 13.5px;
+  /* 二级工作台：比一级业务域标题小一档，但仍保证可扫读。 */
+  font-size: 14px;
   font-weight: var(--font-weight-bold);
   color: var(--t1);
   margin-top: 8px;
@@ -1355,7 +1365,7 @@ export default {
 .bpl-tree .bpl-tree__leaf {
   position: relative;
   padding: 6px 10px 6px 34px;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 400;
   color: var(--t3);
 }
@@ -1408,7 +1418,7 @@ export default {
   gap: 9px;
   padding: 8px 10px;
   border-radius: 9px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--t2);
   font-weight: var(--font-weight-medium);
   text-decoration: none;
@@ -1547,7 +1557,7 @@ export default {
     background: var(--pri-bg);
     border-bottom: 1px solid var(--card-b);
     color: var(--t2);
-    font-size: 12.5px;
+  font-size: 13.5px;
     line-height: 1.45;
   }
   .bpl-mobilehint__ic {
