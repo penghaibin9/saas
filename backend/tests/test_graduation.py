@@ -8,8 +8,8 @@ MAIN_TID = 1000000000000000001
 
 def _seed(_db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import (GraduationDefenseGroup, GraduationFinal, GraduationProposal,
-                            GraduationStudent, GraduationTopic)
+    from app.models import (GraduationDefenseGroup, GraduationFinal, GraduationPlagiarismCheck,
+                            GraduationProposal, GraduationStudent, GraduationTopic)
     db = get_sessionmaker()()
     try:
         s = GraduationStudent(tenant_id=MAIN_TID, name="毕设甲", student_no="S2026-999001",
@@ -33,6 +33,12 @@ def _seed(_db_mode):
                                       location="B402", chair="王芳", members_json=["王芳"], secretary="孙晓梅",
                                       student_count=8, conflict="评委含指导教师本人", published=False)
         db.add_all([p, f, gok, gbad])
+        db.flush()
+        db.add(GraduationPlagiarismCheck(
+            tenant_id=MAIN_TID, gd_student_id=s.id, gd_final_id=f.id,
+            submit_at=datetime.utcnow(), status="DONE", rate="12.6%", threshold=30,
+            over_threshold=False,
+        ))
         db.commit()
         return {"student": s.id, "proposal": p.id, "final": f.id, "gok": gok.id, "gbad": gbad.id}
     finally:

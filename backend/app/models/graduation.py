@@ -3,10 +3,26 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
+
+
+def _audit_trace_id() -> str | None:
+    from app.core.context import get_trace_id
+    value = get_trace_id()
+    return value if value and value != "-" else None
+
+
+def _audit_request_path() -> str | None:
+    from app.core.context import get_request_meta
+    return get_request_meta().get("path")
+
+
+def _audit_client_ip() -> str | None:
+    from app.core.context import get_request_meta
+    return get_request_meta().get("ip")
 
 
 class GraduationBatch(PKMixin, TenantMixin, CommonMixin, Base):
@@ -40,6 +56,9 @@ class GraduationBatch(PKMixin, TenantMixin, CommonMixin, Base):
 
 class GraduationStudent(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_gd_student"
+    __table_args__ = (
+        Index("ix_gd_student_tenant_stage_active", "tenant_id", "stage", "record_status", "is_deleted"),
+    )
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="毕设批次 t_gd_batch.id")
     topic_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="选题 t_gd_topic.id")
     student_no: Mapped[str | None] = mapped_column(String(50), index=True)
@@ -123,6 +142,7 @@ class GraduationTopicChoice(PKMixin, TenantMixin, CommonMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "round_id", "gd_student_id", "choice_order",
                          name="uk_gd_topic_choice_order"),
+        Index("ix_gd_choice_round_status", "tenant_id", "round_id", "status", "is_deleted"),
     )
 
     round_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -283,6 +303,9 @@ class GraduationProposal(PKMixin, TenantMixin, CommonMixin, Base):
 
 class GraduationFinal(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_gd_final"
+    __table_args__ = (
+        Index("ix_gd_final_tenant_student_status", "tenant_id", "gd_student_id", "status", "is_deleted"),
+    )
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     final_type: Mapped[str] = mapped_column(String(20), nullable=False, default="初稿")
     version: Mapped[str | None] = mapped_column(String(20))
@@ -312,6 +335,9 @@ class GraduationDefenseGroup(PKMixin, TenantMixin, CommonMixin, Base):
 class GraduationPlagiarismCheck(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_plagiarism 查重记录（对齐老系统 0检测中/1完成/2失败 + 复查申请）。"""
     __tablename__ = "t_gd_plagiarism"
+    __table_args__ = (
+        Index("ix_gd_plag_tenant_final_status", "tenant_id", "gd_final_id", "status", "is_deleted"),
+    )
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     gd_final_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="关联成果 t_gd_final.id")
@@ -330,6 +356,9 @@ class GraduationPlagiarismCheck(PKMixin, TenantMixin, CommonMixin, Base):
 class GraduationReview(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_review 教师评阅（独立评阅角色，SoD：评阅人≠该生指导教师）。"""
     __tablename__ = "t_gd_review"
+    __table_args__ = (
+        Index("ix_gd_review_tenant_student_status", "tenant_id", "gd_student_id", "status", "is_deleted"),
+    )
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     gd_final_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
@@ -380,6 +409,9 @@ class GraduationGrade(PKMixin, TenantMixin, CommonMixin, Base):
     published_by: Mapped[str | None] = mapped_column(String(100))
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
     withdraw_reason: Mapped[str | None] = mapped_column(String(500))
+    source_snapshot_hash: Mapped[str | None] = mapped_column(
+        String(64), comment="SHA-256 of authoritative review/defense inputs at calculation"
+    )
 
 
 class GraduationRiskCase(PKMixin, TenantMixin, CommonMixin, Base):
@@ -404,7 +436,10 @@ class GraduationRiskCase(PKMixin, TenantMixin, CommonMixin, Base):
 class GraduationArchiveRecord(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_archive_record 毕设归档（材料清单核验→归档；对齐老系统 filingModel 0-4 语义）。"""
     __tablename__ = "t_gd_archive_record"
-    __table_args__ = (UniqueConstraint("tenant_id", "gd_student_id", name="uk_gd_archive_student"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "gd_student_id", name="uk_gd_archive_student"),
+        Index("ix_gd_archive_tenant_status", "tenant_id", "status", "is_deleted"),
+    )
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     checklist_json: Mapped[list | None] = mapped_column(JSON, comment="[{item,required,present}]")
@@ -417,10 +452,14 @@ class GraduationArchiveRecord(PKMixin, TenantMixin, CommonMixin, Base):
     filed_at: Mapped[datetime | None] = mapped_column(DateTime)
     archive_batch_no: Mapped[str | None] = mapped_column(String(100))
     reject_reason: Mapped[str | None] = mapped_column(String(500))
+    manifest_hash: Mapped[str | None] = mapped_column(
+        String(64), comment="SHA-256 evidence manifest fixed at filing"
+    )
 
 
 class GraduationAuditTrail(PKMixin, TenantMixin, AuditTimeMixin, Base):
     __tablename__ = "t_gd_audit_trail"
+    __table_args__ = (Index("ix_gd_audit_request_id", "tenant_id", "request_id"),)
     biz_type: Mapped[str] = mapped_column(String(50), nullable=False)
     biz_id: Mapped[str | None] = mapped_column(String(50))
     action: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -430,6 +469,9 @@ class GraduationAuditTrail(PKMixin, TenantMixin, AuditTimeMixin, Base):
     before_val: Mapped[str | None] = mapped_column(String(200))
     after_val: Mapped[str | None] = mapped_column(String(200))
     occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    request_id: Mapped[str | None] = mapped_column(String(64), default=_audit_trace_id)
+    request_path: Mapped[str | None] = mapped_column(String(500), default=_audit_request_path)
+    client_ip: Mapped[str | None] = mapped_column(String(64), default=_audit_client_ip)
 
 
 class GraduationTemplate(PKMixin, TenantMixin, CommonMixin, Base):

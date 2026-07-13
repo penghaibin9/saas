@@ -56,9 +56,33 @@ def test_second_defense_requires_first_round_confirmed(client, auth_headers, db_
 def test_grade_calculate_review_publish_withdraw(client, auth_headers, db_mode):
     h = auth_headers
     gid = _gd_student(client, h, "GR001", "成绩测试生")
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationDefenseScore, GraduationFinal, GraduationReview
+    db = get_sessionmaker()()
+    final = GraduationFinal(
+        tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
+        version="v1", submit_at=datetime.utcnow(), status="APPROVED",
+        plagiarism_rate="10.0%", plagiarism_status="已检测", attachments_json=["test-file"],
+    )
+    db.add(final)
+    db.flush()
+    db.add(GraduationReview(
+        tenant_id=1000000000000000001, gd_student_id=int(gid), gd_final_id=final.id,
+        reviewer_name="李评阅",
+        status="COMPLETED", score=90, opinion="评阅完成", reviewed_at=datetime.utcnow(),
+    ))
+    db.add(GraduationDefenseScore(
+        tenant_id=1000000000000000001, gd_student_id=int(gid), judge_name="王评委",
+        score=90, absent=False, round_no=1, status="CONFIRMED", confirmed_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
 
     detail = client.get(f"{GD_GRADE}/{gid}", headers=h).json()["data"]
     assert detail["status"] == "DRAFT"
+    assert detail["sourceScores"]["reviewerScore"] == 90
+    assert detail["sourceScores"]["defenseScore"] == 90
 
     calc = client.post(f"{GD_GRADE}/{gid}/calculate", headers=h, json={
         "advisorScore": 95, "reviewerScore": 90, "defenseScore": 90})
@@ -75,17 +99,47 @@ def test_grade_calculate_review_publish_withdraw(client, auth_headers, db_mode):
     ret = client.post(f"{GD_GRADE}/{gid}/review", headers=h, json={"action": "RETURN", "comment": "答辩分需核实原始记录"})
     assert ret.json()["data"]["status"] == "DRAFT"
 
-    client.post(f"{GD_GRADE}/{gid}/calculate", headers=h, json={"advisorScore": 90, "defenseScore": 88})
+    mismatch = client.post(
+        f"{GD_GRADE}/{gid}/calculate", headers=h,
+        json={"advisorScore": 90, "reviewerScore": 90, "defenseScore": 88},
+    )
+    assert mismatch.status_code == 409
+    client.post(f"{GD_GRADE}/{gid}/calculate", headers=h, json={
+        "advisorScore": 90, "reviewerScore": 90, "defenseScore": 90,
+    })
     approve = client.post(f"{GD_GRADE}/{gid}/review", headers=h, json={"action": "APPROVE"})
     assert approve.json()["data"]["reviewedBy"]
+    assert len(approve.json()["data"]["sourceSnapshotHash"]) == 64
+    approve_retry = client.post(f"{GD_GRADE}/{gid}/review", headers=h, json={"action": "APPROVE"})
+    assert approve_retry.json()["data"]["version"] == approve.json()["data"]["version"]
+
+    db = get_sessionmaker()()
+    review_row = db.query(GraduationReview).filter(GraduationReview.gd_student_id == int(gid)).one()
+    review_row.score = 91
+    db.commit()
+    db.close()
+    stale_publish = client.post(f"{GD_GRADE}/{gid}/publish", headers=h)
+    assert stale_publish.status_code == 409
+    db = get_sessionmaker()()
+    review_row = db.query(GraduationReview).filter(GraduationReview.gd_student_id == int(gid)).one()
+    review_row.score = 90
+    db.commit()
+    db.close()
 
     publish = client.post(f"{GD_GRADE}/{gid}/publish", headers=h)
     assert publish.json()["data"]["status"] == "PUBLISHED"
+    publish_retry = client.post(f"{GD_GRADE}/{gid}/publish", headers=h)
+    assert publish_retry.json()["data"]["version"] == publish.json()["data"]["version"]
 
     withdraw_short = client.post(f"{GD_GRADE}/{gid}/withdraw", headers=h, json={"reason": "x"})
     assert withdraw_short.json()["code"] != 0
     withdraw = client.post(f"{GD_GRADE}/{gid}/withdraw", headers=h, json={"reason": "发现导师分录入错误需重新核算"})
     assert withdraw.json()["data"]["status"] == "WITHDRAWN"
+    withdraw_retry = client.post(
+        f"{GD_GRADE}/{gid}/withdraw", headers=h,
+        json={"reason": "发现导师分录入错误需重新核算"},
+    )
+    assert withdraw_retry.json()["data"]["version"] == withdraw.json()["data"]["version"]
 
     stats = client.get(f"{GD_GRADE}/stats", headers=h).json()["data"]
     assert stats["total"] >= 1

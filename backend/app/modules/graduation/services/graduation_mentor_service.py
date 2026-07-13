@@ -19,6 +19,7 @@ from app.models import (GraduationAuditTrail, GraduationMentor, GraduationMentor
                         GraduationMentorEval, GraduationStudent)
 from app.services import excel
 from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 QUAL_LABEL = {"PENDING_REVIEW": "待审核", "QUALIFIED": "已认证", "REJECTED": "已驳回",
               "DISABLED": "已停用", "ARCHIVED": "已归档"}
@@ -340,14 +341,16 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return s
+    return assert_student_access(db, s, "mentor.assignment")
 
 
 def list_assignments(page: int, page_size: int, mentor_id=None, gd_student_id=None,
                      status=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationMentorAssignment).where(
-            GraduationMentorAssignment.tenant_id == _tid())
+            GraduationMentorAssignment.tenant_id == _tid(),
+            GraduationMentorAssignment.gd_student_id.in_(scope_ids or [-1]))
         if mentor_id:
             q = q.where(GraduationMentorAssignment.mentor_id == int(mentor_id))
         if gd_student_id:
@@ -452,6 +455,7 @@ def cancel_assignment(assignment_id, reason: str) -> dict:
         if a.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "仅「生效中」分配可取消")
         stu = db.get(GraduationStudent, a.gd_student_id)
+        assert_student_access(db, stu, "mentor.assignment.cancel")
         mentor = db.get(GraduationMentor, a.mentor_id)
         a.status = "CANCELLED"
         a.ended_at = datetime.utcnow()
@@ -467,10 +471,12 @@ def cancel_assignment(assignment_id, reason: str) -> dict:
 
 def unassigned_students(page: int, page_size: int, keyword=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationStudent).where(GraduationStudent.tenant_id == _tid(),
                                             GraduationStudent.is_deleted.is_(False),
                                             GraduationStudent.mentor_id.is_(None),
-                                            GraduationStudent.record_status == "ACTIVE")
+                                            GraduationStudent.record_status == "ACTIVE",
+                                            GraduationStudent.id.in_(scope_ids or [-1]))
         if keyword:
             like = f"%{keyword.strip()}%"
             q = q.where(or_(GraduationStudent.name.like(like), GraduationStudent.student_no.like(like)))

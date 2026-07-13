@@ -16,6 +16,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationAuditTrail, GraduationStudent, GraduationTaskBook
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 STATUS_LABEL = {"PENDING_CONFIRM": "待学生确认", "CONFIRMED": "已确认", "CHANGE_PENDING": "变更待确认"}
 STATUS_TONE = {"PENDING_CONFIRM": "warning", "CONFIRMED": "success", "CHANGE_PENDING": "warning"}
@@ -37,7 +38,7 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return s
+    return assert_student_access(db, s, "taskbook")
 
 
 def _row(t: GraduationTaskBook, stu=None) -> dict:
@@ -57,8 +58,10 @@ def _row(t: GraduationTaskBook, stu=None) -> dict:
 
 def list_taskbooks(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationTaskBook).where(GraduationTaskBook.tenant_id == _tid(),
-                                             GraduationTaskBook.is_deleted.is_(False))
+                                              GraduationTaskBook.is_deleted.is_(False),
+                                              GraduationTaskBook.gd_student_id.in_(scope_ids or [-1]))
         if status:
             q = q.where(GraduationTaskBook.status == status)
         rows = db.scalars(q.order_by(GraduationTaskBook.id.desc())).all()
@@ -162,7 +165,9 @@ def change_taskbook(gd_student_id, body: dict) -> dict:
 
 def taskbook_stats() -> dict:
     with session() as db:
-        base = [GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.is_deleted.is_(False),
+                GraduationTaskBook.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationTaskBook).where(*base)) or 0)
         by_status = [{"status": s, "label": STATUS_LABEL[s],
                       "count": int(db.scalar(select(func.count()).select_from(GraduationTaskBook).where(
@@ -170,7 +175,8 @@ def taskbook_stats() -> dict:
         no_taskbook = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE", GraduationStudent.mentor_id.isnot(None),
-            GraduationStudent.stage != "TOPIC_SELECTING")) or 0) - total
+            GraduationStudent.stage != "TOPIC_SELECTING",
+            GraduationStudent.id.in_(scope_ids or [-1]))) or 0) - total
         return {"total": total, "byStatus": by_status, "noTaskbookYet": max(0, no_taskbook)}
 
 

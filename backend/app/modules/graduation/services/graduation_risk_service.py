@@ -16,6 +16,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationDefenseScore, GraduationFinal, GraduationGrade,
                         GraduationMidterm, GraduationProposal, GraduationRiskCase, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 STATUS_LABEL = {"OPEN": "待受理", "PROCESSING": "处理中", "CLOSED": "已关闭"}
 STATUS_TONE = {"OPEN": "danger", "PROCESSING": "warning", "CLOSED": "success"}
@@ -148,8 +149,10 @@ def _row(r: GraduationRiskCase, stu=None) -> dict:
 def list_risks(page: int, page_size: int, risk_code=None, level=None, status=None,
                gd_student_id=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationRiskCase).where(GraduationRiskCase.tenant_id == _tid(),
-                                             GraduationRiskCase.is_deleted.is_(False))
+                                             GraduationRiskCase.is_deleted.is_(False),
+                                             GraduationRiskCase.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationRiskCase.gd_student_id == int(gd_student_id))
         if risk_code:
@@ -170,6 +173,7 @@ def accept_risk(rid, assignee: str = None) -> dict:
         r = db.get(GraduationRiskCase, int(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("风险记录不存在")
+        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "risk.accept")
         if r.status != "OPEN":
             raise AppException("DATA_CONFLICT", "仅「待受理」风险可受理")
         n, _ = _op()
@@ -185,6 +189,7 @@ def process_risk(rid, note: str) -> dict:
         r = db.get(GraduationRiskCase, int(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("风险记录不存在")
+        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "risk.process")
         if r.status != "PROCESSING":
             raise AppException("DATA_CONFLICT", "仅「处理中」风险可记录处理")
         r.handle_note = note
@@ -200,6 +205,7 @@ def close_risk(rid, reason: str) -> dict:
         r = db.get(GraduationRiskCase, int(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("风险记录不存在")
+        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "risk.close")
         if r.status != "PROCESSING":
             raise AppException("DATA_CONFLICT", "仅「处理中」风险可关闭")
         r.status = "CLOSED"
@@ -212,7 +218,9 @@ def close_risk(rid, reason: str) -> dict:
 
 def risk_stats() -> dict:
     with session() as db:
-        base = [GraduationRiskCase.tenant_id == _tid(), GraduationRiskCase.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationRiskCase.tenant_id == _tid(), GraduationRiskCase.is_deleted.is_(False),
+                GraduationRiskCase.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(*base)) or 0)
         open_count = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
             *base, GraduationRiskCase.status == "OPEN")) or 0)

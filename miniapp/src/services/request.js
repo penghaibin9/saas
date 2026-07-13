@@ -45,7 +45,9 @@ function markOffline() {
   state.offlineUntil = Date.now() + 15000
   if (!state.warned) {
     state.warned = true
-    safeToast('网络不稳定，部分内容可能不是最新', 'none')
+    safeToast(ENV.allowMockFallback
+      ? '网络不稳定，开发演示数据可能不是最新'
+      : '网络不稳定，请检查网络后重试', 'none')
   }
 }
 
@@ -204,10 +206,13 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
  * 业务错误（401/403/409/422/404）一律透出，由页面处理，绝不假装成功。
  */
 export function realFirst(label, realFn, mockFn) {
-  if (!shouldTryReal()) return mockFn ? mockFn() : Promise.reject({ code: 'MOCK_ONLY', message: '离线模式' })
+  if (!shouldTryReal()) {
+    if (ENV.allowMockFallback && mockFn) return mockFn()
+    return Promise.reject({ code: 'NETWORK', message: '真实接口不可用，生产环境已禁用 mock fallback' })
+  }
   return realFn().catch((e) => {
     if (e && e.biz) throw e // 业务错误透出，不兜底
-    if (mockFn) return mockFn()
+    if (ENV.allowMockFallback && mockFn) return mockFn()
     throw e
   })
 }

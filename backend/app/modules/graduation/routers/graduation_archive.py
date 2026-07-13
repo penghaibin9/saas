@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
+from app.core.permissions import require_permission
 from app.modules.graduation.schemas.graduation_archive import ArchiveFileRequest, ArchiveRejectRequest
 from app.services import audit_log
 from app.modules.graduation.services import graduation_archive_service as svc
@@ -61,7 +62,7 @@ def gd_archive_generate(gd_student_id: str, user=Depends(get_current_user)):
 
 
 @router.post("/gd-archives/{gd_student_id}/submit", summary="提交归档（须无缺失材料）")
-def gd_archive_submit(gd_student_id: str, user=Depends(get_current_user)):
+def gd_archive_submit(gd_student_id: str, user=Depends(require_permission("graduationDesign.archive.submit"))):
     result = svc.submit_archive(gd_student_id)
     audit_log.record("提交归档", f"graduation-archive:{gd_student_id}")
     return success(result, message="已提交")

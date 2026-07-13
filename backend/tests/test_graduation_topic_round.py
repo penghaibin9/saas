@@ -14,9 +14,9 @@ def _batch(client, h, no="GD-RND-B1"):
     }).json()["data"]["id"]
 
 
-def _approved_topic(client, h, title="轮次测试题"):
+def _approved_topic(client, h, title="轮次测试题", capacity=2):
     r = client.post(GD_TOPIC, headers=h, json={
-        "title": title, "sourceType": "TEACHER", "advisorName": "王老师", "capacity": 2, "submitReview": True
+        "title": title, "sourceType": "TEACHER", "advisorName": "王老师", "capacity": capacity, "submitReview": True
     }).json()
     tid = r["data"]["id"]
     client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
@@ -93,3 +93,33 @@ def test_round_export_and_choice_import(client, auth_headers, db_mode):
     assert len(ch["data"]) >= 1
     cex = client.post(f"{GD_ROUND}/{rid}/choices/export", headers=auth_headers).json()
     assert cex["code"] == 0 and cex["data"]["rowCount"] >= 1
+
+
+def test_confirm_choice_is_atomic_when_topic_capacity_is_exhausted(client, auth_headers, db_mode):
+    tid = _approved_topic(client, auth_headers, "容量并发保护题", capacity=1)
+    gid1 = _gd_student(client, auth_headers, "S-GD-LOCK-01")
+    gid2 = _gd_student(client, auth_headers, "S-GD-LOCK-02")
+    rid = client.post(GD_ROUND, headers=auth_headers, json={"roundName": "容量锁测试"}).json()["data"]["id"]
+    client.post(f"{GD_ROUND}/{rid}/open", headers=auth_headers)
+    for gid in (gid1, gid2):
+        response = client.post(f"{GD_ROUND}/{rid}/choices", headers=auth_headers, json={
+            "gdStudentId": gid, "choices": [{"topicId": tid, "choiceOrder": 1}],
+        })
+        assert response.status_code == 200
+
+    choices = client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()["data"]
+    by_student = {row["gdStudentId"]: row for row in choices}
+    first = client.post(
+        f"{GD_ROUND}/choices/{by_student[gid1]['id']}/confirm", headers=auth_headers,
+    )
+    assert first.status_code == 200
+    second = client.post(
+        f"{GD_ROUND}/choices/{by_student[gid2]['id']}/confirm", headers=auth_headers,
+    )
+    assert second.status_code == 409
+
+    after = client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()["data"]
+    after_by_student = {row["gdStudentId"]: row for row in after}
+    assert after_by_student[gid1]["status"] == "CONFIRMED"
+    assert after_by_student[gid2]["status"] == "PENDING"
+    assert client.get(f"{GD_STU}/{gid2}", headers=auth_headers).json()["data"]["topicId"] == ""

@@ -70,6 +70,61 @@ def test_archive_generate_blocks_submit_until_complete_then_files(client, auth_h
     assert export.json()["data"]["rowCount"] >= 1
 
 
+def test_complete_archive_is_idempotent_and_archives_student_atomically(client, auth_headers, db_mode):
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade,
+                            GraduationMidterm, GraduationProposal, GraduationReview,
+                            GraduationStudent, GraduationTaskBook)
+    h = auth_headers
+    gid = _gd_student(client, h, "AR-COMPLETE-01", "完整归档测试生")
+    db = get_sessionmaker()()
+    final = GraduationFinal(
+        tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
+        version="v1", submit_at=datetime.utcnow(), plagiarism_rate="8.0%",
+        plagiarism_status="已检测", status="APPROVED", attachments_json=["test-file"],
+    )
+    db.add(final)
+    db.flush()
+    db.add_all([
+        GraduationTaskBook(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CONFIRMED"),
+        GraduationProposal(tenant_id=1000000000000000001, gd_student_id=int(gid), version="v1", status="APPROVED"),
+        GraduationMidterm(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CHECKED_PASS"),
+        GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid), gd_final_id=final.id,
+                         reviewer_name="李评阅", status="COMPLETED", score=88),
+        GraduationDefenseScore(tenant_id=1000000000000000001, gd_student_id=int(gid),
+                               judge_name="王评委", score=90, status="CONFIRMED"),
+        GraduationGrade(tenant_id=1000000000000000001, gd_student_id=int(gid),
+                        total_score=89, grade_level="良好", status="PUBLISHED"),
+    ])
+    db.commit()
+    db.close()
+
+    generated = client.post(f"{GD_ARCHIVE}/{gid}/generate", headers=h).json()["data"]
+    assert generated["missingItems"] == []
+    submitted = client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()["data"]
+    submitted_retry = client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()["data"]
+    assert submitted_retry["version"] == submitted["version"]
+
+    filed = client.post(
+        f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-TEST-001"},
+    ).json()["data"]
+    filed_retry = client.post(
+        f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-TEST-001"},
+    ).json()["data"]
+    assert filed["status"] == "FILED"
+    assert len(filed["manifestHash"]) == 64
+    assert filed_retry["version"] == filed["version"]
+    conflict = client.post(
+        f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-OTHER"},
+    )
+    assert conflict.status_code == 409
+
+    db = get_sessionmaker()()
+    assert db.get(GraduationStudent, int(gid)).stage == "ARCHIVED"
+    db.close()
+
+
 def test_stats_overview_and_college_comparison(client, auth_headers, db_mode):
     h = auth_headers
     _gd_student(client, h, "ST001", "统计测试生")

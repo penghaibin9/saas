@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
+from app.core.permissions import require_permission
 from app.modules.graduation.schemas.graduation_grade import GradeCalculateRequest, GradeReviewRequest, GradeWithdrawRequest
 from app.services import audit_log
 from app.modules.graduation.services import graduation_grade_service as svc
@@ -47,7 +48,7 @@ def gd_grade_review(gd_student_id: str, body: GradeReviewRequest, user=Depends(g
 
 
 @router.post("/gd-grades/{gd_student_id}/publish", summary="发布成绩（须复核通过）")
-def gd_grade_publish(gd_student_id: str, user=Depends(get_current_user)):
+def gd_grade_publish(gd_student_id: str, user=Depends(require_permission("graduationDesign.grade.publish"))):
     result = svc.publish_grade(gd_student_id)
     audit_log.record("发布成绩", f"graduation-grade:{gd_student_id}")
     return success(result, message="已发布")

@@ -35,3 +35,8 @@ def test_pending_defense_count_reflects_new_group(client, auth_headers, db_mode)
 
     stat = next(s for s in client.get(DASH, headers=h).json()["data"]["stats"] if s["label"] == "答辩待发布")
     assert int(stat["value"]) == after
+
+    audit = client.get("/api/v1/graduation/audit-logs", headers=h).json()["data"]["items"][0]
+    assert audit["requestId"].startswith("req-")
+    assert audit["requestPath"] == DG
+    assert audit["clientIp"]

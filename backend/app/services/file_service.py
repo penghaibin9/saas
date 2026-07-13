@@ -121,10 +121,12 @@ def attachment_view(file_id: str | None) -> dict | None:
             "ext": m.get("ext"), "sizeBytes": m.get("sizeBytes")}
 
 
-def resolve_download(file_id: str):
+def resolve_download(file_id: str, *, allow_graduation_material: bool = False):
     """返回 (磁盘绝对路径, 原始文件名) 供下载；无效 / 文件丢失 → None。按当前租户校验。"""
     m = get_file_meta(file_id)
     if not m or not m.get("fileKey"):
+        return None
+    if m.get("bizType") == "GRADUATION_MATERIAL" and not allow_graduation_material:
         return None
     path = upload_dir() / m["fileKey"]
     if not path.exists():

@@ -15,6 +15,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationAuditTrail, GraduationDefenseScore, GraduationStudent
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 STATUS_LABEL = {"PENDING": "待评分", "SCORED": "已评分", "CONFIRMED": "已确认"}
 
@@ -35,7 +36,7 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return s
+    return assert_student_access(db, s, "defense.score")
 
 
 def _row(d: GraduationDefenseScore, stu=None) -> dict:
@@ -50,8 +51,10 @@ def _row(d: GraduationDefenseScore, stu=None) -> dict:
 def list_scores(page: int, page_size: int, gd_student_id=None, judge_name=None,
                 round_no=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationDefenseScore).where(GraduationDefenseScore.tenant_id == _tid(),
-                                                  GraduationDefenseScore.is_deleted.is_(False))
+                                                  GraduationDefenseScore.is_deleted.is_(False),
+                                                  GraduationDefenseScore.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationDefenseScore.gd_student_id == int(gd_student_id))
         if judge_name:
@@ -147,7 +150,9 @@ def create_second_defense(gd_student_id, reason: str) -> dict:
 
 def defense_score_stats() -> dict:
     with session() as db:
-        base = [GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.is_deleted.is_(False),
+                GraduationDefenseScore.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationDefenseScore).where(*base)) or 0)
         confirmed = int(db.scalar(select(func.count()).select_from(GraduationDefenseScore).where(
             *base, GraduationDefenseScore.status == "CONFIRMED")) or 0)

@@ -13,8 +13,10 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import GraduationAuditTrail, GraduationPlagiarismCheck, GraduationReview, GraduationStudent
+from app.models import (GraduationAuditTrail, GraduationFinal, GraduationPlagiarismCheck,
+                        GraduationReview, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 PLAG_STATUS_LABEL = {"CHECKING": "检测中", "DONE": "已完成", "FAILED": "失败"}
 REVIEW_STATUS_LABEL = {"ASSIGNED": "待评阅", "REVIEWING": "评阅中", "COMPLETED": "已完成", "RETURNED": "已退回"}
@@ -37,7 +39,7 @@ def _stu(db, sid) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return s
+    return assert_student_access(db, s, "review")
 
 
 # ═══════════ 查重记录 ═══════════
@@ -55,8 +57,10 @@ def _plag_row(p: GraduationPlagiarismCheck, stu=None) -> dict:
 
 def list_plagiarism(page: int, page_size: int, gd_student_id=None, status=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationPlagiarismCheck).where(GraduationPlagiarismCheck.tenant_id == _tid(),
-                                                     GraduationPlagiarismCheck.is_deleted.is_(False))
+                                                     GraduationPlagiarismCheck.is_deleted.is_(False),
+                                                     GraduationPlagiarismCheck.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationPlagiarismCheck.gd_student_id == int(gd_student_id))
         if status:
@@ -71,8 +75,28 @@ def list_plagiarism(page: int, page_size: int, gd_student_id=None, status=None) 
 def submit_plagiarism(gd_student_id, gd_final_id=None, threshold: int = 30) -> dict:
     with session() as db:
         stu = _stu(db, gd_student_id)
+        final_query = select(GraduationFinal).where(
+            GraduationFinal.tenant_id == _tid(),
+            GraduationFinal.gd_student_id == stu.id,
+            GraduationFinal.is_deleted.is_(False),
+        )
+        if gd_final_id:
+            final_query = final_query.where(GraduationFinal.id == int(gd_final_id))
+        final = db.scalars(final_query.order_by(GraduationFinal.id.desc()).with_for_update()).first()
+        if not final:
+            raise AppException("DATA_CONFLICT", "请先提交需要检测的论文成果")
+        if not (final.attachments_json or []):
+            raise AppException("DATA_CONFLICT", "该成果没有可检测的论文附件")
+        active = db.scalars(select(GraduationPlagiarismCheck).where(
+            GraduationPlagiarismCheck.tenant_id == _tid(),
+            GraduationPlagiarismCheck.gd_final_id == final.id,
+            GraduationPlagiarismCheck.status == "CHECKING",
+            GraduationPlagiarismCheck.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if active:
+            return _plag_row(active, stu)
         p = GraduationPlagiarismCheck(tenant_id=_tid(), gd_student_id=stu.id,
-                                      gd_final_id=int(gd_final_id) if gd_final_id else None,
+                                      gd_final_id=final.id,
                                       submit_at=datetime.utcnow(), status="CHECKING", threshold=threshold)
         db.add(p)
         db.flush()
@@ -83,22 +107,50 @@ def submit_plagiarism(gd_student_id, gd_final_id=None, threshold: int = 30) -> d
 
 def set_plagiarism_result(pid, rate: str, report_url: str = None) -> dict:
     with session() as db:
-        p = db.get(GraduationPlagiarismCheck, int(pid))
+        probe = db.get(GraduationPlagiarismCheck, int(pid))
+        if not probe or probe.is_deleted or probe.tenant_id != _tid():
+            raise not_found("查重记录不存在")
+        final = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.id == probe.gd_final_id,
+            GraduationFinal.tenant_id == _tid(),
+            GraduationFinal.is_deleted.is_(False),
+        ).with_for_update()).first() if probe.gd_final_id else None
+        p = db.scalars(select(GraduationPlagiarismCheck).where(
+            GraduationPlagiarismCheck.id == int(pid),
+            GraduationPlagiarismCheck.tenant_id == _tid(),
+            GraduationPlagiarismCheck.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("查重记录不存在")
+        assert_student_access(db, db.get(GraduationStudent, p.gd_student_id), "plagiarism.result")
         if p.status != "CHECKING":
             raise AppException("DATA_CONFLICT", "仅「检测中」记录可回填结果")
         try:
             rate_val = float(str(rate).replace("%", ""))
-        except ValueError:
+        except (TypeError, ValueError):
             raise AppException("VALIDATION_ERROR", "重复率格式错误")
+        if rate_val < 0 or rate_val > 100:
+            raise AppException("VALIDATION_ERROR", "重复率必须在 0-100 之间")
+        report_url = (report_url or "").strip() or None
+        if report_url and not (report_url.startswith("https://") or report_url.startswith("/api/v1/")):
+            raise AppException("VALIDATION_ERROR", "查重报告仅允许 HTTPS 或平台内部地址")
         p.rate = f"{rate_val}%"
         p.report_url = report_url
         p.status = "DONE"
         p.over_threshold = rate_val > p.threshold
+        if final:
+            final.plagiarism_rate = p.rate
+            final.plagiarism_status = "已检测"
+        stu = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == p.gd_student_id,
+            GraduationStudent.tenant_id == _tid(),
+        ).with_for_update()).first()
+        if stu:
+            stu.plagiarism_rate = p.rate
+            stu.version += 1
         _audit(db, "PLAGIARISM", p.id, "查重结果回填", detail=p.rate)
         db.commit()
-        return _plag_row(p, db.get(GraduationStudent, p.gd_student_id))
+        return _plag_row(p, stu)
 
 
 def dispute_plagiarism(pid, reason: str) -> dict:
@@ -108,6 +160,7 @@ def dispute_plagiarism(pid, reason: str) -> dict:
         p = db.get(GraduationPlagiarismCheck, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("查重记录不存在")
+        assert_student_access(db, db.get(GraduationStudent, p.gd_student_id), "plagiarism.dispute")
         if p.status != "DONE" or not p.over_threshold:
             raise AppException("DATA_CONFLICT", "仅超标记录可申请复查")
         p.dispute_reason = reason.strip()
@@ -124,12 +177,12 @@ def review_dispute(pid, action: str, comment: str = None) -> dict:
         p = db.get(GraduationPlagiarismCheck, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("查重记录不存在")
+        assert_student_access(db, db.get(GraduationStudent, p.gd_student_id), "plagiarism.dispute.review")
         if p.dispute_status != "PENDING":
             raise AppException("DATA_CONFLICT", "无待处理的复查申请")
         p.dispute_status = "APPROVED" if action == "APPROVE" else "REJECTED"
         p.dispute_comment = (comment or "").strip()
-        if action == "APPROVE":
-            p.over_threshold = False
+        # A successful dispute is an approved exception, not a rewrite of the objective result.
         _audit(db, "PLAGIARISM", p.id, "复查审核-" + ("通过" if action == "APPROVE" else "驳回"),
                (comment or "").strip())
         db.commit()
@@ -138,7 +191,9 @@ def review_dispute(pid, action: str, comment: str = None) -> dict:
 
 def plagiarism_stats() -> dict:
     with session() as db:
-        base = [GraduationPlagiarismCheck.tenant_id == _tid(), GraduationPlagiarismCheck.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationPlagiarismCheck.tenant_id == _tid(), GraduationPlagiarismCheck.is_deleted.is_(False),
+                GraduationPlagiarismCheck.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationPlagiarismCheck).where(*base)) or 0)
         over = int(db.scalar(select(func.count()).select_from(GraduationPlagiarismCheck).where(
             *base, GraduationPlagiarismCheck.over_threshold.is_(True))) or 0)
@@ -162,8 +217,10 @@ def _review_row(r: GraduationReview, stu=None) -> dict:
 def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=None,
                  status=None) -> tuple[list[dict], int]:
     with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationReview).where(GraduationReview.tenant_id == _tid(),
-                                           GraduationReview.is_deleted.is_(False))
+                                           GraduationReview.is_deleted.is_(False),
+                                           GraduationReview.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationReview.gd_student_id == int(gd_student_id))
         if reviewer_name:
@@ -182,9 +239,29 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
         stu = _stu(db, gd_student_id)
         if stu.advisor_name and reviewer_name.strip() == stu.advisor_name:
             raise AppException("VALIDATION_ERROR", "评阅人不得是该生指导教师（SoD 冲突）")
+        final_id = int(gd_final_id) if gd_final_id else None
+        if final_id:
+            final = db.scalars(select(GraduationFinal).where(
+                GraduationFinal.id == final_id,
+                GraduationFinal.tenant_id == _tid(),
+                GraduationFinal.gd_student_id == stu.id,
+                GraduationFinal.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if not final:
+                raise AppException("VALIDATION_ERROR", "Review target does not belong to this student")
+        existing = db.scalars(select(GraduationReview).where(
+            GraduationReview.tenant_id == _tid(),
+            GraduationReview.gd_student_id == stu.id,
+            GraduationReview.gd_final_id == final_id,
+            GraduationReview.reviewer_name == reviewer_name.strip(),
+            GraduationReview.status.in_(("ASSIGNED", "REVIEWING", "RETURNED")),
+            GraduationReview.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if existing:
+            return _review_row(existing, stu)
         n, _ = _op()
         r = GraduationReview(tenant_id=_tid(), gd_student_id=stu.id,
-                             gd_final_id=int(gd_final_id) if gd_final_id else None,
+                             gd_final_id=final_id,
                              reviewer_name=reviewer_name.strip(), status="ASSIGNED",
                              assigned_by=n, assigned_at=datetime.utcnow())
         db.add(r)
@@ -196,15 +273,22 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
 
 def submit_review(rid, score: int, opinion: str) -> dict:
     with session() as db:
-        r = db.get(GraduationReview, int(rid))
+        r = db.scalars(select(GraduationReview).where(
+            GraduationReview.id == int(rid), GraduationReview.tenant_id == _tid(),
+            GraduationReview.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
+        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "review.submit")
+        if r.status == "COMPLETED" and r.score == score and (r.opinion or "") == opinion:
+            return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status not in ("ASSIGNED", "REVIEWING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可提交评阅")
         r.score = score
         r.opinion = opinion
         r.status = "COMPLETED"
         r.reviewed_at = datetime.utcnow()
+        r.version += 1
         _audit(db, "REVIEW", r.id, "提交评阅", detail=f"score={score}")
         db.commit()
         return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
@@ -214,12 +298,19 @@ def return_review(rid, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
-        r = db.get(GraduationReview, int(rid))
+        r = db.scalars(select(GraduationReview).where(
+            GraduationReview.id == int(rid), GraduationReview.tenant_id == _tid(),
+            GraduationReview.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
+        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "review.return")
+        if r.status == "RETURNED":
+            return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status != "COMPLETED":
             raise AppException("DATA_CONFLICT", "仅「已完成」评阅可退回重评")
         r.status = "RETURNED"
+        r.version += 1
         _audit(db, "REVIEW", r.id, "退回重评", reason.strip())
         db.commit()
         return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
@@ -227,7 +318,9 @@ def return_review(rid, reason: str) -> dict:
 
 def review_stats() -> dict:
     with session() as db:
-        base = [GraduationReview.tenant_id == _tid(), GraduationReview.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationReview.tenant_id == _tid(), GraduationReview.is_deleted.is_(False),
+                GraduationReview.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationReview).where(*base)) or 0)
         by_status = [{"status": s, "label": REVIEW_STATUS_LABEL[s],
                       "count": int(db.scalar(select(func.count()).select_from(GraduationReview).where(

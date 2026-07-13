@@ -7,12 +7,26 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
+from app.core.permissions import require_permission
 from app.modules.graduation.schemas.graduation import (AssignStudentsBody, DefenseGroupBody,  # noqa: F401
                                     ProposalSubmitBody, RemindBody, ReviewBody)
 from app.services import audit_log
 from app.modules.graduation.services import graduation_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计"])
+
+
+@router.get("/materials/{file_id}/download", summary="下载毕业设计材料（业务关系鉴权）")
+def download_graduation_material(file_id: str, user=Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+    from app.core.exceptions import not_found
+
+    resolved = svc.resolve_material_download(file_id)
+    if not resolved:
+        raise not_found("毕业设计材料不存在或无权访问")
+    path, filename = resolved
+    audit_log.record("GRADUATION_MATERIAL_DOWNLOAD", f"graduation-file:{file_id}")
+    return FileResponse(str(path), filename=filename)
 
 
 def _p(i, t, page, ps):
@@ -66,7 +80,7 @@ def proposal_detail(pid: str, user=Depends(get_current_user)):
 
 
 @router.post("/proposals/{pid}/review", summary="批阅开题（驳回原因≥5字）")
-def proposal_review(pid: str, body: ReviewBody, user=Depends(get_current_user)):
+def proposal_review(pid: str, body: ReviewBody, user=Depends(require_permission("graduationDesign.proposal.review"))):
     return success(svc.review_proposal(pid, body.action, body.comment), message="已批阅")
 
 
@@ -159,7 +173,7 @@ def defense_unassign(gid: str, body: AssignStudentsBody, user=Depends(get_curren
 
 
 @router.post("/defense-groups/{gid}/publish", summary="发布答辩安排（冲突/未安排完整/无学生则拒绝）")
-def defense_publish(gid: str, user=Depends(get_current_user)):
+def defense_publish(gid: str, user=Depends(require_permission("graduationDesign.defense.publish"))):
     return success(svc.publish_defense(gid), message="已发布")
 
 

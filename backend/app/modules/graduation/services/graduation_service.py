@@ -6,10 +6,13 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic)
 from app.modules.graduation.services import graduation_student_service as gd_stu_svc
+from app.modules.graduation.services.graduation_scope_service import (
+    accessible_student_ids, assert_student_access, can_access_student, has_full_scope,
+)
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
 L_STAGE = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
@@ -62,12 +65,67 @@ def _resolve_attachments(ids) -> list:
             v = None
         if not v:
             continue
-        out.append({**v, "downloadUrl": f"/api/v1/files/download/{v['fileId']}"})
+        out.append({**v, "downloadUrl": f"/api/v1/graduation/materials/{v['fileId']}/download"})
     return out
+
+
+def _validate_final_attachments(attachments) -> list[str]:
+    """Reject forged cross-tenant IDs and unsafe thesis material types before binding."""
+    from app.services import file_service
+    normalized: list[str] = []
+    for raw in attachments or []:
+        fid = _att_id(raw)
+        if not fid or fid in normalized:
+            continue
+        meta = file_service.get_file_meta(fid)
+        if not meta:
+            raise AppException("VALIDATION_ERROR", "Thesis attachment is missing or outside the current tenant")
+        if (meta.get("ext") or "").lower() not in {"pdf", "doc", "docx", "zip"}:
+            raise AppException("FILE_TYPE_NOT_ALLOWED", "Only PDF, Word, or ZIP thesis files are allowed")
+        normalized.append(fid)
+    if len(normalized) > 10:
+        raise AppException("VALIDATION_ERROR", "A thesis submission may contain at most 10 attachments")
+    return normalized
+
+
+def _mark_material_files(db, attachment_ids: list[str]) -> None:
+    if not attachment_ids:
+        return
+    from app.models import FileObject
+    file_rows = db.scalars(select(FileObject).where(
+        FileObject.tenant_id == _tid(),
+        FileObject.id.in_([int(fid) for fid in attachment_ids]),
+        FileObject.is_deleted.is_(False),
+    ).with_for_update()).all()
+    if len(file_rows) != len(attachment_ids):
+        raise AppException("VALIDATION_ERROR", "One or more graduation attachments are invalid")
+    for file_row in file_rows:
+        file_row.biz_type = "GRADUATION_MATERIAL"
 
 
 def _stu_of(db, sid):
     return db.get(GraduationStudent, sid)
+
+
+def resolve_material_download(file_id: str):
+    """Resolve only when the file is bound to an accessible graduation proposal/final."""
+    from app.services import file_service
+    with session() as db:
+        candidates = []
+        candidates.extend(db.scalars(select(GraduationProposal).where(
+            GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False),
+        )).all())
+        candidates.extend(db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == _tid(), GraduationFinal.is_deleted.is_(False),
+        )).all())
+        for material in candidates:
+            bound = {_att_id(raw) for raw in (material.attachments_json or [])}
+            if file_id not in bound:
+                continue
+            student = db.get(GraduationStudent, material.gd_student_id)
+            assert_student_access(db, student, "graduation.material.download")
+            return file_service.resolve_download(file_id, allow_graduation_material=True)
+    return None
 
 
 def _stu_row(s: GraduationStudent) -> dict:
@@ -157,6 +215,8 @@ def list_proposals(page, ps, keyword=None, status=None):
         items = []
         for p in rows:
             stu = _stu_of(db, p.gd_student_id)
+            if not stu or not can_access_student(db, stu):
+                continue
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_prop_row(p, stu))
@@ -175,6 +235,8 @@ def _not_submitted_proposals(db, keyword=None) -> list:
         GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
     rows = []
     for s in stus:
+        if not can_access_student(db, s):
+            continue
         if s.id in have:
             continue
         confirmed_topic = bool(s.topic_id) or s.stage not in ("TOPIC_SELECTING", None, "")
@@ -196,6 +258,7 @@ def get_proposal_detail(pid) -> dict:
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
         stu = _stu_of(db, p.gd_student_id)
+        assert_student_access(db, stu, "proposal.detail")
         logs = db.scalars(select(GraduationAuditTrail).where(GraduationAuditTrail.tenant_id == _tid(),
                           GraduationAuditTrail.biz_type == "PROPOSAL",
                           GraduationAuditTrail.biz_id == str(p.id)).order_by(GraduationAuditTrail.id)).all()
@@ -230,6 +293,8 @@ def review_proposal(pid, action, comment=None) -> dict:
         p = db.get(GraduationProposal, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
+        stu = _stu_of(db, p.gd_student_id)
+        assert_student_access(db, stu, "proposal.review")
         if p.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该开题已批阅，请刷新")
         before = p.status
@@ -278,6 +343,7 @@ def final_stats() -> dict:
 
 def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) -> dict:
     """学生提交/重交开题报告。已有待审/已通过时不可重复提交；被驳回后可重交（版本自增 + is_resubmit）。"""
+    attachment_ids = _validate_final_attachments(attachments)
     if not (background and background.strip()):
         raise AppException("VALIDATION_ERROR", "选题背景不能为空")
     if not (plan and plan.strip()):
@@ -286,6 +352,7 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
+        _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == stu.id,
             GraduationProposal.is_deleted.is_(False)).order_by(GraduationProposal.id.desc())).all()
@@ -299,7 +366,7 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         p = GraduationProposal(
             tenant_id=_tid(), gd_student_id=stu.id, version=version, is_resubmit=is_resubmit,
             submit_at=datetime.utcnow(), background=background.strip(), plan=plan.strip(),
-            outcome=(outcome or "").strip(), attachments_json=attachments or [], status="PENDING_REVIEW")
+            outcome=(outcome or "").strip(), attachments_json=attachment_ids, status="PENDING_REVIEW")
         db.add(p)
         db.flush()
         _audit(db, "PROPOSAL", p.id, "提交开题报告-" + ("重交" if is_resubmit else "首次"),
@@ -413,6 +480,8 @@ def list_finals(page, ps, keyword=None, status=None):
         items = []
         for f in rows:
             stu = _stu_of(db, f.gd_student_id)
+            if not stu or not can_access_student(db, stu):
+                continue
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_final_row(f, stu))
@@ -430,6 +499,8 @@ def _not_submitted_finals(db, keyword=None) -> list:
         GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
     rows = []
     for s in stus:
+        if not can_access_student(db, s):
+            continue
         if s.id in have or s.stage not in ("GUIDING", "MIDTERM", "FINAL_CHECK", "DEFENSE"):
             continue
         if keyword and keyword.strip() not in (s.name or ""):
@@ -443,15 +514,17 @@ def _not_submitted_finals(db, keyword=None) -> list:
     return rows
 
 
-def submit_final(gd_student_id, final_type, plagiarism_rate=None, attachments=None) -> dict:
+def submit_final(gd_student_id, final_type, attachments=None) -> dict:
     """学生提交/重交论文成果。初稿→定稿有序（定稿须初稿已通过）；有待审时不可重复提交。
     attachments：论文/材料附件 file_id 列表（文件中心 t_file_object.id），存 attachments_json。"""
+    attachment_ids = _validate_final_attachments(attachments)
     if final_type not in FINAL_TYPES:
         raise AppException("VALIDATION_ERROR", "成果类型必须是 初稿/定稿")
     with session() as db:
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
+        _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == stu.id,
             GraduationFinal.is_deleted.is_(False)).order_by(GraduationFinal.id.desc())).all()
@@ -467,9 +540,9 @@ def submit_final(gd_student_id, final_type, plagiarism_rate=None, attachments=No
         version = f"v{len(same_type) + 1}"
         f = GraduationFinal(tenant_id=_tid(), gd_student_id=stu.id, final_type=final_type,
                             version=version, submit_at=datetime.utcnow(),
-                            plagiarism_rate=plagiarism_rate or None,
-                            plagiarism_status="已检测" if plagiarism_rate else "未检测",
-                            attachments_json=list(attachments) if attachments else [],
+                            plagiarism_rate=None,
+                            plagiarism_status="未检测",
+                            attachments_json=attachment_ids,
                             status="PENDING_REVIEW")
         db.add(f)
         db.flush()
@@ -485,15 +558,32 @@ def review_final(fid, action, comment=None) -> dict:
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     with session() as db:
-        f = db.get(GraduationFinal, int(fid))
+        f = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.id == int(fid),
+            GraduationFinal.tenant_id == _tid(),
+            GraduationFinal.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("成果不存在")
+        stu = _stu_of(db, f.gd_student_id)
+        assert_student_access(db, stu, "final.review")
         if f.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该成果已批阅，请刷新")
-        # GD-R09：查重超标不允许直接通过，必须退回修改
-        if action == "APPROVE" and _rate_over(f.plagiarism_rate):
-            raise AppException("DATA_CONFLICT",
-                               f"查重率 {f.plagiarism_rate} 超标（GD-R09），须退回修改后重交，不能直接通过")
+        # GD-R09: approval relies on the server-side check record, never a client-supplied rate.
+        if action == "APPROVE":
+            from app.models import GraduationPlagiarismCheck
+            check = db.scalars(select(GraduationPlagiarismCheck).where(
+                GraduationPlagiarismCheck.tenant_id == _tid(),
+                GraduationPlagiarismCheck.gd_final_id == f.id,
+                GraduationPlagiarismCheck.is_deleted.is_(False),
+            ).order_by(GraduationPlagiarismCheck.id.desc()).with_for_update()).first()
+            if f.final_type == "定稿" and (not check or check.status != "DONE"):
+                raise AppException("DATA_CONFLICT", "查重尚未完成，不能通过成果审核")
+            if check and check.status == "DONE" and check.over_threshold and check.dispute_status != "APPROVED":
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"查重率 {check.rate} 超标（GD-R09），须退回修改或完成复查特例审批",
+                )
         before = f.status
         n, _ = _op()
         target = "APPROVED" if action == "APPROVE" else "REJECTED"
@@ -514,6 +604,7 @@ def get_final_detail(fid) -> dict:
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("成果不存在")
         stu = _stu_of(db, f.gd_student_id)
+        assert_student_access(db, stu, "final.detail")
         vers = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == f.gd_student_id,
             GraduationFinal.is_deleted.is_(False)).order_by(GraduationFinal.id)).all()
@@ -595,12 +686,26 @@ def _def_row(g: GraduationDefenseGroup) -> dict:
             "publishedLabel": "已发布（学生端 P17 可见）" if g.published else "待调整后发布"}
 
 
+def _can_access_defense_group(db, group: GraduationDefenseGroup) -> bool:
+    if has_full_scope():
+        return True
+    user = get_current_user_ctx() or {}
+    role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
+    real_name = (user.get("realName") or "").strip()
+    if role == "GD_DEFENSE_SECRETARY" and real_name == (group.secretary or "").strip():
+        return True
+    panel = {(group.chair or "").strip(), *((x or "").strip() for x in (group.members_json or []))}
+    if role == "GD_DEFENSE_EXPERT" and real_name in panel:
+        return True
+    return any(can_access_student(db, student) for student in _assigned_students(db, group.id))
+
+
 def list_defense_groups(page, ps, keyword=None):
     with session() as db:
         rows = db.scalars(select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == _tid(),
             GraduationDefenseGroup.is_deleted.is_(False)).order_by(GraduationDefenseGroup.id)).all()
-        items = [_def_row(g) for g in rows]
+        items = [_def_row(g) for g in rows if _can_access_defense_group(db, g)]
         if keyword:
             kw = keyword.strip()
             items = [i for i in items if kw in i["groupName"]]
@@ -678,18 +783,22 @@ def get_defense_group_detail(gid) -> dict:
         g = db.get(GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
+        if not _can_access_defense_group(db, g):
+            raise no_permission("Defense group is outside the current graduation-design scope")
         row = _def_row(g)
         row["students"] = [{"id": str(s.id), "name": s.name, "className": s.class_name or "",
                             "topicTitle": s.topic_title or "", "advisorName": s.advisor_name or "",
                             "conflict": bool(s.advisor_name and s.advisor_name in
                                              set([g.chair] + (g.members_json or [])))}
-                           for s in _assigned_students(db, g.id)]
+                           for s in _assigned_students(db, g.id) if can_access_student(db, s)]
         return row
 
 
 def list_defense_eligible_students(gid=None, keyword=None) -> list:
     """可分配到答辩组的学生：已确认选题且在册；含"未分组"与"已在本组"。"""
     with session() as db:
+        if not has_full_scope():
+            raise no_permission("Only graduation managers can list defense assignment candidates")
         stus = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
@@ -841,32 +950,36 @@ def list_audit(page, ps, biz_type=None, keyword=None):
         items = [{"id": str(x.id), "time": _iso(x.occurred_at), "operator": x.operator or "",
                   "roleName": x.role_name or "", "bizType": x.biz_type, "bizId": x.biz_id or "",
                   "action": x.action, "detail": x.detail or "", "before": x.before_val or "",
-                  "after": x.after_val or ""} for x in rows]
+                  "after": x.after_val or "", "requestId": x.request_id or "",
+                  "requestPath": x.request_path or "", "clientIp": x.client_ip or ""} for x in rows]
         return _page(items, page, ps)
 
 
 def get_dashboard() -> dict:
     with session() as db:
-        total = db.scalar(select(func.count()).select_from(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE")) or 0
+        visible_ids = accessible_student_ids(db, _tid())
+        total = len(visible_ids)
         pend_prop = db.scalar(select(func.count()).select_from(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
-            GraduationProposal.is_deleted.is_(False))) or 0
+            GraduationProposal.is_deleted.is_(False),
+            GraduationProposal.gd_student_id.in_(visible_ids))) or 0
         pend_final = db.scalar(select(func.count()).select_from(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
-            GraduationFinal.is_deleted.is_(False))) or 0
+            GraduationFinal.is_deleted.is_(False),
+            GraduationFinal.gd_student_id.in_(visible_ids))) or 0
         high_risk = db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.risk_level == "HIGH",
-            GraduationStudent.is_deleted.is_(False))) or 0
+            GraduationStudent.is_deleted.is_(False), GraduationStudent.id.in_(visible_ids))) or 0
         flow = {}
         for s in db.scalars(select(GraduationStudent).where(GraduationStudent.tenant_id == _tid(),
-                            GraduationStudent.is_deleted.is_(False))).all():
+                            GraduationStudent.is_deleted.is_(False),
+                            GraduationStudent.id.in_(visible_ids))).all():
             flow[s.stage] = flow.get(s.stage, 0) + 1
         # 答辩待发布组数（已建组未发布）
-        pend_defense = db.scalar(select(func.count()).select_from(GraduationDefenseGroup).where(
+        defense_groups = db.scalars(select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == _tid(), GraduationDefenseGroup.published.is_(False),
-            GraduationDefenseGroup.is_deleted.is_(False))) or 0
+            GraduationDefenseGroup.is_deleted.is_(False))).all()
+        pend_defense = sum(1 for group in defense_groups if _can_access_defense_group(db, group))
         # 未提交开题（已确认选题但无开题记录）—— 复用派生逻辑
         not_submitted = len(_not_submitted_proposals(db))
         # 真实风险预警（未关闭的风险项，取前若干）

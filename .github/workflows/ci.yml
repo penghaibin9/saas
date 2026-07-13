@@ -10,6 +10,16 @@ on:
     branches: [ "**" ]
 
 jobs:
+  graduation-production-gates:
+    name: 毕业设计生产闸门
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/check/check-graduation-production-gates.mjs
+
   backend:
     name: 后端 pytest
     runs-on: ubuntu-latest
