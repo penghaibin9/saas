@@ -13,10 +13,11 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipLeave,
-                        InternshipRecord, StudentProfile)
+                        InternshipRecord, RiskRecord, StudentProfile)
 from app.services.db_service import _iso, _tid, session
 
 STATUS_LABEL = {"PENDING": "待审批", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
+STATUS_LABEL.update({"RETURNED": "已销假", "OVERDUE": "超期未销假"})
 TYPE_LABEL = {"SICK": "病假", "PERSONAL": "事假", "OTHER": "其他"}
 
 
@@ -80,6 +81,8 @@ def _row(lv: InternshipLeave, rec, stu) -> dict:
         "reason": lv.reason, "status": lv.status, "statusLabel": STATUS_LABEL.get(lv.status, lv.status),
         "applyBy": lv.apply_by_name or "", "reviewBy": lv.review_by_name or "",
         "reviewComment": lv.review_comment or "", "reviewAt": _iso(lv.review_at) or "",
+        "returnedAt": _iso(lv.returned_at) or "", "returnNote": lv.return_note or "",
+        "returnFileId": lv.return_file_id or "", "overdue": lv.status == "OVERDUE",
         "createdAt": _iso(lv.created_at) or "",
     }
 
@@ -100,6 +103,8 @@ def apply(user, body) -> dict:
         rec, stu = _student_record(db, user)
         if not rec:
             raise not_found("未找到你的实习记录，无法申请请假")
+        if rec.status not in ("ONBOARD", "ASSESSING"):
+            raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以申请请假")
         dup = db.scalars(select(InternshipLeave).where(
             InternshipLeave.tenant_id == _tid(), InternshipLeave.internship_id == rec.id,
             InternshipLeave.status == "PENDING", InternshipLeave.is_deleted.is_(False))).first()
@@ -125,10 +130,36 @@ def withdraw(user, leave_id) -> dict:
         if lv.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待审批申请可撤回")
         lv.status = "WITHDRAWN"
-        lv.version += 1
+        lv.version = int(lv.version or 0) + 1
         _trail(db, lv.id, "WITHDRAW", {}, operator=_op_name(user))
         db.commit()
         return {"id": str(lv.id), "status": "WITHDRAWN"}
+
+
+def return_my(user, leave_id, body=None) -> dict:
+    """Student return confirmation; an overdue leave may be returned but its risk stays auditable."""
+    body = body or {}
+    note = (body.get("returnNote") or body.get("note") or "").strip()
+    if len(note) < 2:
+        raise AppException("VALIDATION_ERROR", "销假说明不少于 2 个字符")
+    file_id = _validate_file(body.get("fileId") or body.get("returnFileId"))
+    with session() as db:
+        lv = _get(db, leave_id)
+        rec, _ = _student_record(db, user)
+        if not rec or lv.internship_id != rec.id:
+            raise no_permission("只能销本人的实习请假")
+        if lv.status not in ("APPROVED", "OVERDUE"):
+            raise AppException("DATA_CONFLICT", "仅已通过或超期的请假可销假")
+        was_overdue = lv.status == "OVERDUE"
+        lv.status = "RETURNED"
+        lv.returned_at = datetime.utcnow()
+        lv.return_note, lv.return_file_id = note, file_id
+        lv.version = int(lv.version or 0) + 1
+        _trail(db, lv.id, "RETURN", {"wasOverdue": was_overdue, "hasFile": bool(file_id), "note": note},
+               operator=_op_name(user))
+        db.commit()
+        return {"id": str(lv.id), "status": lv.status, "statusLabel": STATUS_LABEL[lv.status],
+                "wasOverdue": was_overdue}
 
 
 def my_leaves(user) -> list[dict]:
@@ -203,7 +234,7 @@ def review(user, leave_id, action: str, comment: str = "") -> dict:
         lv.review_by_name = _op_name(user)
         lv.review_at = datetime.utcnow()
         lv.review_comment = (comment or "").strip() or None
-        lv.version += 1
+        lv.version = int(lv.version or 0) + 1
         leave_days = 0
         if action == "APPROVE":  # 请假↔打卡台账联动：按区间写 LEAVE 留痕，台账显示请假不误判缺卡
             leave_days = _write_leave_checkins(db, lv)
@@ -235,6 +266,42 @@ def _write_leave_checkins(db, lv) -> int:
             written += 1
         d += timedelta(days=1)
     return written
+
+
+def refresh_overdue(reference_date: date | None = None) -> dict:
+    """Mark expired approved leave as overdue and create one unresolved risk per leave period.
+
+    It is intentionally idempotent so it can be invoked by a scheduled job or an operations runbook.
+    """
+    today = reference_date or date.today()
+    marked = risks_created = 0
+    with session() as db:
+        rows = db.scalars(select(InternshipLeave).where(
+            InternshipLeave.tenant_id == _tid(), InternshipLeave.status == "APPROVED",
+            InternshipLeave.is_deleted.is_(False))).all()
+        for lv in rows:
+            try:
+                end = date.fromisoformat((lv.end_date or "")[:10])
+            except ValueError:
+                continue
+            if end >= today:
+                continue
+            lv.status = "OVERDUE"
+            lv.version = int(lv.version or 0) + 1
+            _trail(db, lv.id, "MARK_OVERDUE", {"endDate": lv.end_date, "referenceDate": today.isoformat()})
+            marked += 1
+            existing = db.scalars(select(RiskRecord).where(
+                RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == lv.internship_id,
+                RiskRecord.risk_code == "INT-R06", RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
+                RiskRecord.is_deleted.is_(False))).first()
+            if not existing:
+                db.add(RiskRecord(tenant_id=_tid(), internship_id=lv.internship_id, risk_code="INT-R06",
+                                  risk_title="实习请假超期未销假", risk_level="MEDIUM",
+                                  source_module="internship_leave", status="PENDING_HANDLE",
+                                  last_follow_note=f"请假至 {lv.end_date}，截至 {today.isoformat()} 未销假"))
+                risks_created += 1
+        db.commit()
+    return {"referenceDate": today.isoformat(), "markedOverdue": marked, "risksCreated": risks_created}
 
 
 def export_leaves(status=None, keyword=None, user=None) -> dict:

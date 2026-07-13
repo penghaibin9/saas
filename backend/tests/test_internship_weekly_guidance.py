@@ -36,7 +36,7 @@ def _student():
 def _seed(db_mode):
     """记录 A(刘强) / B(王芳) 各挂 1 条待批周报；返回 {record_id, report_id}。"""
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile, WeeklyReport
+    from app.models import InternshipRecord, StudentProfile, User, WeeklyReport
     db = get_sessionmaker()()
     ids = {}
     try:
@@ -44,6 +44,8 @@ def _seed(db_mode):
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
+            db.add(User(tenant_id=TID, login_name=no, real_name=name, password_hash="test",
+                        user_type="STUDENT", status="ACTIVE"))
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
                                  enterprise_name="测试企业", position_name="实习生",
                                  status="ONBOARD", risk_level="NONE")
@@ -77,6 +79,26 @@ def test_weekly_review_own_ok(client, db_mode):
     assert r.json()["data"]["status"] == "APPROVED"
 
 
+def test_weekly_export_and_remind_are_real(client, db_mode):
+    ids = _seed(db_mode)
+    exported = client.post(f"{INT}/reports/export", headers=_mentor("刘强")).json()["data"]
+    assert exported["rowCount"] == 1
+    reminded = client.post(f"{INT}/reports/{ids['rep_a']}/remind",
+                           json={"channel": "站内消息"}, headers=_mentor("刘强"))
+    assert reminded.status_code == 200 and reminded.json()["data"]["reminded"] is True
+    duplicate = client.post(f"{INT}/reports/{ids['rep_a']}/remind",
+                            json={"channel": "站内消息"}, headers=_mentor("刘强"))
+    assert duplicate.json()["code"] != 0
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage
+    db = get_sessionmaker()()
+    try:
+        assert db.query(UnifiedMessage).filter_by(source_module="internship",
+                                                   source_biz_id=ids["rep_a"]).count() == 1
+    finally:
+        db.close()
+
+
 # ══════════════ 指导记录 ══════════════
 
 def test_guidance_create_owner_and_scope(client, db_mode):
@@ -96,6 +118,12 @@ def test_guidance_create_owner_and_scope(client, db_mode):
     # 数据范围：管理员看 2、刘强看 1
     assert client.get(f"{INT}/guidances", headers=_admin(client)).json()["data"]["total"] == 2
     assert client.get(f"{INT}/guidances", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    stats = client.get(f"{INT}/guidances/stats", headers=_mentor("刘强")).json()["data"]
+    assert stats["studentCount"] == 1 and stats["totalCount"] == 1
+    plans = client.get(f"{INT}/guidance-plans", headers=_mentor("刘强")).json()["data"]
+    assert plans["total"] == 1 and plans["items"][0]["studentNo"] == "WG-A"
+    exported = client.post(f"{INT}/guidance-plans/export", headers=_mentor("刘强")).json()["data"]
+    assert exported["rowCount"] == 1
 
 
 def test_guidance_content_required(client, db_mode):
@@ -151,6 +179,8 @@ def test_visit_create_scope_and_rectify(client, db_mode):
     assert good.status_code == 200 and good.json()["data"]["rectifyStatus"] == "DONE"
     detail = client.get(f"{INT}/visits/{vid}", headers=_mentor("刘强")).json()["data"]
     assert any(t["action"].startswith("RECTIFY_") for t in detail["auditTrail"])
+    stats = client.get(f"{INT}/visits/stats", headers=_mentor("刘强")).json()["data"]
+    assert stats["totalVisits"] == 1 and stats["doneRectify"] == 1
 
 
 def test_visit_rectify_cross_mentor_403(client, db_mode):

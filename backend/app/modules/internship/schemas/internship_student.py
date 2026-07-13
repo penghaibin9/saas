@@ -10,11 +10,13 @@ class StudentRecordCreate(BaseModel):
     studentId: str = Field(..., description="t_student_profile.id")
     batchId: Optional[str] = Field(None, description="预留·实习批次 id")
     advisorName: Optional[str] = None
+    advisorUserId: Optional[str] = None
     remark: Optional[str] = None
 
 
 class StudentRecordUpdate(BaseModel):
     advisorName: Optional[str] = None
+    advisorUserId: Optional[str] = None
     insurance: Optional[str] = None
     agreement: Optional[str] = None
     remark: Optional[str] = None
@@ -45,3 +47,8 @@ class DestinationRequest(BaseModel):
 
 class StudentImport(BaseModel):
     rows: list[dict] = Field(default_factory=list)
+
+
+class AdvisorAssignmentRequest(BaseModel):
+    advisorUserId: str = Field(..., description="Active teacher user id")
+    reason: Optional[str] = ""

@@ -73,7 +73,7 @@ import { studentApi } from '@/services/studentApi'
 import { useSubmissionsStore } from '@/stores/submissions'
 import { toast, go } from '@/utils/nav'
 export default {
-  data() { return { i: null, state: 'loading', checkingIn: false } },
+  data() { return { i: null, state: 'loading', checkingIn: false, checkinKey: '' } },
   onLoad() { this.load() },
   onShow() {
     if (this.i && useSubmissionsStore().hasWeekly(this.i.weekly.week)) {
@@ -100,10 +100,14 @@ export default {
         success: (r) => {
           if (!r.confirm || this.checkingIn) return
           this.checkingIn = true
+          // Keep one key across a weak-network retry: server will return the original daily record.
+          this.checkinKey = this.checkinKey || `mp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
           const submit = (loc) => {
-            studentApi.submitCheckin(loc || {}).then((res) => {
+            studentApi.submitCheckin({ ...(loc || {}), idempotencyKey: this.checkinKey,
+              deviceRiskFlag: 'normal' }).then((res) => {
               this.i.checkin.done = true
               this.i.status.todayCheckin = 'COMPLETED'
+              this.checkinKey = ''
               toast(res.message || '打卡成功')
             }).catch((e) => {
               if (e && String(e.code).startsWith('409')) {
@@ -120,7 +124,7 @@ export default {
           // 定位失败不阻断打卡：无定位则只记录时间（后端 result=NO_LOCATION）
           uni.getLocation({
             type: 'gcj02',
-            success: (p) => submit({ lat: p.latitude, lng: p.longitude }),
+            success: (p) => submit({ lat: p.latitude, lng: p.longitude, gpsAccuracy: p.accuracy }),
             fail: () => submit({})
           })
         }

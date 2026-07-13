@@ -57,26 +57,36 @@ def _scope_ctx(user):
 
 # ═══════════ 权重配置 ═══════════
 
-def _active_config(db):
-    c = db.scalars(select(InternshipScoreConfig).where(
-        InternshipScoreConfig.tenant_id == _tid(), InternshipScoreConfig.batch_id.is_(None),
-        InternshipScoreConfig.is_deleted.is_(False))).first()
-    return c
+def _active_config(db, batch_id=None):
+    """Batch-specific active config wins; each save creates a new immutable active snapshot."""
+    base = [InternshipScoreConfig.tenant_id == _tid(), InternshipScoreConfig.status == "ACTIVE",
+            InternshipScoreConfig.is_deleted.is_(False)]
+    if batch_id:
+        batch = db.scalars(select(InternshipScoreConfig).where(
+            *base, InternshipScoreConfig.batch_id == int(batch_id)).order_by(InternshipScoreConfig.id.desc())).first()
+        if batch:
+            return batch
+    return db.scalars(select(InternshipScoreConfig).where(
+        *base, InternshipScoreConfig.batch_id.is_(None)).order_by(InternshipScoreConfig.id.desc())).first()
 
 
 def get_config(user=None) -> dict:
     with session() as db:
-        c = _active_config(db)
+        c = _active_config(db, batch_id=None)
         if not c:
             return {**{k: v for k, v in DEFAULT_CFG.items()},
                     "checkinWeight": 20, "weeklyWeight": 20, "monthlyWeight": 10,
-                    "enterpriseWeight": 30, "schoolWeight": 20, "passLine": 60.0, "isDefault": True}
+                    "enterpriseWeight": 30, "schoolWeight": 20, "passLine": 60.0, "isDefault": True,
+                    "configId": "", "configVersion": 0}
         return {"checkinWeight": c.checkin_weight, "weeklyWeight": c.weekly_weight,
                 "monthlyWeight": c.monthly_weight, "enterpriseWeight": c.enterprise_weight,
-                "schoolWeight": c.school_weight, "passLine": c.pass_line, "isDefault": False}
+                "schoolWeight": c.school_weight, "passLine": c.pass_line, "isDefault": False,
+                "configId": str(c.id), "configVersion": int(c.version or 0)}
 
 
 def save_config(user, body) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.config.manage")
     b = body or {}
     weights = {"checkin_weight": b.get("checkinWeight"), "weekly_weight": b.get("weeklyWeight"),
                "monthly_weight": b.get("monthlyWeight"), "enterprise_weight": b.get("enterpriseWeight"),
@@ -99,10 +109,20 @@ def save_config(user, body) -> dict:
     if not 0 <= pass_line <= 100:
         raise AppException("VALIDATION_ERROR", "及格线须在 0-100 之间")
     with session() as db:
-        c = _active_config(db)
-        if not c:
-            c = InternshipScoreConfig(tenant_id=_tid(), batch_id=None)
-            db.add(c)
+        batch_id = b.get("batchId") or None
+        if batch_id:
+            from app.models import InternshipBatch
+            batch = db.get(InternshipBatch, int(batch_id))
+            if not batch or batch.is_deleted or batch.tenant_id != _tid():
+                raise not_found("实习批次不存在")
+            if batch.status != "DRAFT":
+                raise AppException("DATA_CONFLICT", "运行中的批次不可替换评分规则，请创建新批次版本")
+        old = _active_config(db, batch_id=batch_id)
+        if old and old.batch_id == (int(batch_id) if batch_id else None):
+            old.status = "RETIRED"
+        c = InternshipScoreConfig(tenant_id=_tid(), batch_id=int(batch_id) if batch_id else None,
+                                  status="ACTIVE")
+        db.add(c)
         for k, v in parsed.items():
             setattr(c, k, v)
         c.pass_line = pass_line
@@ -110,7 +130,8 @@ def save_config(user, body) -> dict:
         db.flush()
         _trail(db, c.id, "SAVE_CONFIG", {**parsed, "passLine": pass_line}, operator=_op_name(user))
         db.commit()
-        return {"ok": True}
+        return {"ok": True, "configId": str(c.id), "configVersion": int(c.version or 0),
+                "batchId": str(c.batch_id) if c.batch_id else ""}
 
 
 # ═══════════ 核算 / 复核 / 发布 ═══════════
@@ -157,7 +178,7 @@ def compute(user, body) -> dict:
         if ent is None:
             ent = _enterprise_avg(db, rec.id)
         comps["enterprise_score"] = ent
-        cfg = _active_config(db)
+        cfg = _active_config(db, rec.batch_id)
         w = dict(w_checkin=(cfg.checkin_weight if cfg else DEFAULT_CFG["checkin_weight"]),
                  w_weekly=(cfg.weekly_weight if cfg else DEFAULT_CFG["weekly_weight"]),
                  w_monthly=(cfg.monthly_weight if cfg else DEFAULT_CFG["monthly_weight"]),
@@ -187,6 +208,8 @@ def compute(user, body) -> dict:
         for wk, wv in w.items():
             setattr(s, wk, wv)
         s.total_score = total
+        s.score_config_id = cfg.id if cfg else None
+        s.score_config_version = int(cfg.version or 0) if cfg else 0
         s.pass_line = pass_line
         s.is_pass = bool(total is not None and total >= pass_line)
         s.incomplete = incomplete
@@ -194,7 +217,8 @@ def compute(user, body) -> dict:
         s.status = "PENDING_REVIEW"
         s.version = (s.version or 0) + 1
         db.flush()
-        _trail(db, s.id, "COMPUTE", {"total": total, "incomplete": incomplete, "missing": missing},
+        _trail(db, s.id, "COMPUTE", {"total": total, "incomplete": incomplete, "missing": missing,
+               "scoreConfigId": str(cfg.id) if cfg else "", "scoreConfigVersion": int(cfg.version or 0) if cfg else 0},
                operator=_op_name(user))
         db.commit()
         return {"id": str(s.id), "total": total, "incomplete": incomplete,
@@ -281,6 +305,8 @@ def _row(s, rec, stu):
         "checkinScore": s.checkin_score, "weeklyScore": s.weekly_score, "monthlyScore": s.monthly_score,
         "enterpriseScore": s.enterprise_score, "schoolScore": s.school_score,
         "totalScore": s.total_score, "passLine": s.pass_line, "isPass": bool(s.is_pass),
+        "scoreConfigId": str(s.score_config_id) if s.score_config_id else "",
+        "scoreConfigVersion": int(s.score_config_version or 0),
         "incomplete": bool(s.incomplete), "incompleteReason": s.incomplete_reason or "",
         "status": s.status, "statusLabel": STATUS_LABEL.get(s.status, s.status),
         "createdAt": _iso(s.created_at) or "",

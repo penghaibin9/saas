@@ -33,10 +33,6 @@
           : '教师端：看待办 · 批审批 · 看风险 · 处理异常 · 查学生' }}</text>
       </view>
 
-      <button class="btn btn-primary btn-block login__btn" :class="{ 'is-teacher': tab === 'teacher' }" @click="onFillDemo">
-        填入演示账号
-      </button>
-
       <!-- 账号密码登录（真实校验：POST /api/v1/auth/login） -->
       <view class="login__divider"><text class="t-xs t-tertiary">账号密码登录</text></view>
       <input v-model="account.loginName" class="login__input" placeholder="请输入账号" placeholder-class="login__ph" />
@@ -45,36 +41,6 @@
         {{ accLoading ? '登录中…' : '登 录' }}
       </button>
 
-      <!-- 演示账号（真实账号真实登录；点击仅填入表单，不绕过登录） -->
-      <view class="login__demo">
-        <text class="login__demo-tt">正式演示 · 演示职业技术学校（数据只读）</text>
-        <view class="login__demo-row" @click="fillDemo('student')">
-          <text class="login__demo-role">学生</text>
-          <text class="login__demo-acc">student</text>
-          <text class="login__demo-pwd">密码 123456</text>
-        </view>
-        <view class="login__demo-row" @click="fillDemo('teacher')">
-          <text class="login__demo-role">教师</text>
-          <text class="login__demo-acc">teacher</text>
-          <text class="login__demo-pwd">密码 123456</text>
-        </view>
-        <text class="login__demo-tt" style="margin-top:8px;">自由体验 · 体验沙箱学校（随便操作，每晚 0 点重置）</text>
-        <view class="login__demo-row" @click="fillDemo('student2')">
-          <text class="login__demo-role">学生</text>
-          <text class="login__demo-acc">student2</text>
-          <text class="login__demo-pwd">密码 123456</text>
-        </view>
-        <view class="login__demo-row" @click="fillDemo('teacher2')">
-          <text class="login__demo-role">教师</text>
-          <text class="login__demo-acc">teacher2</text>
-          <text class="login__demo-pwd">密码 123456</text>
-        </view>
-      </view>
-
-      <view class="login__wx" @click="onFillDemo">
-        <text class="login__wx-icon">◍</text>
-        <text class="t-sm t-secondary">没有账号？先用演示账号体验</text>
-      </view>
     </view>
 
     <!-- 试用咨询（可公开电话；无任何账号密码信息） -->
@@ -145,17 +111,6 @@ export default {
         this.accLoading = false
       })
     },
-    /** 点演示账号仅自动填入表单——不绕过登录，仍需点「登 录」走真实 /auth/login */
-    fillDemo(login) {
-      this.account.loginName = login
-      this.account.password = '123456'
-      this.tab = login.indexOf('student') === 0 ? 'student' : 'teacher'
-    },
-    /** 旧「进入演示环境」入口 → 现在只填入对应演示账号，真实登录 */
-    onFillDemo() {
-      toast('演示环境已改为真实账号登录，已为你填入账号，请点「登 录」')
-      this.fillDemo(this.tab === 'student' ? 'student' : 'teacher')
-    },
     copyPhone() {
       uni.setClipboardData({ data: this.trialPhone, success: () => toast('手机号已复制') })
     },
@@ -166,30 +121,6 @@ export default {
       // #ifndef H5
       uni.makePhoneCall({ phoneNumber: this.trialPhone, fail: () => {} })
       // #endif
-    },
-    async onLogin() {
-      if (this.demoLoading) return
-      this.demoLoading = true
-      try {
-        const session = useSessionStore()
-        if (this.tab === 'student') {
-          await session.login(ROLE.STUDENT) // 等 token 就绪再进首页，首屏即真实数据
-          toast('欢迎回来，' + session.mockUser.name)
-          relaunch('/pages/student/home/index')
-        } else {
-          // 教师：先建立教师会话（默认辅导员身份），再进入身份选择页
-          await session.login(ROLE.COUNSELOR)
-          relaunch('/pages/role-switch/index')
-        }
-      } catch (e) {
-        if (e && e.biz && (e.code === 403001 || e.code === 403002)) {
-          toast('演示登录已关闭，请使用下方账号密码登录')
-        } else {
-          toast((e && e.message) || '进入失败，请稍后重试')
-        }
-      } finally {
-        this.demoLoading = false
-      }
     }
   }
 }

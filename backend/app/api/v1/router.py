@@ -22,6 +22,7 @@ from app.modules.internship.routers import internship  # 岗位实习中心主�
 from app.modules.internship.routers import internship_position  # 岗位库（独立 router，/internship/positions/*）
 from app.modules.internship.routers import internship_student  # 实习学生（独立 router，/internship/intern-students/*）
 from app.modules.internship.routers import internship_match  # 岗位匹配（独立 router，/internship/match/*）
+from app.modules.internship.routers import internship_application  # 正式实习申请（/internship/applications/*）
 from app.modules.graduation.routers import graduation  # 毕设中心主路由（/graduation/*）
 from app.modules.graduation.routers import graduation_batch  # 毕设批次（独立 router，/graduation/batches/*）
 from app.modules.graduation.routers import graduation_student  # 毕设学生（独立 router，/graduation/gd-students/*）
@@ -60,7 +61,7 @@ _GD_DEP = [
 
 # 岗位实习中心 / 就业服务 PC 管理端统一角色门禁：学生令牌一律 403。
 # 学生的合法入口是 /mobile/internship/*（打卡/周报/我的实习），不受此门禁影响。
-_INTERN_DEP = [Depends(require_staff)]
+_INTERN_DEP = [Depends(require_staff), Depends(require_module("internship"))]
 
 # 全端共用底座
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])       # /api/v1/auth/*
@@ -78,6 +79,7 @@ api_router.include_router(internship_position.router, dependencies=_INTERN_DEP) 
 api_router.include_router(internship_agreement_template.router, dependencies=_INTERN_DEP)               # /api/v1/internship/agreement-templates/*（协议模板库）
 api_router.include_router(internship_student.router, dependencies=_INTERN_DEP)                         # /api/v1/internship/intern-students/*（实习学生）
 api_router.include_router(internship_match.router, dependencies=_INTERN_DEP)                           # /api/v1/internship/match/*（岗位匹配）
+api_router.include_router(internship_application.router, dependencies=_INTERN_DEP)                     # /api/v1/internship/applications/*（正式申请审核）
 api_router.include_router(internship_archive.router, dependencies=_INTERN_DEP)                         # /api/v1/internship/archive/*（实习归档）
 api_router.include_router(internship_stats.router, dependencies=_INTERN_DEP)                           # /api/v1/internship/stats/*（实习统计）
 api_router.include_router(internship_plan.router, dependencies=_INTERN_DEP)                            # /api/v1/internship/plans/*、plan-task-progress/*（计划书+完成度）

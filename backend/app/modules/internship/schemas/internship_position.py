@@ -14,6 +14,9 @@ class PositionCreate(BaseModel):
     majorRequirement: Optional[str] = Field(None, description="专业要求")
     gradeRequirement: Optional[str] = Field(None, description="年级要求")
     workLocation: Optional[str] = None
+    geofenceLat: Optional[float] = Field(None, ge=-90, le=90)
+    geofenceLng: Optional[float] = Field(None, ge=-180, le=180)
+    geofenceRadiusM: Optional[int] = Field(None, ge=30, le=5000)
     salaryRange: Optional[str] = None
     subsidy: Optional[str] = None
     headcount: int = Field(1, ge=1, le=9999, description="岗位容量")
@@ -27,6 +30,9 @@ class PositionUpdate(BaseModel):
     majorRequirement: Optional[str] = None
     gradeRequirement: Optional[str] = None
     workLocation: Optional[str] = None
+    geofenceLat: Optional[float] = Field(None, ge=-90, le=90)
+    geofenceLng: Optional[float] = Field(None, ge=-180, le=180)
+    geofenceRadiusM: Optional[int] = Field(None, ge=30, le=5000)
     salaryRange: Optional[str] = None
     subsidy: Optional[str] = None
     headcount: Optional[int] = Field(None, ge=1, le=9999)

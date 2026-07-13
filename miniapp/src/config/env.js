@@ -50,6 +50,7 @@ export const ENV = {
   allowMockFallback: (() => {
     try { return !!(import.meta && import.meta.env && import.meta.env.DEV) } catch (e) { return false }
   })(),
+  // 演示账号仅允许显式的开发构建；生产包不展示、不填充、也不自动登录。
   apiBaseUrl: resolveApiBaseUrl(), // 后端地址（可被 VITE_API_BASE_URL 覆盖）
   apiPrefix: '/api/v1',
   requestTimeout: 8000, // 校园弱网下 4s 偏紧；8s 内无响应按网络失败处理（读兜底/写明确报错）

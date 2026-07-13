@@ -7,35 +7,14 @@ import { realRequest, setRefreshToken, setToken } from './request'
 
 /* 小程序角色 key → 正式演示租户真实账号（demo-school，数据只读，行级隔离）。
  * P12：演示/体验全部走真实 /api/v1/auth/login，不再调用 /auth/mock-login。 */
-const ROLE_DEMO_ACCOUNT = {
-  student: 'student',
-  counselor: 'teacher',
-  gd_mentor: 'teacher',
-  intern_mentor: 'teacher',
-  employment: 'admin',
-  academic: 'admin',
-  college_admin: 'admin'
-}
-const DEMO_PASSWORD = '123456' // 演示/沙箱租户公开密码（登录页明示，非机密）
-
-export function accountOf(roleKey, side) {
-  return ROLE_DEMO_ACCOUNT[roleKey] || (side === 'teacher' ? 'teacher' : 'student')
-}
-
 function _holdLogin(data) {
   setToken(data.accessToken)
   setRefreshToken(data.refreshToken || '')
   return data
 }
 
-export async function loginReal(roleKey, side) {
-  const data = await realRequest('/auth/login', {
-    method: 'POST',
-    auth: false,
-    data: { loginName: accountOf(roleKey, side), password: DEMO_PASSWORD }
-  })
-  return _holdLogin(data)
-}
+export const switchRoleReal = (contextId, clientType = 'MP') =>
+  realRequest('/auth/switch-role', { method: 'POST', data: { contextId, clientType } }).then(_holdLogin)
 
 export const brand = () => realRequest('/tenant/brand')
 export const me = () => realRequest('/auth/me')

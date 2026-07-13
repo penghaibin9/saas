@@ -49,3 +49,11 @@ def test_staff_not_blocked_by_gate(client, auth_headers, db_mode):
     r = client.get("/api/v1/internship/dashboard", headers=auth_headers)
     assert r.status_code == 200, f"教职工应通过门禁，实际 {r.status_code}"
     assert r.json()["code"] == 0
+
+
+def test_unlicensed_tenant_is_blocked(client, auth_headers, db_mode, monkeypatch):
+    from app.services import platform_service
+    monkeypatch.setattr(platform_service, "feature_enabled", lambda tenant_id, key: False)
+    r = client.get("/api/v1/internship/dashboard", headers=auth_headers)
+    assert r.status_code == 403
+    assert r.json()["code"] != 0

@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.modules.internship.schemas.internship_student import (AssignPositionRequest, DestinationRequest,
+from app.modules.internship.schemas.internship_student import (AdvisorAssignmentRequest, AssignPositionRequest, DestinationRequest,
                                             EligibilityRequest, StudentImport,
                                             StudentRecordCreate, StudentRecordUpdate,
                                             StudentStatusRequest, UnassignRequest)
@@ -41,6 +41,11 @@ def intern_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
 @router.get("/intern-students/stats", summary="实习学生统计（状态/是否分配/资格）")
 def intern_student_stats(user=Depends(get_current_user)):
     return success(svc.student_stats())
+
+
+@router.get("/intern-students/advisors", summary="可分配的在职指导教师账号")
+def intern_advisors(keyword: Optional[str] = None, user=Depends(get_current_user)):
+    return success(svc.list_advisors(keyword))
 
 
 @router.post("/intern-students/import/dry-run", summary="按学号建档·预校验（不写库）")
@@ -111,6 +116,14 @@ def assign_position(record_id: str, body: AssignPositionRequest, user=Depends(ge
     result = svc.assign_position(record_id, body.positionId)
     audit_log.record("分配实习岗位", f"internship-student:{record_id}", detail={"positionId": body.positionId})
     return success(result, message="已分配")
+
+
+@router.post("/intern-students/{record_id}/advisor", summary="分配或变更校内指导教师（绑定真实教职工账号并审计）")
+def assign_advisor(record_id: str, body: AdvisorAssignmentRequest, user=Depends(get_current_user)):
+    result = svc.assign_advisor(record_id, body.advisorUserId, body.reason or "")
+    audit_log.record("分配实习指导教师", f"internship-student:{record_id}",
+                     detail={"advisorUserId": body.advisorUserId})
+    return success(result, message="指导教师已分配")
 
 
 @router.post("/intern-students/{record_id}/unassign", summary="退岗（释放岗位名额）")

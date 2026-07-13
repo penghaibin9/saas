@@ -3,7 +3,6 @@
  * 端点 /internship/intern-students/*（避开旧 /internship/students/*）。
  */
 import { request, requestBlob, requestUpload } from '@/services/http/client'
-import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })
@@ -63,6 +62,12 @@ export const internStudentApi = {
   },
   getStats() {
     return call(() => request(`${BASE}/stats`))
+  },
+  getAdvisors(keyword = '') {
+    return call(() => request(`${BASE}/advisors`, { params: { keyword } }))
+  },
+  assignAdvisor(id, { advisorUserId, reason = '' }) {
+    return call(() => request(`${BASE}/${id}/advisor`, { method: 'POST', body: { advisorUserId, reason } }))
   },
   importDryRun(rows) {
     return call(() => request(`${BASE}/import/dry-run`, { method: 'POST', body: { rows } }))

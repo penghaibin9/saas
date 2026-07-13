@@ -8,7 +8,7 @@
 import { defineStore } from 'pinia'
 import { getRoleConfig, hasAction, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
-import { loginReal } from '@/services/realApi'
+import { switchRoleReal } from '@/services/realApi'
 import { clearTokens, shouldTryReal } from '@/services/request'
 
 const STORAGE_KEY = 'gx_session_v1'
@@ -24,6 +24,7 @@ export const useSessionStore = defineStore('session', {
     mockUser: null,
     // 教师多身份：可切换的身份 key 列表
     availableRoles: [],
+    availableContexts: [],
     // 真实身份字段（登录响应 + /mobile/me/profile 回填），供页面自校验
     identity: {
       userId: null, studentId: null, studentNo: null, realName: null,
@@ -46,6 +47,9 @@ export const useSessionStore = defineStore('session', {
      * skipRealLogin=true（账号密码登录已持有真实 token）时只建 UI 会话，绝不覆盖令牌；
      * 否则用演示账号走真实 /api/v1/auth/login（P12：不再依赖 mock-login）。 */
     async login(roleKey, { skipRealLogin = false } = {}) {
+      if (!skipRealLogin) {
+        throw { code: 'LOGIN_REQUIRED', biz: true, message: '请使用学校账号登录' }
+      }
       const cfg = getRoleConfig(roleKey)
       this.currentRole = roleKey
       this.logged = true
@@ -57,17 +61,6 @@ export const useSessionStore = defineStore('session', {
         this.availableRoles = [ROLE.STUDENT]
       }
       this.persist()
-      if (!skipRealLogin && shouldTryReal()) {
-        clearTokens() // 先清旧 token，防止旧角色残留
-        try {
-          const d = await loginReal(roleKey, cfg.side)
-          this.applyRealUser(d)
-        } catch (e) {
-          /* 登录被拒（403 等业务错）：向上抛出，避免无 token 进首页白屏 */
-          if (e && e.biz && (e.code === 403001 || e.code === 403002)) throw e
-          /* 其他后端不可达：页面按网络失败兜底 */
-        }
-      }
       return cfg.homeRoute
     },
     /** P9.2：把真实登录响应的身份字段落到 identity，供页面自校验 */
@@ -75,6 +68,7 @@ export const useSessionStore = defineStore('session', {
       this.realUser = d || null
       if (!d) return
       const role = d.currentRole || {}
+      this.availableContexts = d.availableContexts || d.contexts || []
       this.identity = {
         ...this.identity,
         userId: d.userId != null ? d.userId : this.identity.userId,
@@ -98,19 +92,21 @@ export const useSessionStore = defineStore('session', {
     async switchRole(roleKey) {
       this.currentRole = roleKey
       this.persist()
-      /* 切换身份 = 重新用对应演示账号登录后端（数据范围随之变化） */
+      /* 正式环境按服务端签发的身份上下文切换；开发演示才允许演示账号重登。 */
       if (shouldTryReal()) {
-        clearTokens() // 旧角色 token 立即作废，绝不带着旧范围发请求
-        try {
-          const d = await loginReal(roleKey, getRoleConfig(roleKey).side)
-          this.applyRealUser(d)
-        } catch (e) { /* 后端不可达：页面按网络失败兜底 */ }
+        const cfg = getRoleConfig(roleKey)
+        const ctx = this.availableContexts.find((item) =>
+          item.roleCode === roleKey || item.roleCode === cfg.roleCode || item.contextType === roleKey)
+        if (!ctx) throw { code: 'NO_CONTEXT', biz: true, message: '当前账号没有该身份' }
+        const d = await switchRoleReal(ctx.contextId || ctx.id, 'MP')
+        this.applyRealUser(d)
       }
     },
     logout() {
       this.logged = false
       this.mockUser = null
       this.availableRoles = []
+      this.availableContexts = []
       this.realUser = null
       this.identity = { userId: null, studentId: null, studentNo: null, realName: null,
         roleCode: null, roleName: null }

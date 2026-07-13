@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     DEMO_TENANT_READONLY: str = ""
     # 体验沙箱每晚 0 点自动重置（进程内定时任务；置 false 关闭，改用 cron 跑脚本）。
     SANDBOX_AUTO_RESET: str = ""
+    # 实习请假逾期扫描：生产环境默认开启；多实例通过数据库幂等规则保证重复扫描安全。
+    INTERNSHIP_OVERDUE_AUTO_SCAN: bool = True
 
     # ── 多租户（对齐 DB 冻结册：单库/单 schema + tenant_id 行级隔离）──
     TENANCY_MODE: str = "single"         # single(私有化单校) / multi(SaaS 多校)

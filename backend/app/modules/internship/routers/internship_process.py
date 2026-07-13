@@ -28,6 +28,11 @@ def report_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=2
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/process-reports/{report_id}", summary="过程报告详情（教师/管理端，按数据范围）")
+def report_detail(report_id: int, user=Depends(get_current_user)):
+    return success(report_svc.get_report(report_id, user=user))
+
+
 @router.post("/process-reports/{report_id}/review", summary="复核过程报告（APPROVE/RETURN）")
 def report_review(report_id: int, body: dict = Body(...), user=Depends(get_current_user)):
     b = body or {}

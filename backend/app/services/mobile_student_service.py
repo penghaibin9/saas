@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from math import asin, cos, radians, sin, sqrt
 
 from sqlalchemy import func, select
 
@@ -978,58 +979,147 @@ def campus_service_apply(user: dict, body: dict) -> dict:
     return {"id": str(rid), "status": status, "message": "提交成功，等待处理"}
 
 
+def _float_or_none(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _distance_m(lat1, lng1, lat2, lng2) -> float:
+    """Haversine distance; inputs are validated latitude/longitude values."""
+    d_lat, d_lng = radians(lat2 - lat1), radians(lng2 - lng1)
+    a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lng / 2) ** 2
+    return 6371000 * 2 * asin(sqrt(a))
+
+
+def _file_id(value, *, required=False) -> str | None:
+    fid = str(value or "").strip()
+    if not fid:
+        if required:
+            raise AppException("VALIDATION_ERROR", "请上传凭证文件")
+        return None
+    from app.services import file_service
+    if not file_service.get_file_meta(fid):
+        raise AppException("VALIDATION_ERROR", "凭证文件不存在或无权访问")
+    return fid
+
+
 def internship_checkin(user: dict, body: dict) -> dict:
-    """实习每日打卡（真实落库）：一天一次（唯一约束兜底并发 409）。
-    企业围栏未配置阶段 result=RECORDED/NO_LOCATION，定位仅留痕不作弊性判定。"""
+    """Persist one daily check-in with server-side geofence/device evidence and retry-safe idempotency."""
     u = _require_student(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实打卡")
+    key = str(body.get("idempotencyKey") or "").strip()[:100] or None
+    risk_flag = str(body.get("deviceRiskFlag") or "normal").lower().strip()
+    if risk_flag not in {"normal", "mock", "rooted"}:
+        raise AppException("VALIDATION_ERROR", "deviceRiskFlag 必须是 normal、mock 或 rooted")
+    lat, lng = _float_or_none(body.get("lat")), _float_or_none(body.get("lng"))
+    accuracy = _float_or_none(body.get("gpsAccuracy"))
+    if (lat is None) != (lng is None) or (lat is not None and not (-90 <= lat <= 90 and -180 <= lng <= 180)):
+        raise AppException("VALIDATION_ERROR", "定位经纬度不合法")
+    if accuracy is not None and not (0 <= accuracy <= 10000):
+        raise AppException("VALIDATION_ERROR", "定位精度不合法")
+    evidence_file_id = _file_id(body.get("evidenceFileId"))
     with _session() as db:
         stu = resolve_student(db, u)
         if not stu:
             raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
         from datetime import datetime as _dt
-
-        from app.models import InternshipCheckin, InternshipRecord
+        from app.models import (AttendanceException, InternshipCheckin, InternshipPosition,
+                                InternshipRecord)
         rec = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
             InternshipRecord.is_deleted.is_(False))).first()
         if not rec:
             raise AppException("DATA_NOT_FOUND", "你当前没有实习记录，无法打卡")
+        if rec.status not in {"ONBOARD", "ASSESSING"}:
+            raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以打卡")
         today = f"{_dt.now():%Y-%m-%d}"
         dup = db.scalars(select(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
             InternshipCheckin.checkin_date == today, InternshipCheckin.is_deleted.is_(False))).first()
         if dup:
+            if key and dup.idempotency_key == key:
+                return {"id": str(dup.id), "date": today, "result": dup.result,
+                        "idempotentReplay": True, "message": "打卡请求已成功处理"}
             raise AppException("DATA_CONFLICT", "今日已打卡，请勿重复打卡")
 
-        def _f(v):
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                return None
-
-        lat, lng = _f(body.get("lat")), _f(body.get("lng"))
+        position = db.get(InternshipPosition, rec.position_id) if rec.position_id else None
+        distance_m = radius_m = None
+        if risk_flag != "normal":
+            result, exception_type = "MOCK_LOCATION", "MOCK_LOCATION"
+        elif lat is None:
+            result, exception_type = "NO_LOCATION", "MISSING"
+        elif position and position.geofence_lat is not None and position.geofence_lng is not None and position.geofence_radius_m:
+            distance_m = _distance_m(lat, lng, position.geofence_lat, position.geofence_lng)
+            radius_m = position.geofence_radius_m
+            result = "NORMAL" if distance_m <= radius_m else "OUT_OF_RANGE"
+            exception_type = "OUT_OF_RANGE" if result == "OUT_OF_RANGE" else None
+        else:
+            # A real coordinate without an approved enterprise fence is evidence, not a false pass.
+            result, exception_type = "RECORDED", None
         row = InternshipCheckin(tenant_id=_tid(), internship_id=rec.id, checkin_date=today,
                                 checkin_at=_dt.utcnow(), lat=lat, lng=lng,
-                                address=str(body.get("address") or "")[:300] or None,
-                                result="RECORDED" if (lat is not None and lng is not None) else "NO_LOCATION",
-                                note=str(body.get("note") or "")[:500] or None)
+                                address=str(body.get("address") or "")[:300] or None, result=result,
+                                note=str(body.get("note") or "")[:500] or None, gps_accuracy=accuracy,
+                                device_risk_flag=risk_flag, distance_m=distance_m,
+                                evidence_file_id=evidence_file_id, idempotency_key=key)
         db.add(row)
+        if exception_type:
+            db.add(AttendanceException(
+                tenant_id=_tid(), internship_id=rec.id, exception_type=exception_type,
+                exception_date=_dt.utcnow(), distance_km=(distance_m / 1000 if distance_m is not None else None),
+                gps_accuracy=accuracy, device_risk_flag=risk_flag, address=row.address,
+                student_note=row.note, status="PENDING_HANDLE"))
         try:
             db.flush()
-            rid, result = row.id, row.result
+            rid = row.id
             db.commit()
-        except Exception as exc:  # 并发重复打卡：唯一约束兜底 → 409
+        except Exception as exc:
             db.rollback()
             from sqlalchemy.exc import IntegrityError
             if isinstance(exc, IntegrityError):
                 raise AppException("DATA_CONFLICT", "今日已打卡，请勿重复打卡")
             raise
     audit_log.record("MOBILE_CHECKIN", f"internship:checkin:{today}",
-                     {"studentNo": u.get("studentNo"), "result": result})
-    return {"id": str(rid), "date": today, "result": result,
-            "message": "打卡成功" + ("" if result == "RECORDED" else "（未获取到定位，仅记录时间）")}
+                     {"studentNo": u.get("studentNo"), "result": result, "distanceM": distance_m,
+                      "fenceRadiusM": radius_m, "deviceRiskFlag": risk_flag})
+    return {"id": str(rid), "date": today, "result": result, "distanceM": distance_m,
+            "geofenceRadiusM": radius_m, "geofenceConfigured": radius_m is not None,
+            "message": "打卡成功"}
+
+
+def internship_exception_appeal(user: dict, exception_id: str, body: dict) -> dict:
+    """Students can submit evidence for their own unresolved check-in exception exactly once."""
+    u = _require_student(user)
+    note = str(body.get("note") or body.get("appealNote") or "").strip()
+    if len(note) < 5:
+        raise AppException("VALIDATION_ERROR", "申诉说明不少于 5 个字")
+    file_id = _file_id(body.get("fileId") or body.get("appealFileId"), required=True)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实申诉")
+    with _session() as db:
+        stu = resolve_student(db, u)
+        if not stu:
+            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
+        from app.models import AttendanceException, InternshipAuditTrail, InternshipRecord
+        exc = db.get(AttendanceException, int(exception_id))
+        if not exc or exc.is_deleted or exc.tenant_id != _tid():
+            raise AppException("DATA_NOT_FOUND", "打卡异常不存在")
+        rec = db.get(InternshipRecord, exc.internship_id)
+        if not rec or rec.is_deleted or rec.tenant_id != _tid() or rec.student_id != stu.id:
+            raise AppException("NO_PERMISSION", "只能申诉本人的打卡异常")
+        if exc.status != "PENDING_HANDLE" or exc.appeal_status:
+            raise AppException("DATA_CONFLICT", "该异常当前不可重复申诉")
+        exc.appeal_status, exc.appeal_note, exc.appeal_file_id = "PENDING", note, file_id
+        exc.appealed_at, exc.version = datetime.utcnow(), (exc.version or 0) + 1
+        db.add(InternshipAuditTrail(
+            tenant_id=_tid(), target_id=exc.id, target_type="EXCEPTION", action="STUDENT_APPEAL",
+            operator_name=stu.real_name or u.get("realName") or "学生",
+            detail_json={"fileId": file_id, "note": note}, occurred_at=datetime.utcnow()))
+        db.commit()
+        return {"id": str(exc.id), "appealStatus": "PENDING", "message": "申诉已提交，等待老师复核"}
 
 
 def internship_weekly_submit(user: dict, body: dict) -> dict:
@@ -1243,6 +1333,49 @@ def internship_intention_withdraw(user: dict) -> dict:
         iid = str(it.id)
     result = match_svc.withdraw_intention(iid)
     audit_log.record("MOBILE_INTENTION_WITHDRAW", f"internship:intention:{iid}",
+                     {"studentNo": u.get("studentNo")})
+    return result
+
+
+# ──────────── 正式实习申请（校内岗位志愿 / 自主实习） ────────────
+
+def internship_application_list(user: dict) -> list[dict]:
+    u = _require_student(user)
+    if not db_enabled():
+        return []
+    from app.modules.internship.services import internship_application_service as app_svc
+    return app_svc.my_applications(u)
+
+
+def internship_application_save(user: dict, body: dict) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("SERVICE_UNAVAILABLE", "演示模式不可提交正式实习申请")
+    from app.modules.internship.services import internship_application_service as app_svc
+    result = app_svc.save_my(u, body or {})
+    audit_log.record("MOBILE_INTERNSHIP_APPLICATION_SAVE", f"internship:application:{result['id']}",
+                     {"studentNo": u.get("studentNo"), "applicationType": result["applicationType"]})
+    return result
+
+
+def internship_application_submit(user: dict, application_id: str) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("SERVICE_UNAVAILABLE", "演示模式不可提交正式实习申请")
+    from app.modules.internship.services import internship_application_service as app_svc
+    result = app_svc.submit_my(u, application_id)
+    audit_log.record("MOBILE_INTERNSHIP_APPLICATION_SUBMIT", f"internship:application:{application_id}",
+                     {"studentNo": u.get("studentNo")})
+    return result
+
+
+def internship_application_withdraw(user: dict, application_id: str) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("SERVICE_UNAVAILABLE", "演示模式不可撤回正式实习申请")
+    from app.modules.internship.services import internship_application_service as app_svc
+    result = app_svc.withdraw_my(u, application_id)
+    audit_log.record("MOBILE_INTERNSHIP_APPLICATION_WITHDRAW", f"internship:application:{application_id}",
                      {"studentNo": u.get("studentNo")})
     return result
 

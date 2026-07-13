@@ -70,6 +70,11 @@ def internship_checkin(body: dict = Body(default={}), user=Depends(get_current_u
     return success(stu.internship_checkin(user, body))
 
 
+@router.post("/internship/exceptions/{exception_id}/appeal", summary="本人对未处理打卡异常提交凭证申诉")
+def internship_exception_appeal(exception_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.internship_exception_appeal(user, exception_id, body), message="申诉已提交")
+
+
 @router.post("/internship/makeup", summary="补卡申请（本人某日缺卡，待指导教师审批）")
 def internship_makeup_apply(body: dict = Body(...), user=Depends(get_current_user)):
     b = body or {}
@@ -99,6 +104,12 @@ def internship_leave_apply(body: dict = Body(...), user=Depends(get_current_user
 def internship_leave_withdraw(leave_id: str, user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.withdraw(user, leave_id), message="已撤回")
+
+
+@router.post("/internship/leave/{leave_id}/return", summary="本人实习请假销假")
+def internship_leave_return(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_leave_service as lv
+    return success(lv.return_my(user, leave_id, body or {}), message="销假已登记")
 
 
 @router.get("/internship/agreements", summary="本人三方协议列表")
@@ -151,6 +162,26 @@ def internship_intention_submit(user=Depends(get_current_user)):
 @router.post("/internship/intention/withdraw", summary="撤回本人实习意向")
 def internship_intention_withdraw(user=Depends(get_current_user)):
     return success(stu.internship_intention_withdraw(user), message="意向已撤回")
+
+
+@router.get("/internship/applications", summary="本人正式实习申请列表")
+def internship_application_list(user=Depends(get_current_user)):
+    return success(stu.internship_application_list(user))
+
+
+@router.put("/internship/applications", summary="保存本人正式实习申请草稿")
+def internship_application_save(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.internship_application_save(user, body or {}), message="申请草稿已保存")
+
+
+@router.post("/internship/applications/{application_id}/submit", summary="提交本人正式实习申请")
+def internship_application_submit(application_id: str, user=Depends(get_current_user)):
+    return success(stu.internship_application_submit(user, application_id), message="申请已提交审核")
+
+
+@router.post("/internship/applications/{application_id}/withdraw", summary="撤回本人待审核实习申请")
+def internship_application_withdraw(application_id: str, user=Depends(get_current_user)):
+    return success(stu.internship_application_withdraw(user, application_id), message="申请已撤回")
 
 
 @router.post("/internship/process-report", summary="提交日报/月报/实习总结（本人）")

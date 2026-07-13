@@ -150,11 +150,41 @@ def guidances(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/guidances/stats", summary="指导记录统计（按数据范围）")
+def guidance_stats(threshold: int = Query(2, ge=0, le=100), user=Depends(get_current_user)):
+    return success(gd.guidance_stats(threshold=threshold, user=user))
+
+
+@router.get("/guidance-plans", summary="指导计划达成列表（按批次规则实时聚合）")
+def guidance_plans(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                   keyword: Optional[str] = None, planStatus: Optional[str] = None,
+                   insufficientOnly: bool = False, user=Depends(get_current_user)):
+    items, total = gd.list_guidance_plans(page, pageSize, keyword=keyword,
+                                          plan_status=planStatus,
+                                          insufficient_only=insufficientOnly, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/guidance-plans/export", summary="导出指导计划达成台账")
+def guidance_plans_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = gd.export_guidance_plans(keyword=keyword, user=user)
+    audit_log.record("导出指导计划台账", "internship-guidance-plan:export",
+                     detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
 @router.post("/guidances", summary="新增指导记录（owner：仅本人指导学生）")
 def create_guidance(body: dict = Body(...), user=Depends(get_current_user)):
     result = gd.create(user, body)
     audit_log.record("新增指导记录", f"internship-guidance:{result['id']}", detail=result)
     return success(result, message="已保存")
+
+
+@router.post("/guidances/export", summary="指导记录台账导出 Excel(.xlsx)")
+def guidances_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = gd.export_guidances(keyword=keyword, user=user)
+    audit_log.record("导出指导记录台账", "internship-guidance:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
 
 
 @router.get("/guidances/{guidance_id}", summary="指导记录详情")
@@ -169,13 +199,6 @@ def void_guidance(guidance_id: str, body: dict = Body(default={}), user=Depends(
     return success(result, message="已撤销")
 
 
-@router.post("/guidances/export", summary="指导记录台账导出 Excel(.xlsx)")
-def guidances_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
-    data = gd.export_guidances(keyword=keyword, user=user)
-    audit_log.record("导出指导记录台账", "internship-guidance:export", detail={"rowCount": data["rowCount"]})
-    return success(data)
-
-
 # ═══ 教师巡访（owner + 数据范围 + 整改跟进） ═══
 
 @router.get("/visits", summary="巡访记录列表（按数据范围）")
@@ -186,11 +209,23 @@ def visits(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/visits/stats", summary="巡访与整改统计（按数据范围）")
+def visit_stats(user=Depends(get_current_user)):
+    return success(vis.visit_stats(user=user))
+
+
 @router.post("/visits", summary="新增巡访记录（owner：仅本人指导学生）")
 def create_visit(body: dict = Body(...), user=Depends(get_current_user)):
     result = vis.create(user, body)
     audit_log.record("新增巡访记录", f"internship-visit:{result['id']}", detail=result)
     return success(result, message="已保存")
+
+
+@router.post("/visits/export", summary="巡访记录台账导出 Excel(.xlsx)")
+def visits_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
+    data = vis.export_visits(keyword=keyword, user=user)
+    audit_log.record("导出巡访记录台账", "internship-visit:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
 
 
 @router.get("/visits/{visit_id}", summary="巡访记录详情（含月报/整改留痕）")
@@ -206,13 +241,6 @@ def visit_rectify(visit_id: str, body: dict = Body(...), user=Depends(get_curren
     return success(result, message="已跟进")
 
 
-@router.post("/visits/export", summary="巡访记录台账导出 Excel(.xlsx)")
-def visits_export(keyword: Optional[str] = None, user=Depends(get_current_user)):
-    data = vis.export_visits(keyword=keyword, user=user)
-    audit_log.record("导出巡访记录台账", "internship-visit:export", detail={"rowCount": data["rowCount"]})
-    return success(data)
-
-
 @router.get("/reports", summary="周报批阅列表")
 def reports(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
             status: Optional[str] = None, keyword: Optional[str] = None,
@@ -221,9 +249,24 @@ def reports(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
     return success(paginate(items, total, page, pageSize))
 
 
+@router.post("/reports/export", summary="导出周报台账")
+def reports_export(status: Optional[str] = None, keyword: Optional[str] = None,
+                   user=Depends(get_current_user)):
+    data = svc.export_weekly_reports(status=status, keyword=keyword, user=user)
+    audit_log.record("导出周报台账", "internship-report:export", detail={"rowCount": data["rowCount"]})
+    return success(data)
+
+
 @router.get("/reports/{report_id}", summary="周报详情（含批阅留痕）")
 def report_detail(report_id: str, user=Depends(get_current_user)):
     return success(svc.get_weekly_report_detail(report_id, user=user))
+
+
+@router.post("/reports/{report_id}/remind", summary="提醒学生处理周报（5分钟防重复）")
+def report_remind(report_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    b = body or {}
+    return success(svc.remind_weekly_report(report_id, b.get("channel") or "站内消息", user=user),
+                   message="提醒已发送")
 
 
 @router.post("/reports/{report_id}/review", summary="批阅周报（通过/退回，退回原因≥5字）")
@@ -296,6 +339,13 @@ def leaves_export(status: Optional[str] = None, keyword: Optional[str] = None,
     data = lv.export_leaves(status=status, keyword=keyword, user=user)
     audit_log.record("导出请假审批台账", "internship-leave:export", detail={"rowCount": data["rowCount"]})
     return success(data)
+
+
+@router.post("/leaves/overdue/refresh", summary="刷新请假超期并生成风险单（可由定时任务幂等调用）")
+def leave_overdue_refresh(user=Depends(get_current_user)):
+    result = lv.refresh_overdue()
+    audit_log.record("刷新实习请假超期", "internship-leave:overdue-refresh", detail=result)
+    return success(result, message="超期状态已刷新")
 
 
 @router.get("/leaves", summary="实习请假列表（按数据范围）")

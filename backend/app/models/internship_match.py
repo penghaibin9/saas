@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -30,6 +30,34 @@ class InternshipIntention(PKMixin, TenantMixin, CommonMixin, Base):
     intention_note: Mapped[str | None] = mapped_column(String(500))
     # DRAFT / SUBMITTED / WITHDRAWN
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT", index=True)
+
+
+class InternshipApplication(PKMixin, TenantMixin, CommonMixin, Base):
+    """Formal internship application ledger, independent from matching intentions."""
+    __tablename__ = "t_internship_application"
+    __table_args__ = (UniqueConstraint("tenant_id", "record_id", "volunteer_no",
+                                       name="uk_intern_application_record_volunteer"),)
+
+    record_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    # POSITION / SELF_ARRANGED. SELF_ARRANGED always uses volunteer_no=0.
+    application_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    volunteer_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    position_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    company_name: Mapped[str | None] = mapped_column(String(200))
+    position_name: Mapped[str | None] = mapped_column(String(100))
+    work_address: Mapped[str | None] = mapped_column(String(300))
+    contact_name: Mapped[str | None] = mapped_column(String(100))
+    contact_phone: Mapped[str | None] = mapped_column(String(64))
+    evidence_file_id: Mapped[str | None] = mapped_column(String(64))
+    application_note: Mapped[str | None] = mapped_column(String(500))
+    # DRAFT / PENDING_REVIEW / APPROVED / REJECTED / WITHDRAWN / CANCELLED
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT", index=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    review_comment: Mapped[str | None] = mapped_column(String(500))
 
 
 class InternshipMatch(PKMixin, TenantMixin, CommonMixin, Base):

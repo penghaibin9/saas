@@ -11,7 +11,7 @@ import {
   dataScope,
   permissionActions,
   statusOptions
-} from '@/mocks/internship/internship.mock'
+} from '@/modules/internship/constants/context.constants'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })

@@ -255,3 +255,28 @@ def test_leave_student_withdraw(client, db_mode):
                      headers=_student("S3-A")).json()["data"]
     w = client.post(f"/api/v1/mobile/internship/leave/{ap['id']}/withdraw", headers=_student("S3-A"))
     assert w.status_code == 200 and w.json()["data"]["status"] == "WITHDRAWN"
+
+
+def test_leave_overdue_creates_one_risk_and_student_can_return(client, db_mode):
+    _seed(db_mode)
+    student = _student("S3-A")
+    apply = client.post("/api/v1/mobile/internship/leave", json={
+        "startDate": "2026-07-01", "endDate": "2026-07-02", "reason": "病后恢复观察",
+    }, headers=student)
+    assert apply.status_code == 200
+    leave_id = apply.json()["data"]["id"]
+    assert client.post(f"{INT}/leaves/{leave_id}/review", json={"action": "APPROVE"},
+                       headers=_mentor("刘强")).status_code == 200
+    refreshed = client.post(f"{INT}/leaves/overdue/refresh", headers=_admin(client)).json()["data"]
+    assert refreshed["markedOverdue"] == 1 and refreshed["risksCreated"] == 1
+    # Idempotent recurring invocation must not create another risk card.
+    repeat = client.post(f"{INT}/leaves/overdue/refresh", headers=_admin(client)).json()["data"]
+    assert repeat["markedOverdue"] == 0 and repeat["risksCreated"] == 0
+    returned = client.post(f"/api/v1/mobile/internship/leave/{leave_id}/return",
+                           json={"returnNote": "已于今日返岗"}, headers=student)
+    assert returned.status_code == 200 and returned.json()["data"] == {
+        "id": leave_id, "status": "RETURNED", "statusLabel": "已销假", "wasOverdue": True,
+    }
+    detail = client.get(f"{INT}/leaves/{leave_id}", headers=_mentor("刘强")).json()["data"]
+    assert detail["overdue"] is False and detail["returnNote"] == "已于今日返岗"
+    assert {x["action"] for x in detail["auditTrail"]} >= {"APPLY", "REVIEW_APPROVE", "MARK_OVERDUE", "RETURN"}

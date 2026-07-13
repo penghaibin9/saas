@@ -7,7 +7,8 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import (InternshipAuditTrail, InternshipGuidance, InternshipRecord, StudentProfile)
+from app.models import (InternshipAuditTrail, InternshipBatch, InternshipGuidance,
+                        InternshipRecord, StudentProfile)
 from app.services.db_service import _iso, _tid, session
 
 METHOD_LABEL = {"ONLINE": "线上", "PHONE": "电话", "ONSITE": "现场",
@@ -168,6 +169,95 @@ def list_guidances(page, page_size, keyword=None, user=None) -> tuple[list[dict]
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
+
+
+def _guidance_limits(batch) -> tuple[int, int]:
+    rules = (batch.rules_config or {}).get("guidance", {}) if batch else {}
+    try:
+        month = max(0, int(rules.get("minCommunicationsPerMonth", 2)))
+    except (TypeError, ValueError):
+        month = 2
+    try:
+        term = max(0, int(rules.get("minVisitsPerTerm", 2)))
+    except (TypeError, ValueError):
+        term = 2
+    return month, term
+
+
+def list_guidance_plans(page, page_size, keyword=None, plan_status=None,
+                        insufficient_only=False, user=None) -> tuple[list[dict], int]:
+    """按学生实习记录与批次规则实时聚合指导达成情况，避免维护平行计划表。"""
+    scope, in_scope = _scope_ctx(user)
+    month_prefix = datetime.now().strftime("%Y-%m")
+    with session() as db:
+        recs = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.status.in_(("READY", "ONBOARD", "ASSESSING"))
+        ).order_by(InternshipRecord.id)).all()
+        items = []
+        for rec in recs:
+            stu = db.get(StudentProfile, rec.student_id)
+            kw = (keyword or "").strip()
+            if kw and (not stu or kw not in ((stu.real_name or "") + (stu.student_no or ""))):
+                continue
+            if not in_scope(scope, db, rec, stu):
+                continue
+            batch = db.get(InternshipBatch, rec.batch_id) if rec.batch_id else None
+            min_month, min_term = _guidance_limits(batch)
+            rows = db.scalars(select(InternshipGuidance).where(
+                InternshipGuidance.tenant_id == _tid(), InternshipGuidance.internship_id == rec.id,
+                InternshipGuidance.is_deleted.is_(False), InternshipGuidance.status == "NORMAL"
+            ).order_by(InternshipGuidance.created_at.desc())).all()
+            term_count = len(rows)
+            month_count = sum(1 for row in rows if _iso(row.created_at).startswith(month_prefix))
+            month_bad, term_bad = month_count < min_month, term_count < min_term
+            status = ("INSUFFICIENT_BOTH" if month_bad and term_bad else
+                      "INSUFFICIENT_MONTH" if month_bad else
+                      "INSUFFICIENT_TERM" if term_bad else "OK")
+            if insufficient_only and status == "OK":
+                continue
+            if plan_status and status != plan_status:
+                continue
+            items.append({
+                "internId": str(rec.id), "studentNo": stu.student_no if stu else "-",
+                "studentName": stu.real_name if stu else "-", "advisorName": rec.advisor_name or "",
+                "enterpriseName": rec.enterprise_name or "", "batchId": str(rec.batch_id or ""),
+                "batchName": batch.batch_name if batch else "", "minMonth": min_month,
+                "monthCount": month_count, "minTerm": min_term, "termCount": term_count,
+                "nextFollowDate": rows[0].next_follow_date if rows else "", "planStatus": status,
+                "planStatusLabel": {"OK": "达标", "INSUFFICIENT_MONTH": "本月不足",
+                                    "INSUFFICIENT_TERM": "学期不足",
+                                    "INSUFFICIENT_BOTH": "月/学期均不足"}[status],
+            })
+        total = len(items)
+        start = (max(1, page) - 1) * page_size
+        return items[start:start + page_size], total
+
+
+def guidance_stats(threshold=2, user=None) -> dict:
+    try:
+        threshold = max(0, int(threshold))
+    except (TypeError, ValueError):
+        threshold = 2
+    items, _ = list_guidance_plans(1, 100000, user=user)
+    total_count = sum(int(item["termCount"]) for item in items)
+    return {"studentCount": len(items), "totalCount": total_count,
+            "avgCount": round(total_count / len(items), 1) if items else 0,
+            "threshold": threshold,
+            "insufficientCount": sum(1 for item in items if int(item["termCount"]) < threshold)}
+
+
+def export_guidance_plans(keyword=None, user=None) -> dict:
+    from app.services import xlsx_util
+    items, _ = list_guidance_plans(1, 100000, keyword=keyword, user=user)
+    headers = ["学号", "姓名", "指导教师", "企业", "批次", "月最低", "本月次数",
+               "学期最低", "学期次数", "下次跟进", "计划状态"]
+    rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
+             it["batchName"], it["minMonth"], it["monthCount"], it["minTerm"], it["termCount"],
+             it["nextFollowDate"], it["planStatusLabel"]] for it in items]
+    wm = f"岗位实习中心·指导计划台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
+    content = xlsx_util.build_ledger_xlsx("指导计划台账", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "指导计划台账.xlsx", len(items))
 
 
 def get_guidance(gid, user=None) -> dict:

@@ -61,7 +61,26 @@ def test_config_weight_sum_must_be_100(client, db_mode):
     assert bad.status_code == 400
     assert _cfg100(client).status_code == 200
     cfg = client.get(f"{INT}/scores/config", headers=_admin(client)).json()["data"]
-    assert cfg["enterpriseWeight"] == 30 and cfg["passLine"] == 60
+    assert cfg["enterpriseWeight"] == 30 and cfg["passLine"] == 60 and cfg["configId"]
+
+
+def test_score_keeps_configuration_snapshot_and_mentor_cannot_change_config(client, db_mode):
+    ids = _seed(db_mode)
+    first = _cfg100(client).json()["data"]
+    denied = client.post(f"{INT}/scores/config", json={"checkinWeight": 20, "weeklyWeight": 20,
+                         "monthlyWeight": 10, "enterpriseWeight": 30, "schoolWeight": 20},
+                         headers=_mentor("刘强"))
+    assert denied.status_code == 403
+    computed = client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]),
+                           "checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80,
+                           "enterpriseScore": 80, "schoolScore": 80}, headers=_mentor("刘强")).json()["data"]
+    assert computed["total"] == 80.0
+    second = client.post(f"{INT}/scores/config", json={"checkinWeight": 10, "weeklyWeight": 10,
+                         "monthlyWeight": 10, "enterpriseWeight": 40, "schoolWeight": 30, "passLine": 60},
+                         headers=_admin(client)).json()["data"]
+    assert second["configId"] != first["configId"]
+    detail = client.get(f"{INT}/scores/{computed['id']}", headers=_mentor("刘强")).json()["data"]
+    assert detail["scoreConfigId"] == first["configId"] and detail["scoreConfigVersion"] >= 1
 
 
 def test_compute_correct_and_publish(client, db_mode):

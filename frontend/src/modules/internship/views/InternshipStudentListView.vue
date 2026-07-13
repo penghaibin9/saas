@@ -56,7 +56,9 @@
             data-scope-hint="仅显示你数据范围内的学生 · 已建档学生提交时由后端拦截重复"
           />
         </div>
-        <label class="ie-fld"><span class="ie-lbl">校内指导教师</span><input v-model.trim="cform.advisorName" class="ie-in" /></label>
+        <label class="ie-fld"><span class="ie-lbl">校内指导教师</span>
+          <select v-model="cform.advisorUserId" class="ie-in"><option value="">暂不分配</option><option v-for="a in advisorOptions" :key="a.id" :value="a.id">{{ a.name }}（{{ a.loginName }}）</option></select>
+        </label>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="cform.remark" class="ie-in" rows="2" /></label>
         <p v-if="cError" class="ie-err">{{ cError }}</p>
         <div class="ie-actions">
@@ -154,7 +156,7 @@ export default {
     return {
       loading: true, error: '', submitting: false, activePanel: 'roster',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      createVisible: false, cform: { studentId: '', advisorName: '', remark: '' }, cError: '',
+      createVisible: false, cform: { studentId: '', advisorUserId: '', remark: '' }, advisorOptions: [], cError: '',
       assignVisible: false, assignRow: null, assignPositionId: '', assignError: '',
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
@@ -236,7 +238,8 @@ export default {
       }
       if (key === 'create') {
         // 学生候选改为选择器内按关键字远程搜索（后端裁定数据范围），不再一次性预载
-        this.cform = { studentId: '', advisorName: '', remark: '' }; this.cError = ''
+        this.cform = { studentId: '', advisorUserId: '', remark: '' }; this.cError = ''
+        await this.loadAdvisors()
         this.createVisible = true
       }
       if (key === 'import') { this.importVisible = true }
@@ -246,9 +249,14 @@ export default {
       if (!this.cform.studentId) { this.cError = '请选择学生'; return }
       this.submitting = true
       try {
-        const res = await internStudentApi.createStudent({ studentId: this.cform.studentId, advisorName: this.cform.advisorName, remark: this.cform.remark })
+        const res = await internStudentApi.createStudent({ studentId: this.cform.studentId, advisorUserId: this.cform.advisorUserId || null, remark: this.cform.remark })
         if (res.code === 0) { toast.success('已建档'); this.createVisible = false; this.load() } else this.cError = res.message
       } finally { this.submitting = false }
+    },
+    async loadAdvisors() {
+      const res = await internStudentApi.getAdvisors()
+      if (res.code === 0) this.advisorOptions = res.data || []
+      else { this.advisorOptions = []; this.cError = res.message }
     },
     openAssign(row) {
       // 岗位候选改为选择器内按关键字远程搜索，不再一次性预载

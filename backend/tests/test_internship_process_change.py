@@ -60,6 +60,10 @@ def test_process_report_submit_and_review(client, db_mode):
     lst = client.get(f"{INT}/process-reports", params={"reportType": "DAILY"},
                      headers=_mentor("刘强"))
     assert lst.status_code == 200 and lst.json()["data"]["total"] >= 1
+    detail = client.get(f"{INT}/process-reports/{rid}", headers=_mentor("刘强"))
+    assert detail.status_code == 200
+    assert detail.json()["data"]["id"] == rid
+    assert detail.json()["data"]["content"] == content
     rev = client.post(f"{INT}/process-reports/{rid}/review",
                       json={"action": "APPROVE", "comment": "良好"},
                       headers=_mentor("刘强"))

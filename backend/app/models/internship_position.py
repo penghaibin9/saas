@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -34,6 +34,9 @@ class InternshipPosition(PKMixin, TenantMixin, CommonMixin, Base):
     major_requirement: Mapped[str | None] = mapped_column(String(200), comment="专业要求")
     grade_requirement: Mapped[str | None] = mapped_column(String(100), comment="年级要求")
     work_location: Mapped[str | None] = mapped_column(String(200), comment="工作地点")
+    geofence_lat: Mapped[float | None] = mapped_column(Float, comment="岗位围栏中心纬度")
+    geofence_lng: Mapped[float | None] = mapped_column(Float, comment="岗位围栏中心经度")
+    geofence_radius_m: Mapped[int | None] = mapped_column(Integer, comment="岗位围栏半径(米)")
     salary_range: Mapped[str | None] = mapped_column(String(50), comment="薪资区间")
     subsidy: Mapped[str | None] = mapped_column(String(50), comment="补贴")
     headcount: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="岗位容量")

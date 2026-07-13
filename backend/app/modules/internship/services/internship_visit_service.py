@@ -157,6 +157,14 @@ def get_visit(vid, user=None) -> dict:
                                for t in trail]}
 
 
+def visit_stats(user=None) -> dict:
+    items, _ = list_visits(1, 100000, user=user)
+    return {"totalVisits": len(items),
+            "pendingRectify": sum(1 for item in items if item["rectifyStatus"] == "PENDING"),
+            "doneRectify": sum(1 for item in items if item["rectifyStatus"] == "DONE"),
+            "withSafetyIssue": sum(1 for item in items if item["safetyIssue"])}
+
+
 def export_visits(keyword=None, user=None) -> dict:
     from app.services import xlsx_util
     items, _ = list_visits(1, 100000, keyword=keyword, user=user)

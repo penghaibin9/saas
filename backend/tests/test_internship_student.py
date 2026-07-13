@@ -44,6 +44,37 @@ def test_create_and_list(client, auth_headers, db_mode):
     assert client.post(IST, headers=auth_headers, json={"studentId": sid}).json()["code"] != 0
 
 
+def test_advisor_assignment_binds_active_teacher_and_audits(client, auth_headers, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipAuditTrail, User
+    db = get_sessionmaker()()
+    try:
+        teacher = User(tenant_id=1000000000000000001, login_name="intern-advisor-01",
+                       real_name="实习指导老师", password_hash="test", user_type="TEACHER", status="ACTIVE")
+        replacement = User(tenant_id=1000000000000000001, login_name="intern-advisor-02",
+                           real_name="新实习指导老师", password_hash="test", user_type="TEACHER", status="ACTIVE")
+        db.add_all((teacher, replacement)); db.commit(); teacher_id, replacement_id = str(teacher.id), str(replacement.id)
+    finally:
+        db.close()
+    sid = _student(client, auth_headers, "S-IST-ADVISOR")
+    created = client.post(IST, headers=auth_headers,
+                          json={"studentId": sid, "advisorUserId": teacher_id}).json()
+    assert created["code"] == 0 and created["data"]["advisorUserId"] == teacher_id
+    record_id = created["data"]["id"]
+    advisors = client.get(f"{IST}/advisors", headers=auth_headers).json()["data"]
+    assert any(a["id"] == teacher_id for a in advisors)
+    changed = client.post(f"{IST}/{record_id}/advisor", headers=auth_headers,
+                          json={"advisorUserId": replacement_id, "reason": "重新分配"})
+    assert changed.status_code == 200 and changed.json()["data"]["advisorUserId"] == replacement_id
+    db = get_sessionmaker()()
+    try:
+        trails = db.query(InternshipAuditTrail).filter_by(target_type="INTERN_STUDENT", target_id=int(record_id)).all()
+        assert any(t.action == "CREATE" and t.detail_json.get("advisorUserId") == teacher_id for t in trails)
+        assert any(t.action == "ASSIGN_ADVISOR" and t.detail_json.get("toUserId") == replacement_id for t in trails)
+    finally:
+        db.close()
+
+
 def test_assign_updates_allocated_count(client, auth_headers, db_mode):
     cid = _company(client, auth_headers, "91310000ISTA001X")
     pid = _position(client, auth_headers, cid, headcount=2)

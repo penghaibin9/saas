@@ -31,6 +31,7 @@ class InternshipBatch(PKMixin, TenantMixin, CommonMixin, Base):
     stage_config: Mapped[list | None] = mapped_column(JSON, comment="阶段/时间轴 [{code,name,startDate,endDate}]")
     rules_config: Mapped[dict | None] = mapped_column(
         JSON, comment="规则配置 {checkin/weeklyReport/guidance/evaluation/score}")
+    rules_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="已生效规则版本")
     previous_status: Mapped[str | None] = mapped_column(String(50))
     last_transition_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_transition_by: Mapped[str | None] = mapped_column(String(100))
@@ -56,6 +57,7 @@ class InternshipRecord(PKMixin, TenantMixin, CommonMixin, Base):
     position_name: Mapped[str | None] = mapped_column(String(100), comment="岗位（冗余展示）")
     advisor_name: Mapped[str | None] = mapped_column(String(100), comment="校内指导教师")
     enterprise_mentor_name: Mapped[str | None] = mapped_column(String(100), comment="企业导师（冗余展示）")
+    advisor_user_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="校内指导教师 t_user.id")
     # ── 与企业库/岗位库真实关联（additive；分配岗位时回填，退岗时清空）──
     enterprise_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_emp_company.id")
     position_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_internship_position.id")
@@ -96,6 +98,10 @@ class AttendanceException(PKMixin, TenantMixin, CommonMixin, Base):
     handle_comment: Mapped[str | None] = mapped_column(String(500))
     handled_by_name: Mapped[str | None] = mapped_column(String(100))
     handled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    appeal_status: Mapped[str | None] = mapped_column(String(30), comment="PENDING/ACCEPTED/REJECTED")
+    appeal_note: Mapped[str | None] = mapped_column(String(1000), comment="学生异常申诉说明")
+    appeal_file_id: Mapped[str | None] = mapped_column(String(64), comment="申诉凭证文件")
+    appealed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
@@ -114,6 +120,11 @@ class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
     result: Mapped[str] = mapped_column(String(30), nullable=False, default="RECORDED",
                                         comment="RECORDED/NORMAL/OUT_OF_RANGE/NO_LOCATION")
     note: Mapped[str | None] = mapped_column(String(500), comment="学生备注")
+    gps_accuracy: Mapped[float | None] = mapped_column(Float, comment="定位精度(m)")
+    device_risk_flag: Mapped[str | None] = mapped_column(String(30), comment="normal/mock/rooted")
+    distance_m: Mapped[float | None] = mapped_column(Float, comment="距岗位围栏中心距离(m)")
+    evidence_file_id: Mapped[str | None] = mapped_column(String(64), comment="打卡凭证文件")
+    idempotency_key: Mapped[str | None] = mapped_column(String(100), comment="客户端幂等键")
 
 
 class InternshipMakeup(PKMixin, TenantMixin, CommonMixin, Base):
@@ -308,6 +319,8 @@ class InternshipFinalScore(PKMixin, TenantMixin, CommonMixin, Base):
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    score_config_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="核算时的评分配置快照 id")
+    score_config_version: Mapped[int | None] = mapped_column(Integer, comment="核算时的评分配置版本")
     checkin_score: Mapped[int | None] = mapped_column(Integer, comment="打卡分 0-100")
     weekly_score: Mapped[int | None] = mapped_column(Integer, comment="周报分 0-100")
     monthly_score: Mapped[int | None] = mapped_column(Integer, comment="月报/总结分 0-100")
@@ -353,6 +366,11 @@ class InternshipLeave(PKMixin, TenantMixin, CommonMixin, Base):
     review_at: Mapped[datetime | None] = mapped_column(DateTime)
     review_comment: Mapped[str | None] = mapped_column(String(500))
     file_id: Mapped[str | None] = mapped_column(String(64), comment="证明附件 file_id（文件中心）")
+
+
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime, comment="Actual return-from-leave time")
+    return_note: Mapped[str | None] = mapped_column(String(500), comment="Student return note")
+    return_file_id: Mapped[str | None] = mapped_column(String(64), comment="Return evidence file id")
 
 
 class WeeklyReport(PKMixin, TenantMixin, CommonMixin, Base):

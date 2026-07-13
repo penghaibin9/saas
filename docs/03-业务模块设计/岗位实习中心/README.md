@@ -1,7 +1,7 @@
 # 岗位实习中心（docs/03-业务模块设计/岗位实习中心/）
 
-> **文档关联索引（任务路由）**：[文档关联索引.md](./文档关联索引.md)  
-> **施工总控**：[06-岗位实习中心生产级商业化开发总册.md](./06-岗位实习中心生产级商业化开发总册.md)
+> **生产级提升唯一入口**：[00-岗位实习生产级提升收口总控.md](./00-岗位实习生产级提升收口总控.md)
+> **文档关联索引（任务路由）**：[文档关联索引.md](./文档关联索引.md)
 
 ---
 
@@ -15,9 +15,9 @@
 
 | 端 | 路径 |
 |---|---|
-| PC | `frontend/src/views/admin/internship/`、`navPlan.js` → `internship` |
-| API | `backend/app/api/v1/internship*.py` |
-| 模型/服务 | `backend/app/models/internship.py`、`backend/app/services/internship_*` |
+| PC | `frontend/src/modules/internship/` |
+| API | `backend/app/modules/internship/routers/` |
+| 模型/服务 | `backend/app/models/internship.py`、`backend/app/modules/internship/services/` |
 | 测试 | `backend/tests/test_internship*.py` |
 | 小程序 | `miniapp/src/pages/student/internship/`、`teacher/internship-review/` |
 
@@ -29,18 +29,19 @@
 
 ---
 
-## 唯一主总册与页面树
+## 主文档与页面树
 
 | 文档 | 角色 |
 |---|---|
-| [06-岗位实习中心生产级商业化开发总册.md](./06-岗位实习中心生产级商业化开发总册.md) | **唯一主总册** |
+| [00-岗位实习生产级提升收口总控.md](./00-岗位实习生产级提升收口总控.md) | **当前唯一生产提升总控** |
+| [06-岗位实习中心生产级商业化开发总册.md](./06-岗位实习中心生产级商业化开发总册.md) | 历史业务总册，按当前代码校准后使用 |
 | [06-岗位实习中心页面树与路由重构设计.md](./06-岗位实习中心页面树与路由重构设计.md) | 12 二级菜单冻结 |
 
 ---
 
 ## 开发入口
 
-索引 §1 任务路由 → 主总册 → [岗位实习中心-施工与验收归档.md](./岗位实习中心-施工与验收归档.md) → 历史欠账
+收口总控 → 当前代码与测试 → 索引 §1 任务路由 → [岗位实习中心-施工与验收归档.md](./岗位实习中心-施工与验收归档.md)
 
 ---
 

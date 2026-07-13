@@ -15,7 +15,7 @@ from sqlalchemy import func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpCompany, InternshipAuditTrail, InternshipPosition, InternshipRecord,
-                        StudentContact, StudentProfile)
+                        StudentContact, StudentProfile, User)
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
 STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在岗中",
@@ -50,6 +50,40 @@ def _students_map(db, ids: list[int]) -> dict:
         return {}
     rows = db.scalars(select(StudentProfile).where(StudentProfile.id.in_(ids))).all()
     return {s.id: s for s in rows}
+
+
+def _advisor(db, advisor_user_id=None, advisor_name=None) -> User | None:
+    """Resolve a new advisor to one active staff account; names remain display-only compatibility input."""
+    if advisor_user_id:
+        row = db.get(User, int(advisor_user_id))
+        if not row or row.is_deleted or row.tenant_id != _tid() or row.status != "ACTIVE":
+            raise not_found("指导教师账号不存在、已停用或不在当前租户")
+        if row.user_type not in ("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN"):
+            raise AppException("VALIDATION_ERROR", "所选账号不是教职工，不能担任实习指导教师")
+        return row
+    name = (advisor_name or "").strip()
+    if not name:
+        return None
+    rows = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.real_name == name, User.status == "ACTIVE",
+        User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
+        User.is_deleted.is_(False))).all()
+    if len(rows) != 1:
+        raise AppException("VALIDATION_ERROR", "指导教师必须选择唯一的在职教职工账号")
+    return rows[0]
+
+
+def list_advisors(keyword: str | None = None) -> list[dict]:
+    with session() as db:
+        q = select(User).where(User.tenant_id == _tid(), User.is_deleted.is_(False),
+                               User.status == "ACTIVE",
+                               User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")))
+        if keyword:
+            like = f"%{keyword.strip()}%"
+            q = q.where((User.real_name.like(like)) | (User.login_name.like(like)))
+        rows = db.scalars(q.order_by(User.real_name, User.id).limit(200)).all()
+        return [{"id": str(u.id), "name": u.real_name, "loginName": u.login_name,
+                 "userType": u.user_type} for u in rows]
 
 
 # ═══════════ 数据范围（P0-D：管理端按教师范围收敛，不仅租户） ═══════════
@@ -96,6 +130,7 @@ def _row(r: InternshipRecord, stu: StudentProfile | None) -> dict:
         "positionName": r.position_name or "",
         "mentorContactId": str(r.mentor_contact_id) if r.mentor_contact_id else "",
         "mentorName": r.enterprise_mentor_name or "", "advisorName": r.advisor_name or "",
+        "advisorUserId": str(r.advisor_user_id) if r.advisor_user_id else "",
         "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, r.status),
         "statusTone": STATUS_TONE.get(r.status, "default"),
         "riskLevel": r.risk_level, "riskLabel": RISK_LABEL.get(r.risk_level, r.risk_level),
@@ -207,13 +242,16 @@ def create_student_record(body) -> dict:
             InternshipRecord.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", "该学生在此批次已有实习记录")
+        advisor = _advisor(db, getattr(body, "advisorUserId", None), getattr(body, "advisorName", None))
         r = InternshipRecord(
             tenant_id=_tid(), student_id=sid, batch_id=batch_id,
-            advisor_name=getattr(body, "advisorName", None), remark=getattr(body, "remark", None),
+            advisor_user_id=advisor.id if advisor else None,
+            advisor_name=advisor.real_name if advisor else None, remark=getattr(body, "remark", None),
             status="PREPARING", eligibility_status="PENDING", destination_type="NONE", risk_level="NONE")
         db.add(r)
         db.flush()
-        _trail(db, r.id, "CREATE", {"studentId": str(sid)})
+        _trail(db, r.id, "CREATE", {"studentId": str(sid),
+                                      "advisorUserId": str(advisor.id) if advisor else ""})
         db.commit()
         return _row_of(db, r)
 
@@ -223,13 +261,36 @@ def update_student_record(rec_id, body) -> dict:
         r = _get(db, rec_id)
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可编辑")
-        for src, col in [("advisorName", "advisor_name"), ("insurance", "insurance_info"),
-                         ("agreement", "agreement_info"), ("remark", "remark")]:
+        before_advisor = r.advisor_user_id
+        if getattr(body, "advisorUserId", None) is not None or getattr(body, "advisorName", None) is not None:
+            advisor = _advisor(db, getattr(body, "advisorUserId", None), getattr(body, "advisorName", None))
+            r.advisor_user_id = advisor.id if advisor else None
+            r.advisor_name = advisor.real_name if advisor else None
+        for src, col in [("insurance", "insurance_info"), ("agreement", "agreement_info"),
+                         ("remark", "remark")]:
             v = getattr(body, src, None)
             if v is not None:
                 setattr(r, col, v)
-        r.version += 1
-        _trail(db, r.id, "UPDATE", {})
+        r.version = int(r.version or 0) + 1
+        _trail(db, r.id, "UPDATE", {"advisorUserIdBefore": str(before_advisor or ""),
+                                      "advisorUserIdAfter": str(r.advisor_user_id or "")})
+        db.commit()
+        return _row_of(db, r)
+
+
+def assign_advisor(rec_id, advisor_user_id, reason: str = "") -> dict:
+    with session() as db:
+        r = _get(db, rec_id)
+        if r.status == "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "已归档记录不可变更指导教师")
+        advisor = _advisor(db, advisor_user_id)
+        before = r.advisor_user_id
+        if before == advisor.id:
+            raise AppException("DATA_CONFLICT", "该学生已分配给此指导教师")
+        r.advisor_user_id, r.advisor_name = advisor.id, advisor.real_name
+        r.version = int(r.version or 0) + 1
+        _trail(db, r.id, "ASSIGN_ADVISOR", {"fromUserId": str(before or ""),
+                                             "toUserId": str(advisor.id), "reason": (reason or "").strip()})
         db.commit()
         return _row_of(db, r)
 

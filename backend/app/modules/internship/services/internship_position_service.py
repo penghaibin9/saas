@@ -60,6 +60,8 @@ def _row(p: InternshipPosition) -> dict:
         "title": p.title, "category": p.category or "",
         "majorRequirement": p.major_requirement or "", "gradeRequirement": p.grade_requirement or "",
         "workLocation": p.work_location or "", "salaryRange": p.salary_range or "",
+        "geofenceLat": p.geofence_lat, "geofenceLng": p.geofence_lng,
+        "geofenceRadiusM": p.geofence_radius_m,
         "subsidy": p.subsidy or "", "headcount": p.headcount, "allocatedCount": p.allocated_count,
         "remaining": max(0, p.headcount - p.allocated_count),
         "mentorContactId": str(p.mentor_contact_id) if p.mentor_contact_id else "",
@@ -144,6 +146,13 @@ def _resolve_mentor(db, company_id: int, mentor_contact_id) -> tuple[int | None,
     return t.id, t.name
 
 
+def _validate_geofence(lat, lng, radius) -> None:
+    """A geofence is only active when its center and radius are all present."""
+    supplied = (lat is not None, lng is not None, radius is not None)
+    if any(supplied) and not all(supplied):
+        raise AppException("VALIDATION_ERROR", "岗位围栏须同时填写中心经纬度和半径")
+
+
 def create_position(body) -> dict:
     with session() as db:
         title = (getattr(body, "title", "") or "").strip()
@@ -151,6 +160,8 @@ def create_position(body) -> dict:
             raise AppException("VALIDATION_ERROR", "岗位名称必填")
         c = _company(db, body.companyId)  # 岗位必须关联企业
         mentor_id, mentor_name = _resolve_mentor(db, c.id, getattr(body, "mentorContactId", None))
+        _validate_geofence(getattr(body, "geofenceLat", None), getattr(body, "geofenceLng", None),
+                           getattr(body, "geofenceRadiusM", None))
         p = InternshipPosition(
             tenant_id=_tid(), company_id=c.id, company_name=c.name,
             batch_id=int(body.batchId) if getattr(body, "batchId", None) else None,
@@ -158,6 +169,9 @@ def create_position(body) -> dict:
             major_requirement=getattr(body, "majorRequirement", None),
             grade_requirement=getattr(body, "gradeRequirement", None),
             work_location=getattr(body, "workLocation", None),
+            geofence_lat=getattr(body, "geofenceLat", None),
+            geofence_lng=getattr(body, "geofenceLng", None),
+            geofence_radius_m=getattr(body, "geofenceRadiusM", None),
             salary_range=getattr(body, "salaryRange", None), subsidy=getattr(body, "subsidy", None),
             headcount=getattr(body, "headcount", 1) or 1,
             mentor_contact_id=mentor_id, mentor_name=mentor_name,
@@ -173,12 +187,20 @@ def create_position(body) -> dict:
 def update_position(pos_id, body) -> dict:
     with session() as db:
         p = _get(db, pos_id)
+        lat, lng, radius = (getattr(body, "geofenceLat", None), getattr(body, "geofenceLng", None),
+                            getattr(body, "geofenceRadiusM", None))
+        if any(v is not None for v in (lat, lng, radius)):
+            _validate_geofence(p.geofence_lat if lat is None else lat,
+                               p.geofence_lng if lng is None else lng,
+                               p.geofence_radius_m if radius is None else radius)
         if p.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档岗位不可编辑")
         for src, col in [("title", "title"), ("category", "category"),
                          ("majorRequirement", "major_requirement"),
                          ("gradeRequirement", "grade_requirement"),
                          ("workLocation", "work_location"), ("salaryRange", "salary_range"),
+                         ("geofenceLat", "geofence_lat"), ("geofenceLng", "geofence_lng"),
+                         ("geofenceRadiusM", "geofence_radius_m"),
                          ("subsidy", "subsidy"), ("remark", "remark")]:
             v = getattr(body, src, None)
             if v is not None:

@@ -38,6 +38,15 @@ def plan_task_summary(batch_id: int, user=Depends(get_current_user)):
     return success(task_svc.batch_summary(batch_id, user=user))
 
 
+@router.get("/plan-acks", summary="学生计划确认回执列表（教师/管理端，按数据范围）")
+def plan_ack_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                  batchId: Optional[str] = None, status: Optional[str] = None,
+                  keyword: Optional[str] = None, user=Depends(get_current_user)):
+    items, total = plan_svc.list_acks(page, pageSize, batch_id=batchId, status=status,
+                                      keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
 @router.get("/plan-task-progress", summary="计划任务完成度列表（教师/管理端，按数据范围）")
 def plan_task_progress_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                             batchId: Optional[str] = None, status: Optional[str] = None,

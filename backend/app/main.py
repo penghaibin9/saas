@@ -90,6 +90,51 @@ def create_app() -> FastAPI:
 
         asyncio.create_task(_loop())
 
+    @app.on_event("startup")
+    async def _internship_overdue_scan():
+        """Run the idempotent leave-overdue scan for every active tenant without an HTTP caller."""
+        import asyncio
+
+        from app.db.session import db_enabled
+        if not (settings.INTERNSHIP_OVERDUE_AUTO_SCAN and db_enabled()):
+            return
+
+        def _run_once():
+            from sqlalchemy import select
+
+            from app.core.context import set_tenant
+            from app.db.session import get_sessionmaker
+            from app.models import Tenant
+            from app.modules.internship.services import internship_leave_service as leave_service
+            db = get_sessionmaker()()
+            try:
+                tenant_ids = list(db.scalars(select(Tenant.id).where(Tenant.status == "ACTIVE")))
+            finally:
+                db.close()
+            for tenant_id in tenant_ids:
+                try:
+                    set_tenant({"tenantId": str(tenant_id)})
+                    leave_service.refresh_overdue()
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.internship").exception("internship overdue scan failed tenant=%s", tenant_id)
+                finally:
+                    set_tenant(None)
+
+        async def _loop():
+            from anyio import to_thread
+
+            while True:
+                try:
+                    await to_thread.run_sync(_run_once)
+                    await asyncio.sleep(6 * 60 * 60)
+                except asyncio.CancelledError:
+                    return
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.internship").exception("internship overdue scheduler failed")
+                    await asyncio.sleep(5 * 60)
+
+        asyncio.create_task(_loop())
+
     @app.get("/health", tags=["00·基础"], summary="健康检查")
     def health():
         if _is_prod:

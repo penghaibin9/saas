@@ -10,6 +10,25 @@ on:
     branches: [ "**" ]
 
 jobs:
+  internship-production-gates:
+    name: 岗位实习生产闸门
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: 岗位实习专项测试（20分钟硬超时）
+        run: timeout 20m pytest tests/test_internship*.py -q -p no:warnings --durations=20
+
   graduation-production-gates:
     name: 毕业设计生产闸门
     runs-on: ubuntu-latest
@@ -57,9 +76,8 @@ jobs:
       - run: npm run build
 
   miniapp:
-    name: 小程序 build（可选）
+    name: 小程序生产 build
     runs-on: ubuntu-latest
-    continue-on-error: true   # 小程序构建环境较重；失败不阻断，但保留命令/日志供排查
     defaults:
       run:
         working-directory: miniapp
@@ -73,6 +91,13 @@ jobs:
       - run: npm ci
       - run: npm run build:h5
       - run: npm run build:mp-weixin
+      - name: 禁止生产包携带固定演示凭据
+        run: |
+          if grep -R -E '密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password["'"'":= ]+123456' dist/build/mp-weixin; then
+            echo "❌ 小程序生产包包含固定演示凭据"
+            exit 1
+          fi
+          echo "✅ 小程序生产包未发现固定演示凭据"
 
   forbidden-files:
     name: 禁止文件检查

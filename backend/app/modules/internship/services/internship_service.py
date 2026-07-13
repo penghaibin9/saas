@@ -237,6 +237,8 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
         "distance": f"{c.distance_km} km" if c.distance_km else "—",
         "deviceRisk": c.device_risk_flag or "正常", "note": c.student_note or "",
         "streak": f"连续 {c.streak_days} 天" if c.streak_days else "",
+        "appealStatus": c.appeal_status or "", "appealNote": c.appeal_note or "",
+        "appealFileId": c.appeal_file_id or "", "appealedAt": _iso(c.appealed_at),
         "status": c.status, "statusLabel": EXC_STATUS_LABEL.get(c.status, c.status),
     }
 
@@ -246,6 +248,8 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
 CHECKIN_RESULT_LABEL = {"RECORDED": "已记录", "NORMAL": "正常", "OUT_OF_RANGE": "超范围",
                         "NO_LOCATION": "无定位", "LEAVE": "请假"}
 
+CHECKIN_RESULT_LABEL["MOCK_LOCATION"] = "设备/模拟定位风险"
+
 
 def _checkin_row(c: InternshipCheckin, rec, stu) -> dict:
     return {
@@ -254,7 +258,7 @@ def _checkin_row(c: InternshipCheckin, rec, stu) -> dict:
         "advisorName": rec.advisor_name if rec else "", "enterpriseName": rec.enterprise_name if rec else "",
         "date": c.checkin_date, "at": _iso(c.checkin_at) or "",
         "result": c.result, "resultLabel": CHECKIN_RESULT_LABEL.get(c.result, c.result),
-        "tone": "danger" if c.result in ("OUT_OF_RANGE", "NO_LOCATION") else "success",
+        "tone": "danger" if c.result in ("OUT_OF_RANGE", "NO_LOCATION", "MOCK_LOCATION") else "success",
         "address": c.address or "", "note": c.note or "",
     }
 
@@ -383,6 +387,8 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
         c.handle_comment = comment.strip()
         c.handled_by_name = _op_name()
         c.handled_at = datetime.utcnow()
+        if c.appeal_status == "PENDING":
+            c.appeal_status = "ACCEPTED" if action == "REASONABLE" else "REJECTED"
         c.version += 1
         # 转风险：自动生成风险单
         if action == "TO_RISK":
@@ -494,6 +500,54 @@ def review_weekly_report(report_id, action: str, comment: str, user=None) -> dic
                 "statusLabel": REPORT_STATUS_LABEL.get(w.status, w.status)}
 
 
+def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
+    """向周报所属学生发送真实站内提醒；无账号映射时明确失败，不伪造成功。"""
+    from app.models import UnifiedMessage, User
+    with session() as db:
+        w = db.get(WeeklyReport, int(report_id))
+        if not w or w.is_deleted or w.tenant_id != _tid():
+            raise not_found("周报不存在")
+        rec = db.get(InternshipRecord, w.internship_id)
+        stu = db.get(StudentProfile, rec.student_id) if rec else None
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):
+            from app.core.exceptions import no_permission
+            raise no_permission("只能提醒本人指导学生")
+        if w.status == "APPROVED":
+            raise AppException("DATA_CONFLICT", "周报已通过，无需催交")
+        account = db.scalars(select(User).where(
+            User.tenant_id == _tid(), User.login_name == (stu.student_no if stu else ""),
+            User.user_type == "STUDENT", User.is_deleted.is_(False), User.status == "ACTIVE")).first()
+        if not account:
+            raise AppException("DATA_NOT_FOUND", "学生账号未建立，无法发送提醒")
+        recent = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_id == w.id,
+            InternshipAuditTrail.target_type == "REPORT", InternshipAuditTrail.action == "REMIND",
+            InternshipAuditTrail.occurred_at >= datetime.utcnow() - timedelta(minutes=5))).first()
+        if recent:
+            raise AppException("DATA_CONFLICT", "5 分钟内已提醒，请勿重复操作")
+        db.add(UnifiedMessage(
+            tenant_id=_tid(), receiver_id=account.id, source_module="internship",
+            source_biz_id=w.id, title=f"第 {w.week_number} 周实习周报提醒",
+            content=f"请及时查看并完成第 {w.week_number} 周实习周报。",
+            message_type="INTERNSHIP_WEEKLY_REMIND", status="UNREAD"))
+        _trail(db, w.id, "REPORT", "REMIND", {"channel": channel or "站内消息",
+                                                "receiverId": str(account.id)})
+        db.commit()
+        return {"id": str(w.id), "reminded": True, "channel": channel or "站内消息"}
+
+
+def export_weekly_reports(status=None, keyword=None, user=None) -> dict:
+    from app.services import xlsx_util
+    items, _ = list_weekly_reports(1, 100000, status=status, keyword=keyword, user=user)
+    headers = ["学生", "班级", "企业", "周次", "提交时间", "版本", "字数", "风险", "状态"]
+    rows = [[it["studentName"], it["className"], it["enterpriseName"], it["week"],
+             it["submitAt"], it["version"], it["wordCount"], it["riskFlag"],
+             it["statusLabel"]] for it in items]
+    wm = f"岗位实习中心·周报台账 · 导出人：{_op_name()} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
+    content = xlsx_util.build_ledger_xlsx("周报台账", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "周报台账.xlsx", len(items))
+
+
 # ═══ 风险学生 ═══
 
 def list_risk_students(page, page_size, level=None, status=None, user=None):
@@ -543,6 +597,7 @@ def _batch_row(db, b: InternshipBatch) -> dict:
         "plannedCount": int(b.planned_count or 0), "actualCount": _batch_actual_count(db, b.id),
         "status": b.status, "statusLabel": BATCH_STATUS_LABEL.get(b.status, b.status),
         "archiveStatus": b.archive_status or "NOT_ARCHIVED",
+        "rulesVersion": int(b.rules_version or 1),
         "remark": b.remark or "", "updateTime": _iso(b.updated_at),
         "createTime": _iso(b.created_at) or "",
     }
@@ -556,6 +611,7 @@ def _batch_detail_row(db, b: InternshipBatch) -> dict:
     row.update({
         "stages": b.stage_config or DEFAULT_STAGES,
         "rules": b.rules_config or DEFAULT_RULES,
+        "rulesVersion": int(b.rules_version or 1),
         "previousStatus": b.previous_status or "",
         "lastTransitionAt": _iso(b.last_transition_at) or "",
         "lastTransitionBy": b.last_transition_by or "",
@@ -671,9 +727,12 @@ def update_batch(bid, body: dict) -> dict:
         if body.get("stages") is not None:
             b.stage_config = _dump_stages(body["stages"])
         if body.get("rules") is not None:
+            if b.status != "DRAFT":
+                raise AppException("DATA_CONFLICT", "批次启用后规则不可原地修改，请新建批次版本")
             b.rules_config = _merge_rules(b.rules_config, body["rules"])
+            b.rules_version = int(b.rules_version or 1) + 1
         b.version += 1
-        _trail(db, b.id, "BATCH", "UPDATE")
+        _trail(db, b.id, "BATCH", "UPDATE", {"rulesVersion": int(b.rules_version or 1)})
         db.commit()
         return {"id": str(b.id)}
 

@@ -63,9 +63,19 @@ def test_plan_task_progress_flow(client, db_mode):
                headers=_admin(client))
     pub = client.post(f"{INT}/plans/batch/{batch_id}/publish", headers=_admin(client))
     assert pub.status_code == 200 and pub.json()["data"].get("taskProgressInit", 0) >= 2
+    pending_acks = client.get(f"{INT}/plan-acks",
+                              params={"batchId": str(batch_id), "status": "PENDING"},
+                              headers=_mentor("刘强"))
+    assert pending_acks.status_code == 200
+    assert pending_acks.json()["data"]["total"] == 1
+    assert pending_acks.json()["data"]["items"][0]["studentNo"] == sno
     stu = _student(sno)
     ack = client.post(f"{MOB}/internship/plan/acknowledge", headers=stu)
     assert ack.status_code == 200
+    acknowledged = client.get(f"{INT}/plan-acks",
+                              params={"batchId": str(batch_id), "status": "ACKNOWLEDGED"},
+                              headers=_mentor("刘强"))
+    assert acknowledged.status_code == 200 and acknowledged.json()["data"]["total"] == 1
     sub = client.post(f"{MOB}/internship/plan/tasks/1/submit",
                       json={"studentNote": "已完成安全培训并上传证明"}, headers=stu)
     assert sub.status_code == 200 and sub.json()["data"]["status"] == "SUBMITTED"
