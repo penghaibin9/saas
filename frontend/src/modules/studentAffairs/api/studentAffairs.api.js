@@ -669,6 +669,10 @@ export const studentAffairsApi = {
   /** 建二课积分类目。body: { categoryCode, categoryName, creditType?, description? } */
   createCreditCategory(body) {
     return callStrict(() => request('/student-affairs/second-class/categories', { method: 'POST', body }))
+  },
+  /** 活动与第二课堂统计（仅聚合）。 */
+  getActivityStats() {
+    return callStrict(() => request('/student-affairs/activity-stats'))
   }
 }
 

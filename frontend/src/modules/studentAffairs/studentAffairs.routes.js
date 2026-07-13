@@ -170,6 +170,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '第二课堂积分', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
       {
+        path: 'activity/stats',
+        name: 'student-affairs-activity-stats',
+        component: () => import('@/modules/studentAffairs/views/activity/ActivityStatsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '活动统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
+      {
         path: 'family',
         name: 'student-affairs-family',
         component: () => import('@/modules/studentAffairs/views/FamilyContactView.vue'),
