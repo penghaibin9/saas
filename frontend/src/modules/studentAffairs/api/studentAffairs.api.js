@@ -588,6 +588,13 @@ export const studentAffairsApi = {
 
   // ─────────────── 学工归档（P7 · /student-affairs/archive/*） ───────────────
 
+  /** 归档批次列表（含各批档案包计数；可按 status 筛选）。 */
+  getArchiveBatches({ status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/archive/batches', { params }))
+  },
+
   /** 建归档批次。body: { batchName, yearCode?, scope? } */
   createArchiveBatch(body) {
     return callStrict(() => request('/student-affairs/archive/batches', { method: 'POST', body }))

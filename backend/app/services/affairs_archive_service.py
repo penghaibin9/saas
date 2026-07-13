@@ -35,6 +35,27 @@ def _batch_row(b) -> dict:
             "status": b.status, "confirmBy": b.confirm_by or "", "confirmAt": _iso(b.confirm_at)}
 
 
+def list_batches(user, status=None, page=1, page_size=50):
+    """归档批次列表（按创建倒序，可按状态筛选）。含各批次档案包计数。"""
+    from app.models import ArchiveBatch, ArchivePackage
+    from sqlalchemy import func
+    with session() as db:
+        conds = [ArchiveBatch.tenant_id == _tid(), ArchiveBatch.is_deleted.is_(False)]
+        if status:
+            conds.append(ArchiveBatch.status == status)
+        rows = db.scalars(select(ArchiveBatch).where(*conds).order_by(ArchiveBatch.id.desc())).all()
+        out = []
+        for b in rows:
+            d = _batch_row(b)
+            d["packageCount"] = db.scalar(select(func.count()).select_from(ArchivePackage).where(
+                ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == b.id,
+                ArchivePackage.is_deleted.is_(False))) or 0
+            out.append(d)
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
 def create_batch(body, user) -> dict:
     with session() as db:
         from app.models import ArchiveBatch

@@ -26,7 +26,7 @@
             <StatusTag :type="statusType(b.status)" :label="statusLabel(b.status)" dot />
           </li>
         </ul>
-        <p class="av-side__note">说明：后端按批次 ID 管理，本页展示本次会话新建的批次。</p>
+        <p class="av-side__note">说明：进入自动加载全部归档批次（按数据范围）；点批次查看流转与档案包。</p>
       </div>
 
       <!-- 批次详情 -->
@@ -155,7 +155,14 @@ export default {
       return { COLLECTING: '推进到学院审核', COLLEGE_REVIEW: '推进到学工处确认', SA_CONFIRM: '确认归档（生成水印包）' }[s] || ''
     }
   },
+  mounted() {
+    this.loadBatches()
+  },
   methods: {
+    async loadBatches() {
+      const res = await studentAffairsApi.getArchiveBatches({ pageSize: 200 })
+      if (res.code === 0 && res.data) this.batches = res.data.items || []
+    },
     statusType(s) {
       return STATUS_TYPE[s] || 'default'
     },

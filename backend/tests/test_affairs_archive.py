@@ -51,3 +51,25 @@ def test_v1_archive_full_flow(client, db_mode):
     db = get_sessionmaker()()
     assert db.query(ExportTask).filter_by(module_code="affairs_archive").count() == 1
     db.close()
+
+
+def test_archive_batches_list(client, db_mode):
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    b1 = client.post(f"{BASE}/archive/batches", headers=hdr,
+                     json={"batchName": "批次A", "yearCode": "2026"}).json()["data"]["batchId"]
+    b2 = client.post(f"{BASE}/archive/batches", headers=hdr,
+                     json={"batchName": "批次B", "yearCode": "2026"}).json()["data"]["batchId"]
+    client.post(f"{BASE}/archive/batches/{b1}/collect", headers=hdr,
+                json={"studentIds": [str(ids["s1"])]})
+    r = client.get(f"{BASE}/archive/batches", headers=hdr).json()
+    assert r["code"] == 0
+    items = r["data"]["items"]
+    assert len(items) >= 2
+    by_id = {x["batchId"]: x for x in items}
+    assert str(b1) in by_id and str(b2) in by_id
+    assert by_id[str(b1)]["packageCount"] == 1   # b1 收集了 1 个档案包
+    assert by_id[str(b2)]["packageCount"] == 0
+    # 状态筛选
+    r2 = client.get(f"{BASE}/archive/batches?status=DRAFT", headers=hdr).json()
+    assert all(x["status"] == "DRAFT" for x in r2["data"]["items"])

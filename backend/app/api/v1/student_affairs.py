@@ -1041,6 +1041,13 @@ class AdvanceBody(BaseModel):
     action: Optional[str] = Field("APPROVE")
 
 
+@router.get("/archive/batches", summary="归档批次列表")
+def archive_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                    user=Depends(require_permission("studentAffairs.archive.view"))):
+    items, total = archive_svc.list_batches(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
 @router.post("/archive/batches", summary="建归档批次")
 def archive_batch_create(body: ArchiveBatchCreate, user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
     return success(archive_svc.create_batch(body, user), message="已创建")
