@@ -9,6 +9,7 @@ export const dataScope = { scopeCode: '', scopeName: '按服务端授权范围' 
 
 const deny = (reason) => ({ visible: true, allowed: false, reason })
 const allow = { visible: true, allowed: true, reason: '' }
+// 静态兜底态（离线/取不到 permissionPatterns 时用；正式构建下由 getContext 收紧为禁用）。
 export const permissionActions = {
   createBatch: deny('请使用具备批次管理权限的账号'), importStudents: deny('请使用具备导入权限的账号'),
   exportGroup: allow, exportAll: deny('请使用具备全量导出权限的账号'), viewAuditLog: allow,
@@ -21,6 +22,71 @@ export const permissionActions = {
   reviewEnterprise: deny('请使用具备企业审核权限的账号'), cooperationEnterprise: allow,
   blacklistEnterprise: deny('请使用具备企业黑名单权限的账号'), importEnterprises: allow,
   exportEnterprises: allow, manageEnterpriseContact: allow
+}
+
+/**
+ * permissionActions 各动作 → 后端真实权限码（与 internship 各 router 的 require_permission 一致）。
+ * getContext() 拿到 permissionPatterns 后据此逐项判定 allowed（matchPermission），
+ * 取代旧的 userType==='TEACHER' 二分猜角色。无 permissionPatterns 时回落到上面的静态兜底态。
+ * 权限码来源核验：backend/app/modules/internship/routers/*.py 的 require_permission / _P_* 常量。
+ */
+export const ACTION_PERMISSION_CODES = {
+  createBatch: 'internship.batch.manage',
+  importStudents: 'internship.student.manage',
+  createStudent: 'internship.student.manage',
+  editStudent: 'internship.student.manage',
+  batchAssignAdvisor: 'internship.student.manage',
+  batchArchive: 'internship.archive.manage',
+  exportGroup: 'internship.stats.view', // 工作台“统计报表”快捷入口
+  exportAll: 'internship.student.export',
+  viewAuditLog: 'internship.match.log.view', // 分配/操作日志
+  handleException: 'internship.attendance.review',
+  batchMarkReasonable: 'internship.attendance.review',
+  exportExceptions: 'internship.attendance.export',
+  reviewReport: 'internship.report.review',
+  batchApproveReports: 'internship.report.review',
+  batchRemind: 'internship.report.review',
+  exportReports: 'internship.report.export',
+  manageRisk: 'internship.risk.handle',
+  exportRiskList: 'internship.risk.export',
+  createEnterprise: 'internship.enterprise.manage',
+  editEnterprise: 'internship.enterprise.manage',
+  reviewEnterprise: 'internship.enterprise.manage',
+  cooperationEnterprise: 'internship.enterprise.manage',
+  blacklistEnterprise: 'internship.enterprise.manage',
+  importEnterprises: 'internship.enterprise.manage',
+  exportEnterprises: 'internship.enterprise.export',
+  manageEnterpriseContact: 'internship.enterprise.manage'
+}
+
+/** 静态兜底态下各动作的无权限提示（derive 时若无 patterns 走此文案）。 */
+export const ACTION_DENY_REASONS = {
+  createBatch: '请使用具备批次管理权限的账号',
+  importStudents: '请使用具备学生管理权限的账号',
+  createStudent: '请使用具备学生管理权限的账号',
+  editStudent: '请使用具备学生管理权限的账号',
+  batchAssignAdvisor: '请使用具备指导教师分配权限的账号',
+  batchArchive: '请使用具备归档权限的账号',
+  exportGroup: '请使用具备统计查看权限的账号',
+  exportAll: '请使用具备全量导出权限的账号',
+  viewAuditLog: '请使用具备日志查看权限的账号',
+  handleException: '请使用具备考勤处理权限的账号',
+  batchMarkReasonable: '请使用具备考勤处理权限的账号',
+  exportExceptions: '请使用具备考勤导出权限的账号',
+  reviewReport: '请使用具备周报批阅权限的账号',
+  batchApproveReports: '请使用具备周报批阅权限的账号',
+  batchRemind: '请使用具备周报批阅权限的账号',
+  exportReports: '请使用具备周报导出权限的账号',
+  manageRisk: '请使用具备风险处置权限的账号',
+  exportRiskList: '请使用具备风险导出权限的账号',
+  createEnterprise: '请使用具备企业管理权限的账号',
+  editEnterprise: '请使用具备企业管理权限的账号',
+  reviewEnterprise: '请使用具备企业审核权限的账号',
+  cooperationEnterprise: '请使用具备企业管理权限的账号',
+  blacklistEnterprise: '请使用具备企业黑名单权限的账号',
+  importEnterprises: '请使用具备企业管理权限的账号',
+  exportEnterprises: '请使用具备企业导出权限的账号',
+  manageEnterpriseContact: '请使用具备企业管理权限的账号'
 }
 
 export const statusOptions = {

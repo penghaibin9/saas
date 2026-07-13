@@ -53,6 +53,15 @@
         <view class="section-head"><text class="section-head__title">实习流程</text></view>
         <view class="card"><MobileTimeline :nodes="i.timeline" /></view>
 
+        <!-- 自助服务入口 -->
+        <view class="section-head"><text class="section-head__title">自助服务</text></view>
+        <view class="in__nav card">
+          <view v-for="n in navItems" :key="n.path" class="in__nav-item" @click="openSub(n.path)">
+            <text class="in__nav-icon">{{ n.icon }}</text>
+            <text class="in__nav-label">{{ n.label }}</text>
+          </view>
+        </view>
+
         <!-- 功能入口 -->
         <view class="section-head"><text class="section-head__title">实习功能</text></view>
         <view class="in__entries card">
@@ -73,7 +82,17 @@ import { studentApi } from '@/services/studentApi'
 import { useSubmissionsStore } from '@/stores/submissions'
 import { toast, go } from '@/utils/nav'
 export default {
-  data() { return { i: null, state: 'loading', checkingIn: false, checkinKey: '' } },
+  data() { return { i: null, state: 'loading', checkingIn: false, checkinKey: '',
+    navItems: [
+      { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯' },
+      { label: '三方协议', path: '/pages/student/internship/agreement/index', icon: '📄' },
+      { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️' },
+      { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️' },
+      { label: '实习请假', path: '/pages/student/internship/leave/index', icon: '🗓️' },
+      { label: '过程报告', path: '/pages/student/internship/process-report/index', icon: '📝' },
+      { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄' },
+      { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐' }
+    ] } },
   onLoad() { this.load() },
   onShow() {
     if (this.i && useSubmissionsStore().hasWeekly(this.i.weekly.week)) {
@@ -83,6 +102,7 @@ export default {
   },
   methods: {
     toast,
+    openSub(path) { go(path) },
     load() {
       this.state = 'loading'
       studentApi.getInternship().then((d) => { this.i = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
@@ -161,6 +181,10 @@ export default {
 .in__status-grid { display: flex; flex-wrap: wrap; }
 .in__status-item { width: 33.33%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: var(--space-2) 0; }
 .in__status-k { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.in__nav { display: flex; flex-wrap: wrap; }
+.in__nav-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--space-3) 0; }
+.in__nav-icon { font-size: 26px; line-height: 1; }
+.in__nav-label { font-size: var(--font-size-xs); color: var(--text-secondary); }
 .in__entries { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .in__entry { font-size: var(--font-size-sm); color: var(--text-secondary); background: var(--gray-50); border: 1px solid var(--border-base); padding: 7px 12px; border-radius: var(--radius-md); }
 </style>

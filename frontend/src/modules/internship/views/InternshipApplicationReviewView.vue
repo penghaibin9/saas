@@ -77,8 +77,8 @@
 
       <template #footer>
         <div v-if="drawer.data?.status === 'PENDING_REVIEW'" class="iar-drawer-actions">
-          <AppPermissionButton code="internship.student.manage" variant="ghost" :danger="true" @click="askReview('REJECT')">驳回</AppPermissionButton>
-          <AppPermissionButton code="internship.student.manage" variant="primary" @click="askReview('APPROVE')">通过并落实去向</AppPermissionButton>
+          <AppPermissionButton code="internship.application.review" :allowed="canBtn('internship.application.review')" variant="ghost" :danger="true" @click="askReview('REJECT')">驳回</AppPermissionButton>
+          <AppPermissionButton code="internship.application.review" :allowed="canBtn('internship.application.review')" variant="primary" @click="askReview('APPROVE')">通过并落实去向</AppPermissionButton>
         </div>
       </template>
     </AppDrawer>
@@ -107,6 +107,7 @@ import {
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
 import { internshipApplicationApi } from '@/modules/internship/api/internship-application.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const TYPE_OPTIONS = [
@@ -133,6 +134,7 @@ const COLUMNS = [
 
 export default {
   name: 'InternshipApplicationReviewView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: {
     ModulePageShell, DataTable, AppDrawer, AppButton, AppStatusTag, AppSearchBox,
     AppQuickFilterChips, AppDescriptionList, AppFilePreview, AppAuditTrail,
@@ -220,6 +222,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     statusTone(value) {
       if (value === 'APPROVED') return 'success'
       if (value === 'REJECTED') return 'danger'

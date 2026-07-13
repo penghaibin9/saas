@@ -62,7 +62,7 @@ const internshipRoutes = {
       component: () => import('@/modules/internship/views/InternshipStudentListView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.STUDENTS, title: M.STUDENTS, requiresAuth: true, permissionKey: 'internship.student.view' }
     },
-    { path: 'assignment-logs', name: 'internship-assignment-logs', component: () => import('@/modules/internship/views/AssignmentLogView.vue'), meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: '分配日志', requiresAuth: true, permissionKey: 'internship.student.view' } },
+    { path: 'assignment-logs', name: 'internship-assignment-logs', component: () => import('@/modules/internship/views/AssignmentLogView.vue'), meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: '分配日志', requiresAuth: true, permissionKey: 'internship.match.log.view' } },
     {
       path: 'enterprise-position',
       name: 'internship-enterprise-position',
@@ -88,7 +88,7 @@ const internshipRoutes = {
       path: 'attendance',
       name: 'internship-attendance',
       component: () => import('@/modules/internship/views/AttendanceView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: M.ATTENDANCE_LEAVE, requiresAuth: true, permissionKey: 'internship.checkin.handle' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: M.ATTENDANCE_LEAVE, requiresAuth: true, permissionKey: 'internship.attendance.view' }
     },
     {
       path: 'attendance-leave',
@@ -99,13 +99,13 @@ const internshipRoutes = {
       path: 'exceptions',
       name: 'internship-exceptions',
       component: () => import('@/modules/internship/views/AttendanceExceptionListView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: P.ATTENDANCE_EXCEPTION, requiresAuth: true, permissionKey: 'internship.checkin.handle' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: P.ATTENDANCE_EXCEPTION, requiresAuth: true, permissionKey: 'internship.attendance.view' }
     },
     {
       path: 'exceptions/:id',
       name: 'internship-exception-detail',
       component: () => import('@/modules/internship/views/AttendanceExceptionDetailView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: '打卡异常处理', requiresAuth: true, permissionKey: 'internship.checkin.handle' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: '打卡异常处理', requiresAuth: true, permissionKey: 'internship.attendance.view' }
     },
     {
       path: 'guidance',
@@ -169,7 +169,7 @@ const internshipRoutes = {
       path: 'insurance',
       name: 'internship-insurance',
       component: () => import('@/modules/internship/views/InsuranceVerifyView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.STUDENTS, title: '实习保险核验', requiresAuth: true, permissionKey: 'internship.student.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.STUDENTS, title: '实习保险核验', requiresAuth: true, permissionKey: 'internship.insurance.view' }
     },
     {
       path: 'risks',
@@ -259,19 +259,19 @@ const internshipRoutes = {
       path: 'enterprise-evals/new',
       name: 'internship-enterprise-eval-new',
       component: () => import('@/modules/internship/views/EnterpriseEvalFormView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.EVAL_SCORE, title: '录入企业评价', requiresAuth: true, permissionKey: 'internship.enterpriseEval.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EVAL_SCORE, title: '录入企业评价', requiresAuth: true, permissionKey: 'internship.eval.enterprise.view' }
     },
     {
       path: 'enterprise-evals',
       name: 'internship-enterprise-evals',
       component: () => import('@/modules/internship/views/EnterpriseEvalView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.EVAL_SCORE, title: P.ENTERPRISE_EVAL, requiresAuth: true, permissionKey: 'internship.enterpriseEval.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EVAL_SCORE, title: P.ENTERPRISE_EVAL, requiresAuth: true, permissionKey: 'internship.eval.enterprise.view' }
     },
     {
       path: 'student-evals',
       name: 'internship-student-evals',
       component: () => import('@/modules/internship/views/StudentEvalView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.EVAL_SCORE, title: P.STUDENT_EVAL, requiresAuth: true, permissionKey: 'internship.studentEval.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EVAL_SCORE, title: P.STUDENT_EVAL, requiresAuth: true, permissionKey: 'internship.eval.self.view' }
     },
     {
       path: 'scores',
@@ -305,31 +305,31 @@ const internshipRoutes = {
       path: 'agreement-templates/new',
       name: 'internship-agreement-template-new',
       component: () => import('@/modules/internship/views/AgreementTemplateFormView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '新建协议模板', requiresAuth: true, permissionKey: 'internship.agreementTemplate.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '新建协议模板', requiresAuth: true, permissionKey: 'internship.agreement.template.manage' }
     },
     {
       path: 'agreement-templates/:id/edit',
       name: 'internship-agreement-template-edit',
       component: () => import('@/modules/internship/views/AgreementTemplateFormView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '编辑协议模板', requiresAuth: true, permissionKey: 'internship.agreementTemplate.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '编辑协议模板', requiresAuth: true, permissionKey: 'internship.agreement.template.manage' }
     },
     {
       path: 'agreement-templates/:id',
       name: 'internship-agreement-template-detail',
       component: () => import('@/modules/internship/views/AgreementTemplateDetailView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '协议模板详情', requiresAuth: true, permissionKey: 'internship.agreementTemplate.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '协议模板详情', requiresAuth: true, permissionKey: 'internship.agreement.template.manage' }
     },
     {
       path: 'agreement-templates',
       name: 'internship-agreement-templates',
       component: () => import('@/modules/internship/views/InternshipAgreementTemplateListView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: P.AGREEMENT_TEMPLATE, requiresAuth: true, permissionKey: 'internship.agreementTemplate.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: P.AGREEMENT_TEMPLATE, requiresAuth: true, permissionKey: 'internship.agreement.template.manage' }
     },
     {
       path: 'match',
       name: 'internship-match',
       component: () => import('@/modules/internship/views/InternshipMatchListView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: M.MATCH_ASSIGN, requiresAuth: true, permissionKey: 'internship.match.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: M.MATCH_ASSIGN, requiresAuth: true, permissionKey: 'internship.match.intention.view' }
     }
   ]
 }

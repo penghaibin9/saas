@@ -67,8 +67,8 @@
             </div>
 
             <div v-if="detail.data.status === 'PENDING'" class="lv-foot">
-              <AppButton variant="danger" @click="openReview(detail.data, 'REJECT')">驳回</AppButton>
-              <AppButton variant="secondary" @click="openReview(detail.data, 'APPROVE')">通过</AppButton>
+              <AppPermissionButton :allowed="canReview" code="internship.change.review" variant="danger" @click="openReview(detail.data, 'REJECT')">驳回</AppPermissionButton>
+              <AppPermissionButton :allowed="canReview" code="internship.change.review" variant="secondary" @click="openReview(detail.data, 'APPROVE')">通过</AppPermissionButton>
             </div>
           </template>
         </section>
@@ -89,16 +89,16 @@
  * 页签（panel 深链 pending/approved/rejected/all）沿用原映射。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail } from '@/components/common'
-import { AppButton } from '@/components/ui'
+import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail, AppPermissionButton } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ChangeRequestListView',
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog,
-    AppDescriptionList, AppAuditTrail, AppButton },
+    AppDescriptionList, AppAuditTrail, AppPermissionButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -118,6 +118,7 @@ export default {
     }
   },
   computed: {
+    canReview() { return canCode(this.ctx, 'internship.change.review') },
     pageCount() { return Math.max(1, Math.ceil(this.pagination.total / this.pagination.pageSize)) },
     detailItems() {
       const d = this.detail.data || {}
@@ -219,6 +220,7 @@ export default {
       this.detail.data = res.data
     },
     openReview(row, action) {
+      if (!this.canReview) return toast.error('无实习变更审核权限')
       const ap = action === 'APPROVE'
       this.pending = { id: row.id, action }
       this.cd = {

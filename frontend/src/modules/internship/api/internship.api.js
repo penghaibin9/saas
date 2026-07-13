@@ -10,8 +10,12 @@ import {
   currentRole,
   dataScope,
   permissionActions,
+  ACTION_PERMISSION_CODES,
+  ACTION_DENY_REASONS,
   statusOptions
 } from '@/modules/internship/constants/context.constants'
+import { allowByPatterns } from '@/modules/internship/composables/permission'
+import { setPermissionPatterns } from '@/security/permissionGate'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })
@@ -50,20 +54,15 @@ function clone(v) {
 export const internshipApi = {
   /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典（布局初始化）；后端在线时合入真实品牌/角色/范围 */
   async getContext() {
-    // 角色/范围/权限动作由 JWT 身份推导（对齐毕设中心做法），不依赖已 404 的 /rbac/current-context。
-    // 真实数据范围与细粒度按钮权限仍以后端接口校验为准；此处仅裁剪前端展示与可点态。
+    // 角色名/范围名仅用于展示；细粒度按钮 allowed 由后端 permissionPatterns 判定（见下），
+    // 不再用 userType==='TEACHER' 二分猜角色。真实越权拦截始终以后端接口为准。
     const u = currentUserFromToken()
     const isTeacher = !!(u && u.userType === 'TEACHER')
-    const pa = clone(permissionActions)
     let roleName = isTeacher ? '实习指导教师' : '实习管理员'
     const scopeName = isTeacher ? '本人指导的实习学生' : '本校实习数据（按后端数据范围）'
-    if (!isTeacher) {
-      // 管理员：放开各项管理动作（越权拦截由后端接口兜底）
-      Object.keys(pa).forEach((k) => { pa[k] = { ...pa[k], visible: true, allowed: true, reason: '' } })
-    }
     const brand = { ...tenantBrandConfig }
     // permissionPatterns：当前身份的权限码模式集，来自后端 /rbac/current-context（与 enforce_permission 同一套码）。
-    // 角色菜单投影(getVisibleNavPlan/canSeeLeaf)据此收敛日常侧栏；取不到时保持 null=不投影（离线/降级兼容）。
+    // 角色菜单投影(getVisibleNavPlan/canSeeLeaf)与按钮态(permissionActions)据此收敛；取不到时降级（离线/兼容）。
     let permissionPatterns = null
     let roleCtx = { ...currentRole, roleName }
     let ctxKey = ''
@@ -73,24 +72,35 @@ export const internshipApi = {
         const tenantName = me?.tenantName || me?.user?.tenantName || me?.tenant?.name
         if (tenantName) brand.schoolName = tenantName
         const realName = me?.realName || me?.user?.realName
-        if (realName) roleName = `${realName} · ${roleName}`
-        roleCtx = { ...currentRole, roleName }
         try {
           const rc = await request('/rbac/current-context')
           if (rc && Array.isArray(rc.permissionPatterns)) {
             permissionPatterns = rc.permissionPatterns
             const cr = rc.currentRole || {}
-            roleCtx = { ...roleCtx, roleCode: cr.roleCode || roleCtx.roleCode }
+            // 优先用后端返回的真实角色名，退回 userType 猜测名仅作离线兜底。
+            if (cr.roleName) roleName = cr.roleName
+            roleCtx = { ...currentRole, roleCode: cr.roleCode || roleCtx.roleCode }
             const tid = me?.tenantId || me?.user?.tenantId || ''
             ctxKey = `${tid}|${cr.contextId || ''}|${cr.permissionVersion || ''}`
           }
         } catch {
-          /* current-context 不可用：投影降级为不过滤，后端接口仍是最终权限边界 */
+          /* current-context 不可用：投影与按钮态降级；后端接口仍是最终权限边界 */
         }
+        if (realName) roleName = `${realName} · ${roleName}`
+        roleCtx = { ...roleCtx, roleName }
       }
     } catch {
       /* 离线/未登录静默回退，不阻塞布局 */
     }
+    // 落库给路由守卫消费（岗位实习路由 meta.permissionKey 拦截，见 @/security/permissionGate）
+    setPermissionPatterns(permissionPatterns)
+    // 细粒度按钮态：拿到真实 permissionPatterns 时逐项由后端权限码判定；取不到时走 allowByPatterns 降级
+    //（开发构建放开便于联调 / 正式构建禁用，不 all-allow，符合 §8.4.3）。
+    const pa = clone(permissionActions)
+    Object.keys(pa).forEach((k) => {
+      const allowed = allowByPatterns(permissionPatterns, ACTION_PERMISSION_CODES[k])
+      pa[k] = { visible: true, allowed, reason: allowed ? '' : (ACTION_DENY_REASONS[k] || '无操作权限，请联系管理员') }
+    })
     return ok({
       tenantBrandConfig: brand,
       currentRole: roleCtx,

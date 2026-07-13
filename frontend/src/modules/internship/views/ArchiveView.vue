@@ -48,8 +48,8 @@
           <template #cell-actions="{ row }">
             <div class="ops">
               <AppButton variant="ghost" size="sm" @click="openDetail(row)">核验</AppButton>
-              <AppPermissionButton v-if="!row.archived" code="internship.archive.handle" variant="secondary" size="sm" @click="doArchive(row)">归档</AppPermissionButton>
-              <AppPermissionButton v-else code="internship.archive.handle" variant="ghost" size="sm" :danger="true" @click="doRevoke(row)">撤销归档</AppPermissionButton>
+              <AppPermissionButton v-if="!row.archived" code="internship.archive.manage" :allowed="canBtn('internship.archive.manage')" variant="secondary" size="sm" @click="doArchive(row)">归档</AppPermissionButton>
+              <AppPermissionButton v-else code="internship.archive.manage" :allowed="canBtn('internship.archive.manage')" variant="ghost" size="sm" :danger="true" @click="doRevoke(row)">撤销归档</AppPermissionButton>
             </div>
           </template>
         </DataTable>
@@ -80,12 +80,12 @@
 
             <div class="sec-t">② 归档状态与操作</div>
             <div class="wsp__ops">
-              <AppPermissionButton v-if="!panel.data.archived" code="internship.archive.handle"
+              <AppPermissionButton v-if="!panel.data.archived" code="internship.archive.manage" :allowed="canBtn('internship.archive.manage')"
                 variant="secondary" size="sm" @click="doArchive(panel.data)">提交归档</AppPermissionButton>
-              <AppPermissionButton v-else code="internship.archive.handle" variant="ghost" size="sm"
+              <AppPermissionButton v-else code="internship.archive.manage" :allowed="canBtn('internship.archive.manage')" variant="ghost" size="sm"
                 :danger="true" @click="doRevoke(panel.data)">撤销归档</AppPermissionButton>
               <template v-if="panel.data.archived">
-                <AppPermissionButton v-if="!panel.data.packageReady" code="internship.archive.handle"
+                <AppPermissionButton v-if="!panel.data.packageReady" code="internship.archive.manage" :allowed="canBtn('internship.archive.manage')"
                   variant="secondary" size="sm" :loading="pkgBusy" @click="buildPackage">生成归档包</AppPermissionButton>
                 <AppButton v-else variant="secondary" size="sm" :loading="pkgBusy" @click="downloadPackage">下载归档包 (zip)</AppButton>
               </template>
@@ -122,6 +122,7 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton,
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { archiveApi } from '@/modules/internship/api/archive.api'
 import { downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const STUDENT_COLUMNS = [
@@ -133,6 +134,7 @@ const STUDENT_COLUMNS = [
 
 export default {
   name: 'ArchiveView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppConfirmDialog,
     AppExportButton, AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, ModuleSummaryStrip },
   data() {
@@ -204,6 +206,7 @@ export default {
     }
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     exportFn() { return archiveApi.exportArchives({ keyword: this.keyword }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     applyRoutePanel(value) {

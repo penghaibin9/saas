@@ -436,12 +436,16 @@ export async function teacherInternshipReal(mock) {
     className: r.className || '', week: r.weekNumber ? ('第 ' + r.weekNumber + ' 周') : (r.week || ''),
     company: r.enterpriseName || r.company || '', post: r.positionName || r.post || '',
     submitTime: r.submittedAt || r.submitTime || '—', status: r.status,
+    // 跨端状态文案单一来源：透传后端 statusLabel（如"待批阅/逾期未交"），与 PC 端一致，
+    // 不再让移动端 MobileStatusTag 的通用映射（待审核/已逾期）与 PC 分叉。
+    statusLabel: r.statusLabel || '',
     overdue: r.status === 'OVERDUE', tasks: r.workContent || '', gain: r.harvestContent || '',
     problem: r.planContent || '' }))
   const abnormal = (d.abnormalCheckins || []).map((e) => ({
     id: String(e.id || ''), student: e.studentName || e.name || '',
     time: e.exceptionDate || e.date || '', type: e.exceptionType || e.type || '异常',
-    distance: e.distance || '—', note: e.note || '', status: e.status || 'PENDING_HANDLE' }))
+    distance: e.distance || '—', note: e.note || '', status: e.status || 'PENDING_HANDLE',
+    statusLabel: e.statusLabel || '' }))
   return { reports: reports.length ? reports : (mock.reports || []),
     abnormal: abnormal.length ? abnormal : (mock.abnormal || []), _real: true }
 }

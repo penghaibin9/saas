@@ -83,17 +83,17 @@
 
           <div class="ws__actions">
             <template v-if="detail.status === 'PENDING_HANDLE'">
-              <AppPermissionButton code="internship.risk.handle" variant="secondary"
+              <AppPermissionButton code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="secondary"
                 @click="openAction('handle')">受理</AppPermissionButton>
             </template>
             <template v-else-if="detail.status === 'PROCESSING'">
-              <AppPermissionButton code="internship.risk.handle" variant="secondary"
+              <AppPermissionButton code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="secondary"
                 @click="openAction('follow')">跟进</AppPermissionButton>
-              <AppPermissionButton code="internship.risk.handle" variant="ghost"
+              <AppPermissionButton code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="ghost"
                 @click="openAction('remind')">催办</AppPermissionButton>
-              <AppPermissionButton v-if="detail.riskLevel !== 'HIGH'" code="internship.risk.handle" variant="ghost"
+              <AppPermissionButton v-if="detail.riskLevel !== 'HIGH'" code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="ghost"
                 @click="openAction('escalate')">升级</AppPermissionButton>
-              <AppPermissionButton code="internship.risk.handle" variant="ghost" :danger="true"
+              <AppPermissionButton code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="ghost" :danger="true"
                 @click="openAction('close')">关闭</AppPermissionButton>
             </template>
             <span v-else class="mp-note">该风险单已关闭归档，仅保留处置留痕。</span>
@@ -114,6 +114,7 @@ import { AppStatusTag, AppRiskTag, AppConfirmDialog, AppExportButton, AppPermiss
   AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { riskApi } from '@/modules/internship/api/leave-risk.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const LEVEL_OPTIONS = [{ label: '高', value: 'HIGH' }, { label: '中', value: 'MEDIUM' }, { label: '低', value: 'LOW' }]
@@ -129,6 +130,7 @@ const PANEL_PRESETS = {
 
 export default {
   name: 'RiskDisposalView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DualPaneWorkspace, LoadingState, ErrorState, EmptyState,
     AppStatusTag, AppRiskTag, AppConfirmDialog, AppExportButton, AppPermissionButton,
     AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination },
@@ -201,6 +203,7 @@ export default {
     }
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.pending
       const { levelFilter, statusFilter, riskCode } = preset()

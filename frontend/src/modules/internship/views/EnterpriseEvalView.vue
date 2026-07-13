@@ -4,7 +4,7 @@
     <template #actions>
       <AppButton variant="ghost" @click="$router.push('/admin/internship/student-evals')">学生自评与教师评价</AppButton>
       <AppButton variant="ghost" @click="$router.push('/admin/internship/scores')">综合成绩</AppButton>
-      <AppPermissionButton code="internship.enterpriseEval.create" variant="primary"
+      <AppPermissionButton code="internship.eval.enterprise.manage" :allowed="canBtn('internship.eval.enterprise.manage')" variant="primary"
         @click="$router.push('/admin/internship/enterprise-evals/new')">＋ 录入企业评价</AppPermissionButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
@@ -90,9 +90,9 @@
             </div>
 
             <div v-if="detail.data.reviewStatus === 'PENDING'" class="lv-foot">
-              <AppPermissionButton code="internship.enterpriseEval.review" variant="ghost" :danger="true"
+              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="ghost" :danger="true"
                 @click="openReview(detail.data, 'RETURN')">退回</AppPermissionButton>
-              <AppPermissionButton code="internship.enterpriseEval.review" variant="secondary"
+              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="secondary"
                 @click="openReview(detail.data, 'APPROVE')">通过</AppPermissionButton>
             </div>
           </template>
@@ -114,6 +114,7 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const STATUS_OPTIONS = [{ label: '待审核', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' }, { label: '已退回', value: 'RETURNED' }]
@@ -138,6 +139,7 @@ const REVIEW_FIELDS = [
 
 export default {
   name: 'EnterpriseEvalView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
     AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview },
@@ -186,6 +188,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
     exportFn() { return enterpriseEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },

@@ -44,6 +44,38 @@
       "style": { "navigationBarTitleText": "岗位实习" }
     },
     {
+      "path": "pages/student/internship/leave/index",
+      "style": { "navigationBarTitleText": "实习请假" }
+    },
+    {
+      "path": "pages/student/internship/agreement/index",
+      "style": { "navigationBarTitleText": "三方协议" }
+    },
+    {
+      "path": "pages/student/internship/change/index",
+      "style": { "navigationBarTitleText": "调岗退岗" }
+    },
+    {
+      "path": "pages/student/internship/intention/index",
+      "style": { "navigationBarTitleText": "实习意向" }
+    },
+    {
+      "path": "pages/student/internship/insurance/index",
+      "style": { "navigationBarTitleText": "实习保险" }
+    },
+    {
+      "path": "pages/student/internship/plan/index",
+      "style": { "navigationBarTitleText": "实习计划" }
+    },
+    {
+      "path": "pages/student/internship/process-report/index",
+      "style": { "navigationBarTitleText": "过程报告" }
+    },
+    {
+      "path": "pages/student/internship/self-eval/index",
+      "style": { "navigationBarTitleText": "实习自评" }
+    },
+    {
       "path": "pages/student/weekly-report/index",
       "style": { "navigationBarTitleText": "填写周报" }
     },

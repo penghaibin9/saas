@@ -83,9 +83,9 @@
             </div>
 
             <div v-if="detail.data.status === 'PENDING'" class="lv-foot">
-              <AppPermissionButton code="internship.leave.review" variant="ghost" :danger="true"
+              <AppPermissionButton code="internship.leave.review" :allowed="canBtn('internship.leave.review')" variant="ghost" :danger="true"
                 @click="openReview(detail.data, 'REJECT')">驳回</AppPermissionButton>
-              <AppPermissionButton code="internship.leave.review" variant="secondary"
+              <AppPermissionButton code="internship.leave.review" :allowed="canBtn('internship.leave.review')" variant="secondary"
                 @click="openReview(detail.data, 'APPROVE')">通过</AppPermissionButton>
             </div>
           </template>
@@ -107,6 +107,7 @@ import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { leaveApi } from '@/modules/internship/api/leave-risk.api'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 const STATUS_OPTIONS = [
@@ -136,6 +137,7 @@ const PANEL_PRESETS = {
 
 export default {
   name: 'LeaveReviewView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppStatusTag,
     AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList, AppAuditTrail,
     AppSearchBox, AppQuickFilterChips, AppFilePreview },
@@ -187,6 +189,7 @@ export default {
     }
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.pending
       this.statusFilter = preset().statusFilter

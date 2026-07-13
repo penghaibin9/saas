@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getToken, isPlatformSuperAdmin } from '@/services/http/client'
+import { canEnterRoute } from '@/security/permissionGate'
 
 /**
  * 路由表（对齐 docs/frontend/route-freeze.md）：
@@ -185,6 +186,12 @@ router.beforeEach((to, from, next) => {
   const isPlatform = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
   if (isPlatform && !isPlatformSuperAdmin()) {
     next({ path: '/login', query: { redirect: to.fullPath, reason: 'platform-owner-only' } })
+    return
+  }
+  // 岗位实习路由权限门（P5.1 / 07 §8.5.4）：已知身份权限集且明确不匹配 meta.permissionKey → 403。
+  // fail-open：未知/未加载时放行（后端 require_permission 仍是最终边界）。/security/403 为 public，不成环。
+  if (!canEnterRoute(to.meta)) {
+    next({ path: '/security/403', query: { from: to.fullPath } })
     return
   }
   next()

@@ -3,6 +3,7 @@
     <AppButton
       :variant="variant"
       :size="size"
+      :danger="danger"
       :loading="loading"
       :disabled="isDisabled"
       :title="allowed ? nativeTitle : reason"
