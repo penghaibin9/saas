@@ -220,6 +220,15 @@ def seed_sandbox(db) -> dict:
         out["students"] = 6
         out["domains"] = "六域最小数据"
 
+    # ── 13A 学工中心域最小演示数据（困难认定/奖助/违纪，幂等；反映 P3/P4 已闭环工作流）──
+    sbx_stu = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == SANDBOX_TID,
+        StudentProfile.real_name == SBX_STUDENT_NAME)).first()
+    if sbx_stu is not None:
+        aff_out = _seed_sandbox_affairs_13a(db, sbx_stu)
+        if aff_out:
+            out.update(aff_out)
+
     if not db.scalars(select(TeacherStudentScope).where(
             TeacherStudentScope.tenant_id == SANDBOX_TID,
             TeacherStudentScope.teacher_key == "teacher2")).first():
@@ -230,6 +239,50 @@ def seed_sandbox(db) -> dict:
                                    teacher_name=SBX_TEACHER_NAME, role_code=None,
                                    scope_type="ADVISOR", ref_value=SBX_TEACHER_NAME, status="ACTIVE"))
     db.commit()
+    return out
+
+
+def _seed_sandbox_affairs_13a(db, stu) -> dict:
+    """沙箱 13A 学工域最小演示数据（困难认定/奖助/违纪，幂等）。
+    stu = 李体验（SBX_STUDENT_NAME）StudentProfile；各域各留一条中间态单据，便于体验审批流。
+    与 seed_sandbox 一致：仅在对应表尚无沙箱行时创建，二次种子不新增。"""
+    from app.models import (AidApply, AidBatch, AidFamilyEconomy, DisciplineCase,
+                            FundingApplication, FundingBatch, FundingProject)
+    now = datetime.now()
+    out: dict = {}
+    # 困难认定：批次(OPEN) + 申请(班级评议中) + 家庭经济(强敏感隔离表)
+    if not db.scalars(select(AidBatch).where(AidBatch.tenant_id == SANDBOX_TID)).first():
+        batch = AidBatch(tenant_id=SANDBOX_TID, batch_name="2026 春季家庭经济困难认定",
+                         year_code="2025-2026", status="OPEN", publicity_days=5,
+                         apply_start=now - timedelta(days=3), apply_end=now + timedelta(days=7))
+        db.add(batch); db.flush()
+        ap = AidApply(tenant_id=SANDBOX_TID, batch_id=batch.id, student_id=stu.id,
+                      apply_level="DIFFICULT", suggest_level="DIFFICULT", status="CLASS_REVIEW",
+                      statement="家庭务农，父亲长期患病，家庭收入来源单一，恳请认定家庭经济困难。")
+        db.add(ap); db.flush()
+        db.add(AidFamilyEconomy(tenant_id=SANDBOX_TID, apply_id=ap.id, student_id=stu.id,
+                                member_count=4, income_encrypted="18000",
+                                special_flags_json='["单亲","低保"]'))
+        out["aid"] = "1批次+1申请(班级评议)"
+    # 奖助：项目(助学金) + 学年批次(OPEN) + 申请(辅导员初审中)
+    if not db.scalars(select(FundingProject).where(FundingProject.tenant_id == SANDBOX_TID)).first():
+        proj = FundingProject(tenant_id=SANDBOX_TID, project_name="国家助学金", project_type="GRANT",
+                              amount=3300, quota=5, status="ENABLED")
+        db.add(proj); db.flush()
+        fb = FundingBatch(tenant_id=SANDBOX_TID, project_id=proj.id, project_type="GRANT",
+                          year_code="2025-2026", status="OPEN", quota=5, publicity_days=5,
+                          apply_start=now - timedelta(days=2), apply_end=now + timedelta(days=8))
+        db.add(fb); db.flush()
+        db.add(FundingApplication(tenant_id=SANDBOX_TID, batch_id=fb.id, student_id=stu.id,
+                                  apply_source="SELF", project_type="GRANT", amount=3300,
+                                  status="COUNSELOR_REVIEW", statement="家庭经济困难，申请国家助学金资助。"))
+        out["funding"] = "1项目+1批次+1申请(辅导员初审)"
+    # 违纪处分：一条已登记的警告（演示登记态，未生效不投影 t_cs_discipline）
+    if not db.scalars(select(DisciplineCase).where(DisciplineCase.tenant_id == SANDBOX_TID)).first():
+        db.add(DisciplineCase(tenant_id=SANDBOX_TID, student_id=stu.id, disc_type="WARNING",
+                              reason="晚归违反宿舍管理规定一次（演示数据）。", status="REGISTERED"))
+        out["discipline"] = "1登记警告"
+    db.flush()
     return out
 
 
