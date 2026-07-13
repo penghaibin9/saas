@@ -95,6 +95,26 @@ def test_activity_validation_and_state(client, db_mode):
                        json={"action": "CANCEL", "reason": "短"}).json()["code"] != 0
 
 
+def test_activity_stats(client, db_mode):
+    hdr = _hdr(client, "school_admin01")
+    sid = db_mode["student"]
+    aid = client.post(f"{BASE}/activities", headers=hdr, json={
+        "activityName": "统计用活动", "activityType": "LECTURE", "creditType": "SECOND_CLASS",
+        "creditValue": 1}).json()["data"]["activityId"]
+    client.post(f"{BASE}/activities/{aid}/publish", headers=hdr, json={"action": "PUBLISH"})
+    _seed_checkin(aid, sid)
+    for act in ("ENROLL_CLOSE", "START", "FINISH"):
+        client.post(f"{BASE}/activities/{aid}/transition", headers=hdr, json={"action": act})
+    client.post(f"{BASE}/activities/{aid}/confirm", headers=hdr)
+    st = client.get(f"{BASE}/activity-stats", headers=hdr).json()
+    assert st["code"] == 0
+    d = st["data"]
+    assert d["totalActivities"] >= 1
+    assert any(x["key"] == "CONFIRMED" for x in d["byStatus"])
+    assert any(x["key"] == "SECOND_CLASS" and x["value"] >= 1 for x in d["creditByType"])
+    assert d["totalCheckins"] >= 1
+
+
 def test_second_class_category(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     r = client.post(f"{BASE}/second-class/categories", headers=hdr,

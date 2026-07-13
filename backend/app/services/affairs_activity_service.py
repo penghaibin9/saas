@@ -454,6 +454,40 @@ def create_category(body, user) -> dict:
         return {"categoryCode": code, "categoryName": name}
 
 
+def activity_stats(user):
+    """活动统计（08 卡）：活动按类型/状态计数 + 二课学分按类型/类目汇总 + 报名签到概览。仅聚合。"""
+    from app.models import AffairsActivity, AffairsActivityCredit, AffairsActivitySignup
+    with session() as db:
+        acts = db.scalars(select(AffairsActivity).where(
+            AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False))).all()
+        by_type, by_status = {}, {}
+        for a in acts:
+            by_type[a.activity_type] = by_type.get(a.activity_type, 0) + 1
+            by_status[a.status] = by_status.get(a.status, 0) + 1
+        creds = db.scalars(select(AffairsActivityCredit).where(
+            AffairsActivityCredit.tenant_id == _tid())).all()
+        credit_by_type, credit_by_cat = {}, {}
+        for c in creds:
+            v = float(c.credit_value or 0)
+            credit_by_type[c.credit_type] = round(credit_by_type.get(c.credit_type, 0) + v, 2)
+            if c.category_code:
+                credit_by_cat[c.category_code] = round(credit_by_cat.get(c.category_code, 0) + v, 2)
+        signups = db.scalar(select(func.count()).select_from(AffairsActivitySignup).where(
+            AffairsActivitySignup.tenant_id == _tid(),
+            AffairsActivitySignup.signup_status != "CANCELLED",
+            AffairsActivitySignup.is_deleted.is_(False))) or 0
+        checkins = db.scalar(select(func.count()).select_from(AffairsActivitySignup).where(
+            AffairsActivitySignup.tenant_id == _tid(),
+            AffairsActivitySignup.signup_status.in_(("CHECKED_IN", "CONFIRMED")),
+            AffairsActivitySignup.is_deleted.is_(False))) or 0
+        return {"totalActivities": len(acts), "totalSignups": int(signups), "totalCheckins": int(checkins),
+                "creditStudents": len({c.student_id for c in creds}),
+                "byType": [{"key": k, "count": v} for k, v in by_type.items()],
+                "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
+                "creditByType": [{"key": k, "value": v} for k, v in credit_by_type.items()],
+                "creditByCategory": [{"key": k, "value": v} for k, v in credit_by_cat.items()]}
+
+
 def _parse(v):
     if not v:
         return None

@@ -1185,3 +1185,8 @@ def second_class_categories(user=Depends(require_permission("studentAffairs.acti
 def second_class_category_create(body: CategoryBody,
                                  user=Depends(require_permission("studentAffairs.config.manage"))):
     return success(activity_svc.create_category(body, user), message="已创建")
+
+
+@router.get("/activity-stats", summary="活动与第二课堂统计（仅聚合）")
+def activity_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+    return success(activity_svc.activity_stats(user))
