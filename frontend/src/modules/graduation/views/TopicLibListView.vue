@@ -17,11 +17,11 @@
 
     <!-- 分类 / 容量概览 -->
     <div v-if="activePanel === 'category' && categoryStats.length" class="mp-stats">
-      <div v-for="c in categoryStats.slice(0, 6)" :key="c.category" class="mp-stat" @click="drillCategory(c.category)">
+      <button v-for="c in categoryStats.slice(0, 6)" :key="c.category" type="button" class="mp-stat" @click="drillCategory(c.category)">
         <div class="mp-stat__val">{{ c.count }}</div>
         <div class="mp-stat__lbl">{{ c.category }}</div>
         <div class="mp-stat__sub">入池 {{ c.inPool }} · 满员 {{ c.full }}</div>
-      </div>
+      </button>
     </div>
     <div v-if="activePanel === 'capacity' && libStats" class="mp-stats">
       <div class="mp-stat"><div class="mp-stat__val">{{ libStats.inPool }}</div><div class="mp-stat__lbl">在池题目</div></div>
@@ -705,9 +705,13 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.mp-stats { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
-.mp-stat { flex: 1; min-width: 120px; padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md); cursor: pointer; }
-.mp-stat__val { font-size: var(--font-size-xl); font-weight: 600; }
-.mp-stat__lbl { color: var(--color-text-secondary); font-size: var(--font-size-sm); margin-top: var(--space-1); }
-.mp-stat__sub { color: var(--color-text-tertiary); font-size: var(--font-size-xs); margin-top: var(--space-1); }
+.mp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.mp-stat { width: 100%; min-width: 0; padding: var(--space-3); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: linear-gradient(145deg, var(--color-bg-subtle), var(--card)); box-shadow: 0 1px 1px rgba(15, 23, 42, .02); color: inherit; font: inherit; text-align: left; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.mp-stat[type='button'] { cursor: pointer; }
+.mp-stat:hover { border-color: var(--primary-200, #bfdbfe); box-shadow: var(--s1); }
+.mp-stat[type='button']:hover { transform: translateY(-2px); }
+.mp-stat[type='button']:focus-visible { outline: 2px solid var(--primary-400, #60a5fa); outline-offset: 2px; }
+.mp-stat__val { font-size: calc(var(--font-size-xl) + 2px); font-weight: var(--font-weight-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.mp-stat__lbl { color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); margin-top: var(--space-1); }
+.mp-stat__sub { color: var(--color-text-tertiary); font-size: var(--font-size-xs); margin-top: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
