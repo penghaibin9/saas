@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -82,21 +84,22 @@ def _source_scores(db, stu: GraduationStudent) -> dict:
         GraduationFinal.status == "APPROVED",
         GraduationFinal.is_deleted.is_(False),
     ).order_by(GraduationFinal.id.desc())).first()
-    review_scores = db.scalars(select(GraduationReview.score).where(
+    review_rows = db.scalars(select(GraduationReview).where(
         GraduationReview.tenant_id == _tid(),
         GraduationReview.gd_student_id == stu.id,
         GraduationReview.gd_final_id == (final.id if final else -1),
         GraduationReview.status == "COMPLETED",
         GraduationReview.score.is_not(None),
         GraduationReview.is_deleted.is_(False),
-    )).all()
+    ).order_by(GraduationReview.id)).all()
+    review_scores = [row.score for row in review_rows]
     defense_round = db.scalar(select(func.max(GraduationDefenseScore.round_no)).where(
         GraduationDefenseScore.tenant_id == _tid(),
         GraduationDefenseScore.gd_student_id == stu.id,
         GraduationDefenseScore.status == "CONFIRMED",
         GraduationDefenseScore.is_deleted.is_(False),
     ))
-    defense_scores = db.scalars(select(GraduationDefenseScore.score).where(
+    defense_rows = db.scalars(select(GraduationDefenseScore).where(
         GraduationDefenseScore.tenant_id == _tid(),
         GraduationDefenseScore.gd_student_id == stu.id,
         GraduationDefenseScore.round_no == defense_round,
@@ -104,7 +107,18 @@ def _source_scores(db, stu: GraduationStudent) -> dict:
         GraduationDefenseScore.absent.is_(False),
         GraduationDefenseScore.score.is_not(None),
         GraduationDefenseScore.is_deleted.is_(False),
-    )).all() if defense_round else []
+    ).order_by(GraduationDefenseScore.id)).all() if defense_round else []
+    defense_scores = [row.score for row in defense_rows]
+    payload = {
+        "studentId": int(stu.id),
+        "finalId": int(final.id) if final else None,
+        "reviews": [{"id": int(row.id), "score": int(row.score)} for row in review_rows],
+        "defenseRound": int(defense_round) if defense_round else None,
+        "defenseScores": [{"id": int(row.id), "score": int(row.score)} for row in defense_rows],
+    }
+    source_hash = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     return {
         "reviewerScore": round(sum(review_scores) / len(review_scores)) if review_scores else None,
         "finalId": str(final.id) if final else "",
@@ -112,6 +126,7 @@ def _source_scores(db, stu: GraduationStudent) -> dict:
         "defenseScore": round(sum(defense_scores) / len(defense_scores)) if defense_scores else None,
         "defenseSourceCount": len(defense_scores),
         "defenseRound": defense_round,
+        "sourceSnapshotHash": source_hash,
     }
 
 
@@ -141,6 +156,7 @@ def _row(g: GraduationGrade, stu=None) -> dict:
             "calculatedAt": _iso(g.calculated_at), "reviewedBy": g.reviewed_by or "",
             "reviewedAt": _iso(g.reviewed_at), "publishedBy": g.published_by or "",
             "publishedAt": _iso(g.published_at), "withdrawReason": g.withdraw_reason or "",
+            "sourceSnapshotHash": g.source_snapshot_hash or "",
             "updatedAt": _iso(g.updated_at), "version": g.version}
 
 
@@ -203,6 +219,7 @@ def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defe
         g.calculated_at = datetime.utcnow()
         g.reviewed_by = None
         g.reviewed_at = None
+        g.source_snapshot_hash = sources["sourceSnapshotHash"]
         g.version += 1
         _audit(db, g.id, "核算成绩", detail=(
             f"total={total};reviewSources={sources['reviewSourceCount']};"
@@ -247,6 +264,9 @@ def publish_grade(gd_student_id) -> dict:
             return _row(g, stu)
         if g.status != "CALCULATED" or not g.reviewed_at:
             raise AppException("DATA_CONFLICT", "仅「复核通过」成绩可发布")
+        current_sources = _source_scores(db, stu)
+        if not g.source_snapshot_hash or g.source_snapshot_hash != current_sources["sourceSnapshotHash"]:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "Authoritative scores changed; recalculate before publishing")
         n, _ = _op()
         g.status = "PUBLISHED"
         g.published_by = n

@@ -113,6 +113,7 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(client, 
         f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-TEST-001"},
     ).json()["data"]
     assert filed["status"] == "FILED"
+    assert len(filed["manifestHash"]) == 64
     assert filed_retry["version"] == filed["version"]
     conflict = client.post(
         f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-OTHER"},

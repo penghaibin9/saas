@@ -109,8 +109,22 @@ def test_grade_calculate_review_publish_withdraw(client, auth_headers, db_mode):
     })
     approve = client.post(f"{GD_GRADE}/{gid}/review", headers=h, json={"action": "APPROVE"})
     assert approve.json()["data"]["reviewedBy"]
+    assert len(approve.json()["data"]["sourceSnapshotHash"]) == 64
     approve_retry = client.post(f"{GD_GRADE}/{gid}/review", headers=h, json={"action": "APPROVE"})
     assert approve_retry.json()["data"]["version"] == approve.json()["data"]["version"]
+
+    db = get_sessionmaker()()
+    review_row = db.query(GraduationReview).filter(GraduationReview.gd_student_id == int(gid)).one()
+    review_row.score = 91
+    db.commit()
+    db.close()
+    stale_publish = client.post(f"{GD_GRADE}/{gid}/publish", headers=h)
+    assert stale_publish.status_code == 409
+    db = get_sessionmaker()()
+    review_row = db.query(GraduationReview).filter(GraduationReview.gd_student_id == int(gid)).one()
+    review_row.score = 90
+    db.commit()
+    db.close()
 
     publish = client.post(f"{GD_GRADE}/{gid}/publish", headers=h)
     assert publish.json()["data"]["status"] == "PUBLISHED"

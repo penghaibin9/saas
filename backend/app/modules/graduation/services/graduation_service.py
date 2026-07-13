@@ -11,7 +11,7 @@ from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefense
                         GraduationProposal, GraduationStudent, GraduationTopic)
 from app.modules.graduation.services import graduation_student_service as gd_stu_svc
 from app.modules.graduation.services.graduation_scope_service import (
-    assert_student_access, can_access_student, has_full_scope,
+    accessible_student_ids, assert_student_access, can_access_student, has_full_scope,
 )
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
@@ -950,32 +950,36 @@ def list_audit(page, ps, biz_type=None, keyword=None):
         items = [{"id": str(x.id), "time": _iso(x.occurred_at), "operator": x.operator or "",
                   "roleName": x.role_name or "", "bizType": x.biz_type, "bizId": x.biz_id or "",
                   "action": x.action, "detail": x.detail or "", "before": x.before_val or "",
-                  "after": x.after_val or ""} for x in rows]
+                  "after": x.after_val or "", "requestId": x.request_id or "",
+                  "requestPath": x.request_path or "", "clientIp": x.client_ip or ""} for x in rows]
         return _page(items, page, ps)
 
 
 def get_dashboard() -> dict:
     with session() as db:
-        total = db.scalar(select(func.count()).select_from(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE")) or 0
+        visible_ids = accessible_student_ids(db, _tid())
+        total = len(visible_ids)
         pend_prop = db.scalar(select(func.count()).select_from(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
-            GraduationProposal.is_deleted.is_(False))) or 0
+            GraduationProposal.is_deleted.is_(False),
+            GraduationProposal.gd_student_id.in_(visible_ids))) or 0
         pend_final = db.scalar(select(func.count()).select_from(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
-            GraduationFinal.is_deleted.is_(False))) or 0
+            GraduationFinal.is_deleted.is_(False),
+            GraduationFinal.gd_student_id.in_(visible_ids))) or 0
         high_risk = db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.risk_level == "HIGH",
-            GraduationStudent.is_deleted.is_(False))) or 0
+            GraduationStudent.is_deleted.is_(False), GraduationStudent.id.in_(visible_ids))) or 0
         flow = {}
         for s in db.scalars(select(GraduationStudent).where(GraduationStudent.tenant_id == _tid(),
-                            GraduationStudent.is_deleted.is_(False))).all():
+                            GraduationStudent.is_deleted.is_(False),
+                            GraduationStudent.id.in_(visible_ids))).all():
             flow[s.stage] = flow.get(s.stage, 0) + 1
         # 答辩待发布组数（已建组未发布）
-        pend_defense = db.scalar(select(func.count()).select_from(GraduationDefenseGroup).where(
+        defense_groups = db.scalars(select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == _tid(), GraduationDefenseGroup.published.is_(False),
-            GraduationDefenseGroup.is_deleted.is_(False))) or 0
+            GraduationDefenseGroup.is_deleted.is_(False))).all()
+        pend_defense = sum(1 for group in defense_groups if _can_access_defense_group(db, group))
         # 未提交开题（已确认选题但无开题记录）—— 复用派生逻辑
         not_submitted = len(_not_submitted_proposals(db))
         # 真实风险预警（未关闭的风险项，取前若干）

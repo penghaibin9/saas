@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -103,6 +105,35 @@ def _check_completeness(db, stu: GraduationStudent) -> tuple[list[dict], list[st
     return checklist, missing
 
 
+def _manifest_hash(db, stu: GraduationStudent, archive_batch_no: str) -> str:
+    """Freeze the exact evidence IDs and update timestamps used for filing."""
+    from app.models import GraduationReview
+    models = (
+        GraduationTaskBook, GraduationProposal, GraduationMidterm, GraduationFinal,
+        GraduationReview, GraduationDefenseScore, GraduationGrade,
+    )
+    evidence = []
+    for model in models:
+        rows = db.scalars(select(model).where(
+            model.tenant_id == _tid(), model.gd_student_id == stu.id,
+            model.is_deleted.is_(False),
+        ).order_by(model.id)).all()
+        evidence.extend({
+            "type": model.__tablename__,
+            "id": int(row.id),
+            "status": getattr(row, "status", None),
+            "version": getattr(row, "version", None),
+            "updatedAt": _iso(getattr(row, "updated_at", None)),
+        } for row in rows)
+    payload = {
+        "tenantId": _tid(), "studentId": int(stu.id),
+        "archiveBatchNo": archive_batch_no, "evidence": evidence,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def _row(a: GraduationArchiveRecord, stu=None) -> dict:
     return {"id": str(a.id), "gdStudentId": str(a.gd_student_id),
             "studentName": stu.name if stu else "", "studentNo": stu.student_no if stu else "",
@@ -112,6 +143,7 @@ def _row(a: GraduationArchiveRecord, stu=None) -> dict:
             "generatedAt": _iso(a.generated_at), "submittedAt": _iso(a.submitted_at),
             "verifiedBy": a.verified_by or "", "filedAt": _iso(a.filed_at),
             "archiveBatchNo": a.archive_batch_no or "", "rejectReason": a.reject_reason or "",
+            "manifestHash": a.manifest_hash or "",
             "updatedAt": _iso(a.updated_at), "version": a.version}
 
 
@@ -200,6 +232,7 @@ def verify_and_file(gd_student_id, archive_batch_no: str = None) -> dict:
         a.verified_by = n
         a.filed_at = datetime.utcnow()
         a.archive_batch_no = requested_batch
+        a.manifest_hash = _manifest_hash(db, stu, requested_batch)
         a.version += 1
         if stu.stage != "ARCHIVED":
             stu.stage = "ARCHIVED"
@@ -256,6 +289,7 @@ def batch_file(archive_batch_no: str = None) -> dict:
             a.verified_by = n
             a.filed_at = datetime.utcnow()
             a.archive_batch_no = batch_no
+            a.manifest_hash = _manifest_hash(db, stu, batch_no)
             a.version += 1
             if stu.stage != "ARCHIVED":
                 stu.stage = "ARCHIVED"
