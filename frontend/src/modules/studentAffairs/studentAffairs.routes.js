@@ -188,6 +188,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '社团管理', requiresAuth: true, permissionKey: 'studentAffairs.club.view' }
       },
       {
+        path: 'activity/organizations',
+        name: 'student-affairs-organizations',
+        component: () => import('@/modules/studentAffairs/views/org/StudentOrgView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学生干部与组织', requiresAuth: true, permissionKey: 'studentAffairs.org.view' }
+      },
+      {
         path: 'family',
         name: 'student-affairs-family',
         component: () => import('@/modules/studentAffairs/views/FamilyContactView.vue'),

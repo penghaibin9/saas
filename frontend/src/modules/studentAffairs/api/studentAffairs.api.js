@@ -728,6 +728,32 @@ export const studentAffairsApi = {
   /** 年审。body: { reviewYear, result?, activityCount?, comment? } */
   createClubAnnualReview(id, body) {
     return callStrict(() => request(`/student-affairs/clubs/${id}/annual-reviews`, { method: 'POST', body }))
+  },
+
+  // ─────────────── 学生干部与组织（06 卡 · /organizations） ───────────────
+  getOrganizations({ level = '', status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (level) params.level = level
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/organizations', { params }))
+  },
+  /** 建组织。body: { orgName, orgType?, level?, collegeId?, advisorName? } */
+  createOrganization(body) {
+    return callStrict(() => request('/student-affairs/organizations', { method: 'POST', body }))
+  },
+  getOrgPositions(orgId) {
+    return callStrict(() => request(`/student-affairs/organizations/${orgId}/positions`))
+  },
+  /** 任命。body: { studentId, position, termCode? } */
+  appointOrgPosition(orgId, body) {
+    return callStrict(() => request(`/student-affairs/organizations/${orgId}/positions`, { method: 'POST', body }))
+  },
+  dismissOrgPosition(positionId) {
+    return callStrict(() => request(`/student-affairs/organizations/positions/${positionId}/dismiss`, { method: 'POST', body: {} }))
+  },
+  /** 学生干部履历（组织任职+班级班干部）。 */
+  getCadreResume(studentId) {
+    return callStrict(() => request(`/student-affairs/students/${studentId}/cadre-resume`))
   }
 }
 
