@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"src/**/*.{js,vue,css}\""
+    "format": "prettier --write \"src/**/*.{js,vue,css}\"",
+    "test": "node --test \"tests/**/*.test.mjs\""
   },
   "dependencies": {
     "@antv/g2": "^5.4.8",

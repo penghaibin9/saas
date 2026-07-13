@@ -38,9 +38,15 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "PLATFORM_SUPER_ADMIN": {"*"},
     "SCHOOL_ADMIN": {"*"},                       # 学校管理员：本校全权（接库后再按需收敛）
     "SYS_ADMIN": {"systemAdmin.*", "audit.*"},
-    "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view"},
+    "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view",
+                         # 实习督导/审计：只读监督（看板/学生/风险/统计/分配日志/审核台账），不授予任何写操作
+                         "internship.dashboard.view", "internship.student.view", "internship.risk.view",
+                         "internship.stats.view", "internship.stats.enterprise.view", "internship.stats.position.view",
+                         "internship.stats.score.view", "internship.match.log.view", "internship.application.view",
+                         "internship.archive.manage"},
     "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱（含 campusService.*.view）
-    "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*", "audit.view"},  # 本院（范围另行收敛）
+    "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
+                      "internship.*", "audit.view"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
     "ACADEMIC_TEACHER": {"academicAffairs.*"},
     "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*"},
     "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
@@ -61,6 +67,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "campusService.dashboard.view", "campusService.student.view", "campusService.leave.*",
         "campusService.dorm.view", "campusService.grant.view", "campusService.discipline.view",
         "campusService.workOrder.view",
+        # 岗位实习：辅导员对本班实习学生只读协同（学生/打卡/请假/周报/风险），不授予审批与配置
+        "internship.dashboard.view", "internship.student.view", "internship.attendance.view",
+        "internship.leave.view", "internship.report.view", "internship.risk.view",
     },
     # 毕设角色权限只决定“能做什么”；具体学生/评阅/答辩组必须再由业务关系收敛。
     "GRADUATION_ADMIN": {"graduationDesign.*"},
@@ -76,8 +85,28 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "GD_REVIEWER": {"graduationDesign.view", "graduationDesign.final.review"},
     "GD_DEFENSE_SECRETARY": {"graduationDesign.view", "graduationDesign.defense.manage"},
     "GD_DEFENSE_EXPERT": {"graduationDesign.view", "graduationDesign.defense.score"},
-    "INTERN_MENTOR": {"internship.guide.*"},
-    "EMPLOYMENT_TEACHER": {"employment.*"},
+    # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
+    "INTERN_MENTOR": {
+        "internship.guide.*", "internship.dashboard.view",
+        "internship.student.view", "internship.student.material.view",
+        "internship.attendance.*", "internship.makeup.*", "internship.leave.view", "internship.leave.review",
+        "internship.report.view", "internship.report.review", "internship.plan.view", "internship.task.view",
+        "internship.guidance.*", "internship.visit.*", "internship.communication.*",
+        "internship.risk.view", "internship.risk.handle",
+        "internship.eval.self.view", "internship.eval.enterprise.view", "internship.eval.advisor.manage",
+        "internship.score.view",
+        "internship.application.view", "internship.application.review", "internship.agreement.view",
+        "internship.enterprise.view", "internship.position.view",
+        "internship.match.intention.view", "internship.match.recommend.view", "internship.match.result.view",
+        "internship.stats.view",
+    },
+    # 就业教师：实习就业转化 + 归档统计（跨中心与就业域衔接），不介入日常实习审批
+    "EMPLOYMENT_TEACHER": {
+        "employment.*", "internship.dashboard.view",
+        "internship.employment.view", "internship.archive.manage",
+        "internship.stats.view", "internship.stats.enterprise.view",
+        "internship.stats.position.view", "internship.stats.score.view",
+    },
     "STAFF": set(),      # 最小权限兜底（未分配角色的真实账号，对齐 P0-2 修复）
     "STUDENT": set(),    # 学生走移动端本人端点，不进 PC 管理端
 }

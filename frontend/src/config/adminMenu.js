@@ -11,6 +11,8 @@
  * - 路径与 router/index.js、各模块 routes 文件保持一致（kebab-case）。
  */
 
+import { matchPermission } from '@/config/navPlan'
+
 /** 角色类型（与后端 role.roleType 对齐；用于跨模块可见性判断，非角色名硬编码） */
 export const ROLE_TYPE = {
   PLATFORM: 'PLATFORM', // 平台运营方 / 平台管理员（SaaS 运营侧）
@@ -142,7 +144,7 @@ function roleType(ctx) {
   return (ctx && ctx.currentRole && (ctx.currentRole.roleType || ctx.currentRole.type)) || null
 }
 
-/** 某叶子节点是否有权限（优先看 permissionActions，其次角色白名单） */
+/** 某叶子节点是否有权限：提供了权限集时以 permissionKey 命中为准，否则退回角色白名单兜底。 */
 function canSeeLeaf(leaf, ctx) {
   const rt = roleType(ctx)
   // 平台专属：仅平台角色
@@ -151,16 +153,24 @@ function canSeeLeaf(leaf, ctx) {
   if (rt === ROLE_TYPE.PLATFORM && leaf.moduleCode !== 'PLATFORM') return false
   // 高敏项：辅导员不可见
   if (leaf.sensitive && rt === ROLE_TYPE.COUNSELOR) return false
+  // 细粒度权限：接入真实身份权限集后，叶子声明 permissionKey 必须命中（角色白名单只作模块级兜底，
+  // 学校新增自定义角色不需改前端）。未接后端 ctx（无 permissionPatterns）时退回白名单，保持兼容。
+  const patterns = ctx && ctx.permissionPatterns
+  if (Array.isArray(patterns) && leaf.permissionKey) {
+    return matchPermission(patterns, leaf.permissionKey)
+  }
   // 角色白名单（若已知角色类型）
   if (rt && ROLE_MODULE_ALLOW[rt] && !ROLE_MODULE_ALLOW[rt].includes(leaf.moduleCode)) return false
   return true
 }
 
-/** 按 ctx（品牌/角色/权限）过滤出当前角色可见的菜单树。结果按 roleType 缓存，避免壳层重复过滤。 */
+/** 按 ctx（品牌/角色/权限）过滤出当前角色可见的菜单树。
+ *  缓存键含身份签名 ctxKey(tenantId+contextId+permissionVersion)，避免切换身份/动态改权后返回旧菜单。 */
 const _adminMenuVisibleCache = new Map()
 export function getVisibleAdminMenu(ctx) {
   const rt = roleType(ctx) || '__default__'
-  if (_adminMenuVisibleCache.has(rt)) return _adminMenuVisibleCache.get(rt)
+  const cacheKey = `${rt}|${(ctx && ctx.ctxKey) || ''}`
+  if (_adminMenuVisibleCache.has(cacheKey)) return _adminMenuVisibleCache.get(cacheKey)
   const result = ADMIN_MENU
     .filter((group) => {
       if (group.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
@@ -168,7 +178,7 @@ export function getVisibleAdminMenu(ctx) {
     })
     .map((group) => ({ ...group, children: group.children.filter((leaf) => canSeeLeaf(leaf, ctx)) }))
     .filter((group) => group.children.length > 0)
-  _adminMenuVisibleCache.set(rt, result)
+  _adminMenuVisibleCache.set(cacheKey, result)
   return result
 }
 

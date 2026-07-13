@@ -362,7 +362,7 @@ export default {
       })
       // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通「待施工/未开通」不跳
       if (q) {
-        for (const r of searchNavPlan(this.fnQueryDebounced)) {
+        for (const r of searchNavPlan(this.fnQueryDebounced, (this.ctx && this.ctx.permissionPatterns) || null)) {
           const kind =
             r.status === 'planned' ? '规划 · 待施工'
               : r.status === 'partial' ? '页面 · 待补强'
@@ -471,7 +471,12 @@ export default {
     },
     planGroup() {
       const gk = this.railActiveKey
-      return getVisibleNavPlan({ includePlanned: this.isPlannerView }).find((g) => g.key === gk) || null
+      // 日常视角按当前身份权限集投影；planner(校管/平台)看完整能力目录。ctxKey 保证切身份/改权后缓存失效。
+      return getVisibleNavPlan({
+        includePlanned: this.isPlannerView,
+        permissionPatterns: (this.ctx && this.ctx.permissionPatterns) || null,
+        ctxKey: (this.ctx && this.ctx.ctxKey) || ''
+      }).find((g) => g.key === gk) || null
     },
     planGroupLabel() {
       return this.planGroup ? this.planGroup.label : ''

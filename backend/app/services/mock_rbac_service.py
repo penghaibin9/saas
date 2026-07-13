@@ -140,11 +140,20 @@ def get_current_context(user_ctx: dict) -> dict:
     from app.services.mock_auth_service import get_active_context
     active = get_active_context(user_ctx)
     is_platform = active["contextType"] == "PLATFORM_OP"
+    # permissionPatterns 直接取自集中式 ROLE_PERMISSIONS —— 与后端 enforce_permission 共用同一套权限码，
+    # 是前端角色菜单投影(getVisibleNavPlan/canSeeLeaf)的唯一权限来源，彻底打通前后端权限链路。
+    from app.core.permissions import _granted, _role_of, is_super_admin
+    role = _role_of(user_ctx) or active["contextType"]
+    patterns = ["*"] if is_super_admin(user_ctx) else sorted(_granted(role))
     return {
-        "currentRole": {"roleCode": active["contextType"], "roleName": active["contextName"],
-                        "userName": user_ctx.get("realName", "")},
+        "currentRole": {"roleCode": role, "roleName": active["contextName"],
+                        "userName": user_ctx.get("realName", ""),
+                        "contextId": active.get("contextId", ""),
+                        # 权限版本：权限集变化即变，前端据此失效菜单/搜索缓存；接真实 RBAC 后替换为 t_role_permission 更新戳
+                        "permissionVersion": f"{role}:{len(patterns)}"},
         "dataScope": {"scope": active["dataScope"], "scopeLabel": active.get("scopeLabel", ""),
                       "scopeName": active.get("scopeLabel", "")},
+        "permissionPatterns": patterns,
         "permissionActions": {
             "viewList": {"visible": True, "enabled": True},
             "export": {"visible": not is_platform, "enabled": not is_platform,

@@ -62,6 +62,11 @@ export const internshipApi = {
       Object.keys(pa).forEach((k) => { pa[k] = { ...pa[k], visible: true, allowed: true, reason: '' } })
     }
     const brand = { ...tenantBrandConfig }
+    // permissionPatterns：当前身份的权限码模式集，来自后端 /rbac/current-context（与 enforce_permission 同一套码）。
+    // 角色菜单投影(getVisibleNavPlan/canSeeLeaf)据此收敛日常侧栏；取不到时保持 null=不投影（离线/降级兼容）。
+    let permissionPatterns = null
+    let roleCtx = { ...currentRole, roleName }
+    let ctxKey = ''
     try {
       if (shouldTryReal()) {
         const me = await request('/auth/me')
@@ -69,15 +74,30 @@ export const internshipApi = {
         if (tenantName) brand.schoolName = tenantName
         const realName = me?.realName || me?.user?.realName
         if (realName) roleName = `${realName} · ${roleName}`
+        roleCtx = { ...currentRole, roleName }
+        try {
+          const rc = await request('/rbac/current-context')
+          if (rc && Array.isArray(rc.permissionPatterns)) {
+            permissionPatterns = rc.permissionPatterns
+            const cr = rc.currentRole || {}
+            roleCtx = { ...roleCtx, roleCode: cr.roleCode || roleCtx.roleCode }
+            const tid = me?.tenantId || me?.user?.tenantId || ''
+            ctxKey = `${tid}|${cr.contextId || ''}|${cr.permissionVersion || ''}`
+          }
+        } catch {
+          /* current-context 不可用：投影降级为不过滤，后端接口仍是最终权限边界 */
+        }
       }
     } catch {
       /* 离线/未登录静默回退，不阻塞布局 */
     }
     return ok({
       tenantBrandConfig: brand,
-      currentRole: { ...currentRole, roleName },
+      currentRole: roleCtx,
       dataScope: { ...dataScope, scopeName, name: scopeName },
       permissionActions: pa,
+      permissionPatterns,
+      ctxKey,
       statusOptions: clone(statusOptions)
     })
   },

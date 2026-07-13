@@ -16,9 +16,13 @@
  * 数字迎新固定归属：学工中心 > 数字迎新（不作一级）。
  */
 
-/** 已实现叶子（带真实 path） */
-function I(label, path) {
-  return { label, path, status: 'implemented', disabled: false, badge: '' }
+/** 已实现叶子（带真实 path）。第 3+ 参数用于角色菜单投影：
+ *  permissionKey=页面/能力权限码（getVisibleNavPlan 按当前身份权限集过滤；无 key 的叶子后向兼容=默认可见）；
+ *  entryType=入口类型（WORKBENCH/TASK_QUEUE/CONFIG_VIEW/ANALYTICS_VIEW/DETAIL/ACTION/CROSS_MODULE/CAPABILITY_ONLY）；
+ *  opts=其余元数据（badgeKey/dataScopeRequired 等）。 */
+function I(label, path, permissionKey, entryType, opts) {
+  return { label, path, status: 'implemented', disabled: false, badge: '',
+    ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
 }
 /** 待施工叶子（可批量），自动 disabled + 待施工 badge，无 path 不注册路由 */
 function P(...labels) {
@@ -33,9 +37,11 @@ function PA(label, path) {
 function UN(label) {
   return { label, status: 'unauthorized', disabled: true, badge: '未开通' }
 }
-/** 隐藏叶子（真实页面但不进正常菜单/搜索：详情工作区、页内入口页；仅用于侧栏归属高亮） */
-function H(label, path) {
-  return { label, path, status: 'implemented', disabled: false, badge: '', hidden: true }
+/** 隐藏叶子（真实页面但不进正常菜单/搜索：详情工作区、页内入口页；仅用于侧栏归属高亮）。
+ *  第 3+ 参数同 I()：permissionKey/entryType/opts。详情/动作型能力用本函数登记——保留能力目录但不进日常侧栏。 */
+function H(label, path, permissionKey, entryType, opts) {
+  return { label, path, status: 'implemented', disabled: false, badge: '', hidden: true,
+    ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
 }
 /** 二级模块：有 path=已实现入口，无 path=待施工入口 */
 function mod(key, label, path, children) {
@@ -313,128 +319,128 @@ export const NAV_PLAN = [
    * 二级 key 不变（供 rail/adminMenu 兼容），仅 label 改为施工图名。 */
   grp('internship', '岗位实习中心', 'internship', [
     mod('in-workbench', '实习工作台', '/admin/internship', [
-      I('实习总览', '/admin/internship'),
-      I('当前批次进度', '/admin/internship?panel=batch-progress'),
-      I('我的待办', '/admin/internship?panel=todos'),
-      I('风险提醒', '/admin/internship/risks'),
-      I('数据趋势', '/admin/internship/stats')
+      I('实习总览', '/admin/internship', 'internship.dashboard.view', 'WORKBENCH'),
+      I('当前批次进度', '/admin/internship?panel=batch-progress', 'internship.dashboard.view', 'WORKBENCH'),
+      I('我的待办', '/admin/internship?panel=todos', 'internship.dashboard.view', 'TASK_QUEUE'),
+      I('风险提醒', '/admin/internship/risks', 'internship.risk.view', 'TASK_QUEUE'),
+      I('数据趋势', '/admin/internship/stats?dimension=trend', 'internship.stats.view', 'ANALYTICS_VIEW')
     ]),
     mod('in-batch-rules', '批次与规则', '/admin/internship/batches', [
-      I('批次列表', '/admin/internship/batches?panel=list'),
-      I('批次详情', '/admin/internship/batches?panel=list'),
-      I('阶段配置', '/admin/internship/batches?panel=timeline'),
-      I('打卡规则', '/admin/internship/batches?panel=rules'),
-      I('周报规则', '/admin/internship/batches?panel=rules'),
-      I('指导规则', '/admin/internship/batches?panel=rules'),
-      I('评价规则', '/admin/internship/batches?panel=rules'),
-      I('成绩规则', '/admin/internship/batches?panel=rules')
+      I('批次列表', '/admin/internship/batches?panel=list', 'internship.batch.view', 'WORKBENCH'),
+      H('批次详情', '/admin/internship/batches?panel=list', 'internship.batch.view', 'DETAIL'),
+      I('阶段配置', '/admin/internship/batches?panel=timeline', 'internship.batch.stage.manage', 'CONFIG_VIEW'),
+      I('打卡规则', '/admin/internship/batches?panel=rules&rule=checkin', 'internship.batch.rule.checkin.manage', 'CONFIG_VIEW'),
+      I('周报规则', '/admin/internship/batches?panel=rules&rule=report', 'internship.batch.rule.report.manage', 'CONFIG_VIEW'),
+      I('指导规则', '/admin/internship/batches?panel=rules&rule=guidance', 'internship.batch.rule.guidance.manage', 'CONFIG_VIEW'),
+      I('评价规则', '/admin/internship/batches?panel=rules&rule=evaluation', 'internship.batch.rule.evaluation.manage', 'CONFIG_VIEW'),
+      I('成绩规则', '/admin/internship/batches?panel=rules&rule=score', 'internship.batch.rule.score.manage', 'CONFIG_VIEW')
     ]),
     mod('in-students', '实习学生', '/admin/internship/students', [
-      I('实习名单', '/admin/internship/students?panel=roster'),
-      I('实习资格认定', '/admin/internship/students?panel=eligibility'),
-      I('学生实习状态', '/admin/internship/students?panel=status'),
-      I('学生实习详情', '/admin/internship/students?panel=roster'),
-      I('学生材料', '/admin/internship/archive?panel=materials'),
-      H('实习保险核验', '/admin/internship/insurance')
+      I('实习名单', '/admin/internship/students?panel=roster', 'internship.student.view', 'WORKBENCH'),
+      I('实习资格认定', '/admin/internship/students?panel=eligibility', 'internship.student.eligibility.review', 'TASK_QUEUE'),
+      I('学生实习状态', '/admin/internship/students?panel=status', 'internship.student.view', 'WORKBENCH'),
+      H('学生实习详情', '/admin/internship/students?panel=roster', 'internship.student.view', 'DETAIL'),
+      I('学生材料', '/admin/internship/archive?panel=materials', 'internship.student.material.view', 'WORKBENCH'),
+      I('实习保险核验', '/admin/internship/insurance', 'internship.insurance.verify', 'TASK_QUEUE')
     ]),
     mod('in-enterprise-position', '企业与岗位', '/admin/internship/enterprises', [
-      I('企业列表', '/admin/internship/enterprises?panel=list'),
-      I('企业详情', '/admin/internship/enterprises?panel=detail'),
-      I('企业联系人', '/admin/internship/enterprises?panel=contacts'),
-      I('企业导师', '/admin/internship/enterprises?panel=mentor'),
-      I('企业资质审核', '/admin/internship/enterprises?panel=qualification'),
-      I('企业黑名单', '/admin/internship/enterprises?panel=blacklist'),
-      I('岗位列表', '/admin/internship/positions?panel=list'),
-      I('岗位详情', '/admin/internship/positions?panel=detail'),
-      I('岗位发布', '/admin/internship/positions?panel=publish'),
-      I('岗位专业匹配', '/admin/internship/positions?panel=requirement')
+      I('企业列表', '/admin/internship/enterprises?panel=list', 'internship.enterprise.view', 'WORKBENCH'),
+      H('企业详情', '/admin/internship/enterprises?panel=detail', 'internship.enterprise.view', 'DETAIL'),
+      I('企业联系人', '/admin/internship/enterprises?panel=contacts', 'internship.enterprise.contact.view', 'WORKBENCH'),
+      I('企业导师', '/admin/internship/enterprises?panel=mentor', 'internship.enterprise.mentor.view', 'WORKBENCH'),
+      I('企业资质审核', '/admin/internship/enterprises?panel=qualification', 'internship.enterprise.review', 'TASK_QUEUE'),
+      I('企业黑名单', '/admin/internship/enterprises?panel=blacklist', 'internship.enterprise.blacklist.manage', 'TASK_QUEUE'),
+      I('岗位列表', '/admin/internship/positions?panel=list', 'internship.position.view', 'WORKBENCH'),
+      H('岗位详情', '/admin/internship/positions?panel=detail', 'internship.position.view', 'DETAIL'),
+      I('岗位发布', '/admin/internship/positions?panel=publish', 'internship.position.publish', 'TASK_QUEUE'),
+      I('岗位专业匹配', '/admin/internship/positions?panel=requirement', 'internship.position.match.view', 'CONFIG_VIEW')
     ]),
     mod('in-match-assign', '匹配与分配', '/admin/internship/match', [
-      I('学生意向', '/admin/internship/match?panel=intention'),
-      I('岗位推荐', '/admin/internship/match?panel=recommend'),
-      I('手动匹配', '/admin/internship/match?panel=manual'),
-      I('批量匹配', '/admin/internship/match?panel=batch'),
-      I('匹配冲突', '/admin/internship/match?panel=conflict'),
-      I('匹配结果', '/admin/internship/match?panel=results'),
-      I('指导老师分配', '/admin/internship/students?panel=mentor'),
-      I('调岗退岗', '/admin/internship/changes?panel=pending'),
-      I('分配日志', '/admin/internship/assignment-logs')
+      I('学生意向', '/admin/internship/match?panel=intention', 'internship.match.intention.view', 'WORKBENCH'),
+      I('岗位推荐', '/admin/internship/match?panel=recommend', 'internship.match.recommend.view', 'ANALYTICS_VIEW'),
+      I('手动匹配', '/admin/internship/match?panel=manual', 'internship.match.manual', 'TASK_QUEUE'),
+      I('批量匹配', '/admin/internship/match?panel=batch', 'internship.match.batch', 'TASK_QUEUE'),
+      I('匹配冲突', '/admin/internship/match?panel=conflict', 'internship.match.conflict.view', 'TASK_QUEUE'),
+      I('匹配结果', '/admin/internship/match?panel=results', 'internship.match.result.view', 'WORKBENCH'),
+      I('指导老师分配', '/admin/internship/students?panel=mentor', 'internship.match.advisor.assign', 'TASK_QUEUE'),
+      I('调岗退岗', '/admin/internship/changes?panel=pending', 'internship.change.review', 'TASK_QUEUE'),
+      I('分配日志', '/admin/internship/assignment-logs', 'internship.match.log.view', 'ANALYTICS_VIEW')
     ]),
     mod('in-apply-agreement', '申请与协议', '/admin/internship/agreements', [
-      I('学生申请', '/admin/internship/applications?status=PENDING_REVIEW'),
-      I('自主实习申请', '/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED'),
-      I('岗位申请', '/admin/internship/applications?status=PENDING_REVIEW&type=POSITION'),
-      I('审核台账', '/admin/internship/applications?status=ALL'),
-      I('协议模板', '/admin/internship/agreement-templates'),
-      I('协议发起', '/admin/internship/agreements?panel=issue'),
-      I('三方确认', '/admin/internship/agreements?panel=confirm'),
-      I('协议变更', '/admin/internship/agreements?panel=change'),
-      I('协议归档', '/admin/internship/agreements?panel=archive')
+      I('学生申请', '/admin/internship/applications?status=PENDING_REVIEW', 'internship.application.review', 'TASK_QUEUE'),
+      I('自主实习申请', '/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED', 'internship.application.review', 'TASK_QUEUE'),
+      I('岗位申请', '/admin/internship/applications?status=PENDING_REVIEW&type=POSITION', 'internship.application.review', 'TASK_QUEUE'),
+      I('审核台账', '/admin/internship/applications?status=ALL', 'internship.application.view', 'ANALYTICS_VIEW'),
+      I('协议模板', '/admin/internship/agreement-templates', 'internship.agreement.template.manage', 'CONFIG_VIEW'),
+      I('协议发起', '/admin/internship/agreements?panel=issue', 'internship.agreement.issue', 'TASK_QUEUE'),
+      I('三方确认', '/admin/internship/agreements?panel=confirm', 'internship.agreement.school_confirm', 'TASK_QUEUE'),
+      I('协议变更', '/admin/internship/agreements?panel=change', 'internship.agreement.change', 'TASK_QUEUE'),
+      I('协议归档', '/admin/internship/agreements?panel=archive', 'internship.agreement.archive', 'TASK_QUEUE')
     ]),
     mod('in-attendance-leave', '打卡与请假', '/admin/internship/attendance', [
-      I('打卡记录', '/admin/internship/attendance?panel=checkins'),
-      I('补卡申请', '/admin/internship/attendance?panel=makeup-apply'),
-      I('补卡审批', '/admin/internship/attendance?panel=makeup-review'),
-      I('缺卡异常', '/admin/internship/attendance?panel=exceptions'),
-      I('连续未打卡', '/admin/internship/exceptions?status=PENDING_HANDLE'),
-      I('实习请假', '/admin/internship/leaves?panel=all'),
-      I('请假审批', '/admin/internship/leaves?panel=pending'),
-      I('销假管理', '/admin/internship/leaves?panel=approved'),
-      I('超期未归', '/admin/internship/risks?panel=leave-post')
+      I('打卡记录', '/admin/internship/attendance?panel=checkins', 'internship.attendance.view', 'WORKBENCH'),
+      I('补卡申请', '/admin/internship/attendance?panel=makeup-apply', 'internship.makeup.view', 'WORKBENCH'),
+      I('补卡审批', '/admin/internship/attendance?panel=makeup-review', 'internship.makeup.review', 'TASK_QUEUE'),
+      I('缺卡异常', '/admin/internship/attendance?panel=exceptions', 'internship.attendance.exception.handle', 'TASK_QUEUE'),
+      I('连续未打卡', '/admin/internship/exceptions?status=PENDING_HANDLE', 'internship.attendance.exception.handle', 'TASK_QUEUE'),
+      I('实习请假', '/admin/internship/leaves?panel=all', 'internship.leave.view', 'WORKBENCH'),
+      I('请假审批', '/admin/internship/leaves?panel=pending', 'internship.leave.review', 'TASK_QUEUE'),
+      I('销假管理', '/admin/internship/leaves?panel=approved', 'internship.leave.resume', 'TASK_QUEUE'),
+      I('超期未归', '/admin/internship/risks?panel=leave-overdue', 'internship.risk.view', 'TASK_QUEUE')
     ]),
     mod('in-weekly-task', '周报与任务', '/admin/internship/reports', [
-      I('实习计划', '/admin/internship/plans'),
-      I('实习任务', '/admin/internship/plans?panel=tasks'),
-      I('日报提交', '/admin/internship/reports?type=daily&panel=all'),
-      I('周报提交', '/admin/internship/reports?panel=all'),
-      I('月报提交', '/admin/internship/reports?type=monthly&panel=all'),
-      I('周报批阅', '/admin/internship/reports?panel=review'),
-      I('周报退回', '/admin/internship/reports?panel=returned'),
-      I('周报问题', '/admin/internship/reports?panel=returned')
+      I('实习计划', '/admin/internship/plans', 'internship.plan.view', 'CONFIG_VIEW'),
+      I('实习任务', '/admin/internship/plans?panel=tasks', 'internship.task.view', 'WORKBENCH'),
+      I('日报提交', '/admin/internship/reports?type=daily&panel=all', 'internship.report.view', 'WORKBENCH'),
+      I('周报提交', '/admin/internship/reports?panel=all', 'internship.report.view', 'WORKBENCH'),
+      I('月报提交', '/admin/internship/reports?type=monthly&panel=all', 'internship.report.view', 'WORKBENCH'),
+      I('周报批阅', '/admin/internship/reports?panel=review', 'internship.report.review', 'TASK_QUEUE'),
+      I('周报退回', '/admin/internship/reports?panel=returned', 'internship.report.review', 'TASK_QUEUE'),
+      H('周报问题', '/admin/internship/reports?panel=issues', 'internship.report.issue.handle', 'TASK_QUEUE')
     ]),
     mod('in-guidance-visit', '指导与巡访', '/admin/internship/guidance', [
-      I('指导计划', '/admin/internship/guidance-plan'),
-      I('指导记录', '/admin/internship/guidance?panel=guidance'),
-      I('企业沟通', '/admin/internship/guidance?panel=communication'),
-      I('指导不足预警', '/admin/internship/guidance-plan?insufficient=1'),
-      I('巡访计划', '/admin/internship/guidance?panel=visit'),
-      I('巡访记录', '/admin/internship/guidance?panel=visit'),
-      I('巡访问题', '/admin/internship/guidance?panel=visit'),
-      I('整改跟进', '/admin/internship/guidance?panel=rectify')
+      I('指导计划', '/admin/internship/guidance-plan', 'internship.guidance.plan.manage', 'CONFIG_VIEW'),
+      I('指导记录', '/admin/internship/guidance?panel=guidance', 'internship.guidance.record.create', 'WORKBENCH'),
+      I('企业沟通', '/admin/internship/guidance?panel=communication', 'internship.communication.view', 'WORKBENCH'),
+      I('指导不足预警', '/admin/internship/guidance-plan?insufficient=1', 'internship.guidance.insufficient.view', 'TASK_QUEUE'),
+      I('巡访计划', '/admin/internship/guidance?panel=visit&view=plan', 'internship.visit.plan.manage', 'CONFIG_VIEW'),
+      I('巡访记录', '/admin/internship/guidance?panel=visit&view=record', 'internship.visit.record.create', 'WORKBENCH'),
+      I('巡访问题', '/admin/internship/guidance?panel=visit&view=issue', 'internship.visit.issue.handle', 'TASK_QUEUE'),
+      I('整改跟进', '/admin/internship/guidance?panel=rectify', 'internship.visit.rectify.handle', 'TASK_QUEUE')
     ]),
     mod('in-risk', '风险处置', '/admin/internship/risks', [
-      I('风险看板', '/admin/internship/risks?panel=board'),
-      I('未落实岗位', '/admin/internship/risks?panel=no-position'),
-      I('长期未打卡', '/admin/internship/risks?panel=no-checkin'),
-      I('周报逾期', '/admin/internship/risks?panel=report-overdue'),
-      I('离岗异常', '/admin/internship/risks?panel=leave-post'),
-      I('企业投诉', '/admin/internship/risk-disposal?panel=pending'),
-      I('安全风险', '/admin/internship/risk-disposal?panel=safety'),
-      I('实习中断', '/admin/internship/risk-disposal?panel=interrupt'),
-      I('风险处置', '/admin/internship/risk-disposal?panel=pending'),
-      I('风险跟进', '/admin/internship/risk-disposal?panel=processing'),
-      I('风险关闭', '/admin/internship/risk-disposal?panel=closed')
+      I('风险看板', '/admin/internship/risks?panel=board', 'internship.risk.view', 'WORKBENCH'),
+      I('未落实岗位', '/admin/internship/risks?panel=no-position', 'internship.risk.view', 'TASK_QUEUE'),
+      I('长期未打卡', '/admin/internship/risks?panel=no-checkin', 'internship.risk.view', 'TASK_QUEUE'),
+      I('周报逾期', '/admin/internship/risks?panel=report-overdue', 'internship.risk.view', 'TASK_QUEUE'),
+      I('离岗异常', '/admin/internship/risks?panel=off-post', 'internship.risk.view', 'TASK_QUEUE'),
+      I('企业投诉', '/admin/internship/risk-disposal?caseType=complaint', 'internship.complaint.intake', 'TASK_QUEUE'),
+      I('安全风险', '/admin/internship/risk-disposal?panel=safety', 'internship.risk.handle', 'TASK_QUEUE'),
+      I('实习中断', '/admin/internship/risk-disposal?panel=interrupt', 'internship.risk.handle', 'TASK_QUEUE'),
+      I('风险处置', '/admin/internship/risk-disposal?stage=pending', 'internship.risk.handle', 'TASK_QUEUE'),
+      I('风险跟进', '/admin/internship/risk-disposal?stage=processing', 'internship.risk.handle', 'TASK_QUEUE'),
+      I('风险关闭', '/admin/internship/risk-disposal?stage=closed', 'internship.risk.close', 'TASK_QUEUE')
     ]),
     mod('in-eval-score', '评价与成绩', '/admin/internship/enterprise-evals', [
-      I('企业评价', '/admin/internship/enterprise-evals'),
-      I('学生自评', '/admin/internship/student-evals'),
-      I('学生对企业评价', '/admin/internship/student-evals'),
-      I('学生对岗位评价', '/admin/internship/student-evals'),
-      I('指导老师评价', '/admin/internship/student-evals'),
-      I('综合成绩', '/admin/internship/scores'),
-      I('成绩审核', '/admin/internship/scores'),
-      I('成绩发布', '/admin/internship/scores'),
-      I('成绩复核', '/admin/internship/scores')
+      I('企业评价', '/admin/internship/enterprise-evals', 'internship.eval.enterprise.view', 'WORKBENCH'),
+      I('学生自评', '/admin/internship/student-evals?view=self', 'internship.eval.self.view', 'WORKBENCH'),
+      I('学生对企业评价', '/admin/internship/student-evals?view=enterprise', 'internship.eval.enterprise_by_student.view', 'ANALYTICS_VIEW'),
+      I('学生对岗位评价', '/admin/internship/student-evals?view=position', 'internship.eval.position_by_student.view', 'ANALYTICS_VIEW'),
+      I('指导老师评价', '/admin/internship/student-evals?view=advisor', 'internship.eval.advisor.manage', 'TASK_QUEUE'),
+      I('综合成绩', '/admin/internship/scores?stage=overview', 'internship.score.view', 'WORKBENCH'),
+      I('成绩审核', '/admin/internship/scores?stage=review', 'internship.score.review', 'TASK_QUEUE'),
+      I('成绩发布', '/admin/internship/scores?stage=publish', 'internship.score.publish', 'TASK_QUEUE'),
+      I('成绩复核', '/admin/internship/scores?stage=recheck', 'internship.score.recheck', 'TASK_QUEUE')
     ]),
     mod('in-employment-archive-stats', '就业转化与归档统计', '/admin/internship/archive', [
-      I('就业跟进', '/admin/employment'),
-      I('未就业帮扶', '/admin/employment'),
-      I('实习归档', '/admin/internship/archive'),
-      I('实习档案包', '/admin/internship/archive'),
-      I('实习统计', '/admin/internship/stats'),
-      I('企业统计', '/admin/internship/stats'),
-      I('岗位统计', '/admin/internship/stats'),
-      I('学生成绩统计', '/admin/internship/stats')
+      I('就业跟进', '/admin/employment?panel=follow-up', 'internship.employment.view', 'CROSS_MODULE'),
+      I('未就业帮扶', '/admin/employment?panel=assistance', 'internship.employment.view', 'CROSS_MODULE'),
+      I('实习归档', '/admin/internship/archive?panel=records', 'internship.archive.manage', 'WORKBENCH'),
+      H('实习档案包', '/admin/internship/archive?panel=packages', 'internship.archive.package.generate', 'ACTION'),
+      I('实习统计', '/admin/internship/stats?dimension=overview', 'internship.stats.view', 'ANALYTICS_VIEW'),
+      I('企业统计', '/admin/internship/stats?dimension=enterprise', 'internship.stats.enterprise.view', 'ANALYTICS_VIEW'),
+      I('岗位统计', '/admin/internship/stats?dimension=position', 'internship.stats.position.view', 'ANALYTICS_VIEW'),
+      I('学生成绩统计', '/admin/internship/stats?dimension=score', 'internship.stats.score.view', 'ANALYTICS_VIEW')
     ])
   ]),
 
@@ -497,16 +503,43 @@ for (const group of NAV_PLAN) {
  * @param {object} opts.includePlanned 管理员/开发者视角=true（可见 planned），普通业务角色=false（隐藏 planned）
  * @returns {Array} 过滤后的规划树（planned 节点在 includePlanned=false 时剔除）
  */
+/** 权限码模式匹配（与后端 permissions._match 同构：`*` 全放行 / `a.b.*` 前缀 / `*.view` 后缀）。
+ *  角色只作默认模板，最终以 permissionKey 是否命中当前身份权限集为准（对齐 07 整改方案 §6.3）。 */
+export function matchPermission(patterns, code) {
+  if (!Array.isArray(patterns) || !code) return false
+  for (const p of patterns) {
+    if (p === '*' || p === code) return true
+    if (p.endsWith('.*') && (code === p.slice(0, -2) || code.startsWith(p.slice(0, -1)))) return true
+    if (p.startsWith('*.') && code.endsWith(p.slice(1))) return true
+  }
+  return false
+}
+
 const _navPlanVisibleCache = new Map()
-export function getVisibleNavPlan({ includePlanned = false } = {}) {
-  const cacheKey = includePlanned ? '1' : '0'
+/**
+ * 按角色可见性过滤规划树。
+ * @param {boolean} opts.includePlanned 管理员/开发者(planner)视角=true（见 planned + 完整能力目录，不做权限投影）；普通业务角色=false
+ * @param {string[]|null} opts.permissionPatterns 当前身份权限码模式集（来自后端 current-context）；日常视角据此投影，未命中 permissionKey 的叶子隐藏
+ * @param {string} opts.ctxKey 身份缓存签名（tenantId+contextId+permissionVersion），避免跨身份/跨租户缓存污染
+ */
+export function getVisibleNavPlan({ includePlanned = false, permissionPatterns = null, ctxKey = '' } = {}) {
+  const cacheKey = `${includePlanned ? '1' : '0'}|${ctxKey}`
   if (_navPlanVisibleCache.has(cacheKey)) return _navPlanVisibleCache.get(cacheKey)
-  // 普通业务角色：只见 implemented / partial；管理员/开发者视角：additionally 见 planned / unauthorized
-  // hidden 叶子：任何视角都不进菜单（如旧兼容入口），仅保留路由/高亮
-  const keepLeaf = (leaf) =>
-    !leaf.hidden && (includePlanned || leaf.status === 'implemented' || leaf.status === 'partial')
-  const keepMod = (mod2) =>
-    includePlanned || mod2.status === 'implemented' || mod2.status === 'partial' || mod2.children.some(keepLeaf)
+  // 日常业务视角：按当前身份权限集投影，叶子声明 permissionKey 未命中即隐藏；
+  // planner/能力地图视角：展示完整能力目录，不做权限投影（仅对被授权的实施管理员开放，由调用方把关）。
+  // hidden 叶子：任何视角都不进菜单（详情/动作/旧兼容入口），仅保留路由与高亮。
+  const applyPerm = !includePlanned && Array.isArray(permissionPatterns)
+  const keepLeaf = (leaf) => {
+    if (leaf.hidden) return false
+    if (!(includePlanned || leaf.status === 'implemented' || leaf.status === 'partial')) return false
+    if (applyPerm && leaf.permissionKey && !matchPermission(permissionPatterns, leaf.permissionKey)) return false
+    return true
+  }
+  const keepMod = (mod2) => {
+    if (mod2.children.length === 0) return includePlanned || mod2.status === 'implemented' || mod2.status === 'partial'
+    if (mod2.children.some(keepLeaf)) return true
+    return includePlanned && (mod2.status === 'implemented' || mod2.status === 'partial')
+  }
   const result = NAV_PLAN.map((group) => ({
     ...group,
     children: group.children
@@ -620,7 +653,8 @@ const FLAT_NAV_INDEX = (() => {
           disabled: leaf.disabled,
           badge: leaf.badge,
           isLeaf: true,
-          hidden: !!leaf.hidden
+          hidden: !!leaf.hidden,
+          permissionKey: leaf.permissionKey || null
         })
       })
     }
@@ -670,13 +704,17 @@ export function findActiveInPlan(path, fullPath = '') {
  * @returns {Array} [{ label, path, status, disabled, badge, trail }]
  */
 const _navSearchCache = new Map()
-export function searchNavPlan(query) {
+export function searchNavPlan(query, permissionPatterns = null) {
   const q = (query || '').trim().toLowerCase()
   if (!q) return []
-  if (_navSearchCache.has(q)) return _navSearchCache.get(q)
+  const applyPerm = Array.isArray(permissionPatterns)
+  // 缓存键含权限签名：不同身份的搜索结果不得互相污染（禁止无权限页面被搜索命中并跳转）。
+  const cacheKey = applyPerm ? `${q}|${permissionPatterns.slice().sort().join(',')}` : q
+  if (_navSearchCache.has(cacheKey)) return _navSearchCache.get(cacheKey)
   const out = []
   for (const row of FLAT_NAV_INDEX) {
     if (row.hidden) continue  // 隐藏的兼容入口不进搜索
+    if (applyPerm && row.permissionKey && !matchPermission(permissionPatterns, row.permissionKey)) continue  // 无权限页面不进搜索
     if (!row.label.toLowerCase().includes(q)) continue
     out.push({
       label: row.label,
@@ -689,7 +727,7 @@ export function searchNavPlan(query) {
     if (out.length >= 20) break  // 与原 slice(0, 20) 结果一致（同一遍历顺序），提前终止避免扫完全表
   }
   if (_navSearchCache.size > 64) _navSearchCache.clear()
-  _navSearchCache.set(q, out)
+  _navSearchCache.set(cacheKey, out)
   return out
 }
 
