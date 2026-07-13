@@ -1,6 +1,8 @@
 """
-P4 · 真实文件上传：本地 UPLOAD_DIR 落盘 + sha256 + 白名单校验 + t_file_object 登记（DB 模式）。
-接 MinIO/OSS 时仅替换 _store_to_disk 与 file_key 生成，契约字段不变。
+P4 · 真实文件上传：sha256 + 白名单校验 + t_file_object 登记（DB 模式）+ 可切换存储后端。
+
+字节存哪由 app.services.storage 后端决定（本地 UPLOAD_DIR 或腾讯云 COS，
+settings.FILE_STORAGE_BACKEND 切换）。file_key 语义在两种后端下相同，切换不改表。
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ from app.core.config import settings
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
+from app.services.storage import get_backend
 
 ALLOWED_EXT = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
                "png", "jpg", "jpeg", "gif", "zip", "txt", "csv"}
@@ -46,8 +49,8 @@ async def store_upload(file, biz_type: str = "ATTACHMENT") -> dict:
     sha = hashlib.sha256()
     size = 0
     key = f"{datetime.now():%Y%m%d}/{uuid.uuid4().hex}.{ext}"
-    target = upload_dir() / key
-    target.parent.mkdir(parents=True, exist_ok=True)
+    backend = get_backend()
+    target = backend.staging_path(key)
     with target.open("wb") as out:
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
@@ -58,6 +61,7 @@ async def store_upload(file, biz_type: str = "ATTACHMENT") -> dict:
                                    f"文件超过 {max_size // (1024 * 1024)}MB 上限（平台规则中心配置）")
             sha.update(chunk)
             out.write(chunk)
+    backend.persist(key, target)
     digest = sha.hexdigest()
     meta = {"fileName": filename, "ext": ext, "sizeBytes": size, "sha256": digest,
             "fileKey": key, "bizType": biz_type, "storedAt": datetime.now().isoformat(timespec="seconds")}
@@ -91,9 +95,10 @@ def store_bytes(data: bytes, filename: str, biz_type: str = "ATTACHMENT",
     """
     ext = (filename.rsplit(".", 1)[-1] if "." in filename else "bin").lower()
     key = f"{datetime.now():%Y%m%d}/{uuid.uuid4().hex}.{ext}"
-    target = upload_dir() / key
-    target.parent.mkdir(parents=True, exist_ok=True)
+    backend = get_backend()
+    target = backend.staging_path(key)
     target.write_bytes(data)
+    backend.persist(key, target)
     size = len(data)
     digest = hashlib.sha256(data).hexdigest()
     meta = {"fileName": filename, "ext": ext, "sizeBytes": size, "sha256": digest,
@@ -164,8 +169,8 @@ def resolve_download(file_id: str, *, allow_graduation_material: bool = False):
         return None
     if m.get("bizType") == "GRADUATION_MATERIAL" and not allow_graduation_material:
         return None
-    path = upload_dir() / m["fileKey"]
-    if not path.exists():
+    path = get_backend().fetch_local(m["fileKey"])
+    if not path or not path.exists():
         return None
     return path, m.get("fileName") or path.name
 

@@ -79,8 +79,18 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = ""            # 优先级高于 JWT_SECRET；生产必须改
     JWT_ALGORITHM: str = ""             # 优先级高于 JWT_ALG
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
-    UPLOAD_DIR: str = "./uploads"       # 文件上传占位目录（不真正落对象存储）
+    UPLOAD_DIR: str = "./uploads"       # 文件落点：local 后端的存储根 / cos 后端的临时·缓存根
     AUDIT_ENABLED: bool = True          # 审计开关（DB_ENABLED=False 时写内存列表）
+
+    # ── 文件存储后端（附件/论文/材料字节存哪）──
+    # local（默认）：字节存服务器本地 UPLOAD_DIR，单机部署够用。
+    # cos          ：字节存腾讯云对象存储 COS，多机/上云部署用；需下方 COS_* 配置 + cos-python-sdk-v5。
+    # 切换只改本项，t_file_object 表零迁移（file_key 语义两后端相同）。
+    FILE_STORAGE_BACKEND: str = "local"
+    COS_REGION: str = ""                # 如 ap-guangzhou（COS 桶所在地域）
+    COS_BUCKET: str = ""                # 如 student-files-1250000000（含 APPID 后缀）
+    COS_SECRET_ID: str = ""             # 腾讯云访问密钥 SecretId；仅经 .env / 环境变量注入，禁止进仓库
+    COS_SECRET_KEY: str = ""            # 腾讯云访问密钥 SecretKey；仅经 .env / 环境变量注入，禁止进仓库
 
     # ── 短信/通知（P13-B；默认关闭，测试环境永不真实发送）──
     SMS_ENABLED: str = "false"          # "true" 才真实发送；否则记录 SKIPPED
