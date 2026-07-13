@@ -71,14 +71,13 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const res = await studentAffairsApi.getTalkStats(this.groupBy)
-        this.stats = res.data || { total: 0, completed: 0, completionRate: 0, breakdown: [] }
-      } catch (e) {
-        this.errorMessage = e.message || '谈话统计加载失败'
-      } finally {
-        this.loading = false
+      const res = await studentAffairsApi.getTalkStats(this.groupBy)
+      if (res.code === 0 && res.data) {
+        this.stats = res.data
+      } else {
+        this.errorMessage = res.message || '谈话统计加载失败'
       }
+      this.loading = false
     },
     setGroup(k) { if (this.groupBy === k) return; this.groupBy = k; this.load() },
     keyLabel(k) {

@@ -98,14 +98,13 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const res = await studentAffairsApi.getFundingProjects({ pageSize: 200 })
-        this.projects = (res.data && res.data.items) || []
-      } catch (e) {
-        this.errorMessage = e.message || '资助项目加载失败'
-      } finally {
-        this.loading = false
+      const res = await studentAffairsApi.getFundingProjects({ pageSize: 200 })
+      if (res.code === 0 && res.data) {
+        this.projects = res.data.items || []
+      } else {
+        this.errorMessage = res.message || '资助项目加载失败'
       }
+      this.loading = false
     },
     openForm() {
       this.form = { projectName: '', projectType: 'GRANT', amount: null, quota: null, error: '' }
@@ -116,19 +115,18 @@ export default {
       if (!m.projectName) { m.error = '项目名称必填'; return }
       m.error = ''
       this.saving = true
-      try {
-        const body = { projectName: m.projectName, projectType: m.projectType }
-        if (m.amount != null && m.amount !== '') body.amount = Number(m.amount)
-        if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
-        await studentAffairsApi.createFundingProject(body)
+      const body = { projectName: m.projectName, projectType: m.projectType }
+      if (m.amount != null && m.amount !== '') body.amount = Number(m.amount)
+      if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
+      const res = await studentAffairsApi.createFundingProject(body)
+      if (res.code === 0) {
         toast.success('项目已创建')
         this.formVisible = false
         await this.load()
-      } catch (e) {
-        m.error = e.message || '创建失败'
-      } finally {
-        this.saving = false
+      } else {
+        m.error = res.message || '创建失败'
       }
+      this.saving = false
     },
     setType(k) { this.activeType = k },
     typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || t }

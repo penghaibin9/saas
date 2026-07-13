@@ -81,19 +81,18 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const [cases, rec] = await Promise.all([
-          studentAffairsApi.getDisciplineCases({ pageSize: 500 }),
-          studentAffairsApi.reconcileDiscipline().catch(() => ({ data: null }))
-        ])
-        this.all = (cases.data && cases.data.items) || []
+      const [cases, rec] = await Promise.all([
+        studentAffairsApi.getDisciplineCases({ pageSize: 500 }),
+        studentAffairsApi.reconcileDiscipline()
+      ])
+      if (cases.code === 0 && cases.data) {
+        this.all = cases.data.items || []
         this.applyFilter()
-        if (rec && rec.data) this.recon = rec.data
-      } catch (e) {
-        this.errorMessage = e.message || '处分台账加载失败'
-      } finally {
-        this.loading = false
+        if (rec.code === 0 && rec.data) this.recon = rec.data
+      } else {
+        this.errorMessage = cases.message || '处分台账加载失败'
       }
+      this.loading = false
     },
     applyFilter() {
       this.items = this.activeStatus ? this.all.filter((c) => c.status === this.activeStatus) : this.all

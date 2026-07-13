@@ -82,15 +82,14 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const res = await studentAffairsApi.getFundingApplications({ pageSize: 500 })
-        this.all = (res.data && res.data.items) || []
+      const res = await studentAffairsApi.getFundingApplications({ pageSize: 500 })
+      if (res.code === 0 && res.data) {
+        this.all = res.data.items || []
         this.applyFilter()
-      } catch (e) {
-        this.errorMessage = e.message || '资助台账加载失败'
-      } finally {
-        this.loading = false
+      } else {
+        this.errorMessage = res.message || '资助台账加载失败'
       }
+      this.loading = false
     },
     applyFilter() {
       this.items = this.all.filter((x) =>

@@ -94,18 +94,17 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const [bs, ps] = await Promise.all([
-          studentAffairsApi.getFundingBatches({ pageSize: 200 }),
-          studentAffairsApi.getFundingProjects({ pageSize: 200 })
-        ])
-        this.batches = (bs.data && bs.data.items) || []
-        this.projects = (ps.data && ps.data.items) || []
-      } catch (e) {
-        this.errorMessage = e.message || '资助批次加载失败'
-      } finally {
-        this.loading = false
+      const [bs, ps] = await Promise.all([
+        studentAffairsApi.getFundingBatches({ pageSize: 200 }),
+        studentAffairsApi.getFundingProjects({ pageSize: 200 })
+      ])
+      if (bs.code === 0 && bs.data) {
+        this.batches = bs.data.items || []
+        this.projects = (ps.code === 0 && ps.data) ? (ps.data.items || []) : []
+      } else {
+        this.errorMessage = bs.message || '资助批次加载失败'
       }
+      this.loading = false
     },
     openForm() {
       this.form = { projectId: this.projects[0] ? this.projects[0].projectId : '', schoolYear: '', quota: null, publicityDays: 5, publish: true, error: '' }
@@ -116,18 +115,17 @@ export default {
       if (!m.projectId || !m.schoolYear) { m.error = '所属项目与学年必填'; return }
       m.error = ''
       this.saving = true
-      try {
-        const body = { projectId: m.projectId, schoolYear: m.schoolYear, publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish }
-        if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
-        await studentAffairsApi.createFundingBatch(body)
+      const body = { projectId: m.projectId, schoolYear: m.schoolYear, publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish }
+      if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
+      const res = await studentAffairsApi.createFundingBatch(body)
+      if (res.code === 0) {
         toast.success('批次已保存')
         this.formVisible = false
         await this.load()
-      } catch (e) {
-        m.error = e.message || '保存失败'
-      } finally {
-        this.saving = false
+      } else {
+        m.error = res.message || '保存失败'
       }
+      this.saving = false
     },
     projectName(id) { const p = this.projects.find((x) => x.projectId === id); return p ? p.projectName : ('项目#' + id) },
     typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || t || '' },

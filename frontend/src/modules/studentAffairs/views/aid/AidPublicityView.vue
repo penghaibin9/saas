@@ -67,39 +67,36 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const res = await studentAffairsApi.getAidApplications({ status: 'PUBLICITY', pageSize: 200 })
-        this.items = (res.data && res.data.items) || []
-      } catch (e) {
-        this.errorMessage = e.message || '公示名单加载失败'
-      } finally {
-        this.loading = false
+      const res = await studentAffairsApi.getAidApplications({ status: 'PUBLICITY', pageSize: 200 })
+      if (res.code === 0 && res.data) {
+        this.items = res.data.items || []
+      } else {
+        this.errorMessage = res.message || '公示名单加载失败'
       }
+      this.loading = false
     },
     async scan() {
       this.scanning = true
-      try {
-        const res = await studentAffairsApi.scanAidPublicity()
+      const res = await studentAffairsApi.scanAidPublicity()
+      if (res.code === 0) {
         const n = (res.data && res.data.count) || 0
         toast.success(n ? `公示期满 ${n} 条已转通过` : '暂无到期公示')
         await this.load()
-      } catch (e) {
-        toast.error(e.message || '扫描失败')
-      } finally {
-        this.scanning = false
+      } else {
+        toast.error(res.message || '扫描失败')
       }
+      this.scanning = false
     },
     async confirm(it) {
       this.actingId = it.applyId
-      try {
-        await studentAffairsApi.confirmAidPublicity(it.applyId)
+      const res = await studentAffairsApi.confirmAidPublicity(it.applyId)
+      if (res.code === 0) {
         toast.success('已确认通过，进入困难库')
         await this.load()
-      } catch (e) {
-        toast.error(e.message || '确认失败')
-      } finally {
-        this.actingId = ''
+      } else {
+        toast.error(res.message || '确认失败')
       }
+      this.actingId = ''
     },
     levelLabel(l) { return LEVELS[l] || l || '—' }
   }

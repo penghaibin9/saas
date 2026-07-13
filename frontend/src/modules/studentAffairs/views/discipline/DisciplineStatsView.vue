@@ -62,14 +62,13 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const res = await studentAffairsApi.getDisciplineStats()
-        this.stats = res.data || { total: 0, byType: [], byStatus: [], reconcile: {} }
-      } catch (e) {
-        this.errorMessage = e.message || '处分统计加载失败'
-      } finally {
-        this.loading = false
+      const res = await studentAffairsApi.getDisciplineStats()
+      if (res.code === 0 && res.data) {
+        this.stats = res.data
+      } else {
+        this.errorMessage = res.message || '处分统计加载失败'
       }
+      this.loading = false
     }
   }
 }

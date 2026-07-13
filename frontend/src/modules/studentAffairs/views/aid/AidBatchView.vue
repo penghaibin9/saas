@@ -86,14 +86,13 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const res = await studentAffairsApi.getAidBatches({ pageSize: 200 })
-        this.batches = (res.data && res.data.items) || []
-      } catch (e) {
-        this.errorMessage = e.message || '认定批次加载失败'
-      } finally {
-        this.loading = false
+      const res = await studentAffairsApi.getAidBatches({ pageSize: 200 })
+      if (res.code === 0 && res.data) {
+        this.batches = res.data.items || []
+      } else {
+        this.errorMessage = res.message || '认定批次加载失败'
       }
+      this.loading = false
     },
     openForm() {
       this.form = { batchName: '', schoolYear: '', publicityDays: 5, publish: true, error: '' }
@@ -104,19 +103,18 @@ export default {
       if (!m.batchName || !m.schoolYear) { m.error = '批次名称与学年必填'; return }
       m.error = ''
       this.saving = true
-      try {
-        await studentAffairsApi.createAidBatch({
-          batchName: m.batchName, schoolYear: m.schoolYear,
-          publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish
-        })
+      const res = await studentAffairsApi.createAidBatch({
+        batchName: m.batchName, schoolYear: m.schoolYear,
+        publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish
+      })
+      if (res.code === 0) {
         toast.success('批次已保存')
         this.formVisible = false
         await this.load()
-      } catch (e) {
-        m.error = e.message || '保存失败'
-      } finally {
-        this.saving = false
+      } else {
+        m.error = res.message || '保存失败'
       }
+      this.saving = false
     },
     statusLabel(s) { return BATCH_STATUS[s] || s || '—' },
     statusType(s) {

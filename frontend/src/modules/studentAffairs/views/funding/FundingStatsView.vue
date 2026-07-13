@@ -50,14 +50,13 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        const res = await studentAffairsApi.getFundingStats()
-        this.stats = res.data || { total: 0, granted: 0, byStatus: [], byType: [] }
-      } catch (e) {
-        this.errorMessage = e.message || '奖助统计加载失败'
-      } finally {
-        this.loading = false
+      const res = await studentAffairsApi.getFundingStats()
+      if (res.code === 0 && res.data) {
+        this.stats = res.data
+      } else {
+        this.errorMessage = res.message || '奖助统计加载失败'
       }
+      this.loading = false
     }
   }
 }

@@ -72,24 +72,22 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try {
-        // 指标始终基于全量聚合；名单按当前筛选取
-        const [all, filtered] = await Promise.all([
-          studentAffairsApi.getDifficultStudents({ pageSize: 500 }),
-          this.activeLevel
-            ? studentAffairsApi.getDifficultStudents({ level: this.activeLevel, pageSize: 500 })
-            : null
-        ])
-        const allItems = (all.data && all.data.items) || []
-        this.total = (all.data && all.data.total) != null ? all.data.total : allItems.length
+      // 指标始终基于全量聚合；名单按当前筛选取
+      const [all, filtered] = await Promise.all([
+        studentAffairsApi.getDifficultStudents({ pageSize: 500 }),
+        this.activeLevel
+          ? studentAffairsApi.getDifficultStudents({ level: this.activeLevel, pageSize: 500 })
+          : null
+      ])
+      if (all.code === 0 && all.data) {
+        const allItems = all.data.items || []
+        this.total = all.data.total != null ? all.data.total : allItems.length
         this.byLevel = allItems.reduce((m, x) => { m[x.level] = (m[x.level] || 0) + 1; return m }, {})
-        const list = filtered ? ((filtered.data && filtered.data.items) || []) : allItems
-        this.items = list
-      } catch (e) {
-        this.errorMessage = e.message || '困难学生库加载失败'
-      } finally {
-        this.loading = false
+        this.items = (filtered && filtered.code === 0 && filtered.data) ? (filtered.data.items || []) : allItems
+      } else {
+        this.errorMessage = all.message || '困难学生库加载失败'
       }
+      this.loading = false
     },
     setLevel(k) { if (this.activeLevel === k) return; this.activeLevel = k; this.load() },
     levelType(l) { return ({ SPECIAL: 'danger', DIFFICULT: 'warning', GENERAL: 'info' })[l] || 'default' }
