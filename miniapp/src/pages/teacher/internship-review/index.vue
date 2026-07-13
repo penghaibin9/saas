@@ -8,7 +8,8 @@
         <view class="page-pad" style="padding-top:0;">
           <!-- 周报批阅 -->
           <view v-if="tab === 'weekly'" class="stack">
-            <view v-for="w in data.reports" :key="w.id" class="ir card">
+            <MobileGlobalState v-if="!data.reports.length" state="empty" title="暂无周报" description="学生提交的实习周报会出现在这里等待批阅。" />
+            <view v-for="w in pagedSlice(data.reports)" :key="w.id" class="ir card">
               <view class="row-between">
                 <view class="flex-1">
                   <view class="row" style="gap:6px;">
@@ -56,12 +57,14 @@
                 <text v-else class="ir__done-text flex-1">已批阅</text>
               </view>
             </view>
+            <view v-if="pagedFooter(data.reports) === 'more'" class="ir__paging" @click="pagedLoadMore">上拉加载更多</view>
+            <view v-else-if="pagedFooter(data.reports) === 'end'" class="ir__paging is-end">没有更多了</view>
           </view>
 
           <!-- 打卡异常 -->
           <view v-else class="stack">
             <MobileGlobalState v-if="!data.abnormal.length" state="empty" title="暂无打卡异常" description="学生打卡异常（超范围/定位失败）会出现在这里。" />
-            <view v-for="c in data.abnormal" :key="c.id" class="ir card">
+            <view v-for="c in pagedSlice(data.abnormal)" :key="c.id" class="ir card">
               <view class="row-between">
                 <text class="t-md t-bold">{{ c.student }}</text>
                 <MobileStatusTag :status="c.status" :label="c.statusLabel" />
@@ -77,6 +80,8 @@
                 <button class="ir__pass flex-1" @click="ck(c, 'ok')">认定有效</button>
               </view>
             </view>
+            <view v-if="pagedFooter(data.abnormal) === 'more'" class="ir__paging" @click="pagedLoadMore">上拉加载更多</view>
+            <view v-else-if="pagedFooter(data.abnormal) === 'end'" class="ir__paging is-end">没有更多了</view>
           </view>
         </view>
       </view>
@@ -87,8 +92,10 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
+import { listPaging } from '@/utils/listPaging'
 import { toast } from '@/utils/nav'
 export default {
+  mixins: [listPaging(20)],
   data() {
     return {
       data: null, state: 'loading', tab: 'weekly', acting: false,
@@ -96,14 +103,26 @@ export default {
     }
   },
   onLoad() { this.load() },
+  // onReachBottom 必须写在页面本身，mp-weixin 才会注册
+  onReachBottom() { this.pagedReachBottom() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
+  watch: {
+    // 切 tab 回到第一批（周报/异常各自从头分页）
+    tab() { this.pagedReset() }
+  },
   methods: {
     toast,
+    // 供 listPaging 判断是否还有更多：按当前 tab 返回对应列表
+    pagingList() {
+      if (!this.data) return []
+      return this.tab === 'weekly' ? (this.data.reports || []) : (this.data.abnormal || [])
+    },
     load(done) {
       this.state = 'loading'
+      this.pagedReset()
       teacherApi.getWeeklyReports().then((d) => {
         d.reports.forEach((r) => { if (!r._body) r._body = 'idle' })
         this.data = d
@@ -222,4 +241,6 @@ export default {
 .ir__risk { min-height: var(--touch-target-min); border-radius: var(--radius-md); border: 1px solid var(--danger-500); background: var(--bg-card); color: var(--danger-600); font-size: var(--font-size-md); }
 .ir__risk::after { border: none; }
 .ir__done-text { text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); line-height: var(--touch-target-min); }
+.ir__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--teacher-700); }
+.ir__paging.is-end { color: var(--text-tertiary); }
 </style>
