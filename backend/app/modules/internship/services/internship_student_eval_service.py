@@ -76,7 +76,9 @@ def _row(e, rec, stu):
 def _full(e):
     return {"selfSummary": e.self_summary or "", "selfHarvest": e.self_harvest or "",
             "selfProblem": e.self_problem or "", "advisorOpinion": e.advisor_opinion or "",
-            "mentorOpinion": e.mentor_opinion or "", "reviewComment": e.school_review_comment or ""}
+            "mentorOpinion": e.mentor_opinion or "", "reviewComment": e.school_review_comment or "",
+            "enterpriseRating": e.enterprise_rating, "positionRating": e.position_rating,
+            "enterpriseFeedback": e.enterprise_feedback or "", "positionFeedback": e.position_feedback or ""}
 
 
 # ═══════════ 学生本人（移动端） ═══════════
@@ -115,6 +117,15 @@ def student_submit(user, body) -> dict:
         e.self_summary = (b.get("selfSummary") or "").strip()
         e.self_harvest = b.get("selfHarvest")
         e.self_problem = b.get("selfProblem")
+        # 学生对企业/岗位评价（0037 列；可选）
+        if b.get("enterpriseRating") is not None:
+            e.enterprise_rating = b.get("enterpriseRating")
+        if b.get("positionRating") is not None:
+            e.position_rating = b.get("positionRating")
+        if b.get("enterpriseFeedback") is not None:
+            e.enterprise_feedback = b.get("enterpriseFeedback")
+        if b.get("positionFeedback") is not None:
+            e.position_feedback = b.get("positionFeedback")
         e.submit_status = "SUBMITTED"
         e.submitted_at = datetime.utcnow()
         if e.school_review_status == "RETURNED":  # 退回后重交，回到待审

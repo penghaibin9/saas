@@ -389,6 +389,20 @@ def agreement_archive(agreement_id: str, user=Depends(get_current_user)):
     return success(result, message="已归档")
 
 
+@router.post("/agreements/{agreement_id}/esign/start", summary="发起三方协议电子签（教师/管理端）")
+def agreement_esign_start(agreement_id: str, user=Depends(get_current_user)):
+    result = agr.esign_start(user, agreement_id)
+    audit_log.record("发起电子签", f"internship-agreement:{agreement_id}", detail=result)
+    return success(result, message="电子签已发起")
+
+
+@router.post("/agreements/{agreement_id}/esign/sign", summary="企业/学校电子签署三方协议（教师/管理端）")
+def agreement_esign_sign(agreement_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    result = agr.esign_sign(user, agreement_id, (body or {}).get("party", ""))
+    audit_log.record("电子签署", f"internship-agreement:{agreement_id}", detail=result)
+    return success(result, message="签署完成")
+
+
 # ═══════════ 企业评价（P2-B：五维评价 + 学校审核，owner + 数据范围）═══════════
 # 企业导师本人提交为门户权限预留（source=ENTERPRISE）；学校录入企业纸质评价 source=SCHOOL_RECORDED。
 

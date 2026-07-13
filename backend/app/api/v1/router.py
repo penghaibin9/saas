@@ -42,6 +42,11 @@ from app.modules.graduation.routers import graduation_template  # 模板中心�
 from app.modules.graduation.routers import graduation_more  # 互查整改/答辩专家/成绩申诉（Batch 7/8）
 from app.api.v1 import excel  # 公共 Excel 底座（/excel/*，通用导入记录）
 from app.modules.internship.routers import internship_agreement_template  # 实习协议模板库（/internship/agreement-templates/*）
+from app.modules.internship.routers import internship_archive  # 实习归档（/internship/archive/*）
+from app.modules.internship.routers import internship_stats  # 实习统计（/internship/stats/*）
+from app.modules.internship.routers import internship_plan  # 实习计划书+任务完成度（/internship/plans/*、/plan-task-progress/*）
+from app.modules.internship.routers import internship_insurance  # 实习保险（/internship/insurances/*）
+from app.modules.internship.routers import internship_process  # 过程报告+实习变更（/internship/process-reports/*、/change-requests/*）
 from app.api.v1.todos import make_router as make_todos_router
 
 api_router = APIRouter()
@@ -73,6 +78,11 @@ api_router.include_router(internship_position.router, dependencies=_INTERN_DEP) 
 api_router.include_router(internship_agreement_template.router, dependencies=_INTERN_DEP)               # /api/v1/internship/agreement-templates/*（协议模板库）
 api_router.include_router(internship_student.router, dependencies=_INTERN_DEP)                         # /api/v1/internship/intern-students/*（实习学生）
 api_router.include_router(internship_match.router, dependencies=_INTERN_DEP)                           # /api/v1/internship/match/*（岗位匹配）
+api_router.include_router(internship_archive.router, dependencies=_INTERN_DEP)                         # /api/v1/internship/archive/*（实习归档）
+api_router.include_router(internship_stats.router, dependencies=_INTERN_DEP)                           # /api/v1/internship/stats/*（实习统计）
+api_router.include_router(internship_plan.router, dependencies=_INTERN_DEP)                            # /api/v1/internship/plans/*、plan-task-progress/*（计划书+完成度）
+api_router.include_router(internship_insurance.router, dependencies=_INTERN_DEP)                       # /api/v1/internship/insurances/*（实习保险）
+api_router.include_router(internship_process.router, dependencies=_INTERN_DEP)                         # /api/v1/internship/process-reports/*、change-requests/*（过程报告+变更）
 api_router.include_router(orientation.router)                                # /api/v1/orientation/*
 api_router.include_router(campus_service.router)                             # /api/v1/campus-service/*
 api_router.include_router(academic.router)                                   # /api/v1/academic/*

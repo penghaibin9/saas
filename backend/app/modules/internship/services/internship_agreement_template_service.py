@@ -54,8 +54,10 @@ def _op_name() -> str:
 
 
 def _op_id():
-    u = get_current_user_ctx() or {}
-    return u.get("userId")
+    # created_by/updated_by 为 BIGINT 数值列；本系统 userId 是字符串登录名（如 u_school_admin01），
+    # 不能写入数值列（MySQL 严格模式 DataError）。操作人已由审计 _trail(operator_name=_op_name()) 记录，
+    # 故此处与其余实习服务一致：数值 created_by/updated_by 留空。
+    return None
 
 
 def _trail(db, tpl_id: int, action: str, detail: dict | None = None):

@@ -235,6 +235,64 @@ def archive(user, aid) -> dict:
         return {"id": str(a.id), "status": a.status}
 
 
+# ═══════════ 电子签流转（P3；三方齐签 → EFFECTIVE，无第三方签章时以平台内部签署时间线为准） ═══════════
+_ESIGN_PARTIES = ("STUDENT", "ENTERPRISE", "SCHOOL")
+
+
+def esign_start(user, aid) -> dict:
+    """发起电子签：记录发起人/时间，esign_status → PENDING。协议须处于三方确认流转中。"""
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能对本人指导学生的协议发起电子签")
+        if a.status not in ("PENDING_STUDENT", "PENDING_ENTERPRISE", "PENDING_SCHOOL"):
+            raise AppException("DATA_CONFLICT", "仅待确认流转中的协议可发起电子签")
+        a.esign_status = "PENDING"
+        a.esign_initiated_at = datetime.utcnow()
+        a.esign_initiated_by = _op_name(user)
+        a.version += 1
+        _trail(db, a.id, "ESIGN_START", {"provider": a.esign_provider}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "esignStatus": a.esign_status, "status": a.status}
+
+
+def esign_sign(user, aid, party: str) -> dict:
+    """某一方电子签署。STUDENT 由学生本人(mobile)；ENTERPRISE/SCHOOL 由教师/管理员(PC，owner)。
+    三方齐签 → esign_status SIGNED + 协议 EFFECTIVE。"""
+    party = (party or "").upper()
+    if party not in _ESIGN_PARTIES:
+        raise AppException("VALIDATION_ERROR", "签署方无效（STUDENT/ENTERPRISE/SCHOOL）")
+    with session() as db:
+        a = _get(db, aid)
+        if a.esign_status not in ("PENDING", "SIGNED"):
+            raise AppException("DATA_CONFLICT", "请先发起电子签")
+        if party == "STUDENT":
+            _, stu = _student_record(db, user)
+            if not stu or stu.id != a.student_id:
+                raise no_permission("只能签署本人的三方协议")
+            a.esign_student_at = datetime.utcnow()
+            a.student_confirm_status = "CONFIRMED"
+            a.student_confirm_at = a.student_confirm_at or datetime.utcnow()
+        else:
+            _owner_or_403(db, a, user, "只能签署本人指导学生的协议")
+            if party == "ENTERPRISE":
+                a.esign_enterprise_at = datetime.utcnow()
+                a.enterprise_confirm_status = "CONFIRMED"
+                a.enterprise_confirm_at = a.enterprise_confirm_at or datetime.utcnow()
+            else:
+                a.esign_school_at = datetime.utcnow()
+                a.school_confirm_status = "CONFIRMED"
+                a.school_confirm_at = a.school_confirm_at or datetime.utcnow()
+                a.school_confirm_by = _op_name(user)
+        all_signed = bool(a.esign_student_at and a.esign_enterprise_at and a.esign_school_at)
+        if all_signed:
+            a.esign_status = "SIGNED"
+            a.status = "EFFECTIVE"
+        a.version += 1
+        _trail(db, a.id, "ESIGN_SIGN", {"party": party, "allSigned": all_signed}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "esignStatus": a.esign_status, "status": a.status, "party": party}
+
+
 def list_agreements(page, page_size, status=None, keyword=None, user=None):
     scope, in_scope = _scope_ctx(user)
     with session() as db:

@@ -82,6 +82,42 @@ async def store_upload(file, biz_type: str = "ATTACHMENT") -> dict:
     return meta
 
 
+def store_bytes(data: bytes, filename: str, biz_type: str = "ATTACHMENT",
+                mime_type: str | None = None) -> dict:
+    """系统生成文件（归档 zip / 导出 xlsx 等）落盘 + 登记，返回契约字段（fileId/fileName/sizeBytes/...）。
+
+    与 store_upload 区别：同步、直接收 bytes、不做用户上传扩展名白名单校验（系统产物非用户上传）。
+    落盘目录、FileObject 登记、内存模式回退均与 store_upload 一致。
+    """
+    ext = (filename.rsplit(".", 1)[-1] if "." in filename else "bin").lower()
+    key = f"{datetime.now():%Y%m%d}/{uuid.uuid4().hex}.{ext}"
+    target = upload_dir() / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    size = len(data)
+    digest = hashlib.sha256(data).hexdigest()
+    meta = {"fileName": filename, "ext": ext, "sizeBytes": size, "sha256": digest,
+            "fileKey": key, "bizType": biz_type, "storedAt": datetime.now().isoformat(timespec="seconds")}
+    if db_enabled():
+        from app.models import FileObject
+        db = get_sessionmaker()()
+        try:
+            row = FileObject(tenant_id=int(current_tenant_id() or 0) or 1000000000000000001,
+                             file_key=key, file_name=filename, ext=ext, mime_type=mime_type,
+                             size_bytes=size, sha256=digest, biz_type=biz_type, status="STORED")
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+            meta["fileId"] = str(row.id)
+        finally:
+            db.close()
+    else:
+        meta["fileId"] = f"mem-{uuid.uuid4().hex[:12]}"
+        _MEM_REGISTRY[meta["fileId"]] = meta
+        _MEM_TENANT[meta["fileId"]] = int(current_tenant_id() or 0)
+    return meta
+
+
 def get_file_meta(file_id: str) -> dict | None:
     """按【当前租户】读取文件元数据。跨租户 / 无租户上下文一律返回 None（不泄露文件存在性）。"""
     tid = int(current_tenant_id() or 0)
