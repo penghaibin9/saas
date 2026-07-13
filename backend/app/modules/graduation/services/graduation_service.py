@@ -6,11 +6,13 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic)
 from app.modules.graduation.services import graduation_student_service as gd_stu_svc
-from app.modules.graduation.services.graduation_scope_service import assert_student_access, can_access_student
+from app.modules.graduation.services.graduation_scope_service import (
+    assert_student_access, can_access_student, has_full_scope,
+)
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
 L_STAGE = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
@@ -684,12 +686,26 @@ def _def_row(g: GraduationDefenseGroup) -> dict:
             "publishedLabel": "已发布（学生端 P17 可见）" if g.published else "待调整后发布"}
 
 
+def _can_access_defense_group(db, group: GraduationDefenseGroup) -> bool:
+    if has_full_scope():
+        return True
+    user = get_current_user_ctx() or {}
+    role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
+    real_name = (user.get("realName") or "").strip()
+    if role == "GD_DEFENSE_SECRETARY" and real_name == (group.secretary or "").strip():
+        return True
+    panel = {(group.chair or "").strip(), *((x or "").strip() for x in (group.members_json or []))}
+    if role == "GD_DEFENSE_EXPERT" and real_name in panel:
+        return True
+    return any(can_access_student(db, student) for student in _assigned_students(db, group.id))
+
+
 def list_defense_groups(page, ps, keyword=None):
     with session() as db:
         rows = db.scalars(select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == _tid(),
             GraduationDefenseGroup.is_deleted.is_(False)).order_by(GraduationDefenseGroup.id)).all()
-        items = [_def_row(g) for g in rows]
+        items = [_def_row(g) for g in rows if _can_access_defense_group(db, g)]
         if keyword:
             kw = keyword.strip()
             items = [i for i in items if kw in i["groupName"]]
@@ -767,18 +783,22 @@ def get_defense_group_detail(gid) -> dict:
         g = db.get(GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
+        if not _can_access_defense_group(db, g):
+            raise no_permission("Defense group is outside the current graduation-design scope")
         row = _def_row(g)
         row["students"] = [{"id": str(s.id), "name": s.name, "className": s.class_name or "",
                             "topicTitle": s.topic_title or "", "advisorName": s.advisor_name or "",
                             "conflict": bool(s.advisor_name and s.advisor_name in
                                              set([g.chair] + (g.members_json or [])))}
-                           for s in _assigned_students(db, g.id)]
+                           for s in _assigned_students(db, g.id) if can_access_student(db, s)]
         return row
 
 
 def list_defense_eligible_students(gid=None, keyword=None) -> list:
     """可分配到答辩组的学生：已确认选题且在册；含"未分组"与"已在本组"。"""
     with session() as db:
+        if not has_full_scope():
+            raise no_permission("Only graduation managers can list defense assignment candidates")
         stus = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()

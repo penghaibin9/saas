@@ -88,6 +88,13 @@ def test_mentor_cannot_call_unclassified_management_write(client):
     assert response.status_code == 403
 
 
+def test_mentor_cannot_read_graduation_configuration_ledgers(client):
+    headers = _headers("GD_MENTOR")
+    assert client.get("/api/v1/graduation/batches", headers=headers).status_code == 403
+    assert client.get("/api/v1/graduation/gd-mentors", headers=headers).status_code == 403
+    assert client.get("/api/v1/graduation/gd-defense-experts", headers=headers).status_code == 403
+
+
 def test_organization_admin_without_verified_scope_claim_is_denied(client):
     response = client.get(
         "/api/v1/graduation/dashboard",

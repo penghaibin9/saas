@@ -28,12 +28,28 @@ _ACTION_RULES: tuple[tuple[str, str, str], ...] = (
     ("/gd-reviews/", "/submit", "graduationDesign.final.review"),
 )
 
+_READ_RULES: tuple[tuple[str, str], ...] = (
+    ("/graduation/batches", "graduationDesign.manage"),
+    ("/graduation/gd-mentors", "graduationDesign.manage"),
+    ("/graduation/gd-defense-experts", "graduationDesign.manage"),
+    ("/graduation/gd-templates", "graduationDesign.manage"),
+    ("/graduation/audit-logs", "graduationDesign.manage"),
+    ("/gd-topic-rounds/", "graduationDesign.view"),
+)
+
 
 def graduation_permission_for(method: str, path: str) -> str:
     """返回请求所需 permissionCode；顺序是具体动作优先，然后通用读/写兜底。"""
     method = (method or "GET").upper()
     path = path or ""
     if method in {"GET", "HEAD", "OPTIONS"}:
+        if "/gd-topic-rounds/" in path and (
+            path.endswith("/capacity-conflicts") or path.endswith("/stats")
+        ):
+            return "graduationDesign.manage"
+        for contains, code in _READ_RULES:
+            if contains in path:
+                return code
         return "graduationDesign.view"
 
     if "/export" in path or path.endswith("/export"):

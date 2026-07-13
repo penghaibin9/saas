@@ -16,6 +16,9 @@ if (/catch\s*\([^)]*\)\s*\{[^}]*return\s+mockFn\(\)/s.test(pcApi) && !pcApi.incl
 
 const miniEnv = read('miniapp/src/config/env.js')
 const miniRequest = read('miniapp/src/services/request.js')
+const mobileStudent = read('backend/app/services/mobile_student_service.py')
+const graduationService = read('backend/app/modules/graduation/services/graduation_service.py')
+const gradeService = read('backend/app/modules/graduation/services/graduation_grade_service.py')
 if (!miniEnv.includes('if (env && env.PROD) return false')) {
   failures.push('小程序生产构建未强制 useMock=false')
 }
@@ -24,6 +27,15 @@ if (!miniEnv.includes('allowMockFallback')) {
 }
 if (!miniRequest.includes('ENV.allowMockFallback && mockFn')) {
   failures.push('小程序 realFirst 未限制 mock 回退环境')
+}
+if (mobileStudent.includes('body.get("plagiarismRate")')) {
+  failures.push('学生端仍可伪造毕业设计查重率')
+}
+if (!graduationService.includes('/api/v1/graduation/materials/')) {
+  failures.push('毕业设计材料未使用业务关系鉴权下载地址')
+}
+if (!gradeService.includes('Review and confirmed defense scores must exist before calculation')) {
+  failures.push('毕业设计成绩核算未强制使用权威评阅/答辩数据')
 }
 
 if (failures.length) {
