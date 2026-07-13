@@ -32,6 +32,7 @@ const MENUS = [
   { key: 'plt-security', label: '安全策略', icon: '☖', path: '/admin/platform/security' },
   { key: 'plt-audit', label: '全平台审计', icon: '☰', path: '/admin/platform/audit' },
   { key: 'plt-settings', label: '系统参数', icon: '✱', path: '/admin/platform/settings' },
+  { key: 'plt-file-storage', label: '文件存储', icon: '⛃', path: '/admin/platform/file-storage' },
   { key: 'plt-home', label: '运营看板', icon: '◫', path: '/admin/platform' },
   { key: 'plt-integrations', label: '集成开放', icon: '⇄', path: '/admin/platform/integrations' },
   { key: 'plt-api', label: 'API·Webhook', icon: '✦', path: '/admin/platform/api-access' },

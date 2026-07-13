@@ -29,7 +29,8 @@ def _require(value: str, name: str) -> str:
 class CosStorageBackend:
     kind = "cos"
 
-    def __init__(self) -> None:
+    def __init__(self, *, region: str = "", bucket: str = "",
+                 secret_id: str = "", secret_key: str = "") -> None:
         try:
             from qcloud_cos import CosConfig, CosS3Client
         except ImportError as exc:  # noqa: BLE001
@@ -37,10 +38,11 @@ class CosStorageBackend:
                 "FILE_STORAGE_MISCONFIGURED",
                 "FILE_STORAGE_BACKEND=cos 需要安装 cos-python-sdk-v5（pip install cos-python-sdk-v5）。",
             ) from exc
-        self._bucket = _require(getattr(settings, "COS_BUCKET", ""), "COS_BUCKET")
-        region = _require(getattr(settings, "COS_REGION", ""), "COS_REGION")
-        secret_id = _require(getattr(settings, "COS_SECRET_ID", ""), "COS_SECRET_ID")
-        secret_key = _require(getattr(settings, "COS_SECRET_KEY", ""), "COS_SECRET_KEY")
+        # 参数优先（平台运营端配置注入），回退 settings（.env）
+        self._bucket = _require(bucket or getattr(settings, "COS_BUCKET", ""), "COS_BUCKET")
+        region = _require(region or getattr(settings, "COS_REGION", ""), "COS_REGION")
+        secret_id = _require(secret_id or getattr(settings, "COS_SECRET_ID", ""), "COS_SECRET_ID")
+        secret_key = _require(secret_key or getattr(settings, "COS_SECRET_KEY", ""), "COS_SECRET_KEY")
         config = CosConfig(Region=region, SecretId=secret_id, SecretKey=secret_key,
                            Token=None, Scheme="https")
         self._client = CosS3Client(config)

@@ -131,6 +131,12 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '平台系统参数', requiresAuth: true, permissionKey: 'platform.settings.view' }
     },
     {
+      path: 'file-storage',
+      name: 'platform-file-storage',
+      component: () => import('@/modules/platform/views/control/PlatformControlFileStorage.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '文件存储设置', requiresAuth: true, permissionKey: 'platform.settings.view' }
+    },
+    {
       path: 'sync',
       name: 'platform-sync',
       component: () => import('@/modules/platform/views/PlatformSyncTaskView.vue'),

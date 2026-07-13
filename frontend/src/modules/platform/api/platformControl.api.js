@@ -127,5 +127,10 @@ export const platformControlApi = {
 
   /* 系统参数 */
   getSettings: () => real('settings', '/platform/settings', {}),
-  putSettings: (settings) => real('settings-put', '/platform/settings', { method: 'PUT', body: { settings } })
+  putSettings: (settings) => real('settings-put', '/platform/settings', { method: 'PUT', body: { settings } }),
+
+  /* 文件存储（本地 / 腾讯云 COS） */
+  getFileStorage: () => real('file-storage', '/platform/file-storage', {}),
+  putFileStorage: (config) => real('file-storage-put', '/platform/file-storage', { method: 'PUT', body: { config } }),
+  testFileStorage: () => real('file-storage-test', '/platform/file-storage/test', { method: 'POST', body: {} })
 }

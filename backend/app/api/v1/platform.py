@@ -489,3 +489,28 @@ def settings_put(body: dict = Body(...), user=Depends(require_platform_super_adm
     out = svc.put_settings_config(body.get("settings") or body)
     _audit("PLATFORM_SETTINGS_UPDATE", "global", {"keys": list(body)})
     return success({"settings": out})
+
+
+# ── §文件存储（本地 / 腾讯云 COS 可视化切换）──
+
+@router.get("/file-storage", summary="文件存储配置（密钥脱敏）")
+def file_storage_get(user=Depends(require_platform_super_admin)):
+    from app.services.storage import config as storage_config
+    return success({"config": storage_config.masked_config()})
+
+
+@router.put("/file-storage", summary="保存文件存储配置（密钥加密存库，即时生效）")
+def file_storage_put(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services.storage import config as storage_config
+    payload = body.get("config") or body
+    out = storage_config.save_config(payload)
+    _audit("PLATFORM_FILE_STORAGE_UPDATE", "global", {"backend": out.get("backend")})
+    return success({"config": out})
+
+
+@router.post("/file-storage/test", summary="测试对象存储连接（写探针后删除）")
+def file_storage_test(user=Depends(require_platform_super_admin)):
+    from app.services.storage import config as storage_config
+    result = storage_config.test_connection()
+    _audit("PLATFORM_FILE_STORAGE_TEST", "global", {"ok": result.get("ok")})
+    return success(result)

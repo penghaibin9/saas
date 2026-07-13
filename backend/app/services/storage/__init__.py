@@ -18,15 +18,18 @@ _backend_kind: str | None = None
 
 
 def get_backend() -> StorageBackend:
-    """按配置返回存储后端单例。配置变化（如测试内改 settings）时重建。"""
+    """按生效配置返回存储后端单例（平台运营端配置优先，回退 .env）。
+    配置变化时经 reset_backend() 重建。"""
     global _backend, _backend_kind
-    from app.core.config import settings
-    kind = (getattr(settings, "FILE_STORAGE_BACKEND", "") or "local").strip().lower()
+    from app.services.storage.config import effective_config
+    cfg = effective_config()
+    kind = cfg["backend"]
     if _backend is not None and _backend_kind == kind:
         return _backend
     if kind == "cos":
         from app.services.storage.cos import CosStorageBackend
-        _backend = CosStorageBackend()
+        _backend = CosStorageBackend(region=cfg["cosRegion"], bucket=cfg["cosBucket"],
+                                     secret_id=cfg["cosSecretId"], secret_key=cfg["cosSecretKey"])
     else:
         from app.services.storage.local import LocalStorageBackend
         _backend = LocalStorageBackend()
