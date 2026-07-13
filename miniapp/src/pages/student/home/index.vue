@@ -18,7 +18,7 @@
         <view class="home__hi">
           <view class="flex-1">
             <text class="home__hi-name">{{ greeting }}，{{ user.name }}</text>
-            <text class="home__hi-sub">{{ user.className }} · {{ user.stageText }}</text>
+            <text class="home__hi-sub">{{ user.className || '在校学生' }}</text>
           </view>
           <view class="home__code" @click="toast('校园码将随学校门禁对接后启用')">
             <text class="home__code-icon">▣</text>

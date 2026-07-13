@@ -39,7 +39,7 @@ export const roleConfigs = {
     side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index',
     dataScope: 'CLASS',
-    dataScopeText: '软件工程 2401 班',
+    dataScopeText: '所负责班级',
     workbench: ['risk', 'approval', 'contact'],
     quickActions: [
       { key: 'contact', label: '联系学生', icon: '☎' },
@@ -55,7 +55,7 @@ export const roleConfigs = {
     side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index',
     dataScope: 'MENTEES',
-    dataScopeText: '本人指导学生 12 人',
+    dataScopeText: '本人指导学生',
     workbench: ['gd-review', 'guide'],
     quickActions: [
       { key: 'review-open', label: '批阅开题', icon: '▤' },
@@ -71,7 +71,7 @@ export const roleConfigs = {
     side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index',
     dataScope: 'INTERNS',
-    dataScopeText: '本人实习学生 18 人',
+    dataScopeText: '本人实习学生',
     workbench: ['intern-review', 'leave', 'risk'],
     quickActions: [
       { key: 'weekly', label: '批阅周报', icon: '▤' },
@@ -87,7 +87,7 @@ export const roleConfigs = {
     side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index',
     dataScope: 'COLLEGE',
-    dataScopeText: '信息工程学院',
+    dataScopeText: '本学院范围',
     workbench: ['employment', 'unemployed'],
     quickActions: [
       { key: 'follow', label: '就业跟进', icon: '☎' },
@@ -103,7 +103,7 @@ export const roleConfigs = {
     side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index',
     dataScope: 'COLLEGE',
-    dataScopeText: '信息工程学院',
+    dataScopeText: '本学院范围',
     workbench: ['academic', 'warning', 'status'],
     quickActions: [
       { key: 'warning', label: '异常预警', icon: '⚠' },
@@ -119,7 +119,7 @@ export const roleConfigs = {
     side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index',
     dataScope: 'COLLEGE',
-    dataScopeText: '信息工程学院',
+    dataScopeText: '本学院范围',
     workbench: ['overview', 'risk', 'approval'],
     quickActions: [
       { key: 'overview', label: '学院数据', icon: '▦' },
