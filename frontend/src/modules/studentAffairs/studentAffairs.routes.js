@@ -68,6 +68,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '困难学生库', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
       },
       {
+        path: 'aid/publicity',
+        name: 'student-affairs-aid-publicity',
+        component: () => import('@/modules/studentAffairs/views/aid/AidPublicityView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '认定公示待办', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
+      },
+      {
         path: 'funding',
         name: 'student-affairs-funding',
         component: () => import('@/modules/studentAffairs/views/FundingWorkbenchView.vue'),
@@ -78,6 +84,18 @@ const studentAffairsRoutes = [
         name: 'student-affairs-funding-projects',
         component: () => import('@/modules/studentAffairs/views/funding/FundingProjectView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '资助项目', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+      },
+      {
+        path: 'funding/batches',
+        name: 'student-affairs-funding-batches',
+        component: () => import('@/modules/studentAffairs/views/funding/FundingBatchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '资助批次', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+      },
+      {
+        path: 'discipline/ledger',
+        name: 'student-affairs-discipline-ledger',
+        component: () => import('@/modules/studentAffairs/views/discipline/DisciplineLedgerView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '违纪台账', requiresAuth: true, permissionKey: 'studentAffairs.discipline.view' }
       },
       {
         path: 'discipline',
