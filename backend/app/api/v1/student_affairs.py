@@ -11,6 +11,7 @@ from app.core.permissions import require_permission
 from app.core.security import require_staff  # 仅敏感 reveal 等「服务层自鉴权+落 DENY 审计」端点用粗粒度门禁，避免网关短路吞掉越权审计
 from app.services import affairs_activity_service as activity_svc
 from app.services import affairs_aid_service as aid_svc
+from app.services import affairs_club_service as club_svc
 from app.services import affairs_archive_service as archive_svc
 from app.services import affairs_class_service as class_svc
 from app.services import affairs_dashboard_service as svc
@@ -1116,6 +1117,32 @@ class VolunteerBody(BaseModel):
     serviceDate: Optional[str] = None
 
 
+class ClubBody(BaseModel):
+    clubName: str = Field(..., min_length=1)
+    clubType: Optional[str] = Field("INTEREST")
+    collegeId: Optional[int] = None
+    advisorName: Optional[str] = None
+    presidentStudentId: Optional[int] = None
+    founderStudentId: Optional[int] = None
+
+
+class ClubReviewBody(BaseModel):
+    action: str = Field("APPROVE", description="APPROVE/REJECT")
+    reason: Optional[str] = ""
+
+
+class ClubMemberBody(BaseModel):
+    studentId: int = Field(...)
+    role: Optional[str] = Field("MEMBER")
+
+
+class ClubAnnualReviewBody(BaseModel):
+    reviewYear: str = Field(..., min_length=1)
+    result: Optional[str] = Field("PASS", description="PASS/CONDITIONAL/FAIL")
+    activityCount: Optional[int] = None
+    comment: Optional[str] = None
+
+
 @router.get("/activities", summary="活动列表（type/status 过滤）")
 def activities(activityType: Optional[str] = None, status: Optional[str] = None,
                page: int = 1, pageSize: int = 20,
@@ -1223,3 +1250,58 @@ def volunteer_confirm(recordId: int = Path(...),
 def volunteer_reject(body: ReasonBody, recordId: int = Path(...),
                      user=Depends(require_permission("studentAffairs.activity.confirm"))):
     return success(activity_svc.reject_volunteer(recordId, user, body.reason or ""), message="已驳回")
+
+
+# ── 社团管理（05 卡）──
+@router.get("/clubs", summary="社团列表（status/type 过滤）")
+def clubs(status: Optional[str] = None, clubType: Optional[str] = None, page: int = 1, pageSize: int = 50,
+          user=Depends(require_permission("studentAffairs.club.view"))):
+    items, total = club_svc.list_clubs(user, status, clubType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/clubs", summary="建社团（待审批）")
+def club_create(body: ClubBody, user=Depends(require_permission("studentAffairs.club.manage"))):
+    return success(club_svc.create_club(body, user), message="已提交")
+
+
+@router.post("/clubs/{clubId}/review", summary="社团审批（通过/驳回）")
+def club_review(body: ClubReviewBody, clubId: int = Path(...),
+                user=Depends(require_permission("studentAffairs.club.manage"))):
+    return success(club_svc.review_club(clubId, user, body.action, body.reason or ""), message="已处理")
+
+
+@router.post("/clubs/{clubId}/disband", summary="注销社团（原因≥5字）")
+def club_disband(body: ReasonBody, clubId: int = Path(...),
+                 user=Depends(require_permission("studentAffairs.club.manage"))):
+    return success(club_svc.disband_club(clubId, user, body.reason or ""), message="已注销")
+
+
+@router.get("/clubs/{clubId}/members", summary="社团成员列表")
+def club_members(clubId: int = Path(...),
+                 user=Depends(require_permission("studentAffairs.club.view"))):
+    return success({"items": club_svc.list_members(clubId, user)})
+
+
+@router.post("/clubs/{clubId}/members", summary="增补社团成员/任职")
+def club_member_add(body: ClubMemberBody, clubId: int = Path(...),
+                    user=Depends(require_permission("studentAffairs.club.manage"))):
+    return success(club_svc.add_member(clubId, body, user), message="已加入")
+
+
+@router.post("/clubs/members/{memberId}/remove", summary="成员退社")
+def club_member_remove(memberId: int = Path(...),
+                       user=Depends(require_permission("studentAffairs.club.manage"))):
+    return success(club_svc.remove_member(memberId, user), message="已退社")
+
+
+@router.get("/clubs/{clubId}/annual-reviews", summary="社团年审记录")
+def club_annual_reviews(clubId: int = Path(...),
+                        user=Depends(require_permission("studentAffairs.club.view"))):
+    return success({"items": club_svc.list_annual_reviews(clubId, user)})
+
+
+@router.post("/clubs/{clubId}/annual-reviews", summary="社团年审（一社一年一条）")
+def club_annual_review_create(body: ClubAnnualReviewBody, clubId: int = Path(...),
+                              user=Depends(require_permission("studentAffairs.club.manage"))):
+    return success(club_svc.annual_review(clubId, body, user), message="年审已记录")
