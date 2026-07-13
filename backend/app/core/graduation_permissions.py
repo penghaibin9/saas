@@ -13,6 +13,9 @@ from app.core.security import get_current_user
 
 
 _ACTION_RULES: tuple[tuple[str, str, str], ...] = (
+    ("/gd-plagiarism/", "/result", "graduationDesign.plagiarism.result"),
+    ("/gd-plagiarism/", "/dispute/review", "graduationDesign.plagiarism.dispute.review"),
+    ("/gd-plagiarism/", "/submit", "graduationDesign.plagiarism.submit"),
     ("/gd-topics/", "/submit-review", "graduationDesign.topic.submit"),
     ("/gd-topics/", "/review", "graduationDesign.topic.review"),
     ("/proposals/", "/review", "graduationDesign.proposal.review"),

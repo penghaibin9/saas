@@ -16,6 +16,19 @@ from app.modules.graduation.services import graduation_service as svc
 router = APIRouter(prefix="/graduation", tags=["毕业设计"])
 
 
+@router.get("/materials/{file_id}/download", summary="下载毕业设计材料（业务关系鉴权）")
+def download_graduation_material(file_id: str, user=Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+    from app.core.exceptions import not_found
+
+    resolved = svc.resolve_material_download(file_id)
+    if not resolved:
+        raise not_found("毕业设计材料不存在或无权访问")
+    path, filename = resolved
+    audit_log.record("GRADUATION_MATERIAL_DOWNLOAD", f"graduation-file:{file_id}")
+    return FileResponse(str(path), filename=filename)
+
+
 def _p(i, t, page, ps):
     return success(paginate(i, t, page, ps))
 

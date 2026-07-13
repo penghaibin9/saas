@@ -51,6 +51,12 @@ def test_request_permission_resolver_is_fail_closed_for_writes():
     assert graduation_permission_for(
         "POST", "/api/v1/graduation/proposals/export"
     ) == "graduationDesign.export"
+    assert graduation_permission_for(
+        "POST", "/api/v1/graduation/gd-plagiarism/123/result"
+    ) == "graduationDesign.plagiarism.result"
+    assert graduation_permission_for(
+        "POST", "/api/v1/graduation/gd-plagiarism/123/dispute/review"
+    ) == "graduationDesign.plagiarism.dispute.review"
 
 
 def test_unassigned_staff_is_denied_graduation_center(client):

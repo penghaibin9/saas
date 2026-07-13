@@ -62,10 +62,11 @@ def test_final_review_and_real_attachments(client, auth_headers, db_mode):
     att = pdetail["attachmentsList"][0]
     assert att["fileId"] == str(fid1)
     assert att["fileName"] == "thesis.pdf"
-    assert att["downloadUrl"] == f"/api/v1/files/download/{fid1}"
+    assert att["downloadUrl"] == f"/api/v1/graduation/materials/{fid1}/download"
     # 真实下载走鉴权+审计接口，返回 200
     dl = client.get(att["downloadUrl"], headers=h)
     assert dl.status_code == 200
+    assert client.get(f"/api/v1/files/download/{fid1}", headers=h).status_code == 404
 
     # 学生带附件提交成果初稿（无查重率）
     fid2 = _upload(client, sh)

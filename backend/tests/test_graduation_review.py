@@ -19,18 +19,46 @@ def _gd_student(client, h, no, name, advisor=None):
 def test_plagiarism_submit_result_dispute(client, auth_headers, db_mode):
     h = auth_headers
     gid = _gd_student(client, h, "PL001", "查重测试生")
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationFinal
+    db = get_sessionmaker()()
+    final = GraduationFinal(
+        tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
+        version="v1", submit_at=datetime.utcnow(), status="PENDING_REVIEW",
+        plagiarism_status="未检测", attachments_json=["bound-thesis-file"],
+    )
+    db.add(final)
+    db.commit()
+    final_id = str(final.id)
+    db.close()
 
-    submit = client.post(f"{GD_PLAG}/{gid}/submit", headers=h, json={})
+    submit = client.post(f"{GD_PLAG}/{gid}/submit", headers=h, json={"gdFinalId": final_id})
     assert submit.json()["data"]["status"] == "CHECKING"
     pid = submit.json()["data"]["id"]
 
+    duplicate_submit = client.post(f"{GD_PLAG}/{gid}/submit", headers=h, json={"gdFinalId": final_id})
+    assert duplicate_submit.json()["data"]["id"] == pid
+
     bad_rate = client.post(f"{GD_PLAG}/{pid}/result", headers=h, json={"rate": "abc"})
     assert bad_rate.json()["code"] != 0
+    out_of_range = client.post(f"{GD_PLAG}/{pid}/result", headers=h, json={"rate": "101"})
+    assert out_of_range.json()["code"] != 0
+    unsafe_url = client.post(
+        f"{GD_PLAG}/{pid}/result", headers=h,
+        json={"rate": "35", "reportUrl": "javascript:alert(1)"},
+    )
+    assert unsafe_url.json()["code"] != 0
 
     result = client.post(f"{GD_PLAG}/{pid}/result", headers=h, json={"rate": "35"})
     body = result.json()["data"]
     assert body["status"] == "DONE"
     assert body["overThreshold"] is True
+
+    blocked_review = client.post(
+        f"/api/v1/graduation/finals/{final_id}/review", headers=h, json={"action": "APPROVE"},
+    )
+    assert blocked_review.status_code == 409
 
     dup_result = client.post(f"{GD_PLAG}/{pid}/result", headers=h, json={"rate": "10"})
     assert dup_result.json()["code"] != 0  # 已完成不可重复回填
@@ -40,7 +68,18 @@ def test_plagiarism_submit_result_dispute(client, auth_headers, db_mode):
 
     review = client.post(f"{GD_PLAG}/{pid}/dispute/review", headers=h, json={"action": "APPROVE", "comment": "核实无误"})
     assert review.json()["data"]["disputeStatus"] == "APPROVED"
-    assert review.json()["data"]["overThreshold"] is False
+    assert review.json()["data"]["overThreshold"] is True
+
+    approved_exception = client.post(
+        f"/api/v1/graduation/finals/{final_id}/review", headers=h, json={"action": "APPROVE"},
+    )
+    assert approved_exception.status_code == 200
+
+    db = get_sessionmaker()()
+    refreshed = db.get(GraduationFinal, int(final_id))
+    assert refreshed.plagiarism_rate == "35.0%"
+    assert refreshed.plagiarism_status == "已检测"
+    db.close()
 
     stats = client.get(f"{GD_PLAG}/stats", headers=h).json()["data"]
     assert stats["total"] >= 1

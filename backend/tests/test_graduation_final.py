@@ -73,25 +73,20 @@ def test_submit_order_draft_then_final(client, auth_headers, db_mode):
     assert fin.json()["data"]["finalType"] == "定稿"
 
 
-def test_gd_r09_plagiarism_blocks_approve(client, auth_headers, db_mode):
+def test_student_supplied_plagiarism_rate_is_ignored(client, auth_headers, db_mode):
     h = auth_headers
     name = "查重小红"
     gid = _gd_student_with_topic(client, h, "FN101", name)
     sh = _stu_token(name)
     _to_guiding(client, h, sh, gid, name)
 
-    # 提交带超标查重率的初稿
+    # A student cannot forge an authoritative plagiarism result in the request body.
     client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "plagiarismRate": "35%"})
     fid = _pending_final_id(client, h, name)
-
-    blocked = client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "APPROVE"})
-    assert blocked.json()["code"] != 0  # GD-R09 拦截
-
-    # 退回需理由≥5，然后可正常退回
-    bad = client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "REJECT", "comment": "x"})
-    assert bad.json()["code"] != 0
-    ok = client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "REJECT", "comment": "查重超标请降重后重交"})
-    assert ok.json()["code"] == 0
+    row = next(
+        item for item in client.get(FINAL, headers=h).json()["data"]["items"] if item["id"] == fid
+    )
+    assert row["plagiarismRate"] == "—"
 
 
 def test_reject_then_resubmit_new_version(client, auth_headers, db_mode):

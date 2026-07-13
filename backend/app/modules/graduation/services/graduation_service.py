@@ -63,12 +63,67 @@ def _resolve_attachments(ids) -> list:
             v = None
         if not v:
             continue
-        out.append({**v, "downloadUrl": f"/api/v1/files/download/{v['fileId']}"})
+        out.append({**v, "downloadUrl": f"/api/v1/graduation/materials/{v['fileId']}/download"})
     return out
+
+
+def _validate_final_attachments(attachments) -> list[str]:
+    """Reject forged cross-tenant IDs and unsafe thesis material types before binding."""
+    from app.services import file_service
+    normalized: list[str] = []
+    for raw in attachments or []:
+        fid = _att_id(raw)
+        if not fid or fid in normalized:
+            continue
+        meta = file_service.get_file_meta(fid)
+        if not meta:
+            raise AppException("VALIDATION_ERROR", "Thesis attachment is missing or outside the current tenant")
+        if (meta.get("ext") or "").lower() not in {"pdf", "doc", "docx", "zip"}:
+            raise AppException("FILE_TYPE_NOT_ALLOWED", "Only PDF, Word, or ZIP thesis files are allowed")
+        normalized.append(fid)
+    if len(normalized) > 10:
+        raise AppException("VALIDATION_ERROR", "A thesis submission may contain at most 10 attachments")
+    return normalized
+
+
+def _mark_material_files(db, attachment_ids: list[str]) -> None:
+    if not attachment_ids:
+        return
+    from app.models import FileObject
+    file_rows = db.scalars(select(FileObject).where(
+        FileObject.tenant_id == _tid(),
+        FileObject.id.in_([int(fid) for fid in attachment_ids]),
+        FileObject.is_deleted.is_(False),
+    ).with_for_update()).all()
+    if len(file_rows) != len(attachment_ids):
+        raise AppException("VALIDATION_ERROR", "One or more graduation attachments are invalid")
+    for file_row in file_rows:
+        file_row.biz_type = "GRADUATION_MATERIAL"
 
 
 def _stu_of(db, sid):
     return db.get(GraduationStudent, sid)
+
+
+def resolve_material_download(file_id: str):
+    """Resolve only when the file is bound to an accessible graduation proposal/final."""
+    from app.services import file_service
+    with session() as db:
+        candidates = []
+        candidates.extend(db.scalars(select(GraduationProposal).where(
+            GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False),
+        )).all())
+        candidates.extend(db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == _tid(), GraduationFinal.is_deleted.is_(False),
+        )).all())
+        for material in candidates:
+            bound = {_att_id(raw) for raw in (material.attachments_json or [])}
+            if file_id not in bound:
+                continue
+            student = db.get(GraduationStudent, material.gd_student_id)
+            assert_student_access(db, student, "graduation.material.download")
+            return file_service.resolve_download(file_id, allow_graduation_material=True)
+    return None
 
 
 def _stu_row(s: GraduationStudent) -> dict:
@@ -286,6 +341,7 @@ def final_stats() -> dict:
 
 def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) -> dict:
     """学生提交/重交开题报告。已有待审/已通过时不可重复提交；被驳回后可重交（版本自增 + is_resubmit）。"""
+    attachment_ids = _validate_final_attachments(attachments)
     if not (background and background.strip()):
         raise AppException("VALIDATION_ERROR", "选题背景不能为空")
     if not (plan and plan.strip()):
@@ -294,6 +350,7 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
+        _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == stu.id,
             GraduationProposal.is_deleted.is_(False)).order_by(GraduationProposal.id.desc())).all()
@@ -307,7 +364,7 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         p = GraduationProposal(
             tenant_id=_tid(), gd_student_id=stu.id, version=version, is_resubmit=is_resubmit,
             submit_at=datetime.utcnow(), background=background.strip(), plan=plan.strip(),
-            outcome=(outcome or "").strip(), attachments_json=attachments or [], status="PENDING_REVIEW")
+            outcome=(outcome or "").strip(), attachments_json=attachment_ids, status="PENDING_REVIEW")
         db.add(p)
         db.flush()
         _audit(db, "PROPOSAL", p.id, "提交开题报告-" + ("重交" if is_resubmit else "首次"),
@@ -455,15 +512,17 @@ def _not_submitted_finals(db, keyword=None) -> list:
     return rows
 
 
-def submit_final(gd_student_id, final_type, plagiarism_rate=None, attachments=None) -> dict:
+def submit_final(gd_student_id, final_type, attachments=None) -> dict:
     """学生提交/重交论文成果。初稿→定稿有序（定稿须初稿已通过）；有待审时不可重复提交。
     attachments：论文/材料附件 file_id 列表（文件中心 t_file_object.id），存 attachments_json。"""
+    attachment_ids = _validate_final_attachments(attachments)
     if final_type not in FINAL_TYPES:
         raise AppException("VALIDATION_ERROR", "成果类型必须是 初稿/定稿")
     with session() as db:
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
+        _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == stu.id,
             GraduationFinal.is_deleted.is_(False)).order_by(GraduationFinal.id.desc())).all()
@@ -479,9 +538,9 @@ def submit_final(gd_student_id, final_type, plagiarism_rate=None, attachments=No
         version = f"v{len(same_type) + 1}"
         f = GraduationFinal(tenant_id=_tid(), gd_student_id=stu.id, final_type=final_type,
                             version=version, submit_at=datetime.utcnow(),
-                            plagiarism_rate=plagiarism_rate or None,
-                            plagiarism_status="已检测" if plagiarism_rate else "未检测",
-                            attachments_json=list(attachments) if attachments else [],
+                            plagiarism_rate=None,
+                            plagiarism_status="未检测",
+                            attachments_json=attachment_ids,
                             status="PENDING_REVIEW")
         db.add(f)
         db.flush()
@@ -497,17 +556,32 @@ def review_final(fid, action, comment=None) -> dict:
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     with session() as db:
-        f = db.get(GraduationFinal, int(fid))
+        f = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.id == int(fid),
+            GraduationFinal.tenant_id == _tid(),
+            GraduationFinal.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("成果不存在")
         stu = _stu_of(db, f.gd_student_id)
         assert_student_access(db, stu, "final.review")
         if f.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该成果已批阅，请刷新")
-        # GD-R09：查重超标不允许直接通过，必须退回修改
-        if action == "APPROVE" and _rate_over(f.plagiarism_rate):
-            raise AppException("DATA_CONFLICT",
-                               f"查重率 {f.plagiarism_rate} 超标（GD-R09），须退回修改后重交，不能直接通过")
+        # GD-R09: approval relies on the server-side check record, never a client-supplied rate.
+        if action == "APPROVE":
+            from app.models import GraduationPlagiarismCheck
+            check = db.scalars(select(GraduationPlagiarismCheck).where(
+                GraduationPlagiarismCheck.tenant_id == _tid(),
+                GraduationPlagiarismCheck.gd_final_id == f.id,
+                GraduationPlagiarismCheck.is_deleted.is_(False),
+            ).order_by(GraduationPlagiarismCheck.id.desc()).with_for_update()).first()
+            if f.final_type == "定稿" and (not check or check.status != "DONE"):
+                raise AppException("DATA_CONFLICT", "查重尚未完成，不能通过成果审核")
+            if check and check.status == "DONE" and check.over_threshold and check.dispute_status != "APPROVED":
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"查重率 {check.rate} 超标（GD-R09），须退回修改或完成复查特例审批",
+                )
         before = f.status
         n, _ = _op()
         target = "APPROVED" if action == "APPROVE" else "REJECTED"
