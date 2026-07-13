@@ -375,6 +375,21 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/aid/difficult-students', { params }))
   },
 
+  /** 困难认定统计（按状态/等级聚合）。 */
+  getAidStats() {
+    return callStrict(() => request('/student-affairs/aid/stats'))
+  },
+
+  /** 奖助统计（按状态/项目类型聚合，计数口径）。 */
+  getFundingStats() {
+    return callStrict(() => request('/student-affairs/funding/stats'))
+  },
+
+  /** 违纪处分统计（按类型/状态聚合 + 投影对账）。 */
+  getDisciplineStats() {
+    return callStrict(() => request('/student-affairs/discipline/stats'))
+  },
+
   // ─────────────── 谈心谈话（P6 · /student-affairs/talks/*） ───────────────
 
   /** 谈话列表（心理类明细按角色脱敏；服务端 talkType/status/studentId 过滤）。 */
