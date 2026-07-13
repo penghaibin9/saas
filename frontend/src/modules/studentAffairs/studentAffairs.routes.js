@@ -74,6 +74,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '认定公示待办', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
       },
       {
+        path: 'aid/ledger',
+        name: 'student-affairs-aid-ledger',
+        component: () => import('@/modules/studentAffairs/views/aid/AidLedgerView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '认定台账', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
+      },
+      {
         path: 'funding',
         name: 'student-affairs-funding',
         component: () => import('@/modules/studentAffairs/views/FundingWorkbenchView.vue'),
@@ -108,6 +114,12 @@ const studentAffairsRoutes = [
         name: 'student-affairs-talk',
         component: () => import('@/modules/studentAffairs/views/TalkWorkbenchView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈心谈话', requiresAuth: true, permissionKey: 'studentAffairs.talk.view' }
+      },
+      {
+        path: 'talk/stats',
+        name: 'student-affairs-talk-stats',
+        component: () => import('@/modules/studentAffairs/views/talk/TalkStatsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
       {
         path: 'family',
