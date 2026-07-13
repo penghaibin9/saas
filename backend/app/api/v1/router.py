@@ -48,6 +48,7 @@ from app.modules.internship.routers import internship_stats  # 实习统计（/i
 from app.modules.internship.routers import internship_plan  # 实习计划书+任务完成度（/internship/plans/*、/plan-task-progress/*）
 from app.modules.internship.routers import internship_insurance  # 实习保险（/internship/insurances/*）
 from app.modules.internship.routers import internship_communication  # 企业沟通（/internship/communications/*，P4 §5.1）
+from app.modules.internship.routers import internship_visit_plan  # 巡访计划（/internship/visit-plans/*，P4 §5.2）
 from app.modules.internship.routers import internship_process  # 过程报告+实习变更（/internship/process-reports/*、/change-requests/*）
 from app.api.v1.todos import make_router as make_todos_router
 
@@ -87,6 +88,7 @@ api_router.include_router(internship_plan.router, dependencies=_INTERN_DEP)     
 api_router.include_router(internship_insurance.router, dependencies=_INTERN_DEP)                       # /api/v1/internship/insurances/*（实习保险）
 api_router.include_router(internship_process.router, dependencies=_INTERN_DEP)                         # /api/v1/internship/process-reports/*、change-requests/*（过程报告+变更）
 api_router.include_router(internship_communication.router, dependencies=_INTERN_DEP)                   # /api/v1/internship/communications/*（企业沟通，P4 §5.1）
+api_router.include_router(internship_visit_plan.router, dependencies=_INTERN_DEP)                      # /api/v1/internship/visit-plans/*（巡访计划，P4 §5.2）
 api_router.include_router(orientation.router)                                # /api/v1/orientation/*
 api_router.include_router(campus_service.router)                             # /api/v1/campus-service/*
 api_router.include_router(academic.router)                                   # /api/v1/academic/*
