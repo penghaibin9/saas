@@ -152,6 +152,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
       {
+        path: 'talk/ledger',
+        name: 'student-affairs-talk-ledger',
+        component: () => import('@/modules/studentAffairs/views/talk/TalkLedgerView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话台账', requiresAuth: true, permissionKey: 'studentAffairs.talk.view' }
+      },
+      {
         path: 'family',
         name: 'student-affairs-family',
         component: () => import('@/modules/studentAffairs/views/FamilyContactView.vue'),
