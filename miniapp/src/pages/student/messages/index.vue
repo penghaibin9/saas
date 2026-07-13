@@ -9,7 +9,7 @@
         <view class="page-pad" style="padding-top:0;">
           <MobileGlobalState v-if="!list.length" state="empty" title="暂无消息" description="这里会收到待办、通知、服务进度与课程教务消息。" />
           <view v-else class="stack-sm">
-            <view v-for="m in list" :key="m.id" class="msg__item card" :class="{ 'is-unread': !m.read }" @click="open(m)">
+            <view v-for="m in pagedSlice(list)" :key="m.id" class="msg__item card" :class="{ 'is-unread': !m.read }" @click="open(m)">
               <view class="msg__item-top">
                 <text class="msg__dot" :class="{ 'is-on': !m.read }" />
                 <text class="msg__module">{{ m.module }}</text>
@@ -24,6 +24,8 @@
                 <text v-if="m.receipt" class="msg__btn" @click.stop="toast('回执确认功能即将开放')">确认回执</text>
               </view>
             </view>
+            <view v-if="pagedFooter(list) === 'more'" class="msg__paging" @click="pagedLoadMore">上拉加载更多</view>
+            <view v-else-if="pagedFooter(list) === 'end'" class="msg__paging is-end">没有更多了</view>
           </view>
         </view>
       </view>
@@ -35,10 +37,18 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { fromNow, deadlineText } from '@/utils/format'
+import { listPaging } from '@/utils/listPaging'
 import { toast, go } from '@/utils/nav'
 export default {
+  mixins: [listPaging(20)],
   data() { return { data: null, state: 'loading', tab: 'todo' } },
   onLoad() { this.load() },
+  // onReachBottom 必须写在页面本身，mp-weixin 才会注册
+  onReachBottom() { this.pagedReachBottom() },
+  watch: {
+    // 切换 tab 回到第一批
+    tab() { this.pagedReset() }
+  },
   computed: {
     list() { return this.data ? (this.data.groups[this.tab] || []) : [] },
     unreadTotal() {
@@ -48,6 +58,7 @@ export default {
   },
   methods: {
     toast, fromNow, deadlineText,
+    pagingList() { return this.list },
     load() {
       this.state = 'loading'
       studentApi.getMessages().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
@@ -86,4 +97,6 @@ export default {
 .msg__actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
 .msg__btn { font-size: var(--font-size-sm); color: var(--text-secondary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 5px 12px; }
 .msg__btn.is-primary { color: #fff; background: var(--brand-primary); border-color: var(--brand-primary); }
+.msg__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--brand-primary); }
+.msg__paging.is-end { color: var(--text-tertiary); }
 </style>

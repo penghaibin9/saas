@@ -17,7 +17,7 @@
 
         <view class="stack-sm">
           <MobileStudentCard
-            v-for="s in filtered"
+            v-for="s in pagedSlice(filtered)"
             :key="s.id"
             :name="s.name"
             :class-name="s.className"
@@ -34,6 +34,8 @@
               <text class="rk__btn is-primary" @click.stop="openStudent(s)">处理</text>
             </template>
           </MobileStudentCard>
+          <view v-if="pagedFooter(filtered) === 'more'" class="rk__paging" @click="pagedLoadMore">上拉加载更多</view>
+          <view v-else-if="pagedFooter(filtered) === 'end'" class="rk__paging is-end">没有更多了</view>
         </view>
       </view>
     </MobileGlobalState>
@@ -42,10 +44,17 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { listPaging } from '@/utils/listPaging'
 import { go, toast } from '@/utils/nav'
 export default {
+  mixins: [listPaging(20)],
   data() { return { list: null, state: 'loading', level: 'all' } },
   onLoad() { this.load() },
+  // onReachBottom 必须写在页面本身，mp-weixin 才会注册
+  onReachBottom() { this.pagedReachBottom() },
+  watch: {
+    level() { this.pagedReset() }
+  },
   computed: {
     filtered() {
       if (!this.list) return []
@@ -62,8 +71,10 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
+    pagingList() { return this.filtered },
     load(done) {
       this.state = 'loading'
+      this.pagedReset()
       teacherApi.getRiskStudents().then((d) => { this.list = d; this.state = 'ready' })
         .catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
@@ -87,4 +98,6 @@ export default {
 .rk__filter.is-active { background: var(--teacher-600); color: #fff; border-color: var(--teacher-600); }
 .rk__btn { font-size: var(--font-size-sm); color: var(--text-secondary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 5px 12px; }
 .rk__btn.is-primary { color: #fff; background: var(--teacher-600); border-color: var(--teacher-600); }
+.rk__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--teacher-700); }
+.rk__paging.is-end { color: var(--text-tertiary); }
 </style>

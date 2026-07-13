@@ -8,7 +8,7 @@
         <view class="page-pad" style="padding-top:0;">
           <MobileGlobalState v-if="!filtered.length" state="empty" title="暂无相关申请" description="切换其他分类查看，或到服务大厅发起新申请。" />
           <view v-else class="stack">
-            <view v-for="a in filtered" :key="a.id" class="ma__item card" @click="detail(a)">
+            <view v-for="a in pagedSlice(filtered)" :key="a.id" class="ma__item card" @click="detail(a)">
               <view class="row-between">
                 <text class="t-md t-bold flex-1 ellipsis">{{ a.name }}</text>
                 <MobileStatusTag :status="a.status" />
@@ -29,6 +29,8 @@
                 <text class="ma__btn" @click.stop="detail(a)">办理详情</text>
               </view>
             </view>
+            <view v-if="pagedFooter(filtered) === 'more'" class="ma__paging" @click="pagedLoadMore">上拉加载更多</view>
+            <view v-else-if="pagedFooter(filtered) === 'end'" class="ma__paging is-end">没有更多了</view>
           </view>
         </view>
       </view>
@@ -39,10 +41,17 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { useSubmissionsStore } from '@/stores/submissions'
+import { listPaging } from '@/utils/listPaging'
 import { toast } from '@/utils/nav'
 export default {
+  mixins: [listPaging(20)],
   data() { return { data: null, state: 'loading', tab: 'all' } },
   onLoad() { this.load() },
+  // onReachBottom 必须写在页面本身，mp-weixin 才会注册
+  onReachBottom() { this.pagedReachBottom() },
+  watch: {
+    tab() { this.pagedReset() }
+  },
   computed: {
     allItems() {
       const mine = useSubmissionsStore().applications || []
@@ -56,6 +65,7 @@ export default {
   },
   methods: {
     toast,
+    pagingList() { return this.filtered },
     load() {
       this.state = 'loading'
       studentApi.getApplications().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
@@ -81,4 +91,6 @@ export default {
 .ma__actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
 .ma__btn { font-size: var(--font-size-sm); color: var(--text-secondary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 5px 12px; }
 .ma__btn.is-primary { color: var(--brand-primary); border-color: var(--brand-primary); }
+.ma__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--brand-primary); }
+.ma__paging.is-end { color: var(--text-tertiary); }
 </style>

@@ -10,7 +10,7 @@
           <MobileGlobalState v-if="!filtered.length" state="empty" title="暂无待办" description="切换其他分类查看。处理完成的会进入「已处理」。" />
           <view v-else class="stack-sm">
             <MobileTodoCard
-              v-for="t in filtered"
+              v-for="t in pagedSlice(filtered)"
               :key="t.id"
               :title="t.title"
               :source-module="t.module"
@@ -27,6 +27,8 @@
                 <button class="td__btn is-primary" @click.stop="handle(t)">去处理</button>
               </template>
             </MobileTodoCard>
+            <view v-if="pagedFooter(filtered) === 'more'" class="td__paging" @click="pagedLoadMore">上拉加载更多</view>
+            <view v-else-if="pagedFooter(filtered) === 'end'" class="td__paging is-end">没有更多了</view>
           </view>
         </view>
       </view>
@@ -39,12 +41,20 @@
 import { useSessionStore } from '@/stores/session'
 import { teacherApi } from '@/services/teacherApi'
 import { deadlineText, isOverdue } from '@/utils/format'
+import { listPaging } from '@/utils/listPaging'
 import { go, toast } from '@/utils/nav'
 export default {
+  mixins: [listPaging(20)],
   data() { return { data: null, state: 'loading', filter: 'all', scopeText: '' } },
   onLoad() {
     this.scopeText = useSessionStore().dataScopeText
     this.load()
+  },
+  // onReachBottom 必须写在页面本身，mp-weixin 才会注册（mixin 里的会被编译器忽略）
+  onReachBottom() { this.pagedReachBottom() },
+  watch: {
+    // 切换分类回到第一批，避免上一分类的展开条数影响新分类
+    filter() { this.pagedReset() }
   },
   computed: {
     filtered() {
@@ -70,6 +80,8 @@ export default {
   },
   methods: {
     deadlineText, isOverdue,
+    // 供 listPaging 判断是否还有更多（仅在确有更多时才增长 pagerShown）
+    pagingList() { return this.filtered },
     load() {
       this.state = 'loading'
       teacherApi.getTodos().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
@@ -96,4 +108,6 @@ export default {
 .td__filters { padding-bottom: var(--space-3); }
 .td__btn { min-height: 34px; line-height: 34px; padding: 0 var(--space-3); border-radius: var(--radius-md); font-size: var(--font-size-sm); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); }
 .td__btn.is-primary { background: var(--teacher-600); color: #fff; border-color: var(--teacher-600); }
+.td__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--teacher-700); }
+.td__paging.is-end { color: var(--text-tertiary); }
 </style>
