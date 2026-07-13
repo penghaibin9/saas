@@ -66,7 +66,8 @@ export const handleWarningReal = (warningId, action, note) =>
 export const createFollowupReal = (body) =>
   realRequest('/mobile/teacher/employment/followup', { method: 'POST', data: body })
 
-/** 学生首页：真实阶段 + 待办计数合入 mock 结构 */
+/** 学生首页：真实阶段 / 待办 / 通知 / 未读数 / 阻断全部覆盖 mock 骨架，不再展示假数量。
+ * 今日课程、快捷服务入口暂无对应真实数据源，保留 mock 骨架（P13 夜间补强已知欠账，见施工记录）。 */
 export async function enrichHome(mockHome) {
   const ov = await realRequest('/mobile/me/overview')
   const stu = (ov && ov.student) || {}
@@ -74,11 +75,27 @@ export async function enrichHome(mockHome) {
     mockHome.stageCard.stageText = STAGE_TEXT[stu.stage] || mockHome.stageCard.stageText
     mockHome.stageCard.title = `你正处于「${mockHome.stageCard.stageText}」阶段`
   }
-  if (ov && Array.isArray(ov.todos) && mockHome.todoOverview) {
-    mockHome.todoOverview.pending = ov.todos.length
+  if (ov && Array.isArray(ov.todos)) {
+    mockHome.todos = ov.todos.map((t) => ({
+      id: t.id, title: t.title, module: t.module || t.type || '待办',
+      deadline: t.dueAt || '', status: 'PENDING_HANDLE'
+    }))
+    if (mockHome.todoOverview) mockHome.todoOverview.pending = ov.todos.length
   }
-  if (ov && Array.isArray(ov.alerts)) mockHome.realAlerts = ov.alerts
-  if (ov && Array.isArray(ov.domains)) mockHome.realDomains = ov.domains
+  if (ov && Array.isArray(ov.notices)) {
+    mockHome.notices = ov.notices.map((n) => ({
+      id: n.id, title: n.title, source: n.source || '校园通知', important: !!n.important
+    }))
+  }
+  if (ov && Array.isArray(ov.alerts)) {
+    mockHome.blockers = ov.alerts.map((a, i) => ({
+      id: a.domain || ('alert' + i), title: a.title, reason: a.title, solveText: '去处理', level: a.level
+    }))
+  }
+  if (ov && typeof ov.unreadCount === 'number') {
+    mockHome.metrics = mockHome.metrics || {}
+    mockHome.metrics.unread = ov.unreadCount
+  }
   mockHome.realApi = true
   return mockHome
 }
@@ -277,13 +294,33 @@ export const mobileTeacherOverview = () => realRequest('/mobile/teacher/overview
 export const mobileTeacherTodos = () => realRequest('/mobile/teacher/todos')
 export const mobileTeacherDomain = (domain) => realRequest('/mobile/teacher/' + domain)
 
-/* 教师工作台：真实待办计数覆盖到 mock 骨架（保留 dueSoon/riskStudents 展示结构） */
+/* 教师工作台：真实待办计数 + 即将超时 + 风险学生覆盖到 mock 骨架，不再展示假名单。
+ * 「最近学生动态」暂无对应真实数据源，保留 mock 骨架（P13 夜间补强已知欠账，见施工记录）。 */
 export async function enrichTeacherWorkbench(mock) {
   const r = await realRequest('/mobile/teacher/overview')
   if (!r || !r.hasData) return { ...mock, _real: false }
   const realMetrics = (r.metrics || []).slice(0, 4).map((m) => ({ key: m.key, label: m.label, value: m.value }))
-  return { ...mock, metrics: realMetrics.length ? realMetrics : mock.metrics,
+  const out = { ...mock, metrics: realMetrics.length ? realMetrics : mock.metrics,
     pendingTotal: r.pendingTotal, _real: true }
+  try {
+    const td = await realRequest('/mobile/teacher/todos')
+    if (td && Array.isArray(td.list)) {
+      out.dueSoon = td.list.slice(0, 5).map((t) => ({
+        id: t.id, title: t.title, module: t.module, student: t.student,
+        deadline: t.deadline, status: t.status
+      }))
+    }
+  } catch (e) { /* 待办为增量展示，静默降级不影响工作台主体 */ }
+  try {
+    const rs = await realRequest('/mobile/teacher/risk-students')
+    if (rs && Array.isArray(rs.list)) {
+      out.riskStudents = rs.list.slice(0, 5).map((s) => ({
+        id: s.studentId || s.studentNo || s.id, name: s.name, className: s.className || '—',
+        type: s.riskType + (s.reason ? '·' + s.reason : ''), level: s.riskLevel
+      }))
+    }
+  } catch (e) { /* 风险学生为增量展示，静默降级不影响工作台主体 */ }
+  return out
 }
 
 /* ══════════ P9.2 · 学生端补齐（档案脱敏 / 本人消息 / 我的申请 / 写操作） ══════════ */

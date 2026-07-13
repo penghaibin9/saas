@@ -56,7 +56,7 @@ def me_overview(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return {"student": None, "stage": None, "todos": [], "alerts": [], "notices": [],
-                    "domains": [], **_empty()}
+                    "domains": [], "unreadCount": 0, **_empty()}
         from app.models import (AcademicStudent, AcademicWarning, EmpStudent, InternshipRecord,
                                 OrientationStudent, UnifiedMessage, UnifiedTodo)
         sid, name = stu.id, stu.real_name
@@ -64,8 +64,13 @@ def me_overview(user: dict) -> dict:
         todos = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == _tid(), UnifiedTodo.is_deleted.is_(False),
             UnifiedTodo.student_id == sid, UnifiedTodo.status == "PENDING").limit(10)).all()
+        # P0 修复：原查询未按 receiver_id 过滤，会把租户内其他人（含处分/资助/请假等敏感通知）
+        # 的最新消息展示给本学生。receiver_id 存的是 user_id，不是学生档案 id，
+        # 与 my_messages() 保持一致：解析不到本人 uid 时宁可不展示，也不放开 receiver 过滤。
+        uid = _resolve_uid(u)
         notices = db.scalars(select(UnifiedMessage).where(
-            UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False)
+            UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
+            UnifiedMessage.receiver_id.in_([uid, 0]) if uid is not None else UnifiedMessage.receiver_id == 0
         ).order_by(UnifiedMessage.id.desc()).limit(5)).all()
         # 各域是否有我的记录 + 关键状态
         intern = db.scalars(select(InternshipRecord).where(
@@ -86,6 +91,10 @@ def me_overview(user: dict) -> dict:
         emp = db.scalars(select(EmpStudent).where(
             EmpStudent.tenant_id == _tid(), EmpStudent.name == name,
             EmpStudent.is_deleted.is_(False))).first()
+        unread_count = (db.scalar(select(func.count()).select_from(UnifiedMessage).where(
+            UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
+            UnifiedMessage.receiver_id == uid, UnifiedMessage.status == "UNREAD"))
+            if uid is not None else 0) or 0
         alerts = []
         if warn:
             alerts.append({"level": "HIGH", "title": "你有学业预警待跟进", "domain": "academic"})
@@ -97,10 +106,14 @@ def me_overview(user: dict) -> dict:
                         "className": (stu.grade + "级") if stu.grade else "", "stage": stu.current_stage},
             "stage": {"code": stu.current_stage, "label": stu.current_stage},
             "todos": [{"id": str(t.id), "title": t.title, "type": t.todo_type,
+                       "module": getattr(t, "source_module", None) or t.todo_type or "待办",
                        "dueAt": _iso(t.due_at) if hasattr(t, "due_at") else None} for t in todos],
             "alerts": alerts,
             "notices": [{"id": str(n.id), "title": n.title, "type": n.message_type,
+                         "source": n.source_module or "校园通知",
+                         "important": (n.message_type or "").upper() in ("URGENT", "IMPORTANT"),
                          "status": n.status} for n in notices],
+            "unreadCount": unread_count,
             "domains": [
                 {"key": "orientation", "label": "数字迎新", "status": ori.report_status if ori else "NONE",
                  "hasData": bool(ori)},
