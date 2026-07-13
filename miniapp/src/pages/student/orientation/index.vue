@@ -6,10 +6,10 @@
         <view class="or__hero card">
           <text class="or__hero-batch">{{ o.batch }}</text>
           <view class="or__hero-status">
-            <text class="or__hero-icon">✓</text>
+            <text class="or__hero-icon" :class="{ 'is-pending': !reportDone }">{{ reportDone ? '✓' : '…' }}</text>
             <view class="flex-1">
               <text class="t-lg t-bold">{{ o.overallText }}</text>
-              <text class="or__hero-sub">全部报到环节已完成，欢迎加入！</text>
+              <text class="or__hero-sub">{{ heroSub }}</text>
             </view>
           </view>
           <view class="or__code" :class="{ 'is-invalid': !o.reportCode.valid }">
@@ -50,6 +50,20 @@ import { toast } from '@/utils/nav'
 export default {
   data() { return { o: null, state: 'loading' } },
   onLoad() { this.load() },
+  computed: {
+    // 只有真实报到状态为「已现场报到 / 学院已确认」（mock 兼容 REGISTERED）才算完成，
+    // 未报到/预报到不再显示"全部报到环节已完成"的假完成态
+    reportDone() {
+      const s = this.o && this.o.overallStatus
+      return s === 'CHECKED_IN' || s === 'COLLEGE_CONFIRMED' || s === 'REGISTERED'
+    },
+    heroSub() {
+      if (!this.o) return ''
+      if (this.reportDone) return '全部报到环节已完成，欢迎加入！'
+      if (this.o.blocked && this.o.blocked.reason) return '报到卡点：' + this.o.blocked.reason
+      return '报到进行中，请尽快完成剩余报到环节'
+    }
+  },
   methods: {
     load() {
       this.state = 'loading'
@@ -64,6 +78,7 @@ export default {
 .or__hero-batch { font-size: var(--font-size-sm); color: var(--text-tertiary); }
 .or__hero-status { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; }
 .or__hero-icon { width: 40px; height: 40px; border-radius: var(--radius-full); background: var(--success-500); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.or__hero-icon.is-pending { background: var(--warning-500); }
 .or__hero-sub { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 2px; }
 .or__code { display: flex; align-items: center; gap: var(--space-3); background: var(--primary-50); border-radius: var(--radius-md); padding: var(--space-3); }
 .or__code.is-invalid { background: var(--gray-100); }
