@@ -43,7 +43,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                          "internship.dashboard.view", "internship.student.view", "internship.risk.view",
                          "internship.stats.view", "internship.stats.enterprise.view", "internship.stats.position.view",
                          "internship.stats.score.view", "internship.match.log.view", "internship.application.view",
-                         "internship.archive.manage"},
+                         "internship.archive.view"},
     "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱（含 campusService.*.view）
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
                       "internship.*", "audit.view"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
@@ -99,11 +99,14 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "internship.enterprise.view", "internship.position.view",
         "internship.match.intention.view", "internship.match.recommend.view", "internship.match.result.view",
         "internship.stats.view",
+        # 保险查看、任务完成度审核、调岗退岗初审（§3 投影：导师查本人学生保险、审任务、初审变更）
+        "internship.insurance.*", "internship.task.review", "internship.change.view", "internship.change.review",
+        "internship.archive.*",  # 材料检查与归档（§3.12 导师参与归档，service scope 收敛到本人指导学生）
     },
     # 就业教师：实习就业转化 + 归档统计（跨中心与就业域衔接），不介入日常实习审批
     "EMPLOYMENT_TEACHER": {
         "employment.*", "internship.dashboard.view",
-        "internship.employment.view", "internship.archive.manage",
+        "internship.employment.view", "internship.archive.*",
         "internship.stats.view", "internship.stats.enterprise.view",
         "internship.stats.position.view", "internship.stats.score.view",
     },
