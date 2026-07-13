@@ -559,3 +559,97 @@ class InternshipPlanTaskProgress(PKMixin, TenantMixin, CommonMixin, Base):
     reviewed_by_name: Mapped[str | None] = mapped_column(String(50))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     review_comment: Mapped[str | None] = mapped_column(String(500))
+
+
+# ═══════════ P4 三个业务闭环（07 整改方案 §5，迁移 0052）═══════════
+
+class InternshipCommunicationLog(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_communication_log 企业沟通记录（§5.1）。
+    校内指导教师/学院负责人围绕某企业、岗位或学生形成的正式业务记录（非普通备注、非即时聊天）。
+    owner：教师对本人指导学生相关沟通；企业门户仅可查看/回复本企业授权沟通；辅导员默认只见本班学生相关摘要。
+    可作废(status=VOIDED)；后续事项(follow_up_required)可形成待办。"""
+    __tablename__ = "t_internship_communication_log"
+
+    enterprise_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="关联企业 t_emp_company")
+    internship_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="可选关联实习记录")
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    position_id: Mapped[int | None] = mapped_column(BigInteger, comment="可选关联岗位")
+    communication_type: Mapped[str] = mapped_column(String(20), nullable=False, default="PHONE",
+                                                    comment="PHONE/WECHAT/EMAIL/ONSITE/MEETING/ENTERPRISE_FEEDBACK")
+    direction: Mapped[str] = mapped_column(String(20), nullable=False, default="SCHOOL",
+                                           comment="SCHOOL 学校发起 / ENTERPRISE 企业发起")
+    contact_id: Mapped[int | None] = mapped_column(BigInteger, comment="企业联系人 id")
+    contact_name_snapshot: Mapped[str | None] = mapped_column(String(50), comment="联系人姓名快照")
+    advisor_name: Mapped[str | None] = mapped_column(String(50), comment="经办教师（owner scope 本人指导学生）")
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime, comment="沟通时间")
+    summary: Mapped[str | None] = mapped_column(Text, comment="沟通摘要")
+    result: Mapped[str | None] = mapped_column(String(1000), comment="沟通结果")
+    follow_up_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    follow_up_due_at: Mapped[datetime | None] = mapped_column(DateTime)
+    follow_up_owner_id: Mapped[int | None] = mapped_column(BigInteger)
+    follow_up_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    file_id: Mapped[str | None] = mapped_column(String(64), comment="附件 file_id 预留")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="NORMAL", index=True,
+                                        comment="NORMAL/VOIDED")
+
+
+class InternshipVisitPlan(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_visit_plan 巡访计划（§5.2）。
+    谁在什么时间、以什么方式、巡访哪个企业和哪些学生；区别于 InternshipVisit(巡访记录=执行证据)。
+    状态机 DRAFT→PUBLISHED→IN_PROGRESS→COMPLETED，旁路 CANCELLED/OVERDUE。
+    owner：指导教师只处理分派给本人的计划；督导按授权范围；临时巡访无计划记录标 plan_type=UNPLANNED。"""
+    __tablename__ = "t_internship_visit_plan"
+
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="关联批次")
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    enterprise_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="巡访企业")
+    enterprise_name: Mapped[str | None] = mapped_column(String(200))
+    owner_name: Mapped[str | None] = mapped_column(String(50), comment="计划负责人（owner scope）")
+    collaborators: Mapped[str | None] = mapped_column(String(500), comment="协同人员（姓名，逗号分隔）")
+    student_scope: Mapped[str | None] = mapped_column(Text, comment="覆盖学生范围（学号/姓名快照）")
+    plan_date: Mapped[str | None] = mapped_column(String(10), comment="计划日期 YYYY-MM-DD")
+    time_window: Mapped[str | None] = mapped_column(String(50), comment="时间窗")
+    method: Mapped[str] = mapped_column(String(20), nullable=False, default="ONSITE", comment="ONSITE/ONLINE/PHONE")
+    location: Mapped[str | None] = mapped_column(String(200), comment="巡访地点")
+    objective: Mapped[str | None] = mapped_column(Text, comment="目标与检查清单")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/PUBLISHED/IN_PROGRESS/COMPLETED/CANCELLED/OVERDUE")
+    plan_type: Mapped[str] = mapped_column(String(20), nullable=False, default="VISIT",
+                                           comment="VISIT 正式 / UNPLANNED 临时巡访补录")
+    remind_at: Mapped[datetime | None] = mapped_column(DateTime, comment="提醒时间")
+    visit_id: Mapped[int | None] = mapped_column(BigInteger, comment="实际巡访记录 id（关联执行）")
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    cancel_reason: Mapped[str | None] = mapped_column(String(500))
+
+
+class InternshipComplaint(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_complaint 企业投诉受理（§5.3）。
+    受理业务（非普通风险待办）：核实后可转风险单(risk_id)，也可仅咨询/撤回/判定不成立。
+    投诉人联系方式敏感(密文)，需 internship.complaint.sensitive.view 才可见明文。
+    转风险后保留双向链接，原投诉不可被风险单覆盖。"""
+    __tablename__ = "t_internship_complaint"
+
+    complaint_no: Mapped[str | None] = mapped_column(String(40), index=True, comment="投诉编号")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="STUDENT",
+                                        comment="STUDENT/PARENT/ENTERPRISE/TEACHER/ANONYMOUS/REGULATOR")
+    target_type: Mapped[str | None] = mapped_column(String(20), comment="ENTERPRISE/POSITION/STUDENT/TEACHER/OTHER")
+    enterprise_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    position_id: Mapped[int | None] = mapped_column(BigInteger)
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    category: Mapped[str | None] = mapped_column(String(50), comment="投诉分类")
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="MEDIUM", comment="LOW/MEDIUM/HIGH")
+    content: Mapped[str | None] = mapped_column(Text, comment="投诉内容")
+    evidence_file_id: Mapped[str | None] = mapped_column(String(64))
+    complainant_contact_encrypted: Mapped[str | None] = mapped_column(String(200), comment="投诉人联系方式(敏感,密文)")
+    confidential_level: Mapped[str] = mapped_column(String(20), nullable=False, default="NORMAL",
+                                                    comment="NORMAL/CONFIDENTIAL")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="RECEIVED", index=True,
+                                        comment="RECEIVED/ACCEPTED/INVESTIGATING/RESOLVED/REJECTED/WITHDRAWN/CLOSED")
+    accepted_by_name: Mapped[str | None] = mapped_column(String(50), comment="受理人")
+    owner_name: Mapped[str | None] = mapped_column(String(50), comment="责任人")
+    accept_deadline: Mapped[str | None] = mapped_column(String(10), comment="受理期限 YYYY-MM-DD")
+    resolve_deadline: Mapped[str | None] = mapped_column(String(10), comment="办结期限 YYYY-MM-DD")
+    conclusion: Mapped[str | None] = mapped_column(Text, comment="结论/处理意见")
+    followup_result: Mapped[str | None] = mapped_column(Text, comment="回访结果")
+    risk_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="转风险单 → t_risk_record")
