@@ -37,7 +37,11 @@
               :key="rowKey(row)"
               class="pr-row"
               :class="{ 'is-active': rowKey(row) === selKey }"
+              tabindex="0"
+              role="button"
               @click="select(row)"
+              @keydown.enter.prevent="select(row)"
+              @keydown.space.prevent="select(row)"
             >
               <div class="pr-row__main">
                 <span class="pr-row__name">{{ row.studentName }}</span>
@@ -340,15 +344,16 @@ export default {
 .mp-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
 
 .pr-split { display: flex; gap: var(--space-4); align-items: flex-start; }
-.pr-list { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); }
+.pr-list { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .pr-split.is-narrow .pr-list { width: 100%; }
-.pr-pane { flex: 1; min-width: 0; }
+.pr-pane { flex: 1; min-width: 0; padding: var(--space-4); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 
 .pr-rows { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow-y: auto; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); }
-.pr-row { padding: 10px 12px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; }
+.pr-row { padding: 10px 12px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; transition: background .12s ease, box-shadow .12s ease; }
 .pr-row:last-child { border-bottom: none; }
 .pr-row:hover { background: var(--gray-50, #f8fafc); }
 .pr-row.is-active { background: var(--primary-50, #eff6ff); box-shadow: inset 2px 0 0 var(--brand-primary, #2563eb); }
+.pr-row:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--primary-400, #60a5fa); outline-offset: -2px; }
 .pr-row__main { display: flex; align-items: center; gap: var(--space-2); }
 .pr-row__name { font-weight: var(--font-weight-medium, 500); color: var(--text-primary); }
 .pr-row__cls { font-size: var(--font-size-xs); color: var(--text-tertiary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -367,4 +372,7 @@ export default {
 .pr-pane__auto { color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .pr-pane__nav { margin-left: auto; display: inline-flex; gap: var(--space-3); }
 .pr-pane__nav .mp-link:disabled { opacity: 0.4; cursor: not-allowed; }
+@media (max-width: 1100px) {
+  .pr-pane { padding: var(--space-3); }
+}
 </style>
