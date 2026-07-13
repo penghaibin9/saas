@@ -23,7 +23,7 @@
     <div v-else class="mp-stack">
       <!-- 编排摘要：一眼看清当前编排缺口，点击即过滤对应队列 -->
       <div class="ds-summary">
-        <button v-for="c in summaryChips" :key="c.key" class="ds-chip" :class="['ds-chip--' + c.tone, { 'is-active': filterKey === c.key }]" @click="filterKey = filterKey === c.key ? 'all' : c.key">
+        <button v-for="c in summaryChips" :key="c.key" type="button" class="ds-chip" :class="['ds-chip--' + c.tone, { 'is-active': filterKey === c.key }]" @click="filterKey = filterKey === c.key ? 'all' : c.key">
           {{ c.label }} <b>{{ c.count }}</b>
         </button>
         <span class="mp-note" style="margin-left: auto">共 {{ totalStudents }} 名学生已入组</span>
@@ -211,11 +211,14 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .ds-summary { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.ds-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--radius-full, 999px); border: 1px solid var(--border-light, #e2e8f0); background: #fff; font-size: var(--font-size-sm, 13px); color: var(--text-secondary, #475569); cursor: pointer; }
+.ds-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-full, 999px); border: 1px solid var(--border-light, #e2e8f0); background: #fff; font: inherit; font-size: var(--font-size-sm, 13px); color: var(--text-secondary, #475569); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.ds-chip:hover { border-color: var(--primary-200, #bfdbfe); background: var(--gray-50, #f8fafc); }
+.ds-chip:focus-visible { outline: 2px solid var(--primary-400, #60a5fa); outline-offset: 2px; }
 .ds-chip b { font-weight: 600; color: var(--text-primary, #0f172a); }
 .ds-chip.is-active { border-color: var(--brand-primary, #2563eb); color: var(--brand-primary, #2563eb); background: var(--primary-50, #eff6ff); }
 .ds-chip--danger b { color: var(--danger, #dc2626); }
 .ds-chip--warning b { color: var(--warning-600, #d97706); }
 .ds-chip--success b { color: var(--success-600, #16a34a); }
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+@media (max-width: 700px) { .ds-summary .mp-note { width: 100%; margin-left: 0 !important; } }
 </style>
