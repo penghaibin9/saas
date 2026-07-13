@@ -421,3 +421,27 @@ def projection_reconcile() -> dict:
             CsDiscipline.tenant_id == _tid(), CsDiscipline.source_case_id.is_not(None),
             CsDiscipline.record_status == "ACTIVE", CsDiscipline.is_deleted.is_(False))) or 0
         return {"effectiveCases": eff, "activeProjections": proj, "consistent": eff == proj}
+
+
+def discipline_stats(user) -> dict:
+    """处分统计（按处分类型/状态聚合 + 投影对账）；数据范围与列表一致（辅导员限本班）。"""
+    from app.models import DisciplineCase, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        rows = db.scalars(select(DisciplineCase).where(
+            DisciplineCase.tenant_id == _tid(), DisciplineCase.is_deleted.is_(False))).all()
+        by_type: dict[str, int] = {}
+        by_status: dict[str, int] = {}
+        total = 0
+        for x in rows:
+            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            total += 1
+            by_type[x.disc_type] = by_type.get(x.disc_type, 0) + 1
+            by_status[x.status] = by_status.get(x.status, 0) + 1
+    return {"total": total,
+            "byType": [{"key": k, "count": v} for k, v in by_type.items()],
+            "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
+            "reconcile": projection_reconcile()}

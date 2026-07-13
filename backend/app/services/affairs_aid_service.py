@@ -579,6 +579,31 @@ def difficult_students(user, level=None, page=1, page_size=50):
         return out[start:start + page_size], total
 
 
+def aid_stats(user) -> dict:
+    """困难认定统计（按状态/核定等级聚合）；数据范围与列表一致（辅导员限本班）。"""
+    from app.models import AidApply, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        rows = db.scalars(select(AidApply).where(
+            AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False))).all()
+        by_status: dict[str, int] = {}
+        by_level: dict[str, int] = {}
+        total = 0
+        for x in rows:
+            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            total += 1
+            by_status[x.status] = by_status.get(x.status, 0) + 1
+            lvl = x.final_level or x.apply_level
+            if lvl:
+                by_level[lvl] = by_level.get(lvl, 0) + 1
+    return {"total": total, "approved": by_status.get("APPROVED", 0),
+            "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
+            "byLevel": [{"key": k, "count": v} for k, v in by_level.items()]}
+
+
 def is_in_difficult_library(db, student_id) -> str | None:
     """供 funding 助学金前置校验：返回学生当前困难等级或 None（本函数复用同一 db 会话）。"""
     from app.models import AidApply

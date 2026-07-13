@@ -369,6 +369,11 @@ def aid_difficult_students(level: Optional[str] = None, page: int = 1, pageSize:
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/aid/stats", summary="困难认定统计（按状态/等级聚合，仅聚合口径）")
+def aid_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+    return success(aid_svc.aid_stats(user))
+
+
 @router.get("/aid/applications/{applyId}", summary="认定申请详情（家庭经济脱敏）")
 def aid_application(applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.view"))):
     return success(aid_svc.get_application(applyId, user))
@@ -505,6 +510,11 @@ def funding_scan_publicity(user=Depends(require_permission("studentAffairs.fundi
     return success(funding_svc.scan_publicity())
 
 
+@router.get("/funding/stats", summary="奖助统计（按状态/项目类型聚合，计数口径不含金额明细）")
+def funding_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+    return success(funding_svc.funding_stats(user))
+
+
 # ═══════════ 违纪处分（P4，discipline 全套）═══════════
 
 class DisciplineRegister(BaseModel):
@@ -538,6 +548,11 @@ def discipline_cases(status: Optional[str] = None, discType: Optional[str] = Non
 @router.get("/discipline/reconcile", summary="处分投影一致性对账")
 def discipline_reconcile(user=Depends(require_permission("studentAffairs.discipline.view"))):
     return success(disc_svc.projection_reconcile())
+
+
+@router.get("/discipline/stats", summary="违纪处分统计（按类型/状态聚合 + 投影对账）")
+def discipline_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+    return success(disc_svc.discipline_stats(user))
 
 
 @router.get("/discipline/cases/{caseId}", summary="处分详情")
