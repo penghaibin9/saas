@@ -90,12 +90,19 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "internship.guide.*", "internship.dashboard.view",
         "internship.student.view", "internship.student.material.view",
         "internship.attendance.*", "internship.makeup.*", "internship.leave.view", "internship.leave.review",
-        "internship.report.view", "internship.report.review", "internship.plan.view", "internship.task.view",
+        "internship.report.view", "internship.report.review", "internship.report.export",
+        "internship.plan.view", "internship.task.view",
         "internship.guidance.*", "internship.visit.*", "internship.communication.*",
         "internship.risk.view", "internship.risk.handle",
-        "internship.eval.self.view", "internship.eval.enterprise.view", "internship.eval.advisor.manage",
-        "internship.score.view",
-        "internship.application.view", "internship.application.review", "internship.agreement.view",
+        # 评价：导师录入/审核本人指导学生的企业评价，填写鉴定意见并审核学生鉴定（数据范围由 service owner scope 收敛，跨学生 403）
+        "internship.eval.self.view", "internship.eval.self.review",
+        "internship.eval.enterprise.view", "internship.eval.enterprise.manage", "internship.eval.enterprise.review",
+        "internship.eval.advisor.manage",
+        # 成绩：导师核算/发布/撤回本人指导学生实习成绩；权重配置(score.config)与台账导出(score.export)归学校/学院
+        "internship.score.view", "internship.score.manage", "internship.score.publish",
+        "internship.application.view", "internship.application.review",
+        # 三方协议：导师对本人指导学生生成/下发/记录企业签署/学校确认/驳回/作废/归档/电子签（跨学生由 service 拦 403）
+        "internship.agreement.view", "internship.agreement.manage", "internship.agreement.sign",
         "internship.enterprise.view", "internship.position.view",
         "internship.match.intention.view", "internship.match.recommend.view", "internship.match.result.view",
         "internship.stats.view",
