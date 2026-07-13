@@ -13,7 +13,8 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import GraduationAuditTrail, GraduationBatch, GraduationGrade, GraduationStudent
+from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseScore,
+                        GraduationFinal, GraduationGrade, GraduationReview, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
@@ -41,6 +42,16 @@ def _stu(db, sid) -> GraduationStudent:
     return assert_student_access(db, s, "grade")
 
 
+def _stu_for_update(db, sid) -> GraduationStudent:
+    s = db.scalars(select(GraduationStudent).where(
+        GraduationStudent.id == int(sid), GraduationStudent.tenant_id == _tid(),
+        GraduationStudent.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if not s:
+        raise not_found("Graduation student does not exist in the current scope")
+    return assert_student_access(db, s, "grade.write")
+
+
 def _weights(db, stu: GraduationStudent) -> dict:
     if stu.batch_id:
         b = db.get(GraduationBatch, stu.batch_id)
@@ -63,10 +74,56 @@ def _grade_level(total: int | None) -> str | None:
     return "不及格"
 
 
-def _get_or_create(db, stu: GraduationStudent) -> GraduationGrade:
-    g = db.scalars(select(GraduationGrade).where(GraduationGrade.tenant_id == _tid(),
-                                                 GraduationGrade.gd_student_id == stu.id,
-                                                 GraduationGrade.is_deleted.is_(False))).first()
+def _source_scores(db, stu: GraduationStudent) -> dict:
+    final = db.scalars(select(GraduationFinal).where(
+        GraduationFinal.tenant_id == _tid(),
+        GraduationFinal.gd_student_id == stu.id,
+        GraduationFinal.final_type == "定稿",
+        GraduationFinal.status == "APPROVED",
+        GraduationFinal.is_deleted.is_(False),
+    ).order_by(GraduationFinal.id.desc())).first()
+    review_scores = db.scalars(select(GraduationReview.score).where(
+        GraduationReview.tenant_id == _tid(),
+        GraduationReview.gd_student_id == stu.id,
+        GraduationReview.gd_final_id == (final.id if final else -1),
+        GraduationReview.status == "COMPLETED",
+        GraduationReview.score.is_not(None),
+        GraduationReview.is_deleted.is_(False),
+    )).all()
+    defense_round = db.scalar(select(func.max(GraduationDefenseScore.round_no)).where(
+        GraduationDefenseScore.tenant_id == _tid(),
+        GraduationDefenseScore.gd_student_id == stu.id,
+        GraduationDefenseScore.status == "CONFIRMED",
+        GraduationDefenseScore.is_deleted.is_(False),
+    ))
+    defense_scores = db.scalars(select(GraduationDefenseScore.score).where(
+        GraduationDefenseScore.tenant_id == _tid(),
+        GraduationDefenseScore.gd_student_id == stu.id,
+        GraduationDefenseScore.round_no == defense_round,
+        GraduationDefenseScore.status == "CONFIRMED",
+        GraduationDefenseScore.absent.is_(False),
+        GraduationDefenseScore.score.is_not(None),
+        GraduationDefenseScore.is_deleted.is_(False),
+    )).all() if defense_round else []
+    return {
+        "reviewerScore": round(sum(review_scores) / len(review_scores)) if review_scores else None,
+        "finalId": str(final.id) if final else "",
+        "reviewSourceCount": len(review_scores),
+        "defenseScore": round(sum(defense_scores) / len(defense_scores)) if defense_scores else None,
+        "defenseSourceCount": len(defense_scores),
+        "defenseRound": defense_round,
+    }
+
+
+def _get_or_create(db, stu: GraduationStudent, *, for_update: bool = False) -> GraduationGrade:
+    query = select(GraduationGrade).where(
+        GraduationGrade.tenant_id == _tid(),
+        GraduationGrade.gd_student_id == stu.id,
+        GraduationGrade.is_deleted.is_(False),
+    )
+    if for_update:
+        query = query.with_for_update()
+    g = db.scalars(query).first()
     if not g:
         g = GraduationGrade(tenant_id=_tid(), gd_student_id=stu.id, status="DRAFT")
         db.add(g)
@@ -84,7 +141,7 @@ def _row(g: GraduationGrade, stu=None) -> dict:
             "calculatedAt": _iso(g.calculated_at), "reviewedBy": g.reviewed_by or "",
             "reviewedAt": _iso(g.reviewed_at), "publishedBy": g.published_by or "",
             "publishedAt": _iso(g.published_at), "withdrawReason": g.withdraw_reason or "",
-            "updatedAt": _iso(g.updated_at)}
+            "updatedAt": _iso(g.updated_at), "version": g.version}
 
 
 def list_grades(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
@@ -112,21 +169,28 @@ def get_grade(gd_student_id) -> dict:
         stu = _stu(db, gd_student_id)
         g = _get_or_create(db, stu)
         db.commit()
-        return _row(g, stu)
+        return {**_row(g, stu), "sourceScores": _source_scores(db, stu)}
 
 
 def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defense_score=None) -> dict:
     with session() as db:
-        stu = _stu(db, gd_student_id)
-        g = _get_or_create(db, stu)
+        stu = _stu_for_update(db, gd_student_id)
+        g = _get_or_create(db, stu, for_update=True)
         if g.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "已发布成绩不可直接核算，请先撤回")
+        sources = _source_scores(db, stu)
+        if sources["reviewerScore"] is None or sources["defenseScore"] is None:
+            raise AppException("DATA_CONFLICT", "Review and confirmed defense scores must exist before calculation")
+        authoritative_reviewer = sources["reviewerScore"]
+        authoritative_defense = sources["defenseScore"]
+        if reviewer_score is not None and reviewer_score != authoritative_reviewer:
+            raise AppException("DATA_CONFLICT", "Reviewer score differs from completed review records")
+        if defense_score is not None and defense_score != authoritative_defense:
+            raise AppException("DATA_CONFLICT", "Defense score differs from confirmed defense records")
         if advisor_score is not None:
             g.advisor_score = advisor_score
-        if reviewer_score is not None:
-            g.reviewer_score = reviewer_score
-        if defense_score is not None:
-            g.defense_score = defense_score
+        g.reviewer_score = authoritative_reviewer
+        g.defense_score = authoritative_defense
         if g.advisor_score is None or g.defense_score is None:
             raise AppException("VALIDATION_ERROR", "导师分与答辩分为必需项，评阅分缺失时按 0 计")
         w = _weights(db, stu)
@@ -139,7 +203,11 @@ def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defe
         g.calculated_at = datetime.utcnow()
         g.reviewed_by = None
         g.reviewed_at = None
-        _audit(db, g.id, "核算成绩", detail=f"total={total}")
+        g.version += 1
+        _audit(db, g.id, "核算成绩", detail=(
+            f"total={total};reviewSources={sources['reviewSourceCount']};"
+            f"defenseRound={sources['defenseRound']};defenseSources={sources['defenseSourceCount']}"
+        ))
         db.commit()
         return _row(g, stu)
 
@@ -148,8 +216,10 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     with session() as db:
-        stu = _stu(db, gd_student_id)
-        g = _get_or_create(db, stu)
+        stu = _stu_for_update(db, gd_student_id)
+        g = _get_or_create(db, stu, for_update=True)
+        if action == "APPROVE" and g.status == "CALCULATED" and g.reviewed_at:
+            return _row(g, stu)
         if g.status != "CALCULATED":
             raise AppException("DATA_CONFLICT", "仅「已核算」成绩可复核")
         n, _ = _op()
@@ -164,20 +234,24 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
             g.status = "DRAFT"
             g.remark = comment
             _audit(db, g.id, "复核退回", comment.strip())
+        g.version += 1
         db.commit()
         return _row(g, stu)
 
 
 def publish_grade(gd_student_id) -> dict:
     with session() as db:
-        stu = _stu(db, gd_student_id)
-        g = _get_or_create(db, stu)
+        stu = _stu_for_update(db, gd_student_id)
+        g = _get_or_create(db, stu, for_update=True)
+        if g.status == "PUBLISHED":
+            return _row(g, stu)
         if g.status != "CALCULATED" or not g.reviewed_at:
             raise AppException("DATA_CONFLICT", "仅「复核通过」成绩可发布")
         n, _ = _op()
         g.status = "PUBLISHED"
         g.published_by = n
         g.published_at = datetime.utcnow()
+        g.version += 1
         _audit(db, g.id, "发布成绩", detail=f"total={g.total_score}")
         db.commit()
         return _row(g, stu)
@@ -187,13 +261,16 @@ def withdraw_grade(gd_student_id, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "撤回原因必填且不少于 5 字")
     with session() as db:
-        stu = _stu(db, gd_student_id)
-        g = _get_or_create(db, stu)
+        stu = _stu_for_update(db, gd_student_id)
+        g = _get_or_create(db, stu, for_update=True)
+        if g.status == "WITHDRAWN" and g.withdraw_reason == reason.strip():
+            return _row(g, stu)
         if g.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅「已发布」成绩可撤回")
         g.status = "WITHDRAWN"
         g.withdraw_reason = reason.strip()
         g.reviewed_at = None
+        g.version += 1
         _audit(db, g.id, "撤回成绩", reason.strip())
         db.commit()
         return _row(g, stu)

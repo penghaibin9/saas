@@ -47,10 +47,23 @@ def _stu(db, sid) -> GraduationStudent:
     return assert_student_access(db, s, "archive")
 
 
-def _get_or_create(db, stu: GraduationStudent) -> GraduationArchiveRecord:
-    a = db.scalars(select(GraduationArchiveRecord).where(
+def _stu_for_update(db, sid) -> GraduationStudent:
+    s = db.scalars(select(GraduationStudent).where(
+        GraduationStudent.id == int(sid), GraduationStudent.tenant_id == _tid(),
+        GraduationStudent.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if not s:
+        raise not_found("Graduation student does not exist in the current scope")
+    return assert_student_access(db, s, "archive.write")
+
+
+def _get_or_create(db, stu: GraduationStudent, *, for_update: bool = False) -> GraduationArchiveRecord:
+    query = select(GraduationArchiveRecord).where(
         GraduationArchiveRecord.tenant_id == _tid(), GraduationArchiveRecord.gd_student_id == stu.id,
-        GraduationArchiveRecord.is_deleted.is_(False))).first()
+        GraduationArchiveRecord.is_deleted.is_(False))
+    if for_update:
+        query = query.with_for_update()
+    a = db.scalars(query).first()
     if not a:
         a = GraduationArchiveRecord(tenant_id=_tid(), gd_student_id=stu.id, status="NOT_GENERATED")
         db.add(a)
@@ -61,7 +74,7 @@ def _get_or_create(db, stu: GraduationStudent) -> GraduationArchiveRecord:
 def _check_completeness(db, stu: GraduationStudent) -> tuple[list[dict], list[str]]:
     tb = db.scalars(select(GraduationTaskBook).where(
         GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == stu.id,
-        GraduationTaskBook.status == "CONFIRMED")).first()
+        GraduationTaskBook.status == "CONFIRMED", GraduationTaskBook.is_deleted.is_(False))).first()
     prop = db.scalars(select(GraduationProposal).where(
         GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == stu.id,
         GraduationProposal.status == "APPROVED", GraduationProposal.is_deleted.is_(False))).first()
@@ -70,10 +83,12 @@ def _check_completeness(db, stu: GraduationStudent) -> tuple[list[dict], list[st
         GraduationMidterm.status.in_(("CHECKED_PASS", "RECTIFIED_PASS")))).first()
     fin = db.scalars(select(GraduationFinal).where(
         GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == stu.id,
+        GraduationFinal.final_type == "定稿",
         GraduationFinal.status == "APPROVED", GraduationFinal.is_deleted.is_(False))).first()
     from app.models import GraduationReview
     rv = db.scalars(select(GraduationReview).where(
         GraduationReview.tenant_id == _tid(), GraduationReview.gd_student_id == stu.id,
+        GraduationReview.gd_final_id == (fin.id if fin else -1),
         GraduationReview.status == "COMPLETED", GraduationReview.is_deleted.is_(False))).first()
     ds = db.scalars(select(GraduationDefenseScore).where(
         GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.gd_student_id == stu.id,
@@ -97,7 +112,7 @@ def _row(a: GraduationArchiveRecord, stu=None) -> dict:
             "generatedAt": _iso(a.generated_at), "submittedAt": _iso(a.submitted_at),
             "verifiedBy": a.verified_by or "", "filedAt": _iso(a.filed_at),
             "archiveBatchNo": a.archive_batch_no or "", "rejectReason": a.reject_reason or "",
-            "updatedAt": _iso(a.updated_at)}
+            "updatedAt": _iso(a.updated_at), "version": a.version}
 
 
 def list_archives(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
@@ -130,8 +145,8 @@ def get_archive(gd_student_id) -> dict:
 
 def generate_archive(gd_student_id) -> dict:
     with session() as db:
-        stu = _stu(db, gd_student_id)
-        a = _get_or_create(db, stu)
+        stu = _stu_for_update(db, gd_student_id)
+        a = _get_or_create(db, stu, for_update=True)
         if a.status == "FILED":
             raise AppException("DATA_CONFLICT", "已备案归档不可重新生成")
         checklist, missing = _check_completeness(db, stu)
@@ -139,6 +154,7 @@ def generate_archive(gd_student_id) -> dict:
         a.missing_items = missing
         a.status = "PENDING_SUBMIT"
         a.generated_at = datetime.utcnow()
+        a.version += 1
         _audit(db, a.id, "生成归档清单", detail=f"缺失 {len(missing)} 项")
         db.commit()
         return _row(a, stu)
@@ -146,14 +162,19 @@ def generate_archive(gd_student_id) -> dict:
 
 def submit_archive(gd_student_id) -> dict:
     with session() as db:
-        stu = _stu(db, gd_student_id)
-        a = _get_or_create(db, stu)
+        stu = _stu_for_update(db, gd_student_id)
+        a = _get_or_create(db, stu, for_update=True)
+        if a.status == "SUBMITTED":
+            return _row(a, stu)
         if a.status != "PENDING_SUBMIT":
             raise AppException("DATA_CONFLICT", "仅「待提交」记录可提交")
-        if a.missing_items:
-            raise AppException("DATA_CONFLICT", f"仍缺 {len(a.missing_items)} 项材料，不能提交")
+        checklist, missing = _check_completeness(db, stu)
+        a.checklist_json, a.missing_items = checklist, missing
+        if missing:
+            raise AppException("DATA_CONFLICT", f"仍缺 {len(missing)} 项材料，不能提交")
         a.status = "SUBMITTED"
         a.submitted_at = datetime.utcnow()
+        a.version += 1
         _audit(db, a.id, "提交归档")
         db.commit()
         return _row(a, stu)
@@ -161,15 +182,28 @@ def submit_archive(gd_student_id) -> dict:
 
 def verify_and_file(gd_student_id, archive_batch_no: str = None) -> dict:
     with session() as db:
-        stu = _stu(db, gd_student_id)
-        a = _get_or_create(db, stu)
+        stu = _stu_for_update(db, gd_student_id)
+        a = _get_or_create(db, stu, for_update=True)
+        requested_batch = archive_batch_no or a.archive_batch_no or f"GDARCH-{datetime.now():%Y%m%d}"
+        if a.status == "FILED":
+            if a.archive_batch_no != requested_batch:
+                raise AppException("IDEMPOTENCY_CONFLICT", "Archive is already filed under another batch")
+            return _row(a, stu)
         if a.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅「已提交」记录可核验归档")
+        checklist, missing = _check_completeness(db, stu)
+        if missing:
+            raise AppException("DATA_CONFLICT", "Archive completeness changed; regenerate before filing")
+        a.checklist_json, a.missing_items = checklist, missing
         n, _ = _op()
         a.status = "FILED"
         a.verified_by = n
         a.filed_at = datetime.utcnow()
-        a.archive_batch_no = archive_batch_no or f"GDARCH-{datetime.now():%Y%m%d}"
+        a.archive_batch_no = requested_batch
+        a.version += 1
+        if stu.stage != "ARCHIVED":
+            stu.stage = "ARCHIVED"
+            stu.version += 1
         _audit(db, a.id, "核验归档", detail=a.archive_batch_no)
         db.commit()
         return _row(a, stu)
@@ -179,12 +213,15 @@ def reject_archive(gd_student_id, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
-        stu = _stu(db, gd_student_id)
-        a = _get_or_create(db, stu)
+        stu = _stu_for_update(db, gd_student_id)
+        a = _get_or_create(db, stu, for_update=True)
+        if a.status == "REJECTED" and a.reject_reason == reason.strip():
+            return _row(a, stu)
         if a.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅「已提交」记录可驳回")
         a.status = "REJECTED"
         a.reject_reason = reason.strip()
+        a.version += 1
         _audit(db, a.id, "驳回归档", reason.strip())
         db.commit()
         return _row(a, stu)
@@ -196,17 +233,37 @@ def batch_file(archive_batch_no: str = None) -> dict:
         subs = db.scalars(select(GraduationArchiveRecord).where(
             GraduationArchiveRecord.tenant_id == _tid(),
             GraduationArchiveRecord.status == "SUBMITTED",
-            GraduationArchiveRecord.is_deleted.is_(False))).all()
+            GraduationArchiveRecord.is_deleted.is_(False)).with_for_update()).all()
         n, _ = _op()
         batch_no = archive_batch_no or f"GDARCH-{datetime.now():%Y%m%d}"
+        filed = 0
+        skipped = 0
         for a in subs:
+            stu = db.scalars(select(GraduationStudent).where(
+                GraduationStudent.id == a.gd_student_id,
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if not stu or not can_access_student(db, stu):
+                skipped += 1
+                continue
+            checklist, missing = _check_completeness(db, stu)
+            a.checklist_json, a.missing_items = checklist, missing
+            if missing:
+                skipped += 1
+                continue
             a.status = "FILED"
             a.verified_by = n
             a.filed_at = datetime.utcnow()
             a.archive_batch_no = batch_no
+            a.version += 1
+            if stu.stage != "ARCHIVED":
+                stu.stage = "ARCHIVED"
+                stu.version += 1
             _audit(db, a.id, "批量核验归档", detail=batch_no)
+            filed += 1
         db.commit()
-        return {"filed": len(subs), "archiveBatchNo": batch_no}
+        return {"filed": filed, "skipped": skipped, "archiveBatchNo": batch_no}
 
 
 def batch_generate_submit() -> dict:
@@ -214,11 +271,11 @@ def batch_generate_submit() -> dict:
     with session() as db:
         stus = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE")).all()
+            GraduationStudent.record_status == "ACTIVE").with_for_update()).all()
         stus = [stu for stu in stus if can_access_student(db, stu)]
         submitted, skipped = 0, 0
         for stu in stus:
-            a = _get_or_create(db, stu)
+            a = _get_or_create(db, stu, for_update=True)
             if a.status in ("FILED", "SUBMITTED"):
                 continue
             checklist, missing = _check_completeness(db, stu)
@@ -232,6 +289,7 @@ def batch_generate_submit() -> dict:
                 a.status = "SUBMITTED"
                 a.submitted_at = datetime.utcnow()
                 submitted += 1
+            a.version += 1
         _audit(db, "batch", "批量生成并提交归档", detail=f"提交{submitted}/跳过{skipped}")
         db.commit()
         return {"submitted": submitted, "skipped": skipped}

@@ -239,9 +239,29 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
         stu = _stu(db, gd_student_id)
         if stu.advisor_name and reviewer_name.strip() == stu.advisor_name:
             raise AppException("VALIDATION_ERROR", "评阅人不得是该生指导教师（SoD 冲突）")
+        final_id = int(gd_final_id) if gd_final_id else None
+        if final_id:
+            final = db.scalars(select(GraduationFinal).where(
+                GraduationFinal.id == final_id,
+                GraduationFinal.tenant_id == _tid(),
+                GraduationFinal.gd_student_id == stu.id,
+                GraduationFinal.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if not final:
+                raise AppException("VALIDATION_ERROR", "Review target does not belong to this student")
+        existing = db.scalars(select(GraduationReview).where(
+            GraduationReview.tenant_id == _tid(),
+            GraduationReview.gd_student_id == stu.id,
+            GraduationReview.gd_final_id == final_id,
+            GraduationReview.reviewer_name == reviewer_name.strip(),
+            GraduationReview.status.in_(("ASSIGNED", "REVIEWING", "RETURNED")),
+            GraduationReview.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if existing:
+            return _review_row(existing, stu)
         n, _ = _op()
         r = GraduationReview(tenant_id=_tid(), gd_student_id=stu.id,
-                             gd_final_id=int(gd_final_id) if gd_final_id else None,
+                             gd_final_id=final_id,
                              reviewer_name=reviewer_name.strip(), status="ASSIGNED",
                              assigned_by=n, assigned_at=datetime.utcnow())
         db.add(r)
@@ -253,16 +273,22 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
 
 def submit_review(rid, score: int, opinion: str) -> dict:
     with session() as db:
-        r = db.get(GraduationReview, int(rid))
+        r = db.scalars(select(GraduationReview).where(
+            GraduationReview.id == int(rid), GraduationReview.tenant_id == _tid(),
+            GraduationReview.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
         assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "review.submit")
+        if r.status == "COMPLETED" and r.score == score and (r.opinion or "") == opinion:
+            return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status not in ("ASSIGNED", "REVIEWING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可提交评阅")
         r.score = score
         r.opinion = opinion
         r.status = "COMPLETED"
         r.reviewed_at = datetime.utcnow()
+        r.version += 1
         _audit(db, "REVIEW", r.id, "提交评阅", detail=f"score={score}")
         db.commit()
         return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
@@ -272,13 +298,19 @@ def return_review(rid, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
-        r = db.get(GraduationReview, int(rid))
+        r = db.scalars(select(GraduationReview).where(
+            GraduationReview.id == int(rid), GraduationReview.tenant_id == _tid(),
+            GraduationReview.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
         assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "review.return")
+        if r.status == "RETURNED":
+            return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status != "COMPLETED":
             raise AppException("DATA_CONFLICT", "仅「已完成」评阅可退回重评")
         r.status = "RETURNED"
+        r.version += 1
         _audit(db, "REVIEW", r.id, "退回重评", reason.strip())
         db.commit()
         return _review_row(r, db.get(GraduationStudent, r.gd_student_id))

@@ -11,7 +11,7 @@
       <template v-for="f in formFields" :key="f.key">
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">{{ f.label }} <i v-if="f.required">*</i></span>
           <textarea v-if="f.type === 'textarea'" v-model.trim="form[f.key]" class="ie-in" rows="2" />
-          <input v-else v-model="form[f.key]" class="ie-in" />
+          <input v-else v-model="form[f.key]" class="ie-in" :readonly="f.readonly" />
         </label>
       </template>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
@@ -57,7 +57,11 @@ const FORM_PRESETS = {
   },
   calculate: {
     title: '核算成绩',
-    fields: [{ key: 'advisorScore', label: '导师分', required: true }, { key: 'reviewerScore', label: '评阅分' }, { key: 'defenseScore', label: '答辩分', required: true }]
+    fields: [
+      { key: 'advisorScore', label: '导师分', required: true },
+      { key: 'reviewerScore', label: '评阅分（自动汇总）', readonly: true },
+      { key: 'defenseScore', label: '答辩分（自动汇总）', required: true, readonly: true }
+    ]
   },
   returnGrade: {
     title: '复核退回',
@@ -103,6 +107,17 @@ export default {
       const s = await gdStudentApi.getStudentDetail(this.studentId)
       if (s.code !== 0) { this.error = s.message; this.loading = false; return }
       this.student = s.data
+      if (this.formKey === 'calculate') {
+        const grade = await graduationDefenseGradeApi.getGrade(this.studentId)
+        if (grade.code !== 0) { this.error = grade.message; this.loading = false; return }
+        const source = grade.data.sourceScores || {}
+        this.form.advisorScore = grade.data.advisorScore ?? ''
+        this.form.reviewerScore = source.reviewerScore ?? ''
+        this.form.defenseScore = source.defenseScore ?? ''
+        if (source.reviewerScore == null || source.defenseScore == null) {
+          this.error = '请先完成教师评阅与答辩评分确认'
+        }
+      }
       this.loading = false
     },
     async submit() {

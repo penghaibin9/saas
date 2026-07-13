@@ -95,9 +95,13 @@ def test_review_assign_rejects_advisor_conflict_and_submit_return(client, auth_h
     ok = client.post(f"{GD_REVIEW}/assign", headers=h, json={"gdStudentId": gid, "reviewerName": "李评阅"})
     assert ok.json()["code"] == 0
     rid = ok.json()["data"]["id"]
+    duplicate = client.post(f"{GD_REVIEW}/assign", headers=h, json={"gdStudentId": gid, "reviewerName": "李评阅"})
+    assert duplicate.json()["data"]["id"] == rid
 
     submit = client.post(f"{GD_REVIEW}/{rid}/submit", headers=h, json={"score": 85, "opinion": "内容完整，逻辑清晰"})
     assert submit.json()["data"]["status"] == "COMPLETED"
+    submit_retry = client.post(f"{GD_REVIEW}/{rid}/submit", headers=h, json={"score": 85, "opinion": "内容完整，逻辑清晰"})
+    assert submit_retry.json()["data"]["status"] == "COMPLETED"
 
     short_reason = client.post(f"{GD_REVIEW}/{rid}/return", headers=h, json={"reason": "x"})
     assert short_reason.json()["code"] != 0
