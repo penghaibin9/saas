@@ -43,7 +43,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                          "internship.dashboard.view", "internship.student.view", "internship.risk.view",
                          "internship.stats.view", "internship.stats.enterprise.view", "internship.stats.position.view",
                          "internship.stats.score.view", "internship.match.log.view", "internship.application.view",
-                         "internship.archive.view"},
+                         "internship.archive.view", "internship.complaint.view"},
     "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱（含 campusService.*.view）
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
                       "internship.*", "audit.view"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
