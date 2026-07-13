@@ -501,3 +501,108 @@ def _parse(v):
                 return datetime.strptime(str(v)[:10], "%Y-%m-%d")
             except ValueError:
                 return None
+
+
+# ═══════════ 志愿服务时长补录（04 卡；确认→VOLUNTEER_HOUR 学分入波次1 学分账）═══════════
+
+_VOL_LABEL = {"PENDING": "待认定", "CONFIRMED": "已认定", "REJECTED": "已驳回"}
+VOL_CATEGORY = "ZHIYUAN"  # 志愿公益类目（与二课默认五类对齐）
+
+
+def _vol_row(r, s=None) -> dict:
+    return {"recordId": str(r.id), "studentId": str(r.student_id),
+            "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+            "serviceName": r.service_name, "orgName": r.org_name or "",
+            "hours": float(r.hours or 0), "serviceDate": _iso(r.service_date),
+            "status": r.status, "statusLabel": _VOL_LABEL.get(r.status, r.status),
+            "rejectReason": r.reject_reason or ""}
+
+
+def list_volunteer(user, status=None, page=1, page_size=50):
+    """志愿时长补录列表（数据范围过滤）。"""
+    from app.models import AffairsVolunteerRecord, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [AffairsVolunteerRecord.tenant_id == _tid(), AffairsVolunteerRecord.is_deleted.is_(False)]
+        if status:
+            conds.append(AffairsVolunteerRecord.status == status)
+        rows = db.scalars(select(AffairsVolunteerRecord).where(*conds).order_by(
+            AffairsVolunteerRecord.id.desc())).all()
+        out = []
+        for r in rows:
+            s = db.get(StudentProfile, int(r.student_id)) if r.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append(_vol_row(r, s))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def create_volunteer(body, user) -> dict:
+    """补录一条志愿时长（PENDING）。"""
+    from app.models import AffairsVolunteerRecord, StudentProfile
+    sid = int(getattr(body, "studentId", 0) or 0)
+    hours = float(getattr(body, "hours", 0) or 0)
+    name = (getattr(body, "serviceName", "") or "").strip()
+    if hours <= 0:
+        raise AppException("VALIDATION_ERROR", "志愿时长需大于 0")
+    if not name:
+        raise AppException("VALIDATION_ERROR", "服务名称必填")
+    with session() as db:
+        s = db.get(StudentProfile, sid) if sid else None
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("学生不存在")
+        r = AffairsVolunteerRecord(tenant_id=_tid(), student_id=sid, service_name=name,
+                                   org_name=getattr(body, "orgName", None), hours=hours,
+                                   service_date=_parse(getattr(body, "serviceDate", None)),
+                                   status="PENDING", created_by=_uid_int(user))
+        db.add(r); db.flush()
+        _audit(db, r.id, "VOLUNTEER_CREATE", f"{name} {hours}h")
+        db.commit(); db.refresh(r)
+        return _vol_row(r, s)
+
+
+def confirm_volunteer(record_id, user) -> dict:
+    """认定：PENDING→CONFIRMED，生成 VOLUNTEER_HOUR 学分（复用波次1 学分账）+ 进360。"""
+    from app.models import (AffairsActivityCredit, AffairsVolunteerRecord, StudentProfile,
+                            StudentStageEvent)
+    with session() as db:
+        r = db.get(AffairsVolunteerRecord, int(record_id))
+        if not r or r.is_deleted or r.tenant_id != _tid():
+            raise not_found("志愿记录不存在")
+        if r.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "仅待认定记录可认定")
+        credit = AffairsActivityCredit(tenant_id=_tid(), student_id=r.student_id, activity_id=r.activity_id,
+                                       credit_type="VOLUNTEER_HOUR", credit_value=r.hours,
+                                       category_code=VOL_CATEGORY, source="VOLUNTEER_RECORD",
+                                       remark=r.service_name, created_by=_uid_int(user))
+        db.add(credit); db.flush()
+        r.credit_id, r.status, r.version = credit.id, "CONFIRMED", r.version + 1
+        db.add(StudentStageEvent(tenant_id=_tid(), student_id=r.student_id, from_stage=None,
+                                 to_stage="VOLUNTEER_CONFIRMED",
+                                 reason=f"志愿服务《{r.service_name}》认定 {float(r.hours)} 小时",
+                                 source_module="student-affairs"))
+        _audit(db, r.id, "VOLUNTEER_CONFIRM", f"{float(r.hours)}h")
+        db.commit(); db.refresh(r)
+        s = db.get(StudentProfile, int(r.student_id))
+        return _vol_row(r, s)
+
+
+def reject_volunteer(record_id, user, reason="") -> dict:
+    """驳回：PENDING→REJECTED（原因≥5字，不生成学分）。"""
+    from app.models import AffairsVolunteerRecord, StudentProfile
+    if len((reason or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "驳回原因至少 5 字")
+    with session() as db:
+        r = db.get(AffairsVolunteerRecord, int(record_id))
+        if not r or r.is_deleted or r.tenant_id != _tid():
+            raise not_found("志愿记录不存在")
+        if r.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "仅待认定记录可驳回")
+        r.status, r.reject_reason, r.version = "REJECTED", reason.strip(), r.version + 1
+        _audit(db, r.id, "VOLUNTEER_REJECT", reason.strip())
+        db.commit(); db.refresh(r)
+        s = db.get(StudentProfile, int(r.student_id))
+        return _vol_row(r, s)

@@ -1108,6 +1108,14 @@ class CategoryBody(BaseModel):
     sortOrder: Optional[int] = 0
 
 
+class VolunteerBody(BaseModel):
+    studentId: int = Field(..., description="学生主档 id")
+    serviceName: str = Field(..., min_length=1)
+    hours: float = Field(..., gt=0, description="认定时长(小时)")
+    orgName: Optional[str] = None
+    serviceDate: Optional[str] = None
+
+
 @router.get("/activities", summary="活动列表（type/status 过滤）")
 def activities(activityType: Optional[str] = None, status: Optional[str] = None,
                page: int = 1, pageSize: int = 20,
@@ -1190,3 +1198,28 @@ def second_class_category_create(body: CategoryBody,
 @router.get("/activity-stats", summary="活动与第二课堂统计（仅聚合）")
 def activity_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
     return success(activity_svc.activity_stats(user))
+
+
+@router.get("/volunteer/records", summary="志愿服务时长补录列表（数据范围）")
+def volunteer_records(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                      user=Depends(require_permission("studentAffairs.activity.view"))):
+    items, total = activity_svc.list_volunteer(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/volunteer/records", summary="补录志愿时长（待认定）")
+def volunteer_create(body: VolunteerBody,
+                     user=Depends(require_permission("studentAffairs.activity.create"))):
+    return success(activity_svc.create_volunteer(body, user), message="已提交")
+
+
+@router.post("/volunteer/records/{recordId}/confirm", summary="认定志愿时长→生成学分")
+def volunteer_confirm(recordId: int = Path(...),
+                      user=Depends(require_permission("studentAffairs.activity.confirm"))):
+    return success(activity_svc.confirm_volunteer(recordId, user), message="已认定")
+
+
+@router.post("/volunteer/records/{recordId}/reject", summary="驳回志愿时长补录（原因≥5字）")
+def volunteer_reject(body: ReasonBody, recordId: int = Path(...),
+                     user=Depends(require_permission("studentAffairs.activity.confirm"))):
+    return success(activity_svc.reject_volunteer(recordId, user, body.reason or ""), message="已驳回")

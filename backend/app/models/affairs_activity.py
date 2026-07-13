@@ -90,6 +90,24 @@ class AffairsActivityCredit(PKMixin, TenantMixin, AuditTimeMixin, Base):
                                        name="uk_activity_credit"),)
 
 
+class AffairsVolunteerRecord(PKMixin, TenantMixin, CommonMixin, Base):
+    """校外/线下志愿时长补录认定（04 卡）。PENDING→CONFIRMED(生成 VOLUNTEER_HOUR 学分)/REJECTED。
+    activity_id 可空（平台活动外的补录）；credit_id 记确认时生成的学分行，防重复入账。"""
+    __tablename__ = "t_affairs_volunteer_record"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    activity_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="来源平台活动，可空=纯线下补录")
+    service_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="服务名称/项目")
+    org_name: Mapped[str | None] = mapped_column(String(200), comment="服务单位/组织")
+    hours: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False, default=0, comment="认定时长(小时)")
+    service_date: Mapped[datetime | None] = mapped_column(DateTime, comment="服务日期")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/CONFIRMED/REJECTED")
+    credit_id: Mapped[int | None] = mapped_column(BigInteger, comment="确认后生成的 t_affairs_activity_credit 行")
+    reject_reason: Mapped[str | None] = mapped_column(String(500))
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
 class AffairsCreditCategory(PKMixin, TenantMixin, CommonMixin, Base):
     """二课积分类目配置（学校可配；seed 默认五类：思想成长/社会实践/志愿公益/创新创业/文体活动）。"""
     __tablename__ = "t_affairs_credit_category"
