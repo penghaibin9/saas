@@ -7,8 +7,7 @@
           <view class="rs__avatar">{{ userInitial }}</view>
           <view class="flex-1">
             <text class="t-lg t-bold">{{ user.name }}</text>
-            <text class="t-sm t-secondary"> · {{ user.title }}</text>
-            <text class="rs__intro-sub">{{ user.college }} · 工号 {{ user.workNo }}</text>
+            <text v-if="user.tenantName" class="rs__intro-sub">{{ user.tenantName }}</text>
           </view>
         </view>
         <text class="rs__tip">切换身份后，工作台、学生、待办、消息将按该身份的数据范围刷新。</text>
@@ -29,11 +28,7 @@
               <text class="t-md t-bold">{{ r.label }}</text>
               <text v-if="r.key === currentRole" class="rs__current">当前</text>
             </view>
-            <text class="rs__scope">{{ r.dataScopeText }}</text>
-            <view class="rs__stats">
-              <text class="rs__stat">待办 {{ r.todo }}</text>
-              <text class="rs__stat is-risk">风险 {{ r.risk }}</text>
-            </view>
+            <text class="rs__scope">切换后按该身份的数据范围加载</text>
           </view>
           <text class="rs__arrow">›</text>
         </view>
@@ -45,8 +40,6 @@
 <script>
 import { useSessionStore } from '@/stores/session'
 import { getRoleConfig } from '@/config/roles.config'
-import { mockTeacherUser } from '@/mock/user'
-import { workbenchByRole } from '@/mock/teacher/workbench'
 import { relaunch, toast } from '@/utils/nav'
 import { toastError } from '@/services/request'
 
@@ -54,7 +47,7 @@ const ICONS = { counselor: '👥', mentor: '📘', intern_mentor: '💼', employ
 
 export default {
   data() {
-    return { user: mockTeacherUser, currentRole: '', canBack: false, switching: false }
+    return { user: {}, currentRole: '', canBack: false, switching: false }
   },
   computed: {
     userInitial() {
@@ -62,17 +55,16 @@ export default {
     },
     identities() {
       const session = useSessionStore()
-      return (session.availableRoles.length ? session.availableRoles : this.user.identities).map((key) => {
+      // 只按真实可用身份展示（不再补齐 mock 的全部教师身份，也不显示 mock 的待办/风险数字）
+      return (session.availableRoles || []).map((key) => {
         const cfg = getRoleConfig(key)
-        const wb = workbenchByRole[key] || { metrics: [] }
-        const todo = (wb.metrics.find((m) => ['todo', 'weekly', 'review', 'warning', 'follow'].includes(m.key)) || {}).value || 0
-        const risk = (wb.metrics.find((m) => ['risk', 'abnormal', 'unemployed', 'status'].includes(m.key)) || {}).value || 0
-        return { key, label: cfg.label, dataScopeText: cfg.dataScopeText, icon: ICONS[key] || '🧑‍🏫', todo, risk }
+        return { key, label: cfg.label, icon: ICONS[key] || '🧑‍🏫' }
       })
     }
   },
   onLoad() {
     const session = useSessionStore()
+    this.user = session.mockUser || {}
     this.currentRole = session.currentRole
     this.canBack = session.isTeacher && getCurrentPages().length > 1
   },
@@ -117,8 +109,5 @@ export default {
 }
 .rs__current { font-size: var(--font-size-xs); color: var(--teacher-700); background: var(--teacher-50); padding: 2px 8px; border-radius: var(--radius-full); }
 .rs__scope { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 2px; }
-.rs__stats { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
-.rs__stat { font-size: var(--font-size-xs); color: var(--text-secondary); }
-.rs__stat.is-risk { color: var(--danger-600); }
 .rs__arrow { font-size: var(--font-size-2xl); color: var(--text-tertiary); }
 </style>
