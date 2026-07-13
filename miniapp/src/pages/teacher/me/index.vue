@@ -6,7 +6,7 @@
         <view class="tme__avatar">{{ (user.name || '师').slice(0,1) }}</view>
         <view class="flex-1">
           <text class="tme__name">{{ user.name }}</text>
-          <text class="tme__sub">{{ user.college }} · {{ user.title }} · 工号 {{ user.workNo }}</text>
+          <text class="tme__sub">{{ subText }}</text>
         </view>
       </view>
       <!-- 当前身份 + 切换 -->
@@ -47,7 +47,14 @@ import { go, relaunch, toast } from '@/utils/nav'
 export default {
   computed: {
     // 仅演示（mock）模式标注"演示环境"；真实后端/生产构建只显示版本号，避免误导真实用户
-    versionText() { return ENV.useMock ? '版本 v1.0.0 · 演示环境（mock 数据）' : '版本 v1.0.0' }
+    versionText() { return ENV.useMock ? '版本 v1.0.0 · 演示环境（mock 数据）' : '版本 v1.0.0' },
+    // 教师无后端档案接口，头部改用真实的租户 + 角色，避免展示 mock 的学院/职称/工号
+    subText() {
+      const parts = []
+      if (this.user && this.user.tenantName) parts.push(this.user.tenantName)
+      if (this.roleConfig && this.roleConfig.label) parts.push(this.roleConfig.label)
+      return parts.join(' · ') || '教师'
+    }
   },
   data() {
     return {

@@ -43,18 +43,7 @@
 
     </view>
 
-    <!-- 试用咨询（可公开电话；无任何账号密码信息） -->
-    <view class="login__trial card">
-      <text class="login__trial-tt">想为学校开通正式试用？</text>
-      <text class="login__trial-ph">获取试用名额 / 商务咨询：{{ trialPhone }}</text>
-      <view class="login__trial-ops">
-        <button class="login__trial-btn" @click="copyPhone">复制手机号</button>
-        <button class="login__trial-btn login__trial-btn--tel" @click="callPhone">拨打电话</button>
-      </view>
-    </view>
-
     <view class="login__foot">
-      <text class="t-xs t-tertiary">演示环境数据仅供体验 · 正式开通请联系平台服务顾问</text>
       <text class="t-xs t-tertiary">{{ brand.copyright }}</text>
     </view>
   </view>
@@ -63,6 +52,7 @@
 <script>
 import { tenantBrandConfig, ROLE } from '@/config'
 import { useSessionStore } from '@/stores/session'
+import { studentApi } from '@/services/studentApi'
 import { relaunch, toast } from '@/utils/nav'
 import { realRequest, setRefreshToken, setToken } from '@/services/request'
 
@@ -71,7 +61,6 @@ export default {
     return {
       brand: tenantBrandConfig,
       tab: 'student',
-      trialPhone: '13549666867',
       account: { loginName: '', password: '' },
       accLoading: false
     }
@@ -104,23 +93,20 @@ export default {
           { skipRealLogin: true })
         session.applyRealUser(d)
         toast('欢迎，' + d.displayName + (d.tenantName ? '（' + d.tenantName + '）' : ''))
-        relaunch(roleCode === 'STUDENT' ? '/pages/student/home/index' : '/pages/teacher/workbench/index')
+        const goHome = () => relaunch(roleCode === 'STUDENT'
+          ? '/pages/student/home/index' : '/pages/teacher/workbench/index')
+        // 学生：进入首页前先拉真实档案覆盖展示对象（姓名/学号/班级），避免首页/个人中心显示演示数据；
+        // 拉取失败也照常进入（首页仍显示真实姓名，学号/班级留空而非假值）
+        if (roleCode === 'STUDENT') {
+          studentApi.getProfile().then((prof) => session.hydrateStudentProfile(prof)).catch(() => {}).finally(goHome)
+        } else {
+          goHome()
+        }
       }).catch((e) => {
         toast((e && e.message) || '登录失败，请稍后重试')
       }).finally(() => {
         this.accLoading = false
       })
-    },
-    copyPhone() {
-      uni.setClipboardData({ data: this.trialPhone, success: () => toast('手机号已复制') })
-    },
-    callPhone() {
-      // #ifdef H5
-      window.location.href = 'tel:' + this.trialPhone
-      // #endif
-      // #ifndef H5
-      uni.makePhoneCall({ phoneNumber: this.trialPhone, fail: () => {} })
-      // #endif
     }
   }
 }
@@ -163,21 +149,4 @@ export default {
 }
 .login__ph { color: var(--text-tertiary); }
 .login__btn--acc { margin-top: var(--space-3); height: 44px; background: var(--bg-card); color: var(--brand-primary); border: 1px solid var(--brand-primary); }
-.login__demo { margin-top: var(--space-4); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--primary-50); border: 1px dashed var(--primary-100); }
-.login__demo-tt { display: block; font-size: var(--font-size-xs); color: var(--text-secondary); margin-bottom: var(--space-2); }
-.login__demo-row { display: flex; align-items: center; gap: var(--space-2); padding: 6px 4px; }
-.login__demo-role { font-size: var(--font-size-xs); color: var(--text-tertiary); width: 52px; flex-shrink: 0; }
-.login__demo-acc { font-size: var(--font-size-sm); color: var(--brand-primary); font-weight: 600; }
-.login__demo-pwd { margin-left: auto; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.login__trial { position: relative; margin-top: var(--space-4); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
-.login__trial-tt { font-size: var(--font-size-md); font-weight: 600; color: var(--text-primary); }
-.login__trial-ph { font-size: var(--font-size-sm); color: var(--text-secondary); }
-.login__trial-ops { display: flex; gap: var(--space-3); margin-top: var(--space-1); }
-.login__trial-btn {
-  flex: 1; height: 38px; line-height: 38px; font-size: var(--font-size-sm);
-  border-radius: var(--radius-md); border: 1px solid var(--primary-100);
-  background: var(--primary-50); color: var(--brand-primary); padding: 0;
-}
-.login__trial-btn::after { border: none; }
-.login__trial-btn--tel { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
 </style>

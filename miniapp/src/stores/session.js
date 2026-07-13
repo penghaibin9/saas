@@ -76,6 +76,15 @@ export const useSessionStore = defineStore('session', {
         roleCode: role.roleCode || this.identity.roleCode,
         roleName: role.roleName || this.identity.roleName
       }
+      // 用真实姓名覆盖 UI 展示对象，杜绝首页/工作台/个人中心显示 mock 姓名（学号/班级由 profile 回填）
+      if (this.mockUser) {
+        this.mockUser = {
+          ...this.mockUser,
+          name: d.displayName || d.realName || this.mockUser.name,
+          tenantName: d.tenantName || this.mockUser.tenantName || ''
+        }
+        this.persist()
+      }
     },
     /** /mobile/me/profile 回填 studentId/studentNo（登录响应里没有） */
     setStudentIdentity(p) {
@@ -86,6 +95,28 @@ export const useSessionStore = defineStore('session', {
         studentNo: p.studentNo || this.identity.studentNo,
         realName: p.name || this.identity.realName
       }
+    },
+    /** 学生真实档案回填 UI 展示对象（姓名/学号/班级/学院/专业/年级），彻底替换 mock 假值。
+     *  入参为 /mobile/me/profile 返回结构：{ base:{name,studentNo,...}, org:{className,college,major,grade} } */
+    hydrateStudentProfile(p) {
+      if (!p) return
+      const base = p.base || {}
+      const org = p.org || {}
+      this.mockUser = {
+        ...(this.mockUser || {}),
+        name: base.name || (this.mockUser && this.mockUser.name) || '',
+        studentNo: base.studentNo || '',
+        className: org.className || '',
+        college: org.college || '',
+        major: org.major || '',
+        grade: org.grade || ''
+      }
+      this.identity = {
+        ...this.identity,
+        studentNo: base.studentNo || this.identity.studentNo,
+        realName: base.name || this.identity.realName
+      }
+      this.persist()
     },
     /** 教师端切换身份（08B 3.3）。返回 Promise：新 token 生效后才 resolve，
      * 调用方必须 await 后再刷新数据，避免旧角色 token 残留导致数据范围错乱。 */
@@ -115,11 +146,17 @@ export const useSessionStore = defineStore('session', {
     },
     persist() {
       try {
+        const u = this.mockUser || {}
         uni.setStorageSync(STORAGE_KEY, JSON.stringify({
           logged: this.logged,
           currentRole: this.currentRole,
           availableRoles: this.availableRoles,
-          isTeacher: getRoleConfig(this.currentRole).side === 'teacher'
+          isTeacher: getRoleConfig(this.currentRole).side === 'teacher',
+          // 真实登录/档案回填后的展示快照，供 restart 后恢复真实身份，避免回落到 mock 姓名/学号
+          user: {
+            name: u.name, studentNo: u.studentNo, className: u.className,
+            college: u.college, major: u.major, grade: u.grade, tenantName: u.tenantName
+          }
         }))
       } catch (e) {}
     },
@@ -132,7 +169,12 @@ export const useSessionStore = defineStore('session', {
           this.currentRole = s.currentRole
           this.availableRoles = s.availableRoles || []
           this.logged = true
-          this.mockUser = s.isTeacher ? { ...mockTeacherUser } : { ...mockStudentUser }
+          const skeleton = s.isTeacher ? { ...mockTeacherUser } : { ...mockStudentUser }
+          // 用持久化的真实展示快照覆盖 mock 骨架（仅覆盖已回填字段），避免 restart 后显示 mock 身份
+          const saved = s.user || {}
+          const overlay = {}
+          Object.keys(saved).forEach((k) => { if (saved[k] !== undefined && saved[k] !== null) overlay[k] = saved[k] })
+          this.mockUser = { ...skeleton, ...overlay }
         }
       } catch (e) {}
     }
