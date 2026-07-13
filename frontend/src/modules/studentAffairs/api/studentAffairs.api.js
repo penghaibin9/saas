@@ -613,6 +613,62 @@ export const studentAffairsApi = {
   /** 批次流转（COLLECTING→COLLEGE_REVIEW→SA_CONFIRM→ARCHIVED；归档登记水印包）。 */
   advanceArchive(batchId, action = 'APPROVE') {
     return callStrict(() => request(`/student-affairs/archive/batches/${batchId}/advance`, { method: 'POST', body: { action } }))
+  },
+
+  // ─────────────── 学生活动与第二课堂（D 包波次1 · /activities /second-class） ───────────────
+
+  /** 活动列表（type/status 过滤）。 */
+  getActivities({ activityType = '', status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (activityType) params.activityType = activityType
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/activities', { params }))
+  },
+  /** 建活动（草稿）。body: { activityName, activityType, startAt?, endAt?, enrollDeadline?, quota?, creditType?, creditValue?, categoryCode?, location?, description? } */
+  createActivity(body) {
+    return callStrict(() => request('/student-affairs/activities', { method: 'POST', body }))
+  },
+  /** 发布/取消活动。action: PUBLISH/CANCEL；取消需 reason≥5。 */
+  publishActivity(id, action = 'PUBLISH', reason = '') {
+    return callStrict(() => request(`/student-affairs/activities/${id}/publish`, { method: 'POST', body: { action, reason } }))
+  },
+  /** 流转：ENROLL_CLOSE/START/FINISH。 */
+  transitionActivity(id, action) {
+    return callStrict(() => request(`/student-affairs/activities/${id}/transition`, { method: 'POST', body: { action } }))
+  },
+  /** 活动名单。 */
+  getActivityParticipants(id) {
+    return callStrict(() => request(`/student-affairs/activities/${id}/participants`))
+  },
+  /** 确认名单+生成学时/积分→进360。 */
+  confirmActivity(id) {
+    return callStrict(() => request(`/student-affairs/activities/${id}/confirm`, { method: 'POST', body: {} }))
+  },
+  /** 撤销确认（reason≥5）。 */
+  unconfirmActivity(id, reason) {
+    return callStrict(() => request(`/student-affairs/activities/${id}/unconfirm`, { method: 'POST', body: { reason } }))
+  },
+  /** 归档活动。 */
+  archiveActivity(id) {
+    return callStrict(() => request(`/student-affairs/activities/${id}/archive`, { method: 'POST', body: {} }))
+  },
+  /** 二课积分台账（creditType 过滤，数据范围）。 */
+  getSecondClassLedger({ creditType = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (creditType) params.creditType = creditType
+    return callStrict(() => request('/student-affairs/second-class/ledger', { params }))
+  },
+  /** 个人第二课堂成绩单。 */
+  getSecondClassReport(studentId) {
+    return callStrict(() => request(`/student-affairs/second-class/students/${studentId}/report`))
+  },
+  /** 二课积分类目列表。 */
+  getCreditCategories() {
+    return callStrict(() => request('/student-affairs/second-class/categories'))
+  },
+  /** 建二课积分类目。body: { categoryCode, categoryName, creditType?, description? } */
+  createCreditCategory(body) {
+    return callStrict(() => request('/student-affairs/second-class/categories', { method: 'POST', body }))
   }
 }
 

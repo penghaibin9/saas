@@ -158,6 +158,18 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话台账', requiresAuth: true, permissionKey: 'studentAffairs.talk.view' }
       },
       {
+        path: 'activity',
+        name: 'student-affairs-activity',
+        component: () => import('@/modules/studentAffairs/views/activity/ActivityWorkbenchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学生活动', requiresAuth: true, permissionKey: 'studentAffairs.activity.view' }
+      },
+      {
+        path: 'activity/second-class',
+        name: 'student-affairs-second-class',
+        component: () => import('@/modules/studentAffairs/views/activity/SecondClassLedgerView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '第二课堂积分', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
+      {
         path: 'family',
         name: 'student-affairs-family',
         component: () => import('@/modules/studentAffairs/views/FamilyContactView.vue'),
