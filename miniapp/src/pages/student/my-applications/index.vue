@@ -68,6 +68,7 @@ export default {
     pagingList() { return this.filtered },
     load() {
       this.state = 'loading'
+      this.pagedReset()
       studentApi.getApplications().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
     detail(a) { toast(a.name + '：' + (a.statusText || a.status || '处理中') + (a.lastOpinion ? '，意见：' + a.lastOpinion : '')) },

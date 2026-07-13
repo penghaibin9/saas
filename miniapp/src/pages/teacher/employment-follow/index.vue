@@ -16,7 +16,7 @@
         <view class="page-pad" style="padding-top:0;">
           <MobileGlobalState v-if="!filtered.length" state="empty" title="暂无学生" description="切换其他分类查看。" />
           <view v-else class="stack-sm">
-            <view v-for="s in filtered" :key="s.id" class="ef card">
+            <view v-for="s in pagedSlice(filtered)" :key="s.id" class="ef card">
               <view class="row-between">
                 <view class="flex-1">
                   <text class="t-md t-bold">{{ s.name }}</text>
@@ -39,6 +39,8 @@
                 <text v-if="s.group === 'verify'" class="ef__btn is-primary" @click="verify(s)">去核验</text>
               </view>
             </view>
+            <view v-if="pagedFooter(filtered) === 'more'" class="ef__paging" @click="pagedLoadMore">上拉加载更多</view>
+            <view v-else-if="pagedFooter(filtered) === 'end'" class="ef__paging is-end">没有更多了</view>
           </view>
         </view>
       </view>
@@ -49,13 +51,20 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
+import { listPaging } from '@/utils/listPaging'
 import { toast } from '@/utils/nav'
 export default {
+  mixins: [listPaging(20)],
   data() { return { data: null, state: 'loading', tab: 'unemployed', acting: false } },
   onLoad() { this.load() },
+  // onReachBottom 必须写在页面本身，mp-weixin 才会注册
+  onReachBottom() { this.pagedReachBottom() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
+  },
+  watch: {
+    tab() { this.pagedReset() }
   },
   computed: {
     filtered() {
@@ -64,8 +73,10 @@ export default {
     }
   },
   methods: {
+    pagingList() { return this.filtered },
     load(done) {
       this.state = 'loading'
+      this.pagedReset()
       teacherApi.getEmployment().then((d) => { this.data = d; this.state = 'ready' })
         .catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
@@ -122,4 +133,6 @@ export default {
 .ef__actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
 .ef__btn { font-size: var(--font-size-sm); color: var(--text-secondary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 5px 12px; }
 .ef__btn.is-primary { color: #fff; background: var(--teacher-600); border-color: var(--teacher-600); }
+.ef__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--teacher-700); }
+.ef__paging.is-end { color: var(--text-tertiary); }
 </style>

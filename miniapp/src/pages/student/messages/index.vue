@@ -61,6 +61,7 @@ export default {
     pagingList() { return this.list },
     load() {
       this.state = 'loading'
+      this.pagedReset()
       studentApi.getMessages().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
     /** 打开消息：本地即时置灰 + 真实通知（msg- 前缀）同步服务器已读，失败不打扰阅读 */

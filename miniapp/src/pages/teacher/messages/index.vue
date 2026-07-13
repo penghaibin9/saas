@@ -55,6 +55,7 @@ export default {
     pagingList() { return this.list },
     load() {
       this.state = 'loading'
+      this.pagedReset()
       teacherApi.getMessages().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
     open(m) { m.read = true },

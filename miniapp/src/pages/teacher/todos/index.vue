@@ -84,6 +84,7 @@ export default {
     pagingList() { return this.filtered },
     load() {
       this.state = 'loading'
+      this.pagedReset()
       teacherApi.getTodos().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
     handle(t) {
