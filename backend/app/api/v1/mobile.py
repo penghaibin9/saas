@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_makeup_service as mk
-from app.services import mobile_academic_affairs_service as aa
+from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
