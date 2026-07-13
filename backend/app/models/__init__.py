@@ -68,6 +68,10 @@ from app.models.affairs_dorm import (DormBed, DormBuilding,  # noqa: F401
                                      DormCheckRecord, DormCheckTask, DormRoom,
                                      DormTransfer)
 from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F401
+from app.models.affairs_activity import (AffairsActivity,  # noqa: F401
+                                         AffairsActivityCredit,
+                                         AffairsActivitySignup,
+                                         AffairsCreditCategory)
 from app.models.academic_affairs import (AaCalendarEvent, AaCourse,  # noqa: F401
                                          AaGradeRecord, AaGradeTask,
                                          AaGraduationAuditBatch,
