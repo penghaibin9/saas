@@ -12,6 +12,7 @@ from app.core.security import require_staff  # 仅敏感 reveal 等「服务层�
 from app.services import affairs_activity_service as activity_svc
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_club_service as club_svc
+from app.services import affairs_league_service as league_svc
 from app.services import affairs_org_service as org_svc
 from app.services import affairs_archive_service as archive_svc
 from app.services import affairs_class_service as class_svc
@@ -1158,6 +1159,18 @@ class OrgPositionBody(BaseModel):
     termCode: Optional[str] = None
 
 
+class LeagueDevBody(BaseModel):
+    studentId: int = Field(...)
+    devType: Optional[str] = Field("PARTY", description="PARTY/LEAGUE")
+    branchName: Optional[str] = None
+
+
+class LeagueStageBody(BaseModel):
+    toStage: str = Field(..., description="APPLICANT/ACTIVIST/DEVELOPMENT_TARGET/PROBATIONARY/FULL_MEMBER")
+    materialFileId: Optional[int] = None
+    remark: Optional[str] = None
+
+
 @router.get("/activities", summary="活动列表（type/status 过滤）")
 def activities(activityType: Optional[str] = None, status: Optional[str] = None,
                page: int = 1, pageSize: int = 20,
@@ -1357,3 +1370,35 @@ def organization_dismiss(positionId: int = Path(...),
 def student_cadre_resume(studentId: int = Path(...),
                          user=Depends(require_permission("studentAffairs.org.view"))):
     return success({"items": org_svc.student_resume(studentId, user)})
+
+
+# ── 党团建设（07 卡；发展阶段台账，材料脱敏，时限/审批/政治面貌回写见历史欠账）──
+@router.get("/party-league/dev", summary="党团发展台账列表（数据范围，不含材料明文）")
+def league_dev_list(devType: Optional[str] = None, stage: Optional[str] = None, status: Optional[str] = None,
+                    page: int = 1, pageSize: int = 50,
+                    user=Depends(require_permission("studentAffairs.league.view"))):
+    items, total = league_svc.list_dev(user, devType, stage, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/party-league/dev", summary="建党团发展台账（起始入党/团申请人）")
+def league_dev_create(body: LeagueDevBody, user=Depends(require_permission("studentAffairs.league.manage"))):
+    return success(league_svc.create_dev(body, user), message="已建档")
+
+
+@router.post("/party-league/dev/{devId}/advance", summary="推进发展阶段（记流转+材料脱敏）")
+def league_dev_advance(body: LeagueStageBody, devId: int = Path(...),
+                       user=Depends(require_permission("studentAffairs.league.manage"))):
+    return success(league_svc.advance_stage(devId, body, user), message="已推进")
+
+
+@router.post("/party-league/dev/{devId}/terminate", summary="终止发展（原因≥5字）")
+def league_dev_terminate(body: ReasonBody, devId: int = Path(...),
+                         user=Depends(require_permission("studentAffairs.league.manage"))):
+    return success(league_svc.terminate_dev(devId, user, body.reason or ""), message="已终止")
+
+
+@router.get("/party-league/dev/{devId}/stages", summary="发展阶段时间线（材料仅标记有无）")
+def league_dev_stages(devId: int = Path(...),
+                      user=Depends(require_permission("studentAffairs.league.view"))):
+    return success({"items": league_svc.list_stages(devId, user)})

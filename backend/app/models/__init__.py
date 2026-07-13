@@ -78,6 +78,8 @@ from app.models.affairs_club import (AffairsClub,  # noqa: F401
                                      AffairsClubMember)
 from app.models.affairs_org import (AffairsOrgPosition,  # noqa: F401
                                     AffairsStudentOrg)
+from app.models.affairs_league import (AffairsLeagueDev,  # noqa: F401
+                                       AffairsLeagueDevStage)
 from app.models.academic_affairs import (AaCalendarEvent, AaCourse,  # noqa: F401
                                          AaGradeRecord, AaGradeTask,
                                          AaGraduationAuditBatch,
