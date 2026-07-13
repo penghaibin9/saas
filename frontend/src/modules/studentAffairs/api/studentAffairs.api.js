@@ -754,6 +754,29 @@ export const studentAffairsApi = {
   /** 学生干部履历（组织任职+班级班干部）。 */
   getCadreResume(studentId) {
     return callStrict(() => request(`/student-affairs/students/${studentId}/cadre-resume`))
+  },
+
+  // ─────────────── 党团建设（07 卡 · /party-league，材料脱敏） ───────────────
+  getLeagueDev({ devType = '', stage = '', status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (devType) params.devType = devType
+    if (stage) params.stage = stage
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/party-league/dev', { params }))
+  },
+  /** 建发展台账。body: { studentId, devType?, branchName? } */
+  createLeagueDev(body) {
+    return callStrict(() => request('/student-affairs/party-league/dev', { method: 'POST', body }))
+  },
+  /** 推进阶段。body: { toStage, materialFileId?, remark? } */
+  advanceLeagueStage(devId, body) {
+    return callStrict(() => request(`/student-affairs/party-league/dev/${devId}/advance`, { method: 'POST', body }))
+  },
+  terminateLeagueDev(devId, reason) {
+    return callStrict(() => request(`/student-affairs/party-league/dev/${devId}/terminate`, { method: 'POST', body: { reason } }))
+  },
+  getLeagueStages(devId) {
+    return callStrict(() => request(`/student-affairs/party-league/dev/${devId}/stages`))
   }
 }
 

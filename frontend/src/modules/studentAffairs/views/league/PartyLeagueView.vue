@@ -1,0 +1,187 @@
+<template>
+  <AppPageShell
+    title="党团建设"
+    subtitle="党/团员发展阶段台账（申请人→积极分子→发展对象→预备党员→正式党员）。材料脱敏、仅记引用。"
+    role-name="党委 / 团委 / 组织委员"
+    data-scope-name="按数据范围（辅导员限本班）"
+    watermark-purpose="党团发展台账（敏感）"
+  >
+    <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载发展台账..." @retry="load"
+                    @back="$router.push('/admin/student-affairs/activity')">
+      <div class="sa-toolbar">
+        <div class="sa-grid sa-grid--metrics">
+          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
+        </div>
+        <AppPermissionButton code="studentAffairs.league.manage" :loading="saving" @click="openForm">建发展档案</AppPermissionButton>
+      </div>
+
+      <AppSectionCard v-if="formVisible" title="建党团发展台账">
+        <div class="lg-grid">
+          <label class="lg-field"><span>学生主档ID *</span><input v-model.number="form.studentId" type="number" class="lg-input" /></label>
+          <label class="lg-field"><span>类型</span>
+            <select v-model="form.devType" class="lg-input"><option value="PARTY">党员发展</option><option value="LEAGUE">团员发展</option></select></label>
+          <label class="lg-field"><span>党/团支部</span><input v-model.trim="form.branchName" class="lg-input" /></label>
+        </div>
+        <p v-if="form.error" class="lg-error">{{ form.error }}</p>
+        <div class="lg-actions">
+          <button type="button" class="lg-btn" @click="formVisible = false">取消</button>
+          <AppPermissionButton code="studentAffairs.league.manage" :loading="saving" @click="save">建档</AppPermissionButton>
+        </div>
+      </AppSectionCard>
+
+      <div class="lg-layout">
+        <AppSectionCard title="发展台账" class="lg-list">
+          <div class="lg-filters">
+            <button v-for="f in stageFilters" :key="f.key" type="button" class="lg-chip"
+                    :class="{ 'is-on': activeStage === f.key }" @click="setStage(f.key)">{{ f.label }}</button>
+          </div>
+          <ul class="lg-devs">
+            <li v-for="d in items" :key="d.devId" class="lg-dev" :class="{ 'is-active': sel && sel.devId === d.devId }" @click="select(d)">
+              <div class="lg-dev__top"><span class="lg-dev__name">{{ d.realName || ('学生#'+d.studentId) }}</span>
+                <StatusTag :type="statusType(d.status)" :label="d.statusLabel" dot /></div>
+              <div class="lg-dev__meta">{{ d.devTypeLabel }} · {{ d.currentStageLabel }} · {{ d.branchName || '未填支部' }}</div>
+            </li>
+            <li v-if="!items.length" class="lg-empty">暂无发展台账</li>
+          </ul>
+        </AppSectionCard>
+
+        <AppSectionCard :title="sel ? (sel.realName + ' · 发展阶段时间线') : '阶段详情'" class="lg-detail">
+          <p v-if="!sel" class="lg-hint">从左侧选择一条发展台账查看阶段时间线并推进。</p>
+          <template v-else>
+            <div class="lg-subhead">
+              <div>当前阶段：<b>{{ sel.currentStageLabel }}</b> · <StatusTag :type="statusType(sel.status)" :label="sel.statusLabel" dot /></div>
+              <div v-if="sel.status==='ONGOING'" class="lg-adv">
+                <select v-model="advStage" class="lg-input">
+                  <option value="">推进到…</option>
+                  <option v-for="s in nextStages" :key="s.key" :value="s.key">{{ s.label }}</option>
+                </select>
+                <AppPermissionButton code="studentAffairs.league.manage" size="sm" :disabled="!advStage" @click="advance">推进</AppPermissionButton>
+                <AppPermissionButton code="studentAffairs.league.manage" size="sm" variant="secondary" danger @click="terminate">终止</AppPermissionButton>
+              </div>
+            </div>
+            <ol class="lg-timeline">
+              <li v-for="st in stages" :key="st.stageId">
+                <span class="lg-tl__stage">{{ st.toStageLabel }}</span>
+                <span class="lg-tl__meta">{{ (st.occurredAt||'').slice(0,10) }} · {{ st.operator || '—' }}
+                  <em v-if="st.hasMaterial" class="lg-tl__mat">📎 含材料</em></span>
+                <span v-if="st.remark" class="lg-tl__remark">{{ st.remark }}</span>
+              </li>
+              <li v-if="!stages.length" class="lg-empty">暂无阶段记录</li>
+            </ol>
+          </template>
+        </AppSectionCard>
+      </div>
+    </AppGlobalState>
+  </AppPageShell>
+</template>
+
+<script>
+import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
+import { toast } from '@/utils/toast'
+
+const STAGES = [
+  { key: 'APPLICANT', label: '入党申请人' }, { key: 'ACTIVIST', label: '入党积极分子' },
+  { key: 'DEVELOPMENT_TARGET', label: '发展对象' }, { key: 'PROBATIONARY', label: '预备党员' },
+  { key: 'FULL_MEMBER', label: '正式党员' }
+]
+const STAGE_FILTERS = [{ key: '', label: '全部' }].concat(STAGES)
+
+export default {
+  name: 'PartyLeagueView',
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  data() {
+    return {
+      loading: true, saving: false, errorMessage: '', items: [], activeStage: '', stageFilters: STAGE_FILTERS,
+      formVisible: false, form: { studentId: null, devType: 'PARTY', branchName: '', error: '' },
+      sel: null, stages: [], advStage: ''
+    }
+  },
+  computed: {
+    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    metricCards() {
+      const ongoing = this.items.filter((d) => d.status === 'ONGOING').length
+      const done = this.items.filter((d) => d.status === 'COMPLETED').length
+      return [
+        { key: 't', label: '发展档案', value: this.items.length, accent: 'primary' },
+        { key: 'o', label: '发展中', value: ongoing, accent: 'warning' },
+        { key: 'c', label: '已转正', value: done, accent: 'success' }
+      ]
+    },
+    nextStages() {
+      if (!this.sel) return []
+      const i = STAGES.findIndex((s) => s.key === this.sel.currentStage)
+      return STAGES.slice(i + 1)
+    }
+  },
+  mounted() { this.load() },
+  methods: {
+    async load() {
+      this.loading = true; this.errorMessage = ''
+      const res = await studentAffairsApi.getLeagueDev({ stage: this.activeStage, pageSize: 300 })
+      if (res.code === 0 && res.data) this.items = res.data.items || []
+      else this.errorMessage = res.message || '发展台账加载失败'
+      this.loading = false
+    },
+    setStage(k) { if (this.activeStage === k) return; this.activeStage = k; this.load() },
+    openForm() { this.form = { studentId: null, devType: 'PARTY', branchName: '', error: '' }; this.formVisible = true },
+    async save() {
+      const m = this.form
+      if (!m.studentId) { m.error = '学生ID必填'; return }
+      m.error = ''; this.saving = true
+      const res = await studentAffairsApi.createLeagueDev({ studentId: Number(m.studentId), devType: m.devType, branchName: m.branchName || undefined })
+      this.saving = false
+      if (res.code === 0) { toast.success('已建档'); this.formVisible = false; this.load() } else m.error = res.message || '建档失败'
+    },
+    async select(d) {
+      this.sel = d; this.stages = []; this.advStage = ''
+      const res = await studentAffairsApi.getLeagueStages(d.devId)
+      if (res.code === 0 && res.data) this.stages = res.data.items || []
+    },
+    async advance() {
+      if (!this.advStage) return
+      const res = await studentAffairsApi.advanceLeagueStage(this.sel.devId, { toStage: this.advStage })
+      if (res.code === 0) { toast.success('已推进'); this.sel = res.data; this.advStage = ''; this.select(res.data); this.load() } else toast.error(res.message || '推进失败')
+    },
+    async terminate() {
+      const reason = window.prompt('终止原因（至少5字）：')
+      if (!reason) return
+      const res = await studentAffairsApi.terminateLeagueDev(this.sel.devId, reason)
+      if (res.code === 0) { toast.success('已终止'); this.sel = res.data; this.load() } else toast.error(res.message || '终止失败')
+    },
+    statusType(s) { return ({ ONGOING: 'warning', COMPLETED: 'success', TERMINATED: 'default' })[s] || 'default' }
+  }
+}
+</script>
+
+<style scoped>
+.sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 300px; }
+.lg-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3); }
+.lg-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); }
+.lg-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
+.lg-error { color: var(--danger-500,#dc2626); font-size: var(--font-size-sm); }
+.lg-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
+.lg-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
+.lg-layout { display: grid; grid-template-columns: 360px 1fr; gap: var(--space-4); }
+.lg-filters { display: flex; gap: 6px; margin-bottom: var(--space-3); flex-wrap: wrap; }
+.lg-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 3px 10px; font-size: var(--font-size-xs); cursor: pointer; }
+.lg-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.lg-devs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.lg-dev { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; }
+.lg-dev.is-active { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
+.lg-dev__top { display: flex; justify-content: space-between; align-items: center; }
+.lg-dev__name { font-weight: 600; }
+.lg-dev__meta { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 4px; }
+.lg-empty, .lg-hint { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
+.lg-subhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); flex-wrap: wrap; gap: var(--space-2); }
+.lg-adv { display: flex; gap: var(--space-2); align-items: center; }
+.lg-timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--border-light); }
+.lg-timeline li { padding: 0 0 var(--space-3) var(--space-4); position: relative; }
+.lg-timeline li::before { content: ''; position: absolute; left: -5px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-primary); }
+.lg-tl__stage { font-weight: 600; }
+.lg-tl__meta { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); }
+.lg-tl__mat { color: var(--color-primary); font-style: normal; margin-left: 6px; }
+.lg-tl__remark { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); }
+@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .lg-grid, .lg-layout { grid-template-columns: 1fr; } }
+</style>
