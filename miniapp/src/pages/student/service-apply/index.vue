@@ -41,9 +41,9 @@
 
         <view class="sa__row sa__row--upload">
           <text class="sa__label">附件材料</text>
-          <view class="sa__upload" @click="pickFile">
-            <text class="sa__upload-icon">＋</text>
-            <text class="sa__upload-txt">{{ fileName || '上传图片/文件（可选）' }}</text>
+          <view class="sa__upload is-disabled" @click="pickFile">
+            <text class="sa__upload-icon">！</text>
+            <text class="sa__upload-txt">附件上传暂未开放，请携带纸质材料至窗口办理</text>
           </view>
         </view>
       </view>
@@ -101,12 +101,9 @@ export default {
     onType(e) { this.typeIndex = Number(e.detail.value) },
     onStart(e) { this.startDate = e.detail.value },
     onEnd(e) { this.endDate = e.detail.value },
+    // 后端服务申请暂无附件存储字段，选完文件也无法真实提交，禁止假装"已选择"误导用户
     pickFile() {
-      uni.chooseImage({
-        count: 1,
-        success: () => { this.fileName = '已选择 1 个附件' },
-        fail: () => { /* 用户取消选择：不伪造附件 */ }
-      })
+      toast('附件上传暂未开放，请携带纸质材料至窗口办理')
     },
     reset() {
       this.typeIndex = 0
@@ -163,6 +160,7 @@ export default {
 .sa__ph { color: var(--text-tertiary); }
 .sa__count { display: block; text-align: right; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 4px; }
 .sa__upload { flex: 1; display: flex; align-items: center; gap: var(--space-2); border: 1px dashed var(--border-dark); border-radius: var(--radius-md); padding: var(--space-3); color: var(--text-tertiary); }
+.sa__upload.is-disabled { background: var(--gray-50); }
 .sa__upload-icon { font-size: var(--font-size-lg); }
 .sa__upload-txt { font-size: var(--font-size-sm); }
 </style>

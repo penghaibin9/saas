@@ -347,11 +347,26 @@ export default {
       }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
         .finally(() => { this.finalSubmitting = false })
     },
-    // 附件：选择 → 真实上传文件中心 → 记录 file_id（提交时随材料一起提交）
+    // 附件：选择 → 校验大小/类型 → 真实上传文件中心 → 记录 file_id（提交时随材料一起提交）
     pickUpload(target) {
       if (this.uploading) return
       const arr = target === 'prop' ? 'propAtts' : 'finalAtts'
-      const doUpload = (path, name) => {
+      const MAX_IMAGE = 5 * 1024 * 1024
+      const MAX_DOC = 10 * 1024 * 1024
+      const ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']
+      const extOf = (name) => (name || '').split('.').pop().toLowerCase()
+      const checkFile = (name, size, isImage) => {
+        const ext = extOf(name)
+        if (!isImage && ext && ALLOWED_EXT.indexOf(ext) < 0) {
+          toast('不支持的文件类型：.' + ext); return false
+        }
+        const limit = isImage ? MAX_IMAGE : MAX_DOC
+        if (typeof size === 'number' && size > limit) {
+          toast('文件过大，请控制在 ' + (limit / 1024 / 1024) + 'MB 以内'); return false
+        }
+        return true
+      }
+      const doUpload = (path, name, size) => {
         this.uploading = true
         const token = getToken()
         uni.uploadFile({
@@ -370,11 +385,23 @@ export default {
         })
       }
       // #ifdef H5 || APP-PLUS
-      uni.chooseFile ? uni.chooseFile({ count: 1, success: (r) => { const f = r.tempFiles && r.tempFiles[0]; doUpload(r.tempFilePaths[0], f && f.name) } })
-        : uni.chooseImage({ count: 1, success: (r) => doUpload(r.tempFilePaths[0], 'image.png') })
+      uni.chooseFile ? uni.chooseFile({ count: 1, success: (r) => {
+        const f = r.tempFiles && r.tempFiles[0]
+        if (!f || !checkFile(f.name, f.size, false)) return
+        doUpload(r.tempFilePaths[0], f.name, f.size)
+      } })
+        : uni.chooseImage({ count: 1, sizeType: ['compressed'], success: (r) => {
+          const f = r.tempFiles && r.tempFiles[0]
+          if (f && !checkFile('image.jpg', f.size, true)) return
+          doUpload(r.tempFilePaths[0], 'image.jpg', f && f.size)
+        } })
       // #endif
       // #ifdef MP-WEIXIN
-      uni.chooseMessageFile({ count: 1, type: 'file', success: (r) => { const f = r.tempFiles[0]; doUpload(f.path, f.name) } })
+      uni.chooseMessageFile({ count: 1, type: 'file', success: (r) => {
+        const f = r.tempFiles[0]
+        if (!f || !checkFile(f.name, f.size, false)) return
+        doUpload(f.path, f.name, f.size)
+      } })
       // #endif
     },
     removeAtt(target, i) {
