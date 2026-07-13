@@ -73,3 +73,57 @@ test('ctxKey 不同 → 缓存不串味（不同身份得到不同投影）', ()
   assert.equal(a.find((g) => g.key === 'internship').children.length, 12)
   assert.equal(b.find((g) => g.key === 'internship'), undefined)
 })
+
+// ── P6 §11.3 全角色菜单快照矩阵（权限集对齐后端 ROLE_PERMISSIONS 实习模板）──
+const ROLE_PATTERNS = {
+  校级管理员: ['*'],
+  学院负责人: ['internship.*'],
+  指导教师: ['internship.guide.*', 'internship.dashboard.view', 'internship.student.view',
+    'internship.attendance.*', 'internship.makeup.*', 'internship.leave.view', 'internship.leave.review',
+    'internship.report.view', 'internship.report.review', 'internship.plan.view', 'internship.task.view',
+    'internship.guidance.*', 'internship.visit.*', 'internship.communication.*',
+    'internship.risk.view', 'internship.risk.handle', 'internship.eval.self.view',
+    'internship.score.view', 'internship.application.view', 'internship.application.review',
+    'internship.agreement.view', 'internship.enterprise.view', 'internship.position.view',
+    'internship.match.intention.view', 'internship.stats.view', 'internship.insurance.*', 'internship.archive.*'],
+  辅导员: ['internship.dashboard.view', 'internship.student.view', 'internship.attendance.view',
+    'internship.leave.view', 'internship.report.view', 'internship.risk.view'],
+  领导: ['*.view', '*.stat'],
+  督导审计: ['internship.dashboard.view', 'internship.student.view', 'internship.risk.view',
+    'internship.stats.view', 'internship.stats.enterprise.view', 'internship.match.log.view',
+    'internship.application.view', 'internship.archive.view', 'internship.complaint.view'],
+  就业教师: ['internship.dashboard.view', 'internship.employment.view', 'internship.archive.*',
+    'internship.stats.view', 'internship.stats.enterprise.view']
+}
+
+function internshipMods(patterns, key) {
+  const plan = getVisibleNavPlan({ includePlanned: false, permissionPatterns: patterns, ctxKey: key })
+  const g = plan.find((x) => x.key === 'internship')
+  return g ? g.children : []
+}
+
+test('全角色菜单快照：各角色可见实习二级域数量按权限收敛', () => {
+  const snap = {}
+  for (const [role, patterns] of Object.entries(ROLE_PATTERNS)) snap[role] = internshipMods(patterns, role).length
+  assert.equal(snap['校级管理员'], 12, '校管见全 12 二级')
+  assert.equal(snap['学院负责人'], 12, '院管见全 12 二级')
+  assert.ok(snap['指导教师'] > 0 && snap['指导教师'] <= 12)
+  assert.ok(snap['辅导员'] < snap['校级管理员'], '辅导员菜单严格少于校管')
+  assert.ok(snap['就业教师'] < 12 && snap['就业教师'] > 0)
+  assert.ok(snap['督导审计'] < 12 && snap['督导审计'] > 0)
+})
+
+test('领导只读：见 view 叶子但不见成绩发布等高危操作项', () => {
+  const leaves = internshipMods(['*.view', '*.stat'], 'leader').flatMap((m) => m.children)
+  assert.ok(leaves.some((l) => l.permissionKey && l.permissionKey.endsWith('.view')), '领导应见只读项')
+  assert.ok(!leaves.some((l) => l.permissionKey === 'internship.score.publish'), '领导不应见成绩发布')
+  assert.ok(!leaves.some((l) => l.permissionKey === 'internship.enterprise.blacklist.manage'), '领导不应见企业黑名单')
+})
+
+test('辅导员：见协同只读项，不见成绩发布/批次规则配置', () => {
+  const keys = internshipMods(ROLE_PATTERNS['辅导员'], 'counselor').flatMap((m) => m.children).map((l) => l.permissionKey)
+  assert.ok(keys.includes('internship.student.view'), '辅导员应见学生名单')
+  assert.ok(keys.includes('internship.risk.view'), '辅导员应见风险协同')
+  assert.ok(!keys.includes('internship.score.publish'))
+  assert.ok(!keys.includes('internship.batch.rule.checkin.manage'))
+})
