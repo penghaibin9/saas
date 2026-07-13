@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.core.response import success, paginate
 from app.core.permissions import require_permission
 from app.core.security import require_staff  # 仅敏感 reveal 等「服务层自鉴权+落 DENY 审计」端点用粗粒度门禁，避免网关短路吞掉越权审计
+from app.services import affairs_activity_service as activity_svc
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_archive_service as archive_svc
 from app.services import affairs_class_service as class_svc
@@ -1066,3 +1067,121 @@ def archive_collect(body: CollectBody, batchId: int = Path(...), user=Depends(re
 @router.post("/archive/batches/{batchId}/advance", summary="批次流转（→归档时登记水印包）")
 def archive_advance(body: AdvanceBody = AdvanceBody(), batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
     return success(archive_svc.advance(batchId, user, body.action or "APPROVE"), message="已流转")
+
+
+# ═══════════ 学生活动与第二课堂（D 包波次1 · /activities /second-class）═══════════
+
+class ActivityBody(BaseModel):
+    activityName: str = Field(..., min_length=1)
+    activityType: Optional[str] = Field("ACTIVITY")
+    scopeType: Optional[str] = None
+    scopeRef: Optional[str] = None
+    location: Optional[str] = None
+    description: Optional[str] = None
+    startAt: Optional[str] = None
+    endAt: Optional[str] = None
+    enrollDeadline: Optional[str] = None
+    quota: Optional[int] = None
+    creditType: Optional[str] = None
+    creditValue: Optional[float] = None
+    categoryCode: Optional[str] = None
+
+
+class ActivityPublishBody(BaseModel):
+    action: str = Field("PUBLISH")
+    reason: Optional[str] = ""
+
+
+class ActivityTransitionBody(BaseModel):
+    action: str = Field(..., description="ENROLL_CLOSE/START/FINISH")
+
+
+class ReasonBody(BaseModel):
+    reason: Optional[str] = ""
+
+
+class CategoryBody(BaseModel):
+    categoryCode: str = Field(..., min_length=1)
+    categoryName: str = Field(..., min_length=1)
+    creditType: Optional[str] = None
+    description: Optional[str] = None
+    sortOrder: Optional[int] = 0
+
+
+@router.get("/activities", summary="活动列表（type/status 过滤）")
+def activities(activityType: Optional[str] = None, status: Optional[str] = None,
+               page: int = 1, pageSize: int = 20,
+               user=Depends(require_permission("studentAffairs.activity.view"))):
+    items, total = activity_svc.list_activities(user, activityType, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/activities", summary="建活动（草稿）")
+def activity_create(body: ActivityBody, user=Depends(require_permission("studentAffairs.activity.create"))):
+    return success(activity_svc.create_activity(body, user), message="已创建")
+
+
+@router.put("/activities/{activityId}", summary="编辑活动（仅草稿）")
+def activity_update(body: ActivityBody, activityId: int = Path(...),
+                    user=Depends(require_permission("studentAffairs.activity.create"))):
+    return success(activity_svc.update_activity(activityId, body, user), message="已保存")
+
+
+@router.post("/activities/{activityId}/publish", summary="发布/取消活动")
+def activity_publish(body: ActivityPublishBody, activityId: int = Path(...),
+                     user=Depends(require_permission("studentAffairs.activity.publish"))):
+    return success(activity_svc.publish_activity(activityId, user, body.action, body.reason or ""))
+
+
+@router.post("/activities/{activityId}/transition", summary="流转（报名截止/开始/结束）")
+def activity_transition(body: ActivityTransitionBody, activityId: int = Path(...),
+                        user=Depends(require_permission("studentAffairs.activity.publish"))):
+    return success(activity_svc.transition_activity(activityId, user, body.action))
+
+
+@router.get("/activities/{activityId}/participants", summary="活动名单")
+def activity_participants(activityId: int = Path(...),
+                          user=Depends(require_permission("studentAffairs.activity.view"))):
+    return success({"items": activity_svc.list_participants(activityId, user)})
+
+
+@router.post("/activities/{activityId}/confirm", summary="确认名单+生成学时/积分→进360")
+def activity_confirm(activityId: int = Path(...),
+                     user=Depends(require_permission("studentAffairs.activity.confirm"))):
+    return success(activity_svc.confirm_activity(activityId, user), message="已确认")
+
+
+@router.post("/activities/{activityId}/unconfirm", summary="撤销确认（原因≥5字）")
+def activity_unconfirm(body: ReasonBody, activityId: int = Path(...),
+                       user=Depends(require_permission("studentAffairs.activity.confirm"))):
+    return success(activity_svc.unconfirm_activity(activityId, user, body.reason or ""), message="已撤销")
+
+
+@router.post("/activities/{activityId}/archive", summary="归档活动")
+def activity_archive(activityId: int = Path(...),
+                     user=Depends(require_permission("studentAffairs.activity.confirm"))):
+    return success(activity_svc.archive_activity(activityId, user), message="已归档")
+
+
+@router.get("/second-class/ledger", summary="二课积分台账（数据范围过滤）")
+def second_class_ledger(creditType: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                        user=Depends(require_permission("studentAffairs.stats.view"))):
+    items, total = activity_svc.credit_ledger(user, creditType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/second-class/students/{studentId}/report", summary="个人第二课堂成绩单")
+def second_class_report(studentId: int = Path(...),
+                        user=Depends(require_permission("studentAffairs.stats.view"))):
+    return success(activity_svc.student_report(studentId, user))
+
+
+@router.get("/second-class/categories", summary="二课积分类目列表")
+def second_class_categories(user=Depends(require_permission("studentAffairs.activity.view"))):
+    return success({"items": activity_svc.list_categories(user)})
+
+
+@router.post("/second-class/categories", summary="建二课积分类目")
+def second_class_category_create(body: CategoryBody,
+                                 user=Depends(require_permission("studentAffairs.config.manage"))):
+    return success(activity_svc.create_category(body, user), message="已创建")

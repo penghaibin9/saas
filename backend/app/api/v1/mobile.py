@@ -10,6 +10,7 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_makeup_service as mk
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
+from app.services import affairs_activity_service as activity_svc
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
@@ -674,6 +675,22 @@ def affairs_dorm_beds(room_id: int, user=Depends(get_current_user)):
 @router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·学生自选床位入住本人（未放开→403）")
 def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
     return success(aff.dorm_self_select(user, bed_id), message="已入住")
+
+
+# ── 学生端·学生活动（D 包波次1，本人报名/签到）──
+@router.get("/affairs/my-activities", summary="学工·我的活动（可报名+已报名）")
+def affairs_my_activities(user=Depends(get_current_user)):
+    return success(activity_svc.my_activities(user))
+
+
+@router.post("/affairs/activities/{activity_id}/enroll", summary="学工·活动报名/取消（本人）")
+def affairs_activity_enroll(activity_id: int, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(activity_svc.enroll(activity_id, user, (body or {}).get("action", "ENROLL")))
+
+
+@router.post("/affairs/activities/{activity_id}/checkin", summary="学工·活动签到（本人，进行中）")
+def affairs_activity_checkin(activity_id: int, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(activity_svc.checkin(activity_id, user, (body or {}).get("method", "MANUAL")), message="签到成功")
 
 
 # ── 教师端·学工待办卡（P7）──

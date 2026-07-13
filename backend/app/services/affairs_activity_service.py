@@ -1,0 +1,469 @@
+"""13A-D 学生活动与第二课堂 · 波次1 活动底座 service（活动闭环 + 报名签到 + 二课学分）。
+
+状态机（施工包 §7.1）：DRAFT→PUBLISHED→ENROLL_CLOSED→ONGOING→FINISHED→CONFIRMED→ARCHIVED；CANCELLED 旁路。
+CONFIRMED 唯一出口生成 t_affairs_activity_credit（(student,activity,type) 唯一防重复）+ 进360。
+数据范围复用 _allowed_class_ids；业务留痕复用 AffairsAuditTrail；进360 复用 StudentStageEvent。
+依据中青联发〔2018〕5号《第二课堂成绩单》记录评价/价值应用体系（已核验原文）。
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import func, select
+
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import AppException, not_found
+from app.services.db_service import _iso, _tid, session
+
+ACTIVITY_STATUS = ("DRAFT", "PUBLISHED", "ENROLL_CLOSED", "ONGOING",
+                   "FINISHED", "CONFIRMED", "CANCELLED", "ARCHIVED")
+ACTIVITY_TYPES = ("ACTIVITY", "VOLUNTEER", "LECTURE", "COMPETITION", "PRACTICE")
+CREDIT_TYPES = ("SECOND_CLASS", "MORAL", "VOLUNTEER_HOUR")
+# 手动/到时流转
+_MANUAL = {"ENROLL_CLOSE": ("PUBLISHED", "ENROLL_CLOSED"),
+           "START": ("ENROLL_CLOSED", "ONGOING"),
+           "FINISH": ("ONGOING", "FINISHED")}
+L_STATUS = {"DRAFT": "草稿", "PUBLISHED": "报名中", "ENROLL_CLOSED": "报名截止",
+            "ONGOING": "进行中", "FINISHED": "已结束", "CONFIRMED": "已确认",
+            "CANCELLED": "已取消", "ARCHIVED": "已归档"}
+L_TYPE = {"ACTIVITY": "活动", "VOLUNTEER": "志愿服务", "LECTURE": "讲座报告",
+          "COMPETITION": "竞赛", "PRACTICE": "社会实践"}
+
+
+def _op():
+    u = get_current_user_ctx() or {}
+    return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), u.get("userId")
+
+
+def _audit(db, biz_id, action, detail=""):
+    from app.models import AffairsAuditTrail
+    n, r, uid = _op()
+    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type="ACTIVITY",
+                             biz_id=int(biz_id) if biz_id else None, action=action,
+                             operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
+
+
+def _row(a, signup_count=None, checkin_count=None) -> dict:
+    return {"activityId": str(a.id), "activityName": a.activity_name, "activityType": a.activity_type,
+            "activityTypeLabel": L_TYPE.get(a.activity_type, a.activity_type),
+            "scopeType": a.scope_type, "scopeRef": a.scope_ref, "orgId": str(a.org_id or ""),
+            "location": a.location or "", "description": a.description or "",
+            "startAt": _iso(a.start_at), "endAt": _iso(a.end_at), "enrollDeadline": _iso(a.enroll_deadline),
+            "quota": a.quota, "creditType": a.credit_type, "categoryCode": a.category_code,
+            "creditValue": float(a.credit_value) if a.credit_value is not None else None,
+            "status": a.status, "statusLabel": L_STATUS.get(a.status, a.status),
+            "publisherName": a.publisher_name or "", "confirmAt": _iso(a.confirm_at),
+            "version": a.version, "signupCount": signup_count, "checkinCount": checkin_count}
+
+
+def _load(db, activity_id):
+    from app.models import AffairsActivity
+    a = db.get(AffairsActivity, int(activity_id))
+    if not a or a.is_deleted or a.tenant_id != _tid():
+        raise not_found("活动不存在")
+    return a
+
+
+def _uid_int(user):
+    try:
+        return int((user or {}).get("userId"))
+    except (TypeError, ValueError):
+        return None
+
+
+# ═══════════ 活动 CRUD / 流转 ═══════════
+
+def list_activities(user, activity_type=None, status=None, page=1, page_size=20):
+    from app.models import AffairsActivity, AffairsActivitySignup
+    with session() as db:
+        conds = [AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False)]
+        if activity_type:
+            conds.append(AffairsActivity.activity_type == activity_type)
+        if status:
+            conds.append(AffairsActivity.status == status)
+        rows = db.scalars(select(AffairsActivity).where(*conds).order_by(AffairsActivity.id.desc())).all()
+        out = []
+        for a in rows:
+            sc = db.scalar(select(func.count()).select_from(AffairsActivitySignup).where(
+                AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
+                AffairsActivitySignup.signup_status != "CANCELLED",
+                AffairsActivitySignup.is_deleted.is_(False))) or 0
+            out.append(_row(a, signup_count=sc))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def create_activity(body, user) -> dict:
+    from app.models import AffairsActivity
+    name = (getattr(body, "activityName", "") or "").strip()
+    if not name:
+        raise AppException("VALIDATION_ERROR", "活动名称必填")
+    atype = getattr(body, "activityType", "ACTIVITY") or "ACTIVITY"
+    if atype not in ACTIVITY_TYPES:
+        raise AppException("VALIDATION_ERROR", "活动类型非法")
+    with session() as db:
+        n, _r, uid = _op()
+        a = AffairsActivity(
+            tenant_id=_tid(), activity_name=name, activity_type=atype,
+            scope_type=getattr(body, "scopeType", None), scope_ref=getattr(body, "scopeRef", None),
+            location=getattr(body, "location", None), description=getattr(body, "description", None),
+            start_at=_parse(getattr(body, "startAt", None)), end_at=_parse(getattr(body, "endAt", None)),
+            enroll_deadline=_parse(getattr(body, "enrollDeadline", None)),
+            quota=getattr(body, "quota", None), credit_type=getattr(body, "creditType", None),
+            credit_value=getattr(body, "creditValue", None), category_code=getattr(body, "categoryCode", None),
+            status="DRAFT", publisher_id=_uid_int(user), publisher_name=n)
+        db.add(a); db.flush()
+        _audit(db, a.id, "ACTIVITY_CREATE", name)
+        db.commit(); db.refresh(a)
+        return _row(a)
+
+
+def update_activity(activity_id, body, user) -> dict:
+    with session() as db:
+        a = _load(db, activity_id)
+        if a.status != "DRAFT":
+            raise AppException("DATA_CONFLICT", "仅草稿可编辑")
+        for attr, key in [("activity_name", "activityName"), ("location", "location"),
+                          ("description", "description"), ("scope_type", "scopeType"),
+                          ("scope_ref", "scopeRef"), ("credit_type", "creditType"),
+                          ("category_code", "categoryCode")]:
+            v = getattr(body, key, None)
+            if v is not None:
+                setattr(a, attr, v)
+        for attr, key in [("start_at", "startAt"), ("end_at", "endAt"), ("enroll_deadline", "enrollDeadline")]:
+            v = getattr(body, key, None)
+            if v is not None:
+                setattr(a, attr, _parse(v))
+        if getattr(body, "quota", None) is not None:
+            a.quota = body.quota
+        if getattr(body, "creditValue", None) is not None:
+            a.credit_value = body.creditValue
+        a.version += 1
+        _audit(db, a.id, "ACTIVITY_UPDATE")
+        db.commit(); db.refresh(a)
+        return _row(a)
+
+
+def publish_activity(activity_id, user, action="PUBLISH", reason="") -> dict:
+    with session() as db:
+        a = _load(db, activity_id)
+        if action == "PUBLISH":
+            if a.status != "DRAFT":
+                raise AppException("DATA_CONFLICT", "仅草稿可发布")
+            if a.quota is not None and a.quota < 1:
+                raise AppException("VALIDATION_ERROR", "名额至少为 1")
+            if a.start_at and a.end_at and a.end_at <= a.start_at:
+                raise AppException("VALIDATION_ERROR", "结束时间须晚于开始时间")
+            a.status = "PUBLISHED"
+            _audit(db, a.id, "ACTIVITY_PUBLISH")
+        elif action == "CANCEL":
+            if a.status not in ("PUBLISHED", "ENROLL_CLOSED", "DRAFT"):
+                raise AppException("DATA_CONFLICT", "当前状态不可取消")
+            if not reason or len(reason.strip()) < 5:
+                raise AppException("VALIDATION_ERROR", "取消原因不少于 5 字")
+            a.status = "CANCELLED"
+            _audit(db, a.id, "ACTIVITY_CANCEL", reason)
+        else:
+            raise AppException("VALIDATION_ERROR", "非法动作")
+        a.version += 1
+        db.commit(); db.refresh(a)
+        return _row(a)
+
+
+def transition_activity(activity_id, user, action) -> dict:
+    """手动/到时流转 ENROLL_CLOSE/START/FINISH。"""
+    if action not in _MANUAL:
+        raise AppException("VALIDATION_ERROR", "非法流转")
+    need, nxt = _MANUAL[action]
+    with session() as db:
+        a = _load(db, activity_id)
+        if a.status != need:
+            raise AppException("DATA_CONFLICT", f"当前状态不可{action}")
+        a.status = nxt; a.version += 1
+        _audit(db, a.id, f"ACTIVITY_{action}")
+        db.commit(); db.refresh(a)
+        return _row(a)
+
+
+def confirm_activity(activity_id, user) -> dict:
+    """FINISHED→CONFIRMED：为已签到学生生成学时/积分/时长（唯一约束幂等）+ 进360。"""
+    from app.models import (AffairsActivityCredit, AffairsActivitySignup, StudentStageEvent)
+    with session() as db:
+        a = _load(db, activity_id)
+        if a.status != "FINISHED":
+            raise AppException("DATA_CONFLICT", "仅已结束活动可确认")
+        signups = db.scalars(select(AffairsActivitySignup).where(
+            AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
+            AffairsActivitySignup.signup_status == "CHECKED_IN",
+            AffairsActivitySignup.is_deleted.is_(False))).all()
+        ctype = a.credit_type or "SECOND_CLASS"
+        cval = a.credit_value if a.credit_value is not None else 0
+        made = 0
+        n, _r, uid = _op()
+        for su in signups:
+            dup = db.scalars(select(AffairsActivityCredit).where(
+                AffairsActivityCredit.tenant_id == _tid(),
+                AffairsActivityCredit.student_id == su.student_id,
+                AffairsActivityCredit.activity_id == a.id,
+                AffairsActivityCredit.credit_type == ctype)).first()
+            if dup:
+                continue
+            db.add(AffairsActivityCredit(tenant_id=_tid(), student_id=su.student_id, activity_id=a.id,
+                                         credit_type=ctype, credit_value=cval, category_code=a.category_code,
+                                         source="ACTIVITY", remark=a.activity_name, created_by=_uid_int(user)))
+            su.signup_status = "CONFIRMED"; su.version += 1
+            db.add(StudentStageEvent(tenant_id=_tid(), student_id=su.student_id, from_stage=None,
+                                     to_stage="ACTIVITY_CONFIRMED",
+                                     reason=f"参加《{a.activity_name}》获{L_TYPE.get(a.activity_type,'')} {cval}",
+                                     source_module="student-affairs"))
+            made += 1
+        a.status = "CONFIRMED"; a.confirm_at = datetime.utcnow(); a.version += 1
+        _audit(db, a.id, "ACTIVITY_CONFIRM", f"{made}人入账")
+        db.commit(); db.refresh(a)
+        d = _row(a); d["creditsGranted"] = made
+        return d
+
+
+def unconfirm_activity(activity_id, user, reason="") -> dict:
+    """撤销确认：删除本活动 credit + 回退 signup + 活动回 FINISHED。"""
+    from app.models import AffairsActivityCredit, AffairsActivitySignup
+    if not reason or len(reason.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "撤销原因不少于 5 字")
+    with session() as db:
+        a = _load(db, activity_id)
+        if a.status != "CONFIRMED":
+            raise AppException("DATA_CONFLICT", "仅已确认活动可撤销")
+        for c in db.scalars(select(AffairsActivityCredit).where(
+                AffairsActivityCredit.tenant_id == _tid(), AffairsActivityCredit.activity_id == a.id)).all():
+            db.delete(c)
+        for su in db.scalars(select(AffairsActivitySignup).where(
+                AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
+                AffairsActivitySignup.signup_status == "CONFIRMED")).all():
+            su.signup_status = "CHECKED_IN"; su.version += 1
+        a.status = "FINISHED"; a.confirm_at = None; a.version += 1
+        _audit(db, a.id, "ACTIVITY_UNCONFIRM", reason)
+        db.commit(); db.refresh(a)
+        return _row(a)
+
+
+def archive_activity(activity_id, user) -> dict:
+    with session() as db:
+        a = _load(db, activity_id)
+        if a.status != "CONFIRMED":
+            raise AppException("DATA_CONFLICT", "仅已确认活动可归档")
+        a.status = "ARCHIVED"; a.version += 1
+        _audit(db, a.id, "ACTIVITY_ARCHIVE")
+        db.commit(); db.refresh(a)
+        return _row(a)
+
+
+def list_participants(activity_id, user):
+    from app.models import AffairsActivitySignup, StudentProfile
+    with session() as db:
+        a = _load(db, activity_id)
+        rows = db.scalars(select(AffairsActivitySignup).where(
+            AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
+            AffairsActivitySignup.is_deleted.is_(False)).order_by(AffairsActivitySignup.id)).all()
+        out = []
+        for su in rows:
+            s = db.get(StudentProfile, int(su.student_id))
+            out.append({"signupId": str(su.id), "studentId": str(su.student_id),
+                        "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+                        "signupStatus": su.signup_status, "enrolledAt": _iso(su.enrolled_at),
+                        "checkinAt": _iso(su.checkin_at)})
+        return out
+
+
+# ═══════════ 报名 / 签到（学生本人，移动端）═══════════
+
+def _resolve_student_id(db, user):
+    """解析登录学生的 StudentProfile.id（与 mobile_affairs_service._me 同源）。"""
+    from app.services.mobile_student_service import _require_student, resolve_student
+    stu = resolve_student(db, _require_student(user))
+    if not stu:
+        raise AppException("PERMISSION_DENIED", "尚未建立你的学生档案")
+    return stu.id
+
+
+def enroll(activity_id, user, action="ENROLL") -> dict:
+    from app.models import AffairsActivitySignup
+    with session() as db:
+        sid = _resolve_student_id(db, user)
+        a = _load(db, activity_id)
+        if a.status != "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "活动未在报名中")
+        if a.enroll_deadline and a.enroll_deadline < datetime.utcnow():
+            raise AppException("DATA_CONFLICT", "报名已截止")
+        su = db.scalars(select(AffairsActivitySignup).where(
+            AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
+            AffairsActivitySignup.student_id == sid, AffairsActivitySignup.is_deleted.is_(False))).first()
+        if action == "CANCEL":
+            if su and su.signup_status in ("ENROLLED", "WAITLIST"):
+                su.signup_status = "CANCELLED"; su.version += 1
+                _audit(db, a.id, "ACTIVITY_ENROLL_CANCEL", f"student={sid}")
+            db.commit()
+            return {"activityId": str(a.id), "signupStatus": "CANCELLED"}
+        # ENROLL
+        if su and su.signup_status in ("ENROLLED", "WAITLIST", "CHECKED_IN", "CONFIRMED"):
+            raise AppException("DATA_CONFLICT", "已报名，请勿重复")
+        if a.quota is not None:
+            cnt = db.scalar(select(func.count()).select_from(AffairsActivitySignup).where(
+                AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
+                AffairsActivitySignup.signup_status.in_(("ENROLLED", "CHECKED_IN", "CONFIRMED")),
+                AffairsActivitySignup.is_deleted.is_(False))) or 0
+            if cnt >= a.quota:
+                raise AppException("DATA_CONFLICT", "活动名额已满")
+        if su:  # 复用被取消的行
+            su.signup_status = "ENROLLED"; su.enrolled_at = datetime.utcnow(); su.version += 1
+        else:
+            db.add(AffairsActivitySignup(tenant_id=_tid(), activity_id=a.id, student_id=sid,
+                                         signup_status="ENROLLED", enrolled_at=datetime.utcnow()))
+        _audit(db, a.id, "ACTIVITY_ENROLL", f"student={sid}")
+        db.commit()
+        return {"activityId": str(a.id), "signupStatus": "ENROLLED"}
+
+
+def checkin(activity_id, user, method="MANUAL") -> dict:
+    from app.models import AffairsActivitySignup
+    with session() as db:
+        sid = _resolve_student_id(db, user)
+        a = _load(db, activity_id)
+        if a.status != "ONGOING":
+            raise AppException("DATA_CONFLICT", "活动未在进行中，不能签到")
+        su = db.scalars(select(AffairsActivitySignup).where(
+            AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
+            AffairsActivitySignup.student_id == sid, AffairsActivitySignup.is_deleted.is_(False))).first()
+        if not su or su.signup_status not in ("ENROLLED", "CHECKED_IN"):
+            raise AppException("DATA_CONFLICT", "未报名或状态异常，不能签到")
+        if su.signup_status == "CHECKED_IN":
+            raise AppException("DATA_CONFLICT", "已签到，请勿重复")
+        su.signup_status = "CHECKED_IN"; su.checkin_at = datetime.utcnow()
+        su.checkin_method = method; su.version += 1
+        _audit(db, a.id, "ACTIVITY_CHECKIN", f"student={sid}")
+        db.commit()
+        return {"activityId": str(a.id), "signupStatus": "CHECKED_IN"}
+
+
+def my_activities(user):
+    """学生端：可报名(PUBLISHED) + 我已报名。"""
+    from app.models import AffairsActivity, AffairsActivitySignup
+    with session() as db:
+        try:
+            sid = _resolve_student_id(db, user)
+        except AppException:
+            sid = None
+        pub = db.scalars(select(AffairsActivity).where(
+            AffairsActivity.tenant_id == _tid(), AffairsActivity.status == "PUBLISHED",
+            AffairsActivity.is_deleted.is_(False)).order_by(AffairsActivity.id.desc())).all()
+        mine_rows = db.scalars(select(AffairsActivitySignup).where(
+            AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.student_id == sid,
+            AffairsActivitySignup.is_deleted.is_(False))).all() if sid else []
+        mine_map = {su.activity_id: su for su in mine_rows}
+        available = [{**_row(a), "mySignupStatus": (mine_map[a.id].signup_status if a.id in mine_map else None)}
+                     for a in pub]
+        mine = []
+        for su in mine_rows:
+            a = db.get(AffairsActivity, int(su.activity_id))
+            if a and not a.is_deleted:
+                mine.append({**_row(a), "mySignupStatus": su.signup_status})
+        return {"available": available, "mine": mine}
+
+
+# ═══════════ 二课积分台账 / 类目 ═══════════
+
+def credit_ledger(user, credit_type=None, page=1, page_size=50):
+    from app.models import AffairsActivityCredit, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [AffairsActivityCredit.tenant_id == _tid()]
+        if credit_type:
+            conds.append(AffairsActivityCredit.credit_type == credit_type)
+        rows = db.scalars(select(AffairsActivityCredit).where(*conds).order_by(
+            AffairsActivityCredit.id.desc())).all()
+        out = []
+        for c in rows:
+            s = db.get(StudentProfile, int(c.student_id)) if c.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append({"creditId": str(c.id), "studentId": str(c.student_id),
+                        "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+                        "creditType": c.credit_type, "creditValue": float(c.credit_value or 0),
+                        "categoryCode": c.category_code or "", "source": c.source,
+                        "remark": c.remark or "", "grantedAt": _iso(c.granted_at)})
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def student_report(student_id, user):
+    """个人第二课堂成绩单：按类型/类目汇总 + 明细。"""
+    from app.models import AffairsActivityCredit, StudentProfile
+    with session() as db:
+        s = db.get(StudentProfile, int(student_id))
+        rows = db.scalars(select(AffairsActivityCredit).where(
+            AffairsActivityCredit.tenant_id == _tid(),
+            AffairsActivityCredit.student_id == int(student_id)).order_by(
+            AffairsActivityCredit.id.desc())).all()
+        by_type, by_cat = {}, {}
+        for c in rows:
+            v = float(c.credit_value or 0)
+            by_type[c.credit_type] = round(by_type.get(c.credit_type, 0) + v, 2)
+            if c.category_code:
+                by_cat[c.category_code] = round(by_cat.get(c.category_code, 0) + v, 2)
+        return {"studentId": str(student_id), "realName": s.real_name if s else "",
+                "studentNo": s.student_no if s else "",
+                "byType": [{"key": k, "value": v} for k, v in by_type.items()],
+                "byCategory": [{"key": k, "value": v} for k, v in by_cat.items()],
+                "items": [{"activityId": str(c.activity_id or ""), "creditType": c.credit_type,
+                           "creditValue": float(c.credit_value or 0), "categoryCode": c.category_code or "",
+                           "remark": c.remark or "", "grantedAt": _iso(c.granted_at)} for c in rows]}
+
+
+def list_categories(user):
+    from app.models import AffairsCreditCategory
+    with session() as db:
+        rows = db.scalars(select(AffairsCreditCategory).where(
+            AffairsCreditCategory.tenant_id == _tid(), AffairsCreditCategory.is_deleted.is_(False)).order_by(
+            AffairsCreditCategory.sort_order, AffairsCreditCategory.id)).all()
+        return [{"categoryCode": c.category_code, "categoryName": c.category_name,
+                 "creditType": c.credit_type or "", "description": c.description or "",
+                 "sortOrder": c.sort_order or 0, "status": c.status} for c in rows]
+
+
+def create_category(body, user) -> dict:
+    from app.models import AffairsCreditCategory
+    code = (getattr(body, "categoryCode", "") or "").strip()
+    name = (getattr(body, "categoryName", "") or "").strip()
+    if not code or not name:
+        raise AppException("VALIDATION_ERROR", "类目编码与名称必填")
+    with session() as db:
+        dup = db.scalars(select(AffairsCreditCategory).where(
+            AffairsCreditCategory.tenant_id == _tid(),
+            AffairsCreditCategory.category_code == code)).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "类目编码已存在")
+        c = AffairsCreditCategory(tenant_id=_tid(), category_code=code, category_name=name,
+                                  credit_type=getattr(body, "creditType", None),
+                                  description=getattr(body, "description", None),
+                                  sort_order=getattr(body, "sortOrder", 0) or 0, status="ENABLED")
+        db.add(c); db.flush()
+        _audit(db, None, "CREDIT_CATEGORY_CREATE", code)
+        db.commit()
+        return {"categoryCode": code, "categoryName": name}
+
+
+def _parse(v):
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00").replace("/", "-"))
+    except ValueError:
+        try:
+            return datetime.strptime(str(v)[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            try:
+                return datetime.strptime(str(v)[:10], "%Y-%m-%d")
+            except ValueError:
+                return None
