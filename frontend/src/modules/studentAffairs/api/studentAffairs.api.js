@@ -691,6 +691,43 @@ export const studentAffairsApi = {
   /** 驳回志愿时长补录（原因≥5字）。 */
   rejectVolunteerRecord(id, reason) {
     return callStrict(() => request(`/student-affairs/volunteer/records/${id}/reject`, { method: 'POST', body: { reason } }))
+  },
+
+  // ─────────────── 社团管理（05 卡 · /clubs） ───────────────
+  getClubs({ status = '', clubType = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    if (clubType) params.clubType = clubType
+    return callStrict(() => request('/student-affairs/clubs', { params }))
+  },
+  /** 建社团。body: { clubName, clubType?, collegeId?, advisorName?, presidentStudentId? } */
+  createClub(body) {
+    return callStrict(() => request('/student-affairs/clubs', { method: 'POST', body }))
+  },
+  /** 社团审批。action: APPROVE/REJECT（REJECT 需 reason≥5）。 */
+  reviewClub(id, action = 'APPROVE', reason = '') {
+    return callStrict(() => request(`/student-affairs/clubs/${id}/review`, { method: 'POST', body: { action, reason } }))
+  },
+  /** 注销社团（reason≥5）。 */
+  disbandClub(id, reason) {
+    return callStrict(() => request(`/student-affairs/clubs/${id}/disband`, { method: 'POST', body: { reason } }))
+  },
+  getClubMembers(id) {
+    return callStrict(() => request(`/student-affairs/clubs/${id}/members`))
+  },
+  /** 增补成员。body: { studentId, role? } */
+  addClubMember(id, body) {
+    return callStrict(() => request(`/student-affairs/clubs/${id}/members`, { method: 'POST', body }))
+  },
+  removeClubMember(memberId) {
+    return callStrict(() => request(`/student-affairs/clubs/members/${memberId}/remove`, { method: 'POST', body: {} }))
+  },
+  getClubAnnualReviews(id) {
+    return callStrict(() => request(`/student-affairs/clubs/${id}/annual-reviews`))
+  },
+  /** 年审。body: { reviewYear, result?, activityCount?, comment? } */
+  createClubAnnualReview(id, body) {
+    return callStrict(() => request(`/student-affairs/clubs/${id}/annual-reviews`, { method: 'POST', body }))
   }
 }
 
