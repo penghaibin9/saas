@@ -122,6 +122,21 @@ def test_student_forbidden(client, db_mode):
     assert client.get(f"{INT}/stats/dimensions", headers=_student("ST-A")).status_code == 403
 
 
+def test_trends_respect_scope_and_return_complete_months(client, db_mode):
+    _seed(db_mode)
+    admin = client.get(f"{INT}/stats/trends?months=6", headers=_admin(client))
+    assert admin.status_code == 200
+    data = admin.json()["data"]
+    assert len(data["months"]) == 6
+    assert {item["key"] for item in data["series"]} == {"records", "reports", "guidance", "visits"}
+    assert all(len(item["points"]) == 6 for item in data["series"])
+    # 指导教师的数据范围仍必须收敛到本人所指导的实习档案。
+    mentor = client.get(f"{INT}/stats/trends?months=6", headers=_mentor("刘强"))
+    assert mentor.status_code == 200
+    records = next(item for item in mentor.json()["data"]["series"] if item["key"] == "records")
+    assert sum(point["value"] for point in records["points"]) == 1
+
+
 def test_export(client, db_mode):
     _seed(db_mode)
     res = client.post(f"{INT}/stats/export", headers=_admin(client))

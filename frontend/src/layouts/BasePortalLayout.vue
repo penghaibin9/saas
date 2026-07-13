@@ -674,6 +674,9 @@ export default {
       if (m) this.clickedLeafKey = this.leafKey(m, leaf)
       if (leaf.path && leaf.path !== this.currentNavRef) {
         router.push(leaf.path).catch(() => {})
+      } else if (leaf.path) {
+        // 同一路由的叶子也要给出可感知反馈，避免用户误以为三级菜单没有绑定。
+        toast.info(`当前已在“${leaf.label}”视图`)
       }
     }
   },

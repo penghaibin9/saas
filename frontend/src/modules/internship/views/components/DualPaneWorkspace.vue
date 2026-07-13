@@ -41,7 +41,7 @@ export default {
 .dpw {
   display: grid;
   grid-template-columns: minmax(320px, var(--dpw-aside)) 1fr;
-  gap: var(--space-4, 16px);
+  gap: var(--space-5, 20px);
   align-items: start;
   min-height: 0;
 }
@@ -49,20 +49,22 @@ export default {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--bd, #e5e7eb);
-  border-radius: 12px;
-  background: var(--card-bg, #fff);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--card-bg, #fff), var(--fill-1, #fafbfc));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .045);
   max-height: calc(100vh - 210px);
   min-height: 320px;
   overflow: hidden;
   position: sticky;
-  top: 12px;
+  top: 16px;
 }
 .dpw__aside-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--bd, #eef0f3);
+  background: linear-gradient(100deg, var(--pri-bg, #eff6ff), transparent 65%);
   font-weight: 600;
   font-size: 13.5px;
   color: var(--t1, #111827);
@@ -73,8 +75,8 @@ export default {
   height: 20px;
   padding: 0 8px;
   border-radius: 10px;
-  background: var(--fill-2, #f3f4f6);
-  color: var(--t2, #4b5563);
+  background: var(--pri, #2563eb);
+  color: #fff;
   font-size: 12px;
   font-weight: 600;
 }
@@ -90,6 +92,7 @@ export default {
 .dpw__main {
   min-width: 0;
   min-height: 320px;
+  border-radius: 14px;
 }
 @media (max-width: 1100px) {
   .dpw {

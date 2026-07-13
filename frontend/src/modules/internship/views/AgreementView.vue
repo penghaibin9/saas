@@ -9,6 +9,21 @@
 
     <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
+    <nav class="ag-flow" aria-label="三方协议办理流程">
+      <span class="ag-flow__title">协议办理</span>
+      <button
+        v-for="(step, index) in flowSteps"
+        :key="step.panel"
+        type="button"
+        class="ag-flow__step"
+        :class="{ 'is-active': activePanel === step.panel }"
+        @click="goPanel(step.panel)"
+      >
+        <span class="ag-flow__index">0{{ index + 1 }}</span>
+        <span>{{ step.label }}</span>
+      </button>
+    </nav>
+
     <div class="bar">
       <AppSearchBox v-model="keyword" placeholder="按学生姓名搜索" @search="reload" />
       <AppSelect v-model="statusFilter" :options="statusSelectOptions" placeholder="全部状态" @change="reload" />
@@ -95,6 +110,7 @@ const PANEL_PRESETS = {
   'student-apply': () => ({ statusFilter: 'PENDING_STUDENT' }),
   'self-apply': () => ({ statusFilter: 'PENDING_STUDENT' }),
   'position-apply': () => ({ statusFilter: 'PENDING_ENTERPRISE' }),
+  'school-confirm': () => ({ statusFilter: 'PENDING_SCHOOL' }),
   'audit-ledger': () => ({ statusFilter: '' })
 }
 
@@ -105,7 +121,7 @@ export default {
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
-      keyword: '', statusFilter: '', columns: COLUMNS,
+      keyword: '', statusFilter: '', activePanel: 'issue', columns: COLUMNS,
       templateOptions: [],
       previewText: '',
       genForm: { internshipId: '', templateId: '' }, genDlg: { visible: false, submitting: false },
@@ -114,6 +130,15 @@ export default {
   },
   computed: {
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
+    flowSteps() {
+      return [
+        { panel: 'issue', label: '发起协议' },
+        { panel: 'student-apply', label: '学生确认' },
+        { panel: 'position-apply', label: '企业确认' },
+        { panel: 'school-confirm', label: '学校确认' },
+        { panel: 'archive', label: '归档留存' }
+      ]
+    },
     summaryMetrics() {
       if (this.loading || this.error) return []
       return [{ label: '协议/申请总数', value: this.total }]
@@ -138,10 +163,15 @@ export default {
   methods: {
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.issue
+      this.activePanel = PANEL_PRESETS[panel] ? panel : 'issue'
       this.statusFilter = preset().statusFilter
       this.keyword = ''
       this.page = 1
       this.load()
+    },
+    goPanel(panel) {
+      if (this.activePanel === panel) return
+      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
     },
     confirmTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'REJECTED' ? 'danger' : 'warning' },
     openDossier(row) { this.$router.push(`/admin/internship/agreements/${row.id}`) },
@@ -197,8 +227,15 @@ export default {
 </script>
 
 <style scoped>
-.bar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
-.state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); }
+.ag-flow { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--card-b); border-radius: 12px; background: linear-gradient(100deg, var(--pri-bg), var(--card) 54%); box-shadow: var(--s1); overflow-x: auto; }
+.ag-flow__title { flex: 0 0 auto; padding: 0 8px 0 2px; color: var(--t2); font-size: 12px; font-weight: var(--font-weight-semibold); }
+.ag-flow__step { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2); cursor: pointer; font-size: 12px; transition: .16s ease; }
+.ag-flow__step:hover { color: var(--pri); background: var(--pri-bg); }
+.ag-flow__step.is-active { color: var(--pri); border-color: var(--pri-100); background: var(--card); box-shadow: 0 2px 5px rgba(15, 40, 90, .07); font-weight: var(--font-weight-semibold); }
+.ag-flow__index { color: var(--t3); font-size: 10px; font-weight: 800; }
+.ag-flow__step.is-active .ag-flow__index { color: var(--pri); }
+.bar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); flex-wrap: wrap; }
+.state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--r); background: rgba(255, 255, 255, .45); }
 .state.is-err { color: var(--danger-600); }
 .ops { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-2); }
@@ -208,8 +245,8 @@ export default {
 .file { font-size: var(--font-size-xs); }
 .att { font-size: var(--font-size-xs); color: var(--success-700); margin-left: var(--space-2); }
 .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 1000); padding: var(--space-4); }
-.modal__card { background: var(--bg-card); border-radius: var(--radius-lg); width: min(560px, 100%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
-.modal__head { padding: var(--space-4); font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--border-light); }
+.modal__card { background: var(--bg-card); border: 1px solid var(--card-b); border-radius: var(--radius-xl); width: min(560px, 100%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
+.modal__head { padding: var(--space-4); font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--border-light); background: linear-gradient(100deg, var(--pri-bg), transparent); }
 .modal__body { padding: var(--space-4); overflow-y: auto; }
 .modal__foot { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; gap: var(--space-2); }
 </style>

@@ -86,6 +86,35 @@ def list_advisors(keyword: str | None = None) -> list[dict]:
                  "userType": u.user_type} for u in rows]
 
 
+def list_assignment_logs(page: int, page_size: int, keyword: str | None = None, user=None) -> tuple[list[dict], int]:
+    """Assignment-only audit ledger, filtered by the same record scope as the student list."""
+    actions = ("ASSIGN_ADVISOR", "ASSIGN_POSITION", "UNASSIGN_POSITION")
+    with session() as db:
+        logs = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(),
+            InternshipAuditTrail.target_type == "INTERN_STUDENT",
+            InternshipAuditTrail.action.in_(actions)).order_by(InternshipAuditTrail.id.desc())).all()
+        from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+        scope = _current_scope(user)
+        items = []
+        needle = (keyword or "").strip().lower()
+        for log in logs:
+            rec = db.get(InternshipRecord, log.target_id)
+            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            if not rec or not stu or not _rec_in_scope(scope, db, rec, stu):
+                continue
+            row = {"id": str(log.id), "recordId": str(rec.id), "studentName": stu.real_name,
+                   "studentNo": stu.student_no, "action": log.action,
+                   "operator": log.operator_name or "系统", "detail": log.detail_json or {},
+                   "occurredAt": _iso(log.occurred_at) or ""}
+            if needle and needle not in (row["studentName"] + row["studentNo"] + row["action"] + row["operator"]).lower():
+                continue
+            items.append(row)
+        total = len(items)
+        start = (max(1, page) - 1) * page_size
+        return items[start:start + page_size], total
+
+
 # ═══════════ 数据范围（P0-D：管理端按教师范围收敛，不仅租户） ═══════════
 
 def _current_scope(user: dict | None = None) -> dict:

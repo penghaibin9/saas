@@ -8,6 +8,14 @@
 
     <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
+    <div v-if="panelMode === 'materials'" class="material-entry">
+      <div>
+        <strong>学生材料核验</strong>
+        <span>已自动筛选材料不完整的学生；展开“核验”可查看缺项、审计留痕并完成归档。</span>
+      </div>
+      <AppButton variant="ghost" size="sm" @click="clearMaterialEntry">查看全部归档台账</AppButton>
+    </div>
+
     <div class="tabs">
       <button v-for="t in tabs" :key="t.key" class="tabs__btn" :class="{ 'is-active': tab === t.key }"
         @click="switchTab(t.key)">{{ t.label }}</button>
@@ -129,7 +137,7 @@ export default {
     AppExportButton, AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, ModuleSummaryStrip },
   data() {
     return {
-      tab: 'student',
+      tab: 'student', panelMode: '',
       tabs: [{ key: 'student', label: '按学生' }, { key: 'batch', label: '按批次' }, { key: 'enterprise', label: '按企业' }],
       studentColumns: STUDENT_COLUMNS,
       rows: [], total: 0, page: 1, pageSize: 20, aggRows: [], loading: false, error: '',
@@ -184,15 +192,37 @@ export default {
     }
   },
   created() {
+    this.applyRoutePanel(this.$route.query.panel)
     this.load()
     // 刷新恢复：route query.id 直接回到选中行工作区
     const qid = this.$route.query.id
     if (qid) this.openDetailById(String(qid))
   },
+  watch: {
+    '$route.query.panel'(value) {
+      if (this.applyRoutePanel(value)) this.reload()
+    }
+  },
   methods: {
     exportFn() { return archiveApi.exportArchives({ keyword: this.keyword }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
-    switchTab(k) { this.tab = k; this.page = 1; this.closePanel(); this.load() },
+    applyRoutePanel(value) {
+      const next = value === 'materials' ? 'materials' : ''
+      const changed = next !== this.panelMode
+      this.panelMode = next
+      if (next === 'materials') {
+        this.tab = 'student'
+        this.onlyIncomplete = true
+        this.keyword = ''
+      }
+      return changed
+    },
+    clearMaterialEntry() {
+      const query = { ...this.$route.query }
+      delete query.panel
+      this.$router.replace({ query })
+    },
+    switchTab(k) { this.panelMode = ''; this.tab = k; this.page = 1; this.closePanel(); this.load() },
     reload() { this.page = 1; this.load() },
     onPageChange(p) { this.page = p; this.load() },
     async load() {
@@ -302,6 +332,9 @@ export default {
 
 <style scoped>
 .tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); border-bottom: 1px solid var(--border-light); }
+.material-entry { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-lg, 12px); background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); }
+.material-entry > div { display: flex; flex-direction: column; gap: 3px; font-size: var(--font-size-sm); }
+.material-entry span { color: var(--text-secondary); font-size: var(--font-size-xs); }
 .tabs__btn { border: none; background: none; padding: var(--space-2) var(--space-3); cursor: pointer; color: var(--text-secondary); font-size: var(--font-size-sm); border-bottom: 2px solid transparent; }
 .tabs__btn.is-active { color: var(--primary-700); border-bottom-color: var(--primary-600); font-weight: var(--font-weight-medium); }
 .bar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }

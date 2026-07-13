@@ -12,6 +12,21 @@
 
     <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
+    <nav class="im-stages" aria-label="岗位匹配流程">
+      <span class="im-stages__title">匹配流程</span>
+      <button
+        v-for="(stage, index) in panelStages"
+        :key="stage.key"
+        type="button"
+        class="im-stages__item"
+        :class="{ 'is-active': activePanel === stage.key }"
+        @click="goPanel(stage.key)"
+      >
+        <span class="im-stages__index">0{{ index + 1 }}</span>
+        <span>{{ stage.label }}</span>
+      </button>
+    </nav>
+
     <div v-if="activePanel === 'stats' && matchStats" class="mp-stats">
       <div class="mp-stat"><div class="mp-stat__val">{{ matchStats.total }}</div><div class="mp-stat__lbl">匹配总数</div></div>
       <div class="mp-stat"><div class="mp-stat__val">{{ matchStats.confirmedCount }}</div><div class="mp-stat__lbl">已确认落岗</div></div>
@@ -234,6 +249,15 @@ export default {
     }
   },
   computed: {
+    panelStages() {
+      return [
+        { key: 'intention', label: '意向登记' },
+        { key: 'recommend', label: '推荐结果' },
+        { key: 'confirm', label: '确认落岗' },
+        { key: 'conflict', label: '冲突处置' },
+        { key: 'results', label: '结果台账' }
+      ]
+    },
     isIntentionPanel() { return this.activePanel === 'intention' },
     isStatsPanel() { return this.activePanel === 'stats' },
     isConflictPanel() { return this.activePanel === 'conflict' },
@@ -361,6 +385,10 @@ export default {
       if (this.activePanel === 'recommend') this.filters.status = 'RECOMMENDED'
       this.page = 1
       this.load()
+    },
+    goPanel(panel) {
+      if (this.activePanel === panel) return
+      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
     },
     async load() {
       this.loading = true
@@ -511,10 +539,17 @@ export default {
 </script>
 
 <style scoped>
-.mp-stats { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
-.mp-stat { min-width: 120px; padding: var(--space-3) var(--space-4); background: var(--color-bg-elevated, #fff); border: 1px solid var(--color-border, #eee); border-radius: 8px; cursor: default; }
-.mp-stat__val { font-size: var(--font-size-xl); font-weight: 600; }
-.mp-stat__lbl { color: var(--color-text-secondary); font-size: var(--font-size-sm); margin-top: var(--space-1); }
+.im-stages { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--card-b, #e5e7eb); border-radius: 12px; background: var(--card, #fff); box-shadow: var(--s1); overflow-x: auto; }
+.im-stages__title { flex: 0 0 auto; padding: 0 8px 0 2px; color: var(--t2, #475569); font-size: 12px; font-weight: var(--font-weight-semibold); }
+.im-stages__item { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2, #475569); cursor: pointer; font-size: 12px; transition: .16s ease; }
+.im-stages__item:hover { color: var(--pri, #2563eb); background: var(--pri-bg, #eff6ff); }
+.im-stages__item.is-active { border-color: var(--pri-100, #dbeafe); background: var(--pri-bg, #eff6ff); color: var(--pri, #2563eb); font-weight: var(--font-weight-semibold); }
+.im-stages__index { color: var(--t3, #94a3b8); font-size: 10px; font-weight: 800; }
+.im-stages__item.is-active .im-stages__index { color: var(--pri, #2563eb); }
+.mp-stats { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.mp-stat { min-width: 0; padding: 14px var(--space-4); background: linear-gradient(145deg, var(--card, #fff), var(--pri-bg, #f8fbff)); border: 1px solid var(--card-b, #eee); border-radius: 12px; box-shadow: var(--s1); cursor: default; }
+.mp-stat__val { color: var(--t1, #111827); font-size: 24px; line-height: 1; font-weight: var(--font-weight-bold); font-variant-numeric: tabular-nums; }
+.mp-stat__lbl { color: var(--t3, #64748b); font-size: 12px; margin-top: 7px; }
 .im-block { margin-bottom: var(--space-4); }
 .im-h { margin: 0 0 var(--space-2); font-size: var(--font-size-md); }
 .im-tag { display: inline-block; margin-left: 4px; padding: 0 6px; font-size: 12px; background: #e8f5e9; color: #2e7d32; border-radius: 4px; }
@@ -533,4 +568,5 @@ export default {
 .ie-ok { color: #2e7d32; }
 .ie-bad { color: #c62828; }
 .ie-imp__errs { margin: 8px 0; padding-left: 18px; color: #c62828; font-size: 13px; }
+@media (max-width: 760px) { .mp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

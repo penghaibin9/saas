@@ -224,6 +224,71 @@ def dimension_options(user) -> dict:
         return {"colleges": sorted(colleges), "majors": sorted(majors), "classes": sorted(classes)}
 
 
+def trends(user, college=None, major=None, class_name=None, months=6) -> dict:
+    """Return auditable monthly activity counts for the visible internship cohort.
+
+    We deliberately use creation/submission timestamps only; this avoids presenting
+    mutable record ``updated_at`` as an invented "arrival" trend.
+    """
+    months = max(3, min(int(months or 6), 12))
+    now = datetime.now()
+    keys = []
+    year, month = now.year, now.month
+    for _ in range(months):
+        keys.append(f"{year:04d}-{month:02d}")
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+    keys.reverse()
+
+    scope, in_scope = _scope_ctx(user)
+    scoped = scope.get("mode") == "SCOPED"
+    with session() as db:
+        recs = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False))).all()
+        cache = {}
+        kept = []
+        for rec in recs:
+            stu = db.get(StudentProfile, rec.student_id)
+            if scoped and not in_scope(scope, db, rec, stu):
+                continue
+            org = _org_of(db, stu, cache)
+            if college and college != org[0]:
+                continue
+            if major and major != org[1]:
+                continue
+            if class_name and class_name != org[2]:
+                continue
+            kept.append(rec)
+        record_ids = [rec.id for rec in kept] or [0]
+
+        def count_by_month(rows, field):
+            counts = {key: 0 for key in keys}
+            for row in rows:
+                value = getattr(row, field, None)
+                key = value.strftime("%Y-%m") if value else ""
+                if key in counts:
+                    counts[key] += 1
+            return [{"month": key, "value": counts[key]} for key in keys]
+
+        common = lambda model: (
+            model.tenant_id == _tid(), model.is_deleted.is_(False), model.internship_id.in_(record_ids)
+        )
+        reports = db.scalars(select(WeeklyReport).where(*common(WeeklyReport))).all()
+        guidances = db.scalars(select(InternshipGuidance).where(*common(InternshipGuidance))).all()
+        visits = db.scalars(select(InternshipVisit).where(*common(InternshipVisit))).all()
+        return {
+            "months": keys,
+            "series": [
+                {"key": "records", "label": "新增实习建档", "points": count_by_month(kept, "created_at")},
+                {"key": "reports", "label": "报告提交", "points": count_by_month(reports, "submitted_at")},
+                {"key": "guidance", "label": "指导记录", "points": count_by_month(guidances, "created_at")},
+                {"key": "visits", "label": "巡访记录", "points": count_by_month(visits, "created_at")},
+            ],
+            "generatedAt": datetime.now().isoformat(timespec="seconds"),
+        }
+
+
 def export_stats(user, college=None, major=None, class_name=None) -> dict:
     from app.services import xlsx_util
     data = overview(user, college=college, major=major, class_name=class_name)

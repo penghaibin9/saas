@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.response import success
 from app.core.security import get_current_user
@@ -25,6 +25,13 @@ def stats_overview(college: Optional[str] = None, major: Optional[str] = None,
 @router.get("/stats/dimensions", summary="统计维度选项（学院/专业/班级）")
 def stats_dimensions(user=Depends(get_current_user)):
     return success(svc.dimension_options(user))
+
+
+@router.get("/stats/trends", summary="实习业务月度趋势（建档、报告、指导、巡访）")
+def stats_trends(college: Optional[str] = None, major: Optional[str] = None,
+                 className: Optional[str] = None, months: int = Query(6, ge=3, le=12),
+                 user=Depends(get_current_user)):
+    return success(svc.trends(user, college=college, major=major, class_name=className, months=months))
 
 
 @router.post("/stats/export", summary="导出实习统计台账（xlsx）")

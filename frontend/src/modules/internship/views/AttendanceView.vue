@@ -8,9 +8,12 @@
 
     <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
-    <div class="tabs">
-      <button v-for="t in tabs" :key="t.key" class="tabs__btn" :class="{ 'is-active': tab === t.key }"
-        @click="switchTab(t.key)">{{ t.label }}</button>
+    <div class="tabs" aria-label="出勤业务切换">
+      <span class="tabs__caption">出勤处置台</span>
+      <div class="tabs__list">
+        <button v-for="t in tabs" :key="t.key" class="tabs__btn" :class="{ 'is-active': tab === t.key }"
+          @click="switchTab(t.key)">{{ t.label }}</button>
+      </div>
     </div>
 
     <div class="bar">
@@ -27,32 +30,34 @@
     <div v-else-if="error" class="state is-err">{{ error }} <button @click="load">重试</button></div>
     <div v-else-if="!rows.length" class="state">暂无数据</div>
 
-    <table v-else class="tbl">
-      <thead>
-        <tr><th v-for="c in columns" :key="c.key">{{ c.label }}</th><th>操作</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in rows" :key="r.id">
-          <td v-for="c in columns" :key="c.key">
-            <template v-if="c.key === 'status'"><AppStatusTag :status="r.status" /></template>
-            <template v-else-if="c.key === 'result'"><AppStatusTag :type="r.tone === 'danger' ? 'danger' : 'success'">{{ r.resultLabel }}</AppStatusTag></template>
-            <template v-else>{{ r[c.key] }}</template>
-          </td>
-          <td class="tbl__ops">
-            <template v-if="tab === 'exceptions' && r.status === 'PENDING_HANDLE'">
-              <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" @click="openHandle(r, 'REASONABLE')">合理</AppPermissionButton>
-              <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" @click="openHandle(r, 'ABNORMAL')">异常</AppPermissionButton>
-              <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" :danger="true" @click="openHandle(r, 'TO_RISK')">转风险</AppPermissionButton>
-            </template>
-            <template v-else-if="tab === 'makeups' && r.status === 'PENDING'">
-              <AppPermissionButton code="internship.checkin.handle" variant="secondary" size="sm" @click="openApprove(r)">通过</AppPermissionButton>
-              <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" :danger="true" @click="openReject(r)">驳回</AppPermissionButton>
-            </template>
-            <span v-else class="tbl__muted">—</span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-else class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th v-for="c in columns" :key="c.key">{{ c.label }}</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in rows" :key="r.id">
+            <td v-for="c in columns" :key="c.key">
+              <template v-if="c.key === 'status'"><AppStatusTag :status="r.status" /></template>
+              <template v-else-if="c.key === 'result'"><AppStatusTag :type="r.tone === 'danger' ? 'danger' : 'success'">{{ r.resultLabel }}</AppStatusTag></template>
+              <template v-else>{{ r[c.key] }}</template>
+            </td>
+            <td class="tbl__ops">
+              <template v-if="tab === 'exceptions' && r.status === 'PENDING_HANDLE'">
+                <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" @click="openHandle(r, 'REASONABLE')">合理</AppPermissionButton>
+                <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" @click="openHandle(r, 'ABNORMAL')">异常</AppPermissionButton>
+                <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" :danger="true" @click="openHandle(r, 'TO_RISK')">转风险</AppPermissionButton>
+              </template>
+              <template v-else-if="tab === 'makeups' && r.status === 'PENDING'">
+                <AppPermissionButton code="internship.checkin.handle" variant="secondary" size="sm" @click="openApprove(r)">通过</AppPermissionButton>
+                <AppPermissionButton code="internship.checkin.handle" variant="ghost" size="sm" :danger="true" @click="openReject(r)">驳回</AppPermissionButton>
+              </template>
+              <span v-else class="tbl__muted">—</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <AppConfirmDialog v-model:visible="dlg.visible" :title="dlg.title" :content="dlg.content"
       :danger="dlg.danger" :confirm-text="dlg.confirmText" :require-reason="dlg.requireReason"
@@ -208,27 +213,33 @@ export default {
 </script>
 
 <style scoped>
-.tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); border-bottom: 1px solid var(--border-light); }
-.tabs__btn { border: none; background: none; padding: var(--space-2) var(--space-3); cursor: pointer;
-  color: var(--text-secondary); font-size: var(--font-size-sm); border-bottom: 2px solid transparent; }
-.tabs__btn.is-active { color: var(--primary-700); border-bottom-color: var(--primary-600); font-weight: var(--font-weight-medium); }
-.bar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
-.bar__kw, .bar__sel { height: 32px; border: 1px solid var(--border-base); border-radius: var(--radius-base);
-  padding: 0 var(--space-2); font-size: var(--font-size-sm); }
-.bar__go { height: 32px; padding: 0 var(--space-3); border: 1px solid var(--primary-600); background: var(--primary-600);
-  color: #fff; border-radius: var(--radius-base); cursor: pointer; font-size: var(--font-size-sm); }
+.tabs { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 10px 12px; margin-bottom: var(--space-3); border: 1px solid var(--card-b); border-radius: var(--r); background: linear-gradient(100deg, var(--pri-bg), var(--card)); box-shadow: var(--s1); }
+.tabs__caption { color: var(--t2); font-size: 12px; font-weight: var(--font-weight-semibold); white-space: nowrap; }
+.tabs__list { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, .7); }
+.tabs__btn { border: 1px solid transparent; border-radius: 7px; background: transparent; padding: 6px 12px; cursor: pointer; color: var(--text-secondary); font-size: var(--font-size-sm); transition: .16s ease; }
+.tabs__btn:hover { color: var(--pri); background: var(--pri-bg); }
+.tabs__btn.is-active { color: var(--pri); border-color: var(--pri-100); background: var(--card); font-weight: var(--font-weight-semibold); box-shadow: 0 2px 5px rgba(15, 40, 90, .08); }
+.bar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); flex-wrap: wrap; }
+.bar__kw, .bar__sel { height: 34px; border: 1px solid var(--border-base); border-radius: 8px; background: rgba(255, 255, 255, .9); padding: 0 var(--space-3); font-size: var(--font-size-sm); outline: none; transition: .14s ease; }
+.bar__kw { min-width: 220px; }
+.bar__kw:focus, .bar__sel:focus { border-color: var(--pri); box-shadow: 0 0 0 3px var(--pri-bg); }
+.bar__go { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--primary-600); background: var(--btn-p-bg, var(--primary-600)); color: #fff; border-radius: 8px; box-shadow: var(--btn-p-shadow); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); }
 .bar__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); margin-left: auto; }
-.state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm);
-  border: 1px dashed var(--border-base); border-radius: var(--radius-base); }
+.state { padding: var(--space-8); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--r); background: rgba(255, 255, 255, .45); }
 .state.is-err { color: var(--danger-600); }
-.tbl { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
-.tbl th, .tbl td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-light); }
-.tbl th { color: var(--text-tertiary); font-weight: var(--font-weight-medium); background: var(--bg-subtle); }
+.tbl-wrap { overflow: auto; border: 1px solid var(--card-b); border-radius: var(--r); background: var(--card); box-shadow: var(--s1); }
+.tbl { width: 100%; min-width: 780px; border-collapse: separate; border-spacing: 0; font-size: var(--font-size-sm); }
+.tbl th, .tbl td { text-align: left; padding: 12px var(--space-3); border-bottom: 1px solid var(--border-light); white-space: nowrap; }
+.tbl th { color: var(--text-tertiary); font-weight: var(--font-weight-semibold); background: var(--bg-subtle); font-size: 12px; letter-spacing: .01em; }
+.tbl tbody tr { transition: background .14s ease; }
+.tbl tbody tr:hover { background: var(--bg-hover); }
+.tbl tbody tr:last-child td { border-bottom: 0; }
 .tbl__muted { color: var(--text-disabled); }
-.tbl__ops { display: flex; gap: var(--space-1); }
+.tbl__ops { display: flex; gap: var(--space-1); align-items: center; }
 .op { border: 1px solid var(--border-base); background: var(--bg-card); border-radius: var(--radius-sm);
   padding: 2px var(--space-2); font-size: var(--font-size-xs); cursor: pointer; color: var(--text-secondary); }
 .op:hover { border-color: var(--primary-500); color: var(--primary-600); }
 .op--ok { border-color: var(--success-100); color: var(--success-700); }
 .op--danger { border-color: var(--danger-100); color: var(--danger-600); }
+@media (max-width: 760px) { .tabs { align-items: flex-start; flex-direction: column; } .tabs__list { width: 100%; overflow-x: auto; } .tabs__btn { flex: 0 0 auto; } .bar__kw { width: 100%; min-width: 0; } .bar__hint { width: 100%; margin-left: 0; } }
 </style>

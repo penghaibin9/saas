@@ -62,6 +62,7 @@ const internshipRoutes = {
       component: () => import('@/modules/internship/views/InternshipStudentListView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.STUDENTS, title: M.STUDENTS, requiresAuth: true, permissionKey: 'internship.student.view' }
     },
+    { path: 'assignment-logs', name: 'internship-assignment-logs', component: () => import('@/modules/internship/views/AssignmentLogView.vue'), meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: '分配日志', requiresAuth: true, permissionKey: 'internship.student.view' } },
     {
       path: 'enterprise-position',
       name: 'internship-enterprise-position',
@@ -241,6 +242,12 @@ const internshipRoutes = {
       name: 'internship-agreements',
       component: () => import('@/modules/internship/views/AgreementView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: P.AGREEMENT, requiresAuth: true, permissionKey: 'internship.agreement.view' }
+    },
+    {
+      path: 'applications',
+      name: 'internship-applications',
+      component: () => import('@/modules/internship/views/InternshipApplicationReviewView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '实习申请审核', requiresAuth: true, permissionKey: 'internship.student.manage' }
     },
     {
       path: 'agreements/:id',

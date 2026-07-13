@@ -138,6 +138,7 @@ const PANEL_PRESETS = {
   plan: () => ({ redirect: '/admin/internship/guidance-plan' }),
   'insufficient-warning': () => ({ redirect: '/admin/internship/guidance-plan?insufficient=1' }),
   guidance: () => ({ tab: 'guidance', rectifyFilter: '' }),
+  communication: () => ({ tab: 'guidance', rectifyFilter: '' }),
   visit: () => ({ tab: 'visit', rectifyFilter: '' }),
   'visit-plan': () => ({ tab: 'visit', rectifyFilter: '' }),
   'visit-issue': () => ({ tab: 'visit', rectifyFilter: '' }),

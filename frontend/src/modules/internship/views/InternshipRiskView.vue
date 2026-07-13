@@ -12,6 +12,17 @@
     <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
     <div class="mp-stack">
+      <nav class="ir-focus" aria-label="风险处置视图">
+        <span class="ir-focus__title">风险聚焦</span>
+        <button
+          v-for="focus in focusViews"
+          :key="focus.key"
+          type="button"
+          class="ir-focus__item"
+          :class="{ 'is-active': activePanel === focus.key }"
+          @click="goPanel(focus.key)"
+        >{{ focus.label }}</button>
+      </nav>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -77,7 +88,7 @@ export default {
       loading: true,
       error: '',
       rows: [],
-      filters: EMPTY_FILTERS(),
+      filters: EMPTY_FILTERS(), activePanel: 'board',
       pagination: { page: 1, pageSize: 10, total: 0 },
       columns: [
         { key: 'student', title: '学生' },
@@ -92,6 +103,15 @@ export default {
     }
   },
   computed: {
+    focusViews() {
+      return [
+        { key: 'board', label: '全部风险' },
+        { key: 'no-position', label: '未落岗' },
+        { key: 'no-checkin', label: '打卡异常' },
+        { key: 'report-overdue', label: '报告逾期' },
+        { key: 'leave-post', label: '请假未返岗' }
+      ]
+    },
     filterFields() {
       return [
         { key: 'level', label: '风险等级', type: 'select', options: this.ctx.statusOptions.riskLevel },
@@ -122,9 +142,14 @@ export default {
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.board
+      this.activePanel = PANEL_PRESETS[panel] ? panel : 'board'
       this.filters = { ...preset() }
       this.pagination.page = 1
       this.load()
+    },
+    goPanel(panel) {
+      if (this.activePanel === panel) return
+      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
     },
     isUrgent(d) {
       return d && d <= '07-05'
@@ -170,4 +195,9 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.ir-focus { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--danger-100); border-radius: 12px; background: linear-gradient(100deg, var(--danger-50), var(--card) 58%); box-shadow: var(--s1); overflow-x: auto; }
+.ir-focus__title { flex: 0 0 auto; padding: 0 8px 0 2px; color: var(--danger-600); font-size: 12px; font-weight: var(--font-weight-semibold); }
+.ir-focus__item { flex: 0 0 auto; padding: 6px 11px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2); cursor: pointer; font-size: 12px; transition: .16s ease; }
+.ir-focus__item:hover { color: var(--danger-600); background: var(--danger-50); }
+.ir-focus__item.is-active { border-color: var(--danger-100); background: var(--card); color: var(--danger-600); box-shadow: 0 2px 5px rgba(127, 29, 29, .08); font-weight: var(--font-weight-semibold); }
 </style>

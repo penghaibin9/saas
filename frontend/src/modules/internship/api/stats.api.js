@@ -35,6 +35,10 @@ export const statsApi = {
     return call(() => request(`${B}/dimensions`))
   },
 
+  getTrends(params = {}) {
+    return call(() => request(`${B}/trends`, { params }))
+  },
+
   exportStats(params = {}) {
     return call(() => request(`${B}/export`, { method: 'POST', params }))
   }

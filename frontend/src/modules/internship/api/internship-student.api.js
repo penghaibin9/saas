@@ -66,6 +66,9 @@ export const internStudentApi = {
   getAdvisors(keyword = '') {
     return call(() => request(`${BASE}/advisors`, { params: { keyword } }))
   },
+  getAssignmentLogs(params = {}) {
+    return callList(`${BASE}/assignment-logs`, params)
+  },
   assignAdvisor(id, { advisorUserId, reason = '' }) {
     return call(() => request(`${BASE}/${id}/advisor`, { method: 'POST', body: { advisorUserId, reason } }))
   },

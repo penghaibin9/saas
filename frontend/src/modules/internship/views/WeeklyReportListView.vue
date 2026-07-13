@@ -13,12 +13,12 @@
     <div class="mp-stack">
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
       <!-- 报告类型切换（原「日报批阅 / 月报批阅 / 实习总结」独立菜单收口为页内切换） -->
-      <div class="mp-tabs">
+      <div class="mp-tabs wr-tabs wr-tabs--type" aria-label="报告类型">
         <button v-for="t in typeTabs" :key="t.value" class="mp-tab" :class="{ 'is-active': reportTypeKey === t.value }" @click="switchType(t.value)">
           {{ t.label }}
         </button>
       </div>
-      <div class="mp-tabs">
+      <div class="mp-tabs wr-tabs wr-tabs--status" aria-label="审核状态">
         <button v-for="t in activeTabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}
         </button>
@@ -337,4 +337,11 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.wr-tabs { display: flex; gap: 6px; padding: 7px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); overflow-x: auto; }
+.wr-tabs--type { background: linear-gradient(100deg, var(--pri-bg), var(--card) 52%); }
+.wr-tabs--status { margin-top: -8px; padding-left: 14px; border-top: 0; border-radius: 0 0 12px 12px; box-shadow: none; }
+.wr-tabs .mp-tab { position: relative; flex: 0 0 auto; padding: 7px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2); font-size: 12px; transition: .16s ease; }
+.wr-tabs .mp-tab:hover { color: var(--pri); background: var(--pri-bg); }
+.wr-tabs .mp-tab.is-active { border-color: var(--pri-100); background: var(--card); color: var(--pri); font-weight: var(--font-weight-semibold); box-shadow: 0 2px 5px rgba(15, 40, 90, .07); }
+.wr-tabs--status .mp-tab.is-active { background: var(--pri-bg); box-shadow: none; }
 </style>

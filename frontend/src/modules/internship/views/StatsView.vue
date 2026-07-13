@@ -45,6 +45,17 @@
       </div>
 
       <AppChartCard
+        title="实习过程趋势"
+        subtitle="最近 6 个月建档、报告提交、指导与巡访的真实业务发生量"
+        :empty="!trendRows.length"
+        empty-text="当前筛选范围暂无过程数据"
+        :min-height="280"
+      >
+        <AppG2Chart :spec="trendChartSpec" :height="250" />
+        <template #footer><span class="chart-note">统计口径：按建档创建时间、报告提交时间、指导/巡访记录创建时间汇总。</span></template>
+      </AppChartCard>
+
+      <AppChartCard
         title="成绩分布（已发布）"
         subtitle="按优 / 良 / 中 / 及格 / 不及格统计已发布综合成绩"
         :empty="!scoreTotal"
@@ -79,7 +90,7 @@ export default {
       loading: false, error: '',
       dim: { college: '', major: '', className: '' },
       dims: { colleges: [], majors: [], classes: [] },
-      counters: [], metrics: [], scoreDistribution: [], partial: [], generatedAt: '',
+      counters: [], metrics: [], scoreDistribution: [], trendSeries: [], partial: [], generatedAt: '',
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
@@ -94,6 +105,21 @@ export default {
         color: '#2563eb',
         maxLabelLength: 14
       })
+    },
+    trendRows() {
+      return this.trendSeries.flatMap((series) => (series.points || []).map((point) => ({
+        month: point.month, series: series.label, value: point.value
+      })))
+    },
+    trendChartSpec() {
+      return {
+        type: 'line',
+        data: this.trendRows,
+        encode: { x: 'month', y: 'value', color: 'series' },
+        shape: 'smooth',
+        style: { lineWidth: 2.5, point: true },
+        legend: { color: { position: 'bottom' } }
+      }
     }
   },
   created() { this.loadDims(); this.load() },
@@ -114,7 +140,7 @@ export default {
       if (this.dim.college) params.college = this.dim.college
       if (this.dim.major) params.major = this.dim.major
       if (this.dim.className) params.className = this.dim.className
-      const res = await statsApi.getOverview(params)
+      const [res, trendRes] = await Promise.all([statsApi.getOverview(params), statsApi.getTrends(params)])
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; return }
       this.counters = res.data.counters || []
@@ -122,6 +148,7 @@ export default {
       this.scoreDistribution = res.data.scoreDistribution || []
       this.partial = res.data.partial || []
       this.generatedAt = res.data.generatedAt || ''
+      this.trendSeries = trendRes.code === 0 ? (trendRes.data.series || []) : []
     },
     exportFn() {
       const params = {}

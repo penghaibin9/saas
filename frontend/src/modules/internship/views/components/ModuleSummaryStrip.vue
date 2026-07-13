@@ -110,18 +110,21 @@ export default {
 .msr {
   display: flex;
   align-items: center;
-  gap: var(--space-5, 20px);
+  gap: 12px var(--space-5, 20px);
   flex-wrap: wrap;
-  padding: 10px 16px;
-  border: 1px solid var(--bd, #e5e7eb);
-  border-radius: 12px;
-  background: var(--card-bg, #fff);
+  padding: 12px 16px;
+  border: 1px solid var(--pri-100, var(--bd, #e5e7eb));
+  border-radius: 14px;
+  background: linear-gradient(105deg, var(--pri-bg, #f8fbff), var(--card-bg, #fff) 42%);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .035);
 }
 .msr__batch {
   display: flex;
   align-items: center;
   gap: var(--space-2, 8px);
   flex-wrap: wrap;
+  padding-right: var(--space-4, 16px);
+  border-right: 1px solid var(--card-b, #edf0f3);
 }
 .msr__chip {
   display: inline-flex;
@@ -130,12 +133,15 @@ export default {
   padding: 0 10px;
   border-radius: 14px;
   font-size: 12px;
-  background: var(--fill-2, #f3f4f6);
+  background: rgba(255, 255, 255, .82);
+  border: 1px solid var(--card-b, #e5e7eb);
   color: var(--t2, #374151);
   white-space: nowrap;
 }
 .msr__chip--batch {
   font-weight: var(--font-weight-medium, 500);
+  color: var(--pri, #2563eb);
+  border-color: var(--pri-100, #dbeafe);
 }
 .msr__chip--on {
   background: var(--success-bg, #ecfdf5);
@@ -156,16 +162,18 @@ export default {
 .msr__metrics {
   display: flex;
   align-items: center;
-  gap: var(--space-5, 20px);
+  gap: 8px 18px;
   flex-wrap: wrap;
 }
 .msr__metric {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 58px;
 }
 .msr__metric-val {
-  font-size: 18px;
+  font-size: 20px;
+  line-height: 1;
   font-weight: var(--font-weight-bold, 700);
   color: var(--t1, #111827);
 }
@@ -179,7 +187,7 @@ export default {
   color: var(--success, #059669);
 }
 .msr__metric-lbl {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--t3, #6b7280);
 }
 .msr__note {
@@ -192,6 +200,8 @@ export default {
   gap: var(--space-2, 8px);
   flex-wrap: wrap;
   margin-left: auto;
+  padding-left: var(--space-4, 16px);
+  border-left: 1px solid var(--card-b, #edf0f3);
 }
 .msr__todo {
   display: inline-flex;
@@ -205,6 +215,12 @@ export default {
   color: var(--t2, #92400e);
   font-size: 12px;
   cursor: pointer;
+  transition: .16s ease;
+}
+.msr__todo:hover:not(.is-zero) {
+  border-color: var(--warning, #d97706);
+  box-shadow: 0 3px 8px rgba(180, 83, 9, .12);
+  transform: translateY(-1px);
 }
 .msr__todo.is-zero {
   border-color: var(--bd, #e5e7eb);
@@ -213,5 +229,9 @@ export default {
 }
 .msr__todo-count {
   font-weight: var(--font-weight-bold, 700);
+}
+@media (max-width: 900px) {
+  .msr__batch, .msr__pending { width: 100%; padding-left: 0; padding-right: 0; border: 0; }
+  .msr__pending { margin-left: 0; }
 }
 </style>

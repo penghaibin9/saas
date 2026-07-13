@@ -48,6 +48,13 @@ def intern_advisors(keyword: Optional[str] = None, user=Depends(get_current_user
     return success(svc.list_advisors(keyword))
 
 
+@router.get("/intern-students/assignment-logs", summary="岗位与指导教师分配审计台账")
+def assignment_logs(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                    keyword: Optional[str] = None, user=Depends(get_current_user)):
+    items, total = svc.list_assignment_logs(page, pageSize, keyword, user)
+    return success(paginate(items, total, page, pageSize))
+
+
 @router.post("/intern-students/import/dry-run", summary="按学号建档·预校验（不写库）")
 def intern_import_dry_run(body: StudentImport, user=Depends(get_current_user)):
     return success(svc.import_dry_run(body.rows))

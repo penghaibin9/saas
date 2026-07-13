@@ -12,6 +12,17 @@
 
     <div class="mp-stack">
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
+      <nav class="isl-viewnav" aria-label="实习学生视图">
+        <span class="isl-viewnav__title">学生台账</span>
+        <button
+          v-for="view in viewModes"
+          :key="view.key"
+          type="button"
+          class="isl-viewnav__item"
+          :class="{ 'is-active': activePanel === view.key }"
+          @click="goPanel(view.key)"
+        >{{ view.label }}</button>
+      </nav>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -38,6 +49,7 @@
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="$router.push('/admin/internship/students/' + row.id)">详情</button>
           <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="openAssign(row)">{{ row.positionId ? '调岗' : '分配岗位' }}</button>
+          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="openAssignAdvisor(row)">{{ row.advisorName ? '变更指导老师' : '分配指导老师' }}</button>
           <button v-if="row.eligibilityStatus !== 'QUALIFIED' && row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="askEligibility(row)">认定资格</button>
         </template>
       </DataTable>
@@ -85,6 +97,24 @@
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
           <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !assignPositionId" @click="submitAssign">确认分配</button>
+        </div>
+      </div>
+    </AppDrawer>
+
+    <AppDrawer v-model:visible="advisorVisible" :title="advisorRow ? `分配指导老师 · ${advisorRow.name}` : '分配指导老师'">
+      <div class="ie-form">
+        <p class="ie-hint">选择当前租户内启用的教职工账号。变更会写入学生实习档案和审计留痕。</p>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">校内指导教师 <i>*</i></span>
+          <select v-model="advisorAssignmentUserId" class="ie-in">
+            <option value="">请选择指导教师</option>
+            <option v-for="advisor in advisorOptions" :key="advisor.id" :value="advisor.id">{{ advisor.name }}（{{ advisor.loginName }}）</option>
+          </select>
+        </label>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">分配说明</span><textarea v-model.trim="advisorAssignmentReason" class="ie-in" rows="2" placeholder="例如：按专业方向调整指导关系" /></label>
+        <p v-if="advisorError" class="ie-err">{{ advisorError }}</p>
+        <div class="ie-actions">
+          <button type="button" class="mp-btn" @click="advisorVisible = false">取消</button>
+          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !advisorAssignmentUserId" @click="submitAssignAdvisor">确认分配</button>
         </div>
       </div>
     </AppDrawer>
@@ -158,6 +188,7 @@ export default {
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       createVisible: false, cform: { studentId: '', advisorUserId: '', remark: '' }, advisorOptions: [], cError: '',
       assignVisible: false, assignRow: null, assignPositionId: '', assignError: '',
+      advisorVisible: false, advisorRow: null, advisorAssignmentUserId: '', advisorAssignmentReason: '', advisorError: '',
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
@@ -166,12 +197,21 @@ export default {
         { key: 'destination', title: '去向' },
         { key: 'placement', title: '企业 / 岗位' },
         { key: 'status', title: '实习状态' },
-        { key: 'actions', title: '操作', width: '210px' }
+        { key: 'actions', title: '操作', width: '300px' }
       ]
     }
   },
   computed: {
     statusOpts() { return STUDENT_STATUS },
+    viewModes() {
+      return [
+        { key: 'roster', label: '全部学生' },
+        { key: 'eligibility', label: '待资格认定' },
+        { key: 'position', label: '待分配岗位' },
+        { key: 'status', label: '在岗学生' },
+        { key: 'destination', label: '去向待落实' }
+      ]
+    },
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号' },
@@ -215,6 +255,10 @@ export default {
       this.filters = (PANEL_PRESETS[key] || PANEL_PRESETS.roster)()
       this.page = 1
       this.load()
+    },
+    goPanel(panel) {
+      if (this.activePanel === panel) return
+      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
     },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     exportFn() { return internStudentApi.exportStudents({ ...this.filters }) },
@@ -271,6 +315,30 @@ export default {
         if (res.code === 0) { toast.success('已分配岗位（岗位库名额已回填）'); this.assignVisible = false; this.load() } else this.assignError = res.message
       } finally { this.submitting = false }
     },
+    async openAssignAdvisor(row) {
+      this.advisorRow = row
+      this.advisorAssignmentUserId = row.advisorUserId || ''
+      this.advisorAssignmentReason = ''
+      this.advisorError = ''
+      await this.loadAdvisors()
+      this.advisorVisible = true
+    },
+    async submitAssignAdvisor() {
+      if (!this.advisorRow || !this.advisorAssignmentUserId) return
+      this.advisorError = ''
+      this.submitting = true
+      try {
+        const res = await internStudentApi.assignAdvisor(this.advisorRow.id, {
+          advisorUserId: this.advisorAssignmentUserId,
+          reason: this.advisorAssignmentReason
+        })
+        if (res.code === 0) {
+          toast.success('指导教师已分配，变更已写入审计留痕')
+          this.advisorVisible = false
+          this.load()
+        } else this.advisorError = res.message
+      } finally { this.submitting = false }
+    },
     askEligibility(row) {
       this.confirm = { visible: true, title: '实习资格认定', message: `确认「${row.name}」实习资格合格？（合格后方可待上岗）`, type: 'primary', confirmText: '认定合格', requireReason: false, reasonLabel: '认定意见', action: 'ELIG_QUALIFIED', row }
     },
@@ -289,6 +357,11 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.isl-viewnav { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); overflow-x: auto; }
+.isl-viewnav__title { flex: 0 0 auto; padding: 0 8px 0 2px; color: var(--t2); font-size: 12px; font-weight: var(--font-weight-semibold); }
+.isl-viewnav__item { flex: 0 0 auto; padding: 6px 11px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2); cursor: pointer; font-size: 12px; transition: .16s ease; }
+.isl-viewnav__item:hover { color: var(--pri); background: var(--pri-bg); }
+.isl-viewnav__item.is-active { border-color: var(--pri-100); background: var(--pri-bg); color: var(--pri); font-weight: var(--font-weight-semibold); }
 .ie-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: var(--space-1) 0; }
 .ie-fld { display: flex; flex-direction: column; gap: 4px; }
 .ie-fld--full { grid-column: 1 / -1; }
