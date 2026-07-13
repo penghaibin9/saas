@@ -22,7 +22,7 @@
       <div v-else class="rk-split">
         <aside class="rk-list">
           <ul class="rk-rows">
-            <li v-for="(row, i) in riskRows" :key="row.id" class="rk-row" :class="{ 'is-active': String(row.id) === riskSelKey }" @click="selectRisk(row)">
+            <li v-for="(row, i) in riskRows" :key="row.id" class="rk-row" :class="{ 'is-active': String(row.id) === riskSelKey }" tabindex="0" role="button" @click="selectRisk(row)" @keydown.enter.prevent="selectRisk(row)" @keydown.space.prevent="selectRisk(row)">
               <div class="rk-row__main">
                 <span class="rk-row__name">{{ row.riskName }}</span>
                 <StatusTag :type="row.level === 'CRITICAL' || row.level === 'HIGH' ? 'danger' : 'warning'" :label="levelLabel(row.level)" dot />
@@ -82,7 +82,7 @@
       <div v-else class="rk-split">
         <aside class="rk-list">
           <ul class="rk-rows">
-            <li v-for="(row, i) in archiveRows" :key="row.id" class="rk-row" :class="{ 'is-active': String(row.id) === archiveSelKey }" @click="selectArchive(row)">
+            <li v-for="(row, i) in archiveRows" :key="row.id" class="rk-row" :class="{ 'is-active': String(row.id) === archiveSelKey }" tabindex="0" role="button" @click="selectArchive(row)" @keydown.enter.prevent="selectArchive(row)" @keydown.space.prevent="selectArchive(row)">
               <div class="rk-row__main">
                 <span class="rk-row__name">{{ row.studentName }}</span>
                 <StatusTag :type="row.statusTone" :label="row.statusLabel" dot />
@@ -334,9 +334,10 @@ export default {
       else if (action === 'process') res = await graduationRiskArchiveApi.processRisk(row.id, reason || '')
       else if (action === 'close') res = await graduationRiskArchiveApi.closeRisk(row.id, reason || '')
       else if (action === 'reject-archive') res = await graduationRiskArchiveApi.rejectArchive(row.gdStudentId, reason || '')
+      else if (action === 'batch-file') res = await graduationRiskArchiveApi.batchFileArchive()
       if (res && res.code === 0) {
-        toast.success('已更新'); this.confirm.visible = false
-        if (action === 'reject-archive') this.loadArchives(); else this.loadRisks()
+        toast.success(action === 'batch-file' ? `已批量备案 ${res.data.filed} 份` : '已更新'); this.confirm.visible = false
+        if (action === 'reject-archive' || action === 'batch-file') this.loadArchives(); else this.loadRisks()
       } else if (res) toast.error(res.message)
     },
     selectArchive(row) {
@@ -402,10 +403,12 @@ export default {
       if (res.code === 0) { toast.success(`已提交 ${res.data.submitted}，缺材料跳过 ${res.data.skipped}`); this.loadArchives() }
       else toast.error(res.message)
     },
-    async doBatchFile() {
-      const res = await graduationRiskArchiveApi.batchFileArchive()
-      if (res.code === 0) { toast.success(`已批量备案 ${res.data.filed} 份`); this.loadArchives() }
-      else toast.error(res.message)
+    doBatchFile() {
+      this.confirm = {
+        visible: true, title: '一键核验备案',
+        message: '系统将再次核验所有已提交归档记录，并将材料齐全的记录正式备案。备案后学生毕设阶段变为只读，是否继续？',
+        type: 'warning', confirmText: '确认核验备案', requireReason: false, reasonLabel: '说明', action: 'batch-file', row: null
+      }
     },
     async loadStats() {
       this.statsLoading = true
@@ -423,13 +426,14 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .rk-split { display: flex; gap: var(--space-4); align-items: flex-start; }
-.rk-list { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); }
-.rk-pane { flex: 1; min-width: 0; }
+.rk-list { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
+.rk-pane { flex: 1; min-width: 0; padding: var(--space-4); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .rk-rows { list-style: none; margin: 0; padding: 0; max-height: 600px; overflow-y: auto; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); }
-.rk-row { padding: 10px 12px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; }
+.rk-row { padding: 10px 12px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; transition: background .12s ease, box-shadow .12s ease; }
 .rk-row:last-child { border-bottom: none; }
 .rk-row:hover { background: var(--gray-50, #f8fafc); }
 .rk-row.is-active { background: var(--primary-50, #eff6ff); box-shadow: inset 2px 0 0 var(--brand-primary, #2563eb); }
+.rk-row:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--primary-400, #60a5fa); outline-offset: -2px; }
 .rk-row__main { display: flex; align-items: center; gap: var(--space-2); }
 .rk-row__name { font-weight: var(--font-weight-medium, 500); color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rk-row__sub { margin-top: 2px; font-size: var(--font-size-sm); color: var(--text-secondary); }
@@ -447,7 +451,7 @@ export default {
 .gp-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
 .gp-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
 .gs-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-3); }
-.gs-card { border: 1px solid var(--line, #e2e8f0); border-radius: 10px; padding: 12px; }
+.gs-card { border: 1px solid var(--line, #e2e8f0); border-radius: 10px; padding: 12px; background: linear-gradient(145deg, var(--color-bg-subtle, #f8fafc), var(--card, #fff)); box-shadow: 0 1px 1px rgba(15, 23, 42, .02); }
 .gs-card__label { font-size: 12px; color: var(--t3, #64748b); }
 .gs-card__value { font-size: 22px; font-weight: 700; margin-top: 4px; }
 .gm-section-title { font-size: 13px; font-weight: 600; }
@@ -455,4 +459,5 @@ export default {
 .ie-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-bottom: var(--space-3); }
 .mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
+@media (max-width: 1100px) { .rk-split { flex-direction: column; } .rk-list, .rk-pane { width: 100%; box-sizing: border-box; } .rk-pane { padding: var(--space-3); } }
 </style>
