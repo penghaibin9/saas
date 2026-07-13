@@ -56,6 +56,18 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '困难认定', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
       },
       {
+        path: 'aid/batches',
+        name: 'student-affairs-aid-batches',
+        component: () => import('@/modules/studentAffairs/views/aid/AidBatchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '认定批次', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
+      },
+      {
+        path: 'aid/difficult-students',
+        name: 'student-affairs-aid-difficult',
+        component: () => import('@/modules/studentAffairs/views/aid/DifficultStudentsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '困难学生库', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
+      },
+      {
         path: 'funding',
         name: 'student-affairs-funding',
         component: () => import('@/modules/studentAffairs/views/FundingWorkbenchView.vue'),
