@@ -123,3 +123,14 @@ def test_sc7_reject(client, db_mode):
                     json={"action": "REJECT", "reason": "材料不齐，不予批准"}).json()
     assert r["data"]["status"] == "REJECTED"
     assert _status(client, ids["s"], hdr) == "NORMAL"  # 未生效，主档不变
+
+
+def test_sc8_student_forbidden_403(client, db_mode):
+    """越权红线（13B-FE-W2 学籍写侧接入波补齐）：学生令牌打异动/注册/名册端点一律 403（require_staff）。"""
+    hdr = _hdr(client, "student01")
+    assert client.post(f"{BASE}/status-changes", headers=hdr,
+                       json={"studentId": "1", "changeType": "SUSPEND"}).status_code == 403
+    assert client.get(f"{BASE}/status-changes", headers=hdr).status_code == 403
+    assert client.post(f"{BASE}/registration-batches", headers=hdr,
+                       json={"batchName": "x"}).status_code == 403
+    assert client.get(f"{BASE}/roster", headers=hdr).status_code == 403

@@ -16,6 +16,7 @@ import { studentRoutes } from '@/modules/student/student.routes'
 import orientationRoutes from '@/modules/orientation/orientation.routes'
 import campusServiceRoutes from '@/modules/campusService/campusService.routes'
 import academicRoutes from '@/modules/academicAffairs/routes/academic.routes'
+import { academicAffairsRoutes } from '@/modules/academicAffairs/academic-affairs.routes'
 import internshipRoutes from '@/modules/internship/routes'
 import graduationRoutes from '@/modules/graduation/routes'
 import employmentRoutes from '@/modules/employment/employment.routes'
@@ -36,6 +37,7 @@ const moduleRoutes = [
   orientationRoutes,
   campusServiceRoutes,
   academicRoutes,
+  academicAffairsRoutes,
   internshipRoutes,
   graduationRoutes,
   employmentRoutes,

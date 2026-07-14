@@ -185,28 +185,55 @@ export const NAV_PLAN = [
 
   /* ═══════════ 一级③：教务中心 ═══════════ */
   grp('academic-affairs', '教务中心', 'academicAffairs', [
-    mod('aa-dashboard', '教务看板', '/admin/academic', [
-      I('教务总览（学业过程中心）', '/admin/academic'),
+    mod('aa-dashboard', '教务看板', '/admin/academic-affairs', [
+      I('教务看板（教务中心）', '/admin/academic-affairs'),
+      I('学业过程总览（现有）', '/admin/academic'),
       ...P('今日教学运行', '今日课程', '调停课提醒', '成绩提交进度', '考试安排提醒',
         '学籍异动提醒', '学业预警提醒', '毕业资格预警', '教学资源占用', '教务待办', '教务数据趋势')
     ]),
-    mod('aa-terms', '学年学期', null, P('学年管理', '学期管理', '当前学期设置', '学期周次', '教学周配置', '学期状态', '学期切换记录', '学期归档')),
-    mod('aa-calendar', '校历节次', null, P('校历管理', '节假日配置', '补课日配置', '作息时间', '节次管理', '上课时间段', '教学周日历', '校历发布', '校历归档')),
-    mod('aa-student-status', '学籍管理', null, [
-      ...P('学籍档案', '学籍状态'),
+    mod('aa-terms', '学年学期', '/admin/academic-affairs/terms', [
+      I('学期管理', '/admin/academic-affairs/terms'),
+      ...P('学年管理', '当前学期设置', '学期周次', '教学周配置', '学期状态', '学期切换记录', '学期归档')
+    ]),
+    mod('aa-calendar', '校历节次', '/admin/academic-affairs/calendar', [
+      I('校历管理', '/admin/academic-affairs/calendar'),
+      I('作息时间', '/admin/academic-affairs/time-slots'),
+      ...P('节假日配置', '补课日配置', '节次管理', '上课时间段', '教学周日历', '校历发布', '校历归档')
+    ]),
+    mod('aa-student-status', '学籍管理', '/admin/academic-affairs/roster', [
+      I('学籍名册', '/admin/academic-affairs/roster'),
       I('在籍学生（现有·学业学生）', '/admin/academic/students'),
-      ...P('休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正',
+      ...P('学籍档案', '学籍状态', '休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正',
         '学籍异动记录', '学籍导入导出', '学籍统计', '学籍归档')
     ]),
-    mod('aa-registration', '注册管理', null, P('入学注册', '学年注册', '学期注册', '注册资格核验', '未注册学生', '暂缓注册', '注册异常', '注册统计', '注册归档')),
-    mod('aa-status-change', '学籍异动', null, P('异动申请', '休学申请', '复学申请', '退学申请', '转专业申请', '转班申请', '保留学籍申请', '异动审批', '异动生效', '异动台账', '异动统计', '异动归档')),
+    mod('aa-registration', '注册管理', '/admin/academic-affairs/registration', [
+      I('注册批次', '/admin/academic-affairs/registration'),
+      ...P('入学注册', '学年注册', '学期注册', '注册资格核验', '未注册学生', '暂缓注册', '注册异常', '注册统计', '注册归档')
+    ]),
+    mod('aa-status-change', '学籍异动', '/admin/academic-affairs/status-changes', [
+      I('异动台账', '/admin/academic-affairs/status-changes'),
+      I('发起异动', '/admin/academic-affairs/status-changes/new'),
+      ...P('休学申请', '复学申请', '退学申请', '转专业申请', '转班申请', '保留学籍申请', '异动审批', '异动生效', '异动统计', '异动归档')
+    ]),
     mod('aa-orgs', '学院专业班级', null, P('学院管理', '专业管理', '年级管理', '行政班管理', '教学班管理', '专业方向', '班级学生', '班级调整', '组织结构同步', '组织统计')),
-    mod('aa-training', '培养方案', null, P('方案列表', '方案制定', '方案版本', '课程模块', '学分要求', '实践环节', '毕业要求', '方案审核', '方案发布', '方案变更', '方案归档')),
-    mod('aa-courses', '课程库', null, P('课程列表', '新增课程', '课程分类', '课程性质', '学分学时', '课程大纲', '考核方式', '课程负责人', '课程材料', '课程停用', '课程归档')),
+    mod('aa-training', '培养方案', '/admin/academic-affairs/programs', [
+      I('方案列表', '/admin/academic-affairs/programs'),
+      ...P('方案制定', '方案版本', '课程模块', '学分要求', '实践环节', '毕业要求', '方案审核', '方案发布', '方案变更', '方案归档')
+    ]),
+    mod('aa-courses', '课程库', '/admin/academic-affairs/courses', [
+      I('课程列表', '/admin/academic-affairs/courses'),
+      ...P('新增课程', '课程分类', '课程性质', '学分学时', '课程大纲', '考核方式', '课程负责人', '课程材料', '课程停用', '课程归档')
+    ]),
     mod('aa-teaching-plan', '教学计划', null, P('年级教学计划', '专业教学计划', '学期教学计划', '课程开设计划', '实践教学计划', '计划审核', '计划发布', '计划变更', '计划执行进度', '计划归档')),
-    mod('aa-teaching-tasks', '教学任务', null, P('教学任务生成', '教学任务列表', '任课教师分配', '教学班生成', '合班拆班', '教学任务确认', '教师任务确认', '教学任务调整', '教学任务统计', '教学任务归档')),
+    mod('aa-teaching-tasks', '教学任务', '/admin/academic-affairs/teaching-tasks', [
+      I('教学任务批次', '/admin/academic-affairs/teaching-tasks'),
+      ...P('教学任务生成', '任课教师分配', '教学班生成', '合班拆班', '教学任务确认', '教师任务确认', '教学任务调整', '教学任务统计', '教学任务归档')
+    ]),
     mod('aa-scheduling', '排课管理', null, P('排课批次', '排课规则', '排课约束', '教师可用时间', '教室可用时间', '课程排课', '自动排课预留', '人工排课', '排课冲突检测', '排课结果', '排课调整', '排课发布', '排课归档')),
-    mod('aa-schedule', '课表管理', null, P('班级课表', '教师课表', '学生课表', '教室课表', '教学班课表', '周课表', '学期课表', '课表发布', '课表调整记录', '课表导出')),
+    mod('aa-schedule', '课表管理', '/admin/academic-affairs/schedule', [
+      I('课表批次 / 排课', '/admin/academic-affairs/schedule'),
+      ...P('班级课表', '教师课表', '学生课表', '教室课表', '教学班课表', '周课表', '学期课表', '课表发布', '课表调整记录', '课表导出')
+    ]),
     mod('aa-schedule-change', '调停课', null, P('调课申请', '停课申请', '补课申请', '调停课审批', '调停课通知', '调停课台账', '调停课冲突检测', '调停课统计', '调停课归档')),
     mod('aa-course-selection', '选课管理', null, P('选课批次', '可选课程', '选课规则', '学生选课', '退课管理', '补选管理', '选课名单', '人数控制', '冲突检测', '选课结果', '选课统计', '选课归档')),
     mod('aa-exam', '考务管理', null, P('考试批次', '考试课程', '考试安排', '考场安排', '座位安排', '监考安排', '巡考安排', '准考证', '考场异常', '考务通知', '考务统计', '考务归档')),
@@ -215,19 +242,27 @@ export const NAV_PLAN = [
       I('补考重修成绩（现有）', '/admin/academic/makeup-retake'),
       ...P('统计分析', '材料归档')
     ]),
-    mod('aa-grades', '成绩管理', null, [
-      ...P('成绩录入', '成绩暂存', '成绩提交', '成绩审核', '成绩发布'),
+    mod('aa-grades', '成绩管理', '/admin/academic-affairs/grade-overview', [
+      I('成绩总览', '/admin/academic-affairs/grade-overview'),
+      I('成绩录入', '/admin/academic-affairs/grade-entry'),
+      I('挂科清单', '/admin/academic-affairs/grade-fail'),
+      I('学生成绩单', '/admin/academic-affairs/transcript'),
+      ...P('成绩暂存', '成绩提交', '成绩审核', '成绩发布'),
       I('成绩查询（现有·课程成绩）', '/admin/academic/grades'),
       I('学分修读（现有）', '/admin/academic/credits'),
-      ...P('成绩单', '成绩导入', '成绩导出', '成绩异常', '成绩统计', '成绩归档')
+      ...P('成绩导入', '成绩导出', '成绩异常', '成绩统计', '成绩归档')
     ]),
     mod('aa-grade-review', '成绩审核发布更正', null, P('待审核成绩', '审核通过', '审核退回', '成绩发布', '成绩更正申请', '成绩更正审核', '成绩复核', '成绩更正记录', '成绩操作审计', '成绩发布归档')),
-    mod('aa-warning', '学业预警', null, [
+    mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
+      I('预警扫描与列表', '/admin/academic-affairs/warnings'),
       ...P('预警看板', '学分预警', '挂科预警', '绩点预警', '补考重修预警', '毕业风险预警', '预警规则'),
-      I('预警学生（现有）', '/admin/academic/warnings'),
-      ...P('预警通知', '预警处置', '预警跟进', '预警统计')
+      I('预警学生（现有·处置）', '/admin/academic/warnings'),
+      ...P('预警通知', '预警跟进', '预警统计')
     ]),
-    mod('aa-graduation-qual', '毕业资格审核', null, P('审核批次', '毕业学生名单', '学分达成审核', '课程达成审核', '实践环节审核', '毕设状态联动', '实习状态联动', '欠费状态联动', '处分状态联动', '毕业资格预审', '毕业资格终审', '不通过原因', '审核结果', '审核归档')),
+    mod('aa-graduation-qual', '毕业资格审核', '/admin/academic-affairs/graduation', [
+      I('毕业资格预审', '/admin/academic-affairs/graduation'),
+      ...P('审核批次', '毕业学生名单', '学分达成审核', '课程达成审核', '实践环节审核', '毕设状态联动', '实习状态联动', '欠费状态联动', '处分状态联动', '毕业资格终审', '不通过原因', '审核结果', '审核归档')
+    ]),
     mod('aa-textbooks', '教材管理', null, P('教材目录', '教材选用', '教材征订', '教材审核', '教材发放', '教材费用', '教材库存', '教材统计', '教材归档')),
     mod('aa-resources', '教学资源', null, P('教室资源', '实训室资源', '设备资源', '教室预约', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')),
     mod('aa-evaluation', '教学评价', null, P('评教批次', '学生评教', '教师自评', '同行评价', '督导评价', '评价结果', '评价申诉', '评价统计', '评价归档')),

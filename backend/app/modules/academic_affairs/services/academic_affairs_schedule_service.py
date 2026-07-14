@@ -160,6 +160,10 @@ def import_items(batch_id, user, items) -> dict:
                     course_name, class_id, teacher_key, teacher_name = t.course_name, t.class_id, t.teacher_key, t.teacher_name
             class_id = row.get("classId") or class_id
             teacher_key = row.get("teacherKey") or teacher_key
+            # 无 taskId 的导入行（第三方/Excel 排好）直接携带课程名/教师名/班级名，与手工排课 add_item 一致读取
+            course_name = row.get("courseName") or course_name
+            teacher_name = row.get("teacherName") or teacher_name
+            class_name = row.get("className")
             conflict = _detect_conflict(db, b.id, weekday, slot_no, sw, ew, parity, teacher_key,
                                         class_id, classroom)
             if conflict:
@@ -167,7 +171,8 @@ def import_items(batch_id, user, items) -> dict:
                 continue
             db.add(AaScheduleItem(tenant_id=_tid(), batch_id=b.id,
                                   task_id=(int(task_id) if task_id else None), course_name=course_name,
-                                  class_id=(int(class_id) if class_id else None), teacher_key=teacher_key,
+                                  class_id=(int(class_id) if class_id else None), class_name=class_name,
+                                  teacher_key=teacher_key,
                                   teacher_name=teacher_name, weekday=weekday, slot_no=slot_no,
                                   start_week=sw, end_week=ew, week_parity=parity,
                                   classroom_text=classroom, status="EFFECTIVE"))

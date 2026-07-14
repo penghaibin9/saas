@@ -66,6 +66,9 @@ export const ADMIN_MENU = [
     label: '教务中心',
     icon: '◈',
     children: [
+      // 13B 教务中心新前端入口（/admin/academic-affairs，接真实后端）。moduleCode 复用 ACADEMIC 保持与
+      // 「学业过程」同一角色可见口径；置于首位使点击「教务中心」落到新看板。真实越权仍由后端 require_staff 校验。
+      { key: 'aa-hub', label: '教务中心', path: '/admin/academic-affairs', moduleCode: 'ACADEMIC' },
       { key: 'aa-academic', label: '学业过程', path: '/admin/academic', moduleCode: 'ACADEMIC', permissionKey: 'academic.dashboard.view' }
     ]
   },
