@@ -6,9 +6,17 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
+from app.core.exceptions import AppException
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
-from app.core.security import require_staff
+from app.core.security import get_current_user, require_staff
+
+
+def _require_student(user: dict = Depends(get_current_user)) -> dict:
+    """学生本人端点守卫：仅 userType=STUDENT（对齐项目约定——学生不进 PC 管理端权限点，走本人端点）。"""
+    if (user.get("userType") or "").strip().upper() != "STUDENT":
+        raise AppException("NO_PERMISSION", "仅学生本人可访问选课自助端点", http_status=403)
+    return user
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
 from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
@@ -19,6 +27,7 @@ from app.modules.academic_affairs.services import academic_affairs_resource_serv
 from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as sched_change_svc
 from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
 from app.modules.academic_affairs.services import academic_affairs_warning_service as warn_svc
+from app.modules.academic_affairs.services import academic_affairs_selection_service as selection_svc
 from app.modules.academic_affairs.services import academic_affairs_service as svc
 from app.modules.academic_affairs.services import academic_affairs_stats_service as stats_svc
 from app.modules.academic_affairs.services import academic_affairs_task_service as task_svc
@@ -1031,3 +1040,169 @@ def schedule_change_cancel(body: ScheduleChangeCancelBody = ScheduleChangeCancel
     return success(sched_change_svc.cancel(changeId, user, body.reason or ""), message="已撤销")
 
 
+
+
+# ══════════════ 选课管理（13B-SM-09，/academic-affairs/selection/*） ══════════════
+# 权限：academicAffairs.selection.{view|manage|rule.manage|enroll|drop|adjust|lock|rosterView}
+# 通配 academicAffairs.* 覆盖教务处/学院/教师；学生令牌经 enroll/drop 细粒度点校验。
+_SEL_VIEW = "academicAffairs.selection.view"
+_SEL_MANAGE = "academicAffairs.selection.manage"
+_SEL_RULE = "academicAffairs.selection.rule.manage"
+_SEL_ENROLL = "academicAffairs.selection.enroll"
+_SEL_DROP = "academicAffairs.selection.drop"
+_SEL_ADJUST = "academicAffairs.selection.adjust"
+_SEL_LOCK = "academicAffairs.selection.lock"
+_SEL_ROSTER = "academicAffairs.selection.rosterView"
+
+
+class SelectionBatchBody(BaseModel):
+    batchName: str = Field(..., min_length=1)
+    termId: Optional[str] = None
+    selectStartAt: Optional[str] = None
+    selectEndAt: Optional[str] = None
+    applyScope: Optional[dict] = None
+    rule: Optional[dict] = None
+    remark: Optional[str] = None
+
+
+class SelectionRuleBody(BaseModel):
+    rule: dict = Field(default_factory=dict)
+
+
+class SelectionCourseBody(BaseModel):
+    courseId: str = Field(..., min_length=1)
+    teachingTaskId: Optional[str] = None
+    capacity: int = Field(0, ge=0)
+    minCapacity: int = Field(0, ge=0)
+
+
+class SelectionCourseUpdate(BaseModel):
+    capacity: Optional[int] = Field(None, ge=0)
+    minCapacity: Optional[int] = Field(None, ge=0)
+
+
+class EnrollBody(BaseModel):
+    selectionCourseId: str = Field(..., min_length=1)
+
+
+class AdjustBody(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+# ── 批次（教务处管理 / 教务处·学院只读） ──
+@router.post("/selection/batches", summary="建选课批次")
+def sel_batch_create(body: SelectionBatchBody, user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.create_batch(user, body), message="已创建")
+
+
+@router.get("/selection/batches", summary="选课批次列表")
+def sel_batches(status: Optional[str] = None, termId: Optional[str] = None,
+                page: int = 1, pageSize: int = 20, user=Depends(require_permission(_SEL_VIEW))):
+    items, total = selection_svc.list_batches(user, status, termId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/selection/batches/{batchId}", summary="批次详情")
+def sel_batch_detail(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIEW))):
+    return success(selection_svc.get_batch(user, batchId))
+
+
+@router.post("/selection/batches/{batchId}/publish", summary="发布批次（须已配课程）")
+def sel_batch_publish(batchId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.publish_batch(user, batchId), message="已发布")
+
+
+@router.post("/selection/batches/{batchId}/open", summary="开选（PUBLISHED→OPEN）")
+def sel_batch_open(batchId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.open_batch(user, batchId), message="已开选")
+
+
+@router.post("/selection/batches/{batchId}/close", summary="截止（OPEN→CLOSED）")
+def sel_batch_close(batchId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.close_batch(user, batchId), message="已截止")
+
+
+@router.post("/selection/batches/{batchId}/lock", summary="锁定名单（CLOSED→LOCKED）")
+def sel_batch_lock(batchId: int = Path(...), user=Depends(require_permission(_SEL_LOCK))):
+    return success(selection_svc.lock_batch(user, batchId), message="已锁定")
+
+
+@router.post("/selection/batches/{batchId}/archive", summary="归档（LOCKED→ARCHIVED）")
+def sel_batch_archive(batchId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.archive_batch(user, batchId), message="已归档")
+
+
+@router.put("/selection/batches/{batchId}/rule", summary="保存选课规则")
+def sel_rule_save(body: SelectionRuleBody, batchId: int = Path(...),
+                  user=Depends(require_permission(_SEL_RULE))):
+    return success(selection_svc.save_rule(user, batchId, body.rule), message="已保存")
+
+
+# ── 课程供给 ──
+@router.post("/selection/batches/{batchId}/courses", summary="新增可选课程")
+def sel_course_add(body: SelectionCourseBody, batchId: int = Path(...),
+                   user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.add_course(user, batchId, body), message="已添加")
+
+
+@router.get("/selection/batches/{batchId}/courses", summary="批次课程供给列表")
+def sel_course_list(batchId: int = Path(...), page: int = 1, pageSize: int = 50,
+                    user=Depends(require_permission(_SEL_VIEW))):
+    items, total = selection_svc.list_courses(user, batchId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.put("/selection/courses/{courseId}", summary="编辑容量/下限")
+def sel_course_update(body: SelectionCourseUpdate, courseId: int = Path(...),
+                      user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.update_course(user, courseId, body), message="已保存")
+
+
+@router.post("/selection/courses/{courseId}/cancel", summary="人工取消开课（人数不足）")
+def sel_course_cancel(courseId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.cancel_course(user, courseId), message="已取消开课")
+
+
+@router.get("/selection/courses/{courseId}/roster", summary="选课名单（教师按授课关系收敛）")
+def sel_course_roster(courseId: int = Path(...), page: int = 1, pageSize: int = 50,
+                      user=Depends(require_permission(_SEL_ROSTER))):
+    items, total = selection_svc.course_roster(user, courseId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+# ── 学生端 ──
+@router.get("/selection/student/courses", summary="学生端可选课程+实时余量")
+def sel_student_courses(batchId: Optional[str] = None, user=Depends(_require_student)):
+    return success({"items": selection_svc.student_courses(user, batchId)})
+
+
+@router.post("/selection/student/enroll", summary="学生选课（八条校验+行锁扣减）")
+def sel_student_enroll(body: EnrollBody, user=Depends(_require_student)):
+    return success(selection_svc.student_enroll(user, body), message="选课成功")
+
+
+@router.post("/selection/student/drop", summary="学生退课")
+def sel_student_drop(body: EnrollBody, user=Depends(_require_student)):
+    return success(selection_svc.student_drop(user, body), message="退课成功")
+
+
+@router.get("/selection/student/my", summary="我的选课记录")
+def sel_student_my(batchId: Optional[str] = None, user=Depends(_require_student)):
+    return success({"items": selection_svc.my_selections(user, batchId)})
+
+
+# ── 教务处调整 / 补选 / 统计 ──
+@router.post("/selection/records/{recordId}/adjust", summary="LOCKED 后人工调整退课（原因≥5字）")
+def sel_record_adjust(body: AdjustBody, recordId: int = Path(...),
+                      user=Depends(require_permission(_SEL_ADJUST))):
+    return success(selection_svc.adjust_record(user, recordId, body.reason), message="已调整")
+
+
+@router.get("/selection/batches/{batchId}/reselect-guide", summary="补选指引（CLOSED 批次）")
+def sel_reselect_guide(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIEW))):
+    return success(selection_svc.reselect_guide(user, batchId))
+
+
+@router.get("/selection/batches/{batchId}/stats", summary="选课统计")
+def sel_stats(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIEW))):
+    return success(selection_svc.batch_stats(user, batchId))

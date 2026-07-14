@@ -95,7 +95,8 @@ from app.models.academic_affairs import (AaCalendarEvent, AaClassroom,  # noqa: 
                                          AaProgramBinding, AaProgramCourse,
                                          AaRegistration, AaRegistrationBatch,
                                          AaScheduleBatch, AaScheduleChange,
-                                         AaScheduleItem,
+                                         AaScheduleItem, AaSelectionBatch,
+                                         AaSelectionCourse, AaSelectionRecord,
                                          AaStatusChange, AaTeachingTask,
                                          AaTeachingTaskBatch, AaTerm, AaTimeSlot)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401

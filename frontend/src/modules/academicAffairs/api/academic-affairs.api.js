@@ -422,4 +422,34 @@ export const academicAffairsOrgApi = {
   listAudit(params = {}) { return callList(`${BASE}/orgs/audit`, params) }
 }
 
+/* ═══════════ 选课管理（SM-09 · /academic-affairs/selection/*） ═══════════
+ * 教务处管理批次/课程/规则/锁定；学生自助选课/退课/我的选课；补选指引+统计。 */
+export const academicAffairsSelectionApi = {
+  // ── 批次 ──
+  listBatches(params = {}) { return callList(`${BASE}/selection/batches`, params) },
+  getBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}`)) },
+  createBatch(body) { return call(() => request(`${BASE}/selection/batches`, { method: 'POST', body })) },
+  publishBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/publish`, { method: 'POST' })) },
+  openBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/open`, { method: 'POST' })) },
+  closeBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/close`, { method: 'POST' })) },
+  lockBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/lock`, { method: 'POST' })) },
+  archiveBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/archive`, { method: 'POST' })) },
+  saveRule(id, rule) { return call(() => request(`${BASE}/selection/batches/${id}/rule`, { method: 'PUT', body: { rule } })) },
+  // ── 课程供给 ──
+  listCourses(id, params = {}) { return callList(`${BASE}/selection/batches/${id}/courses`, params) },
+  addCourse(id, body) { return call(() => request(`${BASE}/selection/batches/${id}/courses`, { method: 'POST', body })) },
+  updateCourse(courseId, body) { return call(() => request(`${BASE}/selection/courses/${courseId}`, { method: 'PUT', body })) },
+  cancelCourse(courseId) { return call(() => request(`${BASE}/selection/courses/${courseId}/cancel`, { method: 'POST' })) },
+  courseRoster(courseId, params = {}) { return callList(`${BASE}/selection/courses/${courseId}/roster`, params) },
+  // ── 学生自助 ──
+  studentCourses(batchId) { return call(() => request(`${BASE}/selection/student/courses`, { params: batchId ? { batchId } : {} })) },
+  enroll(selectionCourseId) { return call(() => request(`${BASE}/selection/student/enroll`, { method: 'POST', body: { selectionCourseId } })) },
+  drop(selectionCourseId) { return call(() => request(`${BASE}/selection/student/drop`, { method: 'POST', body: { selectionCourseId } })) },
+  mySelections(batchId) { return call(() => request(`${BASE}/selection/student/my`, { params: batchId ? { batchId } : {} })) },
+  // ── 教务处调整 / 补选 / 统计 ──
+  adjustRecord(recordId, reason) { return call(() => request(`${BASE}/selection/records/${recordId}/adjust`, { method: 'POST', body: { reason } })) },
+  reselectGuide(id) { return call(() => request(`${BASE}/selection/batches/${id}/reselect-guide`)) },
+  batchStats(id) { return call(() => request(`${BASE}/selection/batches/${id}/stats`)) }
+}
+
 export default academicAffairsApi

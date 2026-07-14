@@ -285,7 +285,11 @@ export const NAV_PLAN = [
       I('调停课审批', '/admin/academic-affairs/schedule-change/approval', 'academicAffairs.scheduleChange.collegeReview'),
       ...P('调停课通知', '调停课冲突检测', '调停课统计', '调停课归档')
     ]),
-    mod('aa-course-selection', '选课管理', null, P('选课批次', '可选课程', '选课规则', '学生选课', '退课管理', '补选管理', '选课名单', '人数控制', '冲突检测', '选课结果', '选课统计', '选课归档')),
+    mod('aa-course-selection', '选课管理', '/admin/academic-affairs/selection', [
+      I('选课批次控制台（批次/课程/名单/统计）', '/admin/academic-affairs/selection', 'academicAffairs.selection.view'),
+      I('我的选课（学生自助）', '/admin/academic-affairs/my-selection', 'academicAffairs.selection.enroll'),
+      ...P('选课规则', '补选管理', '冲突检测', '选课结果', '选课归档')
+    ]),
     mod('aa-exam', '考务管理', null, P('考试批次', '考试课程', '考试安排', '考场安排', '座位安排', '监考安排', '巡考安排', '准考证', '考场异常', '考务通知', '考务统计', '考务归档')),
     mod('aa-makeup', '补考重修缓考免修', null, [
       ...P('补考名单', '补考报名', '补考安排', '重修报名', '重修班管理', '缓考申请', '缓考审批', '免修申请', '免修审批'),

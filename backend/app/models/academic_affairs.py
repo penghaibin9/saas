@@ -421,3 +421,74 @@ class AaScheduleChange(PKMixin, TenantMixin, CommonMixin, Base):
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
                                         comment="SUBMITTED/COLLEGE_REVIEW/ACADEMIC_REVIEW/APPROVED/REJECTED/CANCELLED/APPLIED")
+
+
+# ═══════════ 选课管理组（13B-SM-09；批次6态 + 课程供给 + 学生选课记录4态，容量行锁扣减）═══════════
+
+
+class AaSelectionBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """选课批次头（SM-09 冻结，6 态 DRAFT/PUBLISHED/OPEN/CLOSED/LOCKED/ARCHIVED）。
+    时间窗到达由定时任务迁移 PUBLISHED→OPEN→CLOSED；教务处发布/锁定/归档。
+    apply_scope_json 存适用范围(年级/专业/班级白名单)，rule_json 存选课规则(最大学分等)。"""
+    __tablename__ = "t_aa_selection_batch"
+
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_term")
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    select_start_at: Mapped[datetime | None] = mapped_column(DateTime, comment="开选时间")
+    select_end_at: Mapped[datetime | None] = mapped_column(DateTime, comment="截止时间")
+    apply_scope_json: Mapped[str | None] = mapped_column(String(2000),
+                                                         comment="适用范围JSON {grades:[],majorIds:[],classIds:[]}；空=全校")
+    rule_json: Mapped[str | None] = mapped_column(String(2000),
+                                                  comment="选课规则JSON {maxCredits:int,allowRetake:bool,...}")
+    remark: Mapped[str | None] = mapped_column(String(500))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/PUBLISHED/OPEN/CLOSED/LOCKED/ARCHIVED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_name", "term_id", name="uk_aa_selection_batch"),)
+
+
+class AaSelectionCourse(PKMixin, TenantMixin, CommonMixin, Base):
+    """批次内课程供给项（ai_proposal 承载容量/限选/取消状态）。selected_count 行锁原子扣减防超卖。
+    status OPEN/COURSE_CANCELLED（人数不足人工取消）。"""
+    __tablename__ = "t_aa_selection_course"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_aa_course")
+    course_name: Mapped[str | None] = mapped_column(String(200), comment="课程名快照")
+    teaching_task_id: Mapped[int | None] = mapped_column(BigInteger, comment="→ t_aa_teaching_task(可空)")
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="任课教师键(名单授课关系校验)")
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    credit: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="学分")
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="容量上限")
+    min_capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="开课人数下限")
+    selected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="已选人数(行锁扣减)")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="OPEN", index=True,
+                                        comment="OPEN/COURSE_CANCELLED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "course_id", "teaching_task_id",
+                                       name="uk_aa_selection_course"),)
+
+
+class AaSelectionRecord(PKMixin, TenantMixin, CommonMixin, Base):
+    """学生选课记录（SM-09 冻结，4 态 SELECTED/DROPPED/COURSE_CANCELLED/LOCKED）。
+    退课/复选复用同一行(D-09)；(tenant,batch,selection_course,student) 唯一。学生/课程快照冻结。"""
+    __tablename__ = "t_aa_selection_record"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    selection_course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    course_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    credit: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_student_profile")
+    student_no: Mapped[str | None] = mapped_column(String(50), comment="学号快照")
+    student_name: Mapped[str | None] = mapped_column(String(100), comment="姓名快照")
+    enrolled_at: Mapped[datetime | None] = mapped_column(DateTime, comment="选课时间")
+    dropped_at: Mapped[datetime | None] = mapped_column(DateTime, comment="退课时间")
+    adjust_reason: Mapped[str | None] = mapped_column(String(500), comment="LOCKED后教务处人工调整原因")
+    re_enroll: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否复选")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SELECTED", index=True,
+                                        comment="SELECTED/DROPPED/COURSE_CANCELLED/LOCKED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "selection_course_id", "student_id",
+                                       name="uk_aa_selection_record"),)
