@@ -282,6 +282,13 @@ class AaGradeTask(PKMixin, TenantMixin, CommonMixin, Base):
     pass_line: Mapped[int] = mapped_column(Integer, nullable=False, default=60, comment="及格线")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
     publish_at: Mapped[datetime | None] = mapped_column(DateTime)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    college_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    college_reviewer_id: Mapped[int | None] = mapped_column(BigInteger)
+    academic_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    academic_reviewer_id: Mapped[int | None] = mapped_column(BigInteger)
+    return_reason: Mapped[str | None] = mapped_column(String(500))
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class AaGradeRecord(PKMixin, TenantMixin, CommonMixin, Base):
@@ -293,8 +300,18 @@ class AaGradeRecord(PKMixin, TenantMixin, CommonMixin, Base):
     usual_score: Mapped[int | None] = mapped_column(Integer, comment="平时分")
     final_score: Mapped[int | None] = mapped_column(Integer, comment="期末分")
     total_score: Mapped[int | None] = mapped_column(Integer, comment="总评(合成)")
-    pass_status: Mapped[str | None] = mapped_column(String(50), comment="PASSED/FAIL")
+    pass_status: Mapped[str | None] = mapped_column(String(50), comment="PASSED/FAILED")
     acad_grade_id: Mapped[int | None] = mapped_column(BigInteger, comment="投影 t_acad_grade 回链")
+    source: Mapped[str | None] = mapped_column(String(20), default="LEGACY", comment="LEGACY/PUBLISH/CHANGE/MANUAL")
+    prev_usual_score: Mapped[int | None] = mapped_column(Integer)
+    prev_final_score: Mapped[int | None] = mapped_column(Integer)
+    prev_total_score: Mapped[int | None] = mapped_column(Integer)
+    change_reason: Mapped[str | None] = mapped_column(String(500))
+    change_by: Mapped[int | None] = mapped_column(BigInteger)
+    change_at: Mapped[datetime | None] = mapped_column(DateTime)
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    exception_flag: Mapped[str | None] = mapped_column(String(20), default="NORMAL",
+                                                        comment="NORMAL/ABSENT/DEFERRED/EXEMPT")
 
 
 # ═══════════ 毕业资格预审组（13B-P6；七项跨域供数三态判定）═══════════

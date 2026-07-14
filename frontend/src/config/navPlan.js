@@ -280,15 +280,19 @@ export const NAV_PLAN = [
     ]),
     mod('aa-grades', '成绩管理', '/admin/academic-affairs/grade-overview', [
       I('成绩总览', '/admin/academic-affairs/grade-overview'),
-      I('成绩录入', '/admin/academic-affairs/grade-entry'),
+      I('成绩录入（含暂存/提交）', '/admin/academic-affairs/grade-entry'),
       I('挂科清单', '/admin/academic-affairs/grade-fail'),
       I('学生成绩单', '/admin/academic-affairs/transcript'),
-      ...P('成绩暂存', '成绩提交', '成绩审核', '成绩发布'),
       I('成绩查询（现有·课程成绩）', '/admin/academic/grades'),
       I('学分修读（现有）', '/admin/academic/credits'),
-      ...P('成绩导入', '成绩导出', '成绩异常', '成绩统计', '成绩归档')
+      ...P('成绩导入', '成绩导出', '成绩异常', '成绩统计')
     ]),
-    mod('aa-grade-review', '成绩审核发布更正', null, P('待审核成绩', '审核通过', '审核退回', '成绩发布', '成绩更正申请', '成绩更正审核', '成绩复核', '成绩更正记录', '成绩操作审计', '成绩发布归档')),
+    mod('aa-grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', [
+      I('学院审核（待审核/通过/退回）', '/admin/academic-affairs/grade-college-review'),
+      I('教务发布（发布/退回/归档）', '/admin/academic-affairs/grade-publish'),
+      I('成绩更正申请与审核', '/admin/academic-affairs/grade-change'),
+      ...P('成绩复核', '成绩操作审计')
+    ]),
     mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
       I('预警扫描与列表', '/admin/academic-affairs/warnings'),
       ...P('预警看板', '学分预警', '挂科预警', '绩点预警', '补考重修预警', '毕业风险预警', '预警规则'),

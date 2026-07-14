@@ -48,6 +48,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
                       "internship.*", "audit.view"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
     "ACADEMIC_TEACHER": {"academicAffairs.*"},
+    "ACADEMIC_ADMIN": {"academicAffairs.*", "audit.view"},  # 教务处管理员：本校教务全权（TENANT_ALL），
+                                                             # 与 COLLEGE_ADMIN 区分——成绩发布/退回/归档等
+                                                             # 超高危动作端点内额外校验角色=ACADEMIC_ADMIN/SCHOOL_ADMIN
+
     "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*"},
     "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
     "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.talk.*", "studentAffairs.stats.view",

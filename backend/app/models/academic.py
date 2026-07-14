@@ -47,6 +47,7 @@ class AcademicGrade(PKMixin, TenantMixin, CommonMixin, Base):
     exam_type: Mapped[str] = mapped_column(String(50), nullable=False, default="FINAL")
     record_status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
     void_reason: Mapped[str | None] = mapped_column(String(500))
+    source: Mapped[str | None] = mapped_column(String(20), default="LEGACY", comment="LEGACY/PUBLISH/CHANGE/MANUAL")
 
 
 class AcademicMakeup(PKMixin, TenantMixin, CommonMixin, Base):

@@ -63,6 +63,9 @@ def test_mb2_transcript_my(client, db_mode):
         "courseName": "高数", "termCode": "2023-1", "credit": 4, "usualRatio": 30, "finalRatio": 70}).json()["data"]["gradeTaskId"]
     client.post(f"{AA}/grade-tasks/{tid}/scores", headers=admin,
                 json={"studentId": str(ids["student"]), "usualScore": 85, "finalScore": 90})
+    # R1 起成绩发布必须走完整审核链：提交→学院审→教务终审发布（school_admin01 在审核角色白名单内可代行）
+    client.post(f"{AA}/grade-tasks/{tid}/submit", headers=admin)
+    client.post(f"{AA}/grade-tasks/{tid}/college-review", headers=admin, json={"action": "APPROVE"})
     client.post(f"{AA}/grade-tasks/{tid}/publish", headers=admin)
     r = client.get(f"{MB}/academic/transcript/my", headers=_stu_token("移动甲", "AAM01")).json()
     assert any(g["courseName"] == "高数" for g in r["data"]["items"])

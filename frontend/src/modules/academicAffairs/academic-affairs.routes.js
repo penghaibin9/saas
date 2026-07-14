@@ -46,7 +46,10 @@ const layoutRoute = {
     { path: 'grade-overview', name: 'aa-grade-overview', component: () => import('@/modules/academicAffairs/views/AaGradeOverviewView.vue'), meta: meta('academicAffairs.grade.view', '成绩总览') },
     { path: 'grade-fail', name: 'aa-grade-fail', component: () => import('@/modules/academicAffairs/views/AaGradeFailListView.vue'), meta: meta('academicAffairs.grade.view', '挂科清单') },
     { path: 'transcript', name: 'aa-transcript', component: () => import('@/modules/academicAffairs/views/AaTranscriptView.vue'), meta: meta('academicAffairs.grade.view', '学生成绩单') },
-    { path: 'grade-entry', name: 'aa-grade-entry', component: () => import('@/modules/academicAffairs/views/AaGradeEntryView.vue'), meta: meta('academicAffairs.grade.manage', '成绩录入') },
+    { path: 'grade-entry', name: 'aa-grade-entry', component: () => import('@/modules/academicAffairs/views/AaGradeEntryView.vue'), meta: meta('academicAffairs.grade.input', '成绩录入') },
+    { path: 'grade-college-review', name: 'aa-grade-college-review', component: () => import('@/modules/academicAffairs/views/AaGradeCollegeReviewView.vue'), meta: meta('academicAffairs.grade.collegeReview', '学院审核') },
+    { path: 'grade-publish', name: 'aa-grade-publish', component: () => import('@/modules/academicAffairs/views/AaGradePublishView.vue'), meta: meta('academicAffairs.grade.publish', '教务发布') },
+    { path: 'grade-change', name: 'aa-grade-change', component: () => import('@/modules/academicAffairs/views/AaGradeChangeView.vue'), meta: meta('academicAffairs.gradeChange.apply', '成绩更正') },
     { path: 'warnings', name: 'aa-warnings', component: () => import('@/modules/academicAffairs/views/AaWarningView.vue'), meta: meta('academicAffairs.warning.view', '学业预警') },
     { path: 'graduation', name: 'aa-graduation', component: () => import('@/modules/academicAffairs/views/AaGraduationBatchView.vue'), meta: meta('academicAffairs.graduation.view', '毕业资格预审') },
     { path: 'graduation/:batchId/results', name: 'aa-graduation-results', component: () => import('@/modules/academicAffairs/views/AaGraduationResultView.vue'), meta: meta('academicAffairs.graduation.view', '毕业预审结果') }
@@ -67,6 +70,13 @@ const printStatusChangeRoute = {
   meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.statusChange.view', title: '异动审批表打印' }
 }
 
-export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute]
+const printTranscriptRoute = {
+  path: '/admin/academic-affairs/print/transcript/:studentId',
+  name: 'aa-print-transcript',
+  component: () => import('@/modules/academicAffairs/views/AaTranscriptPrintView.vue'),
+  meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.grade.view', title: '成绩单打印' }
+}
+
+export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute]
 
 export default academicAffairsRoutes

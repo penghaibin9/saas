@@ -253,15 +253,42 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/student-view`, { params: { studentId } }))
   },
 
-  /* ── 成绩（录入任务 → 录分 → 发布；读侧总览/挂科/成绩单） ── */
+  /* ── 成绩（R1 九态：录入→提交→学院审→教务发布→[更正两级审]→归档） ── */
   createGradeTask(body) {
     return call(() => request(`${BASE}/grade-tasks`, { method: 'POST', body }))
+  },
+  getGradeTasks(params = {}) {
+    return callList(`${BASE}/grade-tasks`, params)
+  },
+  getGradeRoster(taskId) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/roster`))
   },
   enterScore(taskId, body) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/scores`, { method: 'POST', body }))
   },
+  submitGradeTask(taskId) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/submit`, { method: 'POST' }))
+  },
+  collegeReviewGrade(taskId, action, reason) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/college-review`, { method: 'POST', body: { action, reason } }))
+  },
   publishGrades(taskId) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/publish`, { method: 'POST' }))
+  },
+  returnGradeTask(taskId, reason) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/return`, { method: 'POST', body: { reason } }))
+  },
+  archiveGradeTask(taskId) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/archive`, { method: 'POST' }))
+  },
+  requestGradeChange(taskId, recordId, body) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/records/${recordId}/change-request`, { method: 'POST', body }))
+  },
+  changeCollegeReview(recordId, action, reason) {
+    return call(() => request(`${BASE}/grade-change/${recordId}/college-review`, { method: 'POST', body: { action, reason } }))
+  },
+  changeAcademicReview(recordId, action, reason) {
+    return call(() => request(`${BASE}/grade-change/${recordId}/academic-review`, { method: 'POST', body: { action, reason } }))
   },
   getTranscript(studentId) {
     return call(() => request(`${BASE}/students/${studentId}/transcript`))

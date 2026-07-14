@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
+from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
@@ -457,25 +458,100 @@ class ScoreBody(BaseModel):
     studentId: str = Field(..., min_length=1)
     usualScore: Optional[int] = Field(None, ge=0, le=100)
     finalScore: Optional[int] = Field(None, ge=0, le=100)
+    exceptionFlag: Optional[str] = Field(None, description="NORMAL/ABSENT/DEFERRED/EXEMPT")
+
+
+class GradeReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/RETURN")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class GradeReturnBody(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+class GradeChangeRequestBody(BaseModel):
+    newUsualScore: Optional[int] = Field(None, ge=0, le=100)
+    newFinalScore: Optional[int] = Field(None, ge=0, le=100)
+    reason: str = Field(..., min_length=5, max_length=500)
+    attachmentIds: Optional[list] = Field(default_factory=list)
+
+
+class GradeChangeReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    reason: Optional[str] = Field("", max_length=500)
 
 
 @router.post("/grade-tasks", summary="新建成绩录入任务（配平时/期末占比）")
-def grade_task_create(body: GradeTaskCreate, user=Depends(require_staff)):
+def grade_task_create(body: GradeTaskCreate, user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(grade_svc.create_grade_task(body, user), message="已创建")
 
 
+@router.get("/grade-tasks", summary="成绩录入任务列表（按状态筛选，供审核/发布工作台队列）")
+def grade_tasks(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                user=Depends(require_permission("academicAffairs.grade.view"))):
+    items, total = grade_svc.list_tasks(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/grade-tasks/{taskId}/roster", summary="教学班学生名单（供录入圈定）")
+def grade_roster(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.input"))):
+    return success(grade_svc.roster(taskId, user))
+
+
 @router.post("/grade-tasks/{taskId}/scores", summary="录入平时/期末分（实时合成总评）")
-def grade_enter_score(body: ScoreBody, taskId: int = Path(...), user=Depends(require_staff)):
+def grade_enter_score(body: ScoreBody, taskId: int = Path(...),
+                      user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(grade_svc.enter_score(taskId, user, body), message="已录入")
 
 
-@router.post("/grade-tasks/{taskId}/publish", summary="发布成绩（合成→原子回写 t_acad_grade）")
-def grade_publish(taskId: int = Path(...), user=Depends(require_staff)):
+@router.post("/grade-tasks/{taskId}/submit", summary="提交成绩进入学院审核")
+def grade_submit(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.submit"))):
+    return success(grade_svc.submit_task(taskId, user), message="已提交")
+
+
+@router.post("/grade-tasks/{taskId}/college-review", summary="学院审核成绩（通过/退回）")
+def grade_college_review(body: GradeReviewBody, taskId: int = Path(...),
+                         user=Depends(require_permission("academicAffairs.grade.collegeReview"))):
+    return success(grade_svc.college_review(taskId, user, body.action, body.reason or ""), message="已处理")
+
+
+@router.post("/grade-tasks/{taskId}/publish", summary="教务处终审发布（原子回写+台账刷新+预警）")
+def grade_publish(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.publish"))):
     return success(grade_svc.publish_grades(taskId, user), message="已发布")
 
 
+@router.post("/grade-tasks/{taskId}/return", summary="教务处退回（教务终审阶段）")
+def grade_return(body: GradeReturnBody, taskId: int = Path(...),
+                 user=Depends(require_permission("academicAffairs.grade.return"))):
+    return success(grade_svc.return_task(taskId, user, body.reason), message="已退回")
+
+
+@router.post("/grade-tasks/{taskId}/archive", summary="学期归档（仅已发布任务）")
+def grade_archive(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.archive"))):
+    return success(grade_svc.archive_task(taskId, user), message="已归档")
+
+
+@router.post("/grade-tasks/{taskId}/records/{recordId}/change-request", summary="教师发起成绩更正")
+def grade_change_request(body: GradeChangeRequestBody, taskId: int = Path(...), recordId: int = Path(...),
+                         user=Depends(require_permission("academicAffairs.gradeChange.apply"))):
+    return success(grade_svc.change_request(taskId, recordId, user, body), message="更正申请已提交")
+
+
+@router.post("/grade-change/{recordId}/college-review", summary="成绩更正学院初审")
+def grade_change_college_review(body: GradeChangeReviewBody, recordId: int = Path(...),
+                                user=Depends(require_permission("academicAffairs.gradeChange.review"))):
+    return success(grade_svc.change_college_review(recordId, user, body.action, body.reason or ""), message="已处理")
+
+
+@router.post("/grade-change/{recordId}/academic-review", summary="成绩更正教务处终审")
+def grade_change_academic_review(body: GradeChangeReviewBody, recordId: int = Path(...),
+                                 user=Depends(require_permission("academicAffairs.gradeChange.review"))):
+    return success(grade_svc.change_academic_review(recordId, user, body.action, body.reason or ""), message="已处理")
+
+
 @router.get("/students/{studentId}/transcript", summary="学生成绩单（读侧）")
-def grade_transcript(studentId: int = Path(...), user=Depends(require_staff)):
+def grade_transcript(studentId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.view"))):
     return success(grade_svc.transcript(studentId, user))
 
 
