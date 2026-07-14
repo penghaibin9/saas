@@ -28,8 +28,12 @@ from app.services.db_service import _tid
 # ACADEMIC_ADMIN（教务处管理员，用户已拍板"本校教务全权"，默认无人持有）纳入 TENANT_ALL：
 # 13B 教务中心组织/统计/调停课需全校教学数据范围；该角色仅持 academicAffairs.*，学工端点仍被
 # require_permission 拦截，授予全租户 scope 不越学工域。未纳入 ACADEMIC_TEACHER（普通教务教师保持按范围收敛读，更安全）。
+# FUNDING_TEACHER（资助老师）纳入 TENANT_ALL：permissions.py 注释明确"困难认定+奖助勤贷全域经办"，
+# 权限集本身已窄限于 aid/funding/dashboard/student.view/stats.view，授予全租户 scope 不越出该权限集，
+# 且修复此前 fail-closed→NONE 导致该角色"有权限但审批不了任何人"的实际阻断（历史欠账，见 permissions.py:61 注释）。
 _TENANT_ALL_ROLES = {"SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "STUDENT_AFFAIRS_ADMIN",
-                     "STUDENT_AFFAIRS", "SCHOOL_LEADER", "SA_ADMIN", "LEADER", "ACADEMIC_ADMIN"}
+                     "STUDENT_AFFAIRS", "SCHOOL_LEADER", "SA_ADMIN", "LEADER", "ACADEMIC_ADMIN",
+                     "FUNDING_TEACHER"}
 _COLLEGE_ROLES = {"COLLEGE_ADMIN", "COLLEGE_SA"}
 _DORM_ROLES = {"DORM_MANAGER"}
 _PSY_ROLES = {"PSYCHOLOGY_TEACHER"}

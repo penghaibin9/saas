@@ -71,8 +71,19 @@ def _cs_scope_student_ids(db):
     return set(rows)
 
 
-def _require_cs_scope(db, cs_student_id, scope_ids="__q__"):
-    """记录级数据范围校验：越范围→403002 NO_DATA_SCOPE。scope_ids 传入可复用（省重复查）。"""
+def _require_cs_scope(db, cs_student_id, scope_ids="__q__", student_id=None):
+    """记录级数据范围校验：越范围→403002 NO_DATA_SCOPE。scope_ids 传入可复用（省重复查）。
+    cs_student_id=0 是 13A 新引擎写入的哨兵值（该记录无 CsServiceStudent 台账行，真实学生见 student_id），
+    此时改按学工 class 范围口径校验，避免"0 不在任何范围集合内"导致的误 403（见 P0 §4.2 集成①遗留问题）。"""
+    if (cs_student_id is None or int(cs_student_id) == 0) and student_id:
+        from app.models import StudentProfile
+        from app.services.affairs_dashboard_service import _allowed_class_ids
+        allowed, _ = _allowed_class_ids(db, get_current_user_ctx() or {})
+        if allowed is not None:
+            s = db.get(StudentProfile, int(student_id))
+            if not s or s.class_id not in allowed:
+                raise AppException("NO_DATA_SCOPE", "该记录不在您的数据范围内")
+        return
     ids = _cs_scope_student_ids(db) if scope_ids == "__q__" else scope_ids
     if ids is not None and cs_student_id is not None and int(cs_student_id) not in ids:
         raise AppException("NO_DATA_SCOPE", "该记录不在您的数据范围内")
@@ -205,6 +216,8 @@ def _leave_row(x: CsLeave, stu=None) -> dict:
 
 
 def list_leaves(page, page_size, keyword=None, type=None, status=None):
+    from app.models import StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         q = select(CsLeave).where(CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False))
         if type:
@@ -213,10 +226,17 @@ def list_leaves(page, page_size, keyword=None, type=None, status=None):
             q = q.where(CsLeave.status == status)
         rows = db.scalars(q.order_by(CsLeave.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        allowed_classes, _ = _allowed_class_ids(db, get_current_user_ctx() or {})
         items = []
         for x in rows:
-            if scope_ids is not None and x.cs_student_id not in scope_ids:
-                continue
+            if x.cs_student_id:
+                if scope_ids is not None and x.cs_student_id not in scope_ids:
+                    continue
+            elif allowed_classes is not None:
+                # 13A 新引擎写入的哨兵行（cs_student_id=0）：改按 student_id 的班级范围口径过滤
+                s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+                if not s or s.class_id not in allowed_classes:
+                    continue
             stu = _stu_of(db, x.cs_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
@@ -229,7 +249,7 @@ def get_leave_detail(lid) -> dict:
         x = db.get(CsLeave, int(lid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("请假申请不存在")
-        _require_cs_scope(db, x.cs_student_id)
+        _require_cs_scope(db, x.cs_student_id, student_id=x.student_id)
         stu = _stu_of(db, x.cs_student_id)
         hist = db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
                           CsLeave.cs_student_id == x.cs_student_id,
@@ -245,7 +265,12 @@ def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=Non
         x = db.get(CsLeave, int(lid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("请假申请不存在")
-        _require_cs_scope(db, x.cs_student_id)
+        _require_cs_scope(db, x.cs_student_id, student_id=x.student_id)
+        # 写侧单点（13A-13B 数据表与迁移策略草案 §5.3）：affairs_status 非空＝13A 新引擎在管的记录，
+        # 只能走 /student-affairs/leave/{id}/approve 等多级审批流程；本遗留端点不得越俎代庖单级拍板，
+        # 否则会只改旧 status、不推进 workflow/不通知学生，制造两套状态机数据矛盾。
+        if x.affairs_status is not None:
+            raise AppException("DATA_CONFLICT", "该请假已接入新版多级审批流程，请到「请假销假」工作台处理审批")
         if x.status in ("APPROVED", "RETURNED"):
             raise AppException("DATA_CONFLICT", "该请假已处理，请刷新")
         before = x.status

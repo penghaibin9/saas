@@ -44,6 +44,18 @@ REGISTRATION_STEPS = [
 ]
 
 
+def _active_steps(db) -> list[dict]:
+    """报到环节清单：优先读 t_orientation_flow_config（enabled=True 按 sort_order），
+    尚未配置（如全新租户、批次未跑过 seed）时退回默认 7 环节常量。
+    真正让「报到流程配置」页面的启停生效——之前进度统计/漏斗恒用写死常量，配置了等于没配置。"""
+    rows = db.scalars(select(OrientationFlowConfig).where(
+        OrientationFlowConfig.tenant_id == _tid(), OrientationFlowConfig.is_deleted.is_(False),
+        OrientationFlowConfig.enabled.is_(True)).order_by(OrientationFlowConfig.sort_order)).all()
+    if not rows:
+        return REGISTRATION_STEPS
+    return [{"key": r.step_key, "label": r.step_name} for r in rows]
+
+
 def _default_steps_json() -> dict:
     return {s["key"]: "TODO" for s in REGISTRATION_STEPS}
 
@@ -253,6 +265,7 @@ def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
 
 def list_progress(page, page_size, keyword=None, blocked_only="NO"):
     with session() as db:
+        active_keys = [s["key"] for s in _active_steps(db)]
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
                                              OrientationStudent.record_status == "ACTIVE")
@@ -265,9 +278,11 @@ def list_progress(page, page_size, keyword=None, blocked_only="NO"):
         items = []
         for r in rows:
             steps = r.steps_json or {}
-            done = sum(1 for v in steps.values() if v == "DONE")
+            # 只按当前启用的环节计分母/分子——停用的环节不再拖累进度分数（真正让流程配置生效）
+            done = sum(1 for k in active_keys if steps.get(k) == "DONE")
             items.append({"id": str(r.id), "name": r.name, "admissionNo": r.admission_no,
-                          "className": r.class_name or "", "progress": f"{done}/{len(steps) or 7}",
+                          "className": r.class_name or "",
+                          "progress": f"{done}/{len(active_keys) or 7}",
                           "blockedStep": r.blocked_step or "", "blockedReason": r.blocked_reason or "",
                           "reportStatus": r.report_status,
                           "reportStatusLabel": L_REPORT.get(r.report_status, r.report_status)})
@@ -594,6 +609,30 @@ def _exc_row(e: OrientationException, stu: OrientationStudent | None = None) -> 
             "lastFollowTime": _iso(e.last_follow_time) or ""}
 
 
+def create_exception(student_id, exception_type, description, risk_level="MEDIUM") -> dict:
+    """通用异常登记入口（IDENTITY/PAYMENT/MATERIAL/DORM/NO_SHOW）；此前仅 mark_dorm_exception 一处能造数据，
+    字典里定义的其余 4 种异常类型永远不会出现记录（异常识别名不副实）。"""
+    etype = (exception_type or "").upper()
+    if etype not in L_EXCTYPE:
+        raise AppException("VALIDATION_ERROR", "异常类型非法")
+    if not description or len(description.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "异常说明必填且不少于 5 字")
+    level = (risk_level or "MEDIUM").upper()
+    if level not in L_RISK:
+        raise AppException("VALIDATION_ERROR", "风险等级非法")
+    with session() as db:
+        s = _get_student(db, student_id)
+        e = OrientationException(tenant_id=_tid(), ori_student_id=s.id, exception_type=etype,
+                                 description=description.strip(), risk_level=level, status="OPEN",
+                                 handler=_op()[0])
+        db.add(e)
+        db.flush()
+        _audit(db, "EXCEPTION", s.id, f"登记异常({etype})", description.strip())
+        db.commit()
+        db.refresh(e)
+        return _exc_row(e, s)
+
+
 def list_exceptions(page, page_size, keyword=None, exception_type=None, status=None, risk_level=None):
     with session() as db:
         q = select(OrientationException).where(OrientationException.tenant_id == _tid(),
@@ -733,7 +772,7 @@ def get_dashboard() -> dict:
             GreenChannelApplication.tenant_id == _tid(),
             GreenChannelApplication.is_deleted.is_(False))) or 0
         step_funnel = []
-        for step in REGISTRATION_STEPS:
+        for step in _active_steps(db):
             key = step["key"]
             done = sum(1 for r in rows if (_merged_steps_json(r.steps_json).get(key) == "DONE"))
             step_funnel.append({"key": key, "label": step["label"], "done": done})

@@ -217,11 +217,19 @@ def list_talks(user, talk_type=None, status=None, student_id=None, page=1, page_
 
 
 def talk_stats(user, group_by="TYPE"):
-    """谈话工作量统计（完成率）。"""
-    from app.models import TalkRecord
+    """谈话工作量统计（完成率）；数据范围与 list_talks 一致（辅导员限本班，绝不回退全租户）。"""
+    from app.models import StudentProfile, TalkRecord
+    from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
-        rows = db.scalars(select(TalkRecord).where(
+        allowed, _ = _allowed_class_ids(db, user)
+        all_rows = db.scalars(select(TalkRecord).where(
             TalkRecord.tenant_id == _tid(), TalkRecord.is_deleted.is_(False))).all()
+        rows = []
+        for x in all_rows:
+            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            rows.append(x)
         total = len(rows)
         completed = sum(1 for x in rows if x.status in ("COMPLETED", "FOLLOW_UP", "CLOSED"))
         breakdown = {}
@@ -331,6 +339,7 @@ def mark_receipt(contact_id, user, note="") -> dict:
         x = db.get(FamilyContactLog, int(contact_id))
         if not x or x.tenant_id != _tid():
             raise not_found("家校联系记录不存在")
+        _scope_or_403(db, x.student_id, user)
         if getattr(x, "receipt_status", "PENDING") == "RECEIVED":
             raise AppException("DATA_CONFLICT", "已登记回执")
         x.receipt_status, x.receipt_at = "RECEIVED", datetime.utcnow()

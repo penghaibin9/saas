@@ -60,7 +60,7 @@ import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.a
 const SRC = { LEAVE_OVERDUE: '请假逾期', ACADEMIC_WARNING: '学业预警', DORM: '宿舍', MENTAL: '心理', DISCIPLINE: '违纪', INTERNSHIP: '实习' }
 const LEVEL = { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }
 const ACTIVE_RISK = ['NEW', 'ASSIGNED', 'PROCESSING', 'FOLLOWING', 'REOPENED']
-const ACTION_TALK = ['PLANNED', 'FOLLOW_REQUIRED']
+const ACTION_TALK = ['PLANNED', 'FOLLOW_UP']
 
 export default {
   name: 'CounselorWorkbenchView',
@@ -107,7 +107,7 @@ export default {
     sourceLabel(s) { return SRC[s] || s || '—' },
     levelLabel(l) { return LEVEL[l] || l || '—' },
     riskType(l) { return ({ LOW: 'default', MEDIUM: 'warning', HIGH: 'danger', CRITICAL: 'danger' })[l] || 'default' },
-    talkType(s) { return ({ PLANNED: 'warning', FOLLOW_REQUIRED: 'warning', COMPLETED: 'success', CLOSED: 'default' })[s] || 'processing' }
+    talkType(s) { return ({ PLANNED: 'warning', FOLLOW_UP: 'warning', COMPLETED: 'success', CLOSED: 'default' })[s] || 'processing' }
   }
 }
 </script>

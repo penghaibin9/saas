@@ -134,8 +134,18 @@ def _weighted_total(db, scores):
     return round(num / den, 2)
 
 
+def _self_scope_keys(user):
+    """COUNSELOR 角色仅"本人"自助权（见 permissions.py 注释），非管理/复核角色收敛为自身可命中的 key 集合。"""
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    if role != "COUNSELOR":
+        return None
+    from app.core.affairs_security import _derive_keys
+    return _derive_keys(user or {})
+
+
 def list_evals(user, period_code=None, status=None, page=1, page_size=50):
     from app.models import CounselorEval
+    my_keys = _self_scope_keys(user)
     with session() as db:
         conds = [CounselorEval.tenant_id == _tid(), CounselorEval.is_deleted.is_(False)]
         if period_code:
@@ -144,6 +154,8 @@ def list_evals(user, period_code=None, status=None, page=1, page_size=50):
             conds.append(CounselorEval.status == status)
         rows = db.scalars(select(CounselorEval).where(*conds).order_by(
             CounselorEval.total_score.desc())).all()
+        if my_keys is not None:
+            rows = [e for e in rows if e.counselor_key in my_keys]
         out = [_eval_row(e) for e in rows]
         total = len(out)
         start = (max(1, page) - 1) * page_size
@@ -207,6 +219,9 @@ def submit_eval_appeal(eval_id, body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
     with session() as db:
         e = _load(db, eval_id)
+        my_keys = _self_scope_keys(user)
+        if my_keys is not None and e.counselor_key not in my_keys:
+            raise AppException("NO_DATA_SCOPE", "只能对本人考评发起申诉")
         if e.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布考评可申诉")
         if e.appeal_status == "SUBMITTED":

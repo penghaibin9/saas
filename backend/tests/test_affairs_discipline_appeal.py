@@ -64,6 +64,37 @@ def test_deliver_and_appeal_flow(client, db_mode):
                        json={"result": "REVOKED", "opinion": "再次复核撤销处分"}).json()["code"] != 0
 
 
+def test_appeal_revoked_actually_removes_case(client, db_mode):
+    """REVOKED 复核结论必须真正下线原处分：case→REMOVED，投影 record_status→REVOKED（回归修复前的 no-op bug）。"""
+    hdr = _hdr(client, "school_admin01")
+    cid = _seed_case(db_mode["student"], "EFFECTIVE")
+    from app.db.session import get_sessionmaker
+    from app.models import CsDiscipline, DisciplineCase
+    db = get_sessionmaker()()
+    proj = CsDiscipline(tenant_id=TID, cs_student_id=db_mode["student"], disc_type="DEMERIT",
+                        reason="考试违纪记过一次", status="EFFECTIVE", record_status="ACTIVE",
+                        source_case_id=cid)
+    db.add(proj); db.commit()
+    proj_id = proj.id
+    case = db.get(DisciplineCase, cid)
+    case.cs_discipline_id = proj_id
+    db.commit(); db.close()
+
+    a = client.post(f"{BASE}/discipline/cases/{cid}/appeal", headers=hdr,
+                    json={"reason": "对处分认定事实有异议，申请复核"}).json()
+    aid = a["data"]["appealId"]
+    r = client.post(f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
+                    json={"result": "REVOKED", "opinion": "经复核事实认定有误，撤销原处分"}).json()
+    assert r["code"] == 0 and r["data"]["status"] == "REVOKED" and r["data"]["result"] == "REVOKED"
+
+    db2 = get_sessionmaker()()
+    case2 = db2.get(DisciplineCase, cid)
+    assert case2.status == "REMOVED"
+    proj2 = db2.get(CsDiscipline, proj_id)
+    assert proj2.record_status == "REVOKED"
+    db2.close()
+
+
 def test_non_effective_blocks(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _seed_case(db_mode["student"], "REGISTERED")

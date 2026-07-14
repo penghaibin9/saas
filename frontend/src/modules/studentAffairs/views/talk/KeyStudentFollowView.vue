@@ -53,7 +53,7 @@ export default {
   data() { return { loading: true, errorMessage: '', talks: [], risks: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
-    followTalks() { return this.talks.filter((t) => ['PLANNED', 'FOLLOW_REQUIRED'].includes(t.status)) },
+    followTalks() { return this.talks.filter((t) => ['PLANNED', 'FOLLOW_UP'].includes(t.status)) },
     keyRisks() { return this.risks.filter((r) => ACTIVE_RISK.includes(r.status) && KEY_LEVEL.includes(r.riskLevel)) },
     metricCards() {
       return [

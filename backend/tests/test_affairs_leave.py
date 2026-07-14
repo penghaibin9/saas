@@ -170,6 +170,24 @@ def test_legacy_campus_leave_endpoints_unaffected(client, db_mode):
     assert r.status_code == 200 and r.json()["code"] == 0
 
 
+def test_legacy_approve_refuses_13a_managed_leave(client, db_mode):
+    """写侧单点回归：13A 新引擎记录（affairs_status 非空）不得被老 campus-service 审批端点单级拍板，
+    必须引导去新工作台；同时验证有范围限定的辅导员能在老列表接口正确看到该记录（不再因
+    cs_student_id=0 哨兵值误报数据范围外）。"""
+    ids = _seed(db_mode)
+    hdr_admin = _hdr(client, "school_admin01")
+    lid = _apply(client, hdr_admin, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
+
+    hdr_counselor = _hdr(client, "counselor01")
+    lst = client.get("/api/v1/campus-service/leaves", headers=hdr_counselor).json()
+    assert lst["code"] == 0
+    assert any(x["id"] == str(lid) for x in lst["data"]["items"])
+
+    bad = client.post(f"/api/v1/campus-service/leaves/{lid}/approve", headers=hdr_admin,
+                      json={"comment": "同意"}).json()
+    assert bad["code"] != 0 and bad["bizCode"] == "DATA_CONFLICT"
+
+
 # ═══════════ 本轮新增：销假退回 / 续假驳回 / 逾期处置 / 代登记销假 / 台账 / 统计 / 导出 ═══════════
 
 def _approved_leave(client, hdr, sid, start="2026-03-01", end="2026-03-02"):

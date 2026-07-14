@@ -465,6 +465,7 @@ def deliver_case(case_id, body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "送达方式非法")
     with session() as db:
         x, s = _load(db, case_id)
+        _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "仅已生效处分可登记送达")
         x.delivered_at, x.delivery_method = datetime.utcnow(), method
@@ -490,6 +491,7 @@ def submit_appeal(case_id, body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
     with session() as db:
         x, s = _load(db, case_id)
+        _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "仅已生效处分可申诉")
         dup = db.scalars(select(DisciplineAppeal).where(
@@ -531,7 +533,7 @@ def list_appeals(user, status=None, page=1, page_size=50):
 def review_appeal(appeal_id, body, user) -> dict:
     """申诉复核：result UPHELD维持/REVISED变更/REVOKED撤销。REVOKED→原处分不再有效(投影下线)。"""
     from datetime import datetime
-    from app.models import DisciplineAppeal, StudentProfile
+    from app.models import CsDiscipline, DisciplineAppeal, StudentProfile, StudentStageEvent
     result = (getattr(body, "result", "") or "").strip()
     if result not in ("UPHELD", "REVISED", "REVOKED"):
         raise AppException("VALIDATION_ERROR", "复核结论非法")
@@ -542,12 +544,27 @@ def review_appeal(appeal_id, body, user) -> dict:
         a = db.get(DisciplineAppeal, int(appeal_id))
         if not a or a.is_deleted or a.tenant_id != _tid():
             raise not_found("申诉不存在")
+        _scope_or_403(db, a.student_id, user)
         if a.status not in ("SUBMITTED", "REVIEWING"):
             raise AppException("DATA_CONFLICT", "该申诉已结案")
         status_map = {"UPHELD": "UPHELD", "REVISED": "REVISED", "REVOKED": "REVOKED"}
         a.status, a.result = status_map[result], result
         a.review_opinion, a.reviewer = opinion, _op()[0]
         a.reviewed_at, a.version = datetime.utcnow(), a.version + 1
+        if result == "REVOKED":
+            x, _cs = _load(db, a.case_id)
+            if x.status == "EFFECTIVE":
+                x.status, x.removed_at, x.version = "REMOVED", datetime.utcnow(), x.version + 1
+                if x.cs_discipline_id:
+                    proj = db.get(CsDiscipline, int(x.cs_discipline_id))
+                    if proj:
+                        proj.record_status, proj.revoke_date, proj.revoke_reason = \
+                            "REVOKED", datetime.utcnow(), opinion
+                db.add(StudentStageEvent(tenant_id=_tid(), student_id=int(x.student_id), from_stage=None,
+                                         to_stage="DISCIPLINE_REMOVED", reason="申诉复核撤销处分",
+                                         source_module="student-affairs"))
+                _todo_done(db, x.id)
+                _msg(db, x.student_id, "处分已撤销", "你的申诉已获支持，原处分决定已撤销", "WORKFLOW_RESULT", x.id)
         _audit(db, a.case_id, "DISCIPLINE_APPEAL_REVIEW", result)
         db.commit(); db.refresh(a)
         s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None

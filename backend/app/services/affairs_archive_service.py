@@ -139,15 +139,27 @@ def advance(batch_id, user, action="APPROVE") -> dict:
 
 
 def get_batch(batch_id, user) -> dict:
+    """批次元信息按租户全量可见（与 AidBatch/FundingBatch 同口径）；档案包含学生 student_id，
+    按 _allowed_class_ids 数据范围收敛（辅导员限本班，绝不回退全租户）。"""
+    from app.models import StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         from app.models import ArchiveBatch, ArchivePackage
         b = db.get(ArchiveBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("归档批次不存在")
+        allowed, _ = _allowed_class_ids(db, user)
         pkgs = db.scalars(select(ArchivePackage).where(
             ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == b.id,
             ArchivePackage.is_deleted.is_(False))).all()
         d = _batch_row(b)
-        d["packages"] = [{"packageId": str(p.id), "studentId": str(p.student_id), "status": p.status,
-                          "exportTaskId": str(p.export_task_id or "")} for p in pkgs]
+        out_pkgs = []
+        for p in pkgs:
+            if allowed is not None:
+                s = db.get(StudentProfile, int(p.student_id)) if p.student_id else None
+                if not s or s.class_id not in allowed:
+                    continue
+            out_pkgs.append({"packageId": str(p.id), "studentId": str(p.student_id), "status": p.status,
+                             "exportTaskId": str(p.export_task_id or "")})
+        d["packages"] = out_pkgs
         return d

@@ -488,13 +488,17 @@ def submit_check_record(task_id, user, body) -> dict:
 # ═══════════ 台账统计（入住率）═══════════
 
 def occupancy_stats(user):
+    """入住率汇总；宿管按 _dorm_scope_building_ids 收敛到负责楼栋，与下方楼栋列表口径一致。"""
     from app.models import DormBed
     with session() as db:
-        total = db.scalar(select(func.count()).select_from(DormBed).where(
-            DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False))) or 0
-        occupied = db.scalar(select(func.count()).select_from(DormBed).where(
-            DormBed.tenant_id == _tid(), DormBed.status == "OCCUPIED",
-            DormBed.is_deleted.is_(False))) or 0
+        scope = _dorm_scope_building_ids(db, user)
+        conds_total = [DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False)]
+        conds_occ = conds_total + [DormBed.status == "OCCUPIED"]
+        if scope is not None:
+            conds_total.append(DormBed.building_id.in_(list(scope)) if scope else DormBed.building_id.in_([-1]))
+            conds_occ.append(DormBed.building_id.in_(list(scope)) if scope else DormBed.building_id.in_([-1]))
+        total = db.scalar(select(func.count()).select_from(DormBed).where(*conds_total)) or 0
+        occupied = db.scalar(select(func.count()).select_from(DormBed).where(*conds_occ)) or 0
         return {"totalBeds": total, "occupiedBeds": occupied, "vacantBeds": total - occupied,
                 "occupancyRate": round(occupied / total, 3) if total else 0.0}
 
@@ -546,7 +550,8 @@ def list_check_tasks(user, status=None, page=1, page_size=50):
 
 
 def list_check_records(task_id, user, page=1, page_size=100):
-    from app.models import DormCheckRecord, DormRoom
+    import json
+    from app.models import DormCheckRecord, DormRoom, StudentProfile
     with session() as db:
         rows = db.scalars(select(DormCheckRecord).where(
             DormCheckRecord.tenant_id == _tid(), DormCheckRecord.task_id == int(task_id),
@@ -554,9 +559,20 @@ def list_check_records(task_id, user, page=1, page_size=100):
         out = []
         for r in rows:
             room = db.get(DormRoom, int(r.room_id)) if r.room_id else None
+            students = []
+            if r.student_ids_json:
+                try:
+                    for sid in json.loads(r.student_ids_json) or []:
+                        s = db.get(StudentProfile, int(sid))
+                        if s:
+                            students.append({"studentId": str(s.id), "realName": s.real_name,
+                                            "studentNo": s.student_no})
+                except (ValueError, TypeError):
+                    pass
             out.append({"recordId": str(r.id), "taskId": str(r.task_id), "roomId": str(r.room_id or ""),
                         "roomNo": room.room_no if room else "", "result": r.result,
                         "issueType": r.issue_type or "", "detail": r.detail or "", "status": r.status,
+                        "students": students,
                         "relatedRiskId": str(r.related_risk_id or ""),
                         "relatedExceptionId": str(r.related_exception_id or "")})
         total = len(out)
@@ -564,17 +580,57 @@ def list_check_records(task_id, user, page=1, page_size=100):
         return out[start:start + page_size], total
 
 
+def _resolve_exception_student(db, exception_id, cs_student_id):
+    """t_cs_dorm_exception.cs_student_id 可能是 CsServiceStudent.id、（无台账行时）退化的全局 student_id、
+    或 0（纯房间级异常无涉事学生）。解析出 (realName, studentNo, buildingId)：优先经学生当前占用床位
+    （DormBed.status=OCCUPIED）反查楼栋；纯房间级异常（cs_student_id=0）改经回链的 DormCheckRecord.room_id
+    反查楼栋。供宿管楼栋范围收敛与列表展示学生身份用。"""
+    from app.models import CsServiceStudent, DormBed, DormCheckRecord, DormRoom, StudentProfile
+    real_name, student_no, global_sid = "", "", None
+    if cs_student_id:
+        cs = db.get(CsServiceStudent, int(cs_student_id))
+        if cs and not cs.is_deleted:
+            real_name, student_no, global_sid = cs.name or "", cs.student_no or "", cs.student_id
+        if not global_sid:
+            s = db.get(StudentProfile, int(cs_student_id))
+            if s and not s.is_deleted:
+                real_name, student_no, global_sid = s.real_name, s.student_no, s.id
+    building_id = None
+    if global_sid:
+        bed = db.scalars(select(DormBed).where(
+            DormBed.tenant_id == _tid(), DormBed.student_id == int(global_sid),
+            DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).first()
+        if bed:
+            building_id = bed.building_id
+    if building_id is None:
+        rec = db.scalars(select(DormCheckRecord).where(
+            DormCheckRecord.tenant_id == _tid(), DormCheckRecord.related_exception_id == exception_id,
+            DormCheckRecord.is_deleted.is_(False))).first()
+        if rec and rec.room_id:
+            room = db.get(DormRoom, int(rec.room_id))
+            if room:
+                building_id = room.building_id
+    return real_name, student_no, building_id
+
+
 def list_exceptions(user, status=None, page=1, page_size=50):
-    """宿舍异常列表（含夜不归宿）。注：t_cs_dorm_exception 无 building 列，宿管楼栋级收敛为后续项。"""
+    """宿舍异常列表（含夜不归宿）。按学生当前占用床位反查楼栋，宿管收敛至负责楼栋；展示学生姓名/学号。"""
     from app.models import CsDormException
     with session() as db:
+        scope = _dorm_scope_building_ids(db, user)
         conds = [CsDormException.tenant_id == _tid(), CsDormException.is_deleted.is_(False)]
         if status:
             conds.append(CsDormException.status == status)
         rows = db.scalars(select(CsDormException).where(*conds).order_by(CsDormException.id.desc())).all()
-        out = [{"exceptionId": str(x.id), "csStudentId": str(x.cs_student_id or ""),
-                "excType": x.exc_type or "", "detail": x.detail or "", "status": x.status,
-                "createdAt": _iso(x.created_at)} for x in rows]
+        out = []
+        for x in rows:
+            real_name, student_no, building_id = _resolve_exception_student(db, x.id, x.cs_student_id)
+            if scope is not None and (building_id is None or building_id not in scope):
+                continue
+            out.append({"exceptionId": str(x.id), "csStudentId": str(x.cs_student_id or ""),
+                       "realName": real_name, "studentNo": student_no,
+                       "excType": x.exc_type or "", "detail": x.detail or "", "status": x.status,
+                       "createdAt": _iso(x.created_at)})
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total

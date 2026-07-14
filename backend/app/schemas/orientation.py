@@ -68,6 +68,13 @@ class FollowUpBody(BaseModel):
     way: Optional[str] = Field(default="PHONE")
 
 
+class ExceptionCreate(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    exceptionType: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=5)
+    riskLevel: Optional[str] = Field(default="MEDIUM")
+
+
 class BatchCreate(BaseModel):
     batchName: str = Field(..., min_length=1)
     batchNo: str = Field(..., min_length=1)
