@@ -34,61 +34,14 @@
         <view id="gd-nodes" class="section-head"><text class="section-head__title">毕设节点</text></view>
         <view class="card"><MobileTimeline :nodes="g.nodes" /></view>
 
-        <!-- 选题管理：未选题→浏览题目库提交志愿；已选题→申请更换课题 -->
-        <view v-if="activeRound" id="gd-topic" class="section-head">
-          <text class="section-head__title">选题管理</text>
-          <text class="section-head__more">{{ activeRound.roundName }} · 最多{{ activeRound.maxChoices }}志愿</text>
-        </view>
-
-        <view v-if="activeRound && myChoices.length" class="card stack-sm">
-          <view v-for="c in myChoices" :key="c.id" class="gd__choice-row">
-            <text class="gd__choice-title">{{ c.topicTitle }}</text>
-            <MobileStatusTag :label="choiceLabel(c.status)" :type="choiceTag(c.status)" />
+        <!-- 选题管理：轻量入口，详情/操作在独立的「毕设选题」页 -->
+        <view id="gd-topic" class="section-head"><text class="section-head__title">选题管理</text></view>
+        <view class="card gd__linkrow" @click="go('/pages/student/graduation/topics/index')">
+          <view class="flex-1">
+            <text class="t-md t-bold">{{ g.hasTopic ? '课题已确定' : '选题/志愿管理' }}</text>
+            <text class="gd__hint" style="margin:2px 0 0;">{{ g.hasTopic ? '点击查看课题与申请更换' : '点击查看题目库、提交或调整志愿' }}</text>
           </view>
-          <button v-if="canWithdraw" class="btn btn-ghost" :disabled="withdrawing" @click="withdrawChoices">
-            {{ withdrawing ? '退选中…' : '退选（撤回志愿后可重填）' }}
-          </button>
-        </view>
-
-        <view v-if="activeRound && !g.hasTopic" class="card stack-sm">
-          <text class="gd__hint">从题目库选择 1~{{ activeRound.maxChoices }} 个志愿，按点选顺序确定志愿序：</text>
-          <view v-for="t in topics" :key="t.id" class="gd__topic-row" @click="toggleChoice(t.id)">
-            <view class="gd__topic-main">
-              <text class="gd__topic-title">{{ t.title }}</text>
-              <text class="gd__topic-sub">{{ t.advisorName || '—' }} · 余量 {{ t.remaining }}/{{ t.capacity }}</text>
-            </view>
-            <text v-if="choiceRank(t.id)" class="gd__topic-badge">志愿{{ choiceRank(t.id) }}</text>
-          </view>
-          <button class="btn btn-primary" :disabled="!selectedChoices.length || choiceSubmitting"
-                  @click="submitChoices">
-            {{ choiceSubmitting ? '提交中…' : `提交志愿（已选${selectedChoices.length}）` }}
-          </button>
-        </view>
-
-        <view v-if="activeRound && g.hasTopic" class="card stack-sm">
-          <button class="btn btn-ghost" @click="showChangeForm = !showChangeForm">
-            {{ showChangeForm ? '收起' : '申请更换课题' }}
-          </button>
-          <template v-if="showChangeForm">
-            <text class="gd__hint">获批课题已锁定，更换须重新审核，请选择目标课题并说明理由：</text>
-            <view v-for="t in topics" :key="t.id" class="gd__topic-row" @click="changeTargetTopicId = t.id">
-              <view class="gd__topic-main">
-                <text class="gd__topic-title">{{ t.title }}</text>
-                <text class="gd__topic-sub">{{ t.advisorName || '—' }} · 余量 {{ t.remaining }}/{{ t.capacity }}</text>
-              </view>
-              <text v-if="changeTargetTopicId === t.id" class="gd__topic-badge">已选</text>
-            </view>
-            <textarea class="gd__reason" v-model="changeReason" :maxlength="200" placeholder="变更理由（至少5个字）" placeholder-class="wr__ph" />
-            <button class="btn btn-primary" :disabled="!changeTargetTopicId || changeSubmitting" @click="submitChangeRequest">
-              {{ changeSubmitting ? '提交中…' : '提交变更申请' }}
-            </button>
-          </template>
-          <view v-if="changeRequests.length" class="stack-sm">
-            <view v-for="r in changeRequests" :key="r.id" class="gd__choice-row">
-              <text class="gd__choice-title">{{ r.oldTopicTitle }} → {{ r.newTopicTitle }}</text>
-              <MobileStatusTag :label="r.statusLabel" :type="changeTag(r.status)" />
-            </view>
-          </view>
+          <text class="gd__arrow">›</text>
         </view>
 
         <!-- 开题报告 -->
@@ -122,13 +75,14 @@
           </template>
         </view>
 
-        <!-- 任务书 -->
-        <view v-if="taskbook && taskbook.exists" id="gd-taskbook" class="section-head"><text class="section-head__title">任务书</text></view>
-        <view v-if="taskbook && taskbook.exists" class="card stack-sm">
-          <view class="gd__choice-row"><text class="gd__choice-title">v{{ taskbook.taskbookVersion }} · {{ taskbook.objective }}</text><MobileStatusTag :label="taskbook.statusLabel" :type="taskbook.status === 'CONFIRMED' ? 'success' : 'warning'" /></view>
-          <button v-if="taskbook.status !== 'CONFIRMED'" class="btn btn-primary" :disabled="taskbookSubmitting" @click="confirmTaskbook">
-            {{ taskbookSubmitting ? '提交中…' : '确认任务书' }}
-          </button>
+        <!-- 任务书：轻量入口，详情/确认在独立的「毕设任务书」页 -->
+        <view id="gd-taskbook" class="section-head"><text class="section-head__title">任务书</text></view>
+        <view class="card gd__linkrow" @click="go('/pages/student/graduation/taskbook/index')">
+          <view class="flex-1">
+            <text class="t-md t-bold">查看任务书</text>
+            <text class="gd__hint" style="margin:2px 0 0;">研究内容、进度安排与确认</text>
+          </view>
+          <text class="gd__arrow">›</text>
         </view>
 
         <!-- 中期检查 -->
@@ -170,19 +124,14 @@
           </button>
         </view>
 
-        <!-- 答辩安排 -->
+        <!-- 答辩安排：轻量入口，详情在独立的「答辩安排」页 -->
         <view v-if="defense && defense.assigned" id="gd-defense" class="section-head"><text class="section-head__title">答辩安排</text></view>
-        <view v-if="defense && defense.assigned" class="card stack-sm">
-          <view class="gd__choice-row">
-            <text class="gd__choice-title">{{ defense.groupName }}</text>
-            <MobileStatusTag :label="defense.published ? '已发布' : '编制中'" :type="defense.published ? 'success' : 'warning'" />
+        <view v-if="defense && defense.assigned" class="card gd__linkrow" @click="go('/pages/student/graduation/defense/index')">
+          <view class="flex-1">
+            <text class="t-md t-bold">{{ defense.groupName }}</text>
+            <text class="gd__hint" style="margin:2px 0 0;">{{ defense.published ? ('时间：' + defense.date + ' · 地点：' + defense.location) : defense.message }}</text>
           </view>
-          <template v-if="defense.published">
-            <text class="gd__hint">时间：{{ defense.date }} · 地点：{{ defense.location }}</text>
-            <text class="gd__hint">组长：{{ defense.chair }} · 秘书：{{ defense.secretary }}</text>
-            <text class="gd__hint">评委：{{ (defense.members || []).join('、') || '待安排' }}</text>
-          </template>
-          <text v-else class="gd__hint">{{ defense.message }}</text>
+          <MobileStatusTag :label="defense.published ? '已发布' : '编制中'" :type="defense.published ? 'success' : 'warning'" />
         </view>
 
         <!-- 成绩 -->
@@ -220,51 +169,32 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { createSubmitLock, normalizeError, getToken } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { normalizeError, getToken } from '@/services/request'
+import { go, toast } from '@/utils/nav'
 import { ENV } from '@/config/env'
-
-const choiceLock = createSubmitLock(1500)
-const changeLock = createSubmitLock(1500)
-
-const CHOICE_LABEL = { PENDING: '待处理', MATCHED: '已匹配', UNMATCHED: '未录取', CONFIRMED: '已确认', REJECTED: '已驳回' }
-const CHOICE_TAG = { PENDING: 'warning', MATCHED: 'success', UNMATCHED: 'default', CONFIRMED: 'success', REJECTED: 'danger' }
-const CHANGE_TAG = { PENDING: 'warning', APPROVED: 'success', REJECTED: 'danger', CANCELLED: 'default' }
 
 export default {
   data() {
     return {
       g: null, state: 'loading',
-      topics: [], activeRound: null, changeRequests: [],
-      selectedChoices: [], choiceSubmitting: false, withdrawing: false,
-      showChangeForm: false, changeTargetTopicId: '', changeReason: '', changeSubmitting: false,
       proposal: null, showProposalForm: false, proposalSubmitting: false,
       propForm: { background: '', plan: '', outcome: '' },
       propAtts: [], finalAtts: [], uploading: false,
       final: null, finalSubmitting: false,
-      taskbook: null, taskbookSubmitting: false,
       midterm: null, rectifyContent: '', rectifySubmitting: false,
       defense: null, grade: null,
       showAppeal: false, appealReason: '', appealSubmitting: false
     }
   },
   computed: {
-    myChoices() { return (this.activeRound && this.activeRound.myChoices) || [] },
-    canWithdraw() {
-      // 进行中轮次 + 存在待处理志愿（已确认/匹配的不可自助退选）
-      return this.activeRound && this.myChoices.some((c) => c.status === 'PENDING') &&
-        !this.myChoices.some((c) => c.status === 'CONFIRMED' || c.status === 'MATCHED')
-    },
     finalRejected() {
       const items = (this.final && this.final.items) || []
       const r = items.find((i) => i.status === 'REJECTED')
       return r && r.reviewComment ? r.reviewComment : ''
     },
-    // 快速导航：仅显示本页已有真实内容的功能区（取代旧「毕设功能」假入口）
+    // 快速导航：仅显示本页已有真实内容的功能区；选题/任务书为独立页固定入口
     quickNav() {
-      const nav = [{ label: '节点', anchor: 'nodes' }]
-      if (this.activeRound) nav.push({ label: '选题', anchor: 'topic' })
-      if (this.taskbook && this.taskbook.exists) nav.push({ label: '任务书', anchor: 'taskbook' })
+      const nav = [{ label: '节点', anchor: 'nodes' }, { label: '选题', anchor: 'topic' }, { label: '任务书', anchor: 'taskbook' }]
       if (this.proposal && this.proposal.hasData) nav.push({ label: '开题', anchor: 'proposal' })
       if (this.midterm && this.midterm.hasData && this.midterm.status !== 'PENDING') nav.push({ label: '中期', anchor: 'midterm' })
       if (this.final && this.final.hasData) nav.push({ label: '成果', anchor: 'final' })
@@ -282,7 +212,7 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
-    toast,
+    go, toast,
     load(done) {
       // 保留已加载内容时不闪 loading（下拉刷新/返回刷新场景）
       if (!this.g) this.state = 'loading'
@@ -290,7 +220,6 @@ export default {
         this.g = d
         this.state = 'ready'
         if (d && d._real && d.hasBatch) {
-          this.loadTopicSelection()
           this.loadProcess()
         }
       }).catch(() => { if (!this.g) this.state = 'error' })
@@ -299,7 +228,6 @@ export default {
     loadProcess() {
       studentApi.getGraduationProposal().then((d) => { this.proposal = d }).catch(() => {})
       studentApi.getGraduationFinal().then((d) => { this.final = d }).catch(() => {})
-      studentApi.getGraduationTaskbook().then((d) => { this.taskbook = d }).catch(() => {})
       studentApi.getGraduationMidterm().then((d) => { this.midterm = d }).catch(() => {})
       studentApi.getGraduationDefense().then((d) => { this.defense = d }).catch(() => {})
       studentApi.getGraduationGrade().then((d) => { this.grade = d }).catch(() => {})
@@ -427,15 +355,6 @@ export default {
         fail: () => { uni.hideLoading(); toast('下载失败，请检查网络') }
       })
     },
-    confirmTaskbook() {
-      if (this.taskbookSubmitting) return
-      this.taskbookSubmitting = true
-      studentApi.confirmGraduationTaskbook().then(() => {
-        uni.showToast({ title: '已确认', icon: 'success' })
-        this.loadProcess()
-      }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '确认失败，请稍后重试') })
-        .finally(() => { this.taskbookSubmitting = false })
-    },
     submitRectify() {
       const content = this.rectifyContent.trim()
       if (!content || this.rectifySubmitting) return
@@ -447,68 +366,6 @@ export default {
       }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
         .finally(() => { this.rectifySubmitting = false })
     },
-    loadTopicSelection() {
-      studentApi.getGraduationActiveRound().then((r) => {
-        this.activeRound = r || null
-        if (r) return studentApi.getGraduationTopics()
-        return null
-      }).then((t) => { if (t) this.topics = t }).catch(() => { /* 选题为增量能力，静默降级不影响主页 */ })
-      if (this.g && this.g.hasTopic) {
-        studentApi.getMyGraduationChangeRequests().then((r) => { this.changeRequests = r || [] }).catch(() => {})
-      }
-    },
-    choiceRank(topicId) {
-      const i = this.selectedChoices.indexOf(topicId)
-      return i >= 0 ? i + 1 : 0
-    },
-    toggleChoice(topicId) {
-      const i = this.selectedChoices.indexOf(topicId)
-      if (i >= 0) { this.selectedChoices.splice(i, 1); return }
-      const max = (this.activeRound && this.activeRound.maxChoices) || 3
-      if (this.selectedChoices.length >= max) { toast(`最多选择 ${max} 个志愿`); return }
-      this.selectedChoices.push(topicId)
-    },
-    submitChoices() {
-      if (!this.selectedChoices.length || this.choiceSubmitting) return
-      const choices = this.selectedChoices.map((topicId, i) => ({ topicId, choiceOrder: i + 1 }))
-      this.choiceSubmitting = true
-      choiceLock.run(() => studentApi.submitGraduationChoices(this.activeRound.id, choices)).then(() => {
-        uni.showToast({ title: '志愿已提交', icon: 'success' })
-        this.selectedChoices = []
-        this.loadTopicSelection()
-      }).catch((e) => {
-        if (e && e.code === 'LOCKED') return
-        toast(e && e.biz ? normalizeError(e).text : '网络异常，提交未成功，请稍后重试')
-      }).finally(() => { this.choiceSubmitting = false })
-    },
-    withdrawChoices() {
-      if (this.withdrawing || !this.activeRound) return
-      this.withdrawing = true
-      studentApi.withdrawGraduationChoices(this.activeRound.id).then(() => {
-        uni.showToast({ title: '已退选', icon: 'success' })
-        this.loadTopicSelection()
-      }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '退选失败，请稍后重试') })
-        .finally(() => { this.withdrawing = false })
-    },
-    submitChangeRequest() {
-      if (!this.changeTargetTopicId || this.changeSubmitting) return
-      const reason = this.changeReason.trim()
-      if (reason.length < 5) { toast('变更理由至少 5 个字'); return }
-      this.changeSubmitting = true
-      changeLock.run(() => studentApi.requestGraduationTopicChange(this.changeTargetTopicId, reason)).then(() => {
-        uni.showToast({ title: '变更申请已提交', icon: 'success' })
-        this.showChangeForm = false
-        this.changeTargetTopicId = ''
-        this.changeReason = ''
-        this.loadTopicSelection()
-      }).catch((e) => {
-        if (e && e.code === 'LOCKED') return
-        toast(e && e.biz ? normalizeError(e).text : '网络异常，提交未成功，请稍后重试')
-      }).finally(() => { this.changeSubmitting = false })
-    },
-    choiceLabel(status) { return CHOICE_LABEL[status] || status },
-    choiceTag(status) { return CHOICE_TAG[status] || 'default' },
-    changeTag(status) { return CHANGE_TAG[status] || 'default' },
     // 定位到本页真实功能区（不再 toast「去 PC 端」）
     scrollTo(anchor) {
       uni.pageScrollTo({ selector: '#gd-' + anchor, duration: 260, fail: () => {} })
@@ -529,6 +386,8 @@ export default {
 .gd__hero-mentor { font-size: var(--font-size-sm); color: var(--text-secondary); }
 .gd__quicknav { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .gd__quick { font-size: var(--font-size-sm); color: var(--brand-primary); background: var(--primary-50); border: 1px solid var(--primary-100); padding: 6px 14px; border-radius: var(--radius-full); }
+.gd__linkrow { display: flex; align-items: center; gap: var(--space-3); }
+.gd__arrow { color: var(--text-tertiary); font-size: var(--font-size-2xl); }
 .gd__log { border-left: 3px solid var(--primary-100); padding-left: var(--space-3); }
 .gd__log-head { display: flex; align-items: center; justify-content: space-between; }
 .gd__log-from { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--brand-primary); }

@@ -104,6 +104,18 @@
       "style": { "navigationBarTitleText": "毕业设计", "enablePullDownRefresh": true }
     },
     {
+      "path": "pages/student/graduation/topics/index",
+      "style": { "navigationBarTitleText": "毕设选题", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/graduation/taskbook/index",
+      "style": { "navigationBarTitleText": "毕设任务书", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/graduation/defense/index",
+      "style": { "navigationBarTitleText": "答辩安排", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/student/employment/index",
       "style": { "navigationBarTitleText": "就业去向" }
     },
