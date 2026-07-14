@@ -384,6 +384,29 @@ export const studentAffairsApi = {
   getFundingStats() {
     return callStrict(() => request('/student-affairs/funding/stats'))
   },
+  /** 资助发放台账（金额脱敏，不含卡全号）。 */
+  getFundingDisbursements({ batchId = '', bankStatus = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (batchId) params.batchId = batchId
+    if (bankStatus) params.bankStatus = bankStatus
+    return callStrict(() => request('/student-affairs/funding/disbursements', { params }))
+  },
+  /** 按批次生成发放台账（GRANTED→PENDING，幂等）。 */
+  generateDisbursements(batchId) {
+    return callStrict(() => request(`/student-affairs/funding/batches/${batchId}/disbursements/generate`, { method: 'POST', body: {} }))
+  },
+  /** 标记已发放。body: { disburseNo?, bankLast4? } */
+  issueDisbursement(id, body = {}) {
+    return callStrict(() => request(`/student-affairs/funding/disbursements/${id}/issue`, { method: 'POST', body }))
+  },
+  /** 标记发放失败（原因≥5字）。 */
+  failDisbursement(id, reason) {
+    return callStrict(() => request(`/student-affairs/funding/disbursements/${id}/fail`, { method: 'POST', body: { reason } }))
+  },
+  /** 发放概览。 */
+  getDisbursementStats() {
+    return callStrict(() => request('/student-affairs/funding/disbursements/stats'))
+  },
 
   /** 违纪处分统计（按类型/状态聚合 + 投影对账）。 */
   getDisciplineStats() {

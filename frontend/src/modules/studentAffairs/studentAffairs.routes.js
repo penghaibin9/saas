@@ -104,6 +104,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '资助批次', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
       },
       {
+        path: 'funding/disbursements',
+        name: 'student-affairs-funding-disbursements',
+        component: () => import('@/modules/studentAffairs/views/funding/FundingDisbursementView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '发放台账', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+      },
+      {
         path: 'funding/publicity',
         name: 'student-affairs-funding-publicity',
         component: () => import('@/modules/studentAffairs/views/funding/FundingPublicityView.vue'),
