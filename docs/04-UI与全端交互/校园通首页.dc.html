@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:52px 24px;gap:56px;flex-wrap:wrap}
+.cap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.cap-lb{font-size:13px;color:#334155;font-weight:600}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f1f4f9;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+.scroll{flex:1;overflow:hidden;position:relative}
+/* hero */
+.hero{position:relative;background:linear-gradient(162deg,#0e3a80 0%,#1a56be 60%,#2f76dd 128%);padding:0 20px 30px;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 85%)}
+.horb{position:absolute;right:-60px;top:-50px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(255,255,255,.14),transparent 64%)}
+.sb{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 12px 6px;font-size:15px;font-weight:600;color:#fff;position:relative;z-index:2}
+.sb-r{display:flex;align-items:center;gap:6px}
+.greet{position:relative;z-index:2;display:flex;align-items:center;gap:13px;margin-top:14px}
+.ava{width:50px;height:50px;border-radius:15px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0}
+.greet-tx b{font-size:18px;color:#fff;font-weight:700;letter-spacing:.01em}
+.greet-tx p{margin:4px 0 0;font-size:12px;color:rgba(255,255,255,.8)}
+.greet-bell{margin-left:auto;position:relative;z-index:2;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center}
+.greet-bell b{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:#ff5a5a;border:1.5px solid #1a56be}
+/* stat strip */
+.stats{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:20px;background:rgba(255,255,255,.14);border-radius:14px;overflow:hidden}
+.stat{background:transparent;padding:13px 6px;text-align:center}
+.stat b{display:block;font-size:20px;font-weight:800;color:#fff;letter-spacing:.02em}
+.stat span{font-size:11px;color:rgba(255,255,255,.8)}
+/* card */
+.wrap{padding:0 16px 96px}
+.card{background:#fff;border-radius:16px;padding:16px;margin-top:14px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-hd b{font-size:14.5px;color:#0f1e3d;font-weight:700}
+.card-hd .more{font-size:12px;color:#94a3b8}
+/* feature grid */
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 4px}
+.gi{display:flex;flex-direction:column;align-items:center;gap:8px}
+.gi-ic{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff}
+.gi-lb{font-size:12px;color:#475569;white-space:nowrap;letter-spacing:-.01em}
+.b1{background:linear-gradient(145deg,#2f76dd,#1a56be)}.b2{background:linear-gradient(145deg,#4c9af5,#2f76dd)}
+.b3{background:linear-gradient(145deg,#12b886,#0ca678)}.b4{background:linear-gradient(145deg,#f59f00,#f08c00)}
+.b5{background:linear-gradient(145deg,#7c6bf5,#6549e8)}.b6{background:linear-gradient(145deg,#f76a6a,#e64c4c)}
+.b7{background:linear-gradient(145deg,#22b0d6,#1495bd)}.b8{background:linear-gradient(145deg,#8a94a6,#6b7688)}
+/* progress stepper */
+.steps{display:flex;align-items:flex-start;justify-content:space-between;position:relative;padding:4px 2px 0}
+.steps::before{content:'';position:absolute;top:10px;left:22px;right:22px;height:2px;background:#e6ebf3}
+.step{display:flex;flex-direction:column;align-items:center;gap:7px;position:relative;z-index:1;flex:1}
+.dot{width:20px;height:20px;border-radius:50%;background:#e6ebf3;border:3px solid #fff;box-shadow:0 0 0 1px #e6ebf3}
+.step.done .dot{background:#1a56be;box-shadow:0 0 0 1px #1a56be}
+.step.now .dot{background:#12b886;box-shadow:0 0 0 3px rgba(18,184,134,.2)}
+.step span{font-size:11px;color:#94a3b8}
+.step.done span,.step.now span{color:#334155;font-weight:600}
+/* todo list */
+.todo{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f1f4f9}
+.todo:last-child{border-bottom:none}
+.todo-ic{width:38px;height:38px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff}
+.todo-tx{flex:1;min-width:0}
+.todo-tx b{display:block;font-size:13.5px;color:#0f1e3d;font-weight:600}
+.todo-tx p{margin:3px 0 0;font-size:11.5px;color:#94a3b8}
+.todo-tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;flex-shrink:0}
+.tg-red{background:#fff0f0;color:#e64c4c}.tg-amber{background:#fff6e6;color:#e8890c}.tg-blue{background:#eef4ff;color:#1a56be}
+/* notice */
+.notice{display:flex;align-items:center;gap:9px;background:#fff;border-radius:12px;padding:11px 14px;margin-top:14px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.notice .nt{font-size:10px;font-weight:700;color:#1a56be;background:#eef4ff;padding:3px 7px;border-radius:6px;flex-shrink:0}
+.notice p{margin:0;font-size:12.5px;color:#475569;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* tabbar */
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:76px;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-top:1px solid #eef1f6;display:flex;padding-bottom:16px;z-index:5}
+.tabi{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:#9aa5b6}
+.tabi.on{color:#1a56be}
+.tabi span{font-size:10.5px;font-weight:500}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:134px;height:5px;border-radius:3px;background:#0f172a;opacity:.75;z-index:6}
+</style></helmet>
+<div class="stage">
+<div class="cap">
+<div class="cap-lb">学生端 · 登录后首页</div>
+<div class="phone"><div class="screen">
+<div class="scroll">
+<div class="hero"><div class="horb"></div>
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="greet"><div class="ava">李</div><div class="greet-tx"><b>下午好，李思远</b><p>软件学院 · 软件2201班 · 学号 2022130118</p></div><div class="greet-bell"><b></b><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M6 8a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path d="M10 19a2 2 0 004 0"></path></svg></div></div>
+<div class="stats"><div class="stat"><b>4.32</b><span>学分绩点</span></div><div class="stat"><b>26</b><span>本学期学分</span></div><div class="stat"><b>96%</b><span>出勤率</span></div></div>
+</div>
+<div class="wrap">
+<div class="notice"><span class="nt">通知</span><p>关于2026届毕业设计中期检查安排的通知</p></div>
+<div class="card"><div class="card-hd"><b>常用服务</b><span class="more">全部 ›</span></div>
+<div class="grid">
+<div class="gi"><div class="gi-ic b1"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></div><div class="gi-lb">我的课表</div></div>
+<div class="gi"><div class="gi-ic b2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h6M9 8h3"></path></svg></div><div class="gi-lb">成绩查询</div></div>
+<div class="gi"><div class="gi-ic b3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0116 5v2"></path></svg></div><div class="gi-lb">实习管理</div></div>
+<div class="gi"><div class="gi-ic b5"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><div class="gi-lb">毕业设计</div></div>
+<div class="gi"><div class="gi-ic b4"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M8 6h10M8 12h10M8 18h10M4 6h.01M4 12h.01M4 18h.01"></path></svg></div><div class="gi-lb">请假销假</div></div>
+<div class="gi"><div class="gi-ic b7"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="5" width="18" height="13" rx="2.5"></rect><path d="M3 10h18M7 14h4"></path></svg></div><div class="gi-lb">校园卡</div></div>
+<div class="gi"><div class="gi-ic b6"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 1.5"></path></svg></div><div class="gi-lb">缴费中心</div></div>
+<div class="gi"><div class="gi-ic b8"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="6" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="18" cy="12" r="1.6"></circle></svg></div><div class="gi-lb">更多</div></div>
+</div></div>
+<div class="card"><div class="card-hd"><b>我的学业全周期</b><span class="more">大二 · 在读</span></div>
+<div class="steps"><div class="step done"><div class="dot"></div><span>入学</span></div><div class="step done"><div class="dot"></div><span>培养方案</span></div><div class="step now"><div class="dot"></div><span>课程在读</span></div><div class="step"><div class="dot"></div><span>顶岗实习</span></div><div class="step"><div class="dot"></div><span>毕业设计</span></div></div>
+</div>
+<div class="card"><div class="card-hd"><b>待办事项</b><span class="more">3 项待处理</span></div>
+<div class="todo"><div class="todo-ic b3"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 13h6M9 17h4"></path></svg></div><div class="todo-tx"><b>实习周报（第 6 周）待提交</b><p>截止 06-15 24:00</p></div><span class="todo-tag tg-red">去提交</span></div>
+<div class="todo"><div class="todo-ic b5"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path></svg></div><div class="todo-tx"><b>毕业设计中期检查材料</b><p>导师：王建国 · 待上传</p></div><span class="todo-tag tg-amber">待上传</span></div>
+<div class="todo"><div class="todo-ic b1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></div><div class="todo-tx"><b>下学期选课即将开放</b><p>06-20 10:00 开始</p></div><span class="todo-tag tg-blue">查看</span></div>
+</div>
+</div>
+</div>
+<div class="tabbar"><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>首页</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>服务</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+<div class="cap">
+<div class="cap-lb">教师端 · 登录后首页</div>
+<div class="phone"><div class="screen">
+<div class="scroll">
+<div class="hero"><div class="horb"></div>
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="greet"><div class="ava">王</div><div class="greet-tx"><b>下午好，王建国 老师</b><p>软件学院 · 辅导员 / 毕设导师</p></div><div class="greet-bell"><b></b><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M6 8a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path d="M10 19a2 2 0 004 0"></path></svg></div></div>
+<div class="stats"><div class="stat"><b>128</b><span>我的学生</span></div><div class="stat"><b>12</b><span>待审批</span></div><div class="stat"><b>8</b><span>待批阅</span></div></div>
+</div>
+<div class="wrap">
+<div class="notice"><span class="nt">教务</span><p>请于本周五前完成学生实习成绩录入</p></div>
+<div class="card"><div class="card-hd"><b>教学管理</b><span class="more">全部 ›</span></div>
+<div class="grid">
+<div class="gi"><div class="gi-ic b1"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0"></path><path d="M16 6a3 3 0 010 6M17.5 19a5.5 5.5 0 00-3-4.9"></path></svg></div><div class="gi-lb">学生管理</div></div>
+<div class="gi"><div class="gi-ic b4"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 6h10M4 12h10M4 18h6"></path><path d="M17 15l2.2 2.2L23 13"></path></svg></div><div class="gi-lb">请假审批</div></div>
+<div class="gi"><div class="gi-ic b3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0116 5v2"></path><path d="M9.5 13.5l2 2 3.5-3.5"></path></svg></div><div class="gi-lb">实习审核</div></div>
+<div class="gi"><div class="gi-ic b5"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><div class="gi-lb">毕设指导</div></div>
+<div class="gi"><div class="gi-ic b2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h6"></path><path d="M14 3v4h4"></path></svg></div><div class="gi-lb">成绩录入</div></div>
+<div class="gi"><div class="gi-ic b7"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4M8.5 14l2 2 3.5-3.5"></path></svg></div><div class="gi-lb">考勤管理</div></div>
+<div class="gi"><div class="gi-ic b6"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="gi-lb">通知发布</div></div>
+<div class="gi"><div class="gi-ic b8"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg></div><div class="gi-lb">数据看板</div></div>
+</div></div>
+<div class="card"><div class="card-hd"><b>班级全周期概览</b><span class="more">软件2201班</span></div>
+<div class="steps"><div class="step done"><div class="dot"></div><span>在籍 48</span></div><div class="step done"><div class="dot"></div><span>选课完成</span></div><div class="step now"><div class="dot"></div><span>实习中 32</span></div><div class="step"><div class="dot"></div><span>毕设 16</span></div><div class="step"><div class="dot"></div><span>待毕业</span></div></div>
+</div>
+<div class="card"><div class="card-hd"><b>待我审批</b><span class="more">12 项待处理</span></div>
+<div class="todo"><div class="todo-ic b3"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 13h6"></path></svg></div><div class="todo-tx"><b>5 份实习周报待审核</b><p>软件2201班 · 顶岗实习</p></div><span class="todo-tag tg-red">去审核</span></div>
+<div class="todo"><div class="todo-ic b4"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 6h10M4 12h8"></path><path d="M17 15l2 2 3-3.5"></path></svg></div><div class="todo-tx"><b>3 条学生请假待批</b><p>含 1 条病假申请</p></div><span class="todo-tag tg-amber">待批</span></div>
+<div class="todo"><div class="todo-ic b5"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path></svg></div><div class="todo-tx"><b>毕设中期检查待评阅</b><p>本组 16 人 · 已提交 11</p></div><span class="todo-tag tg-blue">评阅</span></div>
+</div>
+</div>
+</div>
+<div class="tabbar"><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>工作台</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>审批</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:52px 24px;gap:56px;flex-wrap:wrap}
+.cap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.cap-lb{font-size:13px;color:#334155;font-weight:600}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f1f4f9;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+.scroll{flex:1;overflow:hidden;position:relative}
+.prof{position:relative;background:linear-gradient(160deg,#0e3a80 0%,#1a56be 72%,#2f76dd 130%);padding:0 18px 22px;overflow:hidden;flex-shrink:0}
+.prof::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 88%)}
+.porb{position:absolute;right:-50px;top:-40px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(255,255,255,.14),transparent 64%)}
+.sb{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 12px 6px;font-size:15px;font-weight:600;color:#fff;position:relative;z-index:2}
+.sb-r{display:flex;align-items:center;gap:6px}
+.navbar{height:40px;display:flex;align-items:center;justify-content:center;position:relative;z-index:2}
+.navbar b{font-size:17px;font-weight:700;color:#fff;letter-spacing:.02em}
+.capsule{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:80px;height:30px;border-radius:15px;border:1px solid rgba(255,255,255,.5);display:flex;align-items:center}
+.capsule .c1{flex:1;display:flex;align-items:center;justify-content:center;gap:4px}
+.capsule .c1 i{width:4px;height:4px;border-radius:50%;background:#fff;display:block}
+.capsule .dv{width:1px;height:15px;background:rgba(255,255,255,.4)}
+.capsule .c2{flex:1;display:flex;align-items:center;justify-content:center}
+.capsule .ring{width:14px;height:14px;border-radius:50%;border:1.5px solid #fff;position:relative}
+.capsule .ring::after{content:'';position:absolute;inset:3px;border-radius:50%;border:1.5px solid #fff;border-right-color:transparent;border-bottom-color:transparent;transform:rotate(45deg)}
+.prow{position:relative;z-index:2;display:flex;align-items:center;gap:14px;margin-top:10px}
+.pava{width:62px;height:62px;border-radius:19px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#fff;flex-shrink:0}
+.pinfo{flex:1;min-width:0}
+.pinfo .nm{display:flex;align-items:center;gap:8px}
+.pinfo .nm b{font-size:20px;color:#fff;font-weight:700}
+.rtag{font-size:11px;color:#fff;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.3);padding:2px 9px;border-radius:8px}
+.pinfo p{margin:6px 0 0;font-size:12.5px;color:rgba(255,255,255,.82)}
+.pedit{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pstats{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);margin-top:20px;background:rgba(255,255,255,.14);border-radius:14px;overflow:hidden}
+.pstat{padding:12px 6px;text-align:center;cursor:pointer}
+.pstat+.pstat{border-left:1px solid rgba(255,255,255,.14)}
+.pstat b{display:block;font-size:19px;font-weight:800;color:#fff}
+.pstat span{font-size:11px;color:rgba(255,255,255,.8)}
+.wrap{padding:14px 16px 96px}
+.lst{background:#fff;border-radius:16px;overflow:hidden;margin-top:14px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.lst:first-child{margin-top:0}
+.lst-t{font-size:12px;color:#94a3b8;font-weight:600;padding:14px 16px 4px}
+.li{display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #f4f6fa;cursor:pointer}
+.lst-t+.li{border-top:none}
+.li-ic{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.li b{flex:1;font-size:14px;color:#0f1e3d;font-weight:500}
+.li .val{font-size:12.5px;color:#94a3b8}
+.li .ch{color:#c3cde0;flex-shrink:0}
+.t-blue{background:#eaf1fe;color:#1a56be}.t-green{background:#e6f7f0;color:#0ca678}.t-amber{background:#fef3e2;color:#e8890c}.t-violet{background:#eeebfd;color:#6549e8}.t-gray{background:#eef1f6;color:#64748b}.t-cyan{background:#e4f5fa;color:#1495bd}
+.logout{width:100%;height:48px;background:#fff;border:none;border-radius:14px;margin-top:16px;color:#e64c4c;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.logout:active{background:#fff5f5}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:76px;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-top:1px solid #eef1f6;display:flex;padding-bottom:16px;z-index:5}
+.tabi{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:#9aa5b6}
+.tabi.on{color:#1a56be}
+.tabi span{font-size:10.5px;font-weight:500}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:134px;height:5px;border-radius:3px;background:#0f172a;opacity:.75;z-index:6}
+.backdrop{position:absolute;inset:0;background:rgba(0,0,0,.42);z-index:20;animation:fade .2s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.confirm{position:absolute;left:12px;right:12px;bottom:14px;z-index:25;animation:slideup .28s cubic-bezier(.2,.8,.2,1)}
+@keyframes slideup{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.confirm-c{background:rgba(248,249,251,.98);border-radius:16px;overflow:hidden;text-align:center}
+.confirm-c .q{padding:18px 16px 16px;font-size:12.5px;color:#8494b5;line-height:1.5}
+.confirm-c .q b{display:block;font-size:15px;color:#0f1e3d;margin-bottom:5px}
+.confirm-c .act{border-top:1px solid #e9edf3;padding:15px;font-size:16px;color:#e64c4c;font-weight:600;cursor:pointer}
+.confirm-cancel{background:#fff;border-radius:16px;margin-top:8px;padding:16px;text-align:center;font-size:16px;color:#1a56be;font-weight:600;cursor:pointer}
+.toast{position:absolute;left:50%;top:46%;transform:translateX(-50%);background:rgba(15,23,42,.88);color:#fff;font-size:13px;padding:12px 20px;border-radius:12px;z-index:30;animation:fade .2s ease}
+</style></helmet>
+<div class="stage">
+<div class="cap">
+<div class="cap-lb">学生端 · 我的（底部第 4 个 Tab）</div>
+<div class="phone"><div class="screen">
+<div class="prof"><div class="porb"></div>
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>我的</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="prow"><div class="pava">李</div><div class="pinfo"><div class="nm"><b>李思远</b><span class="rtag">学生</span></div><p>软件学院 · 软件2201班 · 学号 2022130118</p></div><div class="pedit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></div></div>
+<div class="pstats"><div class="pstat"><b>4.32</b><span>学分绩点</span></div><div class="pstat"><b>132</b><span>已修学分</span></div><div class="pstat"><b>12</b><span>专业排名</span></div></div>
+</div>
+<div class="scroll"><div class="wrap">
+<div class="lst"><div class="lst-t">我的学业</div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h4"></path></svg></div><b>我的档案</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5z"></path><path d="M9 11h6M9 15h4"></path></svg></div><b>成绩单</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6M9 13h6"></path></svg></div><b>学籍信息</b><span class="val">在读</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 19h16M8 15v-3M12 15V9M16 15v-5"></path></svg></div><b>我的培养方案</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">实习与毕设</div>
+<div class="li"><div class="li-ic t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0116 5v2"></path></svg></div><b>实习档案</b><span class="val">顶岗实习中</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-violet"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><b>毕设进度</b><span class="val">中期</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">账号与安全</div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path></svg></div><b>账号与安全</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg></div><b>实名认证</b><span class="val">已认证</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg></div><b>修改密码</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path d="M10 19a2 2 0 004 0"></path></svg></div><b>消息通知设置</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">其他</div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4z"></path></svg></div><b>意见反馈</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></div><b>关于校园通</b><span class="val">v2.6.0</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<button class="logout" onclick="{{ a.open }}">退出登录</button>
+</div></div>
+<sc-if value="{{ a.toast }}" hint-placeholder-count="0"><div class="toast">{{ a.toast }}</div></sc-if>
+<sc-if value="{{ a.sheet }}" hint-placeholder-val="{{ false }}">
+<div class="backdrop" onclick="{{ a.close }}"></div>
+<div class="confirm"><div class="confirm-c"><div class="q"><b>确认退出登录？</b>退出后需重新通过微信或账号登录</div><div class="act" onclick="{{ a.confirm }}">退出登录</div></div><div class="confirm-cancel" onclick="{{ a.close }}">取消</div></div>
+</sc-if>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>首页</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>服务</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+<div class="cap">
+<div class="cap-lb">教师端 · 我的（底部第 4 个 Tab）</div>
+<div class="phone"><div class="screen">
+<div class="prof"><div class="porb"></div>
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>我的</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="prow"><div class="pava">王</div><div class="pinfo"><div class="nm"><b>王建国</b><span class="rtag">教师</span></div><p>软件学院 · 辅导员 / 毕设导师 · 工号 T20130</p></div><div class="pedit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></div></div>
+<div class="pstats"><div class="pstat"><b>128</b><span>指导学生</span></div><div class="pstat"><b>3</b><span>任教课程</span></div><div class="pstat"><b>2</b><span>管理班级</span></div></div>
+</div>
+<div class="scroll"><div class="wrap">
+<div class="lst"><div class="lst-t">我的工作</div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0M16 6a3 3 0 010 6"></path></svg></div><b>我的班级</b><span class="val">2 个</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"></path><path d="M4 9h16M8 5v14"></path></svg></div><b>我的课程</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-violet"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><b>指导学生</b><span class="val">毕设 16 人</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4M16 3v4M4 10h16"></path></svg></div><b>我的日程</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">教学档案</div>
+<div class="li"><div class="li-ic t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14v16H5z"></path><path d="M9 8h6M9 12h6M9 16h3"></path></svg></div><b>个人一张表</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5L12 15.5 7 18.2l1-5.5-4-3.9 5.5-.8z"></path></svg></div><b>教学成果</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5z"></path><path d="M9 12h6M9 16h4"></path></svg></div><b>教研教改</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">账号与安全</div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path></svg></div><b>账号与安全</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg></div><b>实名认证</b><span class="val">已认证</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg></div><b>修改密码</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">其他</div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4z"></path></svg></div><b>意见反馈</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></div><b>关于校园通</b><span class="val">v2.6.0</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<button class="logout" onclick="{{ b.open }}">退出登录</button>
+</div></div>
+<sc-if value="{{ b.toast }}" hint-placeholder-count="0"><div class="toast">{{ b.toast }}</div></sc-if>
+<sc-if value="{{ b.sheet }}" hint-placeholder-val="{{ false }}">
+<div class="backdrop" onclick="{{ b.close }}"></div>
+<div class="confirm"><div class="confirm-c"><div class="q"><b>确认退出登录？</b>退出后需重新通过微信或账号登录</div><div class="act" onclick="{{ b.confirm }}">退出登录</div></div><div class="confirm-cancel" onclick="{{ b.close }}">取消</div></div>
+</sc-if>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>工作台</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg><span>审批</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { a: { sheet: false, toast: '' }, b: { sheet: false, toast: '' } };
+  timers = {};
+  set(k, patch) { this.setState(s => ({ [k]: { ...s[k], ...patch } })); }
+  build(k) {
+    return {
+      sheet: this.state[k].sheet, toast: this.state[k].toast,
+      open: () => this.set(k, { sheet: true }),
+      close: () => this.set(k, { sheet: false }),
+      confirm: () => {
+        this.set(k, { sheet: false, toast: '已退出登录' });
+        clearTimeout(this.timers[k]);
+        this.timers[k] = setTimeout(() => this.set(k, { toast: '' }), 2000);
+      }
+    };
+  }
+  componentWillUnmount() { Object.values(this.timers).forEach(clearTimeout); }
+  renderVals() { return { a: this.build('a'), b: this.build('b') }; }
+}
+</script>
+</body>
+</html>

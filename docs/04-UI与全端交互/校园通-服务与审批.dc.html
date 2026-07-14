@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:52px 24px;gap:48px;flex-wrap:wrap}
+.cap{display:flex;flex-direction:column;align-items:center;gap:14px;max-width:390px}
+.cap-lb{font-size:13px;color:#334155;font-weight:600}
+.cap-note{font-size:11.5px;color:#8494b5;text-align:center;line-height:1.6}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f9fafb;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+.scroll{flex:1;overflow:hidden;position:relative}
+.hd{position:relative;background:linear-gradient(135deg,#2563eb 0%,#4f8bff 100%);padding:0 16px 16px;overflow:hidden;flex-shrink:0}
+.sb{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 12px 6px;font-size:15px;font-weight:600;color:#fff;position:relative;z-index:2}
+.sb-r{display:flex;align-items:center;gap:6px}
+.navbar{height:40px;display:flex;align-items:center;justify-content:center;position:relative;z-index:2}
+.navbar b{font-size:17px;font-weight:600;color:#fff}
+.capsule{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:80px;height:30px;border-radius:15px;border:1px solid rgba(255,255,255,.5);display:flex;align-items:center}
+.capsule .c1{flex:1;display:flex;align-items:center;justify-content:center;gap:4px}
+.capsule .c1 i{width:4px;height:4px;border-radius:50%;background:#fff;display:block}
+.capsule .dv{width:1px;height:15px;background:rgba(255,255,255,.4)}
+.capsule .c2{flex:1;display:flex;align-items:center;justify-content:center}
+.capsule .ring{width:14px;height:14px;border-radius:50%;border:1.5px solid #fff;position:relative}
+.capsule .ring::after{content:'';position:absolute;inset:3px;border-radius:50%;border:1.5px solid #fff;border-right-color:transparent;border-bottom-color:transparent;transform:rotate(45deg)}
+.search{position:relative;z-index:2;display:flex;align-items:center;gap:8px;background:#fff;border-radius:8px;padding:10px 14px;margin-top:6px;color:#9ca3af;font-size:13px}
+.mgbar{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 6px}
+.mgbar b{font-size:13px;color:#4b5563;font-weight:600}
+.mgbtn{display:flex;align-items:center;gap:5px;font-size:12.5px;color:#2563eb;cursor:pointer;font-weight:500;background:#eff6ff;padding:5px 11px;border-radius:15px}
+.card{background:#fff;border-radius:12px;padding:14px 14px 4px;margin:0 16px 12px;box-shadow:0 1px 3px rgba(17,24,39,.08)}
+.card-hd{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.card-hd b{font-size:15px;color:#1f2937;font-weight:600}
+.card-hd .mod{font-size:10px;color:#6b7280;background:#f3f4f6;border-radius:5px;padding:2px 7px;font-family:ui-monospace,Menlo,monospace}
+.card-hd .soonlab{margin-left:auto;font-size:11px;color:#d97706}
+.route{font-size:10px;color:#c3cbd6;margin:0 0 6px;font-family:ui-monospace,Menlo,monospace}
+.grid{display:flex;flex-wrap:wrap;padding-bottom:8px}
+.gi{width:25%;display:flex;flex-direction:column;align-items:center;gap:6px;padding:11px 0;position:relative;cursor:pointer}
+.gi-ic{width:46px;height:46px;border-radius:9px;background:#eff6ff;color:#2563eb;display:flex;align-items:center;justify-content:center;font-size:22px}
+.gi-lb{font-size:12px;color:#4b5563;text-align:center}
+.gi.soon .gi-ic{background:#f3f4f6;color:#9ca3af}
+.gi.soon .gi-lb{color:#9ca3af}
+.soonbadge{position:absolute;top:4px;left:calc(50% + 6px);font-size:9px;font-weight:600;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:0 4px;line-height:14px}
+.rm{position:absolute;top:6px;left:calc(50% + 8px);width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;font-weight:700;z-index:2}
+.gi.add .gi-ic{background:#fff;border:1.5px dashed #cbd5e1;color:#94a3b8}
+.gi.add .gi-lb{color:#94a3b8}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:76px;background:rgba(255,255,255,.96);border-top:1px solid #f3f4f6;display:flex;padding-bottom:16px;z-index:5}
+.tabi{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:#9ca3af}
+.tabi.on{color:#2563eb}
+.tabi span{font-size:10.5px}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:134px;height:5px;border-radius:3px;background:#111827;opacity:.7;z-index:6}
+.toast{position:absolute;left:50%;top:44%;transform:translateX(-50%);background:rgba(17,24,39,.9);color:#fff;font-size:12.5px;padding:11px 18px;border-radius:10px;max-width:280px;text-align:center;line-height:1.5;z-index:30}
+.subtabs{display:flex;gap:24px;padding:12px 16px 0;background:#fff}
+.subtab{position:relative;font-size:14px;color:#9ca3af;font-weight:500;padding-bottom:12px;cursor:pointer}
+.subtab.on{color:#1f2937;font-weight:600}
+.subtab .u{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:24px;height:3px;border-radius:2px;background:#2563eb}
+.subtab .bdg{position:absolute;top:-2px;right:-16px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.chips{display:flex;gap:8px;padding:14px 16px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{font-size:12px;padding:6px 14px;border-radius:16px;background:#fff;color:#6b7280;border:1px solid #e5e7eb;cursor:pointer;white-space:nowrap}
+.chip.on{background:#2563eb;color:#fff;border-color:#2563eb}
+.appr{background:#fff;border-radius:12px;padding:14px;margin:12px 16px 0;box-shadow:0 1px 3px rgba(17,24,39,.08)}
+.appr-top{display:flex;align-items:center;gap:11px}
+.appr-ava{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#4f8bff,#2563eb);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:16px;flex-shrink:0}
+.appr-who b{font-size:14px;color:#1f2937;font-weight:600}
+.appr-who p{margin:3px 0 0;font-size:11.5px;color:#9ca3af}
+.appr-tag{margin-left:auto;font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px}
+.appr-body{margin:12px 0 0;background:#f9fafb;border-radius:8px;padding:11px 12px;font-size:12.5px;color:#4b5563;line-height:1.6}
+.appr-act{display:flex;gap:10px;margin-top:12px}
+.appr-act button{flex:1;height:38px;border-radius:8px;font-size:13.5px;font-weight:600;border:none;cursor:pointer;font-family:inherit}
+.btn-pass{background:#2563eb;color:#fff}
+.btn-rej{background:#f3f4f6;color:#6b7280}
+</style></helmet>
+<div class="cap">
+<div class="cap-lb">学生端 · 服务大厅（底部第 2 个 Tab）</div>
+<div class="cap-note">每个中心的服务项由后端按租户下发的数组配置驱动（同 miniapp 的 quickServices schema：key / label / icon / route / status）。点「管理」可增删；后端新增模块，小程序自动出现。</div>
+<div class="phone"><div class="screen">
+<div class="hd">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>服务大厅</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>搜索服务、课程、老师</div>
+</div>
+<div class="scroll">
+<div class="mgbar"><b>全部服务</b><div class="mgbtn" onclick="{{ toggleManage }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"></path></svg>{{ manageLabel }}</div></div>
+<sc-for list="{{ centers }}" as="c" hint-placeholder-count="4">
+<div class="card">
+<div class="card-hd"><b>{{ c.title }}</b><span class="mod">{{ c.moduleCode }}</span><sc-if value="{{ c.building }}" hint-placeholder-val="{{ false }}"><span class="soonlab">建设中</span></sc-if></div>
+<p class="route">{{ c.basePath }}</p>
+<div class="grid">
+<sc-for list="{{ c.items }}" as="it" hint-placeholder-count="4">
+<div class="gi {{ it.cls }}" onclick="{{ it.onTap }}"><sc-if value="{{ it.showRemove }}" hint-placeholder-val="{{ false }}"><span class="rm">×</span></sc-if><sc-if value="{{ it.soon }}" hint-placeholder-val="{{ false }}"><span class="soonbadge">建设中</span></sc-if><div class="gi-ic">{{ it.icon }}</div><div class="gi-lb">{{ it.label }}</div></div>
+</sc-for>
+<sc-if value="{{ manage }}" hint-placeholder-val="{{ false }}"><div class="gi add" onclick="{{ c.onAdd }}"><div class="gi-ic">＋</div><div class="gi-lb">新增</div></div></sc-if>
+</div>
+</div>
+</sc-for>
+<div style="height:20px"></div>
+</div>
+<sc-if value="{{ toast }}" hint-placeholder-count="0"><div class="toast">{{ toast }}</div></sc-if>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>首页</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>服务</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+<div class="cap">
+<div class="cap-lb">教师端 · 审批中心（底部第 2 个 Tab）</div>
+<div class="cap-note">与学生端同一套蓝色主题。审批分类 chips 对齐岗位实习真实二级：周报批阅 / 打卡请假 / 申请与协议 / 风险处置。</div>
+<div class="phone"><div class="screen">
+<div class="hd">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>审批中心</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>搜索学生、审批单号</div>
+</div>
+<div class="subtabs"><div class="subtab {{ t.pendingCls }}" onclick="{{ t.setPending }}">待审批<span class="bdg">12</span><sc-if value="{{ t.isPending }}" hint-placeholder-val="{{ true }}"><span class="u"></span></sc-if></div><div class="subtab {{ t.doneCls }}" onclick="{{ t.setDone }}">已审批<sc-if value="{{ t.isDone }}" hint-placeholder-val="{{ false }}"><span class="u"></span></sc-if></div><div class="subtab {{ t.mineCls }}" onclick="{{ t.setMine }}">我发起的<sc-if value="{{ t.isMine }}" hint-placeholder-val="{{ false }}"><span class="u"></span></sc-if></div></div>
+<div class="scroll" style="background:#f9fafb">
+<div class="chips"><div class="chip {{ t.f0 }}" onclick="{{ t.setF0 }}">全部</div><div class="chip {{ t.f1 }}" onclick="{{ t.setF1 }}">周报批阅</div><div class="chip {{ t.f2 }}" onclick="{{ t.setF2 }}">打卡请假</div><div class="chip {{ t.f3 }}" onclick="{{ t.setF3 }}">申请与协议</div><div class="chip {{ t.f4 }}" onclick="{{ t.setF4 }}">风险处置</div></div>
+<div class="appr"><div class="appr-top"><div class="appr-ava">张</div><div class="appr-who"><b>张伟</b><p>软件2201班 · 学号 20220312</p></div><span class="appr-tag" style="background:#fef2f2;color:#dc2626">打卡请假</span></div><div class="appr-body">事由：家中有事需请假 2 天（06-14 至 06-15），共 4 学时，含《软件工程》1 次课。</div><div class="appr-act"><button class="btn-rej" onclick="{{ t.act }}">驳回</button><button class="btn-pass" onclick="{{ t.act }}">通过</button></div></div>
+<div class="appr"><div class="appr-top"><div class="appr-ava">刘</div><div class="appr-who"><b>刘洋</b><p>软件2201班 · 顶岗实习</p></div><span class="appr-tag" style="background:#ecfdf5;color:#059669">周报批阅</span></div><div class="appr-body">第 6 周实习周报：本周参与后端接口开发，完成登录模块联调，附周报文档 1 份。</div><div class="appr-act"><button class="btn-rej" onclick="{{ t.act }}">退回修改</button><button class="btn-pass" onclick="{{ t.act }}">通过</button></div></div>
+<div class="appr"><div class="appr-top"><div class="appr-ava">陈</div><div class="appr-who"><b>陈晓</b><p>软件2201班 · 岗位实习</p></div><span class="appr-tag" style="background:#eff6ff;color:#2563eb">申请与协议</span></div><div class="appr-body">三方实习协议待审：实习单位「湖南跃科信息工程有限公司」，岗位 后端开发实习生，实习期 6 个月。</div><div class="appr-act"><button class="btn-rej" onclick="{{ t.act }}">待完善</button><button class="btn-pass" onclick="{{ t.act }}">通过</button></div></div>
+<div style="height:20px"></div>
+</div>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>工作台</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg><span>审批</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    manage: false,
+    toast: '',
+    tab: 'pending',
+    filter: 0,
+    // 配置驱动：每个中心 = { title, moduleCode, basePath, building, items:[{key,label,icon,route,status}] }
+    centers: [
+      { title: '教务中心 · 学业过程', moduleCode: 'ACADEMIC', basePath: '/admin/academic', building: true, items: [
+        { key: 'schedule', label: '我的课表', icon: '📅', status: 'soon' },
+        { key: 'transcript', label: '课程成绩', icon: '📊', status: 'ready' },
+        { key: 'credits', label: '学分修读', icon: '▦', status: 'ready' },
+        { key: 'makeup', label: '补考重修', icon: '↻', status: 'ready' },
+        { key: 'warning', label: '学业预警', icon: '⚠', status: 'ready' },
+        { key: 'status', label: '学籍异动', icon: '📋', status: 'ready' },
+        { key: 'select', label: '网上选课', icon: '☑', status: 'soon' },
+        { key: 'plan', label: '培养方案', icon: '📖', status: 'soon' }
+      ] },
+      { title: '岗位实习中心', moduleCode: 'INTERNSHIP', basePath: '/admin/internship', building: false, items: [
+        { key: 'checkin', label: '实习打卡', icon: '📍', status: 'ready' },
+        { key: 'report', label: '实习周报', icon: '📝', status: 'ready' },
+        { key: 'agreement', label: '申请与协议', icon: '📄', status: 'ready' },
+        { key: 'enterprise', label: '企业岗位库', icon: '🏢', status: 'ready' },
+        { key: 'leave', label: '打卡请假', icon: '✈', status: 'ready' },
+        { key: 'score', label: '评价成绩', icon: '★', status: 'ready' },
+        { key: 'risk', label: '异常上报', icon: '⚠', status: 'ready' },
+        { key: 'appraisal', label: '实习鉴定', icon: '✓', status: 'ready' }
+      ] },
+      { title: '毕业设计中心', moduleCode: 'GRADUATION', basePath: '/admin/graduation', building: false, items: [
+        { key: 'topic', label: '毕设选题', icon: '📑', status: 'ready' },
+        { key: 'task', label: '任务书', icon: '📄', status: 'ready' },
+        { key: 'proposal', label: '开题报告', icon: '📝', status: 'ready' },
+        { key: 'process', label: '中期检查', icon: '✓', status: 'ready' },
+        { key: 'final', label: '成果提交', icon: '📤', status: 'ready' },
+        { key: 'defense', label: '答辩安排', icon: '🎓', status: 'ready' }
+      ] },
+      { title: '学工中心', moduleCode: 'STUDENT_AFFAIRS', basePath: '/admin/student-affairs', building: false, items: [
+        { key: 'leave', label: '我的请假', icon: '✈', status: 'ready' },
+        { key: 'dorm', label: '我的宿舍', icon: '🛏', status: 'ready' },
+        { key: 'funding', label: '奖助申请', icon: '★', status: 'ready' },
+        { key: 'talk', label: '谈心谈话', icon: '💬', status: 'ready' },
+        { key: 'profile', label: '学生画像', icon: '👤', status: 'ready' },
+        { key: 'orientation', label: '迎新报到', icon: '🎏', status: 'ready' }
+      ] }
+    ]
+  };
+  toastTimer = null;
+  showToast(msg) {
+    this.setState({ toast: msg });
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.setState({ toast: '' }), 2200);
+  }
+  componentWillUnmount() { clearTimeout(this.toastTimer); }
+  removeItem(ci, ii) {
+    this.setState(s => {
+      const centers = s.centers.map((c, i) => i !== ci ? c : { ...c, items: c.items.filter((_, j) => j !== ii) });
+      return { centers };
+    });
+    this.showToast('已移除该服务（后端同步下发配置）');
+  }
+  renderVals() {
+    const s = this.state;
+    const centers = s.centers.map((c, ci) => ({
+      title: c.title, moduleCode: c.moduleCode, basePath: c.basePath, building: c.building,
+      onAdd: () => this.showToast('从模块库选择服务加入「' + c.title + '」'),
+      items: c.items.map((it, ii) => {
+        const soon = it.status === 'soon';
+        return {
+          label: it.label, icon: it.icon, soon,
+          cls: soon ? 'soon' : '',
+          showRemove: s.manage,
+          onTap: s.manage
+            ? () => this.removeItem(ci, ii)
+            : () => this.showToast(soon ? (it.label + '：功能建设中，敬请期待') : ('打开 ' + it.label + ' → ' + c.basePath))
+        };
+      })
+    }));
+    const cls = (v) => s.tab === v ? 'on' : '';
+    const fc = (i) => s.filter === i ? 'on' : '';
+    const set = (patch) => () => this.setState(patch);
+    return {
+      manage: s.manage, manageLabel: s.manage ? '完成' : '管理',
+      toggleManage: () => this.setState(st => ({ manage: !st.manage })),
+      toast: s.toast,
+      centers,
+      t: {
+        isPending: s.tab === 'pending', isDone: s.tab === 'done', isMine: s.tab === 'mine',
+        pendingCls: cls('pending'), doneCls: cls('done'), mineCls: cls('mine'),
+        setPending: set({ tab: 'pending' }), setDone: set({ tab: 'done' }), setMine: set({ tab: 'mine' }),
+        f0: fc(0), f1: fc(1), f2: fc(2), f3: fc(3), f4: fc(4),
+        setF0: set({ filter: 0 }), setF1: set({ filter: 1 }), setF2: set({ filter: 2 }), setF3: set({ filter: 3 }), setF4: set({ filter: 4 }),
+        act: () => this.showToast('审批操作已提交')
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

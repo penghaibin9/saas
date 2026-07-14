@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:52px 24px;gap:56px;flex-wrap:wrap}
+.cap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.cap-lb{font-size:13px;color:#334155;font-weight:600}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f1f4f9;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+.scroll{flex:1;overflow:hidden;position:relative}
+.hd{position:relative;background:linear-gradient(160deg,#0e3a80 0%,#1a56be 78%,#2f76dd 130%);padding:0 18px 16px;overflow:hidden;flex-shrink:0}
+.hd::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 92%)}
+.sb{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 12px 6px;font-size:15px;font-weight:600;color:#fff;position:relative;z-index:2}
+.sb-r{display:flex;align-items:center;gap:6px}
+.navbar{height:40px;display:flex;align-items:center;justify-content:center;position:relative;z-index:2}
+.navbar b{font-size:17px;font-weight:700;color:#fff;letter-spacing:.02em}
+.capsule{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:80px;height:30px;border-radius:15px;border:1px solid rgba(255,255,255,.5);display:flex;align-items:center}
+.capsule .c1{flex:1;display:flex;align-items:center;justify-content:center;gap:4px}
+.capsule .c1 i{width:4px;height:4px;border-radius:50%;background:#fff;display:block}
+.capsule .dv{width:1px;height:15px;background:rgba(255,255,255,.4)}
+.capsule .c2{flex:1;display:flex;align-items:center;justify-content:center}
+.capsule .ring{width:14px;height:14px;border-radius:50%;border:1.5px solid #fff;position:relative}
+.capsule .ring::after{content:'';position:absolute;inset:3px;border-radius:50%;border:1.5px solid #fff;border-right-color:transparent;border-bottom-color:transparent;transform:rotate(45deg)}
+.search{position:relative;z-index:2;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.94);border-radius:11px;padding:10px 14px;margin-top:6px;color:#94a3b8;font-size:13px}
+.cats{display:flex;justify-content:space-between;padding:18px 22px 6px;background:#fff}
+.catq{display:flex;flex-direction:column;align-items:center;gap:8px;position:relative}
+.catq-ic{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#fff}
+.catq-lb{font-size:11.5px;color:#475569}
+.catq .bdg{position:absolute;top:-4px;right:2px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#e64c4c;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff}
+.c1c{background:linear-gradient(145deg,#2f76dd,#1a56be)}.c2c{background:linear-gradient(145deg,#12b886,#0ca678)}.c3c{background:linear-gradient(145deg,#f59f00,#f08c00)}.c4c{background:linear-gradient(145deg,#8a94a6,#6b7688)}.c5c{background:linear-gradient(145deg,#7c6bf5,#6549e8)}
+.listbar{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 8px}
+.listbar b{font-size:13px;color:#64748b;font-weight:600}
+.readall{display:flex;align-items:center;gap:4px;font-size:12px;color:#1a56be;cursor:pointer}
+.readall.done{color:#b6c0d0}
+.msgs{background:#fff}
+.msg{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid #f1f4f9;position:relative;cursor:pointer}
+.msg:last-child{border-bottom:none}
+.msg-ic{width:46px;height:46px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.msg-main{flex:1;min-width:0}
+.msg-top{display:flex;align-items:baseline;gap:8px}
+.msg-top b{font-size:14px;color:#0f1e3d;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-top span{font-size:11px;color:#b6c0d0;flex-shrink:0}
+.msg-main p{margin:5px 0 0;font-size:12.5px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{position:absolute;left:50px;top:12px;width:9px;height:9px;border-radius:50%;background:#e64c4c;border:1.5px solid #fff}
+.cbadge{position:absolute;left:48px;top:9px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#e64c4c;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff}
+.t-blue{background:#eaf1fe;color:#1a56be}.t-green{background:#e6f7f0;color:#0ca678}.t-amber{background:#fef3e2;color:#e8890c}.t-violet{background:#eeebfd;color:#6549e8}.t-gray{background:#eef1f6;color:#64748b}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:76px;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-top:1px solid #eef1f6;display:flex;padding-bottom:16px;z-index:5}
+.tabi{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:#9aa5b6}
+.tabi.on{color:#1a56be}
+.tabi span{font-size:10.5px;font-weight:500}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:134px;height:5px;border-radius:3px;background:#0f172a;opacity:.75;z-index:6}
+</style></helmet>
+<div class="stage">
+<div class="cap">
+<div class="cap-lb">学生端 · 消息中心（底部第 3 个 Tab）</div>
+<div class="phone"><div class="screen">
+<div class="hd">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>消息</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>搜索通知、消息</div>
+</div>
+<div class="scroll">
+<div class="cats">
+<div class="catq"><sc-if value="{{ aUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">3</span></sc-if><div class="catq-ic c1c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="catq-lb">通知公告</div></div>
+<div class="catq"><sc-if value="{{ aUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">2</span></sc-if><div class="catq-ic c1c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></div><div class="catq-lb">教务提醒</div></div>
+<div class="catq"><sc-if value="{{ aUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">1</span></sc-if><div class="catq-ic c2c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0116 5v2"></path></svg></div><div class="catq-lb">实习毕设</div></div>
+<div class="catq"><div class="catq-ic c4c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L16.2 3H11.8l-.4 2.5a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 005 12"></path></svg></div><div class="catq-lb">系统消息</div></div>
+</div>
+<div class="listbar"><b>最近消息</b><div class="readall {{ aReadCls }}" onclick="{{ setARead }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"></path></svg>全部已读</div></div>
+<div class="msgs">
+<div class="msg"><sc-if value="{{ aUnread }}" hint-placeholder-val="{{ true }}"><span class="dot"></span></sc-if><div class="msg-ic t-blue"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="msg-main"><div class="msg-top"><b>教务处通知</b><span>09:20</span></div><p>关于2026届毕业设计中期检查安排的通知</p></div></div>
+<div class="msg"><sc-if value="{{ aUnread }}" hint-placeholder-val="{{ true }}"><span class="dot"></span></sc-if><div class="msg-ic t-blue"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></div><div class="msg-main"><div class="msg-top"><b>选课提醒</b><span>昨天</span></div><p>下学期选课将于 06-20 10:00 开放，请及时选课</p></div></div>
+<div class="msg"><sc-if value="{{ aUnread }}" hint-placeholder-val="{{ true }}"><span class="dot"></span></sc-if><div class="msg-ic t-green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h4"></path></svg></div><div class="msg-main"><div class="msg-top"><b>实习管理</b><span>昨天</span></div><p>你的第 6 周实习周报即将截止（06-15 24:00）</p></div></div>
+<div class="msg"><div class="msg-ic t-amber"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0"></path><path d="M16 6a3 3 0 010 6"></path></svg></div><div class="msg-main"><div class="msg-top"><b>辅导员 · 王老师</b><span>周一</span></div><p>本周班会时间调整为周三下午，请相互转告</p></div></div>
+<div class="msg"><div class="msg-ic t-violet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><div class="msg-main"><div class="msg-top"><b>毕设导师 · 王建国</b><span>周一</span></div><p>你的开题报告已通过，请按计划推进中期工作</p></div></div>
+<div class="msg"><div class="msg-ic t-gray"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></div><div class="msg-main"><div class="msg-top"><b>系统消息</b><span>06-01</span></div><p>你的登录密码已于近期更新，请妥善保管</p></div></div>
+</div>
+</div>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>首页</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>服务</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+<div class="cap">
+<div class="cap-lb">教师端 · 消息中心（底部第 3 个 Tab）</div>
+<div class="phone"><div class="screen">
+<div class="hd">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>消息</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>搜索通知、学生、消息</div>
+</div>
+<div class="scroll">
+<div class="cats">
+<div class="catq"><sc-if value="{{ bUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">12</span></sc-if><div class="catq-ic c1c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg></div><div class="catq-lb">待办审批</div></div>
+<div class="catq"><sc-if value="{{ bUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">2</span></sc-if><div class="catq-ic c1c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="catq-lb">教务通知</div></div>
+<div class="catq"><sc-if value="{{ bUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">5</span></sc-if><div class="catq-ic c5c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0M16 6a3 3 0 010 6"></path></svg></div><div class="catq-lb">学生消息</div></div>
+<div class="catq"><div class="catq-ic c4c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L16.2 3H11.8l-.4 2.5a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 005 12"></path></svg></div><div class="catq-lb">系统消息</div></div>
+</div>
+<div class="listbar"><b>最近消息</b><div class="readall {{ bReadCls }}" onclick="{{ setBRead }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"></path></svg>全部已读</div></div>
+<div class="msgs">
+<div class="msg"><sc-if value="{{ bUnread }}" hint-placeholder-val="{{ true }}"><span class="cbadge">5</span></sc-if><div class="msg-ic t-green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg></div><div class="msg-main"><div class="msg-top"><b>审批提醒</b><span>09:35</span></div><p>5 份实习周报、3 条请假待你审批</p></div></div>
+<div class="msg"><sc-if value="{{ bUnread }}" hint-placeholder-val="{{ true }}"><span class="dot"></span></sc-if><div class="msg-ic t-blue"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="msg-main"><div class="msg-top"><b>教务处通知</b><span>08:50</span></div><p>请于本周五前完成学生实习成绩录入</p></div></div>
+<div class="msg"><sc-if value="{{ bUnread }}" hint-placeholder-val="{{ true }}"><span class="dot"></span></sc-if><div class="msg-ic t-violet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0M16 6a3 3 0 010 6"></path></svg></div><div class="msg-main"><div class="msg-top"><b>陈晓（软件2201）</b><span>昨天</span></div><p>王老师，我的毕设中期材料已提交，麻烦评阅</p></div></div>
+<div class="msg"><div class="msg-ic t-violet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 3v4M17 3v4M3 10h18"></path></svg></div><div class="msg-main"><div class="msg-top"><b>软件2201班级群</b><span>昨天</span></div><p>刘洋：老师，实习单位需要一份在校证明…</p></div></div>
+<div class="msg"><div class="msg-ic t-amber"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-6"></path></svg></div><div class="msg-main"><div class="msg-top"><b>教学质量中心</b><span>周一</span></div><p>本学期期中教学评价结果已发布，请查看</p></div></div>
+<div class="msg"><div class="msg-ic t-gray"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></div><div class="msg-main"><div class="msg-top"><b>系统消息</b><span>06-01</span></div><p>你的账号已在新设备登录，如非本人操作请修改密码</p></div></div>
+</div>
+</div>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>工作台</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg><span>审批</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { aRead: false, bRead: false };
+  renderVals() {
+    return {
+      aUnread: !this.state.aRead, bUnread: !this.state.bRead,
+      aReadCls: this.state.aRead ? 'done' : '', bReadCls: this.state.bRead ? 'done' : '',
+      setARead: () => this.setState({ aRead: true }),
+      setBRead: () => this.setState({ bRead: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

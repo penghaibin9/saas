@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics=""><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:56px 24px}
+.cap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.cap-lb{font-size:12.5px;color:#64748b;font-weight:500}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f4f7fb;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+/* hero */
+.hero{position:relative;height:344px;overflow:hidden;background:linear-gradient(162deg,#0e3a80 0%,#1a56be 56%,#2f76dd 122%);flex-shrink:0}
+.hero::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:34px 34px;mask:linear-gradient(#000,transparent 78%)}
+.orb1{position:absolute;right:-70px;top:-60px;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(255,255,255,.16),transparent 64%)}
+.orb2{position:absolute;left:-50px;top:120px;width:170px;height:170px;border-radius:50%;border:1px solid rgba(255,255,255,.18)}
+.skyline{position:absolute;left:0;right:0;bottom:0;width:100%;height:96px;opacity:.4}
+.sb{height:52px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 8px;font-size:15px;font-weight:600;color:#fff;position:relative;z-index:3}
+.wxnav{height:44px;display:flex;align-items:center;justify-content:center;position:relative;z-index:3}
+.wxnav b{font-size:16.5px;font-weight:600;color:#fff}
+.capsule{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:87px;height:32px;border-radius:16px;border:1px solid rgba(255,255,255,.5);display:flex;align-items:center}
+.capsule .c1{flex:1;display:flex;align-items:center;justify-content:center;gap:4px}
+.capsule .c1 i{width:4px;height:4px;border-radius:50%;background:#fff;display:block}
+.capsule .div{width:1px;height:16px;background:rgba(255,255,255,.4)}
+.capsule .c2{flex:1;display:flex;align-items:center;justify-content:center}
+.capsule .ring{width:15px;height:15px;border-radius:50%;border:1.6px solid #fff;position:relative}
+.capsule .ring::after{content:'';position:absolute;inset:3px;border-radius:50%;border:1.6px solid #fff;border-right-color:transparent;border-bottom-color:transparent;transform:rotate(45deg)}
+.brand-hero{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;margin-top:26px}
+.logo{width:82px;height:82px;border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 14px 34px -10px rgba(6,30,80,.5),0 0 0 6px rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.logo img{width:66px;height:66px;object-fit:contain}
+.appname{font-size:25px;font-weight:800;color:#fff;margin-top:18px;letter-spacing:.16em;padding-left:.16em}
+.appsub{font-size:13px;color:rgba(255,255,255,.82);margin-top:9px;letter-spacing:.02em}
+/* panel */
+.panel{position:relative;flex:1;background:#fff;border-radius:26px 26px 42px 42px;margin-top:-26px;z-index:4;padding:26px 30px 0;display:flex;flex-direction:column;box-shadow:0 -10px 30px -14px rgba(15,40,90,.18)}
+.feats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.feat{display:flex;flex-direction:column;align-items:center;gap:9px}
+.feat-ic{width:52px;height:52px;border-radius:16px;background:linear-gradient(150deg,#eef4ff,#e0ebfe);display:flex;align-items:center;justify-content:center;color:#1a56be}
+.feat-lb{font-size:12px;color:#4a5568;font-weight:500;white-space:nowrap;letter-spacing:-.01em}
+.welcome{margin:24px 0 4px;text-align:center}
+.welcome b{font-size:16px;color:#0f1e3d;font-weight:700}
+.welcome p{margin:7px 0 0;font-size:12.5px;color:#94a3b8;line-height:1.6}
+.spacer{flex:1}
+.btn-wx{width:100%;height:50px;border-radius:12px;background:#07c160;color:#fff;font-size:16px;font-weight:600;border:none;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:all .15s;font-family:inherit;box-shadow:0 8px 20px -8px rgba(7,193,96,.6)}
+.btn-wx:active{background:#06a552;transform:translateY(1px)}
+.btn-sms{width:100%;height:48px;margin-top:13px;border-radius:12px;background:#f1f5fb;color:#1a56be;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:all .15s;font-family:inherit}
+.btn-sms:active{background:#e6eef8}
+.agree{display:flex;align-items:flex-start;gap:7px;margin-top:20px;margin-bottom:34px;font-size:11.5px;color:#94a3b8;line-height:1.6;cursor:pointer;user-select:none}
+.abox{width:15px;height:15px;border-radius:50%;border:1.5px solid #cbd5e5;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;background:#fff;transition:all .15s}
+.abox.on{background:#07c160;border-color:#07c160}
+.abox svg{width:8px;height:8px}
+.agree a{color:#1a56be;text-decoration:none}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:9px;width:134px;height:5px;border-radius:3px;background:#0f172a;opacity:.85;z-index:6}
+.toast{position:absolute;left:50%;top:46%;transform:translateX(-50%);background:rgba(15,23,42,.88);color:#fff;font-size:13px;padding:12px 20px;border-radius:12px;max-width:270px;text-align:center;line-height:1.5;z-index:30;animation:tpop .2s ease}
+@keyframes tpop{from{opacity:0;transform:translate(-50%,4px)}to{opacity:1;transform:translate(-50%,0)}}
+.backdrop{position:absolute;inset:0;background:rgba(0,0,0,.42);z-index:20;animation:fade .2s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#f2f2f4;border-radius:18px 18px 42px 42px;z-index:25;padding:24px 22px 32px;animation:slideup .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes slideup{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet-hd{display:flex;align-items:center;gap:11px;padding-bottom:16px;border-bottom:1px solid rgba(15,23,42,.07)}
+.sheet-hd .lg{width:36px;height:36px;border-radius:10px;overflow:hidden;background:#fff;box-shadow:0 0 0 1px rgba(15,40,90,.06);display:flex;align-items:center;justify-content:center}
+.sheet-hd .lg img{width:30px;height:30px;object-fit:contain}
+.sheet-hd b{font-size:15px;color:#0f172a;font-weight:600}
+.sheet-hd i{font-style:normal;font-size:12px;color:#94a3b8;display:block;margin-top:2px}
+.sheet-title{font-size:13.5px;color:#0f172a;font-weight:600;margin:18px 0 12px}
+.phone-pick{display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:12px;padding:15px 16px}
+.phone-pick .num{font-size:16px;color:#0f172a;font-weight:600;letter-spacing:.02em}
+.phone-pick .rd{width:20px;height:20px;border-radius:50%;background:#07c160;display:flex;align-items:center;justify-content:center}
+.sheet-mng{font-size:12px;color:#576b95;margin-top:14px}
+.sheet-allow{width:100%;height:48px;border-radius:11px;background:#07c160;color:#fff;font-size:16px;font-weight:600;border:none;margin-top:22px;cursor:pointer;font-family:inherit;box-shadow:0 8px 18px -8px rgba(7,193,96,.55)}
+.sheet-allow:active{background:#06a552}
+.sheet-deny{width:100%;height:44px;background:none;border:none;color:#64748b;font-size:14px;margin-top:4px;cursor:pointer;font-family:inherit}
+</style></helmet>
+<div class="stage">
+<div class="cap">
+<div class="cap-lb">校园通 · 微信小程序登录（可点击体验授权流程）</div>
+<div class="phone"><div class="screen">
+<div class="hero">
+<div class="orb1"></div><div class="orb2"></div>
+<div class="sb"><span>9:41</span><div style="display:flex;align-items:center;gap:6px"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="wxnav"><b>校园通</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="div"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="brand-hero"><div class="logo"><img src="uploads/校园通跃科.png" alt="校园通"></div><div class="appname">校园通</div><div class="appsub">学生全程管理平台</div></div>
+<svg class="skyline" viewBox="0 0 390 96" fill="none" preserveAspectRatio="none"><g fill="rgba(255,255,255,.16)" stroke="rgba(255,255,255,.4)" stroke-width="1"><rect x="40" y="46" width="30" height="50"></rect><path d="M40 46l15-12 15 12"></path><rect x="86" y="58" width="26" height="38"></rect><rect x="128" y="34" width="30" height="62"></rect><path d="M128 34l15-11 15 11"></path><rect x="174" y="52" width="26" height="44"></rect><rect x="216" y="40" width="30" height="56"></rect><path d="M216 40l15-11 15 11"></path><rect x="262" y="60" width="26" height="36"></rect><rect x="304" y="48" width="30" height="48"></rect><path d="M304 48l15-12 15 12"></path></g><g stroke="rgba(255,255,255,.35)" stroke-width="1" stroke-dasharray="3 4"><path d="M20 30 C 120 8, 260 40, 372 14"></path></g></svg>
+</div>
+<div class="panel">
+<div class="feats"><div class="feat"><div class="feat-ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5.5A1.5 1.5 0 015.5 4H11v15H5.5A1.5 1.5 0 014 17.5z"></path><path d="M20 5.5A1.5 1.5 0 0018.5 4H13v15h5.5A1.5 1.5 0 0020 17.5z"></path></svg></div><div class="feat-lb">教务</div></div><div class="feat"><div class="feat-ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0"></path><path d="M16 6a3 3 0 010 6M17.5 19a5.5 5.5 0 00-3-4.9"></path></svg></div><div class="feat-lb">学工</div></div><div class="feat"><div class="feat-ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5.5A1.5 1.5 0 019.5 4h5A1.5 1.5 0 0116 5.5V7"></path><path d="M3 12h18"></path></svg></div><div class="feat-lb">实习</div></div><div class="feat"><div class="feat-ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><div class="feat-lb">毕业设计</div></div></div>
+<div class="welcome"><b>欢迎使用校园通</b><p>登录后即可查看课表成绩、实习与毕设进度<br>接收学校通知，掌上办事一站直达</p></div>
+<div class="spacer"></div>
+<button class="btn-wx" onclick="{{ tapWeixin }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M8.7 3C4.7 3 1.5 5.7 1.5 9c0 1.9 1 3.5 2.7 4.7l-.7 2 2.3-1.2c.8.2 1.5.3 2.3.3h.6a5.3 5.3 0 01-.2-1.4c0-3.2 3-5.7 6.8-5.7h.6C15.4 4.7 12.4 3 8.7 3zM6.3 7.6a.9.9 0 110-1.8.9.9 0 010 1.8zm4.8 0a.9.9 0 110-1.8.9.9 0 010 1.8z"></path><path d="M22.5 13.4c0-2.7-2.6-4.9-5.9-4.9s-5.9 2.2-5.9 4.9 2.6 4.9 5.9 4.9c.7 0 1.3-.1 2-.3l1.9 1-.5-1.7c1.5-1 2.5-2.4 2.5-3.9zm-7.8-.8a.7.7 0 110-1.5.7.7 0 010 1.5zm3.9 0a.7.7 0 110-1.5.7.7 0 010 1.5z"></path></svg>微信手机号快捷登录</button>
+<button class="btn-sms">手机号验证码登录</button>
+<div class="agree" onclick="{{ toggleAgree }}"><span class="abox {{ agreeCls }}"><sc-if value="{{ agree }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 10 10" fill="none" stroke="#fff" stroke-width="1.8"><path d="M1.5 5l2.4 2.4L8.5 2.8"></path></svg></sc-if></span><span>我已阅读并同意<a>《用户协议》</a>和<a>《隐私政策》</a>，并授权校园通获取本机号码</span></div>
+</div>
+<sc-if value="{{ toast }}" hint-placeholder-count="0"><div class="toast">{{ toast }}</div></sc-if>
+<sc-if value="{{ sheet }}" hint-placeholder-val="{{ false }}">
+<div class="backdrop" onclick="{{ closeSheet }}"></div>
+<div class="sheet">
+<div class="sheet-hd"><div class="lg"><img src="uploads/校园通跃科.png" alt=""></div><div><b>校园通</b><i>申请获取并验证你的手机号</i></div></div>
+<div class="sheet-title">选择手机号</div>
+<div class="phone-pick"><span class="num">185****6867</span><span class="rd"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#fff" stroke-width="1.8"><path d="M1.5 5l2.4 2.4L8.5 2.8"></path></svg></span></div>
+<div class="sheet-mng">管理已授权的手机号 ›</div>
+<button class="sheet-allow" onclick="{{ allow }}">允许</button>
+<button class="sheet-deny" onclick="{{ closeSheet }}">拒绝</button>
+</div>
+</sc-if>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { agree: false, sheet: false, toast: '' };
+  toastTimer = null;
+  showToast(msg) {
+    this.setState({ toast: msg });
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.setState({ toast: '' }), 2200);
+  }
+  componentWillUnmount() { clearTimeout(this.toastTimer); }
+  renderVals() {
+    return {
+      agree: this.state.agree,
+      agreeCls: this.state.agree ? 'on' : '',
+      sheet: this.state.sheet,
+      toast: this.state.toast,
+      toggleAgree: () => this.setState(s => ({ agree: !s.agree })),
+      tapWeixin: () => {
+        if (!this.state.agree) { this.showToast('请先勾选并同意《用户协议》和《隐私政策》'); return; }
+        this.setState({ sheet: true, toast: '' });
+      },
+      closeSheet: () => this.setState({ sheet: false }),
+      allow: () => { this.setState({ sheet: false }); this.showToast('登录成功，正在进入校园通…'); }
+    };
+  }
+}
+</script>
+</body>
+</html>
