@@ -68,6 +68,25 @@
               </li>
               <li v-if="!stages.length" class="lg-empty">暂无阶段记录</li>
             </ol>
+
+            <div class="lg-attach">
+              <div class="lg-attach__head">
+                <span>发展材料附件（授权下载留痕）</span>
+                <label class="lg-upload">
+                  <input type="file" class="lg-file" :disabled="uploading" @change="uploadMaterial" />
+                  <span>{{ uploading ? '上传中…' : '＋ 上传材料' }}</span>
+                </label>
+              </div>
+              <ul class="lg-attach__list">
+                <li v-for="a in attachments" :key="a.attachmentId">
+                  <span class="lg-att__name">📎 {{ a.fileName || ('附件#' + a.attachmentId) }}</span>
+                  <span class="lg-att__meta">{{ (a.uploadedAt || '').slice(0, 10) }}</span>
+                  <AppPermissionButton code="studentAffairs.league.view" size="sm" variant="secondary"
+                                       @click="downloadMaterial(a)">下载</AppPermissionButton>
+                </li>
+                <li v-if="!attachments.length" class="lg-empty">暂无材料附件</li>
+              </ul>
+            </div>
           </template>
         </AppSectionCard>
       </div>
@@ -94,7 +113,7 @@ export default {
     return {
       loading: true, saving: false, errorMessage: '', items: [], activeStage: '', stageFilters: STAGE_FILTERS,
       formVisible: false, form: { studentId: null, devType: 'PARTY', branchName: '', error: '' },
-      sel: null, stages: [], advStage: ''
+      sel: null, stages: [], advStage: '', attachments: [], uploading: false
     }
   },
   computed: {
@@ -134,9 +153,30 @@ export default {
       if (res.code === 0) { toast.success('已建档'); this.formVisible = false; this.load() } else m.error = res.message || '建档失败'
     },
     async select(d) {
-      this.sel = d; this.stages = []; this.advStage = ''
+      this.sel = d; this.stages = []; this.advStage = ''; this.attachments = []
       const res = await studentAffairsApi.getLeagueStages(d.devId)
       if (res.code === 0 && res.data) this.stages = res.data.items || []
+      this.loadAttachments()
+    },
+    async loadAttachments() {
+      if (!this.sel) return
+      const res = await studentAffairsApi.listAttachments('LEAGUE', this.sel.devId)
+      if (res.code === 0 && res.data) this.attachments = res.data.items || []
+    },
+    async uploadMaterial(ev) {
+      const file = ev.target.files && ev.target.files[0]
+      ev.target.value = ''
+      if (!file || !this.sel) return
+      this.uploading = true
+      const up = await studentAffairsApi.uploadAttachmentFile(file)
+      if (up.code !== 0) { this.uploading = false; toast.error(up.message || '上传失败'); return }
+      const res = await studentAffairsApi.linkAttachment({ bizType: 'LEAGUE', bizId: this.sel.devId, fileId: up.data.fileId })
+      this.uploading = false
+      if (res.code === 0) { toast.success('材料已上传'); this.loadAttachments() } else toast.error(res.message || '关联失败')
+    },
+    async downloadMaterial(a) {
+      const res = await studentAffairsApi.downloadAttachment(a.attachmentId, a.fileName || '党团材料')
+      if (res.code !== 0) toast.error(res.message || '无权下载或文件不存在')
     },
     async advance() {
       if (!this.advStage) return
@@ -182,6 +222,14 @@ export default {
 .lg-tl__stage { font-weight: 600; }
 .lg-tl__meta { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); }
 .lg-tl__mat { color: var(--color-primary); font-style: normal; margin-left: 6px; }
+.lg-attach { margin-top: var(--space-4); border-top: 1px dashed var(--border-light); padding-top: var(--space-3); }
+.lg-attach__head { display: flex; justify-content: space-between; align-items: center; font-size: var(--font-size-sm); font-weight: 600; margin-bottom: var(--space-2); }
+.lg-upload { position: relative; overflow: hidden; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: var(--radius-md); padding: 4px 12px; cursor: pointer; font-weight: 500; }
+.lg-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.lg-attach__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lg-attach__list li { display: flex; align-items: center; gap: var(--space-3); }
+.lg-att__name { flex: 1; }
+.lg-att__meta { font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .lg-tl__remark { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .lg-grid, .lg-layout { grid-template-columns: 1fr; } }
 </style>

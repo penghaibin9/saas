@@ -5,7 +5,7 @@
  * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功；业务错误透出后端 message。
  * 后端已就绪（backend/app/api/v1/student_affairs.py），数据全部真实按数据范围聚合。
  */
-import { request } from '@/services/http/client'
+import { request, requestBlob, requestUpload } from '@/services/http/client'
 
 function ok(data) {
   return { code: 0, data, message: 'ok' }
@@ -936,6 +936,31 @@ export const studentAffairsApi = {
   },
   getLeagueStages(devId) {
     return callStrict(() => request(`/student-affairs/party-league/dev/${devId}/stages`))
+  },
+
+  // ─────────────── 统一业务附件（授权下载 + 敏感审计） ───────────────
+  /** 上传附件字节（复用文件中心真实上传，返回 { fileId, fileName, ... }）。 */
+  async uploadAttachmentFile(file) {
+    try { return ok(await requestUpload('/files/upload', file)) } catch (e) { return toErr(e) }
+  },
+  /** 关联附件到业务记录。body: { bizType, bizId, fileId, note? }（需 biz 管理权限）。 */
+  linkAttachment(body) {
+    return callStrict(() => request('/student-affairs/attachments', { method: 'POST', body }))
+  },
+  /** 业务记录附件列表（脱敏；需 biz 查看权限）。 */
+  listAttachments(bizType, bizId) {
+    return callStrict(() => request('/student-affairs/attachments', { params: { bizType, bizId } }))
+  },
+  /** 授权下载附件（后端 require_permission + SENSITIVE_EXPORT 审计）。 */
+  async downloadAttachment(attachmentId, fileName = '附件') {
+    try {
+      const blob = await requestBlob(`/student-affairs/attachments/${attachmentId}/download`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fileName; document.body.appendChild(a); a.click()
+      a.remove(); URL.revokeObjectURL(url)
+      return ok(true)
+    } catch (e) { return toErr(e) }
   }
 }
 

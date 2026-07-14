@@ -19,7 +19,7 @@
         <table class="sa-table">
           <thead><tr><th>学生</th><th>学号</th><th>类型</th><th>数值</th><th>类目</th><th>来源</th><th>时间</th></tr></thead>
           <tbody>
-            <tr v-for="c in items" :key="c.creditId">
+            <tr v-for="c in items" :key="c.creditId" class="cl-row" @click="openReport(c)">
               <td><strong>{{ c.realName || ('学生#' + c.studentId) }}</strong></td>
               <td>{{ c.studentNo || '—' }}</td>
               <td>{{ typeLabel(c.creditType) }}</td>
@@ -29,6 +29,26 @@
               <td>{{ (c.grantedAt || '').slice(0, 10) || '—' }}</td>
             </tr>
             <tr v-if="!items.length"><td colspan="7" class="sa-empty">当前范围与筛选下暂无二课积分记录</td></tr>
+          </tbody>
+        </table>
+        <p class="cl-hint">点击任一行查看该生「加权成绩单」（按类目系数汇总）。</p>
+      </AppSectionCard>
+
+      <AppSectionCard v-if="report" :title="`个人成绩单（加权）· ${report.realName || ('学生#' + report.studentId)}`">
+        <div class="cl-report-total">
+          <span>原始合计 <b>{{ report.rawTotal }}</b></span>
+          <span class="cl-weighted">加权合计 <b>{{ report.weightedTotal }}</b></span>
+        </div>
+        <table class="sa-table">
+          <thead><tr><th>类目</th><th>原始合计</th><th>系数</th><th>加权后</th></tr></thead>
+          <tbody>
+            <tr v-for="row in (report.byCategoryWeighted || [])" :key="row.key">
+              <td>{{ row.key }}</td>
+              <td>{{ row.rawValue }}</td>
+              <td>×{{ row.weight }}</td>
+              <td><b>{{ row.value }}</b></td>
+            </tr>
+            <tr v-if="!(report.byCategoryWeighted || []).length"><td colspan="4" class="sa-empty">该生暂无类目积分</td></tr>
           </tbody>
         </table>
       </AppSectionCard>
@@ -50,7 +70,7 @@ export default {
   name: 'SecondClassLedgerView',
   components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard },
   data() {
-    return { loading: true, errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS }
+    return { loading: true, errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS, report: null }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -76,6 +96,12 @@ export default {
       this.loading = false
     },
     setType(k) { if (this.activeType === k) return; this.activeType = k; this.load() },
+    async openReport(c) {
+      if (!c || !c.studentId) return
+      const res = await studentAffairsApi.getSecondClassReport(c.studentId)
+      if (res.code === 0 && res.data) this.report = res.data
+      else this.errorMessage = res.message || '成绩单加载失败'
+    },
     typeLabel(t) { return TYPE[t] || t },
     sourceLabel(s) { return ({ ACTIVITY: '活动确认', MANUAL_ADJUST: '手工调整', VOLUNTEER_RECORD: '志愿补录' })[s] || s || '—' }
   }
@@ -91,5 +117,10 @@ export default {
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .cl-remark { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.cl-row { cursor: pointer; }
+.cl-row:hover { background: var(--bg-hover, rgba(0,0,0,0.03)); }
+.cl-hint { color: var(--text-tertiary); font-size: var(--font-size-sm); margin-top: var(--space-2); }
+.cl-report-total { display: flex; gap: var(--space-5); margin-bottom: var(--space-3); font-size: var(--font-size-md); }
+.cl-report-total .cl-weighted b { color: var(--color-primary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 </style>

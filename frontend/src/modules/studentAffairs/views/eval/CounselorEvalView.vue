@@ -44,13 +44,17 @@
 
       <AppSectionCard title="考评记录（按总分排名）">
         <table class="sa-table">
-          <thead><tr><th>#</th><th>周期</th><th>辅导员</th><th>总分</th><th>状态</th><th>申诉</th><th>操作</th></tr></thead>
+          <thead><tr><th>#</th><th>周期</th><th>辅导员</th><th>总分</th><th>加权总分</th><th>状态</th><th>申诉</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="(e, idx) in evals" :key="e.evalId">
               <td>{{ idx + 1 }}</td>
               <td>{{ e.periodCode }}</td>
               <td><strong>{{ e.counselorName || e.counselorKey }}</strong></td>
-              <td><b>{{ e.totalScore != null ? e.totalScore : '—' }}</b></td>
+              <td>{{ e.totalScore != null ? e.totalScore : '—' }}</td>
+              <td>
+                <b v-if="e.weightedTotalScore != null" title="按指标权重加权平均 Σ得分×权重/Σ权重">{{ e.weightedTotalScore }}</b>
+                <span v-else class="ce-muted" title="指标未配权重，回退原始总分">—</span>
+              </td>
               <td><StatusTag :type="e.status === 'PUBLISHED' ? 'success' : 'default'" :label="e.statusLabel || e.status" dot /></td>
               <td>
                 <StatusTag v-if="e.appealStatus !== 'NONE'" :type="e.appealStatus === 'SUBMITTED' ? 'warning' : 'processing'" :label="e.appealStatusLabel" dot />
