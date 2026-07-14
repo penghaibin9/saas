@@ -194,6 +194,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '活动统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
       {
+        path: 'activity/credit-appeals',
+        name: 'student-affairs-credit-appeals',
+        component: () => import('@/modules/studentAffairs/views/activity/CreditAppealView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '第二课堂积分申诉', requiresAuth: true, permissionKey: 'studentAffairs.activity.view' }
+      },
+      {
         path: 'activity/volunteer',
         name: 'student-affairs-volunteer',
         component: () => import('@/modules/studentAffairs/views/activity/VolunteerRecordView.vue'),

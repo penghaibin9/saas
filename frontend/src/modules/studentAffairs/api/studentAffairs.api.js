@@ -730,6 +730,20 @@ export const studentAffairsApi = {
   getActivityStats() {
     return callStrict(() => request('/student-affairs/activity-stats'))
   },
+  /** 第二课堂积分申诉列表。 */
+  getCreditAppeals({ status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/second-class/appeals', { params }))
+  },
+  /** 提交积分申诉。body: { studentId, appealType?, claimCreditType?, claimValue?, activityId?, reason } */
+  submitCreditAppeal(body) {
+    return callStrict(() => request('/student-affairs/second-class/appeals', { method: 'POST', body }))
+  },
+  /** 积分申诉审核。action: APPROVE/REJECT。 */
+  reviewCreditAppeal(appealId, action, opinion = '') {
+    return callStrict(() => request(`/student-affairs/second-class/appeals/${appealId}/review`, { method: 'POST', body: { action, opinion } }))
+  },
   /** 志愿时长补录列表。 */
   getVolunteerRecords({ status = '', page = 1, pageSize = 100 } = {}) {
     const params = { page, pageSize }
