@@ -337,7 +337,10 @@ export const NAV_PLAN = [
       I('教室资源', '/admin/academic-affairs/classrooms', 'academicAffairs.classroom.view'),
       ...P('实训室资源', '设备资源', '教室预约', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')
     ]),
-    mod('aa-evaluation', '教学评价', null, P('评教批次', '学生评教', '教师自评', '同行评价', '督导评价', '评价结果', '评价申诉', '评价统计', '评价归档')),
+    mod('aa-evaluation', '教学评价', '/admin/academic-affairs/evaluation', [
+      I('评教控制台（批次/结果分级/申诉审核）', '/admin/academic-affairs/evaluation', 'academicAffairs.evaluation.view'),
+      ...P('学生评教(小程序)', '教师自评', '同行评价', '督导评价', '评价统计', '评价归档')
+    ]),
     mod('aa-quality', '教学质量', null, P('督导听课', '巡课记录', '教学检查', '教学事故', '质量整改', '整改跟进', '质量报告', '质量统计', '质量归档')),
     mod('aa-archive', '教务归档', null, P('学籍归档', '注册归档', '异动归档', '培养方案归档', '教学任务归档', '课表归档', '考务归档', '成绩归档', '毕业资格归档', '归档缺失提醒', '批量归档', '归档导出')),
     mod('aa-stats', '教务统计', '/admin/academic-affairs/stats', [

@@ -559,4 +559,25 @@ export const academicAffairsSchedulingApi = {
   conflictReport(batchId) { return call(() => request(`${BASE}/scheduling/batches/${batchId}/conflict-report`)) }
 }
 
+/* ═══════════ 教学评价（/academic-affairs/evaluation/*） ═══════════ */
+export const academicAffairsEvaluationApi = {
+  listBatches(params = {}) { return callList(`${BASE}/evaluation/batches`, params) },
+  getBatch(id) { return call(() => request(`${BASE}/evaluation/batches/${id}`)) },
+  createBatch(body) { return call(() => request(`${BASE}/evaluation/batches`, { method: 'POST', body })) },
+  genTasks(id, teachingTaskIds) { return call(() => request(`${BASE}/evaluation/batches/${id}/tasks`, { method: 'POST', body: { teachingTaskIds } })) },
+  listTasks(id, params = {}) { return call(() => request(`${BASE}/evaluation/batches/${id}/tasks`, { params })) },
+  publish(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/publish`, { method: 'POST' })) },
+  open(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/open`, { method: 'POST' })) },
+  closeScore(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/close-score`, { method: 'POST' })) },
+  publishResults(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/publish-results`, { method: 'POST' })) },
+  archive(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/archive`, { method: 'POST' })) },
+  submit(body) { return call(() => request(`${BASE}/evaluation/submit`, { method: 'POST', body })) },
+  results(id, params = {}) { return callList(`${BASE}/evaluation/batches/${id}/results`, params) },
+  myResults(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/my-results`)) },
+  submitAppeal(resultId, reason) { return call(() => request(`${BASE}/evaluation/appeals`, { method: 'POST', body: { resultId, reason } })) },
+  listAppeals(params = {}) { return callList(`${BASE}/evaluation/appeals`, params) },
+  reviewAppeal(id, action, reason = '') { return call(() => request(`${BASE}/evaluation/appeals/${id}/review`, { method: 'POST', body: { action, reason } })) },
+  stats(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/stats`)) }
+}
+
 export default academicAffairsApi

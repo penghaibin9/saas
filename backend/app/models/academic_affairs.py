@@ -897,3 +897,86 @@ class AaTeacherAvailability(PKMixin, TenantMixin, CommonMixin, Base):
 
     __table_args__ = (UniqueConstraint("tenant_id", "teacher_key", "term_id", "weekday", "slot_no",
                                        name="uk_aa_teacher_avail"),)
+
+
+# ═══════════ 教学评价组（13B；评教批次6态 + 4类评价 + 结果均分分级 + 申诉两级；学生评教匿名不存身份）═══════════
+
+
+class AaEvaluationBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """评教批次（6 态 DRAFT/PUBLISHED/OPEN/CLOSED/RESULT_READY/ARCHIVED）。含问卷模板 JSON + 匿名开关 + 窗口。"""
+    __tablename__ = "t_aa_evaluation_batch"
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    scope_json: Mapped[str | None] = mapped_column(String(2000), comment="应评范围 {collegeIds,majorIds,courseIds}")
+    template_json: Mapped[str | None] = mapped_column(String(4000), comment="问卷题目JSON(客观5级量表+主观)")
+    anonymous: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="学生评教是否匿名")
+    window_start: Mapped[datetime | None] = mapped_column(DateTime)
+    window_end: Mapped[datetime | None] = mapped_column(DateTime)
+    result_published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/PUBLISHED/OPEN/CLOSED/RESULT_READY/ARCHIVED")
+
+
+class AaEvaluationTask(PKMixin, TenantMixin, CommonMixin, Base):
+    """应评任务（挂教学任务，按评价类型）。evaluator_type STUDENT/SELF/PEER/SUPERVISOR。PENDING/SUBMITTED。"""
+    __tablename__ = "t_aa_evaluation_task"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teaching_task_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    course_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    class_id: Mapped[int | None] = mapped_column(BigInteger)
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="被评教师")
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    evaluator_type: Mapped[str] = mapped_column(String(20), nullable=False, default="STUDENT", index=True,
+                                                comment="STUDENT/SELF/PEER/SUPERVISOR")
+    evaluator_key: Mapped[str | None] = mapped_column(String(100), index=True,
+                                                      comment="评价人(SELF/PEER/SUPERVISOR记;STUDENT匿名不记具体学生)")
+    submitted_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="学生类:已提交人数")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/SUBMITTED")
+
+
+class AaEvaluationRecord(PKMixin, TenantMixin, CommonMixin, Base):
+    """评价记录。学生评教匿名：不存 evaluator_id，仅存答卷与得分（D-04 架构级匿名）。"""
+    __tablename__ = "t_aa_evaluation_record"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    task_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    evaluator_type: Mapped[str] = mapped_column(String(20), nullable=False, default="STUDENT")
+    answers_json: Mapped[str | None] = mapped_column(String(4000), comment="答卷JSON")
+    objective_score: Mapped[float | None] = mapped_column(Numeric(5, 2), comment="客观题均分")
+    comment: Mapped[str | None] = mapped_column(String(1000), comment="主观评语")
+
+
+class AaEvaluationResult(PKMixin, TenantMixin, CommonMixin, Base):
+    """评价结果（教师×课程维度）。仅按学生评教均分分级 EXCELLENT/GOOD/PASS/NEED_IMPROVE（D-06 不加权）。"""
+    __tablename__ = "t_aa_evaluation_result"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teaching_task_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    student_avg: Mapped[float | None] = mapped_column(Numeric(5, 2), comment="学生评教均分")
+    student_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    level: Mapped[str | None] = mapped_column(String(20), index=True,
+                                              comment="EXCELLENT/GOOD/PASS/NEED_IMPROVE")
+    published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否已对教师发布")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "teaching_task_id", name="uk_aa_eval_result"),)
+
+
+class AaEvaluationAppeal(PKMixin, TenantMixin, CommonMixin, Base):
+    """评价申诉（教师对本人结果，两级 学院初审→教务终审）。SUBMITTED/COLLEGE_REVIEW/RESOLVED/REJECTED。"""
+    __tablename__ = "t_aa_evaluation_appeal"
+
+    result_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    reason: Mapped[str | None] = mapped_column(String(1000))
+    review_reason: Mapped[str | None] = mapped_column(String(1000))
+    current_node: Mapped[str | None] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/COLLEGE_REVIEW/RESOLVED/REJECTED")
