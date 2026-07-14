@@ -189,6 +189,52 @@ def test_m10_dorm_building_scope(client, db_mode):
     assert a in bids and all(b["buildingName"] == "紫荆A" for b in dorm_bs)
 
 
+def test_m11_dorm_write_scope_blocks_cross_building(client, db_mode):
+    """写操作楼栋范围：宿管(dorm01限A楼)不得对B楼做建楼/铺床/入住/退宿/调宿/检查/处置异常
+    （此前仅读接口做了范围过滤，写操作全部无校验——本用例回归修复）。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    dorm = _hdr(client, "dorm01")
+    a = client.post(f"{BASE}/dorm/buildings", headers=admin, json={
+        "buildingName": "紫荆A2", "genderLimit": "MALE", "managerTeacherKey": "dorm01",
+        "floors": 1, "roomsPerFloor": 1, "bedsPerRoom": 2}).json()["data"]["buildingId"]
+    b = client.post(f"{BASE}/dorm/buildings", headers=admin, json={
+        "buildingName": "梅苑B2", "genderLimit": "MALE", "managerTeacherKey": "other",
+        "floors": 1, "roomsPerFloor": 1, "bedsPerRoom": 2}).json()["data"]["buildingId"]
+
+    # 宿管对 B 楼铺床 → 403
+    assert client.post(f"{BASE}/dorm/buildings/{b}/generate", headers=dorm,
+                       json={"floors": 1, "roomsPerFloor": 1, "bedsPerRoom": 2}).status_code == 403
+    # 宿管对 A 楼铺床（自己负责）→ 200
+    assert client.post(f"{BASE}/dorm/buildings/{a}/generate", headers=dorm,
+                       json={"floors": 1, "roomsPerFloor": 1, "bedsPerRoom": 2}).status_code == 200
+
+    _, beds_a = _first_bed(client, admin, a)
+    _, beds_b = _first_bed(client, admin, b)
+    bed_a, bed_b = beds_a[0]["bedId"], beds_b[0]["bedId"]
+
+    # 宿管对 B 楼床位入住 → 403；对 A 楼床位入住 → 200
+    assert client.post(f"{BASE}/dorm/beds/{bed_b}/checkin", headers=dorm,
+                       json={"studentId": str(ids["sm"])}).status_code == 403
+    assert client.post(f"{BASE}/dorm/beds/{bed_a}/checkin", headers=dorm,
+                       json={"studentId": str(ids["sm"])}).status_code == 200
+    # 宿管对 A 楼床位退宿（自己负责）→ 200
+    assert client.post(f"{BASE}/dorm/beds/{bed_a}/checkout", headers=dorm).status_code == 200
+
+    # 宿管建 B 楼检查任务 → 403
+    assert client.post(f"{BASE}/dorm/check-tasks", headers=dorm, json={
+        "taskName": "夜查", "buildingId": str(b), "checkType": "NIGHT_ABSENCE"}).status_code == 403
+    # 宿管建 A 楼检查任务 → 200
+    task = client.post(f"{BASE}/dorm/check-tasks", headers=dorm, json={
+        "taskName": "夜查", "buildingId": str(a), "checkType": "NIGHT_ABSENCE"}).json()["data"]["taskId"]
+    assert task
+
+    # 调宿：目标床位在 B 楼（宿管无权限的楼栋）→ 提交调宿即 403
+    client.post(f"{BASE}/dorm/beds/{bed_a}/checkin", headers=admin, json={"studentId": str(ids["sf"])})
+    assert client.post(f"{BASE}/dorm/transfers", headers=dorm, json={
+        "studentId": str(ids["sf"]), "toBedId": str(bed_b), "reason": "测试跨楼越权"}).status_code == 403
+
+
 def test_m6_one_step_building(client, db_mode):
     _seed(db_mode)
     hdr = _hdr(client, "school_admin01")

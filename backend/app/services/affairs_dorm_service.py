@@ -37,6 +37,16 @@ def _audit(db, biz_type, biz_id, action, detail=""):
                              occurred_at=datetime.utcnow()))
 
 
+def _require_dorm_scope(db, building_id, user):
+    """写操作楼栋范围校验：DORM_MANAGER 只能操作本人负责楼栋，越界 403 NO_DATA_SCOPE。
+    此前仅读接口（occupancy_stats/list_transfers/list_check_tasks/list_exceptions/list_buildings）
+    做了范围过滤，写操作（建楼/铺床/入住/退宿/调宿/检查/处置异常）全部缺校验，宿管可越楼栋操作任意数据。"""
+    scope = _dorm_scope_building_ids(db, user)
+    if scope is not None and (building_id is None or int(building_id) not in scope):
+        raise AppException("NO_DATA_SCOPE", "该楼栋不在您的数据范围内")
+    return scope
+
+
 def _gender_ok(building_gender, student_gender) -> bool:
     if building_gender == "MIXED" or not building_gender:
         return True
@@ -143,6 +153,7 @@ def generate_layout(building_id, user, floors, rooms_per_floor, beds_per_room) -
         b = db.get(DormBuilding, int(building_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("楼栋不存在")
+        _require_dorm_scope(db, b.id, user)
         res = _generate(db, b, floors, rooms_per_floor, beds_per_room)
         db.commit()
         return {"buildingId": str(building_id), **res}
@@ -178,6 +189,7 @@ def list_rooms(building_id, user, floor=None, page=1, page_size=100):
     """房间列表（级联第2级：选层后列房，带空床数）。"""
     from app.models import DormBed, DormRoom
     with session() as db:
+        _require_dorm_scope(db, int(building_id), user)
         conds = [DormRoom.tenant_id == _tid(), DormRoom.building_id == int(building_id),
                  DormRoom.is_deleted.is_(False)]
         if floor is not None:
@@ -198,8 +210,11 @@ def list_rooms(building_id, user, floor=None, page=1, page_size=100):
 
 def list_beds(room_id, user):
     """床位列表（级联第3级：选房后列床，标空/已住）。"""
-    from app.models import DormBed, StudentProfile
+    from app.models import DormBed, DormRoom, StudentProfile
     with session() as db:
+        room = db.get(DormRoom, int(room_id))
+        if room:
+            _require_dorm_scope(db, room.building_id, user)
         rows = db.scalars(select(DormBed).where(
             DormBed.tenant_id == _tid(), DormBed.room_id == int(room_id),
             DormBed.is_deleted.is_(False)).order_by(DormBed.bed_no)).all()
@@ -250,6 +265,7 @@ def checkin(bed_id, user, student_id) -> dict:
         bed = db.get(DormBed, int(bed_id))
         if not bed or bed.is_deleted or bed.tenant_id != _tid():
             raise not_found("床位不存在")
+        _require_dorm_scope(db, bed.building_id, user)
         if bed.status != "VACANT":
             raise AppException("DATA_CONFLICT", "该床位已被占用或锁定")
         s = db.get(StudentProfile, int(student_id))
@@ -316,6 +332,7 @@ def checkout(bed_id, user) -> dict:
         bed = db.get(DormBed, int(bed_id))
         if not bed or bed.is_deleted or bed.tenant_id != _tid():
             raise not_found("床位不存在")
+        _require_dorm_scope(db, bed.building_id, user)
         if bed.status != "OCCUPIED":
             raise AppException("DATA_CONFLICT", "该床位无人入住")
         if bed.cs_dorm_record_id:
@@ -340,6 +357,7 @@ def submit_transfer(user, student_id, to_bed_id, reason="") -> dict:
         to_bed = db.get(DormBed, int(to_bed_id))
         if not to_bed or to_bed.is_deleted or to_bed.tenant_id != _tid():
             raise not_found("目标床位不存在")
+        _require_dorm_scope(db, to_bed.building_id, user)
         if to_bed.status != "VACANT":
             raise AppException("DATA_CONFLICT", "目标床位已被占用")
         from_bed = db.scalars(select(DormBed).where(
@@ -372,6 +390,10 @@ def review_transfer(transfer_id, user, action, reason="") -> dict:
         t = db.get(DormTransfer, int(transfer_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("调宿申请不存在")
+        if t.to_bed_id:
+            to_bed_for_scope = db.get(DormBed, int(t.to_bed_id))
+            if to_bed_for_scope:
+                _require_dorm_scope(db, to_bed_for_scope.building_id, user)
         if t.status not in TRANSFER_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该调宿当前状态不可审批")
         if action == "REJECT":
@@ -411,10 +433,11 @@ def review_transfer(transfer_id, user, action, reason="") -> dict:
 def create_check_task(body, user) -> dict:
     if (body.checkType or "HYGIENE") not in CHECK_TYPES:
         raise AppException("VALIDATION_ERROR", "检查类型非法")
+    building_id = int(body.buildingId) if getattr(body, "buildingId", None) else None
     with session() as db:
         from app.models import DormCheckTask
-        t = DormCheckTask(tenant_id=_tid(), task_name=body.taskName,
-                          building_id=(int(body.buildingId) if getattr(body, "buildingId", None) else None),
+        _require_dorm_scope(db, building_id, user)
+        t = DormCheckTask(tenant_id=_tid(), task_name=body.taskName, building_id=building_id,
                           check_type=(body.checkType or "HYGIENE"),
                           checker_key=getattr(body, "checkerKey", None), status="RUNNING")
         db.add(t)
@@ -434,6 +457,7 @@ def submit_check_record(task_id, user, body) -> dict:
         task = db.get(DormCheckTask, int(task_id))
         if not task or task.is_deleted or task.tenant_id != _tid():
             raise not_found("检查任务不存在")
+        _require_dorm_scope(db, task.building_id, user)
         room_id = int(body.roomId) if getattr(body, "roomId", None) else None
         rec = DormCheckRecord(tenant_id=_tid(), task_id=task.id, room_id=room_id, result=result,
                               issue_type=getattr(body, "issueType", None),
@@ -590,8 +614,11 @@ def _resolve_exception_student(db, exception_id, cs_student_id):
     if cs_student_id:
         cs = db.get(CsServiceStudent, int(cs_student_id))
         if cs and not cs.is_deleted:
+            # CsServiceStudent 行确实存在——即使它没连 student_id（未做新旧数据对齐），也不能把
+            # cs_student_id（CsServiceStudent 主键序列）误当 StudentProfile 主键去查，两套序列独立，
+            # 数值撞上会张冠李戴到无关学生。只在"根本查不到 CsServiceStudent 行"时才走下面的兜底。
             real_name, student_no, global_sid = cs.name or "", cs.student_no or "", cs.student_id
-        if not global_sid:
+        else:
             s = db.get(StudentProfile, int(cs_student_id))
             if s and not s.is_deleted:
                 real_name, student_no, global_sid = s.real_name, s.student_no, s.id
@@ -644,6 +671,8 @@ def handle_exception(exception_id, user, note=""):
         x = db.get(CsDormException, int(exception_id))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("异常记录不存在")
+        _, _, building_id = _resolve_exception_student(db, x.id, x.cs_student_id)
+        _require_dorm_scope(db, building_id, user)
         if x.status == "HANDLED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该异常已处置")
         x.status = "HANDLED"
