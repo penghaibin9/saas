@@ -12,6 +12,7 @@ from app.core.security import require_staff  # 仅敏感 reveal 等「服务层�
 from app.services import affairs_activity_service as activity_svc
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_club_service as club_svc
+from app.services import affairs_counselor_eval_service as ce_svc
 from app.services import affairs_league_service as league_svc
 from app.services import affairs_org_service as org_svc
 from app.services import affairs_archive_service as archive_svc
@@ -1399,6 +1400,77 @@ def credit_appeal_submit(body: CreditAppealBody,
 def credit_appeal_review(body: CreditAppealReviewBody, appealId: int = Path(...),
                          user=Depends(require_permission("studentAffairs.activity.confirm"))):
     return success(activity_svc.review_credit_appeal(appealId, body, user), message="已审核")
+
+
+# ═══════════ 辅导员考评（D 包·指标/评分/发布/申诉）═══════════
+
+class EvalIndicatorBody(BaseModel):
+    name: str = Field(..., min_length=1)
+    category: Optional[str] = None
+    weight: Optional[float] = None
+    maxScore: Optional[float] = None
+    sortOrder: Optional[int] = 0
+
+
+class EvalUpsertBody(BaseModel):
+    periodCode: str = Field(..., min_length=1)
+    counselorKey: str = Field(..., min_length=1)
+    counselorName: Optional[str] = None
+    scores: Optional[dict] = Field(default_factory=dict)
+    remark: Optional[str] = None
+
+
+class EvalAppealBody(BaseModel):
+    reason: str = Field(..., min_length=5)
+
+
+class EvalAppealReviewBody(BaseModel):
+    result: str = Field(..., description="UPHELD/ADJUSTED")
+    opinion: str = Field(..., min_length=5)
+    scores: Optional[dict] = None
+
+
+@router.get("/counselor-eval/indicators", summary="辅导员考评指标列表")
+def ce_indicators(status: Optional[str] = None,
+                  user=Depends(require_permission("studentAffairs.counselorEval.view"))):
+    return success({"items": ce_svc.list_indicators(user, status)})
+
+
+@router.post("/counselor-eval/indicators", summary="建考评指标")
+def ce_indicator_create(body: EvalIndicatorBody,
+                        user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
+    return success(ce_svc.create_indicator(body, user), message="已创建")
+
+
+@router.get("/counselor-eval/evals", summary="辅导员考评记录（按总分降序）")
+def ce_evals(periodCode: Optional[str] = None, status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+             user=Depends(require_permission("studentAffairs.counselorEval.view"))):
+    items, total = ce_svc.list_evals(user, periodCode, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/counselor-eval/evals", summary="录/改考评评分（发布前）")
+def ce_eval_upsert(body: EvalUpsertBody,
+                   user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
+    return success(ce_svc.upsert_eval(body, user), message="已保存")
+
+
+@router.post("/counselor-eval/evals/{evalId}/publish", summary="发布考评")
+def ce_eval_publish(evalId: int = Path(...),
+                    user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
+    return success(ce_svc.publish_eval(evalId, user), message="已发布")
+
+
+@router.post("/counselor-eval/evals/{evalId}/appeal", summary="辅导员对考评申诉")
+def ce_eval_appeal(body: EvalAppealBody, evalId: int = Path(...),
+                   user=Depends(require_permission("studentAffairs.counselorEval.appeal.create"))):
+    return success(ce_svc.submit_eval_appeal(evalId, body, user), message="申诉已提交")
+
+
+@router.post("/counselor-eval/evals/{evalId}/appeal-review", summary="考评申诉复核（维持/调整）")
+def ce_eval_appeal_review(body: EvalAppealReviewBody, evalId: int = Path(...),
+                          user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
+    return success(ce_svc.review_eval_appeal(evalId, body, user), message="已复核")
 
 
 @router.get("/volunteer/records", summary="志愿服务时长补录列表（数据范围）")
