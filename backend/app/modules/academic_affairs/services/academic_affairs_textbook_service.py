@@ -506,7 +506,8 @@ def list_fees(user, status=None, page=1, page_size=50):
         rows = q.order_by(AaTextbookFeeLedger.id.desc()).all()
         total = len(rows)
         return [{"feeId": str(f.id), "studentId": str(f.student_id), "textbookName": f.textbook_name,
-                 "amount": _fnum(f.amount), "status": f.status, "waiveReason": f.waive_reason}
+                 "amount": _fnum(f.amount), "paidAmount": _fnum(f.paid_amount), "status": f.status,
+                 "waiveReason": f.waive_reason}
                 for f in rows[(page - 1) * page_size: page * page_size]], total
 
 

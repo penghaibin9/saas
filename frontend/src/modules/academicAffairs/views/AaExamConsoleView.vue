@@ -35,6 +35,7 @@
             <div class="aaexam-actions">
               <AppButton v-if="current.status === 'DRAFT'" size="small" variant="ghost" @click="openAddCourse">+ 圈课</AppButton>
               <AppButton v-if="current.status === 'DRAFT'" size="small" variant="primary" @click="lc('confirmBatchCourses', '推进(课程确认完成)')">推进</AppButton>
+              <AppButton v-if="['COURSE_CONFIRMED','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openPatrol">巡考安排</AppButton>
               <AppButton v-if="current.status === 'COURSE_CONFIRMED'" size="small" variant="primary" @click="lc('publishBatch', '发布')">发布</AppButton>
               <AppButton v-if="current.status === 'PUBLISHED'" size="small" variant="warning" @click="lc('finishBatch', '结束考试')">结束</AppButton>
               <AppButton v-if="current.status === 'FINISHED'" size="small" variant="ghost" @click="lc('archiveBatch', '归档')">归档</AppButton>
@@ -120,11 +121,32 @@
         <ul v-else class="aaexam-rooms">
           <li v-for="r in arrangeRooms" :key="r.examRoomId">
             <span>考场{{ r.roomSeq }} · {{ r.classroomText }}（{{ r.plannedCount }}/{{ r.capacity }}）</span>
+            <button class="mp-link" @click="printSeating(r.examRoomId)">座位表/准考证/门贴</button>
           </li>
         </ul>
         <AppFormItem label="新增考场"><AppTextInput v-model="roomForm.classroomText" placeholder="考场名 如 A101" :disabled="saving" /></AppFormItem>
         <AppFormItem label="容量"><AppNumberInput v-model="roomForm.capacity" :min="1" :max="500" :disabled="saving" /></AppFormItem>
         <AppButton size="small" variant="ghost" :loading="saving" @click="submitRoom">添加考场</AppButton>
+      </div>
+    </AppDrawer>
+
+    <AppDrawer :visible="patrolVisible" title="巡考安排" @close="patrolVisible = false">
+      <div class="aaexam-form">
+        <div class="aaexam-section-title">已排巡考</div>
+        <EmptyState v-if="!patrols.length" title="暂无巡考" description="填写下方表单排巡考（同一人同时段/与监考冲突会拦截）" />
+        <ul v-else class="aaexam-rooms">
+          <li v-for="p in patrols" :key="p.patrolId">
+            <span>{{ p.teacherName || p.teacherKey }} · {{ p.patrolDate || '—' }} {{ p.startTime || '' }}-{{ p.endTime || '' }} · {{ p.areaScope || '全场' }}</span>
+          </li>
+        </ul>
+        <AppFormItem label="巡考教师工号" required><AppTextInput v-model="patrolForm.teacherKey" placeholder="教师 key/工号" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="教师姓名"><AppTextInput v-model="patrolForm.teacherName" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="巡考日期"><AppTextInput v-model="patrolForm.patrolDate" placeholder="YYYY-MM-DD" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="开始时间"><AppTextInput v-model="patrolForm.startTime" placeholder="HH:MM" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="结束时间"><AppTextInput v-model="patrolForm.endTime" placeholder="HH:MM" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="巡考区域"><AppTextInput v-model="patrolForm.areaScope" placeholder="如 教学楼A/全场" :disabled="saving" /></AppFormItem>
+        <AppInlineAlert v-if="patrolError" type="danger" :description="patrolError" />
+        <AppButton size="small" variant="primary" :loading="saving" @click="submitPatrol">排巡考</AppButton>
       </div>
     </AppDrawer>
 
@@ -157,6 +179,7 @@ export default {
       courseVisible: false, courseTaskId: '', courseError: '',
       schedVisible: false, schedCourse: null, sched: { examDate: '', startTime: '', endTime: '' },
       arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomText: '', capacity: 50 },
+      patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '',
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
       courseColumns: [
         { key: 'course', title: '课程/班级' }, { key: 'schedule', title: '考试时间' },
@@ -244,6 +267,28 @@ export default {
       this.saving = false
       if (res.code === 0) { toast.success('已添加考场'); const r = await api.listRooms(this.arrangeCourse.examCourseId); this.arrangeRooms = r.code === 0 ? r.data.items : [] }
       else toast.error(res.message)
+    },
+    printSeating(roomId) {
+      const url = this.$router.resolve({ path: '/admin/academic-affairs/exam/print/seating', query: { roomId } }).href
+      window.open(url, '_blank')
+    },
+    async openPatrol() {
+      this.patrolForm = { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }
+      this.patrolError = ''; this.patrolVisible = true
+      const res = await api.listPatrols(this.current.batchId)
+      this.patrols = res.code === 0 ? (res.data.items || []) : []
+    },
+    async submitPatrol() {
+      if (!this.patrolForm.teacherKey) { this.patrolError = '巡考教师工号必填'; return }
+      this.saving = true
+      const res = await api.addPatrol(this.current.batchId, this.patrolForm)
+      this.saving = false
+      if (res.code === 0) {
+        toast.success('已排巡考')
+        this.patrolForm = { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }
+        const r = await api.listPatrols(this.current.batchId)
+        this.patrols = r.code === 0 ? (r.data.items || []) : []
+      } else this.patrolError = res.message
     },
     onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
   }

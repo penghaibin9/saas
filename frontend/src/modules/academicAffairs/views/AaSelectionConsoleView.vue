@@ -6,6 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppButton variant="ghost" @click="runTimeTick">按时间批量开选/截止</AppButton>
       <AppButton variant="primary" @click="openCreate">新建批次</AppButton>
     </template>
 
@@ -172,6 +173,15 @@ export default {
     this.load()
   },
   methods: {
+    async runTimeTick() {
+      const res = await api.timeTick()
+      if (res.code === 0) {
+        const d = res.data || {}
+        toast.success(`已按时间处理：开选 ${d.opened != null ? d.opened : 0} / 截止 ${d.closed != null ? d.closed : 0}`)
+        await this.load()
+        if (this.current) await this.select(this.current)
+      } else toast.error(res.message)
+    },
     statusLabel(s) { return _LABEL[s] || s },
     statusType(s) {
       if (s === 'OPEN') return 'success'

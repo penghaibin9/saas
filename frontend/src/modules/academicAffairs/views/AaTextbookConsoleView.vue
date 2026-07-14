@@ -30,9 +30,10 @@
       <template v-else>
         <EmptyState v-if="!rows.length" title="暂无数据" :description="emptyHint" />
         <DataTable v-else :columns="columns" :rows="rows" :row-key="rowKey">
-          <template #cell-status="{ row }"><StatusTag type="primary" :label="row.status" dot /></template>
+          <template #cell-status="{ row }"><StatusTag :type="feeType(row.status)" :label="row.status" dot /></template>
           <template #cell-price="{ row }">¥{{ row.unitPrice != null ? row.unitPrice : '—' }}</template>
           <template #cell-amount="{ row }">¥{{ row.amount }}</template>
+          <template #cell-paid="{ row }">¥{{ row.paidAmount != null ? row.paidAmount : 0 }} / ¥{{ row.amount }}</template>
           <template #cell-ops="{ row }">
             <!-- 选用 -->
             <button v-if="tab === 'selection' && row.status === 'DRAFT'" class="mp-link" @click="op('submitSelection', row.selectionId)">提交</button>
@@ -44,8 +45,9 @@
             <button v-if="tab === 'order' && ['ORDERED','PARTIALLY_ARRIVED'].includes(row.status)" class="mp-link" @click="openArrival(row)">到货登记</button>
             <button v-if="tab === 'order' && row.status === 'ARRIVED'" class="mp-link" @click="op('archiveOrder', row.orderBatchId)">归档</button>
             <!-- 费用 -->
-            <button v-if="tab === 'fee' && row.status === 'UNPAID'" class="mp-link" @click="markFee(row.feeId, 'PAID')">标记已收</button>
-            <button v-if="tab === 'fee' && row.status === 'UNPAID'" class="mp-link" @click="waiveFee(row.feeId)">减免</button>
+            <button v-if="tab === 'fee' && ['UNPAID','PARTIAL'].includes(row.status)" class="mp-link" @click="markFee(row.feeId, 'PAID')">全额收款</button>
+            <button v-if="tab === 'fee' && ['UNPAID','PARTIAL'].includes(row.status)" class="mp-link" @click="openPartial(row)">部分收款</button>
+            <button v-if="tab === 'fee' && ['UNPAID','PARTIAL'].includes(row.status)" class="mp-link" @click="waiveFee(row.feeId)">减免</button>
           </template>
         </DataTable>
       </template>
@@ -80,6 +82,18 @@
       </div>
     </AppDrawer>
 
+    <AppDrawer :visible="partialVisible" title="部分收款" @close="partialVisible = false">
+      <div class="aatb-form" v-if="partialRow">
+        <AppFormItem label="教材"><span>{{ partialRow.textbookName }}</span></AppFormItem>
+        <AppFormItem label="应收 / 已收"><span>¥{{ partialRow.amount }} / ¥{{ partialRow.paidAmount != null ? partialRow.paidAmount : 0 }}</span></AppFormItem>
+        <AppFormItem label="本次收款" required><AppNumberInput v-model="partialAmount" :min="0" /></AppFormItem>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="partialVisible = false">取消</AppButton>
+        <AppButton variant="primary" @click="submitPartial">确认收款</AppButton>
+      </template>
+    </AppDrawer>
+
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
   </ModulePageShell>
 </template>
@@ -105,8 +119,9 @@ export default {
       tabs: [
         { key: 'catalog', label: '教材目录' }, { key: 'selection', label: '选用' },
         { key: 'review', label: '审核备案' }, { key: 'order', label: '征订到货' },
-        { key: 'fee', label: '费用台账' }, { key: 'stats', label: '统计' }
+        { key: 'fee', label: '费用台账' }, { key: 'stock', label: '库存' }, { key: 'stats', label: '统计' }
       ],
+      partialVisible: false, partialRow: null, partialAmount: 0,
       tbVisible: false, tbForm: { name: '', isbn: '', publisher: '', unitPrice: 0 }, formError: '',
       arrivalVisible: false, arrivalRow: null, arrivalItems: [], arrivalQty: {},
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
@@ -119,12 +134,13 @@ export default {
         selection: [{ key: 'courseName', title: '课程' }, { key: 'textbookName', title: '教材' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
         review: [{ key: 'batchName', title: '批次' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
         order: [{ key: 'batchName', title: '批次' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
-        fee: [{ key: 'textbookName', title: '教材' }, { key: 'amount', title: '金额' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }]
+        fee: [{ key: 'textbookName', title: '教材' }, { key: 'amount', title: '应收' }, { key: 'paid', title: '已收/应收' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
+        stock: [{ key: 'textbookName', title: '教材' }, { key: 'arrivedQty', title: '到货量' }, { key: 'distributedQty', title: '已发放' }, { key: 'stockQty', title: '库存' }]
       }
       return map[this.tab] || []
     },
     emptyHint() {
-      return { catalog: '点击新增教材', selection: '教材负责人按教学任务申报', review: '从已提交选用建审核批次', order: '从已备案选用生成征订', fee: '发放签收后自动生成' }[this.tab] || ''
+      return { catalog: '点击新增教材', selection: '教材负责人按教学任务申报', review: '从已提交选用建审核批次', order: '从已备案选用生成征订', fee: '发放签收后自动生成', stock: '征订到货并发放后统计' }[this.tab] || ''
     }
   },
   async created() {
@@ -134,11 +150,19 @@ export default {
   },
   methods: {
     rowKey(row) { return row.textbookId || row.selectionId || row.reviewBatchId || row.orderBatchId || row.feeId },
+    openPartial(row) { this.partialRow = row; this.partialAmount = 0; this.partialVisible = true },
+    async submitPartial() {
+      const amt = Number(this.partialAmount)
+      if (!amt || amt <= 0) { toast.error('收款金额须大于0'); return }
+      const res = await api.markFee(this.partialRow.feeId, 'PARTIAL', amt)
+      if (res.code === 0) { toast.success('已收款'); this.partialVisible = false; this.reload() } else toast.error(res.message)
+    },
     canAdvance(s) { return ['DRAFT', 'COLLEGE_REVIEWING', 'COLLEGE_APPROVED', 'ACADEMIC_APPROVED'].includes(s) },
     switchTab(k) { this.tab = k; this.reload() },
     async reload() {
       this.loading = true; this.error = ''
       if (this.tab === 'stats') { const r = await api.stats(); this.stats = r.code === 0 ? r.data : {}; this.loading = false; return }
+      if (this.tab === 'stock') { const r = await api.stock(); this.rows = r.code === 0 ? (r.data || []) : []; if (r.code !== 0) this.error = r.message; this.loading = false; return }
       let res
       if (this.tab === 'catalog') res = await api.listTextbooks({ pageSize: 100 })
       else if (this.tab === 'selection') res = await api.listSelections({ pageSize: 100 })
@@ -149,6 +173,7 @@ export default {
       else this.error = res.message
       this.loading = false
     },
+    feeType(s) { return s === 'PAID' ? 'success' : s === 'WAIVED' ? 'info' : s === 'PARTIAL' ? 'warning' : 'primary' },
     openTextbook() { this.tbForm = { name: '', isbn: '', publisher: '', unitPrice: 0 }; this.formError = ''; this.tbVisible = true },
     async submitTextbook() {
       if (!this.tbForm.name) { this.formError = '教材名称必填'; return }
