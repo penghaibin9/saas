@@ -612,3 +612,32 @@ def is_in_difficult_library(db, student_id) -> str | None:
         AidApply.status == "APPROVED", AidApply.is_deleted.is_(False)).order_by(
         AidApply.id.desc())).first()
     return x.final_level if x else None
+
+
+def aid_stats(user):
+    """困难认定统计（06 卡；仅聚合，数据范围过滤）：申请按状态/核定等级、批次数、通过率。"""
+    from app.models import AidApply, AidBatch, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        rows = db.scalars(select(AidApply).where(
+            AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False))).all()
+        by_status, by_level, total = {}, {}, 0
+        for x in rows:
+            if allowed is not None:
+                s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+                if not s or s.class_id not in allowed:
+                    continue
+            total += 1
+            by_status[x.status] = by_status.get(x.status, 0) + 1
+            if x.status == "APPROVED" and x.final_level:
+                by_level[x.final_level] = by_level.get(x.final_level, 0) + 1
+        approved = by_status.get("APPROVED", 0)
+        batches = db.scalars(select(AidBatch).where(
+            AidBatch.tenant_id == _tid(), AidBatch.is_deleted.is_(False))).all()
+        return {"total": total, "approved": approved,
+                "publicity": by_status.get("PUBLICITY", 0), "rejected": by_status.get("REJECTED", 0),
+                "batchCount": len(batches),
+                "approvalRate": round(approved / total, 3) if total else 0.0,
+                "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
+                "byLevel": [{"key": k, "count": v} for k, v in by_level.items()]}
