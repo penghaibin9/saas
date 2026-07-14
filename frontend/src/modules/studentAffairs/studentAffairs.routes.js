@@ -128,6 +128,24 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '发放台账', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
       },
       {
+        path: 'funding/work-study',
+        name: 'student-affairs-work-study',
+        component: () => import('@/modules/studentAffairs/views/funding/WorkStudyView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '勤工助学', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+      },
+      {
+        path: 'funding/loans',
+        name: 'student-affairs-loans',
+        component: () => import('@/modules/studentAffairs/views/funding/StudentLoanView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '助学贷款', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+      },
+      {
+        path: 'funding/fee-reductions',
+        name: 'student-affairs-fee-reductions',
+        component: () => import('@/modules/studentAffairs/views/funding/FeeReductionView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '减免与临补', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+      },
+      {
         path: 'funding/publicity',
         name: 'student-affairs-funding-publicity',
         component: () => import('@/modules/studentAffairs/views/funding/FundingPublicityView.vue'),

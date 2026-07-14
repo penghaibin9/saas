@@ -453,6 +453,48 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/funding/disbursements/stats'))
   },
 
+  // ─────────────── 奖助扩展：勤工/贷款/减免（/work-study /loans /fee-reductions） ───────────────
+  getWorkStudyPosts({ status = '' } = {}) {
+    const params = {}; if (status) params.status = status
+    return callStrict(() => request('/student-affairs/work-study/posts', { params }))
+  },
+  createWorkStudyPost(body) {
+    return callStrict(() => request('/student-affairs/work-study/posts', { method: 'POST', body }))
+  },
+  getWorkStudyRecords({ postId = '', status = '' } = {}) {
+    const params = {}; if (postId) params.postId = postId; if (status) params.status = status
+    return callStrict(() => request('/student-affairs/work-study/records', { params }))
+  },
+  applyWorkStudy(postId, studentId) {
+    return callStrict(() => request(`/student-affairs/work-study/posts/${postId}/apply`, { method: 'POST', body: { studentId } }))
+  },
+  actWorkStudy(recordId, action, reason = '') {
+    return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/action`, { method: 'POST', body: { action, reason } }))
+  },
+  getLoans({ status = '' } = {}) {
+    const params = {}; if (status) params.status = status
+    return callStrict(() => request('/student-affairs/loans', { params }))
+  },
+  registerLoan(body) {
+    return callStrict(() => request('/student-affairs/loans', { method: 'POST', body }))
+  },
+  advanceLoan(loanId) {
+    return callStrict(() => request(`/student-affairs/loans/${loanId}/advance`, { method: 'POST', body: {} }))
+  },
+  getFeeReductions({ itemType = '', status = '' } = {}) {
+    const params = {}; if (itemType) params.itemType = itemType; if (status) params.status = status
+    return callStrict(() => request('/student-affairs/fee-reductions', { params }))
+  },
+  submitFeeReduction(body) {
+    return callStrict(() => request('/student-affairs/fee-reductions', { method: 'POST', body }))
+  },
+  reviewFeeReduction(feeId, action, opinion = '') {
+    return callStrict(() => request(`/student-affairs/fee-reductions/${feeId}/review`, { method: 'POST', body: { action, opinion } }))
+  },
+  issueFeeReduction(feeId) {
+    return callStrict(() => request(`/student-affairs/fee-reductions/${feeId}/issue`, { method: 'POST', body: {} }))
+  },
+
   /** 违纪处分统计（按类型/状态聚合 + 投影对账）。 */
   getDisciplineStats() {
     return callStrict(() => request('/student-affairs/discipline/stats'))
