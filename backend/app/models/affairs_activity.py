@@ -108,6 +108,25 @@ class AffairsVolunteerRecord(PKMixin, TenantMixin, CommonMixin, Base):
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
+class AffairsCreditAppeal(PKMixin, TenantMixin, CommonMixin, Base):
+    """第二课堂积分申诉（D 包·项目/认定/积分/申诉）。学生对缺记/记错提申诉→审核 通过(补记/调整学分)/驳回。
+    appeal_type MISSING缺记/WRONG记错；status SUBMITTED/APPROVED/REJECTED。"""
+    __tablename__ = "t_affairs_credit_appeal"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    activity_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="涉及活动,可空")
+    appeal_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MISSING",
+                                             comment="MISSING缺记/WRONG记错")
+    claim_credit_type: Mapped[str] = mapped_column(String(30), nullable=False, default="SECOND_CLASS")
+    claim_value: Mapped[float | None] = mapped_column(Numeric(6, 2), comment="主张学时/积分")
+    reason: Mapped[str | None] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True)
+    result_credit_id: Mapped[int | None] = mapped_column(BigInteger, comment="通过后生成的学分行")
+    review_opinion: Mapped[str | None] = mapped_column(String(1000))
+    reviewer: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class AffairsCreditCategory(PKMixin, TenantMixin, CommonMixin, Base):
     """二课积分类目配置（学校可配；seed 默认五类：思想成长/社会实践/志愿公益/创新创业/文体活动）。"""
     __tablename__ = "t_affairs_credit_category"

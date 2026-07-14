@@ -71,6 +71,7 @@ from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F40
 from app.models.affairs_activity import (AffairsActivity,  # noqa: F401
                                          AffairsActivityCredit,
                                          AffairsActivitySignup,
+                                         AffairsCreditAppeal,
                                          AffairsCreditCategory,
                                          AffairsVolunteerRecord)
 from app.models.affairs_club import (AffairsClub,  # noqa: F401

@@ -606,3 +606,101 @@ def reject_volunteer(record_id, user, reason="") -> dict:
         db.commit(); db.refresh(r)
         s = db.get(StudentProfile, int(r.student_id))
         return _vol_row(r, s)
+
+
+# ═══════════ 第二课堂积分申诉（D 包·缺记/记错→审核补记/驳回）═══════════
+
+_L_CAPPEAL = {"SUBMITTED": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回"}
+
+
+def _cappeal_row(a, s=None) -> dict:
+    return {"appealId": str(a.id), "studentId": str(a.student_id),
+            "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+            "activityId": str(a.activity_id or ""), "appealType": a.appeal_type,
+            "claimCreditType": a.claim_credit_type,
+            "claimValue": float(a.claim_value) if a.claim_value is not None else None,
+            "reason": a.reason or "", "status": a.status,
+            "statusLabel": _L_CAPPEAL.get(a.status, a.status), "reviewOpinion": a.review_opinion or "",
+            "reviewer": a.reviewer or "", "reviewedAt": _iso(a.reviewed_at)}
+
+
+def submit_credit_appeal(body, user) -> dict:
+    from app.models import AffairsCreditAppeal, StudentProfile
+    sid = int(getattr(body, "studentId", 0) or 0)
+    atype = getattr(body, "appealType", "MISSING") or "MISSING"
+    if atype not in ("MISSING", "WRONG"):
+        raise AppException("VALIDATION_ERROR", "申诉类型非法")
+    reason = (getattr(body, "reason", "") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
+    with session() as db:
+        s = db.get(StudentProfile, sid) if sid else None
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("学生不存在")
+        a = AffairsCreditAppeal(tenant_id=_tid(), student_id=sid,
+                                activity_id=getattr(body, "activityId", None),
+                                appeal_type=atype,
+                                claim_credit_type=getattr(body, "claimCreditType", "SECOND_CLASS") or "SECOND_CLASS",
+                                claim_value=getattr(body, "claimValue", None), reason=reason,
+                                status="SUBMITTED", created_by=_uid_int(user))
+        db.add(a); db.flush()
+        _audit(db, a.id, "CREDIT_APPEAL_SUBMIT", atype)
+        db.commit(); db.refresh(a)
+        return _cappeal_row(a, s)
+
+
+def list_credit_appeals(user, status=None, page=1, page_size=50):
+    from app.models import AffairsCreditAppeal, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [AffairsCreditAppeal.tenant_id == _tid(), AffairsCreditAppeal.is_deleted.is_(False)]
+        if status:
+            conds.append(AffairsCreditAppeal.status == status)
+        rows = db.scalars(select(AffairsCreditAppeal).where(*conds).order_by(
+            AffairsCreditAppeal.id.desc())).all()
+        out = []
+        for a in rows:
+            s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append(_cappeal_row(a, s))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def review_credit_appeal(appeal_id, body, user) -> dict:
+    """审核：APPROVE→按主张补记学分(source=MANUAL_ADJUST)+置 APPROVED；REJECT→置 REJECTED(意见≥5)。"""
+    from app.models import AffairsCreditAppeal, AffairsActivityCredit, StudentProfile
+    action = (getattr(body, "action", "") or "").strip().upper()
+    if action not in ("APPROVE", "REJECT"):
+        raise AppException("VALIDATION_ERROR", "审核动作非法")
+    opinion = (getattr(body, "opinion", "") or "").strip()
+    if action == "REJECT" and len(opinion) < 5:
+        raise AppException("VALIDATION_ERROR", "驳回意见至少 5 字")
+    with session() as db:
+        a = db.get(AffairsCreditAppeal, int(appeal_id))
+        if not a or a.is_deleted or a.tenant_id != _tid():
+            raise not_found("申诉不存在")
+        if a.status != "SUBMITTED":
+            raise AppException("DATA_CONFLICT", "该申诉已审核")
+        if action == "APPROVE":
+            val = float(a.claim_value or 0)
+            if val <= 0:
+                raise AppException("DATA_CONFLICT", "主张学时须大于0方可补记")
+            c = AffairsActivityCredit(tenant_id=_tid(), student_id=a.student_id,
+                                      activity_id=a.activity_id, credit_type=a.claim_credit_type,
+                                      credit_value=val, source="MANUAL_ADJUST",
+                                      remark="积分申诉补记", created_by=_uid_int(user))
+            db.add(c); db.flush()
+            a.result_credit_id, a.status = c.id, "APPROVED"
+        else:
+            a.status = "REJECTED"
+        a.review_opinion, a.reviewer = opinion, _op()[0]
+        from datetime import datetime as _dt
+        a.reviewed_at, a.version = _dt.utcnow(), a.version + 1
+        _audit(db, a.id, "CREDIT_APPEAL_REVIEW", action)
+        db.commit(); db.refresh(a)
+        s = db.get(StudentProfile, int(a.student_id))
+        return _cappeal_row(a, s)

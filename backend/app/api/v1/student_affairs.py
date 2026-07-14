@@ -1361,6 +1361,40 @@ def activity_stats(user=Depends(require_permission("studentAffairs.stats.view"))
     return success(activity_svc.activity_stats(user))
 
 
+# ── 第二课堂积分申诉（D 包）──
+class CreditAppealBody(BaseModel):
+    studentId: int = Field(...)
+    appealType: Optional[str] = Field("MISSING", description="MISSING缺记/WRONG记错")
+    claimCreditType: Optional[str] = Field("SECOND_CLASS")
+    claimValue: Optional[float] = None
+    activityId: Optional[int] = None
+    reason: str = Field(..., min_length=5)
+
+
+class CreditAppealReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    opinion: Optional[str] = ""
+
+
+@router.get("/second-class/appeals", summary="第二课堂积分申诉列表")
+def credit_appeals(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                   user=Depends(require_permission("studentAffairs.activity.view"))):
+    items, total = activity_svc.list_credit_appeals(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/second-class/appeals", summary="提交积分申诉（缺记/记错，理由≥5字）")
+def credit_appeal_submit(body: CreditAppealBody,
+                         user=Depends(require_permission("studentAffairs.activity.create"))):
+    return success(activity_svc.submit_credit_appeal(body, user), message="申诉已提交")
+
+
+@router.post("/second-class/appeals/{appealId}/review", summary="积分申诉审核（通过补记/驳回）")
+def credit_appeal_review(body: CreditAppealReviewBody, appealId: int = Path(...),
+                         user=Depends(require_permission("studentAffairs.activity.confirm"))):
+    return success(activity_svc.review_credit_appeal(appealId, body, user), message="已审核")
+
+
 @router.get("/volunteer/records", summary="志愿服务时长补录列表（数据范围）")
 def volunteer_records(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
                       user=Depends(require_permission("studentAffairs.activity.view"))):
