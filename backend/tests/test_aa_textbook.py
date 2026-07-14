@@ -129,6 +129,41 @@ def test_t4_review_return(client, db_mode):
     assert r["code"] == 0 and r["data"]["status"] == "RETURNED"
 
 
+def test_t6_partial_fee_and_stock(client, db_mode):
+    """费用部分收款(PARTIAL→累计达应收转PAID) + 教材库存(到货-已发放)。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    tbid = client.post(f"{BASE}/textbooks", headers=admin,
+                       json={"name": "高数(七版)", "isbn": "9787040396000", "unitPrice": 50}).json()["data"]["textbookId"]
+    sid = client.post(f"{BASE}/textbooks/selections", headers=admin,
+                      json={"taskId": str(ids["task"]), "textbookId": str(tbid), "expectedQty": 10}).json()["data"]["selectionId"]
+    client.post(f"{BASE}/textbooks/selections/{sid}/submit", headers=admin)
+    rbid = client.post(f"{BASE}/textbooks/review-batches", headers=admin, json={"selectionIds": [str(sid)]}).json()["data"]["reviewBatchId"]
+    for _ in range(5):
+        client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin, json={"action": "APPROVE"})
+    obid = client.post(f"{BASE}/textbooks/order-batches", headers=admin, json={"batchName": "征订"}).json()["data"]["orderBatchId"]
+    client.post(f"{BASE}/textbooks/order-batches/{obid}/submit", headers=admin)
+    itemId = client.get(f"{BASE}/textbooks/order-batches/{obid}/items", headers=admin).json()["data"]["items"][0]["itemId"]
+    client.post(f"{BASE}/textbooks/order-items/{itemId}/arrival", headers=admin, json={"arrivedQty": 10})
+    dbid = client.post(f"{BASE}/textbooks/distribution-batches", headers=admin,
+                       json={"orderBatchId": str(obid), "classId": str(ids["class"]), "studentIds": [str(ids["student"])]}).json()["data"]["distributionBatchId"]
+    rid = client.get(f"{BASE}/textbooks/distribution-batches/{dbid}/records", headers=admin).json()["data"]["items"][0]["recordId"]
+    client.post(f"{BASE}/textbooks/distribution-records/{rid}/sign", headers=admin)
+    fid = client.get(f"{BASE}/textbooks/fee-ledger", headers=admin).json()["data"]["items"][0]["feeId"]
+    # 部分收款 20 → PARTIAL
+    r1 = client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 20}).json()
+    assert r1["data"]["status"] == "PARTIAL" and r1["data"]["paidAmount"] == 20.0
+    # 再收 30 → 累计50=应收 → PAID
+    r2 = client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 30}).json()
+    assert r2["data"]["status"] == "PAID"
+    # 超收拦截
+    assert client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 10}).status_code == 400
+    # 库存：到货10 - 已发放签收1 = 9
+    stock = client.get(f"{BASE}/textbooks/stock", headers=admin).json()["data"]["items"]
+    row = next(x for x in stock if x["textbookId"] == str(tbid))
+    assert row["arrivedQty"] == 10 and row["distributedQty"] == 1 and row["stockQty"] == 9
+
+
 def test_t5_student_cannot_manage_403(client, db_mode):
     _seed(db_mode)
     stu = _stu_token("书甲", "TB2401")

@@ -174,6 +174,57 @@ def test_s9_adjust_after_lock(client, db_mode):
     assert r["code"] == 0 and r["data"]["status"] == "DROPPED"
 
 
+def test_s11_prereq_and_passed_block(client, db_mode):
+    """④先修课程未过拦截 + ⑧已通过不可再选。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AcademicGrade, AcademicStudent
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    db = get_sessionmaker()()
+    # course1(职业素养选修) 设先修 = SEL002(人工智能导论)；学生未过 SEL002
+    c1 = db.query(AaCourse).filter(AaCourse.tenant_id == TID, AaCourse.course_code == "SEL001").first()
+    c1.prerequisite_codes_json = '["SEL002"]'
+    # 学生学业档案 + 一门已通过课程"体育"
+    acad = AcademicStudent(tenant_id=TID, student_id=ids["s1"], student_no="SEL2401", name="选甲",
+                           class_name="软件2401", college_name="软件学院")
+    db.add(acad); db.flush()
+    db.add(AcademicGrade(tenant_id=TID, acad_student_id=acad.id, course_name="职业素养选修", credit_value=2,
+                         score=85, pass_status="PASSED", source="PUBLISH", record_status="ACTIVE"))
+    db.commit(); db.close()
+    bid, scid = _make_open_batch(client, admin, ids["course1"], name="先修批次")
+    stu = _stu_token("选甲", "SEL2401")
+    # ⑧ 已通过"职业素养选修" → 400
+    assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
+                       json={"selectionCourseId": str(scid)}).status_code == 400
+    # 换一门有先修要求的课(course2 人工智能导论无先修,但 course1 有先修 SEL002 未过)——再建 course2 批次验证先修
+    bid2, scid2 = _make_open_batch(client, admin, ids["course2"], name="AI批次")
+    # course2 无先修、未通过 → 可选
+    assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
+                       json={"selectionCourseId": str(scid2)}).json()["code"] == 0
+
+
+def test_s12_time_tick_auto_open_close(client, db_mode):
+    from datetime import datetime, timedelta
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaSelectionBatch
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    # 建批次+课程+发布（PUBLISHED），设 select_start_at 已过
+    bid = client.post(f"{BASE}/selection/batches", headers=admin, json={"batchName": "定时批次"}).json()["data"]["batchId"]
+    client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+                json={"courseId": str(ids["course1"]), "capacity": 5, "minCapacity": 1})
+    client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin)
+    db = get_sessionmaker()()
+    b = db.query(AaSelectionBatch).filter(AaSelectionBatch.id == int(bid), AaSelectionBatch.tenant_id == TID).first()
+    b.select_start_at = datetime.utcnow() - timedelta(hours=1)
+    db.commit(); db.close()
+    # 时间触发 → 自动开选
+    r = client.post(f"{BASE}/selection/time-tick", headers=admin).json()
+    assert r["code"] == 0 and r["data"]["opened"] >= 1
+    assert client.get(f"{BASE}/selection/batches/{bid}", headers=admin).json()["data"]["status"] == "OPEN"
+
+
 def test_s10_low_enroll_cancel_and_reselect(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")

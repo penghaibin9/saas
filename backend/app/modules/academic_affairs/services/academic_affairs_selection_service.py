@@ -409,13 +409,39 @@ def student_courses(user, batch_id=None):
         return out
 
 
+def _passed_course_names(db, student):
+    """学生已通过(PASSED)的课程名集合（用于④先修/⑧重修判定）。"""
+    from app.models import AcademicGrade, AcademicStudent
+    acad = db.query(AcademicStudent).filter(AcademicStudent.tenant_id == _tid(),
+                                            AcademicStudent.student_id == student.id).first()
+    if not acad:
+        return set()
+    rows = db.query(AcademicGrade).filter(AcademicGrade.tenant_id == _tid(),
+                                          AcademicGrade.acad_student_id == acad.id,
+                                          AcademicGrade.pass_status == "PASSED",
+                                          AcademicGrade.record_status == "ACTIVE").all()
+    return {r.course_name for r in rows}
+
+
+def _task_slots(db, teaching_task_id):
+    """教学任务在已发布课表中的时段（供⑤课表冲突检测）。"""
+    from app.models import AaScheduleItem
+    if not teaching_task_id:
+        return []
+    rows = db.query(AaScheduleItem).filter(AaScheduleItem.tenant_id == _tid(),
+                                           AaScheduleItem.task_id == teaching_task_id,
+                                           AaScheduleItem.status == "EFFECTIVE",
+                                           AaScheduleItem.is_deleted.is_(False)).all()
+    return [(i.weekday, i.slot_no, i.start_week, i.end_week, i.week_parity) for i in rows]
+
+
 def _validate_enroll(db, batch, course, student, my_records, add_credit):
-    """选课校验（施工卡列 8 条，本期落地 5 条 + SUSPENDED 拦截；返回 None 表示通过，否则抛异常）。
-    已落：① 批次 OPEN、② 适用范围、③ 未修过该课程、⑥ 学分上限、⑦ 容量(在 enroll 内行锁扣减) + SUSPENDED 学籍拦截。
-    欠账（后续增强）：④ 先修课程、⑤ 课表时间冲突、⑧ 重修规则。"""
-    from app.models import StudentProfile
+    """选课八条校验（全部落地；返回 None 表示通过，否则抛异常）。
+    ① 批次 OPEN ② 适用范围 ③ 未修过(本批次重复) ④ 先修课程 ⑤ 课表时间冲突 ⑥ 学分上限 ⑦ 容量(行锁) ⑧ 重修规则 + SUSPENDED 学籍。"""
+    from app.models import AaCourse, AaSelectionCourse
+    from app.modules.academic_affairs.services.academic_affairs_schedule_service import _weeks_overlap
     from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
-    # ③ SUSPENDED/非在籍 → 403
+    # SUSPENDED/非在籍 → 403
     if not is_enrolled(getattr(student, "student_status", None)):
         raise no_data_scope("当前学籍状态不可选课")
     # ① 批次 OPEN
@@ -433,10 +459,39 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit):
             ok_class = (not scope.get("classIds")) or (str(student.class_id) in [str(x) for x in scope["classIds"]])
             if not (ok_grade and ok_major and ok_class):
                 raise AppException("VALIDATION_ERROR", "不在本批次适用范围内")
-    # ③(重复选) 未修过该课程（同批次内已有 SELECTED/LOCKED 到同 course_id）
+    # ③ 未修过该课程（同批次内已有 SELECTED/LOCKED 到同 course_id）
     for r in my_records:
         if r.course_id == course.course_id and r.status in (_REC_SELECTED, _REC_LOCKED):
             raise _conflict("已选过该课程")
+    passed = _passed_course_names(db, student)
+    tb = db.query(AaCourse).filter(AaCourse.id == course.course_id, AaCourse.tenant_id == _tid()).first()
+    # ⑧ 重修规则：非重修生已通过该课程不可再选（V1 选课无重修上下文，一律拦已通过课程）
+    if tb and tb.course_name in passed:
+        raise AppException("VALIDATION_ERROR", "该课程已通过，不可再选（重修请走重修报名）")
+    # ④ 先修课程：课程 prerequisite_codes_json 中所有先修课须已通过
+    if tb and tb.prerequisite_codes_json:
+        try:
+            pre_codes = json.loads(tb.prerequisite_codes_json) or []
+        except ValueError:
+            pre_codes = []
+        if pre_codes:
+            pre_names = {c.course_name for c in db.query(AaCourse).filter(
+                AaCourse.tenant_id == _tid(), AaCourse.course_code.in_([str(x) for x in pre_codes])).all()}
+            missing = pre_names - passed
+            if missing:
+                raise AppException("VALIDATION_ERROR", f"未满足先修课程要求：{', '.join(sorted(missing))}")
+    # ⑤ 课表时间冲突：目标课程时段 vs 本批次已选课程时段
+    target_slots = _task_slots(db, course.teaching_task_id)
+    if target_slots:
+        sel_course_ids = [r.selection_course_id for r in my_records if r.status in (_REC_SELECTED, _REC_LOCKED)]
+        if sel_course_ids:
+            my_tasks = db.query(AaSelectionCourse.teaching_task_id).filter(
+                AaSelectionCourse.id.in_(sel_course_ids), AaSelectionCourse.tenant_id == _tid()).all()
+            for (tt_id,) in my_tasks:
+                for (w1, s1, sw1, ew1, p1) in _task_slots(db, tt_id):
+                    for (w2, s2, sw2, ew2, p2) in target_slots:
+                        if w1 == w2 and s1 == s2 and _weeks_overlap(sw1, ew1, p1, sw2, ew2, p2):
+                            raise _conflict(f"与已选课程上课时间冲突（周{w1}第{s1}节）")
     # ⑥ 学分上限
     max_credits = _rule(db, batch, "maxCredits", 0)
     if max_credits and max_credits > 0:
@@ -618,6 +673,35 @@ def batch_stats(user, batch_id) -> dict:
                 "lowEnrollCount": len(low), "fullCount": len(full),
                 "recordCount": rec_total,
                 "lowEnrollCourses": [_course_dto(c) for c in low]}
+
+
+def run_time_tick(user):
+    """定时任务触发点：PUBLISHED 且到开选时间→OPEN；OPEN 且到截止时间→CLOSED（幂等，供 cron/调度调用）。"""
+    from app.models import AaSelectionBatch
+    with session() as db:
+        _require_manage_scope(_ctx(user, db))
+        now = datetime.utcnow()
+        opened = closed = 0
+        pub = db.query(AaSelectionBatch).filter(AaSelectionBatch.tenant_id == _tid(),
+                                                AaSelectionBatch.status == _BATCH_PUBLISHED,
+                                                AaSelectionBatch.select_start_at.isnot(None),
+                                                AaSelectionBatch.select_start_at <= now,
+                                                AaSelectionBatch.is_deleted.is_(False)).all()
+        for b in pub:
+            b.status = _BATCH_OPEN
+            _audit(db, b.id, "SELECTION_BATCH_AUTO_OPEN", "定时开选")
+            opened += 1
+        opn = db.query(AaSelectionBatch).filter(AaSelectionBatch.tenant_id == _tid(),
+                                                AaSelectionBatch.status == _BATCH_OPEN,
+                                                AaSelectionBatch.select_end_at.isnot(None),
+                                                AaSelectionBatch.select_end_at <= now,
+                                                AaSelectionBatch.is_deleted.is_(False)).all()
+        for b in opn:
+            b.status = _BATCH_CLOSED
+            _audit(db, b.id, "SELECTION_BATCH_AUTO_CLOSE", "定时截止")
+            closed += 1
+        db.commit()
+        return {"opened": opened, "closed": closed, "tickAt": now.isoformat()}
 
 
 def reselect_guide(user, batch_id):

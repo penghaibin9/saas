@@ -22,7 +22,8 @@
           <template #cell-status="{ row }"><StatusTag :type="mbType(row.status)" :label="mbLabel(row.status)" dot /></template>
           <template #cell-ops="{ row }">
             <button v-if="row.status === 'ARRANGED'" class="mp-link" @click="act('publishBatch', row.batchId, '发布')">发布</button>
-            <button v-if="row.status === 'SCORING'" class="mp-link" @click="act('finishBatch', row.batchId, '结束回写')">结束回写</button>
+            <button v-if="row.status === 'SCORING'" class="mp-link" @click="act('collegeReview', row.batchId, '学院审核')">学院审核</button>
+            <button v-if="row.status === 'REVIEWED'" class="mp-link" @click="act('finishBatch', row.batchId, '教务发布回写')">教务发布回写</button>
           </template>
         </DataTable>
       </div>
@@ -99,7 +100,7 @@ import { AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/c
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
-const _MBL = { DRAFT: '草稿', ARRANGED: '已编排', PUBLISHED: '已发布', SCORING: '录入中', FINISHED: '已结束' }
+const _MBL = { DRAFT: '草稿', ARRANGED: '已编排', PUBLISHED: '已发布', SCORING: '录入中', REVIEWED: '学院已审', FINISHED: '已结束' }
 
 export default {
   name: 'AaMakeupConsoleView',

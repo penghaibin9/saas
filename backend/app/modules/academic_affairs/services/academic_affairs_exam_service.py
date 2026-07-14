@@ -405,20 +405,115 @@ def list_invigilators(user, room_id):
                  "role": i.role, "confirmStatus": i.confirm_status} for i in rows]
 
 
+# ══════════ 巡考（同时段冲突检测） ══════════
+
+def assign_patrol(user, batch_id, teacher_key, teacher_name, patrol_date, start_time, end_time, area_scope=None):
+    """排巡考，同教师同日时段重叠 → 409（也与该教师监考撞则拒）。"""
+    from app.models import AaExamInvigilator, AaExamPatrol, AaExamRoom
+    with session() as db:
+        _require_school(_ctx(user, db))
+        b = _get_batch(db, batch_id)
+        # 巡考彼此冲突
+        existing = db.query(AaExamPatrol).filter(AaExamPatrol.tenant_id == _tid(),
+                                                 AaExamPatrol.teacher_key == teacher_key,
+                                                 AaExamPatrol.is_deleted.is_(False)).all()
+        for p in existing:
+            if _time_overlap(patrol_date, start_time, end_time, p.patrol_date, p.start_time, p.end_time):
+                raise _conflict(f"教师 {teacher_name or teacher_key} 该时段已有巡考安排（冲突）")
+        # 与该教师监考撞（监考时间来自其考场对应课程）
+        invs = db.query(AaExamInvigilator).filter(AaExamInvigilator.tenant_id == _tid(),
+                                                  AaExamInvigilator.teacher_key == teacher_key,
+                                                  AaExamInvigilator.is_deleted.is_(False)).all()
+        for inv in invs:
+            er = db.query(AaExamRoom).filter(AaExamRoom.id == inv.exam_room_id, AaExamRoom.tenant_id == _tid()).first()
+            if not er:
+                continue
+            ec = db.query(_course_cls()).filter_by(id=er.exam_course_id, tenant_id=_tid()).first()
+            if ec and _time_overlap(patrol_date, start_time, end_time, ec.exam_date, ec.start_time, ec.end_time):
+                raise _conflict(f"教师 {teacher_name or teacher_key} 该时段有监考任务，不能同时巡考（冲突）")
+        p = AaExamPatrol(tenant_id=_tid(), batch_id=b.id, teacher_key=teacher_key, teacher_name=teacher_name,
+                         patrol_date=patrol_date, start_time=start_time, end_time=end_time,
+                         area_scope_json=area_scope, status="ASSIGNED")
+        db.add(p); db.flush()
+        _audit(db, "EXAM_PATROL", p.id, "EXAM_PATROL_ADD", f"巡考 {teacher_name}")
+        db.commit()
+        return {"patrolId": str(p.id), "batchId": str(b.id), "teacherKey": teacher_key}
+
+
+def list_patrols(user, batch_id):
+    from app.models import AaExamPatrol
+    with session() as db:
+        _ctx(user, db)
+        rows = db.query(AaExamPatrol).filter(AaExamPatrol.batch_id == batch_id, AaExamPatrol.tenant_id == _tid(),
+                                             AaExamPatrol.is_deleted.is_(False)).all()
+        return [{"patrolId": str(p.id), "teacherKey": p.teacher_key, "teacherName": p.teacher_name,
+                 "patrolDate": p.patrol_date, "startTime": p.start_time, "endTime": p.end_time,
+                 "status": p.status} for p in rows]
+
+
 # ══════════ 发布 / 归档 ══════════
 
+def _check_arrangement_complete(db, batch_id):
+    """发布前编排完整性校验：每个 CONFIRMED 考试课程须有 考场+座位+至少1名监考。返回缺项清单。"""
+    from app.models import (AaExamCourse, AaExamInvigilator, AaExamRoom, AaExamRoomStudent)
+    courses = db.query(AaExamCourse).filter(AaExamCourse.batch_id == batch_id, AaExamCourse.tenant_id == _tid(),
+                                            AaExamCourse.status == "CONFIRMED",
+                                            AaExamCourse.is_deleted.is_(False)).all()
+    problems = []
+    for c in courses:
+        rooms = db.query(AaExamRoom).filter(AaExamRoom.exam_course_id == c.id, AaExamRoom.tenant_id == _tid(),
+                                            AaExamRoom.status == "ACTIVE", AaExamRoom.is_deleted.is_(False)).all()
+        if not rooms:
+            problems.append(f"{c.course_name}：无考场")
+            continue
+        room_ids = [r.id for r in rooms]
+        seats = db.query(AaExamRoomStudent).filter(AaExamRoomStudent.exam_room_id.in_(room_ids),
+                                                   AaExamRoomStudent.tenant_id == _tid()).count()
+        if not seats:
+            problems.append(f"{c.course_name}：未铺位")
+        invig = db.query(AaExamInvigilator).filter(AaExamInvigilator.exam_room_id.in_(room_ids),
+                                                   AaExamInvigilator.tenant_id == _tid(),
+                                                   AaExamInvigilator.is_deleted.is_(False)).count()
+        if not invig:
+            problems.append(f"{c.course_name}：无监考")
+    return courses, problems
+
+
+def _notify_publish(db, batch, courses):
+    """发布通知：给考生(座位记录学生)+监考教师各落一条 UnifiedMessage。"""
+    from app.models import AaExamInvigilator, AaExamRoom, AaExamRoomStudent, UnifiedMessage
+    sent = 0
+    for c in courses:
+        rooms = db.query(AaExamRoom.id).filter(AaExamRoom.exam_course_id == c.id, AaExamRoom.tenant_id == _tid()).all()
+        rids = [r[0] for r in rooms]
+        if not rids:
+            continue
+        for s in db.query(AaExamRoomStudent).filter(AaExamRoomStudent.exam_room_id.in_(rids),
+                                                    AaExamRoomStudent.tenant_id == _tid()).all():
+            db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=s.student_id, source_module="academic_affairs",
+                                  source_biz_id=c.id, title=f"考试通知：{c.course_name}",
+                                  content=f"{c.exam_date or ''} {c.start_time or ''} 座位 {s.seat_no} 准考证 {s.admission_no}",
+                                  message_type="EXAM_NOTICE", status="UNREAD"))
+            sent += 1
+    return sent
+
+
 def publish_batch(user, bid):
-    """ARRANGED→PUBLISHED（通知考生+监考教师，此处落一条审计代通知）。V1 允许 CONFIRMED 直接发布前先置 ARRANGED。"""
+    """ARRANGED→PUBLISHED：发布前编排完整性校验（每课程有考场+座位+监考，缺则409），发布后通知考生+监考。"""
     with session() as db:
         _require_school(_ctx(user, db))
         b = _get_batch(db, bid)
-        if b.status == _B_CONFIRMED:
-            b.status = _B_ARRANGED  # 简化：确认后即视为可发布（编排完整性校验留增强）
-        if b.status != _B_ARRANGED:
-            raise _invalid(f"仅 ARRANGED 批次可发布，当前 {b.status}")
+        if b.status not in (_B_CONFIRMED, _B_ARRANGED):
+            raise _invalid(f"仅 COURSE_CONFIRMED/ARRANGED 批次可发布，当前 {b.status}")
+        courses, problems = _check_arrangement_complete(db, b.id)
+        if problems:
+            raise _invalid("编排不完整，不可发布：" + "；".join(problems[:5]) + ("…" if len(problems) > 5 else ""))
+        if not courses:
+            raise _bad("批次无已确认考试课程")
         b.status = _B_PUBLISHED
         b.published_at = datetime.utcnow()
-        _audit(db, "EXAM_BATCH", b.id, "EXAM_BATCH_PUBLISH", "发布（通知考生+监考教师）")
+        sent = _notify_publish(db, b, courses)
+        _audit(db, "EXAM_BATCH", b.id, "EXAM_BATCH_PUBLISH", f"发布，推送 {sent} 条考试通知")
         db.commit()
         return _batch_dto(b)
 
@@ -493,6 +588,19 @@ def record_incident(user, body):
         if seat:
             seat.attendance_status = "ABSENT" if itype == "ABSENT" else "DISCIPLINE_VIOLATION"
         db.flush()
+        # 缺考真联动学工风险预警：写 AffairsRiskRecord（引用不复制，幂等去重 by source_ref_id）
+        if itype == "ABSENT":
+            from app.models import AffairsRiskRecord
+            dup = db.query(AffairsRiskRecord).filter(AffairsRiskRecord.tenant_id == _tid(),
+                                                     AffairsRiskRecord.source == "EXAM_ABSENT",
+                                                     AffairsRiskRecord.source_ref_id == inc.id).first()
+            if not dup:
+                db.add(AffairsRiskRecord(tenant_id=_tid(), student_id=sid, source="EXAM_ABSENT",
+                                         source_ref_id=inc.id, risk_level="MEDIUM",
+                                         title=f"考试缺考：{c.course_name or '课程'}",
+                                         detail=f"批次 {b.batch_name} 课程 {c.course_name} 缺考，需辅导员跟进",
+                                         status="NEW"))
+                inc.risk_alert_sent = True
         _audit(db, "EXAM_INCIDENT", inc.id, "EXAM_INCIDENT_RECORD", f"{itype} 学生{sid}")
         db.commit()
         return {"incidentId": str(inc.id), "incidentType": itype, "riskAlertSent": inc.risk_alert_sent}

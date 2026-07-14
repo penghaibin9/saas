@@ -449,7 +449,8 @@ export const academicAffairsSelectionApi = {
   // ── 教务处调整 / 补选 / 统计 ──
   adjustRecord(recordId, reason) { return call(() => request(`${BASE}/selection/records/${recordId}/adjust`, { method: 'POST', body: { reason } })) },
   reselectGuide(id) { return call(() => request(`${BASE}/selection/batches/${id}/reselect-guide`)) },
-  batchStats(id) { return call(() => request(`${BASE}/selection/batches/${id}/stats`)) }
+  batchStats(id) { return call(() => request(`${BASE}/selection/batches/${id}/stats`)) },
+  timeTick() { return call(() => request(`${BASE}/selection/time-tick`, { method: 'POST' })) }
 }
 
 /* ═══════════ 考务管理（SM-10 · /academic-affairs/exam/*、/deferred-exams*） ═══════════ */
@@ -473,6 +474,8 @@ export const academicAffairsExamApi = {
   roomSeats(roomId) { return call(() => request(`${BASE}/exam/rooms/${roomId}/seats`)) },
   addInvigilator(roomId, body) { return call(() => request(`${BASE}/exam/rooms/${roomId}/invigilators`, { method: 'POST', body })) },
   listInvigilators(roomId) { return call(() => request(`${BASE}/exam/rooms/${roomId}/invigilators`)) },
+  addPatrol(bid, body) { return call(() => request(`${BASE}/exam/batches/${bid}/patrols`, { method: 'POST', body })) },
+  listPatrols(bid) { return call(() => request(`${BASE}/exam/batches/${bid}/patrols`)) },
   // 异常 / 统计
   recordIncident(body) { return call(() => request(`${BASE}/exam/incidents`, { method: 'POST', body })) },
   listIncidents(params = {}) { return callList(`${BASE}/exam/incidents`, params) },
@@ -496,6 +499,8 @@ export const academicAffairsMakeupApi = {
   enroll(bid, body) { return call(() => request(`${BASE}/makeup/batches/${bid}/enroll`, { method: 'POST', body })) },
   publishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/publish`, { method: 'POST' })) },
   score(mid, score) { return call(() => request(`${BASE}/makeup/records/${mid}/score`, { method: 'POST', body: { score } })) },
+  collegeReview(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/college-review`, { method: 'POST' })) },
+  linkExam(bid, examBatchId) { return call(() => request(`${BASE}/makeup/batches/${bid}/link-exam`, { method: 'POST', body: { examBatchId } })) },
   finishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/finish`, { method: 'POST' })) },
   stats() { return call(() => request(`${BASE}/makeup/stats`)) },
   // 重修
@@ -542,9 +547,17 @@ export const academicAffairsTextbookApi = {
   sign(rid) { return call(() => request(`${BASE}/textbooks/distribution-records/${rid}/sign`, { method: 'POST' })) },
   // 费用
   feeLedger(params = {}) { return callList(`${BASE}/textbooks/fee-ledger`, params) },
-  markFee(id, action, waiveReason = '') { return call(() => request(`${BASE}/textbooks/fee-ledger/${id}/mark`, { method: 'POST', body: { action, waiveReason } })) },
+  markFee(id, action, amount, waiveReason = '') { return call(() => request(`${BASE}/textbooks/fee-ledger/${id}/mark`, { method: 'POST', body: { action, amount, waiveReason } })) },
+  stock() { return call(() => request(`${BASE}/textbooks/stock`)) },
   // 统计
   stats() { return call(() => request(`${BASE}/textbooks/stats`)) }
+}
+
+/* ═══════════ 教室预约（/academic-affairs/classrooms/bookings） ═══════════ */
+export const academicAffairsClassroomBookingApi = {
+  list(params = {}) { return callList(`${BASE}/classrooms/bookings`, params) },
+  book(body) { return call(() => request(`${BASE}/classrooms/bookings`, { method: 'POST', body })) },
+  review(id, action, reason = '') { return call(() => request(`${BASE}/classrooms/bookings/${id}/review`, { method: 'POST', body: { action, reason } })) }
 }
 
 /* ═══════════ 排课管理增强（SM-07 · /academic-affairs/scheduling/*） ═══════════ */

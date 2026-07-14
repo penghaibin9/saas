@@ -510,17 +510,32 @@ def list_fees(user, status=None, page=1, page_size=50):
                 for f in rows[(page - 1) * page_size: page * page_size]], total
 
 
-def mark_fee(user, fee_id, action, waive_reason=""):
-    """标记已收 / 减免。"""
+def mark_fee(user, fee_id, action, amount=None, waive_reason=""):
+    """标记已收(PAID全额) / 部分收款(PARTIAL,记 paid_amount,达应收自动转PAID) / 减免(WAIVE)。"""
     from app.models import AaTextbookFeeLedger
     with session() as db:
         _require_school(_ctx(user, db))
         f = db.query(AaTextbookFeeLedger).filter(AaTextbookFeeLedger.id == fee_id, AaTextbookFeeLedger.tenant_id == _tid()).first()
         if not f:
             raise not_found("费用记录不存在")
+        due = float(f.amount or 0)
         if action == "PAID":
+            f.paid_amount = due
             f.status = "PAID"
             f.paid_at = datetime.utcnow()
+        elif action == "PARTIAL":
+            add = float(amount or 0)
+            if add <= 0:
+                raise _bad("部分收款金额须大于0")
+            new_paid = float(f.paid_amount or 0) + add
+            if new_paid > due:
+                raise _bad(f"累计已收 {new_paid} 超过应收 {due}")
+            f.paid_amount = new_paid
+            if new_paid >= due:
+                f.status = "PAID"
+                f.paid_at = datetime.utcnow()
+            else:
+                f.status = "PARTIAL"
         elif action == "WAIVE":
             waive_reason = (waive_reason or "").strip()
             if len(waive_reason) < 5:
@@ -529,9 +544,32 @@ def mark_fee(user, fee_id, action, waive_reason=""):
             f.waive_reason = waive_reason
         else:
             raise _bad("非法操作")
-        _audit(db, "AA_TEXTBOOK_FEE", f.id, "TEXTBOOK_FEE_MARK", action)
+        _audit(db, "AA_TEXTBOOK_FEE", f.id, "TEXTBOOK_FEE_MARK", f"{action} {amount or ''}")
         db.commit()
-        return {"feeId": str(f.id), "status": f.status}
+        return {"feeId": str(f.id), "status": f.status, "paidAmount": _fnum(f.paid_amount), "amount": due}
+
+
+def textbook_stock(user):
+    """教材库存：到货总量(order_item.arrived_qty) - 已发放签收量(distribution_record RECEIVED)，按教材聚合。"""
+    from app.models import AaTextbookDistributionRecord, AaTextbookOrderItem
+    with session() as db:
+        _ctx(user, db)
+        arrived = {}
+        for it in db.query(AaTextbookOrderItem).filter(AaTextbookOrderItem.tenant_id == _tid(),
+                                                       AaTextbookOrderItem.is_deleted.is_(False)).all():
+            arrived.setdefault(it.textbook_id, {"name": it.textbook_name, "arrived": 0})
+            arrived[it.textbook_id]["arrived"] += (it.arrived_qty or 0)
+        distributed = {}
+        for r in db.query(AaTextbookDistributionRecord).filter(AaTextbookDistributionRecord.tenant_id == _tid(),
+                                                               AaTextbookDistributionRecord.status == "RECEIVED",
+                                                               AaTextbookDistributionRecord.is_deleted.is_(False)).all():
+            distributed[r.textbook_id] = distributed.get(r.textbook_id, 0) + (r.qty or 1)
+        items = []
+        for tbid, info in arrived.items():
+            dist = distributed.get(tbid, 0)
+            items.append({"textbookId": str(tbid), "textbookName": info["name"], "arrivedQty": info["arrived"],
+                          "distributedQty": dist, "stockQty": info["arrived"] - dist})
+        return items
 
 
 # ══════════ 统计 ══════════

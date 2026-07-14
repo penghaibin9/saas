@@ -290,17 +290,18 @@ def _apply_schedule(db, x) -> dict:
         new_item_id = ni.id
         x.new_item_id = ni.id
     x.status, x.applied_at = "APPLIED", datetime.utcnow()
-    # STATUS_CHANGED 通知：受影响班级学生 + 任课教师
-    students = 0
-    if x.class_id:
-        students = db.scalar(select(func.count()).select_from(StudentProfile).where(
-            StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(x.class_id),
-            StudentProfile.is_deleted.is_(False))) or 0
+    # STATUS_CHANGED 真实推送：受影响班级每个学生 + 任课教师（逐条 UnifiedMessage，非单条广播）
     title = f"{L_CT[x.change_type]}通知：{x.course_name or ''}"
     content = _notice_text(x)
-    _msg(db, x.applicant_id or 0, title, content, "STATUS_CHANGED", x.id)   # 教师
-    _msg(db, 0, title, content, "STATUS_CHANGED", x.id)                     # 班级广播
-    _audit(db, x.id, "APPLIED", f"newItem={new_item_id},students={students}")
+    _msg(db, x.applicant_id or 0, title, content, "STATUS_CHANGED", x.id)   # 任课教师
+    students = 0
+    if x.class_id:
+        for (sid,) in db.execute(select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(x.class_id),
+                StudentProfile.is_deleted.is_(False))).all():
+            _msg(db, sid, title, content, "STATUS_CHANGED", x.id)
+            students += 1
+    _audit(db, x.id, "APPLIED", f"newItem={new_item_id},pushed={students}生+1师")
     return {"status": "APPLIED", "newItemId": str(new_item_id or ""), "originKept": "CHANGED(历史留痕)",
             "notified": {"students": int(students), "teacher": 1, "channel": "STATUS_CHANGED"}}
 

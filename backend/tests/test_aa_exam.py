@@ -127,16 +127,52 @@ def test_e4_seat_capacity_exceed_409(client, db_mode):
                        json={"studentIds": [str(ids["s1"]), str(ids["s2"])]}).status_code == 409
 
 
+def _fully_arrange(client, admin, cid, ids):
+    """加考场+铺位+监考，使课程编排完整（可发布）。返回 roomId。"""
+    rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin, json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
+    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"]), str(ids["s2"])]})
+    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_x", "teacherName": "监考老师"})
+    return rid
+
+
 def test_e5_incident_absent_triggers_risk(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"])
-    rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin, json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
-    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"]), str(ids["s2"])]})
+    _fully_arrange(client, admin, cid, ids)
     client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
     r = client.post(f"{BASE}/exam/incidents", headers=admin,
                     json={"examCourseId": str(cid), "studentId": str(ids["s1"]), "incidentType": "ABSENT"}).json()
     assert r["code"] == 0 and r["data"]["riskAlertSent"] is True
+    # 缺考真联动学工：写了 AffairsRiskRecord
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsRiskRecord
+    db = get_sessionmaker()()
+    risk = db.query(AffairsRiskRecord).filter(AffairsRiskRecord.tenant_id == TID,
+                                              AffairsRiskRecord.source == "EXAM_ABSENT",
+                                              AffairsRiskRecord.student_id == ids["s1"]).first()
+    assert risk is not None and risk.status == "NEW"
+    db.close()
+
+
+def test_e9_publish_incomplete_arrangement_409(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"])
+    # 只加考场，不铺位不监考 → 发布应 409（编排不完整）
+    client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin, json={"classroomText": "A101", "capacity": 50})
+    assert client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin).status_code == 409
+
+
+def test_e10_patrol_conflict_409(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"])
+    p = {"teacherKey": "patrol_a", "teacherName": "巡考甲", "patrolDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00"}
+    assert client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json=p).json()["code"] == 0
+    # 同教师同日重叠时段 → 409
+    p2 = dict(p, startTime="10:00", endTime="12:00")
+    assert client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json=p2).status_code == 409
 
 
 def test_e6_deferred_four_level_approval(client, db_mode):

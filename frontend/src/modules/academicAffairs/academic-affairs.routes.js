@@ -59,6 +59,7 @@ const layoutRoute = {
     { path: 'orgs', name: 'aa-orgs', component: () => import('@/modules/academicAffairs/views/AaOrgConsole.vue'), meta: meta('academicAffairs.org.view', '学院专业班级') },
     // ── R4 教学资源 · 教室字典 ──
     { path: 'classrooms', name: 'aa-classrooms', component: () => import('@/modules/academicAffairs/views/AaClassroomListView.vue'), meta: meta('academicAffairs.classroom.view', '教室资源') },
+    { path: 'classroom-bookings', name: 'aa-classroom-bookings', component: () => import('@/modules/academicAffairs/views/AaClassroomBookingView.vue'), meta: meta('academicAffairs.classroom.view', '教室预约') },
     // ── R2 调停课（台账/发起/审批，通知单为独立打印路由） ──
     { path: 'schedule-change', name: 'aa-schedule-change-ledger', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeLedgerView.vue'), meta: meta('academicAffairs.scheduleChange.view', '调停课台账') },
     { path: 'schedule-change/apply', name: 'aa-schedule-change-apply', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeApplyView.vue'), meta: meta('academicAffairs.scheduleChange.apply', '发起调停课') },
@@ -82,6 +83,13 @@ const layoutRoute = {
     // ── 教务归档（批次+完整性检查+封存） ──
     { path: 'archive', name: 'aa-archive', component: () => import('@/modules/academicAffairs/views/AaArchiveConsoleView.vue'), meta: meta('academicAffairs.archive.view', '教务归档') }
   ]
+}
+
+const printExamSeatingRoute = {
+  path: '/admin/academic-affairs/exam/print/seating',
+  name: 'aa-exam-seating-print',
+  component: () => import('@/modules/academicAffairs/views/AaExamSeatingPrintView.vue'),
+  meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.exam.view', title: '座位表/准考证打印' }
 }
 
 const printScheduleChangeNoticeRoute = {
@@ -112,6 +120,6 @@ const printTranscriptRoute = {
   meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.grade.view', title: '成绩单打印' }
 }
 
-export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute, printScheduleChangeNoticeRoute]
+export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute, printScheduleChangeNoticeRoute, printExamSeatingRoute]
 
 export default academicAffairsRoutes

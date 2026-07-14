@@ -1,63 +1,23 @@
 /**
- * 04 学业过程中心 — 模块路由描述（不自动接入全局 router，避免并行任务冲突）。
- * 接入方式：在 src/router/index.js 的 routes 数组中 push 本文件导出的 academicRoutes 即可：
- *   import { academicRoutes } from '@/modules/academicAffairs/routes/academic.routes'
- *   routes: [ ...existing, academicRoutes ]
- * meta 口径与 workflow/student 模块一致，供统一路由守卫消费。
+ * 04 学业过程中心 · 旧路由收敛（2026-07-15）。
+ *
+ * 旧 /admin/academic/* 6 个 partial 页与新 /admin/academic-affairs/* 并存造成双入口。
+ * 按 CLAUDE.md §6.4「旧路由优先 redirect/alias，新链路完成后成为唯一主入口」：
+ * 新教务中心模块已覆盖同域能力（读同一批 t_acad_* 底表），此处将旧路径 redirect 到新等价页，
+ * 刷新不 404，主入口收敛到新。旧页面组件文件保留未删（可逆：移除 redirect 即恢复），
+ * 待确认新页 100% 覆盖旧页专属查询后再评估删除组件（§6.4 删除前需引用核验+用户确认）。
  */
 export const academicRoutes = {
   path: '/admin/academic',
-  component: () => import('@/modules/academicAffairs/views/AdminAcademicLayout.vue'),
-  meta: { moduleCode: 'ACADEMIC' },
   children: [
-    {
-      path: '',
-      name: 'academic-dashboard',
-      component: () => import('@/modules/academicAffairs/views/AcademicDashboardView.vue'),
-      meta: { moduleCode: 'ACADEMIC', requiresAuth: true, permissionKey: 'academic.dashboard.view', title: '学业过程中心' }
-    },
-    {
-      path: 'students',
-      name: 'academic-students',
-      component: () => import('@/modules/academicAffairs/views/AcademicStudentListView.vue'),
-      meta: { moduleCode: 'ACADEMIC', requiresAuth: true, permissionKey: 'academic.record.view', title: '学业学生' }
-    },
-    {
-      path: 'students/:id',
-      name: 'academic-student-detail',
-      component: () => import('@/modules/academicAffairs/views/AcademicStudentDetailView.vue'),
-      meta: { moduleCode: 'ACADEMIC', requiresAuth: true, permissionKey: 'academic.record.view', title: '学生学业详情' }
-    },
-    {
-      path: 'grades',
-      name: 'academic-grades',
-      component: () => import('@/modules/academicAffairs/views/AcademicGradeListView.vue'),
-      meta: { moduleCode: 'ACADEMIC', requiresAuth: true, permissionKey: 'academic.grade.view', title: '课程成绩' }
-    },
-    {
-      path: 'credits',
-      name: 'academic-credits',
-      component: () => import('@/modules/academicAffairs/views/AcademicCreditListView.vue'),
-      meta: { moduleCode: 'ACADEMIC', requiresAuth: true, permissionKey: 'academic.credit.view', title: '学分修读' }
-    },
-    {
-      path: 'makeup-retake',
-      name: 'academic-makeup-retake',
-      component: () => import('@/modules/academicAffairs/views/AcademicMakeupRetakeView.vue'),
-      meta: { moduleCode: 'ACADEMIC', requiresAuth: true, permissionKey: 'academic.makeup.view', title: '补考重修' }
-    },
-    {
-      path: 'warnings',
-      name: 'academic-warnings',
-      component: () => import('@/modules/academicAffairs/views/AcademicWarningListView.vue'),
-      meta: { moduleCode: 'ACADEMIC', requiresAuth: true, permissionKey: 'academic.warning.view', title: '学业预警' }
-    },
-    {
-      path: 'warnings/:id',
-      name: 'academic-warning-detail',
-      component: () => import('@/modules/academicAffairs/views/AcademicWarningDetailView.vue'),
-      meta: { moduleCode: 'ACADEMIC', requiresAuth: true, permissionKey: 'academic.warning.view', title: '预警跟进详情' }
-    }
+    { path: '', redirect: '/admin/academic-affairs' },                        // 学业总览 → 教务看板
+    { path: 'students', redirect: '/admin/academic-affairs/roster' },         // 在籍学生 → 学籍名册
+    { path: 'students/:id', redirect: '/admin/academic-affairs/roster' },
+    { path: 'grades', redirect: '/admin/academic-affairs/grade-overview' },   // 课程成绩 → 成绩总览
+    { path: 'credits', redirect: '/admin/academic-affairs/grade-overview' },  // 学分修读 → 成绩总览(含学分)
+    { path: 'makeup-retake', redirect: '/admin/academic-affairs/makeup' },    // 补考重修 → 补考重修缓考免修控制台
+    { path: 'warnings', redirect: '/admin/academic-affairs/warnings' },       // 学业预警 → 学业预警
+    { path: 'warnings/:id', redirect: '/admin/academic-affairs/warnings' }
   ]
 }
 

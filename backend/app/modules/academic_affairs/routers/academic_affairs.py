@@ -973,6 +973,38 @@ def classroom_delete(classroomId: int = Path(...),
                      user=Depends(require_permission("academicAffairs.classroom.delete"))):
     return success(resource_svc.delete_classroom(classroomId, user), message="已删除")
 
+
+# ── 教室预约（占用登记+冲突检测+审核） ──
+class ClassroomBookBody(BaseModel):
+    classroomId: str = Field(..., min_length=1)
+    bookingDate: str = Field(..., min_length=1, description="YYYY-MM-DD")
+    slotNo: int = Field(..., ge=1)
+    purpose: Optional[str] = Field(None, max_length=300)
+
+
+class BookingReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    reason: Optional[str] = Field("", max_length=300)
+
+
+@router.post("/classrooms/bookings", summary="申请教室预约（同教室同时段占用409）")
+def classroom_book(body: ClassroomBookBody, user=Depends(require_staff)):
+    return success(resource_svc.book_classroom(user, body), message="已提交预约")
+
+
+@router.get("/classrooms/bookings", summary="教室预约列表")
+def classroom_bookings(classroomId: Optional[str] = None, date: Optional[str] = None,
+                       status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                       user=Depends(require_permission("academicAffairs.classroom.view"))):
+    items, total = resource_svc.list_bookings(user, classroomId, date, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/classrooms/bookings/{bookingId}/review", summary="审核教室预约")
+def classroom_booking_review(body: BookingReviewBody, bookingId: int = Path(...),
+                             user=Depends(require_permission("academicAffairs.classroom.update"))):
+    return success(resource_svc.review_booking(user, bookingId, body.action, body.reason), message="已处理")
+
 # ═══════════ 调停课（R2/SM-08，调课/停课/补课；教师发起→学院审→教务处审→改写课表）═══════════
 
 _SC_REVIEW = require_any_permission("academicAffairs.scheduleChange.collegeReview",
@@ -1215,6 +1247,11 @@ def sel_stats(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIE
     return success(selection_svc.batch_stats(user, batchId))
 
 
+@router.post("/selection/time-tick", summary="定时触发：到点自动开选/截止（供 cron 调度，幂等）")
+def sel_time_tick(user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.run_time_tick(user), message="已执行时间触发")
+
+
 # ══════════════ 考务管理（13B-SM-10，/academic-affairs/exam/*、/deferred-exams*） ══════════════
 _EXAM_MANAGE = "academicAffairs.exam.manage"
 _EXAM_ARRANGE = "academicAffairs.exam.arrange"
@@ -1357,6 +1394,26 @@ def exam_invig_add(body: InvigilatorBody, roomId: int = Path(...), user=Depends(
 @router.get("/exam/rooms/{roomId}/invigilators", summary="监考列表")
 def exam_invigs(roomId: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
     return success({"items": exam_svc.list_invigilators(user, roomId)})
+
+
+class PatrolBody(BaseModel):
+    teacherKey: str = Field(..., min_length=1)
+    teacherName: Optional[str] = None
+    patrolDate: Optional[str] = None
+    startTime: Optional[str] = None
+    endTime: Optional[str] = None
+    areaScope: Optional[str] = None
+
+
+@router.post("/exam/batches/{bid}/patrols", summary="排巡考（同时段/与监考冲突409）")
+def exam_patrol_add(body: PatrolBody, bid: int = Path(...), user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.assign_patrol(user, bid, body.teacherKey, body.teacherName,
+                                          body.patrolDate, body.startTime, body.endTime, body.areaScope), message="已排巡考")
+
+
+@router.get("/exam/batches/{bid}/patrols", summary="巡考列表")
+def exam_patrols(bid: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
+    return success({"items": exam_svc.list_patrols(user, bid)})
 
 
 # publish / finish / archive
@@ -1519,9 +1576,23 @@ def makeup_score(body: MakeupScoreBody, mid: int = Path(...), user=Depends(requi
     return success(makeup_svc.enter_makeup_score(user, mid, body.score), message="已录入")
 
 
-@router.post("/makeup/batches/{bid}/finish", summary="结束补考批次（按规则回写成绩）")
+@router.post("/makeup/batches/{bid}/college-review", summary="补考成绩学院审核（接R1审核链，SCORING→REVIEWED）")
+def makeup_college_review(bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.college_review_scores(user, bid), message="学院审核通过")
+
+
+@router.post("/makeup/batches/{bid}/finish", summary="教务发布回写（REVIEWED→FINISHED，接R1审核链末端）")
 def makeup_finish(bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
-    return success(makeup_svc.finish_makeup_batch(user, bid), message="已结束回写")
+    return success(makeup_svc.finish_makeup_batch(user, bid), message="已发布回写")
+
+
+class MakeupLinkExamBody(BaseModel):
+    examBatchId: str = Field(..., min_length=1)
+
+
+@router.post("/makeup/batches/{bid}/link-exam", summary="补考批次挂考务批次编排")
+def makeup_link_exam(body: MakeupLinkExamBody, bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.link_exam_batch(user, bid, body.examBatchId), message="已挂考务编排")
 
 
 # ── 重修 ──
@@ -1656,7 +1727,8 @@ class DistGenerateBody(BaseModel):
 
 
 class FeeMarkBody(BaseModel):
-    action: str = Field(..., description="PAID/WAIVE")
+    action: str = Field(..., description="PAID/PARTIAL/WAIVE")
+    amount: Optional[float] = Field(None, ge=0, description="PARTIAL 部分收款金额")
     waiveReason: Optional[str] = Field("", max_length=500)
 
 
@@ -1777,9 +1849,14 @@ def fee_ledger(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
     return success(paginate(items, total, page, pageSize))
 
 
-@router.post("/textbooks/fee-ledger/{fid}/mark", summary="标记已收/减免")
+@router.post("/textbooks/fee-ledger/{fid}/mark", summary="标记已收/部分收款/减免")
 def fee_mark(body: FeeMarkBody, fid: int = Path(...), user=Depends(require_permission(_TB_FEE))):
-    return success(textbook_svc.mark_fee(user, fid, body.action, body.waiveReason), message="已处理")
+    return success(textbook_svc.mark_fee(user, fid, body.action, body.amount, body.waiveReason), message="已处理")
+
+
+@router.get("/textbooks/stock", summary="教材库存（到货量-已发放签收量）")
+def textbook_stock(user=Depends(require_permission(_TB_VIEW))):
+    return success({"items": textbook_svc.textbook_stock(user)})
 
 
 # ── 统计 ──

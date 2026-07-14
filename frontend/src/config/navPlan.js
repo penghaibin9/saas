@@ -238,7 +238,6 @@ export const NAV_PLAN = [
     ]),
     mod('aa-student-status', '学籍管理', '/admin/academic-affairs/roster', [
       I('学籍名册', '/admin/academic-affairs/roster'),
-      I('在籍学生（现有·学业学生）', '/admin/academic/students'),
       ...P('学籍档案', '学籍状态', '休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正',
         '学籍异动记录', '学籍导入导出', '学籍统计', '学籍归档')
     ]),
@@ -302,13 +301,13 @@ export const NAV_PLAN = [
       ...P('选课规则', '补选管理', '冲突检测', '选课结果', '选课归档')
     ]),
     mod('aa-exam', '考务管理', '/admin/academic-affairs/exam', [
-      I('考务控制台（批次/课程/考场/监考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),
-      ...P('座位安排', '巡考安排', '准考证', '考务通知', '缓考审批', '考务归档')
+      I('考务控制台（批次/课程/考场/座位/监考/巡考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),
+      I('座位表/准考证/门贴打印', '/admin/academic-affairs/exam/print/seating', 'academicAffairs.exam.view'),
+      ...P('缓考审批（并入控制台/学生小程序申请）', '考务归档')
     ]),
     mod('aa-makeup', '补考重修缓考免修', '/admin/academic-affairs/makeup', [
       I('补考重修免修控制台（四条线）', '/admin/academic-affairs/makeup', 'academicAffairs.makeup.view'),
       I('重修免修申请（学生自助）', '/admin/academic-affairs/my-makeup', 'academicAffairs.retake.apply'),
-      I('补考重修成绩（现有）', '/admin/academic/makeup-retake'),
       ...P('补考安排', '重修班管理', '缓考申请', '统计分析', '材料归档')
     ]),
     mod('aa-grades', '成绩管理', '/admin/academic-affairs/grade-overview', [
@@ -316,8 +315,6 @@ export const NAV_PLAN = [
       I('成绩录入（含暂存/提交）', '/admin/academic-affairs/grade-entry'),
       I('挂科清单', '/admin/academic-affairs/grade-fail'),
       I('学生成绩单', '/admin/academic-affairs/transcript'),
-      I('成绩查询（现有·课程成绩）', '/admin/academic/grades'),
-      I('学分修读（现有）', '/admin/academic/credits'),
       ...P('成绩导入', '成绩导出', '成绩异常', '成绩统计')
     ]),
     mod('aa-grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', [
@@ -329,7 +326,6 @@ export const NAV_PLAN = [
     mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
       I('预警扫描与列表', '/admin/academic-affairs/warnings'),
       ...P('预警看板', '学分预警', '挂科预警', '绩点预警', '补考重修预警', '毕业风险预警', '预警规则'),
-      I('预警学生（现有·处置）', '/admin/academic/warnings'),
       ...P('预警通知', '预警跟进', '预警统计')
     ]),
     mod('aa-graduation-qual', '毕业资格审核', '/admin/academic-affairs/graduation', [
@@ -337,12 +333,12 @@ export const NAV_PLAN = [
       ...P('审核批次', '毕业学生名单', '学分达成审核', '课程达成审核', '实践环节审核', '毕设状态联动', '实习状态联动', '欠费状态联动', '处分状态联动', '毕业资格终审', '不通过原因', '审核结果', '审核归档')
     ]),
     mod('aa-textbooks', '教材管理', '/admin/academic-affairs/textbooks', [
-      I('教材控制台（目录/选用/审核/征订/发放/费用/统计）', '/admin/academic-affairs/textbooks', 'academicAffairs.textbook.view'),
-      ...P('教材库存', '教材归档')
+      I('教材控制台（目录/选用/审核/征订到货归档/发放签收/费用部分收款/库存/统计）', '/admin/academic-affairs/textbooks', 'academicAffairs.textbook.view')
     ]),
     mod('aa-resources', '教学资源', '/admin/academic-affairs/classrooms', [
       I('教室资源', '/admin/academic-affairs/classrooms', 'academicAffairs.classroom.view'),
-      ...P('实训室资源', '设备资源', '教室预约', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')
+      I('教室预约', '/admin/academic-affairs/classroom-bookings', 'academicAffairs.classroom.view'),
+      ...P('实训室资源', '设备资源', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')
     ]),
     mod('aa-evaluation', '教学评价', '/admin/academic-affairs/evaluation', [
       I('评教控制台（批次/结果分级/申诉审核）', '/admin/academic-affairs/evaluation', 'academicAffairs.evaluation.view'),

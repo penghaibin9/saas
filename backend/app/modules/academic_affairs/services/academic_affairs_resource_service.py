@@ -229,3 +229,96 @@ def delete_classroom(classroom_id, user) -> dict:
         _audit(db, c.id, "DELETE", f"{c.building_name}{c.room_code}")
         db.commit()
         return {"classroomId": str(classroom_id), "deleted": True}
+
+
+# ══════════ 教室预约（占用登记 + 冲突检测 + 审核） ══════════
+
+def _bkg_dto(b):
+    return {"bookingId": str(b.id), "classroomId": str(b.classroom_id), "classroomText": b.classroom_text,
+            "bookingDate": b.booking_date, "slotNo": b.slot_no, "purpose": b.purpose,
+            "applicantKey": b.applicant_key, "applicantName": b.applicant_name,
+            "reviewReason": b.review_reason, "status": b.status}
+
+
+def book_classroom(user, body):
+    """申请教室预约。同教室同日同节次已 APPROVED → 409（占用冲突）。"""
+    from app.models import AaClassroomBooking, AaClassroom
+    with session() as db:
+        cid = int(body.classroomId)
+        c = db.query(AaClassroom).filter(AaClassroom.id == cid, AaClassroom.tenant_id == _tid(),
+                                         AaClassroom.is_deleted.is_(False)).first()
+        if not c:
+            raise not_found("教室不存在")
+        if c.status != "AVAILABLE":
+            raise AppException("DATA_CONFLICT", "该教室不可用（停用/维修中）", http_status=409)
+        date = (getattr(body, "bookingDate", None) or "").strip()
+        slot = int(getattr(body, "slotNo", 0) or 0)
+        if not date or not slot:
+            raise AppException("VALIDATION_ERROR", "预约日期与节次必填")
+        conflict = db.query(AaClassroomBooking).filter(AaClassroomBooking.tenant_id == _tid(),
+                                                       AaClassroomBooking.classroom_id == cid,
+                                                       AaClassroomBooking.booking_date == date,
+                                                       AaClassroomBooking.slot_no == slot,
+                                                       AaClassroomBooking.status == "APPROVED",
+                                                       AaClassroomBooking.is_deleted.is_(False)).first()
+        if conflict:
+            raise AppException("DATA_CONFLICT", "该教室该时段已被预约占用", http_status=409)
+        name, _r, uid = _op()
+        b = AaClassroomBooking(tenant_id=_tid(), classroom_id=cid,
+                               classroom_text=f"{c.building_name}{c.room_code}", booking_date=date, slot_no=slot,
+                               purpose=getattr(body, "purpose", None), applicant_key=uid or name,
+                               applicant_name=name, status="PENDING")
+        db.add(b); db.flush()
+        _audit(db, b.id, "BOOKING_APPLY", f"预约 {b.classroom_text} {date} 第{slot}节")
+        db.commit()
+        return _bkg_dto(b)
+
+
+def list_bookings(user, classroom_id=None, date=None, status=None, page=1, page_size=50):
+    from app.models import AaClassroomBooking
+    with session() as db:
+        q = db.query(AaClassroomBooking).filter(AaClassroomBooking.tenant_id == _tid(),
+                                                AaClassroomBooking.is_deleted.is_(False))
+        if classroom_id:
+            q = q.filter(AaClassroomBooking.classroom_id == int(classroom_id))
+        if date:
+            q = q.filter(AaClassroomBooking.booking_date == date)
+        if status:
+            q = q.filter(AaClassroomBooking.status == status)
+        rows = q.order_by(AaClassroomBooking.id.desc()).all()
+        total = len(rows)
+        return [_bkg_dto(b) for b in rows[(page - 1) * page_size: page * page_size]], total
+
+
+def review_booking(user, booking_id, action, reason=""):
+    """审核预约：APPROVE(再查冲突)/REJECT(原因≥5字)。"""
+    from app.models import AaClassroomBooking
+    with session() as db:
+        b = db.query(AaClassroomBooking).filter(AaClassroomBooking.id == booking_id,
+                                                AaClassroomBooking.tenant_id == _tid()).first()
+        if not b:
+            raise not_found("预约不存在")
+        if b.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "该预约已处理", http_status=409)
+        if action == "APPROVE":
+            conflict = db.query(AaClassroomBooking).filter(AaClassroomBooking.tenant_id == _tid(),
+                                                           AaClassroomBooking.classroom_id == b.classroom_id,
+                                                           AaClassroomBooking.booking_date == b.booking_date,
+                                                           AaClassroomBooking.slot_no == b.slot_no,
+                                                           AaClassroomBooking.status == "APPROVED",
+                                                           AaClassroomBooking.id != b.id,
+                                                           AaClassroomBooking.is_deleted.is_(False)).first()
+            if conflict:
+                raise AppException("DATA_CONFLICT", "该时段已有通过的预约，冲突", http_status=409)
+            b.status = "APPROVED"
+        elif action == "REJECT":
+            reason = (reason or "").strip()
+            if len(reason) < 5:
+                raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于5字")
+            b.status = "REJECTED"
+            b.review_reason = reason
+        else:
+            raise AppException("VALIDATION_ERROR", "非法动作")
+        _audit(db, b.id, "BOOKING_REVIEW", action)
+        db.commit()
+        return _bkg_dto(b)

@@ -63,8 +63,12 @@ def test_m1_makeup_full_flow(client, db_mode):
                      json={"acadStudentId": str(ids["acad"]), "courseName": "高等数学", "originScore": 45}).json()
     mid = mk["data"]["makeupId"]
     client.post(f"{BASE}/makeup/batches/{bid}/publish", headers=admin)
-    # 录入补考成绩 72 → 结束回写（CAP60 → 记 60 及格）
+    # 录入补考成绩 72 → 接R1审核链：学院审→教务发布回写（CAP60 → 记 60 及格）
     client.post(f"{BASE}/makeup/records/{mid}/score", headers=admin, json={"score": 72})
+    # 未学院审直接发布 → 409
+    assert client.post(f"{BASE}/makeup/batches/{bid}/finish", headers=admin).status_code == 409
+    # 学院审核 SCORING→REVIEWED
+    assert client.post(f"{BASE}/makeup/batches/{bid}/college-review", headers=admin).json()["data"]["status"] == "REVIEWED"
     fin = client.post(f"{BASE}/makeup/batches/{bid}/finish", headers=admin).json()
     assert fin["code"] == 0 and fin["data"]["status"] == "FINISHED"
     # 校验回写了 MAKEUP 成绩行（封顶 60 及格）
@@ -141,6 +145,18 @@ def test_m5_deferred_merge_into_makeup(client, db_mode):
     bid = client.post(f"{BASE}/makeup/batches", headers=admin, json={"batchName": "缓考合流批次"}).json()["data"]["batchId"]
     r = client.post(f"{BASE}/makeup/deferred-pool/{did}/merge", headers=admin, json={"batchId": str(bid)}).json()
     assert r["code"] == 0 and r["data"]["merged"] is True
+
+
+def test_m7_link_exam_batch(client, db_mode):
+    _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid = client.post(f"{BASE}/makeup/batches", headers=admin, json={"batchName": "挂考务补考"}).json()["data"]["batchId"]
+    # 挂不存在的考务批次 → 404
+    assert client.post(f"{BASE}/makeup/batches/{bid}/link-exam", headers=admin, json={"examBatchId": "999999"}).status_code == 404
+    # 建真实考务批次并挂
+    ebid = client.post(f"{BASE}/exam/batches", headers=admin, json={"batchName": "补考考务批次"}).json()["data"]["batchId"]
+    r = client.post(f"{BASE}/makeup/batches/{bid}/link-exam", headers=admin, json={"examBatchId": str(ebid)}).json()
+    assert r["code"] == 0 and r["data"]["status"] == "ARRANGED"
 
 
 def test_m6_student_cannot_manage_403(client, db_mode):

@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
@@ -18,7 +19,7 @@ from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid, session
 
 _MB_DRAFT, _MB_ARRANGED, _MB_PUBLISHED = "DRAFT", "ARRANGED", "PUBLISHED"
-_MB_SCORING, _MB_FINISHED = "SCORING", "FINISHED"
+_MB_SCORING, _MB_REVIEWED, _MB_FINISHED = "SCORING", "REVIEWED", "FINISHED"
 _RT_SUBMITTED, _RT_REVIEW, _RT_APPROVED = "SUBMITTED", "ACADEMIC_REVIEW", "APPROVED"
 _RT_REJECTED, _RT_ENROLLED, _RT_FINISHED = "REJECTED", "ENROLLED", "FINISHED"
 _EX_SUBMITTED, _EX_TEACHER, _EX_COLLEGE = "SUBMITTED", "TEACHER_REVIEW", "COLLEGE_REVIEW"
@@ -142,6 +143,26 @@ def list_makeup_batches(user, status=None, page=1, page_size=20):
         return [_mb_dto(b) for b in rows[(page - 1) * page_size: page * page_size]], len(rows)
 
 
+def link_exam_batch(user, batch_id, exam_batch_id):
+    """补考批次挂考务批次编排（施工卡：exam_batch_ref 关联，考场/监考走考务包）。校验考务批次存在。"""
+    from app.models import AaExamBatch
+    with session() as db:
+        _require_school(_ctx(user, db))
+        b = _get_mb(db, batch_id)
+        if b.status not in (_MB_DRAFT, _MB_ARRANGED):
+            raise _invalid("仅 DRAFT/ARRANGED 补考批次可挂考务编排")
+        eb = db.query(AaExamBatch).filter(AaExamBatch.id == int(exam_batch_id), AaExamBatch.tenant_id == _tid(),
+                                          AaExamBatch.is_deleted.is_(False)).first()
+        if not eb:
+            raise not_found("考务批次不存在")
+        b.exam_batch_ref = eb.id
+        if b.status == _MB_DRAFT:
+            b.status = _MB_ARRANGED
+        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_LINK_EXAM", f"挂考务批次 {eb.batch_name}")
+        db.commit()
+        return _mb_dto(b)
+
+
 def enroll_makeup(user, batch_id, acad_student_id, course_name, origin_score=None):
     """将不及格学生纳入补考批次名单（t_acad_makeup + batch_id）。教务处操作。"""
     from app.models import AcademicMakeup
@@ -198,16 +219,35 @@ def enter_makeup_score(user, makeup_id, score):
         return {"makeupId": str(m.id), "finalScore": m.final_score, "status": m.status}
 
 
+def college_review_scores(user, batch_id):
+    """补考成绩录入接 R1 同构审核链（施工卡 D-09）：录入(SCORING)→学院审(REVIEWED)→教务发布回写(FINISHED)。
+    学院审：所有补考记录须已 SCORED；SCORING→REVIEWED。"""
+    from app.models import AcademicMakeup
+    with session() as db:
+        _require_school(_ctx(user, db))
+        b = _get_mb(db, batch_id)
+        if b.status != _MB_SCORING:
+            raise _invalid("仅 SCORING 批次可学院审核")
+        pend = db.query(AcademicMakeup).filter(AcademicMakeup.batch_id == b.id, AcademicMakeup.tenant_id == _tid(),
+                                               AcademicMakeup.status != "SCORED", AcademicMakeup.batch_id.isnot(None)).count()
+        if pend:
+            raise _invalid(f"尚有 {pend} 条补考成绩未录入，不可提交学院审核")
+        b.status = _MB_REVIEWED
+        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_COLLEGE_REVIEW", "补考成绩学院审核通过")
+        db.commit()
+        return _mb_dto(b)
+
+
 def finish_makeup_batch(user, batch_id):
-    """SCORING→FINISHED：按计分规则回写 t_acad_grade(source=MAKEUP) + 刷新台账（幂等）。"""
+    """REVIEWED→FINISHED（教务发布）：按计分规则回写 t_acad_grade(source=MAKEUP)（幂等）。接 R1 三级审核链末端。"""
     from app.models import AcademicGrade, AcademicMakeup
     with session() as db:
         _require_school(_ctx(user, db))
         b = _get_mb(db, batch_id)
         if b.status == _MB_FINISHED:
             return _mb_dto(b)
-        if b.status != _MB_SCORING:
-            raise _invalid("仅 SCORING 批次可结束回写")
+        if b.status != _MB_REVIEWED:
+            raise _invalid("仅学院审核通过(REVIEWED)的批次可教务发布回写")
         recs = db.query(AcademicMakeup).filter(AcademicMakeup.batch_id == b.id, AcademicMakeup.tenant_id == _tid(),
                                                AcademicMakeup.status == "SCORED").all()
         cap = 60 if b.score_rule == "CAP60" else 100
@@ -365,9 +405,21 @@ def exemption_apply(user, body):
                                                     AaExemption.is_deleted.is_(False)).count()
         if term and term_applies >= max_count:
             raise _bad(f"本学期免修申请已达上限 {max_count} 门")
+        # 免修材料附件接 t_file_object：校验传入的 file_id 均为本租户真实文件对象
+        material_ids = getattr(body, "materialFileIds", None)
+        if material_ids:
+            from app.models import FileObject
+            ids = material_ids if isinstance(material_ids, list) else [material_ids]
+            int_ids = [int(x) for x in ids if str(x).isdigit()]
+            if int_ids:
+                found = db.query(FileObject).filter(FileObject.tenant_id == _tid(),
+                                                    FileObject.id.in_(int_ids)).count()
+                if found != len(int_ids):
+                    raise _bad("免修材料附件包含无效文件，请重新上传")
+            material_ids = json.dumps([str(x) for x in ids], ensure_ascii=False)
         e = AaExemption(tenant_id=_tid(), student_id=s.id, student_no=s.student_no, student_name=s.real_name,
                         course_name=course_name, term_code=term, college_id=getattr(s, "college_id", None),
-                        reason=getattr(body, "reason", None), material_file_ids=getattr(body, "materialFileIds", None),
+                        reason=getattr(body, "reason", None), material_file_ids=material_ids,
                         current_node="TEACHER", status=_EX_TEACHER)
         db.add(e); db.flush()
         _audit(db, "AA_EXEMPTION", e.id, "EXEMPTION_APPLY", f"免修申请 {course_name}")

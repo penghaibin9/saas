@@ -106,3 +106,26 @@ def test_t7_authz_denied(client, db_mode):
     assert client.post(f"{BASE}/classrooms/{cid}/status", headers=cnt,
                        json={"status": "DISABLED"}).status_code == 403
     assert client.delete(f"{BASE}/classrooms/{cid}", headers=cnt).status_code == 403
+
+
+def test_t8_classroom_booking_and_conflict(client, db_mode):
+    """教室预约：申请PENDING→审核APPROVED；同教室同时段再审批冲突409。"""
+    hdr = _hdr(client, "school_admin01")
+    cid = _mk(client, hdr, room_code="801").json()["data"]["classroomId"]
+    b1 = client.post(f"{BASE}/classrooms/bookings", headers=hdr,
+                     json={"classroomId": str(cid), "bookingDate": "2027-06-20", "slotNo": 1, "purpose": "社团活动"}).json()
+    assert b1["code"] == 0 and b1["data"]["status"] == "PENDING"
+    bid1 = b1["data"]["bookingId"]
+    # 审核通过
+    assert client.post(f"{BASE}/classrooms/bookings/{bid1}/review", headers=hdr,
+                       json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
+    # 同教室同日同节次再申请 → 409（已占用）
+    assert client.post(f"{BASE}/classrooms/bookings", headers=hdr,
+                       json={"classroomId": str(cid), "bookingDate": "2027-06-20", "slotNo": 1}).status_code == 409
+    # 不同节次可申请
+    b3 = client.post(f"{BASE}/classrooms/bookings", headers=hdr,
+                     json={"classroomId": str(cid), "bookingDate": "2027-06-20", "slotNo": 3}).json()
+    assert b3["code"] == 0
+    # 驳回原因过短 400
+    assert client.post(f"{BASE}/classrooms/bookings/{b3['data']['bookingId']}/review", headers=hdr,
+                       json={"action": "REJECT", "reason": "x"}).status_code == 400

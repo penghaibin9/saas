@@ -373,6 +373,22 @@ class AaClassroom(PKMixin, TenantMixin, CommonMixin, Base):
     __table_args__ = (UniqueConstraint("tenant_id", "building_code", "room_code", name="uk_aa_classroom"),)
 
 
+class AaClassroomBooking(PKMixin, TenantMixin, CommonMixin, Base):
+    """教室预约（占用登记）。同教室同日同节次已 APPROVED 冲突 → 409。PENDING/APPROVED/REJECTED/CANCELLED。"""
+    __tablename__ = "t_aa_classroom_booking"
+
+    classroom_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    classroom_text: Mapped[str | None] = mapped_column(String(100))
+    booking_date: Mapped[str] = mapped_column(String(20), nullable=False, comment="YYYY-MM-DD")
+    slot_no: Mapped[int] = mapped_column(Integer, nullable=False, comment="节次")
+    purpose: Mapped[str | None] = mapped_column(String(300), comment="用途")
+    applicant_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    applicant_name: Mapped[str | None] = mapped_column(String(100))
+    review_reason: Mapped[str | None] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/APPROVED/REJECTED/CANCELLED")
+
+
 # ═══════════ 调停课组（13B-R2/SM-08；调课/停课/补课，审批通过后改写课表保留原课位历史）═══════════
 
 
@@ -854,6 +870,7 @@ class AaTextbookFeeLedger(PKMixin, TenantMixin, CommonMixin, Base):
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     textbook_name: Mapped[str | None] = mapped_column(String(300))
     amount: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, default=0)
+    paid_amount: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, default=0, comment="已收金额(部分收款)")
     paid_at: Mapped[datetime | None] = mapped_column(DateTime)
     waive_reason: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNPAID", index=True,
