@@ -519,6 +519,43 @@ def funding_stats(user=Depends(require_permission("studentAffairs.stats.view")))
     return success(funding_svc.funding_stats(user))
 
 
+# ── 奖助发放台账（C 包·发放状态/发放/异常）──
+class DisbursementIssueBody(BaseModel):
+    disburseNo: Optional[str] = None
+    bankLast4: Optional[str] = None
+
+
+@router.get("/funding/disbursements", summary="资助发放台账（金额按角色脱敏，不含卡全号）")
+def funding_disbursements(batchId: Optional[int] = None, bankStatus: Optional[str] = None,
+                          page: int = 1, pageSize: int = 50,
+                          user=Depends(require_permission("studentAffairs.funding.view"))):
+    items, total = funding_svc.list_disbursements(user, batchId, bankStatus, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/funding/batches/{batchId}/disbursements/generate", summary="按批次生成发放台账（GRANTED→PENDING，幂等）")
+def funding_disbursement_generate(batchId: int = Path(...),
+                                  user=Depends(require_permission("studentAffairs.funding.disburse.manage"))):
+    return success(funding_svc.generate_disbursements(batchId, user), message="已生成")
+
+
+@router.post("/funding/disbursements/{disbursementId}/issue", summary="标记已发放")
+def funding_disbursement_issue(body: DisbursementIssueBody, disbursementId: int = Path(...),
+                               user=Depends(require_permission("studentAffairs.funding.disburse.manage"))):
+    return success(funding_svc.issue_disbursement(disbursementId, body, user), message="已发放")
+
+
+@router.post("/funding/disbursements/{disbursementId}/fail", summary="标记发放失败（原因≥5字）")
+def funding_disbursement_fail(body: ReasonBody, disbursementId: int = Path(...),
+                              user=Depends(require_permission("studentAffairs.funding.disburse.manage"))):
+    return success(funding_svc.fail_disbursement(disbursementId, user, body.reason or ""), message="已置失败")
+
+
+@router.get("/funding/disbursements/stats", summary="发放概览（按状态计数，授权角色见已发放金额合计）")
+def funding_disbursement_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+    return success(funding_svc.disbursement_stats(user))
+
+
 # ═══════════ 违纪处分（P4，discipline 全套）═══════════
 
 class DisciplineRegister(BaseModel):

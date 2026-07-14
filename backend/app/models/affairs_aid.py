@@ -130,3 +130,23 @@ class FundingApplication(PKMixin, TenantMixin, CommonMixin, Base):
 
     __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "student_id",
                                        name="uk_funding_app_batch_student"),)
+
+
+class FundingDisbursement(PKMixin, TenantMixin, CommonMixin, Base):
+    """资助发放台账（C 包·发放台账）。GRANTED 申请生成一条(1:1)；发放状态与银行回执留痕。
+    金额按角色脱敏；不落银行卡全号。bank_status PENDING/ISSUED/FAILED/RETURNED。"""
+    __tablename__ = "t_affairs_funding_disbursement"
+
+    application_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    project_type: Mapped[str | None] = mapped_column(String(50))
+    amount: Mapped[float | None] = mapped_column(Numeric(12, 2), comment="发放金额(脱敏按角色)")
+    disburse_no: Mapped[str | None] = mapped_column(String(100), comment="发放批次号")
+    bank_last4: Mapped[str | None] = mapped_column(String(10), comment="银行卡后4位(不落全号)")
+    bank_status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING", index=True)
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime)
+    fail_reason: Mapped[str | None] = mapped_column(String(500))
+
+    __table_args__ = (UniqueConstraint("tenant_id", "application_id",
+                                       name="uk_funding_disbursement_app"),)

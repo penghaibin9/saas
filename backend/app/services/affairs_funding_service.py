@@ -517,3 +517,138 @@ def get_application(app_id, user) -> dict:
         d = _app_row(x, user, s)
         d["checkSnapshot"] = json.loads(x.check_snapshot_json) if x.check_snapshot_json else {}
         return d
+
+
+# ═══════════ 发放台账（C 包·发放状态/发放导入/异常处理）═══════════
+
+_L_BANK = {"PENDING": "待发放", "ISSUED": "已发放", "FAILED": "发放失败", "RETURNED": "已退回"}
+
+
+def _disb_uid(user):
+    try:
+        return int((user or {}).get("userId") or 0) or None
+    except (TypeError, ValueError):
+        return None
+
+
+def _disb_row(d, user, s=None) -> dict:
+    return {"disbursementId": str(d.id), "applicationId": str(d.application_id),
+            "batchId": str(d.batch_id or ""), "studentId": str(d.student_id),
+            "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+            "projectType": d.project_type, "amount": _amount_view(d.amount, user),
+            "disburseNo": d.disburse_no or "", "bankLast4": d.bank_last4 or "",
+            "bankStatus": d.bank_status, "bankStatusLabel": _L_BANK.get(d.bank_status, d.bank_status),
+            "issuedAt": _iso(d.issued_at), "failReason": d.fail_reason or ""}
+
+
+def generate_disbursements(batch_id, user) -> dict:
+    """按批次为 GRANTED 且尚无发放记录的申请生成发放台账(PENDING)。幂等。返回 {generated}。"""
+    from app.models import FundingApplication, FundingDisbursement
+    with session() as db:
+        apps = db.scalars(select(FundingApplication).where(
+            FundingApplication.tenant_id == _tid(), FundingApplication.batch_id == int(batch_id),
+            FundingApplication.status == "GRANTED", FundingApplication.is_deleted.is_(False))).all()
+        made = 0
+        for a in apps:
+            dup = db.scalars(select(FundingDisbursement).where(
+                FundingDisbursement.tenant_id == _tid(),
+                FundingDisbursement.application_id == a.id,
+                FundingDisbursement.is_deleted.is_(False))).first()
+            if dup:
+                continue
+            db.add(FundingDisbursement(tenant_id=_tid(), application_id=a.id, batch_id=a.batch_id,
+                                       student_id=a.student_id, project_type=a.project_type,
+                                       amount=a.amount, bank_status="PENDING", created_by=_disb_uid(user)))
+            made += 1
+        if made:
+            _audit(db, int(batch_id), "FUNDING_DISBURSE_GENERATE", f"{made}条")
+        db.commit()
+        return {"generated": made}
+
+
+def list_disbursements(user, batch_id=None, bank_status=None, page=1, page_size=50):
+    from app.models import FundingDisbursement, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [FundingDisbursement.tenant_id == _tid(), FundingDisbursement.is_deleted.is_(False)]
+        if batch_id:
+            conds.append(FundingDisbursement.batch_id == int(batch_id))
+        if bank_status:
+            conds.append(FundingDisbursement.bank_status == bank_status)
+        rows = db.scalars(select(FundingDisbursement).where(*conds).order_by(
+            FundingDisbursement.id.desc())).all()
+        out = []
+        for d in rows:
+            s = db.get(StudentProfile, int(d.student_id)) if d.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append(_disb_row(d, user, s))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def _load_disb(db, disbursement_id):
+    from app.models import FundingDisbursement
+    d = db.get(FundingDisbursement, int(disbursement_id))
+    if not d or d.is_deleted or d.tenant_id != _tid():
+        raise not_found("发放记录不存在")
+    return d
+
+
+def issue_disbursement(disbursement_id, body, user) -> dict:
+    """标记已发放（PENDING/FAILED→ISSUED，记发放批次号+卡后4位）。"""
+    from datetime import datetime
+    from app.models import StudentProfile
+    with session() as db:
+        d = _load_disb(db, disbursement_id)
+        if d.bank_status == "ISSUED":
+            raise AppException("DATA_CONFLICT", "已发放，不可重复")
+        d.bank_status, d.issued_at, d.fail_reason = "ISSUED", datetime.utcnow(), None
+        d.disburse_no = getattr(body, "disburseNo", None) or d.disburse_no
+        last4 = getattr(body, "bankLast4", None)
+        if last4:
+            d.bank_last4 = str(last4)[-4:]
+        d.version += 1
+        _audit(db, d.id, "FUNDING_DISBURSE_ISSUE", d.disburse_no or "")
+        db.commit(); db.refresh(d)
+        s = db.get(StudentProfile, int(d.student_id))
+        return _disb_row(d, user, s)
+
+
+def fail_disbursement(disbursement_id, user, reason="") -> dict:
+    """标记发放失败（原因≥5字；可再改发放）。"""
+    from app.models import StudentProfile
+    if len((reason or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "失败原因至少 5 字")
+    with session() as db:
+        d = _load_disb(db, disbursement_id)
+        if d.bank_status == "ISSUED":
+            raise AppException("DATA_CONFLICT", "已发放不可置失败")
+        d.bank_status, d.fail_reason, d.version = "FAILED", reason.strip(), d.version + 1
+        _audit(db, d.id, "FUNDING_DISBURSE_FAIL", reason.strip())
+        db.commit(); db.refresh(d)
+        s = db.get(StudentProfile, int(d.student_id))
+        return _disb_row(d, user, s)
+
+
+def disbursement_stats(user) -> dict:
+    """发放概览：按状态计数 + 已发放金额合计(授权角色见真实合计,否则仅计数)。"""
+    from app.models import FundingDisbursement
+    with session() as db:
+        rows = db.scalars(select(FundingDisbursement).where(
+            FundingDisbursement.tenant_id == _tid(),
+            FundingDisbursement.is_deleted.is_(False))).all()
+        by_status = {}
+        issued_total = 0.0
+        role = (user or {}).get("currentRoleCode")
+        for d in rows:
+            by_status[d.bank_status] = by_status.get(d.bank_status, 0) + 1
+            if d.bank_status == "ISSUED":
+                issued_total += float(d.amount or 0)
+        out = {"total": len(rows),
+               "byStatus": [{"key": k, "label": _L_BANK.get(k, k), "count": v} for k, v in by_status.items()]}
+        if role in _AMOUNT_ROLES:
+            out["issuedAmountTotal"] = round(issued_total, 2)
+        return out
