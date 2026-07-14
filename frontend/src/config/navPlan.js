@@ -325,7 +325,10 @@ export const NAV_PLAN = [
       I('毕业资格预审', '/admin/academic-affairs/graduation'),
       ...P('审核批次', '毕业学生名单', '学分达成审核', '课程达成审核', '实践环节审核', '毕设状态联动', '实习状态联动', '欠费状态联动', '处分状态联动', '毕业资格终审', '不通过原因', '审核结果', '审核归档')
     ]),
-    mod('aa-textbooks', '教材管理', null, P('教材目录', '教材选用', '教材征订', '教材审核', '教材发放', '教材费用', '教材库存', '教材统计', '教材归档')),
+    mod('aa-textbooks', '教材管理', '/admin/academic-affairs/textbooks', [
+      I('教材控制台（目录/选用/审核/征订/发放/费用/统计）', '/admin/academic-affairs/textbooks', 'academicAffairs.textbook.view'),
+      ...P('教材库存', '教材归档')
+    ]),
     mod('aa-resources', '教学资源', '/admin/academic-affairs/classrooms', [
       I('教室资源', '/admin/academic-affairs/classrooms', 'academicAffairs.classroom.view'),
       ...P('实训室资源', '设备资源', '教室预约', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')

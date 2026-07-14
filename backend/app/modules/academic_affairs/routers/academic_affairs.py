@@ -29,6 +29,7 @@ from app.modules.academic_affairs.services import academic_affairs_schedule_serv
 from app.modules.academic_affairs.services import academic_affairs_warning_service as warn_svc
 from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
 from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup_svc
+from app.modules.academic_affairs.services import academic_affairs_textbook_service as textbook_svc
 from app.modules.academic_affairs.services import academic_affairs_selection_service as selection_svc
 from app.modules.academic_affairs.services import academic_affairs_service as svc
 from app.modules.academic_affairs.services import academic_affairs_stats_service as stats_svc
@@ -1593,3 +1594,191 @@ def makeup_stats(user=Depends(require_permission(_MK_VIEW))):
     return success({"makeupBatchCount": mbt, "retakeApplyCount": rtt, "exemptionApplyCount": ext,
                     "retakeApproved": len([r for r in rt if r["status"] in ("APPROVED", "ENROLLED", "FINISHED")]),
                     "exemptionApproved": len([e for e in ex if e["status"] == "APPROVED"])})
+
+
+# ══════════════ 教材管理（13B，/academic-affairs/textbooks/*） ══════════════
+_TB_CATALOG = "academicAffairs.textbook.catalog.manage"
+_TB_SELECTION = "academicAffairs.textbook.selection.manage"
+_TB_REVIEW = "academicAffairs.textbook.review.manage"
+_TB_ORDER = "academicAffairs.textbook.order.manage"
+_TB_DIST = "academicAffairs.textbook.distribution.manage"
+_TB_FEE = "academicAffairs.textbook.fee.manage"
+_TB_VIEW = "academicAffairs.textbook.view"
+
+
+class TextbookBody(BaseModel):
+    name: str = Field(..., min_length=1)
+    isbn: Optional[str] = None
+    publisher: Optional[str] = None
+    edition: Optional[str] = None
+    author: Optional[str] = None
+    subject: Optional[str] = None
+    unitPrice: Optional[float] = None
+    isNationalStandard: Optional[bool] = False
+    status: Optional[str] = None
+
+
+class SelectionBody(BaseModel):
+    taskId: str = Field(..., min_length=1)
+    textbookId: str = Field(..., min_length=1)
+    expectedQty: Optional[int] = None
+    remark: Optional[str] = None
+
+
+class ReviewBatchBody(BaseModel):
+    batchName: Optional[str] = None
+    termId: Optional[str] = None
+    selectionIds: list[str] = Field(default_factory=list)
+
+
+class ReviewAdvanceBody(BaseModel):
+    action: str = Field(..., description="APPROVE/RETURN")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class OrderBatchBody(BaseModel):
+    batchName: Optional[str] = None
+    termId: Optional[str] = None
+
+
+class ArrivalBody(BaseModel):
+    arrivedQty: int = Field(..., ge=0)
+
+
+class DistGenerateBody(BaseModel):
+    orderBatchId: str = Field(..., min_length=1)
+    classId: Optional[str] = None
+    studentIds: list[str] = Field(default_factory=list)
+
+
+class FeeMarkBody(BaseModel):
+    action: str = Field(..., description="PAID/WAIVE")
+    waiveReason: Optional[str] = Field("", max_length=500)
+
+
+# ── 目录 ──
+@router.post("/textbooks", summary="新增教材目录")
+def textbook_create(body: TextbookBody, user=Depends(require_permission(_TB_CATALOG))):
+    return success(textbook_svc.create_textbook(user, body), message="已创建")
+
+
+@router.get("/textbooks", summary="教材目录列表")
+def textbooks(keyword: Optional[str] = None, status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+              user=Depends(require_permission(_TB_VIEW))):
+    items, total = textbook_svc.list_textbooks(user, keyword, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.put("/textbooks/{tid}", summary="编辑教材目录")
+def textbook_update(body: TextbookBody, tid: int = Path(...), user=Depends(require_permission(_TB_CATALOG))):
+    return success(textbook_svc.update_textbook(user, tid, body), message="已保存")
+
+
+# ── 选用 ──
+@router.post("/textbooks/selections", summary="按教学任务申报选用")
+def selection_create(body: SelectionBody, user=Depends(require_permission(_TB_SELECTION))):
+    return success(textbook_svc.create_selection(user, body), message="已创建")
+
+
+@router.get("/textbooks/selections", summary="选用列表")
+def selections(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+               user=Depends(require_permission(_TB_VIEW))):
+    items, total = textbook_svc.list_selections(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/textbooks/selections/{sid}/submit", summary="提交选用")
+def selection_submit(sid: int = Path(...), user=Depends(require_permission(_TB_SELECTION))):
+    return success(textbook_svc.submit_selection(user, sid), message="已提交")
+
+
+@router.post("/textbooks/selections/{sid}/withdraw", summary="撤回选用（仅草稿）")
+def selection_withdraw(sid: int = Path(...), user=Depends(require_permission(_TB_SELECTION))):
+    return success(textbook_svc.withdraw_selection(user, sid), message="已撤回")
+
+
+# ── 审核 ──
+@router.post("/textbooks/review-batches", summary="创建教材审核批次")
+def review_create(body: ReviewBatchBody, user=Depends(require_permission(_TB_REVIEW))):
+    return success(textbook_svc.create_review_batch(user, body), message="已创建")
+
+
+@router.get("/textbooks/review-batches", summary="审核批次列表")
+def review_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                   user=Depends(require_permission(_TB_VIEW))):
+    items, total = textbook_svc.list_review_batches(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/textbooks/review-batches/{bid}/advance", summary="审核推进（学院→教务→备案公示）")
+def review_advance(body: ReviewAdvanceBody, bid: int = Path(...), user=Depends(require_permission(_TB_REVIEW))):
+    return success(textbook_svc.review_batch_advance(user, bid, body.action, body.reason), message="已处理")
+
+
+# ── 征订 ──
+@router.post("/textbooks/order-batches", summary="从已备案选用生成征订批次")
+def order_create(body: OrderBatchBody, user=Depends(require_permission(_TB_ORDER))):
+    return success(textbook_svc.create_order_batch(user, body), message="已生成")
+
+
+@router.get("/textbooks/order-batches", summary="征订批次列表")
+def order_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                  user=Depends(require_permission(_TB_VIEW))):
+    items, total = textbook_svc.list_order_batches(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/textbooks/order-batches/{bid}/items", summary="征订明细")
+def order_batch_items(bid: int = Path(...), user=Depends(require_permission(_TB_VIEW))):
+    return success({"items": textbook_svc.order_items(user, bid)})
+
+
+@router.post("/textbooks/order-batches/{bid}/submit", summary="提交征订")
+def order_submit(bid: int = Path(...), user=Depends(require_permission(_TB_ORDER))):
+    return success(textbook_svc.submit_order(user, bid), message="已提交")
+
+
+@router.post("/textbooks/order-items/{itemId}/arrival", summary="登记到货")
+def order_arrival(body: ArrivalBody, itemId: int = Path(...), user=Depends(require_permission(_TB_ORDER))):
+    return success(textbook_svc.record_arrival(user, itemId, body.arrivedQty), message="已登记")
+
+
+@router.post("/textbooks/order-batches/{bid}/archive", summary="归档征订批次")
+def order_archive(bid: int = Path(...), user=Depends(require_permission(_TB_ORDER))):
+    return success(textbook_svc.archive_order_batch(user, bid), message="已归档")
+
+
+# ── 发放 ──
+@router.post("/textbooks/distribution-batches", summary="生成发放名单（按班级+征订批次）")
+def dist_generate(body: DistGenerateBody, user=Depends(require_permission(_TB_DIST))):
+    return success(textbook_svc.generate_distribution(user, int(body.orderBatchId), body.classId, body.studentIds), message="已生成")
+
+
+@router.get("/textbooks/distribution-batches/{bid}/records", summary="发放明细")
+def dist_records(bid: int = Path(...), page: int = 1, pageSize: int = 100, user=Depends(require_permission(_TB_VIEW))):
+    items, total = textbook_svc.list_distribution_records(user, bid, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/textbooks/distribution-records/{rid}/sign", summary="登记签收（触发费用台账）")
+def dist_sign(rid: int = Path(...), user=Depends(require_permission(_TB_DIST))):
+    return success(textbook_svc.sign_receipt(user, rid), message="已签收")
+
+
+# ── 费用 ──
+@router.get("/textbooks/fee-ledger", summary="教材费用台账")
+def fee_ledger(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+               user=Depends(require_permission(_TB_VIEW))):
+    items, total = textbook_svc.list_fees(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/textbooks/fee-ledger/{fid}/mark", summary="标记已收/减免")
+def fee_mark(body: FeeMarkBody, fid: int = Path(...), user=Depends(require_permission(_TB_FEE))):
+    return success(textbook_svc.mark_fee(user, fid, body.action, body.waiveReason), message="已处理")
+
+
+# ── 统计 ──
+@router.get("/textbooks/stats", summary="教材统计（征订/到货率/欠费）")
+def textbook_stats(user=Depends(require_permission(_TB_VIEW))):
+    return success(textbook_svc.stats(user))

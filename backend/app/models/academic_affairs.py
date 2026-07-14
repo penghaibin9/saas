@@ -721,3 +721,142 @@ class AaExemption(PKMixin, TenantMixin, CommonMixin, Base):
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
                                         comment="SUBMITTED/TEACHER_REVIEW/COLLEGE_REVIEW/ACADEMIC_REVIEW/APPROVED/REJECTED/CANCELLED")
+
+
+# ═══════════ 教材管理组（13B；目录/选用/审核/征订/发放/费用，挂教学任务）═══════════
+
+
+class AaTextbook(PKMixin, TenantMixin, CommonMixin, Base):
+    """教材目录字典。唯一(tenant,isbn)（isbn 非空时）。DRAFT/ENABLED/DISABLED。"""
+    __tablename__ = "t_aa_textbook"
+
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    isbn: Mapped[str | None] = mapped_column(String(30), index=True)
+    publisher: Mapped[str | None] = mapped_column(String(200))
+    edition: Mapped[str | None] = mapped_column(String(50))
+    author: Mapped[str | None] = mapped_column(String(200))
+    subject: Mapped[str | None] = mapped_column(String(100))
+    unit_price: Mapped[float | None] = mapped_column(Numeric(8, 2), comment="定价")
+    is_national_standard: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否国家统编")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ENABLED", index=True,
+                                        comment="DRAFT/ENABLED/DISABLED")
+
+
+class AaTextbookSelection(PKMixin, TenantMixin, CommonMixin, Base):
+    """教材选用（挂教学任务）。DRAFT/SUBMITTED/REVIEWING/APPROVED/RETURNED/ORDERED。"""
+    __tablename__ = "t_aa_textbook_selection"
+
+    task_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_aa_teaching_task")
+    textbook_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    textbook_name: Mapped[str | None] = mapped_column(String(300))
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    officer_teacher_id: Mapped[int | None] = mapped_column(BigInteger, comment="教材负责人")
+    officer_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    expected_qty: Mapped[int | None] = mapped_column(Integer, comment="预计数量")
+    remark: Mapped[str | None] = mapped_column(String(500))
+    reject_reason: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/SUBMITTED/REVIEWING/APPROVED/RETURNED/ORDERED")
+
+
+class AaTextbookReviewBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """教材审核批次。DRAFT/COLLEGE_REVIEWING/COLLEGE_APPROVED/ACADEMIC_APPROVED/PUBLISHED/RETURNED。"""
+    __tablename__ = "t_aa_textbook_review_batch"
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    publicity_start_at: Mapped[datetime | None] = mapped_column(DateTime)
+    publicity_end_at: Mapped[datetime | None] = mapped_column(DateTime)
+    college_reviewer: Mapped[str | None] = mapped_column(String(100))
+    academic_reviewer: Mapped[str | None] = mapped_column(String(100))
+    reject_reason: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/COLLEGE_REVIEWING/COLLEGE_APPROVED/ACADEMIC_APPROVED/PUBLISHED/RETURNED")
+
+
+class AaTextbookReviewBatchItem(PKMixin, TenantMixin, CommonMixin, Base):
+    """审核批次-选用关联。唯一(tenant,batch,selection)。"""
+    __tablename__ = "t_aa_textbook_review_batch_item"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    selection_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "selection_id", name="uk_aa_tb_review_item"),)
+
+
+class AaTextbookOrderBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """教材征订批次。DRAFT/ORDERED/PARTIALLY_ARRIVED/ARRIVED/ARCHIVED。"""
+    __tablename__ = "t_aa_textbook_order_batch"
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    submit_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/ORDERED/PARTIALLY_ARRIVED/ARRIVED/ARCHIVED")
+
+
+class AaTextbookOrderItem(PKMixin, TenantMixin, CommonMixin, Base):
+    """征订明细（同教材合并）。唯一(tenant,order_batch,textbook)。"""
+    __tablename__ = "t_aa_textbook_order_item"
+
+    order_batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    textbook_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    textbook_name: Mapped[str | None] = mapped_column(String(300))
+    order_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    arrived_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unit_price_snapshot: Mapped[float | None] = mapped_column(Numeric(8, 2))
+
+    __table_args__ = (UniqueConstraint("tenant_id", "order_batch_id", "textbook_id", name="uk_aa_tb_order_item"),)
+
+
+class AaTextbookDistributionBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """发放批次。DRAFT/DISTRIBUTING/COMPLETED。唯一(tenant,order_batch,class)。"""
+    __tablename__ = "t_aa_textbook_distribution_batch"
+
+    order_batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    class_name: Mapped[str | None] = mapped_column(String(100))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/DISTRIBUTING/COMPLETED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "order_batch_id", "class_id", name="uk_aa_tb_dist_batch"),)
+
+
+class AaTextbookDistributionRecord(PKMixin, TenantMixin, CommonMixin, Base):
+    """发放明细（只带 student_id 外键，不冗余隐私）。PENDING/RECEIVED/EXCLUDED/EXCHANGED。"""
+    __tablename__ = "t_aa_textbook_distribution_record"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    textbook_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    textbook_name: Mapped[str | None] = mapped_column(String(300))
+    qty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime)
+    received_by: Mapped[str | None] = mapped_column(String(100))
+    exclude_reason: Mapped[str | None] = mapped_column(String(500))
+    exchange_reason: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/RECEIVED/EXCLUDED/EXCHANGED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "student_id", "textbook_id", name="uk_aa_tb_dist_record"),)
+
+
+class AaTextbookFeeLedger(PKMixin, TenantMixin, CommonMixin, Base):
+    """教材费用台账（签收后自动生成应收）。UNPAID/PARTIAL/PAID/WAIVED。唯一(tenant,distribution_record)。"""
+    __tablename__ = "t_aa_textbook_fee_ledger"
+
+    distribution_record_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    textbook_name: Mapped[str | None] = mapped_column(String(300))
+    amount: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, default=0)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime)
+    waive_reason: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNPAID", index=True,
+                                        comment="UNPAID/PARTIAL/PAID/WAIVED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "distribution_record_id", name="uk_aa_tb_fee"),)

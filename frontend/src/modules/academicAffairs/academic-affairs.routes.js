@@ -70,7 +70,9 @@ const layoutRoute = {
     { path: 'exam', name: 'aa-exam', component: () => import('@/modules/academicAffairs/views/AaExamConsoleView.vue'), meta: meta('academicAffairs.exam.view', '考务管理') },
     // ── 补考重修缓考免修 ──
     { path: 'makeup', name: 'aa-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupConsoleView.vue'), meta: meta('academicAffairs.makeup.view', '补考重修缓考免修') },
-    { path: 'my-makeup', name: 'aa-my-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupStudentView.vue'), meta: meta('academicAffairs.retake.apply', '重修免修申请') }
+    { path: 'my-makeup', name: 'aa-my-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupStudentView.vue'), meta: meta('academicAffairs.retake.apply', '重修免修申请') },
+    // ── 教材管理（控制台） ──
+    { path: 'textbooks', name: 'aa-textbooks', component: () => import('@/modules/academicAffairs/views/AaTextbookConsoleView.vue'), meta: meta('academicAffairs.textbook.view', '教材管理') }
   ]
 }
 

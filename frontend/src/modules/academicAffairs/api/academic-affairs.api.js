@@ -514,4 +514,37 @@ export const academicAffairsMakeupApi = {
   mergeDeferred(did, batchId) { return call(() => request(`${BASE}/makeup/deferred-pool/${did}/merge`, { method: 'POST', body: { batchId } })) }
 }
 
+/* ═══════════ 教材管理（/academic-affairs/textbooks/*） ═══════════ */
+export const academicAffairsTextbookApi = {
+  // 目录
+  listTextbooks(params = {}) { return callList(`${BASE}/textbooks`, params) },
+  createTextbook(body) { return call(() => request(`${BASE}/textbooks`, { method: 'POST', body })) },
+  updateTextbook(id, body) { return call(() => request(`${BASE}/textbooks/${id}`, { method: 'PUT', body })) },
+  // 选用
+  listSelections(params = {}) { return callList(`${BASE}/textbooks/selections`, params) },
+  createSelection(body) { return call(() => request(`${BASE}/textbooks/selections`, { method: 'POST', body })) },
+  submitSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/submit`, { method: 'POST' })) },
+  withdrawSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/withdraw`, { method: 'POST' })) },
+  // 审核
+  listReviewBatches(params = {}) { return callList(`${BASE}/textbooks/review-batches`, params) },
+  createReviewBatch(body) { return call(() => request(`${BASE}/textbooks/review-batches`, { method: 'POST', body })) },
+  reviewAdvance(id, action, reason = '') { return call(() => request(`${BASE}/textbooks/review-batches/${id}/advance`, { method: 'POST', body: { action, reason } })) },
+  // 征订
+  listOrderBatches(params = {}) { return callList(`${BASE}/textbooks/order-batches`, params) },
+  createOrderBatch(body) { return call(() => request(`${BASE}/textbooks/order-batches`, { method: 'POST', body })) },
+  orderItems(id) { return call(() => request(`${BASE}/textbooks/order-batches/${id}/items`)) },
+  submitOrder(id) { return call(() => request(`${BASE}/textbooks/order-batches/${id}/submit`, { method: 'POST' })) },
+  recordArrival(itemId, arrivedQty) { return call(() => request(`${BASE}/textbooks/order-items/${itemId}/arrival`, { method: 'POST', body: { arrivedQty } })) },
+  archiveOrder(id) { return call(() => request(`${BASE}/textbooks/order-batches/${id}/archive`, { method: 'POST' })) },
+  // 发放
+  generateDistribution(body) { return call(() => request(`${BASE}/textbooks/distribution-batches`, { method: 'POST', body })) },
+  distributionRecords(id, params = {}) { return callList(`${BASE}/textbooks/distribution-batches/${id}/records`, params) },
+  sign(rid) { return call(() => request(`${BASE}/textbooks/distribution-records/${rid}/sign`, { method: 'POST' })) },
+  // 费用
+  feeLedger(params = {}) { return callList(`${BASE}/textbooks/fee-ledger`, params) },
+  markFee(id, action, waiveReason = '') { return call(() => request(`${BASE}/textbooks/fee-ledger/${id}/mark`, { method: 'POST', body: { action, waiveReason } })) },
+  // 统计
+  stats() { return call(() => request(`${BASE}/textbooks/stats`)) }
+}
+
 export default academicAffairsApi
