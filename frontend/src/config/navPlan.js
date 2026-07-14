@@ -269,7 +269,14 @@ export const NAV_PLAN = [
       I('课程列表', '/admin/academic-affairs/courses'),
       ...P('新增课程', '课程分类', '课程性质', '学分学时', '课程大纲', '考核方式', '课程负责人', '课程材料', '课程停用', '课程归档')
     ]),
-    mod('aa-teaching-plan', '教学计划', null, P('年级教学计划', '专业教学计划', '学期教学计划', '课程开设计划', '实践教学计划', '计划审核', '计划发布', '计划变更', '计划执行进度', '计划归档')),
+    // 教学计划：按手册 P6 冻结决定 + 用户 2026-07-14 拍板「收编」——不建独立域，叶子指向既有等价功能页
+    // 年级/专业教学计划=培养方案(AaProgramBinding方案-年级绑定)；学期教学计划/课程开设计划=教学任务批次(AaTeachingTaskBatch学期开课计划)；计划归档=教务归档
+    mod('aa-teaching-plan', '教学计划', '/admin/academic-affairs/programs', [
+      I('年级/专业教学计划（培养方案）', '/admin/academic-affairs/programs', 'academicAffairs.program.view'),
+      I('学期教学计划/课程开设计划（教学任务）', '/admin/academic-affairs/teaching-tasks', 'academicAffairs.teachingTask.view'),
+      I('计划归档（教务归档）', '/admin/academic-affairs/archive', 'academicAffairs.archive.view'),
+      ...P('实践教学计划', '计划审核', '计划发布', '计划变更', '计划执行进度')
+    ]),
     mod('aa-teaching-tasks', '教学任务', '/admin/academic-affairs/teaching-tasks', [
       I('教学任务批次', '/admin/academic-affairs/teaching-tasks'),
       ...P('教学任务生成', '任课教师分配', '教学班生成', '合班拆班', '教学任务确认', '教师任务确认', '教学任务调整', '教学任务统计', '教学任务归档')
