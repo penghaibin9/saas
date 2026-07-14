@@ -625,6 +625,13 @@ export const affairsDormBeds = (roomId) =>
   realRequest(`/mobile/affairs/dorm/rooms/${roomId}/beds`)
 export const teacherAffairs = () => realRequest('/mobile/teacher/affairs')
 
+/** 学生活动与第二课堂（真实接口，无 mock 兜底） */
+export const affairsMyActivities = () => realRequest('/mobile/affairs/my-activities')
+export const affairsActivityEnroll = (activityId, action) =>
+  realRequest(`/mobile/affairs/activities/${activityId}/enroll`, { method: 'POST', data: { action: action || 'ENROLL' } })
+export const affairsActivityCheckin = (activityId, method) =>
+  realRequest(`/mobile/affairs/activities/${activityId}/checkin`, { method: 'POST', data: { method: method || 'MANUAL' } })
+
 // ── 13B 教务中心（P7 多端收口，学生自视图：课表/成绩/学籍异动/毕业进度；教师课表）──
 export const acadScheduleMy = () => realRequest('/mobile/academic/schedule/my')
 export const acadTranscriptMy = () => realRequest('/mobile/academic/transcript/my')

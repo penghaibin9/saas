@@ -106,6 +106,10 @@ export const studentApi = {
   getDormRooms: (buildingId, floor) => real.affairsDormRooms(buildingId, floor),
   getDormBeds: (roomId) => real.affairsDormBeds(roomId),
   selfSelectBed: (bedId) => real.affairsDormSelfSelect(bedId),
+  // 学工中心·学生活动与第二课堂（真实接口，无 mock 兜底）
+  getMyActivities: () => real.affairsMyActivities(),
+  enrollActivity: (activityId, action) => real.affairsActivityEnroll(activityId, action),
+  checkinActivity: (activityId, method) => real.affairsActivityCheckin(activityId, method),
   // 13B 教务中心（P7 真实优先无 mock 兜底）
   getMySchedule: () => real.acadScheduleMy(),
   getMyTranscript: () => real.acadTranscriptMy(),

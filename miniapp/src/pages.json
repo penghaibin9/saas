@@ -137,11 +137,23 @@
     },
     {
       "path": "pages/student/affairs/leave",
-      "style": { "navigationBarTitleText": "我的请假" }
+      "style": { "navigationBarTitleText": "我的请假", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/affairs/dorm",
-      "style": { "navigationBarTitleText": "我的宿舍" }
+      "style": { "navigationBarTitleText": "我的宿舍", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/affairs/aid",
+      "style": { "navigationBarTitleText": "困难认定", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/affairs/funding",
+      "style": { "navigationBarTitleText": "奖助申请", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/affairs/activity",
+      "style": { "navigationBarTitleText": "活动与第二课堂", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/academic-affairs/index",
