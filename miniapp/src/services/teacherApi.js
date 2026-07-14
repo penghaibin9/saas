@@ -84,6 +84,10 @@ export const teacherApi = {
   getMessages: () =>
     realFirstStrict('teacher.messages',
       () => real.teacherMessagesReal({ tabs: M.teacherMessageTabs, groups: M.teacherMessages }),
-      () => mockRequest({ tabs: M.teacherMessageTabs, groups: M.teacherMessages }))
+      () => mockRequest({ tabs: M.teacherMessageTabs, groups: M.teacherMessages })),
+  // 迎新·现场报到核验（真实写操作，业务错误透出，不 mock 兜底）
+  orientationCheckin: (admissionNo) => real.teacherOrientationCheckin(admissionNo),
+  getOrientationTodayCheckins: () => real.teacherOrientationTodayCheckins(),
+  getOrientationDashboard: () => real.teacherOrientationDashboard()
 }
 export default teacherApi

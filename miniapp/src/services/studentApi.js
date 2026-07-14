@@ -16,6 +16,9 @@ export const studentApi = {
     realFirstStrict('student.orientation',
       () => real.enrichOrientation(M.studentOrientation),
       () => mockRequest(M.studentOrientation)),
+  getOrientationBatchStatus: () => real.orientationBatchStatus(),
+  submitOrientationCollect: (body) => real.orientationCollectSubmit(body),
+  submitOrientationGreenChannel: (body) => real.orientationGreenChannelSubmit(body),
   getServices: () =>
     realFirstStrict('student.campus',
       () => real.enrichCampusService({ categories: M.serviceCategories, items: M.serviceItems }),

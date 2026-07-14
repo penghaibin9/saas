@@ -4,6 +4,9 @@ export const studentOrientation = {
   overallStatus: 'REGISTERED',
   overallText: '已完成报到 · 待/已注册',
   reportCode: { code: 'XY-2024-0612', valid: false, note: '报到已完成，报到码已失效' },
+  greenChannelStatus: 'NOT_APPLIED',
+  identity: { name: '陈晓', gender: '女', collegeName: '软件学院', majorName: '软件技术',
+    className: '软件2201班', grade: '2024', origin: '湖南省长沙市', phoneMasked: '138****0001' },
   steps: [
     { id: 's1', title: '账号激活', status: 'COMPLETED', time: '2024-08-18', desc: '统一身份认证已激活' },
     { id: 's2', title: '身份核验（人脸）', status: 'COMPLETED', time: '2024-08-19', desc: '核验通过' },

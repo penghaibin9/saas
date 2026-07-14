@@ -113,11 +113,34 @@ export async function enrichOrientation(mock) {
     COLLEGE_CONFIRMED: '学院已确认' }
   return { ...mock, overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || mock.overallText,
     dorm: { building: r.building, room: r.room, status: r.dormStatus },
-    payStatus: r.paymentStatus, materialStatus: r.materialStatus,
+    payStatus: r.paymentStatus, materialStatus: r.materialStatus, greenChannelStatus: r.greenChannelStatus,
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
     steps: (r.steps && r.steps.length) ? r.steps.map((s) => ({ key: s.key, status: s.status })) : mock.steps,
+    reportCode: { code: r.admissionNo || (mock.reportCode && mock.reportCode.code) || '',
+      valid: !!r.reportCodeValid, note: r.reportCodeValid ? '现场核验时出示' : '已完成现场报到，二维码已失效' },
+    identity: { name: r.name || '', gender: r.gender || '', collegeName: r.collegeName || '',
+      majorName: r.majorName || '', className: r.className || '', grade: r.grade || '',
+      origin: r.origin || '', phoneMasked: r.phoneMasked || '' },
     _real: true }
 }
+
+/** 迎新批次开放状态（公开·登录前可查，登录页限时入口倒计时用） */
+export const orientationBatchStatus = () =>
+  realRequest('/mobile/orientation/batch-status', { auth: false })
+
+/** 预报到信息采集 / 绿色通道申请（本人提交，业务错误透出不兜底） */
+export const orientationCollectSubmit = (body) =>
+  realRequest('/mobile/orientation/collect', { method: 'POST', data: body || {} })
+export const orientationGreenChannelSubmit = (body) =>
+  realRequest('/mobile/orientation/green-channel', { method: 'POST', data: body })
+
+/** 迎新老师·现场报到核验 / 今日已核验列表 */
+export const teacherOrientationCheckin = (admissionNo) =>
+  realRequest('/mobile/teacher/orientation/checkin', { method: 'POST', data: { admissionNo } })
+export const teacherOrientationTodayCheckins = () =>
+  realRequest('/mobile/teacher/orientation/today-checkins')
+export const teacherOrientationDashboard = () =>
+  realRequest('/mobile/teacher/orientation/dashboard')
 
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')

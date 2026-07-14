@@ -1,6 +1,7 @@
 """移动端聚合 API（/api/v1/mobile/*）。
 学生端：只返回本人跨域数据（userType 必须 STUDENT，否则 403）。
 教师端：本校待办/待处理（严格租户过滤），只读。
+除 /orientation/batch-status（登录页迎新入口倒计时，登录前必须可查，不含个人数据）外，
 所有接口鉴权；查不到本人档案返回空态（hasData=false），不 500。"""
 from __future__ import annotations
 
@@ -257,6 +258,21 @@ def orientation_my(user=Depends(get_current_user)):
     return success(stu.orientation_my(user))
 
 
+@router.get("/orientation/batch-status", summary="迎新批次开放状态（公开，登录页倒计时用，无个人数据）")
+def orientation_batch_status_api():
+    return success(stu.orientation_batch_status())
+
+
+@router.post("/orientation/collect", summary="预报到信息采集（本人，确认联系方式/生源地）")
+def orientation_collect(body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(stu.orientation_collect_submit(user, body), message="已提交")
+
+
+@router.post("/orientation/green-channel", summary="绿色通道申请（本人提交，待审核）")
+def orientation_green_channel(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.orientation_green_channel_submit(user, body), message="已提交")
+
+
 @router.get("/campus-service/my", summary="我的在校服务")
 def campus_service_my(user=Depends(get_current_user)):
     return success(stu.campus_service_my(user))
@@ -399,6 +415,22 @@ def teacher_todos(user=Depends(get_current_user)):
 @router.get("/teacher/orientation", summary="教师·迎新待处理")
 def teacher_orientation(user=Depends(get_current_user)):
     return success(tea.orientation(user))
+
+
+@router.post("/teacher/orientation/checkin", summary="迎新老师·现场报到核验（按报到码，范围校验+审计）")
+def teacher_orientation_checkin(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.orientation_checkin(user, body.get("admissionNo") or body.get("code") or ""),
+                   message="核验通过")
+
+
+@router.get("/teacher/orientation/today-checkins", summary="迎新老师·今日已核验列表")
+def teacher_orientation_today_checkins(user=Depends(get_current_user)):
+    return success(tea.orientation_today_checkins(user))
+
+
+@router.get("/teacher/orientation/dashboard", summary="迎新看板（移动版·迎新老师）")
+def teacher_orientation_dashboard(user=Depends(get_current_user)):
+    return success(tea.orientation_dashboard(user))
 
 
 @router.get("/teacher/campus-service", summary="教师·在校服务待处理")

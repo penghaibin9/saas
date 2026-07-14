@@ -28,6 +28,18 @@
       "style": { "navigationBarTitleText": "迎新报到" }
     },
     {
+      "path": "pages/student/orientation/collect/index",
+      "style": { "navigationBarTitleText": "预报到信息采集" }
+    },
+    {
+      "path": "pages/student/orientation/code/index",
+      "style": { "navigationBarTitleText": "电子报到码" }
+    },
+    {
+      "path": "pages/student/orientation/green-channel/index",
+      "style": { "navigationBarTitleText": "绿色通道申请" }
+    },
+    {
       "path": "pages/student/campus-service/index",
       "style": { "navigationBarTitleText": "在校服务", "navigationStyle": "custom" }
     },
@@ -144,12 +156,20 @@
       "style": { "navigationBarTitleText": "工作台", "navigationStyle": "custom", "enablePullDownRefresh": true }
     },
     {
+      "path": "pages/teacher/orientation/verify/index",
+      "style": { "navigationBarTitleText": "现场报到核验", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/orientation/dashboard/index",
+      "style": { "navigationBarTitleText": "迎新看板", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/todos/index",
       "style": { "navigationBarTitleText": "今日待办", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/approval/index",
-      "style": { "navigationBarTitleText": "审批处理" }
+      "style": { "navigationBarTitleText": "审批处理", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/risk-students/index",

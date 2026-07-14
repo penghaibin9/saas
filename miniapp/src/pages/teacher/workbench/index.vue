@@ -140,7 +140,9 @@ export default {
         follow: '/pages/teacher/employment-follow/index',
         unemployed: '/pages/teacher/employment-follow/index',
         warning: '/pages/teacher/risk-students/index',
-        overview: '/pages/teacher/workbench/index'
+        overview: '/pages/teacher/workbench/index',
+        orientationVerify: '/pages/teacher/orientation/verify/index',
+        orientationDashboard: '/pages/teacher/orientation/dashboard/index'
       }
       if (map[q.key]) return go(map[q.key])
       toast(q.label + '：即将开放')

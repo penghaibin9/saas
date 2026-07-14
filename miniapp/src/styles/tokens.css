@@ -137,4 +137,8 @@ page,
   /* 微信品牌色（仅微信登录按钮场景使用，非语义色板一部分） */
   --wechat-green: #07C160;
   --wechat-green-active: #06A552;
+
+  /* 迎新强调色（区别于蓝色主题，登录页限时入口 + 首页迎新引导卡专用，突出时效性） */
+  --orientation-gradient: linear-gradient(120deg, #f57a1e, #f5a623);
+  --orientation-700: #e8890c;
 }

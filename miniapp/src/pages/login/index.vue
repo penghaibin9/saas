@@ -30,6 +30,18 @@
         </view>
       </view>
 
+      <!-- 迎新批次限时入口：仅批次开放期显示，凭录取通知书编号（学号）登录，批次结束自动隐藏 -->
+      <view v-if="orientationBatch.open" class="login__oe" @click="focusOrientationLogin">
+        <view class="login__oe-top">
+          <text class="login__oe-badge">新生专属</text>
+          <text class="login__oe-count">距报到截止 {{ orientationBatch.daysLeft }} 天</text>
+        </view>
+        <text class="login__oe-title">{{ orientationBatch.batchName }}</text>
+        <text class="login__oe-sub">凭录取通知书编号（学号）一键报到</text>
+        <view class="login__oe-go">›</view>
+      </view>
+      <view v-if="orientationBatch.open" class="login__oe-divider"><text class="t-xs t-tertiary">已有账号，直接登录</text></view>
+
       <view class="login__welcome">
         <text class="login__welcome-tt">欢迎使用{{ brand.platformShortName || brand.platformName }}</text>
         <text class="login__welcome-sub">登录后即可查看课表成绩、实习与毕设进度{{ '\n' }}接收学校通知，掌上办事一站直达</text>
@@ -44,7 +56,7 @@
 
       <!-- 账号密码登录（真实校验：POST /api/v1/auth/login） -->
       <view class="login__divider"><text class="t-xs t-tertiary">账号密码登录</text></view>
-      <input v-model="account.loginName" class="login__input" placeholder="请输入学号 / 工号" placeholder-class="login__ph" />
+      <input v-model="account.loginName" :focus="loginNameFocus" class="login__input" placeholder="请输入学号 / 工号" placeholder-class="login__ph" />
       <input v-model="account.password" class="login__input" type="password" password placeholder="请输入密码" placeholder-class="login__ph" />
       <button class="login__smsbtn" :disabled="accLoading" @click="onAccountLogin">
         {{ accLoading ? '登录中…' : '登 录' }}
@@ -97,8 +109,16 @@ export default {
       binding: false,
       wxToken: '',
       bindForm: { loginName: '', password: '' },
-      bindLoading: false
+      bindLoading: false,
+      // 迎新批次限时入口（公开接口，登录前查询；查询失败按未开放处理，不阻断正常登录）
+      orientationBatch: { open: false, batchName: '', daysLeft: 0 },
+      loginNameFocus: false
     }
+  },
+  onLoad() {
+    studentApi.getOrientationBatchStatus().then((d) => {
+      if (d && d.open) this.orientationBatch = { open: true, batchName: d.batchName, daysLeft: d.daysLeft }
+    }).catch(() => {})
   },
   computed: {
     logoText() {
@@ -190,6 +210,13 @@ export default {
       this.binding = false
       this.wxToken = ''
       this.bindForm = { loginName: '', password: '' }
+    },
+    /** 迎新入口卡：新生尚未有正式账号前不支持独立通道登录（需学校预建学号账号），
+     * 引导其使用下方账号密码登录，账号即录取通知书上的学号。 */
+    focusOrientationLogin() {
+      toast('请使用录取通知书上的学号 + 初始密码登录；未收到账号请联系辅导员')
+      this.loginNameFocus = false
+      this.$nextTick(() => { this.loginNameFocus = true })
     }
   }
 }
@@ -222,6 +249,21 @@ export default {
 .login__feats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
 .login__feat { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
 .login__feat-lb { font-size: var(--font-size-xs); color: var(--text-secondary); white-space: nowrap; }
+.login__oe {
+  position: relative; margin-top: var(--space-5); border-radius: var(--radius-lg); padding: var(--space-4);
+  background: var(--orientation-gradient); overflow: hidden;
+  box-shadow: 0 12px 26px -12px rgba(245,122,30,.6);
+}
+.login__oe-top { display: flex; align-items: center; gap: var(--space-2); }
+.login__oe-badge { font-size: 10px; font-weight: var(--font-weight-semibold); color: var(--orientation-700); background: #fff; padding: 2px 8px; border-radius: var(--radius-full); }
+.login__oe-count { margin-left: auto; font-size: var(--font-size-xs); color: #fff; font-weight: var(--font-weight-medium); }
+.login__oe-title { display: block; font-size: var(--font-size-lg); color: #fff; font-weight: var(--font-weight-semibold); margin-top: var(--space-2); }
+.login__oe-sub { display: block; margin-top: 4px; font-size: var(--font-size-xs); color: rgba(255,255,255,.9); }
+.login__oe-go {
+  position: absolute; right: var(--space-4); bottom: var(--space-4); width: 30px; height: 30px; border-radius: var(--radius-full);
+  background: rgba(255,255,255,.25); color: #fff; display: flex; align-items: center; justify-content: center; font-size: var(--font-size-lg);
+}
+.login__oe-divider { display: flex; align-items: center; justify-content: center; margin: var(--space-4) 0 0; }
 .login__welcome { margin: var(--space-5) 0 var(--space-2); text-align: center; }
 .login__welcome-tt { display: block; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
 .login__welcome-sub { display: block; margin-top: var(--space-2); font-size: var(--font-size-xs); color: var(--text-tertiary); line-height: 1.6; }

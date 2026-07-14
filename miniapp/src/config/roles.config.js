@@ -45,7 +45,8 @@ export const roleConfigs = {
       { key: 'contact', label: '联系学生', icon: '☎' },
       { key: 'record', label: '记录联系', icon: '✎' },
       { key: 'risk', label: '风险学生', icon: '⚠' },
-      { key: 'care', label: '创建关怀', icon: '♥' }
+      { key: 'care', label: '创建关怀', icon: '♥' },
+      { key: 'orientationVerify', label: '迎新核验', icon: '▣' }
     ],
     permissionActions: ['approval.handle', 'risk.handle', 'student.contact', 'care.create', 'student360.view']
   },
@@ -125,7 +126,8 @@ export const roleConfigs = {
       { key: 'overview', label: '学院数据', icon: '▦' },
       { key: 'risk', label: '风险概览', icon: '⚠' },
       { key: 'urge', label: '移动催办', icon: '☎' },
-      { key: 'approval', label: '待审批', icon: '✓' }
+      { key: 'approval', label: '待审批', icon: '✓' },
+      { key: 'orientationDashboard', label: '迎新看板', icon: '🎒' }
     ],
     permissionActions: ['college.overview', 'risk.handle', 'approval.handle', 'urge.send']
   }

@@ -12,6 +12,8 @@ const STATUS_MAP = {
   PENDING_SUBMIT: { label: '待提交', type: 'default' },
   PENDING_REVIEW: { label: '待审核', type: 'warning' },
   PENDING_HANDLE: { label: '待处理', type: 'warning' },
+  SUBMITTED: { label: '已提交', type: 'processing' },
+  WITHDRAWN: { label: '已撤回', type: 'default' },
   REVIEWING: { label: '审核中', type: 'processing' },
   PROCESSING: { label: '处理中', type: 'processing' },
   APPROVED: { label: '已通过', type: 'success' },

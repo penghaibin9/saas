@@ -12,12 +12,22 @@
               <text class="or__hero-sub">{{ heroSub }}</text>
             </view>
           </view>
-          <view class="or__code" :class="{ 'is-invalid': !o.reportCode.valid }">
+          <view class="or__code" :class="{ 'is-invalid': !o.reportCode.valid }" @click="go('/pages/student/orientation/code/index')">
             <view class="flex-1">
               <text class="or__code-label">报到码</text>
               <text class="or__code-value">{{ o.reportCode.code }}</text>
             </view>
-            <text class="or__code-note">{{ o.reportCode.note }}</text>
+            <text class="or__code-note">{{ o.reportCode.valid ? '查看电子报到码 ›' : o.reportCode.note }}</text>
+          </view>
+        </view>
+
+        <!-- 快捷操作 -->
+        <view v-if="!reportDone" class="or__actions">
+          <view class="or__action" @click="go('/pages/student/orientation/collect/index')">
+            <text class="or__action-ic">📝</text><text>预报到信息采集</text>
+          </view>
+          <view v-if="o.greenChannelStatus === 'NOT_APPLIED'" class="or__action" @click="go('/pages/student/orientation/green-channel/index')">
+            <text class="or__action-ic">🤝</text><text>绿色通道申请</text>
           </view>
         </view>
 
@@ -46,7 +56,7 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { toast } from '@/utils/nav'
+import { go, toast } from '@/utils/nav'
 export default {
   data() { return { o: null, state: 'loading' } },
   onLoad() { this.load() },
@@ -65,6 +75,7 @@ export default {
     }
   },
   methods: {
+    go,
     load() {
       this.state = 'loading'
       studentApi.getOrientation().then((d) => { this.o = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
@@ -89,4 +100,7 @@ export default {
 .or__contact-avatar { width: 38px; height: 38px; border-radius: var(--radius-full); background: var(--primary-50); color: var(--brand-primary); display: flex; align-items: center; justify-content: center; }
 .or__contact-role { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .or__contact-call { font-size: var(--font-size-sm); color: var(--brand-primary); border: 1px solid var(--brand-primary); border-radius: var(--radius-full); padding: 5px 12px; }
+.or__actions { display: flex; gap: var(--space-3); }
+.or__action { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-2); box-shadow: var(--shadow-card); font-size: var(--font-size-sm); color: var(--text-secondary); }
+.or__action-ic { font-size: 22px; }
 </style>

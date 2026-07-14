@@ -1,4 +1,5 @@
-"""移动端·教师工作台聚合（只读）。严格租户过滤（绝不跨租户）。
+"""移动端·教师工作台聚合。以只读聚合为主，写操作仅 orientation_checkin（现场报到核验，需审计）。
+严格租户过滤（绝不跨租户）。
 范围收敛：当前无独立 teacher_student_scope 表，先做「租户隔离 + 姓名关系尽力收敛」，
 返回体带 scopeMode（SCOPED / TENANT_FALLBACK）标识，后续可替换为正式范围表。
 复用 P7 六域真实 service，不重复造业务，也不暴露 PC 管理端全列表给前端。"""
@@ -537,6 +538,48 @@ def _domain(fn, module, user, **kw):
 
 def orientation(user):
     return _domain(orientation_service.list_exceptions, "orientation", user, status="OPEN")
+
+
+def orientation_checkin(user: dict, admission_no: str) -> dict:
+    """现场报到核验（迎新老师扫码/录入报到码）：写操作，需审计。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持核验")
+    result = orientation_service.teacher_checkin_by_admission_no(admission_no, u.get("realName") or "")
+    from app.services import audit_log
+    audit_log.record("迎新现场报到核验", f"orientation-student:{result['id']}",
+                     detail={"operator": u.get("realName"), "student": result.get("name")})
+    return result
+
+
+def orientation_dashboard(user: dict) -> dict:
+    """迎新看板（移动版·迎新老师查看）：报到 KPI + 未报到学生列表。只读，复用 PC 端看板与列表查询。"""
+    _require_teacher(user)
+    if not db_enabled():
+        return {"hasData": False, "kpis": [], "notReported": []}
+    d = orientation_service.get_dashboard()
+    items, total = orientation_service.list_students(1, 30, report_status="NOT_REPORTED")
+    return {"hasData": True, "batchName": d.get("batchName"), "batchPeriod": d.get("batchPeriod"),
+            "kpis": d.get("kpis", []), "notReported": items, "notReportedTotal": total}
+
+
+def orientation_today_checkins(user: dict) -> dict:
+    """今日已核验（现场报到）新生列表——供核验页下方展示，供教师核对不重复核验。"""
+    _require_teacher(user)
+    if not db_enabled():
+        return {"hasData": False, "list": []}
+    from app.models import OrientationStudent
+    now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    with _session() as db:
+        rows = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False),
+            OrientationStudent.checkin_time.is_not(None),
+            OrientationStudent.checkin_time >= today_start,
+        ).order_by(OrientationStudent.checkin_time.desc())).all()
+        items = [{"id": str(r.id), "name": r.name, "className": r.class_name or "",
+                  "checkinTime": _iso(r.checkin_time)} for r in rows]
+        return {"hasData": len(items) > 0, "list": items, "total": len(items)}
 
 
 def campus(user):

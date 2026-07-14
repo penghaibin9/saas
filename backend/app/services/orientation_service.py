@@ -428,6 +428,90 @@ def return_green_channel(gid, reason):
     return _gc_act(gid, "RETURNED", "reject", reason, True, "退回补充")
 
 
+# ═══ 学生自助（移动端·预报到信息采集 + 绿色通道申请）+ 现场报到核验 ═══
+
+def student_submit_collect(sid, phone: str = "", origin: str = "") -> dict:
+    """预报到信息采集（学生自助）：确认联系电话/生源地，推进 INFO 环节为已完成；
+    报到状态仍为未报到时转入预报到中（PREPARED）。"""
+    phone = (phone or "").strip()
+    origin = (origin or "").strip()
+    if phone and not (phone.isdigit() and 6 <= len(phone) <= 20):
+        raise AppException("VALIDATION_ERROR", "手机号格式不正确")
+    with session() as db:
+        s = _get_student(db, sid)
+        if phone:
+            s.phone_encrypted = phone
+        if origin:
+            s.origin = origin
+        steps = _merged_steps_json(s.steps_json)
+        steps["INFO"] = "DONE"
+        if s.blocked_step == "INFO":
+            s.blocked_step = None
+            s.blocked_reason = None
+            steps["INFO"] = "DONE"
+        s.steps_json = steps
+        if s.report_status == "NOT_REPORTED":
+            s.report_status = "PREPARED"
+        s.version += 1
+        _audit(db, "PROGRESS", s.id, "学生提交预报到信息",
+              "已确认联系方式" + ("、生源地" if origin else ""))
+        db.commit()
+        return {"id": str(s.id), "reportStatus": s.report_status}
+
+
+def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: str = "") -> dict:
+    """绿色通道申请（学生自助提交，等待辅导员/资助中心审核）。"""
+    apply_type = (apply_type or "").strip()
+    if not apply_type:
+        raise AppException("VALIDATION_ERROR", "请选择困难类型")
+    with session() as db:
+        s = _get_student(db, sid)
+        if s.green_channel_status in ("SUBMITTED", "REVIEWING", "APPROVED"):
+            raise AppException("DATA_CONFLICT", "已有申请正在处理或已通过，无需重复提交")
+        g = GreenChannelApplication(
+            tenant_id=_tid(), ori_student_id=s.id, apply_type=apply_type,
+            apply_amount=_amt(apply_amount), submit_time=datetime.utcnow(),
+            status="SUBMITTED", remark=(remark or "").strip())
+        db.add(g)
+        s.green_channel_status = "SUBMITTED"
+        s.version += 1
+        db.flush()
+        _audit(db, "GREEN_CHANNEL", g.id, "学生提交绿色通道申请",
+              f"{apply_type} ¥{_amt(apply_amount):.0f}")
+        db.commit()
+        return {"id": str(g.id), "status": g.status}
+
+
+def teacher_checkin_by_admission_no(admission_no: str, operator_name: str = "") -> dict:
+    """现场报到核验（迎新老师扫码/录入报到码核验）：按录取编号查到新生台账，
+    完成现场报到——CHECKIN 环节置完成，报到状态推进为已现场报到。"""
+    admission_no = (admission_no or "").strip()
+    if not admission_no:
+        raise AppException("VALIDATION_ERROR", "请提供报到码")
+    with session() as db:
+        s = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(), OrientationStudent.admission_no == admission_no,
+            OrientationStudent.is_deleted.is_(False))).first()
+        if not s:
+            raise not_found("未查到该报到码对应的新生记录")
+        if s.report_status in ("CHECKED_IN", "COLLEGE_CONFIRMED"):
+            raise AppException("DATA_CONFLICT",
+                f"{s.name} 已于 {_iso(s.checkin_time) or '此前'} 完成现场报到，无需重复核验")
+        before = s.report_status
+        s.report_status = "CHECKED_IN"
+        s.checkin_time = datetime.utcnow()
+        steps = _merged_steps_json(s.steps_json)
+        steps["CHECKIN"] = "DONE"
+        s.steps_json = steps
+        s.version += 1
+        _audit(db, "CHECKIN", s.id, "现场报到核验通过",
+              f"核验人：{operator_name or '迎新老师'}", before, "CHECKED_IN")
+        db.commit()
+        return {"id": str(s.id), "name": s.name, "className": s.class_name or "",
+                "collegeName": s.college_name or "", "reportStatus": s.report_status,
+                "checkinTime": _iso(s.checkin_time)}
+
+
 # ═══ 材料审核 ═══
 
 def _mat_row(m: OrientationMaterial, stu: OrientationStudent | None = None) -> dict:

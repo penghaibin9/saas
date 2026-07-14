@@ -289,7 +289,81 @@ def orientation_my(user: dict) -> dict:
                 "greenChannelStatus": o.green_channel_status,
                 "building": o.building or "", "room": o.room or "",
                 "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
-                "steps": [{"key": k, "status": v} for k, v in (o.steps_json or {}).items()]}
+                "steps": [{"key": k, "status": v} for k, v in (o.steps_json or {}).items()],
+                # 报到码：复用录取编号，供电子报到码屏展示 + 现场核验扫码核对；已现场报到/学院确认后失效
+                "admissionNo": o.admission_no, "name": o.name,
+                "reportCodeValid": o.report_status not in ("CHECKED_IN", "COLLEGE_CONFIRMED"),
+                # 预报到信息采集屏展示用（基础身份只读 + 联系方式/生源地可编辑）
+                "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
+                "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
+                "phoneMasked": _mask_phone(o.phone_encrypted) if o.phone_encrypted else ""}
+
+
+def _resolve_orientation_student(db, u: dict):
+    """按当前登录学生姓名解析其新生报到台账（找不到返回 None，供采集/绿色通道提交前置校验）。"""
+    from app.models import OrientationStudent
+    stu = resolve_student(db, u)
+    if not stu:
+        return None
+    return db.scalars(select(OrientationStudent).where(
+        OrientationStudent.tenant_id == _tid(), OrientationStudent.name == stu.real_name,
+        OrientationStudent.is_deleted.is_(False))).first()
+
+
+def orientation_collect_submit(user: dict, body: dict) -> dict:
+    """预报到信息采集（学生自助）：确认联系电话/生源地。"""
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
+    with _session() as db:
+        o = _resolve_orientation_student(db, u)
+        if not o:
+            raise AppException("NOT_FOUND", "未找到你的迎新报到记录，请联系辅导员")
+        oid = o.id
+    from app.services.orientation_service import student_submit_collect
+    result = student_submit_collect(oid, phone=(body or {}).get("phone", ""), origin=(body or {}).get("origin", ""))
+    audit_log.record("学生提交预报到信息", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
+    return result
+
+
+def orientation_green_channel_submit(user: dict, body: dict) -> dict:
+    """绿色通道申请（学生自助提交）。"""
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
+    with _session() as db:
+        o = _resolve_orientation_student(db, u)
+        if not o:
+            raise AppException("NOT_FOUND", "未找到你的迎新报到记录，请联系辅导员")
+        oid = o.id
+    from app.services.orientation_service import student_submit_green_channel
+    b = body or {}
+    result = student_submit_green_channel(oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""))
+    audit_log.record("学生提交绿色通道申请", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
+    return result
+
+
+def orientation_batch_status() -> dict:
+    """迎新批次开放状态（公开·无需登录）：供小程序登录页限时入口判断是否显示倒计时卡。
+    只回批次名称与倒计时天数，不含任何学生个人数据。"""
+    if not db_enabled():
+        return {"open": False}
+    from app.models import OrientationBatch
+    now = datetime.utcnow()
+    with _session() as db:
+        b = db.scalars(select(OrientationBatch).where(
+            OrientationBatch.tenant_id == _tid(), OrientationBatch.is_deleted.is_(False),
+            OrientationBatch.status == "ACTIVE",
+            OrientationBatch.report_start_date.is_not(None),
+            OrientationBatch.report_end_date.is_not(None),
+            OrientationBatch.report_start_date <= now,
+            OrientationBatch.report_end_date >= now,
+        ).order_by(OrientationBatch.report_end_date.asc())).first()
+        if not b:
+            return {"open": False}
+        days_left = max(0, (b.report_end_date.date() - now.date()).days)
+        return {"open": True, "batchName": b.batch_name, "batchNo": b.batch_no,
+                "reportEndDate": _iso(b.report_end_date), "daysLeft": days_left}
 
 
 def campus_service_my(user: dict) -> dict:
