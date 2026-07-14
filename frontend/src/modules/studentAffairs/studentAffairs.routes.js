@@ -80,6 +80,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '认定台账', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
       },
       {
+        path: 'aid/objections',
+        name: 'student-affairs-aid-objections',
+        component: () => import('@/modules/studentAffairs/views/aid/AidObjectionView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '认定异议复核', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
+      },
+      {
         path: 'aid/stats',
         name: 'student-affairs-aid-stats',
         component: () => import('@/modules/studentAffairs/views/aid/AidStatsView.vue'),

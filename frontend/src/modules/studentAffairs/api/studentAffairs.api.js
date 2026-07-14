@@ -368,6 +368,21 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/aid/applications/${id}/reveal`, { method: 'POST', body: { reason } }))
   },
 
+  /** 对公示中申请提异议（理由≥5字）。body: { reason, objectorName? } */
+  submitAidObjection(applyId, body) {
+    return callStrict(() => request(`/student-affairs/aid/applications/${applyId}/objection`, { method: 'POST', body }))
+  },
+  /** 困难认定异议列表。 */
+  getAidObjections({ status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/aid/objections', { params }))
+  },
+  /** 异议复核。result: SUSTAINED/OVERRULED；opinion≥5。 */
+  reviewAidObjection(objectionId, result, opinion) {
+    return callStrict(() => request(`/student-affairs/aid/objections/${objectionId}/review`, { method: 'POST', body: { result, opinion } }))
+  },
+
   /** 困难学生库（APPROVED 最新等级聚合）。 */
   getDifficultStudents({ level = '', page = 1, pageSize = 100 } = {}) {
     const params = { page, pageSize }
