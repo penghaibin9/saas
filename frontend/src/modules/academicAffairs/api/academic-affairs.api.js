@@ -452,4 +452,39 @@ export const academicAffairsSelectionApi = {
   batchStats(id) { return call(() => request(`${BASE}/selection/batches/${id}/stats`)) }
 }
 
+/* ═══════════ 考务管理（SM-10 · /academic-affairs/exam/*、/deferred-exams*） ═══════════ */
+export const academicAffairsExamApi = {
+  // 批次
+  listBatches(params = {}) { return callList(`${BASE}/exam/batches`, params) },
+  getBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}`)) },
+  createBatch(body) { return call(() => request(`${BASE}/exam/batches`, { method: 'POST', body })) },
+  addCourse(id, teachingTaskId) { return call(() => request(`${BASE}/exam/batches/${id}/courses`, { method: 'POST', body: { teachingTaskId } })) },
+  listCourses(id, params = {}) { return callList(`${BASE}/exam/batches/${id}/courses`, params) },
+  confirmCourse(cid, action) { return call(() => request(`${BASE}/exam/courses/${cid}/confirm`, { method: 'POST', body: { action } })) },
+  setSchedule(cid, body) { return call(() => request(`${BASE}/exam/courses/${cid}/schedule`, { method: 'PUT', body })) },
+  confirmBatchCourses(id) { return call(() => request(`${BASE}/exam/batches/${id}/confirm-courses`, { method: 'POST' })) },
+  publishBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/publish`, { method: 'POST' })) },
+  finishBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/finish`, { method: 'POST' })) },
+  archiveBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/archive`, { method: 'POST' })) },
+  // 考场 / 座位 / 监考
+  addRoom(cid, body) { return call(() => request(`${BASE}/exam/courses/${cid}/rooms`, { method: 'POST', body })) },
+  listRooms(cid) { return call(() => request(`${BASE}/exam/courses/${cid}/rooms`)) },
+  assignSeats(roomId, studentIds) { return call(() => request(`${BASE}/exam/rooms/${roomId}/seats`, { method: 'POST', body: { studentIds } })) },
+  roomSeats(roomId) { return call(() => request(`${BASE}/exam/rooms/${roomId}/seats`)) },
+  addInvigilator(roomId, body) { return call(() => request(`${BASE}/exam/rooms/${roomId}/invigilators`, { method: 'POST', body })) },
+  listInvigilators(roomId) { return call(() => request(`${BASE}/exam/rooms/${roomId}/invigilators`)) },
+  // 异常 / 统计
+  recordIncident(body) { return call(() => request(`${BASE}/exam/incidents`, { method: 'POST', body })) },
+  listIncidents(params = {}) { return callList(`${BASE}/exam/incidents`, params) },
+  batchStats(id) { return call(() => request(`${BASE}/exam/batches/${id}/stats`)) },
+  // 缓考
+  deferList(params = {}) { return callList(`${BASE}/deferred-exams`, params) },
+  deferCounselorReview(id, action, reason = '') { return call(() => request(`${BASE}/deferred-exams/${id}/counselor-review`, { method: 'POST', body: { action, reason } })) },
+  deferReview(id, action, reason = '') { return call(() => request(`${BASE}/deferred-exams/${id}/review`, { method: 'POST', body: { action, reason } })) },
+  // 学生
+  deferApply(body) { return call(() => request(`${BASE}/deferred-exams`, { method: 'POST', body })) },
+  deferMy(params = {}) { return call(() => request(`${BASE}/deferred-exams/my`, { params })) },
+  deferResubmit(id) { return call(() => request(`${BASE}/deferred-exams/${id}/resubmit`, { method: 'POST' })) }
+}
+
 export default academicAffairsApi

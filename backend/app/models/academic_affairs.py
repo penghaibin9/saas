@@ -492,3 +492,232 @@ class AaSelectionRecord(PKMixin, TenantMixin, CommonMixin, Base):
 
     __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "selection_course_id", "student_id",
                                        name="uk_aa_selection_record"),)
+
+
+# ═══════════ 考务管理组（13B-SM-10；批次6态+课程3态+考场/座位/监考/巡考/异常+缓考8态四级审批）═══════════
+
+
+class AaExamBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """考试批次（SM-10，6 态 DRAFT/COURSE_CONFIRMED/ARRANGED/PUBLISHED/FINISHED/ARCHIVED）。"""
+    __tablename__ = "t_aa_exam_batch"
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    exam_type: Mapped[str] = mapped_column(String(20), nullable=False, default="FINAL", comment="FINAL 期末（V1 仅此）")
+    college_scope_json: Mapped[str | None] = mapped_column(String(2000), comment="参与学院范围 {collegeIds:[]}")
+    exam_week_start: Mapped[int | None] = mapped_column(Integer)
+    exam_week_end: Mapped[int | None] = mapped_column(Integer)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/COURSE_CONFIRMED/ARRANGED/PUBLISHED/FINISHED/ARCHIVED")
+
+
+class AaExamCourse(PKMixin, TenantMixin, CommonMixin, Base):
+    """批次内考试课程（3 态 PENDING_CONFIRM/CONFIRMED/REMOVED）。college_id 冗余供范围过滤。"""
+    __tablename__ = "t_aa_exam_course"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teaching_task_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    class_name: Mapped[str | None] = mapped_column(String(100))
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="冗余，学院范围过滤")
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    expected_students: Mapped[int | None] = mapped_column(Integer)
+    exam_date: Mapped[str | None] = mapped_column(String(20), comment="YYYY-MM-DD")
+    start_time: Mapped[str | None] = mapped_column(String(10), comment="HH:MM")
+    end_time: Mapped[str | None] = mapped_column(String(10))
+    duration_minutes: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING_CONFIRM", index=True,
+                                        comment="PENDING_CONFIRM/CONFIRMED/REMOVED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "teaching_task_id", name="uk_aa_exam_course"),)
+
+
+class AaExamRoom(PKMixin, TenantMixin, CommonMixin, Base):
+    """考场（classroom_id P2 可空 + classroom_text V1 兜底）。seat_mode SEQUENTIAL/RANDOM。"""
+    __tablename__ = "t_aa_exam_room"
+
+    exam_course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    room_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="考场序号")
+    classroom_id: Mapped[int | None] = mapped_column(BigInteger)
+    classroom_text: Mapped[str | None] = mapped_column(String(100), comment="考场文本(V1)")
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    planned_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    seat_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="SEQUENTIAL",
+                                           comment="SEQUENTIAL 按学号 / RANDOM 随机")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", comment="ACTIVE/VOIDED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "exam_course_id", "room_seq", name="uk_aa_exam_room"),)
+
+
+class AaExamRoomStudent(PKMixin, TenantMixin, CommonMixin, Base):
+    """座位明细。attendance_status NOT_STARTED/PRESENT/ABSENT/DISCIPLINE_VIOLATION。"""
+    __tablename__ = "t_aa_exam_room_student"
+
+    exam_room_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    exam_course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_no: Mapped[str | None] = mapped_column(String(50))
+    student_name: Mapped[str | None] = mapped_column(String(100))
+    seat_no: Mapped[int | None] = mapped_column(Integer)
+    admission_no: Mapped[str | None] = mapped_column(String(50), comment="准考证号")
+    attendance_status: Mapped[str] = mapped_column(String(30), nullable=False, default="NOT_STARTED",
+                                                   comment="NOT_STARTED/PRESENT/ABSENT/DISCIPLINE_VIOLATION")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "exam_room_id", "seat_no", name="uk_aa_exam_seat"),
+        UniqueConstraint("tenant_id", "exam_course_id", "student_id", name="uk_aa_exam_course_student"),
+    )
+
+
+class AaExamInvigilator(PKMixin, TenantMixin, CommonMixin, Base):
+    """监考安排。role CHIEF/ASSISTANT，confirm_status ASSIGNED/CONFIRMED。同教师同时段冲突检测。"""
+    __tablename__ = "t_aa_exam_invigilator"
+
+    exam_room_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="ASSISTANT", comment="CHIEF/ASSISTANT")
+    confirm_status: Mapped[str] = mapped_column(String(20), nullable=False, default="ASSIGNED",
+                                                comment="ASSIGNED/CONFIRMED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "exam_room_id", "teacher_key", name="uk_aa_exam_invig"),)
+
+
+class AaExamPatrol(PKMixin, TenantMixin, CommonMixin, Base):
+    """巡考安排。同教师同时段冲突检测。"""
+    __tablename__ = "t_aa_exam_patrol"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    patrol_date: Mapped[str | None] = mapped_column(String(20))
+    start_time: Mapped[str | None] = mapped_column(String(10))
+    end_time: Mapped[str | None] = mapped_column(String(10))
+    area_scope_json: Mapped[str | None] = mapped_column(String(1000), comment="巡查范围")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ASSIGNED")
+
+
+class AaExamIncident(PKMixin, TenantMixin, CommonMixin, Base):
+    """考场异常（缺考/违纪）。缺考触发风险通知；违纪留处分线索引用位。status ACTIVE/VOIDED。"""
+    __tablename__ = "t_aa_exam_incident"
+
+    exam_room_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    exam_course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_no: Mapped[str | None] = mapped_column(String(50))
+    student_name: Mapped[str | None] = mapped_column(String(100))
+    incident_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True,
+                                               comment="ABSENT/DISCIPLINE_VIOLATION/OTHER")
+    description: Mapped[str | None] = mapped_column(String(1000), comment="违纪描述(敏感)")
+    evidence_file_ids: Mapped[str | None] = mapped_column(String(1000), comment="证据附件JSON")
+    recorded_by: Mapped[str | None] = mapped_column(String(100))
+    recorded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    risk_alert_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    discipline_case_ref: Mapped[str | None] = mapped_column(String(100), comment="处分线索引用位(供学工消费)")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", comment="ACTIVE/VOIDED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "exam_course_id", "student_id", "incident_type",
+                                       name="uk_aa_exam_incident"),)
+
+
+class AaDeferredExam(PKMixin, TenantMixin, CommonMixin, Base):
+    """缓考（8 态四级审批 辅导员→任课教师→学院→教务处）。reason 脱敏，材料需授权。"""
+    __tablename__ = "t_aa_deferred_exam"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_no: Mapped[str | None] = mapped_column(String(50))
+    student_name: Mapped[str | None] = mapped_column(String(100))
+    exam_course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    reason_type: Mapped[str | None] = mapped_column(String(50), comment="SICK/EMERGENCY/OTHER")
+    reason: Mapped[str | None] = mapped_column(String(500), comment="原因(敏感脱敏)")
+    material_file_ids: Mapped[str | None] = mapped_column(String(1000), comment="材料附件JSON")
+    apply_at: Mapped[datetime | None] = mapped_column(DateTime)
+    current_node: Mapped[str | None] = mapped_column(String(50))
+    return_reason: Mapped[str | None] = mapped_column(String(500))
+    next_batch_ref: Mapped[str | None] = mapped_column(String(100), comment="进入下一批次引用位(R6)")
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/COUNSELOR_REVIEW/TEACHER_CONFIRM/COLLEGE_REVIEW/ACADEMIC_FINAL/APPROVED/RETURNED/REJECTED")
+
+
+class AaExamAuditTrail(PKMixin, TenantMixin, Base):
+    """考务域级 append-only 审计（模块自有，D-10；待 t_aa_audit_trail 落地后总控收编）。"""
+    __tablename__ = "t_aa_exam_audit_trail"
+
+    biz_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    biz_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    operator: Mapped[str | None] = mapped_column(String(100))
+    role_name: Mapped[str | None] = mapped_column(String(100))
+    detail: Mapped[str | None] = mapped_column(String(1000))
+    before_val: Mapped[str | None] = mapped_column(String(1000))
+    after_val: Mapped[str | None] = mapped_column(String(1000))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# ═══════════ 补考重修缓考免修组（13B-SM-12；补考批次5态 / 重修申请6态单节点 / 免修申请7态三级审批）═══════════
+
+
+class AaMakeupBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """补考批次（SM-12.1，5 态 DRAFT/ARRANGED/PUBLISHED/SCORING/FINISHED）。
+    关联考务批次编排考试；FINISHED 按计分规则回写 t_acad_grade(source=MAKEUP)/t_acad_makeup。"""
+    __tablename__ = "t_aa_makeup_batch"
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    term_code: Mapped[str | None] = mapped_column(String(50))
+    exam_batch_ref: Mapped[int | None] = mapped_column(BigInteger, comment="→ t_aa_exam_batch 关联考务批次")
+    score_rule: Mapped[str] = mapped_column(String(20), nullable=False, default="CAP60",
+                                            comment="计分规则 CAP60 及格封顶60")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    remark: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/ARRANGED/PUBLISHED/SCORING/FINISHED")
+
+
+class AaRetakeApply(PKMixin, TenantMixin, CommonMixin, Base):
+    """重修申请（SM-12.2，6 态，workflow_code=ACAD_RETAKE_APPLY，教务处单节点审批）。
+    次数上限读规则 academicAffairs.retake.maxCount(默2)；APPROVED 后编入教学任务跟班重修。"""
+    __tablename__ = "t_aa_retake_apply"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_no: Mapped[str | None] = mapped_column(String(50))
+    student_name: Mapped[str | None] = mapped_column(String(100))
+    acad_student_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_acad_student")
+    course_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    term_code: Mapped[str | None] = mapped_column(String(50))
+    reason: Mapped[str | None] = mapped_column(String(500))
+    retake_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="第几次重修")
+    review_reason: Mapped[str | None] = mapped_column(String(500), comment="审批意见/驳回原因")
+    teaching_task_ref: Mapped[int | None] = mapped_column(BigInteger, comment="编入的教学任务(跟班)")
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/ACADEMIC_REVIEW/APPROVED/REJECTED/ENROLLED/FINISHED")
+
+
+class AaExemption(PKMixin, TenantMixin, CommonMixin, Base):
+    """免修申请（SM-12.3，7 态，workflow_code=ACAD_COURSE_EXEMPT，三级审批 任课教师→学院→教务处）。
+    已获成绩课程申请 422；每学期免修上限 academicAffairs.exemption.maxCount(默2)。"""
+    __tablename__ = "t_aa_exemption"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_no: Mapped[str | None] = mapped_column(String(50))
+    student_name: Mapped[str | None] = mapped_column(String(100))
+    course_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    term_code: Mapped[str | None] = mapped_column(String(50))
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="任课教师(初审节点)")
+    reason: Mapped[str | None] = mapped_column(String(500))
+    material_file_ids: Mapped[str | None] = mapped_column(String(1000), comment="证书/先修证明材料JSON")
+    current_node: Mapped[str | None] = mapped_column(String(50))
+    return_reason: Mapped[str | None] = mapped_column(String(500))
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/TEACHER_REVIEW/COLLEGE_REVIEW/ACADEMIC_REVIEW/APPROVED/REJECTED/CANCELLED")

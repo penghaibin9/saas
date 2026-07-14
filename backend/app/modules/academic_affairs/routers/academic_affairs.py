@@ -27,6 +27,7 @@ from app.modules.academic_affairs.services import academic_affairs_resource_serv
 from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as sched_change_svc
 from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
 from app.modules.academic_affairs.services import academic_affairs_warning_service as warn_svc
+from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
 from app.modules.academic_affairs.services import academic_affairs_selection_service as selection_svc
 from app.modules.academic_affairs.services import academic_affairs_service as svc
 from app.modules.academic_affairs.services import academic_affairs_stats_service as stats_svc
@@ -1206,3 +1207,217 @@ def sel_reselect_guide(batchId: int = Path(...), user=Depends(require_permission
 @router.get("/selection/batches/{batchId}/stats", summary="选课统计")
 def sel_stats(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIEW))):
     return success(selection_svc.batch_stats(user, batchId))
+
+
+# ══════════════ 考务管理（13B-SM-10，/academic-affairs/exam/*、/deferred-exams*） ══════════════
+_EXAM_MANAGE = "academicAffairs.exam.manage"
+_EXAM_ARRANGE = "academicAffairs.exam.arrange"
+_EXAM_PUBLISH = "academicAffairs.exam.publish"
+_EXAM_VIEW = "academicAffairs.exam.view"
+_EXAM_ABNORMAL = "academicAffairs.exam.recordAbnormal"
+_DEFER_COUNSELOR = "academicAffairs.deferredExam.counselorReview"
+_DEFER_REVIEW = "academicAffairs.deferredExam.review"
+
+
+class ExamBatchBody(BaseModel):
+    batchName: str = Field(..., min_length=1)
+    termId: Optional[str] = None
+    examType: Optional[str] = "FINAL"
+    examWeekStart: Optional[int] = None
+    examWeekEnd: Optional[int] = None
+    collegeScope: Optional[dict] = None
+
+
+class ExamCourseBody(BaseModel):
+    teachingTaskId: str = Field(..., min_length=1)
+
+
+class ExamConfirmBody(BaseModel):
+    action: str = Field(..., description="CONFIRM/REMOVE")
+
+
+class ExamScheduleBody(BaseModel):
+    examDate: Optional[str] = None
+    startTime: Optional[str] = None
+    endTime: Optional[str] = None
+    durationMinutes: Optional[int] = None
+
+
+class ExamRoomBody(BaseModel):
+    classroomText: Optional[str] = None
+    capacity: int = Field(0, ge=0)
+    seatMode: Optional[str] = "SEQUENTIAL"
+
+
+class SeatAssignBody(BaseModel):
+    studentIds: list[str] = Field(default_factory=list)
+
+
+class InvigilatorBody(BaseModel):
+    teacherKey: str = Field(..., min_length=1)
+    teacherName: Optional[str] = None
+    role: Optional[str] = "ASSISTANT"
+
+
+class IncidentBody(BaseModel):
+    examCourseId: str = Field(..., min_length=1)
+    studentId: str = Field(..., min_length=1)
+    incidentType: str = Field(..., description="ABSENT/DISCIPLINE_VIOLATION/OTHER")
+    description: Optional[str] = None
+
+
+class DeferApplyBody(BaseModel):
+    examCourseId: str = Field(..., min_length=1)
+    reasonType: Optional[str] = None
+    reason: Optional[str] = Field(None, max_length=500)
+
+
+class DeferReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/RETURN/REJECT")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+# batch
+@router.post("/exam/batches", summary="建考试批次")
+def exam_batch_create(body: ExamBatchBody, user=Depends(require_permission(_EXAM_MANAGE))):
+    return success(exam_svc.create_batch(user, body), message="已创建")
+
+
+@router.get("/exam/batches", summary="考试批次列表")
+def exam_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                 user=Depends(require_permission(_EXAM_VIEW))):
+    items, total = exam_svc.list_batches(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/exam/batches/{bid}", summary="批次详情")
+def exam_batch_detail(bid: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
+    return success(exam_svc.get_batch(user, bid))
+
+
+@router.post("/exam/batches/{bid}/courses", summary="圈定考试课程（从教学任务）")
+def exam_course_add(body: ExamCourseBody, bid: int = Path(...), user=Depends(require_permission(_EXAM_MANAGE))):
+    return success(exam_svc.add_exam_course(user, bid, body), message="已圈定")
+
+
+@router.get("/exam/batches/{bid}/courses", summary="批次考试课程列表")
+def exam_courses(bid: int = Path(...), page: int = 1, pageSize: int = 100, user=Depends(require_permission(_EXAM_VIEW))):
+    items, total = exam_svc.list_courses(user, bid, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/exam/courses/{cid}/confirm", summary="学院确认/退回考试课程")
+def exam_course_confirm(body: ExamConfirmBody, cid: int = Path(...), user=Depends(require_permission(_EXAM_MANAGE))):
+    return success(exam_svc.confirm_course(user, cid, body.action), message="已处理")
+
+
+@router.put("/exam/courses/{cid}/schedule", summary="设置考试时间/时长")
+def exam_course_schedule(body: ExamScheduleBody, cid: int = Path(...), user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.set_course_schedule(user, cid, body), message="已保存")
+
+
+@router.post("/exam/batches/{bid}/confirm-courses", summary="课程确认完成，推进 DRAFT→COURSE_CONFIRMED")
+def exam_confirm_courses(bid: int = Path(...), user=Depends(require_permission(_EXAM_MANAGE))):
+    return success(exam_svc.confirm_batch_courses(user, bid), message="已推进")
+
+
+# room / seats
+@router.post("/exam/courses/{cid}/rooms", summary="添加考场")
+def exam_room_add(body: ExamRoomBody, cid: int = Path(...), user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.add_room(user, cid, body), message="已添加")
+
+
+@router.get("/exam/courses/{cid}/rooms", summary="考场列表")
+def exam_rooms(cid: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
+    return success({"items": exam_svc.list_rooms(user, cid)})
+
+
+@router.post("/exam/rooms/{roomId}/seats", summary="一键铺位（按学号/随机）")
+def exam_seats_assign(body: SeatAssignBody, roomId: int = Path(...), user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.assign_seats(user, roomId, body.studentIds), message="已铺位")
+
+
+@router.get("/exam/rooms/{roomId}/seats", summary="座位表")
+def exam_seats(roomId: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
+    return success({"items": exam_svc.room_seats(user, roomId)})
+
+
+# invigilator
+@router.post("/exam/rooms/{roomId}/invigilators", summary="指定监考（同时段冲突409）")
+def exam_invig_add(body: InvigilatorBody, roomId: int = Path(...), user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.assign_invigilator(user, roomId, body.teacherKey, body.teacherName, body.role), message="已指定")
+
+
+@router.get("/exam/rooms/{roomId}/invigilators", summary="监考列表")
+def exam_invigs(roomId: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
+    return success({"items": exam_svc.list_invigilators(user, roomId)})
+
+
+# publish / finish / archive
+@router.post("/exam/batches/{bid}/publish", summary="发布批次（通知考生+监考）")
+def exam_publish(bid: int = Path(...), user=Depends(require_permission(_EXAM_PUBLISH))):
+    return success(exam_svc.publish_batch(user, bid), message="已发布")
+
+
+@router.post("/exam/batches/{bid}/finish", summary="结束考试")
+def exam_finish(bid: int = Path(...), user=Depends(require_permission(_EXAM_MANAGE))):
+    return success(exam_svc.finish_batch(user, bid), message="已结束")
+
+
+@router.post("/exam/batches/{bid}/archive", summary="归档批次")
+def exam_archive(bid: int = Path(...), user=Depends(require_permission(_EXAM_MANAGE))):
+    return success(exam_svc.archive_batch(user, bid), message="已归档")
+
+
+# incidents
+@router.post("/exam/incidents", summary="登记考场异常（缺考触发风险）")
+def exam_incident_record(body: IncidentBody, user=Depends(require_permission(_EXAM_ABNORMAL))):
+    return success(exam_svc.record_incident(user, body), message="已登记")
+
+
+@router.get("/exam/incidents", summary="考场异常记录列表")
+def exam_incidents(batchId: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                   user=Depends(require_permission(_EXAM_VIEW))):
+    items, total = exam_svc.list_incidents(user, batchId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/exam/batches/{bid}/stats", summary="考务统计")
+def exam_stats(bid: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
+    return success(exam_svc.batch_stats(user, bid))
+
+
+# deferred exam
+@router.post("/deferred-exams", summary="学生申请缓考")
+def defer_apply(body: DeferApplyBody, user=Depends(_require_student)):
+    return success(exam_svc.defer_apply(user, body), message="缓考申请已提交")
+
+
+@router.get("/deferred-exams/my", summary="我的缓考申请")
+def defer_my(status: Optional[str] = None, user=Depends(_require_student)):
+    items, total = exam_svc.defer_list(user, status, student_only=True)
+    return success(paginate(items, total, 1, len(items) or 1))
+
+
+@router.post("/deferred-exams/{deferId}/resubmit", summary="退回后补材料重提")
+def defer_resubmit(deferId: int = Path(...), user=Depends(_require_student)):
+    return success(exam_svc.defer_resubmit(user, deferId), message="已重提")
+
+
+@router.get("/deferred-exams", summary="缓考审批列表（教务/学院/教师/辅导员）")
+def defer_list(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+               user=Depends(require_any_permission(_DEFER_COUNSELOR, _DEFER_REVIEW, "academicAffairs.exam.view"))):
+    items, total = exam_svc.defer_list(user, status, student_only=False, page=page, page_size=pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/deferred-exams/{deferId}/counselor-review", summary="缓考辅导员首级审批")
+def defer_counselor_review(body: DeferReviewBody, deferId: int = Path(...),
+                           user=Depends(require_permission(_DEFER_COUNSELOR))):
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+
+
+@router.post("/deferred-exams/{deferId}/review", summary="缓考教师/学院/教务处审批")
+def defer_review(body: DeferReviewBody, deferId: int = Path(...),
+                 user=Depends(require_permission(_DEFER_REVIEW))):
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")

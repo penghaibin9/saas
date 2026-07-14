@@ -88,7 +88,11 @@ from app.models.affairs_funding_ext import (FeeReduction,  # noqa: F401
                                             StudentLoan, WorkStudyMonthly,
                                             WorkStudyPost, WorkStudyRecord)
 from app.models.academic_affairs import (AaCalendarEvent, AaClassroom,  # noqa: F401
-                                         AaCourse,
+                                         AaCourse, AaDeferredExam,
+                                         AaExamAuditTrail, AaExamBatch,
+                                         AaExamCourse, AaExamIncident,
+                                         AaExamInvigilator, AaExamPatrol,
+                                         AaExamRoom, AaExamRoomStudent,
                                          AaGradeRecord, AaGradeTask,
                                          AaGraduationAuditBatch,
                                          AaGraduationAuditResult, AaProgram,

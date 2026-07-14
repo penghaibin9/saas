@@ -103,6 +103,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 岗位实习：辅导员对本班实习学生只读协同（学生/打卡/请假/周报/风险），不授予审批与配置
         "internship.dashboard.view", "internship.student.view", "internship.attendance.view",
         "internship.leave.view", "internship.report.view", "internship.risk.view",
+        # 教务·缓考首级审批（13B 考务 D-08）：辅导员对本人所带班级学生的缓考申请首级审核，
+        # 仅此一个 academicAffairs.* 点，不含其它教务权限（其余节点由任课教师/学院/教务处按 academicAffairs.* 通配覆盖）
+        "academicAffairs.deferredExam.counselorReview",
     },
     # 毕设角色权限只决定“能做什么”；具体学生/评阅/答辩组必须再由业务关系收敛。
     "GRADUATION_ADMIN": {"graduationDesign.*"},

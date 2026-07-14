@@ -290,7 +290,10 @@ export const NAV_PLAN = [
       I('我的选课（学生自助）', '/admin/academic-affairs/my-selection', 'academicAffairs.selection.enroll'),
       ...P('选课规则', '补选管理', '冲突检测', '选课结果', '选课归档')
     ]),
-    mod('aa-exam', '考务管理', null, P('考试批次', '考试课程', '考试安排', '考场安排', '座位安排', '监考安排', '巡考安排', '准考证', '考场异常', '考务通知', '考务统计', '考务归档')),
+    mod('aa-exam', '考务管理', '/admin/academic-affairs/exam', [
+      I('考务控制台（批次/课程/考场/监考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),
+      ...P('座位安排', '巡考安排', '准考证', '考务通知', '缓考审批', '考务归档')
+    ]),
     mod('aa-makeup', '补考重修缓考免修', null, [
       ...P('补考名单', '补考报名', '补考安排', '重修报名', '重修班管理', '缓考申请', '缓考审批', '免修申请', '免修审批'),
       I('补考重修成绩（现有）', '/admin/academic/makeup-retake'),
