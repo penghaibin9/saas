@@ -12,6 +12,26 @@
       "style": { "navigationBarTitleText": "登录", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/common/message-detail/index",
+      "style": { "navigationBarTitleText": "消息详情", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/common/search/index",
+      "style": { "navigationBarTitleText": "搜索", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/common/account-security/index",
+      "style": { "navigationBarTitleText": "账号与安全", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/common/change-password/index",
+      "style": { "navigationBarTitleText": "修改密码", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/common/notify-settings/index",
+      "style": { "navigationBarTitleText": "消息通知设置", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/role-switch/index",
       "style": { "navigationBarTitleText": "选择身份", "navigationStyle": "custom" }
     },

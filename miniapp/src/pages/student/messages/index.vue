@@ -3,7 +3,7 @@
     <view class="msg__hero hero-band is-brand">
       <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
       <view class="msg__navbar"><text class="msg__navbar-title">消息</text></view>
-      <view class="msg__search"><text class="msg__search-icon">🔍</text><text class="msg__search-ph">搜索通知、消息</text></view>
+      <view class="msg__search" @click="openSearch"><text class="msg__search-icon">🔍</text><text class="msg__search-ph">搜索通知、消息</text></view>
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
@@ -53,6 +53,7 @@ import { studentApi } from '@/services/studentApi'
 import { fromNow, deadlineText } from '@/utils/format'
 import { listPaging } from '@/utils/listPaging'
 import { toast, go } from '@/utils/nav'
+import { stashDetail, stashSearchPool } from '@/utils/msgStash'
 const TAB_ICON = { todo: '☑', notice: '📢', progress: '⏱', course: '📖' }
 const TAB_GRAD = { todo: 'g1', notice: 'g1', progress: 'g3', course: 'g4' }
 
@@ -89,10 +90,16 @@ export default {
     markAllRead() {
       this.list.forEach((m) => { if (!m.read) { m.read = true; this._syncRead(m) } })
     },
-    /** 打开消息：本地即时置灰 + 真实通知（msg- 前缀）同步服务器已读，失败不打扰阅读 */
+    /** 打开消息：本地即时置灰 + 真实通知（msg- 前缀）同步服务器已读，失败不打扰阅读；再进详情页 */
     open(m) {
       m.read = true
       this._syncRead(m)
+      stashDetail(m)
+      go('/pages/common/message-detail/index')
+    },
+    openSearch() {
+      stashSearchPool(Object.values((this.data && this.data.groups) || {}).flat())
+      go('/pages/common/search/index')
     },
     _syncRead(m) {
       if (m._synced || !/^msg-\d+$/.test(String(m.id))) return

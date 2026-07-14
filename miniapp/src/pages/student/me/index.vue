@@ -33,7 +33,7 @@
       <!-- 证照 / 授权 / 隐私 -->
       <view class="list-group">
         <text class="list-group__title">账号与安全</text>
-        <view v-for="row in listMenu" :key="row.key" class="list-row" @click="toast(row.label + '：即将开放')">
+        <view v-for="row in listMenu" :key="row.key" class="list-row" @click="onListMenu(row)">
           <view class="list-row__icon" style="background: var(--info-100); color: var(--info-600);"><text>{{ row.icon }}</text></view>
           <text class="list-row__label">{{ row.label }}</text>
           <text v-if="row.note" class="list-row__value">{{ row.note }}</text>
@@ -94,6 +94,10 @@ export default {
   methods: {
     go, toast,
     rowTone(i) { return ['tone-blue', 'tone-green', 'tone-amber', 'tone-cyan'][i % 4] },
+    onListMenu(row) {
+      if (row.key === 'privacy') return go('/pages/common/account-security/index')
+      toast(row.label + '：即将开放')
+    },
     logout() {
       uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: (r) => {
         if (r.confirm) { useSessionStore().logout(); relaunch('/pages/login/index') }

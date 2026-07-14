@@ -189,8 +189,8 @@ def my_messages(user: dict) -> dict:
                 UnifiedMessage.receiver_id == uid).order_by(UnifiedMessage.id.desc()).limit(30)).all()
             for m in notices:
                 notice_msgs.append({"id": "msg-" + str(m.id), "title": m.title,
-                                    "module": m.source_module or "通知", "level": "normal",
-                                    "time": _iso(m.created_at), "deadline": None,
+                                    "content": m.content or "", "module": m.source_module or "通知",
+                                    "level": "normal", "time": _iso(m.created_at), "deadline": None,
                                     "read": (m.status or "") == "READ",
                                     "status": m.status, "link": m.source_module or ""})
         # 服务进度 → 本人请假/工单状态流转

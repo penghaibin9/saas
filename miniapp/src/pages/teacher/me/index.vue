@@ -83,6 +83,7 @@ export default {
     },
     onMenu(row) {
       if (row.key === 'switch') return go('/pages/role-switch/index')
+      if (row.key === 'security') return go('/pages/common/account-security/index')
       toast(row.label + '：即将开放')
     },
     logout() {

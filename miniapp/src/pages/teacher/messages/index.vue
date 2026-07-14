@@ -3,7 +3,7 @@
     <view class="tm__hero hero-band is-teacher">
       <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
       <view class="tm__navbar"><text class="tm__navbar-title">消息</text></view>
-      <view class="tm__search"><text class="tm__search-icon">🔍</text><text class="tm__search-ph">搜索通知、学生、消息</text></view>
+      <view class="tm__search" @click="openSearch"><text class="tm__search-icon">🔍</text><text class="tm__search-ph">搜索通知、学生、消息</text></view>
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
@@ -48,6 +48,7 @@ import { teacherApi } from '@/services/teacherApi'
 import { fromNow } from '@/utils/format'
 import { listPaging } from '@/utils/listPaging'
 import { go } from '@/utils/nav'
+import { stashDetail, stashSearchPool } from '@/utils/msgStash'
 const TAB_ICON = { system: '📢', dynamic: '👥', risk: '⚠', urge: '⏰' }
 const TAB_GRAD = { system: 'g1', dynamic: 'g5', risk: 'g6', urge: 'g4' }
 
@@ -80,9 +81,17 @@ export default {
       this.pagedReset()
       teacherApi.getMessages().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
-    open(m) { m.read = true },
+    open(m) {
+      m.read = true
+      stashDetail(m)
+      go('/pages/common/message-detail/index')
+    },
     markAllRead() { this.list.forEach((m) => { m.read = true }) },
-    jump(tab) { go(tab === 'risk' ? '/pages/teacher/risk-students/index' : '/pages/teacher/todos/index') }
+    jump(tab) { go(tab === 'risk' ? '/pages/teacher/risk-students/index' : '/pages/teacher/todos/index') },
+    openSearch() {
+      stashSearchPool(Object.values((this.data && this.data.groups) || {}).flat())
+      go('/pages/common/search/index')
+    }
   }
 }
 </script>
