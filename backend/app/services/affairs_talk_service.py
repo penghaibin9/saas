@@ -284,3 +284,57 @@ def list_contacts(student_id, user, page=1, page_size=20):
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total
+
+
+# ═══════════ 家校回执（C 包·联系/回执）═══════════
+
+_L_RECEIPT = {"PENDING": "待回执", "RECEIVED": "已回执"}
+
+
+def _fc_row(x, s=None) -> dict:
+    return {"contactId": str(x.id), "studentId": str(x.student_id),
+            "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+            "contactType": x.contact_type, "reason": x.contact_reason or "",
+            "result": x.contact_result or "", "occurredAt": _iso(x.occurred_at),
+            "receiptStatus": getattr(x, "receipt_status", "PENDING") or "PENDING",
+            "receiptStatusLabel": _L_RECEIPT.get(getattr(x, "receipt_status", "PENDING"), "待回执"),
+            "receiptAt": _iso(getattr(x, "receipt_at", None)),
+            "receiptNote": getattr(x, "receipt_note", None) or ""}
+
+
+def list_all_contacts(user, receipt_status=None, page=1, page_size=50):
+    """全局家校联系记录（数据范围过滤，不含号码本体）。"""
+    from app.models import FamilyContactLog, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [FamilyContactLog.tenant_id == _tid()]
+        if receipt_status:
+            conds.append(FamilyContactLog.receipt_status == receipt_status)
+        rows = db.scalars(select(FamilyContactLog).where(*conds).order_by(
+            FamilyContactLog.id.desc())).all()
+        out = []
+        for x in rows:
+            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append(_fc_row(x, s))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def mark_receipt(contact_id, user, note="") -> dict:
+    """登记家长回执（PENDING→RECEIVED，记回执内容）。"""
+    from app.models import FamilyContactLog, StudentProfile
+    with session() as db:
+        x = db.get(FamilyContactLog, int(contact_id))
+        if not x or x.tenant_id != _tid():
+            raise not_found("家校联系记录不存在")
+        if getattr(x, "receipt_status", "PENDING") == "RECEIVED":
+            raise AppException("DATA_CONFLICT", "已登记回执")
+        x.receipt_status, x.receipt_at = "RECEIVED", datetime.utcnow()
+        x.receipt_note = (note or "").strip() or None
+        db.commit(); db.refresh(x)
+        s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+        return _fc_row(x, s)

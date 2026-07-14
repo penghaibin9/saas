@@ -1070,6 +1070,23 @@ def family_contact_create(body: ContactCreate, studentId: int = Path(...), user=
     return success(talk_svc.create_contact(studentId, user, body), message="已登记")
 
 
+class ReceiptBody(BaseModel):
+    note: Optional[str] = ""
+
+
+@router.get("/family-contacts", summary="家校联系记录（全局，数据范围，可按回执状态筛）")
+def family_contacts_all(receiptStatus: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                        user=Depends(require_permission("studentAffairs.homeSchool.view"))):
+    items, total = talk_svc.list_all_contacts(user, receiptStatus, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/family-contacts/{contactId}/receipt", summary="登记家长回执（待回执→已回执）")
+def family_contact_receipt(body: ReceiptBody, contactId: int = Path(...),
+                           user=Depends(require_permission("studentAffairs.homeSchool.record.create"))):
+    return success(talk_svc.mark_receipt(contactId, user, body.note or ""), message="回执已登记")
+
+
 # ═══════════ 宿舍房源台账（P6，楼/房/床 + 选床 + 调宿 + 检查）═══════════
 
 class BuildingCreate(BaseModel):

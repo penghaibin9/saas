@@ -63,3 +63,8 @@ class FamilyContactLog(PKMixin, TenantMixin, AuditTimeMixin, Base):
                                                     comment="是否查看了完整号码")
     view_reason: Mapped[str | None] = mapped_column(String(500), comment="查看完整号码的原因")
     occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    # 家校回执（C 包·联系/回执）——加列不改旧列
+    receipt_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                                comment="PENDING待回执/RECEIVED已回执")
+    receipt_at: Mapped[datetime | None] = mapped_column(DateTime)
+    receipt_note: Mapped[str | None] = mapped_column(String(500), comment="家长回执内容")
