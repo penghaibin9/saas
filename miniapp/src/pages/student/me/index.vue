@@ -1,39 +1,43 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="个人中心" />
-    <view class="me__top">
+    <view class="me__hero hero-band is-brand">
+      <view class="hero-band__orb" />
+      <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
+      <view class="me__navbar"><text class="me__navbar-title">我的</text></view>
       <view class="me__card">
-        <view class="me__avatar">{{ (user.name || '生').slice(0,1) }}</view>
+        <view class="avatar-badge is-lg">{{ (user.name || '生').slice(0,1) }}</view>
         <view class="flex-1">
-          <text class="me__name">{{ user.name }}</text>
-          <text class="me__sub">{{ user.className }} · {{ user.studentNo }}</text>
+          <view class="row" style="gap:8px;">
+            <text class="me__name">{{ user.name }}</text>
+            <text class="me__tag">学生</text>
+          </view>
+          <text class="me__sub">{{ user.className }}{{ user.studentNo ? ' · 学号 ' + user.studentNo : '' }}</text>
         </view>
-        <view class="me__qr" @click="toast('出示身份码（短时有效，不含敏感字段）')">
-          <text class="me__qr-icon">▣</text>
-          <text class="me__qr-txt">身份码</text>
+        <view class="me__edit" @click="toast('出示身份码（短时有效，不含敏感字段）')">
+          <text class="me__edit-icon">▣</text>
         </view>
       </view>
     </view>
 
     <view class="page-pad stack">
       <!-- 我的全周期入口 -->
-      <view class="card">
-        <text class="card-title">我的全周期</text>
-        <view class="me__grid">
-          <view v-for="m in lifecycleMenu" :key="m.route" class="me__grid-item" @click="go(m.route)">
-            <view class="me__grid-icon">{{ m.icon }}</view>
-            <text class="me__grid-label">{{ m.label }}</text>
-          </view>
+      <view class="list-group">
+        <text class="list-group__title">我的全周期</text>
+        <view v-for="(m, i) in lifecycleMenu" :key="m.route" class="list-row" @click="go(m.route)">
+          <view class="list-row__icon" :class="rowTone(i)"><text>{{ m.icon }}</text></view>
+          <text class="list-row__label">{{ m.label }}</text>
+          <text class="list-row__chevron">›</text>
         </view>
       </view>
 
       <!-- 证照 / 授权 / 隐私 -->
-      <view class="card">
-        <view v-for="row in listMenu" :key="row.key" class="me__row" @click="toast(row.label + '：即将开放')">
-          <text class="me__row-icon">{{ row.icon }}</text>
-          <text class="me__row-label flex-1">{{ row.label }}</text>
-          <text v-if="row.note" class="me__row-note">{{ row.note }}</text>
-          <text class="me__row-arrow">›</text>
+      <view class="list-group">
+        <text class="list-group__title">账号与安全</text>
+        <view v-for="row in listMenu" :key="row.key" class="list-row" @click="toast(row.label + '：即将开放')">
+          <view class="list-row__icon" style="background: var(--info-100); color: var(--info-600);"><text>{{ row.icon }}</text></view>
+          <text class="list-row__label">{{ row.label }}</text>
+          <text v-if="row.note" class="list-row__value">{{ row.note }}</text>
+          <text class="list-row__chevron">›</text>
         </view>
       </view>
 
@@ -61,6 +65,7 @@ export default {
   data() {
     return {
       user: {},
+      statusBarHeight: 20,
       lifecycleMenu: [
         { label: '我的档案', icon: '📄', route: '/pages/student/profile/index' },
         { label: '迎新报到', icon: '🎒', route: '/pages/student/orientation/index' },
@@ -84,9 +89,11 @@ export default {
   onShow() {
     const session = useSessionStore()
     this.user = session.mockUser || {}
+    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
   },
   methods: {
     go, toast,
+    rowTone(i) { return ['tone-blue', 'tone-green', 'tone-amber', 'tone-cyan'][i % 4] },
     logout() {
       uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: (r) => {
         if (r.confirm) { useSessionStore().logout(); relaunch('/pages/login/index') }
@@ -97,25 +104,19 @@ export default {
 </script>
 
 <style scoped>
-.me__top { background: var(--brand-gradient); padding: 0 var(--page-padding-mobile) var(--space-5); }
-.me__card { display: flex; align-items: center; gap: var(--space-3); }
-.me__avatar { width: 54px; height: 54px; border-radius: var(--radius-full); background: rgba(255,255,255,0.25); color: #fff; display: flex; align-items: center; justify-content: center; font-size: var(--font-size-xl); }
+.me__hero { padding: 0 var(--page-padding-mobile) var(--space-5); }
+.me__navbar { height: 40px; display: flex; align-items: center; justify-content: center; }
+.me__navbar-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: #fff; }
+.me__card { position: relative; display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
 .me__name { color: #fff; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); }
-.me__sub { display: block; color: rgba(255,255,255,0.9); font-size: var(--font-size-sm); margin-top: 2px; }
-.me__qr { display: flex; flex-direction: column; align-items: center; background: rgba(255,255,255,0.2); padding: var(--space-2); border-radius: var(--radius-md); }
-.me__qr-icon { color: #fff; font-size: 22px; }
-.me__qr-txt { color: #fff; font-size: 11px; }
-.me__top + .page-pad { margin-top: calc(-1 * var(--space-4)); }
-.me__grid { display: flex; flex-wrap: wrap; margin-top: var(--space-2); }
-.me__grid-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: var(--space-3) 0; }
-.me__grid-icon { font-size: 26px; }
-.me__grid-label { font-size: var(--font-size-xs); color: var(--text-secondary); }
-.me__row { display: flex; align-items: center; gap: var(--space-3); padding: 12px 0; border-bottom: 1px solid var(--border-light); }
-.me__row:last-child { border-bottom: none; }
-.me__row-icon { font-size: 18px; }
-.me__row-label { font-size: var(--font-size-base); color: var(--text-primary); }
-.me__row-note { font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.me__row-arrow { color: var(--text-tertiary); font-size: var(--font-size-lg); }
+.me__tag { font-size: var(--font-size-xs); color: #fff; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.3); padding: 2px 9px; border-radius: var(--radius-base); }
+.me__sub { display: block; color: rgba(255,255,255,0.9); font-size: var(--font-size-sm); margin-top: 4px; }
+.me__edit { width: 30px; height: 30px; border-radius: var(--radius-full); background: rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.me__edit-icon { color: #fff; font-size: 16px; }
+.tone-blue { background: var(--primary-100); color: var(--primary-600); }
+.tone-green { background: var(--success-100); color: var(--success-600); }
+.tone-amber { background: var(--warning-100); color: var(--warning-700); }
+.tone-cyan { background: var(--info-100); color: var(--info-600); }
 .me__brand { display: flex; flex-direction: column; gap: var(--space-2); }
 .me__brand-ver { font-size: var(--font-size-xs); color: var(--text-tertiary); }
 </style>

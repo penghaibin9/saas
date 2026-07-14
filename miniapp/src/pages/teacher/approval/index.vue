@@ -1,54 +1,77 @@
 <template>
   <view class="page-wrap">
+    <view class="ap__hero hero-band is-teacher">
+      <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
+      <view class="ap__navbar"><text class="ap__navbar-title">审批中心</text></view>
+      <view class="ap__search"><text class="ap__search-icon">🔍</text><text class="ap__search-ph">搜索学生、审批单号</text></view>
+    </view>
+
+    <view class="ap__subtabs">
+      <view class="ap__subtab" :class="{ 'is-on': sub === 'pending' }" @click="sub = 'pending'">
+        待审批<text v-if="list && list.length" class="ap__subtab-badge">{{ list.length }}</text>
+        <text v-if="sub === 'pending'" class="ap__subtab-u" />
+      </view>
+      <view class="ap__subtab" :class="{ 'is-on': sub === 'done' }" @click="sub = 'done'">已审批<text v-if="sub === 'done'" class="ap__subtab-u" /></view>
+      <view class="ap__subtab" :class="{ 'is-on': sub === 'mine' }" @click="sub = 'mine'">我发起的<text v-if="sub === 'mine'" class="ap__subtab-u" /></view>
+    </view>
+
     <MobileGlobalState :state="state" @retry="load">
-      <view class="page-pad" v-if="list">
+      <view class="page-pad" v-if="list && sub === 'pending'">
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待审批" description="学生提交的请假、证明等申请会出现在这里。" />
-        <view v-else class="stack">
-          <view v-for="a in list" :key="a.id" class="ap card">
-            <view class="row-between">
-              <view class="flex-1">
-                <view class="row" style="gap:6px;">
-                  <text class="t-md t-bold">{{ a.title }}</text>
-                  <text v-if="a.level === 'high'" class="ap__urgent">加急</text>
+        <template v-else>
+          <view class="ap__chips">
+            <view class="ap__chip" :class="{ 'is-on': typeFilter === 'all' }" @click="typeFilter = 'all'">全部</view>
+            <view v-for="t in typeOptions" :key="t" class="ap__chip" :class="{ 'is-on': typeFilter === t }" @click="typeFilter = t">{{ t }}</view>
+          </view>
+          <view class="stack">
+            <view v-for="a in filteredList" :key="a.id" class="ap card">
+              <view class="row-between">
+                <view class="flex-1">
+                  <view class="row" style="gap:6px;">
+                    <text class="t-md t-bold">{{ a.title }}</text>
+                    <text v-if="a.level === 'high'" class="ap__urgent">加急</text>
+                  </view>
+                  <text class="ap__type">{{ a.type }}</text>
                 </view>
-                <text class="ap__type">{{ a.type }}</text>
+                <MobileStatusTag :status="a.status" />
               </view>
-              <MobileStatusTag :status="a.status" />
-            </view>
 
-            <view class="ap__student">
-              <text class="ap__student-avatar">{{ a.student.slice(0,1) }}</text>
-              <text class="t-sm">{{ a.student }} · {{ a.className }}</text>
-              <text class="ap__time">提交 {{ a.submitTime.slice(5, 16) }}</text>
-            </view>
-
-            <view class="ap__fields">
-              <view v-for="(f, i) in a.fields" :key="i" class="ap__field">
-                <text class="ap__field-k">{{ f.label }}</text>
-                <text class="ap__field-v flex-1">{{ f.value }}</text>
+              <view class="ap__student">
+                <text class="ap__student-avatar">{{ a.student.slice(0,1) }}</text>
+                <text class="t-sm">{{ a.student }} · {{ a.className }}</text>
+                <text class="ap__time">提交 {{ a.submitTime.slice(5, 16) }}</text>
               </view>
-            </view>
 
-            <!-- 审批流 -->
-            <view class="ap__flow">
-              <view v-for="(n, i) in a.flow" :key="i" class="ap__flow-node" :class="{ 'is-done': n.done, 'is-current': n.current }">
-                <view class="ap__flow-dot" />
-                <text class="ap__flow-name">{{ n.node }}</text>
-                <text class="ap__flow-time">{{ n.time }}</text>
+              <view class="ap__fields">
+                <view v-for="(f, i) in a.fields" :key="i" class="ap__field">
+                  <text class="ap__field-k">{{ f.label }}</text>
+                  <text class="ap__field-v flex-1">{{ f.value }}</text>
+                </view>
               </view>
-            </view>
 
-            <view v-if="a.status === 'PENDING_REVIEW'" class="ap__actions">
-              <button class="btn btn-ghost flex-1" @click="act(a, 'return')">退回</button>
-              <button class="ap__reject flex-1" @click="act(a, 'reject')">驳回</button>
-              <button class="ap__approve flex-1" @click="act(a, 'approve')">通过</button>
-            </view>
-            <view v-else class="ap__done">
-              <text class="ap__done-text">已{{ a.status === 'APPROVED' ? '通过' : a.status === 'REJECTED' ? '驳回' : '处理' }}</text>
+              <!-- 审批流 -->
+              <view class="ap__flow">
+                <view v-for="(n, i) in a.flow" :key="i" class="ap__flow-node" :class="{ 'is-done': n.done, 'is-current': n.current }">
+                  <view class="ap__flow-dot" />
+                  <text class="ap__flow-name">{{ n.node }}</text>
+                  <text class="ap__flow-time">{{ n.time }}</text>
+                </view>
+              </view>
+
+              <view v-if="a.status === 'PENDING_REVIEW'" class="ap__actions">
+                <button class="btn btn-ghost flex-1" @click="act(a, 'return')">退回</button>
+                <button class="ap__reject flex-1" @click="act(a, 'reject')">驳回</button>
+                <button class="ap__approve flex-1" @click="act(a, 'approve')">通过</button>
+              </view>
+              <view v-else class="ap__done">
+                <text class="ap__done-text">已{{ a.status === 'APPROVED' ? '通过' : a.status === 'REJECTED' ? '驳回' : '处理' }}</text>
+              </view>
             </view>
           </view>
-        </view>
+        </template>
       </view>
+      <MobileGlobalState v-if="sub === 'done'" state="empty" title="暂无已审批记录" description="处理过的审批会显示在这里，方便追溯审批意见与时间。" />
+      <MobileGlobalState v-if="sub === 'mine'" state="empty" title="暂无我发起的申请" description="你自己发起的申请（如请假、用章）会显示在这里。" />
     </MobileGlobalState>
   </view>
 </template>
@@ -57,11 +80,24 @@
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 export default {
-  data() { return { list: null, state: 'loading', acting: false } },
-  onLoad() { this.load() },
+  data() { return { list: null, state: 'loading', acting: false, sub: 'pending', typeFilter: 'all', statusBarHeight: 20 } },
+  onLoad() {
+    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.load()
+  },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
+  },
+  computed: {
+    typeOptions() {
+      if (!this.list) return []
+      return [...new Set(this.list.map((a) => a.type).filter(Boolean))]
+    },
+    filteredList() {
+      if (!this.list) return []
+      return this.typeFilter === 'all' ? this.list : this.list.filter((a) => a.type === this.typeFilter)
+    }
   },
   methods: {
     load(done) {
@@ -109,6 +145,18 @@ export default {
 </script>
 
 <style scoped>
+.ap__hero { padding: 0 var(--page-padding-mobile) var(--space-4); }
+.ap__navbar { height: 40px; display: flex; align-items: center; justify-content: center; }
+.ap__navbar-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: #fff; }
+.ap__search { display: flex; align-items: center; gap: var(--space-2); background: rgba(255,255,255,.94); border-radius: var(--radius-md); padding: 10px var(--space-4); margin-top: var(--space-1); color: var(--text-tertiary); font-size: var(--font-size-base); }
+.ap__subtabs { display: flex; gap: var(--space-6); padding: var(--space-3) var(--page-padding-mobile) 0; background: var(--bg-card); }
+.ap__subtab { position: relative; font-size: var(--font-size-base); color: var(--text-tertiary); font-weight: var(--font-weight-medium); padding-bottom: var(--space-3); }
+.ap__subtab.is-on { color: var(--text-primary); font-weight: var(--font-weight-semibold); }
+.ap__subtab-u { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; background: var(--teacher-600); }
+.ap__subtab-badge { margin-left: 4px; font-size: 10px; color: #fff; background: var(--danger-500); padding: 1px 5px; border-radius: var(--radius-full); }
+.ap__chips { display: flex; gap: var(--space-2); overflow-x: auto; margin-bottom: var(--space-3); }
+.ap__chip { flex-shrink: 0; font-size: var(--font-size-sm); padding: 6px 13px; border-radius: var(--radius-full); background: var(--bg-card); color: var(--text-secondary); font-weight: var(--font-weight-medium); box-shadow: var(--shadow-card); }
+.ap__chip.is-on { background: var(--teacher-600); color: #fff; }
 .ap__urgent { font-size: 10px; color: #fff; background: var(--danger-500); padding: 1px 6px; border-radius: var(--radius-sm); }
 .ap__type { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 3px; }
 .ap__student { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0; }

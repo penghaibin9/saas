@@ -1,49 +1,37 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" :title="brand.schoolName" :subtitle="'教师工作台'">
-      <template #right>
-        <view class="wb__bell" @click="go('/pages/teacher/messages/index')">
-          <text class="wb__bell-icon">✉</text>
-        </view>
-      </template>
-    </MobileNavBar>
-    <view class="wb__topbg" />
-
     <MobileGlobalState :state="state" @retry="load">
-      <view v-if="wb">
-        <!-- 当前身份卡 -->
-        <view class="page-pad">
-          <view class="wb__ctx" @click="go('/pages/role-switch/index')">
-            <view class="wb__ctx-avatar">{{ (user.name||'师').slice(0,1) }}</view>
-            <view class="flex-1">
-              <view class="row" style="gap:6px;">
-                <text class="wb__ctx-name">{{ user.name }}</text>
-                <text class="wb__ctx-role">{{ wb.contextTitle }}</text>
-              </view>
-              <text class="wb__ctx-scope">数据范围 · {{ wb.contextScope }}</text>
-            </view>
-            <view class="wb__ctx-switch">
-              <text class="wb__ctx-switch-txt">切换身份</text>
-              <text class="wb__ctx-switch-count">{{ availableCount }} 个</text>
-            </view>
+      <view class="wb__hero hero-band is-teacher">
+        <view class="hero-band__orb" />
+        <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
+        <view class="wb__greet">
+          <view class="avatar-badge">{{ (user.name||'师').slice(0,1) }}</view>
+          <view class="flex-1">
+            <text class="wb__greet-name">{{ user.name }}</text>
+            <text class="wb__greet-sub">{{ brand.schoolName }}</text>
           </view>
-
-          <!-- 数据摘要 -->
-          <view class="wb__metrics">
-            <view v-for="m in wb.metrics" :key="m.key" class="wb__metric">
-              <text class="wb__metric-val">{{ m.value }}</text>
-              <text class="wb__metric-label">{{ m.label }}</text>
-            </view>
+          <view class="wb__bell" @click="go('/pages/teacher/messages/index')">
+            <text class="wb__bell-icon">✉</text>
           </view>
         </view>
+        <view class="wb__rolepill" v-if="wb" @click="go('/pages/role-switch/index')">
+          <text class="wb__rolepill-dot" />当前身份：{{ wb.contextTitle }}<text class="wb__rolepill-chev">▾</text>
+        </view>
+        <view class="stat-strip" v-if="wb">
+          <view class="stat-strip__item" v-for="m in wb.metrics" :key="m.key"><text class="stat-strip__val">{{ m.value }}</text><text class="stat-strip__label">{{ m.label }}</text></view>
+        </view>
+      </view>
 
+      <view v-if="wb">
         <view class="page-pad" style="padding-top:0;">
           <!-- 快捷操作（按身份） -->
           <view class="section-head"><text class="section-head__title">快捷操作</text></view>
-          <view class="wb__quick card">
-            <view v-for="q in roleConfig.quickActions" :key="q.key" class="wb__quick-item" @click="quick(q)">
-              <view class="wb__quick-icon">{{ q.icon }}</view>
-              <text class="wb__quick-label">{{ q.label }}</text>
+          <view class="card">
+            <view class="icon-grid">
+              <view v-for="(q, i) in roleConfig.quickActions" :key="q.key" class="icon-grid__item" @click="quick(q)">
+                <view class="icon-grid__badge" :class="gradClass(i)">{{ q.icon }}</view>
+                <text class="icon-grid__label">{{ q.label }}</text>
+              </view>
             </view>
           </view>
 
@@ -111,8 +99,10 @@ import { teacherApi } from '@/services/teacherApi'
 import { deadlineText, isOverdue, fromNow } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
 
+const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7', 'g6', 'g8']
+
 export default {
-  data() { return { brand: tenantBrandConfig, wb: null, state: 'loading', user: {}, roleConfig: {}, availableCount: 1 } },
+  data() { return { brand: tenantBrandConfig, wb: null, state: 'loading', user: {}, roleConfig: {}, statusBarHeight: 20 } },
   computed: {
     todoBadge() {
       if (!this.wb) return 0
@@ -120,15 +110,18 @@ export default {
       return m ? Number(m.value) || 0 : 0
     }
   },
+  onLoad() {
+    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+  },
   onShow() { this.load() },
   onPullDownRefresh() { this.load(() => uni.stopPullDownRefresh()) },
   methods: {
     go, deadlineText, isOverdue, fromNow,
+    gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
     load(done) {
       const session = useSessionStore()
       this.user = session.mockUser || {}
       this.roleConfig = session.roleConfig
-      this.availableCount = session.availableRoles.length || 1
       this.state = 'loading'
       teacherApi.getWorkbench(session.currentRole).then((d) => {
         this.wb = d; this.state = 'ready'; done && done()
@@ -160,25 +153,19 @@ export default {
 </script>
 
 <style scoped>
-.wb__topbg { position: absolute; top: 0; left: 0; right: 0; height: 190px; background: var(--brand-gradient-teacher); z-index: -1; }
-.wb__bell-icon { color: #fff; font-size: 20px; }
-.wb__ctx { display: flex; align-items: center; gap: var(--space-3); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--card-padding-mobile); box-shadow: var(--shadow-float); margin-top: var(--space-2); }
-.wb__ctx-avatar { width: 46px; height: 46px; border-radius: var(--radius-full); background: var(--brand-gradient-teacher); color: #fff; display: flex; align-items: center; justify-content: center; font-size: var(--font-size-lg); }
-.wb__ctx-name { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
-.wb__ctx-role { font-size: var(--font-size-xs); color: var(--teacher-700); background: var(--teacher-50); padding: 2px 8px; border-radius: var(--radius-full); }
-.wb__ctx-scope { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 3px; }
-.wb__ctx-switch { display: flex; flex-direction: column; align-items: center; }
-.wb__ctx-switch-txt { font-size: var(--font-size-xs); color: var(--teacher-700); }
-.wb__ctx-switch-count { font-size: 10px; color: var(--text-tertiary); }
-.wb__metrics { display: flex; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3) 0; margin-top: var(--card-gap-mobile); box-shadow: var(--shadow-card); }
-.wb__metric { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; }
-.wb__metric + .wb__metric::before { content: ''; position: absolute; left: 0; top: 20%; height: 60%; width: 1px; background: var(--border-light); }
-.wb__metric-val { font-size: var(--font-size-metric-sm); font-weight: var(--font-weight-semibold); color: var(--teacher-700); }
-.wb__metric-label { font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.wb__quick { display: flex; flex-wrap: wrap; }
-.wb__quick-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--space-3) 0; }
-.wb__quick-icon { width: 46px; height: 46px; border-radius: var(--radius-md); background: var(--teacher-50); color: var(--teacher-700); display: flex; align-items: center; justify-content: center; font-size: 22px; }
-.wb__quick-label { font-size: var(--font-size-xs); color: var(--text-secondary); }
+.wb__hero { padding-bottom: var(--space-4); }
+.wb__greet { position: relative; display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
+.wb__greet-name { display: block; color: #fff; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }
+.wb__greet-sub { display: block; color: rgba(255,255,255,0.85); font-size: var(--font-size-xs); margin-top: 3px; }
+.wb__bell { width: 38px; height: 38px; border-radius: var(--radius-full); background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.wb__bell-icon { color: #fff; font-size: 18px; }
+.wb__rolepill {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-3);
+  background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); color: #fff;
+  font-size: var(--font-size-xs); padding: 6px 11px; border-radius: var(--radius-full);
+}
+.wb__rolepill-dot { width: 6px; height: 6px; border-radius: var(--radius-full); background: #3ddc84; }
+.wb__rolepill-chev { font-size: 10px; }
 .wb__risk { display: flex; align-items: center; gap: var(--space-3); }
 .wb__risk-avatar { width: 40px; height: 40px; border-radius: var(--radius-full); background: var(--danger-50); color: var(--danger-600); display: flex; align-items: center; justify-content: center; }
 .wb__risk-type { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 2px; }

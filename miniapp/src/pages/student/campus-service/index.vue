@@ -1,44 +1,62 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="服务大厅" subtitle="按场景办事，不按部门找菜单" />
+    <view class="sv__hero hero-band is-brand">
+      <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
+      <view class="sv__navbar"><text class="sv__navbar-title">服务大厅</text></view>
+      <view class="sv__search" @click="focusSearch">
+        <text class="sv__search-icon">🔍</text>
+        <input
+          class="sv__search-input"
+          v-model="keyword"
+          placeholder="搜索服务，如「请假」「证明」"
+          placeholder-class="sv__search-ph"
+          confirm-type="search"
+        />
+      </view>
+    </view>
+
     <MobileGlobalState :state="state" @retry="load">
-      <view class="page-pad" v-if="data">
-        <!-- 搜索占位 -->
-        <view class="sv__search">
-          <text class="sv__search-icon">🔍</text>
-          <text class="sv__search-ph">搜索服务，如「请假」「证明」</text>
-        </view>
+      <view class="page-pad" v-if="data" style="padding-top: var(--space-3);">
+        <template v-if="!keyword">
+          <view v-for="c in data.categories" :key="c.key" class="card sv__group">
+            <view class="row-between"><text class="card-title">{{ c.label }}</text></view>
+            <view class="icon-grid">
+              <view
+                v-for="s in itemsOf(c.key)"
+                :key="s.id"
+                class="icon-grid__item"
+                :class="{ 'is-disabled': !s.available }"
+                @click="apply(s)"
+              >
+                <view class="icon-grid__badge" :class="gradClass(s.id)">{{ c.icon }}</view>
+                <text class="icon-grid__label">{{ s.name }}</text>
+                <text v-if="!s.available" class="sv__soon">暂不可办</text>
+              </view>
+            </view>
+          </view>
+        </template>
 
-        <!-- 分类筛选 -->
-        <view class="sv__cats">
-          <view class="sv__cat" :class="{ 'is-active': cat === 'all' }" @click="cat = 'all'">全部</view>
-          <view
-            v-for="c in data.categories"
-            :key="c.key"
-            class="sv__cat"
-            :class="{ 'is-active': cat === c.key }"
-            @click="cat = c.key"
-          >{{ c.icon }} {{ c.label }}</view>
-        </view>
-
-        <!-- 服务列表 -->
-        <view class="stack">
-          <MobileActionCard
-            v-for="s in filtered"
-            :key="s.id"
-            :title="s.name"
-            :description="s.desc + ' · ' + s.dept + (s.needApprove ? ' · 需审批' : '')"
-            :icon="catIcon(s.cat)"
-            :action-text="s.available ? '去办理' : ''"
-            :disabled="!s.available"
-            @action="apply(s)"
-            @click="apply(s)"
-          >
-            <template v-if="!s.available" #action>
-              <text class="sv__unavailable">暂不可办</text>
-            </template>
-          </MobileActionCard>
-        </view>
+        <!-- 搜索结果：改用列表卡展示，带办理入口 -->
+        <template v-else>
+          <view class="stack">
+            <MobileActionCard
+              v-for="s in searchResult"
+              :key="s.id"
+              :title="s.name"
+              :description="s.desc + ' · ' + s.dept + (s.needApprove ? ' · 需审批' : '')"
+              :icon="catIcon(s.cat)"
+              :action-text="s.available ? '去办理' : ''"
+              :disabled="!s.available"
+              @action="apply(s)"
+              @click="apply(s)"
+            >
+              <template v-if="!s.available" #action>
+                <text class="sv__unavailable">暂不可办</text>
+              </template>
+            </MobileActionCard>
+            <view v-if="!searchResult.length" class="sv__empty"><text class="t-sm t-tertiary">没有找到相关服务</text></view>
+          </view>
+        </template>
 
         <view class="sv__foot">
           <text class="t-xs t-tertiary">是否可办由「学生阶段 + 权限 + 模块开关」共同决定</text>
@@ -53,13 +71,21 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { toast, go } from '@/utils/nav'
+
+const GRAD_CLASSES = ['g1', 'g3', 'g4', 'g5', 'g7', 'g6', 'g2', 'g8']
+
 export default {
-  data() { return { data: null, state: 'loading', cat: 'all' } },
-  onLoad() { this.load() },
+  data() { return { data: null, state: 'loading', keyword: '', statusBarHeight: 20 } },
+  onLoad() {
+    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.load()
+  },
   computed: {
-    filtered() {
-      if (!this.data) return []
-      return this.cat === 'all' ? this.data.items : this.data.items.filter((s) => s.cat === this.cat)
+    searchResult() {
+      if (!this.data || !this.keyword) return []
+      const kw = this.keyword.trim().toLowerCase()
+      if (!kw) return []
+      return this.data.items.filter((s) => (s.name + s.desc + s.dept).toLowerCase().includes(kw))
     }
   },
   methods: {
@@ -67,10 +93,19 @@ export default {
       this.state = 'loading'
       studentApi.getServices().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
+    itemsOf(catKey) {
+      return this.data.items.filter((s) => s.cat === catKey)
+    },
     catIcon(key) {
       const c = (this.data.categories || []).find((x) => x.key === key)
       return c ? c.icon : '▤'
     },
+    gradClass(id) {
+      let h = 0
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+      return GRAD_CLASSES[h % GRAD_CLASSES.length]
+    },
+    focusSearch() {},
     apply(s) {
       if (!s.available) return toast('当前不可办理：' + s.desc)
       const q = 'name=' + encodeURIComponent(s.name) + '&dept=' + encodeURIComponent(s.dept) + '&approve=' + (s.needApprove ? '1' : '0')
@@ -81,11 +116,16 @@ export default {
 </script>
 
 <style scoped>
-.sv__search { display: flex; align-items: center; gap: var(--space-2); background: var(--bg-card); border-radius: var(--radius-full); padding: 10px var(--space-4); margin-bottom: var(--space-4); box-shadow: var(--shadow-card); }
-.sv__search-ph { color: var(--text-tertiary); font-size: var(--font-size-base); }
-.sv__cats { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
-.sv__cat { padding: 6px 14px; border-radius: var(--radius-full); background: var(--bg-card); font-size: var(--font-size-sm); color: var(--text-secondary); border: 1px solid var(--border-base); }
-.sv__cat.is-active { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
+.sv__hero { padding: 0 var(--page-padding-mobile) var(--space-3); }
+.sv__navbar { height: 40px; display: flex; align-items: center; justify-content: center; }
+.sv__navbar-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: #fff; }
+.sv__search { display: flex; align-items: center; gap: var(--space-2); background: rgba(255,255,255,.94); border-radius: var(--radius-md); padding: 10px var(--space-4); margin-top: var(--space-1); }
+.sv__search-input { flex: 1; font-size: var(--font-size-base); color: var(--text-primary); }
+.sv__search-ph { color: var(--text-tertiary); }
+.sv__group + .sv__group { margin-top: var(--card-gap-mobile); }
+.icon-grid__item.is-disabled { opacity: 0.5; }
+.sv__soon { position: absolute; top: -4px; font-size: 9px; color: var(--text-tertiary); }
 .sv__unavailable { font-size: var(--font-size-sm); color: var(--text-tertiary); }
+.sv__empty { text-align: center; padding: var(--space-6) 0; }
 .sv__foot { text-align: center; margin-top: var(--space-5); }
 </style>

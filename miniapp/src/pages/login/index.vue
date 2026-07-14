@@ -1,53 +1,61 @@
 <template>
   <view class="login">
-    <view class="login__bg" />
     <view class="login__hero">
-      <MobileBrandHeader center :side="tab" />
-      <text class="login__slogan">{{ brand.slogan }}</text>
+      <view class="login__orb" />
+      <view class="login__logo">
+        <image v-if="brand.logo" :src="brand.logo" mode="aspectFit" class="login__logo-img" />
+        <text v-else>{{ logoText }}</text>
+      </view>
+      <text class="login__appname">{{ brand.platformShortName || brand.platformName }}</text>
+      <text class="login__appsub">{{ brand.slogan }}</text>
     </view>
 
-    <view class="login__card card">
-      <!-- 学生 / 教师入口切换 -->
-      <view class="login__switch">
-        <view
-          class="login__switch-item"
-          :class="{ 'is-active': tab === 'student' }"
-          @click="tab = 'student'"
-        >
-          <text class="login__switch-icon">🎓</text>
-          <text>我是学生</text>
+    <view class="login__panel">
+      <view class="login__feats">
+        <view class="login__feat">
+          <view class="icon-grid__badge g1">▤</view>
+          <text class="login__feat-lb">教务</text>
         </view>
-        <view
-          class="login__switch-item is-teacher"
-          :class="{ 'is-active': tab === 'teacher' }"
-          @click="tab = 'teacher'"
-        >
-          <text class="login__switch-icon">🧑‍🏫</text>
-          <text>我是老师</text>
+        <view class="login__feat">
+          <view class="icon-grid__badge g5">◈</view>
+          <text class="login__feat-lb">学工</text>
+        </view>
+        <view class="login__feat">
+          <view class="icon-grid__badge g3">💼</view>
+          <text class="login__feat-lb">实习</text>
+        </view>
+        <view class="login__feat">
+          <view class="icon-grid__badge g2">✎</view>
+          <text class="login__feat-lb">毕业设计</text>
         </view>
       </view>
 
-      <view class="login__desc">
-        <text class="t-sm t-secondary">{{ tab === 'student'
-          ? '学生端：查档案 · 交材料 · 看进度 · 提申请 · 收通知'
-          : '教师端：看待办 · 批审批 · 看风险 · 处理异常 · 查学生' }}</text>
+      <view class="login__welcome">
+        <text class="login__welcome-tt">欢迎使用{{ brand.platformShortName || brand.platformName }}</text>
+        <text class="login__welcome-sub">登录后即可查看课表成绩、实习与毕设进度{{ '\n' }}接收学校通知，掌上办事一站直达</text>
       </view>
 
       <!-- 微信一键登录（仅小程序端；已绑定 openid 直接登录，未绑定引导绑定校园账号） -->
       <!-- #ifdef MP-WEIXIN -->
-      <button class="btn btn-block login__wxbtn" :disabled="wxLoading" @click="wechatLogin">
-        <text class="login__wxbtn-icon">✔</text>{{ wxLoading ? '登录中…' : '微信一键登录' }}
+      <button class="login__wxbtn" :disabled="wxLoading" @click="wechatLogin">
+        {{ wxLoading ? '登录中…' : '微信一键登录' }}
       </button>
       <!-- #endif -->
 
       <!-- 账号密码登录（真实校验：POST /api/v1/auth/login） -->
       <view class="login__divider"><text class="t-xs t-tertiary">账号密码登录</text></view>
-      <input v-model="account.loginName" class="login__input" placeholder="请输入账号" placeholder-class="login__ph" />
+      <input v-model="account.loginName" class="login__input" placeholder="请输入学号 / 工号" placeholder-class="login__ph" />
       <input v-model="account.password" class="login__input" type="password" password placeholder="请输入密码" placeholder-class="login__ph" />
-      <button class="btn btn-block login__btn login__btn--acc" :disabled="accLoading" @click="onAccountLogin">
+      <button class="login__smsbtn" :disabled="accLoading" @click="onAccountLogin">
         {{ accLoading ? '登录中…' : '登 录' }}
       </button>
 
+      <view class="login__agree" @click="agree = !agree">
+        <view class="login__abox" :class="{ 'is-on': agree }">
+          <text v-if="agree" class="login__abox-check">✓</text>
+        </view>
+        <text class="login__agree-tx">我已阅读并同意<text class="login__agree-link">《用户协议》</text>和<text class="login__agree-link">《隐私政策》</text></text>
+      </view>
     </view>
 
     <view class="login__foot">
@@ -81,7 +89,7 @@ export default {
   data() {
     return {
       brand: tenantBrandConfig,
-      tab: 'student',
+      agree: false,
       account: { loginName: '', password: '' },
       accLoading: false,
       // 微信一键登录 + 首次绑定
@@ -90,6 +98,11 @@ export default {
       wxToken: '',
       bindForm: { loginName: '', password: '' },
       bindLoading: false
+    }
+  },
+  computed: {
+    logoText() {
+      return (this.brand.schoolShortName || this.brand.schoolName || '校').slice(0, 1)
     }
   },
   methods: {
@@ -121,6 +134,7 @@ export default {
     },
     /** 账号密码登录（真实校验；成功后按角色进入对应端） */
     onAccountLogin() {
+      if (!this.agree) { toast('请先勾选并同意《用户协议》和《隐私政策》'); return }
       if (!this.account.loginName || !this.account.password) {
         toast('请输入账号与密码')
         return
@@ -136,6 +150,7 @@ export default {
     /** 微信一键登录：wx.login 拿 code → /auth/wx-login；已绑定直接登录，未绑定弹绑定表单 */
     wechatLogin() {
       if (this.wxLoading) return
+      if (!this.agree) { toast('请先勾选并同意《用户协议》和《隐私政策》'); return }
       this.wxLoading = true
       uni.login({
         provider: 'weixin',
@@ -181,45 +196,64 @@ export default {
 </script>
 
 <style scoped>
-.login { min-height: 100vh; padding: 0 var(--page-padding-mobile); position: relative; }
-.login__bg {
-  position: absolute; top: 0; left: 0; right: 0; height: 320px;
-  background: var(--brand-gradient); border-bottom-left-radius: 32px; border-bottom-right-radius: 32px;
-}
+.login { min-height: 100vh; background: var(--bg-page); position: relative; }
 .login__hero {
-  position: relative; padding-top: 88px; padding-bottom: 40px;
-  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+  position: relative; padding: 64px var(--page-padding-mobile) 34px;
+  display: flex; flex-direction: column; align-items: center;
+  background: var(--brand-gradient); overflow: hidden;
+  border-bottom-left-radius: 32px; border-bottom-right-radius: 32px;
 }
-.login__hero :deep(.mbh__platform) { color: #fff; }
-.login__hero :deep(.mbh__school) { color: rgba(255,255,255,0.9); }
-.login__slogan { color: rgba(255,255,255,0.92); font-size: var(--font-size-sm); }
-.login__card { position: relative; margin-top: var(--space-2); padding: var(--space-5); }
-.login__switch { display: flex; gap: var(--space-3); }
-.login__switch-item {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
-  padding: var(--space-4) 0; border-radius: var(--radius-lg);
-  border: 1px solid var(--border-base); color: var(--text-secondary); font-size: var(--font-size-md);
+.login__orb {
+  position: absolute; right: -70px; top: -60px; width: 230px; height: 230px; border-radius: var(--radius-full);
+  background: radial-gradient(circle at 40% 40%, rgba(255,255,255,.16), transparent 64%);
 }
-.login__switch-icon { font-size: 26px; }
-.login__switch-item.is-active { border-color: var(--brand-primary); background: var(--primary-50); color: var(--brand-primary); }
-.login__switch-item.is-teacher.is-active { border-color: var(--teacher-600); background: var(--teacher-50); color: var(--teacher-700); }
-.login__desc { margin: var(--space-4) 0; text-align: center; }
-.login__btn { margin-top: var(--space-2); height: 46px; }
+.login__logo {
+  position: relative; width: 78px; height: 78px; border-radius: 22px; background: rgba(255,255,255,.96);
+  box-shadow: 0 14px 34px -10px rgba(6,30,80,.5); display: flex; align-items: center; justify-content: center;
+  font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold); color: var(--brand-primary); overflow: hidden;
+}
+.login__logo-img { width: 66px; height: 66px; }
+.login__appname { position: relative; margin-top: var(--space-4); font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold); color: #fff; letter-spacing: .1em; }
+.login__appsub { position: relative; margin-top: var(--space-2); font-size: var(--font-size-sm); color: rgba(255,255,255,.85); white-space: pre-line; text-align: center; }
+.login__panel {
+  position: relative; margin: -22px var(--page-padding-mobile) 0; padding: var(--space-5);
+  background: var(--bg-card); border-radius: 22px 22px 26px 26px; box-shadow: var(--shadow-card-float);
+}
+.login__feats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
+.login__feat { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
+.login__feat-lb { font-size: var(--font-size-xs); color: var(--text-secondary); white-space: nowrap; }
+.login__welcome { margin: var(--space-5) 0 var(--space-2); text-align: center; }
+.login__welcome-tt { display: block; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
+.login__welcome-sub { display: block; margin-top: var(--space-2); font-size: var(--font-size-xs); color: var(--text-tertiary); line-height: 1.6; }
 .login__wxbtn {
-  margin-top: var(--space-4); height: 46px; background: var(--success-500); color: #fff;
-  display: flex; align-items: center; justify-content: center; gap: var(--space-2); font-size: var(--font-size-md);
+  width: 100%; margin-top: var(--space-4); height: 48px; border-radius: var(--radius-lg);
+  background: var(--wechat-green); color: #fff; font-size: var(--font-size-md); font-weight: var(--font-weight-semibold);
+  border: none; box-shadow: 0 8px 20px -8px rgba(7,193,96,.6);
 }
 .login__wxbtn[disabled] { opacity: 0.6; }
-.login__wxbtn-icon { font-size: 18px; }
-.login__foot { margin-top: var(--space-6); display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.login__divider { display: flex; align-items: center; justify-content: center; margin: var(--space-4) 0 var(--space-2); }
+.login__divider { display: flex; align-items: center; justify-content: center; margin: var(--space-5) 0 var(--space-2); }
 .login__input {
-  width: 100%; box-sizing: border-box; height: 44px; margin-top: var(--space-3);
+  width: 100%; box-sizing: border-box; height: 46px; margin-top: var(--space-3);
   padding: 0 var(--space-4); border-radius: var(--radius-lg);
-  border: 1px solid var(--border-base); background: var(--bg-card); font-size: var(--font-size-md);
+  border: 1px solid var(--border-base); background: var(--bg-page); font-size: var(--font-size-md);
 }
 .login__ph { color: var(--text-tertiary); }
-.login__btn--acc { margin-top: var(--space-3); height: 44px; background: var(--bg-card); color: var(--brand-primary); border: 1px solid var(--brand-primary); }
+.login__smsbtn {
+  width: 100%; margin-top: var(--space-3); height: 46px; border-radius: var(--radius-lg);
+  background: var(--gray-100); color: var(--brand-primary); font-size: var(--font-size-md); font-weight: var(--font-weight-semibold);
+  border: none;
+}
+.login__smsbtn[disabled] { opacity: 0.6; }
+.login__agree { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-5); }
+.login__abox {
+  width: 16px; height: 16px; border-radius: var(--radius-full); border: 1.5px solid var(--border-dark);
+  flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; background: var(--bg-card);
+}
+.login__abox.is-on { background: var(--wechat-green); border-color: var(--wechat-green); }
+.login__abox-check { color: #fff; font-size: 10px; line-height: 1; }
+.login__agree-tx { font-size: var(--font-size-xs); color: var(--text-tertiary); line-height: 1.6; }
+.login__agree-link { color: var(--text-link); }
+.login__foot { padding: var(--space-6) 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .login__bindmask {
   position: fixed; inset: 0; background: rgba(0,0,0,0.45);
   display: flex; align-items: center; justify-content: center; padding: var(--page-padding-mobile); z-index: 100;

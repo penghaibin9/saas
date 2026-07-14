@@ -114,3 +114,62 @@
   background: var(--border-light);
   margin: var(--space-3) 0;
 }
+
+/* ══════ 校园通 2026 新设计稿 · 共用视觉件（README §1 全局规范，各页复用，禁止再各自实现一套）══════ */
+
+/* 渐变头部（首页/工作台/我的/消息/服务大厅顶部横幅共用），variant 由外层 class 控制品牌色 */
+.hero-band {
+  position: relative;
+  padding: 0 var(--page-padding-mobile) var(--space-6);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.hero-band.is-brand { background: var(--brand-gradient); }
+.hero-band.is-teacher { background: var(--brand-gradient-teacher); }
+.hero-band__orb {
+  position: absolute; right: -60px; top: -50px; width: 200px; height: 200px; border-radius: var(--radius-full);
+  background: radial-gradient(circle at 40% 40%, rgba(255,255,255,.14), transparent 64%);
+  pointer-events: none;
+}
+
+/* 头部圆形字母头像 */
+.avatar-badge {
+  width: 50px; height: 50px; border-radius: var(--radius-lg);
+  background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: #fff;
+  flex-shrink: 0;
+}
+.avatar-badge.is-lg { width: 62px; height: 62px; border-radius: 19px; font-size: 26px; }
+
+/* 渐变头部内的半透明统计条 */
+.stat-strip {
+  position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  margin-top: var(--space-5); background: rgba(255,255,255,.14); border-radius: var(--radius-lg); overflow: hidden;
+}
+.stat-strip__item { padding: var(--space-3) var(--space-1); text-align: center; }
+.stat-strip__val { display: block; font-size: var(--font-size-metric-sm); font-weight: var(--font-weight-semibold); color: #fff; }
+.stat-strip__label { font-size: var(--font-size-xs); color: rgba(255,255,255,.82); }
+
+/* 九宫格功能格：图标徽标用 --grad-1..8，禁止硬编码颜色 */
+.icon-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4) var(--space-1); }
+.icon-grid__item { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); position: relative; }
+.icon-grid__badge {
+  width: 46px; height: 46px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff;
+}
+.icon-grid__label { font-size: var(--font-size-xs); color: var(--text-secondary); white-space: nowrap; }
+.icon-grid__badge.g1 { background: var(--grad-1); } .icon-grid__badge.g2 { background: var(--grad-2); }
+.icon-grid__badge.g3 { background: var(--grad-3); } .icon-grid__badge.g4 { background: var(--grad-4); }
+.icon-grid__badge.g5 { background: var(--grad-5); } .icon-grid__badge.g6 { background: var(--grad-6); }
+.icon-grid__badge.g7 { background: var(--grad-7); } .icon-grid__badge.g8 { background: var(--grad-8); }
+
+/* 卡片内分组小标题 + 列表行（我的/设置类页面复用） */
+.list-group { background: var(--bg-card); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-card-float); }
+.list-group__title { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); font-weight: var(--font-weight-medium); padding: var(--space-3) var(--card-padding-mobile) 4px; }
+.list-row { display: flex; align-items: center; gap: var(--space-3); padding: 13px var(--card-padding-mobile); border-top: 1px solid var(--border-light); }
+.list-group__title + .list-row { border-top: none; }
+.list-row__icon { width: 32px; height: 32px; border-radius: var(--radius-base); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.list-row__label { flex: 1; font-size: var(--font-size-base); color: var(--text-primary); font-weight: var(--font-weight-medium); }
+.list-row__value { font-size: var(--font-size-sm); color: var(--text-tertiary); }
+.list-row__chevron { color: var(--text-disabled); flex-shrink: 0; }
