@@ -341,7 +341,10 @@ export const NAV_PLAN = [
       I('评教控制台（批次/结果分级/申诉审核）', '/admin/academic-affairs/evaluation', 'academicAffairs.evaluation.view'),
       ...P('学生评教(小程序)', '教师自评', '同行评价', '督导评价', '评价统计', '评价归档')
     ]),
-    mod('aa-quality', '教学质量', null, P('督导听课', '巡课记录', '教学检查', '教学事故', '质量整改', '整改跟进', '质量报告', '质量统计', '质量归档')),
+    mod('aa-quality', '教学质量', '/admin/academic-affairs/quality', [
+      I('运行质量看板 + 质量报告导出', '/admin/academic-affairs/quality', 'academicAffairs.quality.dashboard.view'),
+      ...P('督导听课', '巡课记录', '教学检查', '教学事故', '质量整改', '整改跟进', '质量归档')
+    ]),
     mod('aa-archive', '教务归档', null, P('学籍归档', '注册归档', '异动归档', '培养方案归档', '教学任务归档', '课表归档', '考务归档', '成绩归档', '毕业资格归档', '归档缺失提醒', '批量归档', '归档导出')),
     mod('aa-stats', '教务统计', '/admin/academic-affairs/stats', [
       I('教务总览（11 项指标 · 多维筛选 · 下钻 · 导出）', '/admin/academic-affairs/stats', 'academicAffairs.stats.view'),

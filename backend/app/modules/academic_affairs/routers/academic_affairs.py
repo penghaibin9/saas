@@ -29,6 +29,7 @@ from app.modules.academic_affairs.services import academic_affairs_schedule_serv
 from app.modules.academic_affairs.services import academic_affairs_scheduling_service as scheduling_svc
 from app.modules.academic_affairs.services import academic_affairs_warning_service as warn_svc
 from app.modules.academic_affairs.services import academic_affairs_evaluation_service as evaluation_svc
+from app.modules.academic_affairs.services import academic_affairs_quality_service as quality_svc
 from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
 from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup_svc
 from app.modules.academic_affairs.services import academic_affairs_textbook_service as textbook_svc
@@ -1984,3 +1985,38 @@ def eval_appeal_review(body: EvalAppealReviewBody, aid: int = Path(...), user=De
 @router.get("/evaluation/batches/{bid}/stats", summary="评价统计")
 def eval_stats(bid: int = Path(...), user=Depends(require_permission(_EVAL_VIEW))):
     return success(evaluation_svc.stats(user, bid))
+
+
+# ══════════════ 教学质量（13B，零新表；/academic-affairs/quality/*） ══════════════
+_QUALITY_VIEW = "academicAffairs.quality.dashboard.view"
+_QUALITY_EXPORT = "academicAffairs.quality.report.export"
+
+
+class QualityExportBody(BaseModel):
+    termId: Optional[str] = None
+    collegeId: Optional[str] = None
+    majorId: Optional[str] = None
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5字，写审计）")
+
+
+@router.get("/quality/dashboard", summary="教学质量指标看板（实时聚合既有表）")
+def quality_dashboard(termId: Optional[str] = None, collegeId: Optional[str] = None,
+                      majorId: Optional[str] = None, user=Depends(require_permission(_QUALITY_VIEW))):
+    return success(quality_svc.dashboard(user, termId, collegeId, majorId))
+
+
+@router.get("/quality/reports", summary="质量报告导出历史")
+def quality_reports(page: int = 1, pageSize: int = 20, user=Depends(require_permission(_QUALITY_VIEW))):
+    items, total = quality_svc.list_reports(user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/quality/reports/export", summary="导出教务运行质量报告 xlsx")
+def quality_report_export(body: QualityExportBody, user=Depends(require_permission(_QUALITY_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = quality_svc.export_report(user, body.termId, body.collegeId, body.majorId, body.purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=academic_quality_report.xlsx"})

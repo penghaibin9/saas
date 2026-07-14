@@ -76,7 +76,9 @@ const layoutRoute = {
     // ── 排课管理增强（规则/可用时间/冲突报告） ──
     { path: 'scheduling', name: 'aa-scheduling', component: () => import('@/modules/academicAffairs/views/AaSchedulingConsoleView.vue'), meta: meta('academicAffairs.schedule.view', '排课管理') },
     // ── 教学评价（控制台） ──
-    { path: 'evaluation', name: 'aa-evaluation', component: () => import('@/modules/academicAffairs/views/AaEvaluationConsoleView.vue'), meta: meta('academicAffairs.evaluation.view', '教学评价') }
+    { path: 'evaluation', name: 'aa-evaluation', component: () => import('@/modules/academicAffairs/views/AaEvaluationConsoleView.vue'), meta: meta('academicAffairs.evaluation.view', '教学评价') },
+    // ── 教学质量（运行质量看板，零新表聚合） ──
+    { path: 'quality', name: 'aa-quality', component: () => import('@/modules/academicAffairs/views/AaQualityDashboardView.vue'), meta: meta('academicAffairs.quality.dashboard.view', '教学质量') }
   ]
 }
 

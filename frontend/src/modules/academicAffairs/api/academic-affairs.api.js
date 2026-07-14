@@ -580,4 +580,18 @@ export const academicAffairsEvaluationApi = {
   stats(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/stats`)) }
 }
 
+/* ═══════════ 教学质量（零新表 · /academic-affairs/quality/*） ═══════════ */
+export const academicAffairsQualityApi = {
+  dashboard(params = {}) { return call(() => request(`${BASE}/quality/dashboard`, { params })) },
+  reports(params = {}) { return callList(`${BASE}/quality/reports`, params) },
+  async exportReport(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/quality/reports/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  }
+}
+
 export default academicAffairsApi
