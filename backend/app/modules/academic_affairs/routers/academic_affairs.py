@@ -26,6 +26,7 @@ from app.modules.academic_affairs.services import academic_affairs_program_servi
 from app.modules.academic_affairs.services import academic_affairs_resource_service as resource_svc
 from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as sched_change_svc
 from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
+from app.modules.academic_affairs.services import academic_affairs_scheduling_service as scheduling_svc
 from app.modules.academic_affairs.services import academic_affairs_warning_service as warn_svc
 from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
 from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup_svc
@@ -1782,3 +1783,74 @@ def fee_mark(body: FeeMarkBody, fid: int = Path(...), user=Depends(require_permi
 @router.get("/textbooks/stats", summary="教材统计（征订/到货率/欠费）")
 def textbook_stats(user=Depends(require_permission(_TB_VIEW))):
     return success(textbook_svc.stats(user))
+
+
+# ══════════════ 排课管理增强（13B-SM-07，/academic-affairs/scheduling/*） ══════════════
+_SCHED_RULE = "academicAffairs.schedule.rule.manage"
+_SCHED_AVAIL = "academicAffairs.schedule.availability.manage"
+_SCHED_VIEW = "academicAffairs.schedule.view"
+
+
+class SchedRuleBody(BaseModel):
+    ruleKey: str = Field(..., min_length=1)
+    termId: Optional[str] = None
+    batchId: Optional[str] = None
+    ruleValue: Optional[dict] = None
+    remark: Optional[str] = None
+
+
+class AvailabilityBody(BaseModel):
+    termId: Optional[str] = None
+    weekday: int = Field(..., ge=1, le=7)
+    slotNo: int = Field(..., ge=1)
+    reason: Optional[str] = None
+
+
+class AvailReviewBody(BaseModel):
+    action: str = Field(..., description="ADOPT/REJECT")
+    reason: Optional[str] = Field("", max_length=300)
+
+
+# ── 排课规则中心 ──
+@router.put("/scheduling/rules", summary="保存排课规则")
+def sched_rule_save(body: SchedRuleBody, user=Depends(require_permission(_SCHED_RULE))):
+    return success(scheduling_svc.save_rule(user, body), message="已保存")
+
+
+@router.get("/scheduling/rules", summary="排课规则列表")
+def sched_rules(termId: Optional[str] = None, batchId: Optional[str] = None,
+                user=Depends(require_permission(_SCHED_VIEW))):
+    return success({"items": scheduling_svc.list_rules(user, termId, batchId)})
+
+
+@router.delete("/scheduling/rules/{ruleId}", summary="删除排课规则")
+def sched_rule_delete(ruleId: int = Path(...), user=Depends(require_permission(_SCHED_RULE))):
+    return success(scheduling_svc.delete_rule(user, ruleId), message="已删除")
+
+
+# ── 教师可用时间 ──
+@router.post("/scheduling/teacher-availability", summary="教师提交不可排课时段")
+def sched_avail_submit(body: AvailabilityBody, user=Depends(require_staff)):
+    return success(scheduling_svc.submit_availability(user, body), message="已提交")
+
+
+@router.get("/scheduling/teacher-availability/my", summary="我提交的可用时间")
+def sched_avail_my(termId: Optional[str] = None, user=Depends(require_staff)):
+    return success({"items": scheduling_svc.list_availability(user, termId, mine=True)})
+
+
+@router.get("/scheduling/teacher-availability", summary="教师可用时间汇总（学院采纳）")
+def sched_avail_list(termId: Optional[str] = None, teacherKey: Optional[str] = None,
+                     status: Optional[str] = None, user=Depends(require_permission(_SCHED_AVAIL))):
+    return success({"items": scheduling_svc.list_availability(user, termId, teacherKey, status)})
+
+
+@router.post("/scheduling/teacher-availability/{aid}/review", summary="采纳/驳回教师可用时间")
+def sched_avail_review(body: AvailReviewBody, aid: int = Path(...), user=Depends(require_permission(_SCHED_AVAIL))):
+    return success(scheduling_svc.review_availability(user, aid, body.action, body.reason), message="已处理")
+
+
+# ── 全量冲突报告 ──
+@router.get("/scheduling/batches/{bid}/conflict-report", summary="批次全量冲突报告（HARD/SOFT 分级）")
+def sched_conflict_report(bid: int = Path(...), user=Depends(require_permission(_SCHED_VIEW))):
+    return success(scheduling_svc.conflict_report(user, bid))

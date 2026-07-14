@@ -274,7 +274,11 @@ export const NAV_PLAN = [
       I('教学任务批次', '/admin/academic-affairs/teaching-tasks'),
       ...P('教学任务生成', '任课教师分配', '教学班生成', '合班拆班', '教学任务确认', '教师任务确认', '教学任务调整', '教学任务统计', '教学任务归档')
     ]),
-    mod('aa-scheduling', '排课管理', null, P('排课批次', '排课规则', '排课约束', '教师可用时间', '教室可用时间', '课程排课', '自动排课预留', '人工排课', '排课冲突检测', '排课结果', '排课调整', '排课发布', '排课归档')),
+    mod('aa-scheduling', '排课管理', '/admin/academic-affairs/scheduling', [
+      I('排课规则/教师可用时间/冲突报告', '/admin/academic-affairs/scheduling', 'academicAffairs.schedule.view'),
+      I('人工排课工作台（课表维护）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
+      ...P('排课约束', '教室可用时间', '自动排课预留', '排课结果', '排课调整', '排课归档')
+    ]),
     mod('aa-schedule', '课表管理', '/admin/academic-affairs/schedule', [
       I('课表批次 / 排课', '/admin/academic-affairs/schedule'),
       ...P('班级课表', '教师课表', '学生课表', '教室课表', '教学班课表', '周课表', '学期课表', '课表发布', '课表调整记录', '课表导出')

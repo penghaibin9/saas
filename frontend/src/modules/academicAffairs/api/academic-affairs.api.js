@@ -547,4 +547,16 @@ export const academicAffairsTextbookApi = {
   stats() { return call(() => request(`${BASE}/textbooks/stats`)) }
 }
 
+/* ═══════════ 排课管理增强（SM-07 · /academic-affairs/scheduling/*） ═══════════ */
+export const academicAffairsSchedulingApi = {
+  listRules(params = {}) { return call(() => request(`${BASE}/scheduling/rules`, { params })) },
+  saveRule(body) { return call(() => request(`${BASE}/scheduling/rules`, { method: 'PUT', body })) },
+  deleteRule(id) { return call(() => request(`${BASE}/scheduling/rules/${id}`, { method: 'DELETE' })) },
+  submitAvailability(body) { return call(() => request(`${BASE}/scheduling/teacher-availability`, { method: 'POST', body })) },
+  myAvailability(params = {}) { return call(() => request(`${BASE}/scheduling/teacher-availability/my`, { params })) },
+  listAvailability(params = {}) { return call(() => request(`${BASE}/scheduling/teacher-availability`, { params })) },
+  reviewAvailability(id, action, reason = '') { return call(() => request(`${BASE}/scheduling/teacher-availability/${id}/review`, { method: 'POST', body: { action, reason } })) },
+  conflictReport(batchId) { return call(() => request(`${BASE}/scheduling/batches/${batchId}/conflict-report`)) }
+}
+
 export default academicAffairsApi

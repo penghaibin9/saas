@@ -860,3 +860,40 @@ class AaTextbookFeeLedger(PKMixin, TenantMixin, CommonMixin, Base):
                                         comment="UNPAID/PARTIAL/PAID/WAIVED")
 
     __table_args__ = (UniqueConstraint("tenant_id", "distribution_record_id", name="uk_aa_tb_fee"),)
+
+
+# ═══════════ 排课管理组（13B-SM-07；排课规则中心 + 教师可用时间 + 全量冲突报告，复用既有课表批次/条目/冲突检测）═══════════
+
+
+class AaScheduleRule(PKMixin, TenantMixin, CommonMixin, Base):
+    """排课规则中心（教师可用时间要求/教室类型要求/周学时分布等约束）。挂学期或批次。"""
+    __tablename__ = "t_aa_schedule_rule"
+
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_schedule_batch(可空,学期级规则)")
+    rule_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True,
+                                          comment="规则键 如 maxDailySlots/avoidEvening/roomTypeRequired")
+    rule_value_json: Mapped[str | None] = mapped_column(String(2000), comment="规则值JSON")
+    remark: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ENABLED", index=True,
+                                        comment="ENABLED/DISABLED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "term_id", "batch_id", "rule_key", name="uk_aa_sched_rule"),)
+
+
+class AaTeacherAvailability(PKMixin, TenantMixin, CommonMixin, Base):
+    """教师可用时间（不可排课时段采集）。教师提交 → 学院采纳/驳回。PENDING/ADOPTED/REJECTED。"""
+    __tablename__ = "t_aa_teacher_availability"
+
+    teacher_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False, comment="星期 1-7")
+    slot_no: Mapped[int] = mapped_column(Integer, nullable=False, comment="节次")
+    reason: Mapped[str | None] = mapped_column(String(300), comment="不可排课原因")
+    review_reason: Mapped[str | None] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/ADOPTED/REJECTED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "teacher_key", "term_id", "weekday", "slot_no",
+                                       name="uk_aa_teacher_avail"),)
