@@ -18,6 +18,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工看板', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
       },
       {
+        path: 'workbench',
+        name: 'student-affairs-counselor-workbench',
+        component: () => import('@/modules/studentAffairs/views/CounselorWorkbenchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '辅导员工作台', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
+      },
+      {
         path: 'profile',
         name: 'student-affairs-profile',
         component: () => import('@/modules/studentAffairs/views/StudentAffairsProfileListView.vue'),
