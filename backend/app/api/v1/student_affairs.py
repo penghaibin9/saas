@@ -20,6 +20,7 @@ from app.services import affairs_class_service as class_svc
 from app.services import affairs_dashboard_service as svc
 from app.services import affairs_discipline_service as disc_svc
 from app.services import affairs_dorm_service as dorm_svc
+from app.services import affairs_funding_ext_service as fext_svc
 from app.services import affairs_funding_service as funding_svc
 from app.services import affairs_leave_service as leave_svc
 from app.services import affairs_mental_service as mental_svc
@@ -590,6 +591,117 @@ def funding_disbursement_fail(body: ReasonBody, disbursementId: int = Path(...),
 @router.get("/funding/disbursements/stats", summary="发放概览（按状态计数，授权角色见已发放金额合计）")
 def funding_disbursement_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
     return success(funding_svc.disbursement_stats(user))
+
+
+# ═══════════ 奖助扩展：勤工助学 / 助学贷款 / 减免临补（V1 解冻补建）═══════════
+
+class WsPostBody(BaseModel):
+    deptName: str = Field(..., min_length=1)
+    postName: str = Field(..., min_length=1)
+    salary: Optional[float] = None
+    headcount: Optional[int] = None
+    requirement: Optional[str] = None
+
+
+class WsApplyBody(BaseModel):
+    studentId: int = Field(...)
+
+
+class WsActionBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT/ONBOARD/TERMINATE")
+    reason: Optional[str] = ""
+
+
+class LoanBody(BaseModel):
+    studentId: int = Field(...)
+    loanType: Optional[str] = Field("ORIGIN", description="ORIGIN/CAMPUS")
+    bankName: Optional[str] = None
+    bankLast4: Optional[str] = None
+    yearCode: Optional[str] = None
+    amount: Optional[float] = None
+    remark: Optional[str] = None
+
+
+class FeeBody(BaseModel):
+    studentId: int = Field(...)
+    itemType: Optional[str] = Field("REDUCTION", description="REDUCTION/TEMP_AID")
+    amount: Optional[float] = None
+    reason: str = Field(..., min_length=5)
+
+
+class FeeReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    opinion: Optional[str] = ""
+
+
+# —— 勤工助学 ——
+@router.get("/work-study/posts", summary="勤工助学岗位列表")
+def ws_posts(status: Optional[str] = None, user=Depends(require_permission("studentAffairs.funding.view"))):
+    return success({"items": fext_svc.list_posts(user, status)})
+
+
+@router.post("/work-study/posts", summary="发布勤工岗位")
+def ws_post_create(body: WsPostBody, user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
+    return success(fext_svc.create_post(body, user), message="已发布")
+
+
+@router.get("/work-study/records", summary="勤工上岗记录（数据范围）")
+def ws_records(postId: Optional[int] = None, status: Optional[str] = None,
+               user=Depends(require_permission("studentAffairs.funding.view"))):
+    return success({"items": fext_svc.list_ws_records(user, postId, status)})
+
+
+@router.post("/work-study/posts/{postId}/apply", summary="学生申请勤工岗位（代录）")
+def ws_apply(body: WsApplyBody, postId: int = Path(...),
+             user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
+    return success(fext_svc.apply_work_study(postId, body, user), message="已申请")
+
+
+@router.post("/work-study/records/{recordId}/action", summary="勤工流转（录用/拒绝/上岗/终止）")
+def ws_action(body: WsActionBody, recordId: int = Path(...),
+              user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
+    return success(fext_svc.act_work_study(recordId, body.action, user, body.reason or ""), message="已处理")
+
+
+# —— 助学贷款 ——
+@router.get("/loans", summary="助学贷款台账（金额脱敏，不含卡全号）")
+def loans(status: Optional[str] = None, user=Depends(require_permission("studentAffairs.funding.view"))):
+    return success({"items": fext_svc.list_loans(user, status)})
+
+
+@router.post("/loans", summary="登记助学贷款")
+def loan_register(body: LoanBody, user=Depends(require_permission("studentAffairs.funding.loan.manage"))):
+    return success(fext_svc.register_loan(body, user), message="已登记")
+
+
+@router.post("/loans/{loanId}/advance", summary="贷款推进（登记→回执→核对→确认）")
+def loan_advance(loanId: int = Path(...),
+                 user=Depends(require_permission("studentAffairs.funding.loan.manage"))):
+    return success(fext_svc.advance_loan(loanId, user), message="已推进")
+
+
+# —— 减免与临时补助 ——
+@router.get("/fee-reductions", summary="减免/临补台账（数据范围）")
+def fee_reductions(itemType: Optional[str] = None, status: Optional[str] = None,
+                   user=Depends(require_permission("studentAffairs.funding.view"))):
+    return success({"items": fext_svc.list_reductions(user, itemType, status)})
+
+
+@router.post("/fee-reductions", summary="申请学费减免/临时补助（理由≥5字）")
+def fee_submit(body: FeeBody, user=Depends(require_permission("studentAffairs.funding.reduction.manage"))):
+    return success(fext_svc.submit_reduction(body, user), message="已提交")
+
+
+@router.post("/fee-reductions/{feeId}/review", summary="减免/临补审核（批准/驳回）")
+def fee_review(body: FeeReviewBody, feeId: int = Path(...),
+               user=Depends(require_permission("studentAffairs.funding.reduction.manage"))):
+    return success(fext_svc.review_reduction(feeId, body, user), message="已处理")
+
+
+@router.post("/fee-reductions/{feeId}/issue", summary="减免/临补发放")
+def fee_issue(feeId: int = Path(...),
+              user=Depends(require_permission("studentAffairs.funding.reduction.manage"))):
+    return success(fext_svc.issue_reduction(feeId, user), message="已发放")
 
 
 # ═══════════ 违纪处分（P4，discipline 全套）═══════════
