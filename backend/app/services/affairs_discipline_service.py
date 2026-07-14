@@ -135,6 +135,8 @@ def _row(x, s=None) -> dict:
         "status": x.status, "statusLabel": L_DISC.get(x.status, x.status),
         "effectiveAt": _iso(x.effective_at), "removedAt": _iso(x.removed_at),
         "csDisciplineId": str(x.cs_discipline_id or ""), "version": x.version,
+        "deliveredAt": _iso(getattr(x, "delivered_at", None)),
+        "deliveryMethod": getattr(x, "delivery_method", None) or "",
     }
 
 
@@ -445,3 +447,108 @@ def discipline_stats(user) -> dict:
             "byType": [{"key": k, "count": v} for k, v in by_type.items()],
             "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
             "reconcile": projection_reconcile()}
+
+
+# ═══════════ 送达与申诉（C 包·决定与送达 / 申诉复核）═══════════
+
+_DELIVERY = ("DIRECT", "MAIL", "PUBLIC", "LEAVE")
+_L_APPEAL = {"SUBMITTED": "已提交", "REVIEWING": "复核中", "UPHELD": "维持原处分",
+             "REVISED": "变更处分", "REVOKED": "撤销处分", "WITHDRAWN": "已撤回"}
+
+
+def deliver_case(case_id, body, user) -> dict:
+    """登记决定书送达（仅 EFFECTIVE 处分可送达；记方式/时间）。"""
+    from datetime import datetime
+    from app.models import StudentProfile
+    method = (getattr(body, "method", "") or "").strip()
+    if method not in _DELIVERY:
+        raise AppException("VALIDATION_ERROR", "送达方式非法")
+    with session() as db:
+        x, s = _load(db, case_id)
+        if x.status != "EFFECTIVE":
+            raise AppException("DATA_CONFLICT", "仅已生效处分可登记送达")
+        x.delivered_at, x.delivery_method = datetime.utcnow(), method
+        x.delivery_remark, x.version = getattr(body, "remark", None), x.version + 1
+        _audit(db, x.id, "DISCIPLINE_DELIVER", method)
+        db.commit(); db.refresh(x)
+        return _row(x, s)
+
+
+def _appeal_row(a, s=None) -> dict:
+    return {"appealId": str(a.id), "caseId": str(a.case_id), "studentId": str(a.student_id or ""),
+            "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+            "reason": a.reason or "", "status": a.status, "statusLabel": _L_APPEAL.get(a.status, a.status),
+            "result": a.result or "", "reviewOpinion": a.review_opinion or "",
+            "reviewer": a.reviewer or "", "reviewedAt": _iso(a.reviewed_at)}
+
+
+def submit_appeal(case_id, body, user) -> dict:
+    """提起申诉（EFFECTIVE 后；同一 case 不得有进行中的申诉）。理由≥5字。"""
+    from app.models import DisciplineAppeal, StudentProfile
+    reason = (getattr(body, "reason", "") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
+    with session() as db:
+        x, s = _load(db, case_id)
+        if x.status != "EFFECTIVE":
+            raise AppException("DATA_CONFLICT", "仅已生效处分可申诉")
+        dup = db.scalars(select(DisciplineAppeal).where(
+            DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.case_id == int(case_id),
+            DisciplineAppeal.status.in_(("SUBMITTED", "REVIEWING")),
+            DisciplineAppeal.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "已有进行中的申诉")
+        a = DisciplineAppeal(tenant_id=_tid(), case_id=int(case_id), student_id=x.student_id,
+                             reason=reason, status="SUBMITTED")
+        db.add(a); db.flush()
+        _audit(db, x.id, "DISCIPLINE_APPEAL_SUBMIT", "")
+        db.commit(); db.refresh(a)
+        s = db.get(StudentProfile, int(x.student_id))
+        return _appeal_row(a, s)
+
+
+def list_appeals(user, status=None, page=1, page_size=50):
+    from app.models import DisciplineAppeal, DisciplineCase, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.is_deleted.is_(False)]
+        if status:
+            conds.append(DisciplineAppeal.status == status)
+        rows = db.scalars(select(DisciplineAppeal).where(*conds).order_by(
+            DisciplineAppeal.id.desc())).all()
+        out = []
+        for a in rows:
+            s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append(_appeal_row(a, s))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def review_appeal(appeal_id, body, user) -> dict:
+    """申诉复核：result UPHELD维持/REVISED变更/REVOKED撤销。REVOKED→原处分不再有效(投影下线)。"""
+    from datetime import datetime
+    from app.models import DisciplineAppeal, StudentProfile
+    result = (getattr(body, "result", "") or "").strip()
+    if result not in ("UPHELD", "REVISED", "REVOKED"):
+        raise AppException("VALIDATION_ERROR", "复核结论非法")
+    opinion = (getattr(body, "opinion", "") or "").strip()
+    if len(opinion) < 5:
+        raise AppException("VALIDATION_ERROR", "复核意见至少 5 字")
+    with session() as db:
+        a = db.get(DisciplineAppeal, int(appeal_id))
+        if not a or a.is_deleted or a.tenant_id != _tid():
+            raise not_found("申诉不存在")
+        if a.status not in ("SUBMITTED", "REVIEWING"):
+            raise AppException("DATA_CONFLICT", "该申诉已结案")
+        status_map = {"UPHELD": "UPHELD", "REVISED": "REVISED", "REVOKED": "REVOKED"}
+        a.status, a.result = status_map[result], result
+        a.review_opinion, a.reviewer = opinion, _op()[0]
+        a.reviewed_at, a.version = datetime.utcnow(), a.version + 1
+        _audit(db, a.case_id, "DISCIPLINE_APPEAL_REVIEW", result)
+        db.commit(); db.refresh(a)
+        s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
+        return _appeal_row(a, s)

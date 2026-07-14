@@ -33,6 +33,25 @@ class DisciplineCase(PKMixin, TenantMixin, CommonMixin, Base):
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     cs_discipline_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="t_cs_discipline 投影行回链")
     return_reason: Mapped[str | None] = mapped_column(String(500))
+    # 送达（C 包·决定与送达）——加列不改旧列
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, comment="决定书送达时间")
+    delivery_method: Mapped[str | None] = mapped_column(String(30), comment="DIRECT直接/MAIL邮寄/PUBLIC公告/LEAVE留置")
+    delivery_remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class DisciplineAppeal(PKMixin, TenantMixin, CommonMixin, Base):
+    """处分申诉（C 包·申诉复核）。EFFECTIVE 后学生/辅导员在申诉期内提起；复核 维持/变更/撤销。
+    status SUBMITTED/REVIEWING/UPHELD维持/REVISED变更/REVOKED撤销/WITHDRAWN撤回。"""
+    __tablename__ = "t_affairs_discipline_appeal"
+
+    case_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    reason: Mapped[str | None] = mapped_column(String(1000), comment="申诉理由")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True)
+    result: Mapped[str | None] = mapped_column(String(30), comment="UPHELD/REVISED/REVOKED")
+    review_opinion: Mapped[str | None] = mapped_column(String(1000))
+    reviewer: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class DisciplineRemoveApply(PKMixin, TenantMixin, CommonMixin, Base):

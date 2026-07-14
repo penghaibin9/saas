@@ -59,8 +59,8 @@ from app.models.affairs_aid import (AidApply, AidBatch, AidFamilyEconomy,  # noq
                                     AidLevelHistory, FundingApplication,
                                     FundingBatch, FundingDisbursement, FundingProject)
 from app.models.affairs_discipline import (AffairsRiskHandle,  # noqa: F401
-                                           AffairsRiskRecord, DisciplineCase,
-                                           DisciplineRemoveApply)
+                                           AffairsRiskRecord, DisciplineAppeal,
+                                           DisciplineCase, DisciplineRemoveApply)
 from app.models.affairs_talk import (FamilyContactLog, TalkPlan,  # noqa: F401
                                      TalkRecord)
 from app.models.affairs_mental import PsyReferral  # noqa: F401

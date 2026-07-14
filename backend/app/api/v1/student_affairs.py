@@ -626,6 +626,46 @@ def discipline_remove_review(body: DiscReviewBody, caseId: int = Path(...), user
     return success(disc_svc.review_remove(caseId, user, body.action, body.reason or ""), message="已处理")
 
 
+# ── 决定送达 + 申诉复核（C 包）──
+class DiscDeliverBody(BaseModel):
+    method: str = Field(..., description="DIRECT/MAIL/PUBLIC/LEAVE")
+    remark: Optional[str] = None
+
+
+class DiscAppealSubmitBody(BaseModel):
+    reason: str = Field(..., min_length=5, description="申诉理由≥5字")
+
+
+class DiscAppealReviewBody(BaseModel):
+    result: str = Field(..., description="UPHELD/REVISED/REVOKED")
+    opinion: str = Field(..., min_length=5, description="复核意见≥5字")
+
+
+@router.post("/discipline/cases/{caseId}/deliver", summary="登记决定书送达（仅已生效）")
+def discipline_deliver(body: DiscDeliverBody, caseId: int = Path(...),
+                       user=Depends(require_permission("studentAffairs.discipline.deliver"))):
+    return success(disc_svc.deliver_case(caseId, body, user), message="已登记送达")
+
+
+@router.post("/discipline/cases/{caseId}/appeal", summary="提起处分申诉（已生效后）")
+def discipline_appeal_submit(body: DiscAppealSubmitBody, caseId: int = Path(...),
+                             user=Depends(require_permission("studentAffairs.discipline.appeal.create"))):
+    return success(disc_svc.submit_appeal(caseId, body, user), message="申诉已提交")
+
+
+@router.get("/discipline/appeals", summary="处分申诉列表")
+def discipline_appeals(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                       user=Depends(require_permission("studentAffairs.discipline.view"))):
+    items, total = disc_svc.list_appeals(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/discipline/appeals/{appealId}/review", summary="申诉复核（维持/变更/撤销）")
+def discipline_appeal_review(body: DiscAppealReviewBody, appealId: int = Path(...),
+                             user=Depends(require_permission("studentAffairs.discipline.appeal.review"))):
+    return success(disc_svc.review_appeal(appealId, body, user), message="已复核")
+
+
 # ═══════════ 风险预警（P4，risk 全套）═══════════
 
 class RiskCreate(BaseModel):
