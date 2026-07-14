@@ -412,6 +412,24 @@ export const studentAffairsApi = {
   getDisciplineStats() {
     return callStrict(() => request('/student-affairs/discipline/stats'))
   },
+  /** 登记决定书送达（仅已生效）。body: { method, remark? } */
+  deliverDiscipline(caseId, body) {
+    return callStrict(() => request(`/student-affairs/discipline/cases/${caseId}/deliver`, { method: 'POST', body }))
+  },
+  /** 提起处分申诉（已生效后，理由≥5）。 */
+  submitDisciplineAppeal(caseId, reason) {
+    return callStrict(() => request(`/student-affairs/discipline/cases/${caseId}/appeal`, { method: 'POST', body: { reason } }))
+  },
+  /** 处分申诉列表。 */
+  getDisciplineAppeals({ status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/discipline/appeals', { params }))
+  },
+  /** 申诉复核。result: UPHELD/REVISED/REVOKED；opinion≥5。 */
+  reviewDisciplineAppeal(appealId, result, opinion) {
+    return callStrict(() => request(`/student-affairs/discipline/appeals/${appealId}/review`, { method: 'POST', body: { result, opinion } }))
+  },
 
   // ─────────────── 谈心谈话（P6 · /student-affairs/talks/*） ───────────────
 

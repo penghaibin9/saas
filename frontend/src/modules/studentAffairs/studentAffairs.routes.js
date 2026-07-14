@@ -140,6 +140,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '违纪台账', requiresAuth: true, permissionKey: 'studentAffairs.discipline.view' }
       },
       {
+        path: 'discipline/appeals',
+        name: 'student-affairs-discipline-appeals',
+        component: () => import('@/modules/studentAffairs/views/discipline/DisciplineAppealView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '处分送达与申诉', requiresAuth: true, permissionKey: 'studentAffairs.discipline.view' }
+      },
+      {
         path: 'discipline',
         name: 'student-affairs-discipline',
         component: () => import('@/modules/studentAffairs/views/DisciplineWorkbenchView.vue'),
