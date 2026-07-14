@@ -345,7 +345,10 @@ export const NAV_PLAN = [
       I('运行质量看板 + 质量报告导出', '/admin/academic-affairs/quality', 'academicAffairs.quality.dashboard.view'),
       ...P('督导听课', '巡课记录', '教学检查', '教学事故', '质量整改', '整改跟进', '质量归档')
     ]),
-    mod('aa-archive', '教务归档', null, P('学籍归档', '注册归档', '异动归档', '培养方案归档', '教学任务归档', '课表归档', '考务归档', '成绩归档', '毕业资格归档', '归档缺失提醒', '批量归档', '归档导出')),
+    mod('aa-archive', '教务归档', '/admin/academic-affairs/archive', [
+      I('归档批次 + 9数据域完整性检查 + 学期封存', '/admin/academic-affairs/archive', 'academicAffairs.archive.view'),
+      ...P('归档缺失提醒', '批量归档', '归档导出')
+    ]),
     mod('aa-stats', '教务统计', '/admin/academic-affairs/stats', [
       I('教务总览（11 项指标 · 多维筛选 · 下钻 · 导出）', '/admin/academic-affairs/stats', 'academicAffairs.stats.view'),
       ...P('学籍统计', '注册统计', '课程统计', '教学任务统计', '课表统计', '调停课统计', '选课统计', '考务统计', '成绩统计', '学业预警统计', '毕业资格统计', '教师工作量统计', '教学资源统计', '导出报表')

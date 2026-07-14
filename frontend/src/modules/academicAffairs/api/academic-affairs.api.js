@@ -594,4 +594,15 @@ export const academicAffairsQualityApi = {
   }
 }
 
+/* ═══════════ 教务归档（/academic-affairs/archive/*） ═══════════ */
+export const academicAffairsArchiveApi = {
+  listBatches(params = {}) { return callList(`${BASE}/archive/batches`, params) },
+  getBatch(id) { return call(() => request(`${BASE}/archive/batches/${id}`)) },
+  createBatch(body) { return call(() => request(`${BASE}/archive/batches`, { method: 'POST', body })) },
+  check(id) { return call(() => request(`${BASE}/archive/batches/${id}/check`, { method: 'POST' })) },
+  confirm(id, force) { return call(() => request(`${BASE}/archive/batches/${id}/confirm`, { method: 'POST', body: { force } })) },
+  unfreeze(id, reason) { return call(() => request(`${BASE}/archive/batches/${id}/unfreeze`, { method: 'POST', body: { reason } })) },
+  cancel(id) { return call(() => request(`${BASE}/archive/batches/${id}/cancel`, { method: 'POST' })) }
+}
+
 export default academicAffairsApi

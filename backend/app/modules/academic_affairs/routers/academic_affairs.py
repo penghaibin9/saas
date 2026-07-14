@@ -17,6 +17,7 @@ def _require_student(user: dict = Depends(get_current_user)) -> dict:
     if (user.get("userType") or "").strip().upper() != "STUDENT":
         raise AppException("NO_PERMISSION", "仅学生本人可访问选课自助端点", http_status=403)
     return user
+from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_svc
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
 from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
@@ -2020,3 +2021,60 @@ def quality_report_export(body: QualityExportBody, user=Depends(require_permissi
     return StreamingResponse(io.BytesIO(content),
                              media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": "attachment; filename=academic_quality_report.xlsx"})
+
+
+# ══════════════ 教务归档（13B-R7，/academic-affairs/archive/*） ══════════════
+_ARCHIVE_MANAGE = "academicAffairs.archive.manage"
+_ARCHIVE_VIEW = "academicAffairs.archive.view"
+
+
+class ArchiveBatchBody(BaseModel):
+    termId: Optional[str] = None
+    batchName: Optional[str] = None
+
+
+class ArchiveConfirmBody(BaseModel):
+    force: bool = Field(False, description="MISSING_ITEMS 时强制归档")
+
+
+class ArchiveUnfreezeBody(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+@router.post("/archive/batches", summary="建归档批次（按学期，一学期一批次）")
+def archive_batch_create(body: ArchiveBatchBody, user=Depends(require_permission(_ARCHIVE_MANAGE))):
+    return success(archive_svc.create_batch(user, body), message="已创建")
+
+
+@router.get("/archive/batches", summary="归档批次列表")
+def archive_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                    user=Depends(require_permission(_ARCHIVE_VIEW))):
+    items, total = archive_svc.list_batches(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/archive/batches/{bid}", summary="归档批次详情（含9数据域物料）")
+def archive_batch_detail(bid: int = Path(...), user=Depends(require_permission(_ARCHIVE_VIEW))):
+    return success(archive_svc.get_batch(user, bid))
+
+
+@router.post("/archive/batches/{bid}/check", summary="完整性检查（聚合9数据域）")
+def archive_check(bid: int = Path(...), user=Depends(require_permission(_ARCHIVE_MANAGE))):
+    return success(archive_svc.run_check(user, bid), message="已检查")
+
+
+@router.post("/archive/batches/{bid}/confirm", summary="确认归档（学期封存 ARCHIVED）")
+def archive_confirm(body: ArchiveConfirmBody = ArchiveConfirmBody(), bid: int = Path(...),
+                    user=Depends(require_permission(_ARCHIVE_MANAGE))):
+    return success(archive_svc.confirm_archive(user, bid, body.force), message="已归档")
+
+
+@router.post("/archive/batches/{bid}/unfreeze", summary="特批解冻（仅学校管理员）")
+def archive_unfreeze(body: ArchiveUnfreezeBody, bid: int = Path(...),
+                     user=Depends(require_permission(_ARCHIVE_MANAGE))):
+    return success(archive_svc.unfreeze(user, bid, body.reason), message="已解冻")
+
+
+@router.post("/archive/batches/{bid}/cancel", summary="取消归档批次")
+def archive_cancel(bid: int = Path(...), user=Depends(require_permission(_ARCHIVE_MANAGE))):
+    return success(archive_svc.cancel_batch(user, bid), message="已取消")

@@ -87,7 +87,9 @@ from app.models.affairs_counselor_eval import (CounselorEval,  # noqa: F401
 from app.models.affairs_funding_ext import (FeeReduction,  # noqa: F401
                                             StudentLoan, WorkStudyMonthly,
                                             WorkStudyPost, WorkStudyRecord)
-from app.models.academic_affairs import (AaCalendarEvent, AaClassroom,  # noqa: F401
+from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
+                                         AaArchiveItem, AaCalendarEvent,
+                                         AaClassroom,
                                          AaCourse, AaDeferredExam,
                                          AaEvaluationAppeal, AaEvaluationBatch,
                                          AaEvaluationRecord, AaEvaluationResult,

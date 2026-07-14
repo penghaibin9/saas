@@ -980,3 +980,40 @@ class AaEvaluationAppeal(PKMixin, TenantMixin, CommonMixin, Base):
     current_node: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
                                         comment="SUBMITTED/COLLEGE_REVIEW/RESOLVED/REJECTED")
+
+
+# ═══════════ 教务归档组（13B-R7；按学年学期归档批次 + 9数据域物料 + 完整性检查 + 学期封存）═══════════
+
+
+class AaArchiveBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """教务归档批次（一学期一批次，D-01）。DRAFT/CHECKING/READY/MISSING_ITEMS/ARCHIVED/CANCELLED。
+    确认归档后学期 status→ARCHIVED（D-04，该学期写端点应 409，横切拦截见欠账）。"""
+    __tablename__ = "t_aa_archive_batch"
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    term_code: Mapped[str | None] = mapped_column(String(50))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime, comment="完整性检查时间")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime)
+    missing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="缺失数据域数")
+    remark: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/CHECKING/READY/MISSING_ITEMS/ARCHIVED/CANCELLED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "term_id", name="uk_aa_archive_batch"),)
+
+
+class AaArchiveItem(PKMixin, TenantMixin, CommonMixin, Base):
+    """归档物料（9 数据域：学籍/注册/异动/培养方案/教学任务/课表/考务/成绩/毕业资格）。
+    domain 域码；record_count 该域记录数；present 是否有数据。"""
+    __tablename__ = "t_aa_archive_item"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    domain: Mapped[str] = mapped_column(String(50), nullable=False, index=True,
+                                        comment="STUDENT_STATUS/REGISTRATION/STATUS_CHANGE/PROGRAM/TEACHING_TASK/SCHEDULE/EXAM/GRADE/GRADUATION")
+    domain_label: Mapped[str | None] = mapped_column(String(100))
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    present: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    remark: Mapped[str | None] = mapped_column(String(300))
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "domain", name="uk_aa_archive_item"),)
