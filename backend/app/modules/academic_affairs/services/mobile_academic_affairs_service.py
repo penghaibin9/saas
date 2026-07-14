@@ -5,10 +5,12 @@
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import no_permission
+from app.core.exceptions import AppException, no_permission
 from app.services.db_service import _iso, _tid, session
 from app.services.mobile_student_service import _require_student, resolve_student
 
@@ -18,6 +20,11 @@ def _me(db, user):
     if not stu:
         raise no_permission("尚未建立你的学生档案")
     return stu
+
+
+def _ns(body):
+    """移动端路由传入原始 dict；本模块复用的 PC 域服务函数按对象属性取值（body.xxx），此处做薄转换。"""
+    return SimpleNamespace(**(body or {}))
 
 
 def _teacher_key(user) -> str:
@@ -117,6 +124,152 @@ def exam_my(user) -> dict:
     with session() as db:
         _me(db, user)
     return {"hasData": False, "note": "考试安排功能即将上线"}
+
+
+def _acad_student(db, stu):
+    """全局学生档案(StudentProfile) → 学业过程台账(AcademicStudent)；无台账返回 None。"""
+    from app.models import AcademicStudent
+    return db.scalars(select(AcademicStudent).where(
+        AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == stu.id,
+        AcademicStudent.is_deleted.is_(False))).first()
+
+
+def credits_my(user) -> dict:
+    """我的学分修读（真实汇总：已获/应修学分+均分+已通过课程清单；无分类占比，数据模型不支持类别拆分）。"""
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
+    with session() as db:
+        stu = _me(db, user)
+        sid = stu.id
+        acad = _acad_student(db, stu)
+        obtained = float(acad.obtained_credits) if acad else None
+        required = float(acad.required_credits) if acad else 120.0
+        gpa = float(acad.gpa or 0) if acad else None
+    t = grade.transcript(sid, user)
+    passed = [it for it in t.get("items", []) if it.get("passStatus") == "PASSED"]
+    return {
+        "obtainedCredits": obtained if obtained is not None else t.get("earnedCredits", 0),
+        "requiredCredits": required,
+        "gpa": gpa if gpa is not None else t.get("gpa"),
+        "failCount": t.get("failCount", 0),
+        "passedCourses": passed,
+    }
+
+
+def warning_my(user) -> dict:
+    """我的学业预警（本人，只读）。"""
+    from app.modules.academic_affairs.services import academic_affairs_warning_service as warn
+    with session() as db:
+        stu = _me(db, user)
+        acad = _acad_student(db, stu)
+        acad_id = acad.id if acad else None
+    if not acad_id:
+        return {"items": [], "total": 0}
+    items, total = warn.list_warnings(user, acad_student_id=acad_id, page=1, page_size=50)
+    return {"items": items, "total": total}
+
+
+def makeup_my(user) -> dict:
+    """我的补考重修（本人重修申请 + 免修申请列表）。"""
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
+    retakes, _ = makeup.retake_list(user, student_only=True, page=1, page_size=50)
+    exemptions, _ = makeup.exemption_list(user, student_only=True, page=1, page_size=50)
+    return {"retakes": retakes, "exemptions": exemptions}
+
+
+def retake_apply_my(user, body) -> dict:
+    """学生本人发起重修报名。"""
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
+    if not (body or {}).get("courseName"):
+        raise AppException("VALIDATION_ERROR", "课程名必填")
+    return makeup.retake_apply(user, _ns(body))
+
+
+def selection_courses_my(user, batch_id=None):
+    """我的选课·可选课程（OPEN 批次 + 实时余量）。"""
+    from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
+    return sel.student_courses(user, batch_id)
+
+
+def selection_enroll_my(user, body) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
+    if not (body or {}).get("selectionCourseId"):
+        raise AppException("VALIDATION_ERROR", "selectionCourseId 必填")
+    return sel.student_enroll(user, _ns(body))
+
+
+def selection_drop_my(user, body) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
+    if not (body or {}).get("selectionCourseId"):
+        raise AppException("VALIDATION_ERROR", "selectionCourseId 必填")
+    return sel.student_drop(user, _ns(body))
+
+
+def selection_records_my(user, batch_id=None):
+    """我的选课·本人选课记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
+    return sel.my_selections(user, batch_id)
+
+
+# ═══════════ 教师端·成绩录入（移动端简版：仅本人授课任务） ═══════════
+
+def teacher_grade_tasks(user, status=None):
+    """教师·我的成绩录入任务（按 teacher_key 归属过滤，教务处/学校管理员见全部）。"""
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
+    if (user or {}).get("userType") == "STUDENT":
+        raise no_permission("该接口仅教职工可用")
+    role = (user.get("currentRoleCode") or "").upper()
+    rows, total = grade.list_tasks(user, status=status, page=1, page_size=100)
+    if role not in grade._REVIEW_ROLES and role != "COLLEGE_ADMIN":
+        keys = grade._user_keys(user)
+        rows = [r for r in rows if r.get("teacherKey") and r["teacherKey"] in keys]
+    return {"items": rows, "total": len(rows)}
+
+
+def teacher_grade_roster(task_id, user) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
+    return grade.roster(task_id, user)
+
+
+def teacher_grade_enter_score(task_id, user, body) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
+    if not (body or {}).get("studentId"):
+        raise AppException("VALIDATION_ERROR", "studentId 必填")
+    return grade.enter_score(task_id, user, _ns(body))
+
+
+def teacher_grade_submit_task(task_id, user) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
+    return grade.submit_task(task_id, user)
+
+
+# ═══════════ 教师端·课堂考勤（移动端首创） ═══════════
+
+def teacher_attendance_sessions(user):
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as att
+    if (user or {}).get("userType") == "STUDENT":
+        raise no_permission("该接口仅教职工可用")
+    items, total = att.list_sessions(user, page=1, page_size=50)
+    return {"items": items, "total": total}
+
+
+def teacher_attendance_create(user, body) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as att
+    return att.create_session(user, body)
+
+
+def teacher_attendance_detail(session_id, user) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as att
+    return att.get_session(session_id, user)
+
+
+def teacher_attendance_mark(session_id, user, body) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as att
+    return att.mark_attendance(session_id, user, body)
+
+
+def teacher_attendance_submit(session_id, user) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as att
+    return att.submit_session(session_id, user)
 
 
 # ═══════════ 教师端 ═══════════

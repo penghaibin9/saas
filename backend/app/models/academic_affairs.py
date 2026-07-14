@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (BigInteger, Boolean, DateTime, Integer, Numeric, String,
-                        UniqueConstraint)
+                        Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -1034,3 +1034,24 @@ class AaArchiveItem(PKMixin, TenantMixin, CommonMixin, Base):
     remark: Mapped[str | None] = mapped_column(String(300))
 
     __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "domain", name="uk_aa_archive_item"),)
+
+
+# ═══════════ 课堂考勤（13B-P8·移动端首创；教师按行政班/课程逐次考勤，DRAFT→SUBMITTED）═══════════
+
+
+class AaAttendanceSession(PKMixin, TenantMixin, CommonMixin, Base):
+    """课堂考勤场次（V1：教师按行政班圈定名单逐生标记，提交后不可再改，走教务处人工更正线下流程）。"""
+    __tablename__ = "t_aa_attendance_session"
+
+    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="行政班")
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    term_code: Mapped[str | None] = mapped_column(String(50))
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="任课教师归属")
+    session_date: Mapped[str] = mapped_column(String(20), nullable=False, comment="YYYY-MM-DD")
+    slot_no: Mapped[int | None] = mapped_column(Integer, comment="第几节")
+    roster_json: Mapped[str | None] = mapped_column(Text, comment="[{studentId,studentNo,realName,status}]")
+    total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    present_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    absent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/SUBMITTED")

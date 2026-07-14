@@ -125,8 +125,9 @@ def scan_warnings(user) -> dict:
         return {"threshold": thr, "created": created, "updated": updated, "notified": notified}
 
 
-def list_warnings(user, level=None, status=None, source_code=None, page=1, page_size=20):
-    """学业预警列表（含 P5 规则来源标识）。与 t_acad_student 一次性 JOIN + DB 级分页，去逐行 N+1。"""
+def list_warnings(user, level=None, status=None, source_code=None, acad_student_id=None, page=1, page_size=20):
+    """学业预警列表（含 P5 规则来源标识）。与 t_acad_student 一次性 JOIN + DB 级分页，去逐行 N+1。
+    acad_student_id：传入时仅返回该生本人预警（移动端学生自视图用）。"""
     from app.models import AcademicStudent, AcademicWarning
     with session() as db:
         join = and_(AcademicStudent.id == AcademicWarning.acad_student_id,
@@ -139,6 +140,8 @@ def list_warnings(user, level=None, status=None, source_code=None, page=1, page_
             conds.append(AcademicWarning.status == status)
         if source_code:
             conds.append(AcademicWarning.source_code == source_code)
+        if acad_student_id:
+            conds.append(AcademicWarning.acad_student_id == int(acad_student_id))
         total = db.scalar(select(func.count()).select_from(AcademicWarning)
                           .outerjoin(AcademicStudent, join).where(*conds)) or 0
         offset = (max(1, page) - 1) * page_size

@@ -69,7 +69,7 @@ export default {
       lifecycleMenu: [
         { label: '我的档案', icon: '📄', route: '/pages/student/profile/index' },
         { label: '迎新报到', icon: '🎒', route: '/pages/student/orientation/index' },
-        { label: '学业进度', icon: '📈', route: '/pages/student/academic/index' },
+        { label: '教务中心', icon: '📈', route: '/pages/student/academic-affairs/index' },
         { label: '岗位实习', icon: '💼', route: '/pages/student/internship/index' },
         { label: '毕业设计', icon: '📘', route: '/pages/student/graduation/index' },
         { label: '就业去向', icon: '🎯', route: '/pages/student/employment/index' },

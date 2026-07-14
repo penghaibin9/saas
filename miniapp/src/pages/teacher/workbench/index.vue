@@ -140,6 +140,8 @@ export default {
         follow: '/pages/teacher/employment-follow/index',
         unemployed: '/pages/teacher/employment-follow/index',
         warning: '/pages/teacher/risk-students/index',
+        progress: '/pages/teacher/academic-affairs/index',
+        status: '/pages/teacher/academic-affairs/index',
         overview: '/pages/teacher/workbench/index',
         orientationVerify: '/pages/teacher/orientation/verify/index',
         orientationDashboard: '/pages/teacher/orientation/dashboard/index'

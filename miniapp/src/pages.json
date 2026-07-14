@@ -149,19 +149,35 @@
     },
     {
       "path": "pages/student/academic-affairs/schedule",
-      "style": { "navigationBarTitleText": "我的课表" }
+      "style": { "navigationBarTitleText": "我的课表", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/academic-affairs/transcript",
-      "style": { "navigationBarTitleText": "我的成绩" }
+      "style": { "navigationBarTitleText": "我的成绩", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/academic-affairs/status",
-      "style": { "navigationBarTitleText": "学籍与异动" }
+      "style": { "navigationBarTitleText": "学籍与异动", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/academic-affairs/graduation",
-      "style": { "navigationBarTitleText": "毕业进度" }
+      "style": { "navigationBarTitleText": "毕业进度", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/academic-affairs/credits",
+      "style": { "navigationBarTitleText": "学分修读", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/academic-affairs/warning",
+      "style": { "navigationBarTitleText": "学业预警", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/academic-affairs/makeup",
+      "style": { "navigationBarTitleText": "补考重修", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/academic-affairs/selection",
+      "style": { "navigationBarTitleText": "网上选课", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/affairs/index",
@@ -170,6 +186,18 @@
     {
       "path": "pages/teacher/my-schedule/index",
       "style": { "navigationBarTitleText": "我的课表", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/academic-affairs/index",
+      "style": { "navigationBarTitleText": "教务中心", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/academic-affairs/grade-entry",
+      "style": { "navigationBarTitleText": "成绩录入", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/academic-affairs/attendance",
+      "style": { "navigationBarTitleText": "课堂考勤", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/workbench/index",

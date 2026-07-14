@@ -41,7 +41,7 @@ export const studentHome = {
   quickServices: [
     { key: 'leave', label: '请假', icon: '✈', route: '/pages/student/campus-service/index' },
     { key: 'certificate', label: '证明开具', icon: '▤', route: '/pages/student/campus-service/index' },
-    { key: 'score', label: '成绩查询', icon: '▦', route: '/pages/student/academic/index' },
+    { key: 'score', label: '成绩查询', icon: '▦', route: '/pages/student/academic-affairs/index' },
     { key: 'internship', label: '实习打卡', icon: '📍', route: '/pages/student/internship/index' },
     { key: 'graduation', label: '毕业设计', icon: '✎', route: '/pages/student/graduation/index' },
     { key: 'employment', label: '就业去向', icon: '★', route: '/pages/student/employment/index' }

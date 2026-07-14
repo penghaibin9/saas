@@ -785,3 +785,88 @@ def academic_exam_my(user=Depends(get_current_user)):
 @router.get("/academic/teacher-schedule/my", summary="教务·教师我的课表")
 def academic_teacher_schedule_my(user=Depends(get_current_user)):
     return success(aa.teacher_schedule_my(user))
+
+
+@router.get("/academic/credits/my", summary="教务·我的学分修读（真实汇总，无分类占比）")
+def academic_credits_my(user=Depends(get_current_user)):
+    return success(aa.credits_my(user))
+
+
+@router.get("/academic/warning/my", summary="教务·我的学业预警")
+def academic_warning_my(user=Depends(get_current_user)):
+    return success(aa.warning_my(user))
+
+
+@router.get("/academic/makeup/my", summary="教务·我的补考重修（重修+免修申请）")
+def academic_makeup_my(user=Depends(get_current_user)):
+    return success(aa.makeup_my(user))
+
+
+@router.post("/academic/makeup/retake-apply", summary="教务·本人发起重修报名")
+def academic_makeup_retake_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.retake_apply_my(user, body), message="重修报名已提交")
+
+
+@router.get("/academic/selection/courses", summary="教务·网上选课·可选课程（OPEN 批次+实时余量）")
+def academic_selection_courses(batch_id: str = None, user=Depends(get_current_user)):
+    return success(aa.selection_courses_my(user, batch_id))
+
+
+@router.post("/academic/selection/enroll", summary="教务·网上选课·本人选课")
+def academic_selection_enroll(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.selection_enroll_my(user, body), message="选课成功")
+
+
+@router.post("/academic/selection/drop", summary="教务·网上选课·本人退课")
+def academic_selection_drop(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.selection_drop_my(user, body), message="已退课")
+
+
+@router.get("/academic/selection/my", summary="教务·网上选课·本人选课记录")
+def academic_selection_my(batch_id: str = None, user=Depends(get_current_user)):
+    return success(aa.selection_records_my(user, batch_id))
+
+
+@router.get("/teacher/academic/grade-tasks", summary="教师·我的成绩录入任务")
+def teacher_grade_tasks(status: str = None, user=Depends(get_current_user)):
+    return success(aa.teacher_grade_tasks(user, status))
+
+
+@router.get("/teacher/academic/grade-tasks/{task_id}/roster", summary="教师·成绩录入·教学班名单")
+def teacher_grade_roster(task_id: str, user=Depends(get_current_user)):
+    return success(aa.teacher_grade_roster(task_id, user))
+
+
+@router.post("/teacher/academic/grade-tasks/{task_id}/enter-score", summary="教师·成绩录入·录入单生分数")
+def teacher_grade_enter_score(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.teacher_grade_enter_score(task_id, user, body))
+
+
+@router.post("/teacher/academic/grade-tasks/{task_id}/submit", summary="教师·成绩录入·提交学院审核")
+def teacher_grade_submit_task(task_id: str, user=Depends(get_current_user)):
+    return success(aa.teacher_grade_submit_task(task_id, user), message="已提交学院审核")
+
+
+@router.get("/teacher/academic/attendance/sessions", summary="教师·课堂考勤·我的场次列表")
+def teacher_attendance_sessions(user=Depends(get_current_user)):
+    return success(aa.teacher_attendance_sessions(user))
+
+
+@router.post("/teacher/academic/attendance/sessions", summary="教师·课堂考勤·新建场次（按行政班圈定名单）")
+def teacher_attendance_create(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.teacher_attendance_create(user, body), message="考勤场次已创建")
+
+
+@router.get("/teacher/academic/attendance/sessions/{session_id}", summary="教师·课堂考勤·场次详情+名单")
+def teacher_attendance_detail(session_id: str, user=Depends(get_current_user)):
+    return success(aa.teacher_attendance_detail(session_id, user))
+
+
+@router.post("/teacher/academic/attendance/sessions/{session_id}/mark", summary="教师·课堂考勤·标记单生状态")
+def teacher_attendance_mark(session_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.teacher_attendance_mark(session_id, user, body))
+
+
+@router.post("/teacher/academic/attendance/sessions/{session_id}/submit", summary="教师·课堂考勤·提交场次（不可再改）")
+def teacher_attendance_submit(session_id: str, user=Depends(get_current_user)):
+    return success(aa.teacher_attendance_submit(session_id, user), message="考勤已提交")

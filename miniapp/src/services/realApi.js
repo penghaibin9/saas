@@ -633,3 +633,40 @@ export const acadStatusChange = (body) =>
   realRequest('/mobile/academic/status-change', { method: 'POST', data: body })
 export const acadGraduationMy = () => realRequest('/mobile/academic/graduation/my')
 export const acadTeacherScheduleMy = () => realRequest('/mobile/academic/teacher-schedule/my')
+
+/** 学分修读 / 学业预警 / 补考重修 / 网上选课（真实接口，无 mock 兜底，业务错误透出） */
+export const acadCreditsMy = () => realRequest('/mobile/academic/credits/my')
+export const acadWarningMy = () => realRequest('/mobile/academic/warning/my')
+export const acadMakeupMy = () => realRequest('/mobile/academic/makeup/my')
+export const acadRetakeApply = (courseName, termCode, reason) =>
+  realRequest('/mobile/academic/makeup/retake-apply', { method: 'POST', data: { courseName, termCode, reason } })
+export const acadSelectionCourses = (batchId) =>
+  realRequest('/mobile/academic/selection/courses' + (batchId ? `?batch_id=${batchId}` : ''))
+export const acadSelectionEnroll = (selectionCourseId) =>
+  realRequest('/mobile/academic/selection/enroll', { method: 'POST', data: { selectionCourseId } })
+export const acadSelectionDrop = (selectionCourseId) =>
+  realRequest('/mobile/academic/selection/drop', { method: 'POST', data: { selectionCourseId } })
+export const acadSelectionMy = (batchId) =>
+  realRequest('/mobile/academic/selection/my' + (batchId ? `?batch_id=${batchId}` : ''))
+
+/** 教师·成绩录入（真实接口） */
+export const teacherGradeTasks = (status) =>
+  realRequest('/mobile/teacher/academic/grade-tasks' + (status ? `?status=${status}` : ''))
+export const teacherGradeRoster = (taskId) =>
+  realRequest(`/mobile/teacher/academic/grade-tasks/${taskId}/roster`)
+export const teacherGradeEnterScore = (taskId, body) =>
+  realRequest(`/mobile/teacher/academic/grade-tasks/${taskId}/enter-score`, { method: 'POST', data: body })
+export const teacherGradeSubmitTask = (taskId) =>
+  realRequest(`/mobile/teacher/academic/grade-tasks/${taskId}/submit`, { method: 'POST' })
+
+/** 教师·课堂考勤（真实接口） */
+export const teacherAttendanceSessions = () => realRequest('/mobile/teacher/academic/attendance/sessions')
+export const teacherAttendanceCreate = (body) =>
+  realRequest('/mobile/teacher/academic/attendance/sessions', { method: 'POST', data: body })
+export const teacherAttendanceDetail = (sessionId) =>
+  realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}`)
+export const teacherAttendanceMark = (sessionId, studentId, status) =>
+  realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}/mark`,
+    { method: 'POST', data: { studentId, status } })
+export const teacherAttendanceSubmit = (sessionId) =>
+  realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}/submit`, { method: 'POST' })

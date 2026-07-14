@@ -111,6 +111,15 @@ export const studentApi = {
   getMyTranscript: () => real.acadTranscriptMy(),
   getMyAcadStatus: () => real.acadStatusMy(),
   submitStatusChange: (body) => real.acadStatusChange(body),
-  getMyGraduation: () => real.acadGraduationMy()
+  getMyGraduation: () => real.acadGraduationMy(),
+  // 教务中心·学分修读/学业预警/补考重修/网上选课（真实接口，无 mock 兜底）
+  getMyCredits: () => real.acadCreditsMy(),
+  getMyWarnings: () => real.acadWarningMy(),
+  getMyMakeup: () => real.acadMakeupMy(),
+  applyRetake: (courseName, termCode, reason) => real.acadRetakeApply(courseName, termCode, reason),
+  getSelectionCourses: (batchId) => real.acadSelectionCourses(batchId),
+  enrollSelection: (selectionCourseId) => real.acadSelectionEnroll(selectionCourseId),
+  dropSelection: (selectionCourseId) => real.acadSelectionDrop(selectionCourseId),
+  getMySelections: (batchId) => real.acadSelectionMy(batchId)
 }
 export default studentApi

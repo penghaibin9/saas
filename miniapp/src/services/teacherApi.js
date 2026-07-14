@@ -91,6 +91,17 @@ export const teacherApi = {
   getOrientationDashboard: () => real.teacherOrientationDashboard(),
   // 指导巡访：本月计划学生列表 + 记录巡访（真实写操作，业务错误透出）
   getInternshipVisitPlans: () => real.teacherInternshipVisitPlans(),
-  recordInternshipVisit: (internshipId) => real.teacherInternshipVisitRecord(internshipId)
+  recordInternshipVisit: (internshipId) => real.teacherInternshipVisitRecord(internshipId),
+  // 教务·成绩录入（真实接口，仅本人授课任务）
+  getGradeTasks: (status) => real.teacherGradeTasks(status),
+  getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),
+  enterGradeScore: (taskId, body) => real.teacherGradeEnterScore(taskId, body),
+  submitGradeTask: (taskId) => real.teacherGradeSubmitTask(taskId),
+  // 教务·课堂考勤（真实接口，移动端首创）
+  getAttendanceSessions: () => real.teacherAttendanceSessions(),
+  createAttendanceSession: (body) => real.teacherAttendanceCreate(body),
+  getAttendanceDetail: (sessionId) => real.teacherAttendanceDetail(sessionId),
+  markAttendance: (sessionId, studentId, status) => real.teacherAttendanceMark(sessionId, studentId, status),
+  submitAttendanceSession: (sessionId) => real.teacherAttendanceSubmit(sessionId)
 }
 export default teacherApi

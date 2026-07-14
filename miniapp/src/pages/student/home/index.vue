@@ -115,7 +115,7 @@
         <!-- 今日课程 -->
         <view class="section-head">
           <text class="section-head__title">今日课程</text>
-          <text class="section-head__more" @click="go('/pages/student/academic/index')">学业进度 ›</text>
+          <text class="section-head__more" @click="go('/pages/student/academic-affairs/index')">学业进度 ›</text>
         </view>
         <view class="card stack-sm">
           <view v-for="c in home.todayCourses" :key="c.id" class="home__course">
