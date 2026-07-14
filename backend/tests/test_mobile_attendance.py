@@ -1,0 +1,95 @@
+"""波5 课堂考勤（移动端首创）端到端：新建场次(按行政班圈定名单)→标记→提交→范围收敛。"""
+from __future__ import annotations
+
+BASE = "/api/v1/mobile/teacher/academic/attendance"
+MAIN = 1000000000000000001
+DEMO = 1000000000000000003
+
+
+def _teacher_token(real_name="王老师", tenant_id=MAIN, tid="demo", role="ACADEMIC_TEACHER"):
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{real_name}", "realName": real_name, "userType": "TEACHER",
+        "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
+        "currentRoleCode": role, "clientType": "MP"})}
+
+
+def _seed_class(n_students=3, tenant_id=MAIN):
+    from app.db.session import get_sessionmaker
+    from app.models import SchoolClass, StudentProfile
+    db = get_sessionmaker()()
+    try:
+        c = SchoolClass(tenant_id=tenant_id, major_id=1, class_name="考勤测2601",
+                        grade="2026", status="ACTIVE")
+        db.add(c); db.flush()
+        cid = c.id
+        for i in range(n_students):
+            db.add(StudentProfile(tenant_id=tenant_id, student_no=f"AT{i:04d}",
+                                  real_name=f"考勤生{i}", class_id=cid,
+                                  current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE"))
+        db.commit()
+        return cid
+    finally:
+        db.close()
+
+
+def test_attendance_full_flow(client, db_mode):
+    cid = _seed_class(n_students=3)
+    hdr = _teacher_token("周老师")
+    r = client.post(f"{BASE}/sessions", headers=hdr,
+                    json={"classId": cid, "courseName": "高等数学", "sessionDate": "2026-07-15"}).json()
+    assert r["code"] == 0
+    sess = r["data"]
+    assert sess["totalCount"] == 3 and sess["presentCount"] == 3 and sess["status"] == "DRAFT"
+    sid = sess["sessionId"]
+
+    detail = client.get(f"{BASE}/sessions/{sid}", headers=hdr).json()["data"]
+    assert len(detail["items"]) == 3
+    stu0 = detail["items"][0]
+    assert stu0["status"] == "PRESENT"
+
+    marked = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr,
+                         json={"studentId": stu0["studentId"], "status": "ABSENT"}).json()["data"]
+    assert marked["absentCount"] == 1 and marked["presentCount"] == 2
+
+    submitted = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr).json()["data"]
+    assert submitted["status"] == "SUBMITTED"
+
+    # 提交后不可再改
+    blocked = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr,
+                          json={"studentId": stu0["studentId"], "status": "PRESENT"}).json()
+    assert blocked["code"] != 0
+
+    # 列表里能看到本人这条场次
+    lst = client.get(f"{BASE}/sessions", headers=hdr).json()["data"]
+    assert lst["total"] >= 1
+    assert any(s["sessionId"] == sid for s in lst["items"])
+
+
+def test_attendance_other_teacher_cannot_view_or_mark(client, db_mode):
+    """teacher_key 归属收敛：非本人创建的场次，另一教师应被拦截。"""
+    cid = _seed_class(n_students=2)
+    owner_hdr = _teacher_token("张老师")
+    r = client.post(f"{BASE}/sessions", headers=owner_hdr,
+                    json={"classId": cid, "courseName": "英语", "sessionDate": "2026-07-15"}).json()
+    sid = r["data"]["sessionId"]
+
+    other_hdr = _teacher_token("李老师")
+    blocked = client.get(f"{BASE}/sessions/{sid}", headers=other_hdr).json()
+    assert blocked["code"] != 0
+
+    # 另一教师自己的场次列表里也不应该出现这条
+    other_list = client.get(f"{BASE}/sessions", headers=other_hdr).json()["data"]
+    assert not any(s["sessionId"] == sid for s in other_list["items"])
+
+
+def test_attendance_empty_class_not_found(client, db_mode):
+    """行政班无学生名单：明确报错，不 500、不建空场次。"""
+    hdr = _teacher_token("赵老师")
+    r = client.post(f"{BASE}/sessions", headers=hdr,
+                    json={"classId": 999999999, "courseName": "无人班", "sessionDate": "2026-07-15"}).json()
+    assert r["code"] != 0
+
+
+def test_attendance_requires_login(client):
+    assert client.get(f"{BASE}/sessions").json()["code"] == 401001
