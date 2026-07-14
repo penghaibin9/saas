@@ -87,13 +87,15 @@ from app.models.affairs_counselor_eval import (CounselorEval,  # noqa: F401
 from app.models.affairs_funding_ext import (FeeReduction,  # noqa: F401
                                             StudentLoan, WorkStudyMonthly,
                                             WorkStudyPost, WorkStudyRecord)
-from app.models.academic_affairs import (AaCalendarEvent, AaCourse,  # noqa: F401
+from app.models.academic_affairs import (AaCalendarEvent, AaClassroom,  # noqa: F401
+                                         AaCourse,
                                          AaGradeRecord, AaGradeTask,
                                          AaGraduationAuditBatch,
                                          AaGraduationAuditResult, AaProgram,
                                          AaProgramBinding, AaProgramCourse,
                                          AaRegistration, AaRegistrationBatch,
-                                         AaScheduleBatch, AaScheduleItem,
+                                         AaScheduleBatch, AaScheduleChange,
+                                         AaScheduleItem,
                                          AaStatusChange, AaTeachingTask,
                                          AaTeachingTaskBatch, AaTerm, AaTimeSlot)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401

@@ -260,6 +260,8 @@ class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
                                              comment="ALL/ODD/EVEN 全周/单周/双周")
     classroom_text: Mapped[str | None] = mapped_column(String(100), index=True, comment="教室(V1文本)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="EFFECTIVE", index=True)
+    change_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                  comment="→ t_aa_schedule_change 生成本项的调停课单(变更标记/回链)；null=原始排课")
 
 
 # ═══════════ 成绩录入组（13B-P5；平时+期末按比例，发布原子回写 t_acad_grade）═══════════
@@ -345,3 +347,77 @@ class AaGraduationAuditResult(PKMixin, TenantMixin, CommonMixin, Base):
                                         comment="WAIT_PRECHECK/SYSTEM_PASSED/SYSTEM_ABNORMAL/COLLEGE_REVIEW/ACADEMIC_REVIEW/GRADUATED/COMPLETED/DELAYED/REJECTED/ARCHIVED")
 
     __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "student_id", name="uk_aa_grad_audit"),)
+
+
+# ═══════════ 教学资源组（13B-R4；教室字典最小闭环，方案A：字典独立，课表 classroom_text 保持自由文本快照）═══════════
+
+
+class AaClassroom(PKMixin, TenantMixin, CommonMixin, Base):
+    """教室字典（楼栋/教室/容量/类型/可用状态）。租户级基础数据；排课 UI 从本字典选择，
+    课表 t_aa_schedule_item.classroom_text 保持自由文本快照不改列（方案A，classroom_id 外键化留 backlog）。
+    唯一(tenant,building_code,room_code)。可用状态 AVAILABLE/DISABLED/MAINTENANCE。"""
+    __tablename__ = "t_aa_classroom"
+
+    building_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="楼栋编码")
+    building_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="楼栋名称")
+    room_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="教室编号")
+    room_name: Mapped[str | None] = mapped_column(String(100), comment="教室名称(可空,默认楼栋+编号)")
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="容量(座位数)")
+    room_type: Mapped[str] = mapped_column(String(30), nullable=False, default="LECTURE",
+                                           comment="LECTURE/MULTIMEDIA/COMPUTER/LAB/OTHER 普通/多媒体/机房/实验室/其他")
+    campus_code: Mapped[str | None] = mapped_column(String(50), comment="预留多校区")
+    remark: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="AVAILABLE", index=True,
+                                        comment="AVAILABLE/DISABLED/MAINTENANCE 可用/停用/维修中")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "building_code", "room_code", name="uk_aa_classroom"),)
+
+
+# ═══════════ 调停课组（13B-R2/SM-08；调课/停课/补课，审批通过后改写课表保留原课位历史）═══════════
+
+
+class AaScheduleChange(PKMixin, TenantMixin, CommonMixin, Base):
+    """调停课单（SM-08，workflow_code=ACAD_SCHEDULE_CHANGE）。
+
+    change_type=ADJUST(调课)/STOP(停课)/MAKEUP(补课)。教师就已发布课表项(origin_item)发起，
+    提交即做目标课位三重冲突预检(复用 schedule_service._detect_conflict)，冲突则不落库。
+    审批链：学院审→教务处审。终审通过后系统改写课表：原课位标 CHANGED(保留历史，禁直接 UPDATE 已发布项)，
+    调课/补课生成新课表项并回链本单(new_item_id / schedule_item.change_id)。
+    7 态：SUBMITTED / COLLEGE_REVIEW / ACADEMIC_REVIEW / APPROVED / REJECTED / CANCELLED / APPLIED。
+    """
+    __tablename__ = "t_aa_schedule_change"
+
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="原课位所属已发布课表批次")
+    origin_item_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_schedule_item 原课位")
+    task_id: Mapped[int | None] = mapped_column(BigInteger, comment="→ t_aa_teaching_task")
+    change_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True,
+                                             comment="ADJUST 调课 / STOP 停课 / MAKEUP 补课")
+    # 原课位快照（发起时冻结，独立于 origin_item 后续状态）
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    class_name: Mapped[str | None] = mapped_column(String(100))
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    origin_weekday: Mapped[int | None] = mapped_column(Integer)
+    origin_slot_no: Mapped[int | None] = mapped_column(Integer)
+    origin_start_week: Mapped[int | None] = mapped_column(Integer)
+    origin_end_week: Mapped[int | None] = mapped_column(Integer)
+    origin_week_parity: Mapped[str | None] = mapped_column(String(10))
+    origin_classroom: Mapped[str | None] = mapped_column(String(100))
+    # 目标课位（调课/补课填写；停课留空）
+    target_weekday: Mapped[int | None] = mapped_column(Integer)
+    target_slot_no: Mapped[int | None] = mapped_column(Integer)
+    target_start_week: Mapped[int | None] = mapped_column(Integer)
+    target_end_week: Mapped[int | None] = mapped_column(Integer)
+    target_week_parity: Mapped[str | None] = mapped_column(String(10))
+    target_classroom: Mapped[str | None] = mapped_column(String(100))
+    makeup_plan: Mapped[str | None] = mapped_column(String(500), comment="补课/停课后续安排说明")
+    reason: Mapped[str | None] = mapped_column(String(500), comment="调停课原因(≥5 字)")
+    new_item_id: Mapped[int | None] = mapped_column(BigInteger, comment="终审生效后生成的新课表项(回链)")
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime, comment="课表改写生效时间")
+    applicant_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="发起教师 user_id")
+    current_node: Mapped[str | None] = mapped_column(String(50), comment="审批当前节点")
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/COLLEGE_REVIEW/ACADEMIC_REVIEW/APPROVED/REJECTED/CANCELLED/APPLIED")

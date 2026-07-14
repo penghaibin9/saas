@@ -6,17 +6,21 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
-from app.core.permissions import require_permission
+from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
 from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
 from app.modules.academic_affairs.services import academic_affairs_graduation_service as grad_svc
+from app.modules.academic_affairs.services import academic_affairs_org_service as org_svc
 from app.modules.academic_affairs.services import academic_affairs_program_service as prog_svc
+from app.modules.academic_affairs.services import academic_affairs_resource_service as resource_svc
+from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as sched_change_svc
 from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
 from app.modules.academic_affairs.services import academic_affairs_warning_service as warn_svc
 from app.modules.academic_affairs.services import academic_affairs_service as svc
+from app.modules.academic_affairs.services import academic_affairs_stats_service as stats_svc
 from app.modules.academic_affairs.services import academic_affairs_task_service as task_svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
@@ -643,3 +647,387 @@ def grad_college_review(body: GradReviewBody, resultId: int = Path(...), user=De
 @router.post("/graduation-results/{resultId}/final", summary="教务终审（结论→经单一入口写学籍，强制二次确认）")
 def grad_final(body: GradFinalBody, resultId: int = Path(...), user=Depends(require_staff)):
     return success(grad_svc.academic_final(resultId, user, body.conclusion, body.confirm), message="已终审")
+
+
+# ══════════════ 教务统计（只读聚合，/academic-affairs/stats/*） ══════════════
+# 全部端点挂 require_permission("academicAffairs.stats.*")（通配 academicAffairs.* 覆盖教务处/学院/教师；
+# LEADER 命中 *.view）；数据范围复用 build_affairs_context（详见 stats_service）。学生令牌 STAFF/STUDENT 无授权 → 403。
+_STATS_VIEW = "academicAffairs.stats.view"
+_STATS_EXPORT = "academicAffairs.stats.export"
+
+
+@router.get("/stats/overview", summary="教务统计总览（11 项指标 + 4 项占位）")
+def stats_overview(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                   majorId: Optional[int] = None, user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.overview(user, termId, collegeId, majorId))
+
+
+@router.get("/stats/filters", summary="统计筛选器候选（学期/学院/专业，受数据范围收敛）")
+def stats_filters(user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.filters(user))
+
+
+@router.get("/stats/registration", summary="注册统计下钻：未注册学生名单（脱敏+审计）")
+def stats_registration(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                       majorId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                       user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.registration_unregistered(user, termId, collegeId, majorId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/status-change", summary="学籍统计下钻：EFFECTIVE 异动明细")
+def stats_status_change(changeType: Optional[str] = None, termId: Optional[int] = None,
+                        collegeId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                        user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.status_change_detail(user, changeType, termId, collegeId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/warning", summary="学业预警统计下钻：非 CLOSED 预警明细（脱敏+审计）")
+def stats_warning(level: Optional[str] = None, source: Optional[str] = None,
+                  collegeId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                  user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.warning_detail(user, level, source, collegeId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class StatsExportBody(BaseModel):
+    termId: Optional[int] = None
+    collegeId: Optional[int] = None
+    majorId: Optional[int] = None
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
+
+
+@router.post("/stats/export", summary="教务总览导出 xlsx（水印+审计，同步下载）")
+def stats_export(body: StatsExportBody, user=Depends(require_permission(_STATS_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = stats_svc.export_overview_xlsx(user, body.termId, body.collegeId, body.majorId, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=academic_affairs_stats.xlsx"})
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 13B-R3 学院专业班级（组织架构）—— /academic-affairs/orgs/*
+# 组织三表加列复用（不建新表）；读=academicAffairs.org.view，写=academicAffairs.org.manage。
+# 数据范围经 build_affairs_context：TENANT_ALL 全租户 / COLLEGE 限授权学院 / 其它 fail-closed。
+# ═══════════════════════════════════════════════════════════════════════════
+
+_ORG_VIEW = require_permission("academicAffairs.org.view")
+_ORG_MANAGE = require_permission("academicAffairs.org.manage")
+
+
+class CollegeBody(BaseModel):
+    collegeName: Optional[str] = None
+    code: Optional[str] = None
+    shortName: Optional[str] = None
+    sortOrder: Optional[int] = None
+    status: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class SecretaryBindBody(BaseModel):
+    secretaryId: Optional[str] = None
+
+
+class MajorBody(BaseModel):
+    collegeId: Optional[str] = None
+    majorName: Optional[str] = None
+    code: Optional[str] = None
+    educationYears: Optional[int] = Field(None, ge=1, le=10)
+    trainingLevel: Optional[str] = None
+    enrollStatus: Optional[str] = None
+    direction: Optional[str] = None
+    status: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class ClassBody(BaseModel):
+    majorId: Optional[str] = None
+    className: Optional[str] = None
+    classCode: Optional[str] = None
+    grade: Optional[str] = None
+    capacity: Optional[int] = Field(None, ge=0)
+    graduateYear: Optional[str] = None
+    classStatus: Optional[str] = None
+    counselorId: Optional[str] = None
+    headTeacherId: Optional[str] = None
+    status: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class ClassAdjustBody(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    targetClassId: str = Field(..., min_length=1)
+
+
+# ── 学院 ──
+@router.get("/orgs/colleges", summary="学院列表（范围内）")
+def org_colleges(keyword: Optional[str] = None, status: Optional[str] = None,
+                 page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_colleges(user, keyword, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/orgs/colleges", summary="新建学院")
+def org_college_create(body: CollegeBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.create_college(user, body), message="已创建")
+
+
+@router.put("/orgs/colleges/{collegeId}", summary="编辑学院")
+def org_college_update(body: CollegeBody, collegeId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.update_college(user, collegeId, body), message="已保存")
+
+
+@router.post("/orgs/colleges/{collegeId}/secretary", summary="教学秘书绑定/解绑")
+def org_college_secretary(body: SecretaryBindBody, collegeId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.bind_secretary(user, collegeId, body), message="已保存")
+
+
+@router.delete("/orgs/colleges/{collegeId}", summary="删除学院（软删，须无在册专业）")
+def org_college_delete(collegeId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.delete_college(user, collegeId), message="已删除")
+
+
+# ── 专业 ──
+@router.get("/orgs/majors", summary="专业列表（范围内）")
+def org_majors(collegeId: Optional[str] = None, enrollStatus: Optional[str] = None,
+               keyword: Optional[str] = None, page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_majors(user, collegeId, enrollStatus, keyword, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/orgs/majors", summary="新建专业")
+def org_major_create(body: MajorBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.create_major(user, body), message="已创建")
+
+
+@router.put("/orgs/majors/{majorId}", summary="编辑专业（含专业方向/招生状态）")
+def org_major_update(body: MajorBody, majorId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.update_major(user, majorId, body), message="已保存")
+
+
+@router.delete("/orgs/majors/{majorId}", summary="删除专业（软删，须无在册班级）")
+def org_major_delete(majorId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.delete_major(user, majorId), message="已删除")
+
+
+# ── 行政班 ──
+@router.get("/orgs/classes", summary="行政班列表（范围内）")
+def org_classes(majorId: Optional[str] = None, grade: Optional[str] = None,
+                classStatus: Optional[str] = None, keyword: Optional[str] = None,
+                page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_classes(user, majorId, grade, classStatus, keyword, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/orgs/classes", summary="新建行政班")
+def org_class_create(body: ClassBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.create_class(user, body), message="已创建")
+
+
+@router.put("/orgs/classes/{classId}", summary="编辑行政班")
+def org_class_update(body: ClassBody, classId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.update_class(user, classId, body), message="已保存")
+
+
+@router.delete("/orgs/classes/{classId}", summary="删除行政班（软删，须无在册学生）")
+def org_class_delete(classId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.delete_class(user, classId), message="已删除")
+
+
+# ── 年级 / 教学班 / 班级学生 / 班级调整 ──
+@router.get("/orgs/grades", summary="年级聚合（班级数/学生数，非独立表）")
+def org_grades(collegeId: Optional[str] = None, majorId: Optional[str] = None, user=Depends(_ORG_VIEW)):
+    return success(org_svc.list_grades(user, collegeId, majorId))
+
+
+@router.get("/orgs/teaching-classes", summary="教学班只读汇总（派生自教学任务）")
+def org_teaching_classes(termCode: Optional[str] = None, batchId: Optional[str] = None,
+                         page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_teaching_classes(user, termCode, batchId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/orgs/classes/{classId}/students", summary="班级学生列表")
+def org_class_students(classId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_class_students(user, classId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/orgs/class-adjustments", summary="班级调整（移动学生，单写入口+审计）")
+def org_class_adjust(body: ClassAdjustBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.adjust_student_class(user, body), message="已调整")
+
+
+# ── 组织树 / 统计 / 变更审计 ──
+@router.get("/orgs/tree", summary="组织结构（学院→专业→班级）")
+def org_tree(user=Depends(_ORG_VIEW)):
+    return success(org_svc.org_tree(user))
+
+
+@router.get("/orgs/stats", summary="组织统计")
+def org_stats(user=Depends(_ORG_VIEW)):
+    return success(org_svc.org_stats(user))
+
+
+@router.get("/orgs/audit", summary="组织变更审计（AA_ORG_*）")
+def org_audit(bizType: Optional[str] = None, page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_org_audit(user, bizType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+
+# ═══════════ 教学资源 · 教室字典（13B-R4；细粒度权限 academicAffairs.classroom.*）═══════════
+
+
+class ClassroomCreate(BaseModel):
+    buildingCode: str = Field(..., min_length=1, description="楼栋编码")
+    buildingName: str = Field(..., min_length=1, description="楼栋名称")
+    roomCode: str = Field(..., min_length=1, description="教室编号")
+    roomName: Optional[str] = None
+    capacity: Optional[int] = Field(0, ge=0, description="容量(座位数)")
+    roomType: Optional[str] = Field("LECTURE", description="LECTURE/MULTIMEDIA/COMPUTER/LAB/OTHER")
+    campusCode: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class ClassroomUpdate(BaseModel):
+    buildingCode: Optional[str] = None
+    buildingName: Optional[str] = None
+    roomCode: Optional[str] = None
+    roomName: Optional[str] = None
+    capacity: Optional[int] = Field(None, ge=0)
+    roomType: Optional[str] = None
+    campusCode: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class ClassroomStatusBody(BaseModel):
+    status: str = Field(..., description="AVAILABLE/DISABLED/MAINTENANCE")
+    reason: Optional[str] = None
+
+
+@router.get("/classrooms", summary="教室字典列表（按楼栋/类型/状态/关键词过滤）")
+def classroom_list(keyword: Optional[str] = None, buildingCode: Optional[str] = None,
+                   roomType: Optional[str] = None, status: Optional[str] = None,
+                   page: int = 1, pageSize: int = 20,
+                   user=Depends(require_permission("academicAffairs.classroom.view"))):
+    items, total = resource_svc.list_classrooms(user, keyword, buildingCode, roomType, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/classrooms/options", summary="可用教室选项（排课选择器供数，含 capacity 供非阻断 warning）")
+def classroom_options(keyword: Optional[str] = None,
+                      user=Depends(require_permission("academicAffairs.classroom.view"))):
+    return success({"items": resource_svc.list_options(user, keyword)})
+
+
+@router.get("/classrooms/{classroomId}", summary="教室详情")
+def classroom_detail(classroomId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classroom.view"))):
+    return success(resource_svc.get_classroom(classroomId, user))
+
+
+@router.post("/classrooms", summary="新建教室（同楼栋+编号唯一，重复409）")
+def classroom_create(body: ClassroomCreate,
+                     user=Depends(require_permission("academicAffairs.classroom.create"))):
+    return success(resource_svc.create_classroom(body, user), message="已创建")
+
+
+@router.put("/classrooms/{classroomId}", summary="编辑教室")
+def classroom_update(body: ClassroomUpdate, classroomId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classroom.update"))):
+    return success(resource_svc.update_classroom(classroomId, body, user), message="已保存")
+
+
+@router.post("/classrooms/{classroomId}/status", summary="切换可用状态（AVAILABLE/DISABLED/MAINTENANCE，幂等）")
+def classroom_status(body: ClassroomStatusBody, classroomId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classroom.update"))):
+    return success(resource_svc.set_status(classroomId, body.status, user, body.reason or ""), message="已更新")
+
+
+@router.delete("/classrooms/{classroomId}", summary="删除教室（逻辑删除）")
+def classroom_delete(classroomId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classroom.delete"))):
+    return success(resource_svc.delete_classroom(classroomId, user), message="已删除")
+
+# ═══════════ 调停课（R2/SM-08，调课/停课/补课；教师发起→学院审→教务处审→改写课表）═══════════
+
+_SC_REVIEW = require_any_permission("academicAffairs.scheduleChange.collegeReview",
+                                    "academicAffairs.scheduleChange.academicReview")
+
+
+class ScheduleChangeSubmit(BaseModel):
+    originItemId: str = Field(..., min_length=1, description="原课表项 id（须为已发布课表本人课位）")
+    changeType: str = Field(..., description="ADJUST 调课 / STOP 停课 / MAKEUP 补课")
+    reason: str = Field(..., min_length=5, max_length=500, description="调停课原因（≥5 字）")
+    targetWeekday: Optional[int] = Field(None, ge=1, le=7, description="目标星期（调课/补课必填）")
+    targetSlotNo: Optional[int] = Field(None, ge=1, description="目标节次")
+    targetStartWeek: Optional[int] = Field(None, ge=1)
+    targetEndWeek: Optional[int] = Field(None, ge=1)
+    targetWeekParity: Optional[str] = Field(None, description="ALL/ODD/EVEN")
+    targetClassroom: Optional[str] = None
+    makeupPlan: Optional[str] = Field(None, max_length=500, description="补课/停课后续安排")
+
+
+class ScheduleChangeReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    comment: Optional[str] = Field("", max_length=500, description="驳回原因（REJECT 时≥5 字）")
+
+
+class ScheduleChangeCancelBody(BaseModel):
+    reason: Optional[str] = Field("", max_length=500)
+
+
+@router.post("/schedule-change", summary="发起调停课（提交即目标冲突预检；冲突单据不落库）")
+def schedule_change_submit(body: ScheduleChangeSubmit,
+                           user=Depends(require_permission("academicAffairs.scheduleChange.apply"))):
+    return success(sched_change_svc.submit(body, user), message="调停课已提交")
+
+
+@router.get("/schedule-change", summary="调停课台账（范围过滤）")
+def schedule_change_list(changeType: Optional[str] = None, status: Optional[str] = None,
+                         teacherKey: Optional[str] = None, termId: Optional[str] = None,
+                         page: int = 1, pageSize: int = 20,
+                         user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
+    items, total = sched_change_svc.list_changes(user, changeType, status, teacherKey, termId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/schedule-change/stats", summary="调停课统计（按类型/状态聚合）")
+def schedule_change_stats(termId: Optional[str] = None,
+                          user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
+    return success(sched_change_svc.stats(user, termId))
+
+
+@router.get("/schedule-change/{changeId}", summary="调停课详情（含通知单打印数据）")
+def schedule_change_detail(changeId: int = Path(...),
+                           user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
+    return success(sched_change_svc.get_change(changeId, user))
+
+
+@router.post("/schedule-change/{changeId}/approve", summary="审批通过（学院/教务处；终审通过即改写课表）")
+def schedule_change_approve(body: ScheduleChangeReviewBody = ScheduleChangeReviewBody(action="APPROVE"),
+                            changeId: int = Path(...), user=Depends(_SC_REVIEW)):
+    return success(sched_change_svc.review(changeId, user, "APPROVE", body.comment or ""), message="已通过")
+
+
+@router.post("/schedule-change/{changeId}/reject", summary="驳回（原因≥5 字）")
+def schedule_change_reject(body: ScheduleChangeReviewBody, changeId: int = Path(...),
+                           user=Depends(_SC_REVIEW)):
+    return success(sched_change_svc.review(changeId, user, "REJECT", body.comment or ""), message="已驳回")
+
+
+@router.post("/schedule-change/{changeId}/cancel", summary="撤销（仅 SUBMITTED/COLLEGE_REVIEW，APPROVED 后 409）")
+def schedule_change_cancel(body: ScheduleChangeCancelBody = ScheduleChangeCancelBody(),
+                           changeId: int = Path(...),
+                           user=Depends(require_permission("academicAffairs.scheduleChange.apply"))):
+    return success(sched_change_svc.cancel(changeId, user, body.reason or ""), message="已撤销")
+
+

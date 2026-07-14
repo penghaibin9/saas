@@ -8,7 +8,7 @@
  *  - 学期仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 → 本模块不提供 updateTerm（勘误见施工记录）。
  *  - 学期状态机当前只有 DRAFT / PUBLISHED（FROZEN/ARCHIVED 后端未实现，暂不渲染）。
  */
-import { request, shouldTryReal, currentUserFromToken } from '@/services/http/client'
+import { request, requestBlob, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { setPermissionPatterns } from '@/security/permissionGate'
 
 const BASE = '/academic-affairs'
@@ -332,7 +332,94 @@ export const academicAffairsApi = {
   },
   finalGrad(resultId, conclusion, confirm) {
     return call(() => request(`${BASE}/graduation-results/${resultId}/final`, { method: 'POST', body: { conclusion, confirm } }))
+  },
+
+  /* ── 教务统计（只读聚合：11 项指标 + 多维筛选 + 下钻明细 + 导出） ── */
+  getStatsOverview(params = {}) {
+    return call(() => request(`${BASE}/stats/overview`, { params }))
+  },
+  getStatsFilters() {
+    return call(() => request(`${BASE}/stats/filters`))
+  },
+  getStatsRegistration(params = {}) {
+    return callList(`${BASE}/stats/registration`, params)
+  },
+  getStatsStatusChange(params = {}) {
+    return callList(`${BASE}/stats/status-change`, params)
+  },
+  getStatsWarning(params = {}) {
+    return callList(`${BASE}/stats/warning`, params)
+  },
+  /** 导出总览 xlsx（同步下载）：返回 Blob；purpose 必填（≥5 字）。 */
+  async exportStats(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/stats/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+
+  /* ── 教学资源 · 教室字典（R4 · /academic-affairs/classrooms/*；细粒度权限 academicAffairs.classroom.*） ── */
+  listClassrooms({ keyword = '', buildingCode = '', roomType = '', status = '', page = 1, pageSize = 20 } = {}) {
+    const params = { page, pageSize }
+    if (keyword) params.keyword = keyword
+    if (buildingCode) params.buildingCode = buildingCode
+    if (roomType) params.roomType = roomType
+    if (status) params.status = status
+    return call(() => request(`${BASE}/classrooms`, { params }))
+  },
+  getClassroomOptions(keyword = '') {
+    const params = keyword ? { keyword } : {}
+    return call(() => request(`${BASE}/classrooms/options`, { params }))
+  },
+  getClassroom(id) {
+    return call(() => request(`${BASE}/classrooms/${id}`))
+  },
+  createClassroom(body) {
+    return call(() => request(`${BASE}/classrooms`, { method: 'POST', body }))
+  },
+  updateClassroom(id, body) {
+    return call(() => request(`${BASE}/classrooms/${id}`, { method: 'PUT', body }))
+  },
+  setClassroomStatus(id, status, reason = '') {
+    return call(() => request(`${BASE}/classrooms/${id}/status`, { method: 'POST', body: { status, reason } }))
+  },
+  deleteClassroom(id) {
+    return call(() => request(`${BASE}/classrooms/${id}`, { method: 'DELETE' }))
   }
+}
+
+/* ═══════════ 学院专业班级（组织架构，R3 · /academic-affairs/orgs/*） ═══════════
+ * 读=academicAffairs.org.view，写=academicAffairs.org.manage；数据范围经后端 build_affairs_context 收敛。 */
+export const academicAffairsOrgApi = {
+  // ── 学院 ──
+  listColleges(params = {}) { return callList(`${BASE}/orgs/colleges`, params) },
+  createCollege(body) { return call(() => request(`${BASE}/orgs/colleges`, { method: 'POST', body })) },
+  updateCollege(id, body) { return call(() => request(`${BASE}/orgs/colleges/${id}`, { method: 'PUT', body })) },
+  deleteCollege(id) { return call(() => request(`${BASE}/orgs/colleges/${id}`, { method: 'DELETE' })) },
+  bindSecretary(id, secretaryId) {
+    return call(() => request(`${BASE}/orgs/colleges/${id}/secretary`, { method: 'POST', body: { secretaryId } }))
+  },
+  // ── 专业 ──
+  listMajors(params = {}) { return callList(`${BASE}/orgs/majors`, params) },
+  createMajor(body) { return call(() => request(`${BASE}/orgs/majors`, { method: 'POST', body })) },
+  updateMajor(id, body) { return call(() => request(`${BASE}/orgs/majors/${id}`, { method: 'PUT', body })) },
+  deleteMajor(id) { return call(() => request(`${BASE}/orgs/majors/${id}`, { method: 'DELETE' })) },
+  // ── 行政班 ──
+  listClasses(params = {}) { return callList(`${BASE}/orgs/classes`, params) },
+  createClass(body) { return call(() => request(`${BASE}/orgs/classes`, { method: 'POST', body })) },
+  updateClass(id, body) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'PUT', body })) },
+  deleteClass(id) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'DELETE' })) },
+  // ── 年级 / 教学班 / 班级学生 / 班级调整 ──
+  listGrades(params = {}) { return call(() => request(`${BASE}/orgs/grades`, { params })) },
+  listTeachingClasses(params = {}) { return callList(`${BASE}/orgs/teaching-classes`, params) },
+  listClassStudents(classId, params = {}) { return callList(`${BASE}/orgs/classes/${classId}/students`, params) },
+  adjustClass(body) { return call(() => request(`${BASE}/orgs/class-adjustments`, { method: 'POST', body })) },
+  // ── 组织树 / 统计 / 变更审计 ──
+  orgTree() { return call(() => request(`${BASE}/orgs/tree`)) },
+  orgStats() { return call(() => request(`${BASE}/orgs/stats`)) },
+  listAudit(params = {}) { return callList(`${BASE}/orgs/audit`, params) }
 }
 
 export default academicAffairsApi

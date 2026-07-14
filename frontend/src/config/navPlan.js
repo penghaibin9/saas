@@ -251,7 +251,16 @@ export const NAV_PLAN = [
       I('发起异动', '/admin/academic-affairs/status-changes/new'),
       ...P('休学申请', '复学申请', '退学申请', '转专业申请', '转班申请', '保留学籍申请', '异动审批', '异动生效', '异动统计', '异动归档')
     ]),
-    mod('aa-orgs', '学院专业班级', null, P('学院管理', '专业管理', '年级管理', '行政班管理', '教学班管理', '专业方向', '班级学生', '班级调整', '组织结构同步', '组织统计')),
+    mod('aa-orgs', '学院专业班级', '/admin/academic-affairs/orgs', [
+      I('学院管理', '/admin/academic-affairs/orgs?tab=college', 'academicAffairs.org.view'),
+      I('专业管理', '/admin/academic-affairs/orgs?tab=major', 'academicAffairs.org.view'),
+      I('年级管理', '/admin/academic-affairs/orgs?tab=grade', 'academicAffairs.org.view'),
+      I('行政班管理', '/admin/academic-affairs/orgs?tab=class', 'academicAffairs.org.view'),
+      I('教学班管理', '/admin/academic-affairs/orgs?tab=teaching', 'academicAffairs.org.view'),
+      I('组织结构同步', '/admin/academic-affairs/orgs?tab=tree', 'academicAffairs.org.view'),
+      I('组织统计', '/admin/academic-affairs/orgs?tab=stats', 'academicAffairs.org.view'),
+      ...P('专业方向', '班级学生', '班级调整')
+    ]),
     mod('aa-training', '培养方案', '/admin/academic-affairs/programs', [
       I('方案列表', '/admin/academic-affairs/programs'),
       ...P('方案制定', '方案版本', '课程模块', '学分要求', '实践环节', '毕业要求', '方案审核', '方案发布', '方案变更', '方案归档')
@@ -270,7 +279,12 @@ export const NAV_PLAN = [
       I('课表批次 / 排课', '/admin/academic-affairs/schedule'),
       ...P('班级课表', '教师课表', '学生课表', '教室课表', '教学班课表', '周课表', '学期课表', '课表发布', '课表调整记录', '课表导出')
     ]),
-    mod('aa-schedule-change', '调停课', null, P('调课申请', '停课申请', '补课申请', '调停课审批', '调停课通知', '调停课台账', '调停课冲突检测', '调停课统计', '调停课归档')),
+    mod('aa-schedule-change', '调停课', '/admin/academic-affairs/schedule-change', [
+      I('调停课台账', '/admin/academic-affairs/schedule-change', 'academicAffairs.scheduleChange.view'),
+      I('发起调停课（调课/停课/补课）', '/admin/academic-affairs/schedule-change/apply', 'academicAffairs.scheduleChange.apply'),
+      I('调停课审批', '/admin/academic-affairs/schedule-change/approval', 'academicAffairs.scheduleChange.collegeReview'),
+      ...P('调停课通知', '调停课冲突检测', '调停课统计', '调停课归档')
+    ]),
     mod('aa-course-selection', '选课管理', null, P('选课批次', '可选课程', '选课规则', '学生选课', '退课管理', '补选管理', '选课名单', '人数控制', '冲突检测', '选课结果', '选课统计', '选课归档')),
     mod('aa-exam', '考务管理', null, P('考试批次', '考试课程', '考试安排', '考场安排', '座位安排', '监考安排', '巡考安排', '准考证', '考场异常', '考务通知', '考务统计', '考务归档')),
     mod('aa-makeup', '补考重修缓考免修', null, [
@@ -304,11 +318,17 @@ export const NAV_PLAN = [
       ...P('审核批次', '毕业学生名单', '学分达成审核', '课程达成审核', '实践环节审核', '毕设状态联动', '实习状态联动', '欠费状态联动', '处分状态联动', '毕业资格终审', '不通过原因', '审核结果', '审核归档')
     ]),
     mod('aa-textbooks', '教材管理', null, P('教材目录', '教材选用', '教材征订', '教材审核', '教材发放', '教材费用', '教材库存', '教材统计', '教材归档')),
-    mod('aa-resources', '教学资源', null, P('教室资源', '实训室资源', '设备资源', '教室预约', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')),
+    mod('aa-resources', '教学资源', '/admin/academic-affairs/classrooms', [
+      I('教室资源', '/admin/academic-affairs/classrooms', 'academicAffairs.classroom.view'),
+      ...P('实训室资源', '设备资源', '教室预约', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')
+    ]),
     mod('aa-evaluation', '教学评价', null, P('评教批次', '学生评教', '教师自评', '同行评价', '督导评价', '评价结果', '评价申诉', '评价统计', '评价归档')),
     mod('aa-quality', '教学质量', null, P('督导听课', '巡课记录', '教学检查', '教学事故', '质量整改', '整改跟进', '质量报告', '质量统计', '质量归档')),
     mod('aa-archive', '教务归档', null, P('学籍归档', '注册归档', '异动归档', '培养方案归档', '教学任务归档', '课表归档', '考务归档', '成绩归档', '毕业资格归档', '归档缺失提醒', '批量归档', '归档导出')),
-    mod('aa-stats', '教务统计', null, P('教务总览', '学籍统计', '注册统计', '课程统计', '教学任务统计', '课表统计', '调停课统计', '选课统计', '考务统计', '成绩统计', '学业预警统计', '毕业资格统计', '教师工作量统计', '教学资源统计', '导出报表'))
+    mod('aa-stats', '教务统计', '/admin/academic-affairs/stats', [
+      I('教务总览（11 项指标 · 多维筛选 · 下钻 · 导出）', '/admin/academic-affairs/stats', 'academicAffairs.stats.view'),
+      ...P('学籍统计', '注册统计', '课程统计', '教学任务统计', '课表统计', '调停课统计', '选课统计', '考务统计', '成绩统计', '学业预警统计', '毕业资格统计', '教师工作量统计', '教学资源统计', '导出报表')
+    ])
   ]),
 
   /* ═══════════ 一级④：毕业设计中心（key 对齐 adminMenu 的 graduation，供 rail 高亮联动）═══════════

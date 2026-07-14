@@ -1,0 +1,412 @@
+"""13B-R2 调停课（SM-08，workflow_code=ACAD_SCHEDULE_CHANGE）。
+
+对齐正方/强智调停课：教师就已发布课表项发起调课/停课/补课，提交即做目标课位三重冲突预检
+(复用 schedule_service._detect_conflict，冲突则 422/409 不落库)；审批链学院审→教务处审；
+终审通过后系统改写课表——原课位标 CHANGED 保留历史(禁直接 UPDATE 已发布项、不动发布批次)，
+调课/补课生成新课表项并回链本单(new_item_id + schedule_item.change_id)，STATUS_CHANGED 通知师生。
+
+数据范围(COURSE)：教师仅可就本人任课课位发起(teacher_key 命中)；TENANT_ALL 角色(教务处/校管)代办放行；
+学院教务员按所辖班级可见。越范围 → 403 NO_DATA_SCOPE。撤销仅限 SUBMITTED/COLLEGE_REVIEW，APPROVED 后 409。
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import and_, func, select
+
+from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import AppException, not_found
+from app.modules.academic_affairs.services.academic_affairs_schedule_service import _detect_conflict
+from app.services.db_service import _iso, _tid, session
+
+WORKFLOW_CODE = "ACAD_SCHEDULE_CHANGE"
+CHANGE_TYPES = {"ADJUST", "STOP", "MAKEUP"}
+L_CT = {"ADJUST": "调课", "STOP": "停课", "MAKEUP": "补课"}
+# 审批节点序列（学院审 → 教务处审）
+NODES = ["COLLEGE_REVIEW", "ACADEMIC_REVIEW"]
+# 各节点 PENDING 时对应的单据状态
+_NODE_STATUS = {"COLLEGE_REVIEW": "SUBMITTED", "ACADEMIC_REVIEW": "COLLEGE_REVIEW"}
+_CANCELLABLE = {"SUBMITTED", "COLLEGE_REVIEW"}       # 终审前可撤销
+_ACTIVE = {"SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW"}  # 在途（含终审中）
+
+
+def _op():
+    u = get_current_user_ctx() or {}
+    return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
+
+
+def _audit(db, biz_id, action, detail=""):
+    from app.models import AffairsAuditTrail
+    n, r, uid = _op()
+    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type="AA_SCHEDULE_CHANGE",
+                             biz_id=int(biz_id) if biz_id else None, action=action,
+                             operator=n or uid, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
+
+
+def _msg(db, receiver_id, title, content, mtype, biz_id):
+    from app.models import UnifiedMessage
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0), source_module="academic-affairs",
+                          source_biz_id=int(biz_id), title=title, content=content,
+                          message_type=mtype, status="UNREAD"))
+
+
+def _open_wf(db, cid, applicant_id, title, first_node):
+    from app.models import WorkflowInstance, WorkflowTask
+    inst = WorkflowInstance(tenant_id=_tid(), workflow_code=WORKFLOW_CODE, source_module="academic-affairs",
+                            source_biz_type="AA_SCHEDULE_CHANGE", source_biz_id=int(cid),
+                            applicant_id=int(applicant_id or 0), title=title, status="RUNNING",
+                            current_node=first_node)
+    db.add(inst)
+    db.flush()
+    db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=first_node,
+                        assignee_id=0, status="PENDING"))
+    return inst
+
+
+def _todo_upsert(db, cid, node, title):
+    from app.models import UnifiedTodo
+    row = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "academic-affairs",
+        UnifiedTodo.source_biz_id == int(cid), UnifiedTodo.todo_type == "AA_SCHEDULE_CHANGE_APPROVAL",
+        UnifiedTodo.assignee_id == 0, UnifiedTodo.is_deleted.is_(False))).first()
+    if row:
+        row.title, row.status, row.remark, row.version = title, "PENDING", node, row.version + 1
+    else:
+        db.add(UnifiedTodo(tenant_id=_tid(), source_module="academic-affairs",
+                           source_biz_type="AA_SCHEDULE_CHANGE", source_biz_id=int(cid),
+                           todo_type="AA_SCHEDULE_CHANGE_APPROVAL", assignee_id=0,
+                           title=title, status="PENDING", remark=node))
+
+
+def _todo_done(db, cid):
+    from app.models import UnifiedTodo
+    for r in db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "academic-affairs",
+            UnifiedTodo.source_biz_id == int(cid), UnifiedTodo.todo_type == "AA_SCHEDULE_CHANGE_APPROVAL",
+            UnifiedTodo.is_deleted.is_(False))).all():
+        r.status, r.version = "DONE", r.version + 1
+
+
+def _row(x) -> dict:
+    return {
+        "changeId": str(x.id), "changeType": x.change_type,
+        "changeTypeLabel": L_CT.get(x.change_type, x.change_type),
+        "termId": str(x.term_id or ""), "batchId": str(x.batch_id or ""),
+        "originItemId": str(x.origin_item_id or ""), "taskId": str(x.task_id or ""),
+        "courseName": x.course_name or "", "className": x.class_name or "",
+        "classId": str(x.class_id or ""), "teacherName": x.teacher_name or "",
+        "teacherKey": x.teacher_key or "",
+        "origin": {"weekday": x.origin_weekday, "slotNo": x.origin_slot_no,
+                   "startWeek": x.origin_start_week, "endWeek": x.origin_end_week,
+                   "weekParity": x.origin_week_parity, "classroom": x.origin_classroom or ""},
+        "target": {"weekday": x.target_weekday, "slotNo": x.target_slot_no,
+                   "startWeek": x.target_start_week, "endWeek": x.target_end_week,
+                   "weekParity": x.target_week_parity, "classroom": x.target_classroom or ""},
+        "makeupPlan": x.makeup_plan or "", "reason": x.reason or "",
+        "status": x.status, "currentNode": x.current_node or "",
+        "newItemId": str(x.new_item_id or ""), "appliedAt": _iso(x.applied_at),
+        "createdAt": _iso(x.created_at), "version": x.version,
+    }
+
+
+def _load(db, cid):
+    from app.models import AaScheduleChange
+    x = db.get(AaScheduleChange, int(cid))
+    if not x or x.is_deleted or x.tenant_id != _tid():
+        raise not_found("调停课单不存在")
+    return x
+
+
+def _can_manage_all(ctx) -> bool:
+    return ctx.scope_type == "TENANT_ALL"
+
+
+# ═══════════ 发起（教师，提交即冲突预检）═══════════
+
+def submit(body, user) -> dict:
+    ct = (getattr(body, "changeType", "") or "").upper()
+    if ct not in CHANGE_TYPES:
+        raise AppException("VALIDATION_ERROR", "调停课类型非法（ADJUST/STOP/MAKEUP）")
+    reason = (getattr(body, "reason", None) or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "调停课原因必填且不少于 5 字")
+    with session() as db:
+        from app.models import AaScheduleBatch, AaScheduleChange, AaScheduleItem
+        ctx = build_affairs_context(user, db)
+        origin = db.get(AaScheduleItem, int(body.originItemId)) if getattr(body, "originItemId", None) else None
+        if not origin or origin.is_deleted or origin.tenant_id != _tid():
+            raise not_found("原课表项不存在")
+        if origin.status != "EFFECTIVE":
+            raise AppException("DATA_CONFLICT", "原课表项已变更/失效，不可再发起调停课")
+        b = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        if not b or b.status != "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "仅已发布课表的课位可发起调停课")
+        # 数据范围(COURSE)：非 TENANT_ALL 角色须为本人任课课位
+        if not _can_manage_all(ctx):
+            keys = _derive_keys(user)
+            if not origin.teacher_key or origin.teacher_key not in keys:
+                raise no_data_scope("仅可对本人任课课位发起调停课")
+        # 停课需给出后续安排（真实业务：不填补课安排且课程仍有周学时缺口 → 422 警示）
+        if ct == "STOP" and not (getattr(body, "makeupPlan", None) or "").strip():
+            raise AppException("VALIDATION_ERROR", "停课须填写补课/后续安排说明")
+        # 目标课位（调课/补课必填）
+        tw = ts = tsw = tew = tp = tcr = None
+        if ct in ("ADJUST", "MAKEUP"):
+            if getattr(body, "targetWeekday", None) is None or getattr(body, "targetSlotNo", None) is None:
+                raise AppException("VALIDATION_ERROR", "调课/补课须填写目标星期与节次")
+            tw, ts = int(body.targetWeekday), int(body.targetSlotNo)
+            tsw = int(getattr(body, "targetStartWeek", None) or origin.start_week)
+            tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
+            tp = (getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL")
+            tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
+            if tw < 1 or tw > 7:
+                raise AppException("VALIDATION_ERROR", "目标星期非法")
+            # 提交即三重冲突预检（同批次；排除原课位自身）
+            conflict = _detect_conflict(db, origin.batch_id, tw, ts, tsw, tew, tp,
+                                        origin.teacher_key, origin.class_id, tcr,
+                                        exclude_id=origin.id)
+            if conflict:
+                raise AppException("DATA_CONFLICT",
+                                   f"目标课位冲突（{conflict['type']}）：{conflict['detail']}，单据不予受理")
+        _n, _r, uid = _op()
+        x = AaScheduleChange(
+            tenant_id=_tid(), term_id=b.term_id, batch_id=origin.batch_id, origin_item_id=origin.id,
+            task_id=origin.task_id, change_type=ct,
+            course_name=origin.course_name, class_id=origin.class_id, class_name=origin.class_name,
+            teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+            origin_weekday=origin.weekday, origin_slot_no=origin.slot_no,
+            origin_start_week=origin.start_week, origin_end_week=origin.end_week,
+            origin_week_parity=origin.week_parity, origin_classroom=origin.classroom_text,
+            target_weekday=tw, target_slot_no=ts, target_start_week=tsw, target_end_week=tew,
+            target_week_parity=tp, target_classroom=tcr,
+            makeup_plan=(getattr(body, "makeupPlan", None) or None), reason=reason,
+            applicant_id=int(uid) if uid.isdigit() else None,
+            status="SUBMITTED", current_node="COLLEGE_REVIEW")
+        db.add(x)
+        db.flush()
+        inst = _open_wf(db, x.id, uid if uid.isdigit() else 0,
+                        f"{origin.teacher_name or ''} {L_CT[ct]}：{origin.course_name or ''}", "COLLEGE_REVIEW")
+        x.workflow_instance_id = inst.id
+        _todo_upsert(db, x.id, "COLLEGE_REVIEW", f"{L_CT[ct]}待学院审：{origin.course_name or ''}")
+        _audit(db, x.id, "SUBMIT", f"{ct} item={origin.id}")
+        db.commit()
+        db.refresh(x)
+        return _row(x)
+
+
+# ═══════════ 审批（学院审 → 教务处审；终审通过即改写课表）═══════════
+
+def review(cid, user, action, comment="") -> dict:
+    action = (action or "").upper()
+    with session() as db:
+        from app.models import WorkflowInstance, WorkflowTask
+        x = _load(db, cid)
+        if x.status not in _ACTIVE:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该调停课单当前状态不可审批")
+        inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+        task = db.scalars(select(WorkflowTask).where(
+            WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == (inst.id if inst else 0),
+            WorkflowTask.node_code == x.current_node, WorkflowTask.status == "PENDING",
+            WorkflowTask.is_deleted.is_(False))).first() if inst else None
+
+        if action == "REJECT":
+            if not comment or len(comment.strip()) < 5:
+                raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+            if task:
+                task.status, task.action_reason, task.acted_at = "REJECTED", comment.strip(), datetime.utcnow()
+            x.status, x.version = "REJECTED", x.version + 1
+            if inst:
+                inst.status = "REJECTED"
+            _todo_done(db, x.id)
+            _msg(db, x.applicant_id or 0, f"{L_CT[x.change_type]}未通过", comment.strip(),
+                 "WORKFLOW_RESULT", x.id)
+            _audit(db, x.id, "REJECT", comment.strip())
+            db.commit()
+            db.refresh(x)
+            return _row(x)
+
+        if action != "APPROVE":
+            raise AppException("VALIDATION_ERROR", "无效操作")
+        if task:
+            task.status, task.acted_at = "APPROVED", datetime.utcnow()
+        i = NODES.index(x.current_node) if x.current_node in NODES else 0
+        if i + 1 < len(NODES):
+            nxt = NODES[i + 1]
+            x.current_node, x.status, x.version = nxt, _NODE_STATUS[nxt], x.version + 1
+            if inst:
+                inst.current_node = nxt
+            db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
+                                assignee_id=0, status="PENDING"))
+            _todo_upsert(db, x.id, nxt, f"{L_CT[x.change_type]}待教务处审：{x.course_name or ''}")
+            _audit(db, x.id, "STEP", f"->{nxt}")
+            db.commit()
+            db.refresh(x)
+            return _row(x)
+        # 终审通过 → APPROVED，随即系统改写课表 → APPLIED
+        x.status, x.version = "APPROVED", x.version + 1
+        if inst:
+            inst.status = "APPROVED"
+        _audit(db, x.id, "APPROVE", "终审通过")
+        applied = _apply_schedule(db, x)
+        _todo_done(db, x.id)
+        db.commit()
+        db.refresh(x)
+        out = _row(x)
+        out["applied"] = applied
+        return out
+
+
+def _apply_schedule(db, x) -> dict:
+    """终审通过后改写课表：原课位标 CHANGED(保留历史)，调课/补课生成新项并回链本单，STATUS_CHANGED 通知师生。"""
+    from app.models import AaScheduleItem, StudentProfile
+    origin = db.get(AaScheduleItem, int(x.origin_item_id)) if x.origin_item_id else None
+    # 复核目标冲突仍为 0（并发防护）
+    new_item_id = None
+    if x.change_type in ("ADJUST", "MAKEUP"):
+        conflict = _detect_conflict(db, x.batch_id, x.target_weekday, x.target_slot_no,
+                                    x.target_start_week, x.target_end_week, x.target_week_parity or "ALL",
+                                    x.teacher_key, x.class_id, x.target_classroom,
+                                    exclude_id=(origin.id if origin else None))
+        if conflict:
+            raise AppException("DATA_CONFLICT", f"复核目标课位冲突（{conflict['type']}）：{conflict['detail']}")
+    # 原课位：调课/停课置 CHANGED（保留历史，禁直接 UPDATE 已发布项）；补课不动原课位
+    if origin and x.change_type in ("ADJUST", "STOP"):
+        origin.status = "CHANGED"
+    # 调课/补课生成新课表项，回链本单
+    if x.change_type in ("ADJUST", "MAKEUP") and origin:
+        ni = AaScheduleItem(
+            tenant_id=_tid(), batch_id=origin.batch_id, task_id=origin.task_id,
+            course_id=origin.course_id, course_name=origin.course_name,
+            class_id=origin.class_id, class_name=origin.class_name,
+            teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+            weekday=x.target_weekday, slot_no=x.target_slot_no,
+            start_week=x.target_start_week or origin.start_week,
+            end_week=x.target_end_week or origin.end_week,
+            week_parity=x.target_week_parity or "ALL",
+            classroom_text=x.target_classroom, change_id=x.id, status="EFFECTIVE")
+        db.add(ni)
+        db.flush()
+        new_item_id = ni.id
+        x.new_item_id = ni.id
+    x.status, x.applied_at = "APPLIED", datetime.utcnow()
+    # STATUS_CHANGED 通知：受影响班级学生 + 任课教师
+    students = 0
+    if x.class_id:
+        students = db.scalar(select(func.count()).select_from(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(x.class_id),
+            StudentProfile.is_deleted.is_(False))) or 0
+    title = f"{L_CT[x.change_type]}通知：{x.course_name or ''}"
+    content = _notice_text(x)
+    _msg(db, x.applicant_id or 0, title, content, "STATUS_CHANGED", x.id)   # 教师
+    _msg(db, 0, title, content, "STATUS_CHANGED", x.id)                     # 班级广播
+    _audit(db, x.id, "APPLIED", f"newItem={new_item_id},students={students}")
+    return {"status": "APPLIED", "newItemId": str(new_item_id or ""), "originKept": "CHANGED(历史留痕)",
+            "notified": {"students": int(students), "teacher": 1, "channel": "STATUS_CHANGED"}}
+
+
+def _notice_text(x) -> str:
+    o = f"周{x.origin_weekday}第{x.origin_slot_no}节"
+    if x.change_type == "STOP":
+        return f"{x.course_name or ''}（{o}）停课。{('后续安排：' + x.makeup_plan) if x.makeup_plan else ''}"
+    t = f"周{x.target_weekday}第{x.target_slot_no}节 {x.target_classroom or ''}"
+    verb = "调至" if x.change_type == "ADJUST" else "补课于"
+    return f"{x.course_name or ''}（{o}）{verb} {t}，请留意课表变更。"
+
+
+# ═══════════ 撤销（教师，终审前）═══════════
+
+def cancel(cid, user, reason="") -> dict:
+    with session() as db:
+        from app.models import WorkflowInstance, WorkflowTask
+        x = _load(db, cid)
+        if x.status in ("APPROVED", "APPLIED"):
+            raise AppException("DATA_CONFLICT", "已终审通过/已生效，不可撤销")
+        if x.status not in _CANCELLABLE:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可撤销")
+        ctx = build_affairs_context(user, db)
+        if not _can_manage_all(ctx):
+            keys = _derive_keys(user)
+            if not x.teacher_key or x.teacher_key not in keys:
+                raise no_data_scope("仅可撤销本人发起的调停课单")
+        x.status, x.version = "CANCELLED", x.version + 1
+        if x.workflow_instance_id:
+            inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
+            if inst:
+                inst.status = "CANCELLED"
+            for t in db.scalars(select(WorkflowTask).where(
+                    WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(x.workflow_instance_id),
+                    WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False))).all():
+                t.status, t.acted_at = "CANCELLED", datetime.utcnow()
+        _todo_done(db, x.id)
+        _audit(db, x.id, "CANCEL", (reason or "").strip())
+        db.commit()
+        db.refresh(x)
+        return _row(x)
+
+
+# ═══════════ 查询（范围过滤）═══════════
+
+def get_change(cid, user) -> dict:
+    with session() as db:
+        return _row(_load(db, cid))
+
+
+def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=None,
+                 page=1, page_size=20):
+    from app.models import AaScheduleChange
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        conds = [AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False)]
+        if change_type:
+            conds.append(AaScheduleChange.change_type == change_type.upper())
+        if status:
+            conds.append(AaScheduleChange.status == status)
+        if term_id:
+            conds.append(AaScheduleChange.term_id == int(term_id))
+        # 范围收敛：TENANT_ALL 全量；COLLEGE 按所辖班级；其余(教师) 仅本人课位
+        if not _can_manage_all(ctx):
+            if ctx.scope_type == "COLLEGE":
+                allowed = ctx.allowed_class_ids(db)
+                if not allowed:
+                    return [], 0
+                conds.append(AaScheduleChange.class_id.in_(list(allowed)))
+            else:
+                keys = _derive_keys(user)
+                if not keys:
+                    return [], 0
+                conds.append(AaScheduleChange.teacher_key.in_(list(keys)))
+        elif teacher_key:
+            conds.append(AaScheduleChange.teacher_key == teacher_key)
+        total = db.scalar(select(func.count()).select_from(AaScheduleChange).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.scalars(select(AaScheduleChange).where(*conds)
+                          .order_by(AaScheduleChange.id.desc()).offset(offset).limit(page_size)).all()
+        return [_row(x) for x in rows], total
+
+
+def stats(user, term_id=None):
+    """调停课统计：按类型/状态聚合（读侧，范围收敛）。"""
+    from app.models import AaScheduleChange
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        conds = [AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False)]
+        if term_id:
+            conds.append(AaScheduleChange.term_id == int(term_id))
+        if not _can_manage_all(ctx):
+            if ctx.scope_type == "COLLEGE":
+                allowed = ctx.allowed_class_ids(db)
+                if not allowed:
+                    return {"total": 0, "byType": {}, "byStatus": {}}
+                conds.append(AaScheduleChange.class_id.in_(list(allowed)))
+            else:
+                keys = _derive_keys(user)
+                if not keys:
+                    return {"total": 0, "byType": {}, "byStatus": {}}
+                conds.append(AaScheduleChange.teacher_key.in_(list(keys)))
+        rows = db.scalars(select(AaScheduleChange).where(*conds)).all()
+        by_type, by_status = {}, {}
+        for r in rows:
+            by_type[r.change_type] = by_type.get(r.change_type, 0) + 1
+            by_status[r.status] = by_status.get(r.status, 0) + 1
+        return {"total": len(rows), "byType": by_type, "byStatus": by_status}

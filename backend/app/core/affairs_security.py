@@ -25,8 +25,11 @@ from app.core.permissions import ROLE_PERMISSIONS, is_super_admin
 from app.services.db_service import _tid
 
 # ── 角色 → 范围类型 ──
+# ACADEMIC_ADMIN（教务处管理员，用户已拍板"本校教务全权"，默认无人持有）纳入 TENANT_ALL：
+# 13B 教务中心组织/统计/调停课需全校教学数据范围；该角色仅持 academicAffairs.*，学工端点仍被
+# require_permission 拦截，授予全租户 scope 不越学工域。未纳入 ACADEMIC_TEACHER（普通教务教师保持按范围收敛读，更安全）。
 _TENANT_ALL_ROLES = {"SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "STUDENT_AFFAIRS_ADMIN",
-                     "STUDENT_AFFAIRS", "SCHOOL_LEADER", "SA_ADMIN", "LEADER"}
+                     "STUDENT_AFFAIRS", "SCHOOL_LEADER", "SA_ADMIN", "LEADER", "ACADEMIC_ADMIN"}
 _COLLEGE_ROLES = {"COLLEGE_ADMIN", "COLLEGE_SA"}
 _DORM_ROLES = {"DORM_MANAGER"}
 _PSY_ROLES = {"PSYCHOLOGY_TEACHER"}
