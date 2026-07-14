@@ -298,17 +298,7 @@ export const gdTeacherGradeDetail = (gdStudentId) => realRequest(`/mobile/teache
 export const gdTeacherGradeReview = (gdStudentId, action, comment) =>
   realRequest(`/mobile/teacher/graduation/grade/${gdStudentId}/review`, { method: 'POST', data: { action, comment: comment || '' } })
 
-export async function enrichEmployment(mock) {
-  const r = await realRequest('/mobile/employment/my')
-  if (!r || !r.hasData) return { ...mock, _real: false }
-  const dMap = { SIGNED: '签约就业', FLEXIBLE: '灵活就业', FURTHER_STUDY: '升学', ENLISTED: '入伍',
-    STARTUP: '自主创业', UNEMPLOYED: '待就业' }
-  return { ...mock, stageText: dMap[r.destinationType] || mock.stageText,
-    destination: r.destinationType === 'SIGNED'
-      ? { company: r.companyName, job: r.jobTitle } : mock.destination,
-    verifyStatus: r.verifyStatus, materialStatus: r.materialStatus,
-    materials: r.materials || [], followUps: r.followUps || [], _real: true }
-}
+export const employmentMy = () => realRequest('/mobile/employment/my')
 
 export async function enrichCampusService(mock) {
   const r = await realRequest('/mobile/campus-service/my')

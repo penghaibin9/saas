@@ -53,10 +53,8 @@ export const studentApi = {
   getGraduationDefense: () => real.gdDefense(),
   getGraduationGrade: () => real.gdGrade(),
   appealGraduationGrade: (reason) => real.gdGradeAppeal(reason),
-  getEmployment: () =>
-    realFirstStrict('student.employment',
-      () => real.enrichEmployment(M.studentEmployment),
-      () => mockRequest(M.studentEmployment)),
+  // 就业去向：真实接口，无 mock 兜底（旧 intention/recommendedJobs/steps 字段无真实数据源，页面已不再展示）
+  getEmployment: () => real.employmentMy(),
   getApplications: () =>
     realFirst('student.applications',
       () => real.selfApplications(),

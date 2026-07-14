@@ -8,7 +8,6 @@ export { serviceCategories, serviceItems } from './student/campusService'
 export { studentAcademic } from './student/academic'
 export { studentInternship } from './student/internship'
 export { studentGraduation } from './student/graduation'
-export { studentEmployment } from './student/employment'
 export { applicationTabs, applications } from './student/applications'
 export { studentMessageTabs, studentMessages } from './student/messages'
 // 教师

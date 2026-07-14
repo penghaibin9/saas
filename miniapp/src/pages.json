@@ -117,7 +117,7 @@
     },
     {
       "path": "pages/student/employment/index",
-      "style": { "navigationBarTitleText": "就业去向" }
+      "style": { "navigationBarTitleText": "就业去向", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/my-applications/index",
