@@ -371,3 +371,43 @@ A 模式必须取得至少三家不同成熟系统的有效来源。每家产品
 - 只有继续同一二级模块时才恢复旧任务；切换到另一个二级模块、中心或独立问题时新建任务。
 - 不用一个长期会话连续承载多个模块。旧会话工具输出越多，恢复、压缩上下文和判断当前范围越慢。
 - 新任务的事实从专属施工包、代码和测试恢复，不依赖 AI 记忆上一段长对话。
+## AI施工规则
+
+少文档，多代码，多验证。
+
+### 后端目录规则
+
+后端按当前真实目录走，不准 AI 自己新建一套。
+
+已进入 modules 的后端模块只有：
+
+- 教务中心：backend/app/modules/academic_affairs/
+- 就业中心：backend/app/modules/employment/
+- 毕业设计：backend/app/modules/graduation/
+- 岗位实习：backend/app/modules/internship/
+
+学工中心暂按现有结构走：
+
+- backend/app/api/v1/student_affairs.py
+- backend/app/services/affairs_*.py
+
+系统管理、平台运营、学工后端暂按现有结构走。
+禁止 AI 擅自新建以下目录：
+
+- backend/app/modules/system/
+- backend/app/modules/platform/
+- backend/app/modules/student_affairs/
+
+models 继续放：
+
+- backend/app/models/
+
+tests 继续放：
+
+- backend/tests/
+
+alembic 继续放：
+
+- backend/alembic/versions/
+
+__pycache__ 不管，不提交。

@@ -83,7 +83,11 @@ export const NAV_PLAN = [
     /* 本组 1:1 对齐 docs/00-项目入口与总控/施工图/施工图-02-学工中心.html（14 个二级 + 数字迎新独立成二级 + 在校服务过渡尾）。
        状态以代码真实路由为准：施工图上标「待施工」但代码已建的（请假 4/4、班级 4/4），此处按已实现标 I。 */
     // 施工图卡·学工工作台（B包第5步·待施工）
-    mod('sa-workbench', '学工工作台', null, P('学工总览', '辅导员工作台')),
+    mod('sa-workbench', '学工工作台', null, [
+      I('学工总览', '/admin/student-affairs/dashboard'),
+      I('辅导员工作台', '/admin/student-affairs/workbench'),
+      I('辅导员考评（指标/评分/申诉）', '/admin/student-affairs/counselor-eval')
+    ]),
     // 施工图卡·学生画像（已有底座·6 三级已实现）
     mod('sa-profile', '学生画像', '/admin/student', [
       I('学生列表（学生主档）', '/admin/student/list'),
@@ -145,25 +149,40 @@ export const NAV_PLAN = [
     mod('sa-difficulty', '困难认定', null, [
       I('认定批次', '/admin/student-affairs/aid/batches'),
       I('认定申请与审核（工作台）', '/admin/student-affairs/aid'),
+      I('公示待办', '/admin/student-affairs/aid/publicity'),
+      I('认定台账', '/admin/student-affairs/aid/ledger'),
       I('困难学生库', '/admin/student-affairs/aid/difficult-students'),
-      ...P('公示与异议', '认定统计')
+      I('认定统计', '/admin/student-affairs/aid/stats'),
+      I('异议复核', '/admin/student-affairs/aid/objections')
     ]),
     // 施工图卡·奖助勤贷补（C包第7步·2026-07-13 夜间接通 /student-affairs/funding/*：项目管理/申请评审工作台）
     mod('sa-aid', '奖助勤贷补', null, [
       I('资助项目', '/admin/student-affairs/funding/projects'),
+      I('资助批次', '/admin/student-affairs/funding/batches'),
       I('申请评审（工作台）', '/admin/student-affairs/funding'),
+      I('公示待办', '/admin/student-affairs/funding/publicity'),
+      I('发放台账', '/admin/student-affairs/funding/disbursements'),
+      I('资助统计', '/admin/student-affairs/funding/stats'),
       I('助学金管理（现有·奖助资助）', '/admin/campus-service/grants'),
-      ...P('勤工助学', '助学贷款', '减免与临时补助', '名单审核与公示', '发放台账', '资助统计')
+      ...P('勤工助学', '助学贷款', '减免与临时补助')
     ]),
-    // 施工图卡·违纪处分（C包第8步·1/7）
+    // 施工图卡·违纪处分（C包第8步·2026-07-13 夜间接通 /student-affairs/discipline/*：工作台+台账对账）
     mod('sa-discipline', '违纪处分', null, [
+      I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline'),
+      I('送达与申诉复核', '/admin/student-affairs/discipline/appeals'),
+      I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger'),
+      I('处分统计', '/admin/student-affairs/discipline/stats'),
       I('违纪登记（现有）', '/admin/campus-service/discipline'),
-      ...P('处分审批', '处分决定与送达', '处分解除', '申诉复核', '违纪台账', '处分统计')
+      ...P('处分决定与送达', '申诉复核')
     ]),
-    // 施工图卡·谈心家校（C包第9步·待施工）
-    mod('sa-talks', '谈心家校', null, P(
-      '谈话计划', '谈话记录', '重点学生跟进', '家校联系人', '家校联系记录', '谈心统计'
-    )),
+    // 施工图卡·谈心家校（C包第9步·2026-07-13 夜间接通 /student-affairs/talks|family/*：工作台+统计+家校）
+    mod('sa-talks', '谈心家校', null, [
+      I('谈心谈话（计划/记录/跟进）', '/admin/student-affairs/talk'),
+      I('谈话台账', '/admin/student-affairs/talk/ledger'),
+      I('谈话统计', '/admin/student-affairs/talk/stats'),
+      I('家校联系', '/admin/student-affairs/family'),
+      ...P('重点学生跟进', '家校回执')
+    ]),
     // 施工图卡·心理关注（D包第10步·强敏感红线·2026-07-12 前端5页接通 /student-affairs/mental/*）
     mod('sa-mental', '心理关注', null, [
       I('心理关注名单', '/admin/student-affairs/mental'),
@@ -172,12 +191,25 @@ export const NAV_PLAN = [
       I('危机升级', '/admin/student-affairs/mental/crisis'),
       I('心理统计', '/admin/student-affairs/mental/stats')
     ]),
-    // 施工图卡·活动二课与社团（D包第11步·待施工）
-    mod('sa-activities', '活动二课与社团', null, P(
-      '活动管理', '活动报名与签到', '第二课堂积分', '志愿服务', '社团管理', '学生干部与组织', '党团建设', '活动统计'
-    )),
+    // 施工图卡·活动二课与社团（D包·2026-07-14 波次1 接通 /student-affairs/activity*：活动闭环+二课积分）
+    mod('sa-activities', '活动二课与社团', null, [
+      I('学生活动（发布/报名/签到/确认）', '/admin/student-affairs/activity'),
+      I('志愿服务时长', '/admin/student-affairs/activity/volunteer'),
+      I('第二课堂积分', '/admin/student-affairs/activity/second-class'),
+      I('第二课堂积分申诉', '/admin/student-affairs/activity/credit-appeals'),
+      I('活动统计', '/admin/student-affairs/activity/stats'),
+      I('社团管理', '/admin/student-affairs/activity/clubs'),
+      I('学生干部与组织', '/admin/student-affairs/activity/organizations'),
+      I('党团建设', '/admin/student-affairs/activity/party-league')
+    ]),
     // 施工图卡·统计与档案（D包第12步·待施工）
-    mod('sa-archive-stats', '统计与档案', null, P('学工统计', '学工归档', '学生档案包'))
+    // 施工图卡·统计与档案（D包·2026-07-14 接通已建视图：学工统计 StudentAffairsStatsView / 学工归档 ArchiveManageView）
+    mod('sa-archive-stats', '统计与档案', null, [
+      I('学工统计', '/admin/student-affairs/stats'),
+      I('统计驾驶舱', '/admin/student-affairs/stats/cockpit'),
+      I('学工归档', '/admin/student-affairs/archive'),
+      ...P('学生档案包')
+    ])
     /* 2026-07-12 甲方拍板：删除「在校服务（现有·过渡）」二级——它与新14二级重复冲突（请假/奖助/违纪/宿舍/班级
        已各自成正经二级、指向 /admin/campus-service/* 实现页照常用）。campus-service 旧路由与服务工作台/学生服务/
        服务工单页仍在（不 404），仅从菜单撤出；如需保留「服务工单」等能力再单列二级。 */
