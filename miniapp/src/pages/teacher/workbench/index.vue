@@ -142,6 +142,8 @@ export default {
         warning: '/pages/teacher/risk-students/index',
         progress: '/pages/teacher/academic-affairs/index',
         status: '/pages/teacher/academic-affairs/index',
+        myClasses: '/pages/teacher/my-classes/index',
+        myStudents: '/pages/teacher/my-students/index',
         overview: '/pages/teacher/workbench/index',
         orientationVerify: '/pages/teacher/orientation/verify/index',
         orientationDashboard: '/pages/teacher/orientation/dashboard/index'

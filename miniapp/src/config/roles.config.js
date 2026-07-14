@@ -42,6 +42,8 @@ export const roleConfigs = {
     dataScopeText: '所负责班级',
     workbench: ['risk', 'approval', 'contact'],
     quickActions: [
+      { key: 'myClasses', label: '我的班级', icon: '🏫' },
+      { key: 'myStudents', label: '我的学生', icon: '👥' },
       { key: 'contact', label: '联系学生', icon: '☎' },
       { key: 'record', label: '记录联系', icon: '✎' },
       { key: 'risk', label: '风险学生', icon: '⚠' },

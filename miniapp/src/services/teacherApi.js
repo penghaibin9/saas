@@ -42,6 +42,9 @@ export const teacherApi = {
     realFirstStrict('teacher.student360',
       () => real.teacherStudent360(id),
       () => mockRequest(M.student360[id] || null)),
+  // 我的班级 / 我的学生（真实接口，无 mock 兜底）
+  getMyClasses: () => real.teacherMyClasses(),
+  getMyStudents: (classId) => real.teacherMyStudents(classId),
   // 实习批阅：mobile 范围真实数据
   getWeeklyReports: () =>
     realFirst('teacher.internship',

@@ -488,6 +488,16 @@ def teacher_student_detail(student_id: str, user=Depends(get_current_user)):
     return success(tea.student_detail(user, student_id))
 
 
+@router.get("/teacher/my-classes", summary="教师·我的班级（本人担任辅导员/班主任的行政班）")
+def teacher_my_classes(user=Depends(get_current_user)):
+    return success(tea.my_classes(user))
+
+
+@router.get("/teacher/my-students", summary="教师·我的学生（本人负责班级学生名单，可按classId下钻）")
+def teacher_my_students(classId: str = None, user=Depends(get_current_user)):
+    return success(tea.my_students(user, classId))
+
+
 @router.get("/teacher/messages", summary="教师·消息（范围/系统）")
 def teacher_messages(user=Depends(get_current_user)):
     return success(tea.messages(user))

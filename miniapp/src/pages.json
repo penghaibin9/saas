@@ -240,6 +240,14 @@
       "style": { "navigationBarTitleText": "学生详情", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/my-classes/index",
+      "style": { "navigationBarTitleText": "我的班级", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/my-students/index",
+      "style": { "navigationBarTitleText": "我的学生", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/internship-review/index",
       "style": { "navigationBarTitleText": "实习周报批阅" }
     },

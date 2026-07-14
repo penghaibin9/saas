@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
@@ -336,6 +336,76 @@ def risk_students(user: dict) -> dict:
         r["id"] = "risk-" + str(i + 1)
         r["studentId"] = r.get("studentNo") or r["id"]
     return {"hasData": bool(lst), "list": lst, "total": len(lst), "scopeMode": scope["mode"]}
+
+
+# ══════════ 我的班级 / 我的学生（辅导员/班主任按 t_class.counselor_id/head_teacher_id 收敛） ══════════
+
+def _teacher_numeric_id(user: dict):
+    """派生教师账号的数值 user_id（兼容 u_ 前缀），用于匹配 t_class.counselor_id/head_teacher_id。"""
+    uid = str((user or {}).get("userId") or "")
+    raw = uid[2:] if uid.startswith("u_") else uid
+    return int(raw) if raw.isdigit() else None
+
+
+def my_classes(user: dict) -> dict:
+    """我的班级：本人担任辅导员/班主任的行政班列表 + 各班在校学生数。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"hasData": False, "items": [], "note": "演示模式"}
+    scope = resolve_teacher_scope(u)
+    tid = _tid()
+    with _session() as db:
+        from app.models import SchoolClass, StudentProfile
+        conds = [SchoolClass.tenant_id == tid, SchoolClass.is_deleted.is_(False)]
+        if scope["mode"] != "ADMIN_TENANT":
+            numeric_uid = _teacher_numeric_id(u)
+            if numeric_uid is None:
+                return {"hasData": False, "items": [], "note": "未识别到教师身份，无法匹配班级"}
+            conds.append(or_(SchoolClass.counselor_id == numeric_uid, SchoolClass.head_teacher_id == numeric_uid))
+        rows = db.scalars(select(SchoolClass).where(*conds).order_by(SchoolClass.id.desc())).all()
+        out = []
+        for c in rows:
+            cnt = db.scalar(select(func.count()).select_from(StudentProfile).where(
+                StudentProfile.tenant_id == tid, StudentProfile.class_id == c.id,
+                StudentProfile.is_deleted.is_(False))) or 0
+            out.append({"classId": str(c.id), "className": c.class_name, "grade": c.grade or "",
+                       "studentCount": cnt, "status": c.status})
+        return {"hasData": bool(out), "items": out}
+
+
+def my_students(user: dict, class_id=None) -> dict:
+    """我的学生：本人负责班级的学生名单（可按 classId 下钻单班）；管理类角色不收敛(租户级)。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"hasData": False, "items": [], "note": "演示模式"}
+    scope = resolve_teacher_scope(u)
+    tid = _tid()
+    with _session() as db:
+        from app.models import SchoolClass, StudentProfile
+        conds = [StudentProfile.tenant_id == tid, StudentProfile.is_deleted.is_(False)]
+        if class_id:
+            conds.append(StudentProfile.class_id == int(class_id))
+        elif scope["mode"] != "ADMIN_TENANT":
+            numeric_uid = _teacher_numeric_id(u)
+            if numeric_uid is None:
+                return {"hasData": False, "items": [], "note": "未识别到教师身份，无法匹配班级"}
+            class_ids = [c.id for c in db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == tid, SchoolClass.is_deleted.is_(False),
+                or_(SchoolClass.counselor_id == numeric_uid, SchoolClass.head_teacher_id == numeric_uid))).all()]
+            if not class_ids:
+                return {"hasData": False, "items": [], "note": "暂无负责班级"}
+            conds.append(StudentProfile.class_id.in_(class_ids))
+        rows = db.scalars(select(StudentProfile).where(*conds)
+                          .order_by(StudentProfile.id.desc()).limit(200)).all()
+        cls_map = {}
+        cids = {r.class_id for r in rows if r.class_id}
+        if cids:
+            cls_map = {c.id: c.class_name for c in db.scalars(
+                select(SchoolClass).where(SchoolClass.id.in_(cids))).all()}
+        out = [{"studentId": str(r.id), "studentNo": r.student_no, "name": r.real_name,
+               "className": cls_map.get(r.class_id, ""), "gender": r.gender or "",
+               "stage": r.current_stage, "status": r.student_status} for r in rows]
+        return {"hasData": bool(out), "items": out, "total": len(out)}
 
 
 # ══════════ 学生 360 轻量详情（替代 PC /students/{id}，含权限判断） ══════════

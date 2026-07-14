@@ -470,6 +470,11 @@ export async function teacherRiskStudents() {
     pending: 0, last: r.latestTime || '' }))
 }
 
+/** 教师·我的班级 / 我的学生（真实接口，无 mock 兜底） */
+export const teacherMyClasses = () => realRequest('/mobile/teacher/my-classes')
+export const teacherMyStudents = (classId) =>
+  realRequest('/mobile/teacher/my-students' + (classId ? `?classId=${classId}` : ''))
+
 /** 教师学生360（权限校验后）→ 页面形状；无权限/不存在由业务错抛出。 */
 export async function teacherStudent360(id) {
   const d = await realRequest('/mobile/teacher/student/' + id)
