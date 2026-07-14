@@ -144,7 +144,9 @@ export const NAV_PLAN = [
       I('宿舍统计', '/admin/student-affairs/dorm/stats')
     ]),
     // 施工图卡·风险预警与处置（B包第4步·待施工）
-    mod('sa-risk', '风险预警与处置', null, P('风险看板', '风险学生', '风险处置')),
+    mod('sa-risk', '风险预警与处置', null, [
+      I('风险预警（看板/学生/处置）', '/admin/student-affairs/risk')
+    ]),
     // 施工图卡·困难认定（C包第6步·2026-07-13 夜间接通 /student-affairs/aid/*：批次管理/工作台/困难库）
     mod('sa-difficulty', '困难认定', null, [
       I('认定批次', '/admin/student-affairs/aid/batches'),
@@ -164,7 +166,9 @@ export const NAV_PLAN = [
       I('发放台账', '/admin/student-affairs/funding/disbursements'),
       I('资助统计', '/admin/student-affairs/funding/stats'),
       I('助学金管理（现有·奖助资助）', '/admin/campus-service/grants'),
-      ...P('勤工助学', '助学贷款', '减免与临时补助')
+      I('勤工助学', '/admin/student-affairs/funding/work-study'),
+      I('助学贷款', '/admin/student-affairs/funding/loans'),
+      I('减免与临时补助', '/admin/student-affairs/funding/fee-reductions')
     ]),
     // 施工图卡·违纪处分（C包第8步·2026-07-13 夜间接通 /student-affairs/discipline/*：工作台+台账对账）
     mod('sa-discipline', '违纪处分', null, [
@@ -172,8 +176,7 @@ export const NAV_PLAN = [
       I('送达与申诉复核', '/admin/student-affairs/discipline/appeals'),
       I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger'),
       I('处分统计', '/admin/student-affairs/discipline/stats'),
-      I('违纪登记（现有）', '/admin/campus-service/discipline'),
-      ...P('处分决定与送达', '申诉复核')
+      I('违纪登记（现有）', '/admin/campus-service/discipline')
     ]),
     // 施工图卡·谈心家校（C包第9步·2026-07-13 夜间接通 /student-affairs/talks|family/*：工作台+统计+家校）
     mod('sa-talks', '谈心家校', null, [
@@ -181,7 +184,8 @@ export const NAV_PLAN = [
       I('谈话台账', '/admin/student-affairs/talk/ledger'),
       I('谈话统计', '/admin/student-affairs/talk/stats'),
       I('家校联系', '/admin/student-affairs/family'),
-      ...P('重点学生跟进', '家校回执')
+      I('重点学生跟进', '/admin/student-affairs/talk/key-follow'),
+      I('家校回执', '/admin/student-affairs/family/receipts')
     ]),
     // 施工图卡·心理关注（D包第10步·强敏感红线·2026-07-12 前端5页接通 /student-affairs/mental/*）
     mod('sa-mental', '心理关注', null, [
@@ -208,7 +212,7 @@ export const NAV_PLAN = [
       I('学工统计', '/admin/student-affairs/stats'),
       I('统计驾驶舱', '/admin/student-affairs/stats/cockpit'),
       I('学工归档', '/admin/student-affairs/archive'),
-      ...P('学生档案包')
+      I('学生档案包', '/admin/student-affairs/archive/packages')
     ])
     /* 2026-07-12 甲方拍板：删除「在校服务（现有·过渡）」二级——它与新14二级重复冲突（请假/奖助/违纪/宿舍/班级
        已各自成正经二级、指向 /admin/campus-service/* 实现页照常用）。campus-service 旧路由与服务工作台/学生服务/
