@@ -471,6 +471,13 @@ export const studentAffairsApi = {
   actWorkStudy(recordId, action, reason = '') {
     return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/action`, { method: 'POST', body: { action, reason } }))
   },
+  getWorkStudyMonthly(recordId) {
+    return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/monthly`))
+  },
+  /** 录月度考核。body: { monthCode, rating?, subsidyAmount?, workHours?, remark? } */
+  addWorkStudyMonthly(recordId, body) {
+    return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/monthly`, { method: 'POST', body }))
+  },
   getLoans({ status = '' } = {}) {
     const params = {}; if (status) params.status = status
     return callStrict(() => request('/student-affairs/loans', { params }))

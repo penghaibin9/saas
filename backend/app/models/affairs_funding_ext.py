@@ -43,6 +43,23 @@ class WorkStudyRecord(PKMixin, TenantMixin, CommonMixin, Base):
                                        name="uk_work_study_active"),)
 
 
+class WorkStudyMonthly(PKMixin, TenantMixin, CommonMixin, Base):
+    """勤工月度考核（一岗一生一月一条）。rating GOOD优/PASS合格/FAIL不合格；确认即累计补贴。"""
+    __tablename__ = "t_affairs_work_study_monthly"
+
+    record_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    month_code: Mapped[str] = mapped_column(String(20), nullable=False, comment="考核月，如 2025-10")
+    work_hours: Mapped[float | None] = mapped_column(Numeric(6, 2), comment="工时")
+    rating: Mapped[str] = mapped_column(String(20), nullable=False, default="PASS",
+                                        comment="GOOD/PASS/FAIL")
+    subsidy_amount: Mapped[float | None] = mapped_column(Numeric(10, 2), comment="当月补贴")
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+    __table_args__ = (UniqueConstraint("tenant_id", "record_id", "month_code",
+                                       name="uk_work_study_monthly"),)
+
+
 class StudentLoan(PKMixin, TenantMixin, CommonMixin, Base):
     """助学贷款登记台账。loan_type ORIGIN生源地/CAMPUS校园地；
     status REGISTERED登记/RECEIPT回执已传/VERIFIED已核对/CONFIRMED已确认。银行卡仅后4位。"""

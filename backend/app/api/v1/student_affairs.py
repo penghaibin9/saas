@@ -663,6 +663,26 @@ def ws_action(body: WsActionBody, recordId: int = Path(...),
     return success(fext_svc.act_work_study(recordId, body.action, user, body.reason or ""), message="已处理")
 
 
+class WsMonthlyBody(BaseModel):
+    monthCode: str = Field(..., min_length=1, description="考核月，如 2025-10")
+    workHours: Optional[float] = None
+    rating: Optional[str] = Field("PASS", description="GOOD/PASS/FAIL")
+    subsidyAmount: Optional[float] = None
+    remark: Optional[str] = None
+
+
+@router.get("/work-study/records/{recordId}/monthly", summary="勤工月度考核明细")
+def ws_monthly_list(recordId: int = Path(...),
+                    user=Depends(require_permission("studentAffairs.funding.view"))):
+    return success({"items": fext_svc.list_monthly(recordId, user)})
+
+
+@router.post("/work-study/records/{recordId}/monthly", summary="录勤工月度考核（累计补贴）")
+def ws_monthly_add(body: WsMonthlyBody, recordId: int = Path(...),
+                   user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
+    return success(fext_svc.add_monthly(recordId, body, user), message="已录入")
+
+
 # —— 助学贷款 ——
 @router.get("/loans", summary="助学贷款台账（金额脱敏，不含卡全号）")
 def loans(status: Optional[str] = None, user=Depends(require_permission("studentAffairs.funding.view"))):

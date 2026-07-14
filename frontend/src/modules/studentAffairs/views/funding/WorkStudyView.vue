@@ -22,22 +22,48 @@
 
         <AppSectionCard :title="selPost ? '上岗记录（本岗位）' : '上岗记录（全部）'" class="ws-recs">
           <table class="sa-table">
-            <thead><tr><th>学生</th><th>状态</th><th>操作</th></tr></thead>
+            <thead><tr><th>学生</th><th>状态</th><th>累计补贴</th><th>操作</th></tr></thead>
             <tbody>
               <tr v-for="r in records" :key="r.recordId">
                 <td><strong>{{ r.realName || ('#'+r.studentId) }}</strong></td>
                 <td><StatusTag :type="wsType(r.status)" :label="r.statusLabel || r.status" dot /></td>
+                <td>{{ amountText(r.subsidyTotal) }}</td>
                 <td class="ws-ops">
                   <AppPermissionButton v-if="r.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting===r.recordId" @click="act(r,'APPROVE')">录用</AppPermissionButton>
                   <AppPermissionButton v-if="r.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(r,'REJECT')">拒绝</AppPermissionButton>
                   <AppPermissionButton v-if="r.status==='APPROVED'" code="studentAffairs.funding.workstudy.manage" size="sm" @click="act(r,'ONBOARD')">上岗</AppPermissionButton>
+                  <AppPermissionButton v-if="r.status==='ONBOARD'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(r)">月度考核</AppPermissionButton>
                   <AppPermissionButton v-if="['APPROVED','ONBOARD'].includes(r.status)" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(r,'TERMINATE')">终止</AppPermissionButton>
                 </td>
               </tr>
-              <tr v-if="!records.length"><td colspan="3" class="sa-empty">暂无记录</td></tr>
+              <tr v-if="!records.length"><td colspan="4" class="sa-empty">暂无记录</td></tr>
             </tbody>
           </table>
         </AppSectionCard>
+      </div>
+
+      <div v-if="mm.visible" class="ws-mask" @click.self="mm.visible=false">
+        <div class="ws-modal">
+          <h3 class="ws-modal__title">{{ mm.name }} · 月度考核（累计补贴 {{ amountText(mm.subsidyTotal) }}）</h3>
+          <div class="ws-madd">
+            <input v-model.trim="mm.form.monthCode" class="ws-input" placeholder="考核月 2025-10" />
+            <select v-model="mm.form.rating" class="ws-input"><option value="GOOD">优</option><option value="PASS">合格</option><option value="FAIL">不合格</option></select>
+            <input v-model.number="mm.form.workHours" type="number" class="ws-input ws-sm" placeholder="工时" />
+            <input v-model.number="mm.form.subsidyAmount" type="number" class="ws-input ws-sm" placeholder="补贴" />
+            <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
+          </div>
+          <table class="sa-table">
+            <thead><tr><th>月份</th><th>等级</th><th>工时</th><th>补贴</th></tr></thead>
+            <tbody>
+              <tr v-for="m in mm.list" :key="m.monthlyId">
+                <td>{{ m.monthCode }}</td><td>{{ m.ratingLabel || m.rating }}</td>
+                <td>{{ m.workHours != null ? m.workHours : '—' }}</td><td>{{ amountText(m.subsidyAmount) }}</td>
+              </tr>
+              <tr v-if="!mm.list.length"><td colspan="4" class="sa-empty">暂无月度考核</td></tr>
+            </tbody>
+          </table>
+          <div class="ws-mfoot"><button type="button" class="ws-btn" @click="mm.visible=false">关闭</button></div>
+        </div>
       </div>
     </AppGlobalState>
   </AppPageShell>
@@ -52,7 +78,8 @@ export default {
   name: 'WorkStudyView',
   components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
   data() {
-    return { loading: true, acting: '', errorMessage: '', posts: [], records: [], selPost: '', postForm: { deptName: '', postName: '', salary: null } }
+    return { loading: true, acting: '', errorMessage: '', posts: [], records: [], selPost: '', postForm: { deptName: '', postName: '', salary: null },
+      mm: { visible: false, recordId: '', name: '', subsidyTotal: null, list: [], form: this.blankMonthly() } }
   },
   computed: { pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') } },
   mounted() { this.load() },
@@ -88,7 +115,28 @@ export default {
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
     },
-    wsType(s) { return ({ APPLIED: 'warning', APPROVED: 'processing', ONBOARD: 'success', REJECTED: 'default', TERMINATED: 'default' })[s] || 'default' }
+    wsType(s) { return ({ APPLIED: 'warning', APPROVED: 'processing', ONBOARD: 'success', REJECTED: 'default', TERMINATED: 'default' })[s] || 'default' },
+    amountText(a) { return (a == null || a === '') ? '¥0' : (typeof a === 'number' ? ('¥' + a) : a) },
+    blankMonthly() { return { monthCode: '', rating: 'PASS', workHours: null, subsidyAmount: null } },
+    async openMonthly(r) {
+      this.mm = { visible: true, recordId: r.recordId, name: r.realName || ('#' + r.studentId), subsidyTotal: r.subsidyTotal, list: [], form: this.blankMonthly() }
+      const res = await studentAffairsApi.getWorkStudyMonthly(r.recordId)
+      if (res.code === 0 && res.data) this.mm.list = res.data.items || []
+    },
+    async addMonthly() {
+      const f = this.mm.form
+      if (!f.monthCode) { toast.error('考核月必填'); return }
+      this.acting = 'mon'
+      const res = await studentAffairsApi.addWorkStudyMonthly(this.mm.recordId, { monthCode: f.monthCode, rating: f.rating, workHours: f.workHours != null ? Number(f.workHours) : undefined, subsidyAmount: f.subsidyAmount != null ? Number(f.subsidyAmount) : undefined })
+      this.acting = ''
+      if (res.code === 0) {
+        toast.success('已录入'); this.mm.form = this.blankMonthly()
+        const lr = await studentAffairsApi.getWorkStudyMonthly(this.mm.recordId)
+        this.mm.list = (lr.code === 0 && lr.data) ? (lr.data.items || []) : this.mm.list
+        this.mm.subsidyTotal = this.mm.list.reduce((a, m) => a + (Number(m.subsidyAmount) || 0), 0)
+        this.load()
+      } else toast.error(res.message || '录入失败')
+    }
   }
 }
 </script>
@@ -106,5 +154,11 @@ export default {
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .ws-ops { display: flex; gap: 6px; flex-wrap: wrap; }
+.ws-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.ws-modal { width: 560px; max-width: calc(100vw - 32px); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-5); max-height: 80vh; overflow: auto; }
+.ws-modal__title { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
+.ws-madd { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.ws-mfoot { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
+.ws-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 18px; cursor: pointer; }
 @media (max-width: 960px) { .ws-cols { grid-template-columns: 1fr; } }
 </style>

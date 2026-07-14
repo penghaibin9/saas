@@ -327,3 +327,58 @@ def issue_reduction(fee_id, user) -> dict:
         db.commit(); db.refresh(x)
         s = db.get(StudentProfile, int(x.student_id))
         return _fee_row(x, s, user)
+
+
+# ═══════════ 勤工月度考核（月度考核→累计补贴）═══════════
+
+_L_RATING = {"GOOD": "优", "PASS": "合格", "FAIL": "不合格"}
+
+
+def _monthly_row(m, user=None) -> dict:
+    return {"monthlyId": str(m.id), "recordId": str(m.record_id), "studentId": str(m.student_id),
+            "monthCode": m.month_code, "workHours": float(m.work_hours) if m.work_hours is not None else None,
+            "rating": m.rating, "ratingLabel": _L_RATING.get(m.rating, m.rating),
+            "subsidyAmount": _amount_view(m.subsidy_amount, user or {}), "remark": m.remark or ""}
+
+
+def add_monthly(record_id, body, user) -> dict:
+    """录一条月度考核（仅在岗记录；同月唯一）。FAIL 不计补贴；否则按 subsidyAmount 累计到 subsidy_total。"""
+    from app.models import WorkStudyMonthly
+    month = (getattr(body, "monthCode", "") or "").strip()
+    rating = getattr(body, "rating", "PASS") or "PASS"
+    if not month:
+        raise AppException("VALIDATION_ERROR", "考核月必填")
+    if rating not in ("GOOD", "PASS", "FAIL"):
+        raise AppException("VALIDATION_ERROR", "考核等级非法")
+    with session() as db:
+        r = _load_ws(db, record_id)
+        if r.status != "ONBOARD":
+            raise AppException("DATA_CONFLICT", "仅在岗记录可录月度考核")
+        dup = db.scalars(select(WorkStudyMonthly).where(
+            WorkStudyMonthly.tenant_id == _tid(), WorkStudyMonthly.record_id == int(record_id),
+            WorkStudyMonthly.month_code == month, WorkStudyMonthly.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "该月已考核")
+        amt = float(getattr(body, "subsidyAmount", 0) or 0)
+        if rating == "FAIL":
+            amt = 0.0
+        m = WorkStudyMonthly(tenant_id=_tid(), record_id=int(record_id), student_id=r.student_id,
+                             month_code=month, work_hours=getattr(body, "workHours", None),
+                             rating=rating, subsidy_amount=amt, remark=getattr(body, "remark", None),
+                             created_by=_uid(user))
+        db.add(m); db.flush()
+        r.subsidy_total = round(float(r.subsidy_total or 0) + amt, 2)
+        r.version += 1
+        _audit(db, r.id, "WS_MONTHLY", f"{month}:{rating}:{amt}")
+        db.commit(); db.refresh(m)
+        return _monthly_row(m, user)
+
+
+def list_monthly(record_id, user):
+    from app.models import WorkStudyMonthly
+    with session() as db:
+        _load_ws(db, record_id)
+        rows = db.scalars(select(WorkStudyMonthly).where(
+            WorkStudyMonthly.tenant_id == _tid(), WorkStudyMonthly.record_id == int(record_id),
+            WorkStudyMonthly.is_deleted.is_(False)).order_by(WorkStudyMonthly.month_code.desc())).all()
+        return [_monthly_row(m, user) for m in rows]

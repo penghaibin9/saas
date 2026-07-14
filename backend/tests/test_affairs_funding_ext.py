@@ -27,6 +27,23 @@ def test_work_study_flow(client, db_mode):
     assert client.post(f"{BASE}/work-study/records/{rid}/action", headers=hdr, json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
     assert client.post(f"{BASE}/work-study/records/{rid}/action", headers=hdr, json={"action": "ONBOARD"}).json()["data"]["status"] == "ONBOARD"
     assert client.post(f"{BASE}/work-study/records/{rid}/action", headers=hdr, json={"action": "TERMINATE", "reason": "短"}).json()["code"] != 0
+    # 在岗期间录月度考核（累计补贴）——先重建到 ONBOARD 态验证月度
+    # 上面已 ONBOARD；录两月：合格 300 + 优 500 → subsidy_total 800
+    assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
+                       json={"monthCode": "2025-10", "rating": "PASS", "subsidyAmount": 300, "workHours": 40}).json()["code"] == 0
+    # 同月重复 → 冲突
+    assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
+                       json={"monthCode": "2025-10", "subsidyAmount": 100}).json()["code"] != 0
+    assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
+                       json={"monthCode": "2025-11", "rating": "GOOD", "subsidyAmount": 500}).json()["code"] == 0
+    # FAIL 不计补贴
+    assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
+                       json={"monthCode": "2025-12", "rating": "FAIL", "subsidyAmount": 999}).json()["data"]["subsidyAmount"] == 0
+    mon = client.get(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr).json()["data"]["items"]
+    assert len(mon) == 3
+    recs = client.get(f"{BASE}/work-study/records", headers=hdr, params={"postId": pid}).json()["data"]["items"]
+    assert float(next(x for x in recs if x["recordId"] == rid)["subsidyTotal"]) == 800
+    # 终止
     t = client.post(f"{BASE}/work-study/records/{rid}/action", headers=hdr, json={"action": "TERMINATE", "reason": "学期结束岗位撤销"}).json()
     assert t["code"] == 0 and t["data"]["status"] == "TERMINATED"
 
