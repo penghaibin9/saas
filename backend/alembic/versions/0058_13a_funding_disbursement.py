@@ -1,11 +1,13 @@
 """13A-C 奖助发放台账：t_affairs_funding_disbursement
 
 Revision ID: 0058_13a_funding_disbursement
-Revises: 0057_13a_league_dev
+Revises: 0058_user_wx_openid
 Create Date: 2026-07-14
 
 单表新增；GRANTED 申请 1:1 生成发放记录。金额脱敏、不落银行卡全号(仅后4位)。
 幂等：表已存在则跳过。回滚：downgrade drop（无历史数据零风险）。
+多头协调：原基线为 0057_13a_league_dev；因并行分支 0058_user_wx_openid 亦挂 0057 形成双头，
+本文件 down_revision 改指 0058_user_wx_openid 以线性化本域后续 0059-0062 链，单头收敛到 0062。
 """
 from __future__ import annotations
 
@@ -14,7 +16,7 @@ from alembic import op
 from sqlalchemy import inspect
 
 revision = "0058_13a_funding_disbursement"
-down_revision = "0057_13a_league_dev"
+down_revision = "0058_user_wx_openid"
 branch_labels = None
 depends_on = None
 
