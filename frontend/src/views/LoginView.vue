@@ -1,80 +1,172 @@
 <template>
-  <div class="lg thw th-a">
-    <!-- 左：品牌区（母版 lg-l） -->
-    <div class="lg-l">
-      <div class="lg-orb" />
-      <div class="lg-orb2" />
-      <div class="lg-badge">FUTURE CAMPUS SAAS</div>
-      <div class="lg-tt">高校学生全生命周期管理平台</div>
-      <div class="lg-sub">从招生、迎新、在校培养、岗位实习、毕业设计到就业落实，一条学生成长轨道贯穿始终。</div>
-      <div class="lg-feats">
-        <span class="lg-ft">角色感知</span>
-        <span class="lg-ft">数据范围清晰</span>
-        <span class="lg-ft">隐私脱敏与审计留痕</span>
+  <div class="lgx">
+    <!-- 左：品牌区 -->
+    <div class="lgx-brand">
+      <div class="lgx-orb" />
+      <div class="lgx-orb2" />
+      <div class="lgx-badge">ENTERPRISE CAMPUS SAAS</div>
+      <h1 class="lgx-title">校园通 · 高校学生全程管理平台</h1>
+      <p class="lgx-slogan">一站式学生全生命周期数字化管理 · 教务 / 学工 / 实习 / 毕业设计全过程贯通</p>
+
+      <div class="lgx-illust">
+        <svg width="560" height="240" viewBox="0 0 560 240" fill="none" overflow="visible">
+          <defs>
+            <linearGradient id="bldA" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#7fd4ff" stop-opacity=".3" />
+              <stop offset="100%" stop-color="#2f6bff" stop-opacity=".05" />
+            </linearGradient>
+            <linearGradient id="floorGlowA" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#4d8dff" stop-opacity=".38" />
+              <stop offset="100%" stop-color="#4d8dff" stop-opacity="0" />
+            </linearGradient>
+            <radialGradient id="hudGlowA" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#bfe0ff" stop-opacity=".55" />
+              <stop offset="100%" stop-color="#bfe0ff" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <rect x="40" y="150" width="480" height="90" fill="url(#floorGlowA)" />
+          <g stroke="rgba(127,196,255,.22)" stroke-width="1">
+            <line x1="50" y1="240" x2="300" y2="150" /><line x1="175" y1="240" x2="300" y2="150" />
+            <line x1="300" y1="240" x2="300" y2="150" /><line x1="425" y1="240" x2="300" y2="150" />
+            <line x1="550" y1="240" x2="300" y2="150" /><line x1="50" y1="240" x2="550" y2="240" />
+            <line x1="95" y1="208" x2="505" y2="208" /><line x1="140" y1="182" x2="460" y2="182" />
+            <line x1="180" y1="164" x2="420" y2="164" /><line x1="215" y1="152" x2="385" y2="152" />
+          </g>
+          <g stroke="#7fd4ff" stroke-width="1.3" fill="url(#bldA)">
+            <polygon points="152,92 168,83 212,83 196,92" /><polygon points="196,92 212,83 212,141 196,150" />
+            <rect x="152" y="92" width="44" height="58" />
+            <polygon points="206,66 222,57 264,57 248,66" /><polygon points="248,66 264,57 264,141 248,150" />
+            <rect x="206" y="66" width="42" height="84" />
+            <polygon points="272,104 288,95 328,95 312,104" /><polygon points="312,104 328,95 328,141 312,150" />
+            <rect x="272" y="104" width="40" height="46" />
+            <polygon points="334,80 350,71 388,71 372,80" /><polygon points="372,80 388,71 388,141 372,150" />
+            <rect x="334" y="80" width="38" height="70" />
+          </g>
+          <g fill="#bfe0ff">
+            <rect class="win-dot" x="160" y="102" width="5" height="6" /><rect class="win-dot" x="172" y="102" width="5" height="6" />
+            <rect class="win-dot" x="160" y="116" width="5" height="6" /><rect class="win-dot" x="184" y="116" width="5" height="6" />
+            <rect class="win-dot" x="214" y="78" width="5" height="6" /><rect class="win-dot" x="226" y="78" width="5" height="6" />
+            <rect class="win-dot" x="214" y="94" width="5" height="6" /><rect class="win-dot" x="238" y="94" width="5" height="6" />
+            <rect class="win-dot" x="214" y="110" width="5" height="6" /><rect class="win-dot" x="238" y="110" width="5" height="6" />
+            <rect class="win-dot" x="280" y="116" width="5" height="6" /><rect class="win-dot" x="298" y="116" width="5" height="6" />
+            <rect class="win-dot" x="342" y="92" width="5" height="6" /><rect class="win-dot" x="358" y="92" width="5" height="6" />
+            <rect class="win-dot" x="342" y="108" width="5" height="6" /><rect class="win-dot" x="358" y="122" width="5" height="6" />
+          </g>
+          <g class="flow-line" stroke="rgba(147,208,255,.65)" stroke-width="1.3">
+            <path d="M227 57 C 320 20, 400 40, 470 74" /><path d="M353 71 C 400 50, 440 60, 470 74" />
+          </g>
+          <g>
+            <circle cx="470" cy="74" r="52" fill="url(#hudGlowA)" />
+            <circle class="hud-rot" cx="470" cy="74" r="42" fill="none" stroke="#7fd4ff" stroke-width="1.6" stroke-dasharray="30 14" stroke-opacity=".8" />
+            <circle class="hud-rev" cx="470" cy="74" r="31" fill="none" stroke="#bfe0ff" stroke-width="1.2" stroke-dasharray="6 10" stroke-opacity=".65" />
+            <circle cx="470" cy="74" r="16" fill="rgba(77,141,255,.25)" stroke="#bfe0ff" stroke-width="1.2" />
+            <circle cx="470" cy="74" r="4" fill="#dff1ff" />
+          </g>
+          <g fill="#bfe0ff">
+            <circle class="rise-dot" cx="230" cy="140" r="2.4" /><circle class="rise-dot" cx="290" cy="146" r="2" />
+            <circle class="rise-dot" cx="350" cy="138" r="2.4" /><circle class="rise-dot" cx="180" cy="146" r="2" />
+            <circle class="rise-dot" cx="400" cy="142" r="2.2" />
+          </g>
+        </svg>
       </div>
 
-      <!-- 演示账号（放品牌区空位，不占登录卡；点击填入右侧表单，仍需真实登录） -->
-      <div class="lg-demo">
-        <div class="lg-demo__group">
-          <div class="lg-demo__tt">正式演示 · 演示职业技术学校<span class="lg-demo__tag">数据只读</span></div>
-          <div class="lg-demo__row" v-for="a in demoAccounts" :key="a.login" @click="fillDemo(a)">
-            <span class="lg-demo__role">{{ a.role }}</span>
-            <b class="lg-demo__login">{{ a.login }}</b>
-            <span class="lg-demo__pwd">{{ demoPassword }}</span>
-            <button class="lg-demo__copy" @click.stop="copyText(a.login)">复制账号</button>
-            <button class="lg-demo__copy" @click.stop="copyText(demoPassword)">复制密码</button>
-          </div>
-        </div>
-        <div class="lg-demo__group">
-          <div class="lg-demo__tt">自由体验 · 体验沙箱学校<span class="lg-demo__tag lg-demo__tag--warn">随便操作 · 每晚 0 点重置</span></div>
-          <div class="lg-demo__row" v-for="a in sandboxAccounts" :key="a.login" @click="fillDemo(a)">
-            <span class="lg-demo__role">{{ a.role }}</span>
-            <b class="lg-demo__login">{{ a.login }}</b>
-            <span class="lg-demo__pwd">{{ demoPassword }}</span>
-            <button class="lg-demo__copy" @click.stop="copyText(a.login)">复制账号</button>
-            <button class="lg-demo__copy" @click.stop="copyText(demoPassword)">复制密码</button>
-          </div>
-        </div>
-        <div class="lg-demo__tip">点击账号自动填入右侧表单，仍需点「登 录」；学生端请在手机 H5/小程序使用 student / student2（密码同 123456）</div>
-      </div>
+      <div class="lgx-trust">多租户隔离<b /> 等保合规<b /> 数据加密</div>
     </div>
+
     <!-- 右：登录卡 -->
-    <div class="lg-r">
-      <div class="lg-c">
-        <div class="lg-head">
-          <span class="lg-logo">校</span>
-          <span class="lg-head__tx">
-            <b>高校学生全生命周期管理平台</b>
-            <i>教职工统一身份登录</i>
-          </span>
-        </div>
-
-        <label class="in-lb">账号</label>
-        <input v-model.trim="form.loginName" class="in" placeholder="请输入账号" @keyup.enter="doLogin" />
-        <label class="in-lb">密码</label>
-        <input v-model="form.password" class="in" type="password" placeholder="请输入密码" @keyup.enter="doLogin" />
-        <p v-if="error" class="lg-err">{{ error }}</p>
-
-        <button class="lg-btn lg-btn--p" :disabled="loading" @click="doLogin">
-          {{ loading ? '登录中…' : '登 录' }}
-        </button>
-
-        <!-- 小屏（左侧品牌区隐藏时）给一行演示账号提示，保证可发现 -->
-        <div class="lg-demo-mini">
-          演示：admin · teacher（只读）｜沙箱：admin2 · teacher2（可随便点）密码均 123456
-        </div>
-
-        <!-- 试用咨询（可公开电话，不含任何账号密码） -->
-        <div class="lg-trial">
-          <div class="lg-trial__tt">想为学校开通正式试用？</div>
-          <div class="lg-trial__ph">
-            请联系平台服务顾问：<b>{{ trialPhone }}</b>
-          </div>
-          <div class="lg-trial__ops">
-            <button class="lg-btn--mini" @click="copyPhone">复制手机号</button>
-            <a class="lg-btn--mini lg-btn--tel" :href="'tel:' + trialPhone">拨打电话</a>
+    <div class="lgx-right">
+      <div class="lgx-card">
+        <div class="lgx-chd">
+          <div class="lgx-logo">校</div>
+          <div class="lgx-chd-tx">
+            <b>校园通 · 高校学生全程管理平台</b>
+            <i>企业级统一身份登录</i>
           </div>
         </div>
+
+        <div class="lgx-tabs">
+          <button class="lgx-tab" :class="{ on: tab === 'account' }" @click="switchTab('account')">账号登录</button>
+          <button class="lgx-tab" :class="{ on: tab === 'sms' }" @click="switchTab('sms')">短信登录</button>
+          <button class="lgx-tab" :class="{ on: tab === 'wechat' }" @click="switchTab('wechat')">微信扫码</button>
+          <div class="lgx-underline" :style="{ transform: `translateX(${tabIndex * 100}%)` }" />
+        </div>
+
+        <!-- 账号登录（真实 /api/v1/auth/login） -->
+        <template v-if="tab === 'account'">
+          <label class="lgx-lb">账号</label>
+          <input v-model.trim="form.loginName" class="lgx-in" placeholder="工号/手机号" @keyup.enter="doLogin" />
+          <label class="lgx-lb">密码</label>
+          <div class="lgx-field">
+            <input
+              v-model="form.password"
+              :type="pwdVisible ? 'text' : 'password'"
+              class="lgx-in lgx-in-pwd"
+              placeholder="请输入密码"
+              @keyup.enter="doLogin"
+            />
+            <button class="lgx-eye" type="button" @click="pwdVisible = !pwdVisible">
+              <svg v-if="pwdVisible" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.4 5.4A9.6 9.6 0 0112 5c6.5 0 10 7 10 7a15 15 0 01-3.2 4M6.5 6.7C4 8.3 2 12 2 12a15.1 15.1 0 004.2 5" />
+              </svg>
+            </button>
+          </div>
+          <div class="lgx-row-between">
+            <label class="lgx-chk-lb" @click="remember = !remember">
+              <span class="lgx-chk" :class="{ on: remember }">
+                <svg v-if="remember" viewBox="0 0 10 10" fill="none" stroke="#fff" stroke-width="1.6"><path d="M1.5 5l2.4 2.4L8.5 2.8" /></svg>
+              </span>记住账号
+            </label>
+            <a class="lgx-link" @click="onForgot">忘记密码？</a>
+          </div>
+          <p v-if="error" class="lgx-err">{{ error }}</p>
+          <button class="lgx-btn" :disabled="loading" @click="doLogin">
+            <span v-if="loading" class="lgx-spin" />{{ loading ? '登录中…' : '登 录' }}
+          </button>
+        </template>
+
+        <!-- 短信登录（后端短信通道尚未接入，占位） -->
+        <template v-else-if="tab === 'sms'">
+          <label class="lgx-lb">手机号</label>
+          <div class="lgx-phone"><span class="lgx-phone-pre">+86</span><input v-model.trim="sms.phone" class="lgx-in" placeholder="请输入手机号" /></div>
+          <label class="lgx-lb">验证码</label>
+          <div class="lgx-code-row">
+            <input v-model.trim="sms.code" class="lgx-in" placeholder="请输入验证码" />
+            <button class="lgx-code-btn" :disabled="countdown > 0" @click="getCode">{{ countdown > 0 ? countdown + 's' : '获取验证码' }}</button>
+          </div>
+          <button class="lgx-btn" @click="notReady('短信登录')">登 录</button>
+        </template>
+
+        <!-- 微信扫码（后端微信通道尚未接入，占位） -->
+        <template v-else>
+          <div class="lgx-qr-wrap">
+            <div class="lgx-qr-box">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#8494b5" stroke-width="1.4">
+                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M20 14v7M14 20h3" />
+              </svg>
+            </div>
+            <p class="lgx-qr-tip">微信扫码登录即将开放，请使用账号登录</p>
+          </div>
+        </template>
+
+        <div class="lgx-row-between lgx-agree">
+          <label class="lgx-chk-lb" @click="agree = !agree">
+            <span class="lgx-chk" :class="{ on: agree }">
+              <svg v-if="agree" viewBox="0 0 10 10" fill="none" stroke="#fff" stroke-width="1.6"><path d="M1.5 5l2.4 2.4L8.5 2.8" /></svg>
+            </span>我已阅读并同意<a class="lgx-link">《用户协议》</a>和<a class="lgx-link">《隐私政策》</a>
+          </label>
+        </div>
+
+        <div class="lgx-divider" />
+        <p class="lgx-foot">首次登录？请联系学校管理员开通账号 {{ trialPhone }}</p>
+      </div>
+
+      <div class="lgx-copyright">
+        <div>技术支持：湖南跃科信息工程有限公司</div>
+        <div>Copyright © 2026 · 湘ICP备XXXXXXXX号</div>
       </div>
     </div>
   </div>
@@ -82,9 +174,9 @@
 
 <script>
 /**
- * LoginView — PC 登录页（母版 00-基准 登录屏）。
- * 账号密码走 POST /api/v1/auth/login（后端 t_user + pbkdf2 校验，不展示任何演示密码）；
- * 「进入演示环境」保持原 mock 工作台入口，不影响既有演示流程。
+ * LoginView — 企业级统一身份登录页（对齐设计稿 docs/04-UI与全端交互/企业登录页.dc.html）。
+ * 账号登录走真实 POST /api/v1/auth/login（后端 t_user + pbkdf2 校验）；短信/微信通道后端尚未接入，做诚实占位。
+ * 不再展示任何演示账号。
  */
 import { loginWithPassword } from '@/services/http/client'
 import { toast } from '@/utils/toast'
@@ -94,21 +186,31 @@ export default {
   data() {
     return {
       trialPhone: '13549666867',
-      form: { loginName: '', password: '' },
+      tab: 'account',
+      pwdVisible: false,
+      remember: true,
+      agree: true,
       loading: false,
       error: '',
-      demoPassword: '123456',
-      demoAccounts: [
-        { role: '管理员', login: 'admin' },
-        { role: '教师', login: 'teacher' }
-      ],
-      sandboxAccounts: [
-        { role: '管理员', login: 'admin2' },
-        { role: '教师', login: 'teacher2' }
-      ]
+      form: { loginName: '', password: '' },
+      sms: { phone: '', code: '' },
+      countdown: 0,
+      _timer: null
     }
   },
+  computed: {
+    tabIndex() {
+      return this.tab === 'account' ? 0 : this.tab === 'sms' ? 1 : 2
+    }
+  },
+  beforeUnmount() {
+    if (this._timer) clearInterval(this._timer)
+  },
   methods: {
+    switchTab(t) {
+      this.tab = t
+      this.error = ''
+    },
     async doLogin() {
       this.error = ''
       if (!this.form.loginName || !this.form.password) {
@@ -126,406 +228,440 @@ export default {
         this.loading = false
       }
     },
-    /** 点演示账号仅自动填入表单——不绕过登录，仍需点「登 录」走真实 /auth/login */
-    fillDemo(a) {
-      this.form.loginName = a.login
-      this.form.password = this.demoPassword
-      this.error = ''
-    },
-    async copyText(text) {
-      try {
-        await navigator.clipboard.writeText(text)
-        toast.success('已复制')
-      } catch {
-        toast.info(text)
+    getCode() {
+      if (this.countdown > 0) return
+      if (!/^1\d{10}$/.test(this.sms.phone)) {
+        toast.info('请输入正确的手机号')
+        return
       }
+      this.notReady('短信登录')
+      this.countdown = 60
+      this._timer = setInterval(() => {
+        if (--this.countdown <= 0) clearInterval(this._timer)
+      }, 1000)
     },
-    async copyPhone() {
-      try {
-        await navigator.clipboard.writeText(this.trialPhone)
-        toast.success('手机号已复制')
-      } catch {
-        toast.info(this.trialPhone)
-      }
+    notReady(name) {
+      toast.info(`${name}即将开放，请使用账号登录`)
+    },
+    onForgot() {
+      toast.info(`请联系学校管理员重置密码：${this.trialPhone}`)
     }
   }
 }
 </script>
 
 <style scoped>
-.lg {
+.lgx {
   display: flex;
   height: 100vh;
-  font-family: var(--font-family-base);
-  color: var(--t1);
+  min-height: 600px;
+  font-family: var(--font-family-base, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif);
+  color: #0f1e3d;
+  background: #f7f9fc;
 }
-/* 左品牌区（母版 .lg-l） */
-.lg-l {
-  flex: 1.25;
-  background: linear-gradient(125deg, var(--deep1) 0%, var(--deep2) 65%, var(--g2) 145%);
-  color: #fff;
+
+/* ===== 左品牌区 ===== */
+.lgx-brand {
+  flex: 0 0 55%;
   position: relative;
   overflow: hidden;
+  color: #fff;
+  background: linear-gradient(125deg, #0b2352 0%, #123a80 62%, #2f6bff 145%);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 64px;
+  padding: 0 clamp(48px, 6vw, 108px);
 }
-.lg-l::before {
+.lgx-brand::before {
   content: '';
   position: absolute;
   inset: 0;
   background:
     linear-gradient(rgba(147, 197, 253, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(147, 197, 253, 0.05) 1px, transparent 1px);
-  background-size: 32px 32px;
+  background-size: 40px 40px;
 }
-.lg-orb {
+.lgx-orb {
   position: absolute;
-  right: -130px;
-  top: -130px;
-  width: 440px;
-  height: 440px;
+  right: -180px;
+  top: -180px;
+  width: 560px;
+  height: 560px;
   border-radius: 50%;
   border: 1.5px dashed rgba(147, 197, 253, 0.22);
-  animation: orbitSpin 70s linear infinite;
+  animation: orbitSpin 80s linear infinite;
 }
-.lg-orb2 {
+.lgx-orb2 {
   position: absolute;
-  right: -60px;
-  top: -60px;
-  width: 300px;
-  height: 300px;
+  right: -80px;
+  top: -80px;
+  width: 380px;
+  height: 380px;
   border-radius: 50%;
   border: 1px solid rgba(147, 197, 253, 0.14);
 }
-.lg-badge {
+.lgx-badge {
+  position: relative;
   display: inline-flex;
-  padding: 5px 14px;
-  border-radius: 18px;
+  width: fit-content;
+  padding: 6px 16px;
+  border-radius: 20px;
   background: rgba(147, 197, 253, 0.12);
   border: 1px solid rgba(147, 197, 253, 0.3);
-  font-size: 11.5px;
+  font-size: 13px;
   color: #bfdbfe;
-  width: fit-content;
-  margin-bottom: 22px;
-  position: relative;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  margin-bottom: 28px;
 }
-.lg-tt {
-  font-size: 34px;
-  font-weight: var(--font-weight-bold);
+.lgx-title {
+  position: relative;
+  margin: 0;
+  font-size: clamp(30px, 3vw, 46px);
+  font-weight: 700;
   letter-spacing: -0.02em;
-  line-height: 1.3;
-  position: relative;
+  line-height: 1.28;
 }
-.lg-sub {
-  font-size: 14px;
-  color: rgba(191, 214, 255, 0.75);
-  margin-top: 14px;
-  max-width: 440px;
+.lgx-slogan {
   position: relative;
+  margin: 20px 0 0;
+  font-size: clamp(15px, 1.1vw, 19px);
+  color: rgba(191, 214, 255, 0.82);
   line-height: 1.7;
+  max-width: 560px;
 }
-.lg-feats {
-  display: flex;
-  gap: 20px;
-  margin-top: 36px;
-  position: relative;
-  flex-wrap: wrap;
-}
-.lg-ft {
-  font-size: 12px;
-  color: rgba(219, 234, 254, 0.75);
-}
-/* 右登录卡（母版 .lg-r / .lg-c / .in） */
-.lg-r {
-  width: 480px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(700px 300px at 50% 0%, rgba(96, 165, 250, 0.12), transparent),
-    linear-gradient(rgba(37, 99, 235, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(37, 99, 235, 0.03) 1px, transparent 1px),
-    var(--bg);
-  background-size:
-    auto,
-    32px 32px,
-    32px 32px,
-    auto;
-  padding: 32px;
-}
-.lg-c {
-  width: 100%;
-  max-width: 364px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(14px);
-  border: 1px solid var(--card-b);
-  border-radius: 18px;
-  padding: 28px;
-  box-shadow: var(--s2);
-}
-.lg-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.lg-logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: var(--btn-p-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: var(--font-weight-bold);
-  font-size: 13px;
-  flex-shrink: 0;
-  box-shadow: 0 4px 12px -4px var(--glow);
-}
-.lg-head__tx {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-  min-width: 0;
-}
-.lg-head__tx b {
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.lg-head__tx i {
-  font-style: normal;
-  font-size: 11px;
-  color: var(--t3);
-}
-.in-lb {
-  display: block;
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold);
-  color: var(--t2);
-  margin: 12px 0 6px;
-}
-.in {
-  width: 100%;
-  padding: 11px 14px;
-  border: 1px solid var(--card-b);
-  border-radius: 10px;
-  font-family: inherit;
-  font-size: 13px;
-  background: #fff;
-  outline: none;
-  transition: all 0.12s;
-  color: var(--t1);
-  box-sizing: border-box;
-}
-.in:focus {
-  border-color: var(--pri);
-  box-shadow: 0 0 0 3px var(--pri-bg);
-}
-.lg-err {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: var(--err);
-}
-.lg-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 11px;
-  border-radius: 9px;
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  border: 1px solid transparent;
-  font-family: inherit;
-  transition: all 0.12s;
-  margin-top: 14px;
-}
-.lg-btn--p {
-  background: var(--btn-p-bg);
-  color: #fff;
-  box-shadow: var(--btn-p-shadow);
-}
-.lg-btn--p:hover:not(:disabled) {
-  background: var(--btn-p-bg-h);
-}
-.lg-btn--p:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.lg-btn--g {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: var(--card-b);
-  color: var(--t2);
-  margin-top: 10px;
-}
-.lg-btn--g:hover {
-  color: var(--pri);
-  border-color: var(--glow);
-}
-/* 演示账号区（左侧品牌区暗底样式，不占登录卡） */
-.lg-demo {
+.lgx-illust {
   position: relative;
   margin-top: 40px;
-  max-width: 520px;
+  max-width: 560px;
+}
+.lgx-illust svg {
+  width: 100%;
+  height: auto;
+}
+.lgx-trust {
+  position: relative;
+  margin-top: 40px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+  color: rgba(191, 214, 255, 0.6);
+}
+.lgx-trust b {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(191, 214, 255, 0.4);
+  display: inline-block;
+}
+
+/* 品牌区动效 */
+.flow-line {
+  stroke-dasharray: 6 6;
+  animation: dashflow 1.6s linear infinite;
+}
+.hud-rot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hudspin 9s linear infinite;
+}
+.hud-rev {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hudspin 14s linear infinite reverse;
+}
+.rise-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rise 3.4s ease-out infinite;
+}
+.rise-dot:nth-child(2) { animation-delay: 0.7s; }
+.rise-dot:nth-child(3) { animation-delay: 1.4s; }
+.rise-dot:nth-child(4) { animation-delay: 2.1s; }
+.rise-dot:nth-child(5) { animation-delay: 2.7s; }
+.win-dot { animation: winFlick 3s ease-in-out infinite; }
+.win-dot:nth-child(even) { animation-delay: 1.1s; }
+.win-dot:nth-child(3n) { animation-delay: 1.9s; }
+@keyframes dashflow { to { stroke-dashoffset: -24; } }
+@keyframes hudspin { to { transform: rotate(360deg); } }
+@keyframes rise { 0% { opacity: 0; transform: translateY(0); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-46px); } }
+@keyframes winFlick { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@keyframes orbitSpin { to { transform: rotate(360deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== 右登录区 ===== */
+.lgx-right {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-.lg-demo__group {
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.35);
-  border: 1px solid rgba(147, 197, 253, 0.22);
-  backdrop-filter: blur(6px);
-}
-.lg-demo__tt {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  font-weight: var(--font-weight-semibold);
-  color: #dbeafe;
-  margin-bottom: 6px;
+  justify-content: center;
+  gap: 24px;
+  background: radial-gradient(700px 320px at 50% 0%, rgba(96, 165, 250, 0.1), transparent), #f7f9fc;
+  padding: 32px;
 }
-.lg-demo__tag {
-  font-size: 10px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: rgba(147, 197, 253, 0.16);
-  border: 1px solid rgba(147, 197, 253, 0.35);
-  color: #bfdbfe;
-  font-weight: normal;
-}
-.lg-demo__tag--warn {
-  background: rgba(251, 191, 36, 0.14);
-  border-color: rgba(251, 191, 36, 0.4);
-  color: #fde68a;
-}
-.lg-demo__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.lg-demo__row:hover {
-  background: rgba(147, 197, 253, 0.12);
-}
-.lg-demo__role {
-  font-size: 11.5px;
-  color: rgba(191, 214, 255, 0.75);
-  width: 44px;
-  flex-shrink: 0;
-}
-.lg-demo__login {
-  font-size: 12.5px;
-  color: #93c5fd;
-  font-family: var(--font-family-mono, monospace);
-}
-.lg-demo__pwd {
-  margin-left: auto;
-  font-size: 11.5px;
-  color: rgba(191, 214, 255, 0.7);
-  font-variant-numeric: tabular-nums;
-}
-.lg-demo__copy {
-  font-size: 10.5px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(147, 197, 253, 0.35);
-  background: transparent;
-  color: #bfdbfe;
-  cursor: pointer;
-  font-family: inherit;
-  white-space: nowrap;
-}
-.lg-demo__copy:hover {
-  background: rgba(147, 197, 253, 0.16);
-  border-color: #93c5fd;
-}
-.lg-demo__tip {
-  font-size: 11px;
-  color: rgba(191, 214, 255, 0.6);
-  line-height: 1.6;
-}
-/* 小屏提示（左侧品牌区隐藏时可见） */
-.lg-demo-mini {
-  display: none;
-  margin-top: 12px;
-  font-size: 11px;
-  color: var(--t3);
-  line-height: 1.6;
-  text-align: center;
-}
-@media (max-width: 900px) {
-  .lg-demo-mini {
-    display: block;
-  }
-}
-/* 试用咨询（克制的蓝白样式，非广告位） */
-.lg-trial {
-  margin-top: 18px;
-  padding: 14px 16px;
+.lgx-card {
+  width: 400px;
+  max-width: 100%;
+  background: #fff;
   border-radius: 12px;
-  background: var(--pri-bg);
-  border: 1px solid var(--pri-100);
+  border: 1px solid rgba(151, 173, 214, 0.28);
+  box-shadow: 0 1px 3px rgba(15, 40, 90, 0.05), 0 20px 48px -24px rgba(15, 40, 90, 0.22);
+  padding: 36px 36px 28px;
 }
-.lg-trial__tt {
-  font-size: 12.5px;
-  font-weight: var(--font-weight-semibold);
-  color: var(--t1);
-}
-.lg-trial__ph {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--t2);
-}
-.lg-trial__ph b {
-  color: var(--pri);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
-.lg-trial__ops {
+.lgx-chd {
   display: flex;
-  gap: 8px;
-  margin-top: 10px;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 26px;
 }
-.lg-btn--mini {
-  flex: 1;
+.lgx-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 7px 0;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: var(--font-weight-medium);
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px -4px rgba(96, 165, 250, 0.5);
+}
+.lgx-chd-tx b {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f1e3d;
+}
+.lgx-chd-tx i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: #8494b5;
+}
+.lgx-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid rgba(151, 173, 214, 0.28);
+  margin-bottom: 24px;
+}
+.lgx-tab {
+  text-align: center;
+  padding: 0 0 12px;
+  font-size: 13.5px;
+  color: #8494b5;
+  font-weight: 500;
   cursor: pointer;
-  border: 1px solid var(--pri-100);
-  background: #fff;
-  color: var(--pri);
+  transition: color 0.15s;
+  background: none;
+  border: none;
   font-family: inherit;
+}
+.lgx-tab.on {
+  color: #0f1e3d;
+  font-weight: 600;
+}
+.lgx-underline {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 33.333%;
+  height: 2px;
+  background: #2563eb;
+  border-radius: 2px;
+  transition: transform 0.2s ease;
+}
+.lgx-lb {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #44567e;
+  margin: 14px 0 6px;
+}
+.lgx-lb:first-of-type { margin-top: 0; }
+.lgx-field { position: relative; }
+.lgx-in {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid rgba(151, 173, 214, 0.32);
+  border-radius: 9px;
+  font-size: 13.5px;
+  background: #fff;
+  outline: none;
+  transition: all 0.15s;
+  color: #0f1e3d;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.lgx-in:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+.lgx-in-pwd { padding-right: 40px; }
+.lgx-eye {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  color: #8494b5;
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lgx-eye:hover { color: #44567e; }
+.lgx-phone { display: flex; align-items: stretch; }
+.lgx-phone-pre {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid rgba(151, 173, 214, 0.32);
+  border-right: none;
+  border-radius: 9px 0 0 9px;
+  font-size: 13.5px;
+  color: #44567e;
+  background: #f7f9fc;
+  white-space: nowrap;
+}
+.lgx-phone .lgx-in { border-radius: 0 9px 9px 0; }
+.lgx-code-row { display: flex; gap: 10px; }
+.lgx-code-row .lgx-in { flex: 1; }
+.lgx-code-btn {
+  flex-shrink: 0;
+  width: 118px;
+  border-radius: 9px;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  background: #fff;
+  color: #2563eb;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.lgx-code-btn:hover:not(:disabled) { background: rgba(37, 99, 235, 0.06); }
+.lgx-code-btn:disabled { color: #c3cde0; border-color: #e5e9f0; cursor: not-allowed; }
+.lgx-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 0 4px;
+  font-size: 12.5px;
+}
+.lgx-agree { margin-top: 18px; }
+.lgx-chk-lb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #44567e;
+  cursor: pointer;
+  user-select: none;
+}
+.lgx-chk {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #c3cde0;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  transition: all 0.15s;
+}
+.lgx-chk.on { background: #2563eb; border-color: #2563eb; }
+.lgx-chk svg { width: 9px; height: 9px; }
+.lgx-link {
+  color: #2563eb;
+  font-size: 12.5px;
   text-decoration: none;
-  transition: all 0.12s;
+  cursor: pointer;
 }
-.lg-btn--mini:hover {
-  border-color: var(--pri);
-  box-shadow: 0 0 0 3px var(--pri-bg);
+.lgx-link:hover { text-decoration: underline; }
+.lgx-err {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #dc2626;
 }
+.lgx-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: all 0.15s;
+  margin-top: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  box-shadow: 0 2px 10px -2px rgba(96, 165, 250, 0.5);
+}
+.lgx-btn:hover:not(:disabled) { background: linear-gradient(135deg, #2f6bff, #1d4ed8); }
+.lgx-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+.lgx-spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+}
+.lgx-qr-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0 4px;
+}
+.lgx-qr-box {
+  width: 200px;
+  height: 200px;
+  border-radius: 10px;
+  background: #f7f9fc repeating-linear-gradient(45deg, #eef1f6 0 8px, #f7f9fc 8px 16px);
+  border: 1px solid rgba(151, 173, 214, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lgx-qr-tip {
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: #44567e;
+}
+.lgx-divider {
+  height: 1px;
+  background: rgba(151, 173, 214, 0.24);
+  margin: 22px 0 14px;
+}
+.lgx-foot {
+  margin: 0;
+  font-size: 12px;
+  color: #8494b5;
+  text-align: center;
+  line-height: 1.6;
+}
+.lgx-copyright {
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #94a3b8;
+}
+
+/* ===== 响应式：小屏隐藏品牌区 ===== */
 @media (max-width: 900px) {
-  .lg-l {
-    display: none;
-  }
-  .lg-r {
-    width: 100%;
-  }
+  .lgx-brand { display: none; }
+  .lgx-right { flex: 1; }
 }
 </style>
