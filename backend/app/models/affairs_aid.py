@@ -53,6 +53,22 @@ class AidApply(PKMixin, TenantMixin, CommonMixin, Base):
                                        name="uk_aid_apply_batch_student"),)
 
 
+class AidObjection(PKMixin, TenantMixin, CommonMixin, Base):
+    """困难认定异议（C 包·公示与异议）。公示期内对某申请提异议→复核 成立(驳回申请)/不成立(维持)。
+    status SUBMITTED/CLOSED；result SUSTAINED异议成立/OVERRULED异议不成立。"""
+    __tablename__ = "t_affairs_aid_objection"
+
+    apply_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="被异议申请的学生")
+    objector_name: Mapped[str | None] = mapped_column(String(100), comment="异议人(可实名/匿名)")
+    reason: Mapped[str | None] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True)
+    result: Mapped[str | None] = mapped_column(String(30), comment="SUSTAINED/OVERRULED")
+    review_opinion: Mapped[str | None] = mapped_column(String(1000))
+    reviewer: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class AidFamilyEconomy(PKMixin, TenantMixin, CommonMixin, Base):
     """家庭经济信息（强敏感隔离表，1:1 回链 apply_id）。列表接口永不返回；查看完整值必写审计。"""
     __tablename__ = "t_affairs_aid_family_economy"

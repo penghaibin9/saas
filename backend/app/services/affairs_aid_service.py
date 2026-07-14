@@ -641,3 +641,91 @@ def aid_stats(user):
                 "approvalRate": round(approved / total, 3) if total else 0.0,
                 "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
                 "byLevel": [{"key": k, "count": v} for k, v in by_level.items()]}
+
+
+# ═══════════ 公示异议（C 包·公示与异议）═══════════
+
+_L_OBJ = {"SUBMITTED": "待复核", "CLOSED": "已复核"}
+_L_OBJ_RESULT = {"SUSTAINED": "异议成立(驳回)", "OVERRULED": "异议不成立(维持)"}
+
+
+def _obj_row(o, s=None) -> dict:
+    return {"objectionId": str(o.id), "applyId": str(o.apply_id), "studentId": str(o.student_id or ""),
+            "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+            "objectorName": o.objector_name or "", "reason": o.reason or "",
+            "status": o.status, "statusLabel": _L_OBJ.get(o.status, o.status),
+            "result": o.result or "", "resultLabel": _L_OBJ_RESULT.get(o.result, ""),
+            "reviewOpinion": o.review_opinion or "", "reviewer": o.reviewer or "",
+            "reviewedAt": _iso(o.reviewed_at)}
+
+
+def submit_objection(apply_id, body, user) -> dict:
+    """对公示中申请提异议（仅 PUBLICITY 状态；理由≥5字）。"""
+    from app.models import AidApply, AidObjection, StudentProfile
+    reason = (getattr(body, "reason", "") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "异议理由至少 5 字")
+    with session() as db:
+        x = db.get(AidApply, int(apply_id))
+        if not x or x.is_deleted or x.tenant_id != _tid():
+            raise not_found("认定申请不存在")
+        if x.status != "PUBLICITY":
+            raise AppException("DATA_CONFLICT", "仅公示中的申请可提异议")
+        o = AidObjection(tenant_id=_tid(), apply_id=int(apply_id), student_id=x.student_id,
+                         objector_name=getattr(body, "objectorName", None), reason=reason,
+                         status="SUBMITTED")
+        db.add(o); db.flush()
+        _audit(db, x.id, "AID_OBJECTION_SUBMIT", "")
+        db.commit(); db.refresh(o)
+        s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+        return _obj_row(o, s)
+
+
+def list_objections(user, status=None, page=1, page_size=50):
+    from app.models import AidObjection, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [AidObjection.tenant_id == _tid(), AidObjection.is_deleted.is_(False)]
+        if status:
+            conds.append(AidObjection.status == status)
+        rows = db.scalars(select(AidObjection).where(*conds).order_by(AidObjection.id.desc())).all()
+        out = []
+        for o in rows:
+            s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append(_obj_row(o, s))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def review_objection(objection_id, body, user) -> dict:
+    """异议复核：SUSTAINED 成立→申请置 REJECTED；OVERRULED 不成立→维持(申请不变)。意见≥5字。"""
+    from datetime import datetime
+    from app.models import AidApply, AidObjection, StudentProfile
+    result = (getattr(body, "result", "") or "").strip()
+    if result not in ("SUSTAINED", "OVERRULED"):
+        raise AppException("VALIDATION_ERROR", "复核结论非法")
+    opinion = (getattr(body, "opinion", "") or "").strip()
+    if len(opinion) < 5:
+        raise AppException("VALIDATION_ERROR", "复核意见至少 5 字")
+    with session() as db:
+        o = db.get(AidObjection, int(objection_id))
+        if not o or o.is_deleted or o.tenant_id != _tid():
+            raise not_found("异议不存在")
+        if o.status != "SUBMITTED":
+            raise AppException("DATA_CONFLICT", "该异议已复核")
+        o.status, o.result = "CLOSED", result
+        o.review_opinion, o.reviewer = opinion, _op()[0]
+        o.reviewed_at, o.version = datetime.utcnow(), o.version + 1
+        if result == "SUSTAINED":
+            x = db.get(AidApply, int(o.apply_id))
+            if x and x.status == "PUBLICITY":
+                x.status, x.result_at, x.return_reason = "REJECTED", datetime.utcnow(), "公示异议成立"
+                x.version += 1
+        _audit(db, o.apply_id, "AID_OBJECTION_REVIEW", result)
+        db.commit(); db.refresh(o)
+        s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
+        return _obj_row(o, s)

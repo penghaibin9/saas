@@ -56,7 +56,7 @@ from app.models.affairs_class import (AffairsClassMaterial,  # noqa: F401
                                       AffairsCounselorAssessment,
                                       AffairsCounselorAssessmentPeriod)
 from app.models.affairs_aid import (AidApply, AidBatch, AidFamilyEconomy,  # noqa: F401
-                                    AidLevelHistory, FundingApplication,
+                                    AidLevelHistory, AidObjection, FundingApplication,
                                     FundingBatch, FundingDisbursement, FundingProject)
 from app.models.affairs_discipline import (AffairsRiskHandle,  # noqa: F401
                                            AffairsRiskRecord, DisciplineAppeal,

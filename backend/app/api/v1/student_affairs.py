@@ -337,6 +337,16 @@ class AidAdjustBody(BaseModel):
     reason: str = Field(..., min_length=1)
 
 
+class AidObjectionBody(BaseModel):
+    reason: str = Field(..., min_length=5, description="异议理由≥5字")
+    objectorName: Optional[str] = None
+
+
+class AidObjectionReviewBody(BaseModel):
+    result: str = Field(..., description="SUSTAINED异议成立/OVERRULED异议不成立")
+    opinion: str = Field(..., min_length=5)
+
+
 class AidRevealBody(BaseModel):
     reason: Optional[str] = Field("", description="查看完整家庭经济的原因（落 SENSITIVE 审计）")
 
@@ -364,6 +374,25 @@ def aid_applications(batchId: Optional[str] = None, status: Optional[str] = None
                      user=Depends(require_permission("studentAffairs.aid.view"))):
     items, total = aid_svc.list_applications(user, batchId, status, level, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/aid/applications/{applyId}/objection", summary="对公示中申请提异议（理由≥5字）")
+def aid_objection_submit(body: AidObjectionBody, applyId: int = Path(...),
+                         user=Depends(require_permission("studentAffairs.aid.view"))):
+    return success(aid_svc.submit_objection(applyId, body, user), message="异议已提交")
+
+
+@router.get("/aid/objections", summary="困难认定异议列表")
+def aid_objections(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                   user=Depends(require_permission("studentAffairs.aid.view"))):
+    items, total = aid_svc.list_objections(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/aid/objections/{objectionId}/review", summary="异议复核（成立驳回/不成立维持）")
+def aid_objection_review(body: AidObjectionReviewBody, objectionId: int = Path(...),
+                         user=Depends(require_permission("studentAffairs.aid.approve"))):
+    return success(aid_svc.review_objection(objectionId, body, user), message="已复核")
 
 
 @router.get("/aid/difficult-students", summary="困难学生库（供助学金/绿通引用）")
