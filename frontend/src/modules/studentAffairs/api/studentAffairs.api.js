@@ -376,6 +376,32 @@ export const studentAffairsApi = {
   getStatsCockpit() {
     return callStrict(() => request('/student-affairs/stats/cockpit'))
   },
+
+  // ─────────────── 辅导员考评（D 包 · /counselor-eval） ───────────────
+  getEvalIndicators() {
+    return callStrict(() => request('/student-affairs/counselor-eval/indicators'))
+  },
+  /** 建指标。body: { name, category?, weight?, maxScore?, sortOrder? } */
+  createEvalIndicator(body) {
+    return callStrict(() => request('/student-affairs/counselor-eval/indicators', { method: 'POST', body }))
+  },
+  getCounselorEvals({ periodCode = '', status = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }
+    if (periodCode) params.periodCode = periodCode
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/counselor-eval/evals', { params }))
+  },
+  /** 录/改评分。body: { periodCode, counselorKey, counselorName?, scores, remark? } */
+  upsertCounselorEval(body) {
+    return callStrict(() => request('/student-affairs/counselor-eval/evals', { method: 'POST', body }))
+  },
+  publishCounselorEval(evalId) {
+    return callStrict(() => request(`/student-affairs/counselor-eval/evals/${evalId}/publish`, { method: 'POST', body: {} }))
+  },
+  /** 考评申诉复核。body: { result, opinion, scores? } */
+  reviewEvalAppeal(evalId, body) {
+    return callStrict(() => request(`/student-affairs/counselor-eval/evals/${evalId}/appeal-review`, { method: 'POST', body }))
+  },
   /** 困难认定异议列表。 */
   getAidObjections({ status = '', page = 1, pageSize = 100 } = {}) {
     const params = { page, pageSize }

@@ -24,6 +24,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '辅导员工作台', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
       },
       {
+        path: 'counselor-eval',
+        name: 'student-affairs-counselor-eval',
+        component: () => import('@/modules/studentAffairs/views/eval/CounselorEvalView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '辅导员考评', requiresAuth: true, permissionKey: 'studentAffairs.counselorEval.view' }
+      },
+      {
         path: 'profile',
         name: 'student-affairs-profile',
         component: () => import('@/modules/studentAffairs/views/StudentAffairsProfileListView.vue'),
