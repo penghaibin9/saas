@@ -294,10 +294,11 @@ export const NAV_PLAN = [
       I('考务控制台（批次/课程/考场/监考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),
       ...P('座位安排', '巡考安排', '准考证', '考务通知', '缓考审批', '考务归档')
     ]),
-    mod('aa-makeup', '补考重修缓考免修', null, [
-      ...P('补考名单', '补考报名', '补考安排', '重修报名', '重修班管理', '缓考申请', '缓考审批', '免修申请', '免修审批'),
+    mod('aa-makeup', '补考重修缓考免修', '/admin/academic-affairs/makeup', [
+      I('补考重修免修控制台（四条线）', '/admin/academic-affairs/makeup', 'academicAffairs.makeup.view'),
+      I('重修免修申请（学生自助）', '/admin/academic-affairs/my-makeup', 'academicAffairs.retake.apply'),
       I('补考重修成绩（现有）', '/admin/academic/makeup-retake'),
-      ...P('统计分析', '材料归档')
+      ...P('补考安排', '重修班管理', '缓考申请', '统计分析', '材料归档')
     ]),
     mod('aa-grades', '成绩管理', '/admin/academic-affairs/grade-overview', [
       I('成绩总览', '/admin/academic-affairs/grade-overview'),

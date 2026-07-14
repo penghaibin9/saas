@@ -61,6 +61,9 @@ class AcademicMakeup(PKMixin, TenantMixin, CommonMixin, Base):
     remind_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     record_status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
     void_reason: Mapped[str | None] = mapped_column(String(500))
+    # 13B-SM-12.1 补考批次回链（融合设计 §5.3；nullable，历史行零回填）
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_makeup_batch 补考批次")
+    final_score: Mapped[int | None] = mapped_column(Integer, comment="补考最终成绩(计分规则封顶后)")
 
 
 class AcademicRetake(PKMixin, TenantMixin, CommonMixin, Base):
@@ -72,6 +75,8 @@ class AcademicRetake(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ENROLLING")
     record_status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
     void_reason: Mapped[str | None] = mapped_column(String(500))
+    # 13B-SM-12.2 重修申请回链（融合设计 §5.3；nullable）
+    apply_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_retake_apply 重修申请")
 
 
 class AcademicWarning(PKMixin, TenantMixin, CommonMixin, Base):

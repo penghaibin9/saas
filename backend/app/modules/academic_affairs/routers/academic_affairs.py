@@ -28,6 +28,7 @@ from app.modules.academic_affairs.services import academic_affairs_schedule_chan
 from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
 from app.modules.academic_affairs.services import academic_affairs_warning_service as warn_svc
 from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
+from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup_svc
 from app.modules.academic_affairs.services import academic_affairs_selection_service as selection_svc
 from app.modules.academic_affairs.services import academic_affairs_service as svc
 from app.modules.academic_affairs.services import academic_affairs_stats_service as stats_svc
@@ -1421,3 +1422,174 @@ def defer_counselor_review(body: DeferReviewBody, deferId: int = Path(...),
 def defer_review(body: DeferReviewBody, deferId: int = Path(...),
                  user=Depends(require_permission(_DEFER_REVIEW))):
     return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+
+
+# ══════════════ 补考重修缓考免修（13B-SM-12，/academic-affairs/makeup|retake|exemption/*） ══════════════
+_MK_MANAGE = "academicAffairs.makeup.manage"
+_MK_VIEW = "academicAffairs.makeup.view"
+_RT_APPLY = "academicAffairs.retake.apply"
+_RT_REVIEW = "academicAffairs.retake.review"
+_EX_REVIEW = "academicAffairs.exemption.review"
+
+
+class MakeupBatchBody(BaseModel):
+    batchName: str = Field(..., min_length=1)
+    termCode: Optional[str] = None
+    examBatchRef: Optional[str] = None
+
+
+class MakeupEnrollBody(BaseModel):
+    acadStudentId: str = Field(..., min_length=1)
+    courseName: str = Field(..., min_length=1)
+    originScore: Optional[int] = None
+
+
+class MakeupScoreBody(BaseModel):
+    score: int = Field(..., ge=0, le=100)
+
+
+class RetakeApplyBody(BaseModel):
+    courseName: str = Field(..., min_length=1)
+    termCode: Optional[str] = None
+    reason: Optional[str] = Field(None, max_length=500)
+
+
+class RetakeReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class RetakeEnrollBody(BaseModel):
+    teachingTaskRef: Optional[str] = None
+
+
+class ExemptionApplyBody(BaseModel):
+    courseName: str = Field(..., min_length=1)
+    termCode: Optional[str] = None
+    reason: Optional[str] = Field(None, max_length=500)
+    materialFileIds: Optional[str] = None
+
+
+class ExemptionReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/RETURN/REJECT")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class MergeDeferredBody(BaseModel):
+    batchId: str = Field(..., min_length=1)
+
+
+# ── 补考 ──
+@router.get("/makeup/pending", summary="补考候选名单（成绩发布后不及格）")
+def makeup_pending(term: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                   user=Depends(require_permission(_MK_VIEW))):
+    items, total = makeup_svc.makeup_pending(user, term, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/makeup/batches", summary="建补考批次")
+def makeup_batch_create(body: MakeupBatchBody, user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.create_makeup_batch(user, body), message="已创建")
+
+
+@router.get("/makeup/batches", summary="补考批次列表")
+def makeup_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                   user=Depends(require_permission(_MK_VIEW))):
+    items, total = makeup_svc.list_makeup_batches(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/makeup/batches/{bid}/enroll", summary="纳入补考名单")
+def makeup_enroll(body: MakeupEnrollBody, bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.enroll_makeup(user, bid, body.acadStudentId, body.courseName, body.originScore), message="已纳入")
+
+
+@router.post("/makeup/batches/{bid}/publish", summary="发布补考批次")
+def makeup_publish(bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.publish_makeup_batch(user, bid), message="已发布")
+
+
+@router.post("/makeup/records/{mid}/score", summary="录入补考成绩")
+def makeup_score(body: MakeupScoreBody, mid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.enter_makeup_score(user, mid, body.score), message="已录入")
+
+
+@router.post("/makeup/batches/{bid}/finish", summary="结束补考批次（按规则回写成绩）")
+def makeup_finish(bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.finish_makeup_batch(user, bid), message="已结束回写")
+
+
+# ── 重修 ──
+@router.post("/retake/apply", summary="学生重修报名（次数上限校验）")
+def retake_apply(body: RetakeApplyBody, user=Depends(_require_student)):
+    return success(makeup_svc.retake_apply(user, body), message="重修报名已提交")
+
+
+@router.get("/retake/my", summary="我的重修申请")
+def retake_my(status: Optional[str] = None, user=Depends(_require_student)):
+    items, total = makeup_svc.retake_list(user, status, student_only=True)
+    return success(paginate(items, total, 1, len(items) or 1))
+
+
+@router.get("/retake/applies", summary="重修申请审批列表")
+def retake_applies(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                   user=Depends(require_permission(_RT_REVIEW))):
+    items, total = makeup_svc.retake_list(user, status, student_only=False, page=page, page_size=pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/retake/applies/{aid}/review", summary="重修教务处审批")
+def retake_review(body: RetakeReviewBody, aid: int = Path(...), user=Depends(require_permission(_RT_REVIEW))):
+    return success(makeup_svc.retake_review(user, aid, body.action, body.reason), message="已处理")
+
+
+@router.post("/retake/applies/{aid}/enroll", summary="重修编入跟班")
+def retake_enroll(body: RetakeEnrollBody, aid: int = Path(...), user=Depends(require_permission(_RT_REVIEW))):
+    return success(makeup_svc.retake_enroll(user, aid, body.teachingTaskRef), message="已编入")
+
+
+# ── 免修（三级审批） ──
+@router.post("/exemption/apply", summary="学生免修申请（已获成绩422+每学期上限）")
+def exemption_apply(body: ExemptionApplyBody, user=Depends(_require_student)):
+    return success(makeup_svc.exemption_apply(user, body), message="免修申请已提交")
+
+
+@router.get("/exemption/my", summary="我的免修申请")
+def exemption_my(status: Optional[str] = None, user=Depends(_require_student)):
+    items, total = makeup_svc.exemption_list(user, status, student_only=True)
+    return success(paginate(items, total, 1, len(items) or 1))
+
+
+@router.get("/exemption/applies", summary="免修审批列表（教师/学院/教务处）")
+def exemption_applies(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                      user=Depends(require_permission(_EX_REVIEW))):
+    items, total = makeup_svc.exemption_list(user, status, student_only=False, page=page, page_size=pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/exemption/applies/{eid}/review", summary="免修三级审批")
+def exemption_review(body: ExemptionReviewBody, eid: int = Path(...), user=Depends(require_permission(_EX_REVIEW))):
+    return success(makeup_svc.exemption_review(user, eid, body.action, body.reason), message="已处理")
+
+
+# ── 缓考合流 ──
+@router.get("/makeup/deferred-pool", summary="缓考 APPROVED 学生池（供并入补考批次）")
+def deferred_pool(page: int = 1, pageSize: int = 50, user=Depends(require_permission(_MK_VIEW))):
+    items, total = makeup_svc.deferred_pool(user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/makeup/deferred-pool/{did}/merge", summary="缓考并入补考批次")
+def deferred_merge(body: MergeDeferredBody, did: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.merge_deferred(user, did, int(body.batchId)), message="已并入")
+
+
+# ── 统计 ──
+@router.get("/makeup/stats", summary="补考重修免修统计")
+def makeup_stats(user=Depends(require_permission(_MK_VIEW))):
+    mb, mbt = makeup_svc.list_makeup_batches(user, None, 1, 1000)
+    rt, rtt = makeup_svc.retake_list(user, None, False, 1, 1000)
+    ex, ext = makeup_svc.exemption_list(user, None, False, 1, 1000)
+    return success({"makeupBatchCount": mbt, "retakeApplyCount": rtt, "exemptionApplyCount": ext,
+                    "retakeApproved": len([r for r in rt if r["status"] in ("APPROVED", "ENROLLED", "FINISHED")]),
+                    "exemptionApproved": len([e for e in ex if e["status"] == "APPROVED"])})

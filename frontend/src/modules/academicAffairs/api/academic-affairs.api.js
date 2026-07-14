@@ -487,4 +487,31 @@ export const academicAffairsExamApi = {
   deferResubmit(id) { return call(() => request(`${BASE}/deferred-exams/${id}/resubmit`, { method: 'POST' })) }
 }
 
+/* ═══════════ 补考重修缓考免修（SM-12 · /academic-affairs/makeup|retake|exemption/*） ═══════════ */
+export const academicAffairsMakeupApi = {
+  // 补考
+  makeupPending(params = {}) { return callList(`${BASE}/makeup/pending`, params) },
+  listBatches(params = {}) { return callList(`${BASE}/makeup/batches`, params) },
+  createBatch(body) { return call(() => request(`${BASE}/makeup/batches`, { method: 'POST', body })) },
+  enroll(bid, body) { return call(() => request(`${BASE}/makeup/batches/${bid}/enroll`, { method: 'POST', body })) },
+  publishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/publish`, { method: 'POST' })) },
+  score(mid, score) { return call(() => request(`${BASE}/makeup/records/${mid}/score`, { method: 'POST', body: { score } })) },
+  finishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/finish`, { method: 'POST' })) },
+  stats() { return call(() => request(`${BASE}/makeup/stats`)) },
+  // 重修
+  retakeApply(body) { return call(() => request(`${BASE}/retake/apply`, { method: 'POST', body })) },
+  retakeMy(params = {}) { return call(() => request(`${BASE}/retake/my`, { params })) },
+  retakeApplies(params = {}) { return callList(`${BASE}/retake/applies`, params) },
+  retakeReview(aid, action, reason = '') { return call(() => request(`${BASE}/retake/applies/${aid}/review`, { method: 'POST', body: { action, reason } })) },
+  retakeEnroll(aid, teachingTaskRef) { return call(() => request(`${BASE}/retake/applies/${aid}/enroll`, { method: 'POST', body: { teachingTaskRef } })) },
+  // 免修
+  exemptionApply(body) { return call(() => request(`${BASE}/exemption/apply`, { method: 'POST', body })) },
+  exemptionMy(params = {}) { return call(() => request(`${BASE}/exemption/my`, { params })) },
+  exemptionApplies(params = {}) { return callList(`${BASE}/exemption/applies`, params) },
+  exemptionReview(eid, action, reason = '') { return call(() => request(`${BASE}/exemption/applies/${eid}/review`, { method: 'POST', body: { action, reason } })) },
+  // 缓考合流
+  deferredPool(params = {}) { return callList(`${BASE}/makeup/deferred-pool`, params) },
+  mergeDeferred(did, batchId) { return call(() => request(`${BASE}/makeup/deferred-pool/${did}/merge`, { method: 'POST', body: { batchId } })) }
+}
+
 export default academicAffairsApi

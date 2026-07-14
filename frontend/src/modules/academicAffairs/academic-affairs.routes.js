@@ -67,7 +67,10 @@ const layoutRoute = {
     { path: 'selection', name: 'aa-selection', component: () => import('@/modules/academicAffairs/views/AaSelectionConsoleView.vue'), meta: meta('academicAffairs.selection.view', '选课管理') },
     { path: 'my-selection', name: 'aa-my-selection', component: () => import('@/modules/academicAffairs/views/AaSelectionStudentView.vue'), meta: meta('academicAffairs.selection.enroll', '我的选课') },
     // ── 考务管理（教务处控制台） ──
-    { path: 'exam', name: 'aa-exam', component: () => import('@/modules/academicAffairs/views/AaExamConsoleView.vue'), meta: meta('academicAffairs.exam.view', '考务管理') }
+    { path: 'exam', name: 'aa-exam', component: () => import('@/modules/academicAffairs/views/AaExamConsoleView.vue'), meta: meta('academicAffairs.exam.view', '考务管理') },
+    // ── 补考重修缓考免修 ──
+    { path: 'makeup', name: 'aa-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupConsoleView.vue'), meta: meta('academicAffairs.makeup.view', '补考重修缓考免修') },
+    { path: 'my-makeup', name: 'aa-my-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupStudentView.vue'), meta: meta('academicAffairs.retake.apply', '重修免修申请') }
   ]
 }
 
