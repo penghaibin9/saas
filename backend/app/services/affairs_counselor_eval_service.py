@@ -1,6 +1,8 @@
 """13A-D 辅导员考评（D 包）：指标配置 → 录评分 → 发布 → 申诉复核。
 
-total_score = 各指标得分之和（权重供展示与后续加权扩展）。留痕 AuditTrail(biz_type=COUNSELOR_EVAL)。
+total_score = 各指标得分之和（保留原口径，历史断言不变）；
+weighted_total_score = 按指标 weight 的加权平均 Σscore×weight/Σweight（附加列，无可加权项→None）。
+留痕 AuditTrail(biz_type=COUNSELOR_EVAL)。
 考评为管理端配置数据，按租户可见（学工处/学院管理），不含学生 PII。
 """
 from __future__ import annotations
@@ -85,6 +87,7 @@ def _eval_row(e) -> dict:
     return {"evalId": str(e.id), "periodCode": e.period_code, "counselorKey": e.counselor_key,
             "counselorName": e.counselor_name or "", "scores": e.scores_json or {},
             "totalScore": float(e.total_score) if e.total_score is not None else None,
+            "weightedTotalScore": float(e.weighted_total_score) if e.weighted_total_score is not None else None,
             "remark": e.remark or "", "status": e.status, "statusLabel": L_EVAL_STATUS.get(e.status, e.status),
             "publishedAt": _iso(e.published_at), "appealStatus": e.appeal_status,
             "appealStatusLabel": L_APPEAL.get(e.appeal_status, e.appeal_status),
@@ -102,6 +105,33 @@ def _total(scores) -> float:
         except (TypeError, ValueError):
             continue
     return round(tot, 2)
+
+
+def _weighted_total(db, scores):
+    """加权总分口径＝**按权重的加权平均**：Σ(score_i×weight_i) / Σweight_i，
+    只统计 scores 中 key 命中「当期启用且 weight>0」指标的项（scores_json key = indicatorId）。
+    无任何可加权项（指标未配权重/无匹配）→ 返回 None，前端回退展示原始 total_score，历史不受影响。"""
+    if not isinstance(scores, dict) or not scores:
+        return None
+    from app.models import CounselorEvalIndicator
+    inds = db.scalars(select(CounselorEvalIndicator).where(
+        CounselorEvalIndicator.tenant_id == _tid(),
+        CounselorEvalIndicator.is_deleted.is_(False),
+        CounselorEvalIndicator.status == "ENABLED")).all()
+    wmap = {str(i.id): float(i.weight) for i in inds if i.weight is not None and float(i.weight) > 0}
+    num = den = 0.0
+    for k, v in scores.items():
+        w = wmap.get(str(k))
+        if w is None:
+            continue
+        try:
+            num += float(v) * w
+            den += w
+        except (TypeError, ValueError):
+            continue
+    if den <= 0:
+        return None
+    return round(num / den, 2)
 
 
 def list_evals(user, period_code=None, status=None, page=1, page_size=50):
@@ -137,11 +167,13 @@ def upsert_eval(body, user) -> dict:
         if e is None:
             e = CounselorEval(tenant_id=_tid(), period_code=period, counselor_key=key,
                               counselor_name=getattr(body, "counselorName", None),
-                              scores_json=scores, total_score=_total(scores), status="DRAFT",
+                              scores_json=scores, total_score=_total(scores),
+                              weighted_total_score=_weighted_total(db, scores), status="DRAFT",
                               remark=getattr(body, "remark", None), created_by=_uid_int(user))
             db.add(e); db.flush()
         else:
             e.scores_json, e.total_score = scores, _total(scores)
+            e.weighted_total_score = _weighted_total(db, scores)
             e.counselor_name = getattr(body, "counselorName", None) or e.counselor_name
             e.remark, e.version = getattr(body, "remark", None), e.version + 1
         _audit(db, e.id, "EVAL_UPSERT", f"{period}/{key}")
@@ -201,6 +233,7 @@ def review_eval_appeal(eval_id, body, user) -> dict:
         new_scores = getattr(body, "scores", None)
         if result == "ADJUSTED" and isinstance(new_scores, dict) and new_scores:
             e.scores_json, e.total_score = new_scores, _total(new_scores)
+            e.weighted_total_score = _weighted_total(db, new_scores)
         e.version += 1
         _audit(db, e.id, "EVAL_APPEAL_REVIEW", result)
         db.commit(); db.refresh(e)

@@ -8,8 +8,9 @@ from pydantic import BaseModel, Field
 
 from app.core.response import success, paginate
 from app.core.permissions import require_permission
-from app.core.security import require_staff  # 仅敏感 reveal 等「服务层自鉴权+落 DENY 审计」端点用粗粒度门禁，避免网关短路吞掉越权审计
+from app.core.security import get_current_user, require_staff  # 仅敏感 reveal 等「服务层自鉴权+落 DENY 审计」端点用粗粒度门禁，避免网关短路吞掉越权审计
 from app.services import affairs_activity_service as activity_svc
+from app.services import affairs_attachment_service as attach_svc
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_club_service as club_svc
 from app.services import affairs_counselor_eval_service as ce_svc
@@ -1369,6 +1370,7 @@ class CategoryBody(BaseModel):
     categoryCode: str = Field(..., min_length=1)
     categoryName: str = Field(..., min_length=1)
     creditType: Optional[str] = None
+    weight: Optional[float] = Field(None, gt=0, description="类目加权系数（成绩单加权汇总；默认1）")
     description: Optional[str] = None
     sortOrder: Optional[int] = 0
 
@@ -1769,3 +1771,36 @@ def league_dev_terminate(body: ReasonBody, devId: int = Path(...),
 def league_dev_stages(devId: int = Path(...),
                       user=Depends(require_permission("studentAffairs.league.view"))):
     return success({"items": league_svc.list_stages(devId, user)})
+
+
+# ═══════════ 统一业务附件（违纪/送达/申诉/党团/减免贷款回执/家校 材料·授权下载+审计）═══════════
+# 上传字节复用 POST /api/v1/files/upload（真实落盘 + t_file_object），本节只做「关联/列表/授权下载」。
+
+class AttachmentLinkBody(BaseModel):
+    bizType: str = Field(..., description="DISCIPLINE/DISCIPLINE_APPEAL/LEAGUE/CLUB/FUNDING/REDUCTION/LOAN/HOME_SCHOOL")
+    bizId: int = Field(..., description="业务记录 id")
+    fileId: str = Field(..., min_length=1, description="POST /files/upload 返回的 fileId")
+    note: Optional[str] = None
+
+
+@router.post("/attachments", summary="关联业务材料附件（需对应 biz 管理权限；file 先经 /files/upload 上传）")
+def attachment_link(body: AttachmentLinkBody, user=Depends(get_current_user)):
+    return success(attach_svc.link_attachment(body.bizType, body.bizId, body.fileId, body.note, user),
+                   message="已关联")
+
+
+@router.get("/attachments", summary="业务材料附件列表（脱敏：仅名称+id；需对应 biz 查看权限）")
+def attachment_list(bizType: str, bizId: int, user=Depends(get_current_user)):
+    return success({"items": attach_svc.list_attachments(bizType, bizId, user)})
+
+
+@router.get("/attachments/{attachmentId}/download", summary="授权下载业务材料（require_permission 按 biz + SENSITIVE_EXPORT 审计）")
+def attachment_download(attachmentId: int = Path(...), user=Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+
+    from app.core.exceptions import not_found
+    resolved = attach_svc.download_attachment(attachmentId, user)
+    if not resolved:
+        raise not_found("文件不存在或已丢失")
+    path, filename = resolved
+    return FileResponse(str(path), filename=filename)

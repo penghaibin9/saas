@@ -134,6 +134,7 @@ class AffairsCreditCategory(PKMixin, TenantMixin, CommonMixin, Base):
     category_code: Mapped[str] = mapped_column(String(50), nullable=False, comment="类目编码")
     category_name: Mapped[str] = mapped_column(String(100), nullable=False)
     credit_type: Mapped[str | None] = mapped_column(String(30), comment="默认学分类型")
+    weight: Mapped[float | None] = mapped_column(Numeric(6, 2), default=1, comment="类目加权系数（成绩单加权汇总；默认1）")
     description: Mapped[str | None] = mapped_column(String(500))
     sort_order: Mapped[int | None] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ENABLED")

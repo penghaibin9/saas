@@ -398,24 +398,39 @@ def credit_ledger(user, credit_type=None, page=1, page_size=50):
 
 
 def student_report(student_id, user):
-    """个人第二课堂成绩单：按类型/类目汇总 + 明细。"""
-    from app.models import AffairsActivityCredit, StudentProfile
+    """个人第二课堂成绩单：按类型/类目汇总 + 明细。
+
+    加权（本轮增强 a）：按类目系数 t_affairs_credit_category.weight 对类目原始合计加权，
+    加权只在展示/汇总层（byCategoryWeighted + weightedTotal），**不改原始明细与 byCategory 原始合计**，
+    不回改任何历史已入账 credit 行。类目无权重配置默认系数 1（加权=原始）。"""
+    from app.models import AffairsActivityCredit, AffairsCreditCategory, StudentProfile
     with session() as db:
         s = db.get(StudentProfile, int(student_id))
         rows = db.scalars(select(AffairsActivityCredit).where(
             AffairsActivityCredit.tenant_id == _tid(),
             AffairsActivityCredit.student_id == int(student_id)).order_by(
             AffairsActivityCredit.id.desc())).all()
+        # 类目系数映射（启用类目；缺省 1）
+        cats = db.scalars(select(AffairsCreditCategory).where(
+            AffairsCreditCategory.tenant_id == _tid(),
+            AffairsCreditCategory.is_deleted.is_(False))).all()
+        wmap = {c.category_code: (float(c.weight) if c.weight is not None else 1.0) for c in cats}
         by_type, by_cat = {}, {}
         for c in rows:
             v = float(c.credit_value or 0)
             by_type[c.credit_type] = round(by_type.get(c.credit_type, 0) + v, 2)
             if c.category_code:
                 by_cat[c.category_code] = round(by_cat.get(c.category_code, 0) + v, 2)
+        raw_total = round(sum(by_cat.values()), 2)
+        by_cat_weighted = {k: round(v * wmap.get(k, 1.0), 2) for k, v in by_cat.items()}
+        weighted_total = round(sum(by_cat_weighted.values()), 2)
         return {"studentId": str(student_id), "realName": s.real_name if s else "",
                 "studentNo": s.student_no if s else "",
                 "byType": [{"key": k, "value": v} for k, v in by_type.items()],
                 "byCategory": [{"key": k, "value": v} for k, v in by_cat.items()],
+                "byCategoryWeighted": [{"key": k, "value": v, "weight": wmap.get(k, 1.0),
+                                        "rawValue": by_cat[k]} for k, v in by_cat_weighted.items()],
+                "rawTotal": raw_total, "weightedTotal": weighted_total,
                 "items": [{"activityId": str(c.activity_id or ""), "creditType": c.credit_type,
                            "creditValue": float(c.credit_value or 0), "categoryCode": c.category_code or "",
                            "remark": c.remark or "", "grantedAt": _iso(c.granted_at)} for c in rows]}
@@ -429,6 +444,7 @@ def list_categories(user):
             AffairsCreditCategory.sort_order, AffairsCreditCategory.id)).all()
         return [{"categoryCode": c.category_code, "categoryName": c.category_name,
                  "creditType": c.credit_type or "", "description": c.description or "",
+                 "weight": float(c.weight) if c.weight is not None else 1.0,
                  "sortOrder": c.sort_order or 0, "status": c.status} for c in rows]
 
 
@@ -444,14 +460,16 @@ def create_category(body, user) -> dict:
             AffairsCreditCategory.category_code == code)).first()
         if dup:
             raise AppException("DATA_CONFLICT", "类目编码已存在")
+        w = getattr(body, "weight", None)
         c = AffairsCreditCategory(tenant_id=_tid(), category_code=code, category_name=name,
                                   credit_type=getattr(body, "creditType", None),
+                                  weight=w if (w is not None and float(w) > 0) else 1,
                                   description=getattr(body, "description", None),
                                   sort_order=getattr(body, "sortOrder", 0) or 0, status="ENABLED")
         db.add(c); db.flush()
         _audit(db, None, "CREDIT_CATEGORY_CREATE", code)
         db.commit()
-        return {"categoryCode": code, "categoryName": name}
+        return {"categoryCode": code, "categoryName": name, "weight": float(c.weight) if c.weight is not None else 1.0}
 
 
 def activity_stats(user):

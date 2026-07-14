@@ -37,6 +37,8 @@ class CounselorEval(PKMixin, TenantMixin, CommonMixin, Base):
     counselor_name: Mapped[str | None] = mapped_column(String(100))
     scores_json: Mapped[dict | None] = mapped_column(JSON, comment="{indicatorId: score} 明细")
     total_score: Mapped[float | None] = mapped_column(Numeric(8, 2))
+    weighted_total_score: Mapped[float | None] = mapped_column(
+        Numeric(8, 2), comment="按指标权重加权总分Σscore×weight/Σweight（附加列，不改 total_score）")
     remark: Mapped[str | None] = mapped_column(String(1000))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime)

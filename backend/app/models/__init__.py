@@ -74,6 +74,7 @@ from app.models.affairs_activity import (AffairsActivity,  # noqa: F401
                                          AffairsCreditAppeal,
                                          AffairsCreditCategory,
                                          AffairsVolunteerRecord)
+from app.models.affairs_attachment import AffairsAttachment  # noqa: F401
 from app.models.affairs_club import (AffairsClub,  # noqa: F401
                                      AffairsClubAnnualReview,
                                      AffairsClubMember)
