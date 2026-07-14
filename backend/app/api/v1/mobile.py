@@ -72,6 +72,16 @@ def internship_checkin(body: dict = Body(default={}), user=Depends(get_current_u
     return success(stu.internship_checkin(user, body))
 
 
+@router.get("/internship/checkin/week", summary="本周打卡记录（本人）")
+def internship_checkin_week(user=Depends(get_current_user)):
+    return success(stu.internship_checkin_week(user))
+
+
+@router.get("/internship/enterprises", summary="企业岗位库（本人可浏览，城市筛选）")
+def internship_enterprises(city: str = "", user=Depends(get_current_user)):
+    return success(stu.internship_enterprises(user, city))
+
+
 @router.post("/internship/exceptions/{exception_id}/appeal", summary="本人对未处理打卡异常提交凭证申诉")
 def internship_exception_appeal(exception_id: str, body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_exception_appeal(user, exception_id, body), message="申诉已提交")
@@ -431,6 +441,16 @@ def teacher_orientation_today_checkins(user=Depends(get_current_user)):
 @router.get("/teacher/orientation/dashboard", summary="迎新看板（移动版·迎新老师）")
 def teacher_orientation_dashboard(user=Depends(get_current_user)):
     return success(tea.orientation_dashboard(user))
+
+
+@router.get("/teacher/internship/visit-plans", summary="指导巡访·本月巡访计划学生列表")
+def teacher_internship_visit_plans(user=Depends(get_current_user)):
+    return success(tea.internship_visit_plans(user))
+
+
+@router.post("/teacher/internship/visit-plans/record", summary="记录巡访（按学生实习记录ID，范围校验+审计）")
+def teacher_internship_visit_record(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.internship_visit_record(user, body.get("internshipId") or ""), message="已记录巡访")
 
 
 @router.get("/teacher/campus-service", summary="教师·在校服务待处理")

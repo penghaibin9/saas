@@ -61,6 +61,30 @@
             <view v-else-if="pagedFooter(data.reports) === 'end'" class="ir__paging is-end">没有更多了</view>
           </view>
 
+          <!-- 指导巡访 -->
+          <view v-else-if="tab === 'visit'" class="stack">
+            <MobileGlobalState v-if="visitState === 'loading'" state="loading" />
+            <MobileGlobalState v-else-if="!visitPlans.length" state="empty" title="本月暂无巡访计划" description="学院/教务下发巡访计划后会出现在这里。" />
+            <template v-else>
+              <view v-for="p in visitPlans" :key="p.id" class="ir card">
+                <view class="row-between">
+                  <text class="t-md t-bold">{{ p.enterpriseName || '企业待定' }}</text>
+                  <text class="ir__week">{{ p.planDate || '待定日期' }}</text>
+                </view>
+                <text class="ir__company" v-if="p.location">{{ p.location }}</text>
+                <view class="ir__visit-students">
+                  <view v-for="s in p.students" :key="s.name" class="ir__visit-row">
+                    <text class="flex-1 t-md">{{ s.name }}</text>
+                    <text v-if="s.visited" class="ir__visit-done">已巡访</text>
+                    <button v-else class="ir__visit-btn" :disabled="!s.resolvable || visitActing" @click="recordVisit(s)">
+                      {{ s.resolvable ? '记录巡访' : '未匹配到学生' }}
+                    </button>
+                  </view>
+                </view>
+              </view>
+            </template>
+          </view>
+
           <!-- 打卡异常 -->
           <view v-else class="stack">
             <MobileGlobalState v-if="!data.abnormal.length" state="empty" title="暂无打卡异常" description="学生打卡异常（超范围/定位失败）会出现在这里。" />
@@ -99,10 +123,14 @@ export default {
   data() {
     return {
       data: null, state: 'loading', tab: 'weekly', acting: false,
-      tabs: [{ key: 'weekly', label: '周报批阅' }, { key: 'abnormal', label: '打卡异常' }]
+      tabs: [{ key: 'weekly', label: '周报批阅' }, { key: 'visit', label: '指导巡访' }, { key: 'abnormal', label: '打卡异常' }],
+      visitPlans: [], visitState: 'loading', visitActing: false
     }
   },
-  onLoad() { this.load() },
+  onLoad() {
+    this.load()
+    this.loadVisits()
+  },
   // onReachBottom 必须写在页面本身，mp-weixin 才会注册
   onReachBottom() { this.pagedReachBottom() },
   onPullDownRefresh() {
@@ -151,6 +179,22 @@ export default {
         w._body = 'error'
         toast(normalizeError(e).text)
       })
+    },
+    loadVisits() {
+      this.visitState = 'loading'
+      teacherApi.getInternshipVisitPlans().then((d) => {
+        this.visitPlans = (d && d.plans) || []
+        this.visitState = 'ready'
+      }).catch(() => { this.visitState = 'error' })
+    },
+    recordVisit(s) {
+      if (this.visitActing || !s.internshipId) return
+      this.visitActing = true
+      teacherApi.recordInternshipVisit(s.internshipId).then(() => {
+        s.visited = true
+        toast('已记录巡访')
+      }).catch((e) => toast(normalizeError(e).text))
+        .finally(() => { this.visitActing = false })
     },
     _actErr(e, refresh) {
       if (e && String(e.code).startsWith('409')) {
@@ -243,4 +287,9 @@ export default {
 .ir__done-text { text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); line-height: var(--touch-target-min); }
 .ir__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--teacher-700); }
 .ir__paging.is-end { color: var(--text-tertiary); }
+.ir__visit-students { margin-top: var(--space-3); border-top: 1px solid var(--border-light); padding-top: var(--space-2); }
+.ir__visit-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; }
+.ir__visit-done { font-size: var(--font-size-sm); color: var(--success-600); }
+.ir__visit-btn { font-size: var(--font-size-sm); color: #fff; background: var(--teacher-600); border: none; border-radius: var(--radius-md); padding: 6px 14px; }
+.ir__visit-btn[disabled] { background: var(--gray-300); color: var(--text-tertiary); }
 </style>

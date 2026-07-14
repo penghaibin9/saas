@@ -478,7 +478,10 @@ def internship_my(user: dict) -> dict:
                                  "time": _iso(today_ck.checkin_at) if today_ck else None,
                                  "totalDays": int(ck_total)},
                 "weeklyReports": [{"week": r.week_number, "status": r.status,
-                                   "reviewComment": r.review_comment or ""} for r in reports],
+                                   "reviewComment": r.review_comment or "",
+                                   "workContent": r.work_content or "", "harvestContent": r.harvest_content or "",
+                                   "planContent": r.plan_content or "", "submittedAt": _iso(r.submitted_at)}
+                                  for r in reports],
                 "attendanceExceptions": [{"type": e.exception_type, "status": e.status,
                                           "date": _iso(e.exception_date)} for e in excs]}
 
@@ -1092,6 +1095,43 @@ def _file_id(value, *, required=False) -> str | None:
     return fid
 
 
+def internship_checkin_week(user: dict) -> dict:
+    """本周打卡记录（本人，周一~今日；未到的日期不返回）：供打卡页展示正常/迟到(超范围)/缺卡。"""
+    u = _require_student(user)
+    if not db_enabled():
+        return {"hasData": False, "days": []}
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    from app.models import InternshipCheckin, InternshipRecord
+    with _session() as db:
+        stu = resolve_student(db, u)
+        if not stu:
+            return {"hasData": False, "days": []}
+        rec = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
+            InternshipRecord.is_deleted.is_(False))).first()
+        if not rec:
+            return {"hasData": False, "days": []}
+        today = _dt.now().date()
+        monday = today - _td(days=today.weekday())
+        date_strs = [(monday + _td(days=i)).isoformat() for i in range(7) if monday + _td(days=i) <= today]
+        rows = db.scalars(select(InternshipCheckin).where(
+            InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
+            InternshipCheckin.checkin_date.in_(date_strs), InternshipCheckin.is_deleted.is_(False))).all()
+        by_date = {r.checkin_date: r for r in rows}
+        days = []
+        for ds in date_strs:
+            r = by_date.get(ds)
+            if r:
+                days.append({"date": ds, "status": r.result, "time": _iso(r.checkin_at)})
+            elif ds == today.isoformat():
+                days.append({"date": ds, "status": "PENDING", "time": None})
+            else:
+                days.append({"date": ds, "status": "ABSENT", "time": None})
+        return {"hasData": True, "days": days}
+
+
 def internship_checkin(user: dict, body: dict) -> dict:
     """Persist one daily check-in with server-side geofence/device evidence and retry-safe idempotency."""
     u = _require_student(user)
@@ -1210,17 +1250,23 @@ def internship_exception_appeal(user: dict, exception_id: str, body: dict) -> di
 
 
 def internship_weekly_submit(user: dict, body: dict) -> dict:
+    """实习周报提交（本人）。字段与 t_weekly_report 三栏一一对应：
+    workContent=本周工作内容、harvestContent=本周收获（均必填 ≥20 字合计）、
+    planContent=存在问题/下周计划（选填）。兼容旧版单一 content 入参（历史欠账，
+    此前 content 拼接工作+收获、problems 误存进 harvestContent，现按语义字段拆分修正）。"""
     u = _require_student(user)
     week_no = body.get("weekNo") or body.get("weekNumber")
-    content = str(body.get("content") or "").strip()
+    work_content = str(body.get("workContent") or body.get("content") or "").strip()
+    harvest_content = str(body.get("harvestContent") or "").strip()
+    plan_content = str(body.get("planContent") or body.get("problems") or body.get("planNext") or "").strip()
     if week_no in (None, ""):
         raise AppException("VALIDATION_ERROR", "周次（weekNo）必填")
     try:
         week_no = int(week_no)
     except (TypeError, ValueError):
         raise AppException("VALIDATION_ERROR", "周次必须为数字")
-    if len(content) < 20:
-        raise AppException("VALIDATION_ERROR", "周报正文至少 20 个字")
+    if len(work_content) < 10 or len(harvest_content) < 10:
+        raise AppException("VALIDATION_ERROR", "本周工作内容与本周收获均至少 10 个字")
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
     with _session() as db:
@@ -1241,8 +1287,9 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
         if dup:
             raise AppException("DATA_CONFLICT", f"第 {week_no} 周周报已提交，请勿重复提交")
         w = WeeklyReport(tenant_id=_tid(), internship_id=rec.id, week_number=week_no,
-                         work_content=content, harvest_content=str(body.get("problems") or ""),
-                         plan_content=str(body.get("planNext") or ""), word_count=len(content),
+                         work_content=work_content, harvest_content=harvest_content,
+                         plan_content=plan_content,
+                         word_count=len(work_content) + len(harvest_content) + len(plan_content),
                          report_version=1, status="PENDING_REVIEW", submitted_at=_dt.utcnow())
         db.add(w)
         try:
@@ -1304,6 +1351,33 @@ def _published_positions(db, batch_id, limit: int = 40) -> list[dict]:
             "remaining": max(0, head - alloc),
         })
     return out
+
+
+def internship_enterprises(user: dict, city: str = "") -> dict:
+    """企业岗位库（本人可浏览的已发布岗位，城市筛选）：复用 _published_positions 同款字段
+    并补齐薪资，供学生浏览挑选（不代提交意向，选定后仍走既有实习意向填报流程）。"""
+    _require_student(user)
+    if not db_enabled():
+        return {"hasData": False, "cities": [], "items": []}
+    from app.models import EmpCompany, InternshipPosition
+    with _session() as db:
+        rows = db.scalars(select(InternshipPosition).where(
+            InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False),
+            InternshipPosition.status == "PUBLISHED").order_by(InternshipPosition.id.desc())).all()
+        items = []
+        cities = []
+        for p in rows:
+            company = db.get(EmpCompany, p.company_id) if p.company_id else None
+            head, alloc = p.headcount or 0, p.allocated_count or 0
+            loc = p.work_location or ""
+            if loc and loc not in cities:
+                cities.append(loc)
+            items.append({"id": str(p.id), "title": p.title or "",
+                          "companyName": company.name if company else "", "workLocation": loc,
+                          "salaryRange": p.salary_range or "", "remaining": max(0, head - alloc)})
+        if city:
+            items = [x for x in items if x["workLocation"] == city]
+        return {"hasData": len(items) > 0, "cities": cities, "items": items}
 
 
 def internship_intention_my(user: dict) -> dict:

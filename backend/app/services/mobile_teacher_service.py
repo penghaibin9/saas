@@ -582,6 +582,58 @@ def orientation_today_checkins(user: dict) -> dict:
         return {"hasData": len(items) > 0, "list": items, "total": len(items)}
 
 
+def internship_visit_plans(user: dict) -> dict:
+    """指导巡访（移动版）：复用 PC 端巡访计划查询（owner 范围收敛），按学生拆分展示，
+    标记本月是否已巡访（存在本月 InternshipVisit 记录）。"""
+    _require_teacher(user)
+    if not db_enabled():
+        return {"hasData": False, "plans": []}
+    import re as _re
+
+    from app.models import InternshipRecord, InternshipVisit, StudentProfile
+    from app.modules.internship.services import internship_visit_plan_service as plan_svc
+    month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    items, _total = plan_svc.list_visit_plans(1, 50, user=user)
+    plans = [p for p in items if p.get("status") in ("PUBLISHED", "IN_PROGRESS")]
+    with _session() as db:
+        out = []
+        for p in plans:
+            names = [n.strip() for n in _re.split(r"[,，、;；\n]", p.get("studentScope") or "") if n.strip()]
+            students = []
+            for name in names:
+                stu = db.scalars(select(StudentProfile).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.real_name == name,
+                    StudentProfile.is_deleted.is_(False))).first()
+                visited, rec_id = False, None
+                if stu:
+                    rec = db.scalars(select(InternshipRecord).where(
+                        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
+                        InternshipRecord.is_deleted.is_(False))).first()
+                    if rec:
+                        rec_id = str(rec.id)
+                        visited = db.scalars(select(InternshipVisit).where(
+                            InternshipVisit.tenant_id == _tid(), InternshipVisit.internship_id == rec.id,
+                            InternshipVisit.visit_at >= month_start,
+                            InternshipVisit.is_deleted.is_(False))).first() is not None
+                students.append({"name": name, "internshipId": rec_id, "visited": visited,
+                                 "resolvable": rec_id is not None})
+            out.append({"id": p["id"], "enterpriseName": p.get("enterpriseName") or "",
+                       "planDate": p.get("planDate") or "", "location": p.get("location") or "",
+                       "students": students})
+        return {"hasData": len(out) > 0, "plans": out}
+
+
+def internship_visit_record(user: dict, internship_id: str) -> dict:
+    """记录巡访（移动版·快速记录，不含企业/学生反馈正文）：复用 PC 端巡访创建（owner 范围校验+审计）。"""
+    _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持记录巡访")
+    if not internship_id:
+        raise AppException("VALIDATION_ERROR", "缺少实习记录标识")
+    from app.modules.internship.services import internship_visit_service
+    return internship_visit_service.create(user, {"internshipId": internship_id, "method": "ONSITE"})
+
+
 def campus(user):
     return _domain(campus_service_service.list_leaves, "campus-service", user, status="PENDING_REVIEW")
 

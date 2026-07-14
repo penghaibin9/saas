@@ -142,6 +142,11 @@ export const teacherOrientationTodayCheckins = () =>
 export const teacherOrientationDashboard = () =>
   realRequest('/mobile/teacher/orientation/dashboard')
 
+/** 指导巡访·本月巡访计划学生列表 / 记录巡访 */
+export const teacherInternshipVisitPlans = () => realRequest('/mobile/teacher/internship/visit-plans')
+export const teacherInternshipVisitRecord = (internshipId) =>
+  realRequest('/mobile/teacher/internship/visit-plans/record', { method: 'POST', data: { internshipId } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }
@@ -357,6 +362,13 @@ export const submitWeeklyReport = (body) =>
 /** 实习每日打卡（真实落库，一天一次，409=今日已打） */
 export const submitCheckin = (body) =>
   realRequest('/mobile/internship/checkin', { method: 'POST', data: body || {} })
+
+/** 本周打卡记录（本人，正常/超范围/缺卡） */
+export const internshipCheckinWeek = () => realRequest('/mobile/internship/checkin/week')
+
+/** 企业岗位库（本人可浏览，城市筛选） */
+export const internshipEnterprises = (city) =>
+  realRequest('/mobile/internship/enterprises' + (city ? `?city=${encodeURIComponent(city)}` : ''))
 
 /** 本人三方协议列表 / 详情 / 确认（含渲染正文，业务错误透出） */
 export const internshipAgreements = () => realRequest('/mobile/internship/agreements')

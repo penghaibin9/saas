@@ -205,7 +205,8 @@ def test_concurrent_service_apply_20(client, smoke):
 
 def test_concurrent_weekly_duplicate_20(client, smoke):
     stu = _stu()
-    body = {"weekNo": 9, "content": "并发重复提交冒烟测试周报内容，长度超过二十个汉字以通过校验。"}
+    body = {"weekNo": 9, "workContent": "并发重复提交冒烟测试周报工作内容，超过十个汉字以通过校验。",
+           "harvestContent": "并发重复提交冒烟测试周报收获内容，超过十个汉字以通过校验。"}
     jobs = [("POST", "/api/v1/mobile/internship/weekly", stu, body) for _ in range(20)]
     codes, times = _run(client, jobs)
     _report("weekly-dup-20", codes, times)

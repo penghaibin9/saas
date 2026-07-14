@@ -16,6 +16,14 @@ export const studentInternship = {
   },
   checkin: { done: false, place: '公司未定位', range: '有效范围 500m', note: '仅在点击时采集定位，不后台定位' },
   weekly: { week: '第 8 周', deadline: '2026-07-06 22:00', submitted: false, lastFeedback: '第 7 周：任务描述再具体些，附上产出截图。' },
+  weeklyList: [
+    { week: 7, status: 'APPROVED', reviewComment: '第 7 周：任务描述再具体些，附上产出截图。',
+      workContent: '完成用户中心页面重构；联调登录、资料、消息 3 个接口。', harvestContent: '熟悉 Vue3 组合式 API 与真实接口联调流程。',
+      planContent: '下周计划完成消息模块并补充单元测试。', submittedAt: '2026-06-29T18:20:00' },
+    { week: 6, status: 'APPROVED', reviewComment: '内容完整，继续保持。',
+      workContent: '完成登录页与权限校验逻辑联调。', harvestContent: '了解了 JWT 鉴权与路由守卫的实现方式。',
+      planContent: '', submittedAt: '2026-06-22T20:05:00' }
+  ],
   risk: [],
   timeline: [
     { id: 'i1', title: '岗位分配', status: 'COMPLETED', time: '2026-03-01' },

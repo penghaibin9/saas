@@ -192,7 +192,8 @@ def test_service_apply_success_and_422(client, db_mode):
 
 def test_weekly_submit_success_and_409(client, db_mode):
     _seed_rich(db_mode)
-    body = {"weekNo": 3, "content": "本周完成登录模块开发与联调，累计提交代码若干。"}
+    body = {"weekNo": 3, "workContent": "本周完成登录模块开发与联调，累计提交代码若干。",
+           "harvestContent": "熟悉了登录鉴权与联调流程，收获较大。"}
     ok = client.post("/api/v1/mobile/internship/weekly", headers=_stu_token("张三"), json=body).json()
     assert ok["code"] == 0 and ok["data"]["id"]
     dup = client.post("/api/v1/mobile/internship/weekly", headers=_stu_token("张三"), json=body).json()
@@ -203,7 +204,8 @@ def test_weekly_no_internship_not_500(client, db_mode):
     _seed_rich(db_mode)
     # 李四没有实习记录 → 404 业务错，非 500
     r = client.post("/api/v1/mobile/internship/weekly", headers=_stu_token("李四"),
-                    json={"weekNo": 1, "content": "二十个字以上的周报内容用于通过长度校验测试。"}).json()
+                    json={"weekNo": 1, "workContent": "十个字以上的本周工作内容测试文本。",
+                         "harvestContent": "十个字以上的本周收获内容测试文本。"}).json()
     assert r["code"] == 404001
 
 

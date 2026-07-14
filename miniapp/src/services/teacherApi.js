@@ -88,6 +88,9 @@ export const teacherApi = {
   // 迎新·现场报到核验（真实写操作，业务错误透出，不 mock 兜底）
   orientationCheckin: (admissionNo) => real.teacherOrientationCheckin(admissionNo),
   getOrientationTodayCheckins: () => real.teacherOrientationTodayCheckins(),
-  getOrientationDashboard: () => real.teacherOrientationDashboard()
+  getOrientationDashboard: () => real.teacherOrientationDashboard(),
+  // 指导巡访：本月计划学生列表 + 记录巡访（真实写操作，业务错误透出）
+  getInternshipVisitPlans: () => real.teacherInternshipVisitPlans(),
+  recordInternshipVisit: (internshipId) => real.teacherInternshipVisitRecord(internshipId)
 }
 export default teacherApi

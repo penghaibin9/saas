@@ -51,6 +51,8 @@ export const studentApi = {
   submitServiceApply: (body) => real.submitServiceApply(body),
   submitWeeklyReport: (body) => real.submitWeeklyReport(body),
   submitCheckin: (body) => real.submitCheckin(body),
+  getCheckinWeek: () => real.internshipCheckinWeek(),
+  getInternshipEnterprises: (city) => real.internshipEnterprises(city),
   markMessageRead: (id) => real.markMessageRead(id),
   // 岗位实习·学生自助（三方协议 / 请假 / 意向 / 自评 / 调岗退岗 / 保险 / 计划 / 过程报告）
   // 真实优先无 mock 兜底，业务错误（401/403/409/422）透出

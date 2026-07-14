@@ -56,6 +56,14 @@
       "style": { "navigationBarTitleText": "岗位实习" }
     },
     {
+      "path": "pages/student/internship/checkin/index",
+      "style": { "navigationBarTitleText": "实习打卡", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/internship/enterprises/index",
+      "style": { "navigationBarTitleText": "企业岗位库", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/student/internship/leave/index",
       "style": { "navigationBarTitleText": "实习请假" }
     },
@@ -89,7 +97,7 @@
     },
     {
       "path": "pages/student/weekly-report/index",
-      "style": { "navigationBarTitleText": "填写周报" }
+      "style": { "navigationBarTitleText": "填写周报", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/graduation/index",

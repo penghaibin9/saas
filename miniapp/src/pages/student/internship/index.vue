@@ -18,7 +18,7 @@
 
         <!-- 今日两大主任务：打卡 + 周报 -->
         <view class="in__today">
-          <view class="in__today-card" @click="checkin">
+          <view class="in__today-card" @click="go('/pages/student/internship/checkin/index')">
             <text class="in__today-icon">📍</text>
             <text class="in__today-title">今日打卡</text>
             <text class="in__today-status" :class="{ 'is-warn': !i.checkin.done }">{{ i.checkin.done ? '已打卡' : '未打卡' }}</text>
@@ -72,7 +72,7 @@
 
     <MobileSafeAreaBar v-if="i && i.hasBatch">
       <button class="btn btn-ghost flex-1" @click="weekly">写周报</button>
-      <button class="btn btn-primary flex-1" :disabled="checkingIn || i.checkin.done" @click="checkin">{{ i.checkin.done ? '已打卡' : (checkingIn ? '打卡中…' : '一键打卡') }}</button>
+      <button class="btn btn-primary flex-1" :disabled="i.checkin.done" @click="go('/pages/student/internship/checkin/index')">{{ i.checkin.done ? '已打卡' : '去打卡' }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
@@ -82,9 +82,10 @@ import { studentApi } from '@/services/studentApi'
 import { useSubmissionsStore } from '@/stores/submissions'
 import { toast, go } from '@/utils/nav'
 export default {
-  data() { return { i: null, state: 'loading', checkingIn: false, checkinKey: '',
+  data() { return { i: null, state: 'loading',
     navItems: [
       { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯' },
+      { label: '企业岗位库', path: '/pages/student/internship/enterprises/index', icon: '🏢' },
       { label: '三方协议', path: '/pages/student/internship/agreement/index', icon: '📄' },
       { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️' },
       { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️' },
@@ -95,10 +96,8 @@ export default {
     ] } },
   onLoad() { this.load() },
   onShow() {
-    if (this.i && useSubmissionsStore().hasWeekly(this.i.weekly.week)) {
-      this.i.weekly.submitted = true
-      this.i.status.weekly = 'COMPLETED'
-    }
+    // 从打卡页/写周报返回时刷新真实状态（打卡/周报都已真实落库，不再依赖本地演示态推断）
+    if (this.i) this.load()
   },
   methods: {
     toast,
@@ -110,45 +109,6 @@ export default {
     entryTap(e) {
       if (String(e).indexOf('周报') >= 0) return this.weekly()
       toast(e + '：入口即将开放')
-    },
-    checkin() {
-      if (this.i.checkin.done) return toast('今日已打卡')
-      if (this.checkingIn) return
-      uni.showModal({
-        title: '实习打卡',
-        content: '仅在此刻采集一次定位用于打卡留痕，不后台持续定位。确认打卡？',
-        success: (r) => {
-          if (!r.confirm || this.checkingIn) return
-          this.checkingIn = true
-          // Keep one key across a weak-network retry: server will return the original daily record.
-          this.checkinKey = this.checkinKey || `mp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-          const submit = (loc) => {
-            studentApi.submitCheckin({ ...(loc || {}), idempotencyKey: this.checkinKey,
-              deviceRiskFlag: 'normal' }).then((res) => {
-              this.i.checkin.done = true
-              this.i.status.todayCheckin = 'COMPLETED'
-              this.checkinKey = ''
-              toast(res.message || '打卡成功')
-            }).catch((e) => {
-              if (e && String(e.code).startsWith('409')) {
-                this.i.checkin.done = true
-                this.i.status.todayCheckin = 'COMPLETED'
-                toast('今日已打卡')
-              } else if (e && e.biz) {
-                toast((e && e.message) || '打卡失败，请稍后重试')
-              } else {
-                toast('网络异常，打卡未成功，请稍后重试')
-              }
-            }).finally(() => { this.checkingIn = false })
-          }
-          // 定位失败不阻断打卡：无定位则只记录时间（后端 result=NO_LOCATION）
-          uni.getLocation({
-            type: 'gcj02',
-            success: (p) => submit({ lat: p.latitude, lng: p.longitude, gpsAccuracy: p.accuracy }),
-            fail: () => submit({})
-          })
-        }
-      })
     },
     weekly() {
       if (this.i.weekly.submitted || useSubmissionsStore().hasWeekly(this.i.weekly.week)) {
