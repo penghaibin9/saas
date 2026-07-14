@@ -52,6 +52,33 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
     "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.talk.*", "studentAffairs.stats.view",
                            "studentAffairs.archive.psySensitive", "studentAffairs.student.view"},  # 心理老师：数据范围限授权学生(PSY_STUDENT)
+    # 资助老师（§12「资」列 / §13 FUNDING_BIZ）：困难认定 + 奖助勤贷全域经办，数据范围限资助业务学生。
+    # 只授资助能力，不授违纪明细办理/心理/风险/宿舍（§12 资列：discipline 仅「资格校验只读结论」，risk/talk/dorm=✗）。
+    # 注：FUNDING_BIZ 数据范围解析器尚未实现（见历史欠账），当前 scope 回退 NONE→受范围过滤的列表 fail-closed 为空；能力门禁已生效。
+    "FUNDING_TEACHER": {
+        "studentAffairs.dashboard.view", "studentAffairs.student.view", "studentAffairs.stats.view",
+        "studentAffairs.aid.view", "studentAffairs.aid.batch.manage", "studentAffairs.aid.create",
+        "studentAffairs.aid.approve", "studentAffairs.aid.adjust",
+        "studentAffairs.funding.view", "studentAffairs.funding.project.manage",
+        "studentAffairs.funding.create", "studentAffairs.funding.approve",
+        "studentAffairs.funding.publicity.manage", "studentAffairs.funding.workstudy.manage",
+        "studentAffairs.funding.loan.manage", "studentAffairs.funding.reduction.manage",
+        "studentAffairs.funding.disburse.manage",
+    },
+    # 团委（社团/学生组织/党团发展 + 二课活动组织）：全校团学口径。边界（是否含全部二课/志愿）待学校确认。
+    "YOUTH_LEAGUE": {
+        "studentAffairs.dashboard.view", "studentAffairs.student.view", "studentAffairs.stats.view",
+        "studentAffairs.club.view", "studentAffairs.club.manage",
+        "studentAffairs.org.view", "studentAffairs.org.manage",
+        "studentAffairs.league.view", "studentAffairs.league.manage",
+        "studentAffairs.activity.view", "studentAffairs.activity.create",
+        "studentAffairs.activity.publish", "studentAffairs.activity.confirm",
+    },
+    # 组织人事：辅导员考评的组织与复核（指标/评分/发布/申诉复核）；不介入学生业务。角色归属待学校确认。
+    "ORG_PERSONNEL": {
+        "studentAffairs.dashboard.view", "studentAffairs.stats.view",
+        "studentAffairs.counselorEval.view", "studentAffairs.counselorEval.manage",
+    },
     "DORM_MANAGER": {"studentAffairs.dorm.*", "campusService.dorm.*"},  # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
     # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
@@ -63,6 +90,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.homeSchool.*",
         "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.discipline.view",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
+        # 辅导员对「本人」考评的自助权：查看本人考评结果 + 对本人考评提起申诉（不含考评/复核 manage）
+        "studentAffairs.counselorEval.view", "studentAffairs.counselorEval.appeal.create",
         # 旧「在校服务」面：本班范围广读 + 请假审批；资助/违纪/工单/学生台账写操作归学工处/院
         "campusService.dashboard.view", "campusService.student.view", "campusService.leave.*",
         "campusService.dorm.view", "campusService.grant.view", "campusService.discipline.view",
