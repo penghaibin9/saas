@@ -61,3 +61,16 @@ def test_t5_publish_idempotent_and_single_current(client, db_mode):
     client.post(f"{BASE}/terms/{t2}/publish", headers=hdr)  # 切换当前
     cur = client.get(f"{BASE}/terms/current", headers=hdr).json()["data"]
     assert cur["termId"] == t2  # 仅一个当前学期
+
+
+def test_t6_student_forbidden_403(client, db_mode):
+    """越权红线（13B-FE-W1 前端接入波补齐）：学生令牌打教务学期/校历/节次端点一律 403（require_staff）。
+    学生合法入口是 /mobile/*；PC 管理端严禁学生越权读写教务过程数据。"""
+    hdr = _hdr(client, "student01")
+    # 写端点：新建学期 / 新建节次
+    r = client.post(f"{BASE}/terms", headers=hdr, json={"yearCode": "2026-2027", "termNo": 1})
+    assert r.status_code == 403 and r.json()["bizCode"] == "NO_PERMISSION"
+    assert client.post(f"{BASE}/time-slots", headers=hdr, json={"slotNo": 1}).status_code == 403
+    # 读端点：学期列表 / 看板同样拒绝学生
+    assert client.get(f"{BASE}/terms", headers=hdr).status_code == 403
+    assert client.get(f"{BASE}/dashboard", headers=hdr).status_code == 403
