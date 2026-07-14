@@ -34,6 +34,12 @@ def dashboard(user=Depends(require_permission("studentAffairs.dashboard.view")))
     return success(svc.get_dashboard(user))
 
 
+@router.get("/stats/cockpit", summary="学工统计驾驶舱（各域概览+下钻入口，仅聚合）")
+def stats_cockpit(user=Depends(require_permission("studentAffairs.stats.view"))):
+    from app.services import affairs_cockpit_service as cockpit_svc
+    return success(cockpit_svc.cockpit(user))
+
+
 @router.get("/classes", summary="班级列表（名称+指标，按数据范围，可筛学院/专业/年级/关键词）")
 def classes(collegeId: Optional[str] = None, majorId: Optional[str] = None,
             grade: Optional[str] = None, keyword: Optional[str] = None,
