@@ -200,6 +200,18 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
       {
+        path: 'talk/key-follow',
+        name: 'student-affairs-key-follow',
+        component: () => import('@/modules/studentAffairs/views/talk/KeyStudentFollowView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '重点学生跟进', requiresAuth: true, permissionKey: 'studentAffairs.talk.view' }
+      },
+      {
+        path: 'archive/packages',
+        name: 'student-affairs-archive-packages',
+        component: () => import('@/modules/studentAffairs/views/StudentArchivePackageView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学生档案包', requiresAuth: true, permissionKey: 'studentAffairs.archive.view' }
+      },
+      {
         path: 'talk/ledger',
         name: 'student-affairs-talk-ledger',
         component: () => import('@/modules/studentAffairs/views/talk/TalkLedgerView.vue'),
