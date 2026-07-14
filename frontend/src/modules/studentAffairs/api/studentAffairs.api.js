@@ -647,6 +647,16 @@ export const studentAffairsApi = {
   createFamilyContact(studentId, body) {
     return callStrict(() => request(`/student-affairs/students/${studentId}/family-contacts`, { method: 'POST', body }))
   },
+  /** 全局家校联系记录（可按回执状态筛）。 */
+  getFamilyContactsAll({ receiptStatus = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }
+    if (receiptStatus) params.receiptStatus = receiptStatus
+    return callStrict(() => request('/student-affairs/family-contacts', { params }))
+  },
+  /** 登记家长回执。 */
+  markFamilyReceipt(contactId, note = '') {
+    return callStrict(() => request(`/student-affairs/family-contacts/${contactId}/receipt`, { method: 'POST', body: { note } }))
+  },
 
   // ─────────────── 宿舍管理（P7 · /student-affairs/dorm/*） ───────────────
 

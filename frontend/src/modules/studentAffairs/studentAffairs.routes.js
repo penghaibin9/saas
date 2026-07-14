@@ -206,6 +206,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '重点学生跟进', requiresAuth: true, permissionKey: 'studentAffairs.talk.view' }
       },
       {
+        path: 'family/receipts',
+        name: 'student-affairs-family-receipts',
+        component: () => import('@/modules/studentAffairs/views/FamilyReceiptView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '家校回执', requiresAuth: true, permissionKey: 'studentAffairs.homeSchool.view' }
+      },
+      {
         path: 'archive/packages',
         name: 'student-affairs-archive-packages',
         component: () => import('@/modules/studentAffairs/views/StudentArchivePackageView.vue'),
