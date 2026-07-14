@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # ── 平台运营控制面（跨租户，独立令牌，与学校角色边界隔离）──
     PLATFORM_ADMIN_TOKEN: str = ""       # 未配置则平台端接口默认关闭
 
+    # ── 微信小程序一键登录（jscode2session）──
+    WX_APPID: str = ""                   # 小程序 AppID；未配置则微信登录端点返回"未配置"错误，不影响账号密码登录
+    WX_SECRET: str = ""                  # 小程序 AppSecret；仅经 .env/环境变量注入，禁止写进仓库
+
     # ── 数据库 ──
     DB_ENABLED: bool = False             # 关闭时走 mock；开启后按 effective_database_url 连库
     DATABASE_URL: str = ""               # 显式连接串（最高优先级）：sqlite/mysql/postgresql 均可；留空则按 DB_DRIVER 组装

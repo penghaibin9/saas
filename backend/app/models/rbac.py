@@ -25,6 +25,8 @@ class User(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE", comment="ACTIVE/DISABLED/LOCKED")
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
+    wx_openid: Mapped[str | None] = mapped_column(String(64), unique=True, index=True,
+                                                  comment="微信小程序 openid（一键登录绑定；全局唯一，一个 openid 绑一个账号）")
 
 
 class Role(PKMixin, TenantMixin, CommonMixin, Base):

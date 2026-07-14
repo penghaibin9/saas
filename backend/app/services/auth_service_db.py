@@ -69,50 +69,57 @@ def login_with_password(login_name: str, password: str) -> dict:
                 raise AppException("UNAUTHORIZED", "失败次数过多，账号已锁定 15 分钟")
             raise AppException("UNAUTHORIZED", "账号或密码不正确")
         reset_login_failures(f"pw:{login_name}")
-        # P6：租户运营状态校验——停用租户全员禁止登录（平台超管除外）
-        if user.user_type != "PLATFORM_SUPER_ADMIN":
-            from app.services import platform_service
-            if platform_service.tenant_status(user.tenant_id) == "disabled":
-                from app.services import audit_log
-                audit_log.record("LOGIN_TENANT_DISABLED", login_name,
-                                 detail={"tenantId": str(user.tenant_id)}, result="DENIED")
-                raise AppException("NO_PERMISSION", "该学校服务已停用，无法登录，请联系平台方 13549666867")
-        role_code, role_name, scope, scope_label = ROLE_BY_LOGIN.get(
-            user.login_name, ("SCHOOL_ADMIN", "管理员", "SCHOOL", "全校"))
-        if user.user_type == "PLATFORM_SUPER_ADMIN":
-            role_code, role_name, scope, scope_label = (
-                "PLATFORM_SUPER_ADMIN", "平台超级管理员", "PLATFORM", "全平台（跨租户）")
-        tenant_id = str(user.tenant_id)
-        t_code, t_name = _tenant_meta(db, user.tenant_id)
-        claims = {
-            "userId": f"db-{user.id}", "realName": user.real_name, "userType": user.user_type,
-            "tid": t_code,
-            "tenantId": tenant_id, "tenantName": t_name,
-            "activeContextId": f"ctx_{user.login_name}", "currentRoleCode": role_code, "clientType": "PC",
-        }
-        # 学生账号：令牌带学号（移动端"本人数据"按学号精确解析，不依赖姓名唯一）
-        if (user.user_type or "").upper() == "STUDENT":
-            from app.models import StudentProfile
-            sp = db.scalars(select(StudentProfile).where(
-                StudentProfile.tenant_id == user.tenant_id,
-                StudentProfile.real_name == user.real_name,
-                StudentProfile.is_deleted.is_(False))).first()
-            if sp:
-                claims["studentNo"] = sp.student_no
-        token = create_access_token(claims)
-        refresh_token = issue_refresh(dict(claims))
-        return {
-            "accessToken": token, "refreshToken": refresh_token,
-            "tokenType": "Bearer", "expiresIn": 7200,
-            "userId": f"db-{user.id}", "username": user.login_name, "displayName": user.real_name,
-            "tenantId": tenant_id, "tenantName": t_name,
-            "currentRole": {"roleCode": role_code, "roleName": role_name,
-                            "dataScope": scope, "scopeLabel": scope_label},
-            "roles": [{"roleCode": role_code, "roleName": role_name}],
-            "dataScope": {"scope": scope, "scopeLabel": scope_label},
-            "permissionActions": {"viewList": True, "export": role_code != "STUDENT", "viewSensitive": False},
-            "user": {"userId": f"db-{user.id}", "realName": user.real_name,
-                     "userType": user.user_type, "mustChangePassword": False},
-        }
+        return build_login_result(db, user, client_type="PC")
     finally:
         db.close()
+
+
+def build_login_result(db, user, client_type: str = "PC") -> dict:
+    """从已认证的 User 对象构建登录响应（token + 用户 + 角色 + 数据范围）。
+    账号密码登录与微信一键登录共用此函数，保证两条登录路径签发的令牌/响应完全一致。
+    调用方负责已完成身份校验（密码正确 / openid 已绑定）。"""
+    # P6：租户运营状态校验——停用租户全员禁止登录（平台超管除外）
+    if user.user_type != "PLATFORM_SUPER_ADMIN":
+        from app.services import platform_service
+        if platform_service.tenant_status(user.tenant_id) == "disabled":
+            from app.services import audit_log
+            audit_log.record("LOGIN_TENANT_DISABLED", user.login_name,
+                             detail={"tenantId": str(user.tenant_id)}, result="DENIED")
+            raise AppException("NO_PERMISSION", "该学校服务已停用，无法登录，请联系平台方 13549666867")
+    role_code, role_name, scope, scope_label = ROLE_BY_LOGIN.get(
+        user.login_name, ("SCHOOL_ADMIN", "管理员", "SCHOOL", "全校"))
+    if user.user_type == "PLATFORM_SUPER_ADMIN":
+        role_code, role_name, scope, scope_label = (
+            "PLATFORM_SUPER_ADMIN", "平台超级管理员", "PLATFORM", "全平台（跨租户）")
+    tenant_id = str(user.tenant_id)
+    t_code, t_name = _tenant_meta(db, user.tenant_id)
+    claims = {
+        "userId": f"db-{user.id}", "realName": user.real_name, "userType": user.user_type,
+        "tid": t_code,
+        "tenantId": tenant_id, "tenantName": t_name,
+        "activeContextId": f"ctx_{user.login_name}", "currentRoleCode": role_code, "clientType": client_type,
+    }
+    # 学生账号：令牌带学号（移动端"本人数据"按学号精确解析，不依赖姓名唯一）
+    if (user.user_type or "").upper() == "STUDENT":
+        from app.models import StudentProfile
+        sp = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == user.tenant_id,
+            StudentProfile.real_name == user.real_name,
+            StudentProfile.is_deleted.is_(False))).first()
+        if sp:
+            claims["studentNo"] = sp.student_no
+    token = create_access_token(claims)
+    refresh_token = issue_refresh(dict(claims))
+    return {
+        "accessToken": token, "refreshToken": refresh_token,
+        "tokenType": "Bearer", "expiresIn": 7200,
+        "userId": f"db-{user.id}", "username": user.login_name, "displayName": user.real_name,
+        "tenantId": tenant_id, "tenantName": t_name,
+        "currentRole": {"roleCode": role_code, "roleName": role_name,
+                        "dataScope": scope, "scopeLabel": scope_label},
+        "roles": [{"roleCode": role_code, "roleName": role_name}],
+        "dataScope": {"scope": scope, "scopeLabel": scope_label},
+        "permissionActions": {"viewList": True, "export": role_code != "STUDENT", "viewSensitive": False},
+        "user": {"userId": f"db-{user.id}", "realName": user.real_name,
+                 "userType": user.user_type, "mustChangePassword": False},
+    }

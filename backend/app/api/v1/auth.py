@@ -55,6 +55,40 @@ def login(body: PasswordLoginRequest):
     return success(result, message="登录成功")
 
 
+class WxLoginRequest(BaseModel):
+    code: str = Field(..., min_length=1, description="wx.login 返回的临时登录凭证 code")
+
+
+@router.post("/wx-login", summary="微信一键登录（code→openid；已绑定则登录，未绑定返回 needBind+wxToken）")
+def wx_login(body: WxLoginRequest):
+    _login_rate_guard()
+    from app.services import wx_auth_service
+    result = wx_auth_service.wx_login(body.code)
+    if result.get("needBind"):
+        audit.record("微信登录-待绑定", method="POST", path="/api/v1/auth/wx-login",
+                     status_code=200, target_type="auth", target_id="-")
+        return success(result, message="请绑定校园账号")
+    audit.record("微信登录", method="POST", path="/api/v1/auth/wx-login",
+                 status_code=200, target_type="auth", target_id=result.get("userId", "-"))
+    return success(result, message="登录成功")
+
+
+class WxBindRequest(BaseModel):
+    wxToken: str = Field(..., min_length=10, description="wx-login 返回的绑定令牌（携带 openid）")
+    loginName: str = Field(..., min_length=1, description="学号/工号")
+    password: str = Field(..., min_length=1, description="校园账号密码")
+
+
+@router.post("/wx-bind", summary="微信绑定校园账号（首次；绑定后 openid 免密登录）")
+def wx_bind(body: WxBindRequest):
+    _login_rate_guard()
+    from app.services import wx_auth_service
+    result = wx_auth_service.wx_bind(body.wxToken, body.loginName.strip(), body.password)
+    audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
+                 status_code=200, target_type="auth", target_id=result.get("userId", "-"))
+    return success(result, message="绑定成功")
+
+
 @router.get("/me", summary="当前用户 + 当前身份 + 可用身份列表")
 def me(user=Depends(get_current_user)):
     return success(auth_svc.get_me(user))
