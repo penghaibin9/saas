@@ -377,7 +377,7 @@ def my_students(user: dict, class_id=None) -> dict:
     """我的学生：本人负责班级的学生名单（可按 classId 下钻单班）；管理类角色不收敛(租户级)。"""
     u = _require_teacher(user)
     if not db_enabled():
-        return {"hasData": False, "items": [], "note": "演示模式"}
+        return {"hasData": False, "items": [], "total": 0, "note": "演示模式"}
     scope = resolve_teacher_scope(u)
     tid = _tid()
     with _session() as db:
@@ -388,12 +388,12 @@ def my_students(user: dict, class_id=None) -> dict:
         elif scope["mode"] != "ADMIN_TENANT":
             numeric_uid = _teacher_numeric_id(u)
             if numeric_uid is None:
-                return {"hasData": False, "items": [], "note": "未识别到教师身份，无法匹配班级"}
+                return {"hasData": False, "items": [], "total": 0, "note": "未识别到教师身份，无法匹配班级"}
             class_ids = [c.id for c in db.scalars(select(SchoolClass).where(
                 SchoolClass.tenant_id == tid, SchoolClass.is_deleted.is_(False),
                 or_(SchoolClass.counselor_id == numeric_uid, SchoolClass.head_teacher_id == numeric_uid))).all()]
             if not class_ids:
-                return {"hasData": False, "items": [], "note": "暂无负责班级"}
+                return {"hasData": False, "items": [], "total": 0, "note": "暂无负责班级"}
             conds.append(StudentProfile.class_id.in_(class_ids))
         rows = db.scalars(select(StudentProfile).where(*conds)
                           .order_by(StudentProfile.id.desc()).limit(200)).all()

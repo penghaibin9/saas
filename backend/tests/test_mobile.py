@@ -264,3 +264,69 @@ def test_new_endpoints_require_login(client):
     for path in ("/api/v1/mobile/me/profile", "/api/v1/mobile/me/applications",
                  "/api/v1/mobile/teacher/risk-students", "/api/v1/mobile/teacher/messages"):
         assert client.get(path).json()["code"] == 401001
+
+
+# ── 波8 补测：教师·我的班级 / 我的学生（counselor_id/head_teacher_id 数值ID范围收敛）──
+
+def _teacher_token_numeric(uid, tenant_id=MAIN, tid="demo", role="COUNSELOR"):
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": str(uid), "realName": "范老师", "userType": "TEACHER",
+        "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
+        "currentRoleCode": role, "clientType": "MP"})}
+
+
+def _seed_class_with_counselor(counselor_id, n_students=2, tenant_id=MAIN):
+    from app.db.session import get_sessionmaker
+    from app.models import SchoolClass, StudentProfile
+    db = get_sessionmaker()()
+    try:
+        c = SchoolClass(tenant_id=tenant_id, major_id=1, class_name="移动测2601",
+                        grade="2026", counselor_id=counselor_id, status="ACTIVE")
+        db.add(c); db.flush()
+        cid = c.id
+        for i in range(n_students):
+            db.add(StudentProfile(tenant_id=tenant_id, student_no=f"MC{i:04d}",
+                                  real_name=f"移测生{i}", class_id=cid,
+                                  current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE"))
+        db.commit()
+        return cid
+    finally:
+        db.close()
+
+
+def test_teacher_my_classes_and_students(client, db_mode):
+    cid = _seed_class_with_counselor(555001, n_students=3)
+    hdr = _teacher_token_numeric(555001)
+    classes = client.get("/api/v1/mobile/teacher/my-classes", headers=hdr).json()
+    assert classes["code"] == 0
+    items = classes["data"]["items"]
+    assert len(items) == 1 and items[0]["classId"] == str(cid) and items[0]["studentCount"] == 3
+
+    students = client.get("/api/v1/mobile/teacher/my-students", headers=hdr).json()["data"]
+    assert students["total"] == 3
+    names = {s["name"] for s in students["items"]}
+    assert names == {"移测生0", "移测生1", "移测生2"}
+
+    by_class = client.get(f"/api/v1/mobile/teacher/my-students?classId={cid}",
+                          headers=hdr).json()["data"]
+    assert by_class["total"] == 3
+
+
+def test_teacher_my_classes_no_scope_empty_not_500(client, db_mode):
+    """未担任任何班级辅导员/班主任的教师账号：空态，不 500，不误报他人班级。"""
+    _seed_class_with_counselor(555002, n_students=1)
+    hdr = _teacher_token_numeric(555099)  # 与已建班级的 counselor_id 不同
+    classes = client.get("/api/v1/mobile/teacher/my-classes", headers=hdr).json()
+    assert classes["code"] == 0 and classes["data"]["items"] == []
+    students = client.get("/api/v1/mobile/teacher/my-students", headers=hdr).json()["data"]
+    assert students["items"] == [] and students["total"] == 0
+
+
+def test_teacher_my_classes_cross_tenant_isolation(client, db_mode):
+    """同一 counselor_id 数字在另一租户建的班级不应串到本租户查询结果。"""
+    _seed_class_with_counselor(555003, n_students=2, tenant_id=MAIN)
+    _seed_class_with_counselor(555003, n_students=5, tenant_id=DEMO)
+    hdr = _teacher_token_numeric(555003, tenant_id=MAIN, tid="demo")
+    students = client.get("/api/v1/mobile/teacher/my-students", headers=hdr).json()["data"]
+    assert students["total"] == 2  # 只看本租户 2 人，不是跨租户合计的 7 人
