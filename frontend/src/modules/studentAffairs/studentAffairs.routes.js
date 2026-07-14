@@ -241,6 +241,12 @@ const studentAffairsRoutes = [
         component: () => import('@/modules/studentAffairs/views/StudentAffairsStatsView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
+      {
+        path: 'stats/cockpit',
+        name: 'student-affairs-cockpit',
+        component: () => import('@/modules/studentAffairs/views/StudentAffairsCockpitView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '统计驾驶舱', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
       /* 心理关注 5 页（强敏感·PSY_STUDENT·危机接风险中枢）——对接 /student-affairs/mental/* 后端 */
       {
         path: 'mental',

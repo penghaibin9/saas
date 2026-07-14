@@ -372,6 +372,10 @@ export const studentAffairsApi = {
   submitAidObjection(applyId, body) {
     return callStrict(() => request(`/student-affairs/aid/applications/${applyId}/objection`, { method: 'POST', body }))
   },
+  /** 学工统计驾驶舱（各域概览+下钻）。 */
+  getStatsCockpit() {
+    return callStrict(() => request('/student-affairs/stats/cockpit'))
+  },
   /** 困难认定异议列表。 */
   getAidObjections({ status = '', page = 1, pageSize = 100 } = {}) {
     const params = { page, pageSize }
