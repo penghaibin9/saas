@@ -21,17 +21,71 @@
     <!-- 右侧：选中条目内容 -->
     <div class="help-body">
       <template v-if="current">
-        <span class="help-kind">{{ current.type === 'flow' ? '业务流程图' : '功能帮助' }}</span>
+        <span class="help-kind">{{ kindLabel }}</span>
         <h1 class="help-title">{{ current.item.title }}</h1>
-        <p class="help-summary">{{ current.item.summary }}</p>
 
-        <!-- 功能帮助：要点列表 -->
-        <ul v-if="current.type === 'doc'" class="help-points">
-          <li v-for="(p, i) in current.item.points" :key="i">{{ p }}</li>
-        </ul>
+        <!-- 任务卡：适用角色 + 入口路径 -->
+        <template v-if="current.type === 'card'">
+          <div class="help-card-meta">
+            <div class="help-card-meta__row">
+              <span class="help-card-meta__k">适用角色</span>
+              <span class="help-card-meta__roles">
+                <span v-for="(r, i) in current.item.roles" :key="i" class="help-role">{{ r }}</span>
+              </span>
+            </div>
+            <div class="help-card-meta__row">
+              <span class="help-card-meta__k">入口路径</span>
+              <a class="help-card-meta__entry" href="javascript:void(0)" @click="goRoute(current.item.route)">{{ current.item.entry }}</a>
+            </div>
+          </div>
+          <p class="help-summary">{{ current.item.summary }}</p>
 
-        <!-- 业务流程图：分步流程 -->
-        <div v-else class="help-flow">
+          <h2 class="help-h2">操作步骤</h2>
+          <ol class="help-steps">
+            <li v-for="(s, i) in current.item.steps" :key="i">{{ s }}</li>
+          </ol>
+
+          <template v-if="current.item.fields && current.item.fields.length">
+            <h2 class="help-h2">需要填写</h2>
+            <ul class="help-fields">
+              <li v-for="(f, i) in current.item.fields" :key="i">{{ f }}</li>
+            </ul>
+          </template>
+
+          <template v-if="current.item.faq && current.item.faq.length">
+            <h2 class="help-h2">常见问题</h2>
+            <div class="help-faq">
+              <div v-for="(qa, i) in current.item.faq" :key="i" class="help-faq__item">
+                <div class="help-faq__q">Q：{{ qa.q }}</div>
+                <div class="help-faq__a">A：{{ qa.a }}</div>
+              </div>
+            </div>
+          </template>
+
+          <template v-if="current.item.related && current.item.related.length">
+            <h2 class="help-h2">相关入口</h2>
+            <div class="help-related">
+              <a
+                v-for="(rel, i) in current.item.related"
+                :key="i"
+                class="help-related__link"
+                href="javascript:void(0)"
+                @click="goRoute(rel.route)"
+              >{{ rel.label }} ↗</a>
+            </div>
+          </template>
+        </template>
+
+        <template v-else>
+          <p class="help-summary">{{ current.item.summary }}</p>
+
+          <!-- 功能帮助：要点列表 -->
+          <ul v-if="current.type === 'doc'" class="help-points">
+            <li v-for="(p, i) in current.item.points" :key="i">{{ p }}</li>
+          </ul>
+
+          <!-- 业务流程图：分步流程 -->
+          <div v-else class="help-flow">
           <div v-for="(s, i) in current.item.steps" :key="i" class="help-flow__row">
             <div class="help-flow__step">
               <span class="help-flow__no">{{ i + 1 }}</span>
@@ -44,7 +98,8 @@
             </div>
             <div v-if="i < current.item.steps.length - 1" class="help-flow__arrow">↓</div>
           </div>
-        </div>
+          </div>
+        </template>
       </template>
       <div v-else class="help-empty">请选择左侧帮助条目</div>
     </div>
@@ -87,6 +142,12 @@ export default {
     },
     current() {
       return getHelpById(this.currentId)
+    },
+    kindLabel() {
+      if (!this.current) return ''
+      if (this.current.type === 'card') return '帮助任务卡'
+      if (this.current.type === 'flow') return '业务流程图'
+      return '功能帮助'
     }
   },
   watch: {
@@ -97,6 +158,10 @@ export default {
   methods: {
     onMenu(item) {
       if (item && item.path && item.path !== this.$route.path) this.$router.push(item.path)
+    },
+    /** 跳到任务卡指向的真实功能页（含 ?panel= 深链） */
+    goRoute(route) {
+      if (route) this.$router.push(route)
     }
   }
 }
@@ -170,6 +235,147 @@ export default {
   font-size: 14px;
   color: var(--t2);
   line-height: 1.7;
+}
+
+/* 任务卡：适用角色 + 入口路径 */
+.help-card-meta {
+  margin: 12px 0 16px;
+  padding: 12px 16px;
+  background: var(--card);
+  border: 1px solid var(--card-b);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.help-card-meta__row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13px;
+}
+.help-card-meta__k {
+  flex-shrink: 0;
+  width: 60px;
+  color: var(--t3);
+  font-weight: var(--font-weight-semibold);
+}
+.help-card-meta__roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.help-role {
+  font-size: 11.5px;
+  color: var(--pri);
+  background: var(--pri-bg);
+  border: 1px solid var(--pri-100);
+  border-radius: 12px;
+  padding: 2px 10px;
+}
+.help-card-meta__entry {
+  color: var(--pri);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+  line-height: 1.6;
+}
+.help-card-meta__entry:hover {
+  text-decoration: underline;
+}
+
+/* 任务卡：小节标题 */
+.help-h2 {
+  margin: 22px 0 10px;
+  font-size: 15px;
+  font-weight: var(--font-weight-bold);
+  color: var(--t1);
+}
+
+/* 任务卡：操作步骤 */
+.help-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.help-steps li {
+  font-size: 13.5px;
+  color: var(--t1);
+  line-height: 1.6;
+  padding-left: 4px;
+}
+
+/* 任务卡：需要填写 */
+.help-fields {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.help-fields li {
+  position: relative;
+  padding: 8px 14px 8px 30px;
+  background: var(--card);
+  border: 1px solid var(--card-b);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--t1);
+  line-height: 1.55;
+}
+.help-fields li::before {
+  content: '•';
+  position: absolute;
+  left: 13px;
+  top: 8px;
+  color: var(--pri);
+  font-weight: var(--font-weight-bold);
+}
+
+/* 任务卡：常见问题 */
+.help-faq {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.help-faq__item {
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--card-b);
+  border-radius: 10px;
+}
+.help-faq__q {
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--t1);
+  line-height: 1.5;
+}
+.help-faq__a {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--t2);
+  line-height: 1.6;
+}
+
+/* 任务卡：相关入口 */
+.help-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.help-related__link {
+  font-size: 12.5px;
+  color: var(--pri);
+  background: var(--pri-bg);
+  border: 1px solid var(--pri-100);
+  border-radius: 20px;
+  padding: 5px 14px;
+  text-decoration: none;
+}
+.help-related__link:hover {
+  background: var(--pri-100);
 }
 .help-points {
   margin: 0;

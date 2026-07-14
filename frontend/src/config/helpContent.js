@@ -10,6 +10,8 @@
  *   - 无对应前端页面的深化功能不写入（不做假入口）；
  *   - 纯静态内容，不依赖后端。
  */
+import { INTERNSHIP_HELP_CARDS } from '@/config/help/internshipHelpCards'
+import { GRADUATION_HELP_CARDS } from '@/config/help/graduationHelpCards'
 
 /** 功能帮助文档：对现有模块/高频操作的使用说明 */
 export const HELP_DOCS = [
@@ -208,16 +210,26 @@ export const HELP_FLOWS = [
   }
 ]
 
+/**
+ * 高频帮助任务卡：面向老师/管理员/学生/企业导师的「照着做」任务卡。
+ * 数据源拆分在 config/help/*.js，本文件仅聚合与索引。
+ * 每张卡：id / module / title / roles / route / entry / keywords / summary / steps / fields / faq / related。
+ */
+export const HELP_CARDS = [...INTERNSHIP_HELP_CARDS, ...GRADUATION_HELP_CARDS]
+
 /** 分类聚合，供帮助中心页面侧栏渲染 */
 export const HELP_SECTIONS = [
   { key: 'docs', label: '功能帮助', items: HELP_DOCS },
-  { key: 'flows', label: '业务流程图', items: HELP_FLOWS }
+  { key: 'flows', label: '业务流程图', items: HELP_FLOWS },
+  { key: 'in-cards', label: '岗位实习 · 任务卡', items: INTERNSHIP_HELP_CARDS },
+  { key: 'gd-cards', label: '毕业设计 · 任务卡', items: GRADUATION_HELP_CARDS }
 ]
 
 /**
- * 帮助搜索：按标题 / 关键词 / 摘要匹配帮助文档与业务流程图。
+ * 帮助搜索：按标题 / 关键词 / 摘要匹配帮助文档、业务流程图与高频任务卡。
+ * 任务卡额外命中角色、入口路径，并返回 sub 供搜索结果显示「模块 · 角色 · 入口」。
  * @param {string} query 关键词
- * @returns {Array} [{ id, kind:'帮助文档'|'业务流程图', title }]
+ * @returns {Array} [{ id, kind:'帮助文档'|'业务流程图'|'帮助任务卡', title, sub? }]
  */
 export function searchHelp(query) {
   const q = (query || '').trim().toLowerCase()
@@ -225,6 +237,8 @@ export function searchHelp(query) {
   const hit = (item) => {
     if (item.title.toLowerCase().includes(q)) return true
     if (item.summary && item.summary.toLowerCase().includes(q)) return true
+    if ((item.roles || []).some((r) => r.toLowerCase().includes(q))) return true
+    if (item.entry && item.entry.toLowerCase().includes(q)) return true
     return (item.keywords || []).some((k) => {
       const kk = k.toLowerCase()
       return kk.includes(q) || q.includes(kk)
@@ -232,11 +246,19 @@ export function searchHelp(query) {
   }
   const docs = HELP_DOCS.filter(hit).map((d) => ({ id: d.id, kind: '帮助文档', title: d.title }))
   const flows = HELP_FLOWS.filter(hit).map((f) => ({ id: f.id, kind: '业务流程图', title: f.title }))
-  return [...docs, ...flows]
+  const cards = HELP_CARDS.filter(hit).map((c) => ({
+    id: c.id,
+    kind: '帮助任务卡',
+    title: c.title,
+    sub: [c.module, (c.roles || []).join('、'), c.entry].filter(Boolean).join(' · ')
+  }))
+  return [...cards, ...docs, ...flows]
 }
 
 /** 按 id 取帮助条目（含类型），供帮助中心页面按 ?topic= 定位 */
 export function getHelpById(id) {
+  const card = HELP_CARDS.find((c) => c.id === id)
+  if (card) return { type: 'card', item: card }
   const doc = HELP_DOCS.find((d) => d.id === id)
   if (doc) return { type: 'doc', item: doc }
   const flow = HELP_FLOWS.find((f) => f.id === id)

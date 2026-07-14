@@ -83,6 +83,7 @@
                 >
                   <span class="bpl-cmdk__opt-lb">{{ r.label }}</span>
                   <span v-if="r.badge" class="bpl-planbadge" :class="'bpl-planbadge--' + (r.disabled ? 'planned' : 'partial')">{{ r.badge }}</span>
+                  <span v-if="r.sub" class="bpl-cmdk__opt-sub">{{ r.sub }}</span>
                 </a>
               </template>
             </template>
@@ -370,8 +371,8 @@ export default {
           out.push({ kind, label: r.trail, to: r.disabled ? null : r.path, disabled: r.disabled, badge: r.badge })
         }
       }
-      // 帮助文档 / 业务流程图
-      searchHelp(q).forEach((h) => out.push({ kind: h.kind, label: h.title, to: '/admin/help?topic=' + h.id, disabled: false, badge: '' }))
+      // 帮助任务卡 / 帮助文档 / 业务流程图
+      searchHelp(q).forEach((h) => out.push({ kind: h.kind, label: h.title, sub: h.sub || '', to: '/admin/help?topic=' + h.id, disabled: false, badge: '' }))
       // 去重（label+to）后截断
       const seen = new Set()
       const dedup = out.filter((r) => {
@@ -384,7 +385,7 @@ export default {
     },
     /** 按类别分组，供面板分区渲染 */
     fnGrouped() {
-      const order = ['功能/页面', '页面 · 待补强', '规划 · 待施工', '未开通', '帮助文档', '业务流程图']
+      const order = ['功能/页面', '页面 · 待补强', '规划 · 待施工', '未开通', '帮助任务卡', '帮助文档', '业务流程图']
       const map = {}
       this.fnResults.forEach((r) => {
         ;(map[r.kind] = map[r.kind] || []).push(r)
@@ -880,11 +881,20 @@ export default {
 .bpl-cmdk__opt {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   padding: 8px 10px;
   border-radius: 8px;
   text-decoration: none;
   cursor: pointer;
+}
+/* 任务卡副标题：模块 · 角色 · 入口路径，整行显示在标题下方 */
+.bpl-cmdk__opt-sub {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--t3);
+  line-height: 1.4;
+  white-space: normal;
 }
 .bpl-cmdk__opt:hover,
 .bpl-cmdk__opt.is-active {
