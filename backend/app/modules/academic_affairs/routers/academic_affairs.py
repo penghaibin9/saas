@@ -1064,10 +1064,29 @@ def schedule_room_page(classroomId: int = Path(...), termId: Optional[str] = Non
     return success(sched_svc.room_schedule(user, classroomId, termId, week))
 
 
+@router.get("/schedule/student/{studentId}", summary="学生课表（按行政班+本人LOCKED选课并入；自动取当前已发布批次；越范围403002）")
+def schedule_student_page(studentId: int = Path(...), termId: Optional[str] = None, week: Optional[int] = None,
+                          user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    return success(sched_svc.student_schedule(user, studentId, termId, week))
+
+
+@router.get("/schedule/teaching-class/{teachingClassCode}", summary="教学班课表（派生自教学任务；自动取当前已发布批次；越范围403002）")
+def schedule_teaching_class_page(teachingClassCode: str = Path(...), termId: Optional[str] = None,
+                                 week: Optional[int] = None, user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    return success(sched_svc.teaching_class_schedule(user, teachingClassCode, termId, week))
+
+
 @router.get("/schedule/publish-records", summary="课表发布记录（t_aa_schedule_publish，发布/作废历史留痕）")
 def schedule_publish_records(termId: Optional[str] = None, batchId: Optional[str] = None,
                              page: int = 1, pageSize: int = 20, user=Depends(require_permission(_SCHED_TIER1_VIEW))):
     items, total = sched_svc.list_publish_records(user, termId, batchId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/schedule/adjustments", summary="课表调整记录（读 t_affairs_audit_trail：条目/批次两级变更留痕，只读）")
+def schedule_adjustments(bizType: Optional[str] = None, action: Optional[str] = None,
+                         page: int = 1, pageSize: int = 20, user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    items, total = sched_svc.list_schedule_adjustments(user, bizType, action, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 

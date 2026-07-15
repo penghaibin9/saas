@@ -75,7 +75,13 @@ const layoutRoute = {
     { path: 'schedule/class/:classId?', name: 'aa-schedule-class', component: () => import('@/modules/academicAffairs/views/AaClassScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '班级课表') },
     { path: 'schedule/teacher/:teacherKey?', name: 'aa-schedule-teacher', component: () => import('@/modules/academicAffairs/views/AaTeacherScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '教师课表') },
     { path: 'schedule/room/:classroomId?', name: 'aa-schedule-room', component: () => import('@/modules/academicAffairs/views/AaRoomScheduleView.vue'), meta: meta('academicAffairs.classroom.view', '教室课表') },
+    // ── 课表管理续工第三轮：学生课表 / 教学班课表 / 周课表 / 学期课表 / 课表调整记录 ──
+    { path: 'schedule/student/:studentId?', name: 'aa-schedule-student', component: () => import('@/modules/academicAffairs/views/AaStudentScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '学生课表') },
+    { path: 'schedule/teaching-class/:code?', name: 'aa-schedule-teaching-class', component: () => import('@/modules/academicAffairs/views/AaTeachingClassScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '教学班课表') },
+    { path: 'schedule/week', name: 'aa-schedule-week', component: () => import('@/modules/academicAffairs/views/AaWeekScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '周课表') },
+    { path: 'schedule/semester', name: 'aa-schedule-semester', component: () => import('@/modules/academicAffairs/views/AaSemesterScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '学期课表') },
     { path: 'schedule/publish', name: 'aa-schedule-publish', component: () => import('@/modules/academicAffairs/views/AaSchedulePublishView.vue'), meta: meta('academicAffairs.schedule.view', '课表发布') },
+    { path: 'schedule/adjustments', name: 'aa-schedule-adjustments', component: () => import('@/modules/academicAffairs/views/AaScheduleAdjustmentLogView.vue'), meta: meta('academicAffairs.schedule.view', '课表调整记录') },
     { path: 'schedule/export', name: 'aa-schedule-export', component: () => import('@/modules/academicAffairs/views/AaScheduleExportView.vue'), meta: meta('academicAffairs.schedule.export', '课表导出') },
     // ── W5 成绩 · 预警 · 毕业预审 ──
     { path: 'grade-overview', name: 'aa-grade-overview', component: () => import('@/modules/academicAffairs/views/AaGradeOverviewView.vue'), meta: meta('academicAffairs.grade.view', '成绩总览') },

@@ -600,6 +600,66 @@ def room_schedule(user, classroom_id, term_id=None, week=None) -> dict:
         return {"items": rows, "batchId": str(batch.id), "classroomText": display, "note": ""}
 
 
+def student_schedule(user, student_id, term_id=None, week=None) -> dict:
+    """学生课表（PC 端 /schedule/student/:studentId，13B 课表管理续工第三轮新增）：教务处/学院教务
+    （本院）/辅导员（本班）按学生查询。与既有 student_view（批次内下钻，需先知道 batchId，供「三视图」
+    下钻用）不同，本入口面向导航菜单三级页，自动取「当前已发布批次」。数据范围：按学生所在行政班
+    收敛（与 class_schedule 同一 build_affairs_context 口径），越范围 → 403002；亦并入本人 LOCKED
+    选课结果（与 mobile 端 schedule_my 同口径，见 _enrolled_items，source=ENROLLED）。"""
+    from app.models import AaScheduleItem, StudentProfile
+    with session() as db:
+        s = db.get(StudentProfile, int(student_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("学生不存在")
+        ctx = build_affairs_context(user, db)
+        if ctx.scope_type != "TENANT_ALL":
+            allowed = ctx.allowed_class_ids(db) or set()
+            if not s.class_id or int(s.class_id) not in allowed:
+                raise no_data_scope("该学生不在您的数据范围内")
+        batch = _current_published_batch(db, term_id)
+        if not batch:
+            return {"items": [], "batchId": None, "studentName": s.real_name, "studentNo": s.student_no,
+                    "note": "该学生本学期暂无已发布课表"}
+        base_items = _view(db, batch.id, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
+        items = base_items + _enrolled_items(db, s.id)
+        items = [r for r in items if _week_in_range(r, week)]
+        note = "" if s.class_id else "学生无行政班归属"
+        return {"items": items, "batchId": str(batch.id), "studentName": s.real_name,
+                "studentNo": s.student_no, "note": note}
+
+
+def teaching_class_schedule(user, teaching_class_code, term_id=None, week=None) -> dict:
+    """教学班课表（PC 端 /schedule/teaching-class/:code，13B 课表管理续工第三轮新增）：教学班无独立表，
+    派生自 t_aa_teaching_task.teaching_class_code（与 org_service.list_teaching_classes 同一口径）。
+    合班（merge_tasks）后 teaching_class_code 唯一改写为 survivor 专属码，课表项 task_id 落到 survivor，
+    item.class_id=survivor.class_id，故按 code 查任务→按 task_id 查课表项，与既有 class_schedule 的
+    class_id 过滤结果集一致（同一数据来源，仅入口维度不同）。数据范围：任一关联任务的 class_id 落在
+    调用者可见范围内即放行（与 class_schedule 同一收敛函数），越范围 → 403002。"""
+    from app.models import AaScheduleItem, AaTeachingTask
+    with session() as db:
+        tasks = db.scalars(select(AaTeachingTask).where(
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.teaching_class_code == teaching_class_code)).all()
+        if not tasks:
+            raise not_found("教学班不存在")
+        ctx = build_affairs_context(user, db)
+        if ctx.scope_type != "TENANT_ALL":
+            allowed = ctx.allowed_class_ids(db) or set()
+            class_ids = {t.class_id for t in tasks if t.class_id}
+            if not (class_ids & allowed):
+                raise no_data_scope("该教学班不在您的数据范围内")
+        task_ids = [t.id for t in tasks]
+        teaching_class_name = next((t.teaching_class_name for t in tasks if t.teaching_class_name),
+                                   teaching_class_code)
+        batch = _current_published_batch(db, term_id)
+        if not batch:
+            return {"items": [], "batchId": None, "teachingClassName": teaching_class_name,
+                    "note": "该教学班本学期暂无已发布课表"}
+        rows = _view(db, batch.id, [AaScheduleItem.task_id.in_(task_ids)])
+        rows = [r for r in rows if _week_in_range(r, week)]
+        return {"items": rows, "batchId": str(batch.id), "teachingClassName": teaching_class_name, "note": ""}
+
+
 def list_publish_records(user, term_id=None, batch_id=None, page=1, page_size=20):
     """课表发布记录（t_aa_schedule_publish）：教务处/学院教务查看发布/作废历史，供「课表发布」页留痕展示。"""
     from app.models import AaSchedulePublish
@@ -660,3 +720,40 @@ def export_schedule(user, scope, identifier, term_id=None, week_start=None, week
               f"scope={scope} id={identifier} rows={len(data_rows)} purpose={purpose.strip()[:100]}")
         db.commit()
     return content
+
+
+# ═══════════ 课表调整记录（13B 课表管理续工第三轮新增，只读）═══════════
+
+_ADJUST_BIZ_TYPES = {"AA_SCHEDULE", "AA_SCHEDULE_BATCH"}
+
+
+def list_schedule_adjustments(user, biz_type=None, action=None, page=1, page_size=20):
+    """课表调整记录（PC 端 /schedule/adjustments）：读 t_affairs_audit_trail，与
+    org_service.list_org_audit 同一「审计留痕直读」模式。biz_type 精确枚举为
+    AA_SCHEDULE（条目级：ADD_ITEM/单行 IMPORT 冲突跳过/ADJUST_ITEM/TEACHER_OBJECT）+
+    AA_SCHEDULE_BATCH（批次级：CREATE/整批 IMPORT/PRE_PUBLISH/PUBLISH/VOID_REISSUE/ARCHIVE）；
+    故意不用 LIKE 前缀匹配——同前缀的 AA_SCHEDULE_CHANGE（调停课台账，独立二级模块自有页面）与
+    AA_SCHEDULE_EXPORT（课表导出审计，见「课表导出」页）会被 LIKE 'AA_SCHEDULE%' 误捕获，用精确
+    白名单排除。权限口径与同域 list_publish_records 一致（按 academicAffairs.schedule.view 放行，
+    不逐条回查学院 scope）——记录内容为排课操作留痕，非学生隐私字段；已知限制：无法按学院/班级
+    收窄可见范围，见课表管理三级施工卡「已知欠账」。"""
+    from app.models import AffairsAuditTrail
+    with session() as db:
+        conds = [AffairsAuditTrail.tenant_id == _tid()]
+        if biz_type:
+            bt = biz_type.strip().upper()
+            if bt not in _ADJUST_BIZ_TYPES:
+                raise AppException("VALIDATION_ERROR", "bizType 仅支持 AA_SCHEDULE / AA_SCHEDULE_BATCH")
+            conds.append(AffairsAuditTrail.biz_type == bt)
+        else:
+            conds.append(AffairsAuditTrail.biz_type.in_(list(_ADJUST_BIZ_TYPES)))
+        if action:
+            conds.append(AffairsAuditTrail.action == action.strip().upper())
+        total = db.scalar(select(func.count()).select_from(AffairsAuditTrail).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.scalars(select(AffairsAuditTrail).where(*conds)
+                          .order_by(AffairsAuditTrail.id.desc()).offset(offset).limit(page_size)).all()
+        items = [{"id": str(a.id), "bizType": a.biz_type, "bizId": str(a.biz_id) if a.biz_id else None,
+                  "action": a.action, "operator": a.operator or "", "roleName": a.role_name or "",
+                  "detail": a.detail or "", "occurredAt": _iso(a.occurred_at)} for a in rows]
+        return items, total

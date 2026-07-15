@@ -165,3 +165,102 @@ def test_evaluation_self_role_tasks_generate_and_list(client, db_mode):
     mine = client.get(f"{BASE}/evaluation/my-role-tasks", headers=hdr,
                       params={"evaluatorType": "SELF", "batchId": bid})
     assert mine.status_code == 200, mine.text
+
+
+# ═══════════ 课表管理续工第三轮：学生课表 / 教学班课表 / 课表调整记录 ═══════════
+
+def test_student_schedule_view_and_out_of_scope_403(client, db_mode):
+    """学生课表：教务处按学生查询到本班课表；未配置数据范围的学院教务查询同一学生 → 403002。"""
+    tid = _seed_term(db_mode)
+    cid = _seed_class(db_mode, "软件2602")
+    sid = _seed_student(db_mode, "STU301", cid)
+    hdr = _hdr(client, "school_admin01")
+    bid = client.post(f"{BASE}/schedule-batches", headers=hdr,
+                      json={"termId": str(tid), "batchName": "2026秋课表-学生"}).json()["data"]["batchId"]
+    item = client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json={
+        "courseName": "高等数学", "classId": str(cid), "className": "软件2602",
+        "teacherKey": "T101", "teacherName": "赵老师", "weekday": 2, "slotNo": 1,
+        "startWeek": 1, "endWeek": 18})
+    assert item.status_code == 200, item.text
+    client.post(f"{BASE}/schedule-batches/{bid}/pre-publish", headers=hdr)
+    pub = client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=hdr)
+    assert pub.status_code == 200, pub.text
+
+    stu = client.get(f"{BASE}/schedule/student/{sid}", headers=hdr)
+    assert stu.status_code == 200, stu.text
+    data = stu.json()["data"]
+    assert len(data["items"]) == 1
+    assert data["items"][0]["courseName"] == "高等数学"
+    assert data["studentNo"] == "STU301"
+
+    from app.core.security import create_access_token
+    college_hdr = {"Authorization": "Bearer " + create_access_token({
+        "userId": "u-college-noscope", "realName": "无范围学院教务", "userType": "STAFF",
+        "tid": "x", "tenantId": str(TID), "activeContextId": "ctx_college_noscope",
+        "currentRoleCode": "COLLEGE_ADMIN", "clientType": "PC"})}
+    forbidden = client.get(f"{BASE}/schedule/student/{sid}", headers=college_hdr)
+    assert forbidden.status_code == 403, forbidden.text
+
+
+def test_teaching_class_schedule_view_and_not_found_404(client, db_mode):
+    """教学班课表：按教学班代码（派生自教学任务）查其排课项；不存在的代码 → 404。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+    tid = _seed_term(db_mode)
+    cid = _seed_class(db_mode, "软件2603")
+    hdr = _hdr(client, "school_admin01")
+    code = "TC-TEST-0001"
+    db = get_sessionmaker()()
+    b = AaTeachingTaskBatch(tenant_id=TID, term_id=tid, batch_name="2026秋教学任务-教学班", status="APPROVED")
+    db.add(b); db.flush()
+    t = AaTeachingTask(tenant_id=TID, batch_id=b.id, course_id=1, course_name="大学物理",
+                       class_id=cid, teacher_key="T102", teacher_name="钱老师",
+                       teaching_class_code=code, teaching_class_name="大学物理(软件2603)", status="READY")
+    db.add(t); db.flush()
+    task_id = t.id
+    db.commit()
+    db.close()
+
+    bid = client.post(f"{BASE}/schedule-batches", headers=hdr,
+                      json={"termId": str(tid), "batchName": "2026秋课表-教学班"}).json()["data"]["batchId"]
+    item = client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json={
+        "taskId": str(task_id), "classId": str(cid), "className": "软件2603",
+        "teacherKey": "T102", "teacherName": "钱老师", "weekday": 3, "slotNo": 2,
+        "startWeek": 1, "endWeek": 18})
+    assert item.status_code == 200, item.text
+    client.post(f"{BASE}/schedule-batches/{bid}/pre-publish", headers=hdr)
+    pub = client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=hdr)
+    assert pub.status_code == 200, pub.text
+
+    tc = client.get(f"{BASE}/schedule/teaching-class/{code}", headers=hdr)
+    assert tc.status_code == 200, tc.text
+    data = tc.json()["data"]
+    assert len(data["items"]) == 1
+    assert data["items"][0]["courseName"] == "大学物理"
+    assert data["teachingClassName"] == "大学物理(软件2603)"
+
+    missing = client.get(f"{BASE}/schedule/teaching-class/TC-NOPE-0000", headers=hdr)
+    assert missing.status_code == 404, missing.text
+
+
+def test_schedule_adjustments_log_and_invalid_biz_type_400(client, db_mode):
+    """课表调整记录：手工排课后可在日志中查到 ADD_ITEM 留痕；非法 bizType 白名单外值 → 400。"""
+    tid = _seed_term(db_mode)
+    cid = _seed_class(db_mode, "软件2604")
+    hdr = _hdr(client, "school_admin01")
+    bid = client.post(f"{BASE}/schedule-batches", headers=hdr,
+                      json={"termId": str(tid), "batchName": "2026秋课表-调整记录"}).json()["data"]["batchId"]
+    item = client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json={
+        "courseName": "大学英语", "classId": str(cid), "className": "软件2604",
+        "teacherKey": "T103", "teacherName": "孙老师", "weekday": 4, "slotNo": 1,
+        "startWeek": 1, "endWeek": 18})
+    assert item.status_code == 200, item.text
+
+    logs = client.get(f"{BASE}/schedule/adjustments", headers=hdr, params={"bizType": "AA_SCHEDULE"})
+    assert logs.status_code == 200, logs.text
+    data = logs.json()["data"]
+    assert data["total"] >= 1
+    assert any(r["action"] == "ADD_ITEM" for r in data["items"])
+
+    bad = client.get(f"{BASE}/schedule/adjustments", headers=hdr, params={"bizType": "AA_SCHEDULE_CHANGE"})
+    assert bad.status_code == 400, bad.text
