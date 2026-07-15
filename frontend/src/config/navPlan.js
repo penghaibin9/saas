@@ -297,7 +297,16 @@ export const NAV_PLAN = [
     ]),
     mod('aa-courses', '课程库', '/admin/academic-affairs/courses', [
       I('课程列表', '/admin/academic-affairs/courses'),
-      ...P('新增课程', '课程分类', '课程性质', '学分学时', '课程大纲', '考核方式', '课程负责人', '课程材料', '课程停用', '课程归档')
+      // Tier1 续工（2026-07-15）：以下 5 项接入统一控制台 /courses/console?tab=xxx（DataTable+Drawer，深编辑/两级审核仍回既有 /courses/:id）
+      I('新增课程', '/admin/academic-affairs/courses/new', 'academicAffairs.course.manage'),
+      I('课程分类', '/admin/academic-affairs/courses/console?tab=category', 'academicAffairs.course.view'),
+      I('课程性质', '/admin/academic-affairs/courses/console?tab=nature', 'academicAffairs.course.view'),
+      I('学分学时', '/admin/academic-affairs/courses/console?tab=credit', 'academicAffairs.course.view'),
+      ...P('课程大纲', '考核方式'),
+      I('课程负责人', '/admin/academic-affairs/courses/console?tab=owner', 'academicAffairs.course.view'),
+      ...P('课程材料'),
+      I('课程停用', '/admin/academic-affairs/courses/console?tab=disable', 'academicAffairs.course.view'),
+      ...P('课程归档')
     ]),
     // 教学计划：按手册 P6 冻结决定 + 用户 2026-07-14 拍板「收编」——不建独立域，叶子指向既有等价功能页
     // 年级/专业教学计划=培养方案(AaProgramBinding方案-年级绑定)；学期教学计划/课程开设计划=教学任务批次(AaTeachingTaskBatch学期开课计划)；计划归档=教务归档

@@ -228,6 +228,20 @@ export const academicAffairsApi = {
   reviewCourse(courseId, action, reason) {
     return call(() => request(`${BASE}/courses/${courseId}/review`, { method: 'POST', body: { action, reason } }))
   },
+  /** 课程停用（Tier1「课程停用」）：ENABLED→DISABLED，被在途/生效培养方案引用时 400 拦截。 */
+  enableCourse(courseId) {
+    return call(() => request(`${BASE}/courses/${courseId}/enable`, { method: 'POST' }))
+  },
+  disableCourse(courseId) {
+    return call(() => request(`${BASE}/courses/${courseId}/disable`, { method: 'POST' }))
+  },
+  getCourseReferences(courseId) {
+    return call(() => request(`${BASE}/courses/${courseId}/references`))
+  },
+  /** 课程负责人检索（Tier1「课程负责人」）：在职教师，供 AppTeacherPicker 远程搜索。 */
+  searchCourseTeachers(keyword) {
+    return call(() => request(`${BASE}/courses/teachers/search`, { params: keyword ? { keyword } : {} }))
+  },
 
   /* ── 培养方案（编制 → 两级审 → PUBLISHED → 绑年级） ── */
   getPrograms(params = {}) {
