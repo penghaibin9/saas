@@ -746,6 +746,10 @@ export const academicAffairsApi = {
   getExceptionList(params = {}) {
     return callList(`${BASE}/grade-views/exception-list`, params)
   },
+  /** 成绩操作审计（只读）：教务处/学院查全量，任课教师仅自查本人操作（后端裁定，见 list_grade_audit）。 */
+  getGradeAudit(params = {}) {
+    return callList(`${BASE}/grade-views/audit`, params)
+  },
 
   /* ── 学业预警（扫描 + 列表；多维分类/规则/跟进/统计见 academicAffairsWarningApi） ── */
   scanWarnings() {

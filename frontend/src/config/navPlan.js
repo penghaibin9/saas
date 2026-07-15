@@ -477,7 +477,8 @@ export const NAV_PLAN = [
       I('学院审核（待审核/通过/退回）', '/admin/academic-affairs/grade-college-review'),
       I('教务发布（发布/退回/归档）', '/admin/academic-affairs/grade-publish'),
       I('成绩更正申请与审核', '/admin/academic-affairs/grade-change'),
-      ...P('成绩复核', '成绩操作审计')
+      I('成绩复核', '/admin/academic-affairs/grade-recheck', 'academicAffairs.grade.view'),
+      I('成绩操作审计', '/admin/academic-affairs/grade-audit', 'academicAffairs.grade.view')
     ]),
     mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
       I('预警扫描与列表', '/admin/academic-affairs/warnings'),

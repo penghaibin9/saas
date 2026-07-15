@@ -169,7 +169,11 @@ def roster(task_id, user) -> dict:
 
 
 def list_records(task_id, user) -> dict:
-    """成绩录入表当前已录状态（供录入页刷新/批量导入后回显真实落库结果，零推导、直读 t_aa_grade_record）。"""
+    """成绩录入表当前已录状态（供录入页刷新/批量导入后回显真实落库结果，零推导、直读 t_aa_grade_record）。
+    同时供「成绩复核」只读工作台复用（07 号三级卡补建）：额外返回 recordId/source/更正前值/更正原因/
+    更正时间/版本号，供学院教务员、教务处管理员（不受 COURSE 范围收敛）以及任课教师本人（COURSE 范围）
+    在通过/发布前，或事后核对更正留痕时逐行核对。不新增端点，纯字段扩展，向后兼容既有调用方
+    （成绩录入页刷新/导入回显）。"""
     with session() as db:
         from app.models import AaGradeRecord, AaGradeTask, StudentProfile
         t = db.get(AaGradeTask, int(task_id))
@@ -184,10 +188,14 @@ def list_records(task_id, user) -> dict:
         items = []
         for r in recs:
             s = stus.get(r.student_id)
-            items.append({"studentId": str(r.student_id), "realName": (s.real_name if s else ""),
-                         "studentNo": (s.student_no if s else ""), "usualScore": r.usual_score,
-                         "finalScore": r.final_score, "totalScore": r.total_score,
-                         "passStatus": r.pass_status, "exceptionFlag": r.exception_flag or "NORMAL"})
+            items.append({"recordId": str(r.id), "studentId": str(r.student_id),
+                         "realName": (s.real_name if s else ""), "studentNo": (s.student_no if s else ""),
+                         "usualScore": r.usual_score, "finalScore": r.final_score, "totalScore": r.total_score,
+                         "passStatus": r.pass_status, "exceptionFlag": r.exception_flag or "NORMAL",
+                         "source": r.source or "LEGACY", "prevUsualScore": r.prev_usual_score,
+                         "prevFinalScore": r.prev_final_score, "prevTotalScore": r.prev_total_score,
+                         "changeReason": r.change_reason or "", "changeAt": _iso(r.change_at),
+                         "versionNo": r.version_no})
         return {"items": items}
 
 
@@ -704,6 +712,47 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
         except Exception:
             pass
     return result
+
+
+# ═══════════ 成绩操作审计（08 号三级卡补建，读侧，t_affairs_audit_trail biz_type=AA_GRADE_*） ═══════════
+
+def list_grade_audit(user, biz_type=None, page=1, page_size=50):
+    """成绩操作审计：读 t_affairs_audit_trail，biz_type ∈ {AA_GRADE_TASK, AA_GRADE_RECORD,
+    AA_GRADE_TRANSCRIPT}（覆盖创建/录入/导入/提交/学院审/教务发布/退回/归档/更正申请与两级审/成绩单导出，
+    均已由本文件各写操作调用 _audit() 落库，见 create_grade_task/enter_score/grade_import_confirm/
+    submit_task/college_review/publish_grades/return_task/archive_task/change_request/_change_review/
+    change_academic_review/export_transcript_xlsx）。
+
+    角色分层（成绩明细属高敏感数据，不可与 08-成绩审核发布更正 §11 的分级口径冲突）：
+    - ACADEMIC_ADMIN/SCHOOL_ADMIN/平台超管：本校全量（TENANT_ALL）；
+    - COLLEGE_ADMIN：本校全量（学院级逐条收敛到具体教学班待补，与 list_tasks 同一已知简化——学院教务员
+      目前看得到跨学院审计行，但写操作本身仍受 _check_college_scope 拦截，不构成越权写，只是只读展示未
+      收窄，已记入施工记录，非阻断项）；
+    - ACADEMIC_TEACHER：仅能查看操作人=本人的记录（COURSE 自查留痕，不得浏览其他教师的操作历史）；
+    - 其余角色（含 STUDENT/STAFF 空权限）：拒绝。
+    """
+    role = (user.get("currentRoleCode") or "").upper()
+    from app.models import AffairsAuditTrail
+    with session() as db:
+        conds = [AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type.like("AA_GRADE%")]
+        if biz_type:
+            conds.append(AffairsAuditTrail.biz_type == biz_type)
+        if role in _REVIEW_ROLES or role == "COLLEGE_ADMIN" or user.get("userType") == "PLATFORM_SUPER_ADMIN":
+            pass  # 校级/院级：本校全量，见上方角色分层说明
+        elif role == "ACADEMIC_TEACHER":
+            keys = _user_keys(user) or {"__none__"}
+            conds.append(AffairsAuditTrail.operator.in_(keys))
+        else:
+            raise no_permission("无权限查看成绩操作审计")
+        total = db.scalar(select(func.count()).select_from(AffairsAuditTrail).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.scalars(select(AffairsAuditTrail).where(*conds)
+                          .order_by(AffairsAuditTrail.id.desc()).offset(offset).limit(page_size)).all()
+        items = [{"id": str(a.id), "bizType": a.biz_type, "bizId": str(a.biz_id) if a.biz_id else None,
+                  "action": a.action, "operator": a.operator, "roleName": a.role_name,
+                  "detail": a.detail, "occurredAt": a.occurred_at.isoformat() if a.occurred_at else None}
+                 for a in rows]
+        return items, total
 
 
 # ═══════════ 成绩读侧视图（零写入） ═══════════
