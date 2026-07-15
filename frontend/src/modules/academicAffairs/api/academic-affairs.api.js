@@ -624,8 +624,17 @@ export const academicAffairsApi = {
   getRoomSchedule(classroomId, params = {}) {
     return call(() => request(`${BASE}/schedule/room/${classroomId}`, { params }))
   },
+  getStudentSchedule(studentId, params = {}) {
+    return call(() => request(`${BASE}/schedule/student/${studentId}`, { params }))
+  },
+  getTeachingClassSchedule(teachingClassCode, params = {}) {
+    return call(() => request(`${BASE}/schedule/teaching-class/${encodeURIComponent(teachingClassCode)}`, { params }))
+  },
   getSchedulePublishRecords(params = {}) {
     return callList(`${BASE}/schedule/publish-records`, params)
+  },
+  getScheduleAdjustments(params = {}) {
+    return callList(`${BASE}/schedule/adjustments`, params)
   },
   async exportScheduleXlsx(body = {}) {
     try {
