@@ -116,8 +116,10 @@ export default {
     turnPage(p) { this.page = p; this.load() },
     goApply() { this.$router.push('/admin/academic-affairs/schedule-change/apply') },
     goApproval() { this.$router.push('/admin/academic-affairs/schedule-change/approval') },
-    goDetail(row) { this.$router.push(`/admin/academic-affairs/schedule-change/${row.changeId}/notice`) },
-    goNotice(row) { this.$router.push(`/admin/academic-affairs/schedule-change/${row.changeId}/notice`) },
+    // 详情/通知单共用同一打印页（D7 独立路由）；此前缺 /print/ 前缀导致 404，与已注册路由
+    // （academic-affairs.routes.js 的 printScheduleChangeNoticeRoute）对齐修正。
+    goDetail(row) { this.$router.push(`/admin/academic-affairs/print/schedule-change/${row.changeId}/notice`) },
+    goNotice(row) { this.$router.push(`/admin/academic-affairs/print/schedule-change/${row.changeId}/notice`) },
     askCancel(row) {
       this.confirm = { visible: true, title: '撤销调停课', message: `确认撤销「${row.courseName || ''}」的${row.changeTypeLabel}申请？`, type: 'danger', confirmText: '确认撤销', requireReason: true, row }
     },

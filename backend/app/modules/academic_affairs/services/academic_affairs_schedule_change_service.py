@@ -36,6 +36,18 @@ def _op():
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
 
 
+def _op_uid() -> int | None:
+    """解析当前操作者的真实数字 user_id：真实账号登录的 userId 形如 'db-N'（剥离前缀取数字）；
+    mock 演示登录形如 'u_xxx' 无法解析为数字，返回 None（对齐 mobile_student_service._resolve_uid
+    同款「解析不到就不勉强填」的约定）。此前 `uid.isdigit()` 未剥离 'db-' 前缀，导致 applicant_id
+    在真实账号登录下也恒为 None，APPLIED 通知回退成 receiver_id=0（广播语义），与调停课通知
+    「精确送达，不用 receiver_id=0」的设计要求（施工包 D-11）相悖，此处修正。"""
+    v = str((get_current_user_ctx() or {}).get("userId") or "")
+    if v.startswith("db-"):
+        v = v[3:]
+    return int(v) if v.isdigit() else None
+
+
 def _audit(db, biz_id, action, detail=""):
     from app.models import AffairsAuditTrail
     n, r, uid = _op()
@@ -202,7 +214,7 @@ def submit(body, user) -> dict:
             if conflict:
                 raise AppException("DATA_CONFLICT",
                                    f"目标课位冲突（{conflict['type']}）：{conflict['detail']}，单据不予受理")
-        _n, _r, uid = _op()
+        uid_num = _op_uid()
         x = AaScheduleChange(
             tenant_id=_tid(), term_id=b.term_id, batch_id=origin.batch_id, origin_item_id=origin.id,
             task_id=origin.task_id, change_type=ct,
@@ -214,11 +226,11 @@ def submit(body, user) -> dict:
             target_weekday=tw, target_slot_no=ts, target_start_week=tsw, target_end_week=tew,
             target_week_parity=tp, target_classroom=tcr,
             makeup_plan=(getattr(body, "makeupPlan", None) or None), reason=reason,
-            applicant_id=int(uid) if uid.isdigit() else None,
+            applicant_id=uid_num,
             status="SUBMITTED", current_node="COLLEGE_REVIEW")
         db.add(x)
         db.flush()
-        inst = _open_wf(db, x.id, uid if uid.isdigit() else 0,
+        inst = _open_wf(db, x.id, uid_num or 0,
                         f"{origin.teacher_name or ''} {L_CT[ct]}：{origin.course_name or ''}", "COLLEGE_REVIEW")
         x.workflow_instance_id = inst.id
         _todo_upsert(db, x.id, "COLLEGE_REVIEW", f"{L_CT[ct]}待学院审：{origin.course_name or ''}")
@@ -292,7 +304,7 @@ def review(cid, user, action, comment="") -> dict:
 
 def _apply_schedule(db, x) -> dict:
     """终审通过后改写课表：原课位标 CHANGED(保留历史)，调课/补课生成新项并回链本单，STATUS_CHANGED 通知师生。"""
-    from app.models import AaScheduleItem, StudentProfile
+    from app.models import AaScheduleItem, StudentProfile, User
     origin = db.get(AaScheduleItem, int(x.origin_item_id)) if x.origin_item_id else None
     # 复核目标冲突仍为 0（并发防护）
     new_item_id = None
@@ -323,20 +335,39 @@ def _apply_schedule(db, x) -> dict:
         new_item_id = ni.id
         x.new_item_id = ni.id
     x.status, x.applied_at = "APPLIED", datetime.utcnow()
-    # STATUS_CHANGED 真实推送：受影响班级每个学生 + 任课教师（逐条 UnifiedMessage，非单条广播）
+    # STATUS_CHANGED 真实推送：受影响班级每个学生 + 任课教师（逐条 UnifiedMessage，非单条广播）。
+    # receiver_id 必须是 t_user.id（移动端读消息按当前登录 user_id 过滤，mobile_student_service.
+    # _resolve_uid 同款约定）——此前分别用 x.applicant_id（未剥离 'db-' 前缀恒为 0）和
+    # t_student_profile.id（与 user_id 是两套完全独立的自增主键空间）当 receiver_id，
+    # 两者都不在移动端过滤用的 user_id 空间内，师生实际永远收不到本通知，本轮修正为按
+    # login_name 精确匹配 t_user 解析真实账号（教师：teacher_key；学生：student_no），
+    # 对齐 internship_service.remind_weekly_report 的既有精确送达范式（D-11）。
+    # 查不到登录账号的收件人（教师/学生尚未建立账号）当次静默跳过、不计入已通知数——
+    # 不伪造成功，通知缺口也不回滚已生效的审批结果。
     title = f"{L_CT[x.change_type]}通知：{x.course_name or ''}"
     content = _notice_text(x)
-    _msg(db, x.applicant_id or 0, title, content, "STATUS_CHANGED", x.id)   # 任课教师
+    teacher_notified = 0
+    if x.teacher_key:
+        acc = db.scalars(select(User).where(
+            User.tenant_id == _tid(), User.login_name == x.teacher_key,
+            User.is_deleted.is_(False), User.status == "ACTIVE")).first()
+        if acc:
+            _msg(db, acc.id, title, content, "STATUS_CHANGED", x.id)
+            teacher_notified = 1
     students = 0
     if x.class_id:
-        for (sid,) in db.execute(select(StudentProfile.id).where(
-                StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(x.class_id),
-                StudentProfile.is_deleted.is_(False))).all():
-            _msg(db, sid, title, content, "STATUS_CHANGED", x.id)
+        rows = db.execute(select(User.id).select_from(StudentProfile).join(
+            User, and_(User.tenant_id == StudentProfile.tenant_id,
+                      User.login_name == StudentProfile.student_no,
+                      User.is_deleted.is_(False))
+        ).where(StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(x.class_id),
+                StudentProfile.is_deleted.is_(False), User.status == "ACTIVE")).all()
+        for (uid,) in rows:
+            _msg(db, uid, title, content, "STATUS_CHANGED", x.id)
             students += 1
-    _audit(db, x.id, "APPLIED", f"newItem={new_item_id},pushed={students}生+1师")
+    _audit(db, x.id, "APPLIED", f"newItem={new_item_id},pushed={students}生+{teacher_notified}师")
     return {"status": "APPLIED", "newItemId": str(new_item_id or ""), "originKept": "CHANGED(历史留痕)",
-            "notified": {"students": int(students), "teacher": 1, "channel": "STATUS_CHANGED"}}
+            "notified": {"students": int(students), "teacher": teacher_notified, "channel": "STATUS_CHANGED"}}
 
 
 def _notice_text(x) -> str:

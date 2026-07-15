@@ -271,3 +271,107 @@ def test_c10b_archive_ignores_active_status_param(client, db_mode):
     arc = client.get(f"{BASE}/schedule-change/archive", headers=admin,
                      params={"status": "SUBMITTED"}).json()["data"]
     assert all(x["changeId"] != cid for x in arc["items"])
+
+
+# ══════════ 05 调停课通知（三级施工卡 05）：APPLIED 精确送达 + 通知单打印数据 ══════════
+#
+# 本轮修复真实 bug：_apply_schedule() 此前用 x.applicant_id（未剥离 'db-' 前缀，uid.isdigit()
+# 恒 False → 恒 None → receiver_id 回退成 0，等价于旧 publish() 的广播反模式）当"教师"receiver_id，
+# 用 t_student_profile.id（与 t_user.id 是两套独立自增主键空间）当"学生"receiver_id——两者都不在
+# 移动端读消息时按当前登录 user_id 过滤所用的 id 空间内，师生实际永远收不到本通知。
+# 现按 login_name 精确匹配 t_user 解析真实账号（教师：teacher_key；学生：student_no），
+# 对齐 internship_service.remind_weekly_report 的既有精确送达范式（施工包 D-11）。
+
+def test_c11_notify_precise_delivery_uses_real_user_id(client, db_mode):
+    """教师 + 学生均已建立登录账号：APPLIED 后精确投递 2 条 STATUS_CHANGED 消息，
+    receiver_id 必须命中各自真实 t_user.id（不是 applicant_id 原值，也不是 student_profile.id）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage, User
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    db = get_sessionmaker()()
+    teacher_acc = User(tenant_id=TID, login_name="academic01", real_name="赵敏",
+                       password_hash="x", user_type="TEACHER", status="ACTIVE")
+    student_acc = User(tenant_id=TID, login_name="SC001", real_name="课表甲",
+                       password_hash="x", user_type="STUDENT", status="ACTIVE")
+    db.add(teacher_acc); db.add(student_acc); db.flush()
+    teacher_uid, student_uid = teacher_acc.id, student_acc.id
+    db.commit(); db.close()
+
+    _, origin = _published_item(client, admin, ids["class"])
+    cid = _submit(client, admin, origin).json()["data"]["changeId"]
+    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
+    r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
+    assert r2["data"]["status"] == "APPLIED"
+    assert r2["data"]["applied"]["notified"] == {"students": 1, "teacher": 1, "channel": "STATUS_CHANGED"}
+
+    db2 = get_sessionmaker()()
+    msgs = db2.query(UnifiedMessage).filter(
+        UnifiedMessage.tenant_id == TID, UnifiedMessage.source_module == "academic-affairs",
+        UnifiedMessage.source_biz_id == int(cid), UnifiedMessage.message_type == "STATUS_CHANGED").all()
+    db2.close()
+    assert len(msgs) == 2, f"应精确投递 2 条(1 师+1 生)，实得 {len(msgs)}"
+    receiver_ids = {m.receiver_id for m in msgs}
+    assert receiver_ids == {teacher_uid, student_uid}, "receiver_id 必须命中真实账号 id，不得是 0/档案 id/其他值"
+    assert 0 not in receiver_ids
+
+
+def test_c12_notify_gracefully_skips_missing_accounts(client, db_mode):
+    """教师/学生均未建立登录账号（_seed 默认场景）：APPLIED 精确投递优雅得 0 条，
+    不 500、不回退成 receiver_id=0 广播（不伪造送达成功）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    cid = _submit(client, admin, origin).json()["data"]["changeId"]
+    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
+    r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
+    assert r2["data"]["status"] == "APPLIED"
+    assert r2["data"]["applied"]["notified"] == {"students": 0, "teacher": 0, "channel": "STATUS_CHANGED"}
+
+    db = get_sessionmaker()()
+    cnt = db.query(UnifiedMessage).filter(
+        UnifiedMessage.tenant_id == TID, UnifiedMessage.source_biz_id == int(cid),
+        UnifiedMessage.message_type == "STATUS_CHANGED").count()
+    db.close()
+    assert cnt == 0, "无账号映射时不应插入任何 receiver_id=0 的广播消息冒充已送达"
+
+
+def test_c13_detail_fields_for_notice_print(client, db_mode):
+    """详情接口需覆盖通知单打印页（05 卡 §5.1）展示所需的全部字段。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    cid = _submit(client, admin, origin).json()["data"]["changeId"]
+    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
+    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
+
+    d = client.get(f"{BASE}/schedule-change/{cid}", headers=admin).json()["data"]
+    assert d["status"] == "APPLIED"
+    for key in ("changeId", "changeType", "changeTypeLabel", "courseName", "className",
+               "teacherName", "reason", "appliedAt", "createdAt"):
+        assert d.get(key), f"缺少打印页所需字段 {key}"
+    for side in ("origin", "target"):
+        assert side in d
+        for f in ("weekday", "slotNo", "startWeek", "endWeek", "weekParity", "classroom"):
+            assert f in d[side], f"{side}.{f} 缺失"
+
+
+def test_c14_op_uid_resolves_db_prefix_not_mock_prefix():
+    """_op_uid() 单测回归：真实账号登录 userId='db-N' 须剥离前缀取整数；mock 演示 'u_xxx'
+    解析不到应返回 None（此前 uid.isdigit() 未剥离 'db-' 前缀，两种登录下 applicant_id 恒 None）。"""
+    from app.core.context import get_current_user_ctx, set_current_user
+    from app.modules.academic_affairs.services.academic_affairs_schedule_change_service import _op_uid
+    saved = get_current_user_ctx()
+    try:
+        set_current_user({"userId": "db-4821"})
+        assert _op_uid() == 4821
+        set_current_user({"userId": "u_academic01"})
+        assert _op_uid() is None
+        set_current_user({"userId": ""})
+        assert _op_uid() is None
+        set_current_user(None)
+        assert _op_uid() is None
+    finally:
+        set_current_user(saved)
