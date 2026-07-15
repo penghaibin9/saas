@@ -6,6 +6,7 @@ from app.models.rbac import Permission, Role, RolePermission, User, UserRole  # 
 from app.models.student import StudentContact, StudentImportBatch, StudentProfile, StudentStageEvent  # noqa: F401
 from app.models.approval import UnifiedTodo, WorkflowInstance, WorkflowTask  # noqa: F401
 from app.models.message import UnifiedMessage  # noqa: F401
+from app.models.notification_preference import NotificationPreference  # noqa: F401
 from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401
 from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
@@ -64,6 +65,7 @@ from app.models.affairs_discipline import (AffairsRiskHandle,  # noqa: F401
 from app.models.affairs_talk import (FamilyContactLog, TalkPlan,  # noqa: F401
                                      TalkRecord)
 from app.models.affairs_mental import PsyReferral  # noqa: F401
+from app.models.affairs_psy_survey import PsySurveySubmission  # noqa: F401  (心理健康自评·独立新文件)
 from app.models.affairs_dorm import (DormBed, DormBuilding,  # noqa: F401
                                      DormCheckRecord, DormCheckTask, DormRoom,
                                      DormTransfer)

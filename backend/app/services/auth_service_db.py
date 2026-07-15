@@ -7,7 +7,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
-from app.core.security import create_access_token, verify_password
+from app.core.security import create_access_token, hash_password, verify_password
 from app.core.token_store import (issue_refresh, login_locked, record_login_failure,
                                   reset_login_failures)
 from app.db.session import db_enabled, get_sessionmaker
@@ -70,6 +70,50 @@ def login_with_password(login_name: str, password: str) -> dict:
             raise AppException("UNAUTHORIZED", "账号或密码不正确")
         reset_login_failures(f"pw:{login_name}")
         return build_login_result(db, user, client_type="PC")
+    finally:
+        db.close()
+
+
+def change_own_password(user_ctx: dict, old_password: str, new_password: str) -> dict:
+    """本人自助修改密码：验证旧密码 + pbkdf2_sha256 落新密码。仅真实账号（userId=db-{id}）支持；
+    演示/mock 账号（u_xxx）无真实凭据体系，明确拒绝而非静默假成功。复用登录同款失败锁定策略防爆破。"""
+    if not db_enabled():
+        raise AppException("UNAUTHORIZED", "需启用数据库")
+    uid = str((user_ctx or {}).get("userId") or "")
+    if not uid.startswith("db-") or not uid[3:].isdigit():
+        raise AppException("VALIDATION_ERROR", "演示账号不支持修改密码，请使用正式账号登录后再试")
+    real_id = int(uid[3:])
+    old_password = old_password or ""
+    new_password = new_password or ""
+    if len(new_password) < 8:
+        raise AppException("VALIDATION_ERROR", "新密码长度至少 8 位")
+    if old_password == new_password:
+        raise AppException("VALIDATION_ERROR", "新密码不能与原密码相同")
+    lock_key = f"pwchange:{real_id}"
+    remain = login_locked(lock_key)
+    if remain > 0:
+        raise AppException("UNAUTHORIZED", f"失败次数过多，请 {remain // 60 + 1} 分钟后再试")
+    from app.models import User
+    db = get_sessionmaker()()
+    try:
+        u = db.get(User, real_id)
+        if not u or u.is_deleted or u.status != "ACTIVE":
+            raise AppException("UNAUTHORIZED", "账号状态异常，无法修改密码")
+        if not verify_password(old_password, u.password_hash):
+            from app.services import audit_log
+            count, locked = record_login_failure(lock_key)
+            audit_log.record("PASSWORD_CHANGE_FAIL", u.login_name,
+                             detail={"failCount": count, "locked": bool(locked)}, result="FAIL")
+            if locked:
+                raise AppException("UNAUTHORIZED", "失败次数过多，账号已锁定 15 分钟")
+            raise AppException("UNAUTHORIZED", "原密码不正确")
+        reset_login_failures(lock_key)
+        u.password_hash = hash_password(new_password)
+        u.must_change_password = False
+        db.commit()
+        from app.services import audit_log
+        audit_log.record("PASSWORD_CHANGE", u.login_name, detail={}, result="SUCCESS")
+        return {"success": True}
     finally:
         db.close()
 

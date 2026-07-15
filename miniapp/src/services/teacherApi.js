@@ -45,6 +45,24 @@ export const teacherApi = {
   // 我的班级 / 我的学生（真实接口，无 mock 兜底）
   getMyClasses: () => real.teacherMyClasses(),
   getMyStudents: (classId) => real.teacherMyStudents(classId),
+  // 谈心谈话（真实接口，无 mock 兜底）
+  getTalkList: (params) => real.teacherTalkList(params),
+  getTalkDetail: (talkId) => real.teacherTalkDetail(talkId),
+  createTalk: (body) => real.teacherTalkCreate(body),
+  recordTalk: (talkId, body) => real.teacherTalkRecord(talkId, body),
+  talkFollowUp: (talkId, action, content) => real.teacherTalkFollowUp(talkId, action, content),
+  // 心理关注（真实接口，无 mock 兜底，严格保留遮蔽+授权原因红线）
+  getMentalList: (level) => real.teacherMentalList(level),
+  getMentalDetail: (refId, reason) => real.teacherMentalDetail(refId, reason),
+  createMentalReferral: (body) => real.teacherMentalCreate(body),
+  followMentalReferral: (refId, content) => real.teacherMentalFollow(refId, content),
+  escalateMentalReferral: (refId, content) => real.teacherMentalEscalate(refId, content),
+  closeMentalReferral: (refId, conclusion) => real.teacherMentalClose(refId, conclusion),
+  // 消息通知设置（真实接口，无 mock 兜底）
+  getNotifyPreferences: () => real.teacherNotifyPreferences(),
+  setNotifyPreference: (key, enabled) => real.teacherNotifySetPreference(key, enabled),
+  publishNotice: (body) => real.teacherNotifyPublish(body),
+  getDashboard: () => real.teacherDashboard(),
   // 实习批阅：mobile 范围真实数据
   getWeeklyReports: () =>
     realFirst('teacher.internship',

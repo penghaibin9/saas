@@ -40,6 +40,33 @@ def me_profile(user=Depends(get_current_user)):
     return success(stu.my_profile(user))
 
 
+# ── 学生·心理健康自评（移动端首创，系统不做任何自动诊断，仅登记原始作答+算术汇总分）──
+@router.get("/me/psy-survey/questions", summary="心理健康自评·题目")
+def psy_survey_questions(user=Depends(get_current_user)):
+    return success(stu.psy_survey_questions(user))
+
+
+@router.post("/me/psy-survey/submit", summary="心理健康自评·提交（命中阈值/主动求助自动登记人工关注）")
+def psy_survey_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.psy_survey_submit(user, body), message="已提交")
+
+
+@router.get("/me/psy-survey/history", summary="心理健康自评·本人历史记录")
+def psy_survey_history(user=Depends(get_current_user)):
+    return success(stu.psy_survey_history(user))
+
+
+# ── 学生·消息通知设置（移动端首创，真实过滤 me/messages 聚合，非假开关）──
+@router.get("/me/notify-preferences", summary="我的消息通知分类开关")
+def me_notify_preferences(user=Depends(get_current_user)):
+    return success(stu.notify_preferences(user))
+
+
+@router.post("/me/notify-preferences", summary="设置消息通知分类开关")
+def me_notify_set_preference(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.notify_set_preference(user, body), message="已保存")
+
+
 @router.get("/me/applications", summary="我的申请（本人聚合）")
 def me_applications(user=Depends(get_current_user)):
     return success(stu.my_applications(user))
@@ -496,6 +523,95 @@ def teacher_my_classes(user=Depends(get_current_user)):
 @router.get("/teacher/my-students", summary="教师·我的学生（本人负责班级学生名单，可按classId下钻）")
 def teacher_my_students(classId: str = None, user=Depends(get_current_user)):
     return success(tea.my_students(user, classId))
+
+
+@router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
+def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.notify_publish(user, body), message="通知已发布")
+
+
+@router.get("/teacher/dashboard", summary="教师·数据看板（真实聚合，按数据范围收敛）")
+def teacher_dashboard(user=Depends(get_current_user)):
+    return success(tea.dashboard(user))
+
+
+# ── 教师·谈心谈话（移动端包装，复用既有 affairs_talk_service）──
+@router.get("/teacher/talk", summary="教师·谈话记录列表")
+def teacher_talk_list(talkType: str = None, status: str = None, studentId: str = None,
+                      user=Depends(get_current_user)):
+    return success(tea.talk_list(user, talkType, status, studentId))
+
+
+@router.get("/teacher/talk/{talk_id}", summary="教师·谈话记录详情")
+def teacher_talk_detail(talk_id: str, user=Depends(get_current_user)):
+    return success(tea.talk_detail(user, talk_id))
+
+
+@router.post("/teacher/talk", summary="教师·新建谈话计划（批量圈定学生）")
+def teacher_talk_create(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.talk_create(user, body), message="谈话计划已创建")
+
+
+@router.post("/teacher/talk/{talk_id}/record", summary="教师·填写谈话记录")
+def teacher_talk_record(talk_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.talk_record(user, talk_id, body), message="谈话记录已保存")
+
+
+@router.post("/teacher/talk/{talk_id}/follow-up", summary="教师·谈话跟进/办结/转风险/转家校")
+def teacher_talk_follow_up(talk_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.talk_follow_up(user, talk_id, body), message="处理完成")
+
+
+@router.get("/teacher/talk-stats", summary="教师·谈话工作量统计")
+def teacher_talk_stats(groupBy: str = "TYPE", user=Depends(get_current_user)):
+    return success(tea.talk_stats(user, groupBy))
+
+
+# ── 教师·心理关注（移动端包装，严格保留既有遮蔽+授权原因红线）──
+@router.get("/teacher/mental", summary="教师·心理关注名单（恒遮蔽明细）")
+def teacher_mental_list(level: str = None, user=Depends(get_current_user)):
+    return success(tea.mental_list(user, level))
+
+
+@router.get("/teacher/mental/{ref_id}", summary="教师·心理转介详情（授权角色+原因≥5字方可见明细）")
+def teacher_mental_detail(ref_id: str, reason: str = None, user=Depends(get_current_user)):
+    return success(tea.mental_detail(user, ref_id, reason))
+
+
+@router.post("/teacher/mental", summary="教师·登记心理转介（人工登记，系统不做任何自动诊断）")
+def teacher_mental_create(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.mental_create(user, body), message="转介已登记")
+
+
+@router.post("/teacher/mental/{ref_id}/follow", summary="教师·心理转介回访")
+def teacher_mental_follow(ref_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.mental_follow(user, ref_id, body), message="回访已记录")
+
+
+@router.post("/teacher/mental/{ref_id}/escalate", summary="教师·心理危机升级（接入风险中枢）")
+def teacher_mental_escalate(ref_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.mental_escalate(user, ref_id, body), message="已升级为危机风险")
+
+
+@router.post("/teacher/mental/{ref_id}/close", summary="教师·关闭心理转介（结论≥5字）")
+def teacher_mental_close(ref_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.mental_close(user, ref_id, body), message="已关闭")
+
+
+@router.get("/teacher/mental-stats", summary="教师·心理关注统计（仅聚合）")
+def teacher_mental_stats(user=Depends(get_current_user)):
+    return success(tea.mental_stats(user))
+
+
+# ── 教师·消息通知设置（移动端首创，真实过滤 teacher/messages 聚合，非假开关）──
+@router.get("/teacher/notify-preferences", summary="我的消息通知分类开关")
+def teacher_notify_preferences(user=Depends(get_current_user)):
+    return success(tea.notify_preferences(user))
+
+
+@router.post("/teacher/notify-preferences", summary="设置消息通知分类开关")
+def teacher_notify_set_preference(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.notify_set_preference(user, body), message="已保存")
 
 
 @router.get("/teacher/messages", summary="教师·消息（范围/系统）")

@@ -216,12 +216,15 @@ def my_messages(user: dict) -> dict:
                                       "time": None, "deadline": None,
                                       "read": wo.status not in ("PENDING_HANDLE",),
                                       "status": wo.status, "link": "campus-service"})
-        groups = {"todo": todo_msgs, "notice": notice_msgs, "progress": progress_msgs}
+        groups_all = {"todo": todo_msgs, "notice": notice_msgs, "progress": progress_msgs}
+        from app.services import notification_preference_service as notify_pref
+        on = notify_pref.enabled_categories(user, list(groups_all.keys()))
+        groups = {k: (v if k in on else []) for k, v in groups_all.items()}
         unread = sum(1 for g in groups.values() for x in g if not x.get("read"))
         tabs = [{"key": k, "label": lb,
                  "badge": sum(1 for x in groups[k] if not x.get("read"))}
                 for k, lb in (("todo", "待办"), ("notice", "通知"), ("progress", "服务进度"))]
-        flat = todo_msgs + notice_msgs + progress_msgs
+        flat = groups["todo"] + groups["notice"] + groups["progress"]
         return {"hasData": bool(flat), "unreadCount": unread, "tabs": tabs,
                 "groups": groups, "list": flat}
 
@@ -956,6 +959,43 @@ def my_profile(user: dict) -> dict:
                 "idCardMasked": _mask_id_card(stu.id_card_encrypted) if stu.id_card_encrypted else "",
                 # 家庭住址属敏感，移动端不返回明文，也不回脱敏串（最小化）
                 "status": stu.student_status, "stage": stu.current_stage}
+
+
+# ─────────── 消息通知设置（移动端首创，真实过滤 my_messages 聚合） ───────────
+
+def notify_preferences(user: dict) -> dict:
+    from app.services import notification_preference_service as notify_pref
+    return notify_pref.get_preferences(user, notify_pref.STUDENT_CATEGORIES)
+
+
+def notify_set_preference(user: dict, body: dict) -> dict:
+    from app.services import notification_preference_service as notify_pref
+    b = body or {}
+    valid_keys = {c["key"] for c in notify_pref.STUDENT_CATEGORIES}
+    if b.get("key") not in valid_keys:
+        raise AppException("VALIDATION_ERROR", "未知通知分类")
+    return notify_pref.set_preference(user, b.get("key"), bool(b.get("enabled")))
+
+
+# ─────────── 心理健康自评（移动端首创，复用 affairs_psy_survey_service） ───────────
+
+def psy_survey_questions(user: dict) -> dict:
+    _require_student(user)
+    from app.services import affairs_psy_survey_service as psy
+    return psy.get_questions()
+
+
+def psy_survey_submit(user: dict, body: dict) -> dict:
+    _require_student(user)
+    from app.services import affairs_psy_survey_service as psy
+    b = body or {}
+    return psy.submit_survey(user, b.get("answers"), b.get("wantsContact", False))
+
+
+def psy_survey_history(user: dict) -> dict:
+    _require_student(user)
+    from app.services import affairs_psy_survey_service as psy
+    return psy.my_submissions(user)
 
 
 # ─────────── 我的申请（聚合本人可查询记录） ───────────

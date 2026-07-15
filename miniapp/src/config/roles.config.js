@@ -44,11 +44,14 @@ export const roleConfigs = {
     quickActions: [
       { key: 'myClasses', label: '我的班级', icon: '🏫' },
       { key: 'myStudents', label: '我的学生', icon: '👥' },
+      { key: 'talk', label: '谈心谈话', icon: '💬' },
+      { key: 'mental', label: '心理关注', icon: '🧠' },
       { key: 'contact', label: '联系学生', icon: '☎' },
       { key: 'record', label: '记录联系', icon: '✎' },
       { key: 'risk', label: '风险学生', icon: '⚠' },
       { key: 'care', label: '创建关怀', icon: '♥' },
       { key: 'affairs', label: '学工待办', icon: '📋' },
+      { key: 'notifyPublish', label: '发布通知', icon: '📣' },
       { key: 'orientationVerify', label: '迎新核验', icon: '▣' }
     ],
     permissionActions: ['approval.handle', 'risk.handle', 'student.contact', 'care.create', 'student360.view']
@@ -113,7 +116,8 @@ export const roleConfigs = {
       { key: 'warning', label: '异常预警', icon: '⚠' },
       { key: 'progress', label: '学业进度', icon: '▤' },
       { key: 'status', label: '学籍异动', icon: '⇄' },
-      { key: 'approval', label: '待审批', icon: '✓' }
+      { key: 'approval', label: '待审批', icon: '✓' },
+      { key: 'notifyPublish', label: '发布通知', icon: '📣' }
     ],
     permissionActions: ['academic.warning.handle', 'status.handle', 'approval.handle']
   },
@@ -130,6 +134,7 @@ export const roleConfigs = {
       { key: 'risk', label: '风险概览', icon: '⚠' },
       { key: 'urge', label: '移动催办', icon: '☎' },
       { key: 'approval', label: '待审批', icon: '✓' },
+      { key: 'notifyPublish', label: '发布通知', icon: '📣' },
       { key: 'orientationDashboard', label: '迎新看板', icon: '🎒' }
     ],
     permissionActions: ['college.overview', 'risk.handle', 'approval.handle', 'urge.send']

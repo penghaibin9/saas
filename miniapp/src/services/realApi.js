@@ -18,6 +18,8 @@ export const switchRoleReal = (contextId, clientType = 'MP') =>
 
 export const brand = () => realRequest('/tenant/brand')
 export const me = () => realRequest('/auth/me')
+export const changePassword = (oldPassword, newPassword) =>
+  realRequest('/auth/change-password', { method: 'POST', data: { oldPassword, newPassword } })
 
 const STAGE_TEXT = {
   ORIENTATION: '迎新', ON_CAMPUS: '在校', INTERNSHIP: '实习',
@@ -475,6 +477,35 @@ export const teacherMyClasses = () => realRequest('/mobile/teacher/my-classes')
 export const teacherMyStudents = (classId) =>
   realRequest('/mobile/teacher/my-students' + (classId ? `?classId=${classId}` : ''))
 
+/** 教师·谈心谈话（真实接口，复用既有 affairs_talk_service） */
+export const teacherTalkList = (params) => {
+  const q = new URLSearchParams()
+  if (params && params.talkType) q.set('talkType', params.talkType)
+  if (params && params.status) q.set('status', params.status)
+  if (params && params.studentId) q.set('studentId', params.studentId)
+  const qs = q.toString()
+  return realRequest('/mobile/teacher/talk' + (qs ? '?' + qs : ''))
+}
+export const teacherTalkDetail = (talkId) => realRequest(`/mobile/teacher/talk/${talkId}`)
+export const teacherTalkCreate = (body) => realRequest('/mobile/teacher/talk', { method: 'POST', data: body })
+export const teacherTalkRecord = (talkId, body) =>
+  realRequest(`/mobile/teacher/talk/${talkId}/record`, { method: 'POST', data: body })
+export const teacherTalkFollowUp = (talkId, action, content) =>
+  realRequest(`/mobile/teacher/talk/${talkId}/follow-up`, { method: 'POST', data: { action, content } })
+
+/** 教师·心理关注（真实接口，严格保留既有遮蔽+授权原因红线） */
+export const teacherMentalList = (level) =>
+  realRequest('/mobile/teacher/mental' + (level ? `?level=${level}` : ''))
+export const teacherMentalDetail = (refId, reason) =>
+  realRequest(`/mobile/teacher/mental/${refId}` + (reason ? `?reason=${encodeURIComponent(reason)}` : ''))
+export const teacherMentalCreate = (body) => realRequest('/mobile/teacher/mental', { method: 'POST', data: body })
+export const teacherMentalFollow = (refId, content) =>
+  realRequest(`/mobile/teacher/mental/${refId}/follow`, { method: 'POST', data: { content } })
+export const teacherMentalEscalate = (refId, content) =>
+  realRequest(`/mobile/teacher/mental/${refId}/escalate`, { method: 'POST', data: { content } })
+export const teacherMentalClose = (refId, conclusion) =>
+  realRequest(`/mobile/teacher/mental/${refId}/close`, { method: 'POST', data: { conclusion } })
+
 /** 教师学生360（权限校验后）→ 页面形状；无权限/不存在由业务错抛出。 */
 export async function teacherStudent360(id) {
   const d = await realRequest('/mobile/teacher/student/' + id)
@@ -626,6 +657,26 @@ export const affairsActivityEnroll = (activityId, action) =>
   realRequest(`/mobile/affairs/activities/${activityId}/enroll`, { method: 'POST', data: { action: action || 'ENROLL' } })
 export const affairsActivityCheckin = (activityId, method) =>
   realRequest(`/mobile/affairs/activities/${activityId}/checkin`, { method: 'POST', data: { method: method || 'MANUAL' } })
+
+/** 心理健康自评（真实接口，无 mock 兜底，系统不做任何自动诊断） */
+export const psySurveyQuestions = () => realRequest('/mobile/me/psy-survey/questions')
+export const psySurveySubmit = (answers, wantsContact) =>
+  realRequest('/mobile/me/psy-survey/submit', { method: 'POST', data: { answers, wantsContact } })
+export const psySurveyHistory = () => realRequest('/mobile/me/psy-survey/history')
+
+/** 消息通知设置（真实接口，真实过滤消息聚合，无 mock 兜底） */
+export const notifyPreferences = () => realRequest('/mobile/me/notify-preferences')
+export const notifySetPreference = (key, enabled) =>
+  realRequest('/mobile/me/notify-preferences', { method: 'POST', data: { key, enabled } })
+export const teacherNotifyPreferences = () => realRequest('/mobile/teacher/notify-preferences')
+export const teacherNotifySetPreference = (key, enabled) =>
+  realRequest('/mobile/teacher/notify-preferences', { method: 'POST', data: { key, enabled } })
+
+/** 教师·发布通知（真实接口，无 mock 兜底） */
+export const teacherNotifyPublish = (body) => realRequest('/mobile/teacher/notify/publish', { method: 'POST', data: body })
+
+/** 教师·数据看板（真实接口，无 mock 兜底，复用既有 affairs_dashboard_service） */
+export const teacherDashboard = () => realRequest('/mobile/teacher/dashboard')
 
 // ── 13B 教务中心（P7 多端收口，学生自视图：课表/成绩/学籍异动/毕业进度；教师课表）──
 export const acadScheduleMy = () => realRequest('/mobile/academic/schedule/my')

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 
 from sqlalchemy import func, or_, select
 
@@ -17,6 +18,11 @@ from app.modules.employment.services import employment_service
 from app.modules.internship.services import internship_service
 from app.modules.graduation.services import graduation_service
 from app.services.db_service import _iso, _tid
+
+
+def _ns(body):
+    """移动端路由传入原始 dict；本模块复用的学工域服务函数按对象属性取值（body.xxx），此处做薄转换。"""
+    return SimpleNamespace(**(body or {}))
 
 
 def _session():
@@ -408,6 +414,182 @@ def my_students(user: dict, class_id=None) -> dict:
         return {"hasData": bool(out), "items": out, "total": len(out)}
 
 
+# ══════════ 数据看板（移动端包装，直接复用既有 affairs_dashboard_service.get_dashboard，
+# 该函数已按数据范围收敛且指标全部真实聚合，零改造） ══════════
+
+def dashboard(user: dict) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_dashboard_service as dash
+    return dash.get_dashboard(user)
+
+
+# ══════════ 通知发布（移动端首创：教师发通知给学生，按班级/学院/全校，真实写 t_unified_message） ══════════
+
+def notify_publish(user: dict, body: dict) -> dict:
+    """教师/管理员发布通知：CLASS 范围任何教师限本人负责班级；COLLEGE/SCHOOL 范围仅管理类角色。
+    接收人解析为 StudentProfile.id 写入 receiver_id，与全仓库既有 UnifiedMessage 写入惯例一致
+    （见 academic_affairs_grade_service.py/internship_service.py 等既有调用点）。"""
+    _require_teacher(user)
+    b = body or {}
+    title = (b.get("title") or "").strip()
+    content = (b.get("content") or "").strip()
+    scope_type = (b.get("scopeType") or "").upper()
+    if not title:
+        raise AppException("VALIDATION_ERROR", "标题必填")
+    if len(content) < 5:
+        raise AppException("VALIDATION_ERROR", "内容必填且不少于 5 字")
+    if scope_type not in ("CLASS", "COLLEGE", "SCHOOL"):
+        raise AppException("VALIDATION_ERROR", "接收范围非法")
+    role = (user.get("currentRoleCode") or "").upper()
+    is_admin = role in _ADMIN_ROLES
+    if scope_type in ("COLLEGE", "SCHOOL") and not is_admin:
+        raise AppException("NO_PERMISSION", "仅管理类角色可发布学院/全校范围通知")
+    with _session() as db:
+        from app.models import SchoolClass, StudentProfile, UnifiedMessage
+        tid = _tid()
+        conds = [StudentProfile.tenant_id == tid, StudentProfile.is_deleted.is_(False)]
+        if scope_type == "CLASS":
+            class_id = b.get("classId")
+            if not class_id:
+                raise AppException("VALIDATION_ERROR", "班级ID必填")
+            if not is_admin:
+                numeric_uid = _teacher_numeric_id(user)
+                cls = db.get(SchoolClass, int(class_id))
+                if (not cls or cls.tenant_id != tid or cls.is_deleted or
+                        (cls.counselor_id != numeric_uid and cls.head_teacher_id != numeric_uid)):
+                    raise AppException("NO_DATA_SCOPE", "该班级不在您的负责范围内")
+            conds.append(StudentProfile.class_id == int(class_id))
+        elif scope_type == "COLLEGE":
+            college_id = b.get("collegeId")
+            if not college_id:
+                raise AppException("VALIDATION_ERROR", "学院ID必填")
+            conds.append(StudentProfile.college_id == int(college_id))
+        rows = db.scalars(select(StudentProfile).where(*conds)).all()
+        if not rows:
+            raise AppException("VALIDATION_ERROR", "该范围内暂无学生，未发布")
+        for s in rows:
+            db.add(UnifiedMessage(tenant_id=tid, receiver_id=s.id, source_module="teacher-notice",
+                                  title=title, content=content, status="UNREAD"))
+        db.commit()
+        return {"recipientCount": len(rows), "title": title}
+
+
+# ══════════ 消息通知设置（移动端首创，真实过滤 messages() 聚合） ══════════
+
+def notify_preferences(user: dict) -> dict:
+    _require_teacher(user)
+    from app.services import notification_preference_service as notify_pref
+    return notify_pref.get_preferences(user, notify_pref.TEACHER_CATEGORIES)
+
+
+def notify_set_preference(user: dict, body: dict) -> dict:
+    _require_teacher(user)
+    from app.services import notification_preference_service as notify_pref
+    b = body or {}
+    valid_keys = {c["key"] for c in notify_pref.TEACHER_CATEGORIES}
+    if b.get("key") not in valid_keys:
+        raise AppException("VALIDATION_ERROR", "未知通知分类")
+    return notify_pref.set_preference(user, b.get("key"), bool(b.get("enabled")))
+
+
+# ══════════ 谈心谈话（移动端包装，复用既有 affairs_talk_service，不新增遮蔽/范围逻辑） ══════════
+
+def talk_list(user: dict, talk_type=None, status=None, student_id=None, page=1, page_size=20) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_talk_service as talk
+    items, total = talk.list_talks(user, talk_type=talk_type, status=status,
+                                   student_id=student_id, page=page, page_size=page_size)
+    return {"items": items, "total": total}
+
+
+def talk_detail(user: dict, talk_id) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_talk_service as talk
+    return talk.get_talk(talk_id, user)
+
+
+def talk_create(user: dict, body: dict) -> dict:
+    """建谈话计划：talkType/studentIds/topic 必填（底层按对象属性直接取值，此处先校验避免 AttributeError）。"""
+    _require_teacher(user)
+    b = body or {}
+    if not b.get("talkType"):
+        raise AppException("VALIDATION_ERROR", "谈话类型必填")
+    if not b.get("studentIds"):
+        raise AppException("VALIDATION_ERROR", "至少选择一名学生")
+    if not b.get("topic"):
+        raise AppException("VALIDATION_ERROR", "谈话主题必填")
+    from app.services import affairs_talk_service as talk
+    return talk.create_talk(_ns(b), user)
+
+
+def talk_record(user: dict, talk_id, body: dict) -> dict:
+    from app.services import affairs_talk_service as talk
+    b = body or {}
+    return talk.record_talk(talk_id, user, b.get("content"), b.get("result", ""), bool(b.get("needFollow")))
+
+
+def talk_follow_up(user: dict, talk_id, body: dict) -> dict:
+    from app.services import affairs_talk_service as talk
+    b = body or {}
+    return talk.follow_up(talk_id, user, b.get("action"), b.get("content", ""))
+
+
+def talk_stats(user: dict, group_by="TYPE") -> dict:
+    _require_teacher(user)
+    from app.services import affairs_talk_service as talk
+    return talk.talk_stats(user, group_by)
+
+
+# ══════════ 心理关注（移动端包装，严格保留既有"列表恒遮蔽+详情需授权角色+原因≥5字"红线） ══════════
+
+def mental_list(user: dict, level=None, page=1, page_size=20) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_mental_service as mental
+    items, total = mental.list_attention(user, level=level, page=page, page_size=page_size)
+    return {"items": items, "total": total}
+
+
+def mental_detail(user: dict, ref_id, reason=None) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_mental_service as mental
+    return mental.get_referral(user, ref_id, reason=reason)
+
+
+def mental_create(user: dict, body: dict) -> dict:
+    _require_teacher(user)
+    b = body or {}
+    if not b.get("studentId"):
+        raise AppException("VALIDATION_ERROR", "studentId 必填")
+    if not b.get("reasonSummary") or len(str(b["reasonSummary"]).strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "转介事由摘要必填且不少于 5 字")
+    from app.services import affairs_mental_service as mental
+    return mental.create_referral(user, _ns(b))
+
+
+def mental_follow(user: dict, ref_id, body: dict) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_mental_service as mental
+    return mental.follow_referral(user, ref_id, (body or {}).get("content", ""))
+
+
+def mental_escalate(user: dict, ref_id, body: dict) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_mental_service as mental
+    return mental.escalate_crisis(user, ref_id, (body or {}).get("content", ""))
+
+
+def mental_close(user: dict, ref_id, body: dict) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_mental_service as mental
+    return mental.close_referral(user, ref_id, (body or {}).get("conclusion", ""))
+
+
+def mental_stats(user: dict) -> dict:
+    _require_teacher(user)
+    from app.services import affairs_mental_service as mental
+    return mental.stats(user)
+
+
 # ══════════ 学生 360 轻量详情（替代 PC /students/{id}，含权限判断） ══════════
 
 def student_detail(user: dict, student_id) -> dict:
@@ -749,10 +931,13 @@ def messages(user: dict) -> dict:
                           "module": "风险预警", "level": "high", "read": False})
     system_msgs.append({"id": "sys-1", "title": "本周待办已汇总，请及时处理",
                         "module": "系统通知", "level": "normal", "read": False})
-    groups = {"system": system_msgs, "dynamic": dynamic_msgs, "risk": risk_msgs}
-    tabs = [{"key": "system", "label": "系统通知", "badge": len([x for x in system_msgs if not x["read"]])},
-            {"key": "dynamic", "label": "学生动态", "badge": len([x for x in dynamic_msgs if not x["read"]])},
-            {"key": "risk", "label": "风险预警", "badge": len([x for x in risk_msgs if not x["read"]])}]
+    groups_all = {"system": system_msgs, "dynamic": dynamic_msgs, "risk": risk_msgs}
+    from app.services import notification_preference_service as notify_pref
+    on = notify_pref.enabled_categories(user, list(groups_all.keys()))
+    groups = {k: (v if k in on else []) for k, v in groups_all.items()}
+    tabs = [{"key": "system", "label": "系统通知", "badge": len([x for x in groups["system"] if not x["read"]])},
+            {"key": "dynamic", "label": "学生动态", "badge": len([x for x in groups["dynamic"] if not x["read"]])},
+            {"key": "risk", "label": "风险预警", "badge": len([x for x in groups["risk"] if not x["read"]])}]
     unread = sum(len(v) for v in groups.values())
     return {"hasData": unread > 0, "unreadCount": unread, "tabs": tabs, "groups": groups}
 

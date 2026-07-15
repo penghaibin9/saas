@@ -144,8 +144,11 @@ export default {
         status: '/pages/teacher/academic-affairs/index',
         myClasses: '/pages/teacher/my-classes/index',
         myStudents: '/pages/teacher/my-students/index',
+        talk: '/pages/teacher/affairs/talk/index',
+        mental: '/pages/teacher/affairs/mental/index',
         affairs: '/pages/teacher/affairs/index',
-        overview: '/pages/teacher/workbench/index',
+        notifyPublish: '/pages/teacher/notify-publish/index',
+        overview: '/pages/teacher/dashboard/index',
         orientationVerify: '/pages/teacher/orientation/verify/index',
         orientationDashboard: '/pages/teacher/orientation/dashboard/index'
       }

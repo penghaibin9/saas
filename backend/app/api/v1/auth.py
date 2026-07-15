@@ -89,6 +89,19 @@ def wx_bind(body: WxBindRequest):
     return success(result, message="绑定成功")
 
 
+class ChangePasswordRequest(BaseModel):
+    oldPassword: str = Field(..., min_length=1, description="原密码")
+    newPassword: str = Field(..., min_length=8, description="新密码（至少8位）")
+
+
+@router.post("/change-password", summary="本人自助修改密码（需登录，验证原密码；演示账号不支持）")
+def change_password(body: ChangePasswordRequest, user=Depends(get_current_user)):
+    result = auth_service_db.change_own_password(user, body.oldPassword, body.newPassword)
+    audit.record("修改密码", method="POST", path="/api/v1/auth/change-password",
+                 status_code=200, target_type="auth", target_id=str(user.get("userId", "-")))
+    return success(result, message="密码修改成功，请妥善保管")
+
+
 @router.get("/me", summary="当前用户 + 当前身份 + 可用身份列表")
 def me(user=Depends(get_current_user)):
     return success(auth_svc.get_me(user))

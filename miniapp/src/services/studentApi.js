@@ -108,6 +108,13 @@ export const studentApi = {
   getMyActivities: () => real.affairsMyActivities(),
   enrollActivity: (activityId, action) => real.affairsActivityEnroll(activityId, action),
   checkinActivity: (activityId, method) => real.affairsActivityCheckin(activityId, method),
+  // 心理健康自评（真实接口，无 mock 兜底）
+  getPsySurveyQuestions: () => real.psySurveyQuestions(),
+  submitPsySurvey: (answers, wantsContact) => real.psySurveySubmit(answers, wantsContact),
+  getPsySurveyHistory: () => real.psySurveyHistory(),
+  // 消息通知设置（真实接口，无 mock 兜底）
+  getNotifyPreferences: () => real.notifyPreferences(),
+  setNotifyPreference: (key, enabled) => real.notifySetPreference(key, enabled),
   // 13B 教务中心（P7 真实优先无 mock 兜底）
   getMySchedule: () => real.acadScheduleMy(),
   getMyTranscript: () => real.acadTranscriptMy(),

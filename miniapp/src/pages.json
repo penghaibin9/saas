@@ -68,6 +68,10 @@
       "style": { "navigationBarTitleText": "服务申请" }
     },
     {
+      "path": "pages/student/campus-service/mental-survey/index",
+      "style": { "navigationBarTitleText": "心理健康自评", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/student/academic/index",
       "style": { "navigationBarTitleText": "学业进度" }
     },
@@ -214,6 +218,22 @@
     {
       "path": "pages/teacher/affairs/index",
       "style": { "navigationBarTitleText": "学工待办", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/affairs/talk/index",
+      "style": { "navigationBarTitleText": "谈心谈话", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/affairs/mental/index",
+      "style": { "navigationBarTitleText": "心理关注", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/notify-publish/index",
+      "style": { "navigationBarTitleText": "发布通知", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/dashboard/index",
+      "style": { "navigationBarTitleText": "数据看板", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/my-schedule/index",
