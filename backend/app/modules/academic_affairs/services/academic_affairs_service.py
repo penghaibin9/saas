@@ -116,6 +116,153 @@ def current_term(user) -> dict:
         return _term_row(t) if t else {"termId": "", "isCurrent": False, "note": "尚未设置当前学期"}
 
 
+# ═══════════ 学年学期 Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档总览 ═══════════
+# 设计来源：project_rule（docs/03-业务模块设计/教务中心/13B-教务中心状态机与权限矩阵.md §SM-01
+# DRAFT→PUBLISHED→FROZEN→ARCHIVED）+ existing_code（AaTerm.status/teaching_weeks/exam_week_start
+# 字段已建但此前无写入口）。归档的实际执行动作（批次/9域完整性检查/确认封存）归属既有「教务归档」
+# 二级模块 academic_affairs_archive_service.py，本节只提供只读总览，不重复实现，避免双写。
+
+def set_current_term(term_id, user) -> dict:
+    """当前学期设置：仅 PUBLISHED 学期可设为当前（幂等，不改变 status，只切换 is_current）。"""
+    with session() as db:
+        from app.models import AaTerm
+        t = db.get(AaTerm, int(term_id))
+        if not t or t.is_deleted or t.tenant_id != _tid():
+            raise not_found("学期不存在")
+        if t.status != "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "仅进行中（PUBLISHED）学期可设为当前学期")
+        if not t.is_current:
+            for other in db.scalars(select(AaTerm).where(
+                    AaTerm.tenant_id == _tid(), AaTerm.is_current.is_(True),
+                    AaTerm.id != t.id)).all():
+                other.is_current = False
+            t.is_current = True
+            _audit(db, "AA_TERM", t.id, "SET_CURRENT", f"{t.year_code}-{t.term_no}")
+        db.commit()
+        db.refresh(t)
+        return _term_row(t)
+
+
+def list_term_weeks(term_id, user) -> list:
+    """学期周次：按 start_date + teaching_weeks 展开周网格；叠加校历事件（HOLIDAY/EXAM/INTERNSHIP 覆盖当周类型）；
+    标记 isCurrent（今天落在该周区间内）。只读计算，不新建表。"""
+    from app.models import AaCalendarEvent, AaTerm
+    with session() as db:
+        t = db.get(AaTerm, int(term_id))
+        if not t or t.is_deleted or t.tenant_id != _tid():
+            raise not_found("学期不存在")
+        if not t.start_date or not t.teaching_weeks:
+            return []
+        events = db.scalars(select(AaCalendarEvent).where(
+            AaCalendarEvent.tenant_id == _tid(), AaCalendarEvent.term_id == t.id,
+            AaCalendarEvent.is_deleted.is_(False))).all()
+        today = datetime.utcnow().date()
+        out = []
+        for wk in range(1, int(t.teaching_weeks) + 1):
+            w_start = (t.start_date + timedelta(days=(wk - 1) * 7)).date()
+            w_end = w_start + timedelta(days=6)
+            week_type = "EXAM" if t.exam_week_start and wk == int(t.exam_week_start) else "TEACHING"
+            remark = None
+            for e in events:
+                if not e.start_date:
+                    continue
+                e_start = e.start_date.date()
+                e_end = (e.end_date or e.start_date).date()
+                if e_start <= w_end and e_end >= w_start and e.event_type in ("HOLIDAY", "EXAM", "INTERNSHIP"):
+                    week_type = e.event_type
+                    remark = e.remark
+                    break
+            out.append({"weekNo": wk, "startDate": w_start.isoformat(), "endDate": w_end.isoformat(),
+                       "weekType": week_type, "remark": remark or "", "isCurrent": w_start <= today <= w_end})
+        return out
+
+
+def update_teaching_weeks(term_id, body, user) -> dict:
+    """教学周配置：仅 DRAFT 学期可调整教学周结构（SM-01：PUBLISHED 后结构性调整须走冻结-解冻或新学期，409）。"""
+    with session() as db:
+        from app.models import AaTerm
+        t = db.get(AaTerm, int(term_id))
+        if not t or t.is_deleted or t.tenant_id != _tid():
+            raise not_found("学期不存在")
+        if t.status != "DRAFT":
+            raise AppException("DATA_CONFLICT", "已发布学期不可直接调整教学周结构，请走冻结-解冻或新学期")
+        tw = getattr(body, "teachingWeeks", None)
+        ews = getattr(body, "examWeekStart", None)
+        if tw is not None and int(tw) <= 0:
+            raise AppException("VALIDATION_ERROR", "教学周数须为正整数")
+        if ews is not None and int(ews) <= 0:
+            raise AppException("VALIDATION_ERROR", "考试周开始周次须为正整数")
+        eff_tw = int(tw) if tw is not None else t.teaching_weeks
+        if ews is not None and eff_tw and int(ews) > int(eff_tw):
+            raise AppException("VALIDATION_ERROR", "考试周开始周次不能超过教学周总数")
+        if tw is not None:
+            t.teaching_weeks = int(tw)
+        if ews is not None:
+            t.exam_week_start = int(ews)
+        _audit(db, "AA_TERM", t.id, "TEACHING_WEEKS_UPDATE",
+              f"teachingWeeks={t.teaching_weeks},examWeekStart={t.exam_week_start}")
+        db.commit()
+        db.refresh(t)
+        return _term_row(t)
+
+
+def freeze_term(term_id, user) -> dict:
+    """学期状态·冻结：PUBLISHED→FROZEN（排课/选课/考试任一批次进入进行中后建议冻结，冻结后禁止结构性修改）。"""
+    with session() as db:
+        from app.models import AaTerm
+        t = db.get(AaTerm, int(term_id))
+        if not t or t.is_deleted or t.tenant_id != _tid():
+            raise not_found("学期不存在")
+        if t.status != "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "仅进行中（PUBLISHED）学期可冻结")
+        t.status = "FROZEN"
+        _audit(db, "AA_TERM", t.id, "FREEZE")
+        db.commit()
+        db.refresh(t)
+        return _term_row(t)
+
+
+def unfreeze_term(term_id, reason, user) -> dict:
+    """学期状态·解冻：FROZEN→PUBLISHED（原因必填≥5字，审计留痕）。"""
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "解冻原因必填且不少于5字")
+    with session() as db:
+        from app.models import AaTerm
+        t = db.get(AaTerm, int(term_id))
+        if not t or t.is_deleted or t.tenant_id != _tid():
+            raise not_found("学期不存在")
+        if t.status != "FROZEN":
+            raise AppException("DATA_CONFLICT", "仅已冻结（FROZEN）学期可解冻")
+        t.status = "PUBLISHED"
+        _audit(db, "AA_TERM", t.id, "UNFREEZE", reason)
+        db.commit()
+        db.refresh(t)
+        return _term_row(t)
+
+
+def term_archive_overview(user) -> list:
+    """学期归档总览：按学期汇总关联的教务归档批次状态（只读跳转入口）。
+    实际归档批次/9数据域完整性检查/确认封存动作单一入口仍在 academic_affairs_archive_service（教务归档二级模块）。"""
+    from app.models import AaArchiveBatch, AaTerm
+    with session() as db:
+        terms = db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(), AaTerm.is_deleted.is_(False)).order_by(
+            AaTerm.year_code.desc(), AaTerm.term_no.desc())).all()
+        batch_rows = db.scalars(select(AaArchiveBatch).where(
+            AaArchiveBatch.tenant_id == _tid(), AaArchiveBatch.is_deleted.is_(False))).all()
+        batches = {b.term_id: b for b in batch_rows if b.term_id}
+        out = []
+        for t in terms:
+            b = batches.get(t.id)
+            out.append({"termId": str(t.id), "yearCode": t.year_code, "termNo": t.term_no,
+                       "termName": t.term_name or "", "termStatus": t.status,
+                       "archiveBatchId": str(b.id) if b else None,
+                       "archiveBatchStatus": b.status if b else None,
+                       "archivedAt": _iso(b.archived_at) if b else None})
+        return out
+
+
 # ═══════════ 校历 / 节次 ═══════════
 
 def add_calendar_event(term_id, user, body) -> dict:
