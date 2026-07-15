@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="教务统计"
-    subtitle="11 项教务运行指标 · 按学年学期 / 学院 / 专业多维筛选 · 汇总卡下钻明细"
+    subtitle="15 项教务运行指标 · 按学年学期 / 学院 / 专业多维筛选 · 汇总卡下钻明细"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,8 +10,9 @@
     </div>
 
     <div class="mp-stack">
-      <!-- 多维筛选栏（导出报表 Tab 使用自己的表单，不复用此栏） -->
-      <div v-if="tab !== 'export'" class="aa-filter">
+      <!-- 多维筛选栏（导出报表 Tab 使用自己的表单，不复用此栏；教学资源为校级共享资产，
+           无学期/学院维度，见 resource_stats 后端注释，本栏对该 Tab 不适用） -->
+      <div v-if="tab !== 'export' && tab !== 'resource'" class="aa-filter">
         <label class="aa-filter__item">学期
           <select v-model="filters.termId" class="aa-input aa-input--sm">
             <option value="">全部学期</option>
@@ -155,6 +156,43 @@
           <button class="mp-link" @click="openDetail">查看冲突明细 →</button>
         </template>
 
+        <!-- ══ 选课统计（08）══ -->
+        <template v-else-if="tab === 'courseSelection'">
+          <div class="aa-cards">
+            <div class="aa-card aa-card--static">
+              <span class="aa-card__label">选课填充率</span>
+              <span class="aa-card__value">{{ sSummary.fillRate ?? '—' }}<em v-if="sSummary.fillRate !== null && sSummary.fillRate !== undefined">%</em></span>
+              <span class="aa-card__sub">{{ sSummary.totalSelected ?? 0 }} / {{ sSummary.totalCapacity ?? 0 }}</span>
+            </div>
+            <div class="aa-card aa-card--static"><span class="aa-card__label">选课记录数</span><span class="aa-card__value">{{ sSummary.recordCount ?? 0 }}</span></div>
+            <div class="aa-card aa-card--static"><span class="aa-card__label">低人数课程</span><span class="aa-card__value" :class="{ 'aa-card__value--empty': !sSummary.lowEnrollCount }">{{ sSummary.lowEnrollCount ?? 0 }}</span></div>
+            <div class="aa-card aa-card--static"><span class="aa-card__label">满额课程</span><span class="aa-card__value">{{ sSummary.fullCount ?? 0 }}</span></div>
+          </div>
+          <div v-if="sSummary.byBatchStatus && sSummary.byBatchStatus.length" class="aa-groups">
+            <div class="aa-groups__title">批次状态分布</div>
+            <div v-for="g in sSummary.byBatchStatus" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
+          </div>
+          <button class="mp-link" @click="openDetail">查看低人数课程清单 →</button>
+        </template>
+
+        <!-- ══ 考务统计（09）══ -->
+        <template v-else-if="tab === 'exam'">
+          <div class="aa-cards">
+            <div class="aa-card aa-card--static">
+              <span class="aa-card__label">考试课程确认率</span>
+              <span class="aa-card__value">{{ sSummary.confirmRate ?? '—' }}<em v-if="sSummary.confirmRate !== null && sSummary.confirmRate !== undefined">%</em></span>
+              <span class="aa-card__sub">{{ sSummary.confirmedCount ?? 0 }} / {{ sSummary.courseTotal ?? 0 }}</span>
+            </div>
+            <div class="aa-card aa-card--static"><span class="aa-card__label">缺考人次</span><span class="aa-card__value">{{ sSummary.absentCount ?? 0 }}</span></div>
+            <div class="aa-card aa-card--static"><span class="aa-card__label">违纪人次</span><span class="aa-card__value">{{ sSummary.violationCount ?? 0 }}</span></div>
+          </div>
+          <div v-if="sSummary.byBatchStatus && sSummary.byBatchStatus.length" class="aa-groups">
+            <div class="aa-groups__title">批次状态分布</div>
+            <div v-for="g in sSummary.byBatchStatus" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
+          </div>
+          <button class="mp-link" @click="openDetail">查看缺考/违纪明细 →</button>
+        </template>
+
         <!-- ══ 成绩统计（10）══ -->
         <template v-else-if="tab === 'grade'">
           <div class="aa-cards">
@@ -214,6 +252,27 @@
           </DataTable>
         </template>
 
+        <!-- ══ 教学资源统计（14）══ -->
+        <template v-else-if="tab === 'resource'">
+          <div class="aa-cards">
+            <div class="aa-card aa-card--static"><span class="aa-card__label">教室总数</span><span class="aa-card__value">{{ sSummary.classroomTotal ?? 0 }}<em>间</em></span></div>
+            <div class="aa-card aa-card--static"><span class="aa-card__label">预约总数</span><span class="aa-card__value">{{ sSummary.bookingTotal ?? 0 }}</span></div>
+          </div>
+          <div v-if="sSummary.byStatus && sSummary.byStatus.length" class="aa-groups">
+            <div class="aa-groups__title">教室状态分布</div>
+            <div v-for="g in sSummary.byStatus" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
+          </div>
+          <div v-if="sSummary.byType && sSummary.byType.length" class="aa-groups">
+            <div class="aa-groups__title">教室类型分布</div>
+            <div v-for="g in sSummary.byType" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
+          </div>
+          <div v-if="sSummary.byBookingStatus && sSummary.byBookingStatus.length" class="aa-groups">
+            <div class="aa-groups__title">预约状态分布</div>
+            <div v-for="g in sSummary.byBookingStatus" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
+          </div>
+          <button class="mp-link" @click="openDetail">查看待审核预约 →</button>
+        </template>
+
         <!-- ══ 导出报表（15）══ -->
         <template v-else-if="tab === 'export'">
           <div class="aa-export-form">
@@ -236,7 +295,7 @@
           <p class="aa-scope-note">当前为同步下载：点击后立即生成并下载 xlsx 文件（不保留异步导出历史列表，如需"导出历史/失败重试"请登记待办）。</p>
         </template>
 
-        <!-- 通用下钻明细面板（除总览/工作量/导出外的 8 个 Tab 共用） -->
+        <!-- 通用下钻明细面板（除总览/工作量/导出外的 11 个 Tab 共用） -->
         <div v-if="detail.open" class="aa-drill">
           <div class="aa-drill__head">
             <strong>{{ detail.title }}</strong>
@@ -256,10 +315,13 @@
 
 <script>
 /**
- * 教务统计（/admin/academic-affairs/stats，`?tab=` 深链接切换 11 个三级 Tab）。
+ * 教务统计（/admin/academic-affairs/stats，`?tab=` 深链接切换三级 Tab）。
  * 数据全部来自真实后端 /api/v1/academic-affairs/stats/*（无 mock）；范围/脱敏/审计由后端裁定。
- * Tab 结构：overview（既有实现原样保留）+ 02/03/04/05/06/10/11/12/13/15 号卡新增 10 项
- * （07/08/09/14 调停课/选课/考务/教学资源统计因底层模块未建，本轮不做，仍为 navPlan `P()` 占位）。
+ * Tab 结构：overview（既有实现原样保留）+ 02/03/04/05/06/10/11/12/13/15 号卡（10 项）+
+ * 08/09/14 号卡（选课/考务/教学资源统计，2026-07-16 第三轮续工新增，底层模块已真实建成）。
+ * 07 调停课统计不在本页 Tab 内：其完整交互（本人课位自助视角）在独立页面
+ * /admin/academic-affairs/schedule-change/stats（navPlan 直接指向该页），本页总览 Tab 的
+ * 「调停课统计」卡片是学校/学院口径的全局计数，两者互不冲突（见后端 stats_service 模块头注释）。
  */
 import { AppInlineAlert } from '@/components/common'
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
@@ -273,10 +335,13 @@ const TABS = [
   { key: 'course', label: '课程统计' },
   { key: 'teachingTask', label: '教学任务统计' },
   { key: 'schedule', label: '课表统计' },
+  { key: 'courseSelection', label: '选课统计' },
+  { key: 'exam', label: '考务统计' },
   { key: 'grade', label: '成绩统计' },
   { key: 'warning', label: '学业预警统计' },
   { key: 'graduation', label: '毕业资格统计' },
   { key: 'workload', label: '教师工作量统计' },
+  { key: 'resource', label: '教学资源统计' },
   { key: 'export', label: '导出报表' }
 ]
 
@@ -387,6 +452,32 @@ const TAB_META = {
       { key: 'abnormalItems', title: '异常项' }, { key: 'status', title: '批次状态' }
     ],
     detailFetch: (api, p) => api.getStatsGraduationAbnormal(p)
+  },
+  courseSelection: {
+    summary: (api, p) => api.getStatsCourseSelection(p),
+    detailTitle: '低人数课程清单',
+    detailColumns: [
+      { key: 'batchName', title: '批次' }, { key: 'courseName', title: '课程' }, { key: 'teacherName', title: '教师' },
+      { key: 'capacity', title: '容量' }, { key: 'minCapacity', title: '开课下限' }, { key: 'selectedCount', title: '已选' }
+    ],
+    detailFetch: (api, p) => api.getStatsCourseSelectionDetail(p)
+  },
+  exam: {
+    summary: (api, p) => api.getStatsExam(p),
+    detailTitle: '缺考/违纪明细',
+    detailColumns: [
+      { key: 'studentName', title: '学生' }, { key: 'studentNo', title: '学号（脱敏）' }, { key: 'incidentType', title: '类型' }
+    ],
+    detailFetch: (api, p) => api.getStatsExamDetail(p)
+  },
+  resource: {
+    summary: (api, p) => api.getStatsResource(p),
+    detailTitle: '待审核教室预约',
+    detailColumns: [
+      { key: 'classroomText', title: '教室' }, { key: 'bookingDate', title: '日期' }, { key: 'slotNo', title: '节次' },
+      { key: 'applicantName', title: '申请人' }, { key: 'purpose', title: '用途' }
+    ],
+    detailFetch: (api, p) => api.getStatsResourceDetail(p)
   }
 }
 
@@ -394,8 +485,10 @@ const EXPORT_DOMAINS = [
   { key: 'overview', label: '教务总览' }, { key: 'statusChange', label: '学籍统计' },
   { key: 'registration', label: '注册统计' }, { key: 'course', label: '课程统计' },
   { key: 'teachingTask', label: '教学任务统计' }, { key: 'schedule', label: '课表统计' },
+  { key: 'courseSelection', label: '选课统计' }, { key: 'exam', label: '考务统计' },
   { key: 'grade', label: '成绩统计' }, { key: 'warning', label: '学业预警统计' },
-  { key: 'graduation', label: '毕业资格统计' }, { key: 'workload', label: '教师工作量统计' }
+  { key: 'graduation', label: '毕业资格统计' }, { key: 'workload', label: '教师工作量统计' },
+  { key: 'resource', label: '教学资源统计' }
 ]
 
 export default {
@@ -587,7 +680,7 @@ export default {
       }
       const res = await meta.detailFetch(academicAffairsApi, params)
       if (res.code === 0) {
-        this.detail.rows = (res.data.list || []).map((r, i) => ({ ...r, rowKey: `${this.tab}-${i}-${r.studentNo || r.courseId || r.taskId || r.gradeId || r.resultId || ''}` }))
+        this.detail.rows = (res.data.list || []).map((r, i) => ({ ...r, rowKey: `${this.tab}-${i}-${r.studentNo || r.courseId || r.taskId || r.gradeId || r.resultId || r.incidentId || r.bookingId || ''}` }))
         this.detail.pagination.total = res.data.total || 0
       } else {
         toast.error(res.message || '下钻失败')

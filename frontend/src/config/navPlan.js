@@ -560,19 +560,26 @@ export const NAV_PLAN = [
       I('批量归档', '/admin/academic-affairs/archive?entry=batch', 'academicAffairs.archive.view'),
       I('归档导出', '/admin/academic-affairs/archive/export', 'academicAffairs.archive.export')
     ]),
+    /* 2026-07-16 教务统计第三轮续工：07/08/09/14（调停课、选课、考务、教学资源统计）底层模块
+     * 已在续工轮次建成真实表+接口（schedule_change、selection、exam、classroom 系列），
+     * 由 P() 占位改为 I() 真实入口。07 指向已独立建成的调停课自助统计页（教师本人课位视角，
+     * 权限 academicAffairs.scheduleChange.view）；08/09/14 接入 AaStatsOverviewView.vue 新增三个
+     * Tab（与 02-06/10-13/15 同页同权限 academicAffairs.stats.view，跨批次学校/学院口径）。 */
     mod('aa-stats', '教务统计', '/admin/academic-affairs/stats', [
-      I('教务总览（11 项指标 · 多维筛选 · 下钻 · 导出）', '/admin/academic-affairs/stats', 'academicAffairs.stats.view'),
+      I('教务总览（15 项指标 · 多维筛选 · 下钻 · 导出）', '/admin/academic-affairs/stats', 'academicAffairs.stats.view'),
       I('学籍统计', '/admin/academic-affairs/stats?tab=statusChange', 'academicAffairs.stats.view'),
       I('注册统计', '/admin/academic-affairs/stats?tab=registration', 'academicAffairs.stats.view'),
       I('课程统计', '/admin/academic-affairs/stats?tab=course', 'academicAffairs.stats.view'),
       I('教学任务统计', '/admin/academic-affairs/stats?tab=teachingTask', 'academicAffairs.stats.view'),
       I('课表统计', '/admin/academic-affairs/stats?tab=schedule', 'academicAffairs.stats.view'),
-      ...P('调停课统计', '选课统计', '考务统计'),
+      I('调停课统计', '/admin/academic-affairs/schedule-change/stats', 'academicAffairs.scheduleChange.view'),
+      I('选课统计', '/admin/academic-affairs/stats?tab=courseSelection', 'academicAffairs.stats.view'),
+      I('考务统计', '/admin/academic-affairs/stats?tab=exam', 'academicAffairs.stats.view'),
       I('成绩统计', '/admin/academic-affairs/stats?tab=grade', 'academicAffairs.stats.view'),
       I('学业预警统计', '/admin/academic-affairs/stats?tab=warning', 'academicAffairs.stats.view'),
       I('毕业资格统计', '/admin/academic-affairs/stats?tab=graduation', 'academicAffairs.stats.view'),
       I('教师工作量统计', '/admin/academic-affairs/stats?tab=workload', 'academicAffairs.stats.view'),
-      ...P('教学资源统计'),
+      I('教学资源统计', '/admin/academic-affairs/stats?tab=resource', 'academicAffairs.stats.view'),
       I('导出报表', '/admin/academic-affairs/stats?tab=export', 'academicAffairs.stats.export')
     ])
   ]),
