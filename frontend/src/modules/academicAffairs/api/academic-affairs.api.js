@@ -8,7 +8,7 @@
  *  - 学期仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 → 本模块不提供 updateTerm（勘误见施工记录）。
  *  - 学期状态机当前只有 DRAFT / PUBLISHED（FROZEN/ARCHIVED 后端未实现，暂不渲染）。
  */
-import { request, requestBlob, shouldTryReal, currentUserFromToken } from '@/services/http/client'
+import { request, requestBlob, requestUpload, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { setPermissionPatterns } from '@/security/permissionGate'
 
 const BASE = '/academic-affairs'
@@ -366,6 +366,41 @@ export const academicAffairsApi = {
   },
   getScheduleStudentView(batchId, studentId) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/student-view`, { params: { studentId } }))
+  },
+  /* ── 排课 Tier1 R2（05教室可用时间/07自动排课预留/10排课结果/11排课调整/13排课归档） ── */
+  getScheduleRoomView(batchId, classroom) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/room-view`, { params: { classroom } }))
+  },
+  getScheduleSummary(batchId) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/summary`))
+  },
+  async downloadScheduleImportTemplate() {
+    const blob = await requestBlob(`${BASE}/schedule-batches/import/template`)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '排课结果导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+  async uploadScheduleImportXlsx(batchId, file) {
+    try {
+      return ok(await requestUpload(`${BASE}/schedule-batches/${batchId}/import/xlsx`, file))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  teacherObjectSchedule(batchId, itemId, reason) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/teacher-object`, { method: 'POST', body: { itemId, reason } }))
+  },
+  getScheduleObjections(batchId) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/objections`))
+  },
+  adjustScheduleItem(batchId, itemId, body) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/items/${itemId}`, { method: 'PUT', body }))
+  },
+  archiveSchedule(batchId) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/archive`, { method: 'POST' }))
   },
 
   /* ── 成绩（R1 九态：录入→提交→学院审→教务发布→[更正两级审]→归档） ── */

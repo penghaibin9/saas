@@ -6,6 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <label class="aa-archive-toggle"><input type="checkbox" v-model="onlyArchived" @change="load" /> 只看已归档</label>
       <button class="mp-btn mp-btn--primary" @click="showCreate = !showCreate">＋ 新建课表批次</button>
     </template>
 
@@ -28,7 +29,7 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="还没有课表批次" description="新建一个课表批次开始排课" />
+      <EmptyState v-else-if="!rows.length" title="还没有课表批次" :description="onlyArchived ? '暂无已归档批次' : '新建一个课表批次开始排课'" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-status="{ row }">
           <AppStatusTag :type="scheduleBatchColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
@@ -39,9 +40,10 @@
           <button v-if="row.status === 'DRAFT'" class="mp-link" @click="act(row, 'pre')">预发布</button>
           <button v-if="row.status === 'PRE_PUBLISHED'" class="mp-link" @click="act(row, 'pub')">发布</button>
           <button v-if="row.status === 'PUBLISHED'" class="mp-link aa-danger" @click="openVoid(row)">作废重发</button>
+          <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openArchive(row)">归档</button>
         </template>
       </DataTable>
-      <p class="mp-note">发布后课表项不可直改；如需调整走「作废重发」（原因必填，留审计），再新建批次重排。</p>
+      <p class="mp-note">发布后课表项不可直改；如需调整走「作废重发」（原因必填，留审计），再新建批次重排；学期结束请走「归档」，与「作废重发」语义不同，归档后数据只读供教务归档统一消费。</p>
     </div>
 
     <AppConfirmDialog
@@ -53,6 +55,16 @@
       reason-label="作废原因"
       :submitting="voidDlg.submitting"
       @confirm="doVoid"
+    />
+
+    <AppConfirmDialog
+      v-model:visible="archiveDlg.visible"
+      title="归档课表批次"
+      type="warning"
+      confirm-text="确认归档"
+      message="归档为不可逆操作：归档后课表只读，无法再调整。确认该批次已到学期结束、可正式归档？"
+      :submitting="archiveDlg.submitting"
+      @confirm="doArchive"
     />
   </ModulePageShell>
 </template>
@@ -74,6 +86,8 @@ export default {
       loading: true, error: '', rows: [], terms: [],
       showCreate: false, creating: false, draft: { termId: '', batchName: '' },
       voidDlg: { visible: false, submitting: false, batchId: '' },
+      archiveDlg: { visible: false, submitting: false, batchId: '' },
+      onlyArchived: false,
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
         { key: 'batchName', title: '批次名称' },
@@ -82,7 +96,12 @@ export default {
       ]
     }
   },
-  created() { this.load(); this.loadTerms() },
+  created() {
+    // ?panel=archive 深链接（排课归档三级菜单入口）：直接打开「只看已归档」视图
+    if (this.$route && this.$route.query && this.$route.query.panel === 'archive') this.onlyArchived = true
+    this.load()
+    this.loadTerms()
+  },
   methods: {
     scheduleBatchColor,
     statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || s || '' },
@@ -114,10 +133,20 @@ export default {
       if (res.code === 0) { this.voidDlg.visible = false; toast.success('已作废'); this.load() }
       else { toast.error(res.message || '作废失败') }
     },
+    openArchive(row) { this.archiveDlg = { visible: true, submitting: false, batchId: row.batchId } },
+    async doArchive() {
+      this.archiveDlg.submitting = true
+      const res = await academicAffairsApi.archiveSchedule(this.archiveDlg.batchId)
+      this.archiveDlg.submitting = false
+      if (res.code === 0) { this.archiveDlg.visible = false; toast.success('已归档'); this.load() }
+      else { toast.error(res.message || '归档失败') }
+    },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getScheduleBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
+      if (this.onlyArchived) params.status = 'ARCHIVED'
+      const res = await academicAffairsApi.getScheduleBatches(params)
       if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total }
       else { this.error = res.message }
       this.loading = false
@@ -133,4 +162,5 @@ export default {
 .aa-cal-form__item--grow { flex: 1; min-width: 220px; }
 .aa-input, .aa-select { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
 .aa-danger { color: var(--danger-600, #f53f3f); }
+.aa-archive-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); margin-right: 12px; }
 </style>

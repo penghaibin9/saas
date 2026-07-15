@@ -324,7 +324,12 @@ export const NAV_PLAN = [
       I('教师可用时间', '/admin/academic-affairs/scheduling?tab=availability', 'academicAffairs.schedule.view'),
       I('冲突报告', '/admin/academic-affairs/scheduling?tab=conflict', 'academicAffairs.schedule.view'),
       I('人工排课工作台（课表维护）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
-      ...P('排课约束', '教室可用时间', '自动排课预留', '排课结果', '排课调整', '排课归档')
+      I('排课约束', '/admin/academic-affairs/scheduling?tab=constraint', 'academicAffairs.schedule.view'),
+      I('教室可用时间', '/admin/academic-affairs/scheduling?tab=room', 'academicAffairs.schedule.view'),
+      I('自动排课预留', '/admin/academic-affairs/scheduling?tab=import', 'academicAffairs.schedule.import'),
+      I('排课结果', '/admin/academic-affairs/scheduling?tab=result', 'academicAffairs.schedule.view'),
+      I('排课调整', '/admin/academic-affairs/scheduling?tab=adjust', 'academicAffairs.schedule.edit'),
+      I('排课归档', '/admin/academic-affairs/schedule?panel=archive', 'academicAffairs.schedule.archive')
     ]),
     mod('aa-schedule', '课表管理', '/admin/academic-affairs/schedule', [
       I('课表批次 / 排课', '/admin/academic-affairs/schedule'),
