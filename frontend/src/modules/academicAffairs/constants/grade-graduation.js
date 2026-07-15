@@ -77,7 +77,18 @@ export const GRAD_STATUS_LABEL = {
   SYSTEM_ABNORMAL: '系统异常',
   COLLEGE_REVIEW: '学院初审中',
   ACADEMIC_REVIEW: '教务终审中',
+  REJECTED: '学院已退回',
   GRADUATED: '已定：毕业',
   COMPLETED: '已定：结业',
-  DELAYED: '已定：延毕'
+  DELAYED: '已定：延毕',
+  ARCHIVED: '已归档'
 }
+
+/** 「不通过原因」叶子覆盖的三类不通过状态 → 分组标题（顺序即页面分组顺序）。
+ * REJECTED 提示刻意不写"重新提交"：当前 college_review/precheck 均不接受 REJECTED 状态的结果重新进入
+ * 复核队列（无重置/重跑入口），如需再审只能并入学校下一次新批次，是真实的现状而非文案疏漏。 */
+export const GRAD_FAIL_GROUPS = [
+  { status: 'SYSTEM_ABNORMAL', title: '系统判定异常（待学院初审）', hint: '十项供数命中不通过项，尚未进入人工复核' },
+  { status: 'REJECTED', title: '学院初审退回', hint: '学院教务员核实后退回并填写原因；本批次内不支持再次提交，如需重审需并入学校下一批次' },
+  { status: 'DELAYED', title: '教务终审：延毕', hint: '教务处终审已判定本届不具备毕业条件，滚入下一批次' }
+]

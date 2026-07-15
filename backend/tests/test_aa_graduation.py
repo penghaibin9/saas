@@ -118,3 +118,44 @@ def test_gr6_precheck_idempotent(client, db_mode):
     client.post(f"{BASE}/graduation-audit-batches/{bid}/precheck", headers=hdr)  # 重跑
     d = client.get(f"{BASE}/graduation-results/{_result_id(client, hdr, bid)}", headers=hdr).json()["data"]
     assert d["rerunCount"] == 2  # 覆盖非追加，rerun 计数
+
+
+def test_gr7_roster_org_names(client, db_mode):
+    """毕业学生名单（三级菜单补建）：三名单补全学号/学院/专业/班级，供 audit-console roster tab 使用。"""
+    ids = _seed(db_mode, "REGISTERED")
+    hdr = _hdr(client, "school_admin01")
+    bid = _batch(client, hdr)
+    _gen_precheck(client, hdr, bid, ids["s"])
+    rid = _result_id(client, hdr, bid)
+    client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=hdr, json={"action": "APPROVE"})
+    client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
+                json={"conclusion": "GRADUATED", "confirm": True})
+    ro = client.get(f"{BASE}/graduation-audit-batches/{bid}/rosters", headers=hdr).json()["data"]
+    row = ro["graduated"][0]
+    assert row["studentNo"] == "GR001"
+    assert row["realName"] == "毕业甲"
+    assert row["className"] == "软件2301"  # _seed 建的 SchoolClass.class_name
+
+
+def test_gr8_college_reject_reason_roundtrip(client, db_mode):
+    """不通过原因（三级菜单补建）：退回原因<5字→400；退回后 reviewNote/studentNo 经 list_results(status=REJECTED)
+    正确回传（此前 _row() 未透出 reviewNote，audit-console 详情抽屉的「最近处理意见」实为死代码，一并修复）。"""
+    ids = _seed(db_mode, "REGISTERED")
+    hdr = _hdr(client, "school_admin01")
+    bid = _batch(client, hdr)
+    _gen_precheck(client, hdr, bid, ids["s"])
+    rid = _result_id(client, hdr, bid)
+    bad = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=hdr,
+                      json={"action": "REJECT", "note": "太短"})
+    assert bad.status_code == 400
+    ok = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=hdr,
+                     json={"action": "REJECT", "note": "材料不全，缺实习鉴定表"})
+    assert ok.status_code == 200
+    assert ok.json()["data"]["status"] == "REJECTED"
+    lst = client.get(f"{BASE}/graduation-audit-batches/{bid}/results", headers=hdr,
+                     params={"status": "REJECTED"}).json()["data"]["items"]
+    assert len(lst) == 1
+    assert lst[0]["reviewNote"] == "材料不全，缺实习鉴定表"
+    assert lst[0]["studentNo"] == "GR001"
+    detail = client.get(f"{BASE}/graduation-results/{rid}", headers=hdr).json()["data"]
+    assert detail["reviewNote"] == "材料不全，缺实习鉴定表"

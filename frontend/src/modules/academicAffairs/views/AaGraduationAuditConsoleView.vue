@@ -87,6 +87,38 @@
         </DataTable>
       </template>
 
+      <!-- 毕业学生名单：终审已出结论（毕业/结业/延毕）的三组名单，供查阅核对，不含写操作 -->
+      <template v-else-if="tab === 'roster'">
+        <ErrorState v-if="error" :description="error" @retry="loadRosterTab" />
+        <LoadingState v-else-if="loading" />
+        <EmptyState v-else-if="!rosterData" title="暂无名单" description="批次尚未终审，终审后写入毕业/结业/延毕结论的学生会出现在此" />
+        <template v-else>
+          <div class="agc-roster-toolbar">
+            <input v-model.trim="rosterKeyword" class="aa-select agc-roster-search" placeholder="按学号/姓名筛选" />
+          </div>
+          <AppSectionCard v-for="g in rosterGroups" :key="g.key" :title="`${g.title}（${g.rows.length}）`">
+            <EmptyState v-if="!g.rows.length" :title="`暂无${g.title}学生`" description="终审写入该结论后会出现在此" />
+            <DataTable v-else :columns="rosterColumns" :rows="g.rows" row-key="studentId" />
+          </AppSectionCard>
+        </template>
+      </template>
+
+      <!-- 不通过原因：系统异常/学院退回/教务终审延毕三组，逐生汇总不通过原因，供跟进整改 -->
+      <template v-else-if="tab === 'reason'">
+        <ErrorState v-if="error" :description="error" @retry="loadReasonTab" />
+        <LoadingState v-else-if="loading" />
+        <template v-else>
+          <AppSectionCard v-for="g in reasonGroups" :key="g.status" :title="`${g.title}（${g.rows.length}）`">
+            <p class="mp-note">{{ g.hint }}</p>
+            <EmptyState v-if="!g.rows.length" :title="`暂无${g.title}学生`" description="批次内暂无该分类学生" />
+            <DataTable v-else :columns="reasonColumns" :rows="g.rows" row-key="resultId">
+              <template #cell-reason="{ row }"><span class="agc-evidence">{{ reasonText(row) }}</span></template>
+              <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十项详情</button></template>
+            </DataTable>
+          </AppSectionCard>
+        </template>
+      </template>
+
       <!-- 审核结果：全量总览 -->
       <template v-else-if="tab === 'results'">
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
@@ -170,8 +202,11 @@
 <script>
 /**
  * 毕业资格审核 · 审核工作台（/admin/academic-affairs/graduation/audit-console?tab=）。
- * 十项跨域供数三态判定的下游六个叶子（学分/课程/实践达成审核、毕设/实习/处分状态联动、毕业资格终审、
- * 审核结果、审核归档）共享同一批次选择与详情抽屉，避免为每个叶子各建一套重复列表页。
+ * 十项跨域供数三态判定的下游八个叶子（学分/课程/实践达成审核、毕设/实习/处分状态联动、毕业资格终审、
+ * 毕业学生名单、不通过原因、审核结果、审核归档）共享同一批次选择与详情抽屉，避免为每个叶子各建一套
+ * 重复列表页。「毕业学生名单」复用既有 rosters 三名单接口（补全学院/专业/班级展示）；「不通过原因」
+ * 复用既有 results 列表按 status 过滤（SYSTEM_ABNORMAL/REJECTED/DELAYED 三态），逐生汇总不通过项证据
+ * + 学院退回意见，均为只读展示，不新增写操作。
  * 「审核批次」（建批次/圈定/预审）仍在既有 AaGraduationBatchView.vue（/graduation），本页不重复。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
@@ -181,7 +216,7 @@ import AppStatusTag from '@/components/common/AppStatusTag.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import {
   GRAD_ITEM_LABEL, GRAD_ITEM_RESULT, gradItemColor, OVERALL_LABEL, overallColor,
-  CONCLUSION_LABEL, GRAD_STATUS_LABEL
+  CONCLUSION_LABEL, GRAD_STATUS_LABEL, GRAD_FAIL_GROUPS
 } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
 
@@ -193,6 +228,8 @@ const TAB_CONFIG = {
   internship: { label: '实习状态联动', item: 'INTERNSHIP' },
   discipline: { label: '处分状态联动', item: 'DISCIPLINE' },
   final: { label: '毕业资格终审', status: 'ACADEMIC_REVIEW' },
+  roster: { label: '毕业学生名单' },
+  reason: { label: '不通过原因' },
   results: { label: '审核结果' },
   archive: { label: '审核归档', status: 'ARCHIVED' }
 }
@@ -215,6 +252,8 @@ export default {
       tab: 'credit',
       batches: [], loadingBatches: true, batchId: '',
       rows: [], courseRequiredRows: [], courseElectiveRows: [],
+      rosterData: null, rosterKeyword: '',
+      reasonRows: { SYSTEM_ABNORMAL: [], REJECTED: [], DELAYED: [] },
       loading: false, error: '',
       pagination: { page: 1, pageSize: 20, total: 0 },
       detail: { visible: false, row: null }, detailBusy: false,
@@ -237,12 +276,34 @@ export default {
       ],
       archiveColumns: [
         { key: 'studentId', title: '学号' }, { key: 'realName', title: '姓名' }, { key: 'conclusion', title: '终审结论' }
+      ],
+      rosterColumns: [
+        { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' },
+        { key: 'collegeName', title: '学院' }, { key: 'majorName', title: '专业' }, { key: 'className', title: '班级' }
+      ],
+      reasonColumns: [
+        { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' },
+        { key: 'reason', title: '不通过原因' }, { key: 'ops', title: '操作', width: '100px' }
       ]
     }
   },
   computed: {
     currentTabLabel() { return TAB_CONFIG[this.tab] ? TAB_CONFIG[this.tab].label : '' },
-    currentBatch() { return this.batches.find((b) => b.batchId === this.batchId) || null }
+    currentBatch() { return this.batches.find((b) => b.batchId === this.batchId) || null },
+    rosterGroups() {
+      if (!this.rosterData) return []
+      const kw = (this.rosterKeyword || '').trim()
+      const filterFn = (rows) => (!kw ? rows : rows.filter((r) =>
+        (r.studentNo || '').includes(kw) || (r.realName || '').includes(kw)))
+      return [
+        { key: 'GRADUATED', title: '毕业', rows: filterFn(this.rosterData.graduated || []) },
+        { key: 'COMPLETED', title: '结业', rows: filterFn(this.rosterData.completed || []) },
+        { key: 'DELAYED', title: '延毕', rows: filterFn(this.rosterData.delayed || []) }
+      ]
+    },
+    reasonGroups() {
+      return GRAD_FAIL_GROUPS.map((g) => ({ ...g, rows: this.reasonRows[g.status] || [] }))
+    }
   },
   async created() {
     const q = this.$route && this.$route.query
@@ -291,6 +352,8 @@ export default {
     },
     async loadTab() {
       if (this.tab === 'course') { this.loadCourseTab(); return }
+      if (this.tab === 'roster') { this.loadRosterTab(); return }
+      if (this.tab === 'reason') { this.loadReasonTab(); return }
       if (!this.batchId) { this.rows = []; this.pagination.total = 0; return }
       this.loading = true; this.error = ''
       const cfg = TAB_CONFIG[this.tab] || {}
@@ -311,6 +374,38 @@ export default {
       if (req.code === 0) this.courseRequiredRows = req.data.list; else this.error = req.message
       if (ele.code === 0) this.courseElectiveRows = ele.data.list; else this.error = this.error || ele.message
       this.loading = false
+    },
+    async loadRosterTab() {
+      if (!this.batchId) { this.rosterData = null; return }
+      this.loading = true; this.error = ''
+      const res = await academicAffairsApi.getGradRosters(this.batchId)
+      if (res.code === 0) this.rosterData = res.data; else this.error = res.message
+      this.loading = false
+    },
+    async loadReasonTab() {
+      if (!this.batchId) { this.reasonRows = { SYSTEM_ABNORMAL: [], REJECTED: [], DELAYED: [] }; return }
+      this.loading = true; this.error = ''
+      // 三态状态各一次独立查询（复用既有 status 过滤参数），非 OR 组合查询：批次规模有限，三次并行请求成本可接受
+      const results = await Promise.all(GRAD_FAIL_GROUPS.map((g) =>
+        academicAffairsApi.getGradResults(this.batchId, { status: g.status, pageSize: 200 })))
+      const next = {}
+      let firstErr = ''
+      GRAD_FAIL_GROUPS.forEach((g, idx) => {
+        const r = results[idx]
+        if (r.code === 0) next[g.status] = r.data.list
+        else { next[g.status] = []; firstErr = firstErr || r.message }
+      })
+      this.reasonRows = next
+      this.error = firstErr
+      this.loading = false
+    },
+    reasonText(row) {
+      const parts = []
+      if (row.reviewNote) parts.push(`学院意见：${row.reviewNote}`)
+      const fails = (row.items || []).filter((it) => it.result === 'FAIL')
+        .map((it) => `${this.itemLabel(it.item)}：${it.evidence || '未通过'}`)
+      if (fails.length) parts.push(fails.join('；'))
+      return parts.join('；') || '暂无明细，请点右侧「十项详情」核对'
     },
     openDetail(row) {
       this.detail = { visible: true, row }
@@ -370,6 +465,8 @@ export default {
 .agc-chip.is-warn { background: var(--warning-50, #fffbeb); color: var(--warning-600, #d97706); }
 .agc-chip.is-final { background: var(--primary-50, #eff6ff); color: var(--primary-600, #2563eb); }
 .agc-chip.is-archive { background: var(--fill-200, #e5e6eb); color: var(--text-500, #86909c); }
+.agc-roster-toolbar { display: flex; margin-bottom: 4px; }
+.agc-roster-search { min-width: 220px; }
 .agc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); flex-wrap: wrap; }
 .agc-tab { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; white-space: nowrap; }
 .agc-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }
