@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy import inspect
 
 revision = "aa_registration_tier1_r1"
-down_revision = "0083_notification_preference"
+down_revision = "aa_program_tier1_r1"
 branch_labels = None
 depends_on = None
 
