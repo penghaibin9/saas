@@ -105,3 +105,18 @@ export const SYSTEM_MANAGEMENT_ITEM_MAP = Object.fromEntries(
 )
 
 export const SYSTEM_MANAGEMENT_MENU_KEYS = SYSTEM_MANAGEMENT_ITEMS.map((item) => item.key)
+
+/**
+ * 角色配置页使用的 UI 节点 → 后端 permissionCode 映射。
+ * UI 的层级 key 仅供渲染，保存时绝不直接当作后端权限码。
+ */
+export const SYSTEM_MENU_PERMISSION_BY_KEY = Object.fromEntries(
+  SYSTEM_MANAGEMENT_ITEMS.map((item) => [item.key, item.permissionKey])
+)
+
+export const SYSTEM_ACTION_PERMISSION_BY_KEY = Object.fromEntries(
+  SYSTEM_MANAGEMENT_ITEMS.flatMap((item) => item.actions.map((entry) => [
+    entry.key,
+    `systemAdmin.${entry.key.replaceAll(':', '.')}`
+  ]))
+)

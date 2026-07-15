@@ -175,6 +175,36 @@ def _granted(role: str) -> set[str]:
     return ROLE_PERMISSIONS.get(role, set())
 
 
+def _db_granted(user: dict) -> set[str] | None:
+    """自定义角色仅从 t_role_permission 取权；内置模板仍由平台基线维护。"""
+    context_id = str(user.get("activeContextId") or "")
+    tenant_id = str(user.get("tenantId") or "")
+    if not (context_id.startswith("role:") and context_id[5:].isdigit() and tenant_id.isdigit()):
+        return None
+    try:
+        from sqlalchemy import select
+        from app.db.session import db_enabled, get_sessionmaker
+        if not db_enabled():
+            return None
+        from app.models import Permission, Role, RolePermission
+        db = get_sessionmaker()()
+        try:
+            role = db.scalars(select(Role).where(Role.id == int(context_id[5:]),
+                                                 Role.tenant_id == int(tenant_id),
+                                                 Role.is_deleted.is_(False))).first()
+            if role is None or str(role.role_type or "").upper() != "CUSTOM":
+                return None
+            return set(db.scalars(select(Permission.permission_code).join(
+                RolePermission, RolePermission.permission_id == Permission.id).where(
+                RolePermission.tenant_id == int(tenant_id), RolePermission.role_id == role.id,
+                RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False))).all())
+        finally:
+            db.close()
+    except Exception:
+        # 鉴权读取异常默认拒绝自定义角色，绝不回落为更宽的内置授权。
+        return set()
+
+
 def _match(code: str, patterns: Iterable[str]) -> bool:
     for p in patterns:
         if p == "*" or code == p:
@@ -190,7 +220,8 @@ def has_permission(user: dict, code: str) -> bool:
     """纯判定：当前身份是否拥有指定 permissionCode。默认拒绝。"""
     if is_super_admin(user):
         return True
-    return _match(code, _granted(_role_of(user)))
+    database_patterns = _db_granted(user)
+    return _match(code, database_patterns if database_patterns is not None else _granted(_role_of(user)))
 
 
 def _audit_denied(user: dict, code: str) -> None:

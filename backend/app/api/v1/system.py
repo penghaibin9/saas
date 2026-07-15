@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import io
+import re
+import secrets
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, UploadFile
@@ -23,6 +25,15 @@ def _role_scope(role) -> str:
     marker = str(role.remark or "")
     prefix = ";scope="
     return marker.split(prefix, 1)[1].split(";", 1)[0] if prefix in marker else "ASSIGNED"
+
+
+def _set_role_scope(role, scope_code: str) -> None:
+    scope = str(scope_code or "ASSIGNED").strip().upper()
+    if not re.fullmatch(r"[A-Z_]{2,40}", scope):
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "数据范围编码不合法")
+    remark = str(role.remark or "SAAS_CUSTOM")
+    role.remark = re.sub(r";scope=[^;]*", "", remark).rstrip(";") + f";scope={scope};permMode=DB"
 
 
 def _role_row(role, member_count: int) -> dict:
@@ -72,6 +83,120 @@ def list_system_roles(
         total = len(roles); start = (page - 1) * page_size
         return success({"list": [_role_row(role, counts.get(role.id, 0)) for role in roles[start:start + page_size]],
                         "total": total, "page": page, "pageSize": page_size})
+    finally:
+        db.close()
+
+
+@router.get("/system/roles/{role_id}", summary="学校角色详情（真实库）")
+def get_system_role(role_id: int, user=Depends(require_permission("systemAdmin.role.view"))):
+    from app.models import Permission, Role, RolePermission, User, UserRole
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        role = db.scalars(select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id,
+                                             Role.is_deleted.is_(False))).first()
+        if role is None:
+            from app.core.exceptions import not_found
+            raise not_found("角色不存在或不属于当前学校")
+        member_count = db.scalar(select(func.count(UserRole.id)).where(
+            UserRole.tenant_id == tenant_id, UserRole.role_id == role.id,
+            UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False))) or 0
+        members = db.execute(select(User.id, User.real_name).join(
+            UserRole, UserRole.user_id == User.id).where(
+            UserRole.tenant_id == tenant_id, UserRole.role_id == role.id,
+            UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+            User.is_deleted.is_(False)).limit(50)).all()
+        permission_codes = [row[0] for row in db.execute(select(Permission.permission_code).join(
+            RolePermission, RolePermission.permission_id == Permission.id).where(
+            RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id,
+            RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False)).order_by(
+            Permission.permission_code)).all()]
+        return success({**_role_row(role, member_count), "permissionCodes": permission_codes,
+                        "menuKeys": [], "buttonKeys": [],
+                        "members": [{"id": str(mid), "name": name, "orgName": "—"} for mid, name in members],
+                        "auditTrail": []})
+    finally:
+        db.close()
+
+
+@router.post("/system/roles", summary="创建学校自定义角色")
+def create_system_role(body: dict = Body(...), user=Depends(require_permission("systemAdmin.role.create"))):
+    from app.core.exceptions import AppException
+    from app.models import Role
+    tenant_id = current_tenant_id()
+    name = str(body.get("name") or "").strip()
+    code = str(body.get("code") or "").strip().upper() or f"CUSTOM_{secrets.token_hex(4).upper()}"
+    if not name or not re.fullmatch(r"[A-Z][A-Z0-9_]{2,49}", code):
+        raise AppException("VALIDATION_ERROR", "角色名称必填，编码须为 3-50 位大写字母、数字或下划线")
+    db = get_sessionmaker()()
+    try:
+        if db.scalars(select(Role).where(Role.tenant_id == tenant_id, Role.role_code == code)).first():
+            raise AppException("DATA_CONFLICT", "角色编码已存在")
+        role = Role(tenant_id=tenant_id, role_code=code, role_name=name, role_type="CUSTOM", status="ACTIVE",
+                    remark="SAAS_CUSTOM")
+        _set_role_scope(role, body.get("scopeCode") or "ASSIGNED")
+        db.add(role); db.commit(); db.refresh(role)
+        from app.services import audit_log
+        audit_log.record("ROLE_CREATE", f"role:{role.id}", detail={"roleCode": code, "roleName": name})
+        return success(_role_row(role, 0), message="自定义角色已创建；请继续配置权限")
+    except Exception:
+        db.rollback(); raise
+    finally:
+        db.close()
+
+
+@router.put("/system/roles/{role_id}/permissions", summary="保存自定义角色权限与默认范围")
+def save_system_role_permissions(role_id: int, body: dict = Body(...),
+                                 user=Depends(require_permission("systemAdmin.role.config"))):
+    from app.core.exceptions import AppException
+    from app.core.permissions import has_permission
+    from app.models import Permission, Role, RolePermission
+    tenant_id = current_tenant_id()
+    raw_codes = body.get("permissionCodes") or []
+    if not isinstance(raw_codes, list):
+        raise AppException("VALIDATION_ERROR", "permissionCodes 必须为数组")
+    codes = sorted({str(code).strip() for code in raw_codes if str(code).strip()})
+    if len(codes) > 300 or any(code == "*" or code.startswith("platform.") for code in codes):
+        raise AppException("VALIDATION_ERROR", "权限点超出学校角色可配置范围")
+    forbidden = [code for code in codes if not has_permission(user, code)]
+    if forbidden:
+        raise AppException("NO_PERMISSION", "不能向角色授予当前操作者没有的权限", {"codes": forbidden[:10]})
+    db = get_sessionmaker()()
+    try:
+        role = db.scalars(select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id,
+                                             Role.is_deleted.is_(False))).first()
+        if role is None:
+            raise AppException("DATA_NOT_FOUND", "角色不存在")
+        if str(role.role_type or "").upper() == "SYSTEM":
+            raise AppException("VALIDATION_ERROR", "预设角色由平台模板维护；请复制为自定义角色后再裁剪")
+        existing = {rp.permission_id: rp for rp in db.scalars(select(RolePermission).where(
+            RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id)).all()}
+        permissions = {p.permission_code: p for p in db.scalars(select(Permission).where(
+            Permission.permission_code.in_(codes))).all()} if codes else {}
+        for code in codes:
+            if code not in permissions:
+                module, _, action = code.partition(".")
+                p = Permission(permission_code=code, permission_name=code, module_code=module, action=action or None)
+                db.add(p); db.flush(); permissions[code] = p
+        wanted_ids = {p.id for p in permissions.values()}
+        for permission_id, link in existing.items():
+            if permission_id in wanted_ids:
+                link.status = "ACTIVE"; link.is_deleted = False
+            else:
+                link.status = "DISABLED"; link.is_deleted = True
+        for permission_id in wanted_ids - set(existing):
+            db.add(RolePermission(tenant_id=tenant_id, role_id=role.id, permission_id=permission_id, status="ACTIVE"))
+        _set_role_scope(role, body.get("scopeCode") or _role_scope(role))
+        role.version = int(role.version or 0) + 1
+        db.commit()
+        from app.services import audit_log
+        audit_log.record("ROLE_PERMISSION_CONFIG", f"role:{role.id}",
+                         detail={"roleCode": role.role_code, "permissionCount": len(codes),
+                                 "scopeCode": _role_scope(role)})
+        return success({"id": str(role.id), "permissionCount": len(codes), "scopeCode": _role_scope(role)},
+                       message="权限配置已生效；该角色成员需重新登录")
+    except Exception:
+        db.rollback(); raise
     finally:
         db.close()
 

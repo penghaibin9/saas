@@ -9,6 +9,7 @@
 import { request, requestBlob, requestUpload, withFallback } from '@/services/http/client'
 import * as realApi from '@/services/http/adapters'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
+import { SYSTEM_ACTION_PERMISSION_BY_KEY, SYSTEM_MENU_PERMISSION_BY_KEY } from '@/modules/system/systemManagementCatalog'
 import {
   tenantBrandConfig,
   currentRole,
@@ -70,6 +71,23 @@ function saveBlob(blob, filename) {
 
 function clone(v) {
   return JSON.parse(JSON.stringify(v))
+}
+
+const menuKeyByPermission = Object.fromEntries(Object.entries(SYSTEM_MENU_PERMISSION_BY_KEY).map(([key, code]) => [code, key]))
+const actionKeyByPermission = Object.fromEntries(Object.entries(SYSTEM_ACTION_PERMISSION_BY_KEY).map(([key, code]) => [code, key]))
+
+function permissionCodesFromSelection(menuKeys = [], buttonKeys = []) {
+  return [...new Set([
+    ...menuKeys.map((key) => SYSTEM_MENU_PERMISSION_BY_KEY[key]).filter(Boolean),
+    ...buttonKeys.map((key) => SYSTEM_ACTION_PERMISSION_BY_KEY[key]).filter(Boolean)
+  ])]
+}
+
+function selectionFromPermissionCodes(permissionCodes = []) {
+  return {
+    menuKeys: permissionCodes.map((code) => menuKeyByPermission[code]).filter(Boolean),
+    buttonKeys: permissionCodes.map((code) => actionKeyByPermission[code]).filter(Boolean)
+  }
 }
 
 function paginate(list, { page = 1, pageSize = 10 } = {}) {
@@ -360,24 +378,37 @@ export const systemApi = {
   },
 
   getRoleDetail(id) {
-    const preset = roleDetailMap[id]
-    if (preset) return ok(clone(preset))
-    const row = roleList.find((r) => r.id === id)
-    if (!row) return fail('角色不存在')
-    /* 内置角色的初始授权来自统一预览目录；不再让权限抽屉因为缺少 mock 详情而显示空树。 */
-    const menuKeys = [...(roleMenuPreview[row.code] || [])]
-    const systemNode = permissionTree.find((node) => node.key === 'mod-system')
-    const buttonKeys = (systemNode?.children || [])
-      .filter((menu) => menuKeys.includes(menu.key))
-      .flatMap((menu) => (menu.children || []).map((button) => button.key))
-    return ok({ ...clone(row), menuKeys, buttonKeys, members: [], auditTrail: [{ who: '系统', time: row.updatedAt, action: '最近更新', affected: row.description }] })
+    const mockDetail = () => {
+      const preset = roleDetailMap[id]
+      if (preset) return ok(clone(preset))
+      const row = roleList.find((r) => r.id === id)
+      if (!row) return fail('角色不存在')
+      const menuKeys = [...(roleMenuPreview[row.code] || [])]
+      const systemNode = permissionTree.find((node) => node.key === 'mod-system')
+      const buttonKeys = (systemNode?.children || [])
+        .filter((menu) => menuKeys.includes(menu.key))
+        .flatMap((menu) => (menu.children || []).map((button) => button.key))
+      return ok({ ...clone(row), menuKeys, buttonKeys, members: [], auditTrail: [{ who: '系统', time: row.updatedAt, action: '最近更新', affected: row.description }] })
+    }
+    return withFallback('system.role.detail', async () => {
+      const data = await request(`/system/roles/${encodeURIComponent(id)}`)
+      return ok({ ...data, ...selectionFromPermissionCodes(data.permissionCodes || []) })
+    }, mockDetail)
   },
 
   getPermissionTree() {
     return ok(clone(permissionTree))
   },
 
-  createRole(payload) {
+  async createRole(payload) {
+    try {
+      const data = await request('/system/roles', { method: 'POST', body: payload })
+      return ok(data)
+    } catch (error) {
+      return fail(error.message || '创建角色失败')
+    }
+    /* mock fallback 仅用于未启用真实后端的本地演示 */
+    /* c8 ignore next */
     if (!payload.name) return fail('角色名称为必填项')
     const row = {
       id: 'role-n' + ++seed,
@@ -430,7 +461,16 @@ export const systemApi = {
     return ok({ id, status: row.status })
   },
 
-  saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode }) {
+  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode }) {
+    try {
+      const data = await request(`/system/roles/${encodeURIComponent(id)}/permissions`, {
+        method: 'PUT', body: { permissionCodes: permissionCodesFromSelection(menuKeys, buttonKeys), scopeCode }
+      })
+      return ok(data)
+    } catch (error) {
+      return fail(error.message || '保存权限配置失败')
+    }
+    /* c8 ignore next */
     const row = roleList.find((r) => r.id === id)
     if (!row) return fail('角色不存在')
     const detail = roleDetailMap[id]

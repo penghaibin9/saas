@@ -68,6 +68,12 @@ def _scope_for(role_code: str) -> tuple[str, str]:
     return ROLE_DEFAULT_SCOPE.get(role_code, ("ASSIGNED", "按岗位业务关系授权"))
 
 
+def _scope_from_role(role) -> str | None:
+    marker = str(getattr(role, "remark", "") or "")
+    prefix = ";scope="
+    return marker.split(prefix, 1)[1].split(";", 1)[0] if prefix in marker else None
+
+
 def _public_context(role_id: int | None, role_code: str, role_name: str,
                     scope: str | None = None, scope_label: str | None = None,
                     version: int = 0, legacy: bool = False) -> dict:
@@ -111,6 +117,7 @@ def _role_contexts(db, user) -> list[dict]:
     )
     contexts = [
         _public_context(role.id, role.role_code, role.role_name,
+                        scope=_scope_from_role(role),
                         version=max(int(role.version or 0), int(link.version or 0)))
         for link, role in db.execute(stmt).all()
     ]

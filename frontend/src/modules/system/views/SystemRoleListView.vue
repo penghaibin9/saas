@@ -263,6 +263,10 @@ export default {
     },
     async openPermission(row) {
       if (!this.can('configRolePermission')) return
+      if (row.type === 'BUILTIN') {
+        toast.error('预设角色由平台模板维护；请复制为自定义角色后再裁剪权限')
+        return
+      }
       this.perm = { open: true, loading: true, id: row.id, name: row.name, tree: [], menuKeys: [], buttonKeys: [], scopeCode: row.scopeCode, submitting: false }
       const [treeRes, detailRes] = await Promise.all([systemApi.getPermissionTree(), systemApi.getRoleDetail(row.id)])
       this.perm.loading = false
