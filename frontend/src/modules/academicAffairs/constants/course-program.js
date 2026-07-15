@@ -67,3 +67,9 @@ export function canNewVersion(status) {
 export function canPublishBind(status) {
   return status === 'PUBLISHED' || status === 'ENABLED'
 }
+
+/** 课程模块文本是否属于集中实践/实训/实习环节（教学计划「实践教学计划」叶子的筛选口径，
+ * 与 COURSE_CATEGORY.PRACTICE 标签「实践环节」保持一致；module 为编制期自由文本，按关键词命中）。 */
+export function isPracticeModule(module) {
+  return !!module && /实践|实训|实习/.test(module)
+}

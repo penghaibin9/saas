@@ -330,11 +330,17 @@ export const NAV_PLAN = [
     ]),
     // 教学计划：按手册 P6 冻结决定 + 用户 2026-07-14 拍板「收编」——不建独立域，叶子指向既有等价功能页
     // 年级/专业教学计划=培养方案(AaProgramBinding方案-年级绑定)；学期教学计划/课程开设计划=教学任务批次(AaTeachingTaskBatch学期开课计划)；计划归档=教务归档
+    // R3 续工（2026-07-16）：剩余 5 叶子收编到既有真实实现——审核/发布走方案自身两级审核发布链，
+    // 执行进度看教学任务批次统计，实践教学计划=方案课程模块的实践环节筛选切面，计划变更=方案版本链+强制原因留痕（新增 change 端点，零新表）
     mod('aa-teaching-plan', '教学计划', '/admin/academic-affairs/programs', [
       I('年级/专业教学计划（培养方案）', '/admin/academic-affairs/programs', 'academicAffairs.program.view'),
       I('学期教学计划/课程开设计划（教学任务）', '/admin/academic-affairs/teaching-tasks', 'academicAffairs.teachingTask.view'),
       I('计划归档（教务归档）', '/admin/academic-affairs/archive', 'academicAffairs.archive.view'),
-      ...P('实践教学计划', '计划审核', '计划发布', '计划变更', '计划执行进度')
+      I('实践教学计划', '/admin/academic-affairs/programs/console?tab=practicePlan', 'academicAffairs.program.view'),
+      I('计划审核', '/admin/academic-affairs/programs/console?tab=review', 'academicAffairs.program.view'),
+      I('计划发布', '/admin/academic-affairs/programs/console?tab=publish', 'academicAffairs.program.view'),
+      I('计划变更', '/admin/academic-affairs/programs/console?tab=planChange', 'academicAffairs.program.view'),
+      I('计划执行进度', '/admin/academic-affairs/teaching-tasks/stats', 'academicAffairs.teachingTask.stats')
     ]),
     mod('aa-teaching-tasks', '教学任务', '/admin/academic-affairs/teaching-tasks', [
       I('教学任务批次', '/admin/academic-affairs/teaching-tasks'),

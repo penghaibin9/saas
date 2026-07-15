@@ -408,9 +408,17 @@ def delete_graduation_requirement(requirement_id, user) -> dict:
 
 # ═══════════ 方案版本（新建版本 + 版本链）Tier1 ═══════════
 
-def create_new_version(program_id, user) -> dict:
+def create_new_version(program_id, user, reason=None) -> dict:
     """已发布/启用/冻结方案改动须走新版本：复制基本信息+课程+毕业要求为新 DRAFT（version+1，
-    prev_version_id 回链旧版本）；旧版本状态不变，历史绑定年级学生继续沿用旧版本。"""
+    prev_version_id 回链旧版本）；旧版本状态不变，历史绑定年级学生继续沿用旧版本。
+
+    reason（可选，教务中心-教学计划「计划变更」收编入口 R3 新增）：提供时视为一次正式「计划变更」，
+    校验≥5字并记专属审计事件 CHANGE_NEW_VERSION（原因写入 detail，供变更留痕追溯）；
+    「方案版本」入口沿用原调用方式（不传 reason），行为与既有契约完全一致，不受影响。"""
+    if reason is not None:
+        reason = reason.strip()
+        if len(reason) < 5:
+            raise AppException("VALIDATION_ERROR", "变更原因必填且不少于 5 字")
     with session() as db:
         from app.models import AaProgram, AaProgramCourse, AaProgramGraduationRequirement as Req
         old = db.get(AaProgram, int(program_id))
@@ -435,7 +443,11 @@ def create_new_version(program_id, user) -> dict:
                 Req.status == "ACTIVE")).all():
             db.add(Req(tenant_id=_tid(), program_id=new_p.id, category=r.category,
                       content=r.content, sort_order=r.sort_order, status="ACTIVE"))
-        _audit(db, new_p.id, "NEW_VERSION", f"fromProgramId={old.id},fromVersion={old.version}")
+        if reason:
+            _audit(db, new_p.id, "CHANGE_NEW_VERSION",
+                  f"reason={reason};fromProgramId={old.id},fromVersion={old.version}")
+        else:
+            _audit(db, new_p.id, "NEW_VERSION", f"fromProgramId={old.id},fromVersion={old.version}")
         db.commit()
         db.refresh(new_p)
         return _row(new_p)

@@ -767,6 +767,19 @@ def program_new_version(programId: int = Path(...), user=Depends(_PROG_MANAGE)):
     return success(prog_svc.create_new_version(programId, user), message="已新建版本")
 
 
+# ── 计划变更（教务中心-教学计划「计划变更」收编入口，R3 新增）──
+# 复用「方案版本」同一版本链机制（已发布/启用/冻结/停用方案改动强制新版本），区别仅在于本入口强制要求
+# 变更原因（≥5字）并写专属审计事件 CHANGE_NEW_VERSION，供「计划变更」留痕追溯；不建独立表，零新迁移。
+
+class ProgramChangeBody(BaseModel):
+    reason: str = Field(..., min_length=1)
+
+
+@router.post("/programs/{programId}/change", summary="计划变更：基于已发布/启用/冻结版本新建新版本并记录变更原因")
+def program_change(body: ProgramChangeBody, programId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.create_new_version(programId, user, body.reason), message="变更已生效，已生成新版本")
+
+
 # ═══════════ 课程库（P3，两级审核，商业级全字段）═══════════
 # Tier1 R2（新增课程/课程分类/课程性质/学分学时/课程负责人/课程停用）：写操作从 require_staff 收紧为
 # 精确 permissionCode（均命中 permissions.py 既有 "academicAffairs.*" 角色通配，不新增角色）。

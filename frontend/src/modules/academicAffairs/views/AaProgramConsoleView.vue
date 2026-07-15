@@ -23,14 +23,19 @@
       </span>
     </div>
 
-    <div v-if="tab !== 'courseModules' && tab !== 'creditRequirements' && tab !== 'graduationRequirements'" class="aapc-bar">
+    <div v-if="!needsProgramPicker" class="aapc-bar">
       <AppButton v-if="tab === 'authoring'" variant="primary" size="small" @click="openCreate">＋ 新建方案</AppButton>
     </div>
     <div v-else-if="selectedProgramId" class="aapc-bar">
       <AppButton v-if="tab === 'courseModules' && isEditable" variant="primary" size="small" @click="openCourseForm(null)">＋ 添加课程</AppButton>
+      <AppButton v-if="tab === 'practicePlan' && isEditable" variant="primary" size="small" @click="openCourseForm(null, '实践环节')">＋ 添加实践课程</AppButton>
       <AppButton v-if="tab === 'creditRequirements' && isEditable" variant="primary" size="small" @click="openCreditForm(null)">＋ 添加模块学分</AppButton>
       <AppButton v-if="tab === 'creditRequirements' && isEditable" variant="secondary" size="small" :loading="savingCredit" @click="saveCredit">保存学分结构</AppButton>
       <AppButton v-if="tab === 'graduationRequirements' && isEditable" variant="primary" size="small" @click="openGradForm(null)">＋ 添加毕业要求</AppButton>
+    </div>
+    <div v-if="tab === 'practicePlan' && selectedProgramId && practiceCreditTarget !== null" class="aapc-picker__hint" style="margin-bottom:12px;">
+      学分要求中「实践环节」目标学分：<strong>{{ practiceCreditTarget }}</strong>
+      <button class="mp-link" @click="switchTab('creditRequirements')">去学分要求维护</button>
     </div>
 
     <ErrorState v-if="error" :description="error" @retry="reload" />
@@ -56,8 +61,20 @@
             <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">查看</button>
             <button v-if="canNewVersion(row.status)" class="mp-link" @click="doNewVersion(row)">新建版本</button>
           </template>
+          <!-- 计划变更（收编入口：已发布/启用计划的变更须带原因，走同一版本链机制） -->
+          <template v-if="tab === 'planChange'">
+            <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">查看</button>
+            <button v-if="canNewVersion(row.status)" class="mp-link" @click="openChange(row)">发起变更</button>
+          </template>
           <!-- 课程模块 -->
           <template v-if="tab === 'courseModules'">
+            <template v-if="isEditable">
+              <button class="mp-link" @click="openCourseForm(row)">编辑</button>
+              <button class="mp-link is-danger" @click="confirmDeleteCourse(row)">删除</button>
+            </template>
+          </template>
+          <!-- 实践教学计划（课程模块的实践环节筛选切面，复用同一套课程明细读写） -->
+          <template v-if="tab === 'practicePlan'">
             <template v-if="isEditable">
               <button class="mp-link" @click="openCourseForm(row)">编辑</button>
               <button class="mp-link is-danger" @click="confirmDeleteCourse(row)">删除</button>
@@ -186,6 +203,18 @@
       :submitting="reviewDlg.submitting"
       @confirm="doReview"
     />
+    <!-- 计划变更：已发布/启用计划须填写变更原因（≥5字），生成新版本并留痕 -->
+    <AppConfirmDialog
+      v-model:visible="changeDlg.visible"
+      :title="changeDlg.row ? `发起变更「${changeDlg.row.programName}」` : '发起变更'"
+      type="warning"
+      confirm-text="确认变更"
+      require-reason
+      reason-label="变更原因"
+      reason-placeholder="请说明本次教学计划变更的原因，如调整课程/学时/开课学院等"
+      :submitting="changeDlg.submitting"
+      @confirm="doChange"
+    />
     <AppConfirmDialog
       v-model:visible="confirmDlg.visible"
       :title="confirmDlg.title"
@@ -211,7 +240,7 @@ import {
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import {
   REVIEW_STATUS, reviewStatusColor, canSubmit, canNewVersion, canPublishBind,
-  GRADUATION_REQUIREMENT_CATEGORY
+  GRADUATION_REQUIREMENT_CATEGORY, isPracticeModule
 } from '@/modules/academicAffairs/constants/course-program'
 import { toast } from '@/utils/toast'
 
@@ -230,14 +259,16 @@ export default {
       tabs: [
         { key: 'authoring', label: '方案制定' },
         { key: 'versions', label: '方案版本' },
+        { key: 'planChange', label: '计划变更' },
         { key: 'courseModules', label: '课程模块' },
+        { key: 'practicePlan', label: '实践教学计划' },
         { key: 'creditRequirements', label: '学分要求' },
         { key: 'graduationRequirements', label: '毕业要求' },
         { key: 'review', label: '方案审核' },
         { key: 'publish', label: '方案发布' }
       ],
       allPrograms: [], selectedProgramId: '', selectedProgram: null,
-      creditItems: [], savingCredit: false,
+      creditItems: [], savingCredit: false, practiceCreditTarget: null,
       saving: false, formError: '',
       createVisible: false, createForm: { programName: '', majorId: '', gradeYear: '', totalCredits: null },
       courseVisible: false, courseForm: { programCourseId: '', courseName: '', module: '', openTermNo: null, credit: null },
@@ -246,11 +277,12 @@ export default {
       bindVisible: false, bindRow: null, bindForm: { gradeYear: '', classId: '' },
       bindingsVisible: false, bindingRows: [],
       reviewDlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, row: null, action: '' },
+      changeDlg: { visible: false, submitting: false, row: null },
       confirmDlg: { visible: false, title: '', submitting: false, action: null }
     }
   },
   computed: {
-    needsProgramPicker() { return ['courseModules', 'creditRequirements', 'graduationRequirements'].includes(this.tab) },
+    needsProgramPicker() { return ['courseModules', 'creditRequirements', 'graduationRequirements', 'practicePlan'].includes(this.tab) },
     isEditable() { return this.selectedProgram && canSubmit(this.selectedProgram.status) },
     programOptions() {
       return this.allPrograms.map((p) => ({ label: `${p.programName}（${p.gradeYear || '未设年级'} · v${p.version} · ${this.statusLabel(p.status)}）`, value: p.programId }))
@@ -262,7 +294,9 @@ export default {
       const map = {
         authoring: [{ key: 'program', title: '方案' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作', width: '110px' }],
         versions: [{ key: 'program', title: '方案' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作', width: '160px' }],
+        planChange: [{ key: 'program', title: '教学计划（方案）' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作', width: '140px' }],
         courseModules: [{ key: 'openTermNo', title: '开课学期' }, { key: 'module', title: '课程模块' }, { key: 'courseName', title: '课程名称' }, { key: 'credit', title: '学分' }, { key: 'ops', title: '操作', width: '110px' }],
+        practicePlan: [{ key: 'openTermNo', title: '开课学期' }, { key: 'module', title: '实践环节' }, { key: 'courseName', title: '实践课程/项目' }, { key: 'credit', title: '学分' }, { key: 'ops', title: '操作', width: '110px' }],
         creditRequirements: [{ key: 'module', title: '课程模块' }, { key: 'creditTarget', title: '学分目标' }, { key: 'note', title: '备注' }, { key: 'ops', title: '操作', width: '110px' }],
         graduationRequirements: [{ key: 'category', title: '分类' }, { key: 'content', title: '要求内容' }, { key: 'sortOrder', title: '排序' }, { key: 'ops', title: '操作', width: '110px' }],
         review: [{ key: 'program', title: '方案' }, { key: 'status', title: '审核节点' }, { key: 'ops', title: '操作', width: '180px' }],
@@ -274,7 +308,9 @@ export default {
       return {
         authoring: '点击「新建方案」开始编制课程结构',
         versions: '暂无方案',
+        planChange: '暂无已发布/启用的教学计划可发起变更',
         courseModules: this.selectedProgramId ? '点击「添加课程」构建方案课程结构' : '请选择一个方案',
+        practicePlan: this.selectedProgramId ? '点击「添加实践课程」录入集中实践/实训/实习环节' : '请选择一个方案',
         creditRequirements: this.selectedProgramId ? '点击「添加模块学分」构建学分结构' : '请选择一个方案',
         graduationRequirements: this.selectedProgramId ? '点击「添加毕业要求」录入结构化条目' : '请选择一个方案',
         review: '暂无待审核方案',
@@ -314,7 +350,9 @@ export default {
       try {
         if (this.tab === 'authoring') return await this.loadAuthoring()
         if (this.tab === 'versions') return await this.loadVersions()
+        if (this.tab === 'planChange') return await this.loadPlanChange()
         if (this.tab === 'courseModules') return await this.loadCourseModules()
+        if (this.tab === 'practicePlan') return await this.loadPracticePlan()
         if (this.tab === 'creditRequirements') return await this.loadCreditRequirements()
         if (this.tab === 'graduationRequirements') return await this.loadGraduationRequirements()
         if (this.tab === 'review') return await this.loadReview()
@@ -333,6 +371,12 @@ export default {
       if (res.code === 0) this.rows = res.data.list.map((p) => ({ ...p, id: p.programId }))
       else this.error = res.message
     },
+    async loadPlanChange() {
+      // 计划变更：仅已发布/启用/冻结/停用（canNewVersion 态）教学计划可发起变更
+      const res = await academicAffairsApi.getPrograms({ statusIn: 'PUBLISHED,ENABLED,FROZEN,DISABLED', page: 1, pageSize: 200 })
+      if (res.code === 0) this.rows = res.data.list.map((p) => ({ ...p, id: p.programId }))
+      else this.error = res.message
+    },
     async loadCourseModules() {
       if (!this.selectedProgramId) { this.rows = []; return }
       const res = await academicAffairsApi.getProgram(this.selectedProgramId)
@@ -340,6 +384,24 @@ export default {
         this.selectedProgram = res.data
         this.rows = (res.data.courses || []).map((c) => ({ ...c, id: c.programCourseId }))
       } else this.error = res.message
+    },
+    async loadPracticePlan() {
+      // 实践教学计划：课程模块的「实践环节」筛选切面（module 命中集中实践/实训/实习关键词），
+      // 交叉展示学分要求里「实践环节」模块的目标学分（同一 requirement_json，见施工记录 U-03 折中）。
+      this.practiceCreditTarget = null
+      if (!this.selectedProgramId) { this.rows = []; return }
+      const res = await academicAffairsApi.getProgram(this.selectedProgramId)
+      if (res.code === 0) {
+        this.selectedProgram = res.data
+        this.rows = (res.data.courses || [])
+          .filter((c) => isPracticeModule(c.module))
+          .map((c) => ({ ...c, id: c.programCourseId }))
+      } else { this.error = res.message; return }
+      const creditRes = await academicAffairsApi.getCreditRequirements(this.selectedProgramId)
+      if (creditRes.code === 0) {
+        const item = (creditRes.data.items || []).find((i) => isPracticeModule(i.module))
+        this.practiceCreditTarget = item ? item.creditTarget : null
+      }
     },
     async loadCreditRequirements() {
       if (!this.selectedProgramId) { this.rows = []; return }
@@ -398,11 +460,28 @@ export default {
       else toast.error(res.message || '新建版本失败')
     },
 
-    // ── 课程模块 ──
-    openCourseForm(row) {
+    // ── 计划变更（收编入口：同一版本链机制 + 强制变更原因留痕） ──
+    openChange(row) {
+      this.changeDlg = { visible: true, submitting: false, row }
+    },
+    async doChange(payload) {
+      const reason = (payload && payload.reason) || ''
+      this.changeDlg.submitting = true
+      const res = await academicAffairsApi.changeProgram(this.changeDlg.row.programId, reason)
+      this.changeDlg.submitting = false
+      if (res.code === 0) {
+        this.changeDlg.visible = false
+        toast.success('变更已生效，已生成新版本 v' + res.data.version)
+        await this.loadAllPrograms()
+        this.reload()
+      } else toast.error(res.message || '变更失败')
+    },
+
+    // ── 课程模块（practicePlan 复用同一套读写，presetModule 供「＋ 添加实践课程」预填模块名） ──
+    openCourseForm(row, presetModule) {
       this.courseForm = row
         ? { programCourseId: row.programCourseId, courseName: row.courseName, module: row.module, openTermNo: row.openTermNo, credit: row.credit }
-        : { programCourseId: '', courseName: '', module: '', openTermNo: null, credit: null }
+        : { programCourseId: '', courseName: '', module: presetModule || '', openTermNo: null, credit: null }
       this.formError = ''
       this.courseVisible = true
     },

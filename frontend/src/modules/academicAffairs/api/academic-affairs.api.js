@@ -411,6 +411,10 @@ export const academicAffairsApi = {
   createProgramNewVersion(programId) {
     return call(() => request(`${BASE}/programs/${programId}/new-version`, { method: 'POST' }))
   },
+  /* 计划变更（教务中心-教学计划「计划变更」收编入口，R3 新增）：同一版本链机制 + 强制变更原因留痕 */
+  changeProgram(programId, reason) {
+    return call(() => request(`${BASE}/programs/${programId}/change`, { method: 'POST', body: { reason } }))
+  },
 
   /* ── 教学任务（生成 → 分配 → 教师确认 → 提审） ── */
   generateTaskBatch(body) {
