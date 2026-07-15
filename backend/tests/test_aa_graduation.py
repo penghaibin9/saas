@@ -1,4 +1,5 @@
-"""13B-P6 毕业资格预审 · 端到端（七项供数三态 + 终审经单一入口 + 三名单）。
+"""13B-P6 毕业资格预审 · 端到端（十项供数三态 + 终审经单一入口 + 三名单）。
+Tier1 R1 起由七项扩展为十项（新增 STATUS_CHANGE/DISCIPLINE 等联动项，见 grade-graduation.js GRAD_ITEM_LABEL）。
 
 GR1 生成+预审→SYSTEM_PASSED；GR2 学籍异常→SYSTEM_ABNORMAL；GR3 全链终审写学籍GRADUATED;
 GR4 终审无二次确认409；GR5 三名单；GR6 预审幂等(rerun)。
@@ -53,7 +54,7 @@ def test_gr1_precheck_passed(client, db_mode):
     assert r["passed"] == 1 and r["abnormal"] == 0  # 在籍PASS，其余UNKNOWN不阻断
     rid = _result_id(client, hdr, bid)
     d = client.get(f"{BASE}/graduation-results/{rid}", headers=hdr).json()["data"]
-    assert d["overall"] == "SYSTEM_PASSED" and len(d["items"]) == 7  # 七项
+    assert d["overall"] == "SYSTEM_PASSED" and len(d["items"]) == 10  # 十项（Tier1 R1 扩展）
 
 
 def test_gr2_status_abnormal(client, db_mode):
