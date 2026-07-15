@@ -2645,6 +2645,7 @@ def quality_report_export(body: QualityExportBody, user=Depends(require_permissi
 # ══════════════ 教务归档（13B-R7，/academic-affairs/archive/*） ══════════════
 _ARCHIVE_MANAGE = "academicAffairs.archive.manage"
 _ARCHIVE_VIEW = "academicAffairs.archive.view"
+_ARCHIVE_EXPORT = "academicAffairs.archive.export"
 
 
 class ArchiveBatchBody(BaseModel):
@@ -2697,3 +2698,35 @@ def archive_unfreeze(body: ArchiveUnfreezeBody, bid: int = Path(...),
 @router.post("/archive/batches/{bid}/cancel", summary="取消归档批次")
 def archive_cancel(bid: int = Path(...), user=Depends(require_permission(_ARCHIVE_MANAGE))):
     return success(archive_svc.cancel_batch(user, bid), message="已取消")
+
+
+@router.get("/archive/precheck", summary="归档缺失提醒：9域实时预检查（不落库）")
+def archive_precheck(termId: Optional[str] = None, user=Depends(require_permission(_ARCHIVE_VIEW))):
+    return success(archive_svc.precheck(user, termId))
+
+
+@router.get("/archive/batches/{bid}/download-log", summary="归档下载记录查询")
+def archive_download_log(bid: int = Path(...), user=Depends(require_permission(_ARCHIVE_VIEW))):
+    return success(archive_svc.list_download_log(user, bid))
+
+
+@router.get("/archive/batches/{bid}/export", summary="打包下载全部归档物料（zip）")
+def archive_export_all(bid: int = Path(...), purpose: str = "", user=Depends(require_permission(_ARCHIVE_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content, filename = archive_svc.export_batch_all(user, bid, purpose)
+    return StreamingResponse(io.BytesIO(content), media_type="application/zip",
+                             headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+@router.get("/archive/batches/{bid}/items/{category}/export", summary="单数据域水印导出")
+def archive_export_item(bid: int = Path(...), category: str = Path(...), purpose: str = "",
+                        user=Depends(require_permission(_ARCHIVE_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content, filename = archive_svc.export_batch_item(user, bid, category, purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename={filename}"})

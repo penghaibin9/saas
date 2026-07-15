@@ -72,6 +72,8 @@ def _detect_conflict(db, batch_id, weekday, slot_no, start_week, end_week, parit
 def create_batch(body, user) -> dict:
     with session() as db:
         from app.models import AaScheduleBatch
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+        guard_term_writable(db, body.termId)  # 归档11卡§6.2：已归档学期不应新建课表批次
         b = AaScheduleBatch(tenant_id=_tid(), term_id=int(body.termId),
                             batch_name=(getattr(body, "batchName", None) or f"学期{body.termId}课表"),
                             college_id=(int(body.collegeId) if getattr(body, "collegeId", None) else None),
@@ -103,9 +105,11 @@ def add_item(batch_id, user, body) -> dict:
         raise AppException("VALIDATION_ERROR", "单双周非法")
     with session() as db:
         from app.models import AaScheduleBatch, AaScheduleItem, AaTeachingTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再变更
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("DATA_CONFLICT", "已发布课表不可直接改（走作废重发）")
         it = _item_from(body)
@@ -142,9 +146,11 @@ def import_items(batch_id, user, items) -> dict:
     ok, conflicts = 0, []
     with session() as db:
         from app.models import AaScheduleBatch, AaScheduleItem, AaTeachingTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再导入
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("DATA_CONFLICT", "已发布课表不可导入")
         for idx, row in enumerate(items or []):
@@ -188,9 +194,11 @@ def import_items(batch_id, user, items) -> dict:
 def pre_publish(batch_id, user) -> dict:
     with session() as db:
         from app.models import AaScheduleBatch
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再预发布
         if b.status != "DRAFT":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅草稿批次可预发布")
         b.status = "PRE_PUBLISHED"
@@ -203,9 +211,11 @@ def publish(batch_id, user) -> dict:
     """发布课表：通知师生（t_unified_message）。"""
     with session() as db:
         from app.models import AaScheduleBatch, AaScheduleItem, UnifiedMessage
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再发布
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次状态不可发布")
         b.status, b.publish_at = "PUBLISHED", datetime.utcnow()
@@ -230,9 +240,11 @@ def void_and_reissue(batch_id, user, reason="") -> dict:
         raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
     with session() as db:
         from app.models import AaScheduleBatch
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再作废重发
         if b.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布批次可作废重发")
         b.status = "ARCHIVED"

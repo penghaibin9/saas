@@ -421,7 +421,12 @@ export const NAV_PLAN = [
     ]),
     mod('aa-archive', '教务归档', '/admin/academic-affairs/archive', [
       I('归档批次 + 9数据域完整性检查 + 学期封存', '/admin/academic-affairs/archive', 'academicAffairs.archive.view'),
-      ...P('归档缺失提醒', '批量归档', '归档导出')
+      /* 2026-07-15 Tier1 续工（10/11/12 三级卡）：归档缺失提醒=独立预检看板；批量归档=与上一叶子同一批次
+       * 工作台真实页面（10/11/12 三级卡口径下"批量归档"即该工作台的正式命名），本行加 ?entry= 区分 leafKey
+       * 高亮/点击（§9.4 唯一 leafKey 规则），不改上一叶子；归档导出=独立下载面板。 */
+      I('归档缺失提醒', '/admin/academic-affairs/archive/precheck', 'academicAffairs.archive.view'),
+      I('批量归档', '/admin/academic-affairs/archive?entry=batch', 'academicAffairs.archive.view'),
+      I('归档导出', '/admin/academic-affairs/archive/export', 'academicAffairs.archive.export')
     ]),
     mod('aa-stats', '教务统计', '/admin/academic-affairs/stats', [
       I('教务总览（11 项指标 · 多维筛选 · 下钻 · 导出）', '/admin/academic-affairs/stats', 'academicAffairs.stats.view'),

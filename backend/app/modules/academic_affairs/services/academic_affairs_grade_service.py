@@ -102,6 +102,8 @@ def create_grade_task(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "平时占比+期末占比必须=100")
     with session() as db:
         from app.models import AaGradeTask, AaTeachingTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+        guard_term_writable(db, getattr(body, "termId", None))  # 归档11卡§6.2：已归档学期不应新建成绩任务
         teaching_task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
         teacher_key = None
         if teaching_task_id:
@@ -170,9 +172,11 @@ def enter_score(task_id, user, body) -> dict:
     """录入某生平时/期末分，实时合成总评（NOT_STARTED/INPUTTING/RETURNED 可写）。"""
     with session() as db:
         from app.models import AaGradeRecord, AaGradeTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaGradeTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
+        guard_term_writable(db, t.term_id)  # 归档11卡§6.2：已归档学期的成绩不应再录入
         _check_course_scope(t, user)
         if t.status not in ("NOT_STARTED", "INPUTTING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可录入（已提交/已发布，如需修改请走成绩更正）")
@@ -300,9 +304,11 @@ def publish_grades(task_id, user) -> dict:
     _require_review_role(user)
     with session() as db:
         from app.models import AaGradeRecord, AaGradeTask, AcademicGrade, AffairsRiskRecord, StudentProfile
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaGradeTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
+        guard_term_writable(db, t.term_id)  # 归档11卡§6.2：已归档学期的成绩不应再发布
         if t.status == "PUBLISHED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "成绩已发布")
         if t.status != "ACADEMIC_REVIEW":

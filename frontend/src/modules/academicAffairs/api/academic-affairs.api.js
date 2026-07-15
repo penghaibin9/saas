@@ -6,7 +6,9 @@
  *
  * 以代码为准（后端 academic_affairs.py 实测签名）：
  *  - 学期仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 → 本模块不提供 updateTerm（勘误见施工记录）。
- *  - 学期状态机当前只有 DRAFT / PUBLISHED（FROZEN/ARCHIVED 后端未实现，暂不渲染）。
+ *  - 学期状态机：DRAFT / PUBLISHED / ARCHIVED（教务归档批次确认后写入，见 academicAffairsArchiveApi）；
+ *    FROZEN 为设计中占位值，当前代码从未写入（勘误：2026-07-14 施工包曾称二者均未实现，ARCHIVED 已随
+ *    归档模块 d34c836 起真实生效，此处随本轮教务归档续工一并更正过时注释）。
  */
 import { request, requestBlob, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { setPermissionPatterns } from '@/security/permissionGate'
@@ -745,7 +747,8 @@ export const academicAffairsQualityApi = {
   }
 }
 
-/* ═══════════ 教务归档（/academic-affairs/archive/*） ═══════════ */
+/* ═══════════ 教务归档（/academic-affairs/archive/*） ═══════════
+ * Tier1 续工（10/11/12 三级卡）新增：归档缺失提醒(precheck，不落库) / 归档导出(export+下载记录)。 */
 export const academicAffairsArchiveApi = {
   listBatches(params = {}) { return callList(`${BASE}/archive/batches`, params) },
   getBatch(id) { return call(() => request(`${BASE}/archive/batches/${id}`)) },
@@ -753,7 +756,25 @@ export const academicAffairsArchiveApi = {
   check(id) { return call(() => request(`${BASE}/archive/batches/${id}/check`, { method: 'POST' })) },
   confirm(id, force) { return call(() => request(`${BASE}/archive/batches/${id}/confirm`, { method: 'POST', body: { force } })) },
   unfreeze(id, reason) { return call(() => request(`${BASE}/archive/batches/${id}/unfreeze`, { method: 'POST', body: { reason } })) },
-  cancel(id) { return call(() => request(`${BASE}/archive/batches/${id}/cancel`, { method: 'POST' })) }
+  cancel(id) { return call(() => request(`${BASE}/archive/batches/${id}/cancel`, { method: 'POST' })) },
+  /** 归档缺失提醒（10 卡）：9 域实时预检查，不落库。termId 缺省取当前学期。 */
+  precheck(termId) { return call(() => request(`${BASE}/archive/precheck`, { params: termId ? { termId } : {} })) },
+  /** 归档导出（12 卡）：下载记录查询（只读）。 */
+  downloadLog(id) { return call(() => request(`${BASE}/archive/batches/${id}/download-log`)) },
+  /** 单数据域水印 xlsx 下载（返回 Blob）。 */
+  async exportItem(id, category, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/archive/batches/${id}/items/${category}/export`, { params: { purpose } })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  },
+  /** 批次级打包下载全部物料（zip，返回 Blob）。 */
+  async exportAll(id, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/archive/batches/${id}/export`, { params: { purpose } })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  }
 }
 
 /* ═══════════ 学业预警二级模块（Tier1：看板/多维分类/规则/跟进/统计，/academic-affairs/warnings/*） ═══════════

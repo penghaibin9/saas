@@ -77,9 +77,11 @@ def publish_term(term_id, user) -> dict:
     """发布学期（DRAFT→PUBLISHED），设为当前学期（幂等：重复发布不报错）。"""
     with session() as db:
         from app.models import AaTerm
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaTerm, int(term_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("学期不存在")
+        guard_term_writable(db, term_id)  # 归档11卡§6.2：已归档学期不应被重新发布
         if t.status in ("DRAFT", "PUBLISHED"):
             # 其余学期取消 current
             for other in db.scalars(select(AaTerm).where(
@@ -119,9 +121,11 @@ def current_term(user) -> dict:
 def add_calendar_event(term_id, user, body) -> dict:
     with session() as db:
         from app.models import AaCalendarEvent, AaTerm
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaTerm, int(term_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("学期不存在")
+        guard_term_writable(db, term_id)  # 归档11卡§6.2：已归档学期不应再改校历
         e = AaCalendarEvent(tenant_id=_tid(), term_id=t.id, event_type=(body.eventType or "TEACHING"),
                             start_date=_parse_dt(body.startDate), end_date=_parse_dt(body.endDate),
                             swap_to_date=_parse_dt(getattr(body, "swapToDate", None)),
@@ -195,9 +199,11 @@ def roster(user, keyword=None, status=None, page=1, page_size=20):
 def create_registration_batch(body, user) -> dict:
     with session() as db:
         from app.models import AaRegistrationBatch
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         rtype = (body.registerType or "ENROLL")
         if rtype not in ("ENROLL", "ANNUAL"):
             raise AppException("VALIDATION_ERROR", "注册类型非法")
+        guard_term_writable(db, getattr(body, "termId", None))  # 归档11卡§6.2：已归档学期不应再开注册批次
         b = AaRegistrationBatch(tenant_id=_tid(), batch_name=body.batchName, register_type=rtype,
                                 term_id=(int(body.termId) if getattr(body, "termId", None) else None),
                                 window_start=_parse_dt(getattr(body, "windowStart", None)),
@@ -249,9 +255,11 @@ def register_student(batch_id, user, student_id) -> dict:
     _n, _r, uid = _op()
     with session() as db:
         from app.models import AaRegistration, AaRegistrationBatch, StudentProfile
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaRegistrationBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("注册批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期不应受理新注册
         if b.status != "OPEN":
             raise AppException("DATA_CONFLICT", "注册批次未开放或已关闭")
         s = db.get(StudentProfile, int(student_id))
