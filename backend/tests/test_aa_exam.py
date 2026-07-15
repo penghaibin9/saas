@@ -307,3 +307,21 @@ def test_e15_defer_counselor_scope_403(client, db_mode):
     counselor = _hdr(client, "counselor01")  # 未配置 TeacherStudentScope，范围为空
     r = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=counselor, json={"action": "APPROVE"})
     assert r.status_code == 403
+
+
+def test_e16_defer_college_scope_403(client, db_mode):
+    """缓考审批节点级范围收敛：学院教务未配置本学院授权 → COLLEGE_REVIEW 节点 403。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"], "学院范围测试批次")
+    stu = _stu_token("考甲", "EX2401")
+    d = client.post(f"{BASE}/deferred-exams", headers=stu,
+                    json={"examCourseId": str(cid), "reasonType": "SICK", "reason": "住院"}).json()
+    did = d["data"]["deferId"]
+    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=admin, json={"action": "APPROVE"}).json()
+    assert r1["data"]["status"] == "TEACHER_CONFIRM"
+    r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=admin, json={"action": "APPROVE"}).json()
+    assert r2["data"]["status"] == "COLLEGE_REVIEW"
+    college_admin = _hdr(client, "college_admin01")  # 未配置 TeacherStudentScope(COLLEGE)，范围为空
+    r3 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=college_admin, json={"action": "APPROVE"})
+    assert r3.status_code == 403
