@@ -90,7 +90,7 @@ def scan_warnings(user) -> dict:
         from app.models import AcademicGrade, AcademicWarning
         # 按 acad_student 统计挂科门数
         fails = db.execute(select(AcademicGrade.acad_student_id, func.count().label("n")).where(
-            AcademicGrade.tenant_id == _tid(), AcademicGrade.pass_status == "FAIL",
+            AcademicGrade.tenant_id == _tid(), AcademicGrade.pass_status == "FAILED",
             AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))
             .group_by(AcademicGrade.acad_student_id)).all()
         created = updated = notified = 0

@@ -155,7 +155,7 @@ def _check_scholarship(db, student_id) -> dict:
             CsDiscipline.tenant_id == _tid(), CsDiscipline.cs_student_id == cs.id,
             CsDiscipline.record_status == "ACTIVE", CsDiscipline.is_deleted.is_(False)))
         discipline_ok = cnt is None
-    # 成绩：映射到学业台账 → 无挂科(pass_status=FAIL)
+    # 成绩：映射到学业台账 → 无挂科(pass_status=FAILED)
     grade_ok = True
     acad = db.scalars(select(AcademicStudent).where(
         AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == int(student_id),
@@ -163,7 +163,7 @@ def _check_scholarship(db, student_id) -> dict:
     if acad:
         fail = db.scalar(select(AcademicGrade).where(
             AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == acad.id,
-            AcademicGrade.pass_status == "FAIL", AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.pass_status == "FAILED", AcademicGrade.record_status == "ACTIVE",
             AcademicGrade.is_deleted.is_(False)))
         grade_ok = fail is None
     return {"type": "SCHOLARSHIP", "statusOk": status_ok, "disciplineOk": discipline_ok,

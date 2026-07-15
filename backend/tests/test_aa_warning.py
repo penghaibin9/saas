@@ -29,7 +29,7 @@ def _seed_fail(db_mode):
     db.add(acad); db.flush()
     for cn in ("高数", "英语"):
         db.add(AcademicGrade(tenant_id=TID, acad_student_id=acad.id, course_name=cn, term="2026-2027-1",
-                             nature="REQUIRED", credit_value=4, score=45, pass_status="FAIL",
+                             nature="REQUIRED", credit_value=4, score=45, pass_status="FAILED",
                              exam_type="FINAL", record_status="ACTIVE"))
     db.commit()
     ids = {"student": s.id, "acad": acad.id}
@@ -73,7 +73,7 @@ def _seed_fail_with_counselor(db_mode, counselor_id):
     db.add(acad); db.flush()
     for cn in ("高数", "英语"):
         db.add(AcademicGrade(tenant_id=TID, acad_student_id=acad.id, course_name=cn, term="2026-2027-1",
-                             nature="REQUIRED", credit_value=4, score=45, pass_status="FAIL",
+                             nature="REQUIRED", credit_value=4, score=45, pass_status="FAILED",
                              exam_type="FINAL", record_status="ACTIVE"))
     db.commit(); db.close()
 
