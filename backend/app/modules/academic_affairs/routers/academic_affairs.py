@@ -1,7 +1,7 @@
 """13B 教务中心 API（/api/v1/academic-affairs/*）—— P1：首页 + 学年学期/校历/节次 + 学籍名册 + 入学注册。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
@@ -222,40 +222,64 @@ class ProgramCourseBody(BaseModel):
     credit: Optional[int] = None
 
 
+_PROG_VIEW = require_permission("academicAffairs.program.view")
+_PROG_MANAGE = require_permission("academicAffairs.program.manage")
+_PROG_SUBMIT = require_permission("academicAffairs.program.submit")
+_PROG_REVIEW = require_permission("academicAffairs.program.review")
+_PROG_PUBLISH = require_permission("academicAffairs.program.publish")
+
+
 @router.post("/programs", summary="新建培养方案")
-def program_create(body: ProgramCreate, user=Depends(require_staff)):
+def program_create(body: ProgramCreate, user=Depends(_PROG_MANAGE)):
     return success(prog_svc.create_program(body, user), message="已创建")
 
 
-@router.get("/programs", summary="培养方案列表")
-def programs(majorId: Optional[str] = None, status: Optional[str] = None,
-             page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
-    items, total = prog_svc.list_programs(user, majorId, status, page, pageSize)
+@router.get("/programs", summary="培养方案列表（statusIn 支持逗号分隔多状态，供审核/发布工作台筛选）")
+def programs(majorId: Optional[str] = None, status: Optional[str] = None, statusIn: Optional[str] = None,
+             page: int = 1, pageSize: int = 20, user=Depends(_PROG_VIEW)):
+    items, total = prog_svc.list_programs(user, majorId, status, page, pageSize, statusIn)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/programs/{programId}", summary="方案详情（含课程明细+学分差额）")
-def program_detail(programId: int = Path(...), user=Depends(require_staff)):
+def program_detail(programId: int = Path(...), user=Depends(_PROG_VIEW)):
     return success(prog_svc.get_program(programId, user))
 
 
 @router.put("/programs/{programId}", summary="编辑方案（编制态）")
-def program_update(body: ProgramUpdate, programId: int = Path(...), user=Depends(require_staff)):
+def program_update(body: ProgramUpdate, programId: int = Path(...), user=Depends(_PROG_MANAGE)):
     return success(prog_svc.update_program(programId, user, body), message="已保存")
 
 
 @router.post("/programs/{programId}/courses", summary="方案增课程明细")
-def program_add_course(body: ProgramCourseBody, programId: int = Path(...), user=Depends(require_staff)):
+def program_add_course(body: ProgramCourseBody, programId: int = Path(...), user=Depends(_PROG_MANAGE)):
     return success(prog_svc.add_course(programId, user, body), message="已添加")
 
 
+class ProgramCourseUpdate(BaseModel):
+    courseName: Optional[str] = None
+    openTermNo: Optional[int] = None
+    module: Optional[str] = None
+    credit: Optional[int] = None
+
+
+@router.put("/programs/courses/{programCourseId}", summary="方案课程模块：编辑课程明细（编制态）")
+def program_course_update(body: ProgramCourseUpdate, programCourseId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.update_course(programCourseId, user, body), message="已保存")
+
+
+@router.delete("/programs/courses/{programCourseId}", summary="方案课程模块：删除课程明细（编制态）")
+def program_course_delete(programCourseId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.delete_course(programCourseId, user), message="已删除")
+
+
 @router.post("/programs/{programId}/submit", summary="提交方案审核（发布前校验学分达标）")
-def program_submit(programId: int = Path(...), user=Depends(require_staff)):
+def program_submit(programId: int = Path(...), user=Depends(_PROG_SUBMIT)):
     return success(prog_svc.submit_program(programId, user), message="已提交")
 
 
 @router.post("/programs/{programId}/review", summary="方案两级审核（学院→教务→PUBLISHED）")
-def program_review(body: AaReviewBody, programId: int = Path(...), user=Depends(require_staff)):
+def program_review(body: AaReviewBody, programId: int = Path(...), user=Depends(_PROG_REVIEW)):
     return success(prog_svc.review_program(programId, user, body.action, body.reason or ""), message="已处理")
 
 
@@ -265,8 +289,82 @@ class BindGradeBody(BaseModel):
 
 
 @router.post("/programs/{programId}/bind", summary="已发布方案绑定年级（锁旧版本）")
-def program_bind(body: BindGradeBody, programId: int = Path(...), user=Depends(require_staff)):
+def program_bind(body: BindGradeBody, programId: int = Path(...), user=Depends(_PROG_PUBLISH)):
     return success(prog_svc.bind_grade(programId, user, body.gradeYear, body.classId), message="已绑定")
+
+
+@router.get("/programs/{programId}/bindings", summary="方案发布：已绑定年级记录（含历史 SUPERSEDED）")
+def program_bindings(programId: int = Path(...), user=Depends(_PROG_VIEW)):
+    return success({"items": prog_svc.list_program_bindings(programId, user)})
+
+
+# ── 学分要求（学分结构：分模块学分目标） ──
+
+class CreditRequirementItem(BaseModel):
+    module: str = Field(..., min_length=1)
+    creditTarget: float = Field(..., ge=0)
+    note: Optional[str] = None
+
+
+class CreditRequirementsBody(BaseModel):
+    items: List[CreditRequirementItem] = Field(default_factory=list)
+
+
+@router.get("/programs/{programId}/credit-requirements", summary="学分要求：分模块学分结构读取")
+def program_credit_requirements(programId: int = Path(...), user=Depends(_PROG_VIEW)):
+    return success(prog_svc.get_credit_requirements(programId, user))
+
+
+@router.put("/programs/{programId}/credit-requirements", summary="学分要求：保存分模块学分结构（编制态）")
+def program_credit_requirements_save(body: CreditRequirementsBody, programId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    items = [i.model_dump() for i in body.items]
+    return success(prog_svc.save_credit_requirements(programId, user, items), message="已保存")
+
+
+# ── 毕业要求（结构化条目 CRUD） ──
+
+class GraduationRequirementCreate(BaseModel):
+    category: Optional[str] = Field("ABILITY", description="KNOWLEDGE/ABILITY/QUALITY/CERTIFICATE")
+    content: str = Field(..., min_length=1, max_length=1000)
+    sortOrder: Optional[int] = None
+
+
+class GraduationRequirementUpdate(BaseModel):
+    category: Optional[str] = None
+    content: Optional[str] = Field(None, max_length=1000)
+    sortOrder: Optional[int] = None
+
+
+@router.get("/programs/{programId}/graduation-requirements", summary="毕业要求：条目列表")
+def program_grad_requirements(programId: int = Path(...), user=Depends(_PROG_VIEW)):
+    return success({"items": prog_svc.list_graduation_requirements(programId, user)})
+
+
+@router.post("/programs/{programId}/graduation-requirements", summary="毕业要求：新增条目（编制态）")
+def program_grad_requirement_create(body: GraduationRequirementCreate, programId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.create_graduation_requirement(programId, user, body), message="已添加")
+
+
+@router.put("/programs/graduation-requirements/{requirementId}", summary="毕业要求：编辑条目（编制态）")
+def program_grad_requirement_update(body: GraduationRequirementUpdate, requirementId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.update_graduation_requirement(requirementId, user, body), message="已保存")
+
+
+@router.delete("/programs/graduation-requirements/{requirementId}", summary="毕业要求：删除条目（编制态）")
+def program_grad_requirement_delete(requirementId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.delete_graduation_requirement(requirementId, user), message="已删除")
+
+
+# ── 方案版本（新建版本 + 版本链） ──
+
+@router.get("/programs/{programId}/versions", summary="方案版本：同一方案谱系全部版本链")
+def program_versions(programId: int = Path(...), user=Depends(_PROG_VIEW)):
+    return success({"items": prog_svc.list_program_versions(programId, user)})
+
+
+@router.post("/programs/{programId}/new-version", summary="方案版本：基于已发布/启用/冻结版本新建 DRAFT 新版本")
+def program_new_version(programId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.create_new_version(programId, user), message="已新建版本")
 
 
 # ═══════════ 课程库（P3，两级审核，商业级全字段）═══════════

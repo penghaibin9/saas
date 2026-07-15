@@ -1,4 +1,6 @@
-"""13B-P2 培养方案编制骨架（建/编/列 + 课程明细）。审批发布(两审→PUBLISHED→绑年级)留 P3。"""
+"""13B-P2 培养方案编制骨架（建/编/列 + 课程明细）。审批发布(两审→PUBLISHED→绑年级)留 P3。
+Tier1 续工（方案制定/方案版本/课程模块/学分要求/毕业要求/方案审核/方案发布）新增：
+课程明细增删改、学分结构(学分要求)读写、毕业要求结构化条目 CRUD、新建版本+版本链、方案绑定查询。"""
 from __future__ import annotations
 
 import json
@@ -111,13 +113,18 @@ def get_program(program_id, user) -> dict:
         return d
 
 
-def list_programs(user, major_id=None, status=None, page=1, page_size=20):
+def list_programs(user, major_id=None, status=None, page=1, page_size=20, status_in=None):
+    """方案列表。status_in：逗号分隔多状态（供「方案审核」「方案发布」工作台按状态集筛选），
+    与单值 status 二选一，同时传入以 status_in 优先。"""
     from app.models import AaProgram
     with session() as db:
         conds = [AaProgram.tenant_id == _tid(), AaProgram.is_deleted.is_(False)]
         if major_id:
             conds.append(AaProgram.major_id == int(major_id))
-        if status:
+        statuses = [s.strip() for s in status_in.split(",") if s.strip()] if status_in else None
+        if statuses:
+            conds.append(AaProgram.status.in_(statuses))
+        elif status:
             conds.append(AaProgram.status == status)
         rows = db.scalars(select(AaProgram).where(*conds).order_by(AaProgram.id.desc())).all()
         out = [_row(p) for p in rows]
@@ -204,3 +211,264 @@ def bind_grade(program_id, user, grade_year, class_id=None) -> dict:
         _audit(db, p.id, "BIND", f"grade={grade_year}")
         db.commit()
         return {"programId": str(program_id), "gradeYear": grade_year, "status": "ENABLED"}
+
+
+def list_program_bindings(program_id, user):
+    """已发布方案的年级绑定记录（方案发布工作台展示，含历史 SUPERSEDED）。"""
+    from app.models import AaProgram, AaProgramBinding
+    with session() as db:
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        rows = db.scalars(select(AaProgramBinding).where(
+            AaProgramBinding.tenant_id == _tid(), AaProgramBinding.program_id == p.id,
+            AaProgramBinding.is_deleted.is_(False)).order_by(AaProgramBinding.id.desc())).all()
+        return [{"bindingId": str(b.id), "gradeYear": b.grade_year or "", "classId": str(b.class_id or ""),
+                "boundAt": (b.bound_at.isoformat() if b.bound_at else ""),
+                "status": b.status} for b in rows]
+
+
+# ═══════════ 课程模块（课程明细增删改，编制态限定）Tier1 ═══════════
+
+def update_course(program_course_id, user, body) -> dict:
+    with session() as db:
+        from app.models import AaProgram, AaProgramCourse
+        c = db.get(AaProgramCourse, int(program_course_id))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("方案课程明细不存在")
+        p = db.get(AaProgram, c.program_id)
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可修改课程")
+        if getattr(body, "courseName", None):
+            c.course_name = body.courseName
+        if getattr(body, "openTermNo", None) is not None:
+            c.open_term_no = body.openTermNo
+        if getattr(body, "module", None) is not None:
+            c.module = body.module
+        if getattr(body, "credit", None) is not None:
+            c.credit_snapshot = body.credit
+        _audit(db, p.id, "UPDATE_COURSE", c.course_name or "")
+        db.commit()
+        return {"programCourseId": str(c.id), "programId": str(c.program_id), "courseName": c.course_name or "",
+                "openTermNo": c.open_term_no, "module": c.module or "", "credit": c.credit_snapshot}
+
+
+def delete_course(program_course_id, user) -> dict:
+    with session() as db:
+        from app.models import AaProgram, AaProgramCourse
+        c = db.get(AaProgramCourse, int(program_course_id))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("方案课程明细不存在")
+        p = db.get(AaProgram, c.program_id)
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可删除课程")
+        c.is_deleted = True
+        _audit(db, p.id, "DELETE_COURSE", c.course_name or "")
+        db.commit()
+        return {"programCourseId": str(program_course_id), "deleted": True}
+
+
+# ═══════════ 学分要求（学分结构：分模块学分目标，复用 requirement_json）Tier1 ═══════════
+
+def get_credit_requirements(program_id, user) -> dict:
+    from app.models import AaProgram
+    with session() as db:
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        req = json.loads(p.requirement_json) if p.requirement_json else {}
+        items = req.get("creditStructure") or []
+        target_sum = sum(float(i.get("creditTarget") or 0) for i in items)
+        return {"programId": str(program_id), "totalCredits": p.total_credits,
+                "items": items, "targetSum": target_sum,
+                "editable": p.status in ("DRAFT", "RETURNED")}
+
+
+def save_credit_requirements(program_id, user, items) -> dict:
+    """保存分模块学分结构（module + creditTarget[+ note]）。仅编制态可写；模块名必填且不重复。"""
+    with session() as db:
+        from app.models import AaProgram
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可修改学分结构")
+        clean = []
+        seen = set()
+        for it in (items or []):
+            module = (it.get("module") or "").strip()
+            if not module:
+                raise AppException("VALIDATION_ERROR", "学分结构每行必须填写课程模块名称")
+            if module in seen:
+                raise AppException("VALIDATION_ERROR", f"课程模块「{module}」重复")
+            seen.add(module)
+            try:
+                target = float(it.get("creditTarget") or 0)
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", f"「{module}」学分目标必须为数字")
+            if target < 0:
+                raise AppException("VALIDATION_ERROR", f"「{module}」学分目标不可为负数")
+            clean.append({"module": module, "creditTarget": target, "note": (it.get("note") or "").strip()})
+        req = json.loads(p.requirement_json) if p.requirement_json else {}
+        req["creditStructure"] = clean
+        p.requirement_json = json.dumps(req, ensure_ascii=False)
+        target_sum = sum(i["creditTarget"] for i in clean)
+        _audit(db, p.id, "UPDATE_CREDIT_STRUCTURE", f"targetSum={target_sum}")
+        db.commit()
+        return {"programId": str(program_id), "items": clean, "targetSum": target_sum,
+                "totalCredits": p.total_credits}
+
+
+# ═══════════ 毕业要求（结构化条目 CRUD，t_aa_program_graduation_requirement）Tier1 ═══════════
+
+def _grad_row(r) -> dict:
+    return {"requirementId": str(r.id), "programId": str(r.program_id), "category": r.category,
+            "content": r.content, "sortOrder": r.sort_order, "status": r.status}
+
+
+def list_graduation_requirements(program_id, user):
+    from app.models import AaProgram, AaProgramGraduationRequirement as Req
+    with session() as db:
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        rows = db.scalars(select(Req).where(
+            Req.tenant_id == _tid(), Req.program_id == p.id, Req.is_deleted.is_(False),
+            Req.status == "ACTIVE").order_by(Req.sort_order, Req.id)).all()
+        return [_grad_row(r) for r in rows]
+
+
+def create_graduation_requirement(program_id, user, body) -> dict:
+    from app.models import AaProgram, AaProgramGraduationRequirement as Req
+    with session() as db:
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可修改毕业要求")
+        content = (getattr(body, "content", "") or "").strip()
+        if not content:
+            raise AppException("VALIDATION_ERROR", "毕业要求内容必填")
+        r = Req(tenant_id=_tid(), program_id=p.id,
+               category=(getattr(body, "category", None) or "ABILITY"),
+               content=content, sort_order=(getattr(body, "sortOrder", None) or 0), status="ACTIVE")
+        db.add(r)
+        db.flush()
+        _audit(db, p.id, "ADD_GRAD_REQUIREMENT", content[:50])
+        db.commit()
+        return _grad_row(r)
+
+
+def update_graduation_requirement(requirement_id, user, body) -> dict:
+    from app.models import AaProgram, AaProgramGraduationRequirement as Req
+    with session() as db:
+        r = db.get(Req, int(requirement_id))
+        if not r or r.is_deleted or r.tenant_id != _tid():
+            raise not_found("毕业要求条目不存在")
+        p = db.get(AaProgram, r.program_id)
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可修改毕业要求")
+        if getattr(body, "content", None) is not None:
+            content = body.content.strip()
+            if not content:
+                raise AppException("VALIDATION_ERROR", "毕业要求内容必填")
+            r.content = content
+        if getattr(body, "category", None):
+            r.category = body.category
+        if getattr(body, "sortOrder", None) is not None:
+            r.sort_order = body.sortOrder
+        _audit(db, p.id, "UPDATE_GRAD_REQUIREMENT", r.content[:50])
+        db.commit()
+        return _grad_row(r)
+
+
+def delete_graduation_requirement(requirement_id, user) -> dict:
+    from app.models import AaProgram, AaProgramGraduationRequirement as Req
+    with session() as db:
+        r = db.get(Req, int(requirement_id))
+        if not r or r.is_deleted or r.tenant_id != _tid():
+            raise not_found("毕业要求条目不存在")
+        p = db.get(AaProgram, r.program_id)
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可修改毕业要求")
+        r.is_deleted = True
+        r.status = "REMOVED"
+        _audit(db, p.id, "DELETE_GRAD_REQUIREMENT", r.content[:50])
+        db.commit()
+        return {"requirementId": str(requirement_id), "deleted": True}
+
+
+# ═══════════ 方案版本（新建版本 + 版本链）Tier1 ═══════════
+
+def create_new_version(program_id, user) -> dict:
+    """已发布/启用/冻结方案改动须走新版本：复制基本信息+课程+毕业要求为新 DRAFT（version+1，
+    prev_version_id 回链旧版本）；旧版本状态不变，历史绑定年级学生继续沿用旧版本。"""
+    with session() as db:
+        from app.models import AaProgram, AaProgramCourse, AaProgramGraduationRequirement as Req
+        old = db.get(AaProgram, int(program_id))
+        if not old or old.is_deleted or old.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if old.status not in ("PUBLISHED", "ENABLED", "FROZEN", "DISABLED"):
+            raise AppException("DATA_CONFLICT", "仅已发布/启用/冻结/停用方案可新建版本（编制/退回态直接编辑即可）")
+        new_p = AaProgram(tenant_id=_tid(), program_name=old.program_name, major_id=old.major_id,
+                          grade_year=old.grade_year, total_credits=old.total_credits,
+                          requirement_json=old.requirement_json, version=old.version + 1,
+                          prev_version_id=old.id, status="DRAFT")
+        db.add(new_p)
+        db.flush()
+        for c in db.scalars(select(AaProgramCourse).where(
+                AaProgramCourse.tenant_id == _tid(), AaProgramCourse.program_id == old.id,
+                AaProgramCourse.is_deleted.is_(False))).all():
+            db.add(AaProgramCourse(tenant_id=_tid(), program_id=new_p.id, course_id=c.course_id,
+                                   course_name=c.course_name, open_term_no=c.open_term_no,
+                                   module=c.module, credit_snapshot=c.credit_snapshot))
+        for r in db.scalars(select(Req).where(
+                Req.tenant_id == _tid(), Req.program_id == old.id, Req.is_deleted.is_(False),
+                Req.status == "ACTIVE")).all():
+            db.add(Req(tenant_id=_tid(), program_id=new_p.id, category=r.category,
+                      content=r.content, sort_order=r.sort_order, status="ACTIVE"))
+        _audit(db, new_p.id, "NEW_VERSION", f"fromProgramId={old.id},fromVersion={old.version}")
+        db.commit()
+        db.refresh(new_p)
+        return _row(new_p)
+
+
+def list_program_versions(program_id, user):
+    """给定任一版本 id，返回同一方案谱系的全部版本（按 prev_version_id 链前后遍历），version 升序。"""
+    from app.models import AaProgram
+    with session() as db:
+        cur = db.get(AaProgram, int(program_id))
+        if not cur or cur.is_deleted or cur.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        # 回溯到最早版本（根）
+        root = cur
+        seen_ids = {root.id}
+        while root.prev_version_id and root.prev_version_id not in seen_ids:
+            parent = db.get(AaProgram, root.prev_version_id)
+            if not parent or parent.is_deleted or parent.tenant_id != _tid():
+                break
+            root = parent
+            seen_ids.add(root.id)
+        # 从根开始正向收集全部后继版本（线性链，逐级找 prev_version_id = 当前 id 的行）
+        chain = [root]
+        seen_ids = {root.id}
+        cursor = root
+        while True:
+            nxt = db.scalars(select(AaProgram).where(
+                AaProgram.tenant_id == _tid(), AaProgram.prev_version_id == cursor.id,
+                AaProgram.is_deleted.is_(False))).first()
+            if not nxt or nxt.id in seen_ids:
+                break
+            chain.append(nxt)
+            seen_ids.add(nxt.id)
+            cursor = nxt
+        return [dict(_row(p), canNewVersion=(p.status in ("PUBLISHED", "ENABLED", "FROZEN", "DISABLED")),
+                    isCurrent=(p.id == cur.id)) for p in chain]

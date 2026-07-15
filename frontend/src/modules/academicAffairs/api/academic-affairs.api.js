@@ -200,6 +200,43 @@ export const academicAffairsApi = {
   bindProgramGrade(programId, gradeYear, classId) {
     return call(() => request(`${BASE}/programs/${programId}/bind`, { method: 'POST', body: { gradeYear, classId } }))
   },
+  getProgramBindings(programId) {
+    return call(() => request(`${BASE}/programs/${programId}/bindings`))
+  },
+  /* 课程模块：方案课程明细增删改（Tier1 续工） */
+  updateProgramCourse(programCourseId, body) {
+    return call(() => request(`${BASE}/programs/courses/${programCourseId}`, { method: 'PUT', body }))
+  },
+  deleteProgramCourse(programCourseId) {
+    return call(() => request(`${BASE}/programs/courses/${programCourseId}`, { method: 'DELETE' }))
+  },
+  /* 学分要求：分模块学分结构（Tier1 续工） */
+  getCreditRequirements(programId) {
+    return call(() => request(`${BASE}/programs/${programId}/credit-requirements`))
+  },
+  saveCreditRequirements(programId, items) {
+    return call(() => request(`${BASE}/programs/${programId}/credit-requirements`, { method: 'PUT', body: { items } }))
+  },
+  /* 毕业要求：结构化条目 CRUD（Tier1 续工） */
+  getGraduationRequirements(programId) {
+    return call(() => request(`${BASE}/programs/${programId}/graduation-requirements`))
+  },
+  createGraduationRequirement(programId, body) {
+    return call(() => request(`${BASE}/programs/${programId}/graduation-requirements`, { method: 'POST', body }))
+  },
+  updateGraduationRequirement(requirementId, body) {
+    return call(() => request(`${BASE}/programs/graduation-requirements/${requirementId}`, { method: 'PUT', body }))
+  },
+  deleteGraduationRequirement(requirementId) {
+    return call(() => request(`${BASE}/programs/graduation-requirements/${requirementId}`, { method: 'DELETE' }))
+  },
+  /* 方案版本：版本链 + 新建版本（Tier1 续工） */
+  getProgramVersions(programId) {
+    return call(() => request(`${BASE}/programs/${programId}/versions`))
+  },
+  createProgramNewVersion(programId) {
+    return call(() => request(`${BASE}/programs/${programId}/new-version`, { method: 'POST' }))
+  },
 
   /* ── 教学任务（生成 → 分配 → 教师确认 → 提审） ── */
   generateTaskBatch(body) {
