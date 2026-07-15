@@ -1658,6 +1658,16 @@ class ScheduleChangeCancelBody(BaseModel):
     reason: Optional[str] = Field("", max_length=500)
 
 
+class ScheduleChangeConflictCheckBody(BaseModel):
+    originItemId: str = Field(..., min_length=1, description="原课表项 id（须为已发布课表本人课位）")
+    targetWeekday: int = Field(..., ge=1, le=7, description="目标星期")
+    targetSlotNo: int = Field(..., ge=1, description="目标节次")
+    targetStartWeek: Optional[int] = Field(None, ge=1)
+    targetEndWeek: Optional[int] = Field(None, ge=1)
+    targetWeekParity: Optional[str] = Field(None, description="ALL/ODD/EVEN")
+    targetClassroom: Optional[str] = None
+
+
 @router.post("/schedule-change", summary="发起调停课（提交即目标冲突预检；冲突单据不落库）")
 def schedule_change_submit(body: ScheduleChangeSubmit,
                            user=Depends(require_permission("academicAffairs.scheduleChange.apply"))):
@@ -1669,14 +1679,33 @@ def schedule_change_list(changeType: Optional[str] = None, status: Optional[str]
                          teacherKey: Optional[str] = None, termId: Optional[str] = None,
                          page: int = 1, pageSize: int = 20,
                          user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
-    items, total = sched_change_svc.list_changes(user, changeType, status, teacherKey, termId, page, pageSize)
+    items, total = sched_change_svc.list_changes(user, change_type=changeType, status=status,
+                                                 teacher_key=teacherKey, term_id=termId,
+                                                 page=page, page_size=pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/schedule-change/stats", summary="调停课统计（按类型/状态聚合）")
-def schedule_change_stats(termId: Optional[str] = None,
+@router.get("/schedule-change/stats", summary="调停课统计（按类型/状态/学院/教师聚合）")
+def schedule_change_stats(termId: Optional[str] = None, dimension: Optional[str] = None,
                           user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
-    return success(sched_change_svc.stats(user, termId))
+    return success(sched_change_svc.stats(user, termId, dimension))
+
+
+@router.post("/schedule-change/conflict-check", summary="调停课冲突预检（只读，不落库；提交前 UX 反馈）")
+def schedule_change_conflict_check(body: ScheduleChangeConflictCheckBody,
+                                   user=Depends(require_permission("academicAffairs.scheduleChange.apply"))):
+    return success(sched_change_svc.conflict_check(body, user))
+
+
+@router.get("/schedule-change/archive", summary="调停课归档（仅终态：已生效/已驳回/已撤销，服务层强制过滤）")
+def schedule_change_archive(changeType: Optional[str] = None, status: Optional[str] = None,
+                            termId: Optional[str] = None, dateFrom: Optional[str] = None,
+                            dateTo: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                            user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
+    items, total = sched_change_svc.archive_list(user, change_type=changeType, status=status,
+                                                 term_id=termId, date_from=dateFrom, date_to=dateTo,
+                                                 page=page, page_size=pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/schedule-change/{changeId}", summary="调停课详情（含通知单打印数据）")

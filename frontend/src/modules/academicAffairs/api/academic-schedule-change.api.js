@@ -44,9 +44,17 @@ export const scheduleChangeApi = {
   list(params = {}) {
     return callList(BASE, params)
   },
-  /** 统计（按类型/状态聚合） */
+  /** 归档检索（仅终态：已生效/已驳回/已撤销；服务层强制过滤，不依赖前端默认参数） */
+  archive(params = {}) {
+    return callList(`${BASE}/archive`, params)
+  },
+  /** 统计（按类型/状态/学院/教师聚合） */
   stats(params = {}) {
     return call(() => request(`${BASE}/stats`, { params }))
+  },
+  /** 冲突预检（只读，不落库；提交前 UX 反馈，复用与提交同一冲突检测算法） */
+  conflictCheck(body) {
+    return call(() => request(`${BASE}/conflict-check`, { method: 'POST', body }))
   },
   /** 详情（含通知单打印数据） */
   detail(id) {

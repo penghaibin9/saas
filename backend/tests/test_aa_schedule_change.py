@@ -5,6 +5,11 @@ C2 提交即目标冲突预检 → 409 单据不落库；C3 停课未填补课�
 C4 撤销仅限终审前(SUBMITTED/COLLEGE_REVIEW)，APPLIED 后撤销 → 409；
 C5 越权：学生令牌 → 403；C6 数据范围(COURSE)：非本人课位发起 → 403 NO_DATA_SCOPE；
 C7 驳回需原因≥5 字 → REJECTED。
+
+Tier1 续工（三级施工卡 07/08/09）：
+C8 冲突预检（只读不落库）：无冲突/有冲突/越权探测他人课位 403；
+C9 统计扩展：byCollege/topTeachers 聚合；
+C10 归档：仅返回终态记录，服务层强制过滤（即使误传在途 status 值也被忽略）。
 """
 from __future__ import annotations
 
@@ -163,3 +168,106 @@ def test_c7_reject_requires_reason(client, db_mode):
     ok = client.post(f"{BASE}/schedule-change/{cid}/reject", headers=admin,
                      json={"action": "REJECT", "comment": "目标时段与全校统考冲突，不予调整"}).json()
     assert ok["data"]["status"] == "REJECTED"
+
+
+# ══════════ Tier1 续工：07 冲突检测 / 08 统计 / 09 归档 ══════════
+
+def _conflict_check(client, hdr, origin, **kw):
+    body = {"originItemId": str(origin), "targetWeekday": 3, "targetSlotNo": 2, **kw}
+    return client.post(f"{BASE}/schedule-change/conflict-check", headers=hdr, json=body)
+
+
+# ── C8a 冲突预检：无冲突 → {"conflict": None}，不落库（台账仍为空）──
+def test_c8a_conflict_check_none(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    r = _conflict_check(client, admin, origin)
+    assert r.status_code == 200
+    assert r.json()["data"]["conflict"] is None
+    assert client.get(f"{BASE}/schedule-change", headers=admin).json()["data"]["total"] == 0
+
+
+# ── C8b 冲突预检：目标课位已被占用 → 返回冲突详情（不抛异常，只读） ──
+def test_c8b_conflict_check_found(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"], extra=[{"weekday": 3, "slotNo": 2}])
+    r = _conflict_check(client, admin, origin)
+    assert r.status_code == 200
+    conflict = r.json()["data"]["conflict"]
+    assert conflict and conflict["type"] in ("TEACHER", "CLASS", "CLASSROOM")
+
+
+# ── C8c 冲突预检：传他人课位 originItemId → 403（防越权探测他人课表） ──
+def test_c8c_conflict_check_not_own_task_403(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid = _batch(client, admin)
+    origin = _item(client, admin, bid, ids["class"], teacherKey="other_teacher", teacherName="他人")
+    client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=admin)
+    teacher = _hdr(client, "academic01")
+    r = _conflict_check(client, teacher, origin)
+    assert r.status_code == 403
+
+
+# ── C9 统计扩展：byCollege / topTeachers 聚合，且旧字段 total/byType/byStatus 向后兼容 ──
+def test_c9_stats_extended_aggregation(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass, StudentProfile
+    db = get_sessionmaker()()
+    col = College(tenant_id=TID, college_name="信息工程学院", status="ACTIVE")
+    db.add(col); db.flush()
+    maj = Major(tenant_id=TID, college_id=col.id, major_name="软件技术", status="ACTIVE")
+    db.add(maj); db.flush()
+    cls = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2602", grade="2026", status="ACTIVE")
+    db.add(cls); db.flush()
+    stu = StudentProfile(tenant_id=TID, student_no="SC002", real_name="课表乙", class_id=cls.id,
+                         current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
+    db.add(stu); db.flush()
+    class_id = cls.id
+    db.commit(); db.close()
+
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, class_id)
+    r = _submit(client, admin, origin)
+    assert r.status_code == 200
+
+    stat = client.get(f"{BASE}/schedule-change/stats", headers=admin).json()["data"]
+    assert stat["total"] >= 1 and stat["byType"].get("ADJUST", 0) >= 1
+    assert stat["byStatus"].get("SUBMITTED", 0) >= 1
+    assert any(c["collegeName"] == "信息工程学院" and c["count"] >= 1 for c in stat["byCollege"])
+    assert any(t["teacherKey"] == "academic01" for t in stat["topTeachers"])
+
+
+# ── C10a 归档：仅返回终态记录（APPLIED/REJECTED/CANCELLED），在途单不出现 ──
+def test_c10a_archive_only_terminal_states(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    # 一单撤销（终态 CANCELLED），目标周5第1节（空闲，不与原课位/彼此冲突）
+    r_cancel = _submit(client, admin, origin, targetWeekday=5, targetSlotNo=1)
+    assert r_cancel.status_code == 200, r_cancel.text
+    cid_cancel = r_cancel.json()["data"]["changeId"]
+    client.post(f"{BASE}/schedule-change/{cid_cancel}/cancel", headers=admin, json={"reason": "计划有变"})
+    # 一单仍在途（SUBMITTED，不应出现在归档），目标周6第1节（另一空闲课位）
+    r_active = _submit(client, admin, origin, targetWeekday=6, targetSlotNo=1)
+    assert r_active.status_code == 200, r_active.text
+    cid_active = r_active.json()["data"]["changeId"]
+
+    arc = client.get(f"{BASE}/schedule-change/archive", headers=admin).json()["data"]
+    ids_in_archive = {x["changeId"] for x in arc["items"]}
+    assert cid_cancel in ids_in_archive
+    assert cid_active not in ids_in_archive
+    assert all(x["status"] in ("APPLIED", "REJECTED", "CANCELLED") for x in arc["items"])
+
+
+# ── C10b 归档：即使误传在途 status 也被服务层强制忽略（仍只回终态） ──
+def test_c10b_archive_ignores_active_status_param(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    cid = _submit(client, admin, origin).json()["data"]["changeId"]  # SUBMITTED，在途
+    arc = client.get(f"{BASE}/schedule-change/archive", headers=admin,
+                     params={"status": "SUBMITTED"}).json()["data"]
+    assert all(x["changeId"] != cid for x in arc["items"])
