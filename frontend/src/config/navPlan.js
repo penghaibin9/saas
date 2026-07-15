@@ -352,7 +352,19 @@ export const NAV_PLAN = [
     ]),
     mod('aa-graduation-qual', '毕业资格审核', '/admin/academic-affairs/graduation', [
       I('毕业资格预审', '/admin/academic-affairs/graduation'),
-      ...P('审核批次', '毕业学生名单', '学分达成审核', '课程达成审核', '实践环节审核', '毕设状态联动', '实习状态联动', '欠费状态联动', '处分状态联动', '毕业资格终审', '不通过原因', '审核结果', '审核归档')
+      I('审核批次', '/admin/academic-affairs/graduation?tab=batches', 'academicAffairs.graduation.view'),
+      ...P('毕业学生名单'),
+      I('学分达成审核', '/admin/academic-affairs/graduation/audit-console?tab=credit', 'academicAffairs.graduation.view'),
+      I('课程达成审核', '/admin/academic-affairs/graduation/audit-console?tab=course', 'academicAffairs.graduation.view'),
+      I('实践环节审核', '/admin/academic-affairs/graduation/audit-console?tab=practice', 'academicAffairs.graduation.view'),
+      I('毕设状态联动', '/admin/academic-affairs/graduation/audit-console?tab=thesis', 'academicAffairs.graduation.view'),
+      I('实习状态联动', '/admin/academic-affairs/graduation/audit-console?tab=internship', 'academicAffairs.graduation.view'),
+      ...P('欠费状态联动'),
+      I('处分状态联动', '/admin/academic-affairs/graduation/audit-console?tab=discipline', 'academicAffairs.graduation.view'),
+      I('毕业资格终审', '/admin/academic-affairs/graduation/audit-console?tab=final', 'academicAffairs.graduation.final'),
+      ...P('不通过原因'),
+      I('审核结果', '/admin/academic-affairs/graduation/audit-console?tab=results', 'academicAffairs.graduation.view'),
+      I('审核归档', '/admin/academic-affairs/graduation/audit-console?tab=archive', 'academicAffairs.graduation.manage')
     ]),
     mod('aa-textbooks', '教材管理', '/admin/academic-affairs/textbooks', [
       I('教材目录', '/admin/academic-affairs/textbooks?tab=catalog', 'academicAffairs.textbook.view'),

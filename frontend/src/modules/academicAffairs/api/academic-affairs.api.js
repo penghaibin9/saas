@@ -349,9 +349,15 @@ export const academicAffairsApi = {
     return callList(`${BASE}/warnings`, params)
   },
 
-  /* ── 毕业资格预审（批次 → 圈定 → 七项预审 → 学院初审 → 教务终审） ── */
+  /* ── 毕业资格审核（批次 → 圈定 → 十项预审 → 学院初审 → 教务终审 → 归档） ── */
+  listGradBatches(params = {}) {
+    return callList(`${BASE}/graduation-audit-batches`, params)
+  },
   createGradBatch(body) {
     return call(() => request(`${BASE}/graduation-audit-batches`, { method: 'POST', body }))
+  },
+  archiveGradBatch(batchId) {
+    return call(() => request(`${BASE}/graduation-audit-batches/${batchId}/archive`, { method: 'POST' }))
   },
   generateGradStudents(batchId, studentIds) {
     return call(() => request(`${BASE}/graduation-audit-batches/${batchId}/generate`, { method: 'POST', body: { studentIds } }))

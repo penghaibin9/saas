@@ -55,6 +55,8 @@ const layoutRoute = {
     { path: 'warnings', name: 'aa-warnings', component: () => import('@/modules/academicAffairs/views/AaWarningView.vue'), meta: meta('academicAffairs.warning.view', '学业预警') },
     { path: 'graduation', name: 'aa-graduation', component: () => import('@/modules/academicAffairs/views/AaGraduationBatchView.vue'), meta: meta('academicAffairs.graduation.view', '毕业资格预审') },
     { path: 'graduation/:batchId/results', name: 'aa-graduation-results', component: () => import('@/modules/academicAffairs/views/AaGraduationResultView.vue'), meta: meta('academicAffairs.graduation.view', '毕业预审结果') },
+    // ── Tier1（审核批次续建）：学分/课程/实践达成审核 + 毕设/实习/处分状态联动 + 终审/结果/归档，单控制台按 ?tab= 切换 ──
+    { path: 'graduation/audit-console', name: 'aa-graduation-audit-console', component: () => import('@/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue'), meta: meta('academicAffairs.graduation.view', '毕业资格审核工作台') },
     // ── 教务统计（只读聚合，11 项指标 + 下钻 + 导出） ──
     { path: 'stats', name: 'aa-stats', component: () => import('@/modules/academicAffairs/views/AaStatsOverviewView.vue'), meta: meta('academicAffairs.stats.view', '教务统计') },
     // ── R3 学院专业班级（组织架构，单控制台按 ?tab= 切换 学院/专业/年级/行政班/教学班/组织树/统计） ──
