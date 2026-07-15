@@ -224,8 +224,16 @@ export const NAV_PLAN = [
     mod('aa-dashboard', '教务看板', '/admin/academic-affairs', [
       I('教务看板（教务中心）', '/admin/academic-affairs'),
       I('学业过程总览（现有）', '/admin/academic'),
-      ...P('今日教学运行', '今日课程', '调停课提醒', '成绩提交进度', '考试安排提醒',
-        '学籍异动提醒', '学业预警提醒', '毕业资格预警', '教学资源占用', '教务待办', '教务数据趋势')
+      // 2026-07-15 P4：六卡提醒点亮（零新表只读聚合 GET /academic-affairs/dashboard/reminders）。
+      // ?panel= 深链接滚动定位到教务看板对应分栏（AaDashboardView PANEL_ANCHORS，同岗位实习看板模式）。
+      I('成绩提交进度', '/admin/academic-affairs?panel=gradeProgress', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('考试安排提醒', '/admin/academic-affairs?panel=examReminders', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('学籍异动提醒', '/admin/academic-affairs?panel=statusChangeReminders', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('学业预警提醒', '/admin/academic-affairs?panel=warningReminders', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('毕业资格预警', '/admin/academic-affairs?panel=graduationWarnings', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('教务待办', '/admin/academic-affairs?panel=todos', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      // 今日教学运行/今日课程/调停课提醒 = Tier2(partial，本轮范围外)；教学资源占用/教务数据趋势 = Tier3(未设计，本轮范围外)。
+      ...P('今日教学运行', '今日课程', '调停课提醒', '教学资源占用', '教务数据趋势')
     ]),
     mod('aa-terms', '学年学期', '/admin/academic-affairs/terms', [
       I('学期管理', '/admin/academic-affairs/terms'),
