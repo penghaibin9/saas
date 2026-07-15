@@ -122,6 +122,39 @@ def _can_manage_all(ctx) -> bool:
     return ctx.scope_type == "TENANT_ALL"
 
 
+_TERMINAL_STATES = ("APPLIED", "REJECTED", "CANCELLED")
+
+
+# ═══════════ 冲突预检（只读，不落库；供三申请表单提交前 UX 反馈）═══════════
+
+def conflict_check(body, user) -> dict:
+    """只读预检：复用 `_detect_conflict`（不重复实现算法）。仍需归属校验——
+    否则会变成一个可被任意教师用来探测他人课表安排信息的越权通道（CLAUDE.md §6.1）。"""
+    from app.models import AaScheduleItem
+    origin_id = getattr(body, "originItemId", None)
+    if not origin_id:
+        raise AppException("VALIDATION_ERROR", "originItemId 必填")
+    tw, ts = getattr(body, "targetWeekday", None), getattr(body, "targetSlotNo", None)
+    if tw is None or ts is None:
+        raise AppException("VALIDATION_ERROR", "目标星期/节次必填")
+    with session() as db:
+        origin = db.get(AaScheduleItem, int(origin_id))
+        if not origin or origin.is_deleted or origin.tenant_id != _tid():
+            raise not_found("原课表项不存在")
+        ctx = build_affairs_context(user, db)
+        if not _can_manage_all(ctx):
+            keys = _derive_keys(user)
+            if not origin.teacher_key or origin.teacher_key not in keys:
+                raise no_data_scope("仅可对本人任课课位做冲突预检")
+        tsw = int(getattr(body, "targetStartWeek", None) or origin.start_week)
+        tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
+        tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
+        tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
+        conflict = _detect_conflict(db, origin.batch_id, int(tw), int(ts), tsw, tew, tp,
+                                    origin.teacher_key, origin.class_id, tcr, exclude_id=origin.id)
+        return {"conflict": conflict}
+
+
 # ═══════════ 发起（教师，提交即冲突预检）═══════════
 
 def submit(body, user) -> dict:
@@ -354,7 +387,9 @@ def get_change(cid, user) -> dict:
 
 
 def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=None,
-                 page=1, page_size=20):
+                 date_from=None, date_to=None, page=1, page_size=20):
+    """台账/我的申请列表。`status` 支持逗号分隔多值（IN 查询），供"调停课归档"卡复用同一函数
+    (见施工卡 09 §7 注)，不新增第二套 SQL。"""
     from app.models import AaScheduleChange
     with session() as db:
         ctx = build_affairs_context(user, db)
@@ -362,9 +397,17 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
         if change_type:
             conds.append(AaScheduleChange.change_type == change_type.upper())
         if status:
-            conds.append(AaScheduleChange.status == status)
+            vals = [s.strip().upper() for s in status.split(",") if s.strip()]
+            if len(vals) == 1:
+                conds.append(AaScheduleChange.status == vals[0])
+            elif vals:
+                conds.append(AaScheduleChange.status.in_(vals))
         if term_id:
             conds.append(AaScheduleChange.term_id == int(term_id))
+        if date_from:
+            conds.append(AaScheduleChange.updated_at >= date_from)
+        if date_to:
+            conds.append(AaScheduleChange.updated_at <= date_to + " 23:59:59")
         # 范围收敛：TENANT_ALL 全量；COLLEGE 按所辖班级；其余(教师) 仅本人课位
         if not _can_manage_all(ctx):
             if ctx.scope_type == "COLLEGE":
@@ -386,9 +429,34 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
         return [_row(x) for x in rows], total
 
 
-def stats(user, term_id=None):
-    """调停课统计：按类型/状态聚合（读侧，范围收敛）。"""
-    from app.models import AaScheduleChange
+# ═══════════ 归档（台账的终态特化视图；服务层强制排除在途态，不依赖前端默认参数）═══════════
+
+def archive_list(user, change_type=None, status=None, term_id=None,
+                 date_from=None, date_to=None, page=1, page_size=20):
+    """归档检索：`list_changes()` 的终态特化视图（APPLIED/REJECTED/CANCELLED），
+    与"调停课台账"共用同一查询函数，仅调用参数不同（施工卡 09 §6/§7 已明确此关系，不构成重复实现）。"""
+    if status:
+        vals = [s.strip().upper() for s in status.split(",") if s.strip().upper() in _TERMINAL_STATES]
+        status = ",".join(vals) if vals else ",".join(_TERMINAL_STATES)
+    else:
+        status = ",".join(_TERMINAL_STATES)
+    return list_changes(user, change_type=change_type, status=status, term_id=term_id,
+                        date_from=date_from, date_to=date_to, page=page, page_size=page_size)
+
+
+_EMPTY_STATS = {"total": 0, "byType": {}, "byStatus": {}, "byCollege": [], "topTeachers": []}
+
+
+def stats(user, term_id=None, dimension=None):
+    """调停课统计：按类型/状态/学院/教师聚合（读侧，范围收敛）。`dimension` 目前不改变查询范围，
+    仅供前端 Tab 切换展示同一份聚合结果的不同维度（避免切 Tab 反复请求）。
+
+    `byCollege` 通过 class_id → t_class.major_id → t_major.college_id 运行时联查解析
+    （表未冗余 college_id 列，V1 数据量级下联查可接受，见二级总包 §8 澄清）。
+    `topTeachers` 按当前查询范围（已做 COLLEGE/教师范围收敛）内的教师排名，天然满足
+    "COLLEGE_ADMIN 仅见本学院内部排名，ACADEMIC_TEACHER 见全校"的隐私设计（08 卡 §10）。
+    """
+    from app.models import AaScheduleChange, College, Major, SchoolClass
     with session() as db:
         ctx = build_affairs_context(user, db)
         conds = [AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False)]
@@ -398,16 +466,53 @@ def stats(user, term_id=None):
             if ctx.scope_type == "COLLEGE":
                 allowed = ctx.allowed_class_ids(db)
                 if not allowed:
-                    return {"total": 0, "byType": {}, "byStatus": {}}
+                    return dict(_EMPTY_STATS)
                 conds.append(AaScheduleChange.class_id.in_(list(allowed)))
             else:
                 keys = _derive_keys(user)
                 if not keys:
-                    return {"total": 0, "byType": {}, "byStatus": {}}
+                    return dict(_EMPTY_STATS)
                 conds.append(AaScheduleChange.teacher_key.in_(list(keys)))
         rows = db.scalars(select(AaScheduleChange).where(*conds)).all()
-        by_type, by_status = {}, {}
+        by_type, by_status, by_teacher = {}, {}, {}
+        class_ids = set()
         for r in rows:
             by_type[r.change_type] = by_type.get(r.change_type, 0) + 1
             by_status[r.status] = by_status.get(r.status, 0) + 1
-        return {"total": len(rows), "byType": by_type, "byStatus": by_status}
+            if r.teacher_key:
+                t = by_teacher.setdefault(r.teacher_key, {"teacherKey": r.teacher_key,
+                                          "teacherName": r.teacher_name or r.teacher_key, "count": 0})
+                t["count"] += 1
+            if r.class_id:
+                class_ids.add(int(r.class_id))
+        # class_id → college_id（两跳联查，无冗余列）
+        class_college: dict[int, int | None] = {}
+        college_names: dict[int, str] = {}
+        if class_ids:
+            cls_rows = db.execute(select(SchoolClass.id, SchoolClass.major_id).where(
+                SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(list(class_ids)))).all()
+            major_ids = {mid for _, mid in cls_rows if mid}
+            major_college: dict[int, int] = {}
+            if major_ids:
+                maj_rows = db.execute(select(Major.id, Major.college_id).where(
+                    Major.tenant_id == _tid(), Major.id.in_(list(major_ids)))).all()
+                major_college = dict(maj_rows)
+            class_college = {cid: major_college.get(mjid) for cid, mjid in cls_rows}
+            college_ids = {cid for cid in class_college.values() if cid}
+            if college_ids:
+                col_rows = db.execute(select(College.id, College.college_name).where(
+                    College.tenant_id == _tid(), College.id.in_(list(college_ids)))).all()
+                college_names = dict(col_rows)
+        by_college: dict[int, dict] = {}
+        for r in rows:
+            cid = class_college.get(int(r.class_id)) if r.class_id else None
+            key = cid or 0
+            c = by_college.setdefault(key, {"collegeId": str(cid or ""),
+                                            "collegeName": college_names.get(cid, "未归属学院") if cid else "未归属学院",
+                                            "count": 0})
+            c["count"] += 1
+        return {
+            "total": len(rows), "byType": by_type, "byStatus": by_status,
+            "byCollege": sorted(by_college.values(), key=lambda x: -x["count"]),
+            "topTeachers": sorted(by_teacher.values(), key=lambda x: -x["count"])[:10],
+        }
