@@ -103,3 +103,9 @@ export function availableChangeActions(status) {
 
 /** 方案归档：归档原因文案。 */
 export const ARCHIVE_REASON_LABEL = { DISABLED: '已停用', SUPERSEDED: '已被新版本取代' }
+
+/** 课程模块文本是否属于集中实践/实训/实习环节（教学计划「实践教学计划」叶子的筛选口径，
+ * 与 COURSE_CATEGORY.PRACTICE 标签「实践环节」保持一致；module 为编制期自由文本，按关键词命中）。 */
+export function isPracticeModule(module) {
+  return !!module && /实践|实训|实习/.test(module)
+}
