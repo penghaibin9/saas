@@ -231,8 +231,13 @@ export const NAV_PLAN = [
       I('学业预警提醒', '/admin/academic-affairs?panel=warningReminders', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
       I('毕业资格预警', '/admin/academic-affairs?panel=graduationWarnings', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
       I('教务待办', '/admin/academic-affairs?panel=todos', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
-      // 今日教学运行/今日课程/调停课提醒 = Tier2(partial，本轮范围外)；教学资源占用/教务数据趋势 = Tier3(未设计，本轮范围外)。
-      ...P('今日教学运行', '今日课程', '调停课提醒', '教学资源占用', '教务数据趋势')
+      // 2026-07-16 第三轮续工：五卡点亮（零新表只读聚合，并入同一 GET /academic-affairs/dashboard/reminders）。
+      // 今日课程/教学资源占用口径依赖「当前学期+当前已发布课表批次」，无当前学期/未发布课表时面板内 note 说明原因。
+      I('今日教学运行', '/admin/academic-affairs?panel=todayTeaching', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('今日课程', '/admin/academic-affairs?panel=todayCourses', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('调停课提醒', '/admin/academic-affairs?panel=scheduleChangeReminders', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('教学资源占用', '/admin/academic-affairs?panel=resourceOccupancy', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
+      I('教务数据趋势', '/admin/academic-affairs?panel=dataTrends', 'academicAffairs.dashboard.view', 'ANALYTICS_VIEW')
     ]),
     mod('aa-terms', '学年学期', '/admin/academic-affairs/terms', [
       I('学期管理', '/admin/academic-affairs/terms'),

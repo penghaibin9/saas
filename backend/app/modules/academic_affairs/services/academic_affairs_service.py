@@ -1768,8 +1768,297 @@ def _todos(grade_counts, sc_count, warn_count, grad_count) -> list:
     ]
 
 
+
+# ═══════════ 教务看板 · 续工五卡（第三轮；零新表，只读实时聚合既有表，对齐 P4 六卡同款模式）═══════════
+#   今日教学运行 / 今日课程 / 调停课提醒 / 教学资源占用 / 教务数据趋势
+#   今日课程/今日教学运行/教学资源占用口径依赖「课表管理」当前学期 + 当前已发布批次
+#   （复用 academic_affairs_schedule_service._current_published_batch 与 class_schedule 同款
+#   start_week/end_week/week_parity 命中算法）；无当前学期、今日不在教学周区间内、或本学期尚无
+#   已发布课表时返回空列表 + note 说明原因,不编造数据。本节统一使用 settings.TIMEZONE_OFFSET_HOURS
+#   换算本地时间（而非本文件其余函数沿用的 naive datetime.utcnow()），因为"今日/当前节次进行中"
+#   直接依赖本地墙钟时间,00:00-08:00 时段用 utcnow() 会把日期算错一天。
+
+_SC_TYPE_LABEL = {"ADJUST": "调课", "STOP": "停课", "MAKEUP": "补课"}
+_WEEKDAY_LABEL_CN = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
+_RUN_STATUS_LABEL = {"NOT_STARTED": "未开始", "IN_PROGRESS": "进行中", "ENDED": "已结束", "UNKNOWN": "时间未配置"}
+
+
+def _tz_offset_hours() -> int:
+    from app.core.config import settings
+    return int(settings.TIMEZONE_OFFSET_HOURS)
+
+
+def _local_now() -> datetime:
+    """本地墙钟时间（naive，风格对齐本文件其余函数一律用 naive datetime，不引入 tz-aware 混用风险）。"""
+    return datetime.utcnow() + timedelta(hours=_tz_offset_hours())
+
+
+def _to_local_date(v: datetime):
+    """DB 取出的 created_at/submitted_at 为 naive UTC（datetime.utcnow() 写入），换算为本地日历日期。"""
+    if not v:
+        return None
+    return (v + timedelta(hours=_tz_offset_hours())).date()
+
+
+def _today_term_ctx(db) -> dict:
+    """今天的学期/教学周/星期上下文：复用 list_term_weeks 同一 start_date+teaching_weeks 展开算法。
+    无当前学期或今天不落在教学周区间内（假期/学期未排满）→ weekNo=None，调用方按空态处理。"""
+    from app.models import AaTerm
+    t = db.scalars(select(AaTerm).where(
+        AaTerm.tenant_id == _tid(), AaTerm.is_current.is_(True), AaTerm.is_deleted.is_(False))).first()
+    now = _local_now()
+    today = now.date()
+    week_no = None
+    if t and t.start_date and t.teaching_weeks:
+        for wk in range(1, int(t.teaching_weeks) + 1):
+            w_start = (t.start_date + timedelta(days=(wk - 1) * 7)).date()
+            if w_start <= today <= w_start + timedelta(days=6):
+                week_no = wk
+                break
+    return {"term": t, "weekNo": week_no, "weekday": today.isoweekday(), "today": today,
+            "nowHm": now.strftime("%H:%M")}
+
+
+def _today_schedule_query(db, ctx):
+    """今日在排课表项：当前学期已发布批次 + 今天星期 + 当前教学周命中（含单双周相容）。
+    复用 academic_affairs_schedule_service._current_published_batch 同一"当前已发布批次"取批口径。"""
+    from app.modules.academic_affairs.services.academic_affairs_schedule_service import _current_published_batch
+    from app.models import AaScheduleItem
+    if not ctx["term"] or ctx["weekNo"] is None:
+        return [], None
+    batch = _current_published_batch(db, ctx["term"].id)
+    if not batch:
+        return [], None
+    wk = ctx["weekNo"]
+    rows = db.scalars(select(AaScheduleItem).where(
+        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == batch.id,
+        AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False),
+        AaScheduleItem.weekday == ctx["weekday"],
+        AaScheduleItem.start_week <= wk, AaScheduleItem.end_week >= wk)
+        .order_by(AaScheduleItem.slot_no, AaScheduleItem.class_name)).all()
+
+    def _parity_ok(r):
+        if r.week_parity == "ODD":
+            return wk % 2 == 1
+        if r.week_parity == "EVEN":
+            return wk % 2 == 0
+        return True
+    return [r for r in rows if _parity_ok(r)], batch
+
+
+def _slot_time_map(db) -> dict:
+    from app.models import AaTimeSlot
+    rows = db.scalars(select(AaTimeSlot).where(
+        AaTimeSlot.tenant_id == _tid(), AaTimeSlot.is_deleted.is_(False))).all()
+    return {r.slot_no: (r.start_time or "", r.end_time or "") for r in rows}
+
+
+def _run_status(now_hm: str, start_hm: str, end_hm: str) -> str:
+    if not start_hm or not end_hm:
+        return "UNKNOWN"
+    if now_hm < start_hm:
+        return "NOT_STARTED"
+    if now_hm > end_hm:
+        return "ENDED"
+    return "IN_PROGRESS"
+
+
+def _today_note(ctx, batch, has_rows: bool) -> str:
+    if not ctx["term"]:
+        return "尚未设置当前学期"
+    if ctx["weekNo"] is None:
+        return "今日不在本学期教学周区间内（假期/学期未排满）"
+    if not batch:
+        return "本学期暂无已发布课表"
+    if not has_rows:
+        return f"今日（{_WEEKDAY_LABEL_CN.get(ctx['weekday'], '')}）暂无排课"
+    return ""
+
+
+def _today_exam_count(db, today_str) -> int:
+    """今日考试数：口径与 _exam_reminders 一致（batch ARRANGED/PUBLISHED + course CONFIRMED），仅收窄到 exam_date=今天。"""
+    from app.models import AaExamBatch, AaExamCourse
+    T = _tid()
+    join = and_(AaExamBatch.id == AaExamCourse.batch_id, AaExamBatch.tenant_id == AaExamCourse.tenant_id)
+    return db.scalar(select(func.count()).select_from(AaExamCourse).join(AaExamBatch, join).where(
+        AaExamCourse.tenant_id == T, AaExamCourse.is_deleted.is_(False), AaExamCourse.status == "CONFIRMED",
+        AaExamCourse.exam_date == today_str, AaExamBatch.status.in_(["ARRANGED", "PUBLISHED"]))) or 0
+
+
+def _today_teaching(db, ctx, batch, rows, slot_map) -> dict:
+    """今日教学运行：今日课表项 KPI 汇总（课次/进行中/未开始/已结束/调课数/考试数 + 涉及教师/行政班/教室去重计数）。
+    今日调课数/考试数字段对齐《13B-教务中心-商业化对标审计与补丁建议》E29「今日教学运行/本周教学安排卡」
+    todayRunning（今日上课数/调课数/考试数）设计。"""
+    term = ctx["term"]
+    counts = {"NOT_STARTED": 0, "IN_PROGRESS": 0, "ENDED": 0, "UNKNOWN": 0}
+    teachers, classes, rooms = set(), set(), set()
+    adjusted = 0
+    for r in rows:
+        start_hm, end_hm = slot_map.get(r.slot_no, ("", ""))
+        counts[_run_status(ctx["nowHm"], start_hm, end_hm)] += 1
+        if r.teacher_key:
+            teachers.add(r.teacher_key)
+        if r.class_id:
+            classes.add(r.class_id)
+        if r.classroom_text:
+            rooms.add(r.classroom_text)
+        if r.change_id:  # 该课位由调停课单生成/改写（t_aa_schedule_item.change_id 回链）
+            adjusted += 1
+    return {
+        "dateLabel": f"{ctx['today'].isoformat()}（{_WEEKDAY_LABEL_CN.get(ctx['weekday'], '')}）",
+        "termLabel": (f"{term.year_code} 第 {term.term_no} 学期" if term else ""),
+        "weekNo": ctx["weekNo"], "totalToday": len(rows),
+        "notStarted": counts["NOT_STARTED"], "inProgress": counts["IN_PROGRESS"], "ended": counts["ENDED"],
+        "adjustedCount": adjusted, "examCount": _today_exam_count(db, ctx["today"].isoformat()),
+        "teacherCount": len(teachers), "classCount": len(classes), "roomCount": len(rooms),
+        "note": _today_note(ctx, batch, bool(rows)), "drillRoute": "aa-schedule",
+    }
+
+
+def _today_courses(ctx, batch, rows, slot_map, limit=30) -> dict:
+    """今日课程：今日课表项明细（节次/时间/课程/班级/教师/教室/进行状态/调停课标记），按节次排序，前 N 条展示。
+    调停课标记（changed）对齐《13B-教务中心API契约草案》AC-142"今日课程（节次/教室/班级/调停课标记）"设计，
+    复用 t_aa_schedule_item.change_id 回链字段（非本卡新增，模型已有）。"""
+    items = []
+    for r in rows[:limit]:
+        start_hm, end_hm = slot_map.get(r.slot_no, ("", ""))
+        status = _run_status(ctx["nowHm"], start_hm, end_hm)
+        items.append({
+            "itemId": str(r.id), "slotNo": r.slot_no, "startTime": start_hm, "endTime": end_hm,
+            "courseName": r.course_name or "", "className": r.class_name or "",
+            "teacherName": r.teacher_name or "", "classroom": r.classroom_text or "",
+            "runStatus": status, "runStatusLabel": _RUN_STATUS_LABEL[status],
+            "changed": bool(r.change_id),
+        })
+    return {"items": items, "count": len(rows), "shown": len(items),
+            "note": _today_note(ctx, batch, bool(rows)), "drillRoute": "aa-schedule"}
+
+
+def _schedule_change_reminders(db) -> dict:
+    """调停课提醒：在途待审批（SUBMITTED/COLLEGE_REVIEW/ACADEMIC_REVIEW）的调课/停课/补课申请。
+    终审通过后系统即刻改写课表（APPROVED→APPLIED 同步发生，无独立"已批未生效"态，见调停课状态机），
+    故提醒面仅覆盖在途待审批，与学籍异动提醒同一口径。"""
+    from app.models import AaScheduleChange
+    T = _tid()
+    conds = [AaScheduleChange.tenant_id == T, AaScheduleChange.is_deleted.is_(False),
+             AaScheduleChange.status.in_(["SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW"])]
+    total = db.scalar(select(func.count()).select_from(AaScheduleChange).where(*conds)) or 0
+    rows = db.scalars(select(AaScheduleChange).where(*conds)
+                      .order_by(AaScheduleChange.id.desc()).limit(10)).all()
+    items = [{"changeId": str(x.id), "changeType": x.change_type,
+              "changeTypeLabel": _SC_TYPE_LABEL.get(x.change_type, x.change_type),
+              "courseName": x.course_name or "", "className": x.class_name or "",
+              "teacherName": x.teacher_name or "", "status": x.status,
+              "currentNode": x.current_node or "", "submittedAt": _iso(x.created_at)} for x in rows]
+    return {"count": total, "items": items, "drillRoute": "aa-schedule-change-ledger"}
+
+
+def _resource_occupancy(db, ctx, rows) -> dict:
+    """教学资源占用：今日教室占用 = 今日课表占用教室 ∪ 今日已通过教室预约，按教室字典（AVAILABLE）计算占用率。
+
+    占用率红线（同中心《教务统计/14-教学资源统计-生产级施工卡》已明确裁定）：课表 classroom_text 是自由文本
+    快照（方案A不外键化），不能保证与教室字典命名一致；直接拿"课表出现过的教室文本数"除以"字典教室总数"会把
+    两个不同源的集合混在一起做除法，占用率可能超 100%，等于伪造统计。修复口径：只把能精确匹配教室字典展示名
+    （`building_name+room_code` 或 `room_name`，同 academic_affairs_schedule_service.room_schedule 已用匹配算法）
+    的课表/预约教室计入占用率分子，分子集合是分母（字典 AVAILABLE 教室集合）的真子集，占用率恒在 [0,100]；
+    未能匹配字典的课表教室文本不悄悄丢弃，计入 unmatchedCount 并在 note 如实说明，不折算进占用率。"""
+    from app.models import AaClassroom, AaClassroomBooking
+    T = _tid()
+    dict_rooms = db.scalars(select(AaClassroom).where(
+        AaClassroom.tenant_id == T, AaClassroom.is_deleted.is_(False),
+        AaClassroom.status == "AVAILABLE")).all()
+    total_rooms = len(dict_rooms)
+    name_to_room: dict[str, object] = {}
+    for c in dict_rooms:
+        name_to_room[f"{c.building_name}{c.room_code}"] = c
+        if c.room_name:
+            name_to_room[c.room_name] = c
+
+    occupied_dict_rooms: dict[str, list] = {}
+    unmatched_texts: set[str] = set()
+
+    def _mark(text, slot_no, label, source):
+        key = (text or "").strip()
+        if not key:
+            return
+        if key in name_to_room:
+            occupied_dict_rooms.setdefault(key, []).append({"slotNo": slot_no, "label": label, "source": source})
+        else:
+            unmatched_texts.add(key)
+
+    for r in rows:
+        _mark(r.classroom_text, r.slot_no, r.course_name or "", "SCHEDULE")
+    today_str = ctx["today"].isoformat()
+    bookings = db.scalars(select(AaClassroomBooking).where(
+        AaClassroomBooking.tenant_id == T, AaClassroomBooking.is_deleted.is_(False),
+        AaClassroomBooking.booking_date == today_str, AaClassroomBooking.status == "APPROVED")).all()
+    for b in bookings:
+        _mark(b.classroom_text, b.slot_no, b.purpose or "教室预约", "BOOKING")
+
+    occupied_count = len(occupied_dict_rooms)
+    rate = round(occupied_count / total_rooms * 100, 1) if total_rooms else 0.0
+    items = [{"classroom": room, "useCount": len(uses),
+              "slots": sorted({u["slotNo"] for u in uses if u["slotNo"]})}
+             for room, uses in sorted(occupied_dict_rooms.items())][:10]
+    if total_rooms == 0:
+        note = "尚未维护教室字典（教学资源→教室资源），占用率暂无法计算"
+    elif occupied_count == 0 and not unmatched_texts:
+        note = "今日暂无教室占用记录"
+    elif unmatched_texts:
+        note = f"另有 {len(unmatched_texts)} 处排课/预约教室文本未匹配教室字典，未计入占用率（与教室课表/教室预约同口径）"
+    else:
+        note = ""
+    return {"totalRooms": total_rooms, "occupiedToday": occupied_count, "occupancyRate": rate,
+            "unmatchedCount": len(unmatched_texts),
+            "items": items, "note": note, "drillRoute": "aa-classrooms"}
+
+
+def _data_trends(db, days=14) -> dict:
+    """教务数据趋势：近 N 天真实业务发生量（学籍异动申请/调停课申请/成绩提交/新增学业预警），
+    按 created_at（成绩提交按 submitted_at）分日计数；零新表、零预测插值，纯历史事实回溯。"""
+    from app.models import AaGradeTask, AaScheduleChange, AaStatusChange, AcademicWarning
+    T = _tid()
+    days = max(7, min(int(days or 14), 30))
+    local_today = _local_now().date()
+    date_keys = [(local_today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    range_start_local = datetime.combine(local_today - timedelta(days=days - 1), datetime.min.time())
+    since_utc = range_start_local - timedelta(hours=_tz_offset_hours())
+
+    def _count_by_day(items, field):
+        counts = {k: 0 for k in date_keys}
+        for row in items:
+            d = _to_local_date(getattr(row, field, None))
+            k = d.isoformat() if d else None
+            if k in counts:
+                counts[k] += 1
+        return [{"date": k, "value": counts[k]} for k in date_keys]
+
+    sc = db.scalars(select(AaStatusChange).where(
+        AaStatusChange.tenant_id == T, AaStatusChange.is_deleted.is_(False),
+        AaStatusChange.created_at >= since_utc)).all()
+    chg = db.scalars(select(AaScheduleChange).where(
+        AaScheduleChange.tenant_id == T, AaScheduleChange.is_deleted.is_(False),
+        AaScheduleChange.created_at >= since_utc)).all()
+    gt = db.scalars(select(AaGradeTask).where(
+        AaGradeTask.tenant_id == T, AaGradeTask.is_deleted.is_(False),
+        AaGradeTask.submitted_at.isnot(None), AaGradeTask.submitted_at >= since_utc)).all()
+    wn = db.scalars(select(AcademicWarning).where(
+        AcademicWarning.tenant_id == T, AcademicWarning.is_deleted.is_(False),
+        AcademicWarning.created_at >= since_utc)).all()
+    series = [
+        {"key": "statusChange", "label": "学籍异动申请", "points": _count_by_day(sc, "created_at")},
+        {"key": "scheduleChange", "label": "调停课申请", "points": _count_by_day(chg, "created_at")},
+        {"key": "gradeSubmit", "label": "成绩提交", "points": _count_by_day(gt, "submitted_at")},
+        {"key": "warning", "label": "新增学业预警", "points": _count_by_day(wn, "created_at")},
+    ]
+    has_data = any(any(p["value"] for p in s["points"]) for s in series)
+    return {"days": date_keys, "series": series, "drillRoute": "aa-stats",
+            "note": "" if has_data else f"近 {days} 天暂无相关业务发生"}
+
+
 def dashboard_reminders(user) -> dict:
-    """教务看板提醒聚合（成绩提交进度/考试安排提醒/学籍异动提醒/学业预警提醒/毕业资格预警/教务待办）。
+    """教务看板提醒聚合（成绩提交进度/考试安排提醒/学籍异动提醒/学业预警提醒/毕业资格预警/教务待办 +
+    续工五卡：今日教学运行/今日课程/调停课提醒/教学资源占用/教务数据趋势）。
     零新表：全部实时只读聚合既有业务表，不复制、不改写任何状态机（对齐 R9 教学质量看板同款只读聚合模式）。"""
     from app.core.affairs_security import build_affairs_context
     with session() as db:
@@ -1780,6 +2069,18 @@ def dashboard_reminders(user) -> dict:
         wr = _warning_reminders(db)
         gr = _graduation_warnings(db)
         todos = _todos(gp["counts"], sc["count"], wr["count"], gr["count"])
+
+        ctx = _today_term_ctx(db)
+        today_rows, today_batch = _today_schedule_query(db, ctx)
+        slot_map = _slot_time_map(db) if today_rows else {}
+        tt = _today_teaching(db, ctx, today_batch, today_rows, slot_map)
+        tc = _today_courses(ctx, today_batch, today_rows, slot_map)
+        scr = _schedule_change_reminders(db)
+        ro = _resource_occupancy(db, ctx, today_rows)
+        dt = _data_trends(db)
+
         return {"gradeProgress": gp, "examReminders": ex, "statusChangeReminders": sc,
                 "warningReminders": wr, "graduationWarnings": gr, "todos": todos,
+                "todayTeaching": tt, "todayCourses": tc, "scheduleChangeReminders": scr,
+                "resourceOccupancy": ro, "dataTrends": dt,
                 "generatedAt": datetime.utcnow().isoformat()}

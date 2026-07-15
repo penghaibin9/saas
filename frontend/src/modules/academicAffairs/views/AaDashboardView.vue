@@ -171,19 +171,140 @@
           </div>
         </div>
       </AppSectionCard>
+
+      <!-- 今日教学运行 -->
+      <AppSectionCard id="adb-today-teaching" title="今日教学运行" :subtitle="todayTeachingSubtitle">
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-schedule' })">课表管理 →</button>
+        </template>
+        <ErrorState v-if="remindersError" :description="remindersError" @retry="loadReminders" />
+        <LoadingState v-else-if="remindersLoading" />
+        <div v-else class="mp-stack">
+          <div class="aa-metric-grid">
+            <AppMetricCard title="今日课次" :value="todayTeaching.totalToday || 0" unit="节" />
+            <AppMetricCard title="进行中" :value="todayTeaching.inProgress || 0" unit="节" />
+            <AppMetricCard title="未开始" :value="todayTeaching.notStarted || 0" unit="节" />
+            <AppMetricCard title="已结束" :value="todayTeaching.ended || 0" unit="节" />
+            <AppMetricCard title="今日调课" :value="todayTeaching.adjustedCount || 0" unit="节" />
+            <AppMetricCard title="今日考试" :value="todayTeaching.examCount || 0" unit="场" />
+            <AppMetricCard title="涉及教师" :value="todayTeaching.teacherCount || 0" unit="人" />
+            <AppMetricCard title="涉及班级" :value="todayTeaching.classCount || 0" unit="个" />
+            <AppMetricCard title="涉及教室" :value="todayTeaching.roomCount || 0" unit="间" />
+          </div>
+          <EmptyState v-if="todayTeaching.note" :title="todayTeaching.note" description="" />
+        </div>
+      </AppSectionCard>
+
+      <!-- 今日课程 -->
+      <AppSectionCard id="adb-today-courses" title="今日课程" :subtitle="'共 ' + (todayCourses.count || 0) + ' 节，按节次排序'">
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-schedule' })">课表管理 →</button>
+        </template>
+        <ErrorState v-if="remindersError" :description="remindersError" @retry="loadReminders" />
+        <LoadingState v-else-if="remindersLoading" />
+        <div v-else class="mp-stack">
+          <EmptyState
+            v-if="!todayCourses.items || !todayCourses.items.length"
+            title="今日暂无课程"
+            :description="todayCourses.note || '当前无排课数据'"
+          />
+          <template v-else>
+            <DataTable :columns="todayCourseColumns" :rows="todayCourses.items" row-key="itemId">
+              <template #cell-courseName="{ row }">
+                {{ row.courseName }}
+                <AppStatusTag v-if="row.changed" type="warning" size="sm">调停课</AppStatusTag>
+              </template>
+              <template #cell-time="{ row }">{{ row.startTime || '-' }} ~ {{ row.endTime || '-' }}</template>
+              <template #cell-runStatus="{ row }">
+                <AppStatusTag :type="runStatusTagType(row.runStatus)" :label="row.runStatusLabel" />
+              </template>
+            </DataTable>
+            <div v-if="todayCourses.count > todayCourses.shown" class="aa-more-hint">
+              仅显示前 {{ todayCourses.shown }} 条，共 {{ todayCourses.count }} 条，完整列表见「课表管理」
+            </div>
+          </template>
+        </div>
+      </AppSectionCard>
+
+      <!-- 调停课提醒 -->
+      <AppSectionCard id="adb-schedule-change-reminders" title="调停课提醒" subtitle="在途待审批的调课/停课/补课申请">
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-schedule-change-ledger' })">调停课台账 →</button>
+        </template>
+        <div v-if="!remindersLoading && !remindersError" class="mp-stack">
+          <EmptyState
+            v-if="!scheduleChangeReminders.items || !scheduleChangeReminders.items.length"
+            title="暂无在途调停课申请"
+            description="当前没有待审批的调课/停课/补课申请"
+          />
+          <DataTable v-else :columns="scheduleChangeColumns" :rows="scheduleChangeReminders.items" row-key="changeId">
+            <template #cell-status="{ row }"><AppStatusTag :status="row.status" /></template>
+          </DataTable>
+        </div>
+      </AppSectionCard>
+
+      <!-- 教学资源占用 -->
+      <AppSectionCard
+        id="adb-resource-occupancy"
+        title="教学资源占用"
+        :subtitle="'今日教室占用率 ' + (resourceOccupancy.occupancyRate || 0) + '%（' + (resourceOccupancy.occupiedToday || 0) + '/' + (resourceOccupancy.totalRooms || 0) + '）'"
+      >
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-classrooms' })">教室资源 →</button>
+        </template>
+        <ErrorState v-if="remindersError" :description="remindersError" @retry="loadReminders" />
+        <LoadingState v-else-if="remindersLoading" />
+        <div v-else class="mp-stack">
+          <div class="aa-metric-grid">
+            <AppMetricCard title="可用教室" :value="resourceOccupancy.totalRooms || 0" unit="间" />
+            <AppMetricCard title="今日已占用" :value="resourceOccupancy.occupiedToday || 0" unit="间" />
+            <AppMetricCard title="占用率" :value="resourceOccupancy.occupancyRate || 0" unit="%" />
+          </div>
+          <EmptyState
+            v-if="!resourceOccupancy.items || !resourceOccupancy.items.length"
+            :title="resourceOccupancy.note || '今日暂无教室占用记录'"
+            description=""
+          />
+          <template v-else>
+            <DataTable :columns="resourceColumns" :rows="resourceOccupancy.items" row-key="classroom">
+              <template #cell-slots="{ row }">{{ formatSlots(row.slots) }}</template>
+            </DataTable>
+            <div v-if="resourceOccupancy.note" class="aa-more-hint">{{ resourceOccupancy.note }}</div>
+          </template>
+        </div>
+      </AppSectionCard>
+
+      <!-- 教务数据趋势 -->
+      <AppSectionCard
+        id="adb-data-trends"
+        title="教务数据趋势"
+        :subtitle="'近 ' + (dataTrends.days ? dataTrends.days.length : 14) + ' 天学籍异动申请/调停课申请/成绩提交/新增学业预警的真实业务发生量'"
+      >
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-stats' })">教务统计 →</button>
+        </template>
+        <ErrorState v-if="remindersError" :description="remindersError" @retry="loadReminders" />
+        <LoadingState v-else-if="remindersLoading" />
+        <div v-else class="mp-stack">
+          <EmptyState v-if="!trendHasData" title="近期暂无相关业务发生" :description="dataTrends.note || ''" />
+          <AppG2Chart v-else :spec="trendChartSpec" :height="260" />
+        </div>
+      </AppSectionCard>
     </div>
   </ModulePageShell>
 </template>
 
 <script>
 /** 教务看板（/admin/academic-affairs）：GET /academic-affairs/dashboard + GET /academic-affairs/dashboard/reminders。
- * 当前学期 + 指标卡 + 模块状态 + 六卡提醒（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办）。
+ * 当前学期 + 指标卡 + 模块状态 + 六卡提醒（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办）+
+ * 续工五卡（今日教学运行/今日课程/调停课提醒/教学资源占用/教务数据趋势，2026-07-16 第三轮）。
  * ?panel= 深链接滚动定位到对应分栏（对齐岗位实习看板 InternshipDashboardView 同款 PANEL_ANCHORS 模式）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag } from '@/components/common'
+import { AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag, AppG2Chart } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中' }
+const RUN_STATUS_TYPE = { NOT_STARTED: 'default', IN_PROGRESS: 'processing', ENDED: 'info', UNKNOWN: 'default' }
 
 const PANEL_ANCHORS = {
   gradeProgress: 'adb-grade-progress',
@@ -191,14 +312,19 @@ const PANEL_ANCHORS = {
   statusChangeReminders: 'adb-status-change-reminders',
   warningReminders: 'adb-warning-reminders',
   graduationWarnings: 'adb-graduation-warnings',
-  todos: 'adb-todos'
+  todos: 'adb-todos',
+  todayTeaching: 'adb-today-teaching',
+  todayCourses: 'adb-today-courses',
+  scheduleChangeReminders: 'adb-schedule-change-reminders',
+  resourceOccupancy: 'adb-resource-occupancy',
+  dataTrends: 'adb-data-trends'
 }
 
 export default {
   name: 'AaDashboardView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-    AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag
+    AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag, AppG2Chart
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -217,6 +343,35 @@ export default {
       warningReminders: {},
       graduationWarnings: {},
       todos: [],
+      // 续工五卡
+      todayTeaching: {},
+      todayCourses: {},
+      scheduleChangeReminders: {},
+      resourceOccupancy: {},
+      dataTrends: {},
+      todayCourseColumns: [
+        { key: 'slotNo', title: '节次' },
+        { key: 'time', title: '时间' },
+        { key: 'courseName', title: '课程' },
+        { key: 'className', title: '班级' },
+        { key: 'teacherName', title: '任课教师' },
+        { key: 'classroom', title: '教室' },
+        { key: 'runStatus', title: '状态' }
+      ],
+      scheduleChangeColumns: [
+        { key: 'changeTypeLabel', title: '类型' },
+        { key: 'courseName', title: '课程' },
+        { key: 'className', title: '班级' },
+        { key: 'teacherName', title: '教师' },
+        { key: 'currentNode', title: '当前节点' },
+        { key: 'status', title: '状态' },
+        { key: 'submittedAt', title: '提交时间' }
+      ],
+      resourceColumns: [
+        { key: 'classroom', title: '教室' },
+        { key: 'useCount', title: '占用次数' },
+        { key: 'slots', title: '节次' }
+      ],
       gradeColumns: [
         { key: 'courseName', title: '课程' },
         { key: 'className', title: '班级' },
@@ -264,6 +419,30 @@ export default {
     gradeSubmittedCount() {
       const c = this.gradeProgress.counts || {}
       return (c.SUBMITTED || 0) + (c.ACADEMIC_REVIEW || 0) + (c.PUBLISHED || 0)
+    },
+    todayTeachingSubtitle() {
+      const t = this.todayTeaching
+      const parts = [t.dateLabel || '']
+      if (t.termLabel) parts.push(t.termLabel + (t.weekNo ? `第 ${t.weekNo} 教学周` : ''))
+      return parts.filter(Boolean).join(' · ')
+    },
+    trendRows() {
+      return (this.dataTrends.series || []).flatMap((s) => (s.points || []).map((p) => ({
+        date: p.date, series: s.label, value: p.value
+      })))
+    },
+    trendHasData() {
+      return (this.dataTrends.series || []).some((s) => (s.points || []).some((p) => p.value > 0))
+    },
+    trendChartSpec() {
+      return {
+        type: 'line',
+        data: this.trendRows,
+        encode: { x: 'date', y: 'value', color: 'series' },
+        shape: 'smooth',
+        style: { lineWidth: 2.5, point: true },
+        legend: { color: { position: 'bottom' } }
+      }
     }
   },
   watch: {
@@ -285,6 +464,12 @@ export default {
     termRange(t) {
       if (t.startDate && t.endDate) return `${t.startDate} ~ ${t.endDate}`
       return '起止日期未设置'
+    },
+    runStatusTagType(status) {
+      return RUN_STATUS_TYPE[status] || 'default'
+    },
+    formatSlots(slots) {
+      return (slots || []).map((s) => `第${s}节`).join('、') || '-'
     },
     scrollToPanel(panel) {
       const id = PANEL_ANCHORS[(panel || '').toString()]
@@ -318,6 +503,11 @@ export default {
         this.warningReminders = d.warningReminders || {}
         this.graduationWarnings = d.graduationWarnings || {}
         this.todos = d.todos || []
+        this.todayTeaching = d.todayTeaching || {}
+        this.todayCourses = d.todayCourses || {}
+        this.scheduleChangeReminders = d.scheduleChangeReminders || {}
+        this.resourceOccupancy = d.resourceOccupancy || {}
+        this.dataTrends = d.dataTrends || {}
       } else {
         this.remindersError = res.message
       }
@@ -377,5 +567,11 @@ export default {
 }
 .aa-todo-row {
   align-items: center;
+}
+.aa-more-hint {
+  color: var(--text-500, #646a73);
+  font-size: 12px;
+  text-align: center;
+  padding-top: 4px;
 }
 </style>

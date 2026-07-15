@@ -53,7 +53,8 @@ def dashboard(user=Depends(require_staff)):
     return success(svc.dashboard(user))
 
 
-@router.get("/dashboard/reminders", summary="教务看板提醒聚合（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办）")
+@router.get("/dashboard/reminders", summary="教务看板提醒聚合（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办"
+                                             "/今日教学运行/今日课程/调停课提醒/教学资源占用/教务数据趋势）")
 def dashboard_reminders(user=Depends(require_staff)):
     return success(svc.dashboard_reminders(user))
 
