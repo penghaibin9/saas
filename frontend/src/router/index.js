@@ -197,6 +197,12 @@ router.beforeEach((to, from, next) => {
     next({ path: '/login', query: { redirect: to.fullPath, reason: 'platform-owner-only' } })
     return
   }
+  // 平台超管是控制面身份，不属于任何学校租户。除了登录/错误等公开页，
+  // 一律收敛到平台控制台，避免其误进入学校端并把“全平台”误解为“本校”。
+  if (!isPublic && isPlatformSuperAdmin() && !isPlatform) {
+    next({ path: '/admin/platform/overview', replace: true })
+    return
+  }
   // 岗位实习路由权限门（P5.1 / 07 §8.5.4）：已知身份权限集且明确不匹配 meta.permissionKey → 403。
   // fail-open：未知/未加载时放行（后端 require_permission 仍是最终边界）。/security/403 为 public，不成环。
   if (!canEnterRoute(to.meta)) {
