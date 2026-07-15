@@ -728,7 +728,18 @@ export const academicAffairsEvaluationApi = {
   submitAppeal(resultId, reason) { return call(() => request(`${BASE}/evaluation/appeals`, { method: 'POST', body: { resultId, reason } })) },
   listAppeals(params = {}) { return callList(`${BASE}/evaluation/appeals`, params) },
   reviewAppeal(id, action, reason = '') { return call(() => request(`${BASE}/evaluation/appeals/${id}/review`, { method: 'POST', body: { action, reason } })) },
-  stats(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/stats`)) }
+  stats(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/stats`)) },
+  archivedBatches(params = {}) { return callList(`${BASE}/evaluation/batches`, { ...params, status: 'ARCHIVED' }) },
+  genRoleTasks(id, evaluatorType, assignments) { return call(() => request(`${BASE}/evaluation/batches/${id}/role-tasks`, { method: 'POST', body: { evaluatorType, assignments } })) },
+  myRoleTasks(evaluatorType, batchId) { return call(() => request(`${BASE}/evaluation/my-role-tasks`, { params: batchId ? { evaluatorType, batchId } : { evaluatorType } })) },
+  async exportEvaluation(id, domain, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/evaluation/batches/${id}/export`, { method: 'POST', body: { domain, purpose } })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  }
 }
 
 /* ═══════════ 教学质量（零新表 · /academic-affairs/quality/*） ═══════════ */

@@ -413,7 +413,12 @@ export const NAV_PLAN = [
     mod('aa-evaluation', '教学评价', '/admin/academic-affairs/evaluation', [
       I('评教批次（结果分级）', '/admin/academic-affairs/evaluation?tab=batches', 'academicAffairs.evaluation.view'),
       I('申诉审核', '/admin/academic-affairs/evaluation?tab=appeals', 'academicAffairs.evaluation.view'),
-      ...P('学生评教(小程序)', '教师自评', '同行评价', '督导评价', '评价统计', '评价归档')
+      I('学生评教(小程序)', '/admin/academic-affairs/evaluation?tab=studentEval', 'academicAffairs.evaluation.view'),
+      I('教师自评', '/admin/academic-affairs/evaluation?tab=selfEval', 'academicAffairs.evaluation.selfEval.submit'),
+      I('同行评价', '/admin/academic-affairs/evaluation?tab=peerEval', 'academicAffairs.evaluation.peerEval.submit'),
+      I('督导评价', '/admin/academic-affairs/evaluation?tab=supervisorEval', 'academicAffairs.evaluation.supervisorEval.submit'),
+      I('评价统计', '/admin/academic-affairs/evaluation?tab=evalStats', 'academicAffairs.evaluation.view'),
+      I('评价归档', '/admin/academic-affairs/evaluation?tab=archive', 'academicAffairs.evaluation.view')
     ]),
     mod('aa-quality', '教学质量', '/admin/academic-affairs/quality', [
       I('运行质量看板 + 质量报告导出', '/admin/academic-affairs/quality', 'academicAffairs.quality.dashboard.view'),

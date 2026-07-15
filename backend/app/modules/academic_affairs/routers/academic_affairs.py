@@ -2482,6 +2482,13 @@ def sched_conflict_report(bid: int = Path(...), user=Depends(require_permission(
 _EVAL_MANAGE = "academicAffairs.evaluation.batch.manage"
 _EVAL_VIEW = "academicAffairs.evaluation.view"
 _EVAL_APPEAL = "academicAffairs.evaluation.appeal.review"
+# Tier1 R2 新增（学生评教PC查看/教师自评/同行评价/督导评价/评价统计导出/评价归档导出）：
+# 沿用既有代码现状——本文件全部端点权限码均未在 ROLE_PERMISSIONS 逐条注册，而是命中角色已授予的
+# "academicAffairs.*" 通配（ACADEMIC_ADMIN/ACADEMIC_TEACHER 均持有该通配，见 backend/app/core/permissions.py:50-51）；
+# 真正的"是否本人评价任务"越权拦截在 service 层按 evaluator_key/_derive_keys 实例化（见 §10 权限矩阵设计），
+# 不新增 ROLE_PERMISSIONS 角色行（避免与并行子任务共同修改该共享文件冲突，亦无督导专属角色可挂）。
+_EVAL_ROLE_MANAGE = "academicAffairs.evaluation.batch.manage"
+_EVAL_EXPORT = "academicAffairs.evaluation.export"
 
 
 class EvalBatchBody(BaseModel):
@@ -2511,6 +2518,21 @@ class EvalAppealBody(BaseModel):
 class EvalAppealReviewBody(BaseModel):
     action: str = Field(..., description="RESOLVE/REJECT")
     reason: Optional[str] = Field("", max_length=1000)
+
+
+class EvalRoleAssignment(BaseModel):
+    teachingTaskId: str = Field(..., min_length=1)
+    evaluatorKey: Optional[str] = Field(None, max_length=100, description="PEER/SUPERVISOR必填；SELF缺省=授课教师本人")
+
+
+class EvalRoleGenBody(BaseModel):
+    evaluatorType: str = Field(..., description="SELF/PEER/SUPERVISOR")
+    assignments: List[EvalRoleAssignment] = Field(default_factory=list)
+
+
+class EvalExportBody(BaseModel):
+    domain: str = Field(..., description="results/stats")
+    purpose: str = Field(..., min_length=5, max_length=200)
 
 
 # ── 批次 ──
@@ -2566,8 +2588,20 @@ def eval_archive(bid: int = Path(...), user=Depends(require_permission(_EVAL_MAN
     return success(evaluation_svc.archive_batch(user, bid), message="已归档")
 
 
-# ── 提交评价（学生匿名/教师自评/同行/督导） ──
-@router.post("/evaluation/submit", summary="提交评价（学生匿名不存身份）")
+# ── 教师自评/同行评价/督导评价：生成应评任务 + 查看我的任务 ──
+@router.post("/evaluation/batches/{bid}/role-tasks", summary="生成教师自评/同行评价/督导评价应评任务")
+def eval_role_tasks(body: EvalRoleGenBody, bid: int = Path(...), user=Depends(require_permission(_EVAL_ROLE_MANAGE))):
+    assignments = [a.model_dump() for a in body.assignments]
+    return success(evaluation_svc.generate_role_tasks(user, bid, body.evaluatorType, assignments), message="已生成")
+
+
+@router.get("/evaluation/my-role-tasks", summary="我的评价任务（自评/同行/督导，按登录身份匹配 evaluatorKey）")
+def eval_my_role_tasks(evaluatorType: str, batchId: Optional[str] = None, user=Depends(require_staff)):
+    return success({"items": evaluation_svc.list_my_role_tasks(user, evaluatorType, batchId)})
+
+
+# ── 提交评价（学生匿名/教师自评/同行/督导；越权与重复提交校验见 service 层） ──
+@router.post("/evaluation/submit", summary="提交评价（学生匿名不存身份；自评/同行/督导校验本人）")
 def eval_submit(body: EvalSubmitBody, user=Depends(get_current_user)):
     return success(evaluation_svc.submit_evaluation(user, int(body.taskId), body.answers, body.objectiveScore, body.comment), message="已提交")
 
@@ -2602,9 +2636,20 @@ def eval_appeal_review(body: EvalAppealReviewBody, aid: int = Path(...), user=De
     return success(evaluation_svc.review_appeal(user, aid, body.action, body.reason), message="已处理")
 
 
-@router.get("/evaluation/batches/{bid}/stats", summary="评价统计")
+@router.get("/evaluation/batches/{bid}/stats", summary="评价统计（结果分级+按评价类型参评率）")
 def eval_stats(bid: int = Path(...), user=Depends(require_permission(_EVAL_VIEW))):
     return success(evaluation_svc.stats(user, bid))
+
+
+@router.post("/evaluation/batches/{bid}/export", summary="导出评价结果/参评统计 xlsx（评价统计/评价归档共用）")
+def eval_export(body: EvalExportBody, bid: int = Path(...), user=Depends(require_permission(_EVAL_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = evaluation_svc.export_evaluation_xlsx(user, bid, body.domain, body.purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename=evaluation_{body.domain}_{bid}.xlsx"})
 
 
 # ══════════════ 教学质量（13B，零新表；/academic-affairs/quality/*） ══════════════
