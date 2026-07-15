@@ -245,6 +245,17 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/roster/import/confirm`, { method: 'POST', body: { rows } }))
   },
 
+  /* ── 学籍信息更正（Tier1 R3：学号/姓名/性别/证件号/年级，区别于「学籍异动」不产生学籍状态迁移） ── */
+  getRosterCorrections(params = {}) {
+    return callList(`${BASE}/roster/corrections`, params)
+  },
+  createRosterCorrection(body) {
+    return call(() => request(`${BASE}/roster/corrections`, { method: 'POST', body }))
+  },
+  reviewRosterCorrection(correctionId, action, note) {
+    return call(() => request(`${BASE}/roster/corrections/${correctionId}/review`, { method: 'POST', body: { action, note } }))
+  },
+
   /* ── 入学 / 学年注册 ── */
   getRegistrationBatches(params = {}) {
     return callList(`${BASE}/registration-batches`, params)

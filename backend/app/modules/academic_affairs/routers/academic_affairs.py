@@ -388,6 +388,45 @@ def roster_reveal(body: RosterRevealBody, studentId: int = Path(...), user=Depen
     return success(svc.reveal_roster_sensitive(studentId, user, body.reason))
 
 
+# ── 学籍信息更正（Tier1 R3）：区别于「学籍异动」——只纠正学号/姓名/性别/证件号/年级录入错误，
+# 不产生学籍状态迁移；单步审核（PENDING→APPROVED 同步主档 / REJECTED）。
+_ROSTER_CORRECTION_APPLY = "academicAffairs.roster.correction.apply"
+_ROSTER_CORRECTION_VIEW = "academicAffairs.roster.correction.view"
+_ROSTER_CORRECTION_REVIEW = "academicAffairs.roster.correction.review"
+
+
+class RosterCorrectionCreate(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    fieldKey: str = Field(..., description="STUDENT_NO/REAL_NAME/GENDER/ID_CARD/GRADE")
+    newValue: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=5, description="更正原因（≥5 字，必填，写审计）")
+
+
+class RosterCorrectionReview(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    note: Optional[str] = Field("", max_length=500)
+
+
+@router.post("/roster/corrections", summary="发起学籍信息更正（学号/姓名/性别/证件号/年级）")
+def roster_correction_create(body: RosterCorrectionCreate, user=Depends(require_permission(_ROSTER_CORRECTION_APPLY))):
+    return success(svc.create_roster_correction(user, body.studentId, body.fieldKey, body.newValue, body.reason),
+                   message="更正申请已提交")
+
+
+@router.get("/roster/corrections", summary="学籍信息更正列表（范围过滤+敏感字段脱敏）")
+def roster_correction_list(status: Optional[str] = None, studentId: Optional[str] = None,
+                           fieldKey: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                           user=Depends(require_any_permission(_ROSTER_CORRECTION_VIEW, _ROSTER_CORRECTION_REVIEW))):
+    items, total = svc.list_roster_corrections(user, status, studentId, fieldKey, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/roster/corrections/{correctionId}/review", summary="学籍信息更正审核（通过即同步主档/驳回）")
+def roster_correction_review(body: RosterCorrectionReview, correctionId: int = Path(...),
+                             user=Depends(require_permission(_ROSTER_CORRECTION_REVIEW))):
+    return success(svc.review_roster_correction(correctionId, user, body.action, body.note), message="已处理")
+
+
 # ── 入学/学年注册 ──
 class RegBatchCreate(BaseModel):
     batchName: str = Field(..., min_length=1)

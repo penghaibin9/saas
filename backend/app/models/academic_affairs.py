@@ -1193,3 +1193,26 @@ class AaClassAdjustmentRequest(PKMixin, TenantMixin, CommonMixin, Base):
     checked_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/CHECKED/EXECUTED/CANCELLED")
+
+
+class AaStudentCorrection(PKMixin, TenantMixin, CommonMixin, Base):
+    """学籍信息更正申请（t_aa_student_correction，学籍管理 Tier1 R3）：教务员/学院教务发现学籍档案
+    身份类数据录入错误（学号/姓名/性别/证件号/年级）据实发起更正，教务处/学院审核通过后同步主档并留痕。
+    区别于「学籍异动」（student_status/college/major/class 受控扩展，唯一入口 change_student_status()）——
+    本表只纠正身份类数据错误，不产生学籍状态迁移，字段范围明确排除 status/college/major/class（那些变更
+    必须走学籍异动，禁止借更正之名绕过单一写入口红线）。单步审核（PENDING→APPROVED/REJECTED），
+    对齐 t_aa_registration_deferral 同款轻量审核模式（不接入通用 Workflow 引擎，成本与业务复杂度匹配）。
+    """
+    __tablename__ = "t_aa_student_correction"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    field_key: Mapped[str] = mapped_column(String(30), nullable=False,
+                                           comment="STUDENT_NO/REAL_NAME/GENDER/ID_CARD/GRADE")
+    old_value: Mapped[str | None] = mapped_column(String(500), comment="发起时快照（脱敏展示用原文，见服务层）")
+    new_value: Mapped[str] = mapped_column(String(500), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/APPROVED/REJECTED")
+    review_note: Mapped[str | None] = mapped_column(String(500))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reviewed_by: Mapped[int | None] = mapped_column(BigInteger)

@@ -35,6 +35,7 @@
         <AppSectionCard title="快捷入口">
           <div class="aa-quick-actions">
             <button class="mp-btn" :disabled="!detail.enrolled" @click="goChange">发起学籍异动</button>
+            <button class="mp-btn" @click="goCorrection">发起学籍信息更正</button>
             <button class="mp-btn" @click="goTranscript">查看成绩单</button>
             <button class="mp-btn" @click="goChanges">查看该生全部异动记录</button>
           </div>
@@ -156,6 +157,9 @@ export default {
     },
     goChange() {
       this.$router.push({ path: '/admin/academic-affairs/status-changes/new', query: { studentId: this.studentId, name: this.detail?.realName } })
+    },
+    goCorrection() {
+      this.$router.push({ path: '/admin/academic-affairs/roster/corrections', query: { studentId: this.studentId, name: this.detail?.realName } })
     },
     goTranscript() {
       this.$router.push(`/admin/academic-affairs/transcript?studentId=${this.studentId}`)

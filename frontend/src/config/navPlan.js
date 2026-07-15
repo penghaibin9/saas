@@ -269,7 +269,23 @@ export const NAV_PLAN = [
       I('学籍状态', '/admin/academic-affairs/roster/status', 'academicAffairs.roster.view'),
       I('学籍异动记录', '/admin/academic-affairs/roster/changes', 'academicAffairs.statusChange.view'),
       I('学籍导入导出', '/admin/academic-affairs/roster/import-export', 'academicAffairs.roster.import'),
-      ...P('休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正', '学籍统计', '学籍归档')
+      // 2026-07-16 Tier1 R3 续工：休学/退学/保留学籍=学籍名册按 student_status 过滤的分类视图
+      // （AaRosterListView 新支持 ?status= 深链预填，不重复造页）；复学/转专业因终态回落 REGISTERED、
+      // 无法用 student_status 区分，改从「学籍异动」流水按 changeType 取结果视图（AaRosterChangeResultListView，
+      // 只读+链接学籍档案，不提供发起入口，不与学籍异动模块的申请/审批功能重复）；学籍信息更正=全新生产级
+      // 功能（学号/姓名/性别/证件号/年级，单步审核同步主档，明确排除学籍状态/院系专业班级）；学籍统计/
+      // 学籍归档=复用「教务统计」「教务归档」既有页面的轻量入口（?scope=roster/?entry=studentStatus 仅用于
+      // 侧栏 leafKey 去重，不改变目标页行为，见 navPlan 唯一 leafKey 规则与 aa-archive/aa-stats 同类先例）。
+      I('休学学生', '/admin/academic-affairs/roster?status=SUSPENDED', 'academicAffairs.roster.view'),
+      I('复学学生', '/admin/academic-affairs/roster/resumed-students', 'academicAffairs.statusChange.view'),
+      I('退学学生', '/admin/academic-affairs/roster?status=WITHDRAWN', 'academicAffairs.roster.view'),
+      I('转专业学生', '/admin/academic-affairs/roster/transferred-major-students', 'academicAffairs.statusChange.view'),
+      I('保留学籍', '/admin/academic-affairs/roster?status=RETAINED', 'academicAffairs.roster.view'),
+      I('学籍信息更正', '/admin/academic-affairs/roster/corrections', 'academicAffairs.roster.correction.view'),
+      // 注意：navRefMatches 比较候选 query 时用原始字符串（不重新排序），故这里必须已按 key 字母序书写
+      // （scope < tab），否则真实点击该叶子时 $route.fullPath 排序后与候选串不等，导致高亮失效。
+      I('学籍统计', '/admin/academic-affairs/stats?scope=roster&tab=statusChange', 'academicAffairs.stats.view'),
+      I('学籍归档', '/admin/academic-affairs/archive?entry=studentStatus', 'academicAffairs.archive.view')
     ]),
     mod('aa-registration', '注册管理', '/admin/academic-affairs/registration', [
       I('注册批次', '/admin/academic-affairs/registration'),
