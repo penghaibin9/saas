@@ -1,15 +1,20 @@
 """13B 教务中心 API（/api/v1/academic-affairs/*）—— P1：首页 + 学年学期/校历/节次 + 学籍名册 + 入学注册。"""
 from __future__ import annotations
 
+import io
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, File, Path, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import AppException
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
+from app.services import xlsx_util
+
+_XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _require_student(user: dict = Depends(get_current_user)) -> dict:
@@ -2554,6 +2559,83 @@ def sched_avail_review(body: AvailReviewBody, aid: int = Path(...), user=Depends
 @router.get("/scheduling/batches/{bid}/conflict-report", summary="批次全量冲突报告（HARD/SOFT 分级）")
 def sched_conflict_report(bid: int = Path(...), user=Depends(require_permission(_SCHED_VIEW))):
     return success(scheduling_svc.conflict_report(user, bid))
+
+
+# ══════════════ 排课管理 Tier1 R2 续工（03/05/07/10/11/13 号卡） ══════════════
+_SCHED_EDIT = "academicAffairs.schedule.edit"
+_SCHED_IMPORT = "academicAffairs.schedule.import"
+_SCHED_ARCHIVE = "academicAffairs.schedule.archive"
+_SCHED_TEACHER_CONFIRM = "academicAffairs.schedule.teacherConfirm"
+
+
+class TeacherObjectBody(BaseModel):
+    itemId: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=5, max_length=300)
+
+
+class AdjustItemBody(BaseModel):
+    weekday: int = Field(..., ge=1, le=7)
+    slotNo: int = Field(..., ge=1)
+    classroom: Optional[str] = None
+    weekParity: str = Field("ALL")
+
+
+# ── 05号卡·教室可用时间 ──
+@router.get("/schedule-batches/{batchId}/room-view", summary="教室占用查询（05号卡：辅助人工排课选教室）")
+def schedule_room_view(batchId: int = Path(...), classroom: str = "",
+                       user=Depends(require_permission(_SCHED_VIEW))):
+    return success(sched_svc.room_view(batchId, user, classroom))
+
+
+# ── 10号卡·排课结果 ──
+@router.get("/schedule-batches/{batchId}/summary", summary="排课结果汇总统计（10号卡：预发布前核对）")
+def schedule_summary(batchId: int = Path(...), user=Depends(require_permission(_SCHED_VIEW))):
+    return success(scheduling_svc.summary(user, batchId))
+
+
+# ── 07号卡·自动排课预留（Excel结果导入通道；不写算法本体） ──
+@router.get("/schedule-batches/import/template", summary="排课结果导入模板下载（07号卡）")
+def schedule_import_template(user=Depends(require_permission(_SCHED_IMPORT))):
+    data = xlsx_util.build_template_xlsx(sched_svc.IMPORT_HEADERS, sample=sched_svc.IMPORT_SAMPLE,
+                                         notes=sched_svc.IMPORT_NOTES, required=sched_svc.IMPORT_REQUIRED)
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA, headers={
+        "Content-Disposition": "attachment; filename=schedule_import_template.xlsx"})
+
+
+@router.post("/schedule-batches/{batchId}/import/xlsx", summary="上传Excel导入排课结果（07号卡：自动排课预留=结果导入通道）")
+async def schedule_import_xlsx(batchId: int = Path(...), file: UploadFile = File(...),
+                               user=Depends(require_permission(_SCHED_IMPORT))):
+    content = await file.read()
+    rows = xlsx_util.read_xlsx(content, sched_svc.IMPORT_HEADER_MAP)
+    if len(rows) > sched_svc.IMPORT_MAX_ROWS:
+        raise AppException("VALIDATION_ERROR", f"单批导入行数不得超过 {sched_svc.IMPORT_MAX_ROWS} 行")
+    rows = sched_svc.sanitize_import_rows(rows)
+    return success(sched_svc.import_items(batchId, user, rows), message="导入完成")
+
+
+# ── 11号卡·排课调整（预发布阶段教师异议 → 定点改排） ──
+@router.post("/schedule-batches/{batchId}/teacher-object", summary="教师对本人课表提出异议（11号卡）")
+def schedule_teacher_object(body: TeacherObjectBody, batchId: int = Path(...),
+                            user=Depends(require_permission(_SCHED_TEACHER_CONFIRM))):
+    return success(sched_svc.teacher_object(batchId, user, body.itemId, body.reason), message="异议已提交")
+
+
+@router.get("/schedule-batches/{batchId}/objections", summary="本批次待处理教师异议清单（11号卡）")
+def schedule_objections(batchId: int = Path(...), user=Depends(require_permission(_SCHED_VIEW))):
+    return success({"items": sched_svc.list_objections(batchId, user)})
+
+
+@router.put("/schedule-batches/{batchId}/items/{itemId}", summary="排课调整（11号卡：处理教师异议定点改排）")
+def schedule_adjust_item(body: AdjustItemBody, batchId: int = Path(...), itemId: int = Path(...),
+                         user=Depends(require_permission(_SCHED_EDIT))):
+    return success(sched_svc.adjust_item(batchId, itemId, user, body.weekday, body.slotNo,
+                                         body.classroom, body.weekParity), message="已改排")
+
+
+# ── 13号卡·排课归档（区别于 void-reissue 应急作废重排） ──
+@router.post("/schedule-batches/{batchId}/archive", summary="排课归档（13号卡：学期结束正式归档）")
+def schedule_archive(batchId: int = Path(...), user=Depends(require_permission(_SCHED_ARCHIVE))):
+    return success(sched_svc.archive(batchId, user), message="已归档")
 
 
 # ══════════════ 教学评价（13B，/academic-affairs/evaluation/*） ══════════════

@@ -241,3 +241,41 @@ def conflict_report(user, batch_id):
                                                             "teacherName": it.teacher_name}})
         return {"batchId": str(batch_id), "hardCount": len(hard), "softCount": len(soft),
                 "canPrePublish": len(hard) == 0, "hardConflicts": hard, "softConflicts": soft}
+
+
+# ══════════ 10号卡·排课结果：汇总统计（预发布前核对站） ══════════
+
+def summary(user, batch_id):
+    """已排/应排任务数与学时、HARD/SOFT 冲突数——预发布前最后核对（10号卡）。
+
+    应排任务口径：与本课表批次同学期(term_id)的 READY 教学任务（进入排课资源池，见 SM-06 §7.2）；
+    已排任务：本批次条目中 task_id 命中该 READY 集合的去重任务数；已排学时=条目数（每条=1节）；
+    应排学时=READY 任务 weekly_hours 汇总。冲突数复用 conflict_report（HARD/SOFT 分级）。"""
+    from app.models import AaScheduleBatch, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
+    with session() as db:
+        _ctx(user, db)
+        b = db.get(AaScheduleBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("课表批次不存在")
+        tb_ids = [r[0] for r in db.query(AaTeachingTaskBatch.id).filter(
+            AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == b.term_id,
+            AaTeachingTaskBatch.is_deleted.is_(False)).all()]
+        ready_tasks = db.query(AaTeachingTask).filter(
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.batch_id.in_(tb_ids or [-1]),
+            AaTeachingTask.status == "READY", AaTeachingTask.is_deleted.is_(False)).all()
+        ready_task_ids = {t.id for t in ready_tasks}
+        total_tasks = len(ready_tasks)
+        expected_hours = sum(t.weekly_hours or 0 for t in ready_tasks)
+        items = db.query(AaScheduleItem).filter(
+            AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == b.id,
+            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False)).all()
+        scheduled_task_ids = {it.task_id for it in items if it.task_id}
+        scheduled_tasks = len(scheduled_task_ids & ready_task_ids)
+        scheduled_hours = len(items)
+        rate = round(scheduled_tasks / total_tasks * 100, 1) if total_tasks else 0.0
+        cr = conflict_report(user, batch_id)
+        return {"batchId": str(batch_id), "batchStatus": b.status,
+                "totalTasks": total_tasks, "scheduledTasks": scheduled_tasks, "completionRate": rate,
+                "scheduledHours": scheduled_hours, "expectedHours": expected_hours,
+                "hardConflicts": cr["hardCount"], "softConflicts": cr["softCount"],
+                "canPrePublish": cr["canPrePublish"]}

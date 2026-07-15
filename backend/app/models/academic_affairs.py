@@ -324,6 +324,9 @@ class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="EFFECTIVE", index=True)
     change_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
                                                   comment="→ t_aa_schedule_change 生成本项的调停课单(变更标记/回链)；null=原始排课")
+    objection_status: Mapped[str | None] = mapped_column(String(20), index=True,
+                                                          comment="11号卡·排课调整：教师异议状态 PENDING=待改排；null=无异议")
+    objection_reason: Mapped[str | None] = mapped_column(String(500), comment="教师异议原因（≥5字）")
 
 
 # ═══════════ 成绩录入组（13B-P5；平时+期末按比例，发布原子回写 t_acad_grade）═══════════
