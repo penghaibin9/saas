@@ -462,7 +462,13 @@ export const NAV_PLAN = [
     mod('aa-resources', '教学资源', '/admin/academic-affairs/classrooms', [
       I('教室资源', '/admin/academic-affairs/classrooms', 'academicAffairs.classroom.view'),
       I('教室预约', '/admin/academic-affairs/classroom-bookings', 'academicAffairs.classroom.view'),
-      ...P('实训室资源', '设备资源', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')
+      I('实训室资源', '/admin/academic-affairs/resources/labs', 'academicAffairs.lab.view'),
+      I('设备资源', '/admin/academic-affairs/resources/equipment', 'academicAffairs.equipment.view'),
+      I('实训室预约', '/admin/academic-affairs/resources/lab-bookings', 'academicAffairs.lab.view'),
+      I('资源占用', '/admin/academic-affairs/resources/occupancy', 'academicAffairs.resourceOccupancy.view'),
+      I('资源冲突', '/admin/academic-affairs/resources/conflicts', 'academicAffairs.resourceConflict.view'),
+      I('资源维修', '/admin/academic-affairs/resources/repairs', 'academicAffairs.resourceRepair.view'),
+      I('资源统计', '/admin/academic-affairs/resources/stats', 'academicAffairs.resourceStats.view')
     ]),
     mod('aa-evaluation', '教学评价', '/admin/academic-affairs/evaluation', [
       I('评教批次（结果分级）', '/admin/academic-affairs/evaluation?tab=batches', 'academicAffairs.evaluation.view'),

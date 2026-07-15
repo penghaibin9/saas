@@ -95,6 +95,8 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaClassAdjustmentRequest, AaClassTimeBand,
                                          AaClassroom, AaClassroomBooking,
                                          AaCourse, AaDeferredExam,
+                                         AaLabResource, AaEquipment,
+                                         AaLabBooking, AaResourceRepair,
                                          AaMajorDirection,
                                          AaEvaluationAppeal, AaEvaluationBatch,
                                          AaEvaluationRecord, AaEvaluationResult,

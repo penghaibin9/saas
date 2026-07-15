@@ -488,6 +488,94 @@ class AaClassroomBooking(PKMixin, TenantMixin, CommonMixin, Base):
                                         comment="PENDING/APPROVED/REJECTED/CANCELLED")
 
 
+# ═══════════ 教学资源续卡（13B-R4 续卡；教室字典框架扩展到实训室/设备，复用同一套
+# 预约/占用/冲突检测/状态机框架而非重新发明；见 docs/.../教学资源-生产级施工包.md §续卡）═══════════
+
+
+class AaLabResource(PKMixin, TenantMixin, CommonMixin, Base):
+    """实训室资源字典。结构对齐教室字典（capacity/type/status 三态同口径），另加责任人字段——
+    真实高职实训室按"管理责任人"负责制管理，区别于教室由教务处统一维护（外部证据：广东工商职业技术
+    大学《实验实训室建设与管理办法》第七条"各实训基地设管理责任人（专兼职均可）"）。
+    唯一(tenant,lab_code)。可用状态 AVAILABLE/DISABLED/MAINTENANCE（与教室同口径复用）。"""
+    __tablename__ = "t_aa_lab_resource"
+
+    lab_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="实训室编号")
+    lab_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="实训室名称")
+    building_name: Mapped[str | None] = mapped_column(String(100), comment="所在楼栋(可空)")
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="容量(工位数)")
+    lab_type: Mapped[str] = mapped_column(String(30), nullable=False, default="SKILL",
+                                          comment="SKILL/COMPUTER/MECHANICAL/ELECTRICAL/OTHER 技能实训/计算机/机械/电气/其他")
+    responsible_name: Mapped[str | None] = mapped_column(String(50), comment="责任人(实训室管理员)")
+    responsible_key: Mapped[str | None] = mapped_column(String(100), comment="责任人账号key(可选关联)")
+    remark: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="AVAILABLE", index=True,
+                                        comment="AVAILABLE/DISABLED/MAINTENANCE 可用/停用/维修中")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "lab_code", name="uk_aa_lab_resource"),)
+
+
+class AaEquipment(PKMixin, TenantMixin, CommonMixin, Base):
+    """设备资源（教学/实训设备台账）。owner_kind+owner_id 指向所在教室或实训室(可空=中心库存未分配)。
+    状态口径 IN_USE/IDLE/MAINTENANCE/SCRAPPED 在用/闲置/维修中/已报废——"在用/维修中/报废"三态取自
+    湖南城建职业技术学院《实训设备管理制度》第十四/十五条原文，IDLE(闲置)为本项目补充的过渡态
+    (ai_proposal，新购未分配场景)。"""
+    __tablename__ = "t_aa_equipment"
+
+    equipment_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="资产编号")
+    equipment_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="设备名称")
+    spec_model: Mapped[str | None] = mapped_column(String(200), comment="规格型号")
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="数量")
+    owner_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="NONE",
+                                            comment="CLASSROOM/LAB/NONE 所在教室/实训室/未分配")
+    owner_id: Mapped[int | None] = mapped_column(BigInteger, comment="所在教室或实训室 id")
+    owner_label: Mapped[str | None] = mapped_column(String(150), comment="所在位置文本快照")
+    responsible_name: Mapped[str | None] = mapped_column(String(50), comment="责任人")
+    purchase_date: Mapped[str | None] = mapped_column(String(20), comment="购置日期 YYYY-MM-DD(自由文本)")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="IN_USE", index=True,
+                                        comment="IN_USE/IDLE/MAINTENANCE/SCRAPPED 在用/闲置/维修中/报废")
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+    __table_args__ = (UniqueConstraint("tenant_id", "equipment_code", name="uk_aa_equipment"),)
+
+
+class AaLabBooking(PKMixin, TenantMixin, CommonMixin, Base):
+    """实训室预约（占用登记）。与 AaClassroomBooking 同一冲突检测算法(同资源同日同节次已 APPROVED 冲突
+    →409)，复用同一套预约框架而非重新发明——见续卡 §5 设计说明；表结构独立以避免改动已上线的教室预约表。"""
+    __tablename__ = "t_aa_lab_booking"
+
+    lab_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    lab_text: Mapped[str | None] = mapped_column(String(100))
+    booking_date: Mapped[str] = mapped_column(String(20), nullable=False, comment="YYYY-MM-DD")
+    slot_no: Mapped[int] = mapped_column(Integer, nullable=False, comment="节次")
+    purpose: Mapped[str | None] = mapped_column(String(300))
+    applicant_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    applicant_name: Mapped[str | None] = mapped_column(String(100))
+    review_reason: Mapped[str | None] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/APPROVED/REJECTED/CANCELLED")
+
+
+class AaResourceRepair(PKMixin, TenantMixin, CommonMixin, Base):
+    """资源维修工单（教室/实训室/设备共用一张台账）。登记故障→维修中→完成恢复可用，简化自三家真实高职
+    院校仪器设备维修管理办法的"报告→组织维修→验收完成"核心链（外部证据：广州科技职业技术大学《实训
+    (验)室教学、科研仪器设备维修管理办法》第一~七条；湖南城建职业技术学院《实训设备管理制度》第十四条
+    "设备出现故障时，应立即报告管理部门，由管理部门组织维修"），略去大额配件采购的多级金额审批分支
+    （校领导/董事长审批，与本项目当前审批体系不匹配，登记为 ai_proposal 简化，backlog 见续卡 §10）。"""
+    __tablename__ = "t_aa_resource_repair"
+
+    resource_kind: Mapped[str] = mapped_column(String(20), nullable=False, index=True,
+                                                comment="CLASSROOM/LAB/EQUIPMENT")
+    resource_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    resource_label: Mapped[str | None] = mapped_column(String(150), comment="资源文本快照")
+    fault_desc: Mapped[str] = mapped_column(String(500), nullable=False, comment="故障描述")
+    reporter_key: Mapped[str | None] = mapped_column(String(100))
+    reporter_name: Mapped[str | None] = mapped_column(String(100))
+    repair_note: Mapped[str | None] = mapped_column(String(500), comment="维修处理说明")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="REPORTED", index=True,
+                                        comment="REPORTED/IN_REPAIR/DONE/CANCELLED 已报修/维修中/已完成/已取消")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, comment="完成时间")
+
+
 # ═══════════ 调停课组（13B-R2/SM-08；调课/停课/补课，审批通过后改写课表保留原课位历史）═══════════
 
 
