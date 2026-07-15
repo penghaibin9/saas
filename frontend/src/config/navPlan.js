@@ -236,12 +236,12 @@ export const NAV_PLAN = [
     ]),
     mod('aa-terms', '学年学期', '/admin/academic-affairs/terms', [
       I('学期管理', '/admin/academic-affairs/terms'),
-      ...P('学年管理'),
+      I('学年管理', '/admin/academic-affairs/terms/years', 'academicAffairs.term.view'),
       I('当前学期设置', '/admin/academic-affairs/terms/current', 'academicAffairs.term.view'),
       I('学期周次', '/admin/academic-affairs/terms/weeks', 'academicAffairs.term.view'),
       I('教学周配置', '/admin/academic-affairs/terms/teaching-weeks', 'academicAffairs.term.manage'),
       I('学期状态', '/admin/academic-affairs/terms/status', 'academicAffairs.term.manage'),
-      ...P('学期切换记录'),
+      I('学期切换记录', '/admin/academic-affairs/terms/switch-log', 'academicAffairs.term.view'),
       I('学期归档', '/admin/academic-affairs/terms/archive-status', 'academicAffairs.term.view')
     ]),
     mod('aa-calendar', '校历节次', '/admin/academic-affairs/calendar', [

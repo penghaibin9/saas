@@ -136,6 +136,19 @@ def terms_archive_overview(user=Depends(require_permission(_TERM_VIEW))):
     return success({"items": svc.term_archive_overview(user)})
 
 
+# ── 学年学期 续工 R3：学年管理（按学年汇总） / 学期切换记录（当前学期切换审计） ──
+# 均为字面量路径，须注册在 /terms/{termId} 之前，规则同上（FastAPI 按声明顺序匹配路由）。
+@router.get("/terms/years", summary="学年管理：按学年汇总学期（只读聚合，不新建表）")
+def terms_years(user=Depends(require_permission(_TERM_VIEW))):
+    return success({"items": svc.list_academic_years(user)})
+
+
+@router.get("/terms/switch-log", summary="学期切换记录：当前学期切换审计（PUBLISH/SET_CURRENT 流水推导）")
+def terms_switch_log(page: int = 1, pageSize: int = 50, user=Depends(require_permission(_TERM_VIEW))):
+    items, total = svc.list_term_switch_log(user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
 # 注：term_detail 的 {termId} 路径必须注册在上面的字面量路径 /terms/archive-overview 之后——
 # FastAPI 按声明顺序匹配路由，{termId} 若先声明会把 "archive-overview" 当成 termId 抢先匹配，
 # 导致归档总览端点 400（本条是总控合并复核发现并修复的真实路由顺序 bug，非文本冲突）。

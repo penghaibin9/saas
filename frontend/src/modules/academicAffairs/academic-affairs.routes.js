@@ -26,6 +26,9 @@ const layoutRoute = {
     { path: 'terms/teaching-weeks', name: 'aa-term-teaching-weeks', component: () => import('@/modules/academicAffairs/views/AaTeachingWeekConfigView.vue'), meta: meta('academicAffairs.term.manage', '教学周配置') },
     { path: 'terms/status', name: 'aa-term-status', component: () => import('@/modules/academicAffairs/views/AaTermStatusView.vue'), meta: meta('academicAffairs.term.manage', '学期状态') },
     { path: 'terms/archive-status', name: 'aa-term-archive-status', component: () => import('@/modules/academicAffairs/views/AaTermArchiveView.vue'), meta: meta('academicAffairs.term.view', '学期归档') },
+    // ── 续工 R3：学年管理（按学年汇总） / 学期切换记录（当前学期切换审计，只读，不新增写端点） ──
+    { path: 'terms/years', name: 'aa-term-years', component: () => import('@/modules/academicAffairs/views/AaAcademicYearView.vue'), meta: meta('academicAffairs.term.view', '学年管理') },
+    { path: 'terms/switch-log', name: 'aa-term-switch-log', component: () => import('@/modules/academicAffairs/views/AaTermSwitchLogView.vue'), meta: meta('academicAffairs.term.view', '学期切换记录') },
     { path: 'calendar', name: 'aa-calendar', component: () => import('@/modules/academicAffairs/views/AaCalendarView.vue'), meta: meta('academicAffairs.calendar.view', '校历管理') },
     { path: 'time-slots', name: 'aa-time-slots', component: () => import('@/modules/academicAffairs/views/AaTimeSlotView.vue'), meta: meta('academicAffairs.timeslot.view', '作息节次') },
     // ── W2 学籍写侧闭环 ──

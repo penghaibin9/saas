@@ -130,6 +130,14 @@ export const academicAffairsApi = {
     return call(async () => (await request(`${BASE}/terms/archive-overview`)).items || [])
   },
 
+  /* ── 学年学期 续工 R3：学年管理（按学年汇总，只读聚合） / 学期切换记录（当前学期切换审计） ── */
+  getAcademicYears() {
+    return call(async () => (await request(`${BASE}/terms/years`)).items || [])
+  },
+  getTermSwitchLog(params = {}) {
+    return callList(`${BASE}/terms/switch-log`, params)
+  },
+
   /* ── 校历（校历节次 Tier1 R2：节假日/补课日=按 eventType 过滤同一批事件；发布走学期状态机，
      归档统一走教务归档模块正规批次流程，本模块不提供直写归档端点） ── */
   getCalendar(termId, eventType) {
