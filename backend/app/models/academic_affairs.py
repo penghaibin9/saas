@@ -245,7 +245,9 @@ class AaCourse(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AaTeachingTaskBatch(PKMixin, TenantMixin, CommonMixin, Base):
-    """学期教学任务批次（按方案生成应开课程，generate 幂等）。DRAFT/COLLEGE_CONFIRMED/TEACHER_CONFIRMED/SUBMITTED/APPROVED。"""
+    """学期教学任务批次（按方案生成应开课程，generate 幂等）。
+    状态：DRAFT(生成/核对分配中)/COLLEGE_CONFIRMED(学院核对确认，待教务终审)/APPROVED(教务终审通过)/RETURNED(教务退回重办)。
+    兼容：/submit 端点保留 DRAFT→APPROVED 单步直提（历史契约不变）；/college-confirm+/review 为 Tier1 新增两级确认链。"""
     __tablename__ = "t_aa_teaching_task_batch"
 
     term_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -257,7 +259,10 @@ class AaTeachingTaskBatch(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
-    """教学任务（课程×教学班×教师）。含教学班(可合班)+周学时/起止周。PENDING_ASSIGN/ASSIGNED/TEACHER_CONFIRMED/REJECTED_BY_TEACHER。"""
+    """教学任务（课程×教学班×教师）。含教学班(可合班)+周学时/起止周。
+    状态：PENDING_ASSIGN/ASSIGNED/TEACHER_CONFIRMED/REJECTED_BY_TEACHER/READY(批次教务终审通过)/MERGED(已被合班并入他行)。
+    合班：多行合并为一行(survivor, is_merged=True)，其余行 status=MERGED 且 merged_into_id 指向 survivor；
+    survivor.merge_snapshot_json 记录合并前自身快照，供拆班（split）精确还原（Tier1 R1）。"""
     __tablename__ = "t_aa_teaching_task"
 
     batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -267,7 +272,9 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
     class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     teaching_class_code: Mapped[str | None] = mapped_column(String(50), comment="教学班代码")
     teaching_class_name: Mapped[str | None] = mapped_column(String(200), comment="教学班名(可合班)")
-    is_merged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否合班")
+    is_merged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否合班(本行为合班后 survivor)")
+    merged_into_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="被并入的 survivor 教学任务 id(本行 status=MERGED 时有效)")
+    merge_snapshot_json: Mapped[str | None] = mapped_column(String(1000), comment="合班快照(survivor 合并前自身字段+成员 taskId 列表)，供拆班还原")
     teacher_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     teacher_key: Mapped[str | None] = mapped_column(String(100))
     teacher_name: Mapped[str | None] = mapped_column(String(100))

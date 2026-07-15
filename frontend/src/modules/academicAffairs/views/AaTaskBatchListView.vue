@@ -68,6 +68,8 @@ export default {
     }
   },
   created() {
+    // 「教学任务生成」菜单叶子直达本页并自动展开生成面板（?open=generate，Tier1 新增，复用本页不新建重复页面）
+    if (this.$route && this.$route.query && this.$route.query.open === 'generate') this.showGen = true
     this.load()
     this.loadTerms()
   },

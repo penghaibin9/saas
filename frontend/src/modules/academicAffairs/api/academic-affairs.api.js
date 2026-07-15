@@ -312,6 +312,30 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/teaching-tasks/${taskId}/teacher-act`, { method: 'POST', body: { action, reason } }))
   },
 
+  /* ── 教学任务确认（教务两级：学院核对确认 → 教务终审，Tier1 新增） ── */
+  collegeConfirmTaskBatch(batchId) {
+    return call(() => request(`${BASE}/teaching-task-batches/${batchId}/college-confirm`, { method: 'POST' }))
+  },
+  reviewTaskBatch(batchId, action, reason) {
+    return call(() => request(`${BASE}/teaching-task-batches/${batchId}/review`, { method: 'POST', body: { action, reason } }))
+  },
+
+  /* ── 任课教师分配 / 合班拆班 / 教师任务确认：跨批次工作队列（Tier1 新增） ── */
+  listAllTasks(params = {}) {
+    return callList(`${BASE}/teaching-tasks`, params)
+  },
+  mergeTasks(taskIds, note) {
+    return call(() => request(`${BASE}/teaching-tasks/merge`, { method: 'POST', body: { taskIds, note } }))
+  },
+  splitTask(taskId) {
+    return call(() => request(`${BASE}/teaching-tasks/${taskId}/split`, { method: 'POST' }))
+  },
+
+  /* ── 教学任务统计（Tier1 新增） ── */
+  getTeachingTaskStats(params = {}) {
+    return call(() => request(`${BASE}/teaching-task-batches/stats`, { params }))
+  },
+
   /* ── 课表（三重冲突检测 + 单双周 + 三视图 + 发布） ── */
   getScheduleBatches(params = {}) {
     return callList(`${BASE}/schedule-batches`, params)

@@ -309,7 +309,15 @@ export const NAV_PLAN = [
     ]),
     mod('aa-teaching-tasks', '教学任务', '/admin/academic-affairs/teaching-tasks', [
       I('教学任务批次', '/admin/academic-affairs/teaching-tasks'),
-      ...P('教学任务生成', '任课教师分配', '教学班生成', '合班拆班', '教学任务确认', '教师任务确认', '教学任务调整', '教学任务统计', '教学任务归档')
+      I('教学任务生成', '/admin/academic-affairs/teaching-tasks?open=generate', 'academicAffairs.teachingTask.generate'),
+      I('任课教师分配', '/admin/academic-affairs/teaching-tasks/assign', 'academicAffairs.teachingTask.assign'),
+      ...P('教学班生成'),
+      I('合班拆班', '/admin/academic-affairs/teaching-tasks/merge-split', 'academicAffairs.teachingTask.merge'),
+      I('教学任务确认', '/admin/academic-affairs/teaching-tasks/confirm', 'academicAffairs.teachingTask.confirm'),
+      I('教师任务确认', '/admin/academic-affairs/teaching-tasks/teacher-confirm', 'academicAffairs.teachingTask.teacherConfirm'),
+      ...P('教学任务调整'),
+      I('教学任务统计', '/admin/academic-affairs/teaching-tasks/stats', 'academicAffairs.teachingTask.stats'),
+      ...P('教学任务归档')
     ]),
     mod('aa-scheduling', '排课管理', '/admin/academic-affairs/scheduling', [
       I('排课规则', '/admin/academic-affairs/scheduling?tab=rules', 'academicAffairs.schedule.view'),

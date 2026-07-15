@@ -629,6 +629,56 @@ def task_teacher_act(body: TeacherActBody, taskId: int = Path(...), user=Depends
     return success(task_svc.teacher_act(taskId, user, body.action, body.reason or ""), message="已处理")
 
 
+# ── 教学任务确认（教务两级，Tier1 R1 新增）──
+
+@router.post("/teaching-task-batches/{batchId}/college-confirm", summary="学院核对确认（DRAFT→COLLEGE_CONFIRMED）")
+def task_batch_college_confirm(batchId: int = Path(...),
+                               user=Depends(require_permission("academicAffairs.teachingTask.confirm"))):
+    return success(task_svc.college_confirm_batch(batchId, user), message="已确认")
+
+
+@router.post("/teaching-task-batches/{batchId}/review", summary="教务终审（COLLEGE_CONFIRMED→APPROVED/RETURNED）")
+def task_batch_review(body: AaReviewBody, batchId: int = Path(...),
+                      user=Depends(require_permission("academicAffairs.teachingTask.confirm"))):
+    return success(task_svc.review_batch(batchId, user, body.action, body.reason or ""), message="已处理")
+
+
+# ── 任课教师分配 / 教师任务确认：跨批次工作队列（Tier1 R1 新增）──
+
+@router.get("/teaching-tasks", summary="跨批次教学任务列表（分配队列/合班候选/我的任务）")
+def task_all_list(batchId: Optional[int] = None, courseId: Optional[int] = None,
+                  status: Optional[str] = None, mergeable: bool = False, mine: bool = False,
+                  page: int = 1, pageSize: int = 50,
+                  user=Depends(require_permission("academicAffairs.teachingTask.view"))):
+    items, total = task_svc.list_all_tasks(user, batchId, courseId, status, mergeable, mine, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+# ── 合班 / 拆班（Tier1 R1 新增）──
+
+class MergeTasksBody(BaseModel):
+    taskIds: list[str] = Field(..., min_length=2)
+    note: Optional[str] = Field("", max_length=500)
+
+
+@router.post("/teaching-tasks/merge", summary="合班（同批次同课程 2+ 条任务合并为一条教学班任务）")
+def task_merge(body: MergeTasksBody, user=Depends(require_permission("academicAffairs.teachingTask.merge"))):
+    return success(task_svc.merge_tasks(body, user), message="已合班")
+
+
+@router.post("/teaching-tasks/{taskId}/split", summary="拆班（还原合班前的独立教学任务）")
+def task_split(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.teachingTask.merge"))):
+    return success(task_svc.split_task(taskId, user), message="已拆班")
+
+
+# ── 教学任务统计（Tier1 R1 新增）──
+
+@router.get("/teaching-task-batches/stats", summary="教学任务统计（批次/任务状态分布+分配率+教师确认率）")
+def task_stats(termId: Optional[str] = None,
+               user=Depends(require_permission("academicAffairs.teachingTask.stats"))):
+    return success(task_svc.get_task_stats(user, termId))
+
+
 # ═══════════ 课表（P4，三重冲突检测 + 单双周 + 三视图）═══════════
 
 class ScheduleBatchCreate(BaseModel):
