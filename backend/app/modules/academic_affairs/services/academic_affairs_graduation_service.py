@@ -421,7 +421,7 @@ def archive_batch(batch_id, user) -> dict:
 def _row(r) -> dict:
     return {"resultId": str(r.id), "batchId": str(r.batch_id), "studentId": str(r.student_id),
             "overall": r.overall, "conclusion": r.conclusion, "status": r.status,
-            "rerunCount": r.rerun_count,
+            "rerunCount": r.rerun_count, "reviewNote": r.review_note or "",
             "items": json.loads(r.item_results_json) if r.item_results_json else []}
 
 
@@ -459,6 +459,7 @@ def list_results(batch_id, user, status=None, overall=None, item=None, item_resu
                 if hit is None or (item_result and hit.get("result") != item_result):
                     continue
                 d["realName"] = s.real_name if s else ""
+                d["studentNo"] = s.student_no if s else ""
                 d["itemDetail"] = hit
                 out_all.append(d)
             total = len(out_all)
@@ -474,12 +475,34 @@ def list_results(batch_id, user, status=None, overall=None, item=None, item_resu
         for r, s in rows:
             d = _row(r)
             d["realName"] = s.real_name if s else ""
+            d["studentNo"] = s.student_no if s else ""
             out.append(d)
         return out, total
 
 
+def _org_names(db, s):
+    """学生 → 学院/专业/班级名称（供「毕业学生名单」补全展示；与 academic_affairs_service._resolve_org_names
+    同口径，本文件独立维护同款只读小函数，避免跨 service 文件引用私有函数）。"""
+    from app.models import College, Major, SchoolClass
+    college_name = major_name = class_name = ""
+    if s.class_id:
+        c = db.get(SchoolClass, int(s.class_id))
+        if c and not c.is_deleted and c.tenant_id == _tid():
+            class_name = c.class_name
+    if s.major_id:
+        m = db.get(Major, int(s.major_id))
+        if m and not m.is_deleted and m.tenant_id == _tid():
+            major_name = m.major_name
+    if s.college_id:
+        col = db.get(College, int(s.college_id))
+        if col and not col.is_deleted and col.tenant_id == _tid():
+            college_name = col.college_name
+    return college_name, major_name, class_name
+
+
 def rosters(batch_id, user) -> dict:
-    """三名单：毕业/结业/延毕（按终审结论）。"""
+    """三名单：毕业/结业/延毕（按终审结论）。供「毕业学生名单」页展示学号/姓名/学院/专业/班级
+    （只读展示字段，非新增数据源；院系信息缺失时对应字段留空，不阻断名单展示）。"""
     from app.models import AaGraduationAuditResult, StudentProfile
     with session() as db:
         rows = db.scalars(select(AaGraduationAuditResult).where(
@@ -491,8 +514,11 @@ def rosters(batch_id, user) -> dict:
         for r in rows:
             s = db.get(StudentProfile, int(r.student_id))
             if r.conclusion in buckets:
-                buckets[r.conclusion].append({"studentId": str(r.student_id),
-                                              "realName": s.real_name if s else ""})
+                college_name, major_name, class_name = _org_names(db, s) if s else ("", "", "")
+                buckets[r.conclusion].append({
+                    "studentId": str(r.student_id), "studentNo": s.student_no if s else "",
+                    "realName": s.real_name if s else "", "collegeName": college_name,
+                    "majorName": major_name, "className": class_name})
         return {"graduated": buckets["GRADUATED"], "completed": buckets["COMPLETED"],
                 "delayed": buckets["DELAYED"],
                 "counts": {k: len(v) for k, v in buckets.items()}}
