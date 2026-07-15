@@ -84,6 +84,52 @@ def term_publish(termId: int = Path(...), user=Depends(require_staff)):
     return success(svc.publish_term(termId, user), message="已发布")
 
 
+# ── 学年学期 Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档总览 ──
+_TERM_VIEW = "academicAffairs.term.view"
+_TERM_MANAGE = "academicAffairs.term.manage"
+
+
+@router.post("/terms/{termId}/set-current", summary="当前学期设置：设为当前学期（仅 PUBLISHED，幂等）")
+def term_set_current(termId: int = Path(...), user=Depends(require_permission(_TERM_MANAGE))):
+    return success(svc.set_current_term(termId, user), message="已设为当前学期")
+
+
+@router.get("/terms/{termId}/weeks", summary="学期周次（按开学日+教学周展开，叠加校历事件）")
+def term_weeks(termId: int = Path(...), user=Depends(require_permission(_TERM_VIEW))):
+    return success({"items": svc.list_term_weeks(termId, user)})
+
+
+class TeachingWeeksBody(BaseModel):
+    teachingWeeks: Optional[int] = Field(None, ge=1, le=30)
+    examWeekStart: Optional[int] = Field(None, ge=1, le=30)
+
+
+@router.put("/terms/{termId}/teaching-weeks", summary="教学周配置（仅 DRAFT 学期可调整结构）")
+def term_teaching_weeks_update(body: TeachingWeeksBody, termId: int = Path(...),
+                               user=Depends(require_permission(_TERM_MANAGE))):
+    return success(svc.update_teaching_weeks(termId, body, user), message="已保存")
+
+
+@router.post("/terms/{termId}/freeze", summary="学期状态·冻结（PUBLISHED→FROZEN）")
+def term_freeze(termId: int = Path(...), user=Depends(require_permission(_TERM_MANAGE))):
+    return success(svc.freeze_term(termId, user), message="已冻结")
+
+
+class TermUnfreezeBody(BaseModel):
+    reason: str = Field(..., min_length=1)
+
+
+@router.post("/terms/{termId}/unfreeze", summary="学期状态·解冻（FROZEN→PUBLISHED，原因≥5字）")
+def term_unfreeze(body: TermUnfreezeBody, termId: int = Path(...),
+                  user=Depends(require_permission(_TERM_MANAGE))):
+    return success(svc.unfreeze_term(termId, body.reason, user), message="已解冻")
+
+
+@router.get("/terms/archive-overview", summary="学期归档总览（只读，实际归档动作见教务归档模块）")
+def terms_archive_overview(user=Depends(require_permission(_TERM_VIEW))):
+    return success({"items": svc.term_archive_overview(user)})
+
+
 class CalendarEventBody(BaseModel):
     eventType: str = Field("TEACHING", description="TEACHING/EXAM/INTERNSHIP/HOLIDAY/SWAP")
     startDate: Optional[str] = None

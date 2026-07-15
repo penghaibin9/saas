@@ -20,6 +20,12 @@ const layoutRoute = {
     { path: '', name: 'aa-dashboard', component: () => import('@/modules/academicAffairs/views/AaDashboardView.vue'), meta: meta('academicAffairs.dashboard.view', '教务看板') },
     { path: 'terms', name: 'aa-terms', component: () => import('@/modules/academicAffairs/views/AaTermListView.vue'), meta: meta('academicAffairs.term.view', '学年学期') },
     { path: 'terms/new', name: 'aa-term-new', component: () => import('@/modules/academicAffairs/views/AaTermFormView.vue'), meta: meta('academicAffairs.term.manage', '新建学期') },
+    // ── Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档（续工，只加叶子不改既有4端点语义） ──
+    { path: 'terms/current', name: 'aa-term-current', component: () => import('@/modules/academicAffairs/views/AaTermCurrentView.vue'), meta: meta('academicAffairs.term.view', '当前学期设置') },
+    { path: 'terms/weeks', name: 'aa-term-weeks', component: () => import('@/modules/academicAffairs/views/AaTermWeeksView.vue'), meta: meta('academicAffairs.term.view', '学期周次') },
+    { path: 'terms/teaching-weeks', name: 'aa-term-teaching-weeks', component: () => import('@/modules/academicAffairs/views/AaTeachingWeekConfigView.vue'), meta: meta('academicAffairs.term.manage', '教学周配置') },
+    { path: 'terms/status', name: 'aa-term-status', component: () => import('@/modules/academicAffairs/views/AaTermStatusView.vue'), meta: meta('academicAffairs.term.manage', '学期状态') },
+    { path: 'terms/archive-status', name: 'aa-term-archive-status', component: () => import('@/modules/academicAffairs/views/AaTermArchiveView.vue'), meta: meta('academicAffairs.term.view', '学期归档') },
     { path: 'calendar', name: 'aa-calendar', component: () => import('@/modules/academicAffairs/views/AaCalendarView.vue'), meta: meta('academicAffairs.calendar.view', '校历管理') },
     { path: 'time-slots', name: 'aa-time-slots', component: () => import('@/modules/academicAffairs/views/AaTimeSlotView.vue'), meta: meta('academicAffairs.timeslot.view', '作息节次') },
     // ── W2 学籍写侧闭环 ──

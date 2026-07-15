@@ -5,8 +5,11 @@
  * 与旧「学业过程」模块（同目录 api/academic.api.js，接 /academic/* + mock 兜底）互不干扰、并存。
  *
  * 以代码为准（后端 academic_affairs.py 实测签名）：
- *  - 学期仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 → 本模块不提供 updateTerm（勘误见施工记录）。
- *  - 学期状态机当前只有 DRAFT / PUBLISHED（FROZEN/ARCHIVED 后端未实现，暂不渲染）。
+ *  - 学期基础字段（学年/学期号/名称/起止日期）仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 →
+ *    本模块不提供 updateTerm（勘误见施工记录）。
+ *  - 学期状态机 DRAFT→PUBLISHED→FROZEN→ARCHIVED 全 4 态：DRAFT/PUBLISHED 走 create/publish；
+ *    FROZEN 走 Tier1-R2 新增 freeze/unfreeze（学期状态）；ARCHIVED 由「教务归档」二级模块
+ *    academic_affairs_archive_service 的批次确认归档写入，本模块 getTermArchiveOverview 仅只读联动。
  */
 import { request, requestBlob, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { setPermissionPatterns } from '@/security/permissionGate'
@@ -102,6 +105,26 @@ export const academicAffairsApi = {
   },
   publishTerm(termId) {
     return call(() => request(`${BASE}/terms/${termId}/publish`, { method: 'POST' }))
+  },
+
+  /* ── 学年学期 Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档总览 ── */
+  setCurrentTerm(termId) {
+    return call(() => request(`${BASE}/terms/${termId}/set-current`, { method: 'POST' }))
+  },
+  getTermWeeks(termId) {
+    return call(async () => (await request(`${BASE}/terms/${termId}/weeks`)).items || [])
+  },
+  updateTeachingWeeks(termId, body) {
+    return call(() => request(`${BASE}/terms/${termId}/teaching-weeks`, { method: 'PUT', body }))
+  },
+  freezeTerm(termId) {
+    return call(() => request(`${BASE}/terms/${termId}/freeze`, { method: 'POST' }))
+  },
+  unfreezeTerm(termId, reason) {
+    return call(() => request(`${BASE}/terms/${termId}/unfreeze`, { method: 'POST', body: { reason } }))
+  },
+  getTermArchiveOverview() {
+    return call(async () => (await request(`${BASE}/terms/archive-overview`)).items || [])
   },
 
   /* ── 校历 ── */
