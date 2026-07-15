@@ -15,7 +15,7 @@ from alembic import op
 from sqlalchemy import inspect
 
 revision = "aa_resources_r3"
-down_revision = "aa_course_lib_tier1_r2"
+down_revision = "aa_quality_r3"
 branch_labels = None
 depends_on = None
 
