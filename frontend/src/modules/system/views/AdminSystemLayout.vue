@@ -24,7 +24,8 @@ import { systemApi } from '@/modules/system/api/system.api'
 
 const MENUS = [
   { key: 'sys-home', label: '管理看板', icon: '◫', path: '/admin/system' },
-  { key: 'sys-users', label: '用户账号', icon: '☰', path: '/admin/system/users' },
+  { key: 'sys-users', label: '师生账号', icon: '☰', path: '/admin/system/users' },
+  { key: 'sys-identity-import', label: '导入老师和学生', icon: '⇪', path: '/admin/system/identity-import' },
   { key: 'sys-roles', label: '角色权限', icon: '❖', path: '/admin/system/roles' },
   { key: 'sys-menus', label: '菜单权限', icon: '▤', path: '/admin/system/menus' },
   { key: 'sys-scopes', label: '数据范围', icon: '◔', path: '/admin/system/scopes' },

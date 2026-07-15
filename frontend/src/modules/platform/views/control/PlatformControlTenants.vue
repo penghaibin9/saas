@@ -45,7 +45,18 @@
     </template>
 
     <AppDrawer :visible="createVisible" title="开通新学校" @update:visible="createVisible = $event">
-      <div class="pct__form">
+      <div v-if="createResult" class="pct__secret">
+        <strong>学校已开通，请立即保存管理员凭据</strong>
+        <p>学校编码：<code>{{ createResult.tenantCode }}</code></p>
+        <p>管理员账号：<code>{{ createResult.loginName }}</code></p>
+        <p>初始密码：<code>{{ createResult.initialPassword }}</code></p>
+        <small>密码仅本次显示；管理员首次登录后必须修改。角色模板已经自动初始化。</small>
+        <div class="pct__form-ops">
+          <AppButton variant="primary" @click="copyCredential">复制凭据</AppButton>
+          <AppButton @click="closeCreate">我已保存</AppButton>
+        </div>
+      </div>
+      <div v-else class="pct__form">
         <label class="pct__field"><span>学校编码 *</span><input v-model.trim="form.tenantCode" class="pct__input" placeholder="如 gz-tech（唯一）" /></label>
         <label class="pct__field"><span>学校全称 *</span><input v-model.trim="form.tenantName" class="pct__input" placeholder="如 广州科技职业技术学院" /></label>
         <label class="pct__field"><span>初始套餐</span>
@@ -75,6 +86,8 @@
             <input v-model.trim="form.contactPhone" class="pct__input" placeholder="手机号" />
           </span>
         </label>
+        <label class="pct__field"><span>首位学校管理员账号 *</span><input v-model.trim="form.adminLoginName" class="pct__input" placeholder="如 admin（校内唯一）" /></label>
+        <label class="pct__field"><span>首位学校管理员姓名 *</span><input v-model.trim="form.adminRealName" class="pct__input" placeholder="如 张老师" /></label>
         <div class="pct__form-ops">
           <AppButton variant="primary" :loading="saving" @click="submitCreate">开通</AppButton>
           <AppButton @click="createVisible = false">取消</AppButton>
@@ -111,6 +124,7 @@ export default {
       keyword: '',
       status: '',
       createVisible: false,
+      createResult: null,
       form: this.blankForm(),
       columns: [
         { key: 'tenantName', title: '学校', width: '240px' },
@@ -140,7 +154,7 @@ export default {
   },
   methods: {
     blankForm() {
-      return { tenantCode: '', tenantName: '', packageCode: 'trial', environment: 'production', province: '', city: '', contactName: '', contactPhone: '' }
+      return { tenantCode: '', tenantName: '', packageCode: 'trial', environment: 'production', province: '', city: '', contactName: '', contactPhone: '', adminLoginName: 'admin', adminRealName: '' }
     },
     async load() {
       this.loading = true
@@ -167,11 +181,12 @@ export default {
     },
     openCreate() {
       this.form = this.blankForm()
+      this.createResult = null
       this.createVisible = true
     },
     async submitCreate() {
-      if (!this.form.tenantCode || !this.form.tenantName) {
-        toast.error('学校编码与全称必填')
+      if (!this.form.tenantCode || !this.form.tenantName || !this.form.adminLoginName || !this.form.adminRealName) {
+        toast.error('学校编码、全称和首位管理员信息必填')
         return
       }
       this.saving = true
@@ -179,11 +194,30 @@ export default {
       this.saving = false
       if (res.code === 0) {
         toast.success(`已开通「${this.form.tenantName}」`)
-        this.createVisible = false
+        const admin = res.data.schoolAdmin || {}
+        this.createResult = {
+          tenantCode: res.data.tenantCode,
+          loginName: admin.loginName,
+          initialPassword: admin.initialPassword
+        }
         this.load()
       } else {
         toast.error(res.message)
       }
+    },
+    async copyCredential() {
+      const value = `学校编码：${this.createResult.tenantCode}\n管理员账号：${this.createResult.loginName}\n初始密码：${this.createResult.initialPassword}`
+      try {
+        if (!navigator.clipboard) throw new Error('clipboard unavailable')
+        await navigator.clipboard.writeText(value)
+        toast.success('管理员凭据已复制')
+      } catch {
+        toast.info('浏览器未允许复制，请手动保存页面上的凭据')
+      }
+    },
+    closeCreate() {
+      this.createVisible = false
+      this.createResult = null
     },
     async act(row, action, body = {}) {
       const res = await platformControlApi.tenantAction(row.tenantId, action, body)
@@ -215,6 +249,16 @@ export default {
   color: var(--pri);
   font-size: var(--font-size-sm);
 }
+.pct__secret {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--warning-300, #f5c26b);
+  border-radius: 12px;
+  background: var(--warning-50, #fff8e8);
+}
+.pct__secret p { margin: 0; }
+.pct__secret code { user-select: all; font-weight: 700; }
 .pct__input {
   height: 34px;
   padding: 0 10px;

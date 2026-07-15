@@ -1,5 +1,6 @@
 """新学校开局向导（P13-A）。
-把一所新学校从"空租户"带到"可试点"：建租户 → 品牌 → 院系/专业/班级 → 学生 → 教师账号/角色/数据范围。
+把一所新学校从"空租户"带到"可试点"：建租户 → 品牌 → 院系/专业/班级。
+师生账号只能从系统管理的身份导入入口创建；本服务仅被该唯一入口以内部分支复用。
 设计要点：
 - 复用已有能力：租户/校管账号复用 platform_service；教师范围复用 t_teacher_student_scope。
 - dry-run：只校验、给行号错误，不落库。
@@ -18,9 +19,12 @@ from app.core.security import hash_password
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import audit_log
 from app.services.db_service import _tid
+from app.services.saas_role_templates import (BUILTIN_ROLE_TEMPLATES,
+                                               ROLE_TEMPLATE_VERSION,
+                                               role_codes_from_row)
 
-_PLATFORM_TYPES = {"PLATFORM_OP", "PLATFORM_ADMIN", "SUPER_ADMIN", "ADMIN"}
-_OPERATOR_TYPES = _PLATFORM_TYPES | {"SCHOOL_ADMIN", "STAFF"}
+_PLATFORM_TYPES = {"PLATFORM_OP", "PLATFORM_ADMIN", "PLATFORM_SUPER_ADMIN", "SUPER_ADMIN"}
+_OPERATOR_ROLES = _PLATFORM_TYPES | {"SCHOOL_ADMIN", "SYS_ADMIN"}
 
 
 def _session():
@@ -30,15 +34,16 @@ def _session():
 def _require_operator(user: dict | None) -> dict:
     u = user or {}
     ut = (u.get("userType") or "").strip().upper()
-    if ut == "STUDENT" or ut == "TEACHER":
-        raise AppException("NO_PERMISSION", "开局向导仅平台运营/学校管理员可用")
-    if ut not in _OPERATOR_TYPES:
+    role = (u.get("currentRoleCode") or "").strip().upper()
+    effective = role or ut
+    if effective not in _OPERATOR_ROLES and ut not in ("SCHOOL_ADMIN", "ADMIN"):
         raise AppException("NO_PERMISSION", "无权执行开局向导")
     return u
 
 
 def _is_platform(user: dict) -> bool:
-    return (user.get("userType") or "").strip().upper() in _PLATFORM_TYPES
+    return ((user.get("currentRoleCode") or "").strip().upper() in _PLATFORM_TYPES
+            or (user.get("userType") or "").strip().upper() in _PLATFORM_TYPES)
 
 
 def _resolve_target_tenant(user: dict, body: dict) -> int:
@@ -61,8 +66,10 @@ def _blank_report(dry_run: bool, tenant_id: int) -> dict:
     return {
         "dryRun": dry_run, "tenantId": str(tenant_id),
         "entities": {k: {"created": 0, "skipped": 0, "failed": 0}
-                     for k in ("colleges", "majors", "classes", "students", "teachers")},
-        "errors": [], "teacherCredentials": [],
+                     for k in ("roles", "colleges", "majors", "classes", "students",
+                               "studentAccounts", "teachers", "roleBindings", "scopes")},
+        "errors": [], "studentCredentials": [], "teacherCredentials": [],
+        "roleTemplateVersion": ROLE_TEMPLATE_VERSION,
     }
 
 
@@ -132,7 +139,6 @@ def _validate_rows(body: dict) -> list[dict]:
     for i, t in enumerate(teachers, 1):
         ln = str((t or {}).get("loginName") or "").strip()
         nm = str((t or {}).get("name") or "").strip()
-        rc = str((t or {}).get("roleCode") or "").strip()
         if not ln:
             errors.append({"row": i, "entity": "teacher", "field": "loginName", "error": "登录名必填"})
         elif ln in seen_login:
@@ -141,20 +147,58 @@ def _validate_rows(body: dict) -> list[dict]:
             seen_login.add(ln)
         if not nm:
             errors.append({"row": i, "entity": "teacher", "field": "name", "error": "姓名必填"})
-        if not rc:
-            errors.append({"row": i, "entity": "teacher", "field": "roleCode", "error": "角色编码必填"})
+        try:
+            role_codes = role_codes_from_row(t or {})
+        except AppException as exc:
+            errors.append({"row": i, "entity": "teacher", "field": "roleCodes",
+                           "error": exc.message})
+            role_codes = []
+        scope_type = str((t or {}).get("scopeType") or "").strip().upper()
+        scope_ref = (t or {}).get("scopeRef")
+        if "COUNSELOR" in role_codes and scope_type not in ("CLASS", "ADVISOR"):
+            errors.append({"row": i, "entity": "teacher", "field": "scopeType",
+                           "error": "辅导员必须配置 CLASS 或 ADVISOR 数据范围"})
+        if scope_type in ("CLASS", "COLLEGE", "STUDENT") and scope_ref in (None, ""):
+            errors.append({"row": i, "entity": "teacher", "field": "scopeRef",
+                           "error": f"{scope_type} 数据范围必须填写 scopeRef"})
+    for value in sorted(seen_no & seen_login):
+        errors.append({"row": 0, "entity": "account", "field": "loginName",
+                       "error": f"同一批次学号与教师登录名冲突：{value}"})
     return errors
 
 
 # ─────────── 主编排 ───────────
 
-def run_onboarding(user: dict, body: dict, dry_run: bool = True) -> dict:
+def run_onboarding(user: dict, body: dict, dry_run: bool = True,
+                   *, identity_channel: bool = False) -> dict:
     u = _require_operator(user)
+    if not identity_channel and ((body.get("students") or []) or (body.get("teachers") or [])):
+        raise AppException(
+            "VALIDATION_ERROR",
+            "开局向导禁止创建师生账号，请到「系统管理 → 导入老师和学生」操作")
     tenant_id = _resolve_target_tenant(u, body)
     report = _blank_report(dry_run, tenant_id)
     if not db_enabled():
         # 演示模式：只做校验，返回报告，不落库
         report["errors"] = _validate_rows(body)
+        report["entities"]["roles"]["created"] = len(BUILTIN_ROLE_TEMPLATES)
+        report["entities"]["colleges"]["created"] = len(body.get("colleges") or [])
+        report["entities"]["majors"]["created"] = len(body.get("majors") or [])
+        report["entities"]["classes"]["created"] = len(body.get("classes") or [])
+        report["entities"]["students"]["created"] = len(body.get("students") or [])
+        report["entities"]["studentAccounts"]["created"] = len(body.get("students") or [])
+        report["entities"]["teachers"]["created"] = len(body.get("teachers") or [])
+        valid_teacher_rows = []
+        for teacher in body.get("teachers") or []:
+            try:
+                valid_teacher_rows.append(role_codes_from_row(teacher))
+            except AppException:
+                pass
+        report["entities"]["roleBindings"]["created"] = (
+            len(body.get("students") or []) + sum(len(codes) for codes in valid_teacher_rows))
+        report["entities"]["scopes"]["created"] = sum(
+            1 for t in body.get("teachers") or []
+            if str(t.get("scopeType") or "").strip().upper() in ("CLASS", "COLLEGE", "STUDENT", "ADVISOR"))
         report["note"] = "演示模式：仅校验不落库"
         return report
 
@@ -175,8 +219,13 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True) -> dict:
 
     # 2) confirm：一个事务写入
     with _session() as db:
-        from app.models import (College, Major, Role, SchoolClass, StudentProfile, TeacherStudentScope,
-                                User, UserRole)
+        from app.models import (College, Major, SchoolClass, StudentProfile, TeacherStudentScope,
+                                User)
+        from app.services.saas_role_service import ensure_builtin_roles, ensure_user_roles
+
+        role_report = ensure_builtin_roles(db, tenant_id)
+        report["entities"]["roles"]["created"] = role_report["created"] + role_report["restored"]
+        report["entities"]["roles"]["skipped"] = role_report["unchanged"]
 
         def col(name):
             return db.scalars(select(College).where(College.tenant_id == tenant_id,
@@ -233,55 +282,105 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True) -> dict:
         # 学生
         for s in (body.get("students") or []):
             no = str(s.get("studentNo")).strip()
-            dup = db.scalars(select(StudentProfile).where(
+            account = db.scalars(select(User).where(
+                User.tenant_id == tenant_id, User.login_name == no)).first()
+            if account and (account.is_deleted or account.user_type != "STUDENT"):
+                report["entities"]["studentAccounts"]["failed"] += 1
+                report["errors"].append({"entity": "studentAccount", "field": "studentNo",
+                                         "error": f"学号被历史/非学生账号占用：{no}"})
+                continue
+            profile = db.scalars(select(StudentProfile).where(
                 StudentProfile.tenant_id == tenant_id, StudentProfile.student_no == no,
                 StudentProfile.is_deleted.is_(False))).first()
-            if dup:
+            if profile:
                 report["entities"]["students"]["skipped"] += 1
-                continue
-            k = cls(str(s.get("className") or "").strip()) if s.get("className") else None
-            db.add(StudentProfile(
-                tenant_id=tenant_id, student_no=no, real_name=str(s.get("name")).strip(),
-                gender=s.get("gender"), grade=s.get("grade"),
-                class_id=k.id if k else None, major_id=k.major_id if k else None,
-                current_stage=s.get("stage") or "ENROLLED",
-                student_status="NORMAL", status="ACTIVE"))
-            report["entities"]["students"]["created"] += 1
+            else:
+                k = cls(str(s.get("className") or "").strip()) if s.get("className") else None
+                db.add(StudentProfile(
+                    tenant_id=tenant_id, student_no=no, real_name=str(s.get("name")).strip(),
+                    gender=s.get("gender"), grade=s.get("grade"),
+                    class_id=k.id if k else None, major_id=k.major_id if k else None,
+                    current_stage=s.get("stage") or "ENROLLED",
+                    student_status="NORMAL", status="ACTIVE"))
+                report["entities"]["students"]["created"] += 1
+
+            if account:
+                report["entities"]["studentAccounts"]["skipped"] += 1
+            else:
+                import secrets
+                pwd = "Stu@" + secrets.token_urlsafe(6)
+                account = User(tenant_id=tenant_id, login_name=no,
+                               real_name=str(s.get("name")).strip(),
+                               password_hash=hash_password(pwd), user_type="STUDENT",
+                               status="ACTIVE", must_change_password=True)
+                db.add(account)
+                db.flush()
+                report["entities"]["studentAccounts"]["created"] += 1
+                report["studentCredentials"].append({"studentNo": no, "initialPassword": pwd})
+            binding = ensure_user_roles(db, tenant_id, account.id, ["STUDENT"])
+            report["entities"]["roleBindings"]["created"] += binding["created"] + binding["restored"]
+            report["entities"]["roleBindings"]["skipped"] += binding["unchanged"]
         db.flush()
         # 教师账号 + 角色 + 范围
         for t in (body.get("teachers") or []):
             ln = str(t.get("loginName")).strip()
             dup = db.scalars(select(User).where(User.tenant_id == tenant_id,
-                             User.login_name == ln, User.is_deleted.is_(False))).first()
-            if dup:
-                report["entities"]["teachers"]["skipped"] += 1
+                             User.login_name == ln)).first()
+            if dup and dup.is_deleted:
+                report["entities"]["teachers"]["failed"] += 1
+                report["errors"].append({"entity": "teacher", "field": "loginName",
+                                         "error": f"登录名存在于历史软删账号，请先恢复或更换：{ln}"})
                 continue
-            import secrets
-            pwd = "Tmp@" + secrets.token_urlsafe(6)
-            uobj = User(tenant_id=tenant_id, login_name=ln, real_name=str(t.get("name")).strip(),
-                        password_hash=hash_password(pwd), user_type="TEACHER",
-                        status="ACTIVE", must_change_password=True)
-            db.add(uobj)
-            db.flush()
-            rc = str(t.get("roleCode")).strip()
-            role = db.scalars(select(Role).where(Role.tenant_id == tenant_id,
-                              Role.role_code == rc, Role.is_deleted.is_(False))).first()
-            if not role:
-                role = Role(tenant_id=tenant_id, role_code=rc, role_name=t.get("roleName") or rc,
-                            role_type="SYSTEM", status="ACTIVE")
-                db.add(role)
+            role_codes = role_codes_from_row(t)
+            if dup and dup.user_type not in ("TEACHER", "STAFF"):
+                report["entities"]["teachers"]["failed"] += 1
+                report["errors"].append({"entity": "teacher", "field": "loginName",
+                                         "error": f"登录名已被非教师账号占用：{ln}"})
+                continue
+            if dup:
+                uobj = dup
+                report["entities"]["teachers"]["skipped"] += 1
+            else:
+                import secrets
+                pwd = "Tmp@" + secrets.token_urlsafe(6)
+                uobj = User(tenant_id=tenant_id, login_name=ln, real_name=str(t.get("name")).strip(),
+                            password_hash=hash_password(pwd), user_type="TEACHER",
+                            status="ACTIVE", must_change_password=True)
+                db.add(uobj)
                 db.flush()
-            db.add(UserRole(tenant_id=tenant_id, user_id=uobj.id, role_id=role.id, status="ACTIVE"))
+                report["entities"]["teachers"]["created"] += 1
+                report["teacherCredentials"].append({"loginName": ln, "initialPassword": pwd})
+
+            binding = ensure_user_roles(db, tenant_id, uobj.id, role_codes)
+            report["entities"]["roleBindings"]["created"] += binding["created"] + binding["restored"]
+            report["entities"]["roleBindings"]["skipped"] += binding["unchanged"]
             # 数据范围绑定（复用 t_teacher_student_scope）
             stype = str(t.get("scopeType") or "").strip().upper()
             sref = t.get("scopeRef")
             if stype in ("CLASS", "COLLEGE", "STUDENT", "ADVISOR"):
-                db.add(TeacherStudentScope(tenant_id=tenant_id, teacher_key=ln,
-                       teacher_name=str(t.get("name")).strip(), role_code=rc,
-                       scope_type=stype, ref_value=str(sref) if sref not in (None, "") else None,
-                       status="ACTIVE"))
-            report["entities"]["teachers"]["created"] += 1
-            report["teacherCredentials"].append({"loginName": ln, "initialPassword": pwd})
+                scope_role = role_codes[0]
+                existing_scope = db.scalars(select(TeacherStudentScope).where(
+                    TeacherStudentScope.tenant_id == tenant_id,
+                    TeacherStudentScope.teacher_key == ln,
+                    TeacherStudentScope.role_code == scope_role,
+                    TeacherStudentScope.scope_type == stype,
+                    TeacherStudentScope.ref_value == (str(sref) if sref not in (None, "") else None))).first()
+                if existing_scope and not existing_scope.is_deleted and existing_scope.status == "ACTIVE":
+                    report["entities"]["scopes"]["skipped"] += 1
+                elif existing_scope:
+                    existing_scope.is_deleted = False
+                    existing_scope.status = "ACTIVE"
+                    existing_scope.version = int(existing_scope.version or 0) + 1
+                    report["entities"]["scopes"]["created"] += 1
+                else:
+                    db.add(TeacherStudentScope(tenant_id=tenant_id, teacher_key=ln,
+                           teacher_name=str(t.get("name")).strip(), role_code=scope_role,
+                           scope_type=stype, ref_value=str(sref) if sref not in (None, "") else None,
+                           status="ACTIVE"))
+                    report["entities"]["scopes"]["created"] += 1
+        if report["errors"] and atomic:
+            raise AppException("VALIDATION_ERROR", "存在关联错误，已整批回滚（未写入任何数据）",
+                               details={"errors": report["errors"]})
         db.commit()
 
     audit_log.record("ONBOARD_IMPORT", f"tenant:{tenant_id}",
@@ -292,7 +391,14 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True) -> dict:
 def _count_preview(tenant_id: int, body: dict, report: dict) -> None:
     """dry-run 预演：统计将新建/跳过（不写库）。"""
     with _session() as db:
-        from app.models import College, Major, SchoolClass, StudentProfile, User
+        from app.models import College, Major, Role, SchoolClass, StudentProfile, User
+
+        existing_role_codes = set(db.scalars(select(Role.role_code).where(
+            Role.tenant_id == tenant_id,
+            Role.role_code.in_(tuple(r["roleCode"] for r in BUILTIN_ROLE_TEMPLATES)),
+            Role.is_deleted.is_(False))).all())
+        report["entities"]["roles"]["skipped"] = len(existing_role_codes)
+        report["entities"]["roles"]["created"] = len(BUILTIN_ROLE_TEMPLATES) - len(existing_role_codes)
 
         def exists(model, col, val):
             return db.scalars(select(model).where(model.tenant_id == tenant_id, col == val,
@@ -329,6 +435,10 @@ def _count_preview(tenant_id: int, body: dict, report: dict) -> None:
                 report["entities"]["students"]["skipped"] += 1
             else:
                 report["entities"]["students"]["created"] += 1
+            if no and exists(User, User.login_name, no):
+                report["entities"]["studentAccounts"]["skipped"] += 1
+            elif no:
+                report["entities"]["studentAccounts"]["created"] += 1
         for t in (body.get("teachers") or []):
             ln = str((t or {}).get("loginName") or "").strip()
             if not ln:

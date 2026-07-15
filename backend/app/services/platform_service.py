@@ -233,6 +233,10 @@ def create_tenant(body: dict) -> dict:
     name = str(body.get("tenantName", "")).strip()
     if not code or not name:
         raise AppException("VALIDATION_ERROR", "tenantCode 与 tenantName 必填")
+    admin_login = str(body.get("adminLoginName") or "").strip()
+    admin_name = str(body.get("adminRealName") or "").strip()
+    if bool(admin_login) != bool(admin_name):
+        raise AppException("VALIDATION_ERROR", "首位学校管理员账号与姓名必须同时填写")
     with session() as db:
         dup = db.scalars(select(Tenant).where(Tenant.tenant_code == code,
                                               Tenant.is_deleted.is_(False))).first()
@@ -258,7 +262,15 @@ def create_tenant(body: dict) -> dict:
         "trialEndAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
         "expireAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
     })
-    return get_tenant(tid)
+    from app.services.saas_role_service import ensure_builtin_roles
+    with session() as db:
+        role_report = ensure_builtin_roles(db, tid)
+        db.commit()
+    result = get_tenant(tid)
+    result["initialization"] = {"roles": role_report}
+    if admin_login:
+        result["schoolAdmin"] = create_school_admin(tid, admin_login, admin_name)
+    return result
 
 
 def update_tenant_meta(tenant_id: int, patch: dict) -> dict:

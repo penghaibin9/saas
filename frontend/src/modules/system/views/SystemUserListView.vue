@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
-    title="用户账号管理"
-    :subtitle="'共 ' + pagination.total + ' 个账号 · 手机号 / 邮箱默认脱敏展示'"
+    :title="pageTitle"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -30,7 +30,7 @@
       <EmptyState
         v-else-if="!rows.length"
         title="没有符合条件的账号"
-        description="可调整筛选条件；新入职人员可通过「新增用户」或「批量导入」创建"
+        :description="emptyDescription"
       />
       <DataTable
         v-else
@@ -261,6 +261,21 @@ export default {
     }
   },
   computed: {
+    isIdentityImport() {
+      return this.$route.name === 'system-identity-import'
+    },
+    pageTitle() {
+      return this.isIdentityImport ? '导入老师和学生' : '师生账号管理'
+    },
+    pageSubtitle() {
+      if (this.isIdentityImport) return '批量创建登录账号并绑定预设角色；其他业务中心导入不会创建账号'
+      return '共 ' + this.pagination.total + ' 个账号 · 手机号 / 邮箱默认脱敏展示'
+    },
+    emptyDescription() {
+      return this.isIdentityImport
+        ? '请使用本页唯一导入入口批量创建老师或学生账号'
+        : '可调整筛选条件；批量开户请前往「导入老师和学生」菜单'
+    },
     visibleColumns() {
       return this.columnsConfig.filter((c) => c.visible).map((c) => ({ key: c.key, title: c.title }))
     },
@@ -277,9 +292,14 @@ export default {
       const pa = this.ctx.permissionActions
       return [
         { key: 'createUser', label: '＋ 新增用户', variant: 'primary' },
-        { key: 'importUsers', label: '⇪ 批量导入' },
+        { key: 'importUsers', label: '⇪ 导入老师/学生' },
         { key: 'exportUsers', label: '⇩ 批量导出' }
       ]
+        .filter((a) => {
+          if (a.key === 'importUsers') return this.isIdentityImport
+          if (this.isIdentityImport) return false
+          return true
+        })
         .filter((a) => pa[a.key] && pa[a.key].visible)
         .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
     },
@@ -298,7 +318,11 @@ export default {
     this.load()
     const action = this.$route.query.action
     if (action === 'createUser') this.openEdit(null)
-    if (action === 'importUsers' && this.can('importUsers')) this.importOpen = true
+    if (action === 'importUsers') {
+      this.$router.replace('/admin/system/identity-import')
+      return
+    }
+    if (this.$route.meta.openImport && this.can('importUsers')) this.importOpen = true
     if (this.$route.query.status) this.filters.status = this.$route.query.status
   },
   methods: {

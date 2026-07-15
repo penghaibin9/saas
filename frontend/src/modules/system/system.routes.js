@@ -21,7 +21,15 @@ const systemRoutes = {
       path: 'users',
       name: 'system-users',
       component: () => import('@/modules/system/views/SystemUserListView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '用户账号管理', requiresAuth: true, permissionKey: 'system.user.view' }
+      meta: { moduleCode: 'SYSTEM', title: '师生账号管理', requiresAuth: true,
+        permissionKey: 'systemAdmin.user.view' }
+    },
+    {
+      path: 'identity-import',
+      name: 'system-identity-import',
+      component: () => import('@/modules/system/views/SystemUserListView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '导入老师和学生', requiresAuth: true,
+        permissionKey: 'systemAdmin.user.import', openImport: true }
     },
     {
       path: 'roles',
