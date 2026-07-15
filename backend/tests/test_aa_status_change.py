@@ -250,3 +250,86 @@ def test_sc14_counselor_no_apply_permission(client, db_mode):
     coun_hdr = _hdr(client, "counselor01")
     r = _submit(client, coun_hdr, ids["sIn"], "SUSPEND")
     assert r.status_code == 403
+
+
+# ═══════════ SC15+（学籍异动三级模块续工·第三轮补缺）：转班(TRANSFER_CLASS) + 留级(RETAIN)申请入口 ═══════════
+
+def _seed_transfer_class(db_mode):
+    """转班测试专用种子：同专业两班（软件2101当前班 / 软件2102目标班）+ 另一专业一班（网络2101，跨专业对照）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import SchoolClass, StudentProfile
+    db = get_sessionmaker()()
+    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE", class_status="NORMAL")
+    a2 = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE", class_status="NORMAL")
+    b = SchoolClass(tenant_id=TID, major_id=2, class_name="网络2101", grade="2021", status="ACTIVE", class_status="NORMAL")
+    db.add(a); db.add(a2); db.add(b); db.flush()
+    s = StudentProfile(tenant_id=TID, student_no="AA020", real_name="转班甲", class_id=a.id,
+                       college_id=10, major_id=1, current_stage="ON_CAMPUS",
+                       student_status="NORMAL", status="ACTIVE")
+    db.add(s); db.flush()
+    ids = {"a": a.id, "a2": a2.id, "b": b.id, "s": s.id}
+    db.commit()
+    db.close()
+    return ids
+
+
+def test_sc15_transfer_class_same_major_flow(client, db_mode):
+    """转班全链路：同专业换班，三节点(辅导员→学院→教务处)审批后生效；class_id 变、major/college 不变。"""
+    ids = _seed_transfer_class(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    cid = _submit(client, hdr, ids["s"], "TRANSFER_CLASS", toClassId=str(ids["a2"])).json()["data"]["changeId"]
+    r = _approve(client, hdr, cid, 3)
+    assert r["data"]["status"] == "EFFECTIVE" and r["data"]["toStatus"] == "REGISTERED"
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile
+    db = get_sessionmaker()()
+    s = db.get(StudentProfile, ids["s"])
+    assert s.class_id == ids["a2"] and s.major_id == 1 and s.college_id == 10
+    db.close()
+
+
+def test_sc16_transfer_class_cross_major_rejected(client, db_mode):
+    """转班校验：目标班跨专业 → 拒绝（应引导改用「转专业申请」）。"""
+    ids = _seed_transfer_class(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    r = _submit(client, hdr, ids["s"], "TRANSFER_CLASS", toClassId=str(ids["b"]))
+    assert r.status_code == 400  # VALIDATION_ERROR→400
+
+
+def test_sc17_transfer_class_same_class_conflict_409(client, db_mode):
+    """转班校验：目标班=当前班 → 409。"""
+    ids = _seed_transfer_class(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    r = _submit(client, hdr, ids["s"], "TRANSFER_CLASS", toClassId=str(ids["a"]))
+    assert r.status_code == 409
+
+
+def test_sc18_transfer_class_missing_target_rejected(client, db_mode):
+    """转班校验：不填目标班级 → 拒绝。"""
+    ids = _seed_transfer_class(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    r = _submit(client, hdr, ids["s"], "TRANSFER_CLASS")
+    assert r.status_code == 400
+
+
+def test_sc19_retain_full_flow(client, db_mode):
+    """留级(RETAIN，「保留学籍申请」分类入口底层类型)全链路首次端到端覆盖：两节点(学院→教务处)。
+    NORMAL→RETAINED 不在 change_student_status() 合法转移白名单内（真实业务：留级认定针对已注册在读
+    学生，非入学未注册状态），故本测试起点造 REGISTERED 学生，不复用别测试的 NORMAL 起点种子。"""
+    from app.db.session import get_sessionmaker
+    from app.models import SchoolClass, StudentProfile
+    db = get_sessionmaker()()
+    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
+    db.add(a); db.flush()
+    s = StudentProfile(tenant_id=TID, student_no="AA021", real_name="留级甲", class_id=a.id,
+                       college_id=10, major_id=1, current_stage="ON_CAMPUS",
+                       student_status="REGISTERED", status="ACTIVE")
+    db.add(s); db.flush()
+    sid = s.id
+    db.commit()
+    db.close()
+    hdr = _hdr(client, "school_admin01")
+    cid = _submit(client, hdr, sid, "RETAIN").json()["data"]["changeId"]
+    r = _approve(client, hdr, cid, 2)  # 学院→教务处
+    assert r["data"]["status"] == "EFFECTIVE" and r["data"]["toStatus"] == "RETAINED"
+    assert _status(client, sid, hdr) == "RETAINED"

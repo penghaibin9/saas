@@ -558,11 +558,11 @@ _SC_REVIEW_ANY = require_any_permission(_SC_COUNSELOR, _SC_COLLEGE, _SC_OFFICE)
 
 class StatusChangeSubmit(BaseModel):
     studentId: str = Field(..., min_length=1)
-    changeType: str = Field(..., description="SUSPEND/RESUME/WITHDRAW/RETAIN/TRANSFER_MAJOR")
+    changeType: str = Field(..., description="SUSPEND/RESUME/WITHDRAW/RETAIN/TRANSFER_MAJOR/TRANSFER_CLASS")
     reason: Optional[str] = Field("", max_length=500)
     toCollegeId: Optional[str] = None
     toMajorId: Optional[str] = None
-    toClassId: Optional[str] = None
+    toClassId: Optional[str] = Field(None, description="TRANSFER_MAJOR/TRANSFER_CLASS 目标班级；TRANSFER_CLASS 必填")
 
 
 class AaReviewBody(BaseModel):
@@ -570,7 +570,7 @@ class AaReviewBody(BaseModel):
     reason: Optional[str] = Field("", max_length=500)
 
 
-@router.post("/status-changes", summary="发起学籍异动（含休学/复学/退学/转专业分类申请入口，changeType 区分）")
+@router.post("/status-changes", summary="发起学籍异动（含休学/复学/退学/转专业/转班分类申请入口，changeType 区分）")
 def status_change_submit(body: StatusChangeSubmit, user=Depends(require_permission(_SC_APPLY))):
     return success(change_svc.submit(body, user), message="异动已提交")
 
