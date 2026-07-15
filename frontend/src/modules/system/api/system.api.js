@@ -338,11 +338,25 @@ export const systemApi = {
   /* ==================== 角色权限 ==================== */
 
   getRoles(params = {}) {
-    let list = [...roleList]
-    if (params.keyword) list = list.filter((r) => r.name.includes(params.keyword.trim()) || r.code.includes(params.keyword.trim().toUpperCase()))
-    if (params.status) list = list.filter((r) => r.status === params.status)
-    if (params.type) list = list.filter((r) => r.type === params.type)
-    return ok(paginate(list, params))
+    const mockRoles = () => {
+      let list = [...roleList]
+      if (params.keyword) list = list.filter((r) => r.name.includes(params.keyword.trim()) || r.code.includes(params.keyword.trim().toUpperCase()))
+      if (params.status) list = list.filter((r) => r.status === params.status)
+      if (params.type) list = list.filter((r) => r.type === params.type)
+      return ok(paginate(list, params))
+    }
+    return withFallback('system.roles', async () => {
+      const data = await request('/system/roles', {
+        params: {
+          keyword: params.keyword || undefined,
+          type: params.type || undefined,
+          status: params.status || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 10
+        }
+      })
+      return ok(data)
+    }, mockRoles)
   },
 
   getRoleDetail(id) {

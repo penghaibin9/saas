@@ -8,13 +8,72 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.context import current_tenant_id
 from app.core.response import success
 from app.core.permissions import require_permission
+from app.db.session import db_enabled, get_sessionmaker
 
 router = APIRouter()
+
+
+def _role_scope(role) -> str:
+    marker = str(role.remark or "")
+    prefix = ";scope="
+    return marker.split(prefix, 1)[1].split(";", 1)[0] if prefix in marker else "ASSIGNED"
+
+
+def _role_row(role, member_count: int) -> dict:
+    status = str(role.status or "").upper()
+    return {
+        "id": str(role.id), "name": role.role_name, "code": role.role_code,
+        "type": "BUILTIN" if str(role.role_type or "").upper() == "SYSTEM" else "CUSTOM",
+        "typeLabel": "预设角色" if str(role.role_type or "").upper() == "SYSTEM" else "自定义角色",
+        "scopeCode": _role_scope(role), "scopeName": _role_scope(role),
+        "memberCount": int(member_count or 0), "description": role.remark or "",
+        "status": "ENABLED" if status in ("ACTIVE", "ENABLED") else "DISABLED",
+        "statusLabel": "启用中" if status in ("ACTIVE", "ENABLED") else "已停用",
+        "updatedAt": str(getattr(role, "updated_at", "") or "")[:19],
+    }
+
+
+@router.get("/system/roles", summary="学校预设角色与成员统计（真实库）")
+def list_system_roles(
+        keyword: str = "", type: str = "", status: str = "", page: int = 1, page_size: int = 50,
+        user=Depends(require_permission("systemAdmin.role.view"))):
+    if not db_enabled():
+        from app.core.exceptions import AppException
+        raise AppException("UNAUTHORIZED", "角色目录需启用数据库")
+    from app.models import Role, UserRole
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        stmt = select(Role).where(Role.tenant_id == tenant_id, Role.is_deleted.is_(False))
+        if keyword.strip():
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(Role.role_name.like(like) | Role.role_code.like(like))
+        if type.upper() == "BUILTIN":
+            stmt = stmt.where(Role.role_type == "SYSTEM")
+        elif type.upper() == "CUSTOM":
+            stmt = stmt.where((Role.role_type != "SYSTEM") | Role.role_type.is_(None))
+        if status.upper() == "ENABLED":
+            stmt = stmt.where(Role.status.in_(("ACTIVE", "ENABLED")))
+        elif status.upper() == "DEPRECATED":
+            stmt = stmt.where(Role.status.notin_(("ACTIVE", "ENABLED")))
+        roles = db.scalars(stmt.order_by(Role.role_type, Role.role_code)).all()
+        counts = dict(db.execute(
+            select(UserRole.role_id, func.count(UserRole.id))
+            .where(UserRole.tenant_id == tenant_id, UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE")
+            .group_by(UserRole.role_id)
+        ).all())
+        page = max(1, int(page or 1)); page_size = min(100, max(1, int(page_size or 50)))
+        total = len(roles); start = (page - 1) * page_size
+        return success({"list": [_role_row(role, counts.get(role.id, 0)) for role in roles[start:start + page_size]],
+                        "total": total, "page": page, "pageSize": page_size})
+    finally:
+        db.close()
 
 
 @router.get("/system/identity-import/role-templates", summary="师生导入可选的 SaaS 预设角色")
