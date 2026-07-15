@@ -223,13 +223,13 @@ export function isPlatformSuperAdmin() {
 }
 
 /** 账号密码登录（POST /api/v1/auth/login，真实校验）；成功后自动持有 token */
-export async function loginWithPassword(loginName, password) {
+export async function loginWithPassword(loginName, password, tenantCode = '') {
   clearOfflineState()
   const data = await rawRequest('/auth/login', {
     method: 'POST',
     auth: false,
     forceProbe: true,
-    body: { loginName, password }
+    body: { loginName, password, tenantCode: tenantCode || undefined, clientType: 'PC' }
   })
   _holdTokens(data.accessToken, data.refreshToken || '')
   return data
