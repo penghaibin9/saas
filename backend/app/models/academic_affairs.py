@@ -251,6 +251,9 @@ class AaCourse(PKMixin, TenantMixin, CommonMixin, Base):
     owner_teacher_id: Mapped[int | None] = mapped_column(BigInteger, comment="课程负责人")
     is_core: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否核心课/学位课")
     prerequisite_codes_json: Mapped[str | None] = mapped_column(String(500), comment="先修课代码 JSON")
+    description: Mapped[str | None] = mapped_column(String(500), comment="课程简介（Tier1 R2 补）")
+    applicable_majors_json: Mapped[str | None] = mapped_column(String(1000), comment="适用专业 major_id 列表 JSON（Tier1 R2 补）")
+    is_all_major: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否全校通用（Tier1 R2 补）")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     prev_version_id: Mapped[int | None] = mapped_column(BigInteger, comment="上一版本(改动强制新版本链)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True,

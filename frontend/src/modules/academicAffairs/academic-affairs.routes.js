@@ -52,6 +52,8 @@ const layoutRoute = {
     // ── W3 课程库 + 培养方案 ──
     { path: 'courses', name: 'aa-courses', component: () => import('@/modules/academicAffairs/views/AaCourseListView.vue'), meta: meta('academicAffairs.course.view', '课程库') },
     { path: 'courses/new', name: 'aa-course-new', component: () => import('@/modules/academicAffairs/views/AaCourseFormView.vue'), meta: meta('academicAffairs.course.manage', '新建课程') },
+    // Tier1 续工（2026-07-15）：课程分类/课程性质/学分学时/课程负责人/课程停用 5 个三级模块共用一个控制台（?tab= 深链接，对齐 programs/orgs 既有模式）
+    { path: 'courses/console', name: 'aa-courses-console', component: () => import('@/modules/academicAffairs/views/AaCourseConsoleView.vue'), meta: meta('academicAffairs.course.view', '课程库控制台') },
     { path: 'courses/:id', name: 'aa-course-detail', component: () => import('@/modules/academicAffairs/views/AaCourseDetailView.vue'), meta: meta('academicAffairs.course.view', '课程详情') },
     { path: 'courses/:id/edit', name: 'aa-course-edit', component: () => import('@/modules/academicAffairs/views/AaCourseFormView.vue'), meta: meta('academicAffairs.course.manage', '编辑课程') },
     { path: 'programs', name: 'aa-programs', component: () => import('@/modules/academicAffairs/views/AaProgramListView.vue'), meta: meta('academicAffairs.program.view', '培养方案') },

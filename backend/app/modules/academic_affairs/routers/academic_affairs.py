@@ -764,6 +764,12 @@ def program_new_version(programId: int = Path(...), user=Depends(_PROG_MANAGE)):
 
 
 # ═══════════ 课程库（P3，两级审核，商业级全字段）═══════════
+# Tier1 R2（新增课程/课程分类/课程性质/学分学时/课程负责人/课程停用）：写操作从 require_staff 收紧为
+# 精确 permissionCode（均命中 permissions.py 既有 "academicAffairs.*" 角色通配，不新增角色）。
+_COURSE_VIEW = require_permission("academicAffairs.course.view")
+_COURSE_MANAGE = require_permission("academicAffairs.course.manage")
+_COURSE_APPROVE = require_permission("academicAffairs.course.approve")
+
 
 class CourseCreate(BaseModel):
     courseCode: str = Field(..., min_length=1)
@@ -779,40 +785,66 @@ class CourseCreate(BaseModel):
     hoursComputer: Optional[int] = None
     examMode: str = Field("EXAM", description="EXAM/CHECK")
     ownerCollegeId: Optional[str] = None
+    ownerTeacherId: Optional[str] = Field(None, description="课程负责人 userId（若提供须为本校在职教师）")
     isCore: bool = Field(False)
+    description: Optional[str] = Field(None, description="课程简介，选填，≤500 字")
+    applicableMajors: Optional[list] = Field(default_factory=list, description="适用专业 majorId 列表（与 isAllMajor 互斥）")
+    isAllMajor: bool = Field(False, description="是否全校通用")
     prerequisiteCodes: Optional[list] = Field(default_factory=list)
 
 
 @router.post("/courses", summary="新建课程（草稿）")
-def course_create(body: CourseCreate, user=Depends(require_staff)):
+def course_create(body: CourseCreate, user=Depends(_COURSE_MANAGE)):
     return success(course_svc.create_course(body, user), message="已创建")
 
 
 @router.get("/courses", summary="课程库列表")
 def courses(keyword: Optional[str] = None, category: Optional[str] = None, nature: Optional[str] = None,
-            status: Optional[str] = None, page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
-    items, total = course_svc.list_courses(user, keyword, category, nature, status, page, pageSize)
+            status: Optional[str] = None, ownerTeacherId: Optional[str] = None, ownerCollegeId: Optional[str] = None,
+            page: int = 1, pageSize: int = 20, user=Depends(_COURSE_VIEW)):
+    items, total = course_svc.list_courses(user, keyword, category, nature, status, page, pageSize,
+                                           owner_teacher_id=ownerTeacherId, owner_college_id=ownerCollegeId)
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/courses/teachers/search", summary="课程负责人检索（在职教师，供选择器）")
+def course_teacher_search(keyword: Optional[str] = None, user=Depends(_COURSE_VIEW)):
+    return success({"items": course_svc.search_teachers(keyword or "")})
+
+
 @router.get("/courses/{courseId}", summary="课程详情")
-def course_detail(courseId: int = Path(...), user=Depends(require_staff)):
+def course_detail(courseId: int = Path(...), user=Depends(_COURSE_VIEW)):
     return success(course_svc.get_course(courseId, user))
 
 
+@router.get("/courses/{courseId}/references", summary="课程引用情况（被哪些培养方案引用，供停用前提示）")
+def course_references(courseId: int = Path(...), user=Depends(_COURSE_VIEW)):
+    return success({"items": course_svc.get_course_references(courseId, user)})
+
+
 @router.put("/courses/{courseId}", summary="编辑课程（已启用改动强制新版本）")
-def course_update(body: CourseCreate, courseId: int = Path(...), user=Depends(require_staff)):
+def course_update(body: CourseCreate, courseId: int = Path(...), user=Depends(_COURSE_MANAGE)):
     return success(course_svc.update_course(courseId, user, body), message="已保存")
 
 
 @router.post("/courses/{courseId}/submit", summary="提交课程审核")
-def course_submit(courseId: int = Path(...), user=Depends(require_staff)):
+def course_submit(courseId: int = Path(...), user=Depends(_COURSE_MANAGE)):
     return success(course_svc.submit_course(courseId, user), message="已提交")
 
 
 @router.post("/courses/{courseId}/review", summary="课程两级审核（学院→教务→ENABLED）")
-def course_review(body: AaReviewBody, courseId: int = Path(...), user=Depends(require_staff)):
+def course_review(body: AaReviewBody, courseId: int = Path(...), user=Depends(_COURSE_APPROVE)):
     return success(course_svc.review_course(courseId, user, body.action, body.reason or ""), message="已处理")
+
+
+@router.post("/courses/{courseId}/enable", summary="启用课程（DISABLED→ENABLED）")
+def course_enable(courseId: int = Path(...), user=Depends(_COURSE_APPROVE)):
+    return success(course_svc.set_course_status(courseId, user, True), message="已启用")
+
+
+@router.post("/courses/{courseId}/disable", summary="停用课程（ENABLED→DISABLED；被在途/生效培养方案引用时 400 拦截）")
+def course_disable(courseId: int = Path(...), user=Depends(_COURSE_APPROVE)):
+    return success(course_svc.set_course_status(courseId, user, False), message="已停用")
 
 
 # ═══════════ 教学任务（P3）═══════════
