@@ -802,6 +802,9 @@ class AaExemption(PKMixin, TenantMixin, CommonMixin, Base):
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
                                         comment="SUBMITTED/TEACHER_REVIEW/COLLEGE_REVIEW/ACADEMIC_REVIEW/APPROVED/REJECTED/CANCELLED")
+    # 三级施工卡「11-材料归档」§8：免修材料归档标记（nullable，历史行零回填，迁移 aa_bkcx_tier1_r2）
+    archive_status: Mapped[str | None] = mapped_column(String(20), default="NOT_ARCHIVED",
+                                                        comment="NOT_ARCHIVED/ARCHIVED")
 
 
 # ═══════════ 教材管理组（13B；目录/选用/审核/征订/发放/费用，挂教学任务）═══════════

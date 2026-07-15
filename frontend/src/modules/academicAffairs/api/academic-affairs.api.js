@@ -708,7 +708,15 @@ export const academicAffairsMakeupApi = {
   collegeReview(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/college-review`, { method: 'POST' })) },
   linkExam(bid, examBatchId) { return call(() => request(`${BASE}/makeup/batches/${bid}/link-exam`, { method: 'POST', body: { examBatchId } })) },
   finishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/finish`, { method: 'POST' })) },
-  stats() { return call(() => request(`${BASE}/makeup/stats`)) },
+  stats(params = {}) { return call(() => request(`${BASE}/makeup/stats`, { params })) },
+  statsDetail(params = {}) { return callList(`${BASE}/makeup/stats/detail`, params) },
+  async exportStats(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/makeup/stats/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  },
+  printData(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/print-data`)) },
   // 重修
   retakeApply(body) { return call(() => request(`${BASE}/retake/apply`, { method: 'POST', body })) },
   retakeMy(params = {}) { return call(() => request(`${BASE}/retake/my`, { params })) },
@@ -722,7 +730,10 @@ export const academicAffairsMakeupApi = {
   exemptionReview(eid, action, reason = '') { return call(() => request(`${BASE}/exemption/applies/${eid}/review`, { method: 'POST', body: { action, reason } })) },
   // 缓考合流
   deferredPool(params = {}) { return callList(`${BASE}/makeup/deferred-pool`, params) },
-  mergeDeferred(did, batchId) { return call(() => request(`${BASE}/makeup/deferred-pool/${did}/merge`, { method: 'POST', body: { batchId } })) }
+  mergeDeferred(did, batchId) { return call(() => request(`${BASE}/makeup/deferred-pool/${did}/merge`, { method: 'POST', body: { batchId } })) },
+  // 材料归档
+  archiveExemption(eid) { return call(() => request(`${BASE}/exemption/${eid}/archive`, { method: 'POST' })) },
+  archiveList(params = {}) { return callList(`${BASE}/exemption/archive-list`, params) }
 }
 
 /* ═══════════ 教材管理（/academic-affairs/textbooks/*） ═══════════ */

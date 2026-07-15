@@ -2121,6 +2121,8 @@ def defer_review(body: DeferReviewBody, deferId: int = Path(...),
 # ══════════════ 补考重修缓考免修（13B-SM-12，/academic-affairs/makeup|retake|exemption/*） ══════════════
 _MK_MANAGE = "academicAffairs.makeup.manage"
 _MK_VIEW = "academicAffairs.makeup.view"
+_MK_EXPORT = "academicAffairs.makeup.export"
+_MK_ARCHIVE = "academicAffairs.makeup.archive"
 _RT_APPLY = "academicAffairs.retake.apply"
 _RT_REVIEW = "academicAffairs.retake.review"
 _EX_REVIEW = "academicAffairs.exemption.review"
@@ -2292,15 +2294,54 @@ def deferred_merge(body: MergeDeferredBody, did: int = Path(...), user=Depends(r
     return success(makeup_svc.merge_deferred(user, did, int(body.batchId)), message="已并入")
 
 
-# ── 统计 ──
-@router.get("/makeup/stats", summary="补考重修免修统计")
-def makeup_stats(user=Depends(require_permission(_MK_VIEW))):
-    mb, mbt = makeup_svc.list_makeup_batches(user, None, 1, 1000)
-    rt, rtt = makeup_svc.retake_list(user, None, False, 1, 1000)
-    ex, ext = makeup_svc.exemption_list(user, None, False, 1, 1000)
-    return success({"makeupBatchCount": mbt, "retakeApplyCount": rtt, "exemptionApplyCount": ext,
-                    "retakeApproved": len([r for r in rt if r["status"] in ("APPROVED", "ENROLLED", "FINISHED")]),
-                    "exemptionApproved": len([e for e in ex if e["status"] == "APPROVED"])})
+# ── 统计分析（三级施工卡 10-统计分析） ──
+@router.get("/makeup/stats", summary="补考重修缓考免修四条线统计聚合（人数+通过率，term/collegeId/dimension 可选）")
+def makeup_stats(term: Optional[str] = None, collegeId: Optional[str] = None,
+                 dimension: Optional[str] = None, user=Depends(require_permission(_MK_VIEW))):
+    return success(makeup_svc.aggregate_stats(user, term, collegeId, dimension))
+
+
+@router.get("/makeup/stats/detail", summary="四条线统计下钻明细（line=makeup/retake/exemption/deferred）")
+def makeup_stats_detail(term: Optional[str] = None, collegeId: Optional[str] = None, line: Optional[str] = None,
+                        page: int = 1, pageSize: int = 50, user=Depends(require_permission(_MK_VIEW))):
+    items, total = makeup_svc.stats_detail(user, term, collegeId, line, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class MakeupStatsExportBody(BaseModel):
+    term: Optional[str] = None
+    collegeId: Optional[str] = None
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
+
+
+@router.post("/makeup/stats/export", summary="四条线统计导出 xlsx（水印+用途必填+审计）")
+def makeup_stats_export(body: MakeupStatsExportBody, user=Depends(require_permission(_MK_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = makeup_svc.export_makeup_stats_xlsx(user, body.term, body.collegeId, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=makeup_stats.xlsx"})
+
+
+# ── 材料归档（三级施工卡 11-材料归档） ──
+@router.get("/makeup/batches/{bid}/print-data", summary="补考安排表打印页数据（D7）")
+def makeup_print_data(bid: int = Path(...), user=Depends(require_permission(_MK_ARCHIVE))):
+    return success(makeup_svc.print_data(user, bid))
+
+
+@router.post("/exemption/{eid}/archive", summary="标记免修材料已归档")
+def exemption_archive(eid: int = Path(...), user=Depends(require_permission(_MK_ARCHIVE))):
+    return success(makeup_svc.mark_archived(user, eid), message="已标记归档")
+
+
+@router.get("/exemption/archive-list", summary="免修材料归档列表")
+def exemption_archive_list(term: Optional[str] = None, status: Optional[str] = None,
+                           page: int = 1, pageSize: int = 50, user=Depends(require_permission(_MK_ARCHIVE))):
+    items, total = makeup_svc.archive_list(user, term, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 # ══════════════ 教材管理（13B，/academic-affairs/textbooks/*） ══════════════

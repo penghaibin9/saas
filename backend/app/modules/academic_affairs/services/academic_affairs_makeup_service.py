@@ -509,3 +509,315 @@ def merge_deferred(user, defer_id, batch_id):
         _audit(db, "AA_MAKEUP", b.id, "DEFERRED_MERGE", f"缓考 {d.student_name} 并入补考批次")
         db.commit()
         return {"deferId": str(d.id), "batchId": str(b.id), "merged": True}
+
+
+# ══════════ 统计分析（三级施工卡 10-统计分析 §7）══════════
+
+def _scope_college_ids(ctx, college_id=None):
+    """返回本次查询应过滤的学院 id 集合；None=不限（全租户角色未传学院）。传学院越权则拒绝。"""
+    if college_id:
+        cid = int(college_id)
+        if ctx.scope_type == "COLLEGE" and cid not in ctx.college_ids:
+            raise no_data_scope("该学院不在您的数据范围内")
+        return {cid}
+    if ctx.scope_type == "COLLEGE":
+        return set(ctx.college_ids) if ctx.college_ids else set()
+    return None
+
+
+def _profile_ids_by_college(db, college_ids):
+    """college_ids=None→不限(None)；空集→fail-closed(空集)；否则按 StudentProfile.college_id 过滤。"""
+    if college_ids is None:
+        return None
+    from app.models import StudentProfile
+    if not college_ids:
+        return set()
+    rows = db.query(StudentProfile.id).filter(StudentProfile.tenant_id == _tid(),
+                                               StudentProfile.college_id.in_(college_ids)).all()
+    return {r[0] for r in rows}
+
+
+def _acad_ids_by_profile(db, profile_ids):
+    """StudentProfile.id 集合 → AcademicStudent(t_acad_student).id 集合；None 透传（不限）。"""
+    if profile_ids is None:
+        return None
+    from app.models import AcademicStudent
+    if not profile_ids:
+        return set()
+    rows = db.query(AcademicStudent.id).filter(AcademicStudent.tenant_id == _tid(),
+                                                AcademicStudent.student_id.in_(profile_ids)).all()
+    return {r[0] for r in rows}
+
+
+def _line_stat(rows, is_pass):
+    """{count, passRate}：passRate 分母=已有终态判定结果的行数（None=未终态/不计入分母）。"""
+    judged = [is_pass(r) for r in rows]
+    scored = [j for j in judged if j is not None]
+    passed = len([j for j in scored if j])
+    rate = round(passed / len(scored), 4) if scored else None
+    return {"count": len(rows), "passRate": rate}
+
+
+def _group_by(rows, keyfn):
+    counts: dict = {}
+    for r in rows:
+        k = keyfn(r)
+        k = str(k) if k not in (None, "") else "未知"
+        counts[k] = counts.get(k, 0) + 1
+    return [{"key": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+
+
+def aggregate_stats(user, term=None, college_id=None, dimension=None):
+    """四条线统计聚合：补考/重修/免修/缓考各自人数(批次数)+通过率；dimension=course/term/college 时
+    附加下钻分组（V1：不新建统计表，实时聚合既有四表，见二级总包 §8 性能提示）。"""
+    from app.models import AaDeferredExam, AaExemption, AaMakeupBatch, AaRetakeApply, AcademicMakeup
+    with session() as db:
+        ctx = _ctx(user, db)
+        college_ids = _scope_college_ids(ctx, college_id)
+        profile_ids = _profile_ids_by_college(db, college_ids)
+        acad_ids = _acad_ids_by_profile(db, profile_ids)
+
+        batch_term = dict(db.query(AaMakeupBatch.id, AaMakeupBatch.term_code)
+                          .filter(AaMakeupBatch.tenant_id == _tid()).all())
+
+        # 补考：t_acad_makeup（batch_id 非空=四条线口径），学期按批次 term_code 过滤
+        mq = db.query(AcademicMakeup).filter(AcademicMakeup.tenant_id == _tid(),
+                                             AcademicMakeup.batch_id.isnot(None))
+        if acad_ids is not None:
+            mq = mq.filter(AcademicMakeup.acad_student_id.in_(acad_ids or [-1]))
+        if term:
+            bids = [bid for bid, tc in batch_term.items() if tc == term]
+            mq = mq.filter(AcademicMakeup.batch_id.in_(bids or [-1]))
+        makeup_rows = mq.all()
+        makeup_stat = _line_stat(makeup_rows, lambda m: (m.final_score >= 60) if m.final_score is not None else None)
+
+        # 重修：t_aa_retake_apply（APPROVED/ENROLLED/FINISHED=通过，REJECTED=不通过，在途不计分母）
+        rq = db.query(AaRetakeApply).filter(AaRetakeApply.tenant_id == _tid(), AaRetakeApply.is_deleted.is_(False))
+        if profile_ids is not None:
+            rq = rq.filter(AaRetakeApply.student_id.in_(profile_ids or [-1]))
+        if term:
+            rq = rq.filter(AaRetakeApply.term_code == term)
+        retake_rows = rq.all()
+        _rt_terminal = ("APPROVED", "ENROLLED", "FINISHED", "REJECTED")
+        retake_stat = _line_stat(retake_rows, lambda r: (r.status != "REJECTED") if r.status in _rt_terminal else None)
+
+        # 免修：t_aa_exemption（有 college_id 直接列，APPROVED=通过）
+        eq = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False))
+        if college_ids is not None:
+            eq = eq.filter(AaExemption.college_id.in_(college_ids or [-1]))
+        if term:
+            eq = eq.filter(AaExemption.term_code == term)
+        exemption_rows = eq.all()
+        _ex_terminal = (_EX_APPROVED, _EX_REJECTED, _EX_CANCELLED)
+        exemption_stat = _line_stat(exemption_rows, lambda e: (e.status == _EX_APPROVED) if e.status in _ex_terminal else None)
+
+        # 缓考：t_aa_deferred_exam（只读，APPROVED=已并入下一批次视为"通过"）
+        dq = db.query(AaDeferredExam).filter(AaDeferredExam.tenant_id == _tid(), AaDeferredExam.is_deleted.is_(False))
+        if profile_ids is not None:
+            dq = dq.filter(AaDeferredExam.student_id.in_(profile_ids or [-1]))
+        deferred_rows = dq.all()
+        deferred_stat = _line_stat(deferred_rows, lambda d: (d.status == "APPROVED") if d.status in ("APPROVED", "REJECTED") else None)
+
+        result = {"makeup": makeup_stat, "retake": retake_stat,
+                  "deferred": deferred_stat, "exemption": exemption_stat}
+        if dimension == "course":
+            result["groups"] = {
+                "makeup": _group_by(makeup_rows, lambda m: m.course_name),
+                "retake": _group_by(retake_rows, lambda r: r.course_name),
+                "deferred": _group_by(deferred_rows, lambda d: d.course_name),
+                "exemption": _group_by(exemption_rows, lambda e: e.course_name),
+            }
+        elif dimension == "term":
+            # 缓考无 term_code 建模（V1 未建模，分组统一置"未知"，如实登记不冒充数据）
+            result["groups"] = {
+                "makeup": _group_by(makeup_rows, lambda m: batch_term.get(m.batch_id)),
+                "retake": _group_by(retake_rows, lambda r: r.term_code),
+                "deferred": _group_by(deferred_rows, lambda d: None),
+                "exemption": _group_by(exemption_rows, lambda e: e.term_code),
+            }
+        elif dimension == "college":
+            from app.models import AcademicStudent, StudentProfile
+            acad_to_profile = dict(db.query(AcademicStudent.id, AcademicStudent.student_id).filter(
+                AcademicStudent.tenant_id == _tid(),
+                AcademicStudent.id.in_({m.acad_student_id for m in makeup_rows} or [-1])).all())
+            profile_ids_needed = (set(acad_to_profile.values())
+                                  | {r.student_id for r in retake_rows} | {d.student_id for d in deferred_rows})
+            profile_college = dict(db.query(StudentProfile.id, StudentProfile.college_id).filter(
+                StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(profile_ids_needed or [-1])).all())
+            result["groups"] = {
+                "makeup": _group_by(makeup_rows, lambda m: profile_college.get(acad_to_profile.get(m.acad_student_id))),
+                "retake": _group_by(retake_rows, lambda r: profile_college.get(r.student_id)),
+                "deferred": _group_by(deferred_rows, lambda d: profile_college.get(d.student_id)),
+                "exemption": _group_by(exemption_rows, lambda e: e.college_id),
+            }
+        return result
+
+
+def stats_detail(user, term=None, college_id=None, line=None, page=1, page_size=50):
+    """下钻明细（三级施工卡 10-统计分析 §7 GET /makeup/stats/detail）。"""
+    from app.models import AaDeferredExam, AaExemption, AaMakeupBatch, AaRetakeApply, AcademicMakeup
+    line = (line or "makeup").strip()
+    with session() as db:
+        ctx = _ctx(user, db)
+        college_ids = _scope_college_ids(ctx, college_id)
+        profile_ids = _profile_ids_by_college(db, college_ids)
+        acad_ids = _acad_ids_by_profile(db, profile_ids)
+        if line == "makeup":
+            q = db.query(AcademicMakeup, AaMakeupBatch).outerjoin(
+                AaMakeupBatch, AcademicMakeup.batch_id == AaMakeupBatch.id).filter(
+                AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id.isnot(None))
+            if acad_ids is not None:
+                q = q.filter(AcademicMakeup.acad_student_id.in_(acad_ids or [-1]))
+            if term:
+                q = q.filter(AaMakeupBatch.term_code == term)
+            rows = q.order_by(AcademicMakeup.id.desc()).all()
+            items = [{"makeupId": str(m.id), "courseName": m.course_name, "termCode": b.term_code if b else None,
+                     "status": m.status, "finalScore": m.final_score, "batchId": str(m.batch_id)} for m, b in rows]
+        elif line == "retake":
+            q = db.query(AaRetakeApply).filter(AaRetakeApply.tenant_id == _tid(), AaRetakeApply.is_deleted.is_(False))
+            if profile_ids is not None:
+                q = q.filter(AaRetakeApply.student_id.in_(profile_ids or [-1]))
+            if term:
+                q = q.filter(AaRetakeApply.term_code == term)
+            items = [_rt_dto(r) for r in q.order_by(AaRetakeApply.id.desc()).all()]
+        elif line == "exemption":
+            q = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False))
+            if college_ids is not None:
+                q = q.filter(AaExemption.college_id.in_(college_ids or [-1]))
+            if term:
+                q = q.filter(AaExemption.term_code == term)
+            items = [_ex_dto(r) for r in q.order_by(AaExemption.id.desc()).all()]
+        elif line == "deferred":
+            q = db.query(AaDeferredExam).filter(AaDeferredExam.tenant_id == _tid(), AaDeferredExam.is_deleted.is_(False))
+            if profile_ids is not None:
+                q = q.filter(AaDeferredExam.student_id.in_(profile_ids or [-1]))
+            items = [{"deferId": str(d.id), "studentName": d.student_name, "courseName": d.course_name,
+                     "status": d.status} for d in q.order_by(AaDeferredExam.id.desc()).all()]
+        else:
+            raise _bad("line 参数非法（makeup/retake/exemption/deferred）")
+        total = len(items)
+        return items[(page - 1) * page_size: page * page_size], total
+
+
+def export_makeup_stats_xlsx(user, term=None, college_id=None, purpose="") -> bytes:
+    """四条线统计导出 xlsx（三级施工卡 10-统计分析 §11：水印+用途必填+审计；对齐「教务统计」
+    export_stats_xlsx 同一套 xlsx 生成/水印/审计惯例，未接 6 大业务域通用导出——该框架列结构
+    固定为"学生台账"型（姓名/学号/班级…），与本卡"四条线聚合数字"型导出不匹配，如实登记为
+    与三级卡 §7 `/export/domain/academic-makeup` 字面表述的实现差异）。"""
+    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
+        raise _bad("导出用途必填（≥5 字）")
+    data = aggregate_stats(user, term, college_id, None)
+    from app.services.xlsx_util import build_ledger_xlsx
+    watermark = f"导出人：{_op()}  时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}"
+    headers = ["条线", "人数/批次数", "通过率(%)"]
+    labels = {"makeup": "补考", "retake": "重修", "deferred": "缓考", "exemption": "免修"}
+    rows = []
+    for key, label in labels.items():
+        d = data[key]
+        rate = round(d["passRate"] * 100, 1) if d["passRate"] is not None else "-"
+        rows.append([label, d["count"], rate])
+    content = build_ledger_xlsx("补考重修缓考免修统计", headers, rows, watermark=watermark)
+    with session() as db:
+        _audit(db, "AA_MAKEUP", None, "MAKEUP_STATS_EXPORT", f"统计导出 用途={purpose.strip()[:100]}")
+        db.commit()
+    return content
+
+
+# ══════════ 材料归档（三级施工卡 11-材料归档 §7）══════════
+
+def print_data(user, batch_id):
+    """补考安排表打印页数据：批次+学生名单+（若挂考务批次，按课程名 best-effort 匹配）时间考场。
+    仅 PUBLISHED 及以后状态可打印；学院角色范围内无匹配学生时拒绝（越权）。"""
+    from app.models import AcademicMakeup, AcademicStudent
+    with session() as db:
+        ctx = _ctx(user, db)
+        b = _get_mb(db, batch_id)
+        if b.status not in (_MB_PUBLISHED, _MB_SCORING, _MB_REVIEWED, _MB_FINISHED):
+            raise _invalid("补考批次尚未发布，暂不可打印安排表")
+        rows = db.query(AcademicMakeup, AcademicStudent).join(
+            AcademicStudent, AcademicMakeup.acad_student_id == AcademicStudent.id).filter(
+            AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id == b.id).all()
+        if ctx.scope_type == "COLLEGE":
+            from app.models import College
+            allowed_names = ({c.college_name for c in db.query(College).filter(
+                College.tenant_id == _tid(), College.id.in_(ctx.college_ids)).all()} if ctx.college_ids else set())
+            rows = [(m, s) for m, s in rows if s.college_name in allowed_names]
+            if not rows:
+                raise no_data_scope("该补考批次不在您的数据范围内")
+        # 若挂考务批次，按课程名 best-effort 匹配考场/时间（缺失不阻断，前端显示"待补充"）
+        exam_map = {}
+        if b.exam_batch_ref:
+            from app.models import AaExamCourse
+            for c in db.query(AaExamCourse).filter(AaExamCourse.tenant_id == _tid(),
+                                                    AaExamCourse.batch_id == b.exam_batch_ref,
+                                                    AaExamCourse.is_deleted.is_(False)).all():
+                exam_map[c.course_name] = {"examDate": c.exam_date, "startTime": c.start_time, "endTime": c.end_time}
+        students = [{"studentNo": s.student_no, "studentName": s.name, "courseName": m.course_name,
+                    "status": m.status, "finalScore": m.final_score,
+                    **(exam_map.get(m.course_name) or {"examDate": None, "startTime": None, "endTime": None})}
+                   for m, s in rows]
+        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_PRINT", f"打印补考安排表 {b.batch_name}")
+        db.commit()
+        return {"batchId": str(b.id), "batchName": b.batch_name, "termCode": b.term_code,
+                "status": b.status, "publishedAt": _iso(b.published_at), "students": students}
+
+
+def mark_archived(user, exemption_id):
+    """标记免修材料已归档。仅审批已终态（APPROVED/REJECTED/CANCELLED）的申请可标记；已归档幂等。"""
+    from app.models import AaExemption
+    with session() as db:
+        ctx = _ctx(user, db)
+        e = db.query(AaExemption).filter(AaExemption.id == exemption_id, AaExemption.tenant_id == _tid()).first()
+        if not e:
+            raise not_found("免修申请不存在")
+        if ctx.scope_type == "COLLEGE" and e.college_id and int(e.college_id) not in ctx.college_ids:
+            raise no_data_scope("该学生不在您的数据范围内")
+        if e.status not in (_EX_APPROVED, _EX_REJECTED, _EX_CANCELLED):
+            raise _invalid("仅审批已终态的免修申请可标记归档")
+        if e.archive_status == "ARCHIVED":
+            return {"exemptionId": str(e.id), "archiveStatus": e.archive_status}
+        e.archive_status = "ARCHIVED"
+        _audit(db, "AA_EXEMPTION", e.id, "EXEMPTION_ARCHIVE", "标记材料已归档")
+        db.commit()
+        return {"exemptionId": str(e.id), "archiveStatus": e.archive_status}
+
+
+def archive_list(user, term=None, status=None, page=1, page_size=50):
+    """免修材料归档列表（教务处/学院教务员）：附材料文件名（查 t_file_object，仅限已终态申请可见原件）。"""
+    from app.models import AaExemption
+    with session() as db:
+        ctx = _ctx(user, db)
+        college_ids = _scope_college_ids(ctx, None)
+        q = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False))
+        if college_ids is not None:
+            q = q.filter(AaExemption.college_id.in_(college_ids or [-1]))
+        if term:
+            q = q.filter(AaExemption.term_code == term)
+        if status:
+            q = q.filter(AaExemption.archive_status == status)
+        rows = q.order_by(AaExemption.id.desc()).all()
+        all_file_ids: set[int] = set()
+        for e in rows:
+            if e.material_file_ids:
+                try:
+                    all_file_ids.update(int(x) for x in json.loads(e.material_file_ids) if str(x).isdigit())
+                except (ValueError, TypeError):
+                    pass
+        file_map = {}
+        if all_file_ids:
+            from app.models import FileObject
+            file_map = {f.id: {"fileId": str(f.id), "fileName": f.file_name, "sizeBytes": f.size_bytes}
+                       for f in db.query(FileObject).filter(FileObject.tenant_id == _tid(),
+                                                             FileObject.id.in_(all_file_ids)).all()}
+        items = []
+        for e in rows:
+            file_ids = []
+            if e.material_file_ids:
+                try:
+                    file_ids = [int(x) for x in json.loads(e.material_file_ids) if str(x).isdigit()]
+                except (ValueError, TypeError):
+                    file_ids = []
+            items.append({**_ex_dto(e), "archiveStatus": e.archive_status or "NOT_ARCHIVED",
+                         "materialFiles": [file_map[fid] for fid in file_ids if fid in file_map]})
+        total = len(items)
+        return items[(page - 1) * page_size: page * page_size], total
