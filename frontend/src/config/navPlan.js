@@ -351,7 +351,11 @@ export const NAV_PLAN = [
     mod('aa-course-selection', '选课管理', '/admin/academic-affairs/selection', [
       I('选课批次控制台（批次/课程/名单/统计）', '/admin/academic-affairs/selection', 'academicAffairs.selection.view'),
       I('我的选课（学生自助）', '/admin/academic-affairs/my-selection', 'academicAffairs.selection.enroll'),
-      ...P('选课规则', '补选管理', '冲突检测', '选课结果', '选课归档')
+      I('选课规则', '/admin/academic-affairs/selection?tab=rule', 'academicAffairs.selection.rule.manage'),
+      I('补选管理', '/admin/academic-affairs/selection?tab=reselect', 'academicAffairs.selection.view'),
+      I('冲突检测', '/admin/academic-affairs/selection?tab=conflict', 'academicAffairs.selection.view'),
+      I('选课结果（并入学生课表，见课表三视图）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
+      I('选课归档', '/admin/academic-affairs/selection/archive', 'academicAffairs.selection.manage')
     ]),
     mod('aa-exam', '考务管理', '/admin/academic-affairs/exam', [
       I('考务控制台（批次/课程/考场/座位/监考/巡考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),

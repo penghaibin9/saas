@@ -1776,6 +1776,11 @@ class SelectionCourseUpdate(BaseModel):
 
 class EnrollBody(BaseModel):
     selectionCourseId: str = Field(..., min_length=1)
+    isReselect: bool = Field(False, description="补选场景标志位（仅前端语义提示，后端独立核验资格，见06号卡§10）")
+
+
+class ExportPurposeBody(BaseModel):
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
 
 
 class AdjustBody(BaseModel):
@@ -1891,9 +1896,14 @@ def sel_record_adjust(body: AdjustBody, recordId: int = Path(...),
     return success(selection_svc.adjust_record(user, recordId, body.reason), message="已调整")
 
 
-@router.get("/selection/batches/{batchId}/reselect-guide", summary="补选指引（CLOSED 批次）")
+@router.get("/selection/batches/{batchId}/reselect-guide", summary="补选指引（CLOSED 批次，教务处视角）")
 def sel_reselect_guide(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIEW))):
     return success(selection_svc.reselect_guide(user, batchId))
+
+
+@router.get("/selection/student/reselect-guide", summary="补选指引（学生本人待补选记录+可选课程，06号卡）")
+def sel_student_reselect_guide(batchId: Optional[str] = None, user=Depends(_require_student)):
+    return success({"items": selection_svc.student_reselect_guide(user, batchId)})
 
 
 @router.get("/selection/batches/{batchId}/stats", summary="选课统计")
@@ -1901,9 +1911,52 @@ def sel_stats(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIE
     return success(selection_svc.batch_stats(user, batchId))
 
 
+@router.get("/selection/batches/{batchId}/conflict-report", summary="冲突预警报表（09号卡，studentNo 可选按学号查询）")
+def sel_conflict_report(batchId: int = Path(...), studentNo: Optional[str] = None,
+                        user=Depends(require_permission(_SEL_VIEW))):
+    return success(selection_svc.get_conflict_report(user, batchId, studentNo))
+
+
+@router.post("/selection/batches/{batchId}/conflict-report/export", summary="冲突预警报表导出 xlsx（水印+审计+用途必填）")
+def sel_conflict_report_export(body: ExportPurposeBody, batchId: int = Path(...),
+                               user=Depends(require_permission(_SEL_VIEW))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = selection_svc.export_conflict_report_xlsx(user, batchId, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=selection_conflict_report.xlsx"})
+
+
 @router.post("/selection/time-tick", summary="定时触发：到点自动开选/截止（供 cron 调度，幂等）")
 def sel_time_tick(user=Depends(require_permission(_SEL_MANAGE))):
     return success(selection_svc.run_time_tick(user), message="已执行时间触发")
+
+
+# ── 选课归档（12号卡：ARCHIVED 批次历史查询/导出） ──
+@router.get("/selection/archive", summary="归档批次列表（仅 ARCHIVED，12号卡）")
+def sel_archive_list(termId: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                     user=Depends(require_permission(_SEL_MANAGE))):
+    items, total = selection_svc.list_archived_batches(user, termId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/selection/archive/{batchId}", summary="归档批次详情（含统计，非 ARCHIVED 409）")
+def sel_archive_detail(batchId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.archive_detail(user, batchId))
+
+
+@router.post("/selection/archive/{batchId}/export", summary="归档台账导出 xlsx（水印+审计+用途必填，非 ARCHIVED 409）")
+def sel_archive_export(body: ExportPurposeBody, batchId: int = Path(...),
+                       user=Depends(require_permission(_SEL_MANAGE))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = selection_svc.export_archive_xlsx(user, batchId, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=selection_archive.xlsx"})
 
 
 # ══════════════ 考务管理（13B-SM-10，/academic-affairs/exam/*、/deferred-exams*） ══════════════

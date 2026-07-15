@@ -397,12 +397,15 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
 
 # ── 三视图 ──
 
-def _item_row(x) -> dict:
+def _item_row(x, source="CLASS_DERIVED", selection_record_id=None) -> dict:
+    """source: CLASS_DERIVED(行政班课表推导，既有) / ENROLLED(选课LOCKED并入，10号卡新增值)。
+    切换位沿用 `13A-13B-V1不可做与后置能力清单.md:45` 预留设计，前端按 source 区分展示。"""
     return {"itemId": str(x.id), "courseName": x.course_name or "", "className": x.class_name or "",
             "classId": str(x.class_id or ""), "teacherName": x.teacher_name or "",
             "teacherKey": x.teacher_key or "", "weekday": x.weekday, "slotNo": x.slot_no,
             "startWeek": x.start_week, "endWeek": x.end_week, "weekParity": x.week_parity,
-            "classroom": x.classroom_text or "", "status": x.status}
+            "classroom": x.classroom_text or "", "status": x.status, "source": source,
+            "selectionRecordId": str(selection_record_id) if selection_record_id else None}
 
 
 def _view(db, batch_id, extra_conds):
@@ -426,16 +429,43 @@ def teacher_view(batch_id, user, teacher_key):
         return {"items": _view(db, batch_id, [AaScheduleItem.teacher_key == teacher_key])}
 
 
+def _enrolled_items(db, student_id):
+    """学生本人选课结果并入课表（10号卡）：批次 LOCKED 后，选课记录关联教学任务在已发布课表中
+    的排课项(EFFECTIVE)标记 source=ENROLLED；LOCKED 前不并入（避免展示未定选课结果误导学生）。"""
+    from app.models import AaScheduleItem, AaSelectionCourse, AaSelectionRecord
+    locked = db.query(AaSelectionRecord).filter(
+        AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.student_id == int(student_id),
+        AaSelectionRecord.status == "LOCKED", AaSelectionRecord.is_deleted.is_(False)).all()
+    if not locked:
+        return []
+    course_ids = [r.selection_course_id for r in locked]
+    courses = db.query(AaSelectionCourse).filter(
+        AaSelectionCourse.id.in_(course_ids), AaSelectionCourse.tenant_id == _tid()).all()
+    task_to_record = {c.id: (c.teaching_task_id, next(
+        (r.id for r in locked if r.selection_course_id == c.id), None)) for c in courses}
+    out = []
+    for c in courses:
+        tt_id, rec_id = task_to_record.get(c.id, (None, None))
+        if not tt_id:
+            continue
+        rows = db.query(AaScheduleItem).filter(
+            AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == tt_id,
+            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False)).all()
+        out.extend(_item_row(x, source="ENROLLED", selection_record_id=rec_id) for x in rows)
+    return out
+
+
 def student_view(batch_id, user, student_id):
-    """学生课表：服务端按行政班归属推导（不前端拼接）。"""
+    """学生课表：服务端按行政班归属推导（CLASS_DERIVED）+ 本人LOCKED选课结果并入（ENROLLED，10号卡）。"""
     from app.models import AaScheduleItem, StudentProfile
     with session() as db:
         s = db.get(StudentProfile, int(student_id))
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
-        if not s.class_id:
-            return {"items": [], "note": "学生无行政班归属"}
-        return {"items": _view(db, batch_id, [AaScheduleItem.class_id == int(s.class_id)])}
+        base_items = _view(db, batch_id, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
+        items = base_items + _enrolled_items(db, s.id)
+        note = "" if s.class_id else "学生无行政班归属"
+        return {"items": items, "note": note}
 
 
 def list_batches(user, term_id=None, status=None, page=1, page_size=20):

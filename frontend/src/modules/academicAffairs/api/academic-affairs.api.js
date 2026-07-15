@@ -647,14 +647,33 @@ export const academicAffairsSelectionApi = {
   courseRoster(courseId, params = {}) { return callList(`${BASE}/selection/courses/${courseId}/roster`, params) },
   // ── 学生自助 ──
   studentCourses(batchId) { return call(() => request(`${BASE}/selection/student/courses`, { params: batchId ? { batchId } : {} })) },
-  enroll(selectionCourseId) { return call(() => request(`${BASE}/selection/student/enroll`, { method: 'POST', body: { selectionCourseId } })) },
+  enroll(selectionCourseId, isReselect = false) { return call(() => request(`${BASE}/selection/student/enroll`, { method: 'POST', body: { selectionCourseId, isReselect } })) },
   drop(selectionCourseId) { return call(() => request(`${BASE}/selection/student/drop`, { method: 'POST', body: { selectionCourseId } })) },
   mySelections(batchId) { return call(() => request(`${BASE}/selection/student/my`, { params: batchId ? { batchId } : {} })) },
   // ── 教务处调整 / 补选 / 统计 ──
   adjustRecord(recordId, reason) { return call(() => request(`${BASE}/selection/records/${recordId}/adjust`, { method: 'POST', body: { reason } })) },
   reselectGuide(id) { return call(() => request(`${BASE}/selection/batches/${id}/reselect-guide`)) },
+  /** 学生本人补选指引（06号卡）：待补选记录 + 该批次仍有余量课程；batchId 可选。 */
+  studentReselectGuide(batchId) { return call(() => request(`${BASE}/selection/student/reselect-guide`, { params: batchId ? { batchId } : {} })) },
   batchStats(id) { return call(() => request(`${BASE}/selection/batches/${id}/stats`)) },
-  timeTick() { return call(() => request(`${BASE}/selection/time-tick`, { method: 'POST' })) }
+  timeTick() { return call(() => request(`${BASE}/selection/time-tick`, { method: 'POST' })) },
+  // ── 冲突检测（09号卡） ──
+  conflictReport(id, studentNo) { return call(() => request(`${BASE}/selection/batches/${id}/conflict-report`, { params: studentNo ? { studentNo } : {} })) },
+  async exportConflictReport(id, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/selection/batches/${id}/conflict-report/export`, { method: 'POST', body: { purpose } })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  },
+  // ── 选课归档（12号卡） ──
+  listArchivedBatches(params = {}) { return callList(`${BASE}/selection/archive`, params) },
+  archiveDetail(id) { return call(() => request(`${BASE}/selection/archive/${id}`)) },
+  async exportArchive(id, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/selection/archive/${id}/export`, { method: 'POST', body: { purpose } })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  }
 }
 
 /* ═══════════ 考务管理（SM-10 · /academic-affairs/exam/*、/deferred-exams*） ═══════════ */

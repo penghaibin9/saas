@@ -22,11 +22,15 @@
           >
             <div
               v-for="it in itemsAt(d.v, slot.slotNo)"
-              :key="it.itemId || (it.courseName + it.weekday + it.slotNo)"
+              :key="(it.itemId || (it.courseName + it.weekday + it.slotNo)) + (it.source || '')"
               class="aa-grid__item"
+              :class="{ 'is-enrolled': it.source === 'ENROLLED' }"
               @click.stop="$emit('item-click', it)"
             >
-              <div class="aa-grid__course">{{ it.courseName }}</div>
+              <div class="aa-grid__course">
+                {{ it.courseName }}
+                <span v-if="it.source === 'ENROLLED'" class="aa-grid__tag">选修</span>
+              </div>
               <div class="aa-grid__meta">
                 <span v-if="it.teacherName">{{ it.teacherName }}</span>
                 <span v-if="it.classroom">@{{ it.classroom }}</span>
@@ -101,7 +105,9 @@ export default {
 .aa-grid__cell.is-editable:hover { background: var(--fill-50, #f7f8fa); }
 .aa-grid__cell.is-conflict { outline: 2px solid var(--danger-500, #ef4444); outline-offset: -2px; background: var(--danger-50, #fef2f2); }
 .aa-grid__item { background: var(--primary-50, #eff6ff); border-left: 3px solid var(--primary-400, #60a5fa); border-radius: 4px; padding: 4px 6px; margin-bottom: 4px; cursor: pointer; }
+.aa-grid__item.is-enrolled { background: var(--success-50, #ecfdf5); border-left-color: var(--success-400, #34d399); }
 .aa-grid__course { font-size: 12px; font-weight: 500; color: var(--text-900, #1f2329); }
+.aa-grid__tag { display: inline-block; font-size: 10px; font-weight: 500; color: var(--success-600, #059669); background: var(--success-100, #d1fae5); border-radius: 3px; padding: 0 4px; margin-left: 4px; vertical-align: middle; }
 .aa-grid__meta { font-size: 11px; color: var(--text-600, #566073); display: flex; gap: 6px; }
 .aa-grid__weeks { font-size: 11px; color: var(--text-400, #8a9099); }
 .aa-grid__parity { color: var(--warning-600, #d97706); margin-left: 2px; }
