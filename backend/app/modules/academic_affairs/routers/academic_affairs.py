@@ -1292,6 +1292,13 @@ def grade_analysis(term: Optional[str] = None, user=Depends(require_staff)):
     return success(grade_svc.grade_analysis(user, term))
 
 
+@router.get("/grade-views/audit", summary="成绩操作审计（读侧，AA_GRADE_*；教务处/学院查全量，教师自查本人）")
+def grade_audit_list(bizType: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                     user=Depends(require_permission("academicAffairs.grade.view"))):
+    items, total = grade_svc.list_grade_audit(user, bizType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
 # ═══════════ 学业预警（P5 规则引擎 + 二级模块 Tier1：看板/多维分类/规则/跟进/统计）═══════════
 # 权限：view=看板/列表/统计只读；handle=指派/干预/升级/关闭/作废/提醒；rule.manage=规则配置+扫描触发（仅教务处，矩阵 §15）。
 _WARN_VIEW = "academicAffairs.warning.view"

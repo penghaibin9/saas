@@ -85,6 +85,9 @@ const layoutRoute = {
     { path: 'grade-college-review', name: 'aa-grade-college-review', component: () => import('@/modules/academicAffairs/views/AaGradeCollegeReviewView.vue'), meta: meta('academicAffairs.grade.collegeReview', '学院审核') },
     { path: 'grade-publish', name: 'aa-grade-publish', component: () => import('@/modules/academicAffairs/views/AaGradePublishView.vue'), meta: meta('academicAffairs.grade.publish', '教务发布') },
     { path: 'grade-change', name: 'aa-grade-change', component: () => import('@/modules/academicAffairs/views/AaGradeChangeView.vue'), meta: meta('academicAffairs.gradeChange.apply', '成绩更正') },
+    // ── 07/08 三级补建：成绩复核（任务+明细只读核对）/ 成绩操作审计（读 AA_GRADE_* 审计流水） ──
+    { path: 'grade-recheck', name: 'aa-grade-recheck', component: () => import('@/modules/academicAffairs/views/AaGradeRecheckView.vue'), meta: meta('academicAffairs.grade.view', '成绩复核') },
+    { path: 'grade-audit', name: 'aa-grade-audit', component: () => import('@/modules/academicAffairs/views/AaGradeAuditView.vue'), meta: meta('academicAffairs.grade.view', '成绩操作审计') },
     { path: 'warnings', name: 'aa-warnings', component: () => import('@/modules/academicAffairs/views/AaWarningView.vue'), meta: meta('academicAffairs.warning.view', '学业预警') },
     // ── 学业预警二级模块 Tier1：看板/多维分类(学分·挂科·绩点·补考重修·毕业风险)/规则/跟进/统计，单控制台按 ?tab= 切换 ──
     { path: 'warnings/console', name: 'aa-warnings-console', component: () => import('@/modules/academicAffairs/views/AaWarningConsoleView.vue'), meta: meta('academicAffairs.warning.view', '学业预警控制台') },
