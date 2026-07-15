@@ -54,3 +54,21 @@ export function statusColor(status) {
 export function isActive(status) {
   return status === 'SUBMITTED' || status === 'IN_REVIEW' || status === 'DRAFT'
 }
+
+/** 分类申请入口路径段（Tier1 R1：休学/复学/退学/转专业四个独立三级菜单叶子，
+ *  路由 /admin/academic-affairs/status-changes/<segment>）。仅覆盖本轮开工的四类；
+ *  留级(RETAIN)不设分类入口，沿用「发起异动」通用页。 */
+export const TYPE_PATH_SEGMENT = {
+  SUSPEND: 'suspend',
+  RESUME: 'resume',
+  WITHDRAW: 'withdraw',
+  TRANSFER_MAJOR: 'transfer-major'
+}
+
+/** 分类申请页标题/副标题（Tier1 R1 四个「申请入口」页文案）。 */
+export const TYPE_PAGE_META = {
+  SUSPEND: { title: '休学申请', subtitle: '在籍学生申请休学；到期日按规则中心最长年限自动计算，超期未复学应作退学处理' },
+  RESUME: { title: '复学申请', subtitle: '休学中的学生申请复学；休学已超最长年限不可复学，应改办退学' },
+  WITHDRAW: { title: '退学申请', subtitle: '退学为学籍终态，终审生效后不可再对该生发起其它学籍异动' },
+  TRANSFER_MAJOR: { title: '转专业申请', subtitle: '需填写目标学院/专业/班级；终审生效后同步迁移学籍主档院系班' }
+}

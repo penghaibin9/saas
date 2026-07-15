@@ -28,6 +28,14 @@ const layoutRoute = {
     { path: 'registration/:batchId', name: 'aa-registration-detail', component: () => import('@/modules/academicAffairs/views/AaRegistrationDetailView.vue'), meta: meta('academicAffairs.registration.view', '注册名单') },
     { path: 'status-changes', name: 'aa-status-changes', component: () => import('@/modules/academicAffairs/views/AaStatusChangeListView.vue'), meta: meta('academicAffairs.statusChange.view', '学籍异动') },
     { path: 'status-changes/new', name: 'aa-status-change-new', component: () => import('@/modules/academicAffairs/views/AaStatusChangeFormView.vue'), meta: meta('academicAffairs.statusChange.manage', '发起异动') },
+    // ── Tier1 R1：分类申请入口（休学/复学/退学/转专业，共用 AaStatusChangeTypedListView + changeType meta） ──
+    { path: 'status-changes/suspend', name: 'aa-status-change-suspend', component: () => import('@/modules/academicAffairs/views/AaStatusChangeTypedListView.vue'), meta: { ...meta('academicAffairs.statusChange.apply', '休学申请'), changeType: 'SUSPEND' } },
+    { path: 'status-changes/resume', name: 'aa-status-change-resume', component: () => import('@/modules/academicAffairs/views/AaStatusChangeTypedListView.vue'), meta: { ...meta('academicAffairs.statusChange.apply', '复学申请'), changeType: 'RESUME' } },
+    { path: 'status-changes/withdraw', name: 'aa-status-change-withdraw', component: () => import('@/modules/academicAffairs/views/AaStatusChangeTypedListView.vue'), meta: { ...meta('academicAffairs.statusChange.apply', '退学申请'), changeType: 'WITHDRAW' } },
+    { path: 'status-changes/transfer-major', name: 'aa-status-change-transfer-major', component: () => import('@/modules/academicAffairs/views/AaStatusChangeTypedListView.vue'), meta: { ...meta('academicAffairs.statusChange.apply', '转专业申请'), changeType: 'TRANSFER_MAJOR' } },
+    { path: 'status-changes/approval', name: 'aa-status-change-approval', component: () => import('@/modules/academicAffairs/views/AaStatusChangeApprovalView.vue'), meta: meta('academicAffairs.statusChange.collegeReview', '异动审批') },
+    { path: 'status-changes/effective', name: 'aa-status-change-effective', component: () => import('@/modules/academicAffairs/views/AaStatusChangeEffectiveView.vue'), meta: meta('academicAffairs.statusChange.view', '异动生效') },
+    { path: 'status-changes/stats', name: 'aa-status-change-stats', component: () => import('@/modules/academicAffairs/views/AaStatusChangeStatsView.vue'), meta: meta('academicAffairs.statusChange.view', '异动统计') },
     { path: 'status-changes/:id', name: 'aa-status-change-detail', component: () => import('@/modules/academicAffairs/views/AaStatusChangeDetailView.vue'), meta: meta('academicAffairs.statusChange.view', '异动详情') },
     // ── W3 课程库 + 培养方案 ──
     { path: 'courses', name: 'aa-courses', component: () => import('@/modules/academicAffairs/views/AaCourseListView.vue'), meta: meta('academicAffairs.course.view', '课程库') },

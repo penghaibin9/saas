@@ -3,15 +3,22 @@
 各类异动多节点审批（ACAD_STATUS_*），终审经 change_student_status() 单一入口生效。
 真实业务补充：休学到期日(最长年限 suspendMaxYears，规则中心默认2年)；复学校验未超期；
 转专业/复学终审同步迁移主档院系班。在途异动重复 409；终态学生禁发起 422。
+
+数据范围（Tier1 R1 补强，对齐 13B-教务中心页面级交互与按钮动作矩阵 §2.7/2.8）：
+教务处/校管（TENANT_ALL）全校；学院教务（COLLEGE）限本院（转专业按 from/to 学院双向可见）；
+辅导员/普通教师限本班（TeacherStudentScope CLASS，from/to 双向可见）。范围解析复用
+build_affairs_context（与调停课/选课等同族模块同一套安全上下文），fail-closed：未配置范围→空列表/403002。
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 
+from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
+from app.core.permissions import has_permission
 from app.modules.academic_affairs.services.academic_affairs_status_service import (audit_status_change,
                                                           change_student_status, is_enrolled)
 from app.services.db_service import _iso, _tid, session
@@ -32,6 +39,75 @@ _ACTIVE = {"DRAFT", "SUBMITTED", "IN_REVIEW"}  # 在途（未终结）异动状�
 
 L_CT = {"SUSPEND": "休学", "WITHDRAW": "退学", "RESUME": "复学", "RETAIN": "留级",
         "TRANSFER_MAJOR": "转专业"}
+
+# 审批节点 → 所需 permissionCode（Tier1 R1：异动审批权限实例化）。
+# COUNSELOR_REVIEW=辅导员初审；COLLEGE_REVIEW/OUT_COLLEGE_REVIEW/COLLEGE_ASSIGN_CLASS=原学院教务（转出/复学分班）；
+# IN_COLLEGE_REVIEW=目标学院教务接收（仅转专业）；AA_OFFICE_FINAL=教务处终审。
+_NODE_PERM = {
+    "COUNSELOR_REVIEW": "academicAffairs.statusChange.counselorReview",
+    "COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "OUT_COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "COLLEGE_ASSIGN_CLASS": "academicAffairs.statusChange.collegeReview",
+    "IN_COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "AA_OFFICE_FINAL": "academicAffairs.statusChange.officeReview",
+}
+
+
+def _check_node_authority(db, user, node, x) -> None:
+    """审批节点授权：permissionCode 命中 + 数据范围收敛（TENANT_ALL 全通过；COLLEGE/CLASS 按 from/to 双向）。
+
+    IN_COLLEGE_REVIEW（转专业目标学院接收）按 to_college_id/to_class_id 收敛，
+    其余节点（含转出/复学/休退学）按 from_college_id/from_class_id 收敛；AA_OFFICE_FINAL 仅 TENANT_ALL。
+    """
+    perm = _NODE_PERM.get(node)
+    if not perm or not has_permission(user, perm):
+        raise no_permission(f"无权审批当前节点（{node}）")
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return
+    if node == "AA_OFFICE_FINAL":
+        raise no_data_scope("教务处终审仅限教务处/校管操作")
+    if node == "IN_COLLEGE_REVIEW":
+        if ctx.scope_type == "COLLEGE":
+            if x.to_college_id and int(x.to_college_id) in ctx.college_ids:
+                return
+            raise no_data_scope("该异动的目标学院不在您的管理范围内")
+        allowed = ctx.allowed_class_ids(db)
+        if x.to_class_id and allowed and int(x.to_class_id) in allowed:
+            return
+        raise no_data_scope("该异动不在您的数据范围内")
+    if node == "COUNSELOR_REVIEW":
+        allowed = ctx.allowed_class_ids(db)
+        if x.from_class_id and allowed and int(x.from_class_id) in allowed:
+            return
+        raise no_data_scope("该异动不在您的班级范围内")
+    # COLLEGE_REVIEW / OUT_COLLEGE_REVIEW / COLLEGE_ASSIGN_CLASS：原学院教务（本院/本班）
+    if ctx.scope_type == "COLLEGE":
+        if x.from_college_id and int(x.from_college_id) in ctx.college_ids:
+            return
+        raise no_data_scope("该异动的原学院不在您的管理范围内")
+    allowed = ctx.allowed_class_ids(db)
+    if x.from_class_id and allowed and int(x.from_class_id) in allowed:
+        return
+    raise no_data_scope("该异动不在您的数据范围内")
+
+
+def _scope_conds(db, ctx):
+    """列表/统计范围过滤条件（TENANT_ALL→无条件；COLLEGE→from/to 学院双向；CLASS→from/to 班级双向；
+    fail-closed：未配置范围返回 False 恒假条件）。"""
+    from app.models import AaStatusChange
+    if ctx.scope_type == "TENANT_ALL":
+        return []
+    if ctx.scope_type == "COLLEGE":
+        if not ctx.college_ids:
+            return [AaStatusChange.id == -1]
+        ids = list(ctx.college_ids)
+        return [or_(AaStatusChange.from_college_id.in_(ids), AaStatusChange.to_college_id.in_(ids))]
+    allowed = ctx.allowed_class_ids(db)
+    if not allowed:
+        return [AaStatusChange.id == -1]
+    ids = list(allowed)
+    return [or_(AaStatusChange.from_class_id.in_(ids), AaStatusChange.to_class_id.in_(ids))]
 
 
 def _suspend_max_years() -> int:
@@ -144,6 +220,10 @@ def submit(body, user) -> dict:
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
+        # 数据范围：教务处/校管全校代录；学院教务仅本院学生；未配置范围一律 403002（fail-closed）
+        ctx = build_affairs_context(user, db)
+        if ctx.scope_type != "TENANT_ALL":
+            ctx.require_student(db, student_id)
         cur = s.student_status
         # 终态学生禁发起
         if cur in ("MERGED", "RECYCLED", "WITHDRAWN", "GRADUATED"):
@@ -201,6 +281,8 @@ def review(sc_id, user, action, reason="") -> dict:
         x, s = _load(db, sc_id)
         if x.status not in _ACTIVE and x.status != "IN_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该异动当前状态不可审批")
+        # 节点授权：permissionCode + 数据范围（辅导员限本班/学院教务限本院/教务处终审限 TENANT_ALL）
+        _check_node_authority(db, user, x.current_node, x)
         nodes = CHANGE_FLOW[x.change_type][1]
         inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
         task = db.scalars(select(WorkflowTask).where(
@@ -270,9 +352,11 @@ def get_change(sc_id, user) -> dict:
 def list_changes(user, change_type=None, status=None, student_id=None, page=1, page_size=20):
     from app.models import AaStatusChange, StudentProfile
     with session() as db:
+        ctx = build_affairs_context(user, db)
         conds = [AaStatusChange.tenant_id == _tid(), AaStatusChange.is_deleted.is_(False),
                  AaStatusChange.change_type != "ENROLL_REGISTER",
                  AaStatusChange.change_type != "ANNUAL_REGISTER"]
+        conds += _scope_conds(db, ctx)
         if change_type:
             conds.append(AaStatusChange.change_type == change_type)
         if status:
@@ -289,3 +373,33 @@ def list_changes(user, change_type=None, status=None, student_id=None, page=1, p
                           .order_by(AaStatusChange.id.desc()).offset(offset).limit(page_size)).all()
         out = [_row(x, s) for x, s in rows]
         return out, total
+
+
+def stats(user, term_code=None) -> dict:
+    """异动统计（Tier1「异动统计」）：按类型/状态/在途节点聚合，范围收敛同 list_changes。"""
+    from app.models import AaStatusChange
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        conds = [AaStatusChange.tenant_id == _tid(), AaStatusChange.is_deleted.is_(False),
+                 AaStatusChange.change_type != "ENROLL_REGISTER",
+                 AaStatusChange.change_type != "ANNUAL_REGISTER"]
+        conds += _scope_conds(db, ctx)
+        if term_code:
+            conds.append(AaStatusChange.term_code == term_code)
+        rows = db.scalars(select(AaStatusChange).where(*conds)).all()
+        by_type, by_status, by_node = {}, {}, {}
+        for r in rows:
+            by_type[r.change_type] = by_type.get(r.change_type, 0) + 1
+            by_status[r.status] = by_status.get(r.status, 0) + 1
+            if r.status in _ACTIVE:
+                key = r.current_node or "UNKNOWN"
+                by_node[key] = by_node.get(key, 0) + 1
+        return {
+            "total": len(rows),
+            "byType": [{"key": k, "label": L_CT.get(k, k), "count": v} for k, v in by_type.items()],
+            "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
+            "pendingByNode": [{"key": k, "count": v} for k, v in by_node.items()],
+            "effective": by_status.get("EFFECTIVE", 0),
+            "rejected": by_status.get("REJECTED", 0),
+            "pending": sum(by_node.values()),
+        }

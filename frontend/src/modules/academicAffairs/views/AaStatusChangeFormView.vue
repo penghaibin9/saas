@@ -34,9 +34,10 @@
         <div class="aa-form__row">
           <label class="aa-form__label required">异动类型</label>
           <div class="aa-form__field">
-            <select v-model="form.changeType" class="aa-input">
+            <select v-if="!lockedType" v-model="form.changeType" class="aa-input">
               <option v-for="(label, val) in TYPE_LABEL" :key="val" :value="val">{{ label }}</option>
             </select>
+            <div v-else class="aa-picked">{{ TYPE_LABEL[form.changeType] || form.changeType }}</div>
             <div class="aa-form__hint">{{ typeHint }}</div>
           </div>
         </div>
@@ -78,11 +79,13 @@
 </template>
 
 <script>
-/** 发起学籍异动（/admin/academic-affairs/status-changes/new）：POST /academic-affairs/status-changes。 */
+/** 发起学籍异动（/admin/academic-affairs/status-changes/new）：POST /academic-affairs/status-changes。
+ *  支持 ?type=SUSPEND|RESUME|WITHDRAW|TRANSFER_MAJOR 预设并锁定异动类型（供休学/复学/退学/转专业
+ *  四个分类申请入口跳转带入，锁定后类型下拉隐藏，仅显示只读标签，业务逻辑与通用入口完全一致）。 */
 import { ModulePageShell } from '@/components/business'
 import { AppSectionCard } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { TYPE_LABEL } from '@/modules/academicAffairs/constants/status-change'
+import { TYPE_LABEL, TYPE_PATH_SEGMENT } from '@/modules/academicAffairs/constants/status-change'
 import { toast } from '@/utils/toast'
 
 const TYPE_HINT = {
@@ -107,7 +110,7 @@ export default {
       form: {
         studentId: this.$route.query.studentId || '',
         name: this.$route.query.name || '',
-        changeType: 'SUSPEND',
+        changeType: (this.$route.query.type && TYPE_LABEL[this.$route.query.type]) ? this.$route.query.type : 'SUSPEND',
         reason: '',
         toCollegeId: '',
         toMajorId: '',
@@ -116,13 +119,17 @@ export default {
     }
   },
   computed: {
+    lockedType() {
+      return !!(this.$route.query.type && TYPE_LABEL[this.$route.query.type])
+    },
     typeHint() {
       return TYPE_HINT[this.form.changeType] || ''
     }
   },
   methods: {
     goBack() {
-      this.$router.push('/admin/academic-affairs/status-changes')
+      const seg = this.lockedType && TYPE_PATH_SEGMENT[this.form.changeType]
+      this.$router.push(seg ? `/admin/academic-affairs/status-changes/${seg}` : '/admin/academic-affairs/status-changes')
     },
     clearStudent() {
       this.form.studentId = ''

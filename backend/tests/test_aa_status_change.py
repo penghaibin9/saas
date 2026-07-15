@@ -2,6 +2,7 @@
 
 SC1 休学全链→SUSPENDED+到期日；SC2 复学→REGISTERED；SC3 转专业迁院系班(状态不变)；
 SC4 在途重复409；SC5 终态学生禁发起422；SC6 复学前置非休学409；SC7 驳回。
+SC9+（Tier1 R1 补强）：辅导员/学院教务数据范围收敛 + 越权 403 + 异动统计端点。
 """
 from __future__ import annotations
 
@@ -134,3 +135,118 @@ def test_sc8_student_forbidden_403(client, db_mode):
     assert client.post(f"{BASE}/registration-batches", headers=hdr,
                        json={"batchName": "x"}).status_code == 403
     assert client.get(f"{BASE}/roster", headers=hdr).status_code == 403
+
+
+# ═══════════ SC9+：Tier1 R1 数据范围收敛（辅导员限本班 / 学院教务限本院）═══════════
+
+def _seed_scoped(db_mode):
+    """在 SC1-8 基础上补：College/Major 实体（COLLEGE 范围解析链 Major.college_id→SchoolClass.major_id 依赖）
+    + 辅导员(软件2101)/学院教务(软件学院) 的 TeacherStudentScope，另建一名"网络学院"学生供越权对照。"""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass, StudentProfile, TeacherStudentScope
+    db = get_sessionmaker()()
+    college_sw = College(tenant_id=TID, college_name="软件学院", status="ACTIVE")
+    college_wl = College(tenant_id=TID, college_name="网络学院", status="ACTIVE")
+    db.add(college_sw); db.add(college_wl); db.flush()
+    major_sw = Major(tenant_id=TID, college_id=college_sw.id, major_name="软件技术", status="ACTIVE")
+    major_wl = Major(tenant_id=TID, college_id=college_wl.id, major_name="网络技术", status="ACTIVE")
+    db.add(major_sw); db.add(major_wl); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=major_sw.id, class_name="软件2101", grade="2021", status="ACTIVE")
+    b = SchoolClass(tenant_id=TID, major_id=major_wl.id, class_name="网络2101", grade="2021", status="ACTIVE")
+    db.add(a); db.add(b); db.flush()
+    s_in = StudentProfile(tenant_id=TID, student_no="AA010", real_name="范围甲", class_id=a.id,
+                          college_id=college_sw.id, major_id=major_sw.id, current_stage="ON_CAMPUS",
+                          student_status="NORMAL", status="ACTIVE")
+    s_out = StudentProfile(tenant_id=TID, student_no="AA011", real_name="范围乙", class_id=b.id,
+                           college_id=college_wl.id, major_id=major_wl.id, current_stage="ON_CAMPUS",
+                           student_status="NORMAL", status="ACTIVE")
+    db.add(s_in); db.add(s_out); db.flush()
+    db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+                               role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101", status="ACTIVE"))
+    db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01", teacher_name="张晓明",
+                               role_code="COLLEGE_ADMIN", scope_type="COLLEGE", ref_value="软件学院", status="ACTIVE"))
+    db.commit()
+    ids = {"collegeSw": college_sw.id, "collegeWl": college_wl.id, "classA": a.id, "classB": b.id,
+           "sIn": s_in.id, "sOut": s_out.id}
+    db.close()
+    return ids
+
+
+def test_sc9_counselor_reviews_own_class_only(client, db_mode):
+    """辅导员对本班学生的休学申请可审（首节点 COUNSELOR_REVIEW）；对越权班学生的申请 403。"""
+    ids = _seed_scoped(db_mode)
+    admin_hdr = _hdr(client, "school_admin01")
+    coun_hdr = _hdr(client, "counselor01")
+    cid_in = _submit(client, admin_hdr, ids["sIn"], "SUSPEND").json()["data"]["changeId"]
+    cid_out = _submit(client, admin_hdr, ids["sOut"], "SUSPEND").json()["data"]["changeId"]
+    r = client.post(f"{BASE}/status-changes/{cid_in}/review", headers=coun_hdr, json={"action": "APPROVE"})
+    assert r.status_code == 200 and r.json()["data"]["currentNode"] == "COLLEGE_REVIEW"
+    r2 = client.post(f"{BASE}/status-changes/{cid_out}/review", headers=coun_hdr, json={"action": "APPROVE"})
+    assert r2.status_code == 403
+
+
+def test_sc10_college_admin_list_scoped_to_own_college(client, db_mode):
+    """学院教务的异动列表只见本院（from/to 学院双向），越院学生的异动不出现。"""
+    ids = _seed_scoped(db_mode)
+    admin_hdr = _hdr(client, "school_admin01")
+    _submit(client, admin_hdr, ids["sIn"], "SUSPEND")
+    _submit(client, admin_hdr, ids["sOut"], "SUSPEND")
+    college_hdr = _hdr(client, "college_admin01")
+    r = client.get(f"{BASE}/status-changes", headers=college_hdr, params={"changeType": "SUSPEND"})
+    assert r.status_code == 200
+    names = {row["realName"] for row in r.json()["data"]["items"]}
+    assert "范围甲" in names and "范围乙" not in names
+
+
+def test_sc11_college_admin_submit_scoped_403(client, db_mode):
+    """学院教务代录异动仅限本院学生；对越院学生发起 403002。"""
+    ids = _seed_scoped(db_mode)
+    college_hdr = _hdr(client, "college_admin01")
+    r_ok = _submit(client, college_hdr, ids["sIn"], "WITHDRAW")
+    assert r_ok.status_code == 200
+    r_bad = _submit(client, college_hdr, ids["sOut"], "WITHDRAW")
+    assert r_bad.status_code == 403
+
+
+def test_sc12_office_final_requires_tenant_all(client, db_mode):
+    """教务处终审节点(AA_OFFICE_FINAL)仅 TENANT_ALL 角色可处理；学院教务在终审节点越权 403。"""
+    ids = _seed_scoped(db_mode)
+    admin_hdr = _hdr(client, "school_admin01")
+    coun_hdr = _hdr(client, "counselor01")
+    college_hdr = _hdr(client, "college_admin01")
+    cid = _submit(client, admin_hdr, ids["sIn"], "SUSPEND").json()["data"]["changeId"]
+    r1 = client.post(f"{BASE}/status-changes/{cid}/review", headers=coun_hdr, json={"action": "APPROVE"})
+    assert r1.status_code == 200  # COUNSELOR_REVIEW → COLLEGE_REVIEW
+    r2 = client.post(f"{BASE}/status-changes/{cid}/review", headers=college_hdr, json={"action": "APPROVE"})
+    assert r2.status_code == 200  # COLLEGE_REVIEW → AA_OFFICE_FINAL
+    r3 = client.post(f"{BASE}/status-changes/{cid}/review", headers=college_hdr, json={"action": "APPROVE"})
+    assert r3.status_code == 403  # 学院教务无权处理教务处终审节点
+
+
+def test_sc13_stats_endpoint_scoped(client, db_mode):
+    """异动统计端点：教务处全校聚合；学院教务仅见本院数据（范围与 list 一致）。"""
+    ids = _seed_scoped(db_mode)
+    admin_hdr = _hdr(client, "school_admin01")
+    _submit(client, admin_hdr, ids["sIn"], "SUSPEND")
+    _submit(client, admin_hdr, ids["sOut"], "WITHDRAW")
+    r_admin = client.get(f"{BASE}/status-changes/stats", headers=admin_hdr)
+    assert r_admin.status_code == 200
+    d = r_admin.json()["data"]
+    assert d["total"] >= 2
+    types_admin = {g["key"] for g in d["byType"]}
+    assert "SUSPEND" in types_admin and "WITHDRAW" in types_admin
+
+    college_hdr = _hdr(client, "college_admin01")
+    r_college = client.get(f"{BASE}/status-changes/stats", headers=college_hdr)
+    assert r_college.status_code == 200
+    d2 = r_college.json()["data"]
+    types_college = {g["key"] for g in d2["byType"]}
+    assert "SUSPEND" in types_college and "WITHDRAW" not in types_college
+
+
+def test_sc14_counselor_no_apply_permission(client, db_mode):
+    """辅导员未被授予发起权限（仅审核节点权限），POST /status-changes → 403。"""
+    ids = _seed_scoped(db_mode)
+    coun_hdr = _hdr(client, "counselor01")
+    r = _submit(client, coun_hdr, ids["sIn"], "SUSPEND")
+    assert r.status_code == 403

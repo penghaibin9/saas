@@ -158,6 +158,10 @@ export const academicAffairsApi = {
   reviewStatusChange(changeId, action, reason) {
     return call(() => request(`${BASE}/status-changes/${changeId}/review`, { method: 'POST', body: { action, reason } }))
   },
+  /** 异动统计（Tier1「异动统计」）：按类型/状态/在途节点聚合，范围过滤同列表。 */
+  getStatusChangeStats(params = {}) {
+    return call(() => request(`${BASE}/status-changes/stats`, { params }))
+  },
 
   /* ── 课程库（两级审核 DRAFT→COLLEGE_REVIEW→ACADEMIC_REVIEW→ENABLED） ── */
   getCourses(params = {}) {
