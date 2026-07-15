@@ -25,7 +25,12 @@ const STATUS_MAP = {
   PUBLISHED: { label: '已发布', type: 'success' },
   ARCHIVED: { label: '已归档', type: 'info' },
   READONLY: { label: '只读', type: 'info' },
-  NOT_STARTED: { label: '未开始', type: 'default' }
+  NOT_STARTED: { label: '未开始', type: 'default' },
+  // 教务·缓考四级审批节点（考务管理）
+  COUNSELOR_REVIEW: { label: '辅导员审批中', type: 'warning' },
+  TEACHER_CONFIRM: { label: '任课教师确认中', type: 'warning' },
+  COLLEGE_REVIEW: { label: '学院审批中', type: 'warning' },
+  ACADEMIC_FINAL: { label: '教务处终审中', type: 'processing' }
 }
 
 export default {

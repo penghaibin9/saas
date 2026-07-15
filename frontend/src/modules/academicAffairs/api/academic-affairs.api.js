@@ -618,6 +618,8 @@ export const academicAffairsExamApi = {
   recordIncident(body) { return call(() => request(`${BASE}/exam/incidents`, { method: 'POST', body })) },
   listIncidents(params = {}) { return callList(`${BASE}/exam/incidents`, params) },
   batchStats(id) { return call(() => request(`${BASE}/exam/batches/${id}/stats`)) },
+  // 归档（12号卡，只读）
+  listArchived(params = {}) { return callList(`${BASE}/exam/archive`, params) },
   // 缓考
   deferList(params = {}) { return callList(`${BASE}/deferred-exams`, params) },
   deferCounselorReview(id, action, reason = '') { return call(() => request(`${BASE}/deferred-exams/${id}/counselor-review`, { method: 'POST', body: { action, reason } })) },

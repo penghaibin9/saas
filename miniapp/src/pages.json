@@ -216,6 +216,10 @@
       "style": { "navigationBarTitleText": "网上选课", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/student/academic-affairs/exam",
+      "style": { "navigationBarTitleText": "缓考申请", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/affairs/index",
       "style": { "navigationBarTitleText": "学工待办", "navigationStyle": "custom" }
     },

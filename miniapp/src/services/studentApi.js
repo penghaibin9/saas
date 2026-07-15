@@ -129,6 +129,11 @@ export const studentApi = {
   getSelectionCourses: (batchId) => real.acadSelectionCourses(batchId),
   enrollSelection: (selectionCourseId) => real.acadSelectionEnroll(selectionCourseId),
   dropSelection: (selectionCourseId) => real.acadSelectionDrop(selectionCourseId),
-  getMySelections: (batchId) => real.acadSelectionMy(batchId)
+  getMySelections: (batchId) => real.acadSelectionMy(batchId),
+  // 缓考申请（真实接口，无 mock 兜底）
+  getMyDeferOptions: () => real.acadExamDeferOptions(),
+  getMyDeferrals: (status) => real.acadExamDeferMy(status),
+  applyDefer: (examCourseId, reasonType, reason) => real.acadExamDeferApply(examCourseId, reasonType, reason),
+  resubmitDefer: (deferId) => real.acadExamDeferResubmit(deferId)
 }
 export default studentApi
