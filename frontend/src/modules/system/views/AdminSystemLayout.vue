@@ -21,18 +21,12 @@
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
 import { systemApi } from '@/modules/system/api/system.api'
+import { SYSTEM_MANAGEMENT_CATALOG } from '@/modules/system/systemManagementCatalog'
 
-const MENUS = [
-  { key: 'sys-home', label: '管理看板', icon: '◫', path: '/admin/system' },
-  { key: 'sys-users', label: '师生账号', icon: '☰', path: '/admin/system/users' },
-  { key: 'sys-identity-import', label: '导入老师和学生', icon: '⇪', path: '/admin/system/identity-import' },
-  { key: 'sys-roles', label: '角色权限', icon: '❖', path: '/admin/system/roles' },
-  { key: 'sys-menus', label: '菜单权限', icon: '▤', path: '/admin/system/menus' },
-  { key: 'sys-scopes', label: '数据范围', icon: '◔', path: '/admin/system/scopes' },
-  { key: 'sys-org', label: '组织结构', icon: '♜', path: '/admin/system/org' },
-  { key: 'sys-config', label: '系统与品牌', icon: '✦', path: '/admin/system/config' },
-  { key: 'sys-logs', label: '日志中心', icon: '≡', path: '/admin/system/logs' }
-]
+/* ctx 尚未加载时的兼容菜单；正常状态由 BasePortalLayout 读取同一份 navPlan 渲染 8 组 / 26 项。 */
+const MENUS = SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
+  key: group.key, label: group.label, icon: group.icon, path: group.items[0].path
+}))
 
 export default {
   name: 'AdminSystemLayout',
@@ -50,7 +44,7 @@ export default {
       const hit = [...this.menus]
         .sort((a, b) => b.path.length - a.path.length)
         .find((m) => path === m.path || path.startsWith(m.path + '/'))
-      return hit ? hit.key : 'sys-home'
+      return hit ? hit.key : 'sys-overview'
     }
   },
   async created() {

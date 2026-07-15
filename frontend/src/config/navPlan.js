@@ -1,3 +1,5 @@
+import { SYSTEM_MANAGEMENT_CATALOG } from '../modules/system/systemManagementCatalog.js'
+
 /**
  * 菜单规划总纲（PC-NAV-PLAN）——「完整三级目录规划版」唯一事实源。
  *
@@ -27,10 +29,6 @@ function I(label, path, permissionKey, entryType, opts) {
 /** 待施工叶子（可批量），自动 disabled + 待施工 badge，无 path 不注册路由 */
 function P(...labels) {
   return labels.map((label) => ({ label, status: 'planned', disabled: true, badge: '待施工' }))
-}
-/** 待补强叶子（有旧页面但能力较浅，可点击进旧页面） */
-function PA(label, path) {
-  return { label, path, status: 'partial', disabled: false, badge: '待补强' }
 }
 /** 未开通叶子（模块未授权，管理员可见「未开通」，普通角色隐藏） */
 // eslint-disable-next-line no-unused-vars
@@ -652,31 +650,18 @@ export const NAV_PLAN = [
     ])
   ]),
 
-  /* ═══════════ 一级⑥：系统管理 ═══════════ */
-  grp('system', '系统管理', 'systemAdmin', [
-    mod('sys-dashboard', '管理看板', '/admin/system', []),
-    mod('sys-users', '师生账号', '/admin/system/users', []),
-    mod('sys-identity-import', '导入老师和学生', '/admin/system/identity-import', []),
-    mod('sys-roles', '角色权限', '/admin/system/roles', []),
-    mod('sys-menus', '菜单权限', '/admin/system/menus', []),
-    mod('sys-buttons', '按钮权限', null, P('按钮权限配置', '按钮权限分配', '按钮权限审计')),
-    mod('sys-scopes', '数据范围', '/admin/system/scopes', []),
-    mod('sys-org', '组织结构', '/admin/system/org', []),
-    mod('sys-school-params', '学校参数', null, P('学校基本参数', '业务开关', '编号规则', '字段配置')),
-    mod('sys-brand', '系统与品牌', '/admin/system/config', []),
-    mod('sys-workflow', '流程配置', '/admin/workflow', [
-      I('流程中心', '/admin/workflow'),
-      I('流程模板', '/admin/workflow/processes'),
-      I('审批任务', '/admin/workflow/tasks'),
-      I('角色管理', '/admin/workflow/roles'),
-      I('权限点管理', '/admin/workflow/permissions')
-    ]),
-    mod('sys-approval-tpl', '审批模板', null, P('审批模板列表', '审批节点配置', '通知模板')),
-    mod('sys-logs', '日志中心', '/admin/system/logs', []),
-    mod('sys-security-audit', '安全审计', null, P('安全审计', '敏感操作审计', '登录审计', '导出审计')),
-    mod('sys-integrations', '第三方接口', null, P('接口配置', 'API 访问', 'Webhook', '同步任务')),
-    mod('sys-tenant', '租户配置', null, P('租户信息', '模块授权', '套餐配置'))
-  ])
+  /* ═══════════ 一级⑥：系统管理 ═══════════
+     学校级仅保留 8 组 / 26 个三级能力。平台租户、套餐、全局菜单及权限点目录
+     一律留在 PLATFORM_PLAN，避免学校管理员越权和两套角色权限重复维护。 */
+  grp('system', '系统管理', 'systemAdmin', SYSTEM_MANAGEMENT_CATALOG.map((group) =>
+    mod(group.key, group.label, group.items[0].path, group.items.map((item) =>
+      I(item.label, item.path, item.permissionKey, 'CONFIG_VIEW', {
+        systemCapabilityKey: item.key,
+        systemCapabilityGroup: group.key,
+        description: item.description
+      })
+    ))
+  ))
 ]
 
 /**

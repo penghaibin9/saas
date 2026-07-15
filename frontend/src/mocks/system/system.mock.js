@@ -1,3 +1,5 @@
+import { SYSTEM_MANAGEMENT_CATALOG, SYSTEM_MANAGEMENT_MENU_KEYS } from '@/modules/system/systemManagementCatalog'
+
 /**
  * 系统管理中心 mock 数据（11 权限与流程中心深化设计 V1.0 口径）。
  * 世界观与 mocks/db.js 一致（演示职业技术学院 / tenant-demo-a）。
@@ -422,45 +424,18 @@ export const roleDetailMap = {
   }
 }
 
-/** 权限树：模块 → 菜单 → 按钮（权限编码规范：模块:资源:动作） */
+/** 权限树：模块 → 菜单 → 按钮（权限编码规范：模块:资源:动作）。
+ * 系统管理中心由 8 组 / 26 个三级能力目录自动生成，禁止再手写一份缩减树。 */
 export const permissionTree = [
   {
     key: 'mod-system', label: '系统管理中心', type: 'MODULE',
-    children: [
-      {
-        key: 'sys-home', label: '管理看板', type: 'MENU', children: []
-      },
-      {
-        key: 'sys-users', label: '师生账号管理', type: 'MENU',
-        children: [
-          { key: 'user:create', label: '新增用户', type: 'BUTTON' },
-          { key: 'user:update', label: '编辑用户', type: 'BUTTON' },
-          { key: 'user:disable', label: '停用/启用', type: 'BUTTON' },
-          { key: 'user:reset-password', label: '重置密码', type: 'BUTTON' },
-          { key: 'user:assign-role', label: '分配角色', type: 'BUTTON' },
-          { key: 'user:export', label: '批量导出（脱敏）', type: 'BUTTON' }
-        ]
-      },
-      {
-        key: 'sys-identity-import', label: '导入老师和学生', type: 'MENU',
-        children: [{ key: 'user:import', label: '批量创建账号', type: 'BUTTON' }]
-      },
-      {
-        key: 'sys-roles', label: '角色权限管理', type: 'MENU',
-        children: [
-          { key: 'role:create', label: '新增角色', type: 'BUTTON' },
-          { key: 'role:config', label: '配置权限', type: 'BUTTON' },
-          { key: 'role:deprecate', label: '作废角色', type: 'BUTTON' }
-        ]
-      },
-      {
-        key: 'sys-logs', label: '日志中心', type: 'MENU',
-        children: [
-          { key: 'log:view', label: '查看日志', type: 'BUTTON' },
-          { key: 'log:export', label: '导出日志', type: 'BUTTON' }
-        ]
-      }
-    ]
+    children: SYSTEM_MANAGEMENT_CATALOG.flatMap((group) => group.items.map((item) => ({
+      key: item.key,
+      label: `${group.label} · ${item.label}`,
+      type: 'MENU',
+      permissionKey: item.permissionKey,
+      children: item.actions.map((entry) => ({ key: entry.key, label: entry.label, type: 'BUTTON', risk: entry.risk }))
+    })))
   },
   {
     key: 'mod-internship', label: '岗位实习中心', type: 'MODULE',
@@ -537,11 +512,11 @@ export const menuTree = [
 
 /** 角色 → 可见菜单（菜单权限页「按角色预览」用） */
 export const roleMenuPreview = {
-  SYS_ADMIN: ['sys-home', 'sys-users', 'sys-identity-import', 'sys-roles', 'sys-menus', 'sys-scopes', 'sys-org', 'sys-config', 'sys-logs', 'int-dashboard', 'int-students'],
-  SCHOOL_ADMIN: ['sys-home', 'sys-users', 'sys-identity-import', 'sys-roles', 'sys-scopes', 'sys-org', 'sys-config', 'sys-logs', 'int-dashboard', 'int-students'],
-  COLLEGE_ADMIN: ['sys-home', 'sys-users', 'int-dashboard', 'int-students'],
-  PLATFORM_OPS: ['sys-home', 'sys-logs'],
-  AUDITOR: ['sys-home', 'sys-logs'],
+  SYS_ADMIN: [...SYSTEM_MANAGEMENT_MENU_KEYS, 'int-dashboard', 'int-students'],
+  SCHOOL_ADMIN: SYSTEM_MANAGEMENT_MENU_KEYS.filter((key) => !['sys-login-policy', 'sys-integration-connections', 'sys-sync-jobs'].includes(key)).concat(['int-dashboard', 'int-students']),
+  COLLEGE_ADMIN: ['sys-overview-readiness', 'sys-accounts', 'int-dashboard', 'int-students'],
+  PLATFORM_OPS: ['sys-overview-readiness', 'sys-integration-connections', 'sys-sync-jobs'],
+  AUDITOR: ['sys-overview-readiness', 'sys-operation-audit', 'sys-login-audit', 'sys-sensitive-audit'],
   COUNSELOR: ['int-dashboard'],
   INTERN_ADVISOR: ['int-dashboard', 'int-students']
 }

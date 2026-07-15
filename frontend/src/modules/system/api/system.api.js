@@ -350,7 +350,13 @@ export const systemApi = {
     if (preset) return ok(clone(preset))
     const row = roleList.find((r) => r.id === id)
     if (!row) return fail('角色不存在')
-    return ok({ ...clone(row), menuKeys: [], buttonKeys: [], members: [], auditTrail: [{ who: '系统', time: row.updatedAt, action: '最近更新', affected: row.description }] })
+    /* 内置角色的初始授权来自统一预览目录；不再让权限抽屉因为缺少 mock 详情而显示空树。 */
+    const menuKeys = [...(roleMenuPreview[row.code] || [])]
+    const systemNode = permissionTree.find((node) => node.key === 'mod-system')
+    const buttonKeys = (systemNode?.children || [])
+      .filter((menu) => menuKeys.includes(menu.key))
+      .flatMap((menu) => (menu.children || []).map((button) => button.key))
+    return ok({ ...clone(row), menuKeys, buttonKeys, members: [], auditTrail: [{ who: '系统', time: row.updatedAt, action: '最近更新', affected: row.description }] })
   },
 
   getPermissionTree() {
@@ -415,12 +421,12 @@ export const systemApi = {
     if (!row) return fail('角色不存在')
     const detail = roleDetailMap[id]
     const before = `菜单 ${(detail?.menuKeys || []).length} · 按钮 ${(detail?.buttonKeys || []).length} · 范围 ${row.scopeName}`
-    if (detail) {
-      detail.menuKeys = [...menuKeys]
-      detail.buttonKeys = [...buttonKeys]
-      detail.scopeCode = scopeCode
-      detail.scopeName = (statusOptions.scopeTypes.find((s) => s.value === scopeCode) || {}).label || scopeCode
-    }
+    const nextDetail = detail || { id: row.id, code: row.code, name: row.name, type: row.type, typeLabel: row.typeLabel, status: row.status, statusLabel: row.statusLabel, description: row.description, members: [], auditTrail: [] }
+    nextDetail.menuKeys = [...menuKeys]
+    nextDetail.buttonKeys = [...buttonKeys]
+    nextDetail.scopeCode = scopeCode
+    nextDetail.scopeName = (statusOptions.scopeTypes.find((s) => s.value === scopeCode) || {}).label || scopeCode
+    if (!detail) roleDetailMap[id] = nextDetail
     row.scopeCode = scopeCode
     row.scopeName = (statusOptions.scopeTypes.find((s) => s.value === scopeCode) || {}).label || scopeCode
     row.updatedAt = now().slice(0, 10)

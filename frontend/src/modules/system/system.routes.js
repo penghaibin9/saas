@@ -13,7 +13,11 @@ const systemRoutes = {
   children: [
     {
       path: '',
-      name: 'system-dashboard',
+      redirect: '/admin/system/overview'
+    },
+    {
+      path: 'overview',
+      name: 'system-overview',
       component: () => import('@/modules/system/views/SystemDashboardView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '系统管理中心', requiresAuth: true, permissionKey: 'system.dashboard.view' }
     },
@@ -40,8 +44,7 @@ const systemRoutes = {
     {
       path: 'menus',
       name: 'system-menus',
-      component: () => import('@/modules/system/views/SystemMenuView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '菜单权限管理', requiresAuth: true, permissionKey: 'system.menu.view' }
+      redirect: '/admin/system/roles?tab=permissions'
     },
     {
       path: 'scopes',
@@ -66,6 +69,68 @@ const systemRoutes = {
       name: 'system-logs',
       component: () => import('@/modules/system/views/SystemLogView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '日志中心', requiresAuth: true, permissionKey: 'system.log.view' }
+    },
+    /* 8 组 26 项学校级系统管理中尚未有独立业务页的治理能力。
+       统一进入 SystemCapabilityView，不伪造写接口；真实服务按 meta.systemCapabilityKey 接入。 */
+    {
+      path: 'account-exceptions', name: 'system-account-exceptions',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '账号异常中心', requiresAuth: true, permissionKey: 'system.user.exception.view', systemCapabilityKey: 'sys-account-exceptions' }
+    },
+    {
+      path: 'login-policy', name: 'system-login-policy',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '登录与安全策略', requiresAuth: true, permissionKey: 'system.security.policy.manage', systemCapabilityKey: 'sys-login-policy' }
+    },
+    {
+      path: 'staff-affiliations', name: 'system-staff-affiliations',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '教职工岗位与归属', requiresAuth: true, permissionKey: 'system.org.affiliation.manage', systemCapabilityKey: 'sys-staff-affiliations' }
+    },
+    {
+      path: 'delegations', name: 'system-delegations',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '临时授权与工作移交', requiresAuth: true, permissionKey: 'system.delegation.manage', systemCapabilityKey: 'sys-delegations' }
+    },
+    {
+      path: 'module-entitlements', name: 'system-module-entitlements',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'system.config.feature.view', systemCapabilityKey: 'sys-module-entitlements' }
+    },
+    {
+      path: 'numbering-rules', name: 'system-numbering-rules',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '编号规则', requiresAuth: true, permissionKey: 'system.config.numbering.manage', systemCapabilityKey: 'sys-numbering-rules' }
+    },
+    {
+      path: 'dictionaries-fields', name: 'system-dictionaries-fields',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '字典与扩展字段', requiresAuth: true, permissionKey: 'system.config.dictionary.manage', systemCapabilityKey: 'sys-dictionaries-fields' }
+    },
+    {
+      path: 'process-rules', name: 'system-process-rules',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '节点与规则配置', requiresAuth: true, permissionKey: 'workflow.rule.manage', systemCapabilityKey: 'sys-process-rules' }
+    },
+    {
+      path: 'process-monitor', name: 'system-process-monitor',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '流程运行与异常处理', requiresAuth: true, permissionKey: 'workflow.instance.monitor', systemCapabilityKey: 'sys-process-monitor' }
+    },
+    {
+      path: 'sensitive-audit', name: 'system-sensitive-audit',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '敏感与导入导出审计', requiresAuth: true, permissionKey: 'system.audit.sensitive.view', systemCapabilityKey: 'sys-sensitive-audit' }
+    },
+    {
+      path: 'integrations', name: 'system-integrations',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '接口、凭证与 Webhook', requiresAuth: true, permissionKey: 'system.integration.manage', systemCapabilityKey: 'sys-integration-connections' }
+    },
+    {
+      path: 'sync-jobs', name: 'system-sync-jobs',
+      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '同步任务与失败中心', requiresAuth: true, permissionKey: 'system.integration.sync.view', systemCapabilityKey: 'sys-sync-jobs' }
     }
   ]
 }
