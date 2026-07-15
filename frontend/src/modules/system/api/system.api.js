@@ -156,15 +156,21 @@ export const systemApi = {
   /* ==================== 用户账号 ==================== */
 
   getUsers(params = {}) {
-    let list = [...userList]
-    if (params.keyword) {
-      const kw = params.keyword.trim()
-      list = list.filter((u) => u.name.includes(kw) || u.userNo.includes(kw) || (u.orgName || '').includes(kw))
+    const mockUsers = () => {
+      let list = [...userList]
+      if (params.keyword) {
+        const kw = params.keyword.trim()
+        list = list.filter((u) => u.name.includes(kw) || u.userNo.includes(kw) || (u.orgName || '').includes(kw))
+      }
+      if (params.orgId) list = list.filter((u) => u.orgId === params.orgId)
+      if (params.role) list = list.filter((u) => u.roles.includes(params.role))
+      if (params.status) list = list.filter((u) => u.status === params.status)
+      return ok(paginate(list, params))
     }
-    if (params.orgId) list = list.filter((u) => u.orgId === params.orgId)
-    if (params.role) list = list.filter((u) => u.roles.includes(params.role))
-    if (params.status) list = list.filter((u) => u.status === params.status)
-    return ok(paginate(list, params))
+    return withFallback('system.users', async () => ok(await request('/system/users', {
+      params: { keyword: params.keyword || undefined, role: params.role || undefined,
+        status: params.status || undefined, page: params.page || 1, page_size: params.pageSize || 20 }
+    })), mockUsers)
   },
 
   getUserDetail(id) {
@@ -247,7 +253,15 @@ export const systemApi = {
     return ok({ id, notice: '临时密码已发送至账号绑定手机号（' + maskPhone(row.phone) + '），本页不展示明文' })
   },
 
-  assignUserRoles(id, roleCodes) {
+  async assignUserRoles(id, roleCodes) {
+    try {
+      return ok(await request(`/system/users/${encodeURIComponent(id)}/roles`, {
+        method: 'PUT', body: { roleCodes }
+      }))
+    } catch (error) {
+      return fail(error.message || '角色分配失败')
+    }
+    /* c8 ignore next */
     const row = userList.find((u) => u.id === id)
     if (!row) return fail('账号不存在')
     const before = row.roleNames.join('、') || '无'

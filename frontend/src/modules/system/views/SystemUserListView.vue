@@ -294,7 +294,6 @@ export default {
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [
-        { key: 'createUser', label: '＋ 新增用户', variant: 'primary' },
         { key: 'importUsers', label: '⇪ 导入老师/学生' },
         { key: 'exportUsers', label: '⇩ 批量导出' }
       ]
@@ -320,7 +319,6 @@ export default {
   created() {
     this.load()
     const action = this.$route.query.action
-    if (action === 'createUser') this.openEdit(null)
     if (action === 'importUsers') {
       this.$router.replace('/admin/system/identity-import')
       return
@@ -368,7 +366,6 @@ export default {
       this.load()
     },
     onToolbar(key) {
-      if (key === 'createUser') this.openEdit(null)
       if (key === 'importUsers') this.importOpen = true
       if (key === 'exportUsers') this.openExport('FILTERED')
     },
@@ -378,7 +375,10 @@ export default {
     },
     openEdit(row) {
       if (row && !this.can('editUser')) return
-      if (!row && !this.can('createUser')) return
+      if (!row) {
+        toast.error('师生账号只能通过“导入老师/学生”创建')
+        return
+      }
       this.form = {
         open: true,
         id: row ? row.id : '',

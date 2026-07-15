@@ -50,6 +50,19 @@ def _role_row(role, member_count: int) -> dict:
     }
 
 
+def _user_row(account, roles: list) -> dict:
+    status = str(account.status or "").upper()
+    return {
+        "id": str(account.id), "userNo": account.login_name, "name": account.real_name,
+        "orgId": "", "orgName": "未设置", "roles": [r.role_code for r in roles],
+        "roleNames": [r.role_name for r in roles], "phone": "", "email": "",
+        "status": "ACTIVE" if status == "ACTIVE" else status,
+        "statusLabel": {"ACTIVE": "启用中", "DISABLED": "已停用", "LOCKED": "已锁定"}.get(status, "待激活"),
+        "source": "统一师生导入" if account.user_type in ("TEACHER", "STUDENT") else "系统创建",
+        "lastLoginAt": str(account.last_login_at or "")[:19], "createdAt": str(account.created_at or "")[:10],
+    }
+
+
 @router.get("/system/roles", summary="学校预设角色与成员统计（真实库）")
 def list_system_roles(
         keyword: str = "", type: str = "", status: str = "", page: int = 1, page_size: int = 50,
@@ -83,6 +96,89 @@ def list_system_roles(
         total = len(roles); start = (page - 1) * page_size
         return success({"list": [_role_row(role, counts.get(role.id, 0)) for role in roles[start:start + page_size]],
                         "total": total, "page": page, "pageSize": page_size})
+    finally:
+        db.close()
+
+
+@router.get("/system/users", summary="学校账号列表（真实库）")
+def list_system_users(keyword: str = "", role: str = "", status: str = "", page: int = 1, page_size: int = 20,
+                      user=Depends(require_permission("systemAdmin.user.view"))):
+    from app.models import Role, User, UserRole
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        stmt = select(User).where(User.tenant_id == tenant_id, User.is_deleted.is_(False))
+        if keyword.strip():
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(User.login_name.like(like) | User.real_name.like(like))
+        if status.strip(): stmt = stmt.where(User.status == status.upper())
+        if role.strip():
+            stmt = stmt.where(User.id.in_(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(
+                UserRole.tenant_id == tenant_id, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+                Role.role_code == role.strip().upper(), Role.is_deleted.is_(False))))
+        users = db.scalars(stmt.order_by(User.created_at.desc())).all()
+        user_ids = [u.id for u in users]
+        by_user: dict[int, list] = {uid: [] for uid in user_ids}
+        if user_ids:
+            for uid, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
+                UserRole.tenant_id == tenant_id, UserRole.user_id.in_(user_ids), UserRole.status == "ACTIVE",
+                UserRole.is_deleted.is_(False), Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False))).all():
+                by_user[uid].append(r)
+        page = max(1, int(page or 1)); page_size = min(100, max(1, int(page_size or 20)))
+        start = (page - 1) * page_size
+        return success({"list": [_user_row(account, by_user.get(account.id, [])) for account in users[start:start + page_size]],
+                        "total": len(users), "page": page, "pageSize": page_size})
+    finally:
+        db.close()
+
+
+@router.put("/system/users/{user_id}/roles", summary="分配学校账号角色")
+def assign_system_user_roles(user_id: int, body: dict = Body(...),
+                             user=Depends(require_permission("systemAdmin.user.assign-role"))):
+    from app.core.exceptions import AppException
+    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    from app.models import Permission, Role, RolePermission, User, UserRole
+    tenant_id = current_tenant_id()
+    codes = sorted({str(code).strip().upper() for code in (body.get("roleCodes") or []) if str(code).strip()})
+    if not codes:
+        raise AppException("VALIDATION_ERROR", "至少保留一个角色")
+    db = get_sessionmaker()()
+    try:
+        account = db.scalars(select(User).where(User.id == user_id, User.tenant_id == tenant_id,
+                                                User.is_deleted.is_(False))).first()
+        if account is None: raise AppException("DATA_NOT_FOUND", "账号不存在")
+        roles = db.scalars(select(Role).where(Role.tenant_id == tenant_id, Role.role_code.in_(codes),
+                                              Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False))).all()
+        if len(roles) != len(codes): raise AppException("VALIDATION_ERROR", "包含不存在或已停用的角色")
+        for role_obj in roles:
+            if str(role_obj.role_type or "").upper() == "SYSTEM":
+                patterns = ROLE_PERMISSIONS.get(role_obj.role_code, set())
+            else:
+                patterns = set(db.scalars(select(Permission.permission_code).join(RolePermission,
+                    RolePermission.permission_id == Permission.id).where(RolePermission.tenant_id == tenant_id,
+                    RolePermission.role_id == role_obj.id, RolePermission.status == "ACTIVE",
+                    RolePermission.is_deleted.is_(False))).all())
+            if any(not has_permission(user, pattern) for pattern in patterns):
+                raise AppException("NO_PERMISSION", f"不能分配超出自身权限边界的角色：{role_obj.role_name}")
+        existing = {link.role_id: link for link in db.scalars(select(UserRole).where(
+            UserRole.tenant_id == tenant_id, UserRole.user_id == account.id)).all()}
+        wanted = {role_obj.id for role_obj in roles}
+        for role_id, link in existing.items():
+            if role_id in wanted:
+                link.status = "ACTIVE"; link.is_deleted = False
+            else:
+                link.status = "DISABLED"; link.is_deleted = True
+            link.version = int(link.version or 0) + 1
+        for role_id in wanted - set(existing):
+            db.add(UserRole(tenant_id=tenant_id, user_id=account.id, role_id=role_id, status="ACTIVE"))
+        account.version = int(account.version or 0) + 1
+        db.commit()
+        from app.services import audit_log
+        audit_log.record("USER_ROLE_ASSIGN", f"user:{account.id}", detail={"loginName": account.login_name,
+                         "roleCodes": codes})
+        return success({"id": str(account.id), "roleCodes": codes}, message="角色已分配；该账号需重新登录")
+    except Exception:
+        db.rollback(); raise
     finally:
         db.close()
 
