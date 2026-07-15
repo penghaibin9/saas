@@ -272,6 +272,8 @@ def publish_grade(gd_student_id) -> dict:
         g.published_by = n
         g.published_at = datetime.utcnow()
         g.version += 1
+        if stu.stage == "DEFENSE":
+            stu.stage = "COMPLETED"
         _audit(db, g.id, "发布成绩", detail=f"total={g.total_score}")
         db.commit()
         return _row(g, stu)
@@ -291,6 +293,8 @@ def withdraw_grade(gd_student_id, reason: str) -> dict:
         g.withdraw_reason = reason.strip()
         g.reviewed_at = None
         g.version += 1
+        if stu.stage == "COMPLETED":
+            stu.stage = "DEFENSE"
         _audit(db, g.id, "撤回成绩", reason.strip())
         db.commit()
         return _row(g, stu)

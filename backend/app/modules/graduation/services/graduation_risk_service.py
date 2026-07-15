@@ -1,4 +1,4 @@
-"""毕业设计中心 · 问题预警服务（GD-R01~R13 对齐 source-design §13 冻结编码，本轮实现可由现有数据判定的 8 项）。
+"""毕业设计中心 · 问题预警服务（GD-R01~R13 对齐 source-design §13 冻结编码，全部 13 项均已实现自动判定）。
 
 扫描现有业务数据生成/更新风险台账（幂等 upsert，按 risk_code+gd_student_id 唯一），
 再走"受理→处理→关闭"闭环。扫描本身是只读推导，不修改业务表。
@@ -13,10 +13,13 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import (GraduationAuditTrail, GraduationDefenseScore, GraduationFinal, GraduationGrade,
-                        GraduationMidterm, GraduationProposal, GraduationRiskCase, GraduationStudent)
+from app.models import (GraduationArchiveRecord, GraduationAuditTrail, GraduationDefenseScore, GraduationFinal,
+                        GraduationGrade, GraduationGuidance, GraduationMidterm, GraduationProposal,
+                        GraduationRiskCase, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+
+GUIDANCE_MIN_COUNT = 3
 
 STATUS_LABEL = {"OPEN": "待受理", "PROCESSING": "处理中", "CLOSED": "已关闭"}
 STATUS_TONE = {"OPEN": "danger", "PROCESSING": "warning", "CLOSED": "success"}
@@ -89,6 +92,13 @@ def scan_risks() -> dict:
                 GraduationProposal.is_deleted.is_(False)).order_by(GraduationProposal.id.desc())).all()
             if props and props[0].status == "REJECTED":
                 _upsert(db, "GD-R05", s.id)
+            # R06 指导记录不足：已进入指导阶段但指导记录次数低于阈值（口径对齐 graduation_guidance_service.guidance_stats）
+            if s.stage in ("GUIDING", "MIDTERM", "FINAL_CHECK", "DEFENSE"):
+                gc = int(db.scalar(select(func.count()).select_from(GraduationGuidance).where(
+                    GraduationGuidance.tenant_id == _tid(), GraduationGuidance.gd_student_id == s.id,
+                    GraduationGuidance.is_deleted.is_(False))) or 0)
+                if gc < GUIDANCE_MIN_COUNT:
+                    _upsert(db, "GD-R06", s.id)
             # R10 答辩未安排：进入成果检查/答辩阶段但未分到答辩组
             if s.stage in ("FINAL_CHECK", "DEFENSE") and not s.defense_group_id:
                 _upsert(db, "GD-R10", s.id)
@@ -129,6 +139,12 @@ def scan_risks() -> dict:
             if g and g.status == "PUBLISHED":
                 if g.total_score is not None and g.total_score < 60:
                     _upsert(db, "GD-R13", s.id)
+                # R12 材料未归档：成绩已发布（全流程实质完成）但归档记录未到「已备案」
+                ar = db.scalars(select(GraduationArchiveRecord).where(
+                    GraduationArchiveRecord.tenant_id == _tid(),
+                    GraduationArchiveRecord.gd_student_id == s.id)).first()
+                if not ar or ar.status != "FILED":
+                    _upsert(db, "GD-R12", s.id)
         db.commit()
         after_count = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
             GraduationRiskCase.tenant_id == _tid())) or 0)

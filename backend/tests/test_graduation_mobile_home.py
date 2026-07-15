@@ -38,8 +38,8 @@ def test_graduation_my_real_nodes_stage_and_guide_logs(client, auth_headers, db_
     sh = _stu_token(student_name)
     g0 = client.get(f"{MOBILE}/graduation/my", headers=sh).json()["data"]
     assert g0["hasData"] is True
-    # 真实派生节点：7 个阶段节点，且恰有一个 current
-    assert isinstance(g0["nodes"], list) and len(g0["nodes"]) == 7
+    # 真实派生节点：8 个阶段节点（含 DEFENSE 与 ARCHIVED 之间新增的 COMPLETED），且恰有一个 current
+    assert isinstance(g0["nodes"], list) and len(g0["nodes"]) == 8
     assert sum(1 for n in g0["nodes"] if n.get("current")) == 1
     assert g0["stageLabel"]  # 非空阶段标签
     # 尚无指导记录 → guideLogs 为空（前端展示空态，不再塞 mock 假记录）

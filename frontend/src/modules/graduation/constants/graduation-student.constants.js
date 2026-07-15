@@ -6,6 +6,7 @@ export const GD_STAGE = [
   { value: 'MIDTERM', label: '中期检查' },
   { value: 'FINAL_CHECK', label: '成果检查' },
   { value: 'DEFENSE', label: '答辩中' },
+  { value: 'COMPLETED', label: '已完成' },
   { value: 'ARCHIVED', label: '已归档' }
 ]
 

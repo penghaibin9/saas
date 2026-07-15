@@ -497,6 +497,7 @@ _GD_STAGE_FLOW = [
     ("MIDTERM", "中期检查"),
     ("FINAL_CHECK", "成果提交"),
     ("DEFENSE", "答辩"),
+    ("COMPLETED", "已完成"),
     ("ARCHIVED", "成绩归档"),
 ]
 

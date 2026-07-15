@@ -278,7 +278,7 @@ const COLUMN_PRESETS = {
 
 const STAGE_TONE = {
   TOPIC_SELECTING: 'default', TASKBOOK_CONFIRM: 'info', GUIDING: 'processing',
-  MIDTERM: 'warning', FINAL_CHECK: 'processing', DEFENSE: 'warning', ARCHIVED: 'success'
+  MIDTERM: 'warning', FINAL_CHECK: 'processing', DEFENSE: 'warning', COMPLETED: 'info', ARCHIVED: 'success'
 }
 
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'

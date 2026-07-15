@@ -45,3 +45,42 @@ def test_student_mobile_entry_not_blocked(client, db_mode):
     sh = _stu_token()
     r = client.get("/api/v1/mobile/graduation/my", headers=sh)
     assert r.status_code != 403
+
+
+def _role_token(role: str, user_type: str = "TEACHER", **claims):
+    from app.core.security import create_access_token
+    payload = {"userId": f"u-{role}", "realName": role, "userType": user_type, "tid": "demo",
+              "tenantId": str(MAIN), "activeContextId": "ctx", "currentRoleCode": role, "clientType": "PC"}
+    payload.update(claims)
+    return {"Authorization": "Bearer " + create_access_token(payload)}
+
+
+# require_graduation_request_permission（router.py 的 _GD_DEP，覆盖全部 15 个毕设 router）按角色收敛的
+# 端到端回归：证明"角色只授予了部分 permissionCode"这件事在真实 HTTP 请求链路上确实生效，
+# 不只是 has_permission()/graduation_permission_for() 的纯函数单测（test_graduation_permission_codes.py）。
+def test_gd_mentor_cannot_create_mentor_record(client, db_mode):
+    # GD_MENTOR 只有 view/guide.*/proposal.review/final.review，没有创建导师所需的 graduationDesign.manage
+    h = _role_token("GD_MENTOR")
+    r = client.post("/api/v1/graduation/gd-mentors", headers=h, json={})
+    assert r.status_code == 403, f"GD_MENTOR 建导师应 403，实际 {r.status_code}"
+
+
+def test_gd_defense_expert_cannot_publish_grade(client, db_mode):
+    # GD_DEFENSE_EXPERT 只有 view/defense.score，没有 graduationDesign.grade.publish
+    h = _role_token("GD_DEFENSE_EXPERT")
+    r = client.post("/api/v1/graduation/gd-grades/999999/publish", headers=h)
+    assert r.status_code == 403, f"GD_DEFENSE_EXPERT 发布成绩应 403，实际 {r.status_code}"
+
+
+def test_gd_mentor_cannot_submit_archive(client, db_mode):
+    # GD_MENTOR 没有 graduationDesign.archive.submit
+    h = _role_token("GD_MENTOR")
+    r = client.post("/api/v1/graduation/gd-archives/999999/submit", headers=h)
+    assert r.status_code == 403, f"GD_MENTOR 提交归档应 403，实际 {r.status_code}"
+
+
+def test_graduation_admin_passes_permission_gate_for_same_actions(client, db_mode):
+    # 对照组：GRADUATION_ADMIN 拥有 graduationDesign.* 全权，应放行到业务层（记录不存在 404，而非权限层 403）
+    h = _role_token("GRADUATION_ADMIN")
+    r = client.post("/api/v1/graduation/gd-grades/999999/publish", headers=h)
+    assert r.status_code != 403, f"GRADUATION_ADMIN 应放行到业务层，实际卡在权限层 {r.status_code}"

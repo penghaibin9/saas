@@ -304,7 +304,7 @@ def detect_assignment_conflicts() -> dict:
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE")).all()
         for s in stus:
-            advanced = s.stage in ("GUIDING", "MIDTERM", "FINAL_CHECK", "DEFENSE")
+            advanced = s.stage in ("GUIDING", "MIDTERM", "FINAL_CHECK", "DEFENSE", "COMPLETED")
             if advanced and not s.mentor_id:
                 no_mentor.append({"gdStudentId": str(s.id), "name": s.name, "className": s.class_name or "",
                                   "stage": s.stage})

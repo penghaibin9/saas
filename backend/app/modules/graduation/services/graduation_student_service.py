@@ -21,13 +21,18 @@ from app.services.db_service import _iso, _mask_phone, _tid, session
 
 STAGE_LABEL = {
     "TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
-    "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩中", "ARCHIVED": "已归档",
+    "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩中", "COMPLETED": "已完成",
+    "ARCHIVED": "已归档",
 }
 STAGE_TONE = {
     "TOPIC_SELECTING": "default", "TASKBOOK_CONFIRM": "info", "GUIDING": "processing",
-    "MIDTERM": "warning", "FINAL_CHECK": "processing", "DEFENSE": "warning", "ARCHIVED": "success",
+    "MIDTERM": "warning", "FINAL_CHECK": "processing", "DEFENSE": "warning", "COMPLETED": "info",
+    "ARCHIVED": "success",
 }
-STAGE_ORDER = ["TOPIC_SELECTING", "TASKBOOK_CONFIRM", "GUIDING", "MIDTERM", "FINAL_CHECK", "DEFENSE", "ARCHIVED"]
+# COMPLETED 位于 DEFENSE 与 ARCHIVED 之间：成绩发布后（graduation_grade_service.publish_grade）自动置为
+# COMPLETED，撤回成绩（withdraw_grade）退回 DEFENSE；不可通过通用 ADVANCE 手动跨越，见 set_stage() 的拦截。
+STAGE_ORDER = ["TOPIC_SELECTING", "TASKBOOK_CONFIRM", "GUIDING", "MIDTERM", "FINAL_CHECK", "DEFENSE",
+              "COMPLETED", "ARCHIVED"]
 RISK_LABEL = {"NONE": "无", "LOW": "低风险", "MEDIUM": "中风险", "HIGH": "高风险"}
 ELIG_LABEL = {"PENDING": "待认定", "QUALIFIED": "资格合格", "UNQUALIFIED": "资格不合格"}
 ELIG_TONE = {"PENDING": "warning", "QUALIFIED": "success", "UNQUALIFIED": "danger"}
@@ -142,7 +147,8 @@ def _row_of(db, s: GraduationStudent) -> dict:
 def _state_flow(stage: str) -> list[dict]:
     labels = {
         "TOPIC_SELECTING": "选题确认", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "开题指导",
-        "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩与成绩", "ARCHIVED": "归档",
+        "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩与成绩", "COMPLETED": "已完成",
+        "ARCHIVED": "归档",
     }
     idx = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
     flow = []
@@ -439,8 +445,10 @@ def set_stage(sid, action: str, reason: str = "") -> dict:
                 raise AppException("DATA_CONFLICT", "未分配选题，不能推进（请先分配选题）")
             if s.stage == "TASKBOOK_CONFIRM" and not s.advisor_name:
                 raise AppException("DATA_CONFLICT", "未分配指导教师，不能进入指导阶段")
-            if idx >= len(STAGE_ORDER) - 2:
-                raise AppException("DATA_CONFLICT", "已在答辩阶段，请用归档操作")
+            if s.stage == "DEFENSE":
+                raise AppException("DATA_CONFLICT", "已在答辩阶段，请通过发布成绩推进为「已完成」")
+            if s.stage == "COMPLETED":
+                raise AppException("DATA_CONFLICT", "已完成，请用归档操作")
             before = s.stage
             s.stage = STAGE_ORDER[idx + 1]
             _audit(db, s.id, "STAGE_ADVANCE", reason or STAGE_LABEL[s.stage], before, s.stage)
