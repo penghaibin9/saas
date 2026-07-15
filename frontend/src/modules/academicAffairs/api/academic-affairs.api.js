@@ -300,7 +300,7 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/grade-views/analysis`, { params: term ? { term } : {} }))
   },
 
-  /* ── 学业预警（扫描 + 列表） ── */
+  /* ── 学业预警（扫描 + 列表；多维分类/规则/跟进/统计见 academicAffairsWarningApi） ── */
   scanWarnings() {
     return call(() => request(`${BASE}/warnings/scan`, { method: 'POST' }))
   },
@@ -616,6 +616,39 @@ export const academicAffairsArchiveApi = {
   confirm(id, force) { return call(() => request(`${BASE}/archive/batches/${id}/confirm`, { method: 'POST', body: { force } })) },
   unfreeze(id, reason) { return call(() => request(`${BASE}/archive/batches/${id}/unfreeze`, { method: 'POST', body: { reason } })) },
   cancel(id) { return call(() => request(`${BASE}/archive/batches/${id}/cancel`, { method: 'POST' })) }
+}
+
+/* ═══════════ 学业预警二级模块（Tier1：看板/多维分类/规则/跟进/统计，/academic-affairs/warnings/*） ═══════════
+ * 权限：view=看板/列表/统计只读；handle=指派/干预/升级/关闭/作废/提醒；rule.manage=规则配置+扫描触发（教务处）。 */
+export const academicAffairsWarningApi = {
+  /** sourceKey: all | fail(挂科·历史挂 /warnings/scan) | credit | gpa | retake | graduation。 */
+  scan(sourceKey = 'all') {
+    const path = sourceKey === 'fail' ? `${BASE}/warnings/scan` : `${BASE}/warnings/scan/${sourceKey}`
+    return call(() => request(path, { method: 'POST' }))
+  },
+  list(params = {}) { return callList(`${BASE}/warnings`, params) },
+  summary() { return call(() => request(`${BASE}/warnings/summary`)) },
+  getRules() { return call(() => request(`${BASE}/warnings/rules`)) },
+  saveRule(key, value) { return call(() => request(`${BASE}/warnings/rules/${key}`, { method: 'PUT', body: { value } })) },
+  detail(warningId) { return call(() => request(`${BASE}/warnings/${warningId}`)) },
+  assign(warningId, ownerId, ownerName) {
+    return call(() => request(`${BASE}/warnings/${warningId}/assign`, { method: 'POST', body: { ownerId, ownerName } }))
+  },
+  addIntervention(warningId, body) {
+    return call(() => request(`${BASE}/warnings/${warningId}/interventions`, { method: 'POST', body }))
+  },
+  escalate(warningId, reason) {
+    return call(() => request(`${BASE}/warnings/${warningId}/escalate`, { method: 'POST', body: { reason } }))
+  },
+  close(warningId, result) {
+    return call(() => request(`${BASE}/warnings/${warningId}/close`, { method: 'POST', body: { result } }))
+  },
+  void(warningId, reason) {
+    return call(() => request(`${BASE}/warnings/${warningId}/void`, { method: 'POST', body: { reason } }))
+  },
+  remind(warningId) {
+    return call(() => request(`${BASE}/warnings/${warningId}/remind`, { method: 'POST' }))
+  }
 }
 
 export default academicAffairsApi

@@ -11,6 +11,25 @@ export function warningColor(level) {
   }
 }
 
+/** 预警来源（13B-教务中心状态机与权限矩阵.md §13）；EXAM_FAIL 为历史内部编码，展示统一为「挂科预警」。 */
+export const WARNING_SOURCE = {
+  EXAM_FAIL: '挂科预警',
+  CREDIT_SHORT: '学分预警',
+  LOW_GPA: '绩点预警',
+  RETAKE_EXCESS: '补考重修预警',
+  GRAD_ABNORMAL: '毕业风险预警'
+}
+export const WARNING_STATUS = { PENDING_HANDLE: '待处理', PROCESSING: '跟进中', ESCALATED: '已升级', CLOSED: '已关闭' }
+export function warningStatusColor(status) {
+  switch (status) {
+    case 'PENDING_HANDLE': return 'danger'
+    case 'PROCESSING': return 'warning'
+    case 'ESCALATED': return 'warning'
+    case 'CLOSED': return 'default'
+    default: return 'default'
+  }
+}
+
 /** 毕业预审七项供数编码 → 中文。 */
 export const GRAD_ITEM_LABEL = {
   STATUS: '学籍状态',

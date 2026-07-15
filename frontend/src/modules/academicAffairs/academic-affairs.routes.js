@@ -51,6 +51,8 @@ const layoutRoute = {
     { path: 'grade-publish', name: 'aa-grade-publish', component: () => import('@/modules/academicAffairs/views/AaGradePublishView.vue'), meta: meta('academicAffairs.grade.publish', '教务发布') },
     { path: 'grade-change', name: 'aa-grade-change', component: () => import('@/modules/academicAffairs/views/AaGradeChangeView.vue'), meta: meta('academicAffairs.gradeChange.apply', '成绩更正') },
     { path: 'warnings', name: 'aa-warnings', component: () => import('@/modules/academicAffairs/views/AaWarningView.vue'), meta: meta('academicAffairs.warning.view', '学业预警') },
+    // ── 学业预警二级模块 Tier1：看板/多维分类(学分·挂科·绩点·补考重修·毕业风险)/规则/跟进/统计，单控制台按 ?tab= 切换 ──
+    { path: 'warnings/console', name: 'aa-warnings-console', component: () => import('@/modules/academicAffairs/views/AaWarningConsoleView.vue'), meta: meta('academicAffairs.warning.view', '学业预警控制台') },
     { path: 'graduation', name: 'aa-graduation', component: () => import('@/modules/academicAffairs/views/AaGraduationBatchView.vue'), meta: meta('academicAffairs.graduation.view', '毕业资格预审') },
     { path: 'graduation/:batchId/results', name: 'aa-graduation-results', component: () => import('@/modules/academicAffairs/views/AaGraduationResultView.vue'), meta: meta('academicAffairs.graduation.view', '毕业预审结果') },
     // ── 教务统计（只读聚合，11 项指标 + 下钻 + 导出） ──

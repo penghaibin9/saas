@@ -330,8 +330,16 @@ export const NAV_PLAN = [
     ]),
     mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
       I('预警扫描与列表', '/admin/academic-affairs/warnings'),
-      ...P('预警看板', '学分预警', '挂科预警', '绩点预警', '补考重修预警', '毕业风险预警', '预警规则'),
-      ...P('预警通知', '预警跟进', '预警统计')
+      I('预警看板', '/admin/academic-affairs/warnings/console?tab=dashboard', 'academicAffairs.warning.view'),
+      I('学分预警', '/admin/academic-affairs/warnings/console?tab=credit', 'academicAffairs.warning.view'),
+      I('挂科预警', '/admin/academic-affairs/warnings/console?tab=fail', 'academicAffairs.warning.view'),
+      I('绩点预警', '/admin/academic-affairs/warnings/console?tab=gpa', 'academicAffairs.warning.view'),
+      I('补考重修预警', '/admin/academic-affairs/warnings/console?tab=retake', 'academicAffairs.warning.view'),
+      I('毕业风险预警', '/admin/academic-affairs/warnings/console?tab=graduation', 'academicAffairs.warning.view'),
+      I('预警规则', '/admin/academic-affairs/warnings/console?tab=rules', 'academicAffairs.warning.rule.manage'),
+      I('预警跟进', '/admin/academic-affairs/warnings/console?tab=followup', 'academicAffairs.warning.handle'),
+      I('预警统计', '/admin/academic-affairs/warnings/console?tab=stats', 'academicAffairs.warning.view'),
+      ...P('预警通知')
     ]),
     mod('aa-graduation-qual', '毕业资格审核', '/admin/academic-affairs/graduation', [
       I('毕业资格预审', '/admin/academic-affairs/graduation'),
