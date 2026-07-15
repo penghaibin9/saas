@@ -100,11 +100,6 @@ def term_set_current(termId: int = Path(...), user=Depends(require_permission(_T
     return success(svc.set_current_term(termId, user), message="已设为当前学期")
 
 
-@router.get("/terms/{termId}", summary="学期详情（校历/作息等只读联动查看复用）")
-def term_detail(termId: int = Path(...), user=Depends(require_permission(_TERM_VIEW))):
-    return success(svc.term_detail(termId, user))
-
-
 @router.get("/terms/{termId}/weeks", summary="学期周次（按开学日+教学周展开，叠加校历事件）")
 def term_weeks(termId: int = Path(...), user=Depends(require_permission(_TERM_VIEW))):
     return success({"items": svc.list_term_weeks(termId, user)})
@@ -139,6 +134,15 @@ def term_unfreeze(body: TermUnfreezeBody, termId: int = Path(...),
 @router.get("/terms/archive-overview", summary="学期归档总览（只读，实际归档动作见教务归档模块）")
 def terms_archive_overview(user=Depends(require_permission(_TERM_VIEW))):
     return success({"items": svc.term_archive_overview(user)})
+
+
+# 注：term_detail 的 {termId} 路径必须注册在上面的字面量路径 /terms/archive-overview 之后——
+# FastAPI 按声明顺序匹配路由，{termId} 若先声明会把 "archive-overview" 当成 termId 抢先匹配，
+# 导致归档总览端点 400（本条是总控合并复核发现并修复的真实路由顺序 bug，非文本冲突）。
+@router.get("/terms/{termId}", summary="学期详情（校历/作息等只读联动查看复用）")
+def term_detail(termId: int = Path(...), user=Depends(require_permission(_TERM_VIEW))):
+    return success(svc.term_detail(termId, user))
+
 
 # 注：校历节次 Tier1-R2 原设计的 POST /terms/{termId}/archive（直接改 AaTerm.status=ARCHIVED，
 # 绕开教务归档模块的批次+9域完整性检查+正规解冻通道）已在总控合并复核时移除——该路径与教务归档模块的
@@ -1964,12 +1968,6 @@ def classroom_options(keyword: Optional[str] = None,
     return success({"items": resource_svc.list_options(user, keyword)})
 
 
-@router.get("/classrooms/{classroomId}", summary="教室详情")
-def classroom_detail(classroomId: int = Path(...),
-                     user=Depends(require_permission("academicAffairs.classroom.view"))):
-    return success(resource_svc.get_classroom(classroomId, user))
-
-
 @router.post("/classrooms", summary="新建教室（同楼栋+编号唯一，重复409）")
 def classroom_create(body: ClassroomCreate,
                      user=Depends(require_permission("academicAffairs.classroom.create"))):
@@ -2018,6 +2016,16 @@ def classroom_bookings(classroomId: Optional[str] = None, date: Optional[str] = 
                        user=Depends(require_permission("academicAffairs.classroom.view"))):
     items, total = resource_svc.list_bookings(user, classroomId, date, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+# 注：classroom_detail 的 {classroomId} 必须注册在上面字面量路径 /classrooms/bookings 之后——
+# FastAPI 按声明顺序匹配路由，{classroomId} 若先声明会把 "bookings" 当成 classroomId 抢先匹配，
+# 导致教室预约列表端点被遮蔽（本条是总控合并复核用全量扫描脚本发现并修复的真实路由顺序 bug，
+# 已存在于此前 Round1 版本、非本轮引入，此次一并修正）。
+@router.get("/classrooms/{classroomId}", summary="教室详情")
+def classroom_detail(classroomId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classroom.view"))):
+    return success(resource_svc.get_classroom(classroomId, user))
 
 
 @router.post("/classrooms/bookings/{bookingId}/review", summary="审核教室预约")
