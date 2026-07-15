@@ -264,6 +264,97 @@ def term_archive_overview(user) -> list:
         return out
 
 
+# ═══════════ 学年学期 续工 R3：学年管理 / 学期切换记录 ═══════════
+# 设计来源：project_rule（表单字段文档「表单1：学年学期创建」§学年名称——学年并非独立实体，
+# 由 t_aa_term.year_code 承载，创建学期时随表单一并录入）+ existing_code（AaTerm.year_code/is_current 与
+# set_current_term/publish_term 已写入的 t_affairs_audit_trail(biz_type=AA_TERM) 审计流水）。
+# 两个端点均为只读聚合计算，不新建表、不新增权限点（复用既有 academicAffairs.term.view），
+# 沿用同批 term_archive_overview/list_term_weeks「只读计算不新建表」的既定模式。
+
+def list_academic_years(user) -> list:
+    """学年管理：按 year_code 汇总学期，供学年级总览（第1/2学期是否齐全、学年整体状态、当前学年）。
+    ai_proposal：学年级聚合展示是本卡新增的呈现方式，底层数据（year_code 分组）100% 来自既有 t_aa_term，
+    不新建表、不新建实体，仅为计算逻辑。"""
+    from app.models import AaTerm
+    with session() as db:
+        terms = db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(), AaTerm.is_deleted.is_(False)).order_by(
+            AaTerm.year_code.desc(), AaTerm.term_no.asc())).all()
+        groups: dict[str, list] = {}
+        order = []
+        for t in terms:
+            if t.year_code not in groups:
+                groups[t.year_code] = []
+                order.append(t.year_code)
+            groups[t.year_code].append(t)
+        out = []
+        for yc in order:
+            group = groups[yc]
+            statuses = {t.status for t in group}
+            if statuses & {"PUBLISHED", "FROZEN"}:
+                year_status = "ACTIVE"
+            elif statuses and statuses == {"ARCHIVED"}:
+                year_status = "ARCHIVED"
+            elif statuses and statuses == {"DRAFT"}:
+                year_status = "PLANNING"
+            else:
+                year_status = "MIXED"
+            starts = [t.start_date for t in group if t.start_date]
+            ends = [t.end_date for t in group if t.end_date]
+            out.append({
+                "yearCode": yc,
+                "termCount": len(group),
+                "isCurrentYear": any(t.is_current for t in group),
+                "yearStatus": year_status,
+                "startDate": _iso(min(starts)) if starts else None,
+                "endDate": _iso(max(ends)) if ends else None,
+                "terms": [_term_row(t) for t in sorted(group, key=lambda x: x.term_no)],
+            })
+        return out
+
+
+def list_term_switch_log(user, page=1, page_size=50):
+    """学期切换记录：读 t_affairs_audit_trail(biz_type=AA_TERM, action∈PUBLISH/SET_CURRENT)，
+    按发生时间顺序推导每次「当前学期」切换的切出→切入学期，最新的排最前。
+    PUBLISH 与 SET_CURRENT 均会改写 is_current（见 publish_term/set_current_term），故均计入切换记录。"""
+    from app.models import AaTerm, AffairsAuditTrail
+    with session() as db:
+        rows = db.scalars(select(AffairsAuditTrail).where(
+            AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "AA_TERM",
+            AffairsAuditTrail.action.in_(("PUBLISH", "SET_CURRENT"))
+        ).order_by(AffairsAuditTrail.occurred_at.asc(), AffairsAuditTrail.id.asc())).all()
+        term_ids = {r.biz_id for r in rows if r.biz_id}
+        terms = {}
+        if term_ids:
+            for t in db.scalars(select(AaTerm).where(
+                    AaTerm.tenant_id == _tid(), AaTerm.id.in_(term_ids))).all():
+                terms[t.id] = t
+
+        def _label(tid):
+            t = terms.get(tid)
+            if not t:
+                return None
+            return t.term_name or f"{t.year_code} 第{t.term_no}学期"
+
+        out = []
+        prev_id = None
+        for r in rows:
+            out.append({
+                "id": str(r.id), "occurredAt": _iso(r.occurred_at), "action": r.action,
+                "operator": r.operator or "", "roleName": r.role_name or "",
+                "fromTermId": str(prev_id) if prev_id else None,
+                "fromTermLabel": _label(prev_id) if prev_id else None,
+                "toTermId": str(r.biz_id) if r.biz_id else None,
+                "toTermLabel": _label(r.biz_id),
+            })
+            if r.biz_id:
+                prev_id = r.biz_id
+        out.reverse()
+        total = len(out)
+        offset = (max(1, page) - 1) * page_size
+        return out[offset: offset + page_size], total
+
+
 # ═══════════ 校历 / 节次（校历节次 Tier1 R2） ═══════════
 # 节假日=t_aa_calendar_event(event_type=HOLIDAY)；补课日/调休=t_aa_calendar_event(event_type=SWAP，
 # start_date=原停课日，swap_to_date=补课日，二者必须成对)；节次=t_aa_time_slot（沿用，租户级全局，
