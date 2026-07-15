@@ -8,7 +8,7 @@
  *  - 学期仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 → 本模块不提供 updateTerm（勘误见施工记录）。
  *  - 学期状态机当前只有 DRAFT / PUBLISHED（FROZEN/ARCHIVED 后端未实现，暂不渲染）。
  */
-import { request, requestBlob, shouldTryReal, currentUserFromToken } from '@/services/http/client'
+import { request, requestBlob, requestUpload, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { setPermissionPatterns } from '@/security/permissionGate'
 
 const BASE = '/academic-affairs'
@@ -378,8 +378,50 @@ export const academicAffairsApi = {
   getGradeRoster(taskId) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/roster`))
   },
+  getGradeRecords(taskId) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/records`))
+  },
   enterScore(taskId, body) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/scores`, { method: 'POST', body }))
+  },
+  /* 成绩批量导入（学号/平时分/期末分/异常标记；下载模板→上传预校验→确认导入→错误行下载，AppExcelImportDrawer 契约） */
+  async downloadGradeImportTemplate(taskId) {
+    try {
+      const blob = await requestBlob(`${BASE}/grade-tasks/${taskId}/import/template`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = '成绩导入模板.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+      return ok(null)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  uploadGradeImportXlsx(taskId, file) {
+    return call(() => requestUpload(`${BASE}/grade-tasks/${taskId}/import/xlsx`, file))
+  },
+  async downloadGradeImportErrors(taskId, rows, errors) {
+    try {
+      const blob = await requestBlob(`${BASE}/grade-tasks/${taskId}/import/errors-xlsx`, {
+        method: 'POST', body: { rows, errors }
+      })
+      const buf = await blob.arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i])
+      return ok({
+        contentBase64: btoa(binary),
+        filename: 'grade_import_errors.xlsx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  confirmGradeImport(taskId, rows) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/import/confirm`, { method: 'POST', body: { rows } }))
   },
   submitGradeTask(taskId) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/submit`, { method: 'POST' }))
@@ -407,6 +449,16 @@ export const academicAffairsApi = {
   },
   getTranscript(studentId) {
     return call(() => request(`${BASE}/students/${studentId}/transcript`))
+  },
+  /** 导出学生成绩单 xlsx（同步下载）：返回 Blob；purpose 必填（≥5 字，写审计+水印）。 */
+  async exportTranscript(studentId, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/students/${studentId}/transcript/export`,
+        { method: 'POST', body: { purpose } })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
   },
   getFailList(params = {}) {
     return callList(`${BASE}/grade-views/fail-list`, params)

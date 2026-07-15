@@ -25,6 +25,13 @@
             <AppMetricCard title="挂科门次" :value="data.failCount ?? 0" />
           </div>
           <AppSectionCard :title="`${name || '学生'} 的成绩单`">
+            <template #header-extra>
+              <button class="mp-btn" :disabled="!data.items.length" @click="exportPanel = !exportPanel">导出成绩单</button>
+            </template>
+            <div v-if="exportPanel" class="aa-export-bar">
+              <input v-model.trim="exportPurpose" class="aa-input aa-input--grow" placeholder="导出用途（必填，≥5字，如：学院例会核对，将写入审计）" />
+              <button class="mp-btn mp-btn--primary" :disabled="exporting" @click="doExport">{{ exporting ? '导出中…' : '确认导出 xlsx' }}</button>
+            </div>
             <p v-if="data.note" class="mp-note">{{ data.note }}</p>
             <EmptyState v-if="!data.items.length && !data.note" title="暂无成绩记录" description="学生还没有已发布的课程成绩" />
             <table v-else-if="data.items.length" class="aa-course-table">
@@ -62,7 +69,8 @@ export default {
     return {
       kw: '', searching: false, candidates: [],
       studentId: this.$route.query.studentId || '', name: this.$route.query.name || '',
-      loading: false, data: null
+      loading: false, data: null,
+      exportPanel: this.$route.query.action === 'export', exportPurpose: '', exporting: false
     }
   },
   created() {
@@ -88,6 +96,30 @@ export default {
       if (res.code === 0) this.data = res.data
       else toast.error(res.message || '加载失败')
       this.loading = false
+    },
+    async doExport() {
+      if (!this.exportPurpose || this.exportPurpose.trim().length < 5) {
+        toast.error('导出用途必填且不少于 5 个字')
+        return
+      }
+      this.exporting = true
+      const res = await academicAffairsApi.exportTranscript(this.studentId, this.exportPurpose.trim())
+      this.exporting = false
+      if (res.code !== 0) {
+        toast.error(res.message || '导出失败')
+        return
+      }
+      const href = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = href
+      a.download = `${this.name || '学生'}-成绩单-${Date.now()}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(href)
+      toast.success('导出成功，已写入审计')
+      this.exportPanel = false
+      this.exportPurpose = ''
     }
   }
 }
@@ -102,6 +134,7 @@ export default {
 .aa-cand-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 13px; }
 .aa-cand-item:last-child { border-bottom: none; }
 .aa-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.aa-export-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; padding: 10px 12px; background: var(--fill-50, #f7f8fa); border-radius: 6px; }
 .aa-course-table { width: 100%; border-collapse: collapse; }
 .aa-course-table th, .aa-course-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }
 .aa-course-table th { color: var(--text-500, #646a73); font-weight: 500; font-size: 13px; }
