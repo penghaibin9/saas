@@ -141,6 +141,64 @@ const platformRoutes = {
       name: 'platform-sync',
       component: () => import('@/modules/platform/views/PlatformSyncTaskView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '同步任务与平台日志', requiresAuth: true, permissionKey: 'platform.sync.view' }
+    },
+    /* 8 组 26 项控制面中尚未有专属业务页的能力，统一由治理承载页表达边界和权限契约。
+       后续接入真实服务时按 meta.platformCapabilityKey 扩展，禁止另建跨租户旁路。 */
+    {
+      path: 'tenant-lifecycle', name: 'platform-tenant-lifecycle', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '租户生命周期看板', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.view', platformCapabilityKey: 'plt-lifecycle-board' }
+    },
+    {
+      path: 'incidents', name: 'platform-incidents', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '告警与事件中心', requiresAuth: true, permissionKey: 'platform.incident.view', platformCapabilityKey: 'plt-incidents' }
+    },
+    {
+      path: 'tenant-transitions', name: 'platform-tenant-transitions', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '开通、停用与归档', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.manage', platformCapabilityKey: 'plt-tenant-transitions' }
+    },
+    {
+      path: 'tenant-contacts', name: 'platform-tenant-contacts', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '学校联系人与平台主管理员', requiresAuth: true, permissionKey: 'platform.tenant.contact.manage', platformCapabilityKey: 'plt-tenant-contacts' }
+    },
+    {
+      path: 'products', name: 'platform-products', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '产品与增值能力', requiresAuth: true, permissionKey: 'platform.product.view', platformCapabilityKey: 'plt-products' }
+    },
+    {
+      path: 'init-templates', name: 'platform-init-templates', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '初始化模板', requiresAuth: true, permissionKey: 'platform.provision.template.manage', platformCapabilityKey: 'plt-init-templates' }
+    },
+    {
+      path: 'provisioning', name: 'platform-provisioning', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '自动开通任务', requiresAuth: true, permissionKey: 'platform.provision.run.view', platformCapabilityKey: 'plt-provisioning' }
+    },
+    {
+      path: 'onboarding-check', name: 'platform-onboarding-check', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '学校上线检查与验收', requiresAuth: true, permissionKey: 'platform.onboarding.view', platformCapabilityKey: 'plt-onboarding-check' }
+    },
+    {
+      path: 'role-templates', name: 'platform-role-templates', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '平台角色模板', requiresAuth: true, permissionKey: 'platform.role-template.manage', platformCapabilityKey: 'plt-role-templates' }
+    },
+    {
+      path: 'releases', name: 'platform-releases', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '版本发布与灰度开关', requiresAuth: true, permissionKey: 'platform.release.manage', platformCapabilityKey: 'plt-releases' }
+    },
+    {
+      path: 'support-tickets', name: 'platform-support-tickets', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '工单与服务请求', requiresAuth: true, permissionKey: 'platform.support.ticket.manage', platformCapabilityKey: 'plt-support-tickets' }
+    },
+    {
+      path: 'support-sessions', name: 'platform-support-sessions', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '受控远程协助', requiresAuth: true, permissionKey: 'platform.support.session.manage', platformCapabilityKey: 'plt-support-sessions' }
+    },
+    {
+      path: 'tenant-health', name: 'platform-tenant-health', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '租户健康度与客户沟通', requiresAuth: true, permissionKey: 'platform.customer-health.view', platformCapabilityKey: 'plt-tenant-health' }
+    },
+    {
+      path: 'operator-access', name: 'platform-operator-access', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '平台人员与职责权限', requiresAuth: true, permissionKey: 'platform.operator.access.manage', platformCapabilityKey: 'plt-operator-access' }
     }
   ]
 }

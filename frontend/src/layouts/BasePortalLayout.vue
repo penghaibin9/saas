@@ -364,6 +364,9 @@ export default {
       // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通「待施工/未开通」不跳
       if (q) {
         for (const r of searchNavPlan(this.fnQueryDebounced, (this.ctx && this.ctx.permissionPatterns) || null)) {
+          // PLATFORM_PLAN 也进入拍平索引供平台端导航使用；搜索仍须受当前可见一级模块约束，
+          // 防止学校角色通过全局搜索发现或直达平台控制面。
+          if (!this.visibleGroupKeys.has(r.groupKey)) continue
           const kind =
             r.status === 'planned' ? '规划 · 待施工'
               : r.status === 'partial' ? '页面 · 待补强'

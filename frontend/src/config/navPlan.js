@@ -1,4 +1,5 @@
 import { SYSTEM_MANAGEMENT_CATALOG } from '../modules/system/systemManagementCatalog.js'
+import { PLATFORM_MANAGEMENT_CATALOG } from '../modules/platform/platformManagementCatalog.js'
 
 /**
  * 菜单规划总纲（PC-NAV-PLAN）——「完整三级目录规划版」唯一事实源。
@@ -668,13 +669,18 @@ export const NAV_PLAN = [
  * 平台运营（隐藏一级，仅平台超管可见；不属学校侧 6 个一级）。
  * 单列，避免混入学校导航；仅登记已实现页面，保持旧路由可访问。
  */
-export const PLATFORM_PLAN = grp('platform', '平台运营', 'platform', [
-  mod('plt-overview', '平台总控台', '/admin/platform/overview', []),
-  mod('plt-tenants', '租户学校', '/admin/platform/tenants', []),
-  mod('plt-packages', '套餐管理', '/admin/platform/packages', []),
-  mod('plt-orders', '订单开通', '/admin/platform/orders', []),
-  mod('plt-audit', '全平台审计', '/admin/platform/audit', [])
-], { platformOnly: true })
+export const PLATFORM_PLAN = grp('platform', '平台运营', 'platform', PLATFORM_MANAGEMENT_CATALOG.map((group) =>
+  mod(group.key, group.label, group.items[0].path, group.items.map((item) =>
+    I(item.label, item.path, item.permissionKey, 'CONFIG_VIEW', {
+      platformCapabilityKey: item.key,
+      platformCapabilityGroup: group.key,
+      description: item.description
+    })
+  ))
+), { platformOnly: true })
+
+/* 平台运营不混入学校侧 NAV_PLAN 导出，但 BasePortalLayout 需要它完成平台二、三级导航投影。 */
+const NAV_PLAN_WITH_PLATFORM = [...NAV_PLAN, PLATFORM_PLAN]
 
 /* ── 规划占位页路径分配（CLAUDE.md §42，2026-07-11 甲方拍板）──────────────
  * planned 且无 path 的三级叶子，统一分配公共占位页路由：
@@ -734,7 +740,7 @@ export function getVisibleNavPlan({ includePlanned = false, permissionPatterns =
     if (mod2.children.some(keepLeaf)) return true
     return includePlanned && (mod2.status === 'implemented' || mod2.status === 'partial')
   }
-  const result = NAV_PLAN.map((group) => ({
+  const result = NAV_PLAN_WITH_PLATFORM.map((group) => ({
     ...group,
     children: group.children
       .filter(keepMod)
@@ -819,7 +825,7 @@ export function navRefMatches(currentRef, candidateRef) {
  */
 const FLAT_NAV_INDEX = (() => {
   const rows = []
-  for (const group of NAV_PLAN) {
+  for (const group of NAV_PLAN_WITH_PLATFORM) {
     for (const mod2 of group.children) {
       rows.push({
         groupKey: group.key,
