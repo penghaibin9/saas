@@ -375,7 +375,10 @@ export const NAV_PLAN = [
       I('调停课台账', '/admin/academic-affairs/schedule-change', 'academicAffairs.scheduleChange.view'),
       I('发起调停课（调课/停课/补课）', '/admin/academic-affairs/schedule-change/apply', 'academicAffairs.scheduleChange.apply'),
       I('调停课审批', '/admin/academic-affairs/schedule-change/approval', 'academicAffairs.scheduleChange.collegeReview'),
-      ...P('调停课通知'),
+      // 调停课通知无独立列表页：APPLIED 后系统自动精确送达受影响师生（academic_affairs_schedule_change_service._apply_schedule），
+      // 通知单打印为独立路由（/admin/academic-affairs/print/schedule-change/:id/notice，D7），
+      // 台账「通知单」按钮/归档「详情」按钮均可到达；叶子指向宿主台账页（对齐下方冲突检测同一模式）
+      I('调停课通知', '/admin/academic-affairs/schedule-change', 'academicAffairs.scheduleChange.view'),
       // 冲突检测无独立页面：能力已嵌入「发起调停课」表单内（提交前预检区），叶子指向宿主表单
       I('调停课冲突检测', '/admin/academic-affairs/schedule-change/apply', 'academicAffairs.scheduleChange.apply'),
       I('调停课统计', '/admin/academic-affairs/schedule-change/stats', 'academicAffairs.scheduleChange.view'),
