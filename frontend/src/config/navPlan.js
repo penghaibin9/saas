@@ -352,7 +352,8 @@ export const NAV_PLAN = [
     mod('aa-exam', '考务管理', '/admin/academic-affairs/exam', [
       I('考务控制台（批次/课程/考场/座位/监考/巡考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),
       I('座位表/准考证/门贴打印', '/admin/academic-affairs/exam/print/seating', 'academicAffairs.exam.view'),
-      ...P('缓考审批（并入控制台/学生小程序申请）', '考务归档')
+      I('缓考审批（并入控制台/学生小程序申请）', '/admin/academic-affairs/exam?tab=defer', 'academicAffairs.deferredExam.review'),
+      I('考务归档', '/admin/academic-affairs/exam?tab=archive', 'academicAffairs.exam.view')
     ]),
     mod('aa-makeup', '补考重修缓考免修', '/admin/academic-affairs/makeup', [
       I('补考批次', '/admin/academic-affairs/makeup?tab=makeup', 'academicAffairs.makeup.view'),

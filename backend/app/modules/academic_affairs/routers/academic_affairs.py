@@ -2075,6 +2075,13 @@ def exam_stats(bid: int = Path(...), user=Depends(require_permission(_EXAM_VIEW)
     return success(exam_svc.batch_stats(user, bid))
 
 
+@router.get("/exam/archive", summary="考务归档批次列表（12号卡，只读，ARCHIVED）")
+def exam_archive_list(termId: Optional[str] = None, collegeId: Optional[str] = None,
+                      page: int = 1, pageSize: int = 20, user=Depends(require_permission(_EXAM_VIEW))):
+    items, total = exam_svc.list_archived_batches(user, termId, collegeId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
 # deferred exam
 @router.post("/deferred-exams", summary="学生申请缓考")
 def defer_apply(body: DeferApplyBody, user=Depends(_require_student)):
