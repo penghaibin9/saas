@@ -389,29 +389,43 @@ def list_warnings(user, level=None, status=None, source_code=None, page=1, page_
         return out, total
 
 
+def group_counts(db, acad_ids, dims=("source_code", "level", "status"), exclude_closed=False):
+    """按任意维度组合对 AcademicWarning 分组计数——「教务统计·学业预警统计(11号卡)」与本模块
+    「预警看板/统计」共用的唯一聚合实现，避免两处各写一套 GROUP BY（2026-07-15 甲方要求统一口径）。
+    acad_ids: None=不限范围；[]=范围内无人（返回空）；list=限定该范围。
+    exclude_closed: True 排除已关闭预警（供 BI 下钻"仅看在办"语义；模块内看板含历史用 False）。"""
+    from app.models import AcademicWarning
+    cols = [getattr(AcademicWarning, d) for d in dims]
+    conds = [AcademicWarning.tenant_id == _tid(), AcademicWarning.record_status == "ACTIVE",
+             AcademicWarning.is_deleted.is_(False)]
+    if exclude_closed:
+        conds.append(AcademicWarning.status != "CLOSED")
+    if acad_ids is not None:
+        if not acad_ids:
+            return []
+        conds.append(AcademicWarning.acad_student_id.in_(acad_ids))
+    rows = db.execute(select(*cols, func.count()).where(*conds).group_by(*cols)).all()
+    out = []
+    for row in rows:
+        item = {dims[i]: row[i] for i in range(len(dims))}
+        item["count"] = int(row[-1])
+        out.append(item)
+    return out
+
+
 def warning_summary(user) -> dict:
     """预警看板/统计聚合：按来源、等级、状态分组计数（数据范围同 list_warnings 未指定学生场景）。"""
-    from app.models import AcademicWarning
     with session() as db:
-        conds = [AcademicWarning.tenant_id == _tid(), AcademicWarning.record_status == "ACTIVE",
-                 AcademicWarning.is_deleted.is_(False)]
         scope_ids = _scope_acad_ids(db, user)
-        if scope_ids is not None:
-            if not scope_ids:
-                return {"total": 0, "bySource": [], "byLevel": [], "byStatus": []}
-            conds.append(AcademicWarning.acad_student_id.in_(scope_ids))
-        rows = db.execute(select(AcademicWarning.source_code, AcademicWarning.level, AcademicWarning.status,
-                                 func.count()).where(*conds)
-                          .group_by(AcademicWarning.source_code, AcademicWarning.level,
-                                   AcademicWarning.status)).all()
+        rows = group_counts(db, scope_ids, dims=("source_code", "level", "status"), exclude_closed=False)
         by_source, by_level, by_status = defaultdict(int), defaultdict(int), defaultdict(int)
         total = 0
-        for source, level, status, cnt in rows:
-            cnt = int(cnt)
+        for r in rows:
+            cnt = r["count"]
             total += cnt
-            by_source[source or "OTHER"] += cnt
-            by_level[level or "UNKNOWN"] += cnt
-            by_status[status or "UNKNOWN"] += cnt
+            by_source[r["source_code"] or "OTHER"] += cnt
+            by_level[r["level"] or "UNKNOWN"] += cnt
+            by_status[r["status"] or "UNKNOWN"] += cnt
         return {
             "total": total,
             "bySource": [{"code": k, "label": SOURCE_LABELS.get(k, k), "count": v}

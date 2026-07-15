@@ -360,16 +360,11 @@ def _i_makeup_retake(db, scope, acad_ids, term_id) -> dict:
 
 
 def _i_warning(db, scope, acad_ids) -> dict:
-    from app.models import AcademicWarning
-    q = select(AcademicWarning.level, func.count()).where(
-        AcademicWarning.tenant_id == _tid(), AcademicWarning.record_status == "ACTIVE",
-        AcademicWarning.status != "CLOSED")
-    if acad_ids is not None:
-        if not acad_ids:
-            return _ind("warning", "学业预警数", value=0, drill="warning", groups=[])
-        q = q.where(AcademicWarning.acad_student_id.in_(acad_ids))
-    rows = db.execute(q.group_by(AcademicWarning.level)).all()
-    groups = [{"key": r[0] or "UNKNOWN", "count": int(r[1])} for r in rows]
+    """按等级分组的预警指标——统计口径统一到 warning_service.group_counts（2026-07-15，与
+    「学业预警」模块自身统计共用同一份聚合实现，不再各写一套 GROUP BY）。"""
+    from app.modules.academic_affairs.services.academic_affairs_warning_service import group_counts
+    rows = group_counts(db, acad_ids, dims=("level",), exclude_closed=True)
+    groups = [{"key": r["level"] or "UNKNOWN", "count": r["count"]} for r in rows]
     return _ind("warning", "学业预警数", value=sum(g["count"] for g in groups), drill="warning",
                 groups=groups)
 
@@ -795,23 +790,17 @@ def grade_detail(user, term_id=None, college_id=None, course_name=None, page=1, 
 
 
 def warning_stats(user, term_id=None, college_id=None) -> dict:
-    """学业预警统计聚合（11 卡）：按等级+来源双维分组，等级维度复用 `_i_warning`，来源维度新增一次分组查询。"""
-    from app.models import AcademicWarning
+    """学业预警统计聚合（11 卡）：按等级+来源双维分组，两维均复用 warning_service.group_counts
+    （与「学业预警」模块自身统计口径统一，2026-07-15）。"""
+    from app.modules.academic_affairs.services.academic_affairs_warning_service import group_counts
     with session() as db:
         scope = _resolve_scope(user, db)
         _validate_college_param(scope, college_id)
         sids = _student_ids(db, scope, college_id)
         acad_ids = _acad_student_ids(db, sids)
         ind = _i_warning(db, scope, acad_ids)
-        by_source: list = []
-        if acad_ids is None or acad_ids:
-            q = select(AcademicWarning.source_code, func.count()).where(
-                AcademicWarning.tenant_id == _tid(), AcademicWarning.record_status == "ACTIVE",
-                AcademicWarning.status != "CLOSED")
-            if acad_ids is not None:
-                q = q.where(AcademicWarning.acad_student_id.in_(acad_ids))
-            rows = db.execute(q.group_by(AcademicWarning.source_code)).all()
-            by_source = [{"key": r[0] or "UNKNOWN", "count": int(r[1])} for r in rows]
+        rows = group_counts(db, acad_ids, dims=("source_code",), exclude_closed=True)
+        by_source = [{"key": r["source_code"] or "UNKNOWN", "count": r["count"]} for r in rows]
         return {"total": ind["value"], "byLevel": ind["groups"], "bySource": by_source,
                 "scope": {"blocked": scope.blocked}}
 
