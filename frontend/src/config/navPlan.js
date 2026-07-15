@@ -309,11 +309,14 @@ export const NAV_PLAN = [
       I('方案版本', '/admin/academic-affairs/programs/console?tab=versions', 'academicAffairs.program.view'),
       I('课程模块', '/admin/academic-affairs/programs/console?tab=courseModules', 'academicAffairs.program.view'),
       I('学分要求', '/admin/academic-affairs/programs/console?tab=creditRequirements', 'academicAffairs.program.view'),
-      ...P('实践环节'),
+      // 第三轮续工（2026-07-16）：实践环节/方案变更/方案归档，同接统一控制台，新增 t_aa_program_practice_segment
+      // 表 + change-status/change-log/program-archive 端点，见施工记录。
+      I('实践环节', '/admin/academic-affairs/programs/console?tab=practiceSegments', 'academicAffairs.program.view'),
       I('毕业要求', '/admin/academic-affairs/programs/console?tab=graduationRequirements', 'academicAffairs.program.view'),
       I('方案审核', '/admin/academic-affairs/programs/console?tab=review', 'academicAffairs.program.view'),
       I('方案发布', '/admin/academic-affairs/programs/console?tab=publish', 'academicAffairs.program.view'),
-      ...P('方案变更', '方案归档')
+      I('方案变更', '/admin/academic-affairs/programs/console?tab=changeStatus', 'academicAffairs.program.changeStatus'),
+      I('方案归档', '/admin/academic-affairs/programs/console?tab=archive', 'academicAffairs.program.view')
     ]),
     mod('aa-courses', '课程库', '/admin/academic-affairs/courses', [
       I('课程列表', '/admin/academic-affairs/courses'),
