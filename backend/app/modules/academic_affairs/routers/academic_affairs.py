@@ -1511,7 +1511,7 @@ _STATS_VIEW = "academicAffairs.stats.view"
 _STATS_EXPORT = "academicAffairs.stats.export"
 
 
-@router.get("/stats/overview", summary="教务统计总览（11 项指标 + 4 项占位）")
+@router.get("/stats/overview", summary="教务统计总览（15 项指标，2026-07-16 起全部真实聚合）")
 def stats_overview(termId: Optional[int] = None, collegeId: Optional[int] = None,
                    majorId: Optional[int] = None, user=Depends(require_permission(_STATS_VIEW))):
     return success(stats_svc.overview(user, termId, collegeId, majorId))
@@ -1672,6 +1672,47 @@ def stats_workload_detail(teacherKey: str, collegeId: Optional[int] = None,
     return success(paginate(items, total, page, pageSize))
 
 
+# ── 教务统计第三轮续工（2026-07-16）：08/09/14 号卡（选课/考务/教学资源统计，跨批次聚合，全新路径）。
+#    07 调停课统计不在本节：其完整交互见独立页面 /schedule-change/stats（已存在，权限
+#    academicAffairs.scheduleChange.view），本节 overview() 已提供全局计数卡（见 stats_svc 模块头注释）。
+@router.get("/stats/course-selection", summary="选课统计聚合（跨批次容量/已选/填充率，08 号卡）")
+def stats_course_selection(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                           user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.course_selection_stats(user, termId, collegeId))
+
+
+@router.get("/stats/course-selection/detail", summary="选课统计下钻：低人数课程清单（08 号卡）")
+def stats_course_selection_detail(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                                  page: int = 1, pageSize: int = 20,
+                                  user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.course_selection_detail(user, termId, collegeId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/exam", summary="考务统计聚合（跨批次课程确认率+缺考/违纪，09 号卡）")
+def stats_exam(termId: Optional[int] = None, collegeId: Optional[int] = None,
+               user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.exam_stats(user, termId, collegeId))
+
+
+@router.get("/stats/exam/detail", summary="考务统计下钻：缺考/违纪明细（脱敏+审计，09 号卡）")
+def stats_exam_detail(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                      incidentType: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                      user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.exam_detail(user, termId, collegeId, incidentType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/resource", summary="教学资源统计聚合（教室状态/类型+预约状态分布，14 号卡）")
+def stats_resource(user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.resource_stats(user))
+
+
+@router.get("/stats/resource/detail", summary="教学资源统计下钻：待审核教室预约清单（14 号卡）")
+def stats_resource_detail(page: int = 1, pageSize: int = 20,
+                          user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.resource_detail(user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

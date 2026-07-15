@@ -727,6 +727,15 @@ export const academicAffairsApi = {
   getStatsWorkload(params = {}) { return call(() => request(`${BASE}/stats/workload`, { params })) },
   getStatsWorkloadDetail(params = {}) { return callList(`${BASE}/stats/workload/detail`, params) },
 
+  /* ── 教务统计第三轮续工（08/09/14 号卡：选课/考务/教学资源统计；07 调停课统计见独立页面
+   *    schedule-change/stats，本模块 API 无需重复声明） ── */
+  getStatsCourseSelection(params = {}) { return call(() => request(`${BASE}/stats/course-selection`, { params })) },
+  getStatsCourseSelectionDetail(params = {}) { return callList(`${BASE}/stats/course-selection/detail`, params) },
+  getStatsExam(params = {}) { return call(() => request(`${BASE}/stats/exam`, { params })) },
+  getStatsExamDetail(params = {}) { return callList(`${BASE}/stats/exam/detail`, params) },
+  getStatsResource(params = {}) { return call(() => request(`${BASE}/stats/resource`, { params })) },
+  getStatsResourceDetail(params = {}) { return callList(`${BASE}/stats/resource/detail`, params) },
+
   /* ── 教学资源 · 教室字典（R4 · /academic-affairs/classrooms/*；细粒度权限 academicAffairs.classroom.*） ── */
   listClassrooms({ keyword = '', buildingCode = '', roomType = '', status = '', page = 1, pageSize = 20 } = {}) {
     const params = { page, pageSize }

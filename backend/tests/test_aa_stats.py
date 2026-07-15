@@ -236,9 +236,12 @@ def test_overview_ok(client, db_mode):
     d = r["data"]
     assert len(d["indicators"]) == 15
     by_key = {i["key"]: i for i in d["indicators"]}
-    # 4 项底层未建 → MODULE_NOT_ENABLED 占位
+    # 2026-07-16 第三轮续工更正：07/08/09/14 底层模块已真实建成，不再是 MODULE_NOT_ENABLED 占位，
+    # `_seed()` 未种这 4 项的业务数据，故此处应为真实 OK 状态 + 零值（而非假装"未启用"）。
     for k in ("scheduleChange", "courseSelection", "exam", "resource"):
-        assert by_key[k]["status"] == "MODULE_NOT_ENABLED"
+        assert by_key[k]["status"] == "OK", f"{k} 应为真实聚合状态，见 test_aa_stats_r3.py 的非零值用例"
+    assert by_key["scheduleChange"]["value"] == 0
+    assert by_key["resource"]["value"] == 0
     # 注册完成率：1 已注册 / 2 应注册 = 50%
     reg = by_key["registration"]
     assert reg["numerator"] == 1 and reg["denominator"] == 2 and reg["rate"] == 50.0
