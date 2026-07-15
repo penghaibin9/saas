@@ -1324,6 +1324,22 @@ class ClassAdjustBody(BaseModel):
     targetClassId: str = Field(..., min_length=1)
 
 
+class MajorDirectionToggleBody(BaseModel):
+    enabled: bool = False
+
+
+class DirectionBody(BaseModel):
+    directionName: Optional[str] = None
+    code: Optional[str] = None
+
+
+class ClassAdjustmentCreateBody(BaseModel):
+    adjustType: str = Field(..., min_length=1)
+    fromClassIds: List[str] = Field(default_factory=list)
+    toClassId: Optional[str] = None
+    reason: str = Field(..., min_length=1)
+
+
 # ── 学院 ──
 @router.get("/orgs/colleges", summary="学院列表（范围内）")
 def org_colleges(keyword: Optional[str] = None, status: Optional[str] = None,
@@ -1412,15 +1428,77 @@ def org_teaching_classes(termCode: Optional[str] = None, batchId: Optional[str] 
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/orgs/classes/{classId}/students", summary="班级学生列表")
-def org_class_students(classId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
-    items, total = org_svc.list_class_students(user, classId, page, pageSize)
+@router.get("/orgs/classes/{classId}/students", summary="班级学生列表（07号卡：性别/学籍状态/手机号脱敏+关键字）")
+def org_class_students(classId: int = Path(...), keyword: Optional[str] = None,
+                       page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_class_students(user, classId, keyword, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
-@router.post("/orgs/class-adjustments", summary="班级调整（移动学生，单写入口+审计）")
+@router.post("/orgs/class-adjustments", summary="班级调整（移动单个学生，单写入口+审计）")
 def org_class_adjust(body: ClassAdjustBody, user=Depends(_ORG_MANAGE)):
     return success(org_svc.adjust_student_class(user, body), message="已调整")
+
+
+# ── 专业方向（06号卡：总开关默认关闭，业务政策待学校确认；启用后学院教务在专业下维护方向）──
+@router.get("/orgs/major-direction-toggle", summary="专业方向总开关状态")
+def org_direction_toggle_get(user=Depends(_ORG_VIEW)):
+    return success(org_svc.get_major_direction_toggle(user))
+
+
+@router.post("/orgs/major-direction-toggle", summary="设置专业方向总开关（仅教务处/校管）")
+def org_direction_toggle_set(body: MajorDirectionToggleBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.set_major_direction_toggle(user, body.enabled), message="已保存")
+
+
+@router.get("/orgs/majors/{majorId}/directions", summary="专业方向列表")
+def org_directions(majorId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_directions(user, majorId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/orgs/majors/{majorId}/directions", summary="新建专业方向")
+def org_direction_create(body: DirectionBody, majorId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.create_direction(user, majorId, body), message="已创建")
+
+
+@router.put("/orgs/majors/{majorId}/directions/{directionId}", summary="编辑专业方向")
+def org_direction_update(body: DirectionBody, majorId: int = Path(...), directionId: int = Path(...),
+                         user=Depends(_ORG_MANAGE)):
+    return success(org_svc.update_direction(user, majorId, directionId, body), message="已保存")
+
+
+@router.post("/orgs/majors/{majorId}/directions/{directionId}/disable", summary="停用专业方向")
+def org_direction_disable(majorId: int = Path(...), directionId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.disable_direction(user, majorId, directionId), message="已停用")
+
+
+# ── 班级调整申请单（08号卡：行政班层面批量组织调整——合班/拆班/停用/毕业清班，区别于上方个体学生转班）──
+@router.get("/orgs/class-adjustment-requests", summary="班级调整申请单列表")
+def org_adjustment_list(status: Optional[str] = None, adjustType: Optional[str] = None,
+                        page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_class_adjustments(user, status, adjustType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/orgs/class-adjustment-requests", summary="发起班级调整申请")
+def org_adjustment_create(body: ClassAdjustmentCreateBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.create_class_adjustment(user, body), message="已发起")
+
+
+@router.post("/orgs/class-adjustment-requests/{id}/precheck", summary="前置核对")
+def org_adjustment_precheck(id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.precheck_class_adjustment(user, id))
+
+
+@router.post("/orgs/class-adjustment-requests/{id}/execute", summary="确认执行")
+def org_adjustment_execute(id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.execute_class_adjustment(user, id), message="已执行")
+
+
+@router.post("/orgs/class-adjustment-requests/{id}/cancel", summary="撤销")
+def org_adjustment_cancel(id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.cancel_class_adjustment(user, id), message="已撤销")
 
 
 # ── 组织树 / 统计 / 变更审计 ──

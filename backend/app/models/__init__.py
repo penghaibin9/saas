@@ -92,8 +92,10 @@ from app.models.affairs_funding_ext import (FeeReduction,  # noqa: F401
 from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaArchiveItem, AaAttendanceSession,
                                          AaCalendarEvent,
+                                         AaClassAdjustmentRequest,
                                          AaClassroom, AaClassroomBooking,
                                          AaCourse, AaDeferredExam,
+                                         AaMajorDirection,
                                          AaEvaluationAppeal, AaEvaluationBatch,
                                          AaEvaluationRecord, AaEvaluationResult,
                                          AaEvaluationTask, AaExemption,

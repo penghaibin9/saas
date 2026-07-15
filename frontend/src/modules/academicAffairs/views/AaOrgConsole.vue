@@ -57,6 +57,128 @@
         </div>
       </section>
 
+      <!-- 专业方向（06号卡） -->
+      <section v-else-if="tab === 'direction'" class="mp-card">
+        <div class="mp-card__body">
+          <div class="aa-filter">
+            <span class="aa-note-inline">总开关：</span>
+            <StatusTag :type="directionToggle.enabled ? 'success' : 'default'"
+                       :label="directionToggle.enabled ? '已启用' : '未启用'" dot />
+            <button v-if="canManage" class="mp-btn" :disabled="directionToggle.loading" @click="toggleMajorDirection">
+              {{ directionToggle.enabled ? '停用总开关' : '启用总开关' }}
+            </button>
+            <template v-if="directionToggle.enabled">
+              <select v-model="directionMajorId" @change="reloadDirections">
+                <option value="">请选择专业</option>
+                <option v-for="m in majorOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+              <button v-if="directionMajorId && canManage" class="mp-btn mp-btn--primary" @click="openDirectionCreate">＋ 新建方向</button>
+            </template>
+          </div>
+          <EmptyState v-if="!directionToggle.enabled" title="专业方向总开关未启用"
+                      description="本校尚未启用「专业方向」管理粒度；是否启用属学校业务政策，需教务处/校管确认后在此开启总开关。" />
+          <EmptyState v-else-if="!directionMajorId" title="请选择专业" description="选择上方专业后查看/维护其下的方向" />
+          <template v-else>
+            <ErrorState v-if="directions.error" :description="directions.error" @retry="reloadDirections" />
+            <LoadingState v-else-if="directions.loading" />
+            <EmptyState v-else-if="!directions.rows.length" title="该专业暂无方向" description="点击「新建方向」新增" />
+            <table v-else class="mp-audit">
+              <thead><tr><th>方向名称</th><th>编码</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr v-for="d in directions.rows" :key="d.id">
+                  <td>{{ d.directionName }}</td><td>{{ d.code || '—' }}</td>
+                  <td><StatusTag :type="d.status === 'ACTIVE' ? 'success' : 'default'"
+                                 :label="d.status === 'ACTIVE' ? '启用' : '停用'" dot /></td>
+                  <td>
+                    <button class="mp-link" :disabled="!canManage" @click="openDirectionEdit(d)">编辑</button>
+                    <button v-if="d.status === 'ACTIVE'" class="mp-link aa-danger" :disabled="!canManage"
+                            @click="disableDirection(d)">停用</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </template>
+        </div>
+      </section>
+
+      <!-- 班级学生（07号卡：只读增强，独立于「行政班」页签内既有名册弹窗） -->
+      <section v-else-if="tab === 'students'" class="mp-card">
+        <div class="mp-card__body">
+          <div class="aa-filter">
+            <select v-model="studentsFilterClassId" @change="reloadStudentsList">
+              <option value="">请选择行政班</option>
+              <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+            <input v-model="studentsKeyword" class="aa-input" placeholder="学号/姓名关键字" @keyup.enter="reloadStudentsList" />
+            <button class="mp-btn" :disabled="!studentsFilterClassId" @click="reloadStudentsList">查询</button>
+          </div>
+          <EmptyState v-if="!studentsFilterClassId" title="请选择行政班" description="选择上方行政班查看该班学生名册" />
+          <template v-else>
+            <ErrorState v-if="studentsList.error" :description="studentsList.error" @retry="reloadStudentsList" />
+            <LoadingState v-else-if="studentsList.loading" />
+            <EmptyState v-else-if="!studentsList.rows.length" title="该班暂无在册学生" />
+            <table v-else class="mp-audit">
+              <thead><tr><th>学号</th><th>姓名</th><th>性别</th><th>学籍状态</th><th>手机号</th></tr></thead>
+              <tbody>
+                <tr v-for="s in studentsList.rows" :key="s.id">
+                  <td>{{ s.studentNo }}</td><td>{{ s.realName }}</td><td>{{ s.gender || '—' }}</td>
+                  <td>{{ s.studentStatus || '—' }}</td><td>{{ s.phoneMasked || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </template>
+          <p class="mp-note">本页仅只读查看，手机号脱敏展示；批量组织调整请使用「班级调整」页签。</p>
+        </div>
+      </section>
+
+      <!-- 班级调整申请单（08号卡：行政班层面批量组织调整） -->
+      <section v-else-if="tab === 'adjust'" class="mp-card">
+        <div class="mp-card__body">
+          <div class="aa-filter">
+            <select v-model="adjustments.filters.status" @change="reloadAdjustments">
+              <option value="">全部状态</option>
+              <option value="DRAFT">草稿</option><option value="CHECKED">已核对</option>
+              <option value="EXECUTED">已执行</option><option value="CANCELLED">已撤销</option>
+            </select>
+            <select v-model="adjustments.filters.adjustType" @change="reloadAdjustments">
+              <option value="">全部类型</option>
+              <option value="MERGE">合班登记</option><option value="SPLIT">拆班登记</option>
+              <option value="DISBAND">停用撤销</option><option value="GRADUATE_CLEAR">毕业清班</option>
+            </select>
+            <button class="mp-btn" @click="reloadAdjustments">查询</button>
+            <button v-if="canManage" class="mp-btn mp-btn--primary" @click="openAdjustCreate">＋ 发起调整</button>
+          </div>
+          <ErrorState v-if="adjustments.error" :description="adjustments.error" @retry="reloadAdjustments" />
+          <LoadingState v-else-if="adjustments.loading" />
+          <EmptyState v-else-if="!adjustments.rows.length" title="暂无调整申请" description="点击「发起调整」新建" />
+          <table v-else class="mp-audit">
+            <thead><tr><th>类型</th><th>来源班级</th><th>目标班级</th><th>理由</th><th>状态</th><th>发起时间</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="a in adjustments.rows" :key="a.id">
+                <td>{{ adjustTypeLabel(a.adjustType) }}</td>
+                <td>{{ a.fromClassNames || '—' }}</td>
+                <td>{{ a.toClassName || '—' }}</td>
+                <td>{{ a.reason }}</td>
+                <td><StatusTag :type="adjustStatusType(a.status)" :label="adjustStatusLabel(a.status)" dot /></td>
+                <td>{{ a.createdAt ? a.createdAt.slice(0, 16).replace('T', ' ') : '—' }}</td>
+                <td>
+                  <button v-if="a.status === 'DRAFT' && canManage" class="mp-link" @click="precheckAdjustment(a)">前置核对</button>
+                  <button v-if="a.status === 'CHECKED' && canManage" class="mp-link" @click="precheckAdjustment(a)">重新核对</button>
+                  <button v-if="a.checkResult" class="mp-link" @click="viewCheckResult(a)">核对结果</button>
+                  <button v-if="a.status === 'CHECKED' && canManage" class="mp-link" :disabled="isAdjustBlocked(a)"
+                          @click="confirmAdjustAction(a, 'execute')">确认执行</button>
+                  <button v-if="['DRAFT','CHECKED'].includes(a.status) && canManage" class="mp-link aa-danger"
+                          @click="confirmAdjustAction(a, 'cancel')">撤销</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="mp-note">
+            本组为行政班层面的批量组织调整（不改写学生所属行政班，个体学生转班请走「行政班」页签内既有的「学生 → 调整班级」）。
+          </p>
+        </div>
+      </section>
+
       <!-- 列表类页签（学院/专业/行政班/年级/教学班/审计/班级学生）-->
       <template v-else>
         <div v-if="tab === 'major' || tab === 'class'" class="aa-filter">
@@ -203,6 +325,98 @@
       :submitting="del.submitting"
       @confirm="submitDelete"
     />
+
+    <!-- 专业方向 · 新建/编辑 -->
+    <div v-if="directionForm.visible" class="aa-modal" @click.self="directionForm.visible = false">
+      <div class="aa-modal__panel">
+        <h3 class="aa-modal__title">{{ directionForm.mode === 'create' ? '新建' : '编辑' }}专业方向</h3>
+        <div class="aa-form">
+          <label class="aa-form__row">
+            <span class="aa-form__label">方向名称<i class="aa-req">*</i></span>
+            <input v-model="directionForm.model.directionName" placeholder="如 Web开发方向" />
+          </label>
+          <label class="aa-form__row">
+            <span class="aa-form__label">编码</span>
+            <input v-model="directionForm.model.code" placeholder="选填，专业内唯一" />
+          </label>
+        </div>
+        <div class="aa-modal__foot">
+          <button class="mp-btn" @click="directionForm.visible = false">取消</button>
+          <button class="mp-btn mp-btn--primary" :disabled="directionForm.submitting" @click="submitDirectionForm">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 班级调整申请单 · 发起 -->
+    <div v-if="adjustCreateForm.visible" class="aa-modal" @click.self="adjustCreateForm.visible = false">
+      <div class="aa-modal__panel">
+        <h3 class="aa-modal__title">发起班级调整</h3>
+        <div class="aa-form">
+          <label class="aa-form__row">
+            <span class="aa-form__label">调整类型<i class="aa-req">*</i></span>
+            <select v-model="adjustCreateForm.model.adjustType">
+              <option value="MERGE">合班登记</option><option value="SPLIT">拆班登记</option>
+              <option value="DISBAND">停用撤销</option><option value="GRADUATE_CLEAR">毕业清班</option>
+            </select>
+          </label>
+          <label class="aa-form__row">
+            <span class="aa-form__label">来源班级<i class="aa-req">*</i></span>
+            <select v-model="adjustCreateForm.model.fromClassIds" multiple size="5">
+              <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+            <span class="mp-note">按住 Ctrl/Cmd 可多选</span>
+          </label>
+          <label v-if="adjustCreateForm.model.adjustType === 'MERGE'" class="aa-form__row">
+            <span class="aa-form__label">目标班级<i class="aa-req">*</i></span>
+            <select v-model="adjustCreateForm.model.toClassId">
+              <option value="">请选择目标班级</option>
+              <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+          </label>
+          <label class="aa-form__row">
+            <span class="aa-form__label">调整理由<i class="aa-req">*</i></span>
+            <input v-model="adjustCreateForm.model.reason" placeholder="至少5个字符" />
+          </label>
+        </div>
+        <div class="aa-modal__foot">
+          <button class="mp-btn" @click="adjustCreateForm.visible = false">取消</button>
+          <button class="mp-btn mp-btn--primary" :disabled="adjustCreateForm.submitting" @click="submitAdjustCreate">发起</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 班级调整申请单 · 核对结果 -->
+    <div v-if="adjustCheckResult.visible" class="aa-modal" @click.self="adjustCheckResult.visible = false">
+      <div class="aa-modal__panel">
+        <h3 class="aa-modal__title">核对结果</h3>
+        <template v-if="adjustCheckResult.row && adjustCheckResult.row.checkResult">
+          <p>
+            阻断状态：
+            <StatusTag :type="adjustCheckResult.row.checkResult.blocked ? 'danger' : 'success'"
+                       :label="adjustCheckResult.row.checkResult.blocked ? '存在阻断项' : '无阻断'" dot />
+          </p>
+          <table class="mp-audit">
+            <thead><tr><th>班级</th><th>在读学生数</th></tr></thead>
+            <tbody>
+              <tr v-for="ref in adjustCheckResult.row.checkResult.refs" :key="ref.classId">
+                <td>{{ ref.className }}</td><td>{{ ref.activeStudentCount }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+        <div class="aa-modal__foot"><button class="mp-btn" @click="adjustCheckResult.visible = false">关闭</button></div>
+      </div>
+    </div>
+
+    <AppConfirmDialog
+      v-model:visible="adjustActionConfirm.visible"
+      :type="adjustActionConfirm.action === 'cancel' ? 'danger' : 'warning'"
+      :title="adjustActionConfirm.title"
+      :message="adjustActionConfirm.message"
+      :confirm-text="adjustActionConfirm.action === 'execute' ? '确认执行' : '确认撤销'"
+      :submitting="adjustActionConfirm.submitting"
+      @confirm="submitAdjustAction"
+    />
   </ModulePageShell>
 </template>
 
@@ -229,6 +443,7 @@ export default {
       tabs: [
         { key: 'college', label: '学院' }, { key: 'major', label: '专业' }, { key: 'class', label: '行政班' },
         { key: 'grade', label: '年级' }, { key: 'teaching', label: '教学班' },
+        { key: 'direction', label: '专业方向' }, { key: 'students', label: '班级学生' }, { key: 'adjust', label: '班级调整' },
         { key: 'tree', label: '组织树' }, { key: 'stats', label: '统计' }, { key: 'audit', label: '变更审计' }
       ],
       loading: false, error: '', rows: [],
@@ -241,7 +456,27 @@ export default {
       secretary: { visible: false, submitting: false, row: null, secretaryId: '' },
       students: { visible: false, loading: false, rows: [], className: '', classId: null },
       adjust: { visible: false, submitting: false, student: null, targetClassId: '' },
-      del: { visible: false, submitting: false, row: null, message: '' }
+      del: { visible: false, submitting: false, row: null, message: '' },
+      // 专业方向（06号卡）
+      directionToggle: { enabled: false, loading: false },
+      directionMajorId: '',
+      directions: { rows: [], loading: false, error: '' },
+      directionForm: { visible: false, mode: 'create', submitting: false, model: {} },
+      // 班级学生（07号卡：只读增强，独立于「行政班」页签内既有的名册弹窗）
+      studentsFilterClassId: '',
+      studentsKeyword: '',
+      studentsList: { rows: [], loading: false, error: '' },
+      // 班级调整申请单（08号卡：批量组织调整，区别于「行政班/学生」内既有的个体转班弹窗）
+      adjustments: {
+        rows: [], loading: false, error: '',
+        filters: { status: '', adjustType: '' }
+      },
+      adjustCreateForm: {
+        visible: false, submitting: false,
+        model: { adjustType: 'MERGE', fromClassIds: [], toClassId: '', reason: '' }
+      },
+      adjustCheckResult: { visible: false, row: null },
+      adjustActionConfirm: { visible: false, submitting: false, title: '', message: '', action: null, row: null }
     }
   },
   computed: {
@@ -319,6 +554,9 @@ export default {
     this.loadOptions()
     if (this.tab === 'stats') this.loadStats()
     else if (this.tab === 'tree') this.loadTree()
+    else if (this.tab === 'direction') this.loadDirectionToggle()
+    else if (this.tab === 'adjust') this.reloadAdjustments()
+    else if (this.tab === 'students') { /* 需先选行政班，见 reloadStudentsList */ }
     else this.reload()
   },
   watch: {
@@ -333,6 +571,9 @@ export default {
       this.pagination.page = 1
       if (key === 'stats') this.loadStats()
       else if (key === 'tree') this.loadTree()
+      else if (key === 'direction') this.loadDirectionToggle()
+      else if (key === 'adjust') this.reloadAdjustments()
+      else if (key === 'students') { /* 需先选行政班，见 reloadStudentsList */ }
       else this.reload()
     },
     async loadOptions() {
@@ -345,7 +586,7 @@ export default {
     },
     onPageChange(p) { this.pagination.page = p; this.reload() },
     async reload() {
-      if (['tree', 'stats'].includes(this.tab)) return
+      if (['tree', 'stats', 'direction', 'students', 'adjust'].includes(this.tab)) return
       this.loading = true; this.error = ''
       const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
       let res
@@ -442,6 +683,138 @@ export default {
       this.del.submitting = false
       if (res.code === 0) { toast.success('已删除'); this.del.visible = false; this.loadOptions(); this.reload() }
       else toast.error(res.message)
+    },
+
+    // ═══════════ 专业方向（06号卡） ═══════════
+    async loadDirectionToggle() {
+      const res = await api.getMajorDirectionToggle()
+      if (res.code === 0) this.directionToggle.enabled = !!res.data.enabled
+      else toast.error(res.message)
+      if (this.directionToggle.enabled && this.directionMajorId) this.reloadDirections()
+    },
+    async toggleMajorDirection() {
+      if (!this.canManage) return toast.error('无操作权限')
+      this.directionToggle.loading = true
+      const res = await api.setMajorDirectionToggle(!this.directionToggle.enabled)
+      this.directionToggle.loading = false
+      if (res.code === 0) {
+        this.directionToggle.enabled = !!res.data.enabled
+        toast.success('已保存')
+        if (this.directionToggle.enabled && this.directionMajorId) this.reloadDirections()
+      } else toast.error(res.message)
+    },
+    async reloadDirections() {
+      if (!this.directionMajorId) { this.directions.rows = []; return }
+      this.directions.loading = true; this.directions.error = ''
+      const res = await api.listDirections(this.directionMajorId, { pageSize: 200 })
+      this.directions.loading = false
+      if (res.code === 0) this.directions.rows = res.data.list
+      else this.directions.error = res.message
+    },
+    openDirectionCreate() {
+      if (!this.canManage) return toast.error('无操作权限')
+      this.directionForm = { visible: true, mode: 'create', submitting: false, model: { directionName: '', code: '' } }
+    },
+    openDirectionEdit(row) {
+      this.directionForm = { visible: true, mode: 'edit', submitting: false, model: { ...row } }
+    },
+    async submitDirectionForm() {
+      const m = this.directionForm.model
+      if (!m.directionName || !m.directionName.trim()) return toast.error('方向名称必填')
+      this.directionForm.submitting = true
+      const res = this.directionForm.mode === 'create'
+        ? await api.createDirection(this.directionMajorId, m)
+        : await api.updateDirection(this.directionMajorId, m.id, m)
+      this.directionForm.submitting = false
+      if (res.code === 0) { toast.success('已保存'); this.directionForm.visible = false; this.reloadDirections() }
+      else toast.error(res.message)
+    },
+    async disableDirection(row) {
+      if (!this.canManage) return toast.error('无操作权限')
+      const res = await api.disableDirection(this.directionMajorId, row.id)
+      if (res.code === 0) { toast.success('已停用'); this.reloadDirections() } else toast.error(res.message)
+    },
+
+    // ═══════════ 班级学生（07号卡：只读增强） ═══════════
+    async reloadStudentsList() {
+      if (!this.studentsFilterClassId) { this.studentsList.rows = []; return }
+      this.studentsList.loading = true; this.studentsList.error = ''
+      const res = await api.listClassStudents(this.studentsFilterClassId,
+        { pageSize: 200, keyword: this.studentsKeyword || undefined })
+      this.studentsList.loading = false
+      if (res.code === 0) this.studentsList.rows = res.data.list
+      else this.studentsList.error = res.message
+    },
+
+    // ═══════════ 班级调整申请单（08号卡：批量组织调整） ═══════════
+    adjustTypeLabel(v) {
+      return { MERGE: '合班登记', SPLIT: '拆班登记', DISBAND: '停用撤销', GRADUATE_CLEAR: '毕业清班' }[v] || v
+    },
+    adjustStatusLabel(v) {
+      return { DRAFT: '草稿', CHECKED: '已核对', EXECUTED: '已执行', CANCELLED: '已撤销' }[v] || v
+    },
+    adjustStatusType(v) {
+      return { DRAFT: 'default', CHECKED: 'warning', EXECUTED: 'success', CANCELLED: 'default' }[v] || 'default'
+    },
+    isAdjustBlocked(row) { return !!(row.checkResult && row.checkResult.blocked) },
+    async reloadAdjustments() {
+      this.adjustments.loading = true; this.adjustments.error = ''
+      const res = await api.listClassAdjustments({
+        pageSize: 200, status: this.adjustments.filters.status || undefined,
+        adjustType: this.adjustments.filters.adjustType || undefined
+      })
+      this.adjustments.loading = false
+      if (res.code === 0) this.adjustments.rows = res.data.list
+      else this.adjustments.error = res.message
+    },
+    openAdjustCreate() {
+      if (!this.canManage) return toast.error('无操作权限')
+      this.adjustCreateForm = {
+        visible: true, submitting: false,
+        model: { adjustType: 'MERGE', fromClassIds: [], toClassId: '', reason: '' }
+      }
+    },
+    async submitAdjustCreate() {
+      const m = this.adjustCreateForm.model
+      if (!m.fromClassIds.length) return toast.error('请至少选择1个来源班级')
+      if (m.adjustType === 'MERGE' && !m.toClassId) return toast.error('合班登记必须指定目标班级')
+      if (!m.reason || m.reason.trim().length < 5) return toast.error('调整理由至少5个字符')
+      this.adjustCreateForm.submitting = true
+      const res = await api.createClassAdjustment({
+        adjustType: m.adjustType, fromClassIds: m.fromClassIds,
+        toClassId: m.adjustType === 'MERGE' ? m.toClassId : undefined, reason: m.reason
+      })
+      this.adjustCreateForm.submitting = false
+      if (res.code === 0) { toast.success('已发起'); this.adjustCreateForm.visible = false; this.reloadAdjustments() }
+      else toast.error(res.message)
+    },
+    async precheckAdjustment(row) {
+      const res = await api.precheckClassAdjustment(row.id)
+      if (res.code === 0) {
+        toast.success(res.data.checkResult && res.data.checkResult.blocked ? '核对完成：存在阻断项' : '核对完成：无阻断项')
+        this.reloadAdjustments()
+      } else toast.error(res.message)
+    },
+    viewCheckResult(row) { this.adjustCheckResult = { visible: true, row } },
+    confirmAdjustAction(row, action) {
+      const map = {
+        execute: { title: '确认执行', message: `确认执行「${this.adjustTypeLabel(row.adjustType)}」调整？该操作将变更相关行政班状态，不可撤销。` },
+        cancel: { title: '撤销申请', message: '确认撤销该调整申请？' }
+      }
+      this.adjustActionConfirm = { visible: true, submitting: false, row, action, ...map[action] }
+    },
+    async submitAdjustAction() {
+      const { row, action } = this.adjustActionConfirm
+      this.adjustActionConfirm.submitting = true
+      const res = action === 'execute'
+        ? await api.executeClassAdjustment(row.id)
+        : await api.cancelClassAdjustment(row.id)
+      this.adjustActionConfirm.submitting = false
+      if (res.code === 0) {
+        toast.success(action === 'execute' ? '已执行' : '已撤销')
+        this.adjustActionConfirm.visible = false
+        this.reloadAdjustments()
+      } else toast.error(res.message)
     }
   }
 }
@@ -452,7 +825,8 @@ export default {
 .aa-tabs { display: flex; gap: var(--space-1); flex-wrap: wrap; border-bottom: 1px solid var(--border-200); margin-bottom: var(--space-3); }
 .aa-tab { padding: var(--space-2) var(--space-3); border: none; background: transparent; cursor: pointer; color: var(--text-500); border-bottom: 2px solid transparent; }
 .aa-tab.is-active { color: var(--primary-600); border-bottom-color: var(--primary-600); font-weight: var(--font-weight-semibold); }
-.aa-filter { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.aa-filter { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
+.aa-note-inline { color: var(--text-500); font-size: var(--font-size-sm); }
 .aa-input, .aa-filter select { padding: var(--space-1) var(--space-2); border: 1px solid var(--border-300); border-radius: var(--radius-sm); }
 .aa-danger { color: var(--danger-600); }
 .aa-stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-3); }

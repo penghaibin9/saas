@@ -549,7 +549,7 @@ export const academicAffairsOrgApi = {
   createClass(body) { return call(() => request(`${BASE}/orgs/classes`, { method: 'POST', body })) },
   updateClass(id, body) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'PUT', body })) },
   deleteClass(id) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'DELETE' })) },
-  // ── 年级 / 教学班 / 班级学生 / 班级调整 ──
+  // ── 年级 / 教学班 / 班级学生 / 班级调整（个体移动，既有轻量端点）──
   listGrades(params = {}) { return call(() => request(`${BASE}/orgs/grades`, { params })) },
   listTeachingClasses(params = {}) { return callList(`${BASE}/orgs/teaching-classes`, params) },
   listClassStudents(classId, params = {}) { return callList(`${BASE}/orgs/classes/${classId}/students`, params) },
@@ -557,7 +557,36 @@ export const academicAffairsOrgApi = {
   // ── 组织树 / 统计 / 变更审计 ──
   orgTree() { return call(() => request(`${BASE}/orgs/tree`)) },
   orgStats() { return call(() => request(`${BASE}/orgs/stats`)) },
-  listAudit(params = {}) { return callList(`${BASE}/orgs/audit`, params) }
+  listAudit(params = {}) { return callList(`${BASE}/orgs/audit`, params) },
+  // ── 专业方向（06号卡：总开关默认关闭，业务政策待学校确认；启用后按专业维护方向）──
+  getMajorDirectionToggle() { return call(() => request(`${BASE}/orgs/major-direction-toggle`)) },
+  setMajorDirectionToggle(enabled) {
+    return call(() => request(`${BASE}/orgs/major-direction-toggle`, { method: 'POST', body: { enabled } }))
+  },
+  listDirections(majorId, params = {}) { return callList(`${BASE}/orgs/majors/${majorId}/directions`, params) },
+  createDirection(majorId, body) {
+    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions`, { method: 'POST', body }))
+  },
+  updateDirection(majorId, directionId, body) {
+    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}`, { method: 'PUT', body }))
+  },
+  disableDirection(majorId, directionId) {
+    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}/disable`, { method: 'POST' }))
+  },
+  // ── 班级调整申请单（08号卡：行政班层面批量组织调整——合班/拆班/停用/毕业清班）──
+  listClassAdjustments(params = {}) { return callList(`${BASE}/orgs/class-adjustment-requests`, params) },
+  createClassAdjustment(body) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests`, { method: 'POST', body }))
+  },
+  precheckClassAdjustment(id) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/precheck`, { method: 'POST' }))
+  },
+  executeClassAdjustment(id) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/execute`, { method: 'POST' }))
+  },
+  cancelClassAdjustment(id) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/cancel`, { method: 'POST' }))
+  }
 }
 
 /* ═══════════ 选课管理（SM-09 · /academic-affairs/selection/*） ═══════════

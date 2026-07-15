@@ -280,7 +280,10 @@ export const NAV_PLAN = [
       I('教学班管理', '/admin/academic-affairs/orgs?tab=teaching', 'academicAffairs.org.view'),
       I('组织结构同步', '/admin/academic-affairs/orgs?tab=tree', 'academicAffairs.org.view'),
       I('组织统计', '/admin/academic-affairs/orgs?tab=stats', 'academicAffairs.org.view'),
-      ...P('专业方向', '班级学生', '班级调整')
+      // Tier1 续工（2026-07-15）：专业方向（总开关默认关闭）/ 班级学生（只读增强）/ 班级调整（批量组织调整）
+      I('专业方向', '/admin/academic-affairs/orgs?tab=direction', 'academicAffairs.org.view'),
+      I('班级学生', '/admin/academic-affairs/orgs?tab=students', 'academicAffairs.org.view'),
+      I('班级调整', '/admin/academic-affairs/orgs?tab=adjust', 'academicAffairs.org.view')
     ]),
     mod('aa-training', '培养方案', '/admin/academic-affairs/programs', [
       I('方案列表', '/admin/academic-affairs/programs'),
