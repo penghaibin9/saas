@@ -30,6 +30,11 @@ CATEGORIES = ("PUBLIC_BASIC", "DISCIPLINE_BASIC", "MAJOR_CORE", "MAJOR_ELECTIVE"
 NATURES = ("REQUIRED", "ELECTIVE", "LIMITED_ELECTIVE", "PUBLIC_ELECTIVE")
 EXAM_MODES = ("EXAM", "CHECK")
 _REVIEW = ("COLLEGE_REVIEW", "ACADEMIC_REVIEW")
+# 课程材料/课程大纲（Tier1 R3）：对齐总册 §4.7A 教学资源类型，SYLLABUS 专供「课程大纲」三级菜单筛选。
+MATERIAL_TYPES = {
+    "SYLLABUS": "教学大纲", "COURSEWARE": "课件", "LESSON_PLAN": "授课计划",
+    "EXERCISE": "习题题库", "PRACTICE_GUIDE": "实训指导书", "OTHER": "其他",
+}
 # 课程被下列状态的培养方案引用时不可停用（对齐培养方案状态机 DRAFT/COLLEGE_REVIEW/ACADEMIC_REVIEW/
 # RETURNED/PUBLISHED/ENABLED/FROZEN/DISABLED —— 仅在途审核与已生效/冻结方案视为「活引用」）。
 _LIVE_PROGRAM_STATUSES = ("COLLEGE_REVIEW", "ACADEMIC_REVIEW", "PUBLISHED", "ENABLED", "FROZEN")
@@ -64,6 +69,7 @@ def _row(c) -> dict:
         "examMode": c.exam_mode, "ownerCollegeId": str(c.owner_college_id or ""),
         "ownerTeacherId": str(c.owner_teacher_id or ""),
         "isCore": bool(c.is_core), "version": c.version, "status": c.status,
+        "prevVersionId": str(c.prev_version_id) if c.prev_version_id else "",
         "description": c.description or "",
         "applicableMajors": json.loads(c.applicable_majors_json) if c.applicable_majors_json else [],
         "isAllMajor": bool(c.is_all_major),
@@ -341,3 +347,89 @@ def search_teachers(keyword="", limit=20) -> list[dict]:
             conds.append(or_(User.real_name.contains(kw), User.login_name.contains(kw)))
         rows = db.scalars(select(User).where(*conds).order_by(User.real_name).limit(limit)).all()
         return [{"value": str(u.id), "label": f"{u.real_name}（{u.login_name}）"} for u in rows]
+
+
+# ═══════════ 课程材料 / 课程大纲（Tier1 R3，附件回链 t_file_object） ═══════════
+
+def _get_course_or_404(db, course_id):
+    from app.models import AaCourse
+    c = db.get(AaCourse, int(course_id))
+    if not c or c.is_deleted or c.tenant_id != _tid():
+        raise not_found("课程不存在")
+    return c
+
+
+def _material_row(x) -> dict:
+    return {
+        "id": str(x.id), "courseId": str(x.course_id), "materialType": x.material_type,
+        "materialTypeLabel": MATERIAL_TYPES.get(x.material_type or "", x.material_type or ""),
+        "title": x.title, "fileId": x.file_id or "", "fileName": x.file_name or "",
+        "remark": x.remark or "", "uploader": x.uploader or "", "status": x.status,
+        "createdAt": _iso(x.created_at),
+    }
+
+
+def list_course_materials(course_id, user, material_type=None, page=1, page_size=50):
+    """课程材料/大纲列表（Tab=material 显示全部类型；Tab=outline 传 materialType=SYLLABUS 收窄）。"""
+    from app.models import AaCourseMaterial
+    with session() as db:
+        _get_course_or_404(db, course_id)
+        q = select(AaCourseMaterial).where(
+            AaCourseMaterial.tenant_id == _tid(), AaCourseMaterial.course_id == int(course_id),
+            AaCourseMaterial.status == "ACTIVE", AaCourseMaterial.is_deleted.is_(False))
+        if material_type:
+            q = q.where(AaCourseMaterial.material_type == material_type)
+        rows = db.scalars(q.order_by(AaCourseMaterial.id.desc())).all()
+        out = [_material_row(x) for x in rows]
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def add_course_material(course_id, user, body) -> dict:
+    """新增课程材料/大纲（附件先经 POST /api/v1/files/upload 得 fileId，本端点只登记回链）。
+    数据范围：与课程本身一致，COLLEGE_ADMIN 只能给本学院开课单位下的课程挂材料。"""
+    from app.models import AaCourseMaterial
+    mtype = (body.materialType or "OTHER").upper()
+    if mtype not in MATERIAL_TYPES:
+        raise AppException("VALIDATION_ERROR", "材料类型非法")
+    if not body.title or not body.title.strip():
+        raise AppException("VALIDATION_ERROR", "材料标题必填")
+    file_id, file_name = (body.fileId or ""), (body.fileName or "")
+    with session() as db:
+        c = _get_course_or_404(db, course_id)
+        _check_college_scope(db, user, c.owner_college_id)
+        if file_id:
+            from app.services import file_service
+            meta = file_service.get_file_meta(file_id)
+            if not meta:
+                raise AppException("VALIDATION_ERROR", "附件不存在或无权访问")
+            if not file_name:
+                file_name = meta.get("fileName", "")
+        uploader, _, _ = _op()
+        x = AaCourseMaterial(
+            tenant_id=_tid(), course_id=int(course_id), material_type=mtype, title=body.title.strip(),
+            file_id=file_id or None, file_name=file_name or None, remark=(body.remark or None),
+            uploader=uploader, status="ACTIVE")
+        db.add(x)
+        db.flush()
+        _audit(db, c.id, "ADD_MATERIAL", f"type={mtype},title={body.title.strip()}")
+        db.commit()
+        db.refresh(x)
+        return _material_row(x)
+
+
+def void_course_material(material_id, user, reason="") -> dict:
+    from app.models import AaCourseMaterial
+    with session() as db:
+        x = db.get(AaCourseMaterial, int(material_id))
+        if not x or x.is_deleted or x.tenant_id != _tid():
+            raise not_found("课程材料不存在")
+        c = _get_course_or_404(db, x.course_id)
+        _check_college_scope(db, user, c.owner_college_id)
+        x.status = "VOIDED"
+        x.is_deleted = True
+        x.version += 1
+        _audit(db, c.id, "VOID_MATERIAL", f"materialId={x.id}" + (f",reason={reason}" if reason else ""))
+        db.commit()
+        return {"id": str(x.id), "status": "VOIDED"}

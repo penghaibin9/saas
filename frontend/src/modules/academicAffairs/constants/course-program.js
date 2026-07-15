@@ -17,6 +17,12 @@ export const COURSE_NATURE = {
 
 export const EXAM_MODE = { EXAM: '考试', CHECK: '考查' }
 
+/** 课程材料类型（对齐总册 §4.7A 教学资源）。SYLLABUS 即「课程大纲」三级菜单专用类型。 */
+export const MATERIAL_TYPE = {
+  SYLLABUS: '教学大纲', COURSEWARE: '课件', LESSON_PLAN: '授课计划',
+  EXERCISE: '习题题库', PRACTICE_GUIDE: '实训指导书', OTHER: '其他'
+}
+
 /** 课程/方案共用的两级审核状态。 */
 export const REVIEW_STATUS = {
   DRAFT: '草稿',

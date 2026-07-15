@@ -826,6 +826,33 @@ def course_references(courseId: int = Path(...), user=Depends(_COURSE_VIEW)):
     return success({"items": course_svc.get_course_references(courseId, user)})
 
 
+# ── 课程材料 / 课程大纲（Tier1 R3：附件走 POST /api/v1/files/upload，本端点只登记回链）──
+
+class CourseMaterialCreate(BaseModel):
+    materialType: str = Field(..., description="SYLLABUS/COURSEWARE/LESSON_PLAN/EXERCISE/PRACTICE_GUIDE/OTHER")
+    title: str = Field(..., min_length=1, max_length=200)
+    fileId: Optional[str] = Field(None, description="先调 POST /api/v1/files/upload 得到的 fileId")
+    fileName: Optional[str] = None
+    remark: Optional[str] = Field(None, max_length=500)
+
+
+@router.get("/courses/{courseId}/materials", summary="课程材料/大纲列表（materialType=SYLLABUS 即课程大纲）")
+def course_materials(courseId: int = Path(...), materialType: Optional[str] = None,
+                     page: int = 1, pageSize: int = 50, user=Depends(_COURSE_VIEW)):
+    items, total = course_svc.list_course_materials(courseId, user, materialType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/courses/{courseId}/materials", summary="新增课程材料/大纲")
+def course_material_add(body: CourseMaterialCreate, courseId: int = Path(...), user=Depends(_COURSE_MANAGE)):
+    return success(course_svc.add_course_material(courseId, user, body), message="已新增")
+
+
+@router.delete("/courses/materials/{materialId}", summary="作废课程材料（逻辑删除）")
+def course_material_void(materialId: int = Path(...), user=Depends(_COURSE_MANAGE)):
+    return success(course_svc.void_course_material(materialId, user), message="已作废")
+
+
 @router.put("/courses/{courseId}", summary="编辑课程（已启用改动强制新版本）")
 def course_update(body: CourseCreate, courseId: int = Path(...), user=Depends(_COURSE_MANAGE)):
     return success(course_svc.update_course(courseId, user, body), message="已保存")

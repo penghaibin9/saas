@@ -348,6 +348,23 @@ export const academicAffairsApi = {
   searchCourseTeachers(keyword) {
     return call(() => request(`${BASE}/courses/teachers/search`, { params: keyword ? { keyword } : {} }))
   },
+  /** 课程材料/课程大纲（Tier1 R3）：materialType=SYLLABUS 即「课程大纲」子集；不传=全部类型即「课程材料」。
+   *  附件走文件中心两步：先 uploadCourseMaterialFile 拿 fileId，再 addCourseMaterial 登记回链。 */
+  getCourseMaterials(courseId, materialType) {
+    return callList(`${BASE}/courses/${courseId}/materials`, materialType ? { materialType } : {})
+  },
+  uploadCourseMaterialFile(file) {
+    return call(() => requestUpload('/files/upload', file))
+  },
+  addCourseMaterial(courseId, body) {
+    return call(() => request(`${BASE}/courses/${courseId}/materials`, { method: 'POST', body }))
+  },
+  voidCourseMaterial(materialId) {
+    return call(() => request(`${BASE}/courses/materials/${materialId}`, { method: 'DELETE' }))
+  },
+  downloadCourseMaterial(fileId) {
+    return requestBlob(`/files/download/${fileId}`)
+  },
 
   /* ── 培养方案（编制 → 两级审 → PUBLISHED → 绑年级） ── */
   getPrograms(params = {}) {
