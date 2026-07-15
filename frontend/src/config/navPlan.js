@@ -393,7 +393,10 @@ export const NAV_PLAN = [
       I('成绩录入（含暂存/提交）', '/admin/academic-affairs/grade-entry'),
       I('挂科清单', '/admin/academic-affairs/grade-fail'),
       I('学生成绩单', '/admin/academic-affairs/transcript'),
-      ...P('成绩导入', '成绩导出', '成绩异常', '成绩统计')
+      I('成绩导入', '/admin/academic-affairs/grade-entry?action=import', 'academicAffairs.grade.input'),
+      I('成绩导出', '/admin/academic-affairs/transcript?action=export', 'academicAffairs.grade.export'),
+      I('成绩统计', '/admin/academic-affairs/stats?tab=grade', 'academicAffairs.stats.view'),
+      ...P('成绩异常')
     ]),
     mod('aa-grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', [
       I('学院审核（待审核/通过/退回）', '/admin/academic-affairs/grade-college-review'),

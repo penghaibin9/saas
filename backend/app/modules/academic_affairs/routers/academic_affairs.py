@@ -972,6 +972,19 @@ class ScoreBody(BaseModel):
     exceptionFlag: Optional[str] = Field(None, description="NORMAL/ABSENT/DEFERRED/EXEMPT")
 
 
+class GradeImportRowsBody(BaseModel):
+    rows: List[dict] = Field(default_factory=list)
+
+
+class GradeImportErrorsBody(BaseModel):
+    rows: List[dict] = Field(default_factory=list)
+    errors: List[dict] = Field(default_factory=list)
+
+
+class TranscriptExportBody(BaseModel):
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
+
+
 class GradeReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/RETURN")
     reason: Optional[str] = Field("", max_length=500)
@@ -1010,10 +1023,59 @@ def grade_roster(taskId: int = Path(...), user=Depends(require_permission("acade
     return success(grade_svc.roster(taskId, user))
 
 
+@router.get("/grade-tasks/{taskId}/records", summary="成绩录入表当前已录状态（供刷新/批量导入后回显）")
+def grade_records(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.input"))):
+    return success(grade_svc.list_records(taskId, user))
+
+
 @router.post("/grade-tasks/{taskId}/scores", summary="录入平时/期末分（实时合成总评）")
 def grade_enter_score(body: ScoreBody, taskId: int = Path(...),
                       user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(grade_svc.enter_score(taskId, user, body), message="已录入")
+
+
+# ── 成绩批量导入（学号/平时分/期末分/异常标记；dry-run 行级错误 → 确认整批事务） ──
+@router.get("/grade-tasks/{taskId}/import/template", summary="成绩批量导入·下载 Excel 模板(.xlsx)")
+def grade_import_template(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.input"))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    from app.services import xlsx_util
+    data = xlsx_util.build_template_xlsx(grade_svc.IMPORT_HEADERS, sample=grade_svc.IMPORT_SAMPLE,
+                                         notes=grade_svc.IMPORT_NOTES, required=grade_svc.IMPORT_REQUIRED)
+    return StreamingResponse(io.BytesIO(data),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=grade_import_template.xlsx"})
+
+
+@router.post("/grade-tasks/{taskId}/import/xlsx", summary="上传 Excel(.xlsx)·解析并预校验（不写库）")
+async def grade_import_xlsx(taskId: int = Path(...), file: UploadFile = File(...),
+                            user=Depends(require_permission("academicAffairs.grade.input"))):
+    from app.services import xlsx_util
+    content = await file.read()
+    rows = xlsx_util.read_xlsx(content, grade_svc.IMPORT_HEADER_MAP)
+    return success({**grade_svc.grade_import_dry_run(taskId, user, rows), "rows": rows})
+
+
+@router.post("/grade-tasks/{taskId}/import/errors-xlsx", summary="下载错误行 Excel(.xlsx)")
+def grade_import_errors_xlsx(body: GradeImportErrorsBody, taskId: int = Path(...),
+                             user=Depends(require_permission("academicAffairs.grade.input"))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    from app.services import xlsx_util
+    data = xlsx_util.build_error_rows_xlsx(grade_svc.IMPORT_HEADERS, body.rows, body.errors,
+                                           grade_svc._row_values_for_error)
+    return StreamingResponse(io.BytesIO(data),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=grade_import_errors.xlsx"})
+
+
+@router.post("/grade-tasks/{taskId}/import/confirm", summary="成绩批量导入·确认（整批事务，逐行落 t_aa_grade_record）")
+def grade_import_confirm(body: GradeImportRowsBody, taskId: int = Path(...),
+                         user=Depends(require_permission("academicAffairs.grade.input"))):
+    result = grade_svc.grade_import_confirm(taskId, user, body.rows)
+    return success(result, message="导入完成")
 
 
 @router.post("/grade-tasks/{taskId}/submit", summary="提交成绩进入学院审核")
@@ -1064,6 +1126,18 @@ def grade_change_academic_review(body: GradeChangeReviewBody, recordId: int = Pa
 @router.get("/students/{studentId}/transcript", summary="学生成绩单（读侧）")
 def grade_transcript(studentId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.view"))):
     return success(grade_svc.transcript(studentId, user))
+
+
+@router.post("/students/{studentId}/transcript/export", summary="导出学生成绩单 xlsx（水印+审计+用途必填，同步下载）")
+def grade_transcript_export(body: TranscriptExportBody, studentId: int = Path(...),
+                            user=Depends(require_permission("academicAffairs.grade.export"))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = grade_svc.export_transcript_xlsx(user, studentId, body.purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=student_transcript.xlsx"})
 
 
 @router.get("/grade-views/fail-list", summary="挂科清单（读侧下钻）")
