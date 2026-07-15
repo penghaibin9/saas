@@ -77,6 +77,8 @@ def generate_batch(body, user) -> dict:
     with session() as db:
         from app.models import (AaProgram, AaProgramBinding, AaProgramCourse, AaCourse,
                                 AaTeachingTask, AaTeachingTaskBatch, SchoolClass)
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+        guard_term_writable(db, term_id)  # 归档11卡§6.2：已归档学期不应重新生成教学任务
         # 幂等：找现有 DRAFT 批次或新建
         batch = db.scalars(select(AaTeachingTaskBatch).where(
             AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == term_id,
@@ -135,9 +137,11 @@ def generate_batch(body, user) -> dict:
 def assign_teacher(task_id, user, body) -> dict:
     with session() as db:
         from app.models import AaTeachingTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaTeachingTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("教学任务不存在")
+        guard_term_writable(db, _term_id_of(db, t.batch_id))  # 归档11卡§6.2：已归档学期的教学任务不应再调整分配
         if t.status not in ("PENDING_ASSIGN", "REJECTED_BY_TEACHER", "ASSIGNED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该任务当前状态不可分配")
         t.teacher_id = int(body.teacherId) if getattr(body, "teacherId", None) else None
@@ -176,9 +180,11 @@ def teacher_act(task_id, user, action, reason="") -> dict:
     action = (action or "").upper()
     with session() as db:
         from app.models import AaTeachingTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaTeachingTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("教学任务不存在")
+        guard_term_writable(db, _term_id_of(db, t.batch_id))  # 归档11卡§6.2：已归档学期不应再确认/退回教学任务
         _check_teacher_scope(t, user)
         if t.status != "ASSIGNED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已分配任务可确认/退回")
@@ -211,9 +217,11 @@ def submit_batch(batch_id, user) -> dict:
     TEACHER_CONFIRMED 均可一步直提 APPROVED（不变，TT1/TT4 测试基线）。"""
     with session() as db:
         from app.models import AaTeachingTaskBatch
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaTeachingTaskBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("任务批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期不应再提交教学任务批次
         if b.status not in ("DRAFT", "COLLEGE_CONFIRMED", "TEACHER_CONFIRMED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次当前状态不可提交")
         pending = _pending_count(db, b.id)

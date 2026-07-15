@@ -3,6 +3,11 @@
 核心：教师/班级/教室 三重时间冲突检测（对齐正方/强智）。课表项落 t_aa_schedule_item。
 批次预发布→发布(通知师生 t_unified_message)→导出水印。三视图(班级/教师/学生)服务端组装。
 调停课 V1 基础：发布后作废批次重发运维通道(留审计)，不做流转审批。
+
+课表管理 Tier1 R2（班级课表/教师课表/教室课表/课表发布/课表导出）续工新增：
+- class_schedule/teacher_schedule/room_schedule：自动取「当前已发布批次」的独立查询入口（区别于既有
+  class_view/teacher_view/student_view 需先知道 batchId 的批次内三视图），周次可选过滤 + 数据范围收敛。
+- list_publish_records/export_schedule：t_aa_schedule_publish 发布记录 + xlsx 导出（水印+审计）。
 """
 from __future__ import annotations
 
@@ -10,6 +15,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
+from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid, session
@@ -17,10 +23,59 @@ from app.services.db_service import _iso, _tid, session
 WEEKDAYS = range(1, 8)
 PARITIES = ("ALL", "ODD", "EVEN")
 
+# ── 07号卡·自动排课预留：结果导入(Excel)通道表头（不写算法本体，仅结果落地） ──
+IMPORT_HEADERS = ["星期(1-7)", "节次", "课程名称", "教师姓名", "教师工号", "班级ID", "班级名称",
+                  "教室", "起始周", "结束周", "单双周(ALL/ODD/EVEN)", "教学任务ID"]
+IMPORT_REQUIRED = ["星期(1-7)", "节次", "课程名称"]
+IMPORT_SAMPLE = [1, 1, "高等数学", "张老师", "T1001", "", "", "A101", 1, 18, "ALL", ""]
+IMPORT_NOTES = [
+    "本表用于「自动排课预留」结果导入：第三方顾问/算法排好的课表，通过本模板批量导入本系统。",
+    "星期取值1-7；节次对应作息节次序号；单双周填 ALL(全周)/ODD(单周)/EVEN(双周)，留空按全周处理。",
+    "若填写「教学任务ID」，系统会自动带出该任务的课程/班级/教师，无需重复填写。",
+    "导入按行逐条冲突检测（教师/班级/教室三重×单双周相容），冲突行会被跳过并在返回结果中列出，不影响其余行导入。",
+    "单批导入不超过 500 行；超出请分批导入。",
+]
+IMPORT_HEADER_MAP = {
+    "星期(1-7)": "weekday", "节次": "slotNo", "课程名称": "courseName", "教师姓名": "teacherName",
+    "教师工号": "teacherKey", "班级ID": "classId", "班级名称": "className", "教室": "classroom",
+    "起始周": "startWeek", "结束周": "endWeek", "单双周(ALL/ODD/EVEN)": "weekParity", "教学任务ID": "taskId",
+}
+IMPORT_MAX_ROWS = 500
+_FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+# 教师/教室课表「广域查看」角色：不受本人/本班收敛（与 academic_affairs_task_service._REVIEW_ROLES 同构，
+# 教务域内小工具函数按模块各自持有，不跨文件耦合）。
+_REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
+
+
+def sanitize_import_rows(rows: list[dict]) -> list[dict]:
+    """Excel 导入防公式注入：文本字段以 =/+/-/@ 开头时加撇号前缀转义为纯文本；补齐单双周/周次默认值。"""
+    out = []
+    for row in rows:
+        r = dict(row)
+        for k in ("courseName", "teacherName", "className", "classroom"):
+            v = r.get(k)
+            if isinstance(v, str) and v[:1] in _FORMULA_PREFIXES:
+                r[k] = "'" + v
+        r["weekParity"] = r.get("weekParity") or "ALL"
+        r["startWeek"] = r.get("startWeek") or "1"
+        r["endWeek"] = r.get("endWeek") or "18"
+        out.append(r)
+    return out
+
 
 def _op():
     u = get_current_user_ctx() or {}
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
+
+
+def _user_keys(user) -> set[str]:
+    """派生当前用户可能的教师标识键（userId/登录名/姓名），用于「教师课表」按本人授课范围收敛。"""
+    u = user or {}
+    uid = str(u.get("userId") or "")
+    login = u.get("loginName") or ""
+    name = u.get("realName") or ""
+    return {k for k in (uid, login, name, uid[2:] if uid.startswith("u_") else "") if k}
 
 
 def _audit(db, biz_type, biz_id, action, detail=""):
@@ -72,6 +127,8 @@ def _detect_conflict(db, batch_id, weekday, slot_no, start_week, end_week, parit
 def create_batch(body, user) -> dict:
     with session() as db:
         from app.models import AaScheduleBatch
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+        guard_term_writable(db, body.termId)  # 归档11卡§6.2：已归档学期不应新建课表批次
         b = AaScheduleBatch(tenant_id=_tid(), term_id=int(body.termId),
                             batch_name=(getattr(body, "batchName", None) or f"学期{body.termId}课表"),
                             college_id=(int(body.collegeId) if getattr(body, "collegeId", None) else None),
@@ -103,9 +160,11 @@ def add_item(batch_id, user, body) -> dict:
         raise AppException("VALIDATION_ERROR", "单双周非法")
     with session() as db:
         from app.models import AaScheduleBatch, AaScheduleItem, AaTeachingTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再变更
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("DATA_CONFLICT", "已发布课表不可直接改（走作废重发）")
         it = _item_from(body)
@@ -142,9 +201,11 @@ def import_items(batch_id, user, items) -> dict:
     ok, conflicts = 0, []
     with session() as db:
         from app.models import AaScheduleBatch, AaScheduleItem, AaTeachingTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再导入
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("DATA_CONFLICT", "已发布课表不可导入")
         for idx, row in enumerate(items or []):
@@ -188,9 +249,11 @@ def import_items(batch_id, user, items) -> dict:
 def pre_publish(batch_id, user) -> dict:
     with session() as db:
         from app.models import AaScheduleBatch
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再预发布
         if b.status != "DRAFT":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅草稿批次可预发布")
         b.status = "PRE_PUBLISHED"
@@ -200,12 +263,14 @@ def pre_publish(batch_id, user) -> dict:
 
 
 def publish(batch_id, user) -> dict:
-    """发布课表：通知师生（t_unified_message）。"""
+    """发布课表：通知师生（t_unified_message）+ 落发布记录（t_aa_schedule_publish，供「课表发布」历史查询）。"""
     with session() as db:
-        from app.models import AaScheduleBatch, AaScheduleItem, UnifiedMessage
+        from app.models import AaScheduleBatch, AaScheduleItem, AaSchedulePublish, UnifiedMessage
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再发布
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次状态不可发布")
         b.status, b.publish_at = "PUBLISHED", datetime.utcnow()
@@ -219,36 +284,152 @@ def publish(batch_id, user) -> dict:
                                   source_biz_id=b.id, title="课表已发布",
                                   content=f"{b.batch_name} 已发布，请查看你的课表", message_type="PUBLISHED_NOTICE",
                                   status="UNREAD"))
+        n, _r, uid = _op()
+        db.add(AaSchedulePublish(tenant_id=_tid(), batch_id=b.id, term_id=b.term_id, action="PUBLISH",
+                                 operator_name=n or uid, notified_count=len(teachers)))
         _audit(db, "AA_SCHEDULE_BATCH", b.id, "PUBLISH", f"teachers={len(teachers)}")
         db.commit()
         return {"batchId": str(batch_id), "status": "PUBLISHED", "notified": len(teachers)}
 
 
 def void_and_reissue(batch_id, user, reason="") -> dict:
-    """调停课 V1 运维通道：作废已发布批次（留审计），新批次重排。不做流转审批。"""
+    """调停课 V1 运维通道：作废已发布批次（留审计+发布记录），新批次重排。不做流转审批。"""
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
+    with session() as db:
+        from app.models import AaScheduleBatch, AaSchedulePublish
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+        b = db.get(AaScheduleBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("课表批次不存在")
+        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再作废重发
+        if b.status != "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "仅已发布批次可作废重发")
+        b.status = "ARCHIVED"
+        n, _r, uid = _op()
+        db.add(AaSchedulePublish(tenant_id=_tid(), batch_id=b.id, term_id=b.term_id, action="VOID_REISSUE",
+                                 operator_name=n or uid, notified_count=0, note=reason.strip()))
+        _audit(db, "AA_SCHEDULE_BATCH", b.id, "VOID_REISSUE", reason.strip())
+        db.commit()
+        return {"batchId": str(batch_id), "status": "ARCHIVED", "note": "已作废，请新建批次重排"}
+
+
+def archive(batch_id, user) -> dict:
+    """13号卡·排课归档：学期结束正式归档（PUBLISHED→ARCHIVED）。
+
+    与上面 void_and_reissue（应急作废重排，审计事件 VOID_REISSUE）语义严格区分——本函数是常规流程终点，
+    审计事件为 ARCHIVE，不要求填写原因，归档后数据只读，供教务归档包（R7）统一打包消费。"""
     with session() as db:
         from app.models import AaScheduleBatch
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
         if b.status != "PUBLISHED":
-            raise AppException("DATA_CONFLICT", "仅已发布批次可作废重发")
+            raise AppException("DATA_CONFLICT", "仅已发布批次可归档")
         b.status = "ARCHIVED"
-        _audit(db, "AA_SCHEDULE_BATCH", b.id, "VOID_REISSUE", reason.strip())
+        _audit(db, "AA_SCHEDULE_BATCH", b.id, "ARCHIVE", "学期结束正式归档")
         db.commit()
-        return {"batchId": str(batch_id), "status": "ARCHIVED", "note": "已作废，请新建批次重排"}
+        return {"batchId": str(batch_id), "status": "ARCHIVED"}
+
+
+# ── 05号卡·教室可用时间：按教室名聚合占用查询 ──
+
+def room_view(batch_id, user, classroom) -> dict:
+    """按教室名查占用（辅助人工排课选教室，减少反复试错触发409）。教室为自由文本，字符串精确匹配。"""
+    from app.models import AaScheduleBatch, AaScheduleItem
+    with session() as db:
+        b = db.get(AaScheduleBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("课表批次不存在")
+        classroom = (classroom or "").strip()
+        if not classroom:
+            return {"items": [], "note": "请输入教室名称"}
+        items = _view(db, batch_id, [AaScheduleItem.classroom_text == classroom])
+        return {"items": items, "note": "该教室本批次暂无排课" if not items else ""}
+
+
+# ── 11号卡·排课调整：预发布阶段教师异议 → 学院教务员定点改排 ──
+
+def teacher_object(batch_id, user, item_id, reason) -> dict:
+    """教师对预发布课表本人条目提异议（COURSE scope=本人任教，按 teacher_key 匹配 _derive_keys）。
+
+    批次回退到 DRAFT：本系统当前批次状态机为 DRAFT/PRE_PUBLISHED/PUBLISHED/ARCHIVED 四态（SM-07 冻结的
+    SCHEDULING/CONFLICT_PENDING/TEACHER_CONFIRMING 中间态尚未实现，属其余三级卡范围），DRAFT/PRE_PUBLISHED
+    均允许条目编辑（见 add_item 状态校验），回 DRAFT 表达"需重新核对预发布"的等价语义。"""
+    if not reason or len(reason.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "异议原因必填且不少于 5 字")
+    with session() as db:
+        from app.models import AaScheduleBatch, AaScheduleItem
+        b = db.get(AaScheduleBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("课表批次不存在")
+        if b.status != "PRE_PUBLISHED":
+            raise AppException("DATA_CONFLICT", "仅预发布批次可提出异议")
+        it = db.get(AaScheduleItem, int(item_id))
+        if not it or it.is_deleted or it.tenant_id != _tid() or it.batch_id != b.id:
+            raise not_found("排课条目不存在")
+        keys = _derive_keys(user)
+        if not it.teacher_key or it.teacher_key not in keys:
+            raise AppException("NO_DATA_SCOPE", "仅本人课表可提出异议", http_status=403)
+        it.objection_status = "PENDING"
+        it.objection_reason = reason.strip()
+        b.status = "DRAFT"
+        _audit(db, "AA_SCHEDULE", it.id, "TEACHER_OBJECT", reason.strip())
+        db.commit()
+        return {"itemId": str(it.id), "batchId": str(batch_id), "batchStatus": "DRAFT"}
+
+
+def list_objections(batch_id, user) -> list[dict]:
+    """本批次全部待处理教师异议（排课调整页列表）。"""
+    from app.models import AaScheduleItem
+    with session() as db:
+        rows = db.scalars(select(AaScheduleItem).where(
+            AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == int(batch_id),
+            AaScheduleItem.objection_status == "PENDING", AaScheduleItem.is_deleted.is_(False))).all()
+        return [{**_item_row(x), "objectionReason": x.objection_reason} for x in rows]
+
+
+def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parity="ALL") -> dict:
+    """学院教务员对被异议条目定点改排：重新三重冲突检测（排除自身）→通过则更新+清除异议标记。"""
+    weekday, slot_no = int(weekday), int(slot_no)
+    week_parity = week_parity or "ALL"
+    if weekday not in WEEKDAYS:
+        raise AppException("VALIDATION_ERROR", "星期非法")
+    if week_parity not in PARITIES:
+        raise AppException("VALIDATION_ERROR", "单双周非法")
+    with session() as db:
+        from app.models import AaScheduleBatch, AaScheduleItem
+        b = db.get(AaScheduleBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("课表批次不存在")
+        if b.status not in ("DRAFT", "PRE_PUBLISHED"):
+            raise AppException("DATA_CONFLICT", "已发布课表不可直接改（走作废重发）")
+        it = db.get(AaScheduleItem, int(item_id))
+        if not it or it.is_deleted or it.tenant_id != _tid() or it.batch_id != b.id:
+            raise not_found("排课条目不存在")
+        conflict = _detect_conflict(db, b.id, weekday, slot_no, it.start_week, it.end_week,
+                                    week_parity, it.teacher_key, it.class_id, classroom, exclude_id=it.id)
+        if conflict:
+            raise AppException("DATA_CONFLICT", f"排课冲突（{conflict['type']}）：{conflict['detail']}")
+        it.weekday, it.slot_no, it.classroom_text, it.week_parity = weekday, slot_no, classroom, week_parity
+        it.objection_status, it.objection_reason = None, None
+        _audit(db, "AA_SCHEDULE", it.id, "ADJUST_ITEM", f"改排至周{weekday}第{slot_no}节")
+        db.commit()
+        db.refresh(it)
+        return _item_row(it)
 
 
 # ── 三视图 ──
 
-def _item_row(x) -> dict:
+def _item_row(x, source="CLASS_DERIVED", selection_record_id=None) -> dict:
+    """source: CLASS_DERIVED(行政班课表推导，既有) / ENROLLED(选课LOCKED并入，10号卡新增值)。
+    切换位沿用 `13A-13B-V1不可做与后置能力清单.md:45` 预留设计，前端按 source 区分展示。"""
     return {"itemId": str(x.id), "courseName": x.course_name or "", "className": x.class_name or "",
             "classId": str(x.class_id or ""), "teacherName": x.teacher_name or "",
             "teacherKey": x.teacher_key or "", "weekday": x.weekday, "slotNo": x.slot_no,
             "startWeek": x.start_week, "endWeek": x.end_week, "weekParity": x.week_parity,
-            "classroom": x.classroom_text or "", "status": x.status}
+            "classroom": x.classroom_text or "", "status": x.status, "source": source,
+            "selectionRecordId": str(selection_record_id) if selection_record_id else None}
 
 
 def _view(db, batch_id, extra_conds):
@@ -272,16 +453,43 @@ def teacher_view(batch_id, user, teacher_key):
         return {"items": _view(db, batch_id, [AaScheduleItem.teacher_key == teacher_key])}
 
 
+def _enrolled_items(db, student_id):
+    """学生本人选课结果并入课表（10号卡）：批次 LOCKED 后，选课记录关联教学任务在已发布课表中
+    的排课项(EFFECTIVE)标记 source=ENROLLED；LOCKED 前不并入（避免展示未定选课结果误导学生）。"""
+    from app.models import AaScheduleItem, AaSelectionCourse, AaSelectionRecord
+    locked = db.query(AaSelectionRecord).filter(
+        AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.student_id == int(student_id),
+        AaSelectionRecord.status == "LOCKED", AaSelectionRecord.is_deleted.is_(False)).all()
+    if not locked:
+        return []
+    course_ids = [r.selection_course_id for r in locked]
+    courses = db.query(AaSelectionCourse).filter(
+        AaSelectionCourse.id.in_(course_ids), AaSelectionCourse.tenant_id == _tid()).all()
+    task_to_record = {c.id: (c.teaching_task_id, next(
+        (r.id for r in locked if r.selection_course_id == c.id), None)) for c in courses}
+    out = []
+    for c in courses:
+        tt_id, rec_id = task_to_record.get(c.id, (None, None))
+        if not tt_id:
+            continue
+        rows = db.query(AaScheduleItem).filter(
+            AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == tt_id,
+            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False)).all()
+        out.extend(_item_row(x, source="ENROLLED", selection_record_id=rec_id) for x in rows)
+    return out
+
+
 def student_view(batch_id, user, student_id):
-    """学生课表：服务端按行政班归属推导（不前端拼接）。"""
+    """学生课表：服务端按行政班归属推导（CLASS_DERIVED）+ 本人LOCKED选课结果并入（ENROLLED，10号卡）。"""
     from app.models import AaScheduleItem, StudentProfile
     with session() as db:
         s = db.get(StudentProfile, int(student_id))
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
-        if not s.class_id:
-            return {"items": [], "note": "学生无行政班归属"}
-        return {"items": _view(db, batch_id, [AaScheduleItem.class_id == int(s.class_id)])}
+        base_items = _view(db, batch_id, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
+        items = base_items + _enrolled_items(db, s.id)
+        note = "" if s.class_id else "学生无行政班归属"
+        return {"items": items, "note": note}
 
 
 def list_batches(user, term_id=None, status=None, page=1, page_size=20):
@@ -298,3 +506,157 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total
+
+
+# ═══════════ Tier1 R2：班级/教师/教室独立课表入口 + 发布记录 + 导出 ═══════════
+# 与既有 class_view/teacher_view/student_view（需先知道 batchId 的批次内三视图，供「课表批次/排课」页
+# 「三视图」下钻用）不同：以下入口面向导航菜单三级页，自动取「当前已发布批次」，无需先选批次。
+
+def _current_published_batch(db, term_id=None):
+    """当前已发布批次：优先按学期过滤，取最近一次发布（publish_at desc）。不存在返回 None（页面走空态）。"""
+    from app.models import AaScheduleBatch
+    conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False),
+             AaScheduleBatch.status == "PUBLISHED"]
+    if term_id:
+        conds.append(AaScheduleBatch.term_id == int(term_id))
+    return db.scalars(select(AaScheduleBatch).where(*conds)
+                      .order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).first()
+
+
+def _week_in_range(row: dict, week) -> bool:
+    """周次过滤：week 为空恒真；否则须落在 [startWeek,endWeek] 且单双周相容。"""
+    if not week:
+        return True
+    w = int(week)
+    if not (int(row["startWeek"]) <= w <= int(row["endWeek"])):
+        return False
+    p = row["weekParity"]
+    if p == "ODD":
+        return w % 2 == 1
+    if p == "EVEN":
+        return w % 2 == 0
+    return True  # ALL 或未知值不拦截
+
+
+def class_schedule(user, class_id, term_id=None, week=None) -> dict:
+    """班级课表（/schedule/class/:classId）：教务处/学院教务（本院）/辅导员（本班）；
+    数据范围经 build_affairs_context 收敛，越范围 → 403002（NO_DATA_SCOPE）。"""
+    from app.models import AaScheduleItem, SchoolClass
+    with session() as db:
+        cls = db.get(SchoolClass, int(class_id))
+        if not cls or cls.is_deleted or cls.tenant_id != _tid():
+            raise not_found("班级不存在")
+        ctx = build_affairs_context(user, db)
+        if ctx.scope_type != "TENANT_ALL":
+            allowed = ctx.allowed_class_ids(db)
+            if not allowed or int(class_id) not in allowed:
+                raise no_data_scope("该班级不在您的数据范围内")
+        batch = _current_published_batch(db, term_id)
+        if not batch:
+            return {"items": [], "batchId": None, "className": cls.class_name,
+                    "note": "该班级本学期暂无已发布课表"}
+        rows = _view(db, batch.id, [AaScheduleItem.class_id == int(class_id)])
+        rows = [r for r in rows if _week_in_range(r, week)]
+        return {"items": rows, "batchId": str(batch.id), "className": cls.class_name, "note": ""}
+
+
+def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
+    """教师课表（/schedule/teacher/:teacherKey）：教务处/学院教务可查任意教师；教师本人仅能查看自己
+    （teacherKey 与本人 _user_keys 不命中 → 403002）。weeklyHours 为 V1 近似口径：按已排课表项计数，
+    单双周场景未按实际周折算（精确工作量口径以「教学任务.weeklyHours」为准，此处仅课表侧粗略参考）。"""
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    if role not in _REVIEW_ROLES and teacher_key not in _user_keys(user):
+        raise no_data_scope("仅能查看本人课表")
+    from app.models import AaScheduleItem
+    with session() as db:
+        batch = _current_published_batch(db, term_id)
+        if not batch:
+            return {"items": [], "batchId": None, "weeklyHours": 0, "note": "本学期暂无授课安排"}
+        rows = _view(db, batch.id, [AaScheduleItem.teacher_key == teacher_key])
+        weekly_hours = len(rows)
+        rows = [r for r in rows if _week_in_range(r, week)]
+        return {"items": rows, "batchId": str(batch.id), "weeklyHours": weekly_hours, "note": ""}
+
+
+def room_schedule(user, classroom_id, term_id=None, week=None) -> dict:
+    """教室课表（/schedule/room/:classroomId）：教务处/学院教务只读；教室无个人归属不做自身范围收敛。
+    classroom_text 为课表项自由文本快照（方案A，不外键化），按教室字典拼装的展示名做精确匹配；
+    若手工排课时教室文本与字典不一致（历史数据/自由录入）可能查不全，与教室预约模块同口径、同已知限制。"""
+    from app.models import AaClassroom, AaScheduleItem
+    with session() as db:
+        c = db.get(AaClassroom, int(classroom_id))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("教室不存在")
+        display = f"{c.building_name}{c.room_code}"
+        candidates = {display}
+        if c.room_name:
+            candidates.add(c.room_name)
+        batch = _current_published_batch(db, term_id)
+        if not batch:
+            return {"items": [], "batchId": None, "classroomText": display,
+                    "note": "该教室本学期暂无已发布课表"}
+        rows = _view(db, batch.id, [AaScheduleItem.classroom_text.in_(list(candidates))])
+        rows = [r for r in rows if _week_in_range(r, week)]
+        return {"items": rows, "batchId": str(batch.id), "classroomText": display, "note": ""}
+
+
+def list_publish_records(user, term_id=None, batch_id=None, page=1, page_size=20):
+    """课表发布记录（t_aa_schedule_publish）：教务处/学院教务查看发布/作废历史，供「课表发布」页留痕展示。"""
+    from app.models import AaSchedulePublish
+    with session() as db:
+        conds = [AaSchedulePublish.tenant_id == _tid(), AaSchedulePublish.is_deleted.is_(False)]
+        if term_id:
+            conds.append(AaSchedulePublish.term_id == int(term_id))
+        if batch_id:
+            conds.append(AaSchedulePublish.batch_id == int(batch_id))
+        rows = db.scalars(select(AaSchedulePublish).where(*conds).order_by(AaSchedulePublish.id.desc())).all()
+        out = [{"recordId": str(r.id), "batchId": str(r.batch_id), "termId": str(r.term_id or ""),
+                "action": r.action, "operatorName": r.operator_name or "", "notifiedCount": r.notified_count or 0,
+                "note": r.note or "", "createdAt": _iso(r.created_at)} for r in rows]
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+_WEEKDAY_LABEL = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
+_PARITY_LABEL = {"ALL": "全周", "ODD": "单周", "EVEN": "双周"}
+
+
+def export_schedule(user, scope, identifier, term_id=None, week_start=None, week_end=None, purpose="") -> bytes:
+    """课表导出 xlsx（班级/教师/教室三选一；水印+审计，对齐 quality_svc.export_report 同款约定）。"""
+    scope = (scope or "").upper()
+    if scope not in ("CLASS", "TEACHER", "ROOM"):
+        raise AppException("VALIDATION_ERROR", "导出范围仅支持 CLASS/TEACHER/ROOM")
+    if not identifier:
+        raise AppException("VALIDATION_ERROR", "导出对象必填")
+    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    if scope == "CLASS":
+        data = class_schedule(user, identifier, term_id, None)
+        sheet_title = f"班级课表-{data.get('className') or identifier}"
+    elif scope == "TEACHER":
+        data = teacher_schedule(user, identifier, term_id, None)
+        sheet_title = f"教师课表-{identifier}"
+    else:
+        data = room_schedule(user, identifier, term_id, None)
+        sheet_title = f"教室课表-{data.get('classroomText') or identifier}"
+    rows = data.get("items") or []
+    if week_start or week_end:
+        ws, we = int(week_start or 1), int(week_end or 52)
+        rows = [r for r in rows if not (int(r["endWeek"]) < ws or int(r["startWeek"]) > we)]
+    rows = sorted(rows, key=lambda x: (int(x["weekday"]), int(x["slotNo"])))
+    data_rows = [[
+        _WEEKDAY_LABEL.get(int(r["weekday"]), r["weekday"]), r["slotNo"], r["courseName"], r["className"],
+        r["teacherName"], r["classroom"], f"{r['startWeek']}-{r['endWeek']}周",
+        _PARITY_LABEL.get(r["weekParity"], r["weekParity"])] for r in rows]
+    from app.services.xlsx_util import build_ledger_xlsx
+    ctx = get_current_user_ctx() or {}
+    watermark = (f"导出人：{ctx.get('realName') or ctx.get('loginName') or '-'}  "
+                 f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}  已脱敏留痕")
+    headers = ["星期", "节次", "课程", "班级", "教师", "教室", "起止周", "单双周"]
+    content = build_ledger_xlsx(sheet_title, headers, data_rows, watermark=watermark)
+    with session() as db:
+        _audit(db, "AA_SCHEDULE_EXPORT", None, "EXPORT",
+              f"scope={scope} id={identifier} rows={len(data_rows)} purpose={purpose.strip()[:100]}")
+        db.commit()
+    return content

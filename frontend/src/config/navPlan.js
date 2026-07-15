@@ -236,17 +236,35 @@ export const NAV_PLAN = [
     ]),
     mod('aa-terms', '学年学期', '/admin/academic-affairs/terms', [
       I('学期管理', '/admin/academic-affairs/terms'),
-      ...P('学年管理', '当前学期设置', '学期周次', '教学周配置', '学期状态', '学期切换记录', '学期归档')
+      ...P('学年管理'),
+      I('当前学期设置', '/admin/academic-affairs/terms/current', 'academicAffairs.term.view'),
+      I('学期周次', '/admin/academic-affairs/terms/weeks', 'academicAffairs.term.view'),
+      I('教学周配置', '/admin/academic-affairs/terms/teaching-weeks', 'academicAffairs.term.manage'),
+      I('学期状态', '/admin/academic-affairs/terms/status', 'academicAffairs.term.manage'),
+      ...P('学期切换记录'),
+      I('学期归档', '/admin/academic-affairs/terms/archive-status', 'academicAffairs.term.view')
     ]),
     mod('aa-calendar', '校历节次', '/admin/academic-affairs/calendar', [
       I('校历管理', '/admin/academic-affairs/calendar'),
       I('作息时间', '/admin/academic-affairs/time-slots'),
-      ...P('节假日配置', '补课日配置', '节次管理', '上课时间段', '教学周日历', '校历发布', '校历归档')
+      // 2026-07-15 Tier1 R2：节假日/补课日=按 eventType 过滤同一批 t_aa_calendar_event（AaCalendarView 页签）；
+      // 节次管理=复用「作息时间」页（t_aa_time_slot 全 CRUD）；上课时间段=新表 t_aa_class_time_band；
+      // 教学周日历=派生只读聚合；校历发布/归档=复用学期状态机，仅教务处/学校管理员（后端角色白名单强制）。
+      I('节假日配置', '/admin/academic-affairs/calendar?tab=holiday', 'academicAffairs.calendar.view'),
+      I('补课日配置', '/admin/academic-affairs/calendar?tab=makeup', 'academicAffairs.calendar.view'),
+      I('节次管理', '/admin/academic-affairs/time-slots', 'academicAffairs.timeslot.manage'),
+      I('上课时间段', '/admin/academic-affairs/time-slots?tab=bands', 'academicAffairs.classTimeBand.view'),
+      I('教学周日历', '/admin/academic-affairs/calendar?tab=weekCalendar', 'academicAffairs.calendar.view'),
+      I('校历发布', '/admin/academic-affairs/calendar?tab=publish', 'academicAffairs.calendarPublish.manage'),
+      I('校历归档', '/admin/academic-affairs/calendar?tab=archive', 'academicAffairs.calendarArchive.manage')
     ]),
     mod('aa-student-status', '学籍管理', '/admin/academic-affairs/roster', [
       I('学籍名册', '/admin/academic-affairs/roster'),
-      ...P('学籍档案', '学籍状态', '休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正',
-        '学籍异动记录', '学籍导入导出', '学籍统计', '学籍归档')
+      H('学籍档案', '/admin/academic-affairs/roster', 'academicAffairs.roster.view', 'DETAIL'),
+      I('学籍状态', '/admin/academic-affairs/roster/status', 'academicAffairs.roster.view'),
+      I('学籍异动记录', '/admin/academic-affairs/roster/changes', 'academicAffairs.statusChange.view'),
+      I('学籍导入导出', '/admin/academic-affairs/roster/import-export', 'academicAffairs.roster.import'),
+      ...P('休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正', '学籍统计', '学籍归档')
     ]),
     mod('aa-registration', '注册管理', '/admin/academic-affairs/registration', [
       I('注册批次', '/admin/academic-affairs/registration'),
@@ -279,7 +297,10 @@ export const NAV_PLAN = [
       I('教学班管理', '/admin/academic-affairs/orgs?tab=teaching', 'academicAffairs.org.view'),
       I('组织结构同步', '/admin/academic-affairs/orgs?tab=tree', 'academicAffairs.org.view'),
       I('组织统计', '/admin/academic-affairs/orgs?tab=stats', 'academicAffairs.org.view'),
-      ...P('专业方向', '班级学生', '班级调整')
+      // Tier1 续工（2026-07-15）：专业方向（总开关默认关闭）/ 班级学生（只读增强）/ 班级调整（批量组织调整）
+      I('专业方向', '/admin/academic-affairs/orgs?tab=direction', 'academicAffairs.org.view'),
+      I('班级学生', '/admin/academic-affairs/orgs?tab=students', 'academicAffairs.org.view'),
+      I('班级调整', '/admin/academic-affairs/orgs?tab=adjust', 'academicAffairs.org.view')
     ]),
     mod('aa-training', '培养方案', '/admin/academic-affairs/programs', [
       I('方案列表', '/admin/academic-affairs/programs'),
@@ -296,7 +317,16 @@ export const NAV_PLAN = [
     ]),
     mod('aa-courses', '课程库', '/admin/academic-affairs/courses', [
       I('课程列表', '/admin/academic-affairs/courses'),
-      ...P('新增课程', '课程分类', '课程性质', '学分学时', '课程大纲', '考核方式', '课程负责人', '课程材料', '课程停用', '课程归档')
+      // Tier1 续工（2026-07-15）：以下 5 项接入统一控制台 /courses/console?tab=xxx（DataTable+Drawer，深编辑/两级审核仍回既有 /courses/:id）
+      I('新增课程', '/admin/academic-affairs/courses/new', 'academicAffairs.course.manage'),
+      I('课程分类', '/admin/academic-affairs/courses/console?tab=category', 'academicAffairs.course.view'),
+      I('课程性质', '/admin/academic-affairs/courses/console?tab=nature', 'academicAffairs.course.view'),
+      I('学分学时', '/admin/academic-affairs/courses/console?tab=credit', 'academicAffairs.course.view'),
+      ...P('课程大纲', '考核方式'),
+      I('课程负责人', '/admin/academic-affairs/courses/console?tab=owner', 'academicAffairs.course.view'),
+      ...P('课程材料'),
+      I('课程停用', '/admin/academic-affairs/courses/console?tab=disable', 'academicAffairs.course.view'),
+      ...P('课程归档')
     ]),
     // 教学计划：按手册 P6 冻结决定 + 用户 2026-07-14 拍板「收编」——不建独立域，叶子指向既有等价功能页
     // 年级/专业教学计划=培养方案(AaProgramBinding方案-年级绑定)；学期教学计划/课程开设计划=教学任务批次(AaTeachingTaskBatch学期开课计划)；计划归档=教务归档
@@ -323,27 +353,48 @@ export const NAV_PLAN = [
       I('教师可用时间', '/admin/academic-affairs/scheduling?tab=availability', 'academicAffairs.schedule.view'),
       I('冲突报告', '/admin/academic-affairs/scheduling?tab=conflict', 'academicAffairs.schedule.view'),
       I('人工排课工作台（课表维护）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
-      ...P('排课约束', '教室可用时间', '自动排课预留', '排课结果', '排课调整', '排课归档')
+      I('排课约束', '/admin/academic-affairs/scheduling?tab=constraint', 'academicAffairs.schedule.view'),
+      I('教室可用时间', '/admin/academic-affairs/scheduling?tab=room', 'academicAffairs.schedule.view'),
+      I('自动排课预留', '/admin/academic-affairs/scheduling?tab=import', 'academicAffairs.schedule.import'),
+      I('排课结果', '/admin/academic-affairs/scheduling?tab=result', 'academicAffairs.schedule.view'),
+      I('排课调整', '/admin/academic-affairs/scheduling?tab=adjust', 'academicAffairs.schedule.edit'),
+      I('排课归档', '/admin/academic-affairs/schedule?panel=archive', 'academicAffairs.schedule.archive')
     ]),
     mod('aa-schedule', '课表管理', '/admin/academic-affairs/schedule', [
       I('课表批次 / 排课', '/admin/academic-affairs/schedule'),
-      ...P('班级课表', '教师课表', '学生课表', '教室课表', '教学班课表', '周课表', '学期课表', '课表发布', '课表调整记录', '课表导出')
+      I('班级课表', '/admin/academic-affairs/schedule/class', 'academicAffairs.schedule.view'),
+      I('教师课表', '/admin/academic-affairs/schedule/teacher', 'academicAffairs.schedule.view'),
+      ...P('学生课表'),
+      I('教室课表', '/admin/academic-affairs/schedule/room', 'academicAffairs.classroom.view'),
+      ...P('教学班课表', '周课表', '学期课表'),
+      I('课表发布', '/admin/academic-affairs/schedule/publish', 'academicAffairs.schedule.view'),
+      ...P('课表调整记录'),
+      I('课表导出', '/admin/academic-affairs/schedule/export', 'academicAffairs.schedule.export')
     ]),
     mod('aa-schedule-change', '调停课', '/admin/academic-affairs/schedule-change', [
       I('调停课台账', '/admin/academic-affairs/schedule-change', 'academicAffairs.scheduleChange.view'),
       I('发起调停课（调课/停课/补课）', '/admin/academic-affairs/schedule-change/apply', 'academicAffairs.scheduleChange.apply'),
       I('调停课审批', '/admin/academic-affairs/schedule-change/approval', 'academicAffairs.scheduleChange.collegeReview'),
-      ...P('调停课通知', '调停课冲突检测', '调停课统计', '调停课归档')
+      ...P('调停课通知'),
+      // 冲突检测无独立页面：能力已嵌入「发起调停课」表单内（提交前预检区），叶子指向宿主表单
+      I('调停课冲突检测', '/admin/academic-affairs/schedule-change/apply', 'academicAffairs.scheduleChange.apply'),
+      I('调停课统计', '/admin/academic-affairs/schedule-change/stats', 'academicAffairs.scheduleChange.view'),
+      I('调停课归档', '/admin/academic-affairs/schedule-change/archive', 'academicAffairs.scheduleChange.view')
     ]),
     mod('aa-course-selection', '选课管理', '/admin/academic-affairs/selection', [
       I('选课批次控制台（批次/课程/名单/统计）', '/admin/academic-affairs/selection', 'academicAffairs.selection.view'),
       I('我的选课（学生自助）', '/admin/academic-affairs/my-selection', 'academicAffairs.selection.enroll'),
-      ...P('选课规则', '补选管理', '冲突检测', '选课结果', '选课归档')
+      I('选课规则', '/admin/academic-affairs/selection?tab=rule', 'academicAffairs.selection.rule.manage'),
+      I('补选管理', '/admin/academic-affairs/selection?tab=reselect', 'academicAffairs.selection.view'),
+      I('冲突检测', '/admin/academic-affairs/selection?tab=conflict', 'academicAffairs.selection.view'),
+      I('选课结果（并入学生课表，见课表三视图）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
+      I('选课归档', '/admin/academic-affairs/selection/archive', 'academicAffairs.selection.manage')
     ]),
     mod('aa-exam', '考务管理', '/admin/academic-affairs/exam', [
       I('考务控制台（批次/课程/考场/座位/监考/巡考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),
       I('座位表/准考证/门贴打印', '/admin/academic-affairs/exam/print/seating', 'academicAffairs.exam.view'),
-      ...P('缓考审批（并入控制台/学生小程序申请）', '考务归档')
+      I('缓考审批（并入控制台/学生小程序申请）', '/admin/academic-affairs/exam?tab=defer', 'academicAffairs.deferredExam.review'),
+      I('考务归档', '/admin/academic-affairs/exam?tab=archive', 'academicAffairs.exam.view')
     ]),
     mod('aa-makeup', '补考重修缓考免修', '/admin/academic-affairs/makeup', [
       I('补考批次', '/admin/academic-affairs/makeup?tab=makeup', 'academicAffairs.makeup.view'),
@@ -351,14 +402,18 @@ export const NAV_PLAN = [
       I('免修审批', '/admin/academic-affairs/makeup?tab=exemption', 'academicAffairs.makeup.view'),
       I('缓考合流', '/admin/academic-affairs/makeup?tab=deferred', 'academicAffairs.makeup.view'),
       I('重修免修申请（学生自助）', '/admin/academic-affairs/my-makeup', 'academicAffairs.retake.apply'),
-      ...P('统计分析', '材料归档')
+      I('统计分析', '/admin/academic-affairs/makeup/stats', 'academicAffairs.makeup.view', 'ANALYTICS_VIEW'),
+      I('材料归档', '/admin/academic-affairs/exemption/archive', 'academicAffairs.makeup.archive')
     ]),
     mod('aa-grades', '成绩管理', '/admin/academic-affairs/grade-overview', [
       I('成绩总览', '/admin/academic-affairs/grade-overview'),
       I('成绩录入（含暂存/提交）', '/admin/academic-affairs/grade-entry'),
       I('挂科清单', '/admin/academic-affairs/grade-fail'),
       I('学生成绩单', '/admin/academic-affairs/transcript'),
-      ...P('成绩导入', '成绩导出', '成绩异常', '成绩统计')
+      I('成绩导入', '/admin/academic-affairs/grade-entry?action=import', 'academicAffairs.grade.input'),
+      I('成绩导出', '/admin/academic-affairs/transcript?action=export', 'academicAffairs.grade.export'),
+      I('成绩统计', '/admin/academic-affairs/stats?tab=grade', 'academicAffairs.stats.view'),
+      ...P('成绩异常')
     ]),
     mod('aa-grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', [
       I('学院审核（待审核/通过/退回）', '/admin/academic-affairs/grade-college-review'),
@@ -412,7 +467,12 @@ export const NAV_PLAN = [
     mod('aa-evaluation', '教学评价', '/admin/academic-affairs/evaluation', [
       I('评教批次（结果分级）', '/admin/academic-affairs/evaluation?tab=batches', 'academicAffairs.evaluation.view'),
       I('申诉审核', '/admin/academic-affairs/evaluation?tab=appeals', 'academicAffairs.evaluation.view'),
-      ...P('学生评教(小程序)', '教师自评', '同行评价', '督导评价', '评价统计', '评价归档')
+      I('学生评教(小程序)', '/admin/academic-affairs/evaluation?tab=studentEval', 'academicAffairs.evaluation.view'),
+      I('教师自评', '/admin/academic-affairs/evaluation?tab=selfEval', 'academicAffairs.evaluation.selfEval.submit'),
+      I('同行评价', '/admin/academic-affairs/evaluation?tab=peerEval', 'academicAffairs.evaluation.peerEval.submit'),
+      I('督导评价', '/admin/academic-affairs/evaluation?tab=supervisorEval', 'academicAffairs.evaluation.supervisorEval.submit'),
+      I('评价统计', '/admin/academic-affairs/evaluation?tab=evalStats', 'academicAffairs.evaluation.view'),
+      I('评价归档', '/admin/academic-affairs/evaluation?tab=archive', 'academicAffairs.evaluation.view')
     ]),
     mod('aa-quality', '教学质量', '/admin/academic-affairs/quality', [
       I('运行质量看板 + 质量报告导出', '/admin/academic-affairs/quality', 'academicAffairs.quality.dashboard.view'),
@@ -420,7 +480,12 @@ export const NAV_PLAN = [
     ]),
     mod('aa-archive', '教务归档', '/admin/academic-affairs/archive', [
       I('归档批次 + 9数据域完整性检查 + 学期封存', '/admin/academic-affairs/archive', 'academicAffairs.archive.view'),
-      ...P('归档缺失提醒', '批量归档', '归档导出')
+      /* 2026-07-15 Tier1 续工（10/11/12 三级卡）：归档缺失提醒=独立预检看板；批量归档=与上一叶子同一批次
+       * 工作台真实页面（10/11/12 三级卡口径下"批量归档"即该工作台的正式命名），本行加 ?entry= 区分 leafKey
+       * 高亮/点击（§9.4 唯一 leafKey 规则），不改上一叶子；归档导出=独立下载面板。 */
+      I('归档缺失提醒', '/admin/academic-affairs/archive/precheck', 'academicAffairs.archive.view'),
+      I('批量归档', '/admin/academic-affairs/archive?entry=batch', 'academicAffairs.archive.view'),
+      I('归档导出', '/admin/academic-affairs/archive/export', 'academicAffairs.archive.export')
     ]),
     mod('aa-stats', '教务统计', '/admin/academic-affairs/stats', [
       I('教务总览（11 项指标 · 多维筛选 · 下钻 · 导出）', '/admin/academic-affairs/stats', 'academicAffairs.stats.view'),

@@ -57,6 +57,22 @@ class AaTimeSlot(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ENABLED")
 
 
+class AaClassTimeBand(PKMixin, TenantMixin, CommonMixin, Base):
+    """上课时间段（校历节次 Tier1 R2；节次的实际钟点，回链 slot_id）。
+    支持按校区/生效日期区间配置多套作息（如夏令/冬令时间），与 t_aa_time_slot 是一对多。
+    ENABLED/DISABLED。"""
+    __tablename__ = "t_aa_class_time_band"
+
+    slot_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    band_name: Mapped[str | None] = mapped_column(String(50))
+    campus_code: Mapped[str | None] = mapped_column(String(50), comment="预留多校区")
+    effective_start: Mapped[datetime | None] = mapped_column(DateTime)
+    effective_end: Mapped[datetime | None] = mapped_column(DateTime)
+    start_time: Mapped[str | None] = mapped_column(String(10), comment="HH:MM")
+    end_time: Mapped[str | None] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ENABLED")
+
+
 class AaStatusChange(PKMixin, TenantMixin, CommonMixin, Base):
     """学籍异动流水单（change_student_status 单一入口写入；P1 仅注册类，异动全类 P2）。"""
     __tablename__ = "t_aa_status_change"
@@ -235,6 +251,9 @@ class AaCourse(PKMixin, TenantMixin, CommonMixin, Base):
     owner_teacher_id: Mapped[int | None] = mapped_column(BigInteger, comment="课程负责人")
     is_core: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否核心课/学位课")
     prerequisite_codes_json: Mapped[str | None] = mapped_column(String(500), comment="先修课代码 JSON")
+    description: Mapped[str | None] = mapped_column(String(500), comment="课程简介（Tier1 R2 补）")
+    applicable_majors_json: Mapped[str | None] = mapped_column(String(1000), comment="适用专业 major_id 列表 JSON（Tier1 R2 补）")
+    is_all_major: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否全校通用（Tier1 R2 补）")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     prev_version_id: Mapped[int | None] = mapped_column(BigInteger, comment="上一版本(改动强制新版本链)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True,
@@ -324,6 +343,24 @@ class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="EFFECTIVE", index=True)
     change_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
                                                   comment="→ t_aa_schedule_change 生成本项的调停课单(变更标记/回链)；null=原始排课")
+    objection_status: Mapped[str | None] = mapped_column(String(20), index=True,
+                                                          comment="11号卡·排课调整：教师异议状态 PENDING=待改排；null=无异议")
+    objection_reason: Mapped[str | None] = mapped_column(String(500), comment="教师异议原因（≥5字）")
+
+
+class AaSchedulePublish(PKMixin, TenantMixin, CommonMixin, Base):
+    """课表发布记录（课表管理 Tier1 R2；SM-07 设计原列 t_aa_schedule_publish，此前仅落 batch.status/publish_at，
+    本表补齐可追溯的发布/作废流水，供「课表发布」三级页展示发布历史与通知回执）。
+    action：PUBLISH 发布 / VOID_REISSUE 作废重发；append-only，不做更新。"""
+    __tablename__ = "t_aa_schedule_publish"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_aa_schedule_batch")
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    action: Mapped[str] = mapped_column(String(30), nullable=False, default="PUBLISH",
+                                        comment="PUBLISH/VOID_REISSUE")
+    operator_name: Mapped[str | None] = mapped_column(String(100))
+    notified_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="通知教师数")
+    note: Mapped[str | None] = mapped_column(String(500), comment="作废原因等备注")
 
 
 # ═══════════ 成绩录入组（13B-P5；平时+期末按比例，发布原子回写 t_acad_grade）═══════════
@@ -799,6 +836,9 @@ class AaExemption(PKMixin, TenantMixin, CommonMixin, Base):
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True,
                                         comment="SUBMITTED/TEACHER_REVIEW/COLLEGE_REVIEW/ACADEMIC_REVIEW/APPROVED/REJECTED/CANCELLED")
+    # 三级施工卡「11-材料归档」§8：免修材料归档标记（nullable，历史行零回填，迁移 aa_bkcx_tier1_r2）
+    archive_status: Mapped[str | None] = mapped_column(String(20), default="NOT_ARCHIVED",
+                                                        comment="NOT_ARCHIVED/ARCHIVED")
 
 
 # ═══════════ 教材管理组（13B；目录/选用/审核/征订/发放/费用，挂教学任务）═══════════
@@ -1117,3 +1157,39 @@ class AaAttendanceSession(PKMixin, TenantMixin, CommonMixin, Base):
     absent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/SUBMITTED")
+
+
+# ═══════════ 学院专业班级 Tier1 R2（06 专业方向 / 08 班级调整申请单）═══════════
+
+
+class AaMajorDirection(PKMixin, TenantMixin, CommonMixin, Base):
+    """专业方向（t_aa_major_direction，13B-学院专业班级 06 号卡）：专业下的方向细分主数据。
+    受总开关控制（默认关闭，见 academic_affairs_org_service._major_direction_enabled），
+    未启用时全部端点 400 FEATURE_DISABLED；启用与否是学校业务政策待确认项，非技术缺口。"""
+    __tablename__ = "t_aa_major_direction"
+    __table_args__ = (UniqueConstraint("tenant_id", "major_id", "code", name="uk_aa_major_direction_code"),)
+
+    major_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    direction_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True,
+                                        comment="ACTIVE/DISABLED")
+
+
+class AaClassAdjustmentRequest(PKMixin, TenantMixin, CommonMixin, Base):
+    """班级调整申请单（t_aa_class_adjustment_request，13B-学院专业班级 08 号卡）：
+    行政班层面的组织性批量调整（合班登记/拆班登记/停用撤销/毕业清班），DRAFT→CHECKED→EXECUTED/CANCELLED。
+    区别于既有 /orgs/class-adjustments（org_service.adjust_student_class）——那是既有的单个学生转班
+    轻量端点（写 t_student_profile.class_id）；本表是组织级批量调整申请单，不改写学生 class_id，
+    真实学籍仍在原行政班，避免破坏"单一写入口"约束（见融合设计 §1.2 change_student_status）。"""
+    __tablename__ = "t_aa_class_adjustment_request"
+
+    adjust_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True,
+                                              comment="MERGE/SPLIT/DISBAND/GRADUATE_CLEAR")
+    from_class_ids: Mapped[str] = mapped_column(String(500), nullable=False, comment="JSON数组，来源行政班id列表")
+    to_class_id: Mapped[int | None] = mapped_column(BigInteger, comment="合班目标班级（MERGE专用）")
+    reason: Mapped[str] = mapped_column(String(1000), nullable=False)
+    check_result_json: Mapped[str | None] = mapped_column(String(2000))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/CHECKED/EXECUTED/CANCELLED")

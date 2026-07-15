@@ -24,6 +24,7 @@
             <button v-if="row.status === 'ARRANGED'" class="mp-link" @click="act('publishBatch', row.batchId, '发布')">发布</button>
             <button v-if="row.status === 'SCORING'" class="mp-link" @click="act('collegeReview', row.batchId, '学院审核')">学院审核</button>
             <button v-if="row.status === 'REVIEWED'" class="mp-link" @click="act('finishBatch', row.batchId, '教务发布回写')">教务发布回写</button>
+            <button v-if="row.status !== 'DRAFT' && row.status !== 'ARRANGED'" class="mp-link" @click="printBatch(row.batchId)">打印安排表</button>
           </template>
         </DataTable>
       </div>
@@ -165,6 +166,9 @@ export default {
         if (res.code === 0) { toast.success(label + '成功'); this.reload() } else toast.error(res.message)
       }
       this.confirmVisible = true
+    },
+    printBatch(batchId) {
+      window.open(`/admin/academic-affairs/makeup/batches/${batchId}/print`, '_blank')
     },
     async review(fn, id, action) {
       const res = await api[fn](id, action)

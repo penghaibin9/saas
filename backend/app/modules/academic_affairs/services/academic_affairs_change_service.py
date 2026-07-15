@@ -217,12 +217,20 @@ def submit(body, user) -> dict:
     student_id = int(body.studentId)
     with session() as db:
         from app.models import AaStatusChange, StudentProfile
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import (
+            guard_term_writable_current)
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
-        # 数据范围：教务处/校管全校代录；学院教务仅本院学生；未配置范围一律 403002（fail-closed）
+        guard_term_writable_current(db)  # 归档11卡§6.2：已归档学期不应受理新异动申请（降级为当前学期判据）
+        # 数据范围：教务处/校管全校代录；学院教务仅本院学生；未配置范围一律 403002（fail-closed）。
+        # SELF（学生本人）豁免：本函数是移动端"唯一学生写入口"submit_status_change_my 的落地点，
+        # 那里 studentId 恒由 _me(user) 服务端解析出的本人档案 id 构造，从不取客户端传参，此处
+        # 已有的 db.get(StudentProfile,...) 存在性校验已覆盖越租户/软删；require_student() 只按
+        # TENANT_ALL/COLLEGE/CLASS/STUDENT/DORM_BUILDING 裁决、无 SELF 分支，误命中会把"本人"当
+        # "空范围"拒绝（真实 bug：学生自助异动此前恒 403，此次一并修复，非本模块新引入）。
         ctx = build_affairs_context(user, db)
-        if ctx.scope_type != "TENANT_ALL":
+        if ctx.scope_type not in ("TENANT_ALL", "SELF"):
             ctx.require_student(db, student_id)
         cur = s.student_status
         # 终态学生禁发起
@@ -278,7 +286,10 @@ def review(sc_id, user, action, reason="") -> dict:
     _n, _r, uid = _op()
     with session() as db:
         from app.models import WorkflowInstance, WorkflowTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import (
+            guard_term_writable_current)
         x, s = _load(db, sc_id)
+        guard_term_writable_current(db)  # 归档11卡§6.2：已归档学期的异动不应继续审批流转（降级为当前学期判据）
         if x.status not in _ACTIVE and x.status != "IN_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该异动当前状态不可审批")
         # 节点授权：permissionCode + 数据范围（辅导员限本班/学院教务限本院/教务处终审限 TENANT_ALL）

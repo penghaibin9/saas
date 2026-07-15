@@ -13,11 +13,12 @@ from datetime import datetime
 
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.services.db_service import _iso, _tid, session
 
 _B_DRAFT, _B_PUBLISHED, _B_OPEN = "DRAFT", "PUBLISHED", "OPEN"
 _B_CLOSED, _B_RESULT, _B_ARCHIVED = "CLOSED", "RESULT_READY", "ARCHIVED"
+_ROLE_EVAL_TYPES = ("SELF", "PEER", "SUPERVISOR")
 
 
 def _bad(m):
@@ -155,6 +156,81 @@ def generate_tasks(user, bid, teaching_task_ids):
         return {"batchId": str(b.id), "taskCount": cnt}
 
 
+def generate_role_tasks(user, bid, evaluator_type, assignments):
+    """为教师自评/同行评价/督导评价生成应评任务（挂教学任务，指定评价人）。
+
+    Tier1 R2（本轮新增）：`t_aa_evaluation_task` 既有 `evaluator_key` 列此前只在 STUDENT 类留空，
+    SELF/PEER/SUPERVISOR 三类始终没有生成入口（`generate_tasks` 硬编码 evaluator_type=STUDENT）。
+    assignments=[{teachingTaskId, evaluatorKey?}]；SELF 类 evaluatorKey 缺省时=该教学任务授课教师本人（自评）；
+    PEER/SUPERVISOR 类必须显式指定 evaluatorKey（教务处按同行/督导人工号指定，本项目未建督导角色/数据范围，
+    评价人身份用既有 `_derive_keys` 同源匹配机制核验，而非新建 SUPERVISE scope_type，见二级施工包 D-07 说明）。
+    """
+    from app.models import AaEvaluationTask, AaTeachingTask
+    if evaluator_type not in _ROLE_EVAL_TYPES:
+        raise _bad("非法评价类型，仅支持 SELF/PEER/SUPERVISOR")
+    with session() as db:
+        _require_school(_ctx(user, db))
+        b = _get_batch(db, bid)
+        if b.status != _B_DRAFT:
+            raise _invalid("仅 DRAFT 批次可生成应评任务")
+        cnt = 0
+        for a in assignments or []:
+            tt_id = a.get("teachingTaskId") if isinstance(a, dict) else getattr(a, "teachingTaskId", None)
+            if not (tt_id and str(tt_id).isdigit()):
+                continue
+            tt_id = int(tt_id)
+            tt = db.query(AaTeachingTask).filter(AaTeachingTask.id == tt_id, AaTeachingTask.tenant_id == _tid()).first()
+            if not tt:
+                continue
+            ev_key = ((a.get("evaluatorKey") if isinstance(a, dict) else getattr(a, "evaluatorKey", None)) or "").strip()
+            if evaluator_type == "SELF":
+                ev_key = ev_key or (getattr(tt, "teacher_key", None) or "")
+            if not ev_key:
+                raise _bad(f"{evaluator_type} 类型必须指定评价人 evaluatorKey")
+            dup = db.query(AaEvaluationTask).filter(AaEvaluationTask.tenant_id == _tid(),
+                                                    AaEvaluationTask.batch_id == b.id,
+                                                    AaEvaluationTask.teaching_task_id == tt_id,
+                                                    AaEvaluationTask.evaluator_type == evaluator_type,
+                                                    AaEvaluationTask.evaluator_key == ev_key).first()
+            if dup:
+                continue
+            db.add(AaEvaluationTask(tenant_id=_tid(), batch_id=b.id, teaching_task_id=tt_id,
+                                    course_id=getattr(tt, "course_id", None), course_name=getattr(tt, "course_name", None),
+                                    class_id=getattr(tt, "class_id", None), teacher_key=getattr(tt, "teacher_key", None),
+                                    teacher_name=getattr(tt, "teacher_name", None), evaluator_type=evaluator_type,
+                                    evaluator_key=ev_key, status="PENDING"))
+            cnt += 1
+        _audit(db, b.id, "EVAL_TASK_GENERATE", f"{evaluator_type} {cnt} 条应评任务")
+        db.commit()
+        return {"batchId": str(b.id), "evaluatorType": evaluator_type, "taskCount": cnt}
+
+
+def list_my_role_tasks(user, evaluator_type, batch_id=None):
+    """我的评价任务（教师自评/同行/督导查看自己的待办与已提交，按 evaluator_key 匹配当前登录身份）。"""
+    from app.models import AaEvaluationBatch, AaEvaluationTask
+    if evaluator_type not in _ROLE_EVAL_TYPES:
+        raise _bad("非法评价类型，仅支持 SELF/PEER/SUPERVISOR")
+    with session() as db:
+        _ctx(user, db)
+        keys = list(_derive_keys(user)) or [""]
+        q = db.query(AaEvaluationTask).filter(AaEvaluationTask.tenant_id == _tid(),
+                                              AaEvaluationTask.is_deleted.is_(False),
+                                              AaEvaluationTask.evaluator_type == evaluator_type,
+                                              AaEvaluationTask.evaluator_key.in_(keys))
+        if batch_id:
+            q = q.filter(AaEvaluationTask.batch_id == int(batch_id))
+        rows = q.order_by(AaEvaluationTask.id.desc()).all()
+        bids = {t.batch_id for t in rows}
+        bstatus = {}
+        if bids:
+            for b in db.query(AaEvaluationBatch).filter(AaEvaluationBatch.tenant_id == _tid(),
+                                                        AaEvaluationBatch.id.in_(list(bids))).all():
+                bstatus[b.id] = b.status
+        return [{"taskId": str(t.id), "batchId": str(t.batch_id), "batchStatus": bstatus.get(t.batch_id),
+                 "courseName": t.course_name, "teacherName": t.teacher_name,
+                 "evaluatorType": t.evaluator_type, "status": t.status} for t in rows]
+
+
 def _advance(user, bid, frm, to, action):
     with session() as db:
         _require_school(_ctx(user, db))
@@ -256,13 +332,27 @@ def publish_results(user, bid):
 # ══════════ 提交评价 ══════════
 
 def submit_evaluation(user, task_id, answers, objective_score, comment=None):
-    """提交评价。学生类：匿名不存 evaluator，task.submitted_count+1；其它类：存 evaluator_key。"""
+    """提交评价。学生类：匿名不存 evaluator，task.submitted_count+1；其它类：存 evaluator_key。
+
+    Tier1 R2 修复：此前本函数对 SELF/PEER/SUPERVISOR 三类任务未校验"提交人是否就是任务指定的评价人"
+    （evaluator_key），也未拦截重复提交——任何已认证用户凭 taskId 即可代任意教师提交/反复提交评价，
+    属越权与状态机漏洞（对照二级施工包 §7.2 状态机 PENDING→SUBMITTED 后应拒绝再次提交）。现补齐：
+    非 STUDENT 类必须 evaluator_key 命中当前登录身份的 `_derive_keys` 匹配集，否则 403；
+    已 SUBMITTED 的非 STUDENT 任务重复提交 409（STUDENT 类任务代表"班级/课程整体评教槽位"，
+    由多名学生各自提交、以 submitted_count 计数，不适用单任务幂等拦截，此处不变更既有语义）。
+    """
     from app.models import AaEvaluationRecord, AaEvaluationTask
     with session() as db:
         _ctx(user, db)
         t = db.query(AaEvaluationTask).filter(AaEvaluationTask.id == task_id, AaEvaluationTask.tenant_id == _tid()).first()
         if not t:
             raise not_found("应评任务不存在")
+        if t.evaluator_type != "STUDENT":
+            keys = _derive_keys(user)
+            if not t.evaluator_key or t.evaluator_key not in keys:
+                raise no_permission("仅本任务指定的评价人本人可提交")
+            if t.status == "SUBMITTED":
+                raise _invalid("该任务已提交，不可重复提交")
         b = _get_batch(db, t.batch_id)
         if b.status != _B_OPEN:
             raise _invalid("评教窗口未开放")
@@ -371,7 +461,8 @@ def list_appeals(user, status=None, page=1, page_size=50):
 
 
 def stats(user, bid):
-    from app.models import AaEvaluationResult
+    """评价统计：结果分级分布 + 按评价类型(STUDENT/SELF/PEER/SUPERVISOR)的参评率（Tier1 R2 新增participation）。"""
+    from app.models import AaEvaluationResult, AaEvaluationTask
     with session() as db:
         _ctx(user, db)
         rows = db.query(AaEvaluationResult).filter(AaEvaluationResult.batch_id == bid, AaEvaluationResult.tenant_id == _tid()).all()
@@ -379,5 +470,54 @@ def stats(user, bid):
         for r in rows:
             by_level[r.level or "N/A"] = by_level.get(r.level or "N/A", 0) + 1
         avgs = [float(r.student_avg) for r in rows if r.student_avg is not None]
+        tasks = db.query(AaEvaluationTask).filter(AaEvaluationTask.batch_id == bid, AaEvaluationTask.tenant_id == _tid(),
+                                                  AaEvaluationTask.is_deleted.is_(False)).all()
+        by_type = {}
+        for t in tasks:
+            d = by_type.setdefault(t.evaluator_type, {"total": 0, "submitted": 0})
+            d["total"] += 1
+            submitted = t.status == "SUBMITTED" or (t.evaluator_type == "STUDENT" and (t.submitted_count or 0) > 0)
+            if submitted:
+                d["submitted"] += 1
+        participation = {k: {"total": v["total"], "submitted": v["submitted"],
+                             "rate": round(v["submitted"] / v["total"] * 100, 1) if v["total"] else 0.0}
+                         for k, v in by_type.items()}
         return {"batchId": str(bid), "resultCount": len(rows),
-                "overallAvg": round(sum(avgs) / len(avgs), 2) if avgs else None, "byLevel": by_level}
+                "overallAvg": round(sum(avgs) / len(avgs), 2) if avgs else None, "byLevel": by_level,
+                "participation": participation}
+
+
+def export_evaluation_xlsx(user, bid, domain, purpose):
+    """导出评价结果/参评统计 xlsx（水印+审计；复用 xlsx_util，同 教学质量/教务统计 既有导出模式）。
+
+    domain=results：评价结果分级清单；domain=stats：按评价类型的参评率统计（供"评价统计""评价归档"两个
+    三级模块共用同一导出能力，符合二级总包 §12"Excel导出需要"的红线要求）。
+    """
+    purpose = (purpose or "").strip()
+    if len(purpose) < 5:
+        raise _bad("导出用途必填（≥5字）")
+    from app.services.xlsx_util import build_ledger_xlsx
+    with session() as db:
+        _ctx(user, db)
+        b = _get_batch(db, bid)
+        batch_name = b.batch_name
+    ctx = get_current_user_ctx() or {}
+    watermark = (f"导出人：{ctx.get('realName') or ctx.get('loginName') or '-'}  "
+                f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose}")
+    if domain == "stats":
+        s = stats(user, bid)
+        headers = ["评价类型", "应评数", "已评数", "参评率(%)"]
+        rows = [[k, v["total"], v["submitted"], v["rate"]] for k, v in (s.get("participation") or {}).items()]
+        content = build_ledger_xlsx(f"{batch_name}-参评统计", headers, rows, watermark=watermark)
+    elif domain == "results":
+        items, _total = list_results(user, bid, mine=False, page=1, page_size=10000)
+        headers = ["教师", "课程", "均分", "评价数", "等级", "已发布"]
+        rows = [[i["teacherName"], i["courseName"], i["studentAvg"], i["studentCount"], i["level"],
+                "是" if i["published"] else "否"] for i in items]
+        content = build_ledger_xlsx(f"{batch_name}-评价结果", headers, rows, watermark=watermark)
+    else:
+        raise _bad("非法导出域，仅支持 results/stats")
+    with session() as db:
+        _audit(db, bid, "EVAL_EXPORT", f"{domain} 用途={purpose[:100]}")
+        db.commit()
+    return content

@@ -1,15 +1,21 @@
 """13B 教务中心 API（/api/v1/academic-affairs/*）—— P1：首页 + 学年学期/校历/节次 + 学籍名册 + 入学注册。"""
 from __future__ import annotations
 
+import io
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, File, Path, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import AppException
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
+from app.schemas.excel import ExcelErrorRows, ExcelImportRows
+from app.services import xlsx_util
+
+_XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _require_student(user: dict = Depends(get_current_user)) -> dict:
@@ -84,6 +90,68 @@ def term_publish(termId: int = Path(...), user=Depends(require_staff)):
     return success(svc.publish_term(termId, user), message="已发布")
 
 
+# ── 学年学期 Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档总览 ──
+_TERM_VIEW = "academicAffairs.term.view"
+_TERM_MANAGE = "academicAffairs.term.manage"
+
+
+@router.post("/terms/{termId}/set-current", summary="当前学期设置：设为当前学期（仅 PUBLISHED，幂等）")
+def term_set_current(termId: int = Path(...), user=Depends(require_permission(_TERM_MANAGE))):
+    return success(svc.set_current_term(termId, user), message="已设为当前学期")
+
+
+@router.get("/terms/{termId}/weeks", summary="学期周次（按开学日+教学周展开，叠加校历事件）")
+def term_weeks(termId: int = Path(...), user=Depends(require_permission(_TERM_VIEW))):
+    return success({"items": svc.list_term_weeks(termId, user)})
+
+
+class TeachingWeeksBody(BaseModel):
+    teachingWeeks: Optional[int] = Field(None, ge=1, le=30)
+    examWeekStart: Optional[int] = Field(None, ge=1, le=30)
+
+
+@router.put("/terms/{termId}/teaching-weeks", summary="教学周配置（仅 DRAFT 学期可调整结构）")
+def term_teaching_weeks_update(body: TeachingWeeksBody, termId: int = Path(...),
+                               user=Depends(require_permission(_TERM_MANAGE))):
+    return success(svc.update_teaching_weeks(termId, body, user), message="已保存")
+
+
+@router.post("/terms/{termId}/freeze", summary="学期状态·冻结（PUBLISHED→FROZEN）")
+def term_freeze(termId: int = Path(...), user=Depends(require_permission(_TERM_MANAGE))):
+    return success(svc.freeze_term(termId, user), message="已冻结")
+
+
+class TermUnfreezeBody(BaseModel):
+    reason: str = Field(..., min_length=1)
+
+
+@router.post("/terms/{termId}/unfreeze", summary="学期状态·解冻（FROZEN→PUBLISHED，原因≥5字）")
+def term_unfreeze(body: TermUnfreezeBody, termId: int = Path(...),
+                  user=Depends(require_permission(_TERM_MANAGE))):
+    return success(svc.unfreeze_term(termId, body.reason, user), message="已解冻")
+
+
+@router.get("/terms/archive-overview", summary="学期归档总览（只读，实际归档动作见教务归档模块）")
+def terms_archive_overview(user=Depends(require_permission(_TERM_VIEW))):
+    return success({"items": svc.term_archive_overview(user)})
+
+
+# 注：term_detail 的 {termId} 路径必须注册在上面的字面量路径 /terms/archive-overview 之后——
+# FastAPI 按声明顺序匹配路由，{termId} 若先声明会把 "archive-overview" 当成 termId 抢先匹配，
+# 导致归档总览端点 400（本条是总控合并复核发现并修复的真实路由顺序 bug，非文本冲突）。
+@router.get("/terms/{termId}", summary="学期详情（校历/作息等只读联动查看复用）")
+def term_detail(termId: int = Path(...), user=Depends(require_permission(_TERM_VIEW))):
+    return success(svc.term_detail(termId, user))
+
+
+# 注：校历节次 Tier1-R2 原设计的 POST /terms/{termId}/archive（直接改 AaTerm.status=ARCHIVED，
+# 绕开教务归档模块的批次+9域完整性检查+正规解冻通道）已在总控合并复核时移除——该路径与教务归档模块的
+# confirm_archive() 写同一字段但完全不做完整性校验，且当前代码库无任何方式撤销，会把一次"归档校历"
+# 误操作变成永久锁死全模块 19+ 个写端点的不可逆事故。"校历归档"改为上面的 term_detail 只读展示 +
+# 前端引导跳转教务归档模块正规流程（施工记录已登记，若确需窄语义的"仅锁校历"开关，
+# 应走独立字段而非复用 AaTerm.status，见总控复核B报告）。
+
+
 class CalendarEventBody(BaseModel):
     eventType: str = Field("TEACHING", description="TEACHING/EXAM/INTERNSHIP/HOLIDAY/SWAP")
     startDate: Optional[str] = None
@@ -92,17 +160,49 @@ class CalendarEventBody(BaseModel):
     remark: Optional[str] = None
 
 
-@router.post("/terms/{termId}/calendar", summary="添加校历事件")
-def calendar_add(body: CalendarEventBody, termId: int = Path(...), user=Depends(require_staff)):
+class CalendarEventUpdate(BaseModel):
+    eventType: Optional[str] = None
+    startDate: Optional[str] = None
+    endDate: Optional[str] = None
+    swapToDate: Optional[str] = None
+    remark: Optional[str] = None
+
+
+@router.post("/terms/{termId}/calendar", summary="添加校历事件（节假日/补课日/教学/考试/实习）")
+def calendar_add(body: CalendarEventBody, termId: int = Path(...),
+                 user=Depends(require_permission("academicAffairs.calendar.manage"))):
     return success(svc.add_calendar_event(termId, user, body), message="已添加")
 
 
-@router.get("/terms/{termId}/calendar", summary="校历事件列表")
-def calendar_list(termId: int = Path(...), user=Depends(require_staff)):
-    return success({"items": svc.list_calendar(termId, user)})
+@router.get("/terms/{termId}/calendar", summary="校历事件列表（可按 eventType 过滤：HOLIDAY 节假日/SWAP 补课日）")
+def calendar_list(termId: int = Path(...), eventType: Optional[str] = None,
+                  user=Depends(require_permission("academicAffairs.calendar.view"))):
+    return success({"items": svc.list_calendar(termId, user, eventType)})
 
 
-# ── 作息节次 ──
+@router.put("/terms/{termId}/calendar/{eventId}", summary="编辑校历事件（发布后锁定 409）")
+def calendar_update(body: CalendarEventUpdate, termId: int = Path(...), eventId: int = Path(...),
+                    user=Depends(require_permission("academicAffairs.calendar.manage"))):
+    return success(svc.update_calendar_event(termId, eventId, user, body), message="已保存")
+
+
+@router.delete("/terms/{termId}/calendar/{eventId}", summary="删除校历事件（发布后锁定 409）")
+def calendar_delete(termId: int = Path(...), eventId: int = Path(...),
+                    user=Depends(require_permission("academicAffairs.calendar.manage"))):
+    return success(svc.delete_calendar_event(termId, eventId, user), message="已删除")
+
+
+@router.get("/terms/{termId}/week-calendar", summary="教学周日历（周次×周类型聚合，叠加节假日/补课日着色）")
+def week_calendar(termId: int = Path(...), user=Depends(require_permission("academicAffairs.calendar.view"))):
+    return success(svc.week_calendar(termId, user))
+
+
+@router.post("/terms/{termId}/calendar/publish", summary="发布校历（校验节次已配置+补课日已配对，仅教务处/学校管理员）")
+def calendar_publish(termId: int = Path(...), user=Depends(require_permission("academicAffairs.calendarPublish.manage"))):
+    return success(svc.publish_calendar(termId, user), message="已发布")
+
+
+# ── 作息节次（节次管理，全校统一，不随学期锁定）──
 class TimeSlotCreate(BaseModel):
     slotNo: int = Field(..., ge=1)
     slotName: Optional[str] = None
@@ -110,14 +210,75 @@ class TimeSlotCreate(BaseModel):
     endTime: Optional[str] = None
 
 
+class TimeSlotUpdate(BaseModel):
+    slotNo: Optional[int] = Field(None, ge=1)
+    slotName: Optional[str] = None
+    startTime: Optional[str] = None
+    endTime: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
 @router.post("/time-slots", summary="新建作息节次")
-def time_slot_create(body: TimeSlotCreate, user=Depends(require_staff)):
+def time_slot_create(body: TimeSlotCreate, user=Depends(require_permission("academicAffairs.timeslot.manage"))):
     return success(svc.create_time_slot(body, user), message="已创建")
 
 
-@router.get("/time-slots", summary="作息节次列表")
-def time_slots(user=Depends(require_staff)):
-    return success({"items": svc.list_time_slots(user)})
+@router.get("/time-slots", summary="作息节次列表（includeDisabled=true 含已停用，供节次管理页）")
+def time_slots(includeDisabled: bool = False, user=Depends(require_permission("academicAffairs.timeslot.view"))):
+    return success({"items": svc.list_time_slots(user, includeDisabled)})
+
+
+@router.put("/time-slots/{slotId}", summary="编辑作息节次（含启用/停用）")
+def time_slot_update(body: TimeSlotUpdate, slotId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.timeslot.manage"))):
+    return success(svc.update_time_slot(slotId, user, body), message="已保存")
+
+
+@router.delete("/time-slots/{slotId}", summary="删除作息节次（逻辑删除）")
+def time_slot_delete(slotId: int = Path(...), user=Depends(require_permission("academicAffairs.timeslot.manage"))):
+    return success(svc.delete_time_slot(slotId, user), message="已删除")
+
+
+# ── 上课时间段（节次的实际钟点，支持按校区/生效日期区间配置多套作息）──
+class TimeBandCreate(BaseModel):
+    bandName: Optional[str] = None
+    campusCode: Optional[str] = None
+    effectiveStart: Optional[str] = None
+    effectiveEnd: Optional[str] = None
+    startTime: str = Field(..., min_length=1, description="HH:MM")
+    endTime: str = Field(..., min_length=1, description="HH:MM")
+
+
+class TimeBandUpdate(BaseModel):
+    bandName: Optional[str] = None
+    campusCode: Optional[str] = None
+    effectiveStart: Optional[str] = None
+    effectiveEnd: Optional[str] = None
+    startTime: Optional[str] = None
+    endTime: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.post("/time-slots/{slotId}/time-bands", summary="新建上课时间段（绑定节次的实际钟点）")
+def time_band_create(body: TimeBandCreate, slotId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classTimeBand.manage"))):
+    return success(svc.create_time_band(slotId, user, body), message="已创建")
+
+
+@router.get("/time-slots/{slotId}/time-bands", summary="上课时间段列表（按节次）")
+def time_band_list(slotId: int = Path(...), user=Depends(require_permission("academicAffairs.classTimeBand.view"))):
+    return success({"items": svc.list_time_bands(slotId, user)})
+
+
+@router.put("/time-bands/{bandId}", summary="编辑上课时间段")
+def time_band_update(body: TimeBandUpdate, bandId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classTimeBand.manage"))):
+    return success(svc.update_time_band(bandId, user, body), message="已保存")
+
+
+@router.delete("/time-bands/{bandId}", summary="删除上课时间段")
+def time_band_delete(bandId: int = Path(...), user=Depends(require_permission("academicAffairs.classTimeBand.manage"))):
+    return success(svc.delete_time_band(bandId, user), message="已删除")
 
 
 # ── 学籍名册 ──
@@ -126,6 +287,91 @@ def roster(keyword: Optional[str] = None, status: Optional[str] = None,
            page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
     items, total = svc.roster(user, keyword, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+# ── 学籍档案 / 学籍状态 / 学籍异动记录（只读展示，复用 status-changes）/ 学籍导入导出（Tier1 R2）──
+# 权限：view=档案详情+状态总览；viewSensitive=证件号完整查看（服务层二次鉴权+SUCCESS/DENY 双向审计）；
+# import=批量建档；export=名册导出。静态子路由（status-summary/export/import/*）必须声明在 /roster/{studentId} 之前，
+# 否则会被路径参数捕获（对齐 gd-students 路由注释的既有约定）。
+_ROSTER_VIEW = "academicAffairs.roster.view"
+_ROSTER_VIEW_SENSITIVE = "academicAffairs.roster.viewSensitive"
+_ROSTER_IMPORT = "academicAffairs.roster.import"
+_ROSTER_EXPORT = "academicAffairs.roster.export"
+
+
+@router.get("/roster/status-summary", summary="学籍状态总览（13 态分布 + 在籍统计 + 近30天异动数）")
+def roster_status_summary(user=Depends(require_permission(_ROSTER_VIEW))):
+    return success(svc.roster_status_summary(user))
+
+
+class RosterExportBody(BaseModel):
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
+    keyword: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.post("/roster/export", summary="导出学籍名册 xlsx（脱敏水印+审计，同步下载）")
+def roster_export(body: RosterExportBody, user=Depends(require_permission(_ROSTER_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = svc.export_roster_xlsx(user, body.purpose, body.keyword, body.status)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=roster_ledger.xlsx"})
+
+
+@router.get("/roster/import/template", summary="学籍导入·下载 Excel 模板(.xlsx)")
+def roster_import_template(user=Depends(require_permission(_ROSTER_IMPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    data = svc.roster_import_template_bytes()
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=roster_import_template.xlsx"})
+
+
+@router.post("/roster/import/dry-run", summary="学籍导入·预校验（粘贴行/高级，不写库）")
+def roster_import_dry_run(body: ExcelImportRows, user=Depends(require_permission(_ROSTER_IMPORT))):
+    return success(svc.roster_import_dry_run(body.rows))
+
+
+@router.post("/roster/import/xlsx", summary="学籍导入·上传 Excel 解析+预校验（不写库）")
+async def roster_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission(_ROSTER_IMPORT))):
+    content = await file.read()
+    rows = svc.roster_import_read(content)
+    dry = svc.roster_import_dry_run(rows)
+    return success({"rows": rows, **dry})
+
+
+@router.post("/roster/import/errors-xlsx", summary="学籍导入·下载错误行 Excel")
+def roster_import_errors_xlsx(body: ExcelErrorRows, user=Depends(require_permission(_ROSTER_IMPORT))):
+    return success(svc.roster_import_errors_pack(body.rows, [e.model_dump() for e in body.errors]))
+
+
+@router.post("/roster/import/confirm", summary="学籍导入·确认（整批事务，须预校验全通过）")
+def roster_import_confirm(body: ExcelImportRows, user=Depends(require_permission(_ROSTER_IMPORT))):
+    result = svc.roster_import_confirm(body.rows)
+    return success(result, message="导入完成")
+
+
+@router.get("/roster/{studentId}", summary="学籍档案详情（主档+组织名称+学籍状态历史，数据范围收敛）")
+def roster_detail(studentId: int = Path(...), user=Depends(require_permission(_ROSTER_VIEW))):
+    return success(svc.roster_detail(studentId, user))
+
+
+class RosterRevealBody(BaseModel):
+    reason: str = Field(..., min_length=5, description="查看理由（≥5 字，必填，写审计）")
+
+
+@router.post("/roster/{studentId}/reveal", summary="查看完整证件号（sensitiveView+强制审计）")
+def roster_reveal(body: RosterRevealBody, studentId: int = Path(...), user=Depends(require_staff)):
+    # 粗粒度只挡未登录/非教职工；academicAffairs.roster.viewSensitive 的授权判定与
+    # 「SUCCESS/DENY 双向 SENSITIVE_VIEW 审计」由服务层负责，网关不得在此短路（否则越权 DENY 审计会丢失）。
+    return success(svc.reveal_roster_sensitive(studentId, user, body.reason))
 
 
 # ── 入学/学年注册 ──
@@ -522,6 +768,12 @@ def program_new_version(programId: int = Path(...), user=Depends(_PROG_MANAGE)):
 
 
 # ═══════════ 课程库（P3，两级审核，商业级全字段）═══════════
+# Tier1 R2（新增课程/课程分类/课程性质/学分学时/课程负责人/课程停用）：写操作从 require_staff 收紧为
+# 精确 permissionCode（均命中 permissions.py 既有 "academicAffairs.*" 角色通配，不新增角色）。
+_COURSE_VIEW = require_permission("academicAffairs.course.view")
+_COURSE_MANAGE = require_permission("academicAffairs.course.manage")
+_COURSE_APPROVE = require_permission("academicAffairs.course.approve")
+
 
 class CourseCreate(BaseModel):
     courseCode: str = Field(..., min_length=1)
@@ -537,40 +789,66 @@ class CourseCreate(BaseModel):
     hoursComputer: Optional[int] = None
     examMode: str = Field("EXAM", description="EXAM/CHECK")
     ownerCollegeId: Optional[str] = None
+    ownerTeacherId: Optional[str] = Field(None, description="课程负责人 userId（若提供须为本校在职教师）")
     isCore: bool = Field(False)
+    description: Optional[str] = Field(None, description="课程简介，选填，≤500 字")
+    applicableMajors: Optional[list] = Field(default_factory=list, description="适用专业 majorId 列表（与 isAllMajor 互斥）")
+    isAllMajor: bool = Field(False, description="是否全校通用")
     prerequisiteCodes: Optional[list] = Field(default_factory=list)
 
 
 @router.post("/courses", summary="新建课程（草稿）")
-def course_create(body: CourseCreate, user=Depends(require_staff)):
+def course_create(body: CourseCreate, user=Depends(_COURSE_MANAGE)):
     return success(course_svc.create_course(body, user), message="已创建")
 
 
 @router.get("/courses", summary="课程库列表")
 def courses(keyword: Optional[str] = None, category: Optional[str] = None, nature: Optional[str] = None,
-            status: Optional[str] = None, page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
-    items, total = course_svc.list_courses(user, keyword, category, nature, status, page, pageSize)
+            status: Optional[str] = None, ownerTeacherId: Optional[str] = None, ownerCollegeId: Optional[str] = None,
+            page: int = 1, pageSize: int = 20, user=Depends(_COURSE_VIEW)):
+    items, total = course_svc.list_courses(user, keyword, category, nature, status, page, pageSize,
+                                           owner_teacher_id=ownerTeacherId, owner_college_id=ownerCollegeId)
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/courses/teachers/search", summary="课程负责人检索（在职教师，供选择器）")
+def course_teacher_search(keyword: Optional[str] = None, user=Depends(_COURSE_VIEW)):
+    return success({"items": course_svc.search_teachers(keyword or "")})
+
+
 @router.get("/courses/{courseId}", summary="课程详情")
-def course_detail(courseId: int = Path(...), user=Depends(require_staff)):
+def course_detail(courseId: int = Path(...), user=Depends(_COURSE_VIEW)):
     return success(course_svc.get_course(courseId, user))
 
 
+@router.get("/courses/{courseId}/references", summary="课程引用情况（被哪些培养方案引用，供停用前提示）")
+def course_references(courseId: int = Path(...), user=Depends(_COURSE_VIEW)):
+    return success({"items": course_svc.get_course_references(courseId, user)})
+
+
 @router.put("/courses/{courseId}", summary="编辑课程（已启用改动强制新版本）")
-def course_update(body: CourseCreate, courseId: int = Path(...), user=Depends(require_staff)):
+def course_update(body: CourseCreate, courseId: int = Path(...), user=Depends(_COURSE_MANAGE)):
     return success(course_svc.update_course(courseId, user, body), message="已保存")
 
 
 @router.post("/courses/{courseId}/submit", summary="提交课程审核")
-def course_submit(courseId: int = Path(...), user=Depends(require_staff)):
+def course_submit(courseId: int = Path(...), user=Depends(_COURSE_MANAGE)):
     return success(course_svc.submit_course(courseId, user), message="已提交")
 
 
 @router.post("/courses/{courseId}/review", summary="课程两级审核（学院→教务→ENABLED）")
-def course_review(body: AaReviewBody, courseId: int = Path(...), user=Depends(require_staff)):
+def course_review(body: AaReviewBody, courseId: int = Path(...), user=Depends(_COURSE_APPROVE)):
     return success(course_svc.review_course(courseId, user, body.action, body.reason or ""), message="已处理")
+
+
+@router.post("/courses/{courseId}/enable", summary="启用课程（DISABLED→ENABLED）")
+def course_enable(courseId: int = Path(...), user=Depends(_COURSE_APPROVE)):
+    return success(course_svc.set_course_status(courseId, user, True), message="已启用")
+
+
+@router.post("/courses/{courseId}/disable", summary="停用课程（ENABLED→DISABLED；被在途/生效培养方案引用时 400 拦截）")
+def course_disable(courseId: int = Path(...), user=Depends(_COURSE_APPROVE)):
+    return success(course_svc.set_course_status(courseId, user, False), message="已停用")
 
 
 # ═══════════ 教学任务（P3）═══════════
@@ -762,6 +1040,58 @@ def schedule_student_view(batchId: int = Path(...), studentId: str = "", user=De
     return success(sched_svc.student_view(batchId, user, studentId))
 
 
+# ═══════════ 课表管理 Tier1 R2：班级/教师/教室独立课表 + 发布记录 + 导出（自动取当前已发布批次） ═══════════
+_SCHED_TIER1_VIEW = "academicAffairs.schedule.view"  # 与 §2410 附近排课管理增强复用同一 key（module-wide 课表查看）
+_SCHED_ROOM_VIEW = "academicAffairs.classroom.view"  # 复用既有教室字典权限点，不新增教室专属 key
+_SCHED_EXPORT = "academicAffairs.schedule.export"
+
+
+@router.get("/schedule/class/{classId}", summary="班级课表（自动取当前已发布批次；周次可选过滤；越范围403002）")
+def schedule_class_page(classId: int = Path(...), termId: Optional[str] = None, week: Optional[int] = None,
+                        user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    return success(sched_svc.class_schedule(user, classId, termId, week))
+
+
+@router.get("/schedule/teacher/{teacherKey}", summary="教师课表（教务处/学院教务查任意；教师仅本人，越权403002）")
+def schedule_teacher_page(teacherKey: str = Path(...), termId: Optional[str] = None, week: Optional[int] = None,
+                          user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    return success(sched_svc.teacher_schedule(user, teacherKey, termId, week))
+
+
+@router.get("/schedule/room/{classroomId}", summary="教室课表（教务/学院教务只读；自动取当前已发布批次）")
+def schedule_room_page(classroomId: int = Path(...), termId: Optional[str] = None, week: Optional[int] = None,
+                       user=Depends(require_permission(_SCHED_ROOM_VIEW))):
+    return success(sched_svc.room_schedule(user, classroomId, termId, week))
+
+
+@router.get("/schedule/publish-records", summary="课表发布记录（t_aa_schedule_publish，发布/作废历史留痕）")
+def schedule_publish_records(termId: Optional[str] = None, batchId: Optional[str] = None,
+                             page: int = 1, pageSize: int = 20, user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    items, total = sched_svc.list_publish_records(user, termId, batchId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class ScheduleExportBody(BaseModel):
+    scope: str = Field(..., description="CLASS/TEACHER/ROOM")
+    identifier: str = Field(..., min_length=1, description="classId / teacherKey / classroomId")
+    termId: Optional[str] = None
+    weekStart: Optional[int] = Field(None, ge=1)
+    weekEnd: Optional[int] = Field(None, ge=1)
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5字，写审计）")
+
+
+@router.post("/schedule/export", summary="课表导出 xlsx（班级/教师/教室三选一；水印+审计）")
+def schedule_export(body: ScheduleExportBody, user=Depends(require_permission(_SCHED_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = sched_svc.export_schedule(user, body.scope, body.identifier, body.termId,
+                                        body.weekStart, body.weekEnd, body.purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=schedule_export.xlsx"})
+
+
 # ═══════════ 成绩录入 + 读侧视图（P5，平时+期末按比例）═══════════
 
 class GradeTaskCreate(BaseModel):
@@ -781,6 +1111,19 @@ class ScoreBody(BaseModel):
     usualScore: Optional[int] = Field(None, ge=0, le=100)
     finalScore: Optional[int] = Field(None, ge=0, le=100)
     exceptionFlag: Optional[str] = Field(None, description="NORMAL/ABSENT/DEFERRED/EXEMPT")
+
+
+class GradeImportRowsBody(BaseModel):
+    rows: List[dict] = Field(default_factory=list)
+
+
+class GradeImportErrorsBody(BaseModel):
+    rows: List[dict] = Field(default_factory=list)
+    errors: List[dict] = Field(default_factory=list)
+
+
+class TranscriptExportBody(BaseModel):
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
 
 
 class GradeReviewBody(BaseModel):
@@ -821,10 +1164,59 @@ def grade_roster(taskId: int = Path(...), user=Depends(require_permission("acade
     return success(grade_svc.roster(taskId, user))
 
 
+@router.get("/grade-tasks/{taskId}/records", summary="成绩录入表当前已录状态（供刷新/批量导入后回显）")
+def grade_records(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.input"))):
+    return success(grade_svc.list_records(taskId, user))
+
+
 @router.post("/grade-tasks/{taskId}/scores", summary="录入平时/期末分（实时合成总评）")
 def grade_enter_score(body: ScoreBody, taskId: int = Path(...),
                       user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(grade_svc.enter_score(taskId, user, body), message="已录入")
+
+
+# ── 成绩批量导入（学号/平时分/期末分/异常标记；dry-run 行级错误 → 确认整批事务） ──
+@router.get("/grade-tasks/{taskId}/import/template", summary="成绩批量导入·下载 Excel 模板(.xlsx)")
+def grade_import_template(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.input"))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    from app.services import xlsx_util
+    data = xlsx_util.build_template_xlsx(grade_svc.IMPORT_HEADERS, sample=grade_svc.IMPORT_SAMPLE,
+                                         notes=grade_svc.IMPORT_NOTES, required=grade_svc.IMPORT_REQUIRED)
+    return StreamingResponse(io.BytesIO(data),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=grade_import_template.xlsx"})
+
+
+@router.post("/grade-tasks/{taskId}/import/xlsx", summary="上传 Excel(.xlsx)·解析并预校验（不写库）")
+async def grade_import_xlsx(taskId: int = Path(...), file: UploadFile = File(...),
+                            user=Depends(require_permission("academicAffairs.grade.input"))):
+    from app.services import xlsx_util
+    content = await file.read()
+    rows = xlsx_util.read_xlsx(content, grade_svc.IMPORT_HEADER_MAP)
+    return success({**grade_svc.grade_import_dry_run(taskId, user, rows), "rows": rows})
+
+
+@router.post("/grade-tasks/{taskId}/import/errors-xlsx", summary="下载错误行 Excel(.xlsx)")
+def grade_import_errors_xlsx(body: GradeImportErrorsBody, taskId: int = Path(...),
+                             user=Depends(require_permission("academicAffairs.grade.input"))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    from app.services import xlsx_util
+    data = xlsx_util.build_error_rows_xlsx(grade_svc.IMPORT_HEADERS, body.rows, body.errors,
+                                           grade_svc._row_values_for_error)
+    return StreamingResponse(io.BytesIO(data),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=grade_import_errors.xlsx"})
+
+
+@router.post("/grade-tasks/{taskId}/import/confirm", summary="成绩批量导入·确认（整批事务，逐行落 t_aa_grade_record）")
+def grade_import_confirm(body: GradeImportRowsBody, taskId: int = Path(...),
+                         user=Depends(require_permission("academicAffairs.grade.input"))):
+    result = grade_svc.grade_import_confirm(taskId, user, body.rows)
+    return success(result, message="导入完成")
 
 
 @router.post("/grade-tasks/{taskId}/submit", summary="提交成绩进入学院审核")
@@ -875,6 +1267,18 @@ def grade_change_academic_review(body: GradeChangeReviewBody, recordId: int = Pa
 @router.get("/students/{studentId}/transcript", summary="学生成绩单（读侧）")
 def grade_transcript(studentId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.view"))):
     return success(grade_svc.transcript(studentId, user))
+
+
+@router.post("/students/{studentId}/transcript/export", summary="导出学生成绩单 xlsx（水印+审计+用途必填，同步下载）")
+def grade_transcript_export(body: TranscriptExportBody, studentId: int = Path(...),
+                            user=Depends(require_permission("academicAffairs.grade.export"))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = grade_svc.export_transcript_xlsx(user, studentId, body.purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=student_transcript.xlsx"})
 
 
 @router.get("/grade-views/fail-list", summary="挂科清单（读侧下钻）")
@@ -1324,6 +1728,22 @@ class ClassAdjustBody(BaseModel):
     targetClassId: str = Field(..., min_length=1)
 
 
+class MajorDirectionToggleBody(BaseModel):
+    enabled: bool = False
+
+
+class DirectionBody(BaseModel):
+    directionName: Optional[str] = None
+    code: Optional[str] = None
+
+
+class ClassAdjustmentCreateBody(BaseModel):
+    adjustType: str = Field(..., min_length=1)
+    fromClassIds: List[str] = Field(default_factory=list)
+    toClassId: Optional[str] = None
+    reason: str = Field(..., min_length=1)
+
+
 # ── 学院 ──
 @router.get("/orgs/colleges", summary="学院列表（范围内）")
 def org_colleges(keyword: Optional[str] = None, status: Optional[str] = None,
@@ -1412,15 +1832,77 @@ def org_teaching_classes(termCode: Optional[str] = None, batchId: Optional[str] 
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/orgs/classes/{classId}/students", summary="班级学生列表")
-def org_class_students(classId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
-    items, total = org_svc.list_class_students(user, classId, page, pageSize)
+@router.get("/orgs/classes/{classId}/students", summary="班级学生列表（07号卡：性别/学籍状态/手机号脱敏+关键字）")
+def org_class_students(classId: int = Path(...), keyword: Optional[str] = None,
+                       page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_class_students(user, classId, keyword, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
-@router.post("/orgs/class-adjustments", summary="班级调整（移动学生，单写入口+审计）")
+@router.post("/orgs/class-adjustments", summary="班级调整（移动单个学生，单写入口+审计）")
 def org_class_adjust(body: ClassAdjustBody, user=Depends(_ORG_MANAGE)):
     return success(org_svc.adjust_student_class(user, body), message="已调整")
+
+
+# ── 专业方向（06号卡：总开关默认关闭，业务政策待学校确认；启用后学院教务在专业下维护方向）──
+@router.get("/orgs/major-direction-toggle", summary="专业方向总开关状态")
+def org_direction_toggle_get(user=Depends(_ORG_VIEW)):
+    return success(org_svc.get_major_direction_toggle(user))
+
+
+@router.post("/orgs/major-direction-toggle", summary="设置专业方向总开关（仅教务处/校管）")
+def org_direction_toggle_set(body: MajorDirectionToggleBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.set_major_direction_toggle(user, body.enabled), message="已保存")
+
+
+@router.get("/orgs/majors/{majorId}/directions", summary="专业方向列表")
+def org_directions(majorId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_directions(user, majorId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/orgs/majors/{majorId}/directions", summary="新建专业方向")
+def org_direction_create(body: DirectionBody, majorId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.create_direction(user, majorId, body), message="已创建")
+
+
+@router.put("/orgs/majors/{majorId}/directions/{directionId}", summary="编辑专业方向")
+def org_direction_update(body: DirectionBody, majorId: int = Path(...), directionId: int = Path(...),
+                         user=Depends(_ORG_MANAGE)):
+    return success(org_svc.update_direction(user, majorId, directionId, body), message="已保存")
+
+
+@router.post("/orgs/majors/{majorId}/directions/{directionId}/disable", summary="停用专业方向")
+def org_direction_disable(majorId: int = Path(...), directionId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.disable_direction(user, majorId, directionId), message="已停用")
+
+
+# ── 班级调整申请单（08号卡：行政班层面批量组织调整——合班/拆班/停用/毕业清班，区别于上方个体学生转班）──
+@router.get("/orgs/class-adjustment-requests", summary="班级调整申请单列表")
+def org_adjustment_list(status: Optional[str] = None, adjustType: Optional[str] = None,
+                        page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_class_adjustments(user, status, adjustType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/orgs/class-adjustment-requests", summary="发起班级调整申请")
+def org_adjustment_create(body: ClassAdjustmentCreateBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.create_class_adjustment(user, body), message="已发起")
+
+
+@router.post("/orgs/class-adjustment-requests/{id}/precheck", summary="前置核对")
+def org_adjustment_precheck(id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.precheck_class_adjustment(user, id))
+
+
+@router.post("/orgs/class-adjustment-requests/{id}/execute", summary="确认执行")
+def org_adjustment_execute(id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.execute_class_adjustment(user, id), message="已执行")
+
+
+@router.post("/orgs/class-adjustment-requests/{id}/cancel", summary="撤销")
+def org_adjustment_cancel(id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.cancel_class_adjustment(user, id), message="已撤销")
 
 
 # ── 组织树 / 统计 / 变更审计 ──
@@ -1486,12 +1968,6 @@ def classroom_options(keyword: Optional[str] = None,
     return success({"items": resource_svc.list_options(user, keyword)})
 
 
-@router.get("/classrooms/{classroomId}", summary="教室详情")
-def classroom_detail(classroomId: int = Path(...),
-                     user=Depends(require_permission("academicAffairs.classroom.view"))):
-    return success(resource_svc.get_classroom(classroomId, user))
-
-
 @router.post("/classrooms", summary="新建教室（同楼栋+编号唯一，重复409）")
 def classroom_create(body: ClassroomCreate,
                      user=Depends(require_permission("academicAffairs.classroom.create"))):
@@ -1542,6 +2018,16 @@ def classroom_bookings(classroomId: Optional[str] = None, date: Optional[str] = 
     return success(paginate(items, total, page, pageSize))
 
 
+# 注：classroom_detail 的 {classroomId} 必须注册在上面字面量路径 /classrooms/bookings 之后——
+# FastAPI 按声明顺序匹配路由，{classroomId} 若先声明会把 "bookings" 当成 classroomId 抢先匹配，
+# 导致教室预约列表端点被遮蔽（本条是总控合并复核用全量扫描脚本发现并修复的真实路由顺序 bug，
+# 已存在于此前 Round1 版本、非本轮引入，此次一并修正）。
+@router.get("/classrooms/{classroomId}", summary="教室详情")
+def classroom_detail(classroomId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classroom.view"))):
+    return success(resource_svc.get_classroom(classroomId, user))
+
+
 @router.post("/classrooms/bookings/{bookingId}/review", summary="审核教室预约")
 def classroom_booking_review(body: BookingReviewBody, bookingId: int = Path(...),
                              user=Depends(require_permission("academicAffairs.classroom.update"))):
@@ -1575,6 +2061,16 @@ class ScheduleChangeCancelBody(BaseModel):
     reason: Optional[str] = Field("", max_length=500)
 
 
+class ScheduleChangeConflictCheckBody(BaseModel):
+    originItemId: str = Field(..., min_length=1, description="原课表项 id（须为已发布课表本人课位）")
+    targetWeekday: int = Field(..., ge=1, le=7, description="目标星期")
+    targetSlotNo: int = Field(..., ge=1, description="目标节次")
+    targetStartWeek: Optional[int] = Field(None, ge=1)
+    targetEndWeek: Optional[int] = Field(None, ge=1)
+    targetWeekParity: Optional[str] = Field(None, description="ALL/ODD/EVEN")
+    targetClassroom: Optional[str] = None
+
+
 @router.post("/schedule-change", summary="发起调停课（提交即目标冲突预检；冲突单据不落库）")
 def schedule_change_submit(body: ScheduleChangeSubmit,
                            user=Depends(require_permission("academicAffairs.scheduleChange.apply"))):
@@ -1586,14 +2082,33 @@ def schedule_change_list(changeType: Optional[str] = None, status: Optional[str]
                          teacherKey: Optional[str] = None, termId: Optional[str] = None,
                          page: int = 1, pageSize: int = 20,
                          user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
-    items, total = sched_change_svc.list_changes(user, changeType, status, teacherKey, termId, page, pageSize)
+    items, total = sched_change_svc.list_changes(user, change_type=changeType, status=status,
+                                                 teacher_key=teacherKey, term_id=termId,
+                                                 page=page, page_size=pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/schedule-change/stats", summary="调停课统计（按类型/状态聚合）")
-def schedule_change_stats(termId: Optional[str] = None,
+@router.get("/schedule-change/stats", summary="调停课统计（按类型/状态/学院/教师聚合）")
+def schedule_change_stats(termId: Optional[str] = None, dimension: Optional[str] = None,
                           user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
-    return success(sched_change_svc.stats(user, termId))
+    return success(sched_change_svc.stats(user, termId, dimension))
+
+
+@router.post("/schedule-change/conflict-check", summary="调停课冲突预检（只读，不落库；提交前 UX 反馈）")
+def schedule_change_conflict_check(body: ScheduleChangeConflictCheckBody,
+                                   user=Depends(require_permission("academicAffairs.scheduleChange.apply"))):
+    return success(sched_change_svc.conflict_check(body, user))
+
+
+@router.get("/schedule-change/archive", summary="调停课归档（仅终态：已生效/已驳回/已撤销，服务层强制过滤）")
+def schedule_change_archive(changeType: Optional[str] = None, status: Optional[str] = None,
+                            termId: Optional[str] = None, dateFrom: Optional[str] = None,
+                            dateTo: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                            user=Depends(require_permission("academicAffairs.scheduleChange.view"))):
+    items, total = sched_change_svc.archive_list(user, change_type=changeType, status=status,
+                                                 term_id=termId, date_from=dateFrom, date_to=dateTo,
+                                                 page=page, page_size=pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/schedule-change/{changeId}", summary="调停课详情（含通知单打印数据）")
@@ -1664,6 +2179,11 @@ class SelectionCourseUpdate(BaseModel):
 
 class EnrollBody(BaseModel):
     selectionCourseId: str = Field(..., min_length=1)
+    isReselect: bool = Field(False, description="补选场景标志位（仅前端语义提示，后端独立核验资格，见06号卡§10）")
+
+
+class ExportPurposeBody(BaseModel):
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
 
 
 class AdjustBody(BaseModel):
@@ -1779,9 +2299,14 @@ def sel_record_adjust(body: AdjustBody, recordId: int = Path(...),
     return success(selection_svc.adjust_record(user, recordId, body.reason), message="已调整")
 
 
-@router.get("/selection/batches/{batchId}/reselect-guide", summary="补选指引（CLOSED 批次）")
+@router.get("/selection/batches/{batchId}/reselect-guide", summary="补选指引（CLOSED 批次，教务处视角）")
 def sel_reselect_guide(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIEW))):
     return success(selection_svc.reselect_guide(user, batchId))
+
+
+@router.get("/selection/student/reselect-guide", summary="补选指引（学生本人待补选记录+可选课程，06号卡）")
+def sel_student_reselect_guide(batchId: Optional[str] = None, user=Depends(_require_student)):
+    return success({"items": selection_svc.student_reselect_guide(user, batchId)})
 
 
 @router.get("/selection/batches/{batchId}/stats", summary="选课统计")
@@ -1789,9 +2314,52 @@ def sel_stats(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIE
     return success(selection_svc.batch_stats(user, batchId))
 
 
+@router.get("/selection/batches/{batchId}/conflict-report", summary="冲突预警报表（09号卡，studentNo 可选按学号查询）")
+def sel_conflict_report(batchId: int = Path(...), studentNo: Optional[str] = None,
+                        user=Depends(require_permission(_SEL_VIEW))):
+    return success(selection_svc.get_conflict_report(user, batchId, studentNo))
+
+
+@router.post("/selection/batches/{batchId}/conflict-report/export", summary="冲突预警报表导出 xlsx（水印+审计+用途必填）")
+def sel_conflict_report_export(body: ExportPurposeBody, batchId: int = Path(...),
+                               user=Depends(require_permission(_SEL_VIEW))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = selection_svc.export_conflict_report_xlsx(user, batchId, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=selection_conflict_report.xlsx"})
+
+
 @router.post("/selection/time-tick", summary="定时触发：到点自动开选/截止（供 cron 调度，幂等）")
 def sel_time_tick(user=Depends(require_permission(_SEL_MANAGE))):
     return success(selection_svc.run_time_tick(user), message="已执行时间触发")
+
+
+# ── 选课归档（12号卡：ARCHIVED 批次历史查询/导出） ──
+@router.get("/selection/archive", summary="归档批次列表（仅 ARCHIVED，12号卡）")
+def sel_archive_list(termId: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                     user=Depends(require_permission(_SEL_MANAGE))):
+    items, total = selection_svc.list_archived_batches(user, termId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/selection/archive/{batchId}", summary="归档批次详情（含统计，非 ARCHIVED 409）")
+def sel_archive_detail(batchId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_svc.archive_detail(user, batchId))
+
+
+@router.post("/selection/archive/{batchId}/export", summary="归档台账导出 xlsx（水印+审计+用途必填，非 ARCHIVED 409）")
+def sel_archive_export(body: ExportPurposeBody, batchId: int = Path(...),
+                       user=Depends(require_permission(_SEL_MANAGE))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = selection_svc.export_archive_xlsx(user, batchId, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=selection_archive.xlsx"})
 
 
 # ══════════════ 考务管理（13B-SM-10，/academic-affairs/exam/*、/deferred-exams*） ══════════════
@@ -1992,6 +2560,13 @@ def exam_stats(bid: int = Path(...), user=Depends(require_permission(_EXAM_VIEW)
     return success(exam_svc.batch_stats(user, bid))
 
 
+@router.get("/exam/archive", summary="考务归档批次列表（12号卡，只读，ARCHIVED）")
+def exam_archive_list(termId: Optional[str] = None, collegeId: Optional[str] = None,
+                      page: int = 1, pageSize: int = 20, user=Depends(require_permission(_EXAM_VIEW))):
+    items, total = exam_svc.list_archived_batches(user, termId, collegeId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
 # deferred exam
 @router.post("/deferred-exams", summary="学生申请缓考")
 def defer_apply(body: DeferApplyBody, user=Depends(_require_student)):
@@ -2031,6 +2606,8 @@ def defer_review(body: DeferReviewBody, deferId: int = Path(...),
 # ══════════════ 补考重修缓考免修（13B-SM-12，/academic-affairs/makeup|retake|exemption/*） ══════════════
 _MK_MANAGE = "academicAffairs.makeup.manage"
 _MK_VIEW = "academicAffairs.makeup.view"
+_MK_EXPORT = "academicAffairs.makeup.export"
+_MK_ARCHIVE = "academicAffairs.makeup.archive"
 _RT_APPLY = "academicAffairs.retake.apply"
 _RT_REVIEW = "academicAffairs.retake.review"
 _EX_REVIEW = "academicAffairs.exemption.review"
@@ -2202,15 +2779,54 @@ def deferred_merge(body: MergeDeferredBody, did: int = Path(...), user=Depends(r
     return success(makeup_svc.merge_deferred(user, did, int(body.batchId)), message="已并入")
 
 
-# ── 统计 ──
-@router.get("/makeup/stats", summary="补考重修免修统计")
-def makeup_stats(user=Depends(require_permission(_MK_VIEW))):
-    mb, mbt = makeup_svc.list_makeup_batches(user, None, 1, 1000)
-    rt, rtt = makeup_svc.retake_list(user, None, False, 1, 1000)
-    ex, ext = makeup_svc.exemption_list(user, None, False, 1, 1000)
-    return success({"makeupBatchCount": mbt, "retakeApplyCount": rtt, "exemptionApplyCount": ext,
-                    "retakeApproved": len([r for r in rt if r["status"] in ("APPROVED", "ENROLLED", "FINISHED")]),
-                    "exemptionApproved": len([e for e in ex if e["status"] == "APPROVED"])})
+# ── 统计分析（三级施工卡 10-统计分析） ──
+@router.get("/makeup/stats", summary="补考重修缓考免修四条线统计聚合（人数+通过率，term/collegeId/dimension 可选）")
+def makeup_stats(term: Optional[str] = None, collegeId: Optional[str] = None,
+                 dimension: Optional[str] = None, user=Depends(require_permission(_MK_VIEW))):
+    return success(makeup_svc.aggregate_stats(user, term, collegeId, dimension))
+
+
+@router.get("/makeup/stats/detail", summary="四条线统计下钻明细（line=makeup/retake/exemption/deferred）")
+def makeup_stats_detail(term: Optional[str] = None, collegeId: Optional[str] = None, line: Optional[str] = None,
+                        page: int = 1, pageSize: int = 50, user=Depends(require_permission(_MK_VIEW))):
+    items, total = makeup_svc.stats_detail(user, term, collegeId, line, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class MakeupStatsExportBody(BaseModel):
+    term: Optional[str] = None
+    collegeId: Optional[str] = None
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
+
+
+@router.post("/makeup/stats/export", summary="四条线统计导出 xlsx（水印+用途必填+审计）")
+def makeup_stats_export(body: MakeupStatsExportBody, user=Depends(require_permission(_MK_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = makeup_svc.export_makeup_stats_xlsx(user, body.term, body.collegeId, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=makeup_stats.xlsx"})
+
+
+# ── 材料归档（三级施工卡 11-材料归档） ──
+@router.get("/makeup/batches/{bid}/print-data", summary="补考安排表打印页数据（D7）")
+def makeup_print_data(bid: int = Path(...), user=Depends(require_permission(_MK_ARCHIVE))):
+    return success(makeup_svc.print_data(user, bid))
+
+
+@router.post("/exemption/{eid}/archive", summary="标记免修材料已归档")
+def exemption_archive(eid: int = Path(...), user=Depends(require_permission(_MK_ARCHIVE))):
+    return success(makeup_svc.mark_archived(user, eid), message="已标记归档")
+
+
+@router.get("/exemption/archive-list", summary="免修材料归档列表")
+def exemption_archive_list(term: Optional[str] = None, status: Optional[str] = None,
+                           page: int = 1, pageSize: int = 50, user=Depends(require_permission(_MK_ARCHIVE))):
+    items, total = makeup_svc.archive_list(user, term, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 # ══════════════ 教材管理（13B，/academic-affairs/textbooks/*） ══════════════
@@ -2478,10 +3094,94 @@ def sched_conflict_report(bid: int = Path(...), user=Depends(require_permission(
     return success(scheduling_svc.conflict_report(user, bid))
 
 
+# ══════════════ 排课管理 Tier1 R2 续工（03/05/07/10/11/13 号卡） ══════════════
+_SCHED_EDIT = "academicAffairs.schedule.edit"
+_SCHED_IMPORT = "academicAffairs.schedule.import"
+_SCHED_ARCHIVE = "academicAffairs.schedule.archive"
+_SCHED_TEACHER_CONFIRM = "academicAffairs.schedule.teacherConfirm"
+
+
+class TeacherObjectBody(BaseModel):
+    itemId: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=5, max_length=300)
+
+
+class AdjustItemBody(BaseModel):
+    weekday: int = Field(..., ge=1, le=7)
+    slotNo: int = Field(..., ge=1)
+    classroom: Optional[str] = None
+    weekParity: str = Field("ALL")
+
+
+# ── 05号卡·教室可用时间 ──
+@router.get("/schedule-batches/{batchId}/room-view", summary="教室占用查询（05号卡：辅助人工排课选教室）")
+def schedule_room_view(batchId: int = Path(...), classroom: str = "",
+                       user=Depends(require_permission(_SCHED_VIEW))):
+    return success(sched_svc.room_view(batchId, user, classroom))
+
+
+# ── 10号卡·排课结果 ──
+@router.get("/schedule-batches/{batchId}/summary", summary="排课结果汇总统计（10号卡：预发布前核对）")
+def schedule_summary(batchId: int = Path(...), user=Depends(require_permission(_SCHED_VIEW))):
+    return success(scheduling_svc.summary(user, batchId))
+
+
+# ── 07号卡·自动排课预留（Excel结果导入通道；不写算法本体） ──
+@router.get("/schedule-batches/import/template", summary="排课结果导入模板下载（07号卡）")
+def schedule_import_template(user=Depends(require_permission(_SCHED_IMPORT))):
+    data = xlsx_util.build_template_xlsx(sched_svc.IMPORT_HEADERS, sample=sched_svc.IMPORT_SAMPLE,
+                                         notes=sched_svc.IMPORT_NOTES, required=sched_svc.IMPORT_REQUIRED)
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA, headers={
+        "Content-Disposition": "attachment; filename=schedule_import_template.xlsx"})
+
+
+@router.post("/schedule-batches/{batchId}/import/xlsx", summary="上传Excel导入排课结果（07号卡：自动排课预留=结果导入通道）")
+async def schedule_import_xlsx(batchId: int = Path(...), file: UploadFile = File(...),
+                               user=Depends(require_permission(_SCHED_IMPORT))):
+    content = await file.read()
+    rows = xlsx_util.read_xlsx(content, sched_svc.IMPORT_HEADER_MAP)
+    if len(rows) > sched_svc.IMPORT_MAX_ROWS:
+        raise AppException("VALIDATION_ERROR", f"单批导入行数不得超过 {sched_svc.IMPORT_MAX_ROWS} 行")
+    rows = sched_svc.sanitize_import_rows(rows)
+    return success(sched_svc.import_items(batchId, user, rows), message="导入完成")
+
+
+# ── 11号卡·排课调整（预发布阶段教师异议 → 定点改排） ──
+@router.post("/schedule-batches/{batchId}/teacher-object", summary="教师对本人课表提出异议（11号卡）")
+def schedule_teacher_object(body: TeacherObjectBody, batchId: int = Path(...),
+                            user=Depends(require_permission(_SCHED_TEACHER_CONFIRM))):
+    return success(sched_svc.teacher_object(batchId, user, body.itemId, body.reason), message="异议已提交")
+
+
+@router.get("/schedule-batches/{batchId}/objections", summary="本批次待处理教师异议清单（11号卡）")
+def schedule_objections(batchId: int = Path(...), user=Depends(require_permission(_SCHED_VIEW))):
+    return success({"items": sched_svc.list_objections(batchId, user)})
+
+
+@router.put("/schedule-batches/{batchId}/items/{itemId}", summary="排课调整（11号卡：处理教师异议定点改排）")
+def schedule_adjust_item(body: AdjustItemBody, batchId: int = Path(...), itemId: int = Path(...),
+                         user=Depends(require_permission(_SCHED_EDIT))):
+    return success(sched_svc.adjust_item(batchId, itemId, user, body.weekday, body.slotNo,
+                                         body.classroom, body.weekParity), message="已改排")
+
+
+# ── 13号卡·排课归档（区别于 void-reissue 应急作废重排） ──
+@router.post("/schedule-batches/{batchId}/archive", summary="排课归档（13号卡：学期结束正式归档）")
+def schedule_archive(batchId: int = Path(...), user=Depends(require_permission(_SCHED_ARCHIVE))):
+    return success(sched_svc.archive(batchId, user), message="已归档")
+
+
 # ══════════════ 教学评价（13B，/academic-affairs/evaluation/*） ══════════════
 _EVAL_MANAGE = "academicAffairs.evaluation.batch.manage"
 _EVAL_VIEW = "academicAffairs.evaluation.view"
 _EVAL_APPEAL = "academicAffairs.evaluation.appeal.review"
+# Tier1 R2 新增（学生评教PC查看/教师自评/同行评价/督导评价/评价统计导出/评价归档导出）：
+# 沿用既有代码现状——本文件全部端点权限码均未在 ROLE_PERMISSIONS 逐条注册，而是命中角色已授予的
+# "academicAffairs.*" 通配（ACADEMIC_ADMIN/ACADEMIC_TEACHER 均持有该通配，见 backend/app/core/permissions.py:50-51）；
+# 真正的"是否本人评价任务"越权拦截在 service 层按 evaluator_key/_derive_keys 实例化（见 §10 权限矩阵设计），
+# 不新增 ROLE_PERMISSIONS 角色行（避免与并行子任务共同修改该共享文件冲突，亦无督导专属角色可挂）。
+_EVAL_ROLE_MANAGE = "academicAffairs.evaluation.batch.manage"
+_EVAL_EXPORT = "academicAffairs.evaluation.export"
 
 
 class EvalBatchBody(BaseModel):
@@ -2511,6 +3211,21 @@ class EvalAppealBody(BaseModel):
 class EvalAppealReviewBody(BaseModel):
     action: str = Field(..., description="RESOLVE/REJECT")
     reason: Optional[str] = Field("", max_length=1000)
+
+
+class EvalRoleAssignment(BaseModel):
+    teachingTaskId: str = Field(..., min_length=1)
+    evaluatorKey: Optional[str] = Field(None, max_length=100, description="PEER/SUPERVISOR必填；SELF缺省=授课教师本人")
+
+
+class EvalRoleGenBody(BaseModel):
+    evaluatorType: str = Field(..., description="SELF/PEER/SUPERVISOR")
+    assignments: List[EvalRoleAssignment] = Field(default_factory=list)
+
+
+class EvalExportBody(BaseModel):
+    domain: str = Field(..., description="results/stats")
+    purpose: str = Field(..., min_length=5, max_length=200)
 
 
 # ── 批次 ──
@@ -2566,8 +3281,20 @@ def eval_archive(bid: int = Path(...), user=Depends(require_permission(_EVAL_MAN
     return success(evaluation_svc.archive_batch(user, bid), message="已归档")
 
 
-# ── 提交评价（学生匿名/教师自评/同行/督导） ──
-@router.post("/evaluation/submit", summary="提交评价（学生匿名不存身份）")
+# ── 教师自评/同行评价/督导评价：生成应评任务 + 查看我的任务 ──
+@router.post("/evaluation/batches/{bid}/role-tasks", summary="生成教师自评/同行评价/督导评价应评任务")
+def eval_role_tasks(body: EvalRoleGenBody, bid: int = Path(...), user=Depends(require_permission(_EVAL_ROLE_MANAGE))):
+    assignments = [a.model_dump() for a in body.assignments]
+    return success(evaluation_svc.generate_role_tasks(user, bid, body.evaluatorType, assignments), message="已生成")
+
+
+@router.get("/evaluation/my-role-tasks", summary="我的评价任务（自评/同行/督导，按登录身份匹配 evaluatorKey）")
+def eval_my_role_tasks(evaluatorType: str, batchId: Optional[str] = None, user=Depends(require_staff)):
+    return success({"items": evaluation_svc.list_my_role_tasks(user, evaluatorType, batchId)})
+
+
+# ── 提交评价（学生匿名/教师自评/同行/督导；越权与重复提交校验见 service 层） ──
+@router.post("/evaluation/submit", summary="提交评价（学生匿名不存身份；自评/同行/督导校验本人）")
 def eval_submit(body: EvalSubmitBody, user=Depends(get_current_user)):
     return success(evaluation_svc.submit_evaluation(user, int(body.taskId), body.answers, body.objectiveScore, body.comment), message="已提交")
 
@@ -2602,9 +3329,20 @@ def eval_appeal_review(body: EvalAppealReviewBody, aid: int = Path(...), user=De
     return success(evaluation_svc.review_appeal(user, aid, body.action, body.reason), message="已处理")
 
 
-@router.get("/evaluation/batches/{bid}/stats", summary="评价统计")
+@router.get("/evaluation/batches/{bid}/stats", summary="评价统计（结果分级+按评价类型参评率）")
 def eval_stats(bid: int = Path(...), user=Depends(require_permission(_EVAL_VIEW))):
     return success(evaluation_svc.stats(user, bid))
+
+
+@router.post("/evaluation/batches/{bid}/export", summary="导出评价结果/参评统计 xlsx（评价统计/评价归档共用）")
+def eval_export(body: EvalExportBody, bid: int = Path(...), user=Depends(require_permission(_EVAL_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = evaluation_svc.export_evaluation_xlsx(user, bid, body.domain, body.purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename=evaluation_{body.domain}_{bid}.xlsx"})
 
 
 # ══════════════ 教学质量（13B，零新表；/academic-affairs/quality/*） ══════════════
@@ -2645,6 +3383,7 @@ def quality_report_export(body: QualityExportBody, user=Depends(require_permissi
 # ══════════════ 教务归档（13B-R7，/academic-affairs/archive/*） ══════════════
 _ARCHIVE_MANAGE = "academicAffairs.archive.manage"
 _ARCHIVE_VIEW = "academicAffairs.archive.view"
+_ARCHIVE_EXPORT = "academicAffairs.archive.export"
 
 
 class ArchiveBatchBody(BaseModel):
@@ -2697,3 +3436,35 @@ def archive_unfreeze(body: ArchiveUnfreezeBody, bid: int = Path(...),
 @router.post("/archive/batches/{bid}/cancel", summary="取消归档批次")
 def archive_cancel(bid: int = Path(...), user=Depends(require_permission(_ARCHIVE_MANAGE))):
     return success(archive_svc.cancel_batch(user, bid), message="已取消")
+
+
+@router.get("/archive/precheck", summary="归档缺失提醒：9域实时预检查（不落库）")
+def archive_precheck(termId: Optional[str] = None, user=Depends(require_permission(_ARCHIVE_VIEW))):
+    return success(archive_svc.precheck(user, termId))
+
+
+@router.get("/archive/batches/{bid}/download-log", summary="归档下载记录查询")
+def archive_download_log(bid: int = Path(...), user=Depends(require_permission(_ARCHIVE_VIEW))):
+    return success(archive_svc.list_download_log(user, bid))
+
+
+@router.get("/archive/batches/{bid}/export", summary="打包下载全部归档物料（zip）")
+def archive_export_all(bid: int = Path(...), purpose: str = "", user=Depends(require_permission(_ARCHIVE_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content, filename = archive_svc.export_batch_all(user, bid, purpose)
+    return StreamingResponse(io.BytesIO(content), media_type="application/zip",
+                             headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+@router.get("/archive/batches/{bid}/items/{category}/export", summary="单数据域水印导出")
+def archive_export_item(bid: int = Path(...), category: str = Path(...), purpose: str = "",
+                        user=Depends(require_permission(_ARCHIVE_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content, filename = archive_svc.export_batch_item(user, bid, category, purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename={filename}"})

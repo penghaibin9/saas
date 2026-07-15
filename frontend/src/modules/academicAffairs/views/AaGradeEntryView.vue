@@ -54,6 +54,7 @@
             <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生添加到录入表" @keyup.enter="searchStudents" />
             <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
             <button class="mp-btn" :disabled="loadingRoster" @click="loadRoster">按班级自动圈定名单</button>
+            <button class="mp-btn" @click="importVisible = true">导入成绩（Excel）</button>
           </div>
           <ul v-if="candidates.length" class="aa-cand-list">
             <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
@@ -62,6 +63,20 @@
             </li>
           </ul>
         </AppSectionCard>
+
+        <AppExcelImportDrawer
+          v-if="task"
+          v-model:visible="importVisible"
+          title="导入成绩（学号/平时分/期末分/异常标记）"
+          template-name="成绩导入模板.xlsx"
+          :required-fields="['学号']"
+          :preview-fields="['studentNo', 'studentName', 'usualScore', 'finalScore', 'exceptionFlag']"
+          :download-template-fn="() => academicAffairsApi.downloadGradeImportTemplate(task.gradeTaskId)"
+          :upload-fn="(file) => academicAffairsApi.uploadGradeImportXlsx(task.gradeTaskId, file)"
+          :confirm-fn="({ rows }) => academicAffairsApi.confirmGradeImport(task.gradeTaskId, rows)"
+          :download-errors-fn="({ rows, errors }) => academicAffairsApi.downloadGradeImportErrors(task.gradeTaskId, rows, errors)"
+          @imported="onImported"
+        />
 
         <AppSectionCard title="成绩录入表">
           <EmptyState v-if="!rows.length" title="录入表为空" description="从上方检索学生加入，或用「按班级自动圈定名单」" />
@@ -100,6 +115,7 @@
 /** 成绩录入（/admin/academic-affairs/grade-entry）：POST /grade-tasks + /scores + /submit。 */
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppSectionCard, AppStatusTag, AppInlineAlert } from '@/components/common'
+import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -112,13 +128,14 @@ const EDITABLE_STATUS = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
 
 export default {
   name: 'AaGradeEntryView',
-  components: { ModulePageShell, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert },
+  components: { ModulePageShell, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert, AppExcelImportDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       form: { courseName: '', termCode: '', credit: null, classId: '', usualRatio: 30, finalRatio: 70, passLine: 60 },
       creating: false, task: null, myTasks: [],
-      kw: '', searching: false, loadingRoster: false, candidates: [], rows: [], submitting: false
+      kw: '', searching: false, loadingRoster: false, candidates: [], rows: [], submitting: false,
+      importVisible: false
     }
   },
   computed: {
@@ -139,10 +156,29 @@ export default {
       const res = await academicAffairsApi.getGradeTasks({ page: 1, pageSize: 50 })
       if (res.code === 0) this.myTasks = res.data.list
     },
-    openTask(t) {
+    async openTask(t) {
       this.task = { ...t }
       this.rows = []
       this.candidates = []
+      await this.refreshRecords()
+      if (this.$route.query.action === 'import') this.importVisible = true
+    },
+    async refreshRecords() {
+      if (!this.task) return
+      const res = await academicAffairsApi.getGradeRecords(this.task.gradeTaskId)
+      if (res.code === 0) {
+        this.rows = (res.data.items || []).map((it) => ({
+          studentId: it.studentId, realName: it.realName, usual: it.usualScore, final: it.finalScore,
+          total: it.totalScore, passStatus: it.passStatus, exceptionFlag: it.exceptionFlag || 'NORMAL'
+        }))
+      }
+    },
+    async onImported(result) {
+      toast.success(`已导入 ${result?.imported ?? result?.created ?? 0} 条成绩`)
+      if (this.task && this.task.status === 'NOT_STARTED' && (result?.imported || result?.created)) {
+        this.task.status = 'INPUTTING'
+      }
+      await this.refreshRecords()
     },
     async createTask() {
       if (this.creating) return

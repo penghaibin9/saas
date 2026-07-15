@@ -243,3 +243,161 @@ def test_s10_low_enroll_cancel_and_reselect(client, db_mode):
     # 补选指引含被取消课程
     guide = client.get(f"{BASE}/selection/batches/{bid}/reselect-guide", headers=admin).json()["data"]
     assert len(guide["cancelledCourses"]) == 1
+
+
+# ═══ 本轮续工新增：选课规则(03) / 补选管理(06) / 冲突检测(09) / 选课结果(10) / 选课归档(12) ═══
+
+def test_s13_rule_save_and_freeze_after_open(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid = client.post(f"{BASE}/selection/batches", headers=admin, json={"batchName": "规则批次"}).json()["data"]["batchId"]
+    client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+               json={"courseId": str(ids["course1"]), "capacity": 5, "minCapacity": 1})
+    r = client.put(f"{BASE}/selection/batches/{bid}/rule", headers=admin, json={"rule": {"maxCredits": 10}})
+    assert r.json()["code"] == 0 and r.json()["data"]["rule"]["maxCredits"] == 10
+    client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/selection/batches/{bid}/open", headers=admin)
+    # OPEN 后规则冻结，409
+    assert client.put(f"{BASE}/selection/batches/{bid}/rule", headers=admin,
+                      json={"rule": {"maxCredits": 20}}).status_code == 409
+
+
+def test_s14_reselect_flow(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid = client.post(f"{BASE}/selection/batches", headers=admin, json={"batchName": "补选批次"}).json()["data"]["batchId"]
+    sc1 = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+                      json={"courseId": str(ids["course1"]), "capacity": 30, "minCapacity": 2}).json()["data"]["selectionCourseId"]
+    sc2 = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+                      json={"courseId": str(ids["course2"]), "capacity": 30, "minCapacity": 1}).json()["data"]["selectionCourseId"]
+    client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/selection/batches/{bid}/open", headers=admin)
+    stu = _stu_token("选甲", "SEL2401")
+    assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
+                       json={"selectionCourseId": str(sc1)}).json()["code"] == 0
+    client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin)
+    # 低人数（selectedCount=1 < minCapacity=2）人工取消 course1
+    assert client.post(f"{BASE}/selection/courses/{sc1}/cancel", headers=admin).json()["data"]["status"] == "COURSE_CANCELLED"
+    # 学生本人补选指引：含待补选记录 + 仍有余量课程
+    guide = client.get(f"{BASE}/selection/student/reselect-guide", headers=stu).json()
+    assert guide["code"] == 0
+    grp = guide["data"]["items"]
+    assert len(grp) == 1 and grp[0]["batch"]["batchId"] == str(bid)
+    assert any(r["selectionCourseId"] == str(sc1) for r in grp[0]["cancelledRecords"])
+    assert any(c["selectionCourseId"] == str(sc2) for c in grp[0]["availableCourses"])
+    # 普通学生（无待补选记录）在 CLOSED 批次选课仍 409（不因传 isReselect 而绕过）
+    stu2 = _stu_token("选乙", "SEL2402")
+    assert client.post(f"{BASE}/selection/student/enroll", headers=stu2,
+                       json={"selectionCourseId": str(sc2), "isReselect": True}).status_code == 409
+    # 受影响学生补选课程2 成功
+    r = client.post(f"{BASE}/selection/student/enroll", headers=stu,
+                    json={"selectionCourseId": str(sc2), "isReselect": True})
+    assert r.json()["code"] == 0 and r.json()["data"]["status"] == "SELECTED"
+
+
+def _seed_conflict_tasks(ids):
+    """构造两门课程各自的教学任务+同一时段课表项，供⑤课表冲突/09号卡冲突报表测试复用。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaScheduleItem, AaTeachingTask
+    db = get_sessionmaker()()
+    tt1 = AaTeachingTask(tenant_id=TID, batch_id=1, course_id=ids["course1"], course_name="职业素养选修")
+    tt2 = AaTeachingTask(tenant_id=TID, batch_id=1, course_id=ids["course2"], course_name="人工智能导论")
+    db.add_all([tt1, tt2]); db.flush()
+    si1 = AaScheduleItem(tenant_id=TID, batch_id=1, task_id=tt1.id, course_id=ids["course1"],
+                         course_name="职业素养选修", weekday=1, slot_no=1, start_week=1, end_week=18,
+                         week_parity="ALL", status="EFFECTIVE")
+    si2 = AaScheduleItem(tenant_id=TID, batch_id=1, task_id=tt2.id, course_id=ids["course2"],
+                         course_name="人工智能导论", weekday=1, slot_no=1, start_week=1, end_week=18,
+                         week_parity="ALL", status="EFFECTIVE")
+    db.add_all([si1, si2])
+    db.commit()
+    tt1_id, tt2_id = tt1.id, tt2.id
+    db.close()
+    return tt1_id, tt2_id
+
+
+def test_s15_conflict_report(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    tt1_id, tt2_id = _seed_conflict_tasks(ids)
+    bid = client.post(f"{BASE}/selection/batches", headers=admin, json={"batchName": "冲突批次"}).json()["data"]["batchId"]
+    sc1 = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+                      json={"courseId": str(ids["course1"]), "teachingTaskId": str(tt1_id),
+                           "capacity": 30, "minCapacity": 1}).json()["data"]["selectionCourseId"]
+    sc2 = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+                      json={"courseId": str(ids["course2"]), "teachingTaskId": str(tt2_id),
+                           "capacity": 30, "minCapacity": 1}).json()["data"]["selectionCourseId"]
+    client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/selection/batches/{bid}/open", headers=admin)
+    stu = _stu_token("选甲", "SEL2401")
+    assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
+                       json={"selectionCourseId": str(sc1)}).json()["code"] == 0
+    # course2 与已选 course1 同时段冲突 → 409，并落审计供报表聚合
+    assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
+                       json={"selectionCourseId": str(sc2)}).status_code == 409
+    rep = client.get(f"{BASE}/selection/batches/{bid}/conflict-report", headers=admin).json()["data"]
+    assert any(s["courseName"] == "人工智能导论" and s["conflictRejectCount"] == 1 for s in rep["summary"])
+    rep_hit = client.get(f"{BASE}/selection/batches/{bid}/conflict-report", headers=admin,
+                         params={"studentNo": "SEL2401"}).json()["data"]
+    assert len(rep_hit["items"]) == 1
+    rep_miss = client.get(f"{BASE}/selection/batches/{bid}/conflict-report", headers=admin,
+                          params={"studentNo": "SEL9999"}).json()["data"]
+    assert len(rep_miss["items"]) == 0
+    # 导出：用途必填 ≥5 字
+    assert client.post(f"{BASE}/selection/batches/{bid}/conflict-report/export", headers=admin,
+                       json={"purpose": "ab"}).status_code == 400
+    exp = client.post(f"{BASE}/selection/batches/{bid}/conflict-report/export", headers=admin,
+                      json={"purpose": "冲突报表测试导出"})
+    assert exp.status_code == 200
+    assert exp.headers["content-type"].startswith("application/vnd.openxmlformats")
+
+
+def test_s16_selection_result_merged_into_schedule(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    tt1_id, _tt2_id = _seed_conflict_tasks(ids)
+    bid = client.post(f"{BASE}/selection/batches", headers=admin, json={"batchName": "结果批次"}).json()["data"]["batchId"]
+    sc1 = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+                      json={"courseId": str(ids["course1"]), "teachingTaskId": str(tt1_id),
+                           "capacity": 10, "minCapacity": 1}).json()["data"]["selectionCourseId"]
+    client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/selection/batches/{bid}/open", headers=admin)
+    stu = _stu_token("选甲", "SEL2401")
+    client.post(f"{BASE}/selection/student/enroll", headers=stu, json={"selectionCourseId": str(sc1)})
+    # LOCKED 之前：课表不含该选修课
+    sv = client.get(f"{BASE}/schedule-batches/999999/student-view", headers=admin,
+                    params={"studentId": str(ids["s1"])}).json()
+    assert not any(it["source"] == "ENROLLED" for it in sv["data"]["items"])
+    client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin)
+    client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
+    # LOCKED 之后：选修课并入课表，标注 source=ENROLLED
+    sv2 = client.get(f"{BASE}/schedule-batches/999999/student-view", headers=admin,
+                     params={"studentId": str(ids["s1"])}).json()
+    enrolled = [it for it in sv2["data"]["items"] if it["source"] == "ENROLLED"]
+    assert len(enrolled) == 1 and enrolled[0]["courseName"] == "职业素养选修"
+
+
+def test_s17_archive_list_detail_export(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid = client.post(f"{BASE}/selection/batches", headers=admin, json={"batchName": "归档批次"}).json()["data"]["batchId"]
+    client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+               json={"courseId": str(ids["course1"]), "capacity": 5, "minCapacity": 1})
+    client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/selection/batches/{bid}/open", headers=admin)
+    client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin)
+    client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
+    # 未归档时查看详情/导出均 409
+    assert client.get(f"{BASE}/selection/archive/{bid}", headers=admin).status_code == 409
+    assert client.post(f"{BASE}/selection/archive/{bid}/export", headers=admin,
+                       json={"purpose": "测试导出台账"}).status_code == 409
+    assert client.post(f"{BASE}/selection/batches/{bid}/archive", headers=admin).json()["data"]["status"] == "ARCHIVED"
+    lst = client.get(f"{BASE}/selection/archive", headers=admin).json()["data"]
+    assert any(b["batchId"] == str(bid) for b in lst["items"])
+    detail = client.get(f"{BASE}/selection/archive/{bid}", headers=admin).json()
+    assert detail["code"] == 0 and detail["data"]["status"] == "ARCHIVED"
+    assert detail["data"]["stats"]["courseCount"] == 1
+    exp = client.post(f"{BASE}/selection/archive/{bid}/export", headers=admin, json={"purpose": "测试导出台账"})
+    assert exp.status_code == 200
+    assert client.post(f"{BASE}/selection/archive/{bid}/export", headers=admin,
+                       json={"purpose": "ab"}).status_code == 400

@@ -126,6 +126,38 @@ def exam_my(user) -> dict:
     return {"hasData": False, "note": "考试安排功能即将上线"}
 
 
+# ═══════════ 缓考申请（考务管理二级模块·SM-10 8态四级审批，学生自助，本人只读+申请） ═══════════
+# 直接复用 academic_affairs_exam_service 的缓考函数（唯一实现，不重开一套业务逻辑）；
+# get_current_user_ctx() 在 get_current_user 依赖解析时已按 JWT 落好 studentNo，PC/移动端共用同一份 service。
+
+def exam_defer_options_my(user) -> dict:
+    """本人已排考且未开考的课程（供缓考申请选择，不展示完整考试安排/座位——那属于 03/08 号卡范围）。"""
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
+    with session() as db:
+        stu = _me(db, user)
+        sid = stu.id
+    return {"items": exam_svc.my_deferrable_courses(user, sid)}
+
+
+def exam_defer_my(user, status=None) -> dict:
+    """本人的缓考申请列表。"""
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
+    items, total = exam_svc.defer_list(user, status, student_only=True)
+    return {"items": items, "total": total}
+
+
+def exam_defer_apply_my(user, body) -> dict:
+    """本人发起缓考申请（唯一学生写入口之一）。"""
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
+    return exam_svc.defer_apply(user, _ns(body))
+
+
+def exam_defer_resubmit_my(user, defer_id) -> dict:
+    """本人退回后补材料重提。"""
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
+    return exam_svc.defer_resubmit(user, defer_id)
+
+
 def _acad_student(db, stu):
     """全局学生档案(StudentProfile) → 学业过程台账(AcademicStudent)；无台账返回 None。"""
     from app.models import AcademicStudent

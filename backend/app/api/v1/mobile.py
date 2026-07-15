@@ -908,6 +908,26 @@ def academic_exam_my(user=Depends(get_current_user)):
     return success(aa.exam_my(user))
 
 
+@router.get("/academic/exam/defer-options", summary="教务·缓考申请·本人可选课程（已排考未开考）")
+def academic_exam_defer_options(user=Depends(get_current_user)):
+    return success(aa.exam_defer_options_my(user))
+
+
+@router.get("/academic/exam/defer/my", summary="教务·缓考申请·本人申请列表")
+def academic_exam_defer_my(status: str = None, user=Depends(get_current_user)):
+    return success(aa.exam_defer_my(user, status))
+
+
+@router.post("/academic/exam/defer/apply", summary="教务·缓考申请·本人提交（唯一学生写入口）")
+def academic_exam_defer_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.exam_defer_apply_my(user, body), message="缓考申请已提交")
+
+
+@router.post("/academic/exam/defer/{defer_id}/resubmit", summary="教务·缓考申请·退回后补材料重提")
+def academic_exam_defer_resubmit(defer_id: int, user=Depends(get_current_user)):
+    return success(aa.exam_defer_resubmit_my(user, defer_id), message="已重提")
+
+
 @router.get("/academic/teacher-schedule/my", summary="教务·教师我的课表")
 def academic_teacher_schedule_my(user=Depends(get_current_user)):
     return success(aa.teacher_schedule_my(user))

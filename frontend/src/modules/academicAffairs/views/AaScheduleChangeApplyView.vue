@@ -59,6 +59,19 @@
             <label class="sc-lbl">目标教室</label>
             <input class="sc-in" v-model.trim="form.targetClassroom" placeholder="默认沿用原教室" />
           </div>
+
+          <div class="sc-fld sc-fld--full sc-conflict">
+            <button type="button" class="mp-btn" :disabled="checkingConflict || !canCheckConflict" @click="checkConflict">
+              {{ checkingConflict ? '检测中…' : '检测冲突' }}
+            </button>
+            <p v-if="conflictResult === undefined" class="sc-conflict__hint">
+              先检测目标课位是否冲突，提交时仍会做同一算法的强制校验（预检失败不阻止提交）
+            </p>
+            <p v-else-if="conflictResult === null" class="sc-conflict__ok">✓ 目标课位暂无冲突</p>
+            <p v-else-if="conflictResult" class="sc-conflict__bad">
+              ✗ 冲突（{{ conflictTypeLabel(conflictResult.type) }}）：{{ conflictResult.detail }}
+            </p>
+          </div>
         </template>
 
         <div class="sc-fld sc-fld--full">
@@ -93,12 +106,50 @@ export default {
   name: 'AaScheduleChangeApplyView',
   components: { ModulePageShell },
   props: { ctx: { type: Object, default: () => ({}) } },
-  data() { return { CHANGE_TYPES, form: EMPTY(), submitting: false, err: '' } },
+  data() {
+    return {
+      CHANGE_TYPES, form: EMPTY(), submitting: false, err: '',
+      checkingConflict: false,
+      // undefined=未检测；null=检测通过无冲突；对象={type,conflictWith,detail}=有冲突
+      conflictResult: undefined
+    }
+  },
   computed: {
     roleName() { return this.ctx?.currentRole?.roleName || '任课教师' },
-    scopeName() { return this.ctx?.dataScope?.scopeName || '本人课位' }
+    scopeName() { return this.ctx?.dataScope?.scopeName || '本人课位' },
+    canCheckConflict() {
+      return !!(this.form.originItemId && this.form.targetWeekday && this.form.targetSlotNo)
+    }
+  },
+  watch: {
+    // 目标字段变化后旧的预检结果失效，避免用户误以为仍然有效
+    'form.originItemId'() { this.conflictResult = undefined },
+    'form.targetWeekday'() { this.conflictResult = undefined },
+    'form.targetSlotNo'() { this.conflictResult = undefined },
+    'form.targetStartWeek'() { this.conflictResult = undefined },
+    'form.targetEndWeek'() { this.conflictResult = undefined },
+    'form.targetWeekParity'() { this.conflictResult = undefined },
+    'form.targetClassroom'() { this.conflictResult = undefined }
   },
   methods: {
+    conflictTypeLabel(t) { return { TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' }[t] || t },
+    async checkConflict() {
+      if (!this.canCheckConflict) return
+      this.checkingConflict = true
+      try {
+        const res = await scheduleChangeApi.conflictCheck({
+          originItemId: this.form.originItemId,
+          targetWeekday: this.form.targetWeekday,
+          targetSlotNo: this.form.targetSlotNo,
+          targetStartWeek: this.form.targetStartWeek || undefined,
+          targetEndWeek: this.form.targetEndWeek || undefined,
+          targetWeekParity: this.form.targetWeekParity || undefined,
+          targetClassroom: this.form.targetClassroom || undefined
+        })
+        // 预检失败（含越权/网络异常）不阻断表单：静默保持"未检测"，仍可正常提交由后端把关（卡07 §5.2）
+        this.conflictResult = res.code === 0 ? (res.data.conflict || null) : undefined
+      } finally { this.checkingConflict = false }
+    },
     validate() {
       if (!this.form.originItemId) return '请填写原课表项 ID'
       if (!this.form.reason || this.form.reason.length < 5) return '原因必填且不少于 5 字'
@@ -141,6 +192,10 @@ export default {
 .sc-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
 .sc-hint { font-size: 11px; color: var(--t3, #94a3b8); margin: 2px 0 0; }
 .sc-radio { display: flex; gap: var(--space-4); font-size: 13px; padding-top: 4px; }
+.sc-conflict { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.sc-conflict__hint { margin: 0; font-size: 12px; color: var(--t3, #94a3b8); }
+.sc-conflict__ok { margin: 0; font-size: 13px; color: var(--success, #16a34a); font-weight: 600; }
+.sc-conflict__bad { margin: 0; font-size: 13px; color: var(--danger, #dc2626); font-weight: 600; }
 .sc-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
 .sc-btns { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-2); }
 .mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }

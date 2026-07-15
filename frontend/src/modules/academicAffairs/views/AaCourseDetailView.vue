@@ -23,8 +23,11 @@
           <div class="aa-kv"><span>总学时</span><b>{{ course.hoursTotal ?? '—' }}（理论{{ course.hoursTheory ?? 0 }}/实践{{ course.hoursPractice ?? 0 }}）</b></div>
           <div class="aa-kv"><span>考核方式</span><b>{{ examLabel(course.examMode) }}</b></div>
           <div class="aa-kv"><span>核心课程</span><b>{{ course.isCore ? '是' : '否' }}</b></div>
+          <div class="aa-kv"><span>课程负责人</span><b>{{ course.ownerTeacherId ? ('教师 #' + course.ownerTeacherId) : '未指定' }}</b></div>
+          <div class="aa-kv"><span>适用专业</span><b>{{ applicableMajorText }}</b></div>
           <div class="aa-kv"><span>版本</span><b>v{{ course.version }}</b></div>
           <div class="aa-kv aa-kv--full"><span>先修课程</span><b>{{ (course.prerequisiteCodes || []).join('、') || '无' }}</b></div>
+          <div class="aa-kv aa-kv--full"><span>课程简介</span><b>{{ course.description || '无' }}</b></div>
         </div>
       </AppSectionCard>
 
@@ -38,6 +41,21 @@
           <span v-if="course.status === 'ENABLED'" class="aa-hint">课程已启用，可被培养方案引用</span>
         </div>
         <p class="mp-note">两级审核：草稿提交后进入学院审核 → 教务审核 → 启用。退回原因必填不少于 5 字。</p>
+      </AppSectionCard>
+
+      <AppSectionCard title="停用管理">
+        <div class="aa-review-btns">
+          <button v-if="course.status === 'ENABLED'" class="mp-btn" :disabled="acting" @click="doDisable">停用课程</button>
+          <button v-if="course.status === 'DISABLED'" class="mp-btn mp-btn--primary" :disabled="acting" @click="doEnable">重新启用</button>
+          <button class="mp-btn" :disabled="loadingRefs" @click="loadReferences">{{ loadingRefs ? '查询中…' : '查看引用情况' }}</button>
+        </div>
+        <p class="mp-note">课程被在途审核中或已发布/启用/冻结的培养方案引用时，停用会被拦截（400）。</p>
+        <div v-if="references" class="aa-refs">
+          <EmptyState v-if="!references.length" title="暂无培养方案引用该课程" description="" />
+          <ul v-else>
+            <li v-for="r in references" :key="r.programId">{{ r.programName }} · {{ statusLabel(r.status) }}</li>
+          </ul>
+        </div>
       </AppSectionCard>
     </div>
 
@@ -55,8 +73,9 @@
 </template>
 
 <script>
-/** 课程详情 + 两级审核（/admin/academic-affairs/courses/:id）。 */
-import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
+/** 课程详情 + 两级审核 + 停用管理（/admin/academic-affairs/courses/:id）。
+ * Tier1「课程停用」续工：新增启用/停用按钮 + 被引用查询（停用被拦截时提示具体方案）。 */
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { REVIEW_STATUS, EXAM_MODE, reviewStatusColor, inReview, canSubmit } from '@/modules/academicAffairs/constants/course-program'
@@ -64,17 +83,23 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaCourseDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppSectionCard, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', course: null, acting: false,
+      loading: true, error: '', course: null, acting: false, loadingRefs: false, references: null,
       dlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, action: '' }
     }
   },
   computed: {
     courseId() { return this.$route.params.id },
-    editable() { return this.course && ['DRAFT', 'RETURNED', 'ENABLED'].includes(this.course.status) }
+    editable() { return this.course && ['DRAFT', 'RETURNED', 'ENABLED'].includes(this.course.status) },
+    applicableMajorText() {
+      if (!this.course) return ''
+      if (this.course.isAllMajor) return '全校通用'
+      const n = (this.course.applicableMajors || []).length
+      return n > 0 ? `${n} 个专业` : '未设置'
+    }
   },
   created() { this.load() },
   methods: {
@@ -88,6 +113,29 @@ export default {
       this.acting = false
       if (res.code === 0) { toast.success('已提交学院审核'); this.load() }
       else { toast.error(res.message || '提交失败') }
+    },
+    async doDisable() {
+      if (this.acting) return
+      this.acting = true
+      const res = await academicAffairsApi.disableCourse(this.courseId)
+      this.acting = false
+      if (res.code === 0) { toast.success('已停用'); this.load() }
+      else { toast.error(res.message || '停用失败（可能仍被培养方案引用）') }
+    },
+    async doEnable() {
+      if (this.acting) return
+      this.acting = true
+      const res = await academicAffairsApi.enableCourse(this.courseId)
+      this.acting = false
+      if (res.code === 0) { toast.success('已启用'); this.load() }
+      else { toast.error(res.message || '启用失败') }
+    },
+    async loadReferences() {
+      this.loadingRefs = true
+      const res = await academicAffairsApi.getCourseReferences(this.courseId)
+      this.loadingRefs = false
+      if (res.code === 0) this.references = res.data.items || []
+      else toast.error(res.message || '查询失败')
     },
     openReview(action) {
       this.dlg = {
@@ -109,6 +157,7 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
+      this.references = null
       const res = await academicAffairsApi.getCourse(this.courseId)
       if (res.code === 0) { this.course = res.data }
       else { this.error = res.message }
@@ -127,4 +176,7 @@ export default {
 .aa-kv b { color: var(--text-900, #1f2329); font-weight: 500; }
 .aa-review-btns { display: flex; gap: 12px; align-items: center; }
 .aa-hint { color: var(--success-600, #16a34a); font-size: 13px; }
+.aa-refs { margin-top: 12px; }
+.aa-refs ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.aa-refs li { font-size: 13px; color: var(--text-700, #4e5969); padding: 6px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); }
 </style>

@@ -214,3 +214,114 @@ def test_e8_student_cannot_manage_batch_403(client, db_mode):
     _seed(db_mode)
     stu = _stu_token("考甲", "EX2401")
     assert client.post(f"{BASE}/exam/batches", headers=stu, json={"batchName": "越权"}).status_code == 403
+
+
+def test_e11_archived_readonly_409(client, db_mode):
+    """12号卡「考务归档」：ARCHIVED 批次任何写操作（含04-09号卡端点）一律 409 ARCHIVED_READONLY。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"])
+    rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
+                      json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
+    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_z", "teacherName": "Z"})
+    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"])]})
+    client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/exam/batches/{bid}/finish", headers=admin)
+    assert client.post(f"{BASE}/exam/batches/{bid}/archive", headers=admin).json()["data"]["status"] == "ARCHIVED"
+    r1 = client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s2"])]})
+    assert r1.status_code == 409 and r1.json()["bizCode"] == "ARCHIVED_READONLY"
+    r2 = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin, json={"classroomText": "B101", "capacity": 10})
+    assert r2.status_code == 409 and r2.json()["bizCode"] == "ARCHIVED_READONLY"
+    r3 = client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_y"})
+    assert r3.status_code == 409 and r3.json()["bizCode"] == "ARCHIVED_READONLY"
+    r4 = client.post(f"{BASE}/exam/incidents", headers=admin,
+                     json={"examCourseId": str(cid), "studentId": str(ids["s1"]), "incidentType": "ABSENT"})
+    assert r4.status_code == 409 and r4.json()["bizCode"] == "ARCHIVED_READONLY"
+
+
+def test_e12_archive_permission_403(client, db_mode):
+    """12号卡 T-PERM：归档动作仅教务处专属，学院教务 403（既有 _require_school，回归验证）。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"])
+    rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
+                      json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
+    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_z"})
+    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"])]})
+    client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/exam/batches/{bid}/finish", headers=admin)
+    college_admin = _hdr(client, "college_admin01")
+    assert client.post(f"{BASE}/exam/batches/{bid}/archive", headers=college_admin).status_code == 403
+
+
+def test_e13_archive_list_readonly(client, db_mode):
+    """12号卡：GET /exam/archive 只返回 ARCHIVED 批次，含 archivedAt/completenessSummary。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"], "待归档批次")
+    rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
+                      json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
+    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_z"})
+    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"])]})
+    client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/exam/batches/{bid}/finish", headers=admin)
+    # 另建一个不归档的批次做对照
+    bid2, _ = _batch_with_confirmed_course(client, admin, ids["tt2"], "未归档对照批次")
+    client.post(f"{BASE}/exam/batches/{bid}/archive", headers=admin)
+    r = client.get(f"{BASE}/exam/archive", headers=admin)
+    assert r.status_code == 200
+    items = r.json()["data"]["items"]
+    ids_in_list = {i["batchId"] for i in items}
+    assert str(bid) in ids_in_list and str(bid2) not in ids_in_list
+    row = [i for i in items if i["batchId"] == str(bid)][0]
+    assert row["archivedAt"] and row["completenessSummary"]["courseCount"] == 1
+
+
+def test_e14_defer_teacher_scope_403(client, db_mode):
+    """缓考审批节点级范围收敛：非本人授课教师在 TEACHER_CONFIRM 节点审批 → 403（不可越权代替真正任课教师）。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    # tt1 授课教师为 teacher_a，非 academic01
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"], "教师范围测试批次")
+    stu = _stu_token("考甲", "EX2401")
+    d = client.post(f"{BASE}/deferred-exams", headers=stu,
+                    json={"examCourseId": str(cid), "reasonType": "SICK", "reason": "住院"}).json()
+    did = d["data"]["deferId"]
+    # 辅导员节点先由 admin 放行到 TEACHER_CONFIRM
+    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=admin, json={"action": "APPROVE"}).json()
+    assert r1["data"]["status"] == "TEACHER_CONFIRM"
+    other_teacher = _hdr(client, "academic01")
+    r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=other_teacher, json={"action": "APPROVE"})
+    assert r2.status_code == 403
+
+
+def test_e15_defer_counselor_scope_403(client, db_mode):
+    """缓考审批节点级范围收敛：辅导员未配置该学生所在班级授权 → COUNSELOR_REVIEW 节点 403。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt2"], "辅导员范围测试批次")
+    stu = _stu_token("考甲", "EX2401")
+    d = client.post(f"{BASE}/deferred-exams", headers=stu,
+                    json={"examCourseId": str(cid), "reasonType": "SICK", "reason": "住院"}).json()
+    did = d["data"]["deferId"]
+    counselor = _hdr(client, "counselor01")  # 未配置 TeacherStudentScope，范围为空
+    r = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=counselor, json={"action": "APPROVE"})
+    assert r.status_code == 403
+
+
+def test_e16_defer_college_scope_403(client, db_mode):
+    """缓考审批节点级范围收敛：学院教务未配置本学院授权 → COLLEGE_REVIEW 节点 403。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"], "学院范围测试批次")
+    stu = _stu_token("考甲", "EX2401")
+    d = client.post(f"{BASE}/deferred-exams", headers=stu,
+                    json={"examCourseId": str(cid), "reasonType": "SICK", "reason": "住院"}).json()
+    did = d["data"]["deferId"]
+    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=admin, json={"action": "APPROVE"}).json()
+    assert r1["data"]["status"] == "TEACHER_CONFIRM"
+    r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=admin, json={"action": "APPROVE"}).json()
+    assert r2["data"]["status"] == "COLLEGE_REVIEW"
+    college_admin = _hdr(client, "college_admin01")  # 未配置 TeacherStudentScope(COLLEGE)，范围为空
+    r3 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=college_admin, json={"action": "APPROVE"})
+    assert r3.status_code == 403

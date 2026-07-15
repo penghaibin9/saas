@@ -702,6 +702,15 @@ export const acadSelectionDrop = (selectionCourseId) =>
 export const acadSelectionMy = (batchId) =>
   realRequest('/mobile/academic/selection/my' + (batchId ? `?batch_id=${batchId}` : ''))
 
+/** 缓考申请（考务管理·SM-10 8态四级审批，学生自助，真实接口，无 mock 兜底） */
+export const acadExamDeferOptions = () => realRequest('/mobile/academic/exam/defer-options')
+export const acadExamDeferMy = (status) =>
+  realRequest('/mobile/academic/exam/defer/my' + (status ? `?status=${status}` : ''))
+export const acadExamDeferApply = (examCourseId, reasonType, reason) =>
+  realRequest('/mobile/academic/exam/defer/apply', { method: 'POST', data: { examCourseId, reasonType, reason } })
+export const acadExamDeferResubmit = (deferId) =>
+  realRequest(`/mobile/academic/exam/defer/${deferId}/resubmit`, { method: 'POST' })
+
 /** 教师·成绩录入（真实接口） */
 export const teacherGradeTasks = (status) =>
   realRequest('/mobile/teacher/academic/grade-tasks' + (status ? `?status=${status}` : ''))

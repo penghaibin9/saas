@@ -20,10 +20,21 @@ const layoutRoute = {
     { path: '', name: 'aa-dashboard', component: () => import('@/modules/academicAffairs/views/AaDashboardView.vue'), meta: meta('academicAffairs.dashboard.view', '教务看板') },
     { path: 'terms', name: 'aa-terms', component: () => import('@/modules/academicAffairs/views/AaTermListView.vue'), meta: meta('academicAffairs.term.view', '学年学期') },
     { path: 'terms/new', name: 'aa-term-new', component: () => import('@/modules/academicAffairs/views/AaTermFormView.vue'), meta: meta('academicAffairs.term.manage', '新建学期') },
+    // ── Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档（续工，只加叶子不改既有4端点语义） ──
+    { path: 'terms/current', name: 'aa-term-current', component: () => import('@/modules/academicAffairs/views/AaTermCurrentView.vue'), meta: meta('academicAffairs.term.view', '当前学期设置') },
+    { path: 'terms/weeks', name: 'aa-term-weeks', component: () => import('@/modules/academicAffairs/views/AaTermWeeksView.vue'), meta: meta('academicAffairs.term.view', '学期周次') },
+    { path: 'terms/teaching-weeks', name: 'aa-term-teaching-weeks', component: () => import('@/modules/academicAffairs/views/AaTeachingWeekConfigView.vue'), meta: meta('academicAffairs.term.manage', '教学周配置') },
+    { path: 'terms/status', name: 'aa-term-status', component: () => import('@/modules/academicAffairs/views/AaTermStatusView.vue'), meta: meta('academicAffairs.term.manage', '学期状态') },
+    { path: 'terms/archive-status', name: 'aa-term-archive-status', component: () => import('@/modules/academicAffairs/views/AaTermArchiveView.vue'), meta: meta('academicAffairs.term.view', '学期归档') },
     { path: 'calendar', name: 'aa-calendar', component: () => import('@/modules/academicAffairs/views/AaCalendarView.vue'), meta: meta('academicAffairs.calendar.view', '校历管理') },
     { path: 'time-slots', name: 'aa-time-slots', component: () => import('@/modules/academicAffairs/views/AaTimeSlotView.vue'), meta: meta('academicAffairs.timeslot.view', '作息节次') },
     // ── W2 学籍写侧闭环 ──
     { path: 'roster', name: 'aa-roster', component: () => import('@/modules/academicAffairs/views/AaRosterListView.vue'), meta: meta('academicAffairs.roster.view', '学籍名册') },
+    // ── 学籍管理 Tier1 R2：学籍档案 / 学籍状态 / 学籍异动记录（只读复用） / 学籍导入导出（静态子路由须在 roster/:studentId 之前声明） ──
+    { path: 'roster/status', name: 'aa-roster-status', component: () => import('@/modules/academicAffairs/views/AaRosterStatusView.vue'), meta: meta('academicAffairs.roster.view', '学籍状态') },
+    { path: 'roster/changes', name: 'aa-roster-changes', component: () => import('@/modules/academicAffairs/views/AaRosterChangeRecordsView.vue'), meta: meta('academicAffairs.statusChange.view', '学籍异动记录') },
+    { path: 'roster/import-export', name: 'aa-roster-import-export', component: () => import('@/modules/academicAffairs/views/AaRosterImportExportView.vue'), meta: meta('academicAffairs.roster.import', '学籍导入导出') },
+    { path: 'roster/:studentId', name: 'aa-roster-detail', component: () => import('@/modules/academicAffairs/views/AaRosterDetailView.vue'), meta: meta('academicAffairs.roster.view', '学籍档案') },
     { path: 'registration', name: 'aa-registration', component: () => import('@/modules/academicAffairs/views/AaRegistrationBatchListView.vue'), meta: meta('academicAffairs.registration.view', '注册管理') },
     { path: 'registration/workbench', name: 'aa-registration-workbench', component: () => import('@/modules/academicAffairs/views/AaRegistrationWorkbenchView.vue'), meta: meta('academicAffairs.registration.eligibility.view', '注册工作台') },
     { path: 'registration/:batchId', name: 'aa-registration-detail', component: () => import('@/modules/academicAffairs/views/AaRegistrationDetailView.vue'), meta: meta('academicAffairs.registration.view', '注册名单') },
@@ -41,6 +52,8 @@ const layoutRoute = {
     // ── W3 课程库 + 培养方案 ──
     { path: 'courses', name: 'aa-courses', component: () => import('@/modules/academicAffairs/views/AaCourseListView.vue'), meta: meta('academicAffairs.course.view', '课程库') },
     { path: 'courses/new', name: 'aa-course-new', component: () => import('@/modules/academicAffairs/views/AaCourseFormView.vue'), meta: meta('academicAffairs.course.manage', '新建课程') },
+    // Tier1 续工（2026-07-15）：课程分类/课程性质/学分学时/课程负责人/课程停用 5 个三级模块共用一个控制台（?tab= 深链接，对齐 programs/orgs 既有模式）
+    { path: 'courses/console', name: 'aa-courses-console', component: () => import('@/modules/academicAffairs/views/AaCourseConsoleView.vue'), meta: meta('academicAffairs.course.view', '课程库控制台') },
     { path: 'courses/:id', name: 'aa-course-detail', component: () => import('@/modules/academicAffairs/views/AaCourseDetailView.vue'), meta: meta('academicAffairs.course.view', '课程详情') },
     { path: 'courses/:id/edit', name: 'aa-course-edit', component: () => import('@/modules/academicAffairs/views/AaCourseFormView.vue'), meta: meta('academicAffairs.course.manage', '编辑课程') },
     { path: 'programs', name: 'aa-programs', component: () => import('@/modules/academicAffairs/views/AaProgramListView.vue'), meta: meta('academicAffairs.program.view', '培养方案') },
@@ -58,6 +71,12 @@ const layoutRoute = {
     { path: 'schedule', name: 'aa-schedule', component: () => import('@/modules/academicAffairs/views/AaScheduleBatchListView.vue'), meta: meta('academicAffairs.schedule.view', '课表管理') },
     { path: 'schedule/:batchId/edit', name: 'aa-schedule-edit', component: () => import('@/modules/academicAffairs/views/AaScheduleMaintainView.vue'), meta: meta('academicAffairs.schedule.manage', '课表维护') },
     { path: 'schedule/:batchId/views', name: 'aa-schedule-views', component: () => import('@/modules/academicAffairs/views/AaScheduleViewsView.vue'), meta: meta('academicAffairs.schedule.view', '课表三视图') },
+    // ── 课表管理 Tier1 R2：班级/教师/教室独立课表 + 发布 + 导出（自动取当前已发布批次，不需先选批次） ──
+    { path: 'schedule/class/:classId?', name: 'aa-schedule-class', component: () => import('@/modules/academicAffairs/views/AaClassScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '班级课表') },
+    { path: 'schedule/teacher/:teacherKey?', name: 'aa-schedule-teacher', component: () => import('@/modules/academicAffairs/views/AaTeacherScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '教师课表') },
+    { path: 'schedule/room/:classroomId?', name: 'aa-schedule-room', component: () => import('@/modules/academicAffairs/views/AaRoomScheduleView.vue'), meta: meta('academicAffairs.classroom.view', '教室课表') },
+    { path: 'schedule/publish', name: 'aa-schedule-publish', component: () => import('@/modules/academicAffairs/views/AaSchedulePublishView.vue'), meta: meta('academicAffairs.schedule.view', '课表发布') },
+    { path: 'schedule/export', name: 'aa-schedule-export', component: () => import('@/modules/academicAffairs/views/AaScheduleExportView.vue'), meta: meta('academicAffairs.schedule.export', '课表导出') },
     // ── W5 成绩 · 预警 · 毕业预审 ──
     { path: 'grade-overview', name: 'aa-grade-overview', component: () => import('@/modules/academicAffairs/views/AaGradeOverviewView.vue'), meta: meta('academicAffairs.grade.view', '成绩总览') },
     { path: 'grade-fail', name: 'aa-grade-fail', component: () => import('@/modules/academicAffairs/views/AaGradeFailListView.vue'), meta: meta('academicAffairs.grade.view', '挂科清单') },
@@ -84,14 +103,21 @@ const layoutRoute = {
     { path: 'schedule-change', name: 'aa-schedule-change-ledger', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeLedgerView.vue'), meta: meta('academicAffairs.scheduleChange.view', '调停课台账') },
     { path: 'schedule-change/apply', name: 'aa-schedule-change-apply', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeApplyView.vue'), meta: meta('academicAffairs.scheduleChange.apply', '发起调停课') },
     { path: 'schedule-change/approval', name: 'aa-schedule-change-approval', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeApprovalView.vue'), meta: meta('academicAffairs.scheduleChange.collegeReview', '调停课审批') },
-    // ── 选课管理（教务处控制台 + 学生自助） ──
+    // ── R2 调停课续工（冲突检测/统计/归档，Tier1 三级施工卡 07/08/09） ──
+    { path: 'schedule-change/stats', name: 'aa-schedule-change-stats', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeStatsView.vue'), meta: meta('academicAffairs.scheduleChange.view', '调停课统计') },
+    { path: 'schedule-change/archive', name: 'aa-schedule-change-archive', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeArchiveView.vue'), meta: meta('academicAffairs.scheduleChange.view', '调停课归档') },
+    // ── 选课管理（教务处控制台 + 学生自助 + 归档） ──
     { path: 'selection', name: 'aa-selection', component: () => import('@/modules/academicAffairs/views/AaSelectionConsoleView.vue'), meta: meta('academicAffairs.selection.view', '选课管理') },
     { path: 'my-selection', name: 'aa-my-selection', component: () => import('@/modules/academicAffairs/views/AaSelectionStudentView.vue'), meta: meta('academicAffairs.selection.enroll', '我的选课') },
+    { path: 'selection/archive', name: 'aa-selection-archive', component: () => import('@/modules/academicAffairs/views/AaSelectionArchiveView.vue'), meta: meta('academicAffairs.selection.manage', '选课归档') },
     // ── 考务管理（教务处控制台） ──
     { path: 'exam', name: 'aa-exam', component: () => import('@/modules/academicAffairs/views/AaExamConsoleView.vue'), meta: meta('academicAffairs.exam.view', '考务管理') },
     // ── 补考重修缓考免修 ──
     { path: 'makeup', name: 'aa-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupConsoleView.vue'), meta: meta('academicAffairs.makeup.view', '补考重修缓考免修') },
     { path: 'my-makeup', name: 'aa-my-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupStudentView.vue'), meta: meta('academicAffairs.retake.apply', '重修免修申请') },
+    // ── 三级：统计分析 / 材料归档（三级施工卡 10/11） ──
+    { path: 'makeup/stats', name: 'aa-makeup-stats', component: () => import('@/modules/academicAffairs/views/AaMakeupStatsView.vue'), meta: meta('academicAffairs.makeup.view', '补考重修缓考免修统计分析') },
+    { path: 'exemption/archive', name: 'aa-exemption-archive', component: () => import('@/modules/academicAffairs/views/AaExemptionArchiveView.vue'), meta: meta('academicAffairs.makeup.archive', '免修材料归档') },
     // ── 教材管理（控制台） ──
     { path: 'textbooks', name: 'aa-textbooks', component: () => import('@/modules/academicAffairs/views/AaTextbookConsoleView.vue'), meta: meta('academicAffairs.textbook.view', '教材管理') },
     // ── 排课管理增强（规则/可用时间/冲突报告） ──
@@ -100,8 +126,10 @@ const layoutRoute = {
     { path: 'evaluation', name: 'aa-evaluation', component: () => import('@/modules/academicAffairs/views/AaEvaluationConsoleView.vue'), meta: meta('academicAffairs.evaluation.view', '教学评价') },
     // ── 教学质量（运行质量看板，零新表聚合） ──
     { path: 'quality', name: 'aa-quality', component: () => import('@/modules/academicAffairs/views/AaQualityDashboardView.vue'), meta: meta('academicAffairs.quality.dashboard.view', '教学质量') },
-    // ── 教务归档（批次+完整性检查+封存） ──
-    { path: 'archive', name: 'aa-archive', component: () => import('@/modules/academicAffairs/views/AaArchiveConsoleView.vue'), meta: meta('academicAffairs.archive.view', '教务归档') }
+    // ── 教务归档（批次+完整性检查+封存；10/11/12 三级卡：缺失提醒/批量归档/导出） ──
+    { path: 'archive', name: 'aa-archive', component: () => import('@/modules/academicAffairs/views/AaArchiveConsoleView.vue'), meta: meta('academicAffairs.archive.view', '教务归档') },
+    { path: 'archive/precheck', name: 'aa-archive-precheck', component: () => import('@/modules/academicAffairs/views/ArchivePrecheckView.vue'), meta: meta('academicAffairs.archive.view', '归档缺失提醒') },
+    { path: 'archive/export', name: 'aa-archive-export', component: () => import('@/modules/academicAffairs/views/ArchiveExportView.vue'), meta: meta('academicAffairs.archive.export', '归档导出') }
   ]
 }
 
@@ -140,6 +168,13 @@ const printTranscriptRoute = {
   meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.grade.view', title: '成绩单打印' }
 }
 
-export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute, printScheduleChangeNoticeRoute, printExamSeatingRoute]
+const printMakeupBatchRoute = {
+  path: '/admin/academic-affairs/makeup/batches/:id/print',
+  name: 'aa-makeup-print',
+  component: () => import('@/modules/academicAffairs/views/AaMakeupPrintView.vue'),
+  meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.makeup.archive', title: '补考安排表打印' }
+}
+
+export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute, printScheduleChangeNoticeRoute, printExamSeatingRoute, printMakeupBatchRoute]
 
 export default academicAffairsRoutes

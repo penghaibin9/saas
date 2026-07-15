@@ -5,10 +5,13 @@
  * 与旧「学业过程」模块（同目录 api/academic.api.js，接 /academic/* + mock 兜底）互不干扰、并存。
  *
  * 以代码为准（后端 academic_affairs.py 实测签名）：
- *  - 学期仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 → 本模块不提供 updateTerm（勘误见施工记录）。
- *  - 学期状态机当前只有 DRAFT / PUBLISHED（FROZEN/ARCHIVED 后端未实现，暂不渲染）。
+ *  - 学期基础字段（学年/学期号/名称/起止日期）仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 →
+ *    本模块不提供 updateTerm（勘误见施工记录）。
+ *  - 学期状态机 DRAFT→PUBLISHED→FROZEN→ARCHIVED 全 4 态：DRAFT/PUBLISHED 走 create/publish；
+ *    FROZEN 走 Tier1-R2 新增 freeze/unfreeze（学期状态）；ARCHIVED 由「教务归档」二级模块
+ *    academic_affairs_archive_service 的批次确认归档写入，本模块 getTermArchiveOverview 仅只读联动。
  */
-import { request, requestBlob, shouldTryReal, currentUserFromToken } from '@/services/http/client'
+import { request, requestBlob, requestUpload, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { setPermissionPatterns } from '@/security/permissionGate'
 
 const BASE = '/academic-affairs'
@@ -104,31 +107,134 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/terms/${termId}/publish`, { method: 'POST' }))
   },
 
-  /* ── 校历 ── */
-  getCalendar(termId) {
+  /* ── 学年学期 Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档总览 ── */
+  setCurrentTerm(termId) {
+    return call(() => request(`${BASE}/terms/${termId}/set-current`, { method: 'POST' }))
+  },
+  getTermDetail(termId) {
+    return call(() => request(`${BASE}/terms/${termId}`))
+  },
+  getTermWeeks(termId) {
+    return call(async () => (await request(`${BASE}/terms/${termId}/weeks`)).items || [])
+  },
+  updateTeachingWeeks(termId, body) {
+    return call(() => request(`${BASE}/terms/${termId}/teaching-weeks`, { method: 'PUT', body }))
+  },
+  freezeTerm(termId) {
+    return call(() => request(`${BASE}/terms/${termId}/freeze`, { method: 'POST' }))
+  },
+  unfreezeTerm(termId, reason) {
+    return call(() => request(`${BASE}/terms/${termId}/unfreeze`, { method: 'POST', body: { reason } }))
+  },
+  getTermArchiveOverview() {
+    return call(async () => (await request(`${BASE}/terms/archive-overview`)).items || [])
+  },
+
+  /* ── 校历（校历节次 Tier1 R2：节假日/补课日=按 eventType 过滤同一批事件；发布走学期状态机，
+     归档统一走教务归档模块正规批次流程，本模块不提供直写归档端点） ── */
+  getCalendar(termId, eventType) {
     return call(async () => {
-      const d = await request(`${BASE}/terms/${termId}/calendar`)
+      const d = await request(`${BASE}/terms/${termId}/calendar`, { params: eventType ? { eventType } : {} })
       return d.items || []
     })
   },
   addCalendarEvent(termId, body) {
     return call(() => request(`${BASE}/terms/${termId}/calendar`, { method: 'POST', body }))
   },
+  updateCalendarEvent(termId, eventId, body) {
+    return call(() => request(`${BASE}/terms/${termId}/calendar/${eventId}`, { method: 'PUT', body }))
+  },
+  deleteCalendarEvent(termId, eventId) {
+    return call(() => request(`${BASE}/terms/${termId}/calendar/${eventId}`, { method: 'DELETE' }))
+  },
+  getWeekCalendar(termId) {
+    return call(() => request(`${BASE}/terms/${termId}/week-calendar`))
+  },
+  publishCalendar(termId) {
+    return call(() => request(`${BASE}/terms/${termId}/calendar/publish`, { method: 'POST' }))
+  },
 
-  /* ── 作息节次 ── */
-  getTimeSlots() {
+  /* ── 作息节次（节次管理，全校统一） ── */
+  getTimeSlots(includeDisabled = false) {
     return call(async () => {
-      const d = await request(`${BASE}/time-slots`)
+      const d = await request(`${BASE}/time-slots`, { params: includeDisabled ? { includeDisabled: true } : {} })
       return d.items || []
     })
   },
   createTimeSlot(body) {
     return call(() => request(`${BASE}/time-slots`, { method: 'POST', body }))
   },
+  updateTimeSlot(slotId, body) {
+    return call(() => request(`${BASE}/time-slots/${slotId}`, { method: 'PUT', body }))
+  },
+  deleteTimeSlot(slotId) {
+    return call(() => request(`${BASE}/time-slots/${slotId}`, { method: 'DELETE' }))
+  },
 
-  /* ── 学籍名册（只读脱敏，无独立详情端点） ── */
+  /* ── 上课时间段（节次的实际钟点，支持按校区/生效日期区间配置多套作息） ── */
+  getTimeBands(slotId) {
+    return call(async () => {
+      const d = await request(`${BASE}/time-slots/${slotId}/time-bands`)
+      return d.items || []
+    })
+  },
+  createTimeBand(slotId, body) {
+    return call(() => request(`${BASE}/time-slots/${slotId}/time-bands`, { method: 'POST', body }))
+  },
+  updateTimeBand(bandId, body) {
+    return call(() => request(`${BASE}/time-bands/${bandId}`, { method: 'PUT', body }))
+  },
+  deleteTimeBand(bandId) {
+    return call(() => request(`${BASE}/time-bands/${bandId}`, { method: 'DELETE' }))
+  },
+
+  /* ── 学籍名册（只读脱敏） ── */
   getRoster(params = {}) {
     return callList(`${BASE}/roster`, params)
+  },
+
+  /* ── 学籍档案 / 学籍状态 / 学籍导入导出（Tier1 R2） ── */
+  getRosterDetail(studentId) {
+    return call(() => request(`${BASE}/roster/${studentId}`))
+  },
+  revealRosterSensitive(studentId, reason) {
+    return call(() => request(`${BASE}/roster/${studentId}/reveal`, { method: 'POST', body: { reason } }))
+  },
+  getRosterStatusSummary() {
+    return call(() => request(`${BASE}/roster/status-summary`))
+  },
+  async exportRoster(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/roster/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  rosterImportDryRun(rows) {
+    return call(() => request(`${BASE}/roster/import/dry-run`, { method: 'POST', body: { rows } }))
+  },
+  async downloadRosterImportTemplate() {
+    const blob = await requestBlob(`${BASE}/roster/import/template`)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '学籍导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+  async uploadRosterImportXlsx(file) {
+    try {
+      return ok(await requestUpload(`${BASE}/roster/import/xlsx`, file))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  downloadRosterImportErrors(rows, errors) {
+    return call(() => request(`${BASE}/roster/import/errors-xlsx`, { method: 'POST', body: { rows, errors } }))
+  },
+  rosterImportConfirm(rows) {
+    return call(() => request(`${BASE}/roster/import/confirm`, { method: 'POST', body: { rows } }))
   },
 
   /* ── 入学 / 学年注册 ── */
@@ -227,6 +333,20 @@ export const academicAffairsApi = {
   },
   reviewCourse(courseId, action, reason) {
     return call(() => request(`${BASE}/courses/${courseId}/review`, { method: 'POST', body: { action, reason } }))
+  },
+  /** 课程停用（Tier1「课程停用」）：ENABLED→DISABLED，被在途/生效培养方案引用时 400 拦截。 */
+  enableCourse(courseId) {
+    return call(() => request(`${BASE}/courses/${courseId}/enable`, { method: 'POST' }))
+  },
+  disableCourse(courseId) {
+    return call(() => request(`${BASE}/courses/${courseId}/disable`, { method: 'POST' }))
+  },
+  getCourseReferences(courseId) {
+    return call(() => request(`${BASE}/courses/${courseId}/references`))
+  },
+  /** 课程负责人检索（Tier1「课程负责人」）：在职教师，供 AppTeacherPicker 远程搜索。 */
+  searchCourseTeachers(keyword) {
+    return call(() => request(`${BASE}/courses/teachers/search`, { params: keyword ? { keyword } : {} }))
   },
 
   /* ── 培养方案（编制 → 两级审 → PUBLISHED → 绑年级） ── */
@@ -367,6 +487,63 @@ export const academicAffairsApi = {
   getScheduleStudentView(batchId, studentId) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/student-view`, { params: { studentId } }))
   },
+  /* ── 排课 Tier1 R2（05教室可用时间/07自动排课预留/10排课结果/11排课调整/13排课归档） ── */
+  getScheduleRoomView(batchId, classroom) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/room-view`, { params: { classroom } }))
+  },
+  getScheduleSummary(batchId) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/summary`))
+  },
+  async downloadScheduleImportTemplate() {
+    const blob = await requestBlob(`${BASE}/schedule-batches/import/template`)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '排课结果导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+  async uploadScheduleImportXlsx(batchId, file) {
+    try {
+      return ok(await requestUpload(`${BASE}/schedule-batches/${batchId}/import/xlsx`, file))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  teacherObjectSchedule(batchId, itemId, reason) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/teacher-object`, { method: 'POST', body: { itemId, reason } }))
+  },
+  getScheduleObjections(batchId) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/objections`))
+  },
+  adjustScheduleItem(batchId, itemId, body) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/items/${itemId}`, { method: 'PUT', body }))
+  },
+  archiveSchedule(batchId) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/archive`, { method: 'POST' }))
+  },
+
+  /* ── 课表管理 Tier1 R2：班级/教师/教室独立课表（自动取当前已发布批次） + 发布记录 + 导出 ── */
+  getClassSchedule(classId, params = {}) {
+    return call(() => request(`${BASE}/schedule/class/${classId}`, { params }))
+  },
+  getTeacherSchedule(teacherKey, params = {}) {
+    return call(() => request(`${BASE}/schedule/teacher/${teacherKey}`, { params }))
+  },
+  getRoomSchedule(classroomId, params = {}) {
+    return call(() => request(`${BASE}/schedule/room/${classroomId}`, { params }))
+  },
+  getSchedulePublishRecords(params = {}) {
+    return callList(`${BASE}/schedule/publish-records`, params)
+  },
+  async exportScheduleXlsx(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/schedule/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
 
   /* ── 成绩（R1 九态：录入→提交→学院审→教务发布→[更正两级审]→归档） ── */
   createGradeTask(body) {
@@ -378,8 +555,50 @@ export const academicAffairsApi = {
   getGradeRoster(taskId) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/roster`))
   },
+  getGradeRecords(taskId) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/records`))
+  },
   enterScore(taskId, body) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/scores`, { method: 'POST', body }))
+  },
+  /* 成绩批量导入（学号/平时分/期末分/异常标记；下载模板→上传预校验→确认导入→错误行下载，AppExcelImportDrawer 契约） */
+  async downloadGradeImportTemplate(taskId) {
+    try {
+      const blob = await requestBlob(`${BASE}/grade-tasks/${taskId}/import/template`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = '成绩导入模板.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+      return ok(null)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  uploadGradeImportXlsx(taskId, file) {
+    return call(() => requestUpload(`${BASE}/grade-tasks/${taskId}/import/xlsx`, file))
+  },
+  async downloadGradeImportErrors(taskId, rows, errors) {
+    try {
+      const blob = await requestBlob(`${BASE}/grade-tasks/${taskId}/import/errors-xlsx`, {
+        method: 'POST', body: { rows, errors }
+      })
+      const buf = await blob.arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i])
+      return ok({
+        contentBase64: btoa(binary),
+        filename: 'grade_import_errors.xlsx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  confirmGradeImport(taskId, rows) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/import/confirm`, { method: 'POST', body: { rows } }))
   },
   submitGradeTask(taskId) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/submit`, { method: 'POST' }))
@@ -407,6 +626,16 @@ export const academicAffairsApi = {
   },
   getTranscript(studentId) {
     return call(() => request(`${BASE}/students/${studentId}/transcript`))
+  },
+  /** 导出学生成绩单 xlsx（同步下载）：返回 Blob；purpose 必填（≥5 字，写审计+水印）。 */
+  async exportTranscript(studentId, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/students/${studentId}/transcript/export`,
+        { method: 'POST', body: { purpose } })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
   },
   getFailList(params = {}) {
     return callList(`${BASE}/grade-views/fail-list`, params)
@@ -549,7 +778,7 @@ export const academicAffairsOrgApi = {
   createClass(body) { return call(() => request(`${BASE}/orgs/classes`, { method: 'POST', body })) },
   updateClass(id, body) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'PUT', body })) },
   deleteClass(id) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'DELETE' })) },
-  // ── 年级 / 教学班 / 班级学生 / 班级调整 ──
+  // ── 年级 / 教学班 / 班级学生 / 班级调整（个体移动，既有轻量端点）──
   listGrades(params = {}) { return call(() => request(`${BASE}/orgs/grades`, { params })) },
   listTeachingClasses(params = {}) { return callList(`${BASE}/orgs/teaching-classes`, params) },
   listClassStudents(classId, params = {}) { return callList(`${BASE}/orgs/classes/${classId}/students`, params) },
@@ -557,7 +786,36 @@ export const academicAffairsOrgApi = {
   // ── 组织树 / 统计 / 变更审计 ──
   orgTree() { return call(() => request(`${BASE}/orgs/tree`)) },
   orgStats() { return call(() => request(`${BASE}/orgs/stats`)) },
-  listAudit(params = {}) { return callList(`${BASE}/orgs/audit`, params) }
+  listAudit(params = {}) { return callList(`${BASE}/orgs/audit`, params) },
+  // ── 专业方向（06号卡：总开关默认关闭，业务政策待学校确认；启用后按专业维护方向）──
+  getMajorDirectionToggle() { return call(() => request(`${BASE}/orgs/major-direction-toggle`)) },
+  setMajorDirectionToggle(enabled) {
+    return call(() => request(`${BASE}/orgs/major-direction-toggle`, { method: 'POST', body: { enabled } }))
+  },
+  listDirections(majorId, params = {}) { return callList(`${BASE}/orgs/majors/${majorId}/directions`, params) },
+  createDirection(majorId, body) {
+    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions`, { method: 'POST', body }))
+  },
+  updateDirection(majorId, directionId, body) {
+    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}`, { method: 'PUT', body }))
+  },
+  disableDirection(majorId, directionId) {
+    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}/disable`, { method: 'POST' }))
+  },
+  // ── 班级调整申请单（08号卡：行政班层面批量组织调整——合班/拆班/停用/毕业清班）──
+  listClassAdjustments(params = {}) { return callList(`${BASE}/orgs/class-adjustment-requests`, params) },
+  createClassAdjustment(body) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests`, { method: 'POST', body }))
+  },
+  precheckClassAdjustment(id) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/precheck`, { method: 'POST' }))
+  },
+  executeClassAdjustment(id) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/execute`, { method: 'POST' }))
+  },
+  cancelClassAdjustment(id) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/cancel`, { method: 'POST' }))
+  }
 }
 
 /* ═══════════ 选课管理（SM-09 · /academic-affairs/selection/*） ═══════════
@@ -581,14 +839,33 @@ export const academicAffairsSelectionApi = {
   courseRoster(courseId, params = {}) { return callList(`${BASE}/selection/courses/${courseId}/roster`, params) },
   // ── 学生自助 ──
   studentCourses(batchId) { return call(() => request(`${BASE}/selection/student/courses`, { params: batchId ? { batchId } : {} })) },
-  enroll(selectionCourseId) { return call(() => request(`${BASE}/selection/student/enroll`, { method: 'POST', body: { selectionCourseId } })) },
+  enroll(selectionCourseId, isReselect = false) { return call(() => request(`${BASE}/selection/student/enroll`, { method: 'POST', body: { selectionCourseId, isReselect } })) },
   drop(selectionCourseId) { return call(() => request(`${BASE}/selection/student/drop`, { method: 'POST', body: { selectionCourseId } })) },
   mySelections(batchId) { return call(() => request(`${BASE}/selection/student/my`, { params: batchId ? { batchId } : {} })) },
   // ── 教务处调整 / 补选 / 统计 ──
   adjustRecord(recordId, reason) { return call(() => request(`${BASE}/selection/records/${recordId}/adjust`, { method: 'POST', body: { reason } })) },
   reselectGuide(id) { return call(() => request(`${BASE}/selection/batches/${id}/reselect-guide`)) },
+  /** 学生本人补选指引（06号卡）：待补选记录 + 该批次仍有余量课程；batchId 可选。 */
+  studentReselectGuide(batchId) { return call(() => request(`${BASE}/selection/student/reselect-guide`, { params: batchId ? { batchId } : {} })) },
   batchStats(id) { return call(() => request(`${BASE}/selection/batches/${id}/stats`)) },
-  timeTick() { return call(() => request(`${BASE}/selection/time-tick`, { method: 'POST' })) }
+  timeTick() { return call(() => request(`${BASE}/selection/time-tick`, { method: 'POST' })) },
+  // ── 冲突检测（09号卡） ──
+  conflictReport(id, studentNo) { return call(() => request(`${BASE}/selection/batches/${id}/conflict-report`, { params: studentNo ? { studentNo } : {} })) },
+  async exportConflictReport(id, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/selection/batches/${id}/conflict-report/export`, { method: 'POST', body: { purpose } })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  },
+  // ── 选课归档（12号卡） ──
+  listArchivedBatches(params = {}) { return callList(`${BASE}/selection/archive`, params) },
+  archiveDetail(id) { return call(() => request(`${BASE}/selection/archive/${id}`)) },
+  async exportArchive(id, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/selection/archive/${id}/export`, { method: 'POST', body: { purpose } })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  }
 }
 
 /* ═══════════ 考务管理（SM-10 · /academic-affairs/exam/*、/deferred-exams*） ═══════════ */
@@ -618,6 +895,8 @@ export const academicAffairsExamApi = {
   recordIncident(body) { return call(() => request(`${BASE}/exam/incidents`, { method: 'POST', body })) },
   listIncidents(params = {}) { return callList(`${BASE}/exam/incidents`, params) },
   batchStats(id) { return call(() => request(`${BASE}/exam/batches/${id}/stats`)) },
+  // 归档（12号卡，只读）
+  listArchived(params = {}) { return callList(`${BASE}/exam/archive`, params) },
   // 缓考
   deferList(params = {}) { return callList(`${BASE}/deferred-exams`, params) },
   deferCounselorReview(id, action, reason = '') { return call(() => request(`${BASE}/deferred-exams/${id}/counselor-review`, { method: 'POST', body: { action, reason } })) },
@@ -640,7 +919,15 @@ export const academicAffairsMakeupApi = {
   collegeReview(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/college-review`, { method: 'POST' })) },
   linkExam(bid, examBatchId) { return call(() => request(`${BASE}/makeup/batches/${bid}/link-exam`, { method: 'POST', body: { examBatchId } })) },
   finishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/finish`, { method: 'POST' })) },
-  stats() { return call(() => request(`${BASE}/makeup/stats`)) },
+  stats(params = {}) { return call(() => request(`${BASE}/makeup/stats`, { params })) },
+  statsDetail(params = {}) { return callList(`${BASE}/makeup/stats/detail`, params) },
+  async exportStats(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/makeup/stats/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  },
+  printData(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/print-data`)) },
   // 重修
   retakeApply(body) { return call(() => request(`${BASE}/retake/apply`, { method: 'POST', body })) },
   retakeMy(params = {}) { return call(() => request(`${BASE}/retake/my`, { params })) },
@@ -654,7 +941,10 @@ export const academicAffairsMakeupApi = {
   exemptionReview(eid, action, reason = '') { return call(() => request(`${BASE}/exemption/applies/${eid}/review`, { method: 'POST', body: { action, reason } })) },
   // 缓考合流
   deferredPool(params = {}) { return callList(`${BASE}/makeup/deferred-pool`, params) },
-  mergeDeferred(did, batchId) { return call(() => request(`${BASE}/makeup/deferred-pool/${did}/merge`, { method: 'POST', body: { batchId } })) }
+  mergeDeferred(did, batchId) { return call(() => request(`${BASE}/makeup/deferred-pool/${did}/merge`, { method: 'POST', body: { batchId } })) },
+  // 材料归档
+  archiveExemption(eid) { return call(() => request(`${BASE}/exemption/${eid}/archive`, { method: 'POST' })) },
+  archiveList(params = {}) { return callList(`${BASE}/exemption/archive-list`, params) }
 }
 
 /* ═══════════ 教材管理（/academic-affairs/textbooks/*） ═══════════ */
@@ -728,7 +1018,18 @@ export const academicAffairsEvaluationApi = {
   submitAppeal(resultId, reason) { return call(() => request(`${BASE}/evaluation/appeals`, { method: 'POST', body: { resultId, reason } })) },
   listAppeals(params = {}) { return callList(`${BASE}/evaluation/appeals`, params) },
   reviewAppeal(id, action, reason = '') { return call(() => request(`${BASE}/evaluation/appeals/${id}/review`, { method: 'POST', body: { action, reason } })) },
-  stats(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/stats`)) }
+  stats(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/stats`)) },
+  archivedBatches(params = {}) { return callList(`${BASE}/evaluation/batches`, { ...params, status: 'ARCHIVED' }) },
+  genRoleTasks(id, evaluatorType, assignments) { return call(() => request(`${BASE}/evaluation/batches/${id}/role-tasks`, { method: 'POST', body: { evaluatorType, assignments } })) },
+  myRoleTasks(evaluatorType, batchId) { return call(() => request(`${BASE}/evaluation/my-role-tasks`, { params: batchId ? { evaluatorType, batchId } : { evaluatorType } })) },
+  async exportEvaluation(id, domain, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/evaluation/batches/${id}/export`, { method: 'POST', body: { domain, purpose } })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  }
 }
 
 /* ═══════════ 教学质量（零新表 · /academic-affairs/quality/*） ═══════════ */
@@ -745,7 +1046,8 @@ export const academicAffairsQualityApi = {
   }
 }
 
-/* ═══════════ 教务归档（/academic-affairs/archive/*） ═══════════ */
+/* ═══════════ 教务归档（/academic-affairs/archive/*） ═══════════
+ * Tier1 续工（10/11/12 三级卡）新增：归档缺失提醒(precheck，不落库) / 归档导出(export+下载记录)。 */
 export const academicAffairsArchiveApi = {
   listBatches(params = {}) { return callList(`${BASE}/archive/batches`, params) },
   getBatch(id) { return call(() => request(`${BASE}/archive/batches/${id}`)) },
@@ -753,7 +1055,25 @@ export const academicAffairsArchiveApi = {
   check(id) { return call(() => request(`${BASE}/archive/batches/${id}/check`, { method: 'POST' })) },
   confirm(id, force) { return call(() => request(`${BASE}/archive/batches/${id}/confirm`, { method: 'POST', body: { force } })) },
   unfreeze(id, reason) { return call(() => request(`${BASE}/archive/batches/${id}/unfreeze`, { method: 'POST', body: { reason } })) },
-  cancel(id) { return call(() => request(`${BASE}/archive/batches/${id}/cancel`, { method: 'POST' })) }
+  cancel(id) { return call(() => request(`${BASE}/archive/batches/${id}/cancel`, { method: 'POST' })) },
+  /** 归档缺失提醒（10 卡）：9 域实时预检查，不落库。termId 缺省取当前学期。 */
+  precheck(termId) { return call(() => request(`${BASE}/archive/precheck`, { params: termId ? { termId } : {} })) },
+  /** 归档导出（12 卡）：下载记录查询（只读）。 */
+  downloadLog(id) { return call(() => request(`${BASE}/archive/batches/${id}/download-log`)) },
+  /** 单数据域水印 xlsx 下载（返回 Blob）。 */
+  async exportItem(id, category, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/archive/batches/${id}/items/${category}/export`, { params: { purpose } })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  },
+  /** 批次级打包下载全部物料（zip，返回 Blob）。 */
+  async exportAll(id, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/archive/batches/${id}/export`, { params: { purpose } })
+      return ok(blob)
+    } catch (e) { return toErr(e) }
+  }
 }
 
 /* ═══════════ 学业预警二级模块（Tier1：看板/多维分类/规则/跟进/统计，/academic-affairs/warnings/*） ═══════════

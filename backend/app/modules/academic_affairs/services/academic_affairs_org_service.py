@@ -22,10 +22,22 @@ from sqlalchemy import func, select
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.services.db_service import _tid, session
+from app.services.db_service import _mask_phone, _tid, session
 
 _MAJOR_ENROLL = {"ENROLLING", "STOPPED"}
 _CLASS_STATUS = {"NORMAL", "GRADUATED", "DISBANDED"}
+
+# 06 专业方向：总开关（t_platform_config，config_type 独立于既有 FEATURES/PACKAGE 等控制面 KV，
+# 不复用 platform_defaults.FEATURE_KEYS 整模块开关列表——那是粗粒度模块级且默认 True，
+# 本开关要求默认关闭，业务政策待学校确认，故走独立 config_type，自成一体不影响其它平台配置）。
+_MD_CFG_TYPE = "AA_FEATURE_TOGGLE"
+_MD_CFG_KEY = "academicAffairs.majorDirection.enabled"
+_DIRECTION_STATUS = {"ACTIVE", "DISABLED"}
+
+# 08 班级调整申请单：类型与状态机
+_ADJUST_TYPES = {"MERGE", "SPLIT", "DISBAND", "GRADUATE_CLEAR"}
+_ADJUST_STATUS = {"DRAFT", "CHECKED", "EXECUTED", "CANCELLED"}
+_ADJUST_CHECK_TTL_HOURS = 24
 
 
 def _op():
@@ -538,19 +550,35 @@ def list_teaching_classes(user, term_code=None, batch_id=None, page=1, page_size
 
 # ═══════════ 班级学生 + 班级调整 ═══════════
 
-def list_class_students(user, class_id, page=1, page_size=50):
-    from app.models import StudentProfile
+def list_class_students(user, class_id, keyword=None, page=1, page_size=50):
+    """班级学生名册（07 号卡，只读）：学号/姓名/性别/学籍状态/手机号脱敏 + 关键字搜索。
+    数据范围与既有写口径一致（本学院），手机号复用 db_service._primary_phone 同款脱敏口径
+    （t_student_contact.contact_type=PHONE，演示环境明文占位、真实环境密文，脱敏在本函数内完成，
+    不返回明文；本卡不提供明文解锁入口，见三级卡 §10）。"""
+    from app.models import StudentContact, StudentProfile
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_class(db, class_id)
         _require_college_write(ctx, db, _class_college_id(db, c.id))
         conds = [StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
                  StudentProfile.class_id == c.id]
+        if keyword:
+            like = f"%{keyword}%"
+            conds.append(StudentProfile.real_name.like(like) | StudentProfile.student_no.like(like))
         total = db.scalar(select(func.count()).select_from(StudentProfile).where(*conds)) or 0
         offset = (max(1, page) - 1) * page_size
         rows = db.scalars(select(StudentProfile).where(*conds)
                           .order_by(StudentProfile.student_no).offset(offset).limit(page_size)).all()
-        items = [{"id": str(s.id), "studentNo": s.student_no, "realName": s.real_name,
+        ids = [s.id for s in rows] or [0]
+        contacts = db.scalars(select(StudentContact).where(
+            StudentContact.tenant_id == _tid(), StudentContact.student_id.in_(ids),
+            StudentContact.contact_type == "PHONE", StudentContact.is_deleted.is_(False))).all()
+        pmap: dict[int, str] = {}
+        for ctc in contacts:
+            pmap.setdefault(ctc.student_id, ctc.contact_value_encrypted or "")
+        items = [{"id": str(s.id), "studentId": str(s.id), "studentNo": s.student_no, "realName": s.real_name,
+                  "gender": s.gender or "", "studentStatus": s.student_status or "",
+                  "phoneMasked": _mask_phone(pmap.get(s.id, "")),
                   "classId": str(s.class_id) if s.class_id else None} for s in rows]
         return items, total
 
@@ -650,6 +678,409 @@ def org_stats(user):
             "graduatedClassCount": db.scalar(select(func.count()).select_from(SchoolClass).where(
                 *cls_conds, SchoolClass.class_status == "GRADUATED")) or 0,
         }
+
+
+# ═══════════ 专业方向（06 号卡）═══════════
+
+def _major_direction_enabled(db, tenant_id: int) -> bool:
+    """总开关默认关闭（业务政策待学校确认，见三级卡 §3）；缺省行=未启用。"""
+    from app.models import PlatformConfig
+    row = db.scalars(select(PlatformConfig).where(
+        PlatformConfig.tenant_id == tenant_id, PlatformConfig.config_type == _MD_CFG_TYPE,
+        PlatformConfig.config_key == _MD_CFG_KEY, PlatformConfig.is_deleted.is_(False))).first()
+    return bool(row.enabled) if row else False
+
+
+def get_major_direction_toggle(user) -> dict:
+    with session() as db:
+        _ctx(user, db)
+        return {"enabled": _major_direction_enabled(db, _tid())}
+
+
+def set_major_direction_toggle(user, enabled: bool) -> dict:
+    """仅教务处/校管（TENANT_ALL 范围）可切换总开关；学院教务无此权限。"""
+    from app.models import PlatformConfig
+    with session() as db:
+        ctx = _ctx(user, db)
+        if _allowed_college_ids(ctx, db) is not None:
+            raise no_data_scope("仅教务处/校管可设置专业方向总开关")
+        row = db.scalars(select(PlatformConfig).where(
+            PlatformConfig.tenant_id == _tid(), PlatformConfig.config_type == _MD_CFG_TYPE,
+            PlatformConfig.config_key == _MD_CFG_KEY)).first()
+        if row:
+            row.enabled = bool(enabled)
+            row.is_deleted = False
+            row.version += 1
+        else:
+            row = PlatformConfig(tenant_id=_tid(), config_type=_MD_CFG_TYPE, config_key=_MD_CFG_KEY,
+                                 config_json={}, enabled=bool(enabled))
+            db.add(row)
+        db.flush()
+        _audit(db, "AA_ORG_MAJOR_DIRECTION", None, "TOGGLE", f"总开关→{'启用' if enabled else '停用'}")
+        db.commit()
+        return {"enabled": bool(enabled)}
+
+
+def _require_direction_enabled(db):
+    if not _major_direction_enabled(db, _tid()):
+        raise AppException("FEATURE_DISABLED", "专业方向总开关未启用，请联系教务处/校管开启")
+
+
+def _direction_dto(d) -> dict:
+    return {"id": str(d.id), "majorId": str(d.major_id), "directionName": d.direction_name,
+            "code": d.code, "status": d.status}
+
+
+def list_directions(user, major_id, page=1, page_size=50):
+    from app.models import AaMajorDirection
+    with session() as db:
+        ctx = _ctx(user, db)
+        _require_direction_enabled(db)
+        m = _get_major(db, major_id)
+        _require_college_write(ctx, db, m.college_id)
+        conds = [AaMajorDirection.tenant_id == _tid(), AaMajorDirection.is_deleted.is_(False),
+                 AaMajorDirection.major_id == m.id]
+        total = db.scalar(select(func.count()).select_from(AaMajorDirection).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.scalars(select(AaMajorDirection).where(*conds)
+                          .order_by(AaMajorDirection.id).offset(offset).limit(page_size)).all()
+        return [_direction_dto(d) for d in rows], total
+
+
+def create_direction(user, major_id, body) -> dict:
+    from app.models import AaMajorDirection
+    name = (getattr(body, "directionName", None) or "").strip()
+    if not name:
+        raise AppException("VALIDATION_ERROR", "方向名称必填")
+    with session() as db:
+        ctx = _ctx(user, db)
+        _require_direction_enabled(db)
+        m = _get_major(db, major_id)
+        _require_college_write(ctx, db, m.college_id)
+        code = getattr(body, "code", None) or None
+        if code:
+            dup = db.scalars(select(AaMajorDirection).where(
+                AaMajorDirection.tenant_id == _tid(), AaMajorDirection.is_deleted.is_(False),
+                AaMajorDirection.major_id == m.id, AaMajorDirection.code == code)).first()
+            if dup:
+                raise AppException("DATA_CONFLICT", "该专业下同编码方向已存在")
+        d = AaMajorDirection(tenant_id=_tid(), major_id=m.id, direction_name=name, code=code, status="ACTIVE")
+        db.add(d)
+        db.flush()
+        _audit(db, "AA_ORG_MAJOR_DIRECTION", d.id, "DIRECTION_CREATE", name)
+        db.commit()
+        db.refresh(d)
+        return _direction_dto(d)
+
+
+def _get_direction(db, major_id, direction_id):
+    from app.models import AaMajorDirection
+    d = db.get(AaMajorDirection, int(direction_id)) if direction_id else None
+    if not d or getattr(d, "is_deleted", False) or d.tenant_id != _tid() or d.major_id != int(major_id):
+        raise not_found("专业方向不存在")
+    return d
+
+
+def update_direction(user, major_id, direction_id, body) -> dict:
+    from app.models import AaMajorDirection
+    with session() as db:
+        ctx = _ctx(user, db)
+        _require_direction_enabled(db)
+        m = _get_major(db, major_id)
+        _require_college_write(ctx, db, m.college_id)
+        d = _get_direction(db, major_id, direction_id)
+        before = _direction_dto(d)
+        name = getattr(body, "directionName", None)
+        if name is not None:
+            if not str(name).strip():
+                raise AppException("VALIDATION_ERROR", "方向名称不能为空")
+            d.direction_name = name
+        code = getattr(body, "code", None)
+        if code is not None:
+            if code:
+                dup = db.scalars(select(AaMajorDirection).where(
+                    AaMajorDirection.tenant_id == _tid(), AaMajorDirection.is_deleted.is_(False),
+                    AaMajorDirection.major_id == m.id, AaMajorDirection.code == code,
+                    AaMajorDirection.id != d.id)).first()
+                if dup:
+                    raise AppException("DATA_CONFLICT", "该专业下同编码方向已存在")
+            d.code = code or None
+        db.flush()
+        _audit(db, "AA_ORG_MAJOR_DIRECTION", d.id, "DIRECTION_UPDATE", d.direction_name,
+               before=str(before), after=str(_direction_dto(d)))
+        db.commit()
+        db.refresh(d)
+        return _direction_dto(d)
+
+
+def disable_direction(user, major_id, direction_id) -> dict:
+    with session() as db:
+        ctx = _ctx(user, db)
+        _require_direction_enabled(db)
+        m = _get_major(db, major_id)
+        _require_college_write(ctx, db, m.college_id)
+        d = _get_direction(db, major_id, direction_id)
+        if d.status == "DISABLED":
+            return _direction_dto(d)  # 幂等
+        d.status = "DISABLED"
+        db.flush()
+        _audit(db, "AA_ORG_MAJOR_DIRECTION", d.id, "DIRECTION_DISABLE", d.direction_name)
+        db.commit()
+        db.refresh(d)
+        return _direction_dto(d)
+
+
+# ═══════════ 班级调整申请单（08 号卡，行政班层面批量组织调整）═══════════
+# 区别于既有 adjust_student_class（个体学生转班，见上）：本组不改写 t_student_profile.class_id，
+# 只做行政班 class_status 层面的组织记录（合班/停用→DISBANDED，毕业清班→GRADUATED），
+# DRAFT→CHECKED→EXECUTED/CANCELLED，核对结果 24 小时内有效，执行前需未过期且无阻断项。
+
+def _adjustment_class_names(db, ids: list[int]) -> dict[int, str]:
+    from app.models import SchoolClass
+    ids = [i for i in ids if i]
+    if not ids:
+        return {}
+    rows = db.scalars(select(SchoolClass).where(
+        SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(ids))).all()
+    return {c.id: c.class_name for c in rows}
+
+
+def _adjustment_dto(a, class_names: dict[int, str] | None = None) -> dict:
+    import json
+    try:
+        from_ids = [int(x) for x in json.loads(a.from_class_ids or "[]")]
+    except (TypeError, ValueError):
+        from_ids = []
+    cmap = class_names or {}
+    return {
+        "id": str(a.id), "adjustType": a.adjust_type,
+        "fromClassIds": [str(x) for x in from_ids],
+        "fromClassNames": "、".join(cmap.get(x, str(x)) for x in from_ids),
+        "toClassId": str(a.to_class_id) if a.to_class_id else None,
+        "toClassName": cmap.get(a.to_class_id) if a.to_class_id else None,
+        "reason": a.reason,
+        "checkResult": json.loads(a.check_result_json) if a.check_result_json else None,
+        "checkedAt": a.checked_at.isoformat() if a.checked_at else None,
+        "status": a.status, "createdAt": a.created_at.isoformat() if a.created_at else None,
+    }
+
+
+def _get_adjustment(db, adjustment_id):
+    from app.models import AaClassAdjustmentRequest
+    a = db.get(AaClassAdjustmentRequest, int(adjustment_id)) if adjustment_id else None
+    if not a or getattr(a, "is_deleted", False) or a.tenant_id != _tid():
+        raise not_found("调整申请单不存在")
+    return a
+
+
+def _adjustment_colleges(db, a) -> set[int]:
+    import json
+    ids: set[int] = set()
+    try:
+        ids |= {int(x) for x in json.loads(a.from_class_ids or "[]")}
+    except (TypeError, ValueError):
+        pass
+    if a.to_class_id:
+        ids.add(a.to_class_id)
+    cols: set[int] = set()
+    for cid in ids:
+        cg = _class_college_id(db, cid)
+        if cg:
+            cols.add(cg)
+    return cols
+
+
+def list_class_adjustments(user, status=None, adjust_type=None, page=1, page_size=50):
+    import json
+    from app.models import AaClassAdjustmentRequest, Major, SchoolClass
+    with session() as db:
+        ctx = _ctx(user, db)
+        allowed = _allowed_college_ids(ctx, db)
+        conds = [AaClassAdjustmentRequest.tenant_id == _tid(), AaClassAdjustmentRequest.is_deleted.is_(False)]
+        if status:
+            conds.append(AaClassAdjustmentRequest.status == status)
+        if adjust_type:
+            conds.append(AaClassAdjustmentRequest.adjust_type == adjust_type)
+        rows = db.scalars(select(AaClassAdjustmentRequest).where(*conds)
+                          .order_by(AaClassAdjustmentRequest.id.desc())).all()
+        all_ids: set[int] = set()
+        parsed: list[tuple] = []
+        for a in rows:
+            try:
+                fids = [int(x) for x in json.loads(a.from_class_ids or "[]")]
+            except (TypeError, ValueError):
+                fids = []
+            all_ids |= set(fids)
+            if a.to_class_id:
+                all_ids.add(a.to_class_id)
+            parsed.append((a, fids))
+        cls_college: dict[int, int | None] = {}
+        if all_ids:
+            classes = db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(list(all_ids)))).all()
+            maj_ids = {c.major_id for c in classes if c.major_id}
+            majs = db.scalars(select(Major).where(
+                Major.tenant_id == _tid(), Major.id.in_(list(maj_ids) or [0]))).all()
+            mmap = {m.id: m.college_id for m in majs}
+            cls_college = {c.id: mmap.get(c.major_id) for c in classes}
+        filtered = []
+        for a, fids in parsed:
+            if allowed is not None:  # COLLEGE 范围：涉及班级全部越出授权学院则不可见
+                cols = {cls_college.get(fid) for fid in fids}
+                if a.to_class_id:
+                    cols.add(cls_college.get(a.to_class_id))
+                cols.discard(None)
+                if cols and not cols.issubset(allowed):
+                    continue
+            filtered.append(a)
+        total = len(filtered)
+        offset = (max(1, page) - 1) * page_size
+        page_rows = filtered[offset:offset + page_size]
+        cmap = _adjustment_class_names(db, list(all_ids))
+        return [_adjustment_dto(a, cmap) for a in page_rows], total
+
+
+def create_class_adjustment(user, body) -> dict:
+    import json
+    from app.models import AaClassAdjustmentRequest, SchoolClass
+    adjust_type = (getattr(body, "adjustType", None) or "").upper()
+    if adjust_type not in _ADJUST_TYPES:
+        raise AppException("VALIDATION_ERROR", "调整类型非法")
+    from_ids_raw = getattr(body, "fromClassIds", None) or []
+    try:
+        from_ids = [int(x) for x in from_ids_raw if x]
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "来源班级参数非法")
+    if not from_ids:
+        raise AppException("VALIDATION_ERROR", "来源班级至少选择1个")
+    to_id_raw = getattr(body, "toClassId", None)
+    to_id = int(to_id_raw) if to_id_raw else None
+    if adjust_type == "MERGE" and not to_id:
+        raise AppException("VALIDATION_ERROR", "合班登记必须指定目标班级")
+    if to_id and to_id in from_ids:
+        raise AppException("VALIDATION_ERROR", "目标班级不能同时是来源班级")
+    reason = (getattr(body, "reason", None) or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "调整理由至少5个字符")
+    with session() as db:
+        ctx = _ctx(user, db)
+        all_ids = set(from_ids) | ({to_id} if to_id else set())
+        classes = {c.id: c for c in db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False),
+            SchoolClass.id.in_(list(all_ids)))).all()}
+        if len(classes) != len(all_ids):
+            raise not_found("涉及班级不存在")
+        colleges: set[int] = set()
+        for cid in all_ids:
+            cg = _class_college_id(db, cid)
+            if cg is None:
+                raise AppException("VALIDATION_ERROR", "班级未归属有效专业/学院，无法发起调整")
+            colleges.add(cg)
+        if adjust_type == "MERGE" and len(colleges) > 1:
+            raise AppException("VALIDATION_ERROR", "合班登记仅支持同学院内班级")
+        for cg in colleges:
+            _require_college_write(ctx, db, cg)
+        for cid in all_ids:
+            if classes[cid].class_status != "NORMAL":
+                raise AppException("VALIDATION_ERROR", f"班级「{classes[cid].class_name}」当前状态非在读，无法发起调整")
+        a = AaClassAdjustmentRequest(tenant_id=_tid(), adjust_type=adjust_type,
+                                     from_class_ids=json.dumps(from_ids), to_class_id=to_id,
+                                     reason=reason, status="DRAFT")
+        db.add(a)
+        db.flush()
+        _audit(db, "AA_ORG_CLASS_ADJUST_REQUEST", a.id, "ADJUST_CREATE", f"{adjust_type}: {reason}")
+        db.commit()
+        db.refresh(a)
+        cmap = _adjustment_class_names(db, list(all_ids))
+        return _adjustment_dto(a, cmap)
+
+
+def precheck_class_adjustment(user, adjustment_id) -> dict:
+    import json
+    from app.models import SchoolClass, StudentProfile
+    with session() as db:
+        ctx = _ctx(user, db)
+        a = _get_adjustment(db, adjustment_id)
+        if a.status not in ("DRAFT", "CHECKED"):
+            raise AppException("DATA_CONFLICT", "仅草稿/已核对状态可（重新）核对")
+        for cg in _adjustment_colleges(db, a):
+            _require_college_write(ctx, db, cg)
+        from_ids = [int(x) for x in json.loads(a.from_class_ids or "[]")]
+        refs = []
+        blocked = False
+        block_types = {"DISBAND", "GRADUATE_CLEAR"}
+        for cid in from_ids:
+            cnt = db.scalar(select(func.count()).select_from(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                StudentProfile.class_id == cid,
+                StudentProfile.student_status.notin_(["GRADUATED", "WITHDRAWN"]))) or 0
+            cls = db.get(SchoolClass, cid)
+            if a.adjust_type in block_types and cnt:
+                blocked = True
+            refs.append({"classId": str(cid), "className": cls.class_name if cls else "",
+                        "activeStudentCount": cnt})
+        result = {"blocked": blocked, "refs": refs}
+        a.check_result_json = json.dumps(result)
+        a.checked_at = datetime.utcnow()
+        a.status = "CHECKED"
+        db.flush()
+        _audit(db, "AA_ORG_CLASS_ADJUST_REQUEST", a.id, "SYNC_CHECK", f"blocked={blocked}")
+        db.commit()
+        db.refresh(a)
+        cmap = _adjustment_class_names(db, from_ids + ([a.to_class_id] if a.to_class_id else []))
+        return _adjustment_dto(a, cmap)
+
+
+def execute_class_adjustment(user, adjustment_id) -> dict:
+    import json
+    from app.models import SchoolClass
+    with session() as db:
+        ctx = _ctx(user, db)
+        a = _get_adjustment(db, adjustment_id)
+        from_ids = [int(x) for x in json.loads(a.from_class_ids or "[]")]
+        if a.status == "EXECUTED":  # 幂等：重复执行直接返回已执行状态
+            cmap = _adjustment_class_names(db, from_ids + ([a.to_class_id] if a.to_class_id else []))
+            return _adjustment_dto(a, cmap)
+        if a.status != "CHECKED":
+            raise AppException("DATA_CONFLICT", "仅已核对状态可执行")
+        if not a.checked_at or (datetime.utcnow() - a.checked_at).total_seconds() > _ADJUST_CHECK_TTL_HOURS * 3600:
+            raise AppException("DATA_CONFLICT", "核对结果已过期（超过24小时），请重新核对")
+        result = json.loads(a.check_result_json or "{}")
+        if result.get("blocked"):
+            raise AppException("VALIDATION_ERROR", "核对结果存在阻断项，无法执行")
+        for cg in _adjustment_colleges(db, a):
+            _require_college_write(ctx, db, cg)
+        new_status = {"MERGE": "DISBANDED", "DISBAND": "DISBANDED",
+                      "GRADUATE_CLEAR": "GRADUATED"}.get(a.adjust_type)
+        if new_status:  # SPLIT：记录型动作，不改写来源班状态、不自动生成新班级（见三级卡边界说明），仅落审计
+            for cid in from_ids:
+                cls = db.get(SchoolClass, cid)
+                if cls and cls.class_status != new_status:
+                    cls.class_status = new_status
+        a.status = "EXECUTED"
+        db.flush()
+        _audit(db, "AA_ORG_CLASS_ADJUST_REQUEST", a.id, "ADJUST_EXECUTE", f"{a.adjust_type} executed")
+        db.commit()
+        db.refresh(a)
+        cmap = _adjustment_class_names(db, from_ids + ([a.to_class_id] if a.to_class_id else []))
+        return _adjustment_dto(a, cmap)
+
+
+def cancel_class_adjustment(user, adjustment_id) -> dict:
+    with session() as db:
+        ctx = _ctx(user, db)
+        a = _get_adjustment(db, adjustment_id)
+        if a.status not in ("DRAFT", "CHECKED"):
+            raise AppException("DATA_CONFLICT", "已执行/已撤销的申请单不可再撤销")
+        for cg in _adjustment_colleges(db, a):
+            _require_college_write(ctx, db, cg)
+        a.status = "CANCELLED"
+        db.flush()
+        _audit(db, "AA_ORG_CLASS_ADJUST_REQUEST", a.id, "ADJUST_CANCEL", "撤销")
+        db.commit()
+        db.refresh(a)
+        cmap = _adjustment_class_names(db, [])
+        return _adjustment_dto(a, cmap)
 
 
 def list_org_audit(user, biz_type=None, page=1, page_size=50):
