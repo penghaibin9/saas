@@ -304,3 +304,84 @@ def test_tt9_cross_batch_list_and_teacher_scope(client, db_mode):
     assert ok.status_code == 200 and ok.json()["data"]["status"] == "TEACHER_CONFIRMED"
     mine = client.get(f"{BASE}/teaching-tasks", headers=self_hdr, params={"mine": True}).json()["data"]["items"]
     assert any(r["taskId"] == task_id for r in mine)
+
+
+def test_tt10_adjust_task_partial_update_and_teacher_reconfirm(client, db_mode):
+    """教学任务调整（续工新增）：原因过短 400；仅调学时不影响已确认状态；重复提交无实际变化 400；
+    变更教师身份强制退回 ASSIGNED 要求重新确认。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    cid = _enabled_course(client, hdr, code="TT1001")
+    _published_bound_program(client, hdr, cid, ids["class"])
+    tid = _term(client, hdr)
+    bid = client.post(f"{BASE}/teaching-task-batches/generate", headers=hdr,
+                      json={"termId": str(tid)}).json()["data"]["batchId"]
+    task_id = client.get(f"{BASE}/teaching-task-batches/{bid}/tasks",
+                         headers=hdr).json()["data"]["items"][0]["taskId"]
+    client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
+               json={"teacherName": "王老师", "teacherKey": "academic01", "expectedStudents": 40})
+    client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=hdr, json={"action": "CONFIRM"})
+    # 原因过短 → 400
+    bad = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+                      json={"weeklyHours": 5, "reason": "短"})
+    assert bad.status_code == 400
+    # 仅调学时（不动教师）：教师已确认状态保持不变（不强制重新确认）
+    r1 = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+                     json={"weeklyHours": 6, "totalHours": 108, "reason": "教学计划课时数校正"})
+    assert r1.status_code == 200
+    d1 = r1.json()["data"]
+    assert d1["weeklyHours"] == 6 and d1["totalHours"] == 108 and d1["status"] == "TEACHER_CONFIRMED"
+    # 提交内容与当前值完全相同（无实际变化）→ 400，不产生空审计
+    noop = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+                       json={"weeklyHours": 6, "reason": "重复提交校验"})
+    assert noop.status_code == 400
+    # 变更教师身份：强制退回 ASSIGNED 要求新教师重新确认
+    r2 = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+                     json={"teacherName": "李老师", "teacherKey": "academic02", "reason": "原教师休产假换人代课"})
+    assert r2.status_code == 200
+    d2 = r2.json()["data"]
+    assert d2["teacherName"] == "李老师" and d2["status"] == "ASSIGNED"
+
+
+def test_tt11_adjust_task_conflicts_and_permission(client, db_mode):
+    """教学任务调整校验：已合班并入的成员任务不可调整 409；已生成课表项的任务不可调整 409；
+    无 academicAffairs 权限角色（学生）403。"""
+    ids = _seed_two_classes(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    cid = _enabled_course(client, hdr, code="TT1101")
+    pid = client.post(f"{BASE}/programs", headers=hdr, json={
+        "programName": "调整校验方案", "majorId": "1", "gradeYear": "2026", "totalCredits": 4}).json()["data"]["programId"]
+    client.post(f"{BASE}/programs/{pid}/courses", headers=hdr, json={
+        "courseId": str(cid), "courseName": "程序设计", "openTermNo": 1, "module": "专业核心", "credit": 4})
+    client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
+    client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    client.post(f"{BASE}/programs/{pid}/bind", headers=hdr, json={"gradeYear": "2026", "classId": str(ids["class1"])})
+    client.post(f"{BASE}/programs/{pid}/bind", headers=hdr, json={"gradeYear": "2026B", "classId": str(ids["class2"])})
+    tid = _term(client, hdr)
+    g = client.post(f"{BASE}/teaching-task-batches/generate", headers=hdr, json={"termId": str(tid)}).json()
+    bid = g["data"]["batchId"]
+    tasks = client.get(f"{BASE}/teaching-task-batches/{bid}/tasks", headers=hdr).json()["data"]["items"]
+    t1, t2 = tasks[0]["taskId"], tasks[1]["taskId"]
+    client.post(f"{BASE}/teaching-tasks/{t1}/assign", headers=hdr, json={"teacherName": "王老师"})
+    client.post(f"{BASE}/teaching-tasks/{t2}/assign", headers=hdr, json={"teacherName": "王老师"})
+    client.post(f"{BASE}/teaching-tasks/merge", headers=hdr, json={"taskIds": [t1, t2]})
+    # t2 现为 MERGED 成员 → 调整应 409
+    merged_adjust = client.post(f"{BASE}/teaching-tasks/{t2}/adjust", headers=hdr,
+                                json={"weeklyHours": 4, "reason": "尝试调整已并入成员任务"})
+    assert merged_adjust.status_code == 409
+    # survivor(t1) 已生成课表项 → 调整应 409（须先在排课模块处理课表项）
+    sb = client.post(f"{BASE}/schedule-batches", headers=hdr, json={"termId": str(tid)}).json()["data"]["batchId"]
+    item = client.post(f"{BASE}/schedule-batches/{sb}/items", headers=hdr, json={
+        "taskId": str(t1), "weekday": 1, "slotNo": 1, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
+        "teacherKey": "academic01", "teacherName": "王老师", "classId": str(ids["class1"]), "className": "软件2601",
+        "classroom": "A101", "courseName": "程序设计"})
+    assert item.status_code == 200
+    scheduled_adjust = client.post(f"{BASE}/teaching-tasks/{t1}/adjust", headers=hdr,
+                                   json={"weeklyHours": 4, "reason": "已排课后尝试调整教学任务"})
+    assert scheduled_adjust.status_code == 409
+    # 无权限角色（学生，空权限集）→ 403
+    stu = _hdr(client, "student01")
+    forbidden = client.post(f"{BASE}/teaching-tasks/{t1}/adjust", headers=stu,
+                            json={"weeklyHours": 4, "reason": "越权尝试调整教学任务"})
+    assert forbidden.status_code == 403

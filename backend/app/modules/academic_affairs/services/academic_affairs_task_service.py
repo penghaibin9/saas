@@ -365,6 +365,76 @@ def split_task(task_id, user) -> dict:
         return _task_row(t)
 
 
+# ═══════════ 教学任务调整（管理员更正，续工新增）═══════════
+
+_TEACHER_FIELDS = ("teacherId", "teacherKey", "teacherName")
+
+
+def adjust_task(task_id, user, body) -> dict:
+    """教学任务调整（教务管理员更正）：局部更新教师/周学时/总学时/起止周/预计人数，理由必填+审计。
+
+    与「任课教师分配」(assign_teacher，面向 PENDING_ASSIGN/ASSIGNED/REJECTED_BY_TEACHER 的初始分配工作
+    队列、整体覆盖式写入教师字段) 不同：本操作面向任一非终止态任务（含 TEACHER_CONFIRMED/READY 等已过初
+    始分配阶段仍需更正的场景）。按「新值是否真的不同于当前值」判定字段是否变更（而非只看请求是否携带该
+    字段）——前端表单会回填当前值一并提交，若按"是否携带"判定会把纯粹重提交也当作变更，误触发下面教师
+    变更即退回重新确认的规则。变更教师身份时强制退回 ASSIGNED 要求重新确认，避免旧确认状态与新教师身份
+    不一致地残留；仅调整学时/周次/人数不强制重新确认。
+    已生成课表项(t_aa_schedule_item)的任务不可调整——课表项固化了教师/周次等信息，直接改任务会与课表
+    产生静默不一致，须先在排课模块处理（作废/改排）对应课表项，再回到本操作调整任务。"""
+    from app.models import AaScheduleItem, AaTeachingTask
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+    reason = (getattr(body, "reason", None) or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "调整原因必填且不少于 5 字")
+    with session() as db:
+        t = db.get(AaTeachingTask, int(task_id))
+        if not t or t.is_deleted or t.tenant_id != _tid():
+            raise not_found("教学任务不存在")
+        guard_term_writable(db, _term_id_of(db, t.batch_id))  # 归档11卡§6.2：已归档学期不应再调整教学任务
+        if t.status == "MERGED":
+            raise AppException("DATA_CONFLICT", "该任务已合班并入其他教学班，请先对合班 survivor 任务拆班后再调整")
+        scheduled = db.scalar(select(func.count()).select_from(AaScheduleItem).where(
+            AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == t.id,
+            AaScheduleItem.is_deleted.is_(False))) or 0
+        if scheduled:
+            raise AppException("DATA_CONFLICT", "该任务已生成课表项，请先在排课管理调整/作废对应课表项后再调整教学任务")
+
+        changed: list[str] = []
+
+        def _apply(field: str, attr: str, new_v) -> None:
+            """仅当请求携带该字段(非 None)且解析后的新值确实不同于当前值时才写入并记入 changed。"""
+            if getattr(body, field, None) is None:
+                return
+            if new_v != getattr(t, attr):
+                setattr(t, attr, new_v)
+                changed.append(field)
+
+        _apply("teacherId", "teacher_id", int(body.teacherId) if getattr(body, "teacherId", None) else None)
+        _apply("teacherKey", "teacher_key", getattr(body, "teacherKey", None) or None)
+        _apply("teacherName", "teacher_name", getattr(body, "teacherName", None) or None)
+        _apply("weeklyHours", "weekly_hours", getattr(body, "weeklyHours", None))
+        _apply("totalHours", "total_hours", getattr(body, "totalHours", None))
+        _apply("startWeek", "start_week", getattr(body, "startWeek", None))
+        _apply("endWeek", "end_week", getattr(body, "endWeek", None))
+        _apply("expectedStudents", "expected_students", getattr(body, "expectedStudents", None))
+
+        if not changed:
+            raise AppException("VALIDATION_ERROR", "提交的字段与当前值相同，未发生实际调整")
+        if t.start_week is not None and t.end_week is not None and t.start_week > t.end_week:
+            raise AppException("VALIDATION_ERROR", "起始周不能晚于结束周")
+
+        teacher_touched = any(f in changed for f in _TEACHER_FIELDS)
+        if teacher_touched:
+            t.status = "ASSIGNED"
+            t.confirm_at = None
+            t.reject_reason = None
+
+        _audit(db, "AA_TASK", t.id, "ADJUST", f"fields={changed} reason={reason}")
+        db.commit()
+        db.refresh(t)
+        return _task_row(t)
+
+
 def _term_id_of(db, batch_id) -> int:
     from app.models import AaTeachingTaskBatch
     b = db.get(AaTeachingTaskBatch, int(batch_id))

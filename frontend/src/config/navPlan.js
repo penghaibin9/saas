@@ -340,13 +340,20 @@ export const NAV_PLAN = [
       I('教学任务批次', '/admin/academic-affairs/teaching-tasks'),
       I('教学任务生成', '/admin/academic-affairs/teaching-tasks?open=generate', 'academicAffairs.teachingTask.generate'),
       I('任课教师分配', '/admin/academic-affairs/teaching-tasks/assign', 'academicAffairs.teachingTask.assign'),
-      ...P('教学班生成'),
+      // 教学班生成：教学班无独立表，随「教学任务生成」按(学期+课程+行政班)确定性派生（见 academic_affairs_task_service.
+      // _teaching_class_code）；本叶子指向既有只读汇总页（学院专业班级·教学班标签，org_service.list_teaching_classes），
+      // 不重复造生成入口——2026-07-16 续工按 CLAUDE.md「复用已有实现」原则收编，非新建页面/接口。
+      I('教学班生成', '/admin/academic-affairs/orgs?tab=teaching', 'academicAffairs.org.view'),
       I('合班拆班', '/admin/academic-affairs/teaching-tasks/merge-split', 'academicAffairs.teachingTask.merge'),
       I('教学任务确认', '/admin/academic-affairs/teaching-tasks/confirm', 'academicAffairs.teachingTask.confirm'),
       I('教师任务确认', '/admin/academic-affairs/teaching-tasks/teacher-confirm', 'academicAffairs.teachingTask.teacherConfirm'),
-      ...P('教学任务调整'),
+      // 教学任务调整：2026-07-16 续工新增真实能力（区别于「任课教师分配」的初始分配工作队列）——
+      // 面向教师已确认/已就绪后仍需更正教师·学时·周次·人数的场景，理由必填+审计，详见三级卡设计说明。
+      I('教学任务调整', '/admin/academic-affairs/teaching-tasks/adjust', 'academicAffairs.teachingTask.adjust'),
       I('教学任务统计', '/admin/academic-affairs/teaching-tasks/stats', 'academicAffairs.teachingTask.stats'),
-      ...P('教学任务归档')
+      // 教学任务归档：教学任务是教务归档 9 数据域之一（TEACHING_TASK），随学期批次统一归档，
+      // 无独立的"仅归档教学任务"通道；本叶子指向既有教务归档控制台，不重复造入口。
+      I('教学任务归档', '/admin/academic-affairs/archive', 'academicAffairs.archive.view')
     ]),
     mod('aa-scheduling', '排课管理', '/admin/academic-affairs/scheduling', [
       I('排课规则', '/admin/academic-affairs/scheduling?tab=rules', 'academicAffairs.schedule.view'),

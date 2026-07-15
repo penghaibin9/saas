@@ -66,6 +66,8 @@ const layoutRoute = {
     { path: 'teaching-tasks/merge-split', name: 'aa-teaching-task-merge-split', component: () => import('@/modules/academicAffairs/views/AaTaskMergeSplitView.vue'), meta: meta('academicAffairs.teachingTask.merge', '合班拆班') },
     { path: 'teaching-tasks/confirm', name: 'aa-teaching-task-confirm', component: () => import('@/modules/academicAffairs/views/AaTaskConfirmView.vue'), meta: meta('academicAffairs.teachingTask.confirm', '教学任务确认') },
     { path: 'teaching-tasks/teacher-confirm', name: 'aa-teaching-task-teacher-confirm', component: () => import('@/modules/academicAffairs/views/AaTeacherTaskConfirmView.vue'), meta: meta('academicAffairs.teachingTask.teacherConfirm', '教师任务确认') },
+    // 教学任务调整（续工新增，W4 三级菜单收口）：与「任课教师分配」区分——面向教师已确认/已就绪后仍需更正的场景
+    { path: 'teaching-tasks/adjust', name: 'aa-teaching-task-adjust', component: () => import('@/modules/academicAffairs/views/AaTaskAdjustView.vue'), meta: meta('academicAffairs.teachingTask.adjust', '教学任务调整') },
     { path: 'teaching-tasks/stats', name: 'aa-teaching-task-stats', component: () => import('@/modules/academicAffairs/views/AaTaskStatsView.vue'), meta: meta('academicAffairs.teachingTask.stats', '教学任务统计') },
     { path: 'teaching-tasks/:batchId', name: 'aa-task-detail', component: () => import('@/modules/academicAffairs/views/AaTaskDetailView.vue'), meta: meta('academicAffairs.teachingTask.view', '教学任务明细') },
     { path: 'schedule', name: 'aa-schedule', component: () => import('@/modules/academicAffairs/views/AaScheduleBatchListView.vue'), meta: meta('academicAffairs.schedule.view', '课表管理') },
