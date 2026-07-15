@@ -537,6 +537,11 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/teaching-tasks/${taskId}/split`, { method: 'POST' }))
   },
 
+  /* ── 教学任务调整（管理员更正，续工新增） ── */
+  adjustTask(taskId, body) {
+    return call(() => request(`${BASE}/teaching-tasks/${taskId}/adjust`, { method: 'POST', body }))
+  },
+
   /* ── 教学任务统计（Tier1 新增） ── */
   getTeachingTaskStats(params = {}) {
     return call(() => request(`${BASE}/teaching-task-batches/stats`, { params }))

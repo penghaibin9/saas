@@ -1162,6 +1162,26 @@ def task_split(taskId: int = Path(...), user=Depends(require_permission("academi
     return success(task_svc.split_task(taskId, user), message="已拆班")
 
 
+# ── 教学任务调整（管理员更正，续工新增）──
+
+class AdjustTaskBody(BaseModel):
+    teacherId: Optional[str] = None
+    teacherKey: Optional[str] = None
+    teacherName: Optional[str] = None
+    weeklyHours: Optional[int] = None
+    totalHours: Optional[int] = None
+    startWeek: Optional[int] = None
+    endWeek: Optional[int] = None
+    expectedStudents: Optional[int] = None
+    reason: str = Field(..., min_length=1, description="调整原因，必填且不少于 5 字（服务层校验）")
+
+
+@router.post("/teaching-tasks/{taskId}/adjust", summary="教学任务调整（管理员更正教师/学时/周次/人数，理由必填+审计）")
+def task_adjust(body: AdjustTaskBody, taskId: int = Path(...),
+                user=Depends(require_permission("academicAffairs.teachingTask.adjust"))):
+    return success(task_svc.adjust_task(taskId, user, body), message="已调整")
+
+
 # ── 教学任务统计（Tier1 R1 新增）──
 
 @router.get("/teaching-task-batches/stats", summary="教学任务统计（批次/任务状态分布+分配率+教师确认率）")
