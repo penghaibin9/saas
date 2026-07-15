@@ -377,7 +377,7 @@ def roster_reveal(body: RosterRevealBody, studentId: int = Path(...), user=Depen
 # ── 入学/学年注册 ──
 class RegBatchCreate(BaseModel):
     batchName: str = Field(..., min_length=1)
-    registerType: str = Field("ENROLL", description="ENROLL 入学 / ANNUAL 学年")
+    registerType: str = Field("ENROLL", description="ENROLL 入学 / ANNUAL 学年 / SEMESTER 学期")
     termId: Optional[str] = None
     windowStart: Optional[str] = None
     windowEnd: Optional[str] = None
@@ -409,6 +409,46 @@ def register(body: RegisterBody, batchId: int = Path(...), user=Depends(require_
 def registrations(batchId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
     items, total = svc.list_registrations(batchId, user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+# ── 注册归档（续工三级卡）：OPEN→CLOSED→ARCHIVED，仅教务处（TENANT_ALL，服务层 _require_school_scope 校验）──
+_REG_ARCHIVE_VIEW = "academicAffairs.registration.archive.view"
+_REG_ARCHIVE_MANAGE = "academicAffairs.registration.archive.manage"
+_REG_ARCHIVE_EXPORT = "academicAffairs.registration.archive.export"
+
+
+@router.post("/registration-batches/{batchId}/close", summary="关闭注册批次（OPEN→CLOSED，仅教务处）")
+def reg_batch_close(batchId: int = Path(...), user=Depends(require_permission(_REG_ARCHIVE_MANAGE))):
+    return success(svc.close_registration_batch(batchId, user), message="已关闭")
+
+
+@router.post("/registration-batches/{batchId}/archive", summary="归档注册批次（CLOSED→ARCHIVED，仅教务处）")
+def reg_batch_archive(batchId: int = Path(...), user=Depends(require_permission(_REG_ARCHIVE_MANAGE))):
+    return success(svc.archive_registration_batch(batchId, user), message="已归档")
+
+
+@router.get("/registration/archive", summary="注册归档：已归档批次列表")
+def reg_archive_list(page: int = 1, pageSize: int = 20, user=Depends(require_permission(_REG_ARCHIVE_VIEW))):
+    items, total = svc.list_archived_registration_batches(user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/registration/archive/{batchId}", summary="注册归档批次详情（含注册完成统计）")
+def reg_archive_detail(batchId: int = Path(...), user=Depends(require_permission(_REG_ARCHIVE_VIEW))):
+    return success(svc.registration_archive_detail(batchId, user))
+
+
+class RegArchiveExportBody(BaseModel):
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
+
+
+@router.post("/registration/archive/{batchId}/export", summary="注册归档台账导出 xlsx（水印+审计）")
+def reg_archive_export(body: RegArchiveExportBody, batchId: int = Path(...),
+                       user=Depends(require_permission(_REG_ARCHIVE_EXPORT))):
+    content = svc.export_registration_archive_xlsx(batchId, user, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content), media_type=_XLSX_MEDIA,
+        headers={"Content-Disposition": f"attachment; filename=registration_archive_{batchId}.xlsx"})
 
 
 # ── 注册资格核验（Tier1 R1）──

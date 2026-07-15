@@ -962,14 +962,26 @@ def roster_import_confirm(rows: list) -> dict:
     return {"created": result.get("created", 0)}
 
 
-# ═══════════ 入学/学年注册 ═══════════
+# ═══════════ 入学/学年/学期注册 ═══════════
+# 三种 register_type 共用同一批次/记录引擎（t_aa_registration_batch/t_aa_registration），不新建候选人表：
+# ENROLL=新生入学（候选池 PENDING_REGISTER）；ANNUAL/SEMESTER=在籍学生续注册（候选池 REGISTERED/RETAINED，
+# 语义参照总册 §3.3 E01「学年注册：教务处按学期开批次」——SEMESTER 即按学期粒度开批次的续注册视图，
+# 与 ANNUAL 区别仅在批次归属周期/菜单入口，候选人圈定与状态机完全一致，故 _batch_target_statuses 不需改动）。
+_REG_TYPE_LABEL = {"ENROLL": "入学注册", "ANNUAL": "学年注册", "SEMESTER": "学期注册"}
+_REG_TYPE_SHORT = {"ENROLL": "入学", "ANNUAL": "学年", "SEMESTER": "学期"}
+_REG_CHANGE_TYPE = {"ENROLL": "ENROLL_REGISTER", "ANNUAL": "ANNUAL_REGISTER", "SEMESTER": "SEMESTER_REGISTER"}
+# 三类注册在 t_aa_status_change 中的 change_type（写主档流水专用，不是"学籍异动"，异动台账/统计/提醒/学生端
+# 我的异动记录四处读侧须同步排除，见 academic_affairs_change_service.list_changes/stats、
+# 本文件 _status_change_reminders、mobile_academic_affairs_service.status_my）。
+REGISTRATION_CHANGE_TYPES = ("ENROLL_REGISTER", "ANNUAL_REGISTER", "SEMESTER_REGISTER")
+
 
 def create_registration_batch(body, user) -> dict:
     with session() as db:
         from app.models import AaRegistrationBatch
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         rtype = (body.registerType or "ENROLL")
-        if rtype not in ("ENROLL", "ANNUAL"):
+        if rtype not in ("ENROLL", "ANNUAL", "SEMESTER"):
             raise AppException("VALIDATION_ERROR", "注册类型非法")
         guard_term_writable(db, getattr(body, "termId", None))  # 归档11卡§6.2：已归档学期不应再开注册批次
         b = AaRegistrationBatch(tenant_id=_tid(), batch_name=body.batchName, register_type=rtype,
@@ -1039,7 +1051,7 @@ def register_student(batch_id, user, student_id) -> dict:
         if dup and dup.status == "REGISTERED":
             raise AppException("DATA_CONFLICT", "该生已在本批次完成注册")
         snap = _precheck(db, student_id)
-        change_type = "ENROLL_REGISTER" if b.register_type == "ENROLL" else "ANNUAL_REGISTER"
+        change_type = _REG_CHANGE_TYPE.get(b.register_type, "ANNUAL_REGISTER")
         from_status = s.student_status
         rec = dup or AaRegistration(tenant_id=_tid(), batch_id=b.id, student_id=int(student_id))
         rec.precheck_json = json.dumps(snap, ensure_ascii=False)
@@ -1075,9 +1087,104 @@ def list_registrations(batch_id, user, page=1, page_size=50):
                           .outerjoin(StudentProfile, join).where(*conds)
                           .order_by(AaRegistration.id.desc()).offset(offset).limit(page_size)).all()
         out = [{"registrationId": str(x.id), "studentId": str(x.student_id),
-                "realName": s.real_name if s else "", "status": x.status,
+                "studentNo": s.student_no if s else "", "realName": s.real_name if s else "", "status": x.status,
                 "registerAt": _iso(x.register_at)} for x, s in rows]
         return out, total
+
+
+# ── 注册归档（Tier1 续工三级卡）：OPEN→CLOSED→ARCHIVED，仅教务处（TENANT_ALL）。
+#    批次归档后台账只读（register_student 已按 status!=OPEN 拒绝新注册），供历史查阅与水印导出，
+#    与「选课归档」（academic_affairs_selection_service.archive_batch 同族写法）同一设计。 ──
+
+def close_registration_batch(batch_id, user) -> dict:
+    """关闭注册批次：OPEN→CLOSED。关闭后不可再注册（register_student 已按非 OPEN 状态拒绝）。"""
+    with session() as db:
+        from app.models import AaRegistrationBatch
+        ctx = build_affairs_context(user, db)
+        _require_school_scope(ctx)
+        b = db.get(AaRegistrationBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("注册批次不存在")
+        if b.status != "OPEN":
+            raise AppException("DATA_CONFLICT", f"仅开放中批次可关闭，当前状态 {b.status}", http_status=409)
+        b.status = "CLOSED"
+        _audit(db, "AA_REG_BATCH", b.id, "CLOSE", "OPEN→CLOSED")
+        db.commit()
+        db.refresh(b)
+        return {"batchId": str(b.id), "batchName": b.batch_name, "registerType": b.register_type, "status": b.status}
+
+
+def archive_registration_batch(batch_id, user) -> dict:
+    """归档注册批次：CLOSED→ARCHIVED（幂等）。归档后进入「注册归档」只读台账，可水印导出。"""
+    with session() as db:
+        from app.models import AaRegistrationBatch
+        ctx = build_affairs_context(user, db)
+        _require_school_scope(ctx)
+        b = db.get(AaRegistrationBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("注册批次不存在")
+        if b.status == "ARCHIVED":
+            return {"batchId": str(b.id), "batchName": b.batch_name, "registerType": b.register_type,
+                    "status": b.status}
+        if b.status != "CLOSED":
+            raise AppException("DATA_CONFLICT", f"仅已关闭批次可归档，当前状态 {b.status}", http_status=409)
+        b.status = "ARCHIVED"
+        _audit(db, "AA_REG_BATCH", b.id, "ARCHIVE", "CLOSED→ARCHIVED")
+        db.commit()
+        db.refresh(b)
+        return {"batchId": str(b.id), "batchName": b.batch_name, "registerType": b.register_type, "status": b.status}
+
+
+def list_archived_registration_batches(user, page=1, page_size=20):
+    """注册归档：已归档批次列表（复用 list_registration_batches，不重复实现查询逻辑）。"""
+    return list_registration_batches(user, status="ARCHIVED", page=page, page_size=page_size)
+
+
+def registration_archive_detail(batch_id, user) -> dict:
+    """注册归档批次详情：批次信息 + 注册完成统计（复用 list_registrations 全量聚合，仅已归档批次可查看）。"""
+    from app.models import AaRegistrationBatch
+    with session() as db:
+        b = db.get(AaRegistrationBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("注册批次不存在")
+        if b.status != "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "仅已归档批次可查看归档详情", http_status=409)
+        dto = {"batchId": str(b.id), "batchName": b.batch_name, "registerType": b.register_type,
+               "status": b.status, "termId": str(b.term_id) if b.term_id else None,
+               "windowStart": _iso(b.window_start), "windowEnd": _iso(b.window_end),
+               "archivedAt": _iso(b.updated_at)}
+    rows, total = list_registrations(batch_id, user, page=1, page_size=10000)
+    registered = sum(1 for r in rows if r["status"] == "REGISTERED")
+    dto["stats"] = {"total": total, "registered": registered}
+    return dto
+
+
+def export_registration_archive_xlsx(batch_id, user, purpose="") -> bytes:
+    """注册归档台账导出 xlsx（水印+审计；用途必填≥5字；仅已归档批次可导出，12号卡同款模式）。"""
+    purpose = (purpose or "").strip()
+    if len(purpose) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    from app.models import AaRegistrationBatch
+    from app.services.xlsx_util import build_ledger_xlsx
+    with session() as db:
+        b = db.get(AaRegistrationBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("注册批次不存在")
+        if b.status != "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "仅已归档批次可导出归档台账", http_status=409)
+        batch_name, register_type = b.batch_name, b.register_type
+    rows_data, _total = list_registrations(batch_id, user, page=1, page_size=10000)
+    _n, _r, _uid = _op()
+    watermark = f"导出人：{_n or '-'}  时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose}"
+    headers = ["学号", "姓名", "状态", "注册时间"]
+    rows = [[r["studentNo"], r["realName"], ("已注册" if r["status"] == "REGISTERED" else r["status"]),
+             r["registerAt"] or ""] for r in rows_data]
+    title = f"注册归档台账 · {batch_name}（{_REG_TYPE_LABEL.get(register_type, register_type)}）"
+    content = build_ledger_xlsx(title, headers, rows, watermark=watermark)
+    with session() as db:
+        _audit(db, "AA_REG_BATCH", batch_id, "ARCHIVE_EXPORT", f"用途={purpose[:100]}")
+        db.commit()
+    return content
 
 
 # ═══════════ 注册管理 Tier1 R1：注册资格核验 / 未注册学生 / 暂缓注册 / 注册异常 ═══════════
@@ -1549,7 +1656,7 @@ def scan_unregistered(batch_id, user):
             marked += 1
             cid = _counselor_of(db, s.id)
             if _push_todo(db, "AA_REGISTRATION", r.id, "AA_UNREGISTERED_HANDLE", cid, s.id,
-                         f"{s.real_name} 逾期未完成{'入学' if b.register_type == 'ENROLL' else '学年'}注册"):
+                         f"{s.real_name} 逾期未完成{_REG_TYPE_SHORT.get(b.register_type, '学年')}注册"):
                 notified += 1
         _audit(db, "AA_REG_BATCH", b.id, "SCAN_UNREGISTERED", f"marked={marked} skipped={skipped}")
         db.commit()
@@ -1569,7 +1676,7 @@ def export_unregistered_xlsx(user, batch_id=None, purpose="") -> bytes:
     watermark = f"导出人：{_n or '-'}  时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose}"
     headers = ["学号", "姓名", "批次", "类型", "截止时间", "状态"]
     rows = [[r["studentNo"], r["realName"], r["batchName"],
-             ("入学注册" if r["registerType"] == "ENROLL" else "学年注册" if r["registerType"] else ""),
+             _REG_TYPE_LABEL.get(r["registerType"], ""),
              r["windowEnd"] or "", ("未注册" if r["kind"] == "UNREGISTERED" else "逾期待处理")]
             for r in rows_data]
     content = build_ledger_xlsx("未注册学生名单", headers, rows, watermark=watermark)
@@ -1694,7 +1801,7 @@ def _status_change_reminders(db) -> dict:
     from app.models import AaStatusChange, StudentProfile
     T = _tid()
     conds = [AaStatusChange.tenant_id == T, AaStatusChange.is_deleted.is_(False),
-             AaStatusChange.change_type != "ENROLL_REGISTER", AaStatusChange.change_type != "ANNUAL_REGISTER",
+             AaStatusChange.change_type.notin_(REGISTRATION_CHANGE_TYPES),
              AaStatusChange.status.in_(["SUBMITTED", "IN_REVIEW"])]
     join = and_(StudentProfile.id == AaStatusChange.student_id,
                StudentProfile.tenant_id == AaStatusChange.tenant_id)

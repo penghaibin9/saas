@@ -72,8 +72,8 @@ const STATUS_LABEL = {
   WITHDRAWN: '退学', TRANSFER_SCHOOL: '转学', GRADUATED: '毕业', COMPLETED: '结业', INCOMPLETE: '肄业'
 }
 const CHANGE_TYPE_LABEL = {
-  ENROLL_REGISTER: '入学注册', ANNUAL_REGISTER: '学年注册', SUSPEND: '休学', WITHDRAW: '退学',
-  RESUME: '复学', RETAIN: '留级', TRANSFER_MAJOR: '转专业'
+  ENROLL_REGISTER: '入学注册', ANNUAL_REGISTER: '学年注册', SEMESTER_REGISTER: '学期注册',
+  SUSPEND: '休学', WITHDRAW: '退学', RESUME: '复学', RETAIN: '留级', TRANSFER_MAJOR: '转专业'
 }
 
 export default {

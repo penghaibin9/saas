@@ -21,6 +21,7 @@
             <select v-model="draft.registerType" class="aa-select" :disabled="!!fixedType">
               <option value="ENROLL">入学注册</option>
               <option value="ANNUAL">学年注册</option>
+              <option value="SEMESTER">学期注册</option>
             </select>
           </label>
           <label class="aa-cal-form__item">
@@ -52,31 +53,42 @@
         @page-change="onPageChange"
       >
         <template #cell-type="{ row }">
-          {{ row.registerType === 'ENROLL' ? '入学注册' : '学年注册' }}
+          {{ typeLabelOf(row.registerType) }}
         </template>
         <template #cell-status="{ row }">
           <AppStatusTag :status="row.status" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="goDetail(row)">注册名单</button>
+          <button v-if="row.status === 'OPEN'" class="mp-link" :disabled="busyId === row.batchId" @click="askClose(row)">关闭</button>
+          <button v-if="row.status === 'CLOSED'" class="mp-link" :disabled="busyId === row.batchId" @click="askArchive(row)">归档</button>
         </template>
       </DataTable>
     </div>
+
+    <AppConfirmDialog
+      v-model:visible="confirm.visible"
+      :title="confirm.title"
+      :message="confirm.message"
+      :type="confirm.type"
+      @confirm="onConfirm"
+    />
   </ModulePageShell>
 </template>
 
 <script>
 /** 注册批次列表（/admin/academic-affairs/registration）：GET/POST /academic-affairs/registration-batches。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
-const STATUS_LABEL = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已关闭' }
+const STATUS_LABEL = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已关闭', ARCHIVED: '已归档' }
+const TYPE_LABEL = { ENROLL: '入学注册', ANNUAL: '学年注册', SEMESTER: '学期注册' }
 
 export default {
   name: 'AaRegistrationBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -85,24 +97,27 @@ export default {
       rows: [],
       showCreate: false,
       creating: false,
+      busyId: '',
       draft: { batchName: '', registerType: 'ENROLL', windowStart: '', windowEnd: '', open: false },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
         { key: 'batchName', title: '批次名称' },
         { key: 'type', title: '类型' },
         { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作', width: '100px' }
-      ]
+        { key: 'actions', title: '操作', width: '160px' }
+      ],
+      confirm: { visible: false, title: '', message: '', type: 'primary' },
+      pendingAction: null
     }
   },
   computed: {
-    /** ?type=ENROLL/ANNUAL 收窄为「入学注册」/「学年注册」叶子视图；无 type 为原「注册批次」通栏视图。 */
+    /** ?type=ENROLL/ANNUAL/SEMESTER 收窄为对应三级叶子视图；无 type 为原「注册批次」通栏视图。 */
     fixedType() {
       const t = this.$route && this.$route.query && this.$route.query.type
-      return t === 'ENROLL' || t === 'ANNUAL' ? t : ''
+      return t === 'ENROLL' || t === 'ANNUAL' || t === 'SEMESTER' ? t : ''
     },
     typeLabel() {
-      return this.fixedType === 'ENROLL' ? '入学注册' : this.fixedType === 'ANNUAL' ? '学年注册' : ''
+      return TYPE_LABEL[this.fixedType] || ''
     },
     pageTitle() {
       return this.typeLabel || '注册管理'
@@ -110,7 +125,8 @@ export default {
     pageSubtitle() {
       if (this.fixedType === 'ENROLL') return '新生入学注册批次：核身份/专业/班级，报到缴费材料齐全后完成注册'
       if (this.fixedType === 'ANNUAL') return '在籍学生学年注册批次：核对上学年状态/缴费后完成续注册'
-      return '按入学 / 学年建立注册批次；批次开放后逐个学生注册（经学籍单一入口写主档）'
+      if (this.fixedType === 'SEMESTER') return '在籍学生按学期开的续注册批次：核对本学期在籍/缴费状态后完成注册'
+      return '按入学 / 学年 / 学期建立注册批次；批次开放后逐个学生注册（经学籍单一入口写主档）'
     }
   },
   watch: {
@@ -128,12 +144,42 @@ export default {
     statusLabel(s) {
       return STATUS_LABEL[s] || s || ''
     },
+    typeLabelOf(t) {
+      return TYPE_LABEL[t] || t || ''
+    },
     goDetail(row) {
       this.$router.push(`/admin/academic-affairs/registration/${row.batchId}`)
     },
     onPageChange(page) {
       this.pagination.page = page
       this.load()
+    },
+    askClose(row) {
+      this.confirm = { visible: true, title: '关闭注册批次',
+        message: `确认关闭「${row.batchName}」？关闭后不可再为学生办理本批次注册。`, type: 'warning' }
+      this.pendingAction = { kind: 'close', row }
+    },
+    askArchive(row) {
+      this.confirm = { visible: true, title: '归档注册批次',
+        message: `确认归档「${row.batchName}」？归档后台账只读，进入「注册归档」供查阅与导出。`, type: 'primary' }
+      this.pendingAction = { kind: 'archive', row }
+    },
+    async onConfirm() {
+      const a = this.pendingAction
+      this.confirm.visible = false
+      this.pendingAction = null
+      if (!a) return
+      this.busyId = a.row.batchId
+      const res = a.kind === 'close'
+        ? await academicAffairsApi.closeRegistrationBatch(a.row.batchId)
+        : await academicAffairsApi.archiveRegistrationBatch(a.row.batchId)
+      this.busyId = ''
+      if (res.code === 0) {
+        toast.success(a.kind === 'close' ? '已关闭' : '已归档')
+        this.load()
+      } else {
+        toast.error(res.message || '操作失败')
+      }
     },
     async createBatch() {
       if (this.creating || !this.draft.batchName) return
