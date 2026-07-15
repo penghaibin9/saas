@@ -352,7 +352,8 @@ export const NAV_PLAN = [
       I('免修审批', '/admin/academic-affairs/makeup?tab=exemption', 'academicAffairs.makeup.view'),
       I('缓考合流', '/admin/academic-affairs/makeup?tab=deferred', 'academicAffairs.makeup.view'),
       I('重修免修申请（学生自助）', '/admin/academic-affairs/my-makeup', 'academicAffairs.retake.apply'),
-      ...P('统计分析', '材料归档')
+      I('统计分析', '/admin/academic-affairs/makeup/stats', 'academicAffairs.makeup.view', 'ANALYTICS_VIEW'),
+      I('材料归档', '/admin/academic-affairs/exemption/archive', 'academicAffairs.makeup.archive')
     ]),
     mod('aa-grades', '成绩管理', '/admin/academic-affairs/grade-overview', [
       I('成绩总览', '/admin/academic-affairs/grade-overview'),

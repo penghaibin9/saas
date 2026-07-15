@@ -92,6 +92,9 @@ const layoutRoute = {
     // ── 补考重修缓考免修 ──
     { path: 'makeup', name: 'aa-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupConsoleView.vue'), meta: meta('academicAffairs.makeup.view', '补考重修缓考免修') },
     { path: 'my-makeup', name: 'aa-my-makeup', component: () => import('@/modules/academicAffairs/views/AaMakeupStudentView.vue'), meta: meta('academicAffairs.retake.apply', '重修免修申请') },
+    // ── 三级：统计分析 / 材料归档（三级施工卡 10/11） ──
+    { path: 'makeup/stats', name: 'aa-makeup-stats', component: () => import('@/modules/academicAffairs/views/AaMakeupStatsView.vue'), meta: meta('academicAffairs.makeup.view', '补考重修缓考免修统计分析') },
+    { path: 'exemption/archive', name: 'aa-exemption-archive', component: () => import('@/modules/academicAffairs/views/AaExemptionArchiveView.vue'), meta: meta('academicAffairs.makeup.archive', '免修材料归档') },
     // ── 教材管理（控制台） ──
     { path: 'textbooks', name: 'aa-textbooks', component: () => import('@/modules/academicAffairs/views/AaTextbookConsoleView.vue'), meta: meta('academicAffairs.textbook.view', '教材管理') },
     // ── 排课管理增强（规则/可用时间/冲突报告） ──
@@ -140,6 +143,13 @@ const printTranscriptRoute = {
   meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.grade.view', title: '成绩单打印' }
 }
 
-export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute, printScheduleChangeNoticeRoute, printExamSeatingRoute]
+const printMakeupBatchRoute = {
+  path: '/admin/academic-affairs/makeup/batches/:id/print',
+  name: 'aa-makeup-print',
+  component: () => import('@/modules/academicAffairs/views/AaMakeupPrintView.vue'),
+  meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.makeup.archive', title: '补考安排表打印' }
+}
+
+export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute, printScheduleChangeNoticeRoute, printExamSeatingRoute, printMakeupBatchRoute]
 
 export default academicAffairsRoutes
