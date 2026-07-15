@@ -125,41 +125,43 @@ def _validate_rows(body: dict) -> list[dict]:
             errors.append({"row": i, "entity": "class", "field": "majorName", "error": "所属专业必填"})
     seen_no = set()
     for i, s in enumerate(students, 1):
+        row_no = int((s or {}).get("_rowNo") or i)
         no = str((s or {}).get("studentNo") or "").strip()
         nm = str((s or {}).get("name") or "").strip()
         if not no:
-            errors.append({"row": i, "entity": "student", "field": "studentNo", "error": "学号必填"})
+            errors.append({"row": row_no, "entity": "student", "field": "studentNo", "error": "学号必填"})
         elif no in seen_no:
-            errors.append({"row": i, "entity": "student", "field": "studentNo", "error": f"文件内学号重复：{no}"})
+            errors.append({"row": row_no, "entity": "student", "field": "studentNo", "error": f"文件内学号重复：{no}"})
         else:
             seen_no.add(no)
         if not nm:
-            errors.append({"row": i, "entity": "student", "field": "name", "error": "姓名必填"})
+            errors.append({"row": row_no, "entity": "student", "field": "name", "error": "姓名必填"})
     seen_login = set()
     for i, t in enumerate(teachers, 1):
+        row_no = int((t or {}).get("_rowNo") or i)
         ln = str((t or {}).get("loginName") or "").strip()
         nm = str((t or {}).get("name") or "").strip()
         if not ln:
-            errors.append({"row": i, "entity": "teacher", "field": "loginName", "error": "登录名必填"})
+            errors.append({"row": row_no, "entity": "teacher", "field": "loginName", "error": "登录名必填"})
         elif ln in seen_login:
-            errors.append({"row": i, "entity": "teacher", "field": "loginName", "error": f"文件内登录名重复：{ln}"})
+            errors.append({"row": row_no, "entity": "teacher", "field": "loginName", "error": f"文件内登录名重复：{ln}"})
         else:
             seen_login.add(ln)
         if not nm:
-            errors.append({"row": i, "entity": "teacher", "field": "name", "error": "姓名必填"})
+            errors.append({"row": row_no, "entity": "teacher", "field": "name", "error": "姓名必填"})
         try:
             role_codes = role_codes_from_row(t or {})
         except AppException as exc:
-            errors.append({"row": i, "entity": "teacher", "field": "roleCodes",
+            errors.append({"row": row_no, "entity": "teacher", "field": "roleCodes",
                            "error": exc.message})
             role_codes = []
         scope_type = str((t or {}).get("scopeType") or "").strip().upper()
         scope_ref = (t or {}).get("scopeRef")
         if "COUNSELOR" in role_codes and scope_type not in ("CLASS", "ADVISOR"):
-            errors.append({"row": i, "entity": "teacher", "field": "scopeType",
+            errors.append({"row": row_no, "entity": "teacher", "field": "scopeType",
                            "error": "辅导员必须配置 CLASS 或 ADVISOR 数据范围"})
         if scope_type in ("CLASS", "COLLEGE", "STUDENT") and scope_ref in (None, ""):
-            errors.append({"row": i, "entity": "teacher", "field": "scopeRef",
+            errors.append({"row": row_no, "entity": "teacher", "field": "scopeRef",
                            "error": f"{scope_type} 数据范围必须填写 scopeRef"})
     for value in sorted(seen_no & seen_login):
         errors.append({"row": 0, "entity": "account", "field": "loginName",
@@ -282,6 +284,14 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
         # 学生
         for s in (body.get("students") or []):
             no = str(s.get("studentNo")).strip()
+            class_name = str(s.get("className") or "").strip()
+            k = cls(class_name) if class_name else None
+            if class_name and not k:
+                report["entities"]["students"]["failed"] += 1
+                report["errors"].append({"row": int(s.get("_rowNo") or 0),
+                                         "entity": "student", "field": "className",
+                                         "error": f"班级不存在：{class_name}"})
+                continue
             account = db.scalars(select(User).where(
                 User.tenant_id == tenant_id, User.login_name == no)).first()
             if account and (account.is_deleted or account.user_type != "STUDENT"):
@@ -295,7 +305,6 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             if profile:
                 report["entities"]["students"]["skipped"] += 1
             else:
-                k = cls(str(s.get("className") or "").strip()) if s.get("className") else None
                 db.add(StudentProfile(
                     tenant_id=tenant_id, student_no=no, real_name=str(s.get("name")).strip(),
                     gender=s.get("gender"), grade=s.get("grade"),
@@ -324,6 +333,24 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
         # 教师账号 + 角色 + 范围
         for t in (body.get("teachers") or []):
             ln = str(t.get("loginName")).strip()
+            stype = str(t.get("scopeType") or "").strip().upper()
+            sref = str(t.get("scopeRef") or "").strip()
+            scope_exists = True
+            if stype == "CLASS" and sref:
+                scope_exists = cls(sref) is not None
+            elif stype == "COLLEGE" and sref:
+                scope_exists = col(sref) is not None
+            elif stype == "STUDENT" and sref:
+                scope_exists = db.scalars(select(StudentProfile).where(
+                    StudentProfile.tenant_id == tenant_id,
+                    StudentProfile.student_no == sref,
+                    StudentProfile.is_deleted.is_(False))).first() is not None
+            if not scope_exists:
+                report["entities"]["scopes"]["failed"] += 1
+                report["errors"].append({"row": int(t.get("_rowNo") or 0),
+                                         "entity": "teacher", "field": "scopeRef",
+                                         "error": f"数据范围引用不存在：{sref}"})
+                continue
             dup = db.scalars(select(User).where(User.tenant_id == tenant_id,
                              User.login_name == ln)).first()
             if dup and dup.is_deleted:
@@ -355,8 +382,6 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             report["entities"]["roleBindings"]["created"] += binding["created"] + binding["restored"]
             report["entities"]["roleBindings"]["skipped"] += binding["unchanged"]
             # 数据范围绑定（复用 t_teacher_student_scope）
-            stype = str(t.get("scopeType") or "").strip().upper()
-            sref = t.get("scopeRef")
             if stype in ("CLASS", "COLLEGE", "STUDENT", "ADVISOR"):
                 scope_role = role_codes[0]
                 existing_scope = db.scalars(select(TeacherStudentScope).where(
@@ -364,7 +389,7 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
                     TeacherStudentScope.teacher_key == ln,
                     TeacherStudentScope.role_code == scope_role,
                     TeacherStudentScope.scope_type == stype,
-                    TeacherStudentScope.ref_value == (str(sref) if sref not in (None, "") else None))).first()
+                    TeacherStudentScope.ref_value == (sref or None))).first()
                 if existing_scope and not existing_scope.is_deleted and existing_scope.status == "ACTIVE":
                     report["entities"]["scopes"]["skipped"] += 1
                 elif existing_scope:
@@ -375,7 +400,7 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
                 else:
                     db.add(TeacherStudentScope(tenant_id=tenant_id, teacher_key=ln,
                            teacher_name=str(t.get("name")).strip(), role_code=scope_role,
-                           scope_type=stype, ref_value=str(sref) if sref not in (None, "") else None,
+                           scope_type=stype, ref_value=sref or None,
                            status="ACTIVE"))
                     report["entities"]["scopes"]["created"] += 1
         if report["errors"] and atomic:
@@ -427,23 +452,62 @@ def _count_preview(tenant_id: int, body: dict, report: dict) -> None:
                 report["entities"]["classes"]["skipped"] += 1
             else:
                 report["entities"]["classes"]["created"] += 1
-        for s in (body.get("students") or []):
+        incoming_student_nos = {
+            str((row or {}).get("studentNo") or "").strip()
+            for row in (body.get("students") or [])
+        }
+        for index, s in enumerate(body.get("students") or [], 1):
             no = str((s or {}).get("studentNo") or "").strip()
+            row_no = int((s or {}).get("_rowNo") or index)
             if not no:
                 report["entities"]["students"]["failed"] += 1
             elif exists(StudentProfile, StudentProfile.student_no, no):
                 report["entities"]["students"]["skipped"] += 1
             else:
                 report["entities"]["students"]["created"] += 1
-            if no and exists(User, User.login_name, no):
+            account = db.scalars(select(User).where(
+                User.tenant_id == tenant_id, User.login_name == no)).first() if no else None
+            if account and (account.is_deleted or account.user_type != "STUDENT"):
+                report["entities"]["studentAccounts"]["failed"] += 1
+                report["errors"].append({"row": row_no, "entity": "studentAccount",
+                                         "field": "studentNo",
+                                         "error": f"学号被历史/非学生账号占用：{no}"})
+            elif account:
                 report["entities"]["studentAccounts"]["skipped"] += 1
             elif no:
                 report["entities"]["studentAccounts"]["created"] += 1
-        for t in (body.get("teachers") or []):
+            class_name = str((s or {}).get("className") or "").strip()
+            if class_name and not exists(SchoolClass, SchoolClass.class_name, class_name):
+                report["errors"].append({"row": row_no, "entity": "student",
+                                         "field": "className",
+                                         "error": f"班级不存在：{class_name}"})
+        for index, t in enumerate(body.get("teachers") or [], 1):
             ln = str((t or {}).get("loginName") or "").strip()
+            row_no = int((t or {}).get("_rowNo") or index)
             if not ln:
                 report["entities"]["teachers"]["failed"] += 1
-            elif exists(User, User.login_name, ln):
+            account = db.scalars(select(User).where(
+                User.tenant_id == tenant_id, User.login_name == ln)).first() if ln else None
+            if account and (account.is_deleted or account.user_type not in ("TEACHER", "STAFF")):
+                report["entities"]["teachers"]["failed"] += 1
+                report["errors"].append({"row": row_no, "entity": "teacher",
+                                         "field": "loginName",
+                                         "error": f"登录名被历史/非教师账号占用：{ln}"})
+            elif account:
                 report["entities"]["teachers"]["skipped"] += 1
-            else:
+            elif ln:
                 report["entities"]["teachers"]["created"] += 1
+            scope_type = str((t or {}).get("scopeType") or "").strip().upper()
+            scope_ref = str((t or {}).get("scopeRef") or "").strip()
+            scope_exists = True
+            if scope_type == "CLASS" and scope_ref:
+                scope_exists = exists(SchoolClass, SchoolClass.class_name, scope_ref)
+            elif scope_type == "COLLEGE" and scope_ref:
+                scope_exists = exists(College, College.college_name, scope_ref)
+            elif scope_type == "STUDENT" and scope_ref:
+                scope_exists = (scope_ref in incoming_student_nos
+                                or exists(StudentProfile, StudentProfile.student_no, scope_ref))
+            if not scope_exists:
+                report["errors"].append({"row": row_no, "entity": "teacher",
+                                         "field": "scopeRef",
+                                         "error": f"数据范围引用不存在：{scope_ref}"})

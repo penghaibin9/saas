@@ -196,8 +196,10 @@
     <ImportDialog
       v-model:visible="importOpen"
       :template="ctx.importTemplates.users"
-      :run-validate="(f) => api.importUsers({ fileName: f })"
-      :run-import="(f) => api.importUsers({ fileName: f, confirm: true })"
+      :run-validate="api.validateIdentityImportFile"
+      :run-import="api.confirmIdentityImportBatch"
+      :run-download-template="api.downloadIdentityImportTemplate"
+      :run-download-errors="api.downloadIdentityImportErrors"
       @done="load"
     />
     <ExportDialog
@@ -215,7 +217,8 @@
 /**
  * 用户账号管理（/admin/system/users）：
  * 新增 / 查看 / 编辑 / 停用启用（逻辑删除+原因留痕）/ 重置密码 / 分配角色 /
- * 批量导入（模板+校验+回执）/ 批量导出（脱敏+水印+审计）/ 批量停用 / 高级筛选 / 列设置。
+ * 师生 .xlsx 批量开户（固定菜单+预检+整批事务+错误回执）/
+ * 批量导出（脱敏+水印+审计）/ 批量停用 / 高级筛选 / 列设置。
  */
 import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,

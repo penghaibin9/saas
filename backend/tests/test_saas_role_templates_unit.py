@@ -3,11 +3,17 @@ from __future__ import annotations
 
 import pytest
 from types import SimpleNamespace
+import io
+import zipfile
+import base64
+
+from openpyxl import Workbook, load_workbook
 
 from app.core.exceptions import AppException
 from app.core.permissions import ROLE_PERMISSIONS, has_permission
 from app.services import school_onboarding_service as onboarding
 from app.services import identity_import_service
+from app.services import identity_import_file_service as identity_files
 from app.services.saas_role_templates import (BUILTIN_ROLE_TEMPLATES,
                                                role_catalog,
                                                role_codes_from_row)
@@ -99,6 +105,17 @@ def test_identity_import_cannot_disable_atomic_transaction():
         )
     assert exc.value.code == "VALIDATION_ERROR"
     assert "整批" in exc.value.message
+
+
+def test_identity_import_confirm_fails_closed_when_database_is_disabled(monkeypatch):
+    monkeypatch.setattr(onboarding, "db_enabled", lambda: False)
+    with pytest.raises(AppException) as exc:
+        identity_import_service.run_identity_import(
+            {"userType": "PLATFORM_SUPER_ADMIN"},
+            {"tenantId": "1001", "students": [{"studentNo": "S001", "name": "学生"}]},
+            dry_run=False,
+        )
+    assert exc.value.code == "SERVER_ERROR"
 
 
 def test_onboarding_dry_run_reports_accounts_roles_and_scopes_without_db(monkeypatch):
@@ -222,3 +239,147 @@ def test_frontend_exposes_batch_account_creation_only_at_fixed_system_route():
     assert "this.$router.replace('/admin/system/identity-import')" in users
     assert "path: 'identity-import'" in routes
     assert "if (a.key === 'importUsers') return this.isIdentityImport" in users
+
+
+def _identity_xlsx(rows: list[list]) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "导入模板"
+    ws.append(list(identity_files.HEADERS))
+    for row in rows:
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_identity_template_is_empty_xlsx_with_roles_and_no_csv_path():
+    content = identity_files.build_template()
+    wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    assert wb.sheetnames == ["导入模板", "填写说明", "填写示例（不要导入）", "教师预设角色"]
+    assert wb["导入模板"].max_row == 1
+    role_codes = {row[0] for row in wb["教师预设角色"].iter_rows(min_row=2, values_only=True)}
+    assert "ACADEMIC_TEACHER" in role_codes
+    assert "SYS_ADMIN" not in role_codes
+    assert "SCHOOL_ADMIN" not in role_codes
+    with pytest.raises(AppException) as exc:
+        identity_files.parse_xlsx(b"accountType,accountNo", "teachers.csv")
+    assert exc.value.code == "FILE_TYPE_NOT_ALLOWED"
+
+
+def test_identity_xlsx_parses_student_and_teacher_with_original_excel_rows():
+    content = _identity_xlsx([
+        ["STUDENT", "001234", "张同学", "", "软件2601", "2026", "男", "", ""],
+        ["TEACHER", "T001", "李老师", "辅导员，毕设导师", "", "", "", "CLASS", "软件2601"],
+    ])
+    parsed = identity_files.parse_xlsx(content, "师生账号.xlsx")
+    assert parsed["totalRows"] == 2
+    assert parsed["students"][0] == {
+        "_rowNo": 2, "studentNo": "001234", "name": "张同学",
+        "className": "软件2601", "grade": "2026", "gender": "男",
+    }
+    assert parsed["teachers"][0]["_rowNo"] == 3
+    assert parsed["teachers"][0]["roleCodes"] == "辅导员，毕设导师"
+    assert parsed["errors"] == []
+
+
+def test_identity_xlsx_reports_invalid_account_type_and_student_role():
+    content = _identity_xlsx([
+        ["PARENT", "P001", "家长", "", "", "", "", "", ""],
+        ["STUDENT", "S001", "学生", "SYS_ADMIN", "", "", "", "", ""],
+    ])
+    parsed = identity_files.parse_xlsx(content, "师生账号.xlsx")
+    assert [item["row"] for item in parsed["errors"]] == [2, 3]
+    assert parsed["students"][0]["_rowNo"] == 3
+
+
+def test_identity_xlsx_rejects_nonstandard_headers():
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["账号类型", "账号", "姓名"])
+    ws.append(["STUDENT", "S001", "学生"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    with pytest.raises(AppException) as exc:
+        identity_files.parse_xlsx(buf.getvalue(), "bad.xlsx")
+    assert exc.value.code == "VALIDATION_ERROR"
+    assert "最新版模板" in exc.value.message
+
+
+def test_identity_xlsx_rejects_macro_payload_even_when_renamed_xlsx():
+    content = _identity_xlsx([
+        ["STUDENT", "S001", "学生", "", "", "", "", "", ""],
+    ])
+    buf = io.BytesIO(content)
+    with zipfile.ZipFile(buf, "a") as archive:
+        archive.writestr("xl/vbaProject.bin", b"macro")
+    with pytest.raises(AppException) as exc:
+        identity_files.parse_xlsx(buf.getvalue(), "renamed.xlsx")
+    assert exc.value.code == "FILE_TYPE_NOT_ALLOWED"
+    assert "宏" in exc.value.message
+
+
+def test_identity_xlsx_preview_batch_is_bound_to_user_and_tenant(monkeypatch):
+    monkeypatch.setattr(onboarding, "db_enabled", lambda: False)
+    parsed = identity_files.parse_xlsx(_identity_xlsx([
+        ["STUDENT", "S001", "学生", "", "", "2026", "", "", ""],
+    ]), "students.xlsx")
+    user = {"userId": "u-1", "userType": "PLATFORM_SUPER_ADMIN"}
+    report = identity_import_service.preview_identity_import(
+        user, {"tenantId": "1001", "students": parsed["students"],
+               "teachers": parsed["teachers"], "atomic": True},
+        pre_errors=parsed["errors"])
+    preview = identity_files.create_batch(user, parsed, report)
+    assert preview["total"] == 1 and preview["invalid"] == 0
+    assert identity_files.get_batch(user, "1001", preview["batchNo"], require_valid=True)
+    with pytest.raises(AppException):
+        identity_files.get_batch({**user, "userId": "u-2"}, "1001", preview["batchNo"])
+    with pytest.raises(AppException):
+        identity_files.get_batch(user, "2002", preview["batchNo"])
+
+
+def test_global_preview_error_still_blocks_batch_confirmation():
+    parsed = {
+        "students": [], "teachers": [], "rawRows": [{
+            "row": 2, "accountType": "STUDENT", "accountNo": "S001", "name": "学生"}],
+        "errors": [], "totalRows": 1, "fileName": "students.xlsx", "fileSha256": "abc",
+    }
+    user = {"userId": "u-global"}
+    report = {
+        "tenantId": "1001", "errors": [{"row": 0, "entity": "account", "field": "loginName",
+                                           "error": "跨类型账号冲突"}],
+        "entities": {}, "roleTemplateVersion": "test",
+    }
+    preview = identity_files.create_batch(user, parsed, report)
+    assert preview["invalid"] == 1
+    with pytest.raises(AppException):
+        identity_files.get_batch(user, "1001", preview["batchNo"], require_valid=True)
+
+
+def test_initial_passwords_are_packaged_as_one_time_xlsx_receipt():
+    entry = {
+        "batchNo": "IDIMP-TEST",
+        "payload": {
+            "students": [{"studentNo": "S001", "name": "张同学"}],
+            "teachers": [{"loginName": "T001", "name": "李老师"}],
+        },
+    }
+    receipt = identity_files.build_credential_receipt(entry, {
+        "studentCredentials": [{"studentNo": "S001", "initialPassword": "Stu@secret"}],
+        "teacherCredentials": [{"loginName": "T001", "initialPassword": "Tmp@secret"}],
+    })
+    assert receipt and receipt["rowCount"] == 2
+    wb = load_workbook(io.BytesIO(base64.b64decode(receipt["contentBase64"])), read_only=True)
+    rows = list(wb.active.iter_rows(min_row=3, values_only=True))
+    assert rows[0][:4] == ("STUDENT", "S001", "张同学", "Stu@secret")
+    assert rows[1][:4] == ("TEACHER", "T001", "李老师", "Tmp@secret")
+
+
+def test_fixed_identity_import_frontend_accepts_xlsx_only():
+    root = Path(__file__).resolve().parents[2]
+    dialog = (root / "frontend/src/modules/system/components/ImportDialog.vue").read_text(
+        encoding="utf-8")
+    mock = (root / "frontend/src/mocks/system/system.mock.js").read_text(encoding="utf-8")
+    assert 'accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"' in dialog
+    assert "只支持标准 .xlsx" in dialog
+    assert "不提供 CSV 导入" in mock

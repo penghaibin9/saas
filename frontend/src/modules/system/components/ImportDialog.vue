@@ -17,12 +17,19 @@
         <ul class="imp__rules">
           <li v-for="r in template.rules" :key="r">{{ r }}</li>
         </ul>
-        <AppButton variant="secondary" @click="downloadTemplate">⇩ 下载导入模板</AppButton>
+        <AppButton variant="secondary" :loading="downloading" @click="downloadTemplate">
+          {{ realFileMode ? '⇩ 下载标准 Excel 模板' : '⇩ 下载导入模板' }}
+        </AppButton>
       </template>
 
       <template v-else-if="step === 1">
-        <label class="imp__upload">
-          <input v-model="fileName" type="text" class="imp__file-input" placeholder="演示环境：输入文件名模拟上传，如 用户导入_0704.xlsx" />
+        <label v-if="realFileMode" class="imp__upload">
+          <input ref="fileInput" type="file" class="imp__file-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="selectFile" />
+          <span class="mp-note">仅支持标准 .xlsx；上传后执行 dry-run 预检，不会直接写入数据库</span>
+          <span v-if="file" class="imp__filename">已选择：{{ file.name }}</span>
+        </label>
+        <label v-else class="imp__upload">
+          <input v-model="fileName" type="text" class="imp__file-input" placeholder="演示环境：输入文件名模拟上传" />
           <span class="mp-note">上传后自动执行字段校验（dry-run 预检），不会直接写入</span>
         </label>
         <div v-if="preview" class="imp__result">
@@ -32,10 +39,10 @@
           <table v-if="preview.errors.length" class="mp-audit">
             <thead><tr><th>行号</th><th>字段</th><th>错误原因</th></tr></thead>
             <tbody>
-              <tr v-for="e in preview.errors" :key="e.row"><td>第 {{ e.row }} 行</td><td>{{ e.field }}</td><td>{{ e.message }}</td></tr>
+              <tr v-for="(e, index) in preview.errors" :key="e.row + '-' + e.field + '-' + index"><td>{{ e.row ? '第 ' + e.row + ' 行' : '全局' }}</td><td>{{ e.field }}</td><td>{{ e.message }}</td></tr>
             </tbody>
           </table>
-          <button v-if="preview.errors.length" class="mp-link" @click="toastErrorList">⇩ 下载错误清单</button>
+          <button v-if="preview.errors.length" class="mp-link" @click="downloadErrors">⇩ 下载{{ realFileMode ? ' Excel ' : '' }}错误回执</button>
         </div>
       </template>
 
@@ -53,10 +60,10 @@
     <template #footer>
       <AppButton v-if="step > 0" variant="ghost" @click="step--">上一步</AppButton>
       <AppButton v-if="step === 0" variant="primary" @click="step = 1">下一步：上传文件</AppButton>
-      <AppButton v-else-if="step === 1" variant="primary" :disabled="!fileName" :loading="checking" @click="runCheck">
+      <AppButton v-else-if="step === 1" variant="primary" :disabled="realFileMode ? !file : !fileName" :loading="checking" @click="runCheck">
         {{ preview ? '重新校验' : '开始校验' }}
       </AppButton>
-      <AppButton v-if="step === 1 && preview" variant="primary" @click="step = 2">下一步：确认导入</AppButton>
+      <AppButton v-if="step === 1 && preview && (!realFileMode || preview.invalid === 0)" variant="primary" @click="step = 2">下一步：确认导入</AppButton>
       <AppButton v-if="step === 2" variant="primary" :loading="submitting" @click="confirmImport">确认导入 {{ preview && preview.valid }} 行</AppButton>
     </template>
   </AppDrawer>
@@ -65,7 +72,7 @@
 <script>
 /**
  * ImportDialog — 系统管理模块局部组件：三步导入流（模板下载 → 校验预览 → 导入回执）。
- * Props：template（importTemplates 中的一项）、runValidate(fileName)、runImport(fileName) 为
+ * Props：template（importTemplates 中的一项）、runValidate(File)、runImport(batchNo) 为
  * 父页面传入的 api 调用（返回统一契约 Promise），组件内不直接 import api，保持模块内可复用。
  */
 import { AppButton } from '@/components/ui'
@@ -79,37 +86,79 @@ export default {
     visible: { type: Boolean, default: false },
     template: { type: Object, required: true },
     runValidate: { type: Function, required: true },
-    runImport: { type: Function, required: true }
+    runImport: { type: Function, required: true },
+    runDownloadTemplate: { type: Function, default: null },
+    runDownloadErrors: { type: Function, default: null }
   },
   emits: ['update:visible', 'done'],
   data() {
-    return { step: 0, fileName: '', preview: null, checking: false, submitting: false }
+    return {
+      step: 0, file: null, fileName: '', preview: null, checking: false, submitting: false,
+      downloading: false, downloadingErrors: false
+    }
+  },
+  computed: {
+    realFileMode() {
+      return typeof this.runDownloadTemplate === 'function'
+    }
   },
   watch: {
     visible(v) {
-      if (v) Object.assign(this, { step: 0, fileName: '', preview: null })
+      if (v) Object.assign(this, { step: 0, file: null, fileName: '', preview: null })
     }
   },
   methods: {
-    downloadTemplate() {
-      toast.success('模板已开始下载：' + this.template.fileName)
+    async downloadTemplate() {
+      if (!this.realFileMode) {
+        toast.success('模板已开始下载：' + this.template.fileName)
+        return
+      }
+      this.downloading = true
+      const res = await this.runDownloadTemplate()
+      this.downloading = false
+      if (res.code === 0) toast.success(res.message || '标准 Excel 模板已下载')
+      else toast.error(res.message)
     },
-    toastErrorList() {
-      toast.success('错误清单已开始下载（含行号与原因，修正后可重新上传）')
+    selectFile(event) {
+      const selected = event.target.files && event.target.files[0]
+      this.preview = null
+      if (!selected) {
+        this.file = null
+        return
+      }
+      if (!selected.name.toLowerCase().endsWith('.xlsx')) {
+        this.file = null
+        event.target.value = ''
+        toast.error('师生账号导入只支持标准 .xlsx 文件')
+        return
+      }
+      this.file = selected
+    },
+    async downloadErrors() {
+      if (!this.realFileMode) {
+        toast.success('错误清单已开始下载（含行号与原因，修正后可重新上传）')
+        return
+      }
+      if (!this.preview?.batchNo || this.downloadingErrors || !this.runDownloadErrors) return
+      this.downloadingErrors = true
+      const res = await this.runDownloadErrors(this.preview.batchNo)
+      this.downloadingErrors = false
+      if (res.code === 0) toast.success(res.message || 'Excel 错误回执已下载')
+      else toast.error(res.message)
     },
     async runCheck() {
       this.checking = true
-      const res = await this.runValidate(this.fileName)
+      const res = await this.runValidate(this.realFileMode ? this.file : this.fileName)
       this.checking = false
       if (res.code === 0) this.preview = res.data
       else toast.error(res.message)
     },
     async confirmImport() {
       this.submitting = true
-      const res = await this.runImport(this.fileName)
+      const res = await this.runImport(this.realFileMode ? this.preview.batchNo : this.fileName)
       this.submitting = false
       if (res.code === 0) {
-        toast.success(res.data.receipt + '，已写入审计日志')
+        toast.success((res.data.receipt || res.message || '导入完成') + '，已写入审计日志')
         this.$emit('update:visible', false)
         this.$emit('done')
       } else {

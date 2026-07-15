@@ -278,6 +278,9 @@ export async function requestUpload(path, file, fieldName = 'file') {
     if (payload.code !== 0) {
       const err = new Error(payload.message || `业务错误 ${payload.code}`)
       err.biz = true
+      err.code = payload.code
+      err.bizCode = payload.bizCode
+      err.details = payload.details
       throw err
     }
     return payload.data
@@ -325,9 +328,12 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
         throw err
       }
       if (!res.ok) {
-        const err = new Error(`下载失败（HTTP ${res.status}）`)
+        const payload = await res.clone().json().catch(() => null)
+        const err = new Error(payload?.message || `下载失败（HTTP ${res.status}）`)
         err.biz = true
-        err.code = res.status
+        err.code = payload?.code || res.status
+        err.bizCode = payload?.bizCode
+        err.details = payload?.details
         throw err
       }
       return await res.blob()
