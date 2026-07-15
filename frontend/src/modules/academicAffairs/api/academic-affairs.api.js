@@ -85,6 +85,10 @@ export const academicAffairsApi = {
   getDashboard() {
     return call(() => request(`${BASE}/dashboard`))
   },
+  /** 教务看板提醒聚合：成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办（P4 六卡，零新表只读聚合）。 */
+  getDashboardReminders() {
+    return call(() => request(`${BASE}/dashboard/reminders`))
+  },
 
   /* ── 学年学期 ── */
   getCurrentTerm() {

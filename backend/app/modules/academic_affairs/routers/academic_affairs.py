@@ -47,6 +47,11 @@ def dashboard(user=Depends(require_staff)):
     return success(svc.dashboard(user))
 
 
+@router.get("/dashboard/reminders", summary="教务看板提醒聚合（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办）")
+def dashboard_reminders(user=Depends(require_staff)):
+    return success(svc.dashboard_reminders(user))
+
+
 # ── 学年学期 ──
 class TermCreate(BaseModel):
     yearCode: str = Field(..., min_length=1, description="学年 如 2026-2027")

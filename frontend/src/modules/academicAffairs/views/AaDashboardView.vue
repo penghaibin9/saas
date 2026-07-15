@@ -58,21 +58,148 @@
           </div>
         </div>
       </AppSectionCard>
+
+      <!-- 成绩提交进度 -->
+      <AppSectionCard id="adb-grade-progress" title="成绩提交进度" subtitle="成绩录入任务状态分布 + 滞后任务前 10 条">
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-grade-overview' })">成绩总览 →</button>
+        </template>
+        <ErrorState v-if="remindersError" :description="remindersError" @retry="loadReminders" />
+        <LoadingState v-else-if="remindersLoading" />
+        <div v-else class="mp-stack">
+          <div class="aa-metric-grid">
+            <AppMetricCard title="成绩任务总数" :value="gradeProgress.totalTasks || 0" unit="个" />
+            <AppMetricCard title="已提交/审核/发布" :value="gradeSubmittedCount" unit="个" />
+            <AppMetricCard title="提交率" :value="gradeProgress.submittedRate || 0" unit="%" />
+          </div>
+          <EmptyState
+            v-if="!gradeProgress.pendingTasks || !gradeProgress.pendingTasks.length"
+            title="暂无滞后任务"
+            description="所有成绩录入任务均已提交或不存在滞后任务"
+          />
+          <DataTable v-else :columns="gradeColumns" :rows="gradeProgress.pendingTasks" row-key="gradeTaskId">
+            <template #cell-status="{ row }">
+              <AppStatusTag :status="row.status" :label="row.statusLabel" />
+            </template>
+            <template #cell-progressRate="{ row }">{{ row.enteredCount }}/{{ row.rosterCount }}（{{ row.progressRate }}%）</template>
+          </DataTable>
+        </div>
+      </AppSectionCard>
+
+      <!-- 考试安排提醒 -->
+      <AppSectionCard
+        id="adb-exam-reminders"
+        title="考试安排提醒"
+        :subtitle="'未来 ' + (examReminders.windowDays || 14) + ' 天内已确认排考的考试'"
+      >
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-exam' })">考务管理 →</button>
+        </template>
+        <div v-if="!remindersLoading && !remindersError" class="mp-stack">
+          <EmptyState
+            v-if="!examReminders.items || !examReminders.items.length"
+            title="暂无临近考试"
+            description="近期无已确认排考的考试安排"
+          />
+          <DataTable v-else :columns="examColumns" :rows="examReminders.items" row-key="examCourseId" />
+        </div>
+      </AppSectionCard>
+
+      <!-- 学籍异动提醒 -->
+      <AppSectionCard id="adb-status-change-reminders" title="学籍异动提醒" subtitle="在途待审批的学籍异动申请">
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-status-changes' })">学籍异动 →</button>
+        </template>
+        <div v-if="!remindersLoading && !remindersError" class="mp-stack">
+          <EmptyState
+            v-if="!statusChangeReminders.items || !statusChangeReminders.items.length"
+            title="暂无在途异动"
+            description="当前没有待审批的学籍异动申请"
+          />
+          <DataTable v-else :columns="statusChangeColumns" :rows="statusChangeReminders.items" row-key="changeId">
+            <template #cell-status="{ row }"><AppStatusTag :status="row.status" /></template>
+          </DataTable>
+        </div>
+      </AppSectionCard>
+
+      <!-- 学业预警提醒 -->
+      <AppSectionCard id="adb-warning-reminders" title="学业预警提醒" subtitle="在办（待处置）学业预警，高等级优先">
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-warnings' })">学业预警 →</button>
+        </template>
+        <div v-if="!remindersLoading && !remindersError" class="mp-stack">
+          <EmptyState
+            v-if="!warningReminders.items || !warningReminders.items.length"
+            title="暂无在办预警"
+            description="当前没有待处置的学业预警"
+          />
+          <DataTable v-else :columns="warningColumns" :rows="warningReminders.items" row-key="warningId">
+            <template #cell-level="{ row }"><AppRiskTag :level="row.level" /></template>
+          </DataTable>
+        </div>
+      </AppSectionCard>
+
+      <!-- 毕业资格预警 -->
+      <AppSectionCard id="adb-graduation-warnings" title="毕业资格预警" subtitle="预审异常 / 待学院复核 / 待教务终审 / 延毕">
+        <template #header-extra>
+          <button class="mp-link" @click="$router.push({ name: 'aa-graduation' })">毕业资格预审 →</button>
+        </template>
+        <div v-if="!remindersLoading && !remindersError" class="mp-stack">
+          <EmptyState
+            v-if="!graduationWarnings.items || !graduationWarnings.items.length"
+            title="暂无预警"
+            description="当前没有异常或待复核的毕业资格预审结果"
+          />
+          <DataTable v-else :columns="graduationColumns" :rows="graduationWarnings.items" row-key="resultId">
+            <template #cell-status="{ row }"><AppStatusTag :status="row.status" /></template>
+          </DataTable>
+        </div>
+      </AppSectionCard>
+
+      <!-- 教务待办 -->
+      <AppSectionCard id="adb-todos" title="教务待办" subtitle="跨模块待处理事项聚合，点击直达处理页面">
+        <ErrorState v-if="remindersError" :description="remindersError" @retry="loadReminders" />
+        <LoadingState v-else-if="remindersLoading" />
+        <div v-else class="mp-stack">
+          <EmptyState v-if="!todos.length" title="暂无待办" description="当前数据范围内没有待处理事项" />
+          <div v-for="t in todos" :key="t.key" class="mp-kv aa-todo-row">
+            <span class="mp-kv__k">
+              <AppStatusTag :type="t.count > 0 ? 'warning' : 'default'" dot>{{ t.count }}</AppStatusTag>
+              <span>{{ t.label }}</span>
+            </span>
+            <button class="mp-link" :disabled="!t.count" @click="$router.push({ name: t.drillRoute })">去处理</button>
+          </div>
+        </div>
+      </AppSectionCard>
     </div>
   </ModulePageShell>
 </template>
 
 <script>
-/** 教务看板（/admin/academic-affairs）：GET /academic-affairs/dashboard。当前学期 + 指标卡 + 模块状态。 */
-import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppSectionCard, AppStatusTag } from '@/components/common'
+/** 教务看板（/admin/academic-affairs）：GET /academic-affairs/dashboard + GET /academic-affairs/dashboard/reminders。
+ * 当前学期 + 指标卡 + 模块状态 + 六卡提醒（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办）。
+ * ?panel= 深链接滚动定位到对应分栏（对齐岗位实习看板 InternshipDashboardView 同款 PANEL_ANCHORS 模式）。 */
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中' }
 
+const PANEL_ANCHORS = {
+  gradeProgress: 'adb-grade-progress',
+  examReminders: 'adb-exam-reminders',
+  statusChangeReminders: 'adb-status-change-reminders',
+  warningReminders: 'adb-warning-reminders',
+  graduationWarnings: 'adb-graduation-warnings',
+  todos: 'adb-todos'
+}
+
 export default {
   name: 'AaDashboardView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppMetricCard, AppSectionCard, AppStatusTag },
+  components: {
+    ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
+    AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag
+  },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -80,7 +207,51 @@ export default {
       error: '',
       currentTerm: null,
       summaryCards: [],
-      moduleCards: []
+      moduleCards: [],
+      // 六卡提醒
+      remindersLoading: true,
+      remindersError: '',
+      gradeProgress: {},
+      examReminders: {},
+      statusChangeReminders: {},
+      warningReminders: {},
+      graduationWarnings: {},
+      todos: [],
+      gradeColumns: [
+        { key: 'courseName', title: '课程' },
+        { key: 'className', title: '班级' },
+        { key: 'teacherKey', title: '任课教师' },
+        { key: 'status', title: '状态' },
+        { key: 'progressRate', title: '录入进度' }
+      ],
+      examColumns: [
+        { key: 'courseName', title: '课程' },
+        { key: 'className', title: '班级' },
+        { key: 'examDate', title: '考试日期' },
+        { key: 'startTime', title: '开始' },
+        { key: 'endTime', title: '结束' },
+        { key: 'teacherName', title: '任课教师' }
+      ],
+      statusChangeColumns: [
+        { key: 'studentName', title: '学生' },
+        { key: 'changeTypeLabel', title: '异动类型' },
+        { key: 'currentNode', title: '当前节点' },
+        { key: 'status', title: '状态' },
+        { key: 'submittedAt', title: '提交时间' }
+      ],
+      warningColumns: [
+        { key: 'studentName', title: '学生' },
+        { key: 'level', title: '等级' },
+        { key: 'reason', title: '原因' },
+        { key: 'status', title: '状态' }
+      ],
+      graduationColumns: [
+        { key: 'studentName', title: '学生' },
+        { key: 'batchName', title: '批次' },
+        { key: 'overall', title: '系统判定' },
+        { key: 'conclusion', title: '结论' },
+        { key: 'status', title: '状态' }
+      ]
     }
   },
   computed: {
@@ -89,10 +260,23 @@ export default {
         return `当前学期：${this.currentTerm.yearCode} 第 ${this.currentTerm.termNo} 学期`
       }
       return '尚未设置当前学期 · 教务过程从「学年学期」开始'
+    },
+    gradeSubmittedCount() {
+      const c = this.gradeProgress.counts || {}
+      return (c.SUBMITTED || 0) + (c.ACADEMIC_REVIEW || 0) + (c.PUBLISHED || 0)
+    }
+  },
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.$nextTick(() => this.scrollToPanel(panel))
+      }
     }
   },
   created() {
     this.load()
+    this.loadReminders()
   },
   methods: {
     statusLabel(s) {
@@ -101,6 +285,12 @@ export default {
     termRange(t) {
       if (t.startDate && t.endDate) return `${t.startDate} ~ ${t.endDate}`
       return '起止日期未设置'
+    },
+    scrollToPanel(panel) {
+      const id = PANEL_ANCHORS[(panel || '').toString()]
+      if (!id) return
+      const el = document.getElementById(id)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     },
     async load() {
       this.loading = true
@@ -115,6 +305,24 @@ export default {
         this.error = res.message
       }
       this.loading = false
+    },
+    async loadReminders() {
+      this.remindersLoading = true
+      this.remindersError = ''
+      const res = await academicAffairsApi.getDashboardReminders()
+      if (res.code === 0) {
+        const d = res.data || {}
+        this.gradeProgress = d.gradeProgress || {}
+        this.examReminders = d.examReminders || {}
+        this.statusChangeReminders = d.statusChangeReminders || {}
+        this.warningReminders = d.warningReminders || {}
+        this.graduationWarnings = d.graduationWarnings || {}
+        this.todos = d.todos || []
+      } else {
+        this.remindersError = res.message
+      }
+      this.remindersLoading = false
+      this.$nextTick(() => this.scrollToPanel(this.$route.query.panel))
     }
   }
 }
@@ -166,5 +374,8 @@ export default {
 .aa-mod-cell__label {
   font-size: 14px;
   color: var(--text-700, #4e5969);
+}
+.aa-todo-row {
+  align-items: center;
 }
 </style>
