@@ -2,6 +2,8 @@
   <AppDrawer :visible="visible" :title="template ? template.name : '批量导入'" @update:visible="onClose">
     <div v-if="!template" class="aid-note">导入模板加载中…</div>
     <template v-else>
+      <AccountImportBoundaryNotice class="aid-boundary" />
+
       <section class="aid-sec">
         <div class="aid-sec__title">① 下载模板</div>
         <p class="aid-note">请使用官方模板填写数据，字段说明如下（* 为必填）：</p>
@@ -76,11 +78,12 @@
  */
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { AppButton } from '@/components/ui'
+import AccountImportBoundaryNotice from '@/components/common/AccountImportBoundaryNotice.vue'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AcademicImportDrawer',
-  components: { AppDrawer, AppButton },
+  components: { AppDrawer, AppButton, AccountImportBoundaryNotice },
   props: {
     visible: { type: Boolean, default: false },
     template: { type: Object, default: null },
@@ -137,6 +140,9 @@ export default {
 <style scoped>
 .aid-sec {
   margin-bottom: var(--space-5);
+}
+.aid-boundary {
+  margin-bottom: var(--space-4);
 }
 .aid-sec__title {
   font-size: var(--font-size-base);

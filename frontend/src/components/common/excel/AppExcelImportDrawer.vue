@@ -16,6 +16,8 @@
       </div>
 
       <div class="aeid__body">
+        <AccountImportBoundaryNotice v-if="showAccountBoundary" class="aeid__boundary" />
+
         <!-- Step 0：模板 + 上传 -->
         <AppExcelUpload
           v-if="step === 0"
@@ -88,6 +90,7 @@
 import { AppButton } from '@/components/ui'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
+import AccountImportBoundaryNotice from '@/components/common/AccountImportBoundaryNotice.vue'
 import AppExcelUpload from './AppExcelUpload.vue'
 import AppImportPreviewTable from './AppImportPreviewTable.vue'
 import AppImportErrorSummary from './AppImportErrorSummary.vue'
@@ -96,11 +99,12 @@ const EMPTY_PRE = { total: 0, validRows: 0, invalidRows: 0, passed: false, rows:
 
 export default {
   name: 'AppExcelImportDrawer',
-  components: { AppButton, AppExcelUpload, AppImportPreviewTable, AppImportErrorSummary },
+  components: { AppButton, AccountImportBoundaryNotice, AppExcelUpload, AppImportPreviewTable, AppImportErrorSummary },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, default: '批量导入' },
     templateName: { type: String, default: 'Excel 模板' },
+    showAccountBoundary: { type: Boolean, default: false },
     requiredFields: { type: [String, Array], default: '' },
     previewFields: { type: Array, default: () => [] },
     downloadTemplateFn: { type: Function, default: null },
@@ -212,6 +216,9 @@ export default {
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
+}
+.aeid__boundary {
+  margin-bottom: var(--space-4);
 }
 .aeid {
   width: min(680px, 100%);

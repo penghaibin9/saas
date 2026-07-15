@@ -199,7 +199,7 @@ def _rec_in_scope(scope: dict, db, rec, stu) -> bool:
             college_name = col.college_name if col else None
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=rec.advisor_name,
-                           college_name=college_name)
+                           college_name=college_name, advisor_user_id=rec.advisor_user_id)
 
 
 def _filter_scope(db, rows, scope):

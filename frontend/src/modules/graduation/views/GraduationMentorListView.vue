@@ -82,6 +82,7 @@
     <AppExcelImportDrawer
       v-model:visible="importVisible"
       title="导入导师名单"
+      show-account-boundary
       template-name="导师名单导入模板.xlsx"
       :required-fields="['教师工号', '教师姓名']"
       :preview-fields="['teacherNo', 'teacherName', 'mentorType', 'title', 'collegeName', 'maxCapacity']"

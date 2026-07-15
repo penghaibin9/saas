@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.security import hash_password
+from app.core.student_lifecycle import ENROLLED
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import platform_defaults as D
 
@@ -233,6 +234,10 @@ def create_tenant(body: dict) -> dict:
     name = str(body.get("tenantName", "")).strip()
     if not code or not name:
         raise AppException("VALIDATION_ERROR", "tenantCode 与 tenantName 必填")
+    admin_login = str(body.get("adminLoginName") or "").strip()
+    admin_name = str(body.get("adminRealName") or "").strip()
+    if bool(admin_login) != bool(admin_name):
+        raise AppException("VALIDATION_ERROR", "首位学校管理员账号与姓名必须同时填写")
     with session() as db:
         dup = db.scalars(select(Tenant).where(Tenant.tenant_code == code,
                                               Tenant.is_deleted.is_(False))).first()
@@ -258,7 +263,15 @@ def create_tenant(body: dict) -> dict:
         "trialEndAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
         "expireAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
     })
-    return get_tenant(tid)
+    from app.services.saas_role_service import ensure_builtin_roles
+    with session() as db:
+        role_report = ensure_builtin_roles(db, tid)
+        db.commit()
+    result = get_tenant(tid)
+    result["initialization"] = {"roles": role_report}
+    if admin_login:
+        result["schoolAdmin"] = create_school_admin(tid, admin_login, admin_name)
+    return result
 
 
 def update_tenant_meta(tenant_id: int, patch: dict) -> dict:
@@ -365,7 +378,7 @@ def list_users(tenant_id: int) -> list[dict]:
 
 def create_school_admin(tenant_id: int, login_name: str, real_name: str) -> dict:
     _require_db()
-    from app.models import User
+    from app.models import Role, User, UserRole
     meta = tenant_meta(tenant_id)
     max_users = meta.get("maxUsers") or get_package(meta.get("packageCode", "professional"))["maxUsers"]
     with session() as db:
@@ -373,14 +386,33 @@ def create_school_admin(tenant_id: int, login_name: str, real_name: str) -> dict
             User.tenant_id == tenant_id, User.is_deleted.is_(False))) or 0
         if count >= max_users:
             raise AppException("NO_PERMISSION", f"已达套餐账号上限（{max_users}），无法新建")
-        dup = db.scalars(select(User).where(User.login_name == login_name,
-                                            User.is_deleted.is_(False))).first()
+        # 唯一键不包含 is_deleted；历史软删账号也必须提前报业务冲突，避免落到 DB 500。
+        dup = db.scalars(select(User).where(User.tenant_id == tenant_id,
+                                            User.login_name == login_name)).first()
         if dup:
             raise AppException("DATA_CONFLICT", "登录名已存在")
         pwd = "Tmp@" + secrets.token_urlsafe(8)
         u = User(tenant_id=tenant_id, login_name=login_name, real_name=real_name,
-                 password_hash=hash_password(pwd), user_type="SCHOOL_ADMIN", status="ACTIVE")
+                 password_hash=hash_password(pwd), user_type="SCHOOL_ADMIN", status="ACTIVE",
+                 must_change_password=True)
         db.add(u)
+        db.flush()
+        role = db.scalars(select(Role).where(
+            Role.tenant_id == tenant_id,
+            Role.role_code == "SCHOOL_ADMIN")).first()
+        if role is None:
+            role = Role(tenant_id=tenant_id, role_code="SCHOOL_ADMIN", role_name="学校管理员",
+                        role_type="SYSTEM", status="ACTIVE",
+                        remark="租户开通时自动初始化；权限由平台内置模板约束")
+            db.add(role)
+            db.flush()
+        elif role.is_deleted:
+            role.is_deleted = False
+            role.status = "ACTIVE"
+            role.version = int(role.version or 0) + 1
+        elif role.status not in ("ACTIVE", "ENABLED"):
+            raise AppException("DATA_CONFLICT", "学校管理员内置角色已停用，请先恢复角色模板")
+        db.add(UserRole(tenant_id=tenant_id, user_id=u.id, role_id=role.id, status="ACTIVE"))
         db.commit()
         db.refresh(u)
         # 初始密码只随本响应返回一次，不落任何日志
@@ -398,6 +430,9 @@ def set_user_status(user_id: int, status: str) -> dict:
         u.status = status
         u.version += 1
         db.commit()
+        if status != "ACTIVE":
+            from app.core.token_store import revoke_refresh_by_user
+            revoke_refresh_by_user(f"db-{u.id}")
         return {"userId": str(u.id), "status": u.status}
 
 
@@ -410,8 +445,11 @@ def reset_user_password(user_id: int) -> dict:
             raise not_found("账号不存在")
         pwd = "Rst@" + secrets.token_urlsafe(8)
         u.password_hash = hash_password(pwd)
+        u.must_change_password = True
         u.version += 1
         db.commit()
+        from app.core.token_store import revoke_refresh_by_user
+        revoke_refresh_by_user(f"db-{u.id}")
         return {"userId": str(u.id), "newPassword": pwd,
                 "notice": "新密码仅本次显示，不写入日志"}
 
@@ -429,7 +467,7 @@ def reset_demo_data() -> dict:
         for i in range(5):
             s = StudentProfile(tenant_id=DEMO_TID, student_no=f"2026D{i+1:04d}",
                                real_name=f"演示学生{i+1}", gender="男" if i % 2 == 0 else "女",
-                               grade="2026", current_stage="ON_CAMPUS", student_status="NORMAL",
+                               grade="2026", current_stage=ENROLLED, student_status="NORMAL",
                                status="ACTIVE")
             db.add(s)
             db.flush()

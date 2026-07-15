@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, select
 
+from app.core.student_lifecycle import ENROLLED, INTERN
+
 logger = logging.getLogger("app.sandbox")
 
 SANDBOX_TID = 1000000000000000007
@@ -141,7 +143,7 @@ def seed_sandbox(db) -> dict:
             sp = StudentProfile(tenant_id=SANDBOX_TID, student_no=f"2026S{i:04d}", real_name=nm,
                                 gender="男" if i % 2 else "女", grade="2026",
                                 college_id=_college_id, major_id=k.major_id, class_id=k.id,
-                                current_stage="INTERNSHIP" if i == 1 else "ON_CAMPUS",
+                                current_stage=INTERN if i == 1 else ENROLLED,
                                 student_status="NORMAL", status="ACTIVE")
             db.add(sp); db.flush()
             db.add(StudentContact(tenant_id=SANDBOX_TID, student_id=sp.id, contact_type="PHONE",

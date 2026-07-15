@@ -93,6 +93,13 @@
 
         <!-- 账号登录（真实 /api/v1/auth/login） -->
         <template v-if="tab === 'account'">
+          <label class="lgx-lb">学校编码 <span class="lgx-optional">可选</span></label>
+          <input
+            v-model.trim="form.tenantCode"
+            class="lgx-in"
+            placeholder="学校专属入口可自动带入；账号重名时填写"
+            autocomplete="organization"
+          />
           <label class="lgx-lb">账号</label>
           <input v-model.trim="form.loginName" class="lgx-in" placeholder="工号/手机号" @keyup.enter="doLogin" />
           <label class="lgx-lb">密码</label>
@@ -192,10 +199,10 @@ export default {
       agree: true,
       loading: false,
       error: '',
-      form: { loginName: '', password: '' },
+      form: { tenantCode: '', loginName: '', password: '' },
       sms: { phone: '', code: '' },
       countdown: 0,
-      _timer: null
+      timerId: null
     }
   },
   computed: {
@@ -204,7 +211,11 @@ export default {
     }
   },
   beforeUnmount() {
-    if (this._timer) clearInterval(this._timer)
+    if (this.timerId) clearInterval(this.timerId)
+  },
+  mounted() {
+    const tenantCode = String(this.$route.query.tenant || '').trim()
+    if (tenantCode) this.form.tenantCode = tenantCode
   },
   methods: {
     switchTab(t) {
@@ -219,7 +230,11 @@ export default {
       }
       this.loading = true
       try {
-        const data = await loginWithPassword(this.form.loginName, this.form.password)
+        const data = await loginWithPassword(
+          this.form.loginName,
+          this.form.password,
+          this.form.tenantCode
+        )
         toast.success(`欢迎，${data.displayName}（${data.currentRole.roleName}）`)
         this.$router.push(this.$route.query.redirect || '/')
       } catch (e) {
@@ -236,8 +251,8 @@ export default {
       }
       this.notReady('短信登录')
       this.countdown = 60
-      this._timer = setInterval(() => {
-        if (--this.countdown <= 0) clearInterval(this._timer)
+      this.timerId = setInterval(() => {
+        if (--this.countdown <= 0) clearInterval(this.timerId)
       }, 1000)
     },
     notReady(name) {
@@ -481,6 +496,12 @@ export default {
   margin: 14px 0 6px;
 }
 .lgx-lb:first-of-type { margin-top: 0; }
+.lgx-optional {
+  margin-left: 4px;
+  color: #8494b5;
+  font-size: 11px;
+  font-weight: 400;
+}
 .lgx-field { position: relative; }
 .lgx-in {
   width: 100%;

@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, Boolean, DateTime, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.student_lifecycle import ENROLLED
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 
 
@@ -24,7 +25,7 @@ class StudentProfile(PKMixin, TenantMixin, CommonMixin, Base):
     major_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     grade: Mapped[str | None] = mapped_column(String(20))
-    current_stage: Mapped[str] = mapped_column(String(50), nullable=False, default="ENROLLED",
+    current_stage: Mapped[str] = mapped_column(String(50), nullable=False, default=ENROLLED,
                                                comment="生命周期阶段（冻结册 §5.1 枚举）")
     student_status: Mapped[str] = mapped_column(String(50), nullable=False, default="NORMAL",
                                                 comment="学生状态（§5.2：NORMAL/MERGED/RECYCLED 等）")

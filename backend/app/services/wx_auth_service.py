@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.security import create_access_token, decode_token, verify_password
 from app.db.session import db_enabled, get_sessionmaker
-from app.services.auth_service_db import build_login_result
+from app.services.auth_service_db import _find_login_user, build_login_result
 
 WX_CODE2SESSION_URL = "https://api.weixin.qq.com/sns/jscode2session"
 
@@ -72,7 +72,8 @@ def wx_login(js_code: str) -> dict:
     return {"needBind": True, "wxToken": wx_token}
 
 
-def wx_bind(wx_token: str, login_name: str, password: str) -> dict:
+def wx_bind(wx_token: str, login_name: str, password: str,
+            tenant_code: str | None = None) -> dict:
     """首次绑定：用 wx_login 返回的 wxToken(携带 openid) + 学号/工号+密码，校验后绑定 openid 并登录。"""
     if not db_enabled():
         raise AppException("UNAUTHORIZED", "微信登录需启用数据库（DB_ENABLED=true）")
@@ -86,17 +87,14 @@ def wx_bind(wx_token: str, login_name: str, password: str) -> dict:
     login_name = (login_name or "").strip()
     if not login_name or not password:
         raise AppException("VALIDATION_ERROR", "请输入学号/工号与密码")
-    from app.models import User
     db = get_sessionmaker()()
     try:
         # openid 已被其他账号绑定 → 拒绝（一个 openid 只绑一个账号）
         if _find_user_by_openid(db, openid):
             raise AppException("DATA_CONFLICT", "该微信已绑定其他校园账号，请直接用微信登录或账号密码登录")
-        user = db.scalars(select(User).where(User.login_name == login_name,
-                                             User.is_deleted.is_(False),
-                                             User.status == "ACTIVE")).first()
+        user = _find_login_user(db, login_name, (tenant_code or "").strip() or None)
         if not user or not verify_password(password, user.password_hash):
-            raise AppException("UNAUTHORIZED", "账号或密码不正确")
+            raise AppException("UNAUTHORIZED", "账号、学校编码或密码不正确")
         user.wx_openid = openid
         db.commit()
         db.refresh(user)

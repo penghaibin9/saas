@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 
 from app.core.context import current_tenant_id, get_current_user_ctx, get_request_meta, get_trace_id
 from app.core.exceptions import AppException, not_found
+from app.core.student_lifecycle import ADMITTED
 from app.db.session import get_sessionmaker
 from app.models import (SecurityAuditLog, StudentContact, StudentProfile, StudentStageEvent,
                         UnifiedMessage, UnifiedTodo, WorkflowInstance, WorkflowTask)
@@ -155,7 +156,7 @@ def create_student(body) -> dict:
                            college_id=int(body.collegeId) if body.collegeId else None,
                            major_id=int(body.majorId) if body.majorId else None,
                            class_id=int(body.classId) if body.classId else None,
-                           current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
+                           current_stage=ADMITTED, student_status="NORMAL", status="ACTIVE")
         db.add(s)
         db.flush()
         if body.phone:
@@ -163,7 +164,7 @@ def create_student(body) -> dict:
                                   contact_value_encrypted=body.phone, is_primary=True,
                                   verified_status="UNVERIFIED"))
         db.add(StudentStageEvent(tenant_id=_tid(), student_id=s.id, from_stage=None,
-                                 to_stage="ORIENTATION", reason="建档", source_module="student"))
+                                 to_stage=ADMITTED, reason="建档", source_module="student"))
         db.commit()
         db.refresh(s)
         return _student_row(s, body.phone)

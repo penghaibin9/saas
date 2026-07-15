@@ -6,8 +6,9 @@
  * 留痕规则：所有写操作（含导入导出）均追加 operationLogList / auditLogs，不提供删除审计日志的方法。
  */
 /* P2 · 真实后端桥 */
-import { withFallback } from '@/services/http/client'
+import { request, requestBlob, requestUpload, withFallback } from '@/services/http/client'
 import * as realApi from '@/services/http/adapters'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import {
   tenantBrandConfig,
   currentRole,
@@ -50,6 +51,21 @@ function ok(data) {
 
 function fail(message) {
   return Promise.resolve({ code: 1, data: null, message })
+}
+
+function apiError(error) {
+  return { code: error?.code || 1, data: null, message: error?.message || '请求失败' }
+}
+
+function saveBlob(blob, filename) {
+  const href = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = href
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(href)
 }
 
 function clone(v) {
@@ -254,6 +270,58 @@ export const systemApi = {
     if (!confirm) return ok(preview)
     audit({ module: 'EXPORT', action: 'IMPORT', actionLabel: '导入', target: `用户账号（批次 ${preview.batchNo}）`, summary: `导入 ${preview.total} 行：成功 ${preview.valid} · 失败 ${preview.invalid}，错误清单已留存` })
     return ok({ ...preview, receipt: `已导入 ${preview.valid} 行，失败 ${preview.invalid} 行（可下载错误清单修正后重新导入）` })
+  },
+
+  /** 师生账号唯一导入入口：真实 xlsx 上传，不允许写操作回退 mock。 */
+  async downloadIdentityImportTemplate() {
+    try {
+      const blob = await requestBlob('/system/identity-import/template')
+      saveBlob(blob, '师生账号导入模板.xlsx')
+      return { code: 0, data: {}, message: '模板已下载' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async validateIdentityImportFile(file) {
+    try {
+      const data = await requestUpload('/system/identity-import/validate-file', file)
+      return { code: 0, data, message: 'Excel 解析及预检完成' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async confirmIdentityImportBatch(batchNo) {
+    try {
+      const data = await request('/system/identity-import/confirm-batch', {
+        method: 'POST', body: { batchNo }
+      })
+      const entities = data.entities || {}
+      const students = entities.studentAccounts?.created || 0
+      const teachers = entities.teachers?.created || 0
+      if (data.credentialReceipt) downloadXlsxFromApi(data.credentialReceipt)
+      return {
+        code: 0,
+        data: {
+          ...data,
+          receipt: `已创建学生账号 ${students} 个、教师账号 ${teachers} 个${data.credentialReceipt ? '，初始凭据回执已下载' : ''}`
+        },
+        message: '师生账号已整批创建'
+      }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async downloadIdentityImportErrors(batchNo) {
+    try {
+      const blob = await requestBlob(`/system/identity-import/batches/${encodeURIComponent(batchNo)}/errors`)
+      saveBlob(blob, `师生账号导入错误_${batchNo}.xlsx`)
+      return { code: 0, data: {}, message: '错误回执已下载' }
+    } catch (error) {
+      return apiError(error)
+    }
   },
 
   /** 导出：受数据范围限制，敏感字段按选择脱敏，文件带水印，动作留痕 */
