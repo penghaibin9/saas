@@ -106,6 +106,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 教务·缓考首级审批（13B 考务 D-08）：辅导员对本人所带班级学生的缓考申请首级审核，
         # 仅此一个 academicAffairs.* 点，不含其它教务权限（其余节点由任课教师/学院/教务处按 academicAffairs.* 通配覆盖）
         "academicAffairs.deferredExam.counselorReview",
+        # 教务·学籍异动辅导员初审（13B 学籍异动 Tier1 R1）：辅导员对本人所带班级学生的休学/复学/
+        # 退学/转专业申请首级审核（范围限本班，service 端 _check_node_authority 收敛），不授予发起/学院/教务处终审。
+        "academicAffairs.statusChange.counselorReview",
     },
     # 毕设角色权限只决定“能做什么”；具体学生/评阅/答辩组必须再由业务关系收敛。
     "GRADUATION_ADMIN": {"graduationDesign.*"},

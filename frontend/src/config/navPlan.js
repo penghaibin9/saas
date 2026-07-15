@@ -248,7 +248,14 @@ export const NAV_PLAN = [
     mod('aa-status-change', '学籍异动', '/admin/academic-affairs/status-changes', [
       I('异动台账', '/admin/academic-affairs/status-changes'),
       I('发起异动', '/admin/academic-affairs/status-changes/new'),
-      ...P('休学申请', '复学申请', '退学申请', '转专业申请', '转班申请', '保留学籍申请', '异动审批', '异动生效', '异动统计', '异动归档')
+      I('休学申请', '/admin/academic-affairs/status-changes/suspend', 'academicAffairs.statusChange.apply'),
+      I('复学申请', '/admin/academic-affairs/status-changes/resume', 'academicAffairs.statusChange.apply'),
+      I('退学申请', '/admin/academic-affairs/status-changes/withdraw', 'academicAffairs.statusChange.apply'),
+      I('转专业申请', '/admin/academic-affairs/status-changes/transfer-major', 'academicAffairs.statusChange.apply'),
+      I('异动审批', '/admin/academic-affairs/status-changes/approval', 'academicAffairs.statusChange.collegeReview'),
+      I('异动生效', '/admin/academic-affairs/status-changes/effective', 'academicAffairs.statusChange.view'),
+      I('异动统计', '/admin/academic-affairs/status-changes/stats', 'academicAffairs.statusChange.view'),
+      ...P('转班申请', '保留学籍申请', '异动归档')
     ]),
     mod('aa-orgs', '学院专业班级', '/admin/academic-affairs/orgs', [
       I('学院管理', '/admin/academic-affairs/orgs?tab=college', 'academicAffairs.org.view'),

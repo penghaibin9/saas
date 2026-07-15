@@ -78,7 +78,8 @@ export default {
       loading: true,
       error: '',
       rows: [],
-      filters: { keyword: '', status: '' },
+      // keyword 支持从 query 预填（供「异动生效」等页跳转「学籍档案」时按学号/姓名带入检索）
+      filters: { keyword: this.$route.query.keyword || '', status: '' },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
         { key: 'student', title: '学生' },

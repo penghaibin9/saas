@@ -159,7 +159,17 @@ def registrations(batchId: int = Path(...), page: int = 1, pageSize: int = 50, u
     return success(paginate(items, total, page, pageSize))
 
 
-# ═══════════ 学籍异动（P2，休学/复学/退学/转专业/留级）═══════════
+# ═══════════ 学籍异动（P2 台账/发起 + Tier1 R1 分类申请入口/审批/生效/统计，休学/复学/退学/转专业/留级）═══════════
+# 权限：apply=发起（教务处/学院教务代录，学院教务限本院）；view=只读兜底；
+# counselorReview/collegeReview/officeReview=按审批节点收敛（辅导员限本班/学院教务限本院/教务处终审全校）。
+_SC_APPLY = "academicAffairs.statusChange.apply"
+_SC_VIEW = "academicAffairs.statusChange.view"
+_SC_COUNSELOR = "academicAffairs.statusChange.counselorReview"
+_SC_COLLEGE = "academicAffairs.statusChange.collegeReview"
+_SC_OFFICE = "academicAffairs.statusChange.officeReview"
+_SC_LIST_VIEW = require_any_permission(_SC_VIEW, _SC_COUNSELOR, _SC_COLLEGE, _SC_OFFICE)
+_SC_REVIEW_ANY = require_any_permission(_SC_COUNSELOR, _SC_COLLEGE, _SC_OFFICE)
+
 
 class StatusChangeSubmit(BaseModel):
     studentId: str = Field(..., min_length=1)
@@ -175,26 +185,31 @@ class AaReviewBody(BaseModel):
     reason: Optional[str] = Field("", max_length=500)
 
 
-@router.post("/status-changes", summary="发起学籍异动")
-def status_change_submit(body: StatusChangeSubmit, user=Depends(require_staff)):
+@router.post("/status-changes", summary="发起学籍异动（含休学/复学/退学/转专业分类申请入口，changeType 区分）")
+def status_change_submit(body: StatusChangeSubmit, user=Depends(require_permission(_SC_APPLY))):
     return success(change_svc.submit(body, user), message="异动已提交")
 
 
-@router.get("/status-changes", summary="学籍异动列表")
+@router.get("/status-changes", summary="学籍异动列表（台账/分类申请记录/异动生效均复用，范围过滤）")
 def status_changes(changeType: Optional[str] = None, status: Optional[str] = None,
                    studentId: Optional[str] = None, page: int = 1, pageSize: int = 20,
-                   user=Depends(require_staff)):
+                   user=Depends(_SC_LIST_VIEW)):
     items, total = change_svc.list_changes(user, changeType, status, studentId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/status-changes/stats", summary="学籍异动统计（按类型/状态/在途节点聚合，范围过滤）")
+def status_change_stats(termCode: Optional[str] = None, user=Depends(require_permission(_SC_VIEW))):
+    return success(change_svc.stats(user, termCode))
+
+
 @router.get("/status-changes/{changeId}", summary="异动详情")
-def status_change_detail(changeId: int = Path(...), user=Depends(require_staff)):
+def status_change_detail(changeId: int = Path(...), user=Depends(_SC_LIST_VIEW)):
     return success(change_svc.get_change(changeId, user))
 
 
-@router.post("/status-changes/{changeId}/review", summary="异动审批（多节点，终审经单一入口生效）")
-def status_change_review(body: AaReviewBody, changeId: int = Path(...), user=Depends(require_staff)):
+@router.post("/status-changes/{changeId}/review", summary="异动审批（多节点，终审经单一入口生效；节点授权见 service）")
+def status_change_review(body: AaReviewBody, changeId: int = Path(...), user=Depends(_SC_REVIEW_ANY)):
     return success(change_svc.review(changeId, user, body.action, body.reason or ""), message="已处理")
 
 
