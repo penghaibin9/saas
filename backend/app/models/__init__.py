@@ -109,6 +109,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaGraduationAuditResult, AaProgram,
                                          AaProgramBinding, AaProgramCourse,
                                          AaProgramGraduationRequirement,
+                                         AaQualityRecord, AaQualityRectification,
                                          AaRegistration, AaRegistrationBatch,
                                          AaRegistrationDeferral,
                                          AaRegistrationException,

@@ -1043,6 +1043,32 @@ export const academicAffairsQualityApi = {
     } catch (e) {
       return toErr(e)
     }
+  },
+  /* R3 续工：01督导听课/02巡课/03检查/04事故 共用 records（recordType 判别） */
+  listRecords(params = {}) { return callList(`${BASE}/quality/records`, params) },
+  getRecord(id) { return call(() => request(`${BASE}/quality/records/${id}`)) },
+  createRecord(body) { return call(() => request(`${BASE}/quality/records`, { method: 'POST', body })) },
+  updateRecord(id, body) { return call(() => request(`${BASE}/quality/records/${id}`, { method: 'PUT', body })) },
+  confirmRecord(id) { return call(() => request(`${BASE}/quality/records/${id}/confirm`, { method: 'POST' })) },
+  closeRecord(id) { return call(() => request(`${BASE}/quality/records/${id}/close`, { method: 'POST' })) },
+  cancelRecord(id) { return call(() => request(`${BASE}/quality/records/${id}`, { method: 'DELETE' })) },
+  /* 05质量整改/06整改跟进 共用 rectifications（同一任务表两个视角） */
+  listRectifications(params = {}) { return callList(`${BASE}/quality/rectifications`, params) },
+  getRectification(id) { return call(() => request(`${BASE}/quality/rectifications/${id}`)) },
+  createRectification(body) { return call(() => request(`${BASE}/quality/rectifications`, { method: 'POST', body })) },
+  rectifyFromRecord(recordId, body) { return call(() => request(`${BASE}/quality/records/${recordId}/rectify`, { method: 'POST', body })) },
+  addProgress(id, note) { return call(() => request(`${BASE}/quality/rectifications/${id}/progress`, { method: 'POST', body: { note } })) },
+  submitRectification(id, note) { return call(() => request(`${BASE}/quality/rectifications/${id}/submit`, { method: 'POST', body: { note } })) },
+  reviewRectification(id, action, reason = '') { return call(() => request(`${BASE}/quality/rectifications/${id}/review`, { method: 'POST', body: { action, reason } })) },
+  /* 09质量归档：读侧聚合 + 导出（零新表） */
+  archiveOverview(params = {}) { return call(() => request(`${BASE}/quality/archive/overview`, { params })) },
+  async archiveExport(domain, params = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/quality/archive/export`, { params: { domain, ...params } })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
   }
 }
 

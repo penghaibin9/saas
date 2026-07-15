@@ -1193,3 +1193,77 @@ class AaClassAdjustmentRequest(PKMixin, TenantMixin, CommonMixin, Base):
     checked_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/CHECKED/EXECUTED/CANCELLED")
+
+
+# ═══════════ 教学质量 · 问题记录与整改（13B 教学质量 R3 续工：01/02/03/04/05/06 号三级卡）═══════════
+# 施工来源：docs/03-业务模块设计/教务中心/施工包/教学质量/三级施工卡/{01,02,03,04,05,06}-*.md（续工授权，
+# 见 CLAUDE.md §3.0）。零新增审批流程、复用既有审计与导出机制，仅两张表：
+#   t_aa_quality_record        —— 督导听课(SUPERVISION)/巡课记录(PATROL)/教学检查(INSPECTION)/教学事故(INCIDENT)
+#                                  共享一张问题发现记录表（record_type 判别），避免四套几乎相同的 CRUD。
+#   t_aa_quality_rectification —— 质量整改(发起视角)与整改跟进(跟进视角)共享同一张任务表（05/06 号卡
+#                                  §2 明确建议同批次同表，不拆两套状态机）。
+# 教学事故(INCIDENT)业务红线（对应 04 号卡 §1）：事故等级/处理规则属学校规章制度，AI 不得代拟。
+# category/conclusion/handling_note 全部为自由文本字段，前端仅给"建议选项"不锁死枚举语义，
+# 具体认定标准与处理决定必须由人工按学校真实制度填写，系统不做任何自动判定或后果联动。
+
+
+class AaQualityRecord(PKMixin, TenantMixin, CommonMixin, Base):
+    """教学质量问题发现记录（督导听课/巡课记录/教学检查/教学事故共用，record_type 判别）。
+    状态机：SUBMITTED（记录即提交，听课/巡查通常当场记录无需草稿态）→CONFIRMED（管理者复核确认；
+    INCIDENT 类型的确认动作后端强制要求 scope.all=全校范围角色，见 service 层 _require_incident_confirm）
+    →CLOSED（处理完毕关闭）。is_deleted 承载"作废/撤销"（仅 SUBMITTED 阶段允许撤销）。"""
+    __tablename__ = "t_aa_quality_record"
+
+    record_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True,
+                                              comment="SUPERVISION/PATROL/INSPECTION/INCIDENT")
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    major_id: Mapped[int | None] = mapped_column(BigInteger)
+    class_id: Mapped[int | None] = mapped_column(BigInteger)
+    teacher_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="被听课/被检查/涉事教师")
+    teacher_name: Mapped[str | None] = mapped_column(String(100))
+    course_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime, comment="听课/巡查/检查/事故发生时间")
+    location: Mapped[str | None] = mapped_column(String(200), comment="教室/地点")
+    title: Mapped[str] = mapped_column(String(200), nullable=False, comment="标题/主题")
+    category: Mapped[str | None] = mapped_column(String(50), comment="问题分类/严重等级——自由文本，非锁死枚举")
+    score: Mapped[float | None] = mapped_column(Numeric(5, 2), comment="听课/检查评分（0-100，不适用可空）")
+    conclusion: Mapped[str | None] = mapped_column(String(50), comment="结论——自由文本（如 合格/待整改/不合格）")
+    description: Mapped[str | None] = mapped_column(Text, comment="详细描述/问题说明")
+    handling_note: Mapped[str | None] = mapped_column(Text, comment="处理意见/认定结论（人工填写，系统不自动判定）")
+    need_rectify: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否需转入整改")
+    recorder_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    recorder_name: Mapped[str | None] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/CONFIRMED/CLOSED")
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    confirmed_by_name: Mapped[str | None] = mapped_column(String(100))
+
+
+class AaQualityRectification(PKMixin, TenantMixin, CommonMixin, Base):
+    """质量整改任务（05 质量整改=发起视角 + 06 整改跟进=跟进视角，同一张表两个前端页签）。
+    状态机：PENDING（待整改/待认领）→IN_PROGRESS（整改中）→SUBMITTED（责任人已提交整改说明待复核）
+    →CLOSED（复核通过关闭）；SUBMITTED 复核不通过退回 IN_PROGRESS（REJECTED 只是一次 progress 事件，
+    不落为独立终态，避免状态机膨胀）。逾期(overdue)为按 deadline 实时计算的派生属性，不落库存储。"""
+    __tablename__ = "t_aa_quality_rectification"
+
+    source_record_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="来源问题记录(t_aa_quality_record.id)")
+    source_type: Mapped[str | None] = mapped_column(String(20), comment="冗余快照:来源record_type")
+    source_title: Mapped[str | None] = mapped_column(String(200), comment="冗余快照:来源标题")
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="冗余快照:来源term_id或创建时指定，供归档按学期筛选")
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    major_id: Mapped[int | None] = mapped_column(BigInteger)
+    class_id: Mapped[int | None] = mapped_column(BigInteger)
+    requirement: Mapped[str] = mapped_column(Text, nullable=False, comment="整改要求")
+    deadline: Mapped[datetime | None] = mapped_column(DateTime, index=True, comment="整改期限")
+    responsible_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="整改责任人")
+    responsible_name: Mapped[str | None] = mapped_column(String(100))
+    initiator_key: Mapped[str | None] = mapped_column(String(100))
+    initiator_name: Mapped[str | None] = mapped_column(String(100))
+    progress_log_json: Mapped[str | None] = mapped_column(Text, comment="跟进时间线JSON数组[{time,operator,action,note}]")
+    result_note: Mapped[str | None] = mapped_column(Text, comment="复核结论")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/IN_PROGRESS/SUBMITTED/CLOSED")
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
