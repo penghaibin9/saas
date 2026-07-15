@@ -116,7 +116,10 @@ export default {
   async created() {
     const c = await academicAffairsApi.getContext()
     if (c.code === 0) this.ctx = c.data
+    const q = this.$route && this.$route.query && this.$route.query.tab
+    if (q && this.tabs.some((t) => t.key === q)) this.tab = q
     this.loadBatches()
+    if (this.tab === 'appeals') this.loadAppeals()
   },
   methods: {
     bLabel(s) { return _BL[s] || s },

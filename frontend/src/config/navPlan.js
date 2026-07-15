@@ -281,7 +281,9 @@ export const NAV_PLAN = [
       ...P('教学任务生成', '任课教师分配', '教学班生成', '合班拆班', '教学任务确认', '教师任务确认', '教学任务调整', '教学任务统计', '教学任务归档')
     ]),
     mod('aa-scheduling', '排课管理', '/admin/academic-affairs/scheduling', [
-      I('排课规则/教师可用时间/冲突报告', '/admin/academic-affairs/scheduling', 'academicAffairs.schedule.view'),
+      I('排课规则', '/admin/academic-affairs/scheduling?tab=rules', 'academicAffairs.schedule.view'),
+      I('教师可用时间', '/admin/academic-affairs/scheduling?tab=availability', 'academicAffairs.schedule.view'),
+      I('冲突报告', '/admin/academic-affairs/scheduling?tab=conflict', 'academicAffairs.schedule.view'),
       I('人工排课工作台（课表维护）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
       ...P('排课约束', '教室可用时间', '自动排课预留', '排课结果', '排课调整', '排课归档')
     ]),
@@ -306,9 +308,12 @@ export const NAV_PLAN = [
       ...P('缓考审批（并入控制台/学生小程序申请）', '考务归档')
     ]),
     mod('aa-makeup', '补考重修缓考免修', '/admin/academic-affairs/makeup', [
-      I('补考重修免修控制台（四条线）', '/admin/academic-affairs/makeup', 'academicAffairs.makeup.view'),
+      I('补考批次', '/admin/academic-affairs/makeup?tab=makeup', 'academicAffairs.makeup.view'),
+      I('重修审批', '/admin/academic-affairs/makeup?tab=retake', 'academicAffairs.makeup.view'),
+      I('免修审批', '/admin/academic-affairs/makeup?tab=exemption', 'academicAffairs.makeup.view'),
+      I('缓考合流', '/admin/academic-affairs/makeup?tab=deferred', 'academicAffairs.makeup.view'),
       I('重修免修申请（学生自助）', '/admin/academic-affairs/my-makeup', 'academicAffairs.retake.apply'),
-      ...P('补考安排', '重修班管理', '缓考申请', '统计分析', '材料归档')
+      ...P('统计分析', '材料归档')
     ]),
     mod('aa-grades', '成绩管理', '/admin/academic-affairs/grade-overview', [
       I('成绩总览', '/admin/academic-affairs/grade-overview'),
@@ -333,7 +338,13 @@ export const NAV_PLAN = [
       ...P('审核批次', '毕业学生名单', '学分达成审核', '课程达成审核', '实践环节审核', '毕设状态联动', '实习状态联动', '欠费状态联动', '处分状态联动', '毕业资格终审', '不通过原因', '审核结果', '审核归档')
     ]),
     mod('aa-textbooks', '教材管理', '/admin/academic-affairs/textbooks', [
-      I('教材控制台（目录/选用/审核/征订到货归档/发放签收/费用部分收款/库存/统计）', '/admin/academic-affairs/textbooks', 'academicAffairs.textbook.view')
+      I('教材目录', '/admin/academic-affairs/textbooks?tab=catalog', 'academicAffairs.textbook.view'),
+      I('教材选用', '/admin/academic-affairs/textbooks?tab=selection', 'academicAffairs.textbook.view'),
+      I('审核备案', '/admin/academic-affairs/textbooks?tab=review', 'academicAffairs.textbook.view'),
+      I('征订到货', '/admin/academic-affairs/textbooks?tab=order', 'academicAffairs.textbook.view'),
+      I('费用台账', '/admin/academic-affairs/textbooks?tab=fee', 'academicAffairs.textbook.view'),
+      I('教材库存', '/admin/academic-affairs/textbooks?tab=stock', 'academicAffairs.textbook.view'),
+      I('教材统计', '/admin/academic-affairs/textbooks?tab=stats', 'academicAffairs.textbook.view')
     ]),
     mod('aa-resources', '教学资源', '/admin/academic-affairs/classrooms', [
       I('教室资源', '/admin/academic-affairs/classrooms', 'academicAffairs.classroom.view'),
@@ -341,7 +352,8 @@ export const NAV_PLAN = [
       ...P('实训室资源', '设备资源', '实训室预约', '资源占用', '资源冲突', '资源维修', '资源统计')
     ]),
     mod('aa-evaluation', '教学评价', '/admin/academic-affairs/evaluation', [
-      I('评教控制台（批次/结果分级/申诉审核）', '/admin/academic-affairs/evaluation', 'academicAffairs.evaluation.view'),
+      I('评教批次（结果分级）', '/admin/academic-affairs/evaluation?tab=batches', 'academicAffairs.evaluation.view'),
+      I('申诉审核', '/admin/academic-affairs/evaluation?tab=appeals', 'academicAffairs.evaluation.view'),
       ...P('学生评教(小程序)', '教师自评', '同行评价', '督导评价', '评价统计', '评价归档')
     ]),
     mod('aa-quality', '教学质量', '/admin/academic-affairs/quality', [
