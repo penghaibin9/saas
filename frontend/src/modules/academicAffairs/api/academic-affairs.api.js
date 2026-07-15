@@ -111,6 +111,9 @@ export const academicAffairsApi = {
   setCurrentTerm(termId) {
     return call(() => request(`${BASE}/terms/${termId}/set-current`, { method: 'POST' }))
   },
+  getTermDetail(termId) {
+    return call(() => request(`${BASE}/terms/${termId}`))
+  },
   getTermWeeks(termId) {
     return call(async () => (await request(`${BASE}/terms/${termId}/weeks`)).items || [])
   },
@@ -127,26 +130,62 @@ export const academicAffairsApi = {
     return call(async () => (await request(`${BASE}/terms/archive-overview`)).items || [])
   },
 
-  /* ── 校历 ── */
-  getCalendar(termId) {
+  /* ── 校历（校历节次 Tier1 R2：节假日/补课日=按 eventType 过滤同一批事件；发布走学期状态机，
+     归档统一走教务归档模块正规批次流程，本模块不提供直写归档端点） ── */
+  getCalendar(termId, eventType) {
     return call(async () => {
-      const d = await request(`${BASE}/terms/${termId}/calendar`)
+      const d = await request(`${BASE}/terms/${termId}/calendar`, { params: eventType ? { eventType } : {} })
       return d.items || []
     })
   },
   addCalendarEvent(termId, body) {
     return call(() => request(`${BASE}/terms/${termId}/calendar`, { method: 'POST', body }))
   },
+  updateCalendarEvent(termId, eventId, body) {
+    return call(() => request(`${BASE}/terms/${termId}/calendar/${eventId}`, { method: 'PUT', body }))
+  },
+  deleteCalendarEvent(termId, eventId) {
+    return call(() => request(`${BASE}/terms/${termId}/calendar/${eventId}`, { method: 'DELETE' }))
+  },
+  getWeekCalendar(termId) {
+    return call(() => request(`${BASE}/terms/${termId}/week-calendar`))
+  },
+  publishCalendar(termId) {
+    return call(() => request(`${BASE}/terms/${termId}/calendar/publish`, { method: 'POST' }))
+  },
 
-  /* ── 作息节次 ── */
-  getTimeSlots() {
+  /* ── 作息节次（节次管理，全校统一） ── */
+  getTimeSlots(includeDisabled = false) {
     return call(async () => {
-      const d = await request(`${BASE}/time-slots`)
+      const d = await request(`${BASE}/time-slots`, { params: includeDisabled ? { includeDisabled: true } : {} })
       return d.items || []
     })
   },
   createTimeSlot(body) {
     return call(() => request(`${BASE}/time-slots`, { method: 'POST', body }))
+  },
+  updateTimeSlot(slotId, body) {
+    return call(() => request(`${BASE}/time-slots/${slotId}`, { method: 'PUT', body }))
+  },
+  deleteTimeSlot(slotId) {
+    return call(() => request(`${BASE}/time-slots/${slotId}`, { method: 'DELETE' }))
+  },
+
+  /* ── 上课时间段（节次的实际钟点，支持按校区/生效日期区间配置多套作息） ── */
+  getTimeBands(slotId) {
+    return call(async () => {
+      const d = await request(`${BASE}/time-slots/${slotId}/time-bands`)
+      return d.items || []
+    })
+  },
+  createTimeBand(slotId, body) {
+    return call(() => request(`${BASE}/time-slots/${slotId}/time-bands`, { method: 'POST', body }))
+  },
+  updateTimeBand(bandId, body) {
+    return call(() => request(`${BASE}/time-bands/${bandId}`, { method: 'PUT', body }))
+  },
+  deleteTimeBand(bandId) {
+    return call(() => request(`${BASE}/time-bands/${bandId}`, { method: 'DELETE' }))
   },
 
   /* ── 学籍名册（只读脱敏） ── */

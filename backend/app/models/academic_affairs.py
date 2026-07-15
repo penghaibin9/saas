@@ -57,6 +57,22 @@ class AaTimeSlot(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ENABLED")
 
 
+class AaClassTimeBand(PKMixin, TenantMixin, CommonMixin, Base):
+    """上课时间段（校历节次 Tier1 R2；节次的实际钟点，回链 slot_id）。
+    支持按校区/生效日期区间配置多套作息（如夏令/冬令时间），与 t_aa_time_slot 是一对多。
+    ENABLED/DISABLED。"""
+    __tablename__ = "t_aa_class_time_band"
+
+    slot_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    band_name: Mapped[str | None] = mapped_column(String(50))
+    campus_code: Mapped[str | None] = mapped_column(String(50), comment="预留多校区")
+    effective_start: Mapped[datetime | None] = mapped_column(DateTime)
+    effective_end: Mapped[datetime | None] = mapped_column(DateTime)
+    start_time: Mapped[str | None] = mapped_column(String(10), comment="HH:MM")
+    end_time: Mapped[str | None] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ENABLED")
+
+
 class AaStatusChange(PKMixin, TenantMixin, CommonMixin, Base):
     """学籍异动流水单（change_student_status 单一入口写入；P1 仅注册类，异动全类 P2）。"""
     __tablename__ = "t_aa_status_change"

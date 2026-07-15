@@ -248,7 +248,16 @@ export const NAV_PLAN = [
     mod('aa-calendar', '校历节次', '/admin/academic-affairs/calendar', [
       I('校历管理', '/admin/academic-affairs/calendar'),
       I('作息时间', '/admin/academic-affairs/time-slots'),
-      ...P('节假日配置', '补课日配置', '节次管理', '上课时间段', '教学周日历', '校历发布', '校历归档')
+      // 2026-07-15 Tier1 R2：节假日/补课日=按 eventType 过滤同一批 t_aa_calendar_event（AaCalendarView 页签）；
+      // 节次管理=复用「作息时间」页（t_aa_time_slot 全 CRUD）；上课时间段=新表 t_aa_class_time_band；
+      // 教学周日历=派生只读聚合；校历发布/归档=复用学期状态机，仅教务处/学校管理员（后端角色白名单强制）。
+      I('节假日配置', '/admin/academic-affairs/calendar?tab=holiday', 'academicAffairs.calendar.view'),
+      I('补课日配置', '/admin/academic-affairs/calendar?tab=makeup', 'academicAffairs.calendar.view'),
+      I('节次管理', '/admin/academic-affairs/time-slots', 'academicAffairs.timeslot.manage'),
+      I('上课时间段', '/admin/academic-affairs/time-slots?tab=bands', 'academicAffairs.classTimeBand.view'),
+      I('教学周日历', '/admin/academic-affairs/calendar?tab=weekCalendar', 'academicAffairs.calendar.view'),
+      I('校历发布', '/admin/academic-affairs/calendar?tab=publish', 'academicAffairs.calendarPublish.manage'),
+      I('校历归档', '/admin/academic-affairs/calendar?tab=archive', 'academicAffairs.calendarArchive.manage')
     ]),
     mod('aa-student-status', '学籍管理', '/admin/academic-affairs/roster', [
       I('学籍名册', '/admin/academic-affairs/roster'),
