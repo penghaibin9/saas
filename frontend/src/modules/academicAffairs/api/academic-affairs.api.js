@@ -643,6 +643,9 @@ export const academicAffairsApi = {
   getGradeAnalysis(term) {
     return call(() => request(`${BASE}/grade-views/analysis`, { params: term ? { term } : {} }))
   },
+  getExceptionList(params = {}) {
+    return callList(`${BASE}/grade-views/exception-list`, params)
+  },
 
   /* ── 学业预警（扫描 + 列表；多维分类/规则/跟进/统计见 academicAffairsWarningApi） ── */
   scanWarnings() {

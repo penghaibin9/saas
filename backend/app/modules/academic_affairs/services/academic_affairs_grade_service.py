@@ -777,6 +777,39 @@ def fail_list(user, term=None, page=1, page_size=50):
         return out, total
 
 
+def exception_list(user, term=None, exception_flag=None, page=1, page_size=50):
+    """成绩异常清单（读侧，跨录入任务汇总缺考/缓考/免修标记学生，供教务/学院巡查）。
+    数据源：t_aa_grade_record.exception_flag——该标记只在成绩明细表保留；发布时投影到
+    t_acad_grade 只写 score/pass_status（PENDING），异常类型本身不下沉，故只能从本表读，
+    不能从已发布台账反查（与 fail_list 数据源刻意不同，各自读各自权威源）。
+    未做角色数据范围收敛（与同组 fail_list/grade_analysis 同一简化口径，见二者注释），
+    仅 require_staff 门禁，已知简化见施工记录。"""
+    from app.models import AaGradeRecord, AaGradeTask, StudentProfile
+    with session() as db:
+        join_task = and_(AaGradeTask.id == AaGradeRecord.task_id, AaGradeTask.tenant_id == AaGradeRecord.tenant_id)
+        join_stu = and_(StudentProfile.id == AaGradeRecord.student_id,
+                        StudentProfile.tenant_id == AaGradeRecord.tenant_id)
+        conds = [AaGradeRecord.tenant_id == _tid(), AaGradeRecord.is_deleted.is_(False),
+                 AaGradeRecord.exception_flag.is_not(None), AaGradeRecord.exception_flag != "NORMAL"]
+        if exception_flag:
+            conds.append(AaGradeRecord.exception_flag == exception_flag.upper())
+        if term:
+            conds.append(AaGradeTask.term_code == term)
+        total = db.scalar(select(func.count()).select_from(AaGradeRecord)
+                          .join(AaGradeTask, join_task).outerjoin(StudentProfile, join_stu)
+                          .where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.execute(select(AaGradeRecord, AaGradeTask, StudentProfile)
+                          .join(AaGradeTask, join_task).outerjoin(StudentProfile, join_stu)
+                          .where(*conds).order_by(AaGradeRecord.id.desc())
+                          .offset(offset).limit(page_size)).all()
+        out = [{"recordId": str(r.id), "gradeTaskId": str(t.id), "studentId": str(r.student_id),
+                "studentName": (s.real_name if s else ""), "studentNo": (s.student_no if s else ""),
+                "courseName": t.course_name or "", "term": t.term_code or "",
+                "exceptionFlag": r.exception_flag, "taskStatus": t.status} for r, t, s in rows]
+        return out, total
+
+
 def grade_analysis(user, term=None):
     """成绩分析：分数段分布 + 及格率（读侧聚合）。"""
     from app.models import AcademicGrade
