@@ -7,7 +7,7 @@
 - scope_type=ADVISOR  → 按各域表 advisor_name == 教师姓名 收敛（毕设/实习导师，
                         不需要行数据，登记一行仅作声明）
 teacher_key 优先用登录名（mock：counselor01 / db：login_name），姓名兜底。
-无任何行 → 该教师回落 TENANT_FALLBACK（仅租户隔离，标准版应逐步清零）。
+无任何行 → SCOPED 空范围（默认拒绝），禁止因漏配范围而看到全租户数据。
 """
 from __future__ import annotations
 

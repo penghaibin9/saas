@@ -87,20 +87,6 @@ def identity_import_errors(
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"})
 
 
-@router.post("/system/identity-import/validate", summary="师生账号导入预检（不落库）")
-def identity_import_validate(body: dict = Body(...),
-                             user=Depends(require_permission("systemAdmin.user.import"))):
-    from app.services.identity_import_service import run_identity_import
-    return success(run_identity_import(user, body, dry_run=True))
-
-
-@router.post("/system/identity-import/confirm", summary="师生账号导入确认（唯一批量建号入口）")
-def identity_import_confirm(body: dict = Body(...),
-                            user=Depends(require_permission("systemAdmin.user.import"))):
-    from app.services.identity_import_service import run_identity_import
-    return success(run_identity_import(user, body, dry_run=False))
-
-
 @router.get("/system/info", summary="系统信息 / 能力开关")
 def system_info():
     now = datetime.now(timezone(timedelta(hours=settings.TIMEZONE_OFFSET_HOURS))).isoformat(timespec="seconds")

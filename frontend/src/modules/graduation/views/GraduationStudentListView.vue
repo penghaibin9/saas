@@ -140,6 +140,7 @@
     <AppExcelImportDrawer
       v-model:visible="importVisible"
       title="导入毕设学生"
+      show-account-boundary
       template-name="毕设学生导入模板.xlsx"
       :required-fields="['学号']"
       :preview-fields="['studentNo', 'batchNo', 'advisorName']"

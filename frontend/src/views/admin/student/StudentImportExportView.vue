@@ -13,6 +13,8 @@
       :description="forbiddenReason"
     />
     <div v-else class="mp-stack">
+      <AccountImportBoundaryNotice />
+
       <div class="mp-grid-2">
         <!-- 导入 -->
         <section class="mp-card">
@@ -242,6 +244,7 @@
 /** 导入导出管理（/admin/student/import-export）：模板 → 校验 → 错误预览 → 回执；导出脱敏 + 水印 + 审计。 */
 import { ModulePageShell, StatusTag as AppStatusTag, EmptyState } from '@/components/business'
 import { AppGlobalState, AppConfirmDialog } from '@/components/common'
+import AccountImportBoundaryNotice from '@/components/common/AccountImportBoundaryNotice.vue'
 import { AppButton } from '@/components/ui'
 import { studentApi } from '@/modules/student/api/student.api'
 import { shouldTryReal } from '@/services/http/client'
@@ -250,7 +253,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'StudentImportExportView',
-  components: { ModulePageShell, AppStatusTag, EmptyState, AppGlobalState, AppConfirmDialog, AppButton },
+  components: { ModulePageShell, AppStatusTag, EmptyState, AppGlobalState, AppConfirmDialog, AppButton, AccountImportBoundaryNotice },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.security import hash_password
+from app.core.student_lifecycle import ENROLLED
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import platform_defaults as D
 
@@ -466,7 +467,7 @@ def reset_demo_data() -> dict:
         for i in range(5):
             s = StudentProfile(tenant_id=DEMO_TID, student_no=f"2026D{i+1:04d}",
                                real_name=f"演示学生{i+1}", gender="男" if i % 2 == 0 else "女",
-                               grade="2026", current_stage="ON_CAMPUS", student_status="NORMAL",
+                               grade="2026", current_stage=ENROLLED, student_status="NORMAL",
                                status="ACTIVE")
             db.add(s)
             db.flush()

@@ -107,7 +107,7 @@ def _current_scope(user: dict | None = None) -> dict:
 
 def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
     """实习记录是否在教师数据范围内。非 SCOPED（管理员全校 / 无范围兜底）一律放行；
-    SCOPED 按 指导教师姓名 / 学号 / 班级 / 学院 收敛。记录缺失（脏数据）时 SCOPED 下不放行。"""
+    SCOPED 按 指导教师账号 / 学号 / 班级 / 学院 收敛。记录缺失（脏数据）时 SCOPED 下不放行。"""
     if scope.get("mode") != "SCOPED":
         return True
     if r is None:
@@ -124,7 +124,7 @@ def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
             college_name = col.college_name if col else None
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=r.advisor_name,
-                           college_name=college_name)
+                           college_name=college_name, advisor_user_id=r.advisor_user_id)
 
 
 def _bulk_context(db, rows, id_attr: str = "internship_id"):
@@ -170,7 +170,7 @@ def _rec_in_scope_pre(scope: dict, rec, stu, class_name_map, college_name_map) -
             college_name = college_name_map.get(stu.college_id)
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=rec.advisor_name,
-                           college_name=college_name)
+                           college_name=college_name, advisor_user_id=rec.advisor_user_id)
 
 
 def _record_row(r: InternshipRecord, stu: StudentProfile | None) -> dict:

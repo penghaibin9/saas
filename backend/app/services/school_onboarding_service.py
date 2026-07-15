@@ -7,8 +7,8 @@
 - confirm：整批一个事务；atomic 模式下任一硬错误 → 整批回滚（422）。
 - 严格租户隔离：非平台运营账号不得写入非本人租户（403）。
 - 所有 confirm 写审计；空数据不 500。
-本模块不重复造"文件解析"轮子：接收结构化 JSON rows（前端/脚本可由 csv/xlsx 转出），
-文件级导入仍可走既有 import_export/domain_import；本模块是"开局编排层"。
+本模块不重复造文件解析轮子：身份通道只接收系统管理标准 .xlsx 预检后产生的结构化行；
+文件解析、批次绑定和一次性凭证回执均由唯一身份导入入口负责。
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
 from app.core.security import hash_password
+from app.core.student_lifecycle import ENROLLED, normalize_student_stage
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import audit_log
 from app.services.db_service import _tid
@@ -309,7 +310,7 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
                     tenant_id=tenant_id, student_no=no, real_name=str(s.get("name")).strip(),
                     gender=s.get("gender"), grade=s.get("grade"),
                     class_id=k.id if k else None, major_id=k.major_id if k else None,
-                    current_stage=s.get("stage") or "ENROLLED",
+                    current_stage=normalize_student_stage(s.get("stage") or ENROLLED),
                     student_status="NORMAL", status="ACTIVE"))
                 report["entities"]["students"]["created"] += 1
 

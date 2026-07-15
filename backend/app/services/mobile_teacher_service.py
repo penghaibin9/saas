@@ -1,7 +1,7 @@
 """移动端·教师工作台聚合。以只读聚合为主，写操作仅 orientation_checkin（现场报到核验，需审计）。
 严格租户过滤（绝不跨租户）。
-范围收敛：当前无独立 teacher_student_scope 表，先做「租户隔离 + 姓名关系尽力收敛」，
-返回体带 scopeMode（SCOPED / TENANT_FALLBACK）标识，后续可替换为正式范围表。
+范围收敛：组织范围读取 teacher_student_scope；实习等具有真实业务外键的场景优先按 user_id
+精确匹配，姓名仅兼容尚未回填外键的历史数据。
 复用 P7 六域真实 service，不重复造业务，也不暴露 PC 管理端全列表给前端。"""
 from __future__ import annotations
 
@@ -43,27 +43,37 @@ def _require_teacher(user: dict | None):
     return u
 
 
-# 管理类角色：租户级可见是设计预期（校级/学院管理员/教务处）
-_ADMIN_ROLES = {"SCHOOL_ADMIN", "COLLEGE_ADMIN", "ACADEMIC_TEACHER", "SCHOOL_LEADER"}
+# 只有明确的校级业务管理角色可见全租户。学院管理员和普通教师必须继续按关系收敛。
+_ADMIN_ROLES = {"SCHOOL_ADMIN", "ACADEMIC_ADMIN", "STUDENT_AFFAIRS_ADMIN",
+                "GRADUATION_ADMIN", "LEADER", "SCHOOL_LEADER"}
 _ADVISOR_ROLES = {"GD_MENTOR", "MENTOR", "INTERN_MENTOR", "INTERNSHIP_MENTOR"}
+_RELATION_SCOPED_ROLES = {
+    "COLLEGE_ADMIN", "ACADEMIC_TEACHER", "STUDENT_AFFAIRS", "COUNSELOR",
+    "PSYCHOLOGY_TEACHER", "FUNDING_TEACHER", "DORM_MANAGER", "YOUTH_LEAGUE",
+    "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN", "GD_MENTOR", "GD_REVIEWER",
+    "GD_DEFENSE_SECRETARY", "GD_DEFENSE_EXPERT", "INTERN_MENTOR",
+    "INTERNSHIP_MENTOR", "EMPLOYMENT_TEACHER",
+}
 
 
 def resolve_teacher_scope(user: dict) -> dict:
     """解析教师数据范围（t_teacher_student_scope 最小可用版）：
-    - 范围表行：CLASS(班级名) / COLLEGE(学院名) / STUDENT(学号) / ADVISOR(按导师姓名，
+    - 范围表行：CLASS(班级名) / COLLEGE(学院名) / STUDENT(学号) / ADVISOR(历史导师姓名，
       ref_value 可登记别名，用于历史数据导师姓名与账号姓名不一致的过渡映射)
-    - 导师类角色（GD_MENTOR/INTERN_MENTOR）默认叠加本人姓名的 ADVISOR 收敛
-    - 管理类角色（校级/院级/教务）→ ADMIN_TENANT（租户级，设计预期）
-    - 无任何范围信息 → TENANT_FALLBACK（仅租户隔离；试点可用，标准版应逐步清零）"""
+    - 导师类角色默认叠加本人账号 ID；姓名只作历史数据兼容
+    - 明确的校级管理角色 → ADMIN_TENANT（租户级）
+    - 普通教师/学院角色无任何范围信息 → SCOPED 空范围（默认拒绝）"""
     u = user or {}
     role = (u.get("currentRoleCode") or "").upper()
     name = u.get("realName") or ""
     uid = str(u.get("userId") or "")
-    scope = {"mode": "TENANT_FALLBACK", "by": "TENANT", "advisorName": name,
-             "roleCode": role, "tenantId": _tid(),
-             "classNames": set(), "studentNos": set(), "collegeNames": set(),
-             "advisorNames": set()}
-    if (u.get("userType") or "").upper() == "ADMIN" or role in _ADMIN_ROLES:
+    db_uid = uid[3:] if uid.startswith("db-") else uid
+    advisor_user_ids = {db_uid} if db_uid.isdigit() else set()
+    scope = {"mode": "SCOPED", "by": "DEFAULT_DENY", "advisorName": name,
+              "roleCode": role, "tenantId": _tid(),
+              "classNames": set(), "studentNos": set(), "collegeNames": set(),
+              "advisorNames": set(), "advisorUserIds": advisor_user_ids}
+    if role in _ADMIN_ROLES:
         scope["mode"] = "ADMIN_TENANT"
         scope["by"] = "ADMIN"
         return scope
@@ -100,9 +110,14 @@ def resolve_teacher_scope(user: dict) -> dict:
                 scope["advisorNames"].add((r.ref_value or name).strip())
     if role in _ADVISOR_ROLES and name:
         scope["advisorNames"].add(name)
-    if scope["classNames"] or scope["studentNos"] or scope["collegeNames"] or scope["advisorNames"]:
+    if (scope["classNames"] or scope["studentNos"] or scope["collegeNames"]
+            or scope["advisorNames"] or (role in _ADVISOR_ROLES and scope["advisorUserIds"])):
         scope["mode"] = "SCOPED"
-        scope["by"] = "SCOPE_TABLE"
+        scope["by"] = ("BUSINESS_RELATION" if role in _ADVISOR_ROLES
+                       and not (scope["classNames"] or scope["studentNos"] or scope["collegeNames"])
+                       else "SCOPE_TABLE")
+    elif role in _RELATION_SCOPED_ROLES:
+        scope["by"] = "DEFAULT_DENY"
     return scope
 
 
@@ -116,17 +131,26 @@ def _class_match(scope: dict, class_name: str | None) -> bool:
 
 
 def scope_match_row(scope: dict, student_no=None, class_name=None, advisor_name=None,
-                    college_name=None) -> bool:
+                    college_name=None, advisor_user_id=None) -> bool:
     """判断一行学生相关数据是否在教师范围内（SCOPED 才收敛，其余模式恒通过）。"""
     if scope.get("mode") != "SCOPED":
         return True
+    # 指导角色以业务分配关系为排他主边界。即使同一账号另有辅导员/学院身份，
+    # 在当前指导角色下也不能借班级或学院范围看到其他导师负责的记录。
+    if (scope.get("roleCode") or "").upper() in _ADVISOR_ROLES:
+        if advisor_user_id not in (None, ""):
+            return str(advisor_user_id) in scope.get("advisorUserIds", set())
+        if advisor_name:
+            return (advisor_name or "").strip() in scope["advisorNames"]
     if student_no and str(student_no).strip() in scope["studentNos"]:
         return True
     if _class_match(scope, class_name):
         return True
-    if advisor_name and (advisor_name or "").strip() in scope["advisorNames"]:
-        return True
     if college_name and (college_name or "").strip() in scope["collegeNames"]:
+        return True
+    # 非指导角色不能借“本人恰好也是该记录导师”扩大当前角色范围；只有显式
+    # ADVISOR 姓名范围用于兼容旧数据。指导角色的稳定账号关系已在上方排他判断。
+    if advisor_name and (advisor_name or "").strip() in scope["advisorNames"]:
         return True
     return False
 
@@ -169,8 +193,12 @@ def can_teacher_view_student(user: dict, student, scope: dict | None = None, db=
                 ir = db.scalars(select(_IR).where(
                     _IR.tenant_id == _tid(), _IR.student_id == student.id,
                     _IR.is_deleted.is_(False))).first()
-                if ir and (ir.advisor_name or "").strip() in scope["advisorNames"]:
-                    return True
+                if ir:
+                    if ir.advisor_user_id not in (None, ""):
+                        if str(ir.advisor_user_id) in scope.get("advisorUserIds", set()):
+                            return True
+                    elif (ir.advisor_name or "").strip() in scope["advisorNames"]:
+                        return True
                 gs = db.scalars(select(_GS).where(
                     _GS.tenant_id == _tid(), _GS.student_no == no,
                     _GS.is_deleted.is_(False))).first()

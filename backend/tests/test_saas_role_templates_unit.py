@@ -14,6 +14,7 @@ from app.core.permissions import ROLE_PERMISSIONS, has_permission
 from app.services import school_onboarding_service as onboarding
 from app.services import identity_import_service
 from app.services import identity_import_file_service as identity_files
+from app.services import mobile_teacher_service
 from app.services.saas_role_templates import (BUILTIN_ROLE_TEMPLATES,
                                                role_catalog,
                                                role_codes_from_row)
@@ -216,16 +217,152 @@ def test_existing_user_gets_only_missing_role_binding():
     assert len(db.added) == 1
 
 
-def test_graduation_and_internship_modules_never_create_login_accounts():
-    app_dir = Path(__file__).resolve().parents[1] / "app" / "modules"
-    offenders = []
-    for domain in ("graduation", "internship"):
-        for path in (app_dir / domain).rglob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                   and node.func.id == "User" for node in ast.walk(tree)):
-                offenders.append(str(path))
-    assert offenders == [], f"业务模块禁止隐式创建登录账号：{offenders}"
+def _user_constructor_sites() -> set[tuple[str, str]]:
+    """返回生产代码中 User(...) 的文件和最外层业务函数，兼容导入别名。"""
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    sites: set[tuple[str, str]] = set()
+    for path in app_dir.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        user_aliases: set[str] = set()
+        model_aliases: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module in ("app.models", "app.models.rbac"):
+                user_aliases.update(
+                    item.asname or item.name for item in node.names if item.name == "User")
+            elif isinstance(node, ast.Import):
+                model_aliases.update(
+                    item.asname or item.name for item in node.names if item.name == "app.models")
+
+        function_stack: list[str] = []
+
+        class Visitor(ast.NodeVisitor):
+            def _visit_function(self, node):
+                function_stack.append(node.name)
+                self.generic_visit(node)
+                function_stack.pop()
+
+            visit_FunctionDef = _visit_function
+            visit_AsyncFunctionDef = _visit_function
+
+            def visit_Call(self, node):
+                direct = isinstance(node.func, ast.Name) and node.func.id in user_aliases
+                qualified = (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "User"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id in model_aliases
+                )
+                if direct or qualified:
+                    rel = path.relative_to(app_dir).as_posix()
+                    sites.add((rel, function_stack[0] if function_stack else "<module>"))
+                self.generic_visit(node)
+
+        Visitor().visit(tree)
+    return sites
+
+
+def test_all_production_login_account_constructors_match_the_frozen_allowlist():
+    # 师生批量开户、平台创建首位学校管理员、隔离演示沙箱种子是仅有的三类例外。
+    assert _user_constructor_sites() == {
+        ("services/school_onboarding_service.py", "run_onboarding"),
+        ("services/platform_service.py", "create_school_admin"),
+        ("services/sandbox_service.py", "seed_sandbox"),
+    }
+
+
+def test_identity_channel_can_only_be_opened_by_the_fixed_import_service():
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    callers = set()
+    for path in app_dir.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            keyword = next((kw for kw in node.keywords if kw.arg == "identity_channel"), None)
+            if keyword is not None:
+                callers.add((path.relative_to(app_dir).as_posix(), ast.dump(keyword.value)))
+    assert callers == {
+        ("services/identity_import_service.py", "Constant(value=True)"),
+    }
+
+
+def test_identity_import_api_has_no_raw_json_account_creation_bypass():
+    root = Path(__file__).resolve().parents[2]
+    system_api = root / "backend/app/api/v1/system.py"
+    tree = ast.parse(system_api.read_text(encoding="utf-8"))
+    routes = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                continue
+            if not decorator.args or not isinstance(decorator.args[0], ast.Constant):
+                continue
+            route = decorator.args[0].value
+            if isinstance(route, str) and route.startswith("/system/identity-import"):
+                routes.add((decorator.func.attr.upper(), route))
+    assert routes == {
+        ("GET", "/system/identity-import/role-templates"),
+        ("GET", "/system/identity-import/template"),
+        ("POST", "/system/identity-import/validate-file"),
+        ("POST", "/system/identity-import/confirm-batch"),
+        ("GET", "/system/identity-import/batches/{batch_no}/errors"),
+    }
+
+
+def test_internship_mentor_scope_uses_user_id_and_blocks_same_name_teacher():
+    scope = mobile_teacher_service.resolve_teacher_scope({
+        "userId": "db-17", "userType": "TEACHER",
+        "currentRoleCode": "INTERN_MENTOR", "realName": "同名老师",
+    })
+    assert scope["mode"] == "SCOPED"
+    assert scope["advisorUserIds"] == {"17"}
+    scope["classNames"].add("软件2401")
+    assert mobile_teacher_service.scope_match_row(
+        scope, advisor_user_id=17, advisor_name="同名老师")
+    assert not mobile_teacher_service.scope_match_row(
+        scope, advisor_user_id=18, advisor_name="同名老师", class_name="软件2401")
+    # 仅对尚未回填 advisor_user_id 的历史数据保留姓名兼容。
+    assert mobile_teacher_service.scope_match_row(scope, advisor_name="同名老师")
+
+
+def test_non_advisor_role_cannot_inherit_advisor_relation_from_same_account():
+    scope = mobile_teacher_service.resolve_teacher_scope({
+        "userId": "db-17", "userType": "TEACHER",
+        "currentRoleCode": "COUNSELOR", "realName": "兼任老师",
+    })
+    scope["classNames"].add("软件2401")
+    assert not mobile_teacher_service.scope_match_row(
+        scope, advisor_user_id=17, advisor_name="兼任老师", class_name="机电2401")
+    assert mobile_teacher_service.scope_match_row(
+        scope, advisor_user_id=18, advisor_name="其他老师", class_name="软件2401")
+
+
+def test_academic_teacher_is_not_a_tenant_wide_administrator():
+    scope = mobile_teacher_service.resolve_teacher_scope({
+        "userId": "db-21", "userType": "TEACHER",
+        "currentRoleCode": "ACADEMIC_TEACHER", "realName": "任课教师",
+    })
+    assert scope["mode"] == "SCOPED"
+    assert scope["by"] == "DEFAULT_DENY"
+    assert not mobile_teacher_service.scope_match_row(scope, student_no="S001")
+
+
+def test_academic_admin_is_the_explicit_tenant_wide_academic_role():
+    scope = mobile_teacher_service.resolve_teacher_scope({
+        "userId": "db-22", "userType": "TEACHER",
+        "currentRoleCode": "ACADEMIC_ADMIN", "realName": "教务处管理员",
+    })
+    assert scope["mode"] == "ADMIN_TENANT"
+
+
+def test_internship_import_persists_advisor_account_id_not_only_display_name():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "backend/app/modules/internship/services/internship_student_service.py").read_text(
+        encoding="utf-8")
+    assert "advisor_user_id=advisor.id if advisor else None" in source
+    assert "所选教师尚未分配“岗位实习指导教师”角色" in source
 
 
 def test_frontend_exposes_batch_account_creation_only_at_fixed_system_route():
@@ -239,6 +376,33 @@ def test_frontend_exposes_batch_account_creation_only_at_fixed_system_route():
     assert "this.$router.replace('/admin/system/identity-import')" in users
     assert "path: 'identity-import'" in routes
     assert "if (a.key === 'importUsers') return this.isIdentityImport" in users
+
+
+def test_business_import_screens_show_the_non_account_creation_boundary():
+    root = Path(__file__).resolve().parents[2]
+    notice = (root / "frontend/src/components/common/AccountImportBoundaryNotice.vue").read_text(
+        encoding="utf-8")
+    assert "此处不会创建登录账号" in notice
+    assert 'to="/admin/system/identity-import"' in notice
+
+    direct_notice_files = [
+        "frontend/src/views/admin/student/StudentImportExportView.vue",
+        "frontend/src/modules/academicAffairs/components/ImportDrawer.vue",
+        "frontend/src/modules/campusService/components/ImportDrawer.vue",
+        "frontend/src/modules/orientation/components/ImportDialog.vue",
+        "frontend/src/modules/employment/components/ImportDialog.vue",
+    ]
+    for relative in direct_notice_files:
+        assert "AccountImportBoundaryNotice" in (root / relative).read_text(encoding="utf-8")
+
+    guarded_excel_imports = [
+        "frontend/src/modules/graduation/views/GraduationStudentListView.vue",
+        "frontend/src/modules/graduation/views/GraduationMentorListView.vue",
+        "frontend/src/modules/internship/views/InternshipStudentListView.vue",
+        "frontend/src/modules/internship/views/InternshipMatchListView.vue",
+    ]
+    for relative in guarded_excel_imports:
+        assert "show-account-boundary" in (root / relative).read_text(encoding="utf-8")
 
 
 def _identity_xlsx(rows: list[list]) -> bytes:

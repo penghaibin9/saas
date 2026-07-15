@@ -9,6 +9,7 @@ from math import asin, cos, radians, sin, sqrt
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
+from app.core.student_lifecycle import student_stage_label
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import audit_log
 from app.services.db_service import _iso, _mask_id_card, _mask_phone, _org_names, _primary_phone, _tid
@@ -104,7 +105,7 @@ def me_overview(user: dict) -> dict:
         return {
             "student": {"name": name, "studentNo": stu.student_no, "grade": stu.grade or "",
                         "className": (stu.grade + "级") if stu.grade else "", "stage": stu.current_stage},
-            "stage": {"code": stu.current_stage, "label": stu.current_stage},
+            "stage": {"code": stu.current_stage, "label": student_stage_label(stu.current_stage)},
             "todos": [{"id": str(t.id), "title": t.title, "type": t.todo_type,
                        "module": getattr(t, "source_module", None) or t.todo_type or "待办",
                        "dueAt": _iso(t.due_at) if hasattr(t, "due_at") else None} for t in todos],

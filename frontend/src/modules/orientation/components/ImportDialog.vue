@@ -13,6 +13,8 @@
       </div>
 
       <div class="imd__body">
+        <AccountImportBoundaryNotice class="imd__boundary" />
+
         <!-- Step 0：模板与上传 -->
         <div v-if="step === 0" class="imd__panel">
           <div class="imd__tpl">
@@ -87,11 +89,12 @@
  *  - validateFn(fileName) / importFn({ validCount, fileName })：由页面注入的 api 调用
  */
 import { AppButton } from '@/components/ui'
+import AccountImportBoundaryNotice from '@/components/common/AccountImportBoundaryNotice.vue'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ImportDialog',
-  components: { AppButton },
+  components: { AppButton, AccountImportBoundaryNotice },
   props: {
     visible: { type: Boolean, default: false },
     template: { type: Object, default: null },

@@ -46,14 +46,23 @@ def test_create_and_list(client, auth_headers, db_mode):
 
 def test_advisor_assignment_binds_active_teacher_and_audits(client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import InternshipAuditTrail, User
+    from app.models import InternshipAuditTrail, Role, User, UserRole
     db = get_sessionmaker()()
     try:
         teacher = User(tenant_id=1000000000000000001, login_name="intern-advisor-01",
                        real_name="实习指导老师", password_hash="test", user_type="TEACHER", status="ACTIVE")
         replacement = User(tenant_id=1000000000000000001, login_name="intern-advisor-02",
                            real_name="新实习指导老师", password_hash="test", user_type="TEACHER", status="ACTIVE")
-        db.add_all((teacher, replacement)); db.commit(); teacher_id, replacement_id = str(teacher.id), str(replacement.id)
+        role = Role(tenant_id=1000000000000000001, role_code="INTERN_MENTOR",
+                    role_name="岗位实习指导教师", role_type="SYSTEM", status="ACTIVE")
+        db.add_all((teacher, replacement, role)); db.flush()
+        db.add_all((
+            UserRole(tenant_id=1000000000000000001, user_id=teacher.id,
+                     role_id=role.id, status="ACTIVE"),
+            UserRole(tenant_id=1000000000000000001, user_id=replacement.id,
+                     role_id=role.id, status="ACTIVE"),
+        ))
+        db.commit(); teacher_id, replacement_id = str(teacher.id), str(replacement.id)
     finally:
         db.close()
     sid = _student(client, auth_headers, "S-IST-ADVISOR")
