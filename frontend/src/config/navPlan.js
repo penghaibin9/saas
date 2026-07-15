@@ -359,11 +359,14 @@ export const NAV_PLAN = [
       I('课程分类', '/admin/academic-affairs/courses/console?tab=category', 'academicAffairs.course.view'),
       I('课程性质', '/admin/academic-affairs/courses/console?tab=nature', 'academicAffairs.course.view'),
       I('学分学时', '/admin/academic-affairs/courses/console?tab=credit', 'academicAffairs.course.view'),
-      ...P('课程大纲', '考核方式'),
+      // Tier1 R3 续工（2026-07-16）：课程大纲/课程材料新增 t_aa_course_material（附件回链既有 t_file_object）；
+      // 考核方式复用既有 exam_mode 字段读写端点；课程归档为纯前端派生只读视图（不新增状态机状态）。
+      I('课程大纲', '/admin/academic-affairs/courses/console?tab=outline', 'academicAffairs.course.view'),
+      I('考核方式', '/admin/academic-affairs/courses/console?tab=assessment', 'academicAffairs.course.view'),
       I('课程负责人', '/admin/academic-affairs/courses/console?tab=owner', 'academicAffairs.course.view'),
-      ...P('课程材料'),
+      I('课程材料', '/admin/academic-affairs/courses/console?tab=material', 'academicAffairs.course.view'),
       I('课程停用', '/admin/academic-affairs/courses/console?tab=disable', 'academicAffairs.course.view'),
-      ...P('课程归档')
+      I('课程归档', '/admin/academic-affairs/courses/console?tab=archive', 'academicAffairs.course.view')
     ]),
     // 教学计划：按手册 P6 冻结决定 + 用户 2026-07-14 拍板「收编」——不建独立域，叶子指向既有等价功能页
     // 年级/专业教学计划=培养方案(AaProgramBinding方案-年级绑定)；学期教学计划/课程开设计划=教学任务批次(AaTeachingTaskBatch学期开课计划)；计划归档=教务归档

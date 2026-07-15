@@ -289,6 +289,28 @@ class AaCourse(PKMixin, TenantMixin, CommonMixin, Base):
     __table_args__ = (UniqueConstraint("tenant_id", "course_code", "version", name="uk_aa_course"),)
 
 
+class AaCourseMaterial(PKMixin, TenantMixin, CommonMixin, Base):
+    """课程材料（课程大纲/课件/授课计划/习题题库/实训指导书等课程级教学资源）。
+
+    对齐《13B-教务中心全业务流程设计总册》§4.7A 教学资源的 V1 轻量路径：
+    "V1 教师传课件可临时用现有文件上传能力挂在课程"——本表即该 V1 落地（挂 course_id，不强制挂教学任务）；
+    完整版（挂教学任务 + 共享审核 + DRAFT/SUBMITTED/SHARED/ARCHIVED 全流程）留档为后续 P3 教学资源模块欠账。
+    附件字节走既有 t_file_object（file_service 真实上传，POST /api/v1/files/upload），本表只登记
+    (course_id, file_id) 回链 + 材料类型 + 上传人，模式对齐 t_affairs_class_material。审计=TRAIL；不走审批。"""
+    __tablename__ = "t_aa_course_material"
+
+    course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="回链 t_aa_course.id")
+    material_type: Mapped[str] = mapped_column(
+        String(50), nullable=False,
+        comment="SYLLABUS 教学大纲/COURSEWARE 课件/LESSON_PLAN 授课计划/EXERCISE 习题题库/PRACTICE_GUIDE 实训指导书/OTHER 其他")
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    file_id: Mapped[str | None] = mapped_column(String(100), comment="附件 file_id（文件中心）")
+    file_name: Mapped[str | None] = mapped_column(String(255))
+    remark: Mapped[str | None] = mapped_column(String(500))
+    uploader: Mapped[str | None] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE", comment="ACTIVE/VOIDED")
+
+
 class AaTeachingTaskBatch(PKMixin, TenantMixin, CommonMixin, Base):
     """学期教学任务批次（按方案生成应开课程，generate 幂等）。
     状态：DRAFT(生成/核对分配中)/COLLEGE_CONFIRMED(学院核对确认，待教务终审)/APPROVED(教务终审通过)/RETURNED(教务退回重办)。
