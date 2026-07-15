@@ -1,7 +1,7 @@
 """P0-D · 岗位实习管理端数据范围（教师只看本人指导学生 / 管理员看全校 / 学生403 / 跨租户不可见）。
 
-机制：resolve_teacher_scope —— INTERN_MENTOR 导师角色按 realName 收敛为 advisorNames（SCOPED），
-实习记录 advisor_name 命中才可见；管理角色 ADMIN_TENANT 看全校；学生由 require_staff 门禁 403。
+机制：resolve_teacher_scope —— INTERN_MENTOR 新数据按 advisor_user_id 收敛；历史记录尚未
+回填账号 ID 时才按唯一姓名兼容；管理角色 ADMIN_TENANT 看全校；学生由 require_staff 门禁 403。
 """
 from __future__ import annotations
 

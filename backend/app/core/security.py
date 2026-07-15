@@ -83,13 +83,22 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     # 租户绑定在 RequestContextMiddleware._bind_token_tenant 完成（async 上下文才能正确传播 contextvar）
     user = {
         "userId": claims.get("userId"),
+        "loginName": claims.get("loginName") or claims.get("username"),
         "realName": claims.get("realName"),
         "userType": claims.get("userType"),
         "tenantCode": claims.get("tid"),
+        "tenantId": claims.get("tenantId"),
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
+        "permissionVersion": claims.get("permissionVersion"),
         "studentNo": claims.get("studentNo"),
+        "tokenJti": claims.get("jti"),
+        "tokenExp": claims.get("exp"),
     }
+    # DB 账号逐请求复核角色归属。mock 账号不接库，保持原有演示链路。
+    if str(user.get("userId") or "").startswith("db-"):
+        from app.services.auth_service_db import validate_token_subject
+        validate_token_subject(user)
     set_current_user(user)
     return user
 

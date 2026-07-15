@@ -70,10 +70,13 @@ def _bind_token_tenant(request: Request) -> None:
         set_current_user({
             "userId": claims.get("userId"), "realName": claims.get("realName"),
             "userType": claims.get("userType"), "tenantCode": claims.get("tid"),
+            "tenantId": claims.get("tenantId"),
             "activeContextId": claims.get("activeContextId"),
             "currentRoleCode": claims.get("currentRoleCode"),
+            "permissionVersion": claims.get("permissionVersion"),
             "loginName": claims.get("loginName") or claims.get("username"),
             "studentNo": claims.get("studentNo"),
+            "tokenJti": claims.get("jti"), "tokenExp": claims.get("exp"),
         })
         if claims.get("tenantId"):
             set_tenant({"tenantId": str(claims["tenantId"]),

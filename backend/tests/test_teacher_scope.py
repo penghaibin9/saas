@@ -73,11 +73,11 @@ def test_scoped_counselor_student_detail(client, db_mode):
     assert deny["code"] == 403001  # 非本班学生 403
 
 
-def test_fallback_teacher_still_tenant_visible(client, db_mode):
+def test_teacher_without_scope_is_denied_by_default(client, db_mode):
     ids = _seed_scope_case(db_mode)
     h = _token("u-other-teacher", "无范围老师", "COUNSELOR")
     r = client.get(f"/api/v1/mobile/teacher/student/{ids['sb']}", headers=h).json()
-    assert r["code"] == 0  # 无范围行 → TENANT_FALLBACK（试点兜底）
+    assert r["code"] == 403001  # 无范围行 → SCOPED 空范围（默认拒绝，不扩大到全租户）
 
 
 def test_scoped_risk_students_filtered(client, db_mode):

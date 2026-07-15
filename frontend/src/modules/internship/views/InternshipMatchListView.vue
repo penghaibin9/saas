@@ -182,6 +182,7 @@
     <AppExcelImportDrawer
       v-model:visible="importVisible"
       title="导入学生意向"
+      show-account-boundary
       template-name="意向导入模板.xlsx"
       :required-fields="['学号']"
       :preview-fields="['studentNo', 'city', 'industry', 'company', 'note']"

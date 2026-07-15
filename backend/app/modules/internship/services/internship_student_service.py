@@ -15,7 +15,7 @@ from sqlalchemy import func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpCompany, InternshipAuditTrail, InternshipPosition, InternshipRecord,
-                        StudentContact, StudentProfile, User)
+                        Role, StudentContact, StudentProfile, User, UserRole)
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
 STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在岗中",
@@ -25,6 +25,7 @@ STATUS_TONE = {"PREPARING": "default", "READY": "warning", "ONBOARD": "success",
 RISK_LABEL = {"NONE": "无", "LOW": "低风险", "MEDIUM": "中风险", "HIGH": "高风险"}
 ELIG_LABEL = {"PENDING": "待认定", "QUALIFIED": "资格合格", "UNQUALIFIED": "资格不合格"}
 DEST_LABEL = {"NONE": "未落实", "ASSIGNED": "已分配岗位", "SELF_ARRANGED": "自主实习", "EXEMPTED": "免实习"}
+ADVISOR_ROLE_CODES = ("INTERN_MENTOR", "INTERNSHIP_MENTOR")
 
 
 def _op_name() -> str:
@@ -52,6 +53,15 @@ def _students_map(db, ids: list[int]) -> dict:
     return {s.id: s for s in rows}
 
 
+def _advisor_role_user_ids(db) -> set[int]:
+    """岗位实习指导教师必须同时具有有效账号和有效带教角色。"""
+    rows = db.scalars(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(
+        UserRole.tenant_id == _tid(), UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE",
+        Role.tenant_id == _tid(), Role.is_deleted.is_(False), Role.status == "ACTIVE",
+        Role.role_code.in_(ADVISOR_ROLE_CODES))).all()
+    return {int(value) for value in rows}
+
+
 def _advisor(db, advisor_user_id=None, advisor_name=None) -> User | None:
     """Resolve a new advisor to one active staff account; names remain display-only compatibility input."""
     if advisor_user_id:
@@ -60,23 +70,29 @@ def _advisor(db, advisor_user_id=None, advisor_name=None) -> User | None:
             raise not_found("指导教师账号不存在、已停用或不在当前租户")
         if row.user_type not in ("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN"):
             raise AppException("VALIDATION_ERROR", "所选账号不是教职工，不能担任实习指导教师")
+        if row.id not in _advisor_role_user_ids(db):
+            raise AppException("VALIDATION_ERROR", "所选教师尚未分配“岗位实习指导教师”角色")
         return row
     name = (advisor_name or "").strip()
     if not name:
         return None
+    eligible_ids = _advisor_role_user_ids(db)
     rows = db.scalars(select(User).where(
         User.tenant_id == _tid(), User.real_name == name, User.status == "ACTIVE",
+        User.id.in_(eligible_ids),
         User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
         User.is_deleted.is_(False))).all()
     if len(rows) != 1:
-        raise AppException("VALIDATION_ERROR", "指导教师必须选择唯一的在职教职工账号")
+        raise AppException("VALIDATION_ERROR", "指导教师必须匹配唯一的在职岗位实习指导教师账号")
     return rows[0]
 
 
 def list_advisors(keyword: str | None = None) -> list[dict]:
     with session() as db:
+        eligible_ids = _advisor_role_user_ids(db)
         q = select(User).where(User.tenant_id == _tid(), User.is_deleted.is_(False),
                                User.status == "ACTIVE",
+                               User.id.in_(eligible_ids),
                                User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")))
         if keyword:
             like = f"%{keyword.strip()}%"
@@ -120,14 +136,14 @@ def list_assignment_logs(page: int, page_size: int, keyword: str | None = None, 
 def _current_scope(user: dict | None = None) -> dict:
     """教师数据范围。user 由 API 层显式传入（FastAPI 同步端点在独立线程上下文，contextvar 不可靠传播，
     故不能只依赖 get_current_user_ctx）；懒加载 resolve_teacher_scope 避免与 mobile_teacher_service 循环 import。
-    ADMIN_TENANT（校级/院级/教务）→ 看全校；SCOPED（指导教师/学院负责人/辅导员）→ 收敛；
-    TENANT_FALLBACK（无范围信息）→ 仅租户（试点可用，标准版应逐步清零）。"""
+    ADMIN_TENANT（明确的校级业务管理员）→ 看全校；SCOPED（指导教师/学院负责人/辅导员）
+    按关系收敛；无范围信息保持空范围并默认拒绝。"""
     from app.services.mobile_teacher_service import resolve_teacher_scope
     return resolve_teacher_scope(user or get_current_user_ctx() or {})
 
 
 def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
-    """实习记录是否在教师数据范围内。实习以「本人指导学生」为主关系（record.advisor_name），
+    """实习记录是否在教师数据范围内。实习以「本人指导学生」为主关系（record.advisor_user_id），
     并兼容 学号 / 班级 / 学院 收敛。非 SCOPED 模式一律放行（含管理员看全校、跨租户已由 _tid 隔离）。"""
     if scope.get("mode") != "SCOPED":
         return True
@@ -143,7 +159,7 @@ def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
             college_name = col.college_name if col else None
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=r.advisor_name,
-                           college_name=college_name)
+                           college_name=college_name, advisor_user_id=r.advisor_user_id)
 
 
 def _row(r: InternshipRecord, stu: StudentProfile | None) -> dict:
@@ -484,7 +500,7 @@ def _parse_date(s):
 
 
 def import_dry_run(rows: list[dict]) -> dict:
-    """xlsx 逐行预校验：学号必填且匹配、不重复建档；企业/岗位/批次如填写须存在；日期格式合法。"""
+    """xlsx 逐行预校验：学生与指导教师均引用既有账号/主档，不隐式创建身份。"""
     with session() as db:
         from app.models import InternshipBatch
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
@@ -498,6 +514,12 @@ def import_dry_run(rows: list[dict]) -> dict:
             InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False))).all()}
         batches = {(b.batch_name or "").strip() for b in db.scalars(select(InternshipBatch).where(
             InternshipBatch.tenant_id == _tid(), InternshipBatch.is_deleted.is_(False))).all()}
+        eligible_ids = _advisor_role_user_ids(db)
+        advisors_by_name: dict[str, list[User]] = {}
+        for teacher in db.scalars(select(User).where(
+                User.tenant_id == _tid(), User.id.in_(eligible_ids), User.status == "ACTIVE",
+                User.is_deleted.is_(False))).all():
+            advisors_by_name.setdefault((teacher.real_name or "").strip(), []).append(teacher)
         errors, seen, valid = [], set(), 0
         for i, r in enumerate(rows or []):
             row_no = i + 1
@@ -524,6 +546,11 @@ def import_dry_run(rows: list[dict]) -> dict:
             if bat and bat not in batches:
                 errors.append({"rowNo": row_no, "field": "batchName", "message": f"实习批次不存在：{bat}"})
                 continue
+            advisor_name = (r.get("advisorName") or "").strip()
+            if advisor_name and len(advisors_by_name.get(advisor_name, [])) != 1:
+                errors.append({"rowNo": row_no, "field": "advisorName",
+                               "message": "指导教师未匹配到唯一的在职岗位实习指导教师账号"})
+                continue
             bad_date = False
             for fld in ("startDate", "endDate"):
                 if _parse_date(r.get(fld)) is False:
@@ -549,8 +576,10 @@ def import_confirm(rows: list[dict]) -> dict:
         for r in rows or []:
             stu = profiles.get((r.get("studentNo") or "").strip())
             sd, ed = _parse_date(r.get("startDate")), _parse_date(r.get("endDate"))
+            advisor = _advisor(db, advisor_name=r.get("advisorName"))
             rec = InternshipRecord(tenant_id=_tid(), student_id=stu.id,
-                                   advisor_name=r.get("advisorName") or None,
+                                   advisor_user_id=advisor.id if advisor else None,
+                                   advisor_name=advisor.real_name if advisor else None,
                                    intern_start_date=sd or None, intern_end_date=ed or None,
                                    remark=(r.get("remark") or None),
                                    status="PREPARING", eligibility_status="PENDING",
@@ -558,6 +587,7 @@ def import_confirm(rows: list[dict]) -> dict:
             db.add(rec)
             db.flush()
             _trail(db, rec.id, "IMPORT", {"studentNo": stu.student_no,
+                                          "advisorUserId": str(rec.advisor_user_id or ""),
                                           "advisorName": rec.advisor_name or ""})
             created += 1
         db.commit()

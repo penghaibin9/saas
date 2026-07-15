@@ -192,11 +192,11 @@ export const batchActions = {
 export const importTemplates = {
   users: {
     key: 'users',
-    name: '用户账号导入模板',
-    version: 'v3.2',
-    fileName: '用户账号导入模板_v3.2.xlsx',
-    fields: ['工号/账号', '姓名', '所属组织编码', '角色编码（多个用逗号）', '手机号', '邮箱', '初始数据范围'],
-    rules: ['工号在本校内唯一，重复行将被拒绝', '角色编码必须已存在且处于启用状态', '手机号仅用于找回密码，导入后默认脱敏展示', '单次最多 2,000 行']
+    name: '老师和学生账号导入模板',
+    version: 'v4.0',
+    fileName: '师生账号导入模板.xlsx',
+    fields: ['账号类型（TEACHER/STUDENT）', '工号/学号', '姓名', '所属组织编码', '预设角色编码（教师可多选）', '数据范围类型', '数据范围引用'],
+    rules: ['只支持系统下载的标准 .xlsx，不提供 CSV 导入', '本菜单是批量创建账号的唯一入口', '工号/学号在本校内唯一，重复导入只补缺失角色', '教师只能选择 SaaS 预设角色，学生固定绑定 STUDENT', '初始密码仅在回执显示一次', '单次最多 2,000 行']
   },
   org: {
     key: 'org',
@@ -431,16 +431,19 @@ export const permissionTree = [
         key: 'sys-home', label: '管理看板', type: 'MENU', children: []
       },
       {
-        key: 'sys-users', label: '用户账号管理', type: 'MENU',
+        key: 'sys-users', label: '师生账号管理', type: 'MENU',
         children: [
           { key: 'user:create', label: '新增用户', type: 'BUTTON' },
           { key: 'user:update', label: '编辑用户', type: 'BUTTON' },
           { key: 'user:disable', label: '停用/启用', type: 'BUTTON' },
           { key: 'user:reset-password', label: '重置密码', type: 'BUTTON' },
           { key: 'user:assign-role', label: '分配角色', type: 'BUTTON' },
-          { key: 'user:import', label: '批量导入', type: 'BUTTON' },
           { key: 'user:export', label: '批量导出（脱敏）', type: 'BUTTON' }
         ]
+      },
+      {
+        key: 'sys-identity-import', label: '导入老师和学生', type: 'MENU',
+        children: [{ key: 'user:import', label: '批量创建账号', type: 'BUTTON' }]
       },
       {
         key: 'sys-roles', label: '角色权限管理', type: 'MENU',
@@ -496,21 +499,26 @@ export const menuTree = [
     children: [
       { id: 'menu-sys-home', code: 'sys-home', name: '管理看板', path: '/admin/system', sort: 1, status: 'ENABLED', statusLabel: '启用', buttons: [] },
       {
-        id: 'menu-sys-users', code: 'sys-users', name: '用户账号管理', path: '/admin/system/users', sort: 2, status: 'ENABLED', statusLabel: '启用',
+        id: 'menu-sys-users', code: 'sys-users', name: '师生账号管理', path: '/admin/system/users', sort: 2, status: 'ENABLED', statusLabel: '启用',
         buttons: [
-          { code: 'user:create', name: '新增用户' }, { code: 'user:import', name: '批量导入' },
+          { code: 'user:create', name: '新增用户' },
           { code: 'user:export', name: '批量导出' }, { code: 'user:reset-password', name: '重置密码' }
         ]
       },
       {
-        id: 'menu-sys-roles', code: 'sys-roles', name: '角色权限管理', path: '/admin/system/roles', sort: 3, status: 'ENABLED', statusLabel: '启用',
+        id: 'menu-sys-identity-import', code: 'sys-identity-import', name: '导入老师和学生',
+        path: '/admin/system/identity-import', sort: 3, status: 'ENABLED', statusLabel: '启用',
+        buttons: [{ code: 'user:import', name: '批量创建账号' }]
+      },
+      {
+        id: 'menu-sys-roles', code: 'sys-roles', name: '角色权限管理', path: '/admin/system/roles', sort: 4, status: 'ENABLED', statusLabel: '启用',
         buttons: [{ code: 'role:create', name: '新增角色' }, { code: 'role:deprecate', name: '作废角色' }]
       },
-      { id: 'menu-sys-menus', code: 'sys-menus', name: '菜单权限管理', path: '/admin/system/menus', sort: 4, status: 'ENABLED', statusLabel: '启用', buttons: [] },
-      { id: 'menu-sys-scopes', code: 'sys-scopes', name: '数据范围管理', path: '/admin/system/scopes', sort: 5, status: 'ENABLED', statusLabel: '启用', buttons: [] },
-      { id: 'menu-sys-org', code: 'sys-org', name: '组织结构管理', path: '/admin/system/org', sort: 6, status: 'ENABLED', statusLabel: '启用', buttons: [] },
-      { id: 'menu-sys-config', code: 'sys-config', name: '系统与品牌配置', path: '/admin/system/config', sort: 7, status: 'ENABLED', statusLabel: '启用', buttons: [] },
-      { id: 'menu-sys-logs', code: 'sys-logs', name: '日志中心', path: '/admin/system/logs', sort: 8, status: 'ENABLED', statusLabel: '启用', buttons: [] }
+      { id: 'menu-sys-menus', code: 'sys-menus', name: '菜单权限管理', path: '/admin/system/menus', sort: 5, status: 'ENABLED', statusLabel: '启用', buttons: [] },
+      { id: 'menu-sys-scopes', code: 'sys-scopes', name: '数据范围管理', path: '/admin/system/scopes', sort: 6, status: 'ENABLED', statusLabel: '启用', buttons: [] },
+      { id: 'menu-sys-org', code: 'sys-org', name: '组织结构管理', path: '/admin/system/org', sort: 7, status: 'ENABLED', statusLabel: '启用', buttons: [] },
+      { id: 'menu-sys-config', code: 'sys-config', name: '系统与品牌配置', path: '/admin/system/config', sort: 8, status: 'ENABLED', statusLabel: '启用', buttons: [] },
+      { id: 'menu-sys-logs', code: 'sys-logs', name: '日志中心', path: '/admin/system/logs', sort: 9, status: 'ENABLED', statusLabel: '启用', buttons: [] }
     ]
   },
   {
@@ -529,8 +537,8 @@ export const menuTree = [
 
 /** 角色 → 可见菜单（菜单权限页「按角色预览」用） */
 export const roleMenuPreview = {
-  SYS_ADMIN: ['sys-home', 'sys-users', 'sys-roles', 'sys-menus', 'sys-scopes', 'sys-org', 'sys-config', 'sys-logs', 'int-dashboard', 'int-students'],
-  SCHOOL_ADMIN: ['sys-home', 'sys-users', 'sys-roles', 'sys-scopes', 'sys-org', 'sys-config', 'sys-logs', 'int-dashboard', 'int-students'],
+  SYS_ADMIN: ['sys-home', 'sys-users', 'sys-identity-import', 'sys-roles', 'sys-menus', 'sys-scopes', 'sys-org', 'sys-config', 'sys-logs', 'int-dashboard', 'int-students'],
+  SCHOOL_ADMIN: ['sys-home', 'sys-users', 'sys-identity-import', 'sys-roles', 'sys-scopes', 'sys-org', 'sys-config', 'sys-logs', 'int-dashboard', 'int-students'],
   COLLEGE_ADMIN: ['sys-home', 'sys-users', 'int-dashboard', 'int-students'],
   PLATFORM_OPS: ['sys-home', 'sys-logs'],
   AUDITOR: ['sys-home', 'sys-logs'],

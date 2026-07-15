@@ -655,7 +655,8 @@ export const NAV_PLAN = [
   /* ═══════════ 一级⑥：系统管理 ═══════════ */
   grp('system', '系统管理', 'systemAdmin', [
     mod('sys-dashboard', '管理看板', '/admin/system', []),
-    mod('sys-users', '用户账号', '/admin/system/users', []),
+    mod('sys-users', '师生账号', '/admin/system/users', []),
+    mod('sys-identity-import', '导入老师和学生', '/admin/system/identity-import', []),
     mod('sys-roles', '角色权限', '/admin/system/roles', []),
     mod('sys-menus', '菜单权限', '/admin/system/menus', []),
     mod('sys-buttons', '按钮权限', null, P('按钮权限配置', '按钮权限分配', '按钮权限审计')),

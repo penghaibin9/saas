@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.schemas.auth import MockLoginRequest, SwitchRoleRequest
 from app.services import auth_service_db
 from app.services import mock_audit_service as audit
-from app.services import mock_auth_service as auth_svc
+from app.services import mock_auth_service as mock_auth_svc
 from app.core.context import get_request_meta
 from app.core.exceptions import AppException, unauthorized
 from app.core.security import create_access_token, decode_token
@@ -35,21 +35,24 @@ def mock_login(body: MockLoginRequest):
                      target_type="auth", target_id=body.loginName or "-")
         raise AppException("NO_PERMISSION", "演示登录已关闭，请使用账号密码登录")
     _login_rate_guard()
-    result = auth_svc.login(body.tenantCode, body.loginName, body.userType, body.clientType)
+    result = mock_auth_svc.login(body.tenantCode, body.loginName, body.userType, body.clientType)
     audit.record("登录", method="POST", path="/api/v1/auth/mock-login",
                  status_code=200, target_type="auth", target_id=result["user"]["userId"])
     return success(result, message="登录成功")
 
 
 class PasswordLoginRequest(BaseModel):
-    loginName: str = Field(..., description="演示租户账号（如 admin_demo）")
+    tenantCode: str | None = Field(None, description="学校编码；同一工号存在于多校时必填")
+    loginName: str = Field(..., description="工号/学号/登录名")
     password: str = Field(..., min_length=1, description="密码（仅 hash 入库，接口不回显）")
+    clientType: str = Field("PC", description="PC / STUDENT_MINI / TEACHER_MINI / MP")
 
 
 @router.post("/login", summary="账号密码登录（真实校验：t_user + pbkdf2 哈希；demo 账号仅访问 demo-school 租户）")
 def login(body: PasswordLoginRequest):
     _login_rate_guard()
-    result = auth_service_db.login_with_password(body.loginName.strip(), body.password)
+    result = auth_service_db.login_with_password(
+        body.loginName.strip(), body.password, body.tenantCode, body.clientType)
     audit.record("登录", method="POST", path="/api/v1/auth/login",
                  status_code=200, target_type="auth", target_id=result["userId"])
     return success(result, message="登录成功")
@@ -75,6 +78,7 @@ def wx_login(body: WxLoginRequest):
 
 class WxBindRequest(BaseModel):
     wxToken: str = Field(..., min_length=10, description="wx-login 返回的绑定令牌（携带 openid）")
+    tenantCode: str | None = Field(None, description="学校编码；同一工号存在于多校时必填")
     loginName: str = Field(..., min_length=1, description="学号/工号")
     password: str = Field(..., min_length=1, description="校园账号密码")
 
@@ -83,7 +87,8 @@ class WxBindRequest(BaseModel):
 def wx_bind(body: WxBindRequest):
     _login_rate_guard()
     from app.services import wx_auth_service
-    result = wx_auth_service.wx_bind(body.wxToken, body.loginName.strip(), body.password)
+    result = wx_auth_service.wx_bind(
+        body.wxToken, body.loginName.strip(), body.password, body.tenantCode)
     audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="绑定成功")
@@ -104,12 +109,17 @@ def change_password(body: ChangePasswordRequest, user=Depends(get_current_user))
 
 @router.get("/me", summary="当前用户 + 当前身份 + 可用身份列表")
 def me(user=Depends(get_current_user)):
-    return success(auth_svc.get_me(user))
+    if str(user.get("userId") or "").startswith("db-"):
+        return success(auth_service_db.get_me(user))
+    return success(mock_auth_svc.get_me(user))
 
 
 @router.post("/switch-role", summary="切换当前身份（菜单/待办/数据范围随之变化）")
 def switch_role(body: SwitchRoleRequest, user=Depends(get_current_user)):
-    result = auth_svc.switch_role(user, body.contextId, body.clientType)
+    if str(user.get("userId") or "").startswith("db-"):
+        result = auth_service_db.switch_role(user, body.contextId, body.clientType)
+    else:
+        result = mock_auth_svc.switch_role(user, body.contextId, body.clientType)
     audit.record("切换身份", method="POST", path="/api/v1/auth/switch-role",
                  status_code=200, target_type="authz", target_id=body.contextId)
     return success(result, message="身份切换成功")
@@ -124,6 +134,8 @@ def refresh(body: RefreshRequest):
     claims = consume_refresh(body.refreshToken)
     if not claims:
         raise unauthorized("refreshToken 无效或已使用，请重新登录")
+    # 真实账号刷新前重新校验账号、租户、当前岗位与权限版本，防止已回收角色被旧 refresh 恢复。
+    auth_service_db.validate_token_subject(claims)
     token = create_access_token(dict(claims))
     new_refresh = issue_refresh(claims)
     audit.record("TOKEN_REFRESH", target_type="auth", target_id=str(claims.get("userId", "-")))

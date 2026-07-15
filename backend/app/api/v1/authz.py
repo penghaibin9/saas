@@ -2,7 +2,7 @@
 /api/v1/authz —— 权限与身份底座（对齐 docs/api/01-认证租户与当前上下文API.md）
 1.1 登录 · 1.2 登出 · 1.3 刷新 · 1.4 当前用户 · 1.5 租户品牌 · 1.6 身份列表
 1.7 当前身份 · 1.8 切换身份 · 1.9 数据范围 · 1.10 菜单 · 1.11 按钮 · 1.12 模块授权 · 1.13 权限校验
-当前全部为 mock 实现；契约字段与真实版一致，接库时仅替换 services 层。
+本路由保留冻结契约兼容性；真实账号统一委托 /auth 主链对应 service，mock 仅在显式开启时可用。
 """
 from __future__ import annotations
 
@@ -15,9 +15,11 @@ from app.core.config import settings
 from app.core.context import get_tenant
 from app.core.exceptions import AppException, unauthorized
 from app.core.response import success
-from app.core.security import create_access_token, decode_token, get_current_user
+from app.core.security import create_access_token, get_current_user
+from app.core.token_store import consume_refresh, issue_refresh
 from app.core.tenant_context import get_mock_tenant
-from app.services import audit_log
+from app.db.session import db_enabled
+from app.services import audit_log, auth_service_db, mock_rbac_service
 from app.services.mock_data import (
     ACTIVE_CONTEXT, DATA_SCOPE_META, MOCK_BRAND, MOCK_BUTTONS, MOCK_MENUS,
     MOCK_MODULES, get_active_context, get_context, get_user_by_id, get_user_by_login,
@@ -28,9 +30,9 @@ router = APIRouter(prefix="/authz", tags=["01·认证与身份底座"])
 
 # ────────────────── 请求体 ──────────────────
 class LoginBody(BaseModel):
-    tenantCode: str = Field(default="demo", description="学校编码（定位租户）")
-    loginName: str = Field(min_length=1, description="登录名，mock 可用：student01 / teacher01 / admin01")
-    password: str = Field(min_length=1, description="mock 阶段任意非空密码")
+    tenantCode: Optional[str] = Field(default=None, description="学校编码（同名账号跨校时必填）")
+    loginName: str = Field(min_length=1, description="登录名/工号/学号")
+    password: str = Field(min_length=1, description="账号密码")
     clientType: str = Field(default="PC", description="PC | STUDENT_MINI | TEACHER_MINI")
 
 
@@ -56,19 +58,27 @@ def _issue_tokens(user: dict, tenant_code: str, ctx: dict) -> dict:
     }
     return {
         "accessToken": create_access_token(claims),
-        "refreshToken": create_access_token({**claims, "typ": "refresh"}),
+        "refreshToken": issue_refresh(dict(claims)),
         "expiresIn": settings.JWT_EXPIRES_IN,
     }
 
 
 # ────────────────── 1.1 登录（mock）──────────────────
-@router.post("/login", summary="1.1 登录（mock：任意非空密码）")
+@router.post("/login", summary="1.1 登录（兼容入口；真实认证统一走 auth service）")
 def login(body: LoginBody):
+    if db_enabled():
+        result = auth_service_db.login_with_password(
+            body.loginName.strip(), body.password, body.tenantCode, body.clientType)
+        audit_log.record("LOGIN", f"user:{result['userId']}", {"clientType": body.clientType})
+        return success(result)
+    if not settings.mock_login_enabled:
+        raise AppException("NO_PERMISSION", "演示登录已关闭，请启用数据库并使用正式账号登录")
     user = get_user_by_login(body.loginName)
     if not user:
         audit_log.record("LOGIN", f"user:{body.loginName}", {"reason": "用户不存在"}, result="FAIL")
         raise AppException("UNAUTHORIZED", "用户名或密码错误（mock 账号：student01 / teacher01 / admin01）")
-    tenant_code = body.tenantCode if get_mock_tenant(body.tenantCode) else settings.DEFAULT_TENANT_CODE
+    tenant_code = (body.tenantCode if body.tenantCode and get_mock_tenant(body.tenantCode)
+                   else settings.DEFAULT_TENANT_CODE)
     ctx = get_active_context(user)
     ACTIVE_CONTEXT[user["userId"]] = ctx["contextId"]
     tokens = _issue_tokens(user, tenant_code, ctx)
@@ -94,9 +104,16 @@ def logout(user=Depends(get_current_user)):
 # ────────────────── 1.3 刷新 Token ──────────────────
 @router.post("/token/refresh", summary="1.3 刷新 Token")
 def refresh_token(body: RefreshBody):
-    claims = decode_token(body.refreshToken)
-    if claims.get("typ") != "refresh":
-        raise unauthorized("不是合法的 refreshToken")
+    claims = consume_refresh(body.refreshToken)
+    if not claims:
+        raise unauthorized("refreshToken 无效或已使用，请重新登录")
+    if str(claims.get("userId") or "").startswith("db-"):
+        auth_service_db.validate_token_subject(claims)
+        return success({
+            "accessToken": create_access_token(dict(claims)),
+            "refreshToken": issue_refresh(dict(claims)),
+            "expiresIn": settings.JWT_EXPIRES_IN,
+        })
     mock_user = get_user_by_id(claims.get("userId", ""))
     if not mock_user:
         raise unauthorized("用户不存在")
@@ -107,6 +124,8 @@ def refresh_token(body: RefreshBody):
 # ────────────────── 1.4 当前用户 ──────────────────
 @router.get("/me", summary="1.4 当前用户")
 def me(user=Depends(get_current_user)):
+    if str(user.get("userId") or "").startswith("db-"):
+        return success(auth_service_db.get_me(user))
     mock_user = get_user_by_id(user["userId"])
     if not mock_user:
         raise unauthorized("用户不存在")
@@ -135,6 +154,8 @@ def tenant_brand(request: Request):
 # ────────────────── 1.6 我的身份列表 ──────────────────
 @router.get("/contexts", summary="1.6 我的身份列表")
 def my_contexts(user=Depends(get_current_user)):
+    if str(user.get("userId") or "").startswith("db-"):
+        return success({"items": auth_service_db.get_me(user)["contexts"]})
     mock_user = get_user_by_id(user["userId"])
     return success({"items": mock_user["contexts"]})
 
@@ -142,6 +163,9 @@ def my_contexts(user=Depends(get_current_user)):
 # ────────────────── 1.7 当前身份 ──────────────────
 @router.get("/contexts/active", summary="1.7 当前身份")
 def active_context(user=Depends(get_current_user)):
+    if str(user.get("userId") or "").startswith("db-"):
+        ctx = auth_service_db.get_active_context(user)
+        return success({**ctx, "moduleScope": []})
     mock_user = get_user_by_id(user["userId"])
     ctx = get_active_context(mock_user)
     return success({
@@ -154,6 +178,11 @@ def active_context(user=Depends(get_current_user)):
 # ────────────────── 1.8 切换身份（角色切换）──────────────────
 @router.post("/contexts/{context_id}/activate", summary="1.8 切换身份")
 def activate_context(context_id: str, body: ActivateBody, user=Depends(get_current_user)):
+    if str(user.get("userId") or "").startswith("db-"):
+        result = auth_service_db.switch_role(user, context_id, body.clientType)
+        audit_log.record("CONTEXT_SWITCH", f"context:{context_id}",
+                         {"contextType": result["contextType"], "clientType": body.clientType})
+        return success(result)
     mock_user = get_user_by_id(user["userId"])
     ctx = get_context(mock_user, context_id)
     if not ctx:
@@ -172,6 +201,8 @@ def activate_context(context_id: str, body: ActivateBody, user=Depends(get_curre
 # ────────────────── 1.9 我的数据范围 ──────────────────
 @router.get("/me/data-scope", summary="1.9 我的数据范围")
 def my_data_scope(user=Depends(get_current_user)):
+    if str(user.get("userId") or "").startswith("db-"):
+        return success(mock_rbac_service.get_data_scope(user))
     mock_user = get_user_by_id(user["userId"])
     ctx = get_active_context(mock_user)
     meta = DATA_SCOPE_META.get(ctx["dataScope"], {"scopeLabel": ctx["dataScope"], "studentCount": None})
@@ -181,6 +212,8 @@ def my_data_scope(user=Depends(get_current_user)):
 # ────────────────── 1.10 我的菜单 ──────────────────
 @router.get("/me/menus", summary="1.10 我的菜单（按当前身份）")
 def my_menus(user=Depends(get_current_user)):
+    if str(user.get("userId") or "").startswith("db-"):
+        return success(mock_rbac_service.get_menus(user))
     mock_user = get_user_by_id(user["userId"])
     ctx = get_active_context(mock_user)
     menus = MOCK_MENUS.get(ctx["contextType"], [])
@@ -198,6 +231,8 @@ def my_menus(user=Depends(get_current_user)):
 @router.get("/me/buttons", summary="1.11 我的按钮权限")
 def my_buttons(page: str = Query(default="studentList", description="页面标识，如 studentList / approvals"),
                user=Depends(get_current_user)):
+    if str(user.get("userId") or "").startswith("db-"):
+        return success(mock_rbac_service.get_permissions(user, page))
     mock_user = get_user_by_id(user["userId"])
     ctx = get_active_context(mock_user)
     return success({"buttons": MOCK_BUTTONS.get(page, {}).get(ctx["contextType"], [])})
@@ -212,6 +247,9 @@ def my_modules(user=Depends(get_current_user)):
 # ────────────────── 1.13 权限校验（内部）──────────────────
 @router.post("/check", summary="1.13 权限校验")
 def check_permission(body: CheckBody, user=Depends(get_current_user)):
+    if str(user.get("userId") or "").startswith("db-"):
+        from app.core.permissions import has_permission
+        return success({"allowed": has_permission(user, body.permissionCode)})
     mock_user = get_user_by_id(user["userId"])
     ctx = get_active_context(mock_user)
     allowed_prefix = {"STUDENT": ("student.self", "todo", "message"),

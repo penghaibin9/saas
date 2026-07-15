@@ -6,7 +6,15 @@ mock RBAC 服务：菜单 / 按钮权限 / 数据范围
 """
 from __future__ import annotations
 
-from app.services.mock_auth_service import get_active_context
+from app.services.mock_auth_service import get_active_context as get_mock_active_context
+
+
+def _active_context(user_ctx: dict) -> dict:
+    """真实 DB 账号走真实 UserRole；仅 mock 账号读取演示注册表。"""
+    if str((user_ctx or {}).get("userId") or "").startswith("db-"):
+        from app.services.auth_service_db import get_active_context
+        return get_active_context(user_ctx)
+    return get_mock_active_context(user_ctx)
 
 # 冻结契约 §八：12 种数据范围
 DATA_SCOPE_CATALOG = [
@@ -72,21 +80,37 @@ _BUTTONS_BY_TYPE = {
               "role.assign", "module.entitlement.manage", "audit.view", "data.export"],
 }
 
+_ADMIN_CONTEXT_TYPES = {
+    "PLATFORM_SUPER_ADMIN", "PLATFORM_OP", "SCHOOL_ADMIN", "SYS_ADMIN",
+    "SECURITY_AUDITOR", "LEADER", "COLLEGE_ADMIN", "ACADEMIC_ADMIN",
+    "STUDENT_AFFAIRS_ADMIN", "GRADUATION_ADMIN",
+}
+
+
+def _ui_kind(user_ctx: dict, active: dict) -> str:
+    """界面投影以当前岗位为准，不能用账号类型把学校管理员误投影成教师。"""
+    role = active.get("roleCode") or active.get("contextType")
+    if role == "STUDENT":
+        return "STUDENT"
+    if role in _ADMIN_CONTEXT_TYPES:
+        return "ADMIN"
+    return "TEACHER"
+
 
 def get_menus(user_ctx: dict) -> dict:
-    active = get_active_context(user_ctx)
-    menus = _MENUS_BY_TYPE.get(user_ctx.get("userType"), _TEACHER_MENUS)
+    active = _active_context(user_ctx)
+    menus = _MENUS_BY_TYPE[_ui_kind(user_ctx, active)]
     return {"activeContextId": active["contextId"], "contextType": active["contextType"], "items": menus}
 
 
 def get_permissions(user_ctx: dict, page: str | None) -> dict:
-    active = get_active_context(user_ctx)
-    buttons = _BUTTONS_BY_TYPE.get(user_ctx.get("userType"), [])
+    active = _active_context(user_ctx)
+    buttons = _BUTTONS_BY_TYPE[_ui_kind(user_ctx, active)]
     return {"page": page, "contextType": active["contextType"], "buttons": buttons}
 
 
 def get_data_scope(user_ctx: dict) -> dict:
-    active = get_active_context(user_ctx)
+    active = _active_context(user_ctx)
     return {
         "scopeType": active["dataScope"],
         "scopeLabel": active.get("scopeLabel", ""),
@@ -128,8 +152,7 @@ DATA_SCOPE_CATALOG = [
 
 def get_role_catalog(user_ctx: dict) -> dict:
     """角色目录：平台运营与学校角色边界隔离——学校侧看不到 platform 角色详情之外的能力。"""
-    from app.services.mock_auth_service import get_active_context
-    active = get_active_context(user_ctx)
+    active = _active_context(user_ctx)
     is_platform = active["contextType"] == "PLATFORM_OP"
     roles = ROLE_CATALOG if is_platform else [r for r in ROLE_CATALOG if r["side"] == "school"]
     return {"roles": roles, "dataScopes": DATA_SCOPE_CATALOG}
@@ -137,8 +160,7 @@ def get_role_catalog(user_ctx: dict) -> dict:
 
 def get_current_context(user_ctx: dict) -> dict:
     """当前身份上下文：currentRole + dataScope + permissionActions（前端 ctx 契约）。"""
-    from app.services.mock_auth_service import get_active_context
-    active = get_active_context(user_ctx)
+    active = _active_context(user_ctx)
     is_platform = active["contextType"] == "PLATFORM_OP"
     # permissionPatterns 直接取自集中式 ROLE_PERMISSIONS —— 与后端 enforce_permission 共用同一套权限码，
     # 是前端角色菜单投影(getVisibleNavPlan/canSeeLeaf)的唯一权限来源，彻底打通前后端权限链路。
