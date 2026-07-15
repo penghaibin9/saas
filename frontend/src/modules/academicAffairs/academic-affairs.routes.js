@@ -35,6 +35,8 @@ const layoutRoute = {
     { path: 'courses/:id', name: 'aa-course-detail', component: () => import('@/modules/academicAffairs/views/AaCourseDetailView.vue'), meta: meta('academicAffairs.course.view', '课程详情') },
     { path: 'courses/:id/edit', name: 'aa-course-edit', component: () => import('@/modules/academicAffairs/views/AaCourseFormView.vue'), meta: meta('academicAffairs.course.manage', '编辑课程') },
     { path: 'programs', name: 'aa-programs', component: () => import('@/modules/academicAffairs/views/AaProgramListView.vue'), meta: meta('academicAffairs.program.view', '培养方案') },
+    // Tier1 续工：方案制定/方案版本/课程模块/学分要求/毕业要求/方案审核/方案发布 共用一个控制台（?tab= 深链接，对齐 orgs/textbooks 既有模式）
+    { path: 'programs/console', name: 'aa-programs-console', component: () => import('@/modules/academicAffairs/views/AaProgramConsoleView.vue'), meta: meta('academicAffairs.program.view', '培养方案控制台') },
     { path: 'programs/:id', name: 'aa-program-editor', component: () => import('@/modules/academicAffairs/views/AaProgramEditorView.vue'), meta: meta('academicAffairs.program.view', '方案编制') },
     // ── W4 教学任务 + 课表 ──
     { path: 'teaching-tasks', name: 'aa-teaching-tasks', component: () => import('@/modules/academicAffairs/views/AaTaskBatchListView.vue'), meta: meta('academicAffairs.teachingTask.view', '教学任务') },

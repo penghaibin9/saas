@@ -270,7 +270,16 @@ export const NAV_PLAN = [
     ]),
     mod('aa-training', '培养方案', '/admin/academic-affairs/programs', [
       I('方案列表', '/admin/academic-affairs/programs'),
-      ...P('方案制定', '方案版本', '课程模块', '学分要求', '实践环节', '毕业要求', '方案审核', '方案发布', '方案变更', '方案归档')
+      // Tier1 续工（2026-07-15）：以下 7 项接入统一控制台 /programs/console?tab=xxx（DataTable+Drawer，深编辑仍回既有 /programs/:id 编制器）
+      I('方案制定', '/admin/academic-affairs/programs/console?tab=authoring', 'academicAffairs.program.view'),
+      I('方案版本', '/admin/academic-affairs/programs/console?tab=versions', 'academicAffairs.program.view'),
+      I('课程模块', '/admin/academic-affairs/programs/console?tab=courseModules', 'academicAffairs.program.view'),
+      I('学分要求', '/admin/academic-affairs/programs/console?tab=creditRequirements', 'academicAffairs.program.view'),
+      ...P('实践环节'),
+      I('毕业要求', '/admin/academic-affairs/programs/console?tab=graduationRequirements', 'academicAffairs.program.view'),
+      I('方案审核', '/admin/academic-affairs/programs/console?tab=review', 'academicAffairs.program.view'),
+      I('方案发布', '/admin/academic-affairs/programs/console?tab=publish', 'academicAffairs.program.view'),
+      ...P('方案变更', '方案归档')
     ]),
     mod('aa-courses', '课程库', '/admin/academic-affairs/courses', [
       I('课程列表', '/admin/academic-affairs/courses'),

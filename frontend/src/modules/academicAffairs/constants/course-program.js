@@ -49,3 +49,21 @@ export function inReview(status) {
 export function canSubmit(status) {
   return status === 'DRAFT' || status === 'RETURNED'
 }
+
+/** 毕业要求分类（知识/能力/素质/职业证书）。 */
+export const GRADUATION_REQUIREMENT_CATEGORY = {
+  KNOWLEDGE: '知识要求',
+  ABILITY: '能力要求',
+  QUALITY: '素质要求',
+  CERTIFICATE: '职业证书'
+}
+
+/** 是否处于可新建版本态（已发布/启用/冻结/停用，编制/退回态直接编辑无需新建版本）。 */
+export function canNewVersion(status) {
+  return ['PUBLISHED', 'ENABLED', 'FROZEN', 'DISABLED'].includes(status)
+}
+
+/** 是否处于可发布绑定态（已发布/已启用）。 */
+export function canPublishBind(status) {
+  return status === 'PUBLISHED' || status === 'ENABLED'
+}

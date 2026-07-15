@@ -154,6 +154,19 @@ class AaProgramBinding(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
 
 
+class AaProgramGraduationRequirement(PKMixin, TenantMixin, CommonMixin, Base):
+    """培养方案毕业要求条目（知识/能力/素质/职业证书分类，独立于学分结构的结构化条目）。
+    13B-培养方案 Tier1 补建（§2.9 编制页②毕业要求子步骤）；ACTIVE/REMOVED 逻辑态，配合 is_deleted 使用。"""
+    __tablename__ = "t_aa_program_graduation_requirement"
+
+    program_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="ABILITY",
+                                          comment="KNOWLEDGE/ABILITY/QUALITY/CERTIFICATE 知识/能力/素质/职业证书")
+    content: Mapped[str] = mapped_column(String(1000), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
+
+
 # ═══════════ 课程库与教学任务组（13B-P3；商业教务软件全字段）═══════════
 
 
