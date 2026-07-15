@@ -899,6 +899,58 @@ def schedule_student_view(batchId: int = Path(...), studentId: str = "", user=De
     return success(sched_svc.student_view(batchId, user, studentId))
 
 
+# ═══════════ 课表管理 Tier1 R2：班级/教师/教室独立课表 + 发布记录 + 导出（自动取当前已发布批次） ═══════════
+_SCHED_TIER1_VIEW = "academicAffairs.schedule.view"  # 与 §2410 附近排课管理增强复用同一 key（module-wide 课表查看）
+_SCHED_ROOM_VIEW = "academicAffairs.classroom.view"  # 复用既有教室字典权限点，不新增教室专属 key
+_SCHED_EXPORT = "academicAffairs.schedule.export"
+
+
+@router.get("/schedule/class/{classId}", summary="班级课表（自动取当前已发布批次；周次可选过滤；越范围403002）")
+def schedule_class_page(classId: int = Path(...), termId: Optional[str] = None, week: Optional[int] = None,
+                        user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    return success(sched_svc.class_schedule(user, classId, termId, week))
+
+
+@router.get("/schedule/teacher/{teacherKey}", summary="教师课表（教务处/学院教务查任意；教师仅本人，越权403002）")
+def schedule_teacher_page(teacherKey: str = Path(...), termId: Optional[str] = None, week: Optional[int] = None,
+                          user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    return success(sched_svc.teacher_schedule(user, teacherKey, termId, week))
+
+
+@router.get("/schedule/room/{classroomId}", summary="教室课表（教务/学院教务只读；自动取当前已发布批次）")
+def schedule_room_page(classroomId: int = Path(...), termId: Optional[str] = None, week: Optional[int] = None,
+                       user=Depends(require_permission(_SCHED_ROOM_VIEW))):
+    return success(sched_svc.room_schedule(user, classroomId, termId, week))
+
+
+@router.get("/schedule/publish-records", summary="课表发布记录（t_aa_schedule_publish，发布/作废历史留痕）")
+def schedule_publish_records(termId: Optional[str] = None, batchId: Optional[str] = None,
+                             page: int = 1, pageSize: int = 20, user=Depends(require_permission(_SCHED_TIER1_VIEW))):
+    items, total = sched_svc.list_publish_records(user, termId, batchId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class ScheduleExportBody(BaseModel):
+    scope: str = Field(..., description="CLASS/TEACHER/ROOM")
+    identifier: str = Field(..., min_length=1, description="classId / teacherKey / classroomId")
+    termId: Optional[str] = None
+    weekStart: Optional[int] = Field(None, ge=1)
+    weekEnd: Optional[int] = Field(None, ge=1)
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5字，写审计）")
+
+
+@router.post("/schedule/export", summary="课表导出 xlsx（班级/教师/教室三选一；水印+审计）")
+def schedule_export(body: ScheduleExportBody, user=Depends(require_permission(_SCHED_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = sched_svc.export_schedule(user, body.scope, body.identifier, body.termId,
+                                        body.weekStart, body.weekEnd, body.purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=schedule_export.xlsx"})
+
+
 # ═══════════ 成绩录入 + 读侧视图（P5，平时+期末按比例）═══════════
 
 class GradeTaskCreate(BaseModel):
