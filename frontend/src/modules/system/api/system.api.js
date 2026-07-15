@@ -438,7 +438,14 @@ export const systemApi = {
     return ok(clone(row))
   },
 
-  copyRole(id) {
+  async copyRole(id) {
+    try {
+      const data = await request(`/system/roles/${encodeURIComponent(id)}/copy`, { method: 'POST' })
+      return ok(data)
+    } catch (error) {
+      return fail(error.message || '复制角色失败')
+    }
+    /* c8 ignore next */
     const src = roleList.find((r) => r.id === id)
     if (!src) return fail('角色不存在')
     const row = { ...clone(src), id: 'role-n' + ++seed, code: src.code + '_COPY', name: src.name + '（副本）', type: 'CUSTOM', typeLabel: '自定义角色', memberCount: 0, updatedAt: now().slice(0, 10) }

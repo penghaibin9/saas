@@ -145,6 +145,59 @@ def create_system_role(body: dict = Body(...), user=Depends(require_permission("
         db.close()
 
 
+@router.post("/system/roles/{role_id}/copy", summary="从预设或自定义角色复制学校自定义角色")
+def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.role.create"))):
+    from app.core.exceptions import AppException
+    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    from app.models import Permission, Role, RolePermission
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        source = db.scalars(select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id,
+                                               Role.is_deleted.is_(False))).first()
+        if source is None:
+            raise AppException("DATA_NOT_FOUND", "源角色不存在")
+        if str(source.role_type or "").upper() == "SYSTEM":
+            source_codes = set(ROLE_PERMISSIONS.get(source.role_code, set()))
+        else:
+            source_codes = set(db.scalars(select(Permission.permission_code).join(
+                RolePermission, RolePermission.permission_id == Permission.id).where(
+                RolePermission.tenant_id == tenant_id, RolePermission.role_id == source.id,
+                RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False))).all())
+        excess = sorted(code for code in source_codes if not has_permission(user, code))
+        if excess:
+            raise AppException("NO_PERMISSION", "当前操作者不能复制超出自身权限边界的角色", {"codes": excess[:10]})
+        base = re.sub(r"[^A-Z0-9_]", "_", f"{source.role_code}_CUSTOM")[:44].rstrip("_") or "CUSTOM"
+        existing_codes = set(db.scalars(select(Role.role_code).where(Role.tenant_id == tenant_id)).all())
+        code = next((f"{base}_{i}" for i in range(1, 1000) if f"{base}_{i}" not in existing_codes), None)
+        if code is None:
+            raise AppException("DATA_CONFLICT", "无法生成可用的角色编码")
+        role = Role(tenant_id=tenant_id, role_code=code, role_name=f"{source.role_name}（自定义）",
+                    role_type="CUSTOM", status="ACTIVE", remark="SAAS_CUSTOM")
+        _set_role_scope(role, _role_scope(source))
+        db.add(role); db.flush()
+        permissions = {p.permission_code: p for p in db.scalars(select(Permission).where(
+            Permission.permission_code.in_(source_codes))).all()} if source_codes else {}
+        for permission_code in source_codes:
+            if permission_code not in permissions:
+                module, _, action = permission_code.partition(".")
+                p = Permission(permission_code=permission_code, permission_name=permission_code,
+                               module_code=module, action=action or None)
+                db.add(p); db.flush(); permissions[permission_code] = p
+            db.add(RolePermission(tenant_id=tenant_id, role_id=role.id,
+                                  permission_id=permissions[permission_code].id, status="ACTIVE"))
+        db.commit(); db.refresh(role)
+        from app.services import audit_log
+        audit_log.record("ROLE_COPY", f"role:{role.id}", detail={"sourceRoleId": str(source.id),
+                         "sourceRoleCode": source.role_code, "roleCode": role.role_code,
+                         "permissionCount": len(source_codes)})
+        return success(_role_row(role, 0), message="已复制为自定义角色；成员未复制")
+    except Exception:
+        db.rollback(); raise
+    finally:
+        db.close()
+
+
 @router.put("/system/roles/{role_id}/permissions", summary="保存自定义角色权限与默认范围")
 def save_system_role_permissions(role_id: int, body: dict = Body(...),
                                  user=Depends(require_permission("systemAdmin.role.config"))):
