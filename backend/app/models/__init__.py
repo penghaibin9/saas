@@ -91,7 +91,7 @@ from app.models.affairs_funding_ext import (FeeReduction,  # noqa: F401
                                             WorkStudyPost, WorkStudyRecord)
 from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaArchiveItem, AaAttendanceSession,
-                                         AaCalendarEvent,
+                                         AaCalendarEvent, AaClassTimeBand,
                                          AaClassroom, AaClassroomBooking,
                                          AaCourse, AaDeferredExam,
                                          AaEvaluationAppeal, AaEvaluationBatch,

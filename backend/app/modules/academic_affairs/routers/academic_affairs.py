@@ -84,6 +84,16 @@ def term_publish(termId: int = Path(...), user=Depends(require_staff)):
     return success(svc.publish_term(termId, user), message="已发布")
 
 
+@router.get("/terms/{termId}", summary="学期详情（校历归档/发布状态查看复用）")
+def term_detail(termId: int = Path(...), user=Depends(require_permission("academicAffairs.term.view"))):
+    return success(svc.term_detail(termId, user))
+
+
+@router.post("/terms/{termId}/archive", summary="校历归档（PUBLISHED/FROZEN→ARCHIVED，仅教务处/学校管理员）")
+def term_archive(termId: int = Path(...), user=Depends(require_permission("academicAffairs.calendarArchive.manage"))):
+    return success(svc.archive_term(termId, user), message="已归档")
+
+
 class CalendarEventBody(BaseModel):
     eventType: str = Field("TEACHING", description="TEACHING/EXAM/INTERNSHIP/HOLIDAY/SWAP")
     startDate: Optional[str] = None
@@ -92,17 +102,49 @@ class CalendarEventBody(BaseModel):
     remark: Optional[str] = None
 
 
-@router.post("/terms/{termId}/calendar", summary="添加校历事件")
-def calendar_add(body: CalendarEventBody, termId: int = Path(...), user=Depends(require_staff)):
+class CalendarEventUpdate(BaseModel):
+    eventType: Optional[str] = None
+    startDate: Optional[str] = None
+    endDate: Optional[str] = None
+    swapToDate: Optional[str] = None
+    remark: Optional[str] = None
+
+
+@router.post("/terms/{termId}/calendar", summary="添加校历事件（节假日/补课日/教学/考试/实习）")
+def calendar_add(body: CalendarEventBody, termId: int = Path(...),
+                 user=Depends(require_permission("academicAffairs.calendar.manage"))):
     return success(svc.add_calendar_event(termId, user, body), message="已添加")
 
 
-@router.get("/terms/{termId}/calendar", summary="校历事件列表")
-def calendar_list(termId: int = Path(...), user=Depends(require_staff)):
-    return success({"items": svc.list_calendar(termId, user)})
+@router.get("/terms/{termId}/calendar", summary="校历事件列表（可按 eventType 过滤：HOLIDAY 节假日/SWAP 补课日）")
+def calendar_list(termId: int = Path(...), eventType: Optional[str] = None,
+                  user=Depends(require_permission("academicAffairs.calendar.view"))):
+    return success({"items": svc.list_calendar(termId, user, eventType)})
 
 
-# ── 作息节次 ──
+@router.put("/terms/{termId}/calendar/{eventId}", summary="编辑校历事件（发布后锁定 409）")
+def calendar_update(body: CalendarEventUpdate, termId: int = Path(...), eventId: int = Path(...),
+                    user=Depends(require_permission("academicAffairs.calendar.manage"))):
+    return success(svc.update_calendar_event(termId, eventId, user, body), message="已保存")
+
+
+@router.delete("/terms/{termId}/calendar/{eventId}", summary="删除校历事件（发布后锁定 409）")
+def calendar_delete(termId: int = Path(...), eventId: int = Path(...),
+                    user=Depends(require_permission("academicAffairs.calendar.manage"))):
+    return success(svc.delete_calendar_event(termId, eventId, user), message="已删除")
+
+
+@router.get("/terms/{termId}/week-calendar", summary="教学周日历（周次×周类型聚合，叠加节假日/补课日着色）")
+def week_calendar(termId: int = Path(...), user=Depends(require_permission("academicAffairs.calendar.view"))):
+    return success(svc.week_calendar(termId, user))
+
+
+@router.post("/terms/{termId}/calendar/publish", summary="发布校历（校验节次已配置+补课日已配对，仅教务处/学校管理员）")
+def calendar_publish(termId: int = Path(...), user=Depends(require_permission("academicAffairs.calendarPublish.manage"))):
+    return success(svc.publish_calendar(termId, user), message="已发布")
+
+
+# ── 作息节次（节次管理，全校统一，不随学期锁定）──
 class TimeSlotCreate(BaseModel):
     slotNo: int = Field(..., ge=1)
     slotName: Optional[str] = None
@@ -110,14 +152,75 @@ class TimeSlotCreate(BaseModel):
     endTime: Optional[str] = None
 
 
+class TimeSlotUpdate(BaseModel):
+    slotNo: Optional[int] = Field(None, ge=1)
+    slotName: Optional[str] = None
+    startTime: Optional[str] = None
+    endTime: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
 @router.post("/time-slots", summary="新建作息节次")
-def time_slot_create(body: TimeSlotCreate, user=Depends(require_staff)):
+def time_slot_create(body: TimeSlotCreate, user=Depends(require_permission("academicAffairs.timeslot.manage"))):
     return success(svc.create_time_slot(body, user), message="已创建")
 
 
-@router.get("/time-slots", summary="作息节次列表")
-def time_slots(user=Depends(require_staff)):
-    return success({"items": svc.list_time_slots(user)})
+@router.get("/time-slots", summary="作息节次列表（includeDisabled=true 含已停用，供节次管理页）")
+def time_slots(includeDisabled: bool = False, user=Depends(require_permission("academicAffairs.timeslot.view"))):
+    return success({"items": svc.list_time_slots(user, includeDisabled)})
+
+
+@router.put("/time-slots/{slotId}", summary="编辑作息节次（含启用/停用）")
+def time_slot_update(body: TimeSlotUpdate, slotId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.timeslot.manage"))):
+    return success(svc.update_time_slot(slotId, user, body), message="已保存")
+
+
+@router.delete("/time-slots/{slotId}", summary="删除作息节次（逻辑删除）")
+def time_slot_delete(slotId: int = Path(...), user=Depends(require_permission("academicAffairs.timeslot.manage"))):
+    return success(svc.delete_time_slot(slotId, user), message="已删除")
+
+
+# ── 上课时间段（节次的实际钟点，支持按校区/生效日期区间配置多套作息）──
+class TimeBandCreate(BaseModel):
+    bandName: Optional[str] = None
+    campusCode: Optional[str] = None
+    effectiveStart: Optional[str] = None
+    effectiveEnd: Optional[str] = None
+    startTime: str = Field(..., min_length=1, description="HH:MM")
+    endTime: str = Field(..., min_length=1, description="HH:MM")
+
+
+class TimeBandUpdate(BaseModel):
+    bandName: Optional[str] = None
+    campusCode: Optional[str] = None
+    effectiveStart: Optional[str] = None
+    effectiveEnd: Optional[str] = None
+    startTime: Optional[str] = None
+    endTime: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.post("/time-slots/{slotId}/time-bands", summary="新建上课时间段（绑定节次的实际钟点）")
+def time_band_create(body: TimeBandCreate, slotId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classTimeBand.manage"))):
+    return success(svc.create_time_band(slotId, user, body), message="已创建")
+
+
+@router.get("/time-slots/{slotId}/time-bands", summary="上课时间段列表（按节次）")
+def time_band_list(slotId: int = Path(...), user=Depends(require_permission("academicAffairs.classTimeBand.view"))):
+    return success({"items": svc.list_time_bands(slotId, user)})
+
+
+@router.put("/time-bands/{bandId}", summary="编辑上课时间段")
+def time_band_update(body: TimeBandUpdate, bandId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.classTimeBand.manage"))):
+    return success(svc.update_time_band(bandId, user, body), message="已保存")
+
+
+@router.delete("/time-bands/{bandId}", summary="删除上课时间段")
+def time_band_delete(bandId: int = Path(...), user=Depends(require_permission("academicAffairs.classTimeBand.manage"))):
+    return success(svc.delete_time_band(bandId, user), message="已删除")
 
 
 # ── 学籍名册 ──

@@ -6,13 +6,14 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, func, or_, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.modules.academic_affairs.services.academic_affairs_status_service import (audit_status_change,
                                                           change_student_status)
 from app.services.db_service import _iso, _mask_id_card, _tid, session
@@ -114,57 +115,398 @@ def current_term(user) -> dict:
         return _term_row(t) if t else {"termId": "", "isCurrent": False, "note": "尚未设置当前学期"}
 
 
-# ═══════════ 校历 / 节次 ═══════════
+# ═══════════ 校历 / 节次（校历节次 Tier1 R2） ═══════════
+# 节假日=t_aa_calendar_event(event_type=HOLIDAY)；补课日/调休=t_aa_calendar_event(event_type=SWAP，
+# start_date=原停课日，swap_to_date=补课日，二者必须成对)；节次=t_aa_time_slot（沿用，租户级全局，
+# 不随学期锁定）；上课时间段=新表 t_aa_class_time_band（节次的实际钟点，回链 slot_id，支持按校区/
+# 生效日期区间配置多套作息）；教学周日历=按 term.start_date+teaching_weeks+exam_week_start 派生，
+# 叠加校历事件着色，零新表；校历发布=复用 t_aa_term.status（DRAFT→PUBLISHED）但校验节次已配置+
+# 调休已配对，仅教务处/学校管理员可执行（同 grade_service._REVIEW_ROLES 惯例）；
+# 校历归档=PUBLISHED/FROZEN→ARCHIVED，仅教务处/学校管理员。
+
+_CAL_MGMT_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}  # 校历发布/归档超高危角色白名单（同成绩终审惯例）
+_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _require_cal_mgmt_role(user):
+    role = (user.get("currentRoleCode") or "").upper()
+    if role not in _CAL_MGMT_ROLES and user.get("userType") != "PLATFORM_SUPER_ADMIN":
+        raise no_permission("仅教务处/学校管理员可执行该操作")
+
+
+def _load_term(db, term_id):
+    from app.models import AaTerm
+    t = db.get(AaTerm, int(term_id))
+    if not t or t.is_deleted or t.tenant_id != _tid():
+        raise not_found("学期不存在")
+    return t
+
+
+def _assert_calendar_editable(t) -> None:
+    """校历一旦发布即锁定（不可再增删改事件），需先归档回退或走线下变更，避免课表/统计基准漂移。"""
+    if t.status in ("PUBLISHED", "FROZEN", "ARCHIVED"):
+        raise AppException("DATA_CONFLICT", "校历已发布，事件已锁定，如需调整请联系教务处")
+
+
+def _validate_event_dates(t, event_type, start_date, end_date, swap_to_date) -> None:
+    if not start_date:
+        raise AppException("VALIDATION_ERROR", "请填写开始日期")
+    if event_type == "SWAP" and not swap_to_date:
+        raise AppException("VALIDATION_ERROR", "补课日必须填写「调至日期」，节假日与补课日须成对登记")
+    if event_type == "SWAP" and swap_to_date == start_date:
+        raise AppException("VALIDATION_ERROR", "补课日期不能与原停课日期相同")
+    if t.start_date and t.end_date:
+        for d in (start_date, end_date or start_date, swap_to_date):
+            if d and (d < t.start_date or d > t.end_date):
+                raise AppException("VALIDATION_ERROR", "日期需在学期起止范围内")
+
+
+def _calendar_row(e) -> dict:
+    return {"eventId": str(e.id), "termId": str(e.term_id), "eventType": e.event_type,
+            "startDate": _iso(e.start_date), "endDate": _iso(e.end_date),
+            "swapToDate": _iso(e.swap_to_date), "remark": e.remark or "", "version": e.version}
+
 
 def add_calendar_event(term_id, user, body) -> dict:
     with session() as db:
-        from app.models import AaCalendarEvent, AaTerm
-        t = db.get(AaTerm, int(term_id))
-        if not t or t.is_deleted or t.tenant_id != _tid():
-            raise not_found("学期不存在")
-        e = AaCalendarEvent(tenant_id=_tid(), term_id=t.id, event_type=(body.eventType or "TEACHING"),
-                            start_date=_parse_dt(body.startDate), end_date=_parse_dt(body.endDate),
-                            swap_to_date=_parse_dt(getattr(body, "swapToDate", None)),
+        from app.models import AaCalendarEvent
+        t = _load_term(db, term_id)
+        _assert_calendar_editable(t)
+        event_type = body.eventType or "TEACHING"
+        start_date = _parse_dt(body.startDate)
+        end_date = _parse_dt(body.endDate)
+        swap_to_date = _parse_dt(getattr(body, "swapToDate", None))
+        _validate_event_dates(t, event_type, start_date, end_date, swap_to_date)
+        e = AaCalendarEvent(tenant_id=_tid(), term_id=t.id, event_type=event_type,
+                            start_date=start_date, end_date=end_date, swap_to_date=swap_to_date,
                             remark=getattr(body, "remark", None))
         db.add(e)
         db.flush()
-        _audit(db, "AA_CALENDAR", e.id, "ADD", body.eventType or "TEACHING")
+        _audit(db, "AA_CALENDAR", e.id, "ADD", event_type)
         db.commit()
-        return {"eventId": str(e.id), "termId": str(term_id), "eventType": e.event_type}
+        db.refresh(e)
+        return _calendar_row(e)
 
 
-def list_calendar(term_id, user):
+def update_calendar_event(term_id, event_id, user, body) -> dict:
+    with session() as db:
+        from app.models import AaCalendarEvent
+        t = _load_term(db, term_id)
+        _assert_calendar_editable(t)
+        e = db.get(AaCalendarEvent, int(event_id))
+        if not e or e.is_deleted or e.tenant_id != _tid() or e.term_id != t.id:
+            raise not_found("校历事件不存在")
+        event_type = getattr(body, "eventType", None) or e.event_type
+        start_date = _parse_dt(getattr(body, "startDate", None)) if getattr(body, "startDate", None) is not None else e.start_date
+        end_date = _parse_dt(getattr(body, "endDate", None)) if getattr(body, "endDate", None) is not None else e.end_date
+        swap_to_date = _parse_dt(getattr(body, "swapToDate", None)) if getattr(body, "swapToDate", None) is not None else e.swap_to_date
+        _validate_event_dates(t, event_type, start_date, end_date, swap_to_date)
+        e.event_type, e.start_date, e.end_date, e.swap_to_date = event_type, start_date, end_date, swap_to_date
+        if getattr(body, "remark", None) is not None:
+            e.remark = body.remark or None
+        e.version += 1
+        _audit(db, "AA_CALENDAR", e.id, "UPDATE", event_type)
+        db.commit()
+        db.refresh(e)
+        return _calendar_row(e)
+
+
+def delete_calendar_event(term_id, event_id, user) -> dict:
+    with session() as db:
+        from app.models import AaCalendarEvent
+        t = _load_term(db, term_id)
+        _assert_calendar_editable(t)
+        e = db.get(AaCalendarEvent, int(event_id))
+        if not e or e.is_deleted or e.tenant_id != _tid() or e.term_id != t.id:
+            raise not_found("校历事件不存在")
+        e.is_deleted = True
+        e.version += 1
+        _audit(db, "AA_CALENDAR", e.id, "DELETE", e.event_type)
+        db.commit()
+        return {"eventId": str(event_id)}
+
+
+def list_calendar(term_id, user, event_type=None):
     from app.models import AaCalendarEvent
     with session() as db:
-        rows = db.scalars(select(AaCalendarEvent).where(
-            AaCalendarEvent.tenant_id == _tid(), AaCalendarEvent.term_id == int(term_id),
-            AaCalendarEvent.is_deleted.is_(False)).order_by(AaCalendarEvent.start_date)).all()
-        return [{"eventId": str(e.id), "eventType": e.event_type, "startDate": _iso(e.start_date),
-                 "endDate": _iso(e.end_date), "swapToDate": _iso(e.swap_to_date),
-                 "remark": e.remark or ""} for e in rows]
+        conds = [AaCalendarEvent.tenant_id == _tid(), AaCalendarEvent.term_id == int(term_id),
+                 AaCalendarEvent.is_deleted.is_(False)]
+        if event_type:
+            conds.append(AaCalendarEvent.event_type == event_type)
+        rows = db.scalars(select(AaCalendarEvent).where(*conds).order_by(AaCalendarEvent.start_date)).all()
+        return [_calendar_row(e) for e in rows]
+
+
+# ── 教学周日历（term.start_date+teaching_weeks+exam_week_start 派生，叠加校历事件着色，零新表）──
+
+def week_calendar(term_id, user) -> dict:
+    from app.models import AaCalendarEvent
+    with session() as db:
+        t = _load_term(db, term_id)
+        if not t.start_date or not t.teaching_weeks:
+            raise AppException("VALIDATION_ERROR", "请先在「学年学期」维护起止日期与教学周数")
+        events = db.scalars(select(AaCalendarEvent).where(
+            AaCalendarEvent.tenant_id == _tid(), AaCalendarEvent.term_id == t.id,
+            AaCalendarEvent.is_deleted.is_(False), AaCalendarEvent.start_date.is_not(None))).all()
+        weeks = []
+        cursor = t.start_date
+        for wno in range(1, int(t.teaching_weeks) + 1):
+            week_start, week_end = cursor, cursor + timedelta(days=6)
+            week_type = "EXAM" if (t.exam_week_start and wno >= int(t.exam_week_start)) else "TEACHING"
+            holidays, swaps, internships = [], [], []
+            for e in events:
+                e_end = e.end_date or e.start_date
+                if not (e.start_date <= week_end and e_end >= week_start):
+                    continue
+                if e.event_type == "HOLIDAY":
+                    holidays.append({"eventId": str(e.id), "startDate": _iso(e.start_date),
+                                     "endDate": _iso(e.end_date), "remark": e.remark or ""})
+                    week_type = "HOLIDAY"
+                elif e.event_type == "SWAP":
+                    swaps.append({"eventId": str(e.id), "startDate": _iso(e.start_date),
+                                  "swapToDate": _iso(e.swap_to_date), "remark": e.remark or ""})
+                elif e.event_type == "INTERNSHIP" and week_type == "TEACHING":
+                    week_type = "INTERNSHIP"
+                    internships.append({"eventId": str(e.id)})
+            weeks.append({"weekNo": wno, "startDate": _iso(week_start), "endDate": _iso(week_end),
+                         "weekType": week_type, "holidays": holidays, "swaps": swaps, "internships": internships})
+            cursor += timedelta(days=7)
+        return {"termId": str(t.id), "termName": t.term_name or f"{t.year_code} 第{t.term_no}学期",
+               "teachingWeeks": t.teaching_weeks, "examWeekStart": t.exam_week_start, "weeks": weeks}
+
+
+# ── 校历发布（复用 t_aa_term.status；校验节次已配置+调休已配对；仅教务处/学校管理员）──
+
+def publish_calendar(term_id, user) -> dict:
+    _require_cal_mgmt_role(user)
+    with session() as db:
+        from app.models import AaCalendarEvent, AaTerm, AaTimeSlot
+        t = _load_term(db, term_id)
+        if t.status in ("FROZEN", "ARCHIVED"):
+            raise AppException("DATA_CONFLICT", "当前学期状态不允许发布校历")
+        if t.status == "DRAFT":
+            slot_cnt = db.scalar(select(func.count()).select_from(AaTimeSlot).where(
+                AaTimeSlot.tenant_id == _tid(), AaTimeSlot.is_deleted.is_(False),
+                AaTimeSlot.status == "ENABLED")) or 0
+            if slot_cnt == 0:
+                raise AppException("VALIDATION_ERROR", "请先在「节次管理」配置至少一个节次后再发布校历")
+            unpaired = db.scalars(select(AaCalendarEvent).where(
+                AaCalendarEvent.tenant_id == _tid(), AaCalendarEvent.term_id == t.id,
+                AaCalendarEvent.is_deleted.is_(False), AaCalendarEvent.event_type == "SWAP",
+                AaCalendarEvent.swap_to_date.is_(None))).first()
+            if unpaired:
+                raise AppException("VALIDATION_ERROR", "存在未配对的补课日记录，请先补全补课日期")
+            for other in db.scalars(select(AaTerm).where(
+                    AaTerm.tenant_id == _tid(), AaTerm.is_current.is_(True), AaTerm.id != t.id)).all():
+                other.is_current = False
+            t.status, t.is_current = "PUBLISHED", True
+            _audit(db, "AA_CALENDAR", t.id, "PUBLISH")
+        db.commit()
+        db.refresh(t)
+        return _term_row(t)
+
+
+# ── 校历归档（PUBLISHED/FROZEN→ARCHIVED；仅教务处/学校管理员）──
+
+def archive_term(term_id, user) -> dict:
+    _require_cal_mgmt_role(user)
+    with session() as db:
+        t = _load_term(db, term_id)
+        if t.status == "ARCHIVED":
+            db.commit()
+            return _term_row(t)  # 幂等
+        if t.status not in ("PUBLISHED", "FROZEN"):
+            raise AppException("DATA_CONFLICT", "仅已发布的校历可归档")
+        t.status = "ARCHIVED"
+        t.is_current = False
+        t.version += 1
+        _audit(db, "AA_TERM", t.id, "ARCHIVE")
+        db.commit()
+        db.refresh(t)
+        return _term_row(t)
+
+
+def term_detail(term_id, user) -> dict:
+    with session() as db:
+        return _term_row(_load_term(db, term_id))
+
+
+# ── 节次管理（t_aa_time_slot，租户级全局，不随学期锁定）──
+
+def _time_slot_row(x) -> dict:
+    return {"slotId": str(x.id), "slotNo": x.slot_no, "slotName": x.slot_name or "",
+            "startTime": x.start_time or "", "endTime": x.end_time or "",
+            "campusCode": x.campus_code or "", "enabled": bool(x.enabled), "status": x.status,
+            "version": x.version}
 
 
 def create_time_slot(body, user) -> dict:
     with session() as db:
         from app.models import AaTimeSlot
-        sl = AaTimeSlot(tenant_id=_tid(), slot_no=int(body.slotNo), slot_name=getattr(body, "slotName", None),
+        slot_no = int(body.slotNo)
+        dup = db.scalars(select(AaTimeSlot).where(
+            AaTimeSlot.tenant_id == _tid(), AaTimeSlot.slot_no == slot_no,
+            AaTimeSlot.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "该节次序号已存在")
+        sl = AaTimeSlot(tenant_id=_tid(), slot_no=slot_no, slot_name=getattr(body, "slotName", None),
                         start_time=getattr(body, "startTime", None), end_time=getattr(body, "endTime", None),
-                        status="ENABLED")
+                        status="ENABLED", enabled=True)
         db.add(sl)
         db.flush()
-        _audit(db, "AA_TIMESLOT", sl.id, "CREATE", f"第{body.slotNo}节")
+        _audit(db, "AA_TIMESLOT", sl.id, "CREATE", f"第{slot_no}节")
         db.commit()
-        return {"slotId": str(sl.id), "slotNo": sl.slot_no}
+        db.refresh(sl)
+        return _time_slot_row(sl)
 
 
-def list_time_slots(user):
+def update_time_slot(slot_id, user, body) -> dict:
+    with session() as db:
+        from app.models import AaTimeSlot
+        s = db.get(AaTimeSlot, int(slot_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("节次不存在")
+        if getattr(body, "slotNo", None) is not None:
+            slot_no = int(body.slotNo)
+            if slot_no != s.slot_no:
+                dup = db.scalars(select(AaTimeSlot).where(
+                    AaTimeSlot.tenant_id == _tid(), AaTimeSlot.slot_no == slot_no,
+                    AaTimeSlot.id != s.id, AaTimeSlot.is_deleted.is_(False))).first()
+                if dup:
+                    raise AppException("DATA_CONFLICT", "该节次序号已存在")
+            s.slot_no = slot_no
+        if getattr(body, "slotName", None) is not None:
+            s.slot_name = body.slotName or None
+        if getattr(body, "startTime", None) is not None:
+            s.start_time = body.startTime or None
+        if getattr(body, "endTime", None) is not None:
+            s.end_time = body.endTime or None
+        if getattr(body, "enabled", None) is not None:
+            s.enabled = bool(body.enabled)
+            s.status = "ENABLED" if s.enabled else "DISABLED"
+        s.version += 1
+        _audit(db, "AA_TIMESLOT", s.id, "UPDATE", f"第{s.slot_no}节")
+        db.commit()
+        db.refresh(s)
+        return _time_slot_row(s)
+
+
+def delete_time_slot(slot_id, user) -> dict:
+    with session() as db:
+        from app.models import AaTimeSlot
+        s = db.get(AaTimeSlot, int(slot_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("节次不存在")
+        s.is_deleted = True
+        s.version += 1
+        _audit(db, "AA_TIMESLOT", s.id, "DELETE", f"第{s.slot_no}节")
+        db.commit()
+        return {"slotId": str(slot_id)}
+
+
+def list_time_slots(user, include_disabled=False):
     from app.models import AaTimeSlot
     with session() as db:
-        rows = db.scalars(select(AaTimeSlot).where(
-            AaTimeSlot.tenant_id == _tid(), AaTimeSlot.is_deleted.is_(False),
-            AaTimeSlot.status == "ENABLED").order_by(AaTimeSlot.slot_no)).all()
-        return [{"slotId": str(x.id), "slotNo": x.slot_no, "slotName": x.slot_name or "",
-                 "startTime": x.start_time or "", "endTime": x.end_time or ""} for x in rows]
+        conds = [AaTimeSlot.tenant_id == _tid(), AaTimeSlot.is_deleted.is_(False)]
+        if not include_disabled:
+            conds.append(AaTimeSlot.status == "ENABLED")
+        rows = db.scalars(select(AaTimeSlot).where(*conds).order_by(AaTimeSlot.slot_no)).all()
+        return [_time_slot_row(x) for x in rows]
+
+
+# ── 上课时间段（t_aa_class_time_band，节次的实际钟点，支持按校区/生效日期区间配置多套作息）──
+
+def _time_band_row(b) -> dict:
+    return {"bandId": str(b.id), "slotId": str(b.slot_id), "bandName": b.band_name or "",
+            "campusCode": b.campus_code or "", "effectiveStart": _iso(b.effective_start),
+            "effectiveEnd": _iso(b.effective_end), "startTime": b.start_time or "",
+            "endTime": b.end_time or "", "status": b.status, "version": b.version}
+
+
+def _validate_band_times(start_time, end_time) -> None:
+    if not start_time or not end_time:
+        raise AppException("VALIDATION_ERROR", "开始时间与结束时间必填")
+    if not _HHMM_RE.match(start_time) or not _HHMM_RE.match(end_time):
+        raise AppException("VALIDATION_ERROR", "时间格式应为 HH:MM，如 08:00")
+    if start_time >= end_time:
+        raise AppException("VALIDATION_ERROR", "结束时间应晚于开始时间")
+
+
+def create_time_band(slot_id, user, body) -> dict:
+    with session() as db:
+        from app.models import AaClassTimeBand, AaTimeSlot
+        s = db.get(AaTimeSlot, int(slot_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("节次不存在")
+        start_time = (getattr(body, "startTime", None) or "").strip()
+        end_time = (getattr(body, "endTime", None) or "").strip()
+        _validate_band_times(start_time, end_time)
+        b = AaClassTimeBand(tenant_id=_tid(), slot_id=s.id, band_name=getattr(body, "bandName", None),
+                            campus_code=getattr(body, "campusCode", None),
+                            effective_start=_parse_dt(getattr(body, "effectiveStart", None)),
+                            effective_end=_parse_dt(getattr(body, "effectiveEnd", None)),
+                            start_time=start_time, end_time=end_time, status="ENABLED")
+        db.add(b)
+        db.flush()
+        _audit(db, "AA_TIME_BAND", b.id, "CREATE", f"第{s.slot_no}节 {start_time}-{end_time}")
+        db.commit()
+        db.refresh(b)
+        return _time_band_row(b)
+
+
+def update_time_band(band_id, user, body) -> dict:
+    with session() as db:
+        from app.models import AaClassTimeBand
+        b = db.get(AaClassTimeBand, int(band_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("上课时间段不存在")
+        start_time = getattr(body, "startTime", None)
+        end_time = getattr(body, "endTime", None)
+        new_start = start_time.strip() if start_time is not None else b.start_time
+        new_end = end_time.strip() if end_time is not None else b.end_time
+        _validate_band_times(new_start, new_end)
+        b.start_time, b.end_time = new_start, new_end
+        if getattr(body, "bandName", None) is not None:
+            b.band_name = body.bandName or None
+        if getattr(body, "campusCode", None) is not None:
+            b.campus_code = body.campusCode or None
+        if getattr(body, "effectiveStart", None) is not None:
+            b.effective_start = _parse_dt(body.effectiveStart)
+        if getattr(body, "effectiveEnd", None) is not None:
+            b.effective_end = _parse_dt(body.effectiveEnd)
+        if getattr(body, "status", None) is not None:
+            if body.status not in ("ENABLED", "DISABLED"):
+                raise AppException("VALIDATION_ERROR", "状态非法（合法值：ENABLED/DISABLED）")
+            b.status = body.status
+        b.version += 1
+        _audit(db, "AA_TIME_BAND", b.id, "UPDATE", f"{new_start}-{new_end}")
+        db.commit()
+        db.refresh(b)
+        return _time_band_row(b)
+
+
+def delete_time_band(band_id, user) -> dict:
+    with session() as db:
+        from app.models import AaClassTimeBand
+        b = db.get(AaClassTimeBand, int(band_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("上课时间段不存在")
+        b.is_deleted = True
+        b.version += 1
+        _audit(db, "AA_TIME_BAND", b.id, "DELETE")
+        db.commit()
+        return {"bandId": str(band_id)}
+
+
+def list_time_bands(slot_id, user):
+    from app.models import AaClassTimeBand
+    with session() as db:
+        conds = [AaClassTimeBand.tenant_id == _tid(), AaClassTimeBand.is_deleted.is_(False)]
+        if slot_id:
+            conds.append(AaClassTimeBand.slot_id == int(slot_id))
+        rows = db.scalars(select(AaClassTimeBand).where(*conds)
+                          .order_by(AaClassTimeBand.slot_id, AaClassTimeBand.effective_start)).all()
+        return [_time_band_row(b) for b in rows]
 
 
 # ═══════════ 学籍名册（只读主档，脱敏）═══════════
