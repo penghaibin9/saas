@@ -374,7 +374,18 @@ export const NAV_PLAN = [
     ]),
     mod('aa-stats', '教务统计', '/admin/academic-affairs/stats', [
       I('教务总览（11 项指标 · 多维筛选 · 下钻 · 导出）', '/admin/academic-affairs/stats', 'academicAffairs.stats.view'),
-      ...P('学籍统计', '注册统计', '课程统计', '教学任务统计', '课表统计', '调停课统计', '选课统计', '考务统计', '成绩统计', '学业预警统计', '毕业资格统计', '教师工作量统计', '教学资源统计', '导出报表')
+      I('学籍统计', '/admin/academic-affairs/stats?tab=statusChange', 'academicAffairs.stats.view'),
+      I('注册统计', '/admin/academic-affairs/stats?tab=registration', 'academicAffairs.stats.view'),
+      I('课程统计', '/admin/academic-affairs/stats?tab=course', 'academicAffairs.stats.view'),
+      I('教学任务统计', '/admin/academic-affairs/stats?tab=teachingTask', 'academicAffairs.stats.view'),
+      I('课表统计', '/admin/academic-affairs/stats?tab=schedule', 'academicAffairs.stats.view'),
+      ...P('调停课统计', '选课统计', '考务统计'),
+      I('成绩统计', '/admin/academic-affairs/stats?tab=grade', 'academicAffairs.stats.view'),
+      I('学业预警统计', '/admin/academic-affairs/stats?tab=warning', 'academicAffairs.stats.view'),
+      I('毕业资格统计', '/admin/academic-affairs/stats?tab=graduation', 'academicAffairs.stats.view'),
+      I('教师工作量统计', '/admin/academic-affairs/stats?tab=workload', 'academicAffairs.stats.view'),
+      ...P('教学资源统计'),
+      I('导出报表', '/admin/academic-affairs/stats?tab=export', 'academicAffairs.stats.export')
     ])
   ]),
 

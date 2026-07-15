@@ -713,22 +713,129 @@ def stats_warning(level: Optional[str] = None, source: Optional[str] = None,
 
 
 class StatsExportBody(BaseModel):
+    domain: Optional[str] = "overview"
     termId: Optional[int] = None
     collegeId: Optional[int] = None
     majorId: Optional[int] = None
     purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
 
 
-@router.post("/stats/export", summary="教务总览导出 xlsx（水印+审计，同步下载）")
+@router.post("/stats/export", summary="教务统计导出 xlsx（15 号卡「导出报表」，domain 选择，水印+审计，同步下载）")
 def stats_export(body: StatsExportBody, user=Depends(require_permission(_STATS_EXPORT))):
     import io
 
     from fastapi.responses import StreamingResponse
-    content = stats_svc.export_overview_xlsx(user, body.termId, body.collegeId, body.majorId, body.purpose)
+    content = stats_svc.export_stats_xlsx(user, body.domain, body.termId, body.collegeId,
+                                          body.majorId, body.purpose)
     return StreamingResponse(
         io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=academic_affairs_stats.xlsx"})
+
+
+# ── Tier1 10 项三级模块（02/03/04/05/06/10/11/12/13/15 号卡）：既有 status-change/registration/warning
+#    三个路径已被总览下钻占用（返回明细列表），聚合端点改 `/summary` 后缀，其余为全新路径。
+@router.get("/stats/status-change/summary", summary="学籍统计聚合（按 change_type 分组，02 号卡）")
+def stats_status_change_summary(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                                user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.status_change_stats(user, termId, collegeId))
+
+
+@router.get("/stats/registration/summary", summary="注册统计聚合（完成率，03 号卡）")
+def stats_registration_summary(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                               majorId: Optional[int] = None,
+                               user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.registration_stats(user, termId, collegeId, majorId))
+
+
+@router.get("/stats/course", summary="课程统计聚合（按类别/学院双维，04 号卡）")
+def stats_course(category: Optional[str] = None, collegeId: Optional[int] = None,
+                 user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.course_stats(user, category, collegeId))
+
+
+@router.get("/stats/course/detail", summary="课程统计下钻：ENABLED 课程明细（04 号卡）")
+def stats_course_detail(category: Optional[str] = None, collegeId: Optional[int] = None,
+                        page: int = 1, pageSize: int = 20,
+                        user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.course_detail(user, category, collegeId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/teaching-task", summary="教学任务统计聚合（确认完成率，05 号卡）")
+def stats_teaching_task(collegeId: Optional[int] = None, termId: Optional[int] = None,
+                        user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.teaching_task_stats(user, collegeId, termId))
+
+
+@router.get("/stats/teaching-task/pending", summary="教学任务统计下钻：未确认任务清单（05 号卡）")
+def stats_teaching_task_pending(collegeId: Optional[int] = None, termId: Optional[int] = None,
+                                page: int = 1, pageSize: int = 20,
+                                user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.teaching_task_pending(user, collegeId, termId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/schedule", summary="课表统计聚合（发布覆盖率+未解决冲突数，06 号卡）")
+def stats_schedule(collegeId: Optional[int] = None, termId: Optional[int] = None,
+                   user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.schedule_stats(user, collegeId, termId))
+
+
+@router.get("/stats/schedule/conflicts", summary="课表统计下钻：冲突明细（06 号卡）")
+def stats_schedule_conflicts(collegeId: Optional[int] = None, termId: Optional[int] = None,
+                             page: int = 1, pageSize: int = 20,
+                             user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.schedule_conflicts(user, collegeId, termId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/grade", summary="成绩统计聚合（挂科率+录入发布率+补考重修人数，10 号卡）")
+def stats_grade(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.grade_stats(user, termId, collegeId))
+
+
+@router.get("/stats/grade/detail", summary="成绩统计下钻：挂科学生明细（脱敏+审计，10 号卡）")
+def stats_grade_detail(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                       courseName: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                       user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.grade_detail(user, termId, collegeId, courseName, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/warning/summary", summary="学业预警统计聚合（按等级/来源双维，11 号卡）")
+def stats_warning_summary(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                          user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.warning_stats(user, termId, collegeId))
+
+
+@router.get("/stats/graduation", summary="毕业资格统计聚合（通过率+异常项分布，12 号卡）")
+def stats_graduation(batchId: Optional[int] = None, collegeId: Optional[int] = None,
+                     user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.graduation_stats(user, batchId, collegeId))
+
+
+@router.get("/stats/graduation/abnormal", summary="毕业资格统计下钻：异常项学生名单（脱敏+审计，12 号卡）")
+def stats_graduation_abnormal(batchId: Optional[int] = None, collegeId: Optional[int] = None,
+                              itemType: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                              user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.graduation_abnormal(user, batchId, collegeId, itemType, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/stats/workload", summary="教师工作量统计聚合（ai_proposal，基础参考非正式核算，13 号卡）")
+def stats_workload(termId: Optional[int] = None, collegeId: Optional[int] = None,
+                   user=Depends(require_permission(_STATS_VIEW))):
+    return success(stats_svc.workload_stats(user, termId, collegeId))
+
+
+@router.get("/stats/workload/detail", summary="教师工作量统计下钻：单教师授课明细（13 号卡）")
+def stats_workload_detail(teacherKey: str, collegeId: Optional[int] = None,
+                          page: int = 1, pageSize: int = 20,
+                          user=Depends(require_permission(_STATS_VIEW))):
+    items, total = stats_svc.workload_detail(user, teacherKey, collegeId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 

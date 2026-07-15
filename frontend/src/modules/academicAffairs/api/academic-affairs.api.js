@@ -354,7 +354,7 @@ export const academicAffairsApi = {
   getStatsWarning(params = {}) {
     return callList(`${BASE}/stats/warning`, params)
   },
-  /** 导出总览 xlsx（同步下载）：返回 Blob；purpose 必填（≥5 字）。 */
+  /** 导出总览 xlsx（同步下载）：返回 Blob；purpose 必填（≥5 字）。body 可携 domain 选择导出维度。 */
   async exportStats(body = {}) {
     try {
       const blob = await requestBlob(`${BASE}/stats/export`, { method: 'POST', body })
@@ -363,6 +363,23 @@ export const academicAffairsApi = {
       return toErr(e)
     }
   },
+
+  /* ── 教务统计 Tier1 10 项三级模块（02/03/04/05/06/10/11/12/13/15 号卡） ── */
+  getStatsStatusChangeSummary(params = {}) { return call(() => request(`${BASE}/stats/status-change/summary`, { params })) },
+  getStatsRegistrationSummary(params = {}) { return call(() => request(`${BASE}/stats/registration/summary`, { params })) },
+  getStatsCourse(params = {}) { return call(() => request(`${BASE}/stats/course`, { params })) },
+  getStatsCourseDetail(params = {}) { return callList(`${BASE}/stats/course/detail`, params) },
+  getStatsTeachingTask(params = {}) { return call(() => request(`${BASE}/stats/teaching-task`, { params })) },
+  getStatsTeachingTaskPending(params = {}) { return callList(`${BASE}/stats/teaching-task/pending`, params) },
+  getStatsSchedule(params = {}) { return call(() => request(`${BASE}/stats/schedule`, { params })) },
+  getStatsScheduleConflicts(params = {}) { return callList(`${BASE}/stats/schedule/conflicts`, params) },
+  getStatsGrade(params = {}) { return call(() => request(`${BASE}/stats/grade`, { params })) },
+  getStatsGradeDetail(params = {}) { return callList(`${BASE}/stats/grade/detail`, params) },
+  getStatsWarningSummary(params = {}) { return call(() => request(`${BASE}/stats/warning/summary`, { params })) },
+  getStatsGraduation(params = {}) { return call(() => request(`${BASE}/stats/graduation`, { params })) },
+  getStatsGraduationAbnormal(params = {}) { return callList(`${BASE}/stats/graduation/abnormal`, params) },
+  getStatsWorkload(params = {}) { return call(() => request(`${BASE}/stats/workload`, { params })) },
+  getStatsWorkloadDetail(params = {}) { return callList(`${BASE}/stats/workload/detail`, params) },
 
   /* ── 教学资源 · 教室字典（R4 · /academic-affairs/classrooms/*；细粒度权限 academicAffairs.classroom.*） ── */
   listClassrooms({ keyword = '', buildingCode = '', roomType = '', status = '', page = 1, pageSize = 20 } = {}) {
