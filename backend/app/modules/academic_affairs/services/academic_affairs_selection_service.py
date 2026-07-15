@@ -435,18 +435,36 @@ def _task_slots(db, teaching_task_id):
     return [(i.weekday, i.slot_no, i.start_week, i.end_week, i.week_parity) for i in rows]
 
 
-def _validate_enroll(db, batch, course, student, my_records, add_credit):
+def _record_conflict_reject(db, batch, course, student, msg):
+    """⑤课表冲突被拒事件持久化（供「冲突检测」卡批次级报表聚合，见09号卡§8）。
+    独立 commit：即使随后 enroll() 整体因冲突异常回滚，该拒绝事件仍需留痕，
+    不能随请求失败一起丢失（否则报表无数据源）。biz_id=selection_course_id 供按课程聚合，
+    detail 内嵌 studentNo 供「按学号查询」过滤（不新建专属统计表，复用审计基座）。"""
+    from app.models import AffairsAuditTrail
+    db.add(AffairsAuditTrail(
+        tenant_id=_tid(), biz_type="AA_SELECTION_CONFLICT", biz_id=course.id,
+        action="SELECTION_CONFLICT_REJECT", operator=_op(), role_name=_role(),
+        detail=(f"studentNo={student.student_no or ''} studentName={student.real_name or ''} "
+               f"courseName={course.course_name or ''} reason={msg}")[:990],
+        occurred_at=datetime.utcnow()))
+    db.commit()
+
+
+def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_reselect_closed=False):
     """选课八条校验（全部落地；返回 None 表示通过，否则抛异常）。
-    ① 批次 OPEN ② 适用范围 ③ 未修过(本批次重复) ④ 先修课程 ⑤ 课表时间冲突 ⑥ 学分上限 ⑦ 容量(行锁) ⑧ 重修规则 + SUSPENDED 学籍。"""
+    ① 批次 OPEN ② 适用范围 ③ 未修过(本批次重复) ④ 先修课程 ⑤ 课表时间冲突 ⑥ 学分上限 ⑦ 容量(行锁) ⑧ 重修规则 + SUSPENDED 学籍。
+    allow_reselect_closed=True 时①放宽：批次 CLOSED 且学生在本批次确有待补选(COURSE_CANCELLED)记录方可选课
+    （由调用方 student_enroll 独立核验资格后传入，不信任前端 isReselect 参数本身，见06号卡§10）。"""
     from app.models import AaCourse, AaSelectionCourse
     from app.modules.academic_affairs.services.academic_affairs_schedule_service import _weeks_overlap
     from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
     # SUSPENDED/非在籍 → 403
     if not is_enrolled(getattr(student, "student_status", None)):
         raise no_data_scope("当前学籍状态不可选课")
-    # ① 批次 OPEN
+    # ① 批次 OPEN（补选特例：CLOSED + 已核验资格可放行，见06号卡）
     if batch.status != _BATCH_OPEN:
-        raise _invalid("不在选课时间内")
+        if not (allow_reselect_closed and batch.status == _BATCH_CLOSED):
+            raise _invalid("不在选课时间内")
     # ② 适用范围
     if batch.apply_scope_json:
         try:
@@ -491,7 +509,9 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit):
                 for (w1, s1, sw1, ew1, p1) in _task_slots(db, tt_id):
                     for (w2, s2, sw2, ew2, p2) in target_slots:
                         if w1 == w2 and s1 == s2 and _weeks_overlap(sw1, ew1, p1, sw2, ew2, p2):
-                            raise _conflict(f"与已选课程上课时间冲突（周{w1}第{s1}节）")
+                            msg = f"与已选课程上课时间冲突（周{w1}第{s1}节）"
+                            _record_conflict_reject(db, batch, course, student, msg)
+                            raise _conflict(msg)
     # ⑥ 学分上限
     max_credits = _rule(db, batch, "maxCredits", 0)
     if max_credits and max_credits > 0:
@@ -503,7 +523,10 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit):
 
 
 def student_enroll(user, body) -> dict:
-    """学生选课：八条校验 + 行锁原子扣减防超卖。复用同一行(D-09)。"""
+    """学生选课：八条校验 + 行锁原子扣减防超卖。复用同一行(D-09)。
+    补选（06号卡）：批次 CLOSED 时，若学生在本批次确有待补选(COURSE_CANCELLED)记录，
+    允许对本批次其余有余量课程选课；资格由后端独立核验（学生存在未补选的COURSE_CANCELLED
+    记录），不信任请求体 isReselect 标志位本身（防伪造绕过CLOSED窗口限制）。"""
     from app.models import AaSelectionCourse, AaSelectionRecord
     ctx, sid = _student_from_token()
     with session() as db:
@@ -517,7 +540,10 @@ def student_enroll(user, body) -> dict:
         my = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.batch_id == b.id, AaSelectionRecord.tenant_id == _tid(),
             AaSelectionRecord.student_id == student.id).all()
-        _validate_enroll(db, b, c, student, my, float(c.credit or 0))
+        allow_reselect = b.status == _BATCH_CLOSED and any(
+            r.status == _REC_COURSE_CANCELLED for r in my)
+        _validate_enroll(db, b, c, student, my, float(c.credit or 0),
+                         allow_reselect_closed=allow_reselect)
         # 行锁原子扣减：selected_count < capacity 时 +1，受影响行数=0 → 容量满
         upd = db.query(AaSelectionCourse).filter(
             AaSelectionCourse.id == c.id, AaSelectionCourse.tenant_id == _tid(),
@@ -540,11 +566,12 @@ def student_enroll(user, body) -> dict:
                 tenant_id=_tid(), batch_id=b.id, selection_course_id=c.id,
                 course_id=c.course_id, course_name=c.course_name, credit=c.credit,
                 student_id=student.id, student_no=student.student_no, student_name=student.real_name,
-                enrolled_at=datetime.utcnow(), status=_REC_SELECTED)
+                enrolled_at=datetime.utcnow(), status=_REC_SELECTED, re_enroll=allow_reselect)
             db.add(rec)
         db.flush()
         _audit(db, rec.id, "SELECTION_ENROLL",
-               f"选课 {c.course_name}" + ("(复选)" if existing else ""))
+               f"选课 {c.course_name}" + ("(复选)" if existing else "") +
+               ("(补选)" if allow_reselect else ""))
         db.commit()
         return {"recordId": str(rec.id), "selectionCourseId": str(c.id),
                 "courseName": c.course_name, "status": rec.status}
@@ -719,3 +746,129 @@ def reselect_guide(user, batch_id):
         available = [_course_dto(c) for c in courses
                      if c.status == _COURSE_OPEN and (c.selected_count or 0) < (c.capacity or 0)]
         return {"batchId": str(b.id), "cancelledCourses": cancelled, "availableCourses": available}
+
+
+# ══════════════ 补选管理（06号卡：学生自助视角） ══════════════
+
+def student_reselect_guide(user, batch_id=None):
+    """学生端补选指引：本人在 CLOSED 批次内待补选(COURSE_CANCELLED)记录 + 该批次仍有余量课程。
+    batch_id 缺省时扫描学生所有存在待补选记录的 CLOSED 批次（06号卡§4"补选指引"区块数据源）。"""
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
+    ctx, sid = _student_from_token()
+    with session() as db:
+        student = _load_student(db, student_no=ctx.get("studentNo"), student_id=sid)
+        if not student:
+            raise not_found("学生档案不存在")
+        rec_q = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.status == _REC_COURSE_CANCELLED, AaSelectionRecord.is_deleted.is_(False))
+        if batch_id:
+            rec_q = rec_q.filter(AaSelectionRecord.batch_id == int(batch_id))
+        cancelled_records = rec_q.all()
+        batch_ids = sorted({r.batch_id for r in cancelled_records})
+        out = []
+        for bid in batch_ids:
+            b = db.query(AaSelectionBatch).filter(
+                AaSelectionBatch.id == bid, AaSelectionBatch.tenant_id == _tid()).first()
+            if not b or b.status != _BATCH_CLOSED:
+                continue  # 已 LOCKED（补选窗口关闭）或批次不存在，不再提供指引（06号卡§6）
+            my_cancelled = [r for r in cancelled_records if r.batch_id == bid]
+            courses = db.query(AaSelectionCourse).filter(
+                AaSelectionCourse.batch_id == bid, AaSelectionCourse.tenant_id == _tid(),
+                AaSelectionCourse.status == _COURSE_OPEN, AaSelectionCourse.is_deleted.is_(False)).all()
+            available = [_course_dto(c) for c in courses if (c.selected_count or 0) < (c.capacity or 0)]
+            out.append({"batch": _batch_dto(b), "cancelledRecords": [_record_dto(r) for r in my_cancelled],
+                       "availableCourses": available})
+        return out
+
+
+# ══════════════ 冲突检测（09号卡：批次级冲突预警报表） ══════════════
+
+def get_conflict_report(user, batch_id, student_no=None):
+    """批次级冲突预警报表：聚合 enroll() ⑤课表冲突被拒事件（`_record_conflict_reject` 落的
+    AffairsAuditTrail，biz_type=AA_SELECTION_CONFLICT）。无 studentNo 时按课程聚合次数；
+    传 studentNo 时返回该生逐条冲突明细（教务处客服支持场景，09号卡§3/§7）。"""
+    from app.models import AaSelectionCourse, AffairsAuditTrail
+    with session() as db:
+        _ctx(user, db)
+        b = _get_batch(db, batch_id)
+        course_rows = db.query(AaSelectionCourse.id, AaSelectionCourse.course_name).filter(
+            AaSelectionCourse.batch_id == b.id, AaSelectionCourse.tenant_id == _tid(),
+            AaSelectionCourse.is_deleted.is_(False)).all()
+        course_ids = [cid for cid, _ in course_rows]
+        course_names = {cid: name for cid, name in course_rows}
+        if not course_ids:
+            return {"batchId": str(b.id), "summary": [], "items": []}
+        q = db.query(AffairsAuditTrail).filter(
+            AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "AA_SELECTION_CONFLICT",
+            AffairsAuditTrail.action == "SELECTION_CONFLICT_REJECT",
+            AffairsAuditTrail.biz_id.in_(course_ids))
+        if student_no:
+            q = q.filter(AffairsAuditTrail.detail.like(f"%studentNo={student_no} %"))
+        rows = q.order_by(AffairsAuditTrail.occurred_at.desc()).all()
+        items = [{"occurredAt": _iso(r.occurred_at), "courseName": course_names.get(r.biz_id, ""),
+                 "detail": r.detail} for r in rows]
+        counts: dict[str, int] = {}
+        for cid, name in course_rows:
+            n = sum(1 for r in rows if r.biz_id == cid)
+            if n:
+                counts[name or str(cid)] = counts.get(name or str(cid), 0) + n
+        summary = [{"courseName": k, "conflictRejectCount": v} for k, v in
+                  sorted(counts.items(), key=lambda kv: -kv[1])]
+        return {"batchId": str(b.id), "summary": summary, "items": items}
+
+
+def export_conflict_report_xlsx(user, batch_id, purpose="") -> bytes:
+    """冲突预警报表导出 xlsx（09号卡§11，水印+审计+用途必填）。"""
+    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    from app.services.xlsx_util import build_ledger_xlsx
+    report = get_conflict_report(user, batch_id, None)
+    u = get_current_user_ctx() or {}
+    watermark = (f"导出人：{u.get('realName') or u.get('loginName') or '-'}  "
+                f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}")
+    headers = ["课程", "冲突拒选次数"]
+    rows = [[s["courseName"], s["conflictRejectCount"]] for s in report["summary"]]
+    content = build_ledger_xlsx("选课冲突预警报表", headers, rows, watermark=watermark)
+    with session() as db:
+        _audit(db, int(batch_id), "SELECTION_CONFLICT_EXPORT", f"冲突报表导出 用途={purpose.strip()[:100]}")
+        db.commit()
+    return content
+
+
+# ══════════════ 选课归档（12号卡：ARCHIVED 批次历史查询/导出） ══════════════
+
+def list_archived_batches(user, term_id=None, page=1, page_size=20):
+    """归档批次列表（仅 ARCHIVED 状态，复用 list_batches 不重复实现，12号卡§7）。"""
+    return list_batches(user, status=_BATCH_ARCHIVED, term_id=term_id, page=page, page_size=page_size)
+
+
+def archive_detail(user, batch_id):
+    """归档批次详情（复用 get_batch + batch_stats 组合，非 ARCHIVED 409，12号卡§7）。"""
+    b = get_batch(user, batch_id)
+    if b["status"] != _BATCH_ARCHIVED:
+        raise _invalid("仅已归档批次可查看归档详情")
+    stats = batch_stats(user, batch_id)
+    return {**b, "stats": stats}
+
+
+def export_archive_xlsx(user, batch_id, purpose="") -> bytes:
+    """归档批次台账导出 xlsx（12号卡§11，水印+审计+用途必填；非 ARCHIVED 409）。"""
+    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    b = get_batch(user, batch_id)
+    if b["status"] != _BATCH_ARCHIVED:
+        raise _invalid("仅已归档批次可导出归档台账")
+    from app.services.xlsx_util import build_ledger_xlsx
+    courses, _total = list_courses(user, batch_id, page=1, page_size=1000)
+    u = get_current_user_ctx() or {}
+    watermark = (f"导出人：{u.get('realName') or u.get('loginName') or '-'}  "
+                f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}")
+    headers = ["课程", "教师", "容量", "开课下限", "已选", "状态"]
+    rows = [[c["courseName"], c["teacherName"] or "", c["capacity"], c["minCapacity"],
+            c["selectedCount"], c["status"]] for c in courses]
+    content = build_ledger_xlsx(f"选课归档台账 · {b['batchName']}", headers, rows, watermark=watermark)
+    with session() as db:
+        _audit(db, int(batch_id), "SELECTION_ARCHIVE_EXPORT", f"归档台账导出 用途={purpose.strip()[:100]}")
+        db.commit()
+    return content
