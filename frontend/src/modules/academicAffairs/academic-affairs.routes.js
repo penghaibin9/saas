@@ -125,6 +125,14 @@ const layoutRoute = {
     // ── R4 教学资源 · 教室字典 ──
     { path: 'classrooms', name: 'aa-classrooms', component: () => import('@/modules/academicAffairs/views/AaClassroomListView.vue'), meta: meta('academicAffairs.classroom.view', '教室资源') },
     { path: 'classroom-bookings', name: 'aa-classroom-bookings', component: () => import('@/modules/academicAffairs/views/AaClassroomBookingView.vue'), meta: meta('academicAffairs.classroom.view', '教室预约') },
+    // ── R4续卡 教学资源：实训室资源/设备资源/实训室预约/资源占用/资源冲突/资源维修/资源统计（复用教室字典框架） ──
+    { path: 'resources/labs', name: 'aa-resource-labs', component: () => import('@/modules/academicAffairs/views/AaLabResourceListView.vue'), meta: meta('academicAffairs.lab.view', '实训室资源') },
+    { path: 'resources/equipment', name: 'aa-resource-equipment', component: () => import('@/modules/academicAffairs/views/AaEquipmentListView.vue'), meta: meta('academicAffairs.equipment.view', '设备资源') },
+    { path: 'resources/lab-bookings', name: 'aa-resource-lab-bookings', component: () => import('@/modules/academicAffairs/views/AaLabBookingView.vue'), meta: meta('academicAffairs.lab.view', '实训室预约') },
+    { path: 'resources/occupancy', name: 'aa-resource-occupancy', component: () => import('@/modules/academicAffairs/views/AaResourceOccupancyView.vue'), meta: meta('academicAffairs.resourceOccupancy.view', '资源占用') },
+    { path: 'resources/conflicts', name: 'aa-resource-conflicts', component: () => import('@/modules/academicAffairs/views/AaResourceConflictView.vue'), meta: meta('academicAffairs.resourceConflict.view', '资源冲突') },
+    { path: 'resources/repairs', name: 'aa-resource-repairs', component: () => import('@/modules/academicAffairs/views/AaResourceRepairView.vue'), meta: meta('academicAffairs.resourceRepair.view', '资源维修') },
+    { path: 'resources/stats', name: 'aa-resource-stats', component: () => import('@/modules/academicAffairs/views/AaResourceStatsView.vue'), meta: meta('academicAffairs.resourceStats.view', '资源统计') },
     // ── R2 调停课（台账/发起/审批，通知单为独立打印路由） ──
     { path: 'schedule-change', name: 'aa-schedule-change-ledger', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeLedgerView.vue'), meta: meta('academicAffairs.scheduleChange.view', '调停课台账') },
     { path: 'schedule-change/apply', name: 'aa-schedule-change-apply', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeApplyView.vue'), meta: meta('academicAffairs.scheduleChange.apply', '发起调停课') },

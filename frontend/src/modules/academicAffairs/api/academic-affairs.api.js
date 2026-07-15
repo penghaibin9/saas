@@ -1095,6 +1095,69 @@ export const academicAffairsClassroomBookingApi = {
   review(id, action, reason = '') { return call(() => request(`${BASE}/classrooms/bookings/${id}/review`, { method: 'POST', body: { action, reason } })) }
 }
 
+/* ═══════════ 教学资源续卡：实训室资源（/academic-affairs/labs/*，结构对齐教室字典） ═══════════ */
+export const academicAffairsLabApi = {
+  list({ keyword = '', labType = '', status = '', page = 1, pageSize = 20 } = {}) {
+    const params = { page, pageSize }
+    if (keyword) params.keyword = keyword
+    if (labType) params.labType = labType
+    if (status) params.status = status
+    return call(() => request(`${BASE}/labs`, { params }))
+  },
+  options(keyword = '') {
+    const params = keyword ? { keyword } : {}
+    return call(() => request(`${BASE}/labs/options`, { params }))
+  },
+  get(id) { return call(() => request(`${BASE}/labs/${id}`)) },
+  create(body) { return call(() => request(`${BASE}/labs`, { method: 'POST', body })) },
+  update(id, body) { return call(() => request(`${BASE}/labs/${id}`, { method: 'PUT', body })) },
+  setStatus(id, status, reason = '') { return call(() => request(`${BASE}/labs/${id}/status`, { method: 'POST', body: { status, reason } })) },
+  remove(id) { return call(() => request(`${BASE}/labs/${id}`, { method: 'DELETE' })) }
+}
+
+/* ═══════════ 教学资源续卡：设备资源（/academic-affairs/equipment/*） ═══════════ */
+export const academicAffairsEquipmentApi = {
+  list({ keyword = '', ownerKind = '', status = '', page = 1, pageSize = 20 } = {}) {
+    const params = { page, pageSize }
+    if (keyword) params.keyword = keyword
+    if (ownerKind) params.ownerKind = ownerKind
+    if (status) params.status = status
+    return call(() => request(`${BASE}/equipment`, { params }))
+  },
+  get(id) { return call(() => request(`${BASE}/equipment/${id}`)) },
+  create(body) { return call(() => request(`${BASE}/equipment`, { method: 'POST', body })) },
+  update(id, body) { return call(() => request(`${BASE}/equipment/${id}`, { method: 'PUT', body })) },
+  setStatus(id, status, reason = '') { return call(() => request(`${BASE}/equipment/${id}/status`, { method: 'POST', body: { status, reason } })) },
+  remove(id) { return call(() => request(`${BASE}/equipment/${id}`, { method: 'DELETE' })) }
+}
+
+/* ═══════════ 教学资源续卡：实训室预约（/academic-affairs/labs/bookings，与教室预约同一算法） ═══════════ */
+export const academicAffairsLabBookingApi = {
+  list(params = {}) { return callList(`${BASE}/labs/bookings`, params) },
+  book(body) { return call(() => request(`${BASE}/labs/bookings`, { method: 'POST', body })) },
+  review(id, action, reason = '') { return call(() => request(`${BASE}/labs/bookings/${id}/review`, { method: 'POST', body: { action, reason } })) }
+}
+
+/* ═══════════ 教学资源续卡：资源占用 / 资源冲突 / 资源维修 / 资源统计（/academic-affairs/resources/*） ═══════════ */
+export const academicAffairsResourceApi = {
+  occupancy(dateStr, resourceKind = '') {
+    const params = { date: dateStr }
+    if (resourceKind) params.resourceKind = resourceKind
+    return call(() => request(`${BASE}/resources/occupancy`, { params }))
+  },
+  conflicts(dateFrom, dateTo = '') {
+    const params = { dateFrom }
+    if (dateTo) params.dateTo = dateTo
+    return call(() => request(`${BASE}/resources/conflicts`, { params }))
+  },
+  repairs(params = {}) { return callList(`${BASE}/resources/repairs`, params) },
+  reportRepair(body) { return call(() => request(`${BASE}/resources/repairs`, { method: 'POST', body })) },
+  startRepair(id) { return call(() => request(`${BASE}/resources/repairs/${id}/start`, { method: 'POST' })) },
+  completeRepair(id, repairNote = '') { return call(() => request(`${BASE}/resources/repairs/${id}/complete`, { method: 'POST', body: { repairNote } })) },
+  cancelRepair(id, reason = '') { return call(() => request(`${BASE}/resources/repairs/${id}/cancel`, { method: 'POST', body: { reason } })) },
+  stats() { return call(() => request(`${BASE}/resources/stats`)) }
+}
+
 /* ═══════════ 排课管理增强（SM-07 · /academic-affairs/scheduling/*） ═══════════ */
 export const academicAffairsSchedulingApi = {
   listRules(params = {}) { return call(() => request(`${BASE}/scheduling/rules`, { params })) },

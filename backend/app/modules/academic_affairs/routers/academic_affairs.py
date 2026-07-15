@@ -2313,6 +2313,239 @@ def classroom_booking_review(body: BookingReviewBody, bookingId: int = Path(...)
                              user=Depends(require_permission("academicAffairs.classroom.update"))):
     return success(resource_svc.review_booking(user, bookingId, body.action, body.reason), message="已处理")
 
+
+# ═══════════ 教学资源续卡：实训室资源 / 设备资源 / 实训室预约 / 资源占用 / 资源冲突 / 资源维修 / 资源统计
+# （教室字典框架扩展；权限点延续既有 academicAffairs.classroom.* 风格） ═══════════
+
+
+class LabCreate(BaseModel):
+    labCode: str = Field(..., min_length=1, description="实训室编号")
+    labName: str = Field(..., min_length=1, description="实训室名称")
+    buildingName: Optional[str] = None
+    capacity: Optional[int] = Field(0, ge=0, description="容量(工位数)")
+    labType: Optional[str] = Field("SKILL", description="SKILL/COMPUTER/MECHANICAL/ELECTRICAL/OTHER")
+    responsibleName: Optional[str] = None
+    responsibleKey: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class LabUpdate(BaseModel):
+    labCode: Optional[str] = None
+    labName: Optional[str] = None
+    buildingName: Optional[str] = None
+    capacity: Optional[int] = Field(None, ge=0)
+    labType: Optional[str] = None
+    responsibleName: Optional[str] = None
+    responsibleKey: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class LabStatusBody(BaseModel):
+    status: str = Field(..., description="AVAILABLE/DISABLED/MAINTENANCE")
+    reason: Optional[str] = None
+
+
+@router.get("/labs", summary="实训室字典列表（按类型/状态/关键词过滤）")
+def lab_list(keyword: Optional[str] = None, labType: Optional[str] = None, status: Optional[str] = None,
+            page: int = 1, pageSize: int = 20, user=Depends(require_permission("academicAffairs.lab.view"))):
+    items, total = resource_svc.list_labs(user, keyword, labType, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/labs/options", summary="可用实训室选项（预约选择器供数）")
+def lab_options(keyword: Optional[str] = None, user=Depends(require_permission("academicAffairs.lab.view"))):
+    return success({"items": resource_svc.list_lab_options(user, keyword)})
+
+
+@router.post("/labs", summary="新建实训室（编号唯一，重复409）")
+def lab_create(body: LabCreate, user=Depends(require_permission("academicAffairs.lab.create"))):
+    return success(resource_svc.create_lab(body, user), message="已创建")
+
+
+@router.put("/labs/{labId}", summary="编辑实训室")
+def lab_update(body: LabUpdate, labId: int = Path(...),
+               user=Depends(require_permission("academicAffairs.lab.update"))):
+    return success(resource_svc.update_lab(labId, body, user), message="已保存")
+
+
+@router.post("/labs/{labId}/status", summary="切换可用状态（AVAILABLE/DISABLED/MAINTENANCE，幂等）")
+def lab_status(body: LabStatusBody, labId: int = Path(...),
+               user=Depends(require_permission("academicAffairs.lab.update"))):
+    return success(resource_svc.set_lab_status(labId, body.status, user, body.reason or ""), message="已更新")
+
+
+@router.delete("/labs/{labId}", summary="删除实训室（逻辑删除）")
+def lab_delete(labId: int = Path(...), user=Depends(require_permission("academicAffairs.lab.delete"))):
+    return success(resource_svc.delete_lab(labId, user), message="已删除")
+
+
+# ── 实训室预约（占用登记+冲突检测+审核；字面量路径须注册在 /labs/{labId} 之前，同教室预约既有教训） ──
+class LabBookBody(BaseModel):
+    labId: str = Field(..., min_length=1)
+    bookingDate: str = Field(..., min_length=1, description="YYYY-MM-DD")
+    slotNo: int = Field(..., ge=1)
+    purpose: Optional[str] = Field(None, max_length=300)
+
+
+@router.post("/labs/bookings", summary="申请实训室预约（同实训室同时段占用409）")
+def lab_book(body: LabBookBody, user=Depends(require_staff)):
+    return success(resource_svc.book_lab(user, body), message="已提交预约")
+
+
+@router.get("/labs/bookings", summary="实训室预约列表")
+def lab_bookings(labId: Optional[str] = None, date: Optional[str] = None, status: Optional[str] = None,
+                 page: int = 1, pageSize: int = 50,
+                 user=Depends(require_permission("academicAffairs.lab.view"))):
+    items, total = resource_svc.list_lab_bookings(user, labId, date, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/labs/bookings/{bookingId}/review", summary="审核实训室预约")
+def lab_booking_review(body: BookingReviewBody, bookingId: int = Path(...),
+                       user=Depends(require_permission("academicAffairs.lab.update"))):
+    return success(resource_svc.review_lab_booking(user, bookingId, body.action, body.reason), message="已处理")
+
+
+@router.get("/labs/{labId}", summary="实训室详情")
+def lab_detail(labId: int = Path(...), user=Depends(require_permission("academicAffairs.lab.view"))):
+    return success(resource_svc.get_lab(labId, user))
+
+
+# ── 设备资源（教学/实训设备台账） ──
+class EquipmentCreate(BaseModel):
+    equipmentCode: str = Field(..., min_length=1, description="资产编号")
+    equipmentName: str = Field(..., min_length=1, description="设备名称")
+    specModel: Optional[str] = None
+    quantity: Optional[int] = Field(1, ge=1)
+    ownerKind: Optional[str] = Field("NONE", description="CLASSROOM/LAB/NONE")
+    ownerId: Optional[str] = None
+    responsibleName: Optional[str] = None
+    purchaseDate: Optional[str] = None
+    status: Optional[str] = Field("IN_USE", description="IN_USE/IDLE/MAINTENANCE/SCRAPPED")
+    remark: Optional[str] = None
+
+
+class EquipmentUpdate(BaseModel):
+    equipmentCode: Optional[str] = None
+    equipmentName: Optional[str] = None
+    specModel: Optional[str] = None
+    quantity: Optional[int] = Field(None, ge=1)
+    ownerKind: Optional[str] = None
+    ownerId: Optional[str] = None
+    responsibleName: Optional[str] = None
+    purchaseDate: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class EquipmentStatusBody(BaseModel):
+    status: str = Field(..., description="IN_USE/IDLE/MAINTENANCE/SCRAPPED")
+    reason: Optional[str] = None
+
+
+@router.get("/equipment", summary="设备资源列表（按位置/状态/关键词过滤）")
+def equipment_list(keyword: Optional[str] = None, ownerKind: Optional[str] = None, status: Optional[str] = None,
+                   page: int = 1, pageSize: int = 20,
+                   user=Depends(require_permission("academicAffairs.equipment.view"))):
+    items, total = resource_svc.list_equipment(user, keyword, ownerKind, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/equipment", summary="新建设备（资产编号唯一，重复409）")
+def equipment_create(body: EquipmentCreate, user=Depends(require_permission("academicAffairs.equipment.create"))):
+    return success(resource_svc.create_equipment(body, user), message="已创建")
+
+
+@router.put("/equipment/{equipmentId}", summary="编辑设备")
+def equipment_update(body: EquipmentUpdate, equipmentId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.equipment.update"))):
+    return success(resource_svc.update_equipment(equipmentId, body, user), message="已保存")
+
+
+@router.post("/equipment/{equipmentId}/status", summary="切换设备状态（IN_USE/IDLE/MAINTENANCE/SCRAPPED，幂等）")
+def equipment_status(body: EquipmentStatusBody, equipmentId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.equipment.update"))):
+    return success(resource_svc.set_equipment_status(equipmentId, body.status, user, body.reason or ""),
+                   message="已更新")
+
+
+@router.delete("/equipment/{equipmentId}", summary="删除设备（逻辑删除）")
+def equipment_delete(equipmentId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.equipment.delete"))):
+    return success(resource_svc.delete_equipment(equipmentId, user), message="已删除")
+
+
+@router.get("/equipment/{equipmentId}", summary="设备详情")
+def equipment_detail(equipmentId: int = Path(...),
+                     user=Depends(require_permission("academicAffairs.equipment.view"))):
+    return success(resource_svc.get_equipment(equipmentId, user))
+
+
+# ── 资源占用（教室+实训室已批准预约 + 当日课表，统一只读聚合视图） ──
+@router.get("/resources/occupancy", summary="资源占用（教室+实训室已批准预约+当日课表，统一只读视图）")
+def resource_occupancy(date: str, resourceKind: Optional[str] = None,
+                       user=Depends(require_permission("academicAffairs.resourceOccupancy.view"))):
+    return success(resource_svc.get_resource_occupancy(user, date, resourceKind))
+
+
+# ── 资源冲突（预约 vs 已发布课表跨源冲突台账，区别于排课模块批次内冲突检测） ──
+@router.get("/resources/conflicts", summary="资源冲突台账（预约 vs 已发布课表跨源冲突，日期范围最多31天）")
+def resource_conflicts(dateFrom: str, dateTo: Optional[str] = None,
+                       user=Depends(require_permission("academicAffairs.resourceConflict.view"))):
+    return success(resource_svc.list_resource_conflicts(user, dateFrom, dateTo))
+
+
+# ── 资源维修（教室/实训室/设备共用工单台账；报修→维修中→完成，联动资源状态） ──
+class RepairReportBody(BaseModel):
+    resourceKind: str = Field(..., description="CLASSROOM/LAB/EQUIPMENT")
+    resourceId: str = Field(..., min_length=1)
+    faultDesc: str = Field(..., min_length=1, max_length=500)
+
+
+class RepairCompleteBody(BaseModel):
+    repairNote: Optional[str] = Field("", max_length=500)
+
+
+class RepairCancelBody(BaseModel):
+    reason: Optional[str] = Field("", max_length=300)
+
+
+@router.post("/resources/repairs", summary="登记故障报修（联动资源状态置为维修中）")
+def repair_report(body: RepairReportBody, user=Depends(require_staff)):
+    return success(resource_svc.report_repair(user, body), message="已登记报修")
+
+
+@router.get("/resources/repairs", summary="维修工单列表")
+def repair_list(resourceKind: Optional[str] = None, status: Optional[str] = None,
+                page: int = 1, pageSize: int = 50,
+                user=Depends(require_permission("academicAffairs.resourceRepair.view"))):
+    items, total = resource_svc.list_repairs(user, resourceKind, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/resources/repairs/{repairId}/start", summary="开始维修")
+def repair_start(repairId: int = Path(...),
+                 user=Depends(require_permission("academicAffairs.resourceRepair.manage"))):
+    return success(resource_svc.start_repair(user, repairId), message="已开始维修")
+
+
+@router.post("/resources/repairs/{repairId}/complete", summary="完成维修（联动恢复资源可用，若无其它未完成工单）")
+def repair_complete(body: RepairCompleteBody, repairId: int = Path(...),
+                    user=Depends(require_permission("academicAffairs.resourceRepair.manage"))):
+    return success(resource_svc.complete_repair(user, repairId, body.repairNote or ""), message="已完成")
+
+
+@router.post("/resources/repairs/{repairId}/cancel", summary="取消维修工单")
+def repair_cancel(body: RepairCancelBody, repairId: int = Path(...),
+                  user=Depends(require_permission("academicAffairs.resourceRepair.manage"))):
+    return success(resource_svc.cancel_repair(user, repairId, body.reason or ""), message="已取消")
+
+
+# ── 资源统计（数量/状态分布/预约审批率/维修工单，只读聚合） ──
+@router.get("/resources/stats", summary="资源统计（数量/状态分布/预约审批率/维修工单，只读聚合）")
+def resource_stats(user=Depends(require_permission("academicAffairs.resourceStats.view"))):
+    return success(resource_svc.get_resource_stats(user))
+
+
 # ═══════════ 调停课（R2/SM-08，调课/停课/补课；教师发起→学院审→教务处审→改写课表）═══════════
 
 _SC_REVIEW = require_any_permission("academicAffairs.scheduleChange.collegeReview",
