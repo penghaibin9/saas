@@ -145,6 +145,52 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/registration-batches/${batchId}/register`, { method: 'POST', body: { studentId } }))
   },
 
+  /* ── 注册资格核验（Tier1 R1 · academicAffairs.registration.eligibility.*） ── */
+  getRegistrationEligibility(batchId, params = {}) {
+    return callList(`${BASE}/registration-batches/${batchId}/eligibility`, params)
+  },
+  verifyRegistrationEligibility(batchId, studentId, body) {
+    return call(() => request(`${BASE}/registration-batches/${batchId}/eligibility/${studentId}/verify`, { method: 'POST', body }))
+  },
+
+  /* ── 未注册学生（Tier1 R1 · academicAffairs.registration.unregistered.*） ── */
+  getUnregisteredStudents(params = {}) {
+    return callList(`${BASE}/registration/unregistered`, params)
+  },
+  scanUnregistered(batchId) {
+    return call(() => request(`${BASE}/registration-batches/${batchId}/scan-unregistered`, { method: 'POST' }))
+  },
+  async exportUnregistered(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/registration/unregistered/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+
+  /* ── 暂缓注册（Tier1 R1 · academicAffairs.registration.deferral.*） ── */
+  applyRegistrationDeferral(batchId, body) {
+    return call(() => request(`${BASE}/registration-batches/${batchId}/deferrals`, { method: 'POST', body }))
+  },
+  getRegistrationDeferrals(params = {}) {
+    return callList(`${BASE}/registration/deferrals`, params)
+  },
+  reviewRegistrationDeferral(deferralId, body) {
+    return call(() => request(`${BASE}/registration/deferrals/${deferralId}/review`, { method: 'POST', body }))
+  },
+
+  /* ── 注册异常（Tier1 R1 · academicAffairs.registration.exception.*） ── */
+  createRegistrationException(batchId, body) {
+    return call(() => request(`${BASE}/registration-batches/${batchId}/exceptions`, { method: 'POST', body }))
+  },
+  getRegistrationExceptions(params = {}) {
+    return callList(`${BASE}/registration/exceptions`, params)
+  },
+  resolveRegistrationException(exceptionId, note) {
+    return call(() => request(`${BASE}/registration/exceptions/${exceptionId}/resolve`, { method: 'POST', body: { note } }))
+  },
+
   /* ── 学籍异动（休学/退学/复学/留级/转专业，多节点审批） ── */
   getStatusChanges(params = {}) {
     return callList(`${BASE}/status-changes`, params)

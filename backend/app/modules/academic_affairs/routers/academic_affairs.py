@@ -147,9 +147,10 @@ def reg_batch_create(body: RegBatchCreate, user=Depends(require_staff)):
     return success(svc.create_registration_batch(body, user), message="已创建")
 
 
-@router.get("/registration-batches", summary="注册批次列表")
-def reg_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
-    items, total = svc.list_registration_batches(user, status, page, pageSize)
+@router.get("/registration-batches", summary="注册批次列表（registerType 可收窄为入学/学年注册视图）")
+def reg_batches(status: Optional[str] = None, registerType: Optional[str] = None,
+                page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+    items, total = svc.list_registration_batches(user, status, page, pageSize, registerType)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -162,6 +163,139 @@ def register(body: RegisterBody, batchId: int = Path(...), user=Depends(require_
 def registrations(batchId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
     items, total = svc.list_registrations(batchId, user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+# ── 注册资格核验（Tier1 R1）──
+_REG_ELIGIBILITY_VIEW = "academicAffairs.registration.eligibility.view"
+_REG_ELIGIBILITY_VERIFY = "academicAffairs.registration.eligibility.verify"
+
+
+class EligibilityVerifyBody(BaseModel):
+    result: str = Field(..., description="ELIGIBLE / INELIGIBLE")
+    note: Optional[str] = Field(None, description="核验意见；INELIGIBLE 必填")
+    exceptionType: Optional[str] = Field(None, description="INELIGIBLE 时的异常类型")
+
+
+@router.get("/registration-batches/{batchId}/eligibility", summary="注册资格核验候选名单")
+def reg_eligibility_list(batchId: int = Path(...), status: Optional[str] = None, keyword: Optional[str] = None,
+                         page: int = 1, pageSize: int = 20, user=Depends(require_permission(_REG_ELIGIBILITY_VIEW))):
+    items, total = svc.list_registration_eligibility(batchId, user, status, keyword, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/registration-batches/{batchId}/eligibility/{studentId}/verify", summary="核验单个学生注册资格")
+def reg_eligibility_verify(body: EligibilityVerifyBody, batchId: int = Path(...), studentId: str = Path(...),
+                           user=Depends(require_permission(_REG_ELIGIBILITY_VERIFY))):
+    return success(svc.verify_registration_eligibility(batchId, user, studentId, body.result, body.note,
+                                                        body.exceptionType), message="已核验")
+
+
+# ── 未注册学生（Tier1 R1）──
+_REG_UNREG_VIEW = "academicAffairs.registration.unregistered.view"
+_REG_UNREG_SCAN = "academicAffairs.registration.unregistered.scan"
+_REG_UNREG_EXPORT = "academicAffairs.registration.unregistered.export"
+
+
+@router.get("/registration/unregistered", summary="未注册学生名单（已判定 UNREGISTERED + 逾期待扫描）")
+def reg_unregistered_list(batchId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                          user=Depends(require_permission(_REG_UNREG_VIEW))):
+    items, total = svc.list_unregistered_students(user, batchId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/registration-batches/{batchId}/scan-unregistered", summary="扫描批次逾期未注册（仅教务处）")
+def reg_scan_unregistered(batchId: int = Path(...), user=Depends(require_permission(_REG_UNREG_SCAN))):
+    return success(svc.scan_unregistered(batchId, user), message="扫描完成")
+
+
+class UnregisteredExportBody(BaseModel):
+    batchId: Optional[int] = None
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
+
+
+@router.post("/registration/unregistered/export", summary="导出未注册学生名单 xlsx（水印+审计，同步下载）")
+def reg_unregistered_export(body: UnregisteredExportBody, user=Depends(require_permission(_REG_UNREG_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = svc.export_unregistered_xlsx(user, body.batchId, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=unregistered_students.xlsx"})
+
+
+# ── 暂缓注册（Tier1 R1）──
+_REG_DEFERRAL_VIEW = "academicAffairs.registration.deferral.view"
+_REG_DEFERRAL_APPLY = "academicAffairs.registration.deferral.apply"
+_REG_DEFERRAL_APPROVE = "academicAffairs.registration.deferral.approve"
+
+
+class DeferralApplyBody(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=2)
+    requestedUntil: Optional[str] = None
+
+
+@router.post("/registration-batches/{batchId}/deferrals", summary="提交暂缓注册申请")
+def reg_deferral_apply(body: DeferralApplyBody, batchId: int = Path(...),
+                       user=Depends(require_permission(_REG_DEFERRAL_APPLY))):
+    return success(svc.apply_registration_deferral(batchId, user, body.studentId, body.reason,
+                                                    body.requestedUntil), message="已提交")
+
+
+@router.get("/registration/deferrals", summary="暂缓注册申请列表")
+def reg_deferral_list(batchId: Optional[int] = None, status: Optional[str] = None,
+                      page: int = 1, pageSize: int = 20, user=Depends(require_permission(_REG_DEFERRAL_VIEW))):
+    items, total = svc.list_registration_deferrals(user, batchId, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class DeferralReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE / REJECT")
+    note: Optional[str] = Field(None, description="REJECT 时必填")
+
+
+@router.post("/registration/deferrals/{deferralId}/review", summary="审批暂缓注册申请")
+def reg_deferral_review(body: DeferralReviewBody, deferralId: int = Path(...),
+                        user=Depends(require_permission(_REG_DEFERRAL_APPROVE))):
+    return success(svc.review_registration_deferral(deferralId, user, body.action, body.note), message="已处理")
+
+
+# ── 注册异常（Tier1 R1）──
+_REG_EXCEPTION_VIEW = "academicAffairs.registration.exception.view"
+_REG_EXCEPTION_CREATE = "academicAffairs.registration.exception.create"
+_REG_EXCEPTION_RESOLVE = "academicAffairs.registration.exception.resolve"
+
+
+class ExceptionCreateBody(BaseModel):
+    studentId: str = Field(..., min_length=1)
+    exceptionType: str = Field(..., description="IDENTITY_MISMATCH/UNPAID/MATERIAL_MISSING/OTHER")
+    description: Optional[str] = Field(None, description="OTHER 时必填")
+
+
+@router.post("/registration-batches/{batchId}/exceptions", summary="标记注册异常")
+def reg_exception_create(body: ExceptionCreateBody, batchId: int = Path(...),
+                         user=Depends(require_permission(_REG_EXCEPTION_CREATE))):
+    return success(svc.create_registration_exception(batchId, user, body.studentId, body.exceptionType,
+                                                      body.description), message="已标记异常")
+
+
+@router.get("/registration/exceptions", summary="注册异常列表")
+def reg_exception_list(batchId: Optional[int] = None, status: Optional[str] = None,
+                       page: int = 1, pageSize: int = 20, user=Depends(require_permission(_REG_EXCEPTION_VIEW))):
+    items, total = svc.list_registration_exceptions(user, batchId, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class ExceptionResolveBody(BaseModel):
+    note: str = Field(..., min_length=1, description="处理说明")
+
+
+@router.post("/registration/exceptions/{exceptionId}/resolve", summary="处理并解除注册异常")
+def reg_exception_resolve(body: ExceptionResolveBody, exceptionId: int = Path(...),
+                          user=Depends(require_permission(_REG_EXCEPTION_RESOLVE))):
+    return success(svc.resolve_registration_exception(exceptionId, user, body.note), message="已处理")
 
 
 # ═══════════ 学籍异动（P2 台账/发起 + Tier1 R1 分类申请入口/审批/生效/统计，休学/复学/退学/转专业/留级）═══════════

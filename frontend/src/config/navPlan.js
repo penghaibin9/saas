@@ -251,7 +251,14 @@ export const NAV_PLAN = [
     ]),
     mod('aa-registration', '注册管理', '/admin/academic-affairs/registration', [
       I('注册批次', '/admin/academic-affairs/registration'),
-      ...P('入学注册', '学年注册', '学期注册', '注册资格核验', '未注册学生', '暂缓注册', '注册异常', '注册统计', '注册归档')
+      I('入学注册', '/admin/academic-affairs/registration?type=ENROLL', 'academicAffairs.registration.view'),
+      I('学年注册', '/admin/academic-affairs/registration?type=ANNUAL', 'academicAffairs.registration.view'),
+      ...P('学期注册'),
+      I('注册资格核验', '/admin/academic-affairs/registration/workbench?tab=eligibility', 'academicAffairs.registration.eligibility.view'),
+      I('未注册学生', '/admin/academic-affairs/registration/workbench?tab=unregistered', 'academicAffairs.registration.unregistered.view'),
+      I('暂缓注册', '/admin/academic-affairs/registration/workbench?tab=deferral', 'academicAffairs.registration.deferral.view'),
+      I('注册异常', '/admin/academic-affairs/registration/workbench?tab=exception', 'academicAffairs.registration.exception.view'),
+      ...P('注册统计', '注册归档')
     ]),
     mod('aa-status-change', '学籍异动', '/admin/academic-affairs/status-changes', [
       I('异动台账', '/admin/academic-affairs/status-changes'),

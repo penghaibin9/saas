@@ -98,7 +98,12 @@ class AaRegistrationBatch(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AaRegistration(PKMixin, TenantMixin, CommonMixin, Base):
-    """学生注册记录（预检快照+结果）。PENDING_REGISTER/REGISTERED/UNREGISTERED。唯一(tenant,batch,student)。"""
+    """学生注册记录（预检快照+结果）。PENDING_REGISTER/REGISTERED/UNREGISTERED。唯一(tenant,batch,student)。
+
+    13B-P1-R1（注册管理 Tier1 六叶）加列：注册资格核验结果独立于最终注册结果记录——
+    eligibility_status 由「注册资格核验」页写入（PENDING/ELIGIBLE/INELIGIBLE），不影响 status 本身
+    （register_student 仍是唯一使学生转 REGISTERED 的入口，核验只做前置留痕，不做硬阻断）。
+    """
     __tablename__ = "t_aa_registration"
 
     batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -107,8 +112,45 @@ class AaRegistration(PKMixin, TenantMixin, CommonMixin, Base):
     register_at: Mapped[datetime | None] = mapped_column(DateTime)
     operator_id: Mapped[int | None] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_REGISTER", index=True)
+    eligibility_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                                     comment="资格核验结果 PENDING/ELIGIBLE/INELIGIBLE")
+    eligibility_note: Mapped[str | None] = mapped_column(String(500), comment="核验意见/不合格原因")
+    eligibility_checked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    eligibility_checked_by: Mapped[int | None] = mapped_column(BigInteger)
 
     __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "student_id", name="uk_aa_registration"),)
+
+
+class AaRegistrationException(PKMixin, TenantMixin, CommonMixin, Base):
+    """注册异常（身份不符/未缴费/材料缺失/其他）。核验或核对环节标记，通知辅导员，教务/学院处理后解除。"""
+    __tablename__ = "t_aa_registration_exception"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    registration_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="关联注册记录(存在时)")
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    exception_type: Mapped[str] = mapped_column(String(30), nullable=False, default="OTHER",
+                                                comment="IDENTITY_MISMATCH/UNPAID/MATERIAL_MISSING/OTHER")
+    description: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="OPEN", index=True,
+                                        comment="OPEN/RESOLVED")
+    resolution_note: Mapped[str | None] = mapped_column(String(500))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_by: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class AaRegistrationDeferral(PKMixin, TenantMixin, CommonMixin, Base):
+    """暂缓注册申请（材料未齐/特殊原因需延后注册窗口）。PENDING/APPROVED/REJECTED。"""
+    __tablename__ = "t_aa_registration_deferral"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    requested_until: Mapped[datetime | None] = mapped_column(DateTime, comment="申请延后至该日期前完成注册")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/APPROVED/REJECTED")
+    review_note: Mapped[str | None] = mapped_column(String(500))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reviewed_by: Mapped[int | None] = mapped_column(BigInteger)
 
 
 # ═══════════ 培养方案组（13B-P2 建表 + 编制骨架；审批发布 P3）═══════════

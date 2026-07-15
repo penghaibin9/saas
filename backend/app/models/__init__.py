@@ -108,6 +108,8 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaProgramBinding, AaProgramCourse,
                                          AaProgramGraduationRequirement,
                                          AaRegistration, AaRegistrationBatch,
+                                         AaRegistrationDeferral,
+                                         AaRegistrationException,
                                          AaScheduleBatch, AaScheduleChange,
                                          AaScheduleItem, AaScheduleRule,
                                          AaSelectionBatch,

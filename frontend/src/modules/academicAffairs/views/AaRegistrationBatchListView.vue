@@ -1,16 +1,16 @@
 <template>
   <ModulePageShell
-    title="注册管理"
-    subtitle="按入学 / 学年建立注册批次；批次开放后逐个学生注册（经学籍单一入口写主档）"
+    :title="pageTitle"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="showCreate = !showCreate">＋ 新建注册批次</button>
+      <button class="mp-btn mp-btn--primary" @click="showCreate = !showCreate">＋ 新建{{ typeLabel || '注册批次' }}</button>
     </template>
 
     <div class="mp-stack">
-      <AppSectionCard v-if="showCreate" title="新建注册批次">
+      <AppSectionCard v-if="showCreate" :title="'新建' + (typeLabel || '注册批次')">
         <div class="aa-cal-form">
           <label class="aa-cal-form__item aa-cal-form__item--grow">
             批次名称
@@ -18,7 +18,7 @@
           </label>
           <label class="aa-cal-form__item">
             类型
-            <select v-model="draft.registerType" class="aa-select">
+            <select v-model="draft.registerType" class="aa-select" :disabled="!!fixedType">
               <option value="ENROLL">入学注册</option>
               <option value="ANNUAL">学年注册</option>
             </select>
@@ -95,7 +95,33 @@ export default {
       ]
     }
   },
+  computed: {
+    /** ?type=ENROLL/ANNUAL 收窄为「入学注册」/「学年注册」叶子视图；无 type 为原「注册批次」通栏视图。 */
+    fixedType() {
+      const t = this.$route && this.$route.query && this.$route.query.type
+      return t === 'ENROLL' || t === 'ANNUAL' ? t : ''
+    },
+    typeLabel() {
+      return this.fixedType === 'ENROLL' ? '入学注册' : this.fixedType === 'ANNUAL' ? '学年注册' : ''
+    },
+    pageTitle() {
+      return this.typeLabel || '注册管理'
+    },
+    pageSubtitle() {
+      if (this.fixedType === 'ENROLL') return '新生入学注册批次：核身份/专业/班级，报到缴费材料齐全后完成注册'
+      if (this.fixedType === 'ANNUAL') return '在籍学生学年注册批次：核对上学年状态/缴费后完成续注册'
+      return '按入学 / 学年建立注册批次；批次开放后逐个学生注册（经学籍单一入口写主档）'
+    }
+  },
+  watch: {
+    '$route.query.type'() {
+      this.draft.registerType = this.fixedType || 'ENROLL'
+      this.pagination.page = 1
+      this.load()
+    }
+  },
   created() {
+    if (this.fixedType) this.draft.registerType = this.fixedType
     this.load()
   },
   methods: {
@@ -114,16 +140,16 @@ export default {
       this.creating = true
       const res = await academicAffairsApi.createRegistrationBatch({
         batchName: this.draft.batchName,
-        registerType: this.draft.registerType,
+        registerType: this.fixedType || this.draft.registerType,
         windowStart: this.draft.windowStart || undefined,
         windowEnd: this.draft.windowEnd || undefined,
         open: this.draft.open
       })
       this.creating = false
       if (res.code === 0) {
-        toast.success('注册批次已创建')
+        toast.success((this.typeLabel || '注册批次') + '已创建')
         this.showCreate = false
-        this.draft = { batchName: '', registerType: 'ENROLL', windowStart: '', windowEnd: '', open: false }
+        this.draft = { batchName: '', registerType: this.fixedType || 'ENROLL', windowStart: '', windowEnd: '', open: false }
         this.load()
       } else {
         toast.error(res.message || '创建失败')
@@ -132,7 +158,9 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getRegistrationBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
+      if (this.fixedType) params.registerType = this.fixedType
+      const res = await academicAffairsApi.getRegistrationBatches(params)
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
