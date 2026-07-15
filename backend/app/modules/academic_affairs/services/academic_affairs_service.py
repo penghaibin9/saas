@@ -785,6 +785,174 @@ def roster_status_summary(user) -> dict:
         }
 
 
+# ═══════════ 学籍信息更正（学籍管理 Tier1 R3）═══════════
+# 区别于「学籍异动」：本域只纠正身份类数据录入错误（学号/姓名/性别/证件号/年级），不产生学籍状态迁移；
+# student_status/college/major/class 的变更仍必须走 change_student_status()（学籍异动唯一入口），
+# 本域字段范围明确排除以上四项，杜绝借「更正」之名绕过单一写入口红线。单步审核，对齐暂缓注册同款轻量模式。
+
+_CORRECTION_FIELD_LABEL = {"STUDENT_NO": "学号", "REAL_NAME": "姓名", "GENDER": "性别",
+                           "ID_CARD": "证件号", "GRADE": "年级"}
+
+
+def _correction_current_value(s, field_key):
+    return {"STUDENT_NO": s.student_no or "", "REAL_NAME": s.real_name or "", "GENDER": s.gender or "",
+            "ID_CARD": s.id_card_encrypted or "", "GRADE": s.grade or ""}.get(field_key, "")
+
+
+def _correction_clean_value(field_key, new_value):
+    v = (new_value or "").strip()
+    if not v:
+        raise AppException("VALIDATION_ERROR", "更正后的值不能为空")
+    if field_key == "STUDENT_NO" and len(v) > 50:
+        raise AppException("VALIDATION_ERROR", "学号长度不能超过50位")
+    elif field_key == "REAL_NAME" and len(v) > 100:
+        raise AppException("VALIDATION_ERROR", "姓名长度不能超过100位")
+    elif field_key == "GENDER" and v not in ("男", "女"):
+        raise AppException("VALIDATION_ERROR", "性别仅可填写「男」或「女」")
+    elif field_key == "ID_CARD" and len(v) not in (15, 18):
+        raise AppException("VALIDATION_ERROR", "证件号长度应为15或18位")
+    elif field_key == "GRADE" and len(v) > 20:
+        raise AppException("VALIDATION_ERROR", "年级长度不能超过20位")
+    return v
+
+
+def _correction_row(c, s=None, reveal=False) -> dict:
+    old_v, new_v = c.old_value or "", c.new_value or ""
+    if c.field_key == "ID_CARD" and not reveal:
+        old_v, new_v = _mask_id_card(old_v), _mask_id_card(new_v)
+    return {"correctionId": str(c.id), "studentId": str(c.student_id),
+            "realName": s.real_name if s else "", "studentNo": s.student_no if s else "",
+            "fieldKey": c.field_key, "fieldLabel": _CORRECTION_FIELD_LABEL.get(c.field_key, c.field_key),
+            "oldValue": old_v, "newValue": new_v, "sensitive": c.field_key == "ID_CARD",
+            "reason": c.reason or "", "status": c.status, "reviewNote": c.review_note or "",
+            "reviewedAt": _iso(c.reviewed_at), "createdAt": _iso(c.created_at)}
+
+
+def create_roster_correction(user, student_id, field_key, new_value, reason) -> dict:
+    """发起学籍信息更正：教务员/学院教务对某学生的身份类字段据实纠错，提交后待审（不即时生效）。"""
+    from app.core.permissions import has_permission
+    from app.models import AaStudentCorrection
+    field_key = (field_key or "").strip().upper()
+    if field_key not in _CORRECTION_FIELD_LABEL:
+        raise AppException("VALIDATION_ERROR",
+                           "不支持的更正字段；仅支持学号/姓名/性别/证件号/年级，"
+                           "学籍状态/院系专业班级变更请走「学籍异动」")
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "更正原因必填且不少于5字")
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        s = ctx.require_student(db, int(student_id))
+        clean_value = _correction_clean_value(field_key, new_value)
+        current = _correction_current_value(s, field_key)
+        if clean_value == current:
+            raise AppException("VALIDATION_ERROR", "更正后的值与当前值相同")
+        dup = db.scalars(select(AaStudentCorrection).where(
+            AaStudentCorrection.tenant_id == _tid(), AaStudentCorrection.student_id == s.id,
+            AaStudentCorrection.field_key == field_key, AaStudentCorrection.status == "PENDING",
+            AaStudentCorrection.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "该学生该字段已有待审核的更正申请，不可重复发起", http_status=409)
+        c = AaStudentCorrection(tenant_id=_tid(), student_id=s.id, field_key=field_key,
+                                old_value=current, new_value=clean_value, reason=reason, status="PENDING")
+        db.add(c)
+        db.flush()
+        _audit(db, "AA_STUDENT_CORRECTION", c.id, "APPLY",
+              f"{s.real_name} · {_CORRECTION_FIELD_LABEL[field_key]}更正：{current} → {clean_value}")
+        db.commit()
+        db.refresh(c)
+        reveal = has_permission(user, "academicAffairs.roster.viewSensitive")
+        return _correction_row(c, s, reveal)
+
+
+def list_roster_corrections(user, status=None, student_id=None, field_key=None, page=1, page_size=20):
+    from app.core.permissions import has_permission
+    from app.models import AaStudentCorrection, StudentProfile
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        conds = [AaStudentCorrection.tenant_id == _tid(), AaStudentCorrection.is_deleted.is_(False)]
+        if status:
+            conds.append(AaStudentCorrection.status == status)
+        if field_key:
+            conds.append(AaStudentCorrection.field_key == field_key.strip().upper())
+        if student_id:
+            conds.append(AaStudentCorrection.student_id == int(student_id))
+        allowed = ctx.allowed_class_ids(db)
+        if allowed is not None:
+            if not allowed:
+                return [], 0
+            sids = db.scalars(select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.class_id.in_(list(allowed)))).all()
+            conds.append(AaStudentCorrection.student_id.in_(list(sids) or [-1]))
+        rows = db.scalars(select(AaStudentCorrection).where(*conds).order_by(
+            AaStudentCorrection.id.desc())).all()
+        total = len(rows)
+        start = (max(1, page) - 1) * page_size
+        page_rows = rows[start:start + page_size]
+        prof = {p.id: p for p in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_([c.student_id for c in page_rows] or [-1]))).all()}
+        reveal = has_permission(user, "academicAffairs.roster.viewSensitive")
+        return [_correction_row(c, prof.get(c.student_id), reveal) for c in page_rows], total
+
+
+def review_roster_correction(correction_id, user, action, note=None) -> dict:
+    """更正审核：APPROVE 同步主档字段（乐观锁+并发防重）；REJECT 驳回（原因必填≥5字）。"""
+    from app.core.permissions import has_permission
+    from app.models import AaStudentCorrection, StudentProfile
+    action = (action or "").upper()
+    if action not in ("APPROVE", "REJECT"):
+        raise AppException("VALIDATION_ERROR", "非法动作")
+    note = (note or "").strip()
+    if action == "REJECT" and len(note) < 5:
+        raise AppException("VALIDATION_ERROR", "驳回理由必填且不少于5字")
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        c = db.get(AaStudentCorrection, int(correction_id))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("更正申请不存在")
+        s = ctx.require_student(db, c.student_id)
+        if c.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "该更正申请已处理", http_status=409)
+        _n, _r, uid = _op()
+        if action == "APPROVE":
+            current = _correction_current_value(s, c.field_key)
+            if current != (c.old_value or ""):
+                raise AppException("DATA_CONFLICT",
+                                   "该字段自发起更正后已被其它操作变更，请驳回后重新发起", http_status=409)
+            if c.field_key == "STUDENT_NO":
+                dup = db.scalar(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.student_no == c.new_value,
+                    StudentProfile.id != s.id, StudentProfile.is_deleted.is_(False)))
+                if dup:
+                    raise AppException("DATA_CONFLICT", f"学号 {c.new_value} 已被占用", http_status=409)
+                s.student_no = c.new_value
+            elif c.field_key == "REAL_NAME":
+                s.real_name = c.new_value
+            elif c.field_key == "GENDER":
+                s.gender = c.new_value
+            elif c.field_key == "ID_CARD":
+                import hashlib
+                s.id_card_encrypted = c.new_value
+                s.id_card_hash = hashlib.sha256(c.new_value.encode()).hexdigest()
+            elif c.field_key == "GRADE":
+                s.grade = c.new_value
+            s.version = (s.version or 0) + 1
+            c.status = "APPROVED"
+            c.review_note = note or "审核通过，主档已同步更新"
+            _audit(db, "AA_STUDENT_CORRECTION", c.id, "APPROVE",
+                  f"{s.real_name} · {_CORRECTION_FIELD_LABEL.get(c.field_key)}：{c.old_value} → {c.new_value}")
+        else:
+            c.status = "REJECTED"
+            c.review_note = note
+            _audit(db, "AA_STUDENT_CORRECTION", c.id, "REJECT", note)
+        c.reviewed_at = datetime.utcnow()
+        c.reviewed_by = int(uid) if uid.isdigit() else None
+        db.commit()
+        db.refresh(c)
+        reveal = has_permission(user, "academicAffairs.roster.viewSensitive")
+        return _correction_row(c, s, reveal)
+
+
 # ═══════════ 学籍导入导出（Tier1 R2：批量建档 + 台账导出）═══════════
 # 设计取舍（dedup 核查记录）：仓库已有两套导入导出机制——① app.services.domain_import_service 的 6 域内存态引擎
 # （DOMAINS 字典仅支持"单主键+姓名"极简 schema，无持久化 job 记录，不含学院/专业/班级/身份证/初始学籍状态等

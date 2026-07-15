@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="学籍名册"
+    :title="pageTitle"
     subtitle="在籍学生主档（只读脱敏）· 可从这里对某个学生发起学籍异动"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
@@ -68,6 +68,10 @@ const STATUS_LABEL = {
   WITHDRAWN: '退学', RETAINED: '留级', GRADUATED: '毕业'
 }
 
+/** 学籍管理分类视图叶子（休学学生/退学学生/保留学籍，见 navPlan aa-student-status）深链标题；
+ *  「保留学籍」用词对齐三级菜单命名，与 STATUS_LABEL 的「留级」标签展示各自独立、互不影响。 */
+const CATEGORY_TITLE = { SUSPENDED: '休学学生', WITHDRAWN: '退学学生', RETAINED: '保留学籍' }
+
 export default {
   name: 'AaRosterListView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag },
@@ -78,8 +82,9 @@ export default {
       loading: true,
       error: '',
       rows: [],
-      // keyword 支持从 query 预填（供「异动生效」等页跳转「学籍档案」时按学号/姓名带入检索）
-      filters: { keyword: this.$route.query.keyword || '', status: '' },
+      // keyword/status 支持从 query 预填（供「异动生效」等页按学号/姓名带入检索；
+      // 供「休学学生/退学学生/保留学籍」等学籍管理分类视图叶子按状态预筛，见 navPlan aa-student-status）
+      filters: { keyword: this.$route.query.keyword || '', status: this.$route.query.status || '' },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
         { key: 'student', title: '学生' },
@@ -89,6 +94,14 @@ export default {
         { key: 'enrolled', title: '是否在籍' },
         { key: 'actions', title: '操作', width: '90px' }
       ]
+    }
+  },
+  computed: {
+    // 「休学学生/退学学生/保留学籍」等分类视图叶子按 ?status= 深链进入时，标题随之切换，
+    // 避免用户误以为落在通用「学籍名册」（navPlan aa-student-status 分类视图口径）。
+    pageTitle() {
+      const q = this.$route.query.status
+      return (q && CATEGORY_TITLE[q]) || '学籍名册'
     }
   },
   created() {

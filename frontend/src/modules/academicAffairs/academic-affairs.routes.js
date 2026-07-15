@@ -34,6 +34,13 @@ const layoutRoute = {
     { path: 'roster/status', name: 'aa-roster-status', component: () => import('@/modules/academicAffairs/views/AaRosterStatusView.vue'), meta: meta('academicAffairs.roster.view', '学籍状态') },
     { path: 'roster/changes', name: 'aa-roster-changes', component: () => import('@/modules/academicAffairs/views/AaRosterChangeRecordsView.vue'), meta: meta('academicAffairs.statusChange.view', '学籍异动记录') },
     { path: 'roster/import-export', name: 'aa-roster-import-export', component: () => import('@/modules/academicAffairs/views/AaRosterImportExportView.vue'), meta: meta('academicAffairs.roster.import', '学籍导入导出') },
+    // ── 学籍管理 Tier1 R3：休学/退学/保留学籍=名册状态过滤（AaRosterListView ?status=），复用无需新路由；
+    // 复学/转专业因终态回落 REGISTERED、无法用 student_status 区分，走异动流水结果视图（共用组件+changeType meta）；
+    // 学籍信息更正=新增只读+审核工作区（区别于「学籍异动」，见组件头注释）。三者均为静态子路由，须在
+    // roster/:studentId 之前声明（与上方既有约定一致）。 ──
+    { path: 'roster/resumed-students', name: 'aa-roster-resumed', component: () => import('@/modules/academicAffairs/views/AaRosterChangeResultListView.vue'), meta: { ...meta('academicAffairs.statusChange.view', '复学学生'), changeType: 'RESUME' } },
+    { path: 'roster/transferred-major-students', name: 'aa-roster-transferred-major', component: () => import('@/modules/academicAffairs/views/AaRosterChangeResultListView.vue'), meta: { ...meta('academicAffairs.statusChange.view', '转专业学生'), changeType: 'TRANSFER_MAJOR' } },
+    { path: 'roster/corrections', name: 'aa-roster-corrections', component: () => import('@/modules/academicAffairs/views/AaRosterCorrectionListView.vue'), meta: meta('academicAffairs.roster.correction.view', '学籍信息更正') },
     { path: 'roster/:studentId', name: 'aa-roster-detail', component: () => import('@/modules/academicAffairs/views/AaRosterDetailView.vue'), meta: meta('academicAffairs.roster.view', '学籍档案') },
     { path: 'registration', name: 'aa-registration', component: () => import('@/modules/academicAffairs/views/AaRegistrationBatchListView.vue'), meta: meta('academicAffairs.registration.view', '注册管理') },
     { path: 'registration/workbench', name: 'aa-registration-workbench', component: () => import('@/modules/academicAffairs/views/AaRegistrationWorkbenchView.vue'), meta: meta('academicAffairs.registration.eligibility.view', '注册工作台') },
