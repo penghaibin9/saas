@@ -7,7 +7,7 @@
  */
 const action = (key, label, risk = 'NORMAL') => ({ key, label, risk })
 
-export const SYSTEM_MANAGEMENT_CATALOG = [
+const RAW_SYSTEM_MANAGEMENT_CATALOG = [
   {
     key: 'sys-overview', label: '系统概览', icon: '◫',
     description: '学校初始化检查、账号与组织完整性、模块开通状态及异常提醒。',
@@ -84,6 +84,18 @@ export const SYSTEM_MANAGEMENT_CATALOG = [
   }
 ]
 
+/**
+ * 学校级系统管理的后端权限域统一为 systemAdmin.*。
+ * 早期菜单使用 system.*，学校管理员的全量权限会掩盖这个差异；而系统管理员/审计员会被错误拒绝。
+ * 在目录入口统一迁移，保证导航、角色授权树和路由消费同一套可执行权限码。
+ */
+const normalizePermissionKey = (permissionKey) => String(permissionKey || '').replace(/^system\./, 'systemAdmin.')
+
+export const SYSTEM_MANAGEMENT_CATALOG = RAW_SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
+  ...group,
+  items: group.items.map((item) => ({ ...item, permissionKey: normalizePermissionKey(item.permissionKey) }))
+}))
+
 export const SYSTEM_MANAGEMENT_ITEMS = SYSTEM_MANAGEMENT_CATALOG.flatMap((group) =>
   group.items.map((item) => ({ ...item, groupKey: group.key, groupLabel: group.label, groupDescription: group.description }))
 )
@@ -93,4 +105,3 @@ export const SYSTEM_MANAGEMENT_ITEM_MAP = Object.fromEntries(
 )
 
 export const SYSTEM_MANAGEMENT_MENU_KEYS = SYSTEM_MANAGEMENT_ITEMS.map((item) => item.key)
-
