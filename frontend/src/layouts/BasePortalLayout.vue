@@ -13,7 +13,7 @@
       </div>
       <div class="bpl-search">
         <!-- ① 学生搜索框（仅管理端有 ctx 时显示；后端按数据范围返回） -->
-        <div v-if="ctx" class="bpl-cmdk bpl-cmdk--stu" :class="{ 'is-open': stuOpen }">
+        <div v-if="ctx && !isPlatformMode" class="bpl-cmdk bpl-cmdk--stu" :class="{ 'is-open': stuOpen }">
           <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <circle cx="11" cy="11" r="7" />
             <path d="M21 21l-4.3-4.3" />
@@ -352,6 +352,7 @@ export default {
   computed: {
     /** 当前角色可见的一级模块 key 集合（用于把搜索结果限制在有权限的范围内） */
     visibleGroupKeys() {
+      if (this.isPlatformMode) return new Set(['platform'])
       return new Set(getVisibleAdminMenu(this.ctx).map((g) => g.key))
     },
     /** 功能/帮助搜索结果：旧名兼容 + 完整目录(navPlan) + 帮助文档/流程图；planned 显示「待施工」不跳转 */
@@ -408,12 +409,14 @@ export default {
         : '当前仅显示已实现菜单；点击开启 planned 施工地图'
     },
     schoolName() {
+      if (this.isPlatformMode) return ''
       return (this.ctx && this.ctx.tenantBrandConfig && this.ctx.tenantBrandConfig.schoolName) || ''
     },
     brandLine1() {
       return this.ctx ? this.productName : this.title
     },
     brandLine2() {
+      if (this.isPlatformMode) return this.subtitle
       return this.ctx ? this.schoolName : this.subtitle
     },
     logoText() {
@@ -421,8 +424,15 @@ export default {
       return src ? src.charAt(0) : '校'
     },
     scopeName() {
+      if (this.isPlatformMode) return '全平台（跨租户）'
       const ds = this.ctx && this.ctx.dataScope
       return (ds && (ds.scopeName || ds.scopeLabel || ds.name)) || ''
+    },
+    /** 平台控制面与学校管理端使用同一布局，但导航边界必须完全隔离。 */
+    isPlatformMode() {
+      const path = this.$route ? this.$route.path : ''
+      const role = (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleCode) || ''
+      return path === '/admin/platform' || path.startsWith('/admin/platform/') || String(role).startsWith('PLATFORM_')
     },
     userName() {
       return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.userName) || ''
@@ -440,6 +450,9 @@ export default {
       // 一级图标轨 = adminMenu.js 的 6 个一级模块（工作台已作为第一个分组，
       // 其首叶「我的工作台」指向 /；不再额外合成 home，避免出现两个「工作台」）。
       if (!this.ctx) return []
+      if (this.isPlatformMode) {
+        return [{ key: 'platform', label: '平台运营', path: '/admin/platform/overview' }]
+      }
       return getVisibleAdminMenu(this.ctx).map((group) => {
         const first = group.children[0]
         return {
@@ -453,6 +466,7 @@ export default {
     railActiveKey() {
       // 依路径定位一级模块；根路径 / 命中「工作台」首叶，未知路径兜底高亮工作台。
       const path = this.$route ? this.$route.path : ''
+      if (this.isPlatformMode) return 'platform'
       return findActiveMenu(path).groupKey || 'workbench'
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */

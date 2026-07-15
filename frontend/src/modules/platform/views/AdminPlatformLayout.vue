@@ -1,7 +1,8 @@
 <template>
   <BasePortalLayout
-    :title="brandTitle"
-    subtitle="平台运营中心"
+    title="SaaS 运营平台"
+    product-name="SaaS 运营平台"
+    subtitle="平台运营控制面"
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"
@@ -33,10 +34,6 @@ export default {
     return { menus: MENUS, ctx: null }
   },
   computed: {
-    brandTitle() {
-      if (!this.ctx) return '平台运营'
-      return this.ctx.tenantBrandConfig.platformDisplayName + ' · 运营端'
-    },
     activeKey() {
       const path = this.$route.path
       const hit = [...this.menus]
