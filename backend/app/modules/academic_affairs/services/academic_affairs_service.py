@@ -190,6 +190,302 @@ def roster(user, keyword=None, status=None, page=1, page_size=20):
         return out[start:start + page_size], total
 
 
+# ═══════════ 学籍档案 / 学籍状态总览（Tier1 R2，只读，复用 t_student_profile/t_aa_status_change/College/Major/SchoolClass）═══════════
+
+_STATUS_LABEL = {
+    "NORMAL": "正常", "MERGED": "已合并", "RECYCLED": "已回收",
+    "PENDING_REGISTER": "待注册", "REGISTERED": "在籍注册", "UNREGISTERED": "未注册",
+    "SUSPENDED": "休学", "RETAINED": "留级", "WITHDRAWN": "退学",
+    "TRANSFER_SCHOOL": "转学", "GRADUATED": "毕业", "COMPLETED": "结业", "INCOMPLETE": "肄业",
+}
+
+
+def _resolve_org_names(db, s):
+    from app.models import College, Major, SchoolClass
+    college_name = major_name = class_name = ""
+    if s.class_id:
+        c = db.get(SchoolClass, int(s.class_id))
+        if c and not c.is_deleted and c.tenant_id == _tid():
+            class_name = c.class_name
+    if s.major_id:
+        m = db.get(Major, int(s.major_id))
+        if m and not m.is_deleted and m.tenant_id == _tid():
+            major_name = m.major_name
+    if s.college_id:
+        col = db.get(College, int(s.college_id))
+        if col and not col.is_deleted and col.tenant_id == _tid():
+            college_name = col.college_name
+    return college_name, major_name, class_name
+
+
+def roster_detail(student_id, user) -> dict:
+    """学籍档案详情（对齐 13B §2.5 /roll/students/:studentId）：主档 + 组织名称 + 学籍状态历史（全量）。
+
+    数据范围：教务处/校管 TENANT_ALL 全校；学院教务/辅导员按 build_affairs_context 收敛到 from/本院/本班，
+    越权直连 URL → 403002（fail-closed，对齐设计验收①）。
+    """
+    from app.models import AaStatusChange
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        s = ctx.require_student(db, int(student_id))
+        college_name, major_name, class_name = _resolve_org_names(db, s)
+        history_rows = db.scalars(select(AaStatusChange).where(
+            AaStatusChange.tenant_id == _tid(), AaStatusChange.student_id == s.id,
+            AaStatusChange.is_deleted.is_(False)).order_by(AaStatusChange.id.desc())).all()
+        history = [{"changeId": str(h.id), "changeType": h.change_type,
+                    "fromStatus": h.from_status, "toStatus": h.to_status,
+                    "reason": h.reason or "", "status": h.status,
+                    "effectiveDate": _iso(h.effective_date), "termCode": h.term_code or ""}
+                   for h in history_rows]
+        return {
+            "studentId": str(s.id), "studentNo": s.student_no, "realName": s.real_name,
+            "gender": s.gender or "", "collegeId": str(s.college_id or ""), "collegeName": college_name,
+            "majorId": str(s.major_id or ""), "majorName": major_name,
+            "classId": str(s.class_id or ""), "className": class_name, "grade": s.grade or "",
+            "studentStatus": s.student_status, "statusLabel": _STATUS_LABEL.get(s.student_status, s.student_status),
+            "currentStage": s.current_stage, "enrolled": is_enrolled(s.student_status),
+            "idCardMasked": _mask_id_card(s.id_card_encrypted),
+            "enrollDate": _iso(s.enroll_date), "remark": s.remark or "",
+            "statusHistory": history,
+        }
+
+
+def reveal_roster_sensitive(student_id, user, reason="") -> dict:
+    """查看完整证件号（sensitiveView 鉴权 + 强制 SENSITIVE_VIEW 审计，越权与成功均落审计，对齐 aid_reveal 同款模式）。"""
+    from app.core.exceptions import no_permission
+    from app.core.permissions import has_permission
+    from app.services.db_service import audit_insert
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "查看理由必填（≥5 字）")
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        s = ctx.require_student(db, int(student_id))
+        if not has_permission(user, "academicAffairs.roster.viewSensitive"):
+            audit_insert("SENSITIVE_VIEW", "student_profile",
+                         {"studentId": str(student_id), "reason": reason, "granted": False}, "DENY")
+            raise no_permission("无学籍证件号完整查看权限")
+        audit_insert("SENSITIVE_VIEW", "student_profile",
+                     {"studentId": str(student_id), "reason": reason, "granted": True}, "SUCCESS")
+        return {"studentId": str(s.id), "idCard": s.id_card_encrypted or ""}
+
+
+def roster_status_summary(user) -> dict:
+    """学籍状态总览（Tier1「学籍状态」）：真实 13 态分布（受控扩展枚举，见 academic_affairs_status_service.STATUSES）
+    + 在籍/非在籍 + 近 30 天生效异动数，数据范围与 status-changes 同口径（COLLEGE/CLASS 按 allowed_class_ids 收敛）。
+    """
+    from app.models import AaStatusChange, StudentProfile
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        conds = [StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
+        allowed = ctx.allowed_class_ids(db)
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(list(allowed)) if allowed else (StudentProfile.id == -1))
+        rows = db.scalars(select(StudentProfile).where(*conds)).all()
+        by_status: dict = {}
+        enrolled_count = 0
+        for s in rows:
+            by_status[s.student_status] = by_status.get(s.student_status, 0) + 1
+            if is_enrolled(s.student_status):
+                enrolled_count += 1
+        since = datetime.utcnow() - timedelta(days=30)
+        sc_conds = [AaStatusChange.tenant_id == _tid(), AaStatusChange.is_deleted.is_(False),
+                   AaStatusChange.status == "EFFECTIVE", AaStatusChange.effective_date >= since]
+        if allowed is not None:
+            if allowed:
+                sc_conds.append(or_(AaStatusChange.from_class_id.in_(list(allowed)),
+                                    AaStatusChange.to_class_id.in_(list(allowed))))
+            else:
+                sc_conds.append(AaStatusChange.id == -1)
+        recent = db.scalar(select(func.count()).select_from(AaStatusChange).where(*sc_conds)) or 0
+        return {
+            "total": len(rows),
+            "byStatus": [{"status": k, "label": _STATUS_LABEL.get(k, k), "count": v}
+                        for k, v in sorted(by_status.items(), key=lambda x: -x[1])],
+            "enrolledCount": enrolled_count, "notEnrolledCount": len(rows) - enrolled_count,
+            "recentChanges30d": int(recent),
+        }
+
+
+# ═══════════ 学籍导入导出（Tier1 R2：批量建档 + 台账导出）═══════════
+# 设计取舍（dedup 核查记录）：仓库已有两套导入导出机制——① app.services.domain_import_service 的 6 域内存态引擎
+# （DOMAINS 字典仅支持"单主键+姓名"极简 schema，无持久化 job 记录，不含学院/专业/班级/身份证/初始学籍状态等
+# 学籍档案所需字段，若强行套用需大改其 dry_run/confirm 内部逻辑，等同重写）；② app.services.excel 公共底座
+# （ColumnSpec/ImportSpec 声明式配置 + 模板/校验/错误行/t_excel_import_job 持久化，已被 graduation_student /
+# internship 等模块验证为生产级方案）。本轮选②扩展，不选①，避免在不匹配 schema 上二次改造。
+# 导出沿用本模块（academic_affairs_service）内既有 export_unregistered_xlsx 同款 xlsx_util.build_ledger_xlsx +
+# 用途≥5字 + StreamingResponse 直出模式，与同模块既有导出端点口径一致（不额外引入 excel.ExportSpec 的 base64 包装）。
+
+_ROSTER_INITIAL_STATUSES = {"PENDING_REGISTER", "NORMAL", "REGISTERED"}
+
+
+def export_roster_xlsx(user, purpose="", keyword=None, status=None) -> bytes:
+    """导出学籍名册 .xlsx（首行水印 + 审计），与学籍名册列表同口径同数据；班级列解析为真实班级名（roster() 原样返回
+    class_id 字符串，仅列表页历史行为，本导出单独解析，不改动既有 roster()/学籍名册页契约）。"""
+    purpose = (purpose or "").strip()
+    if len(purpose) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    from app.services.xlsx_util import build_ledger_xlsx
+    rows_data, _total = roster(user, keyword, status, page=1, page_size=10000)
+    with session() as db:
+        class_ids = {int(r["className"]) for r in rows_data if (r.get("className") or "").isdigit()}
+        name_map = _resolve_class_name_map(db, class_ids)
+    _n, _r, _uid = _op()
+    watermark = f"导出人：{_n or '-'}  时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose}"
+    headers = ["学号", "姓名", "班级", "学籍状态", "是否在籍", "身份证（脱敏）"]
+    rows = [[r["studentNo"], r["realName"], name_map.get(r["className"], r["className"]),
+             _STATUS_LABEL.get(r["studentStatus"], r["studentStatus"]),
+             ("在籍" if r["enrolled"] else "非在籍"), r["idCardMasked"] or ""]
+            for r in rows_data]
+    content = build_ledger_xlsx("学籍名册", headers, rows, watermark=watermark)
+    with session() as db:
+        _audit(db, "AA_ROSTER", None, "EXPORT", f"用途={purpose[:100]} rows={len(rows)}")
+        db.commit()
+    return content
+
+
+def _resolve_class_name_map(db, class_ids) -> dict:
+    from app.models import SchoolClass
+    if not class_ids:
+        return {}
+    rows = db.scalars(select(SchoolClass).where(
+        SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(list(class_ids)))).all()
+    return {str(c.id): c.class_name for c in rows}
+
+
+def _roster_import_dup_check(rows: list) -> dict:
+    """库内学号查重（studentNo 已存在于 t_student_profile）。"""
+    from app.models import StudentProfile
+    nos = {(r.get("studentNo") or "").strip() for r in rows if r.get("studentNo")}
+    if not nos:
+        return {}
+    with session() as db:
+        existing = {s.student_no for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.student_no.in_(list(nos)),
+            StudentProfile.is_deleted.is_(False))).all()}
+    errors = {}
+    for i, r in enumerate(rows, start=1):
+        no = (r.get("studentNo") or "").strip()
+        if no and no in existing:
+            errors[i] = f"学号 {no} 已存在于学籍主档"
+    return errors
+
+
+def _roster_import_business_validate(row: dict, row_no: int) -> str | None:
+    class_name = (row.get("className") or "").strip()
+    with session() as db:
+        from app.models import SchoolClass
+        matches = db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(), SchoolClass.class_name == class_name,
+            SchoolClass.is_deleted.is_(False))).all()
+    if not matches:
+        return f"班级「{class_name}」不存在，请先在学院专业班级维护"
+    if len(matches) > 1:
+        return f"班级「{class_name}」存在 {len(matches)} 个同名班级，无法唯一定位，请联系教务处处理重名"
+    init_status = (row.get("initialStatus") or "").strip()
+    if init_status and init_status not in _ROSTER_INITIAL_STATUSES:
+        return f"初始学籍状态须为 {'/'.join(sorted(_ROSTER_INITIAL_STATUSES))} 之一，休学/退学等须导入后走学籍异动办理"
+    return None
+
+
+def _persist_roster_rows(rows: list) -> dict:
+    import hashlib
+
+    from app.models import Major, SchoolClass, StudentProfile, StudentStageEvent
+    created = 0
+    with session() as db:
+        for r in rows or []:
+            class_name = (r.get("className") or "").strip()
+            cls = db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == _tid(), SchoolClass.class_name == class_name,
+                SchoolClass.is_deleted.is_(False))).first()
+            if not cls:
+                continue  # 已在预校验拦截，防御性跳过（理论不可达）
+            major = db.get(Major, cls.major_id) if cls.major_id else None
+            id_card = (r.get("idCard") or "").strip()
+            init_status = (r.get("initialStatus") or "").strip() or "PENDING_REGISTER"
+            s = StudentProfile(
+                tenant_id=_tid(), student_no=(r.get("studentNo") or "").strip(),
+                real_name=(r.get("realName") or "").strip(), gender=(r.get("gender") or "").strip() or None,
+                id_card_encrypted=(id_card or None),
+                id_card_hash=(hashlib.sha256(id_card.encode()).hexdigest() if id_card else None),
+                college_id=(major.college_id if major else None), major_id=cls.major_id,
+                class_id=cls.id, grade=cls.grade, current_stage="ENROLLED",
+                student_status=init_status, status="ACTIVE")
+            db.add(s)
+            db.flush()
+            db.add(StudentStageEvent(tenant_id=_tid(), student_id=s.id, from_stage=None, to_stage=init_status,
+                                     reason="学籍导入建档", source_module="academic-affairs"))
+            _audit(db, "AA_ROSTER", s.id, "IMPORT", s.student_no)
+            created += 1
+        db.commit()
+    return {"created": created}
+
+
+def build_roster_import_spec():
+    from app.services import excel
+    C = excel.ColumnSpec
+    return excel.ImportSpec(
+        module_key="academicAffairs", biz_type="roster", template_name="学籍导入",
+        columns=[
+            C("studentNo", "学号", required=True, max_length=50, example="2026115001",
+              unique_in_file=True, help_text="须唯一，不可与库内已有学号重复"),
+            C("realName", "姓名", required=True, max_length=100, example="张三"),
+            C("gender", "性别", type="enum", options=["男", "女"], example="男"),
+            C("idCard", "身份证号", type="idcard", example="", help_text="选填；18 位，入库后脱敏展示，不导出明文"),
+            C("className", "班级", required=True, max_length=200, example="软件2601",
+              help_text="须为「学院专业班级」中已存在的行政班名称，且租户内不可重名"),
+            C("initialStatus", "初始学籍状态", type="enum",
+              options=sorted(_ROSTER_INITIAL_STATUSES), example="PENDING_REGISTER",
+              help_text="选填，默认待注册 PENDING_REGISTER；不可直接导入休学/退学等中间态，须导入后走「学籍异动」办理"),
+        ],
+        notes=[
+            "1. 仅导入「导入模板」页；第一行表头请勿改动。",
+            "2. 带 * 为必填：学号、姓名、班级。",
+            "3. 班级须为学院专业班级中已建好的行政班，按名称精确匹配；同名班级会导致该行拦截。",
+            "4. 初始学籍状态仅允许 待注册(PENDING_REGISTER)/正常(NORMAL)/在籍注册(REGISTERED)；",
+            "   休学/退学/转专业等须导入建档后走「学籍异动」办理，不接受直接导入。",
+            "5. 身份证号选填，入库后按平台规则脱敏展示，不回传明文。",
+        ],
+        duplicate_check=_roster_import_dup_check,
+        business_validate=_roster_import_business_validate,
+        persist_rows=_persist_roster_rows,
+        permission_key="academicAffairs.roster.import",
+        audit_action="导入学籍名册",
+    )
+
+
+def roster_import_template_bytes() -> bytes:
+    from app.services import excel
+    return excel.build_template(build_roster_import_spec())
+
+
+def roster_import_read(content: bytes) -> list:
+    from app.services import excel
+    return excel.read_upload(build_roster_import_spec(), content)
+
+
+def roster_import_errors_pack(rows: list, errors: list) -> dict:
+    from app.services import excel
+    return excel.build_error_rows(build_roster_import_spec(), rows, errors)
+
+
+def roster_import_dry_run(rows: list) -> dict:
+    from app.services import excel
+    return excel.pre_validate(build_roster_import_spec(), rows)
+
+
+def roster_import_confirm(rows: list) -> dict:
+    from app.services import excel
+    spec = build_roster_import_spec()
+    pre = excel.pre_validate(spec, rows)
+    result = excel.confirm_import(spec, rows)
+    excel.job_service.record_import(spec.module_key, spec.biz_type, pre=pre, result=result, status="IMPORTED")
+    return {"created": result.get("created", 0)}
+
+
 # ═══════════ 入学/学年注册 ═══════════
 
 def create_registration_batch(body, user) -> dict:

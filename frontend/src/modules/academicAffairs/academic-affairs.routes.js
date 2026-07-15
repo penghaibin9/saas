@@ -24,6 +24,11 @@ const layoutRoute = {
     { path: 'time-slots', name: 'aa-time-slots', component: () => import('@/modules/academicAffairs/views/AaTimeSlotView.vue'), meta: meta('academicAffairs.timeslot.view', '作息节次') },
     // ── W2 学籍写侧闭环 ──
     { path: 'roster', name: 'aa-roster', component: () => import('@/modules/academicAffairs/views/AaRosterListView.vue'), meta: meta('academicAffairs.roster.view', '学籍名册') },
+    // ── 学籍管理 Tier1 R2：学籍档案 / 学籍状态 / 学籍异动记录（只读复用） / 学籍导入导出（静态子路由须在 roster/:studentId 之前声明） ──
+    { path: 'roster/status', name: 'aa-roster-status', component: () => import('@/modules/academicAffairs/views/AaRosterStatusView.vue'), meta: meta('academicAffairs.roster.view', '学籍状态') },
+    { path: 'roster/changes', name: 'aa-roster-changes', component: () => import('@/modules/academicAffairs/views/AaRosterChangeRecordsView.vue'), meta: meta('academicAffairs.statusChange.view', '学籍异动记录') },
+    { path: 'roster/import-export', name: 'aa-roster-import-export', component: () => import('@/modules/academicAffairs/views/AaRosterImportExportView.vue'), meta: meta('academicAffairs.roster.import', '学籍导入导出') },
+    { path: 'roster/:studentId', name: 'aa-roster-detail', component: () => import('@/modules/academicAffairs/views/AaRosterDetailView.vue'), meta: meta('academicAffairs.roster.view', '学籍档案') },
     { path: 'registration', name: 'aa-registration', component: () => import('@/modules/academicAffairs/views/AaRegistrationBatchListView.vue'), meta: meta('academicAffairs.registration.view', '注册管理') },
     { path: 'registration/workbench', name: 'aa-registration-workbench', component: () => import('@/modules/academicAffairs/views/AaRegistrationWorkbenchView.vue'), meta: meta('academicAffairs.registration.eligibility.view', '注册工作台') },
     { path: 'registration/:batchId', name: 'aa-registration-detail', component: () => import('@/modules/academicAffairs/views/AaRegistrationDetailView.vue'), meta: meta('academicAffairs.registration.view', '注册名单') },

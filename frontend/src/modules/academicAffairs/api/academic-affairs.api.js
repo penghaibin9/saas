@@ -8,7 +8,7 @@
  *  - 学期仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 → 本模块不提供 updateTerm（勘误见施工记录）。
  *  - 学期状态机当前只有 DRAFT / PUBLISHED（FROZEN/ARCHIVED 后端未实现，暂不渲染）。
  */
-import { request, requestBlob, shouldTryReal, currentUserFromToken } from '@/services/http/client'
+import { request, requestBlob, requestUpload, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { setPermissionPatterns } from '@/security/permissionGate'
 
 const BASE = '/academic-affairs'
@@ -126,9 +126,53 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/time-slots`, { method: 'POST', body }))
   },
 
-  /* ── 学籍名册（只读脱敏，无独立详情端点） ── */
+  /* ── 学籍名册（只读脱敏） ── */
   getRoster(params = {}) {
     return callList(`${BASE}/roster`, params)
+  },
+
+  /* ── 学籍档案 / 学籍状态 / 学籍导入导出（Tier1 R2） ── */
+  getRosterDetail(studentId) {
+    return call(() => request(`${BASE}/roster/${studentId}`))
+  },
+  revealRosterSensitive(studentId, reason) {
+    return call(() => request(`${BASE}/roster/${studentId}/reveal`, { method: 'POST', body: { reason } }))
+  },
+  getRosterStatusSummary() {
+    return call(() => request(`${BASE}/roster/status-summary`))
+  },
+  async exportRoster(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/roster/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  rosterImportDryRun(rows) {
+    return call(() => request(`${BASE}/roster/import/dry-run`, { method: 'POST', body: { rows } }))
+  },
+  async downloadRosterImportTemplate() {
+    const blob = await requestBlob(`${BASE}/roster/import/template`)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '学籍导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+  async uploadRosterImportXlsx(file) {
+    try {
+      return ok(await requestUpload(`${BASE}/roster/import/xlsx`, file))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  downloadRosterImportErrors(rows, errors) {
+    return call(() => request(`${BASE}/roster/import/errors-xlsx`, { method: 'POST', body: { rows, errors } }))
+  },
+  rosterImportConfirm(rows) {
+    return call(() => request(`${BASE}/roster/import/confirm`, { method: 'POST', body: { rows } }))
   },
 
   /* ── 入学 / 学年注册 ── */
