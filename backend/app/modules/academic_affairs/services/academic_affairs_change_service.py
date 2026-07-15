@@ -1,8 +1,13 @@
-"""13B-P2 学籍异动全链路（休学/复学/退学/转专业/留级）。
+"""13B-P2 学籍异动全链路（休学/复学/退学/转专业/留级/转班）。
 
 各类异动多节点审批（ACAD_STATUS_*），终审经 change_student_status() 单一入口生效。
 真实业务补充：休学到期日(最长年限 suspendMaxYears，规则中心默认2年)；复学校验未超期；
 转专业/复学终审同步迁移主档院系班。在途异动重复 409；终态学生禁发起 422。
+
+TRANSFER_CLASS（转班，学籍异动三级模块续工·第三轮补缺）：同专业换班，区别于跨专业的
+TRANSFER_MAJOR——学院/专业不变，仅 to_class_id 变更；审批节点复用 SUSPEND/WITHDRAW 的三节点
+序列（无需 OUT/IN 学院拆分，因专业不跨院）；目标班须同专业+在读(class_status=NORMAL)+非当前班，
+校验失败 422/409；目标学院/专业由服务端按学生当前专业强制推导，不采信客户端传参，防止越权篡改。
 
 数据范围（Tier1 R1 补强，对齐 13B-教务中心页面级交互与按钮动作矩阵 §2.7/2.8）：
 教务处/校管（TENANT_ALL）全校；学院教务（COLLEGE）限本院（转专业按 from/to 学院双向可见）；
@@ -31,14 +36,17 @@ CHANGE_FLOW = {
     "RETAIN": ("RETAINED", ["COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
     "TRANSFER_MAJOR": ("REGISTERED", ["COUNSELOR_REVIEW", "OUT_COLLEGE_REVIEW",
                                       "IN_COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
+    # 转班（学籍异动三级模块续工）：同专业换班，学院/专业不变仅换班，三节点同 SUSPEND/WITHDRAW。
+    "TRANSFER_CLASS": ("REGISTERED", ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
 }
 _WF_CODE = {"SUSPEND": "ACAD_STATUS_SUSPEND", "WITHDRAW": "ACAD_STATUS_WITHDRAW",
             "RESUME": "ACAD_STATUS_RESUME", "RETAIN": "ACAD_STATUS_RETAIN",
-            "TRANSFER_MAJOR": "ACAD_STATUS_TRANSFER_MAJOR"}
+            "TRANSFER_MAJOR": "ACAD_STATUS_TRANSFER_MAJOR",
+            "TRANSFER_CLASS": "ACAD_STATUS_TRANSFER_CLASS"}
 _ACTIVE = {"DRAFT", "SUBMITTED", "IN_REVIEW"}  # 在途（未终结）异动状态
 
 L_CT = {"SUSPEND": "休学", "WITHDRAW": "退学", "RESUME": "复学", "RETAIN": "留级",
-        "TRANSFER_MAJOR": "转专业"}
+        "TRANSFER_MAJOR": "转专业", "TRANSFER_CLASS": "转班"}
 
 # 审批节点 → 所需 permissionCode（Tier1 R1：异动审批权限实例化）。
 # COUNSELOR_REVIEW=辅导员初审；COLLEGE_REVIEW/OUT_COLLEGE_REVIEW/COLLEGE_ASSIGN_CLASS=原学院教务（转出/复学分班）；
@@ -247,8 +255,27 @@ def submit(body, user) -> dict:
                 AaStatusChange.is_deleted.is_(False)).order_by(AaStatusChange.id.desc())).first()
             if prior and prior.expire_date and prior.expire_date < datetime.utcnow():
                 raise AppException("DATA_CONFLICT", "休学已超过最长年限，应作退学处理，不可复学")
-        if ct in ("SUSPEND", "WITHDRAW", "RETAIN", "TRANSFER_MAJOR") and not is_enrolled(cur):
+        if ct in ("SUSPEND", "WITHDRAW", "RETAIN", "TRANSFER_MAJOR", "TRANSFER_CLASS") and not is_enrolled(cur):
             raise AppException("DATA_CONFLICT", "仅在籍学生可发起该异动")
+        # 转班（TRANSFER_CLASS）真实业务校验：目标班须存在、在读、且与学生当前专业一致（跨专业请走
+        # 「转专业申请」）；目标班不得与当前班相同。目标学院/专业由服务端按学生当前值强制推导，
+        # 不采信客户端传参，防止越权篡改到无关学院/专业。
+        tc_college_id = tc_major_id = tc_class_id = None
+        if ct == "TRANSFER_CLASS":
+            from app.models import SchoolClass
+            target_id = getattr(body, "toClassId", None)
+            if not target_id:
+                raise AppException("VALIDATION_ERROR", "转班需指定目标班级")
+            target = db.get(SchoolClass, int(target_id))
+            if not target or target.is_deleted or target.tenant_id != _tid():
+                raise not_found("目标班级不存在")
+            if target.class_status != "NORMAL":
+                raise AppException("DATA_CONFLICT", "目标班级非在读状态，不可转入")
+            if int(target.major_id or 0) != int(s.major_id or 0):
+                raise AppException("VALIDATION_ERROR", "转班仅限同专业换班，跨专业请使用「转专业申请」")
+            if s.class_id and int(target.id) == int(s.class_id):
+                raise AppException("DATA_CONFLICT", "学生已在目标班级")
+            tc_college_id, tc_major_id, tc_class_id = s.college_id, s.major_id, target.id
         # 在途异动重复 → 409
         dup = db.scalars(select(AaStatusChange).where(
             AaStatusChange.tenant_id == _tid(), AaStatusChange.student_id == student_id,
@@ -260,9 +287,12 @@ def submit(body, user) -> dict:
         x = AaStatusChange(tenant_id=_tid(), student_id=student_id, change_type=ct,
                            from_status=cur, to_status=to_status, reason=getattr(body, "reason", None),
                            from_college_id=s.college_id, from_major_id=s.major_id, from_class_id=s.class_id,
-                           to_college_id=(int(body.toCollegeId) if getattr(body, "toCollegeId", None) else None),
-                           to_major_id=(int(body.toMajorId) if getattr(body, "toMajorId", None) else None),
-                           to_class_id=(int(body.toClassId) if getattr(body, "toClassId", None) else None),
+                           to_college_id=(tc_college_id if ct == "TRANSFER_CLASS" else
+                                          (int(body.toCollegeId) if getattr(body, "toCollegeId", None) else None)),
+                           to_major_id=(tc_major_id if ct == "TRANSFER_CLASS" else
+                                        (int(body.toMajorId) if getattr(body, "toMajorId", None) else None)),
+                           to_class_id=(tc_class_id if ct == "TRANSFER_CLASS" else
+                                        (int(body.toClassId) if getattr(body, "toClassId", None) else None)),
                            status="SUBMITTED", current_node=first)
         # 休学到期日（真实补充：最长年限）
         if ct == "SUSPEND":

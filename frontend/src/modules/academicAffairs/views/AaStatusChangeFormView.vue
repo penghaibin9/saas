@@ -60,6 +60,23 @@
           </div>
         </template>
 
+        <template v-if="form.changeType === 'TRANSFER_CLASS'">
+          <div class="aa-form__row" v-if="form.studentId">
+            <label class="aa-form__label">当前专业/班级</label>
+            <div class="aa-form__field aa-form__hint">{{ form.studentMajorName || '（读取中…）' }} · {{ form.currentClassName || '未编班' }}</div>
+          </div>
+          <div class="aa-form__row">
+            <label class="aa-form__label required">转入班级</label>
+            <div class="aa-form__field">
+              <select v-model="form.toClassId" class="aa-input" :disabled="!form.studentId || loadingClasses">
+                <option value="">{{ classSelectPlaceholder }}</option>
+                <option v-for="c in targetClassOptions" :key="c.id" :value="c.id">{{ c.className }}（{{ c.grade || '—' }}）</option>
+              </select>
+              <div class="aa-form__hint">仅同专业在读班级可选，跨专业请改用「转专业申请」；已在班级不出现在候选内。</div>
+            </div>
+          </div>
+        </template>
+
         <div class="aa-form__row">
           <label class="aa-form__label">申请原因</label>
           <div class="aa-form__field">
@@ -80,8 +97,11 @@
 
 <script>
 /** 发起学籍异动（/admin/academic-affairs/status-changes/new）：POST /academic-affairs/status-changes。
- *  支持 ?type=SUSPEND|RESUME|WITHDRAW|TRANSFER_MAJOR 预设并锁定异动类型（供休学/复学/退学/转专业
- *  四个分类申请入口跳转带入，锁定后类型下拉隐藏，仅显示只读标签，业务逻辑与通用入口完全一致）。 */
+ *  支持 ?type=SUSPEND|RESUME|WITHDRAW|TRANSFER_MAJOR|TRANSFER_CLASS|RETAIN 预设并锁定异动类型
+ *  （供休学/复学/退学/转专业/转班/留级(保留学籍) 六个分类申请入口跳转带入，锁定后类型下拉隐藏，
+ *  仅显示只读标签，业务逻辑与通用入口完全一致）。
+ *  TRANSFER_CLASS（转班）目标班选择器：选定学生后拉取其当前专业（GET /roster/{id}），
+ *  再按该专业过滤班级候选（GET /orgs/classes?majorId=），跨专业一致性由后端 submit() 强制复核。 */
 import { ModulePageShell } from '@/components/business'
 import { AppSectionCard } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -92,8 +112,9 @@ const TYPE_HINT = {
   SUSPEND: '仅在籍学生可休学；到期日按规则中心最长年限自动计算。',
   WITHDRAW: '退学为终态，终审生效后不可再发起其它异动。',
   RESUME: '仅休学中的学生可复学；休学超最长年限不可复学。',
-  RETAIN: '留级：仅在籍学生可发起。',
-  TRANSFER_MAJOR: '转专业：需填目标院系，终审生效后同步迁移主档院系班。'
+  RETAIN: '留级（保留学籍）：仅在籍学生可发起，按学业成绩条件命中的留级认定处理。',
+  TRANSFER_MAJOR: '转专业：需填目标院系，终审生效后同步迁移主档院系班。',
+  TRANSFER_CLASS: '转班：仅限同专业换班，学院/专业不变；终审生效后同步迁移主档班级。'
 }
 
 export default {
@@ -107,6 +128,8 @@ export default {
       kw: '',
       searching: false,
       candidates: [],
+      loadingClasses: false,
+      targetClassOptions: [],
       form: {
         studentId: this.$route.query.studentId || '',
         name: this.$route.query.name || '',
@@ -114,7 +137,11 @@ export default {
         reason: '',
         toCollegeId: '',
         toMajorId: '',
-        toClassId: ''
+        toClassId: '',
+        studentMajorId: '',
+        studentMajorName: '',
+        currentClassId: '',
+        currentClassName: ''
       }
     }
   },
@@ -124,7 +151,21 @@ export default {
     },
     typeHint() {
       return TYPE_HINT[this.form.changeType] || ''
+    },
+    classSelectPlaceholder() {
+      if (!this.form.studentId) return '请先选择学生'
+      if (this.loadingClasses) return '加载班级中…'
+      if (!this.targetClassOptions.length) return '该专业下暂无其它可选班级'
+      return '请选择目标班级'
     }
+  },
+  watch: {
+    'form.changeType'(val) {
+      if (val === 'TRANSFER_CLASS' && this.form.studentId) this.loadStudentOrgInfo()
+    }
+  },
+  created() {
+    if (this.form.changeType === 'TRANSFER_CLASS' && this.form.studentId) this.loadStudentOrgInfo()
   },
   methods: {
     goBack() {
@@ -134,11 +175,18 @@ export default {
     clearStudent() {
       this.form.studentId = ''
       this.form.name = ''
+      this.form.studentMajorId = ''
+      this.form.studentMajorName = ''
+      this.form.currentClassId = ''
+      this.form.currentClassName = ''
+      this.form.toClassId = ''
+      this.targetClassOptions = []
     },
     pickStudent(s) {
       this.form.studentId = s.studentId
       this.form.name = s.realName
       this.candidates = []
+      if (this.form.changeType === 'TRANSFER_CLASS') this.loadStudentOrgInfo()
     },
     async searchStudents() {
       if (this.searching) return
@@ -147,8 +195,37 @@ export default {
       this.candidates = res.code === 0 ? res.data.list : []
       this.searching = false
     },
+    /** 转班专用：拉取学生当前专业/班级，再按专业过滤目标班候选（不含学生当前班）。 */
+    async loadStudentOrgInfo() {
+      this.form.toClassId = ''
+      this.targetClassOptions = []
+      if (!this.form.studentId) return
+      const res = await academicAffairsApi.getRosterDetail(this.form.studentId)
+      if (res.code !== 0) {
+        toast.error(res.message || '读取学生专业信息失败')
+        return
+      }
+      this.form.studentMajorId = res.data.majorId || ''
+      this.form.studentMajorName = res.data.majorName || '（未编专业）'
+      this.form.currentClassId = res.data.classId || ''
+      this.form.currentClassName = res.data.className || '未编班'
+      await this.loadTargetClasses()
+    },
+    async loadTargetClasses() {
+      if (!this.form.studentMajorId) return
+      this.loadingClasses = true
+      const res = await academicAffairsApi.listClasses({ majorId: this.form.studentMajorId, classStatus: 'NORMAL', pageSize: 100 })
+      this.targetClassOptions = res.code === 0
+        ? res.data.list.filter((c) => String(c.id) !== String(this.form.currentClassId))
+        : []
+      this.loadingClasses = false
+    },
     async submit() {
       if (this.submitting || !this.form.studentId) return
+      if (this.form.changeType === 'TRANSFER_CLASS' && !this.form.toClassId) {
+        toast.error('请先选择转班目标班级')
+        return
+      }
       this.submitting = true
       const body = {
         studentId: this.form.studentId,
@@ -156,7 +233,7 @@ export default {
         reason: this.form.reason || '',
         toCollegeId: this.form.changeType === 'TRANSFER_MAJOR' ? (this.form.toCollegeId || undefined) : undefined,
         toMajorId: this.form.changeType === 'TRANSFER_MAJOR' ? (this.form.toMajorId || undefined) : undefined,
-        toClassId: this.form.changeType === 'TRANSFER_MAJOR' ? (this.form.toClassId || undefined) : undefined
+        toClassId: (this.form.changeType === 'TRANSFER_MAJOR' || this.form.changeType === 'TRANSFER_CLASS') ? (this.form.toClassId || undefined) : undefined
       }
       const res = await academicAffairsApi.submitStatusChange(body)
       this.submitting = false

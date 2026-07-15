@@ -79,7 +79,7 @@ class AaStatusChange(PKMixin, TenantMixin, CommonMixin, Base):
 
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     change_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True,
-                                             comment="ENROLL_REGISTER/ANNUAL_REGISTER/SEMESTER_REGISTER/TRANSFER_MAJOR/SUSPEND/RESUME/WITHDRAW/RETAIN/TRANSFER_SCHOOL/GRADUATE/COMPLETE")
+                                             comment="ENROLL_REGISTER/ANNUAL_REGISTER/SEMESTER_REGISTER/TRANSFER_MAJOR/TRANSFER_CLASS/SUSPEND/RESUME/WITHDRAW/RETAIN/TRANSFER_SCHOOL/GRADUATE/COMPLETE")
     from_status: Mapped[str | None] = mapped_column(String(50))
     to_status: Mapped[str | None] = mapped_column(String(50))
     from_college_id: Mapped[int | None] = mapped_column(BigInteger)

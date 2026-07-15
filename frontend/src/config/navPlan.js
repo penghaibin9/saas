@@ -313,7 +313,15 @@ export const NAV_PLAN = [
       I('异动审批', '/admin/academic-affairs/status-changes/approval', 'academicAffairs.statusChange.collegeReview'),
       I('异动生效', '/admin/academic-affairs/status-changes/effective', 'academicAffairs.statusChange.view'),
       I('异动统计', '/admin/academic-affairs/status-changes/stats', 'academicAffairs.statusChange.view'),
-      ...P('转班申请', '保留学籍申请', '异动归档')
+      // 2026-07-16 学籍异动三级模块续工（第三轮补缺）：转班/保留学籍/异动归档三叶子翻 implemented。
+      // 转班=新异动类型 TRANSFER_CLASS（同专业换班，区别于跨专业 TRANSFER_MAJOR），全栈新建。
+      // 保留学籍申请=按既有 RETAIN(留级) 类型补建分类入口（沿用「留级(RETAIN)不设分类入口，走通用页」
+      // 之前的缺口）；冻结的学籍状态机(SM-02,14态)无独立「保留学籍」状态，RETAIN 是唯一匹配的既有状态，
+      // 页内已如实标注：如学校实际所指是参军/创业/病休等区别于留级的独立保留学籍政策，需另行业务确认，
+      // 待用户决定，未冒充已完成。异动归档=复用异动台账/统计只读端点组合的在途监控视图，不新增后端接口。
+      I('转班申请', '/admin/academic-affairs/status-changes/transfer-class', 'academicAffairs.statusChange.apply'),
+      I('保留学籍申请', '/admin/academic-affairs/status-changes/retain', 'academicAffairs.statusChange.apply'),
+      I('异动归档', '/admin/academic-affairs/status-changes/archive', 'academicAffairs.statusChange.view')
     ]),
     mod('aa-orgs', '学院专业班级', '/admin/academic-affairs/orgs', [
       I('学院管理', '/admin/academic-affairs/orgs?tab=college', 'academicAffairs.org.view'),
