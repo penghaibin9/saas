@@ -217,9 +217,12 @@ def submit(body, user) -> dict:
     student_id = int(body.studentId)
     with session() as db:
         from app.models import AaStatusChange, StudentProfile
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import (
+            guard_term_writable_current)
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
+        guard_term_writable_current(db)  # 归档11卡§6.2：已归档学期不应受理新异动申请（降级为当前学期判据）
         # 数据范围：教务处/校管全校代录；学院教务仅本院学生；未配置范围一律 403002（fail-closed）
         ctx = build_affairs_context(user, db)
         if ctx.scope_type != "TENANT_ALL":
@@ -278,7 +281,10 @@ def review(sc_id, user, action, reason="") -> dict:
     _n, _r, uid = _op()
     with session() as db:
         from app.models import WorkflowInstance, WorkflowTask
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import (
+            guard_term_writable_current)
         x, s = _load(db, sc_id)
+        guard_term_writable_current(db)  # 归档11卡§6.2：已归档学期的异动不应继续审批流转（降级为当前学期判据）
         if x.status not in _ACTIVE and x.status != "IN_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该异动当前状态不可审批")
         # 节点授权：permissionCode + 数据范围（辅导员限本班/学院教务限本院/教务处终审限 TENANT_ALL）

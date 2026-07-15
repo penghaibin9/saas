@@ -100,8 +100,10 @@ const layoutRoute = {
     { path: 'evaluation', name: 'aa-evaluation', component: () => import('@/modules/academicAffairs/views/AaEvaluationConsoleView.vue'), meta: meta('academicAffairs.evaluation.view', '教学评价') },
     // ── 教学质量（运行质量看板，零新表聚合） ──
     { path: 'quality', name: 'aa-quality', component: () => import('@/modules/academicAffairs/views/AaQualityDashboardView.vue'), meta: meta('academicAffairs.quality.dashboard.view', '教学质量') },
-    // ── 教务归档（批次+完整性检查+封存） ──
-    { path: 'archive', name: 'aa-archive', component: () => import('@/modules/academicAffairs/views/AaArchiveConsoleView.vue'), meta: meta('academicAffairs.archive.view', '教务归档') }
+    // ── 教务归档（批次+完整性检查+封存；10/11/12 三级卡：缺失提醒/批量归档/导出） ──
+    { path: 'archive', name: 'aa-archive', component: () => import('@/modules/academicAffairs/views/AaArchiveConsoleView.vue'), meta: meta('academicAffairs.archive.view', '教务归档') },
+    { path: 'archive/precheck', name: 'aa-archive-precheck', component: () => import('@/modules/academicAffairs/views/ArchivePrecheckView.vue'), meta: meta('academicAffairs.archive.view', '归档缺失提醒') },
+    { path: 'archive/export', name: 'aa-archive-export', component: () => import('@/modules/academicAffairs/views/ArchiveExportView.vue'), meta: meta('academicAffairs.archive.export', '归档导出') }
   ]
 }
 
