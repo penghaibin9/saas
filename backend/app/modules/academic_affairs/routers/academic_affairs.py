@@ -1544,6 +1544,13 @@ def grade_analysis(term: Optional[str] = None, user=Depends(require_staff)):
     return success(grade_svc.grade_analysis(user, term))
 
 
+@router.get("/grade-views/exception-list", summary="成绩异常清单（缺考/缓考/免修标记学生汇总，读侧下钻）")
+def grade_exception_list(term: Optional[str] = None, exceptionFlag: Optional[str] = None,
+                         page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
+    items, total = grade_svc.exception_list(user, term, exceptionFlag, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
 # ═══════════ 学业预警（P5 规则引擎 + 二级模块 Tier1：看板/多维分类/规则/跟进/统计）═══════════
 # 权限：view=看板/列表/统计只读；handle=指派/干预/升级/关闭/作废/提醒；rule.manage=规则配置+扫描触发（仅教务处，矩阵 §15）。
 _WARN_VIEW = "academicAffairs.warning.view"

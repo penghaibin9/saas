@@ -1,7 +1,8 @@
 """13B-P5/R1 成绩录入(平时+期末按比例) + 审核发布更正 + 读侧视图 · 端到端。
 
 G1 录入合成→提交→学院审→教务发布→投影t_acad_grade→成绩单；G2 占比≠100→422；
-G3 未录全禁提交409；G4 挂科清单；G5 成绩分析；G6 N+1；G7 未审核直接发布409。
+G3 未录全禁提交409；G4 挂科清单；G5 成绩分析；G6 N+1；G7 未审核直接发布409；
+G8 成绩异常清单(缺考标记入清单/正常成绩不入)；G9 成绩异常清单按类型过滤+学生令牌403。
 """
 from __future__ import annotations
 
@@ -138,3 +139,37 @@ def test_g7_publish_without_review_409(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 90})
     assert client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr).status_code == 409
+
+
+def test_g8_exception_list(client, db_mode):
+    """成绩异常清单（成绩管理·三级模块续工）：缺考标记学生入清单，正常录分学生不入清单。"""
+    sids = _seed(db_mode, 2)
+    hdr = _hdr(client, "school_admin01")
+    tid = _task(client, hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+               json={"studentId": str(sids[0]), "exceptionFlag": "ABSENT"})
+    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+               json={"studentId": str(sids[1]), "usualScore": 80, "finalScore": 90})
+    el = client.get(f"{BASE}/grade-views/exception-list", headers=hdr).json()["data"]
+    assert el["total"] == 1
+    row = el["items"][0]
+    assert row["studentId"] == str(sids[0])
+    assert row["exceptionFlag"] == "ABSENT"
+    assert row["courseName"] == "高等数学"
+
+
+def test_g9_exception_list_filter_flag_and_student_403(client, db_mode):
+    """成绩异常清单：exceptionFlag 过滤仅返回命中类型；学生令牌 403（require_staff，与同组读视图一致）。"""
+    sids = _seed(db_mode, 2)
+    hdr = _hdr(client, "school_admin01")
+    tid = _task(client, hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+               json={"studentId": str(sids[0]), "exceptionFlag": "DEFERRED"})
+    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+               json={"studentId": str(sids[1]), "exceptionFlag": "EXEMPT"})
+    only_deferred = client.get(f"{BASE}/grade-views/exception-list?exceptionFlag=DEFERRED",
+                               headers=hdr).json()["data"]
+    assert only_deferred["total"] == 1
+    assert only_deferred["items"][0]["exceptionFlag"] == "DEFERRED"
+    stu_hdr = _hdr(client, "student01")
+    assert client.get(f"{BASE}/grade-views/exception-list", headers=stu_hdr).status_code == 403

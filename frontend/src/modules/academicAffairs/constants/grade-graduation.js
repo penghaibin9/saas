@@ -2,6 +2,17 @@
 
 export const PASS_STATUS = { PASSED: '及格', FAIL: '不及格' }
 
+/** 成绩异常标记（t_aa_grade_record.exception_flag，NORMAL 不进「成绩异常」清单）。 */
+export const EXCEPTION_FLAG_LABEL = { ABSENT: '缺考', DEFERRED: '缓考', EXEMPT: '免修' }
+export function exceptionFlagColor(flag) {
+  switch (flag) {
+    case 'ABSENT': return 'danger'
+    case 'DEFERRED': return 'warning'
+    case 'EXEMPT': return 'info'
+    default: return 'default'
+  }
+}
+
 export const WARNING_LEVEL = { LOW: '一般', MEDIUM: '中度', HIGH: '严重' }
 export function warningColor(level) {
   switch (level) {

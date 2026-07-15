@@ -471,7 +471,7 @@ export const NAV_PLAN = [
       I('成绩导入', '/admin/academic-affairs/grade-entry?action=import', 'academicAffairs.grade.input'),
       I('成绩导出', '/admin/academic-affairs/transcript?action=export', 'academicAffairs.grade.export'),
       I('成绩统计', '/admin/academic-affairs/stats?tab=grade', 'academicAffairs.stats.view'),
-      ...P('成绩异常')
+      I('成绩异常', '/admin/academic-affairs/grade-exception', 'academicAffairs.grade.view')
     ]),
     mod('aa-grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', [
       I('学院审核（待审核/通过/退回）', '/admin/academic-affairs/grade-college-review'),
