@@ -368,6 +368,28 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/student-view`, { params: { studentId } }))
   },
 
+  /* ── 课表管理 Tier1 R2：班级/教师/教室独立课表（自动取当前已发布批次） + 发布记录 + 导出 ── */
+  getClassSchedule(classId, params = {}) {
+    return call(() => request(`${BASE}/schedule/class/${classId}`, { params }))
+  },
+  getTeacherSchedule(teacherKey, params = {}) {
+    return call(() => request(`${BASE}/schedule/teacher/${teacherKey}`, { params }))
+  },
+  getRoomSchedule(classroomId, params = {}) {
+    return call(() => request(`${BASE}/schedule/room/${classroomId}`, { params }))
+  },
+  getSchedulePublishRecords(params = {}) {
+    return callList(`${BASE}/schedule/publish-records`, params)
+  },
+  async exportScheduleXlsx(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/schedule/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+
   /* ── 成绩（R1 九态：录入→提交→学院审→教务发布→[更正两级审]→归档） ── */
   createGradeTask(body) {
     return call(() => request(`${BASE}/grade-tasks`, { method: 'POST', body }))

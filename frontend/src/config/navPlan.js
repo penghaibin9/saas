@@ -328,7 +328,14 @@ export const NAV_PLAN = [
     ]),
     mod('aa-schedule', '课表管理', '/admin/academic-affairs/schedule', [
       I('课表批次 / 排课', '/admin/academic-affairs/schedule'),
-      ...P('班级课表', '教师课表', '学生课表', '教室课表', '教学班课表', '周课表', '学期课表', '课表发布', '课表调整记录', '课表导出')
+      I('班级课表', '/admin/academic-affairs/schedule/class', 'academicAffairs.schedule.view'),
+      I('教师课表', '/admin/academic-affairs/schedule/teacher', 'academicAffairs.schedule.view'),
+      ...P('学生课表'),
+      I('教室课表', '/admin/academic-affairs/schedule/room', 'academicAffairs.classroom.view'),
+      ...P('教学班课表', '周课表', '学期课表'),
+      I('课表发布', '/admin/academic-affairs/schedule/publish', 'academicAffairs.schedule.view'),
+      ...P('课表调整记录'),
+      I('课表导出', '/admin/academic-affairs/schedule/export', 'academicAffairs.schedule.export')
     ]),
     mod('aa-schedule-change', '调停课', '/admin/academic-affairs/schedule-change', [
       I('调停课台账', '/admin/academic-affairs/schedule-change', 'academicAffairs.scheduleChange.view'),

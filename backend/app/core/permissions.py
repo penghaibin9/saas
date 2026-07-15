@@ -109,6 +109,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 教务·学籍异动辅导员初审（13B 学籍异动 Tier1 R1）：辅导员对本人所带班级学生的休学/复学/
         # 退学/转专业申请首级审核（范围限本班，service 端 _check_node_authority 收敛），不授予发起/学院/教务处终审。
         "academicAffairs.statusChange.counselorReview",
+        # 教务·班级课表查看（13B 课表管理 Tier1 R2 §2.15：辅导员本班）：仅授予查看，
+        # 范围收敛到本班由 academic_affairs_schedule_service.class_schedule 用 build_affairs_context 校验，
+        # 越权（非本班 classId / 教师课表 / 教室课表）一律 403002，不额外放大到排课管理/规则/冲突。
+        "academicAffairs.schedule.view",
     },
     # 毕设角色权限只决定“能做什么”；具体学生/评阅/答辩组必须再由业务关系收敛。
     "GRADUATION_ADMIN": {"graduationDesign.*"},

@@ -58,6 +58,12 @@ const layoutRoute = {
     { path: 'schedule', name: 'aa-schedule', component: () => import('@/modules/academicAffairs/views/AaScheduleBatchListView.vue'), meta: meta('academicAffairs.schedule.view', '课表管理') },
     { path: 'schedule/:batchId/edit', name: 'aa-schedule-edit', component: () => import('@/modules/academicAffairs/views/AaScheduleMaintainView.vue'), meta: meta('academicAffairs.schedule.manage', '课表维护') },
     { path: 'schedule/:batchId/views', name: 'aa-schedule-views', component: () => import('@/modules/academicAffairs/views/AaScheduleViewsView.vue'), meta: meta('academicAffairs.schedule.view', '课表三视图') },
+    // ── 课表管理 Tier1 R2：班级/教师/教室独立课表 + 发布 + 导出（自动取当前已发布批次，不需先选批次） ──
+    { path: 'schedule/class/:classId?', name: 'aa-schedule-class', component: () => import('@/modules/academicAffairs/views/AaClassScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '班级课表') },
+    { path: 'schedule/teacher/:teacherKey?', name: 'aa-schedule-teacher', component: () => import('@/modules/academicAffairs/views/AaTeacherScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '教师课表') },
+    { path: 'schedule/room/:classroomId?', name: 'aa-schedule-room', component: () => import('@/modules/academicAffairs/views/AaRoomScheduleView.vue'), meta: meta('academicAffairs.classroom.view', '教室课表') },
+    { path: 'schedule/publish', name: 'aa-schedule-publish', component: () => import('@/modules/academicAffairs/views/AaSchedulePublishView.vue'), meta: meta('academicAffairs.schedule.view', '课表发布') },
+    { path: 'schedule/export', name: 'aa-schedule-export', component: () => import('@/modules/academicAffairs/views/AaScheduleExportView.vue'), meta: meta('academicAffairs.schedule.export', '课表导出') },
     // ── W5 成绩 · 预警 · 毕业预审 ──
     { path: 'grade-overview', name: 'aa-grade-overview', component: () => import('@/modules/academicAffairs/views/AaGradeOverviewView.vue'), meta: meta('academicAffairs.grade.view', '成绩总览') },
     { path: 'grade-fail', name: 'aa-grade-fail', component: () => import('@/modules/academicAffairs/views/AaGradeFailListView.vue'), meta: meta('academicAffairs.grade.view', '挂科清单') },

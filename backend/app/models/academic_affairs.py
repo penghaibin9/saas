@@ -326,6 +326,21 @@ class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
                                                   comment="→ t_aa_schedule_change 生成本项的调停课单(变更标记/回链)；null=原始排课")
 
 
+class AaSchedulePublish(PKMixin, TenantMixin, CommonMixin, Base):
+    """课表发布记录（课表管理 Tier1 R2；SM-07 设计原列 t_aa_schedule_publish，此前仅落 batch.status/publish_at，
+    本表补齐可追溯的发布/作废流水，供「课表发布」三级页展示发布历史与通知回执）。
+    action：PUBLISH 发布 / VOID_REISSUE 作废重发；append-only，不做更新。"""
+    __tablename__ = "t_aa_schedule_publish"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_aa_schedule_batch")
+    term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    action: Mapped[str] = mapped_column(String(30), nullable=False, default="PUBLISH",
+                                        comment="PUBLISH/VOID_REISSUE")
+    operator_name: Mapped[str | None] = mapped_column(String(100))
+    notified_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="通知教师数")
+    note: Mapped[str | None] = mapped_column(String(500), comment="作废原因等备注")
+
+
 # ═══════════ 成绩录入组（13B-P5；平时+期末按比例，发布原子回写 t_acad_grade）═══════════
 
 
