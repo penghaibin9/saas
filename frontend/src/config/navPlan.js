@@ -252,8 +252,11 @@ export const NAV_PLAN = [
     ]),
     mod('aa-student-status', '学籍管理', '/admin/academic-affairs/roster', [
       I('学籍名册', '/admin/academic-affairs/roster'),
-      ...P('学籍档案', '学籍状态', '休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正',
-        '学籍异动记录', '学籍导入导出', '学籍统计', '学籍归档')
+      H('学籍档案', '/admin/academic-affairs/roster', 'academicAffairs.roster.view', 'DETAIL'),
+      I('学籍状态', '/admin/academic-affairs/roster/status', 'academicAffairs.roster.view'),
+      I('学籍异动记录', '/admin/academic-affairs/roster/changes', 'academicAffairs.statusChange.view'),
+      I('学籍导入导出', '/admin/academic-affairs/roster/import-export', 'academicAffairs.roster.import'),
+      ...P('休学学生', '复学学生', '退学学生', '转专业学生', '保留学籍', '学籍信息更正', '学籍统计', '学籍归档')
     ]),
     mod('aa-registration', '注册管理', '/admin/academic-affairs/registration', [
       I('注册批次', '/admin/academic-affairs/registration'),

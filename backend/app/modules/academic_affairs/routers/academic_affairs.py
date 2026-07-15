@@ -12,6 +12,7 @@ from app.core.exceptions import AppException
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
+from app.schemas.excel import ExcelErrorRows, ExcelImportRows
 from app.services import xlsx_util
 
 _XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -177,6 +178,91 @@ def roster(keyword: Optional[str] = None, status: Optional[str] = None,
            page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
     items, total = svc.roster(user, keyword, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+# ── 学籍档案 / 学籍状态 / 学籍异动记录（只读展示，复用 status-changes）/ 学籍导入导出（Tier1 R2）──
+# 权限：view=档案详情+状态总览；viewSensitive=证件号完整查看（服务层二次鉴权+SUCCESS/DENY 双向审计）；
+# import=批量建档；export=名册导出。静态子路由（status-summary/export/import/*）必须声明在 /roster/{studentId} 之前，
+# 否则会被路径参数捕获（对齐 gd-students 路由注释的既有约定）。
+_ROSTER_VIEW = "academicAffairs.roster.view"
+_ROSTER_VIEW_SENSITIVE = "academicAffairs.roster.viewSensitive"
+_ROSTER_IMPORT = "academicAffairs.roster.import"
+_ROSTER_EXPORT = "academicAffairs.roster.export"
+
+
+@router.get("/roster/status-summary", summary="学籍状态总览（13 态分布 + 在籍统计 + 近30天异动数）")
+def roster_status_summary(user=Depends(require_permission(_ROSTER_VIEW))):
+    return success(svc.roster_status_summary(user))
+
+
+class RosterExportBody(BaseModel):
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，必填，写审计）")
+    keyword: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.post("/roster/export", summary="导出学籍名册 xlsx（脱敏水印+审计，同步下载）")
+def roster_export(body: RosterExportBody, user=Depends(require_permission(_ROSTER_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = svc.export_roster_xlsx(user, body.purpose, body.keyword, body.status)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=roster_ledger.xlsx"})
+
+
+@router.get("/roster/import/template", summary="学籍导入·下载 Excel 模板(.xlsx)")
+def roster_import_template(user=Depends(require_permission(_ROSTER_IMPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    data = svc.roster_import_template_bytes()
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=roster_import_template.xlsx"})
+
+
+@router.post("/roster/import/dry-run", summary="学籍导入·预校验（粘贴行/高级，不写库）")
+def roster_import_dry_run(body: ExcelImportRows, user=Depends(require_permission(_ROSTER_IMPORT))):
+    return success(svc.roster_import_dry_run(body.rows))
+
+
+@router.post("/roster/import/xlsx", summary="学籍导入·上传 Excel 解析+预校验（不写库）")
+async def roster_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission(_ROSTER_IMPORT))):
+    content = await file.read()
+    rows = svc.roster_import_read(content)
+    dry = svc.roster_import_dry_run(rows)
+    return success({"rows": rows, **dry})
+
+
+@router.post("/roster/import/errors-xlsx", summary="学籍导入·下载错误行 Excel")
+def roster_import_errors_xlsx(body: ExcelErrorRows, user=Depends(require_permission(_ROSTER_IMPORT))):
+    return success(svc.roster_import_errors_pack(body.rows, [e.model_dump() for e in body.errors]))
+
+
+@router.post("/roster/import/confirm", summary="学籍导入·确认（整批事务，须预校验全通过）")
+def roster_import_confirm(body: ExcelImportRows, user=Depends(require_permission(_ROSTER_IMPORT))):
+    result = svc.roster_import_confirm(body.rows)
+    return success(result, message="导入完成")
+
+
+@router.get("/roster/{studentId}", summary="学籍档案详情（主档+组织名称+学籍状态历史，数据范围收敛）")
+def roster_detail(studentId: int = Path(...), user=Depends(require_permission(_ROSTER_VIEW))):
+    return success(svc.roster_detail(studentId, user))
+
+
+class RosterRevealBody(BaseModel):
+    reason: str = Field(..., min_length=5, description="查看理由（≥5 字，必填，写审计）")
+
+
+@router.post("/roster/{studentId}/reveal", summary="查看完整证件号（sensitiveView+强制审计）")
+def roster_reveal(body: RosterRevealBody, studentId: int = Path(...), user=Depends(require_staff)):
+    # 粗粒度只挡未登录/非教职工；academicAffairs.roster.viewSensitive 的授权判定与
+    # 「SUCCESS/DENY 双向 SENSITIVE_VIEW 审计」由服务层负责，网关不得在此短路（否则越权 DENY 审计会丢失）。
+    return success(svc.reveal_roster_sensitive(studentId, user, body.reason))
 
 
 # ── 入学/学年注册 ──
