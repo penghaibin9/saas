@@ -38,6 +38,11 @@ const layoutRoute = {
     { path: 'programs/:id', name: 'aa-program-editor', component: () => import('@/modules/academicAffairs/views/AaProgramEditorView.vue'), meta: meta('academicAffairs.program.view', '方案编制') },
     // ── W4 教学任务 + 课表 ──
     { path: 'teaching-tasks', name: 'aa-teaching-tasks', component: () => import('@/modules/academicAffairs/views/AaTaskBatchListView.vue'), meta: meta('academicAffairs.teachingTask.view', '教学任务') },
+    { path: 'teaching-tasks/assign', name: 'aa-teaching-task-assign', component: () => import('@/modules/academicAffairs/views/AaTeacherAssignConsoleView.vue'), meta: meta('academicAffairs.teachingTask.assign', '任课教师分配') },
+    { path: 'teaching-tasks/merge-split', name: 'aa-teaching-task-merge-split', component: () => import('@/modules/academicAffairs/views/AaTaskMergeSplitView.vue'), meta: meta('academicAffairs.teachingTask.merge', '合班拆班') },
+    { path: 'teaching-tasks/confirm', name: 'aa-teaching-task-confirm', component: () => import('@/modules/academicAffairs/views/AaTaskConfirmView.vue'), meta: meta('academicAffairs.teachingTask.confirm', '教学任务确认') },
+    { path: 'teaching-tasks/teacher-confirm', name: 'aa-teaching-task-teacher-confirm', component: () => import('@/modules/academicAffairs/views/AaTeacherTaskConfirmView.vue'), meta: meta('academicAffairs.teachingTask.teacherConfirm', '教师任务确认') },
+    { path: 'teaching-tasks/stats', name: 'aa-teaching-task-stats', component: () => import('@/modules/academicAffairs/views/AaTaskStatsView.vue'), meta: meta('academicAffairs.teachingTask.stats', '教学任务统计') },
     { path: 'teaching-tasks/:batchId', name: 'aa-task-detail', component: () => import('@/modules/academicAffairs/views/AaTaskDetailView.vue'), meta: meta('academicAffairs.teachingTask.view', '教学任务明细') },
     { path: 'schedule', name: 'aa-schedule', component: () => import('@/modules/academicAffairs/views/AaScheduleBatchListView.vue'), meta: meta('academicAffairs.schedule.view', '课表管理') },
     { path: 'schedule/:batchId/edit', name: 'aa-schedule-edit', component: () => import('@/modules/academicAffairs/views/AaScheduleMaintainView.vue'), meta: meta('academicAffairs.schedule.manage', '课表维护') },
