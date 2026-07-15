@@ -189,12 +189,16 @@ router.beforeEach((to, from, next) => {
   // 登录页与安全错误页（meta.public）除外。
   const isPublic = to.path === '/login' || to.meta?.public
   if (!isPublic && !getToken()) {
-    next({ path: '/login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} })
+    const needsPlatformLogin = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
+    next({
+      path: needsPlatformLogin ? '/platform-login' : '/login',
+      query: to.fullPath !== '/' ? { redirect: to.fullPath } : {}
+    })
     return
   }
   const isPlatform = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
   if (isPlatform && !isPlatformSuperAdmin()) {
-    next({ path: '/login', query: { redirect: to.fullPath, reason: 'platform-owner-only' } })
+    next({ path: '/platform-login', query: { redirect: to.fullPath, reason: 'platform-owner-only' } })
     return
   }
   // 平台超管是控制面身份，不属于任何学校租户。除了登录/错误等公开页，

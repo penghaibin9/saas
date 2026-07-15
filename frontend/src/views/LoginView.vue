@@ -185,7 +185,7 @@
  * 账号登录走真实 POST /api/v1/auth/login（后端 t_user + pbkdf2 校验）；短信/微信通道后端尚未接入，做诚实占位。
  * 不再展示任何演示账号。
  */
-import { loginWithPassword } from '@/services/http/client'
+import { isPlatformSuperAdmin, loginWithPassword } from '@/services/http/client'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -236,7 +236,9 @@ export default {
           this.form.tenantCode
         )
         toast.success(`欢迎，${data.displayName}（${data.currentRole.roleName}）`)
-        this.$router.push(this.$route.query.redirect || '/')
+        // 平台超管不进入学校工作台；即使误用通用登录页，也统一进入控制面。
+        const redirect = this.$route.query.redirect
+        this.$router.push(isPlatformSuperAdmin() ? '/admin/platform/overview' : (redirect || '/'))
       } catch (e) {
         this.error = e.message || '登录失败，请稍后重试'
       } finally {
