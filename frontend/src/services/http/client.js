@@ -185,6 +185,15 @@ export function setToken(token) {
   _save(TOKEN_KEY, state.token)
 }
 
+/**
+ * 主动退出或身份校验不匹配时清除完整会话。
+ * 不能只清 access token，否则 refresh token 仍可能在下一次请求中恢复会话。
+ */
+export function clearAuthSession() {
+  _holdTokens('', '')
+  clearOfflineState()
+}
+
 /** 当前已登录令牌（sessionStorage：F5 不掉登录，关浏览器即清） */
 export function getToken() {
   return state.token

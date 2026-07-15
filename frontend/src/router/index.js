@@ -95,6 +95,13 @@ const router = createRouter({
       meta: { public: true, title: '登录' }
     },
     {
+      /* SaaS 运营方独立入口：成功后仍由后端角色与前端路由守卫双重校验。 */
+      path: '/platform-login',
+      name: 'platform-login',
+      component: () => import('../views/PlatformLoginView.vue'),
+      meta: { public: true, title: 'SaaS 运营平台登录' }
+    },
+    {
       path: '/dev/preview',
       name: 'ui-preview',
       component: () => import('../views/UiPreview.vue'),
