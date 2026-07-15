@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import AppException
-from app.core.permissions import require_any_permission, require_permission
+from app.core.permissions import enforce_permission, require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
 from app.schemas.excel import ExcelErrorRows, ExcelImportRows
@@ -3891,6 +3891,172 @@ def quality_report_export(body: QualityExportBody, user=Depends(require_permissi
     return StreamingResponse(io.BytesIO(content),
                              media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": "attachment; filename=academic_quality_report.xlsx"})
+
+
+# ══════════════ 教学质量 R3 续工（01督导听课/02巡课/03检查/04事故/05整改/06跟进/09归档） ══════════════
+# 01/02/03/04 共用 /quality/records（recordType 判别）；05/06 共用 /quality/rectifications；
+# 09 只读聚合 /quality/archive/*，零新表。权限点命名延续既有 academicAffairs.quality.* 风格。
+_QREC_VIEW = "academicAffairs.quality.record.view"
+_QREC_MANAGE = "academicAffairs.quality.record.manage"
+_QINCIDENT_MANAGE = "academicAffairs.quality.incident.manage"
+_QRECT_VIEW = "academicAffairs.quality.rectification.view"
+_QRECT_MANAGE = "academicAffairs.quality.rectification.manage"
+_QARCHIVE_VIEW = "academicAffairs.quality.archive.view"
+_QARCHIVE_EXPORT = "academicAffairs.quality.archive.export"
+
+
+class QualityRecordCreate(BaseModel):
+    recordType: str = Field(..., description="SUPERVISION/PATROL/INSPECTION/INCIDENT")
+    title: str = Field(..., min_length=1)
+    termId: Optional[str] = None
+    collegeId: Optional[str] = None
+    majorId: Optional[str] = None
+    classId: Optional[str] = None
+    teacherKey: Optional[str] = None
+    teacherName: Optional[str] = None
+    courseId: Optional[str] = None
+    courseName: Optional[str] = None
+    occurredAt: Optional[str] = None
+    location: Optional[str] = None
+    category: Optional[str] = None
+    score: Optional[float] = None
+    conclusion: Optional[str] = None
+    description: Optional[str] = None
+    handlingNote: Optional[str] = None
+    needRectify: Optional[bool] = False
+
+
+class QualityRecordUpdate(BaseModel):
+    title: Optional[str] = None
+    location: Optional[str] = None
+    category: Optional[str] = None
+    conclusion: Optional[str] = None
+    description: Optional[str] = None
+    handlingNote: Optional[str] = None
+    teacherName: Optional[str] = None
+    courseName: Optional[str] = None
+    score: Optional[float] = None
+    needRectify: Optional[bool] = None
+    collegeId: Optional[str] = None
+
+
+class RectificationCreate(BaseModel):
+    title: str = Field(..., min_length=1)
+    requirement: str = Field(..., min_length=5, description="整改要求，写审计")
+    sourceRecordId: Optional[str] = None
+    termId: Optional[str] = None
+    collegeId: Optional[str] = None
+    majorId: Optional[str] = None
+    classId: Optional[str] = None
+    deadline: Optional[str] = None
+    responsibleKey: Optional[str] = None
+    responsibleName: Optional[str] = None
+
+
+class RectificationNoteBody(BaseModel):
+    note: str = Field(..., min_length=2)
+
+
+class RectificationReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    reason: Optional[str] = ""
+
+
+@router.get("/quality/records", summary="质量问题记录列表（督导听课/巡课/检查/事故，recordType筛选）")
+def quality_record_list(recordType: Optional[str] = None, termId: Optional[str] = None,
+                        collegeId: Optional[str] = None, status: Optional[str] = None,
+                        teacherKey: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                        user=Depends(require_permission(_QREC_VIEW))):
+    items, total = quality_svc.list_records(user, recordType, termId, collegeId, status, teacherKey, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/quality/records", summary="新建质量问题记录")
+def quality_record_create(body: QualityRecordCreate, user=Depends(require_permission(_QREC_MANAGE))):
+    if (body.recordType or "").strip().upper() == "INCIDENT":
+        enforce_permission(user, _QINCIDENT_MANAGE)  # 教学事故上报额外要求 incident.manage（04号卡红线）
+    return success(quality_svc.create_record(user, body), message="已创建")
+
+
+@router.get("/quality/records/{rid}", summary="质量问题记录详情")
+def quality_record_detail(rid: int = Path(...), user=Depends(require_permission(_QREC_VIEW))):
+    return success(quality_svc.get_record(user, rid))
+
+
+@router.put("/quality/records/{rid}", summary="编辑质量问题记录（仅SUBMITTED阶段）")
+def quality_record_update(body: QualityRecordUpdate, rid: int = Path(...), user=Depends(require_permission(_QREC_MANAGE))):
+    return success(quality_svc.update_record(user, rid, body), message="已保存")
+
+
+@router.post("/quality/records/{rid}/confirm", summary="确认质量问题记录（教学事故认定仅限全校范围角色）")
+def quality_record_confirm(rid: int = Path(...), user=Depends(require_permission(_QREC_MANAGE))):
+    return success(quality_svc.confirm_record(user, rid), message="已确认")
+
+
+@router.post("/quality/records/{rid}/close", summary="关闭质量问题记录")
+def quality_record_close(rid: int = Path(...), user=Depends(require_permission(_QREC_MANAGE))):
+    return success(quality_svc.close_record(user, rid), message="已关闭")
+
+
+@router.delete("/quality/records/{rid}", summary="撤销质量问题记录（仅SUBMITTED阶段，软删）")
+def quality_record_cancel(rid: int = Path(...), user=Depends(require_permission(_QREC_MANAGE))):
+    return success(quality_svc.cancel_record(user, rid), message="已撤销")
+
+
+@router.get("/quality/rectifications", summary="质量整改任务列表（发起视角+跟进视角共用）")
+def quality_rect_list(status: Optional[str] = None, termId: Optional[str] = None, collegeId: Optional[str] = None,
+                      sourceType: Optional[str] = None, overdue: Optional[bool] = None,
+                      page: int = 1, pageSize: int = 20, user=Depends(require_permission(_QRECT_VIEW))):
+    items, total = quality_svc.list_rectifications(user, status, termId, collegeId, sourceType, overdue, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/quality/rectifications", summary="发起质量整改任务（可关联来源问题记录）")
+def quality_rect_create(body: RectificationCreate, user=Depends(require_permission(_QRECT_MANAGE))):
+    return success(quality_svc.create_rectification(user, body), message="已发起")
+
+
+@router.post("/quality/records/{rid}/rectify", summary="从问题记录一键发起整改（快捷入口）")
+def quality_record_rectify(body: RectificationCreate, rid: int = Path(...), user=Depends(require_permission(_QRECT_MANAGE))):
+    body.sourceRecordId = str(rid)
+    return success(quality_svc.create_rectification(user, body), message="已发起")
+
+
+@router.get("/quality/rectifications/{rid}", summary="整改任务详情（含跟进时间线）")
+def quality_rect_detail(rid: int = Path(...), user=Depends(require_permission(_QRECT_VIEW))):
+    return success(quality_svc.get_rectification(user, rid))
+
+
+@router.post("/quality/rectifications/{rid}/progress", summary="记录整改跟进（06号卡核心动作）")
+def quality_rect_progress(body: RectificationNoteBody, rid: int = Path(...), user=Depends(require_permission(_QRECT_MANAGE))):
+    return success(quality_svc.add_progress(user, rid, body.note), message="已记录")
+
+
+@router.post("/quality/rectifications/{rid}/submit", summary="提交整改说明待复核")
+def quality_rect_submit(body: RectificationNoteBody, rid: int = Path(...), user=Depends(require_permission(_QRECT_MANAGE))):
+    return success(quality_svc.submit_rectification(user, rid, body.note), message="已提交")
+
+
+@router.post("/quality/rectifications/{rid}/review", summary="复核整改（通过关闭/驳回重新整改，仅全校范围角色）")
+def quality_rect_review(body: RectificationReviewBody, rid: int = Path(...), user=Depends(require_permission(_QRECT_MANAGE))):
+    return success(quality_svc.review_rectification(user, rid, body.action, body.reason), message="已复核")
+
+
+@router.get("/quality/archive/overview", summary="质量归档总览（09号卡：按学期聚合01-06六类问题记录+整改统计）")
+def quality_archive_overview(termId: Optional[str] = None, user=Depends(require_permission(_QARCHIVE_VIEW))):
+    return success(quality_svc.archive_overview(user, termId))
+
+
+@router.get("/quality/archive/export", summary="质量归档导出xlsx（domain=records|rectifications）")
+def quality_archive_export(domain: str, termId: Optional[str] = None, purpose: str = "",
+                           user=Depends(require_permission(_QARCHIVE_EXPORT))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = quality_svc.archive_export(user, domain, termId, purpose)
+    return StreamingResponse(io.BytesIO(content),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename=quality_archive_{domain}.xlsx"})
 
 
 # ══════════════ 教务归档（13B-R7，/academic-affairs/archive/*） ══════════════

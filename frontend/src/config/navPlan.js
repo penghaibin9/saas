@@ -541,7 +541,15 @@ export const NAV_PLAN = [
     ]),
     mod('aa-quality', '教学质量', '/admin/academic-affairs/quality', [
       I('运行质量看板 + 质量报告导出', '/admin/academic-affairs/quality', 'academicAffairs.quality.dashboard.view'),
-      ...P('督导听课', '巡课记录', '教学检查', '教学事故', '质量整改', '整改跟进', '质量归档')
+      /* 2026-07-16 R3 续工（01-06/09 号三级卡）：01-04 共用问题记录表(recordType判别)，
+       * 05/06 共用整改任务表(发起/跟进两视角)，09 只读聚合 01-06，同页 ?tab= 区分 leafKey（§9.4 唯一 leafKey 规则）。 */
+      I('督导听课', '/admin/academic-affairs/quality?tab=supervision', 'academicAffairs.quality.record.view'),
+      I('巡课记录', '/admin/academic-affairs/quality?tab=patrol', 'academicAffairs.quality.record.view'),
+      I('教学检查', '/admin/academic-affairs/quality?tab=inspection', 'academicAffairs.quality.record.view'),
+      I('教学事故', '/admin/academic-affairs/quality?tab=incident', 'academicAffairs.quality.record.view'),
+      I('质量整改', '/admin/academic-affairs/quality?tab=rectify', 'academicAffairs.quality.rectification.view'),
+      I('整改跟进', '/admin/academic-affairs/quality?tab=followUp', 'academicAffairs.quality.rectification.view'),
+      I('质量归档', '/admin/academic-affairs/quality?tab=archive', 'academicAffairs.quality.archive.view')
     ]),
     mod('aa-archive', '教务归档', '/admin/academic-affairs/archive', [
       I('归档批次 + 9数据域完整性检查 + 学期封存', '/admin/academic-affairs/archive', 'academicAffairs.archive.view'),
