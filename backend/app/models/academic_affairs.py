@@ -225,6 +225,32 @@ class AaProgramGraduationRequirement(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
 
 
+class AaProgramPracticeSegment(PKMixin, TenantMixin, CommonMixin, Base):
+    """培养方案-集中性实践教学环节（认识实习/课程设计/生产实习/顶岗实习/毕业设计(论文)/军训/社会实践等），
+    以「周数」为核心计量单位，区别于理论课程的学时——与 t_aa_program_course 结构不同，独立建表。
+    13B-培养方案 Tier1 R3 续工三级模块「实践环节」；仅编制态(DRAFT/RETURNED)可增删改（与课程模块/学分要求/
+    毕业要求同一约束）。ACTIVE/REMOVED 逻辑态，配合 is_deleted 使用。"""
+    __tablename__ = "t_aa_program_practice_segment"
+
+    program_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    segment_name: Mapped[str] = mapped_column(String(200), nullable=False,
+                                              comment="实践环节名称 如 认识实习/顶岗实习/毕业设计(论文)")
+    segment_type: Mapped[str] = mapped_column(String(50), nullable=False, default="OTHER",
+                                              comment="COGNITION_INTERNSHIP/COURSE_DESIGN/PRODUCTION_INTERNSHIP/"
+                                                      "POST_INTERNSHIP/GRADUATION_PROJECT/MILITARY_TRAINING/"
+                                                      "SOCIAL_PRACTICE/OTHER")
+    open_term_no: Mapped[int | None] = mapped_column(Integer, comment="第几学期安排")
+    weeks: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="周数（实践环节以周计，非学时）")
+    credit: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="学分")
+    org_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="CENTRALIZED",
+                                          comment="CENTRALIZED/DISTRIBUTED 集中/分散")
+    location: Mapped[str | None] = mapped_column(String(200), comment="实践地点/承担单位")
+    assessment_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="CHECK",
+                                                  comment="EXAM/CHECK 考试/考查")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
+
+
 # ═══════════ 课程库与教学任务组（13B-P3；商业教务软件全字段）═══════════
 
 

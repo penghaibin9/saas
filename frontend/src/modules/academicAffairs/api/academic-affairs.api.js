@@ -452,6 +452,30 @@ export const academicAffairsApi = {
   createProgramNewVersion(programId) {
     return call(() => request(`${BASE}/programs/${programId}/new-version`, { method: 'POST' }))
   },
+  /* 实践环节：集中性实践教学环节 CRUD（以周计，Tier1 R3 续工） */
+  getPracticeSegments(programId) {
+    return call(() => request(`${BASE}/programs/${programId}/practice-segments`))
+  },
+  createPracticeSegment(programId, body) {
+    return call(() => request(`${BASE}/programs/${programId}/practice-segments`, { method: 'POST', body }))
+  },
+  updatePracticeSegment(segmentId, body) {
+    return call(() => request(`${BASE}/programs/practice-segments/${segmentId}`, { method: 'PUT', body }))
+  },
+  deletePracticeSegment(segmentId) {
+    return call(() => request(`${BASE}/programs/practice-segments/${segmentId}`, { method: 'DELETE' }))
+  },
+  /* 方案变更：状态生命周期 冻结/恢复/停用 + 变更记录（Tier1 R3 续工） */
+  changeProgramStatus(programId, action, reason) {
+    return call(() => request(`${BASE}/programs/${programId}/change-status`, { method: 'POST', body: { action, reason } }))
+  },
+  getProgramChangeLog(programId) {
+    return call(() => request(`${BASE}/programs/${programId}/change-log`))
+  },
+  /* 方案归档：已停用方案 + 已被取代历史版本，只读（Tier1 R3 续工） */
+  getArchivedPrograms(params = {}) {
+    return callList(`${BASE}/program-archive`, params)
+  },
 
   /* ── 教学任务（生成 → 分配 → 教师确认 → 提审） ── */
   generateTaskBatch(body) {

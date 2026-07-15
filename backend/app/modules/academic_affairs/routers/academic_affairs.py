@@ -860,6 +860,86 @@ def program_new_version(programId: int = Path(...), user=Depends(_PROG_MANAGE)):
     return success(prog_svc.create_new_version(programId, user), message="已新建版本")
 
 
+# ── 实践环节（集中性实践教学环节：认识实习/课程设计/顶岗实习/毕业设计等，以周计，Tier1 R3 续工） ──
+
+class PracticeSegmentCreate(BaseModel):
+    segmentName: str = Field(..., min_length=1)
+    segmentType: Optional[str] = Field("OTHER", description="COGNITION_INTERNSHIP/COURSE_DESIGN/"
+                                        "PRODUCTION_INTERNSHIP/POST_INTERNSHIP/GRADUATION_PROJECT/"
+                                        "MILITARY_TRAINING/SOCIAL_PRACTICE/OTHER")
+    openTermNo: Optional[int] = None
+    weeks: Optional[float] = Field(None, gt=0)
+    credit: Optional[float] = Field(None, ge=0)
+    orgMode: Optional[str] = Field("CENTRALIZED", description="CENTRALIZED/DISTRIBUTED 集中/分散")
+    location: Optional[str] = None
+    assessmentMode: Optional[str] = Field("CHECK", description="EXAM/CHECK 考试/考查")
+    sortOrder: Optional[int] = None
+
+
+class PracticeSegmentUpdate(BaseModel):
+    segmentName: Optional[str] = None
+    segmentType: Optional[str] = None
+    openTermNo: Optional[int] = None
+    weeks: Optional[float] = Field(None, gt=0)
+    credit: Optional[float] = Field(None, ge=0)
+    orgMode: Optional[str] = None
+    location: Optional[str] = None
+    assessmentMode: Optional[str] = None
+    sortOrder: Optional[int] = None
+
+
+@router.get("/programs/{programId}/practice-segments", summary="实践环节：条目列表（集中性实践教学环节，编制态可写）")
+def program_practice_segments(programId: int = Path(...), user=Depends(_PROG_VIEW)):
+    return success({"items": prog_svc.list_practice_segments(programId, user)})
+
+
+@router.post("/programs/{programId}/practice-segments", summary="实践环节：新增条目（编制态）")
+def program_practice_segment_create(body: PracticeSegmentCreate, programId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.create_practice_segment(programId, user, body), message="已添加")
+
+
+@router.put("/programs/practice-segments/{segmentId}", summary="实践环节：编辑条目（编制态）")
+def program_practice_segment_update(body: PracticeSegmentUpdate, segmentId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.update_practice_segment(segmentId, user, body), message="已保存")
+
+
+@router.delete("/programs/practice-segments/{segmentId}", summary="实践环节：删除条目（编制态）")
+def program_practice_segment_delete(segmentId: int = Path(...), user=Depends(_PROG_MANAGE)):
+    return success(prog_svc.delete_practice_segment(segmentId, user), message="已删除")
+
+
+# ── 方案变更（状态生命周期：冻结/恢复/停用，原因必填，Tier1 R3 续工） ──
+
+_PROG_CHANGE = require_permission("academicAffairs.program.changeStatus")
+
+
+class ProgramChangeStatusBody(BaseModel):
+    action: str = Field(..., description="FREEZE 冻结/RESUME 恢复/DISABLE 停用")
+    reason: str = Field(..., min_length=5, max_length=500, description="变更原因，≥5字，写入审计留痕")
+
+
+@router.post("/programs/{programId}/change-status", summary="方案变更：状态生命周期（FREEZE 冻结/RESUME 恢复/DISABLE 停用，原因必填）")
+def program_change_status(body: ProgramChangeStatusBody, programId: int = Path(...), user=Depends(_PROG_CHANGE)):
+    return success(prog_svc.change_program_status(programId, user, body.action, body.reason), message="已处理")
+
+
+@router.get("/programs/{programId}/change-log", summary="方案变更：生命周期变更记录（冻结/恢复/停用/新建版本/退回）")
+def program_change_log(programId: int = Path(...), user=Depends(_PROG_VIEW)):
+    return success({"items": prog_svc.list_program_lifecycle_log(programId, user)})
+
+
+# ── 方案归档（只读：已停用方案 + 已被取代历史版本，Tier1 R3 续工） ──
+# 顶层 kebab 资源名 /program-archive（而非 /programs/archive）：避免与上方 /programs/{programId} 的
+# 单段路径匹配发生路由遮蔽（FastAPI/Starlette 按注册顺序做结构匹配，"archive" 会先被当作 programId 解析，
+# 因非 int 类型触发 RequestValidationError，本仓库全局处理器统一转 400），与既有 /status-changes、
+# /registration-batches 等顶层 kebab 资源命名一致。
+
+@router.get("/program-archive", summary="方案归档：已停用方案 + 已被取代历史版本（只读）")
+def programs_archived(page: int = 1, pageSize: int = 20, user=Depends(_PROG_VIEW)):
+    items, total = prog_svc.list_archived_programs(user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
 # ═══════════ 课程库（P3，两级审核，商业级全字段）═══════════
 # Tier1 R2（新增课程/课程分类/课程性质/学分学时/课程负责人/课程停用）：写操作从 require_staff 收紧为
 # 精确 permissionCode（均命中 permissions.py 既有 "academicAffairs.*" 角色通配，不新增角色）。

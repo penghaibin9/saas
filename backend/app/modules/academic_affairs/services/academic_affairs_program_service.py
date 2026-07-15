@@ -472,3 +472,206 @@ def list_program_versions(program_id, user):
             cursor = nxt
         return [dict(_row(p), canNewVersion=(p.status in ("PUBLISHED", "ENABLED", "FROZEN", "DISABLED")),
                     isCurrent=(p.id == cur.id)) for p in chain]
+
+
+# ═══════════ 实践环节（集中性实践教学环节：认识实习/课程设计/顶岗实习/毕业设计等，以周计）Tier1 R3 ═══════════
+
+def _practice_row(s) -> dict:
+    return {"segmentId": str(s.id), "programId": str(s.program_id), "segmentName": s.segment_name,
+            "segmentType": s.segment_type, "openTermNo": s.open_term_no,
+            "weeks": float(s.weeks) if s.weeks is not None else None,
+            "credit": float(s.credit) if s.credit is not None else None,
+            "orgMode": s.org_mode, "location": s.location or "", "assessmentMode": s.assessment_mode,
+            "sortOrder": s.sort_order, "status": s.status}
+
+
+def list_practice_segments(program_id, user):
+    from app.models import AaProgram, AaProgramPracticeSegment as Seg
+    with session() as db:
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        rows = db.scalars(select(Seg).where(
+            Seg.tenant_id == _tid(), Seg.program_id == p.id, Seg.is_deleted.is_(False),
+            Seg.status == "ACTIVE").order_by(Seg.open_term_no, Seg.sort_order, Seg.id)).all()
+        return [_practice_row(s) for s in rows]
+
+
+def create_practice_segment(program_id, user, body) -> dict:
+    from app.models import AaProgram, AaProgramPracticeSegment as Seg
+    with session() as db:
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可修改实践环节")
+        name = (getattr(body, "segmentName", "") or "").strip()
+        if not name:
+            raise AppException("VALIDATION_ERROR", "实践环节名称必填")
+        weeks = getattr(body, "weeks", None)
+        if weeks is not None and float(weeks) <= 0:
+            raise AppException("VALIDATION_ERROR", "周数必须大于 0")
+        s = Seg(tenant_id=_tid(), program_id=p.id, segment_name=name,
+               segment_type=(getattr(body, "segmentType", None) or "OTHER"),
+               open_term_no=getattr(body, "openTermNo", None), weeks=weeks,
+               credit=getattr(body, "credit", None),
+               org_mode=(getattr(body, "orgMode", None) or "CENTRALIZED"),
+               location=(getattr(body, "location", None) or None),
+               assessment_mode=(getattr(body, "assessmentMode", None) or "CHECK"),
+               sort_order=(getattr(body, "sortOrder", None) or 0), status="ACTIVE")
+        db.add(s)
+        db.flush()
+        _audit(db, p.id, "ADD_PRACTICE_SEGMENT", name)
+        db.commit()
+        return _practice_row(s)
+
+
+def update_practice_segment(segment_id, user, body) -> dict:
+    from app.models import AaProgram, AaProgramPracticeSegment as Seg
+    with session() as db:
+        s = db.get(Seg, int(segment_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("实践环节条目不存在")
+        p = db.get(AaProgram, s.program_id)
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可修改实践环节")
+        if getattr(body, "segmentName", None):
+            s.segment_name = body.segmentName.strip()
+        if getattr(body, "segmentType", None):
+            s.segment_type = body.segmentType
+        if getattr(body, "openTermNo", None) is not None:
+            s.open_term_no = body.openTermNo
+        if getattr(body, "weeks", None) is not None:
+            if float(body.weeks) <= 0:
+                raise AppException("VALIDATION_ERROR", "周数必须大于 0")
+            s.weeks = body.weeks
+        if getattr(body, "credit", None) is not None:
+            s.credit = body.credit
+        if getattr(body, "orgMode", None):
+            s.org_mode = body.orgMode
+        if getattr(body, "location", None) is not None:
+            s.location = body.location
+        if getattr(body, "assessmentMode", None):
+            s.assessment_mode = body.assessmentMode
+        if getattr(body, "sortOrder", None) is not None:
+            s.sort_order = body.sortOrder
+        _audit(db, p.id, "UPDATE_PRACTICE_SEGMENT", s.segment_name)
+        db.commit()
+        return _practice_row(s)
+
+
+def delete_practice_segment(segment_id, user) -> dict:
+    from app.models import AaProgram, AaProgramPracticeSegment as Seg
+    with session() as db:
+        s = db.get(Seg, int(segment_id))
+        if not s or s.is_deleted or s.tenant_id != _tid():
+            raise not_found("实践环节条目不存在")
+        p = db.get(AaProgram, s.program_id)
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        if p.status not in ("DRAFT", "RETURNED"):
+            raise AppException("DATA_CONFLICT", "非编制态方案不可修改实践环节")
+        s.is_deleted = True
+        s.status = "REMOVED"
+        _audit(db, p.id, "DELETE_PRACTICE_SEGMENT", s.segment_name)
+        db.commit()
+        return {"segmentId": str(segment_id), "deleted": True}
+
+
+# ═══════════ 方案变更（状态生命周期：冻结/停用/恢复）Tier1 R3 ═══════════
+# 内容型改动（课程/学分/毕业要求）发布后强制走「方案版本」新建 DRAFT（既有约束，见 submit_program 之上
+# update_program 注释）。本组只处理不改变方案内容、只改变方案「是否可继续使用」的生命周期动作——
+# FROZEN/DISABLED 两个终态早已写入模型注释与 create_new_version()/list_program_versions() 的前置校验
+# （canNewVersion 已预期这两个终态可再新建版本），但此前没有任何端点能把方案实际置于这两个状态，
+# 属真实缺口，本轮补齐。bind_grade() 已隐式排斥 FROZEN（仅接受 PUBLISHED/ENABLED），故冻结后自动
+# 阻止新绑定，无需额外改动 bind_grade。
+
+_LIFECYCLE_ACTIONS = {"FREEZE", "RESUME", "DISABLE"}
+_LIFECYCLE_ACTION_LOG_CODES = ("LIFECYCLE_FREEZE", "LIFECYCLE_RESUME", "LIFECYCLE_DISABLE",
+                               "NEW_VERSION", "RETURNED")
+
+
+def change_program_status(program_id, user, action, reason) -> dict:
+    """方案状态生命周期变更：FREEZE 冻结 / RESUME 恢复 / DISABLE 停用。原因必填(≥5字)，写入审计留痕。
+    冻结/停用不改动既有年级绑定记录（历史学生仍按已绑定版本执行，只是不再接受新绑定/新审批流转）。"""
+    action = (action or "").strip().upper()
+    if action not in _LIFECYCLE_ACTIONS:
+        raise AppException("VALIDATION_ERROR", "无效的变更操作（仅支持 FREEZE/RESUME/DISABLE）")
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "变更原因必填且不少于 5 字")
+    with session() as db:
+        from app.models import AaProgram, AaProgramBinding
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        from_status = p.status
+        if action == "FREEZE":
+            if p.status not in ("PUBLISHED", "ENABLED"):
+                raise AppException("DATA_CONFLICT", "仅已发布/已启用方案可冻结")
+            p.status = "FROZEN"
+        elif action == "RESUME":
+            if p.status != "FROZEN":
+                raise AppException("DATA_CONFLICT", "仅已冻结方案可恢复")
+            has_active_binding = db.scalars(select(AaProgramBinding.id).where(
+                AaProgramBinding.tenant_id == _tid(), AaProgramBinding.program_id == p.id,
+                AaProgramBinding.status == "ACTIVE", AaProgramBinding.is_deleted.is_(False))).first()
+            p.status = "ENABLED" if has_active_binding else "PUBLISHED"
+        else:  # DISABLE
+            if p.status not in ("PUBLISHED", "ENABLED", "FROZEN"):
+                raise AppException("DATA_CONFLICT", "仅已发布/已启用/已冻结方案可停用")
+            p.status = "DISABLED"
+        _audit(db, p.id, f"LIFECYCLE_{action}", f"{from_status}->{p.status}；原因：{reason}")
+        db.commit()
+        db.refresh(p)
+        return _row(p)
+
+
+def list_program_lifecycle_log(program_id, user):
+    """方案变更记录：状态生命周期动作审计（冻结/恢复/停用/新建版本/退回），供「方案变更」页留痕查询。"""
+    from app.models import AaProgram, AffairsAuditTrail
+    with session() as db:
+        p = db.get(AaProgram, int(program_id))
+        if not p or p.is_deleted or p.tenant_id != _tid():
+            raise not_found("培养方案不存在")
+        rows = db.scalars(select(AffairsAuditTrail).where(
+            AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "AA_PROGRAM",
+            AffairsAuditTrail.biz_id == p.id,
+            AffairsAuditTrail.action.in_(_LIFECYCLE_ACTION_LOG_CODES)
+        ).order_by(AffairsAuditTrail.id.desc())).all()
+        return [{"action": r.action, "detail": r.detail or "", "operator": r.operator or "",
+                "roleName": r.role_name or "", "occurredAt": _iso(r.occurred_at)} for r in rows]
+
+
+# ═══════════ 方案归档（只读：已停用方案 + 已被取代的历史版本）Tier1 R3 ═══════════
+# 不新增状态值/新表：DISABLED 复用「方案变更」新落地的生命周期终态；"历史版本"判定 = 存在更新版本以
+# prev_version_id 回链本记录（即另一条 AaProgram.prev_version_id == 本方案.id）。两者取并集，去重展示。
+
+def list_archived_programs(user, page=1, page_size=20):
+    from app.models import AaProgram
+    with session() as db:
+        all_rows = db.scalars(select(AaProgram).where(
+            AaProgram.tenant_id == _tid(), AaProgram.is_deleted.is_(False))).all()
+        superseded_ids = {r.prev_version_id for r in all_rows if r.prev_version_id}
+        successor_by_prev = {r.prev_version_id: r for r in all_rows if r.prev_version_id}
+        out = []
+        for r in all_rows:
+            reasons = []
+            if r.status == "DISABLED":
+                reasons.append("DISABLED")
+            if r.id in superseded_ids:
+                reasons.append("SUPERSEDED")
+            if not reasons:
+                continue
+            successor = successor_by_prev.get(r.id)
+            d = _row(r)
+            d["archiveReasons"] = reasons
+            d["supersededByProgramId"] = str(successor.id) if successor else None
+            d["supersededByVersion"] = successor.version if successor else None
+            out.append(d)
+        out.sort(key=lambda x: int(x["programId"]), reverse=True)
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total

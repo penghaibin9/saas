@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="培养方案 · 控制台"
-    subtitle="方案制定 · 版本 · 课程模块 · 学分要求 · 毕业要求 · 审核 · 发布"
+    subtitle="方案制定 · 版本 · 课程模块 · 学分要求 · 实践环节 · 毕业要求 · 审核 · 发布 · 变更 · 归档"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -23,7 +23,7 @@
       </span>
     </div>
 
-    <div v-if="tab !== 'courseModules' && tab !== 'creditRequirements' && tab !== 'graduationRequirements'" class="aapc-bar">
+    <div v-if="tab !== 'courseModules' && tab !== 'creditRequirements' && tab !== 'graduationRequirements' && tab !== 'practiceSegments'" class="aapc-bar">
       <AppButton v-if="tab === 'authoring'" variant="primary" size="small" @click="openCreate">＋ 新建方案</AppButton>
     </div>
     <div v-else-if="selectedProgramId" class="aapc-bar">
@@ -31,6 +31,7 @@
       <AppButton v-if="tab === 'creditRequirements' && isEditable" variant="primary" size="small" @click="openCreditForm(null)">＋ 添加模块学分</AppButton>
       <AppButton v-if="tab === 'creditRequirements' && isEditable" variant="secondary" size="small" :loading="savingCredit" @click="saveCredit">保存学分结构</AppButton>
       <AppButton v-if="tab === 'graduationRequirements' && isEditable" variant="primary" size="small" @click="openGradForm(null)">＋ 添加毕业要求</AppButton>
+      <AppButton v-if="tab === 'practiceSegments' && isEditable" variant="primary" size="small" @click="openPracticeForm(null)">＋ 添加实践环节</AppButton>
     </div>
 
     <ErrorState v-if="error" :description="error" @retry="reload" />
@@ -46,6 +47,12 @@
         </template>
         <template #cell-category="{ row }">{{ gradCategoryLabel(row.category) }}</template>
         <template #cell-creditTarget="{ row }">{{ row.creditTarget }}</template>
+        <template #cell-segmentType="{ row }">{{ practiceSegmentTypeLabel(row.segmentType) }}</template>
+        <template #cell-orgMode="{ row }">{{ orgModeLabel(row.orgMode) }}</template>
+        <template #cell-archiveReasons="{ row }">
+          <span v-for="r in row.archiveReasons" :key="r" class="aapc-archive-reason">{{ archiveReasonLabel(r) }}</span>
+          <span v-if="row.supersededByVersion" class="mp-cell-sub">已被 v{{ row.supersededByVersion }} 取代</span>
+        </template>
         <template #cell-ops="{ row }">
           <!-- 方案制定 -->
           <template v-if="tab === 'authoring'">
@@ -70,6 +77,13 @@
               <button class="mp-link is-danger" @click="removeCreditRow(row)">删除</button>
             </template>
           </template>
+          <!-- 实践环节 -->
+          <template v-if="tab === 'practiceSegments'">
+            <template v-if="isEditable">
+              <button class="mp-link" @click="openPracticeForm(row)">编辑</button>
+              <button class="mp-link is-danger" @click="confirmDeletePractice(row)">删除</button>
+            </template>
+          </template>
           <!-- 毕业要求 -->
           <template v-if="tab === 'graduationRequirements'">
             <template v-if="isEditable">
@@ -86,6 +100,16 @@
           <template v-if="tab === 'publish'">
             <button class="mp-link" @click="openBind(row)">绑定年级</button>
             <button class="mp-link" @click="viewBindings(row)">查看绑定</button>
+          </template>
+          <!-- 方案变更 -->
+          <template v-if="tab === 'changeStatus'">
+            <button v-for="act in availableChangeActions(row.status)" :key="act" class="mp-link"
+                    :class="{ 'is-danger': act === 'DISABLE' }" @click="openChangeAction(row, act)">{{ changeActionLabel(act) }}</button>
+            <button class="mp-link" @click="viewChangeLog(row)">变更记录</button>
+          </template>
+          <!-- 方案归档 -->
+          <template v-if="tab === 'archive'">
+            <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">查看详情</button>
           </template>
         </template>
       </DataTable>
@@ -176,6 +200,47 @@
       </ul>
     </AppDrawer>
 
+    <!-- 实践环节：新增/编辑 -->
+    <AppDrawer :visible="practiceVisible" :title="practiceForm.segmentId ? '编辑实践环节' : '添加实践环节'" @update:visible="practiceVisible = $event">
+      <div class="aapc-form">
+        <AppFormItem label="实践环节名称" required><AppTextInput v-model="practiceForm.segmentName" :disabled="saving" placeholder="如 认识实习/顶岗实习/毕业设计(论文)" /></AppFormItem>
+        <AppFormItem label="类型"><AppSelect v-model="practiceForm.segmentType" :options="practiceSegmentTypeOptions" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="开设学期"><AppNumberInput v-model="practiceForm.openTermNo" :min="1" :max="12" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="周数" required><AppNumberInput v-model="practiceForm.weeks" :min="0.5" :step="0.5" :precision="1" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="学分"><AppNumberInput v-model="practiceForm.credit" :min="0" :step="0.5" :precision="1" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="组织方式"><AppSelect v-model="practiceForm.orgMode" :options="orgModeOptions" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="实践地点/承担单位"><AppTextInput v-model="practiceForm.location" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="考核方式"><AppSelect v-model="practiceForm.assessmentMode" :options="assessmentModeOptions" :disabled="saving" /></AppFormItem>
+        <AppInlineAlert v-if="formError" type="danger" :description="formError" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="practiceVisible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="saving" @click="submitPractice">保存</AppButton>
+      </template>
+    </AppDrawer>
+
+    <!-- 方案变更：变更记录只读 -->
+    <AppDrawer :visible="changeLogVisible" :title="'变更记录 · ' + changeLogProgramName" @update:visible="changeLogVisible = $event">
+      <EmptyState v-if="!changeLogRows.length" title="暂无变更记录" description="" />
+      <ul v-else class="aapc-changelog">
+        <li v-for="(r, idx) in changeLogRows" :key="idx">
+          <div class="mp-cell-main">{{ changeLogActionLabel(r.action) }}<span v-if="r.detail"> · {{ r.detail }}</span></div>
+          <div class="mp-cell-sub">{{ r.operator }}{{ r.roleName ? ('（' + r.roleName + '）') : '' }} · {{ r.occurredAt }}</div>
+        </li>
+      </ul>
+    </AppDrawer>
+
+    <AppConfirmDialog
+      v-model:visible="changeDlg.visible"
+      :title="changeDlg.title"
+      :type="changeDlg.type"
+      :confirm-text="changeDlg.confirmText"
+      require-reason
+      reason-label="变更原因"
+      :submitting="changeDlg.submitting"
+      @confirm="doChangeStatus"
+    />
+
     <AppConfirmDialog
       v-model:visible="reviewDlg.visible"
       :title="reviewDlg.title"
@@ -199,9 +264,15 @@
 
 <script>
 /** 培养方案 · 控制台（/admin/academic-affairs/programs/console?tab=xxx）：
- * 方案制定 / 方案版本 / 课程模块 / 学分要求 / 毕业要求 / 方案审核 / 方案发布 7 个三级模块共用一个工作台，
- * 深链接对齐既有「学院专业班级」「教材管理」控制台模式（navPlan `?tab=` 叶子）。
- * 深编辑（基本信息/两级审提交/绑定操作历史）仍复用既有 /programs/:id 编制器，本页只做「跨方案工作队列 + 结构化子表 CRUD」。 */
+ * 方案制定 / 方案版本 / 课程模块 / 学分要求 / 实践环节 / 毕业要求 / 方案审核 / 方案发布 / 方案变更 / 方案归档
+ * 10 个三级模块共用一个工作台，深链接对齐既有「学院专业班级」「教材管理」控制台模式（navPlan `?tab=` 叶子）。
+ * 深编辑（基本信息/两级审提交/绑定操作历史）仍复用既有 /programs/:id 编制器，本页只做「跨方案工作队列 + 结构化子表 CRUD」。
+ * 实践环节（Tier1 R3）：与课程模块同构的编制态子表 CRUD，独立字段（周数/组织方式/实践地点），
+ * 承载认识实习/顶岗实习/毕业设计等以周计的集中性实践教学环节。
+ * 方案变更（Tier1 R3）：状态生命周期动作——冻结（PUBLISHED/ENABLED→FROZEN）/恢复（FROZEN→ENABLED|PUBLISHED，
+ * 按是否存在生效绑定判定）/停用（→DISABLED 终态），原因必填，写入 AffairsAuditTrail 留痕，附变更记录只读查询。
+ * 方案归档（Tier1 R3）：只读派生视图——已停用(DISABLED)方案 ∪ 已被新版本取代的历史版本（存在后继版本回链），
+ * 不新增状态值，"归档"动作即方案变更 Tab 的"停用"，本 Tab 只做归档结果的检索与追溯。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import {
@@ -211,9 +282,15 @@ import {
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import {
   REVIEW_STATUS, reviewStatusColor, canSubmit, canNewVersion, canPublishBind,
-  GRADUATION_REQUIREMENT_CATEGORY
+  GRADUATION_REQUIREMENT_CATEGORY, PRACTICE_SEGMENT_TYPE, PRACTICE_ORG_MODE, EXAM_MODE,
+  PROGRAM_CHANGE_ACTION, availableChangeActions, ARCHIVE_REASON_LABEL
 } from '@/modules/academicAffairs/constants/course-program'
 import { toast } from '@/utils/toast'
+
+const _CHANGE_LOG_ACTION_LABEL = {
+  LIFECYCLE_FREEZE: '冻结', LIFECYCLE_RESUME: '恢复', LIFECYCLE_DISABLE: '停用',
+  NEW_VERSION: '新建版本', RETURNED: '退回'
+}
 
 export default {
   name: 'AaProgramConsoleView',
@@ -232,9 +309,12 @@ export default {
         { key: 'versions', label: '方案版本' },
         { key: 'courseModules', label: '课程模块' },
         { key: 'creditRequirements', label: '学分要求' },
+        { key: 'practiceSegments', label: '实践环节' },
         { key: 'graduationRequirements', label: '毕业要求' },
         { key: 'review', label: '方案审核' },
-        { key: 'publish', label: '方案发布' }
+        { key: 'publish', label: '方案发布' },
+        { key: 'changeStatus', label: '方案变更' },
+        { key: 'archive', label: '方案归档' }
       ],
       allPrograms: [], selectedProgramId: '', selectedProgram: null,
       creditItems: [], savingCredit: false,
@@ -245,12 +325,16 @@ export default {
       gradVisible: false, gradForm: { requirementId: '', category: 'ABILITY', content: '', sortOrder: 0 },
       bindVisible: false, bindRow: null, bindForm: { gradeYear: '', classId: '' },
       bindingsVisible: false, bindingRows: [],
+      practiceVisible: false,
+      practiceForm: { segmentId: '', segmentName: '', segmentType: 'OTHER', openTermNo: null, weeks: null, credit: null, orgMode: 'CENTRALIZED', location: '', assessmentMode: 'CHECK', sortOrder: 0 },
+      changeDlg: { visible: false, title: '', type: 'primary', confirmText: '确认', submitting: false, row: null, action: '' },
+      changeLogVisible: false, changeLogRows: [], changeLogProgramName: '',
       reviewDlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, row: null, action: '' },
       confirmDlg: { visible: false, title: '', submitting: false, action: null }
     }
   },
   computed: {
-    needsProgramPicker() { return ['courseModules', 'creditRequirements', 'graduationRequirements'].includes(this.tab) },
+    needsProgramPicker() { return ['courseModules', 'creditRequirements', 'graduationRequirements', 'practiceSegments'].includes(this.tab) },
     isEditable() { return this.selectedProgram && canSubmit(this.selectedProgram.status) },
     programOptions() {
       return this.allPrograms.map((p) => ({ label: `${p.programName}（${p.gradeYear || '未设年级'} · v${p.version} · ${this.statusLabel(p.status)}）`, value: p.programId }))
@@ -258,15 +342,27 @@ export default {
     gradCategoryOptions() {
       return Object.keys(GRADUATION_REQUIREMENT_CATEGORY).map((k) => ({ label: GRADUATION_REQUIREMENT_CATEGORY[k], value: k }))
     },
+    practiceSegmentTypeOptions() {
+      return Object.keys(PRACTICE_SEGMENT_TYPE).map((k) => ({ label: PRACTICE_SEGMENT_TYPE[k], value: k }))
+    },
+    orgModeOptions() {
+      return Object.keys(PRACTICE_ORG_MODE).map((k) => ({ label: PRACTICE_ORG_MODE[k], value: k }))
+    },
+    assessmentModeOptions() {
+      return Object.keys(EXAM_MODE).map((k) => ({ label: EXAM_MODE[k], value: k }))
+    },
     columns() {
       const map = {
         authoring: [{ key: 'program', title: '方案' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作', width: '110px' }],
         versions: [{ key: 'program', title: '方案' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作', width: '160px' }],
         courseModules: [{ key: 'openTermNo', title: '开课学期' }, { key: 'module', title: '课程模块' }, { key: 'courseName', title: '课程名称' }, { key: 'credit', title: '学分' }, { key: 'ops', title: '操作', width: '110px' }],
         creditRequirements: [{ key: 'module', title: '课程模块' }, { key: 'creditTarget', title: '学分目标' }, { key: 'note', title: '备注' }, { key: 'ops', title: '操作', width: '110px' }],
+        practiceSegments: [{ key: 'segmentName', title: '实践环节' }, { key: 'segmentType', title: '类型' }, { key: 'openTermNo', title: '学期' }, { key: 'weeks', title: '周数' }, { key: 'credit', title: '学分' }, { key: 'orgMode', title: '组织方式' }, { key: 'ops', title: '操作', width: '110px' }],
         graduationRequirements: [{ key: 'category', title: '分类' }, { key: 'content', title: '要求内容' }, { key: 'sortOrder', title: '排序' }, { key: 'ops', title: '操作', width: '110px' }],
         review: [{ key: 'program', title: '方案' }, { key: 'status', title: '审核节点' }, { key: 'ops', title: '操作', width: '180px' }],
-        publish: [{ key: 'program', title: '方案' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作', width: '160px' }]
+        publish: [{ key: 'program', title: '方案' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作', width: '160px' }],
+        changeStatus: [{ key: 'program', title: '方案' }, { key: 'status', title: '当前状态' }, { key: 'ops', title: '操作', width: '220px' }],
+        archive: [{ key: 'program', title: '方案' }, { key: 'status', title: '当前状态' }, { key: 'archiveReasons', title: '归档原因' }, { key: 'ops', title: '操作', width: '110px' }]
       }
       return map[this.tab] || []
     },
@@ -276,9 +372,12 @@ export default {
         versions: '暂无方案',
         courseModules: this.selectedProgramId ? '点击「添加课程」构建方案课程结构' : '请选择一个方案',
         creditRequirements: this.selectedProgramId ? '点击「添加模块学分」构建学分结构' : '请选择一个方案',
+        practiceSegments: this.selectedProgramId ? '点击「添加实践环节」录入认识实习/顶岗实习/毕业设计等安排' : '请选择一个方案',
         graduationRequirements: this.selectedProgramId ? '点击「添加毕业要求」录入结构化条目' : '请选择一个方案',
         review: '暂无待审核方案',
-        publish: '暂无待发布/已发布方案'
+        publish: '暂无待发布/已发布方案',
+        changeStatus: '暂无已发布/启用/冻结/停用方案',
+        archive: '暂无已停用或已被取代的历史方案'
       }[this.tab] || ''
     }
   },
@@ -289,9 +388,14 @@ export default {
     this.reload()
   },
   methods: {
-    reviewStatusColor, canNewVersion,
+    reviewStatusColor, canNewVersion, availableChangeActions,
     statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
     gradCategoryLabel(c) { return GRADUATION_REQUIREMENT_CATEGORY[c] || c || '' },
+    practiceSegmentTypeLabel(t) { return PRACTICE_SEGMENT_TYPE[t] || t || '' },
+    orgModeLabel(m) { return PRACTICE_ORG_MODE[m] || m || '' },
+    archiveReasonLabel(r) { return ARCHIVE_REASON_LABEL[r] || r || '' },
+    changeActionLabel(a) { return PROGRAM_CHANGE_ACTION[a] || a || '' },
+    changeLogActionLabel(a) { return _CHANGE_LOG_ACTION_LABEL[a] || a || '' },
     switchTab(k) {
       this.tab = k
       this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
@@ -316,9 +420,12 @@ export default {
         if (this.tab === 'versions') return await this.loadVersions()
         if (this.tab === 'courseModules') return await this.loadCourseModules()
         if (this.tab === 'creditRequirements') return await this.loadCreditRequirements()
+        if (this.tab === 'practiceSegments') return await this.loadPracticeSegments()
         if (this.tab === 'graduationRequirements') return await this.loadGraduationRequirements()
         if (this.tab === 'review') return await this.loadReview()
         if (this.tab === 'publish') return await this.loadPublish()
+        if (this.tab === 'changeStatus') return await this.loadChangeStatus()
+        if (this.tab === 'archive') return await this.loadArchive()
       } finally {
         this.loading = false
       }
@@ -362,6 +469,22 @@ export default {
     },
     async loadPublish() {
       const res = await academicAffairsApi.getPrograms({ statusIn: 'PUBLISHED,ENABLED', page: 1, pageSize: 100 })
+      if (res.code === 0) this.rows = res.data.list.map((p) => ({ ...p, id: p.programId }))
+      else this.error = res.message
+    },
+    async loadPracticeSegments() {
+      if (!this.selectedProgramId) { this.rows = []; return }
+      const res = await academicAffairsApi.getPracticeSegments(this.selectedProgramId)
+      if (res.code === 0) this.rows = (res.data.items || []).map((s) => ({ ...s, id: s.segmentId }))
+      else this.error = res.message
+    },
+    async loadChangeStatus() {
+      const res = await academicAffairsApi.getPrograms({ statusIn: 'PUBLISHED,ENABLED,FROZEN,DISABLED', page: 1, pageSize: 100 })
+      if (res.code === 0) this.rows = res.data.list.map((p) => ({ ...p, id: p.programId }))
+      else this.error = res.message
+    },
+    async loadArchive() {
+      const res = await academicAffairsApi.getArchivedPrograms({ page: 1, pageSize: 100 })
       if (res.code === 0) this.rows = res.data.list.map((p) => ({ ...p, id: p.programId }))
       else this.error = res.message
     },
@@ -456,6 +579,41 @@ export default {
       else toast.error(res.message || '保存失败')
     },
 
+    // ── 实践环节（集中性实践教学环节，以周计） ──
+    openPracticeForm(row) {
+      this.practiceForm = row
+        ? { segmentId: row.segmentId, segmentName: row.segmentName, segmentType: row.segmentType,
+            openTermNo: row.openTermNo, weeks: row.weeks, credit: row.credit, orgMode: row.orgMode,
+            location: row.location, assessmentMode: row.assessmentMode, sortOrder: row.sortOrder }
+        : { segmentId: '', segmentName: '', segmentType: 'OTHER', openTermNo: null, weeks: null,
+            credit: null, orgMode: 'CENTRALIZED', location: '', assessmentMode: 'CHECK', sortOrder: 0 }
+      this.formError = ''
+      this.practiceVisible = true
+    },
+    async submitPractice() {
+      if (!this.practiceForm.segmentName) { this.formError = '实践环节名称必填'; return }
+      if (!this.practiceForm.weeks || this.practiceForm.weeks <= 0) { this.formError = '周数必须大于 0'; return }
+      this.saving = true
+      const body = {
+        segmentName: this.practiceForm.segmentName, segmentType: this.practiceForm.segmentType,
+        openTermNo: this.practiceForm.openTermNo || undefined, weeks: this.practiceForm.weeks,
+        credit: this.practiceForm.credit != null ? this.practiceForm.credit : undefined,
+        orgMode: this.practiceForm.orgMode, location: this.practiceForm.location || undefined,
+        assessmentMode: this.practiceForm.assessmentMode, sortOrder: this.practiceForm.sortOrder || 0
+      }
+      const res = this.practiceForm.segmentId
+        ? await academicAffairsApi.updatePracticeSegment(this.practiceForm.segmentId, body)
+        : await academicAffairsApi.createPracticeSegment(this.selectedProgramId, body)
+      this.saving = false
+      if (res.code === 0) { toast.success('已保存'); this.practiceVisible = false; this.reload() } else this.formError = res.message
+    },
+    confirmDeletePractice(row) {
+      this.confirmDlg = { visible: true, title: `删除实践环节「${row.segmentName}」？`, submitting: false, action: async () => {
+        const res = await academicAffairsApi.deletePracticeSegment(row.segmentId)
+        if (res.code === 0) { toast.success('已删除'); this.reload() } else toast.error(res.message)
+      } }
+    },
+
     // ── 毕业要求 ──
     openGradForm(row) {
       this.gradForm = row
@@ -522,6 +680,33 @@ export default {
       else toast.error(res.message)
     },
 
+    // ── 方案变更（状态生命周期：冻结/恢复/停用，原因必填） ──
+    openChangeAction(row, action) {
+      const label = this.changeActionLabel(action)
+      this.changeDlg = {
+        visible: true, action, row,
+        title: `${label}「${row.programName}」`,
+        type: action === 'DISABLE' ? 'danger' : (action === 'FREEZE' ? 'warning' : 'primary'),
+        confirmText: `确认${label}`, submitting: false
+      }
+    },
+    async doChangeStatus(payload) {
+      const reason = (payload && payload.reason) || ''
+      this.changeDlg.submitting = true
+      const res = await academicAffairsApi.changeProgramStatus(this.changeDlg.row.programId, this.changeDlg.action, reason)
+      this.changeDlg.submitting = false
+      if (res.code === 0) { this.changeDlg.visible = false; toast.success('已处理'); this.reload() }
+      else toast.error(res.message || '处理失败')
+    },
+    async viewChangeLog(row) {
+      this.changeLogVisible = true
+      this.changeLogRows = []
+      this.changeLogProgramName = row.programName
+      const res = await academicAffairsApi.getProgramChangeLog(row.programId)
+      if (res.code === 0) this.changeLogRows = res.data.items || []
+      else toast.error(res.message)
+    },
+
     async onConfirmDelete() {
       this.confirmDlg.submitting = true
       const action = this.confirmDlg.action
@@ -545,5 +730,8 @@ export default {
 .aapc-form { display: flex; flex-direction: column; gap: 12px; }
 .aapc-bindings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .aapc-bindings li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); }
+.aapc-changelog { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.aapc-changelog li { padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); }
+.aapc-archive-reason { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--warning-50, #fff7e6); color: var(--warning-700, #ad6800); border: 1px solid var(--warning-100, #ffe7ba); }
 .mp-link.is-danger { color: var(--danger-600, #f53f3f); }
 </style>

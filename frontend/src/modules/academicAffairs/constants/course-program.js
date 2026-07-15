@@ -25,6 +25,7 @@ export const REVIEW_STATUS = {
   ENABLED: '已启用',
   PUBLISHED: '已发布',
   RETURNED: '已退回',
+  FROZEN: '已冻结',
   DISABLED: '已停用'
 }
 
@@ -36,6 +37,7 @@ export function reviewStatusColor(status) {
     case 'DISABLED': return 'warning'
     case 'COLLEGE_REVIEW':
     case 'ACADEMIC_REVIEW': return 'primary'
+    case 'FROZEN': return 'info'
     default: return 'default'
   }
 }
@@ -67,3 +69,31 @@ export function canNewVersion(status) {
 export function canPublishBind(status) {
   return status === 'PUBLISHED' || status === 'ENABLED'
 }
+
+/** 实践环节类型（Tier1 R3：以周计的集中性实践教学环节）。 */
+export const PRACTICE_SEGMENT_TYPE = {
+  COGNITION_INTERNSHIP: '认识实习',
+  COURSE_DESIGN: '课程设计',
+  PRODUCTION_INTERNSHIP: '生产实习',
+  POST_INTERNSHIP: '顶岗实习',
+  GRADUATION_PROJECT: '毕业设计(论文)',
+  MILITARY_TRAINING: '军训',
+  SOCIAL_PRACTICE: '社会实践',
+  OTHER: '其他'
+}
+
+/** 实践环节组织方式。 */
+export const PRACTICE_ORG_MODE = { CENTRALIZED: '集中', DISTRIBUTED: '分散' }
+
+/** 方案变更（状态生命周期）可选操作文案。 */
+export const PROGRAM_CHANGE_ACTION = { FREEZE: '冻结', RESUME: '恢复', DISABLE: '停用' }
+
+/** 方案变更：当前状态可执行的生命周期操作。 */
+export function availableChangeActions(status) {
+  if (status === 'PUBLISHED' || status === 'ENABLED') return ['FREEZE', 'DISABLE']
+  if (status === 'FROZEN') return ['RESUME', 'DISABLE']
+  return []
+}
+
+/** 方案归档：归档原因文案。 */
+export const ARCHIVE_REASON_LABEL = { DISABLED: '已停用', SUPERSEDED: '已被新版本取代' }
