@@ -75,7 +75,26 @@ def _seed_fail_with_counselor(db_mode, counselor_id):
         db.add(AcademicGrade(tenant_id=TID, acad_student_id=acad.id, course_name=cn, term="2026-2027-1",
                              nature="REQUIRED", credit_value=4, score=45, pass_status="FAILED",
                              exam_type="FINAL", record_status="ACTIVE"))
-    db.commit(); db.close()
+    db.commit()
+    ids = {"student": s.id, "acad": acad.id}
+    db.close()
+    return ids
+
+
+def _messages_for(receiver_id, message_type=None):
+    """查 t_unified_message（学业预警通知落库校验用，见 _push_warning_notice）。"""
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage
+    db = get_sessionmaker()()
+    try:
+        conds = [UnifiedMessage.tenant_id == TID, UnifiedMessage.receiver_id == receiver_id,
+                 UnifiedMessage.source_module == "academic-affairs"]
+        if message_type:
+            conds.append(UnifiedMessage.message_type == message_type)
+        return db.scalars(select(UnifiedMessage).where(*conds)).all()
+    finally:
+        db.close()
 
 
 def _todo_status(counselor_id, warning_id):
@@ -107,3 +126,72 @@ def test_w3_scan_pushes_counselor_todo_then_close_done(client, db_mode):
                     json={"result": "已面谈并制定学业帮扶计划"}).json()
     assert c["code"] == 0
     assert _todo_status(9527, wid) == "DONE"
+
+
+# ═══════════ 预警通知（本轮补建 W5-三级菜单「预警通知」：t_unified_message 真实推送 + 台账页） ═══════════
+
+def test_w4_scan_pushes_notice_to_student_and_counselor(client, db_mode):
+    """预警首次生成：应各推一条 ACAD_WARNING_NEW 站内通知给学生本人（receiver_id=t_student_profile.id）
+    与责任辅导员（receiver_id=SchoolClass.counselor_id），与既有辅导员待办（test_w3）并行、互不替代。"""
+    ids = _seed_fail_with_counselor(db_mode, 9531)
+    hdr = _hdr(client, "school_admin01")
+    r = client.post(f"{BASE}/warnings/scan", headers=hdr).json()["data"]
+    assert r["created"] == 1
+    stu_msgs = _messages_for(ids["student"], "ACAD_WARNING_NEW")
+    assert len(stu_msgs) == 1
+    assert stu_msgs[0].status == "UNREAD"
+    assert "预警" in stu_msgs[0].title
+    counselor_msgs = _messages_for(9531, "ACAD_WARNING_NEW")
+    assert len(counselor_msgs) == 1
+    assert "请跟进" in counselor_msgs[0].title
+
+
+def test_w5_notifications_endpoint_lists_scoped_and_student_403(client, db_mode):
+    """GET /warnings/notifications：台账含学生名/级别/来源/接收对象/场景；学生角色 403（无 academicAffairs.* 权限）。"""
+    _seed_fail_with_counselor(db_mode, 9532)
+    hdr = _hdr(client, "school_admin01")
+    client.post(f"{BASE}/warnings/scan", headers=hdr)
+    r = client.get(f"{BASE}/warnings/notifications", headers=hdr).json()
+    assert r["code"] == 0
+    items = r["data"]["items"]
+    assert len(items) == 2  # 学生 + 辅导员各一条
+    receivers = {it["receiverType"] for it in items}
+    assert receivers == {"STUDENT", "COUNSELOR"}
+    for it in items:
+        assert it["studentName"] == "预警乙"
+        assert it["level"] in ("LOW", "MEDIUM", "HIGH")
+        assert it["scene"] == "ACAD_WARNING_NEW"
+        assert it["status"] == "UNREAD"
+    summary = client.get(f"{BASE}/warnings/notifications/summary", headers=hdr).json()["data"]
+    assert summary["total"] >= 2 and summary["unread"] >= 2
+
+    from app.core.security import create_access_token
+    stu_hdr = {"Authorization": "Bearer " + create_access_token({
+        "userId": "u-w532", "realName": "预警乙", "studentNo": "W900", "userType": "STUDENT",
+        "tid": "x", "tenantId": str(TID), "activeContextId": "ctx", "currentRoleCode": "STUDENT",
+        "clientType": "MP"})}
+    assert client.get(f"{BASE}/warnings/notifications", headers=stu_hdr).status_code == 403
+
+
+def test_w6_remind_pushes_real_notification_not_just_counter(client, db_mode):
+    """预警跟进「提醒」：不再只是计数器，需真实推送 ACAD_WARNING_REMIND 通知（修复空按钮）。"""
+    ids = _seed_fail_with_counselor(db_mode, 9533)
+    hdr = _hdr(client, "school_admin01")
+    client.post(f"{BASE}/warnings/scan", headers=hdr)
+    wid = client.get(f"{BASE}/warnings?sourceCode=EXAM_FAIL",
+                     headers=hdr).json()["data"]["items"][0]["warningId"]
+    before = len(_messages_for(ids["student"], "ACAD_WARNING_REMIND"))
+    assert before == 0
+    r = client.post(f"{BASE}/warnings/{wid}/remind", headers=hdr).json()
+    assert r["code"] == 0
+    assert r["data"]["remindCount"] == 1
+    assert r["data"]["notified"] == 2  # 学生 + 辅导员
+    after = _messages_for(ids["student"], "ACAD_WARNING_REMIND")
+    assert len(after) == 1
+    assert "再次提醒" in after[0].title
+    assert len(_messages_for(9533, "ACAD_WARNING_REMIND")) == 1
+    # 台账页 message_type 过滤应能看到两种场景
+    items = client.get(f"{BASE}/warnings/notifications?warningId={wid}",
+                       headers=hdr).json()["data"]["items"]
+    scenes = {it["scene"] for it in items}
+    assert scenes == {"ACAD_WARNING_NEW", "ACAD_WARNING_REMIND"}

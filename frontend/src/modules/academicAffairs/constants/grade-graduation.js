@@ -30,6 +30,12 @@ export function warningStatusColor(status) {
   }
 }
 
+/** 预警通知台账（academicAffairsWarningApi.notifications；与调停课/课表发布同源 t_unified_message）。 */
+export const NOTIFY_SCENE = { ACAD_WARNING_NEW: '首次生成/升级', ACAD_WARNING_REMIND: '人工提醒' }
+export const NOTIFY_RECEIVER = { STUDENT: '学生本人', COUNSELOR: '责任辅导员' }
+export const NOTIFY_STATUS = { UNREAD: '未读', READ: '已读' }
+export function notifyStatusColor(status) { return status === 'READ' ? 'default' : 'warning' }
+
 /** 毕业资格审核十项供数编码 → 中文（顺序对齐后端 _run_items）。 */
 export const GRAD_ITEM_LABEL = {
   STATUS: '学籍状态',

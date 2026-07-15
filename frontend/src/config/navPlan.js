@@ -432,7 +432,7 @@ export const NAV_PLAN = [
       I('预警规则', '/admin/academic-affairs/warnings/console?tab=rules', 'academicAffairs.warning.rule.manage'),
       I('预警跟进', '/admin/academic-affairs/warnings/console?tab=followup', 'academicAffairs.warning.handle'),
       I('预警统计', '/admin/academic-affairs/warnings/console?tab=stats', 'academicAffairs.warning.view'),
-      ...P('预警通知')
+      I('预警通知', '/admin/academic-affairs/warnings/console?tab=notify', 'academicAffairs.warning.view')
     ]),
     mod('aa-graduation-qual', '毕业资格审核', '/admin/academic-affairs/graduation', [
       I('毕业资格预审', '/admin/academic-affairs/graduation'),

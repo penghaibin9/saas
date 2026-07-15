@@ -1369,6 +1369,20 @@ def warning_summary(user=Depends(require_permission(_WARN_VIEW))):
     return success(warn_svc.warning_summary(user))
 
 
+# 注意：静态子路径必须注册在 /warnings/{warningId} 之前（同 /warnings/rules、/warnings/summary），
+# 否则 Starlette 会把 "notifications" 当作 warningId 匹配到 /warnings/{warningId}，因 int 校验失败 422。
+@router.get("/warnings/notifications", summary="预警通知台账（已推送的站内通知列表）")
+def warning_notifications(warningId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                          user=Depends(require_permission(_WARN_VIEW))):
+    items, total = warn_svc.list_notifications(user, warningId, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/warnings/notifications/summary", summary="预警通知台账统计（累计/未读/已读）")
+def warning_notifications_summary(user=Depends(require_permission(_WARN_VIEW))):
+    return success(warn_svc.notification_summary(user))
+
+
 @router.get("/warnings", summary="学业预警列表（支持来源多维筛选：挂科/学分/绩点/补考重修/毕业风险）")
 def warnings(level: Optional[str] = None, status: Optional[str] = None, sourceCode: Optional[str] = None,
              page: int = 1, pageSize: int = 20, user=Depends(require_permission(_WARN_VIEW))):

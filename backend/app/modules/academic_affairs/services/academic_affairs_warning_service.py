@@ -9,6 +9,15 @@
 
 生成的预警流入本模块自身处置闭环（分派/干预/升级/关闭/作废），旧 /api/v1/academic/warnings/*
 （academic_service.py）仍可读写同一张表，两域并存但本模块新端点是学业预警菜单的唯一主入口。
+
+「预警通知」三级模块（本轮补建）：参照调停课/课表发布通知模式（academic_affairs_schedule_change_service
+._msg / academic_affairs_schedule_service.publish），复用既有 t_unified_message（不新建表/不迁移）：
+- 预警首次生成或再扫描升级等级时，自动向学生本人 + 责任辅导员各推一条站内通知（_push_warning_notice，
+  message_type=ACAD_WARNING_NEW）；与 _push_counselor_todo（工作台待办）并行，互不替代；
+- 「预警跟进」页「提醒」按钮（remind_warning）由原先仅计数改为真实推送一条通知
+  （message_type=ACAD_WARNING_REMIND），避免空按钮；
+- list_notifications / notification_summary 供新增「预警通知」页读取推送台账，数据范围收敛口径
+  与 list_warnings 一致（经 source_biz_id 关联回 t_acad_warning.acad_student_id）。
 """
 from __future__ import annotations
 
@@ -35,6 +44,11 @@ SOURCE_LABELS = {
 }
 LEVEL_LABELS = {"HIGH": "高风险", "MEDIUM": "中风险", "LOW": "低风险"}
 STATUS_LABELS = {"PENDING_HANDLE": "待处理", "PROCESSING": "跟进中", "ESCALATED": "已升级", "CLOSED": "已关闭"}
+
+# 预警通知场景（t_unified_message.message_type 取值；见 _push_warning_notice）
+NOTICE_NEW = "ACAD_WARNING_NEW"        # 预警首次生成 / 再扫描升级等级
+NOTICE_REMIND = "ACAD_WARNING_REMIND"  # 「预警跟进」页人工提醒
+NOTICE_TYPES = (NOTICE_NEW, NOTICE_REMIND)
 
 # 规则键元数据（GET/PUT /warnings/rules；ctype=ACAD_RULE，与既有 warning_fail_threshold 同表同风格）
 RULES_META = [
@@ -104,6 +118,39 @@ def _push_counselor_todo(db, warning, assignee, student_id) -> bool:
                        title=f"学业预警待处理：{warning.reason or SOURCE_LABELS.get(warning.source_code, '学业预警')}",
                        status="PENDING"))
     return True
+
+
+def _push_warning_notice(db, warning, counselor_id, student_global_id, scene=NOTICE_NEW) -> int:
+    """向学生本人 + 责任辅导员各推一条站内通知（t_unified_message），参照调停课
+    （academic_affairs_schedule_change_service._msg）/ 课表发布（academic_affairs_schedule_service.publish）
+    的既有通知模式。与 _push_counselor_todo（辅导员工作台待办）并行、互不替代：待办驱动处置任务队列，
+    通知进消息中心与「预警通知」台账页留痕可查。
+    receiver_id 语义：学生侧＝t_student_profile.id（全平台学生身份，与移动端 token.userId 同源，
+    见 mobile_student_service._resolve_uid）；辅导员侧＝SchoolClass.counselor_id 对应的登录 user_id
+    （与调停课 _msg(db, x.applicant_id, ...) 同源）。任一方解析不到（未绑定辅导员/学生未关联全局身份）
+    则跳过该方，不臆造收件人。返回实际推送条数。"""
+    from app.models import UnifiedMessage
+    label = SOURCE_LABELS.get(warning.source_code or "", warning.source_code or "学业预警")
+    reason = warning.reason or label
+    is_remind = scene == NOTICE_REMIND
+    sent = 0
+    if student_global_id:
+        title = f"再次提醒：{label}" if is_remind else f"学业预警通知：{label}"
+        content = (f"你已被再次提醒关注「{reason}」，请尽快改善学业情况，如有疑问请主动联系辅导员或任课教师。"
+                   if is_remind else
+                   f"你被系统标记「{reason}」，请及时关注学业情况，必要时主动联系辅导员或任课教师。")
+        db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(student_global_id),
+                              source_module="academic-affairs", source_biz_id=int(warning.id),
+                              title=title, content=content, message_type=scene, status="UNREAD"))
+        sent += 1
+    if counselor_id:
+        title = f"预警再次提醒：{label}" if is_remind else f"学生{label}：请跟进"
+        content = f"「{reason}」，请及时跟进处置（预警编号 {warning.id}）。"
+        db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(counselor_id),
+                              source_module="academic-affairs", source_biz_id=int(warning.id),
+                              title=title, content=content, message_type=scene, status="UNREAD"))
+        sent += 1
+    return sent
 
 
 def mark_todos_done(db, warning_id) -> int:
@@ -183,7 +230,8 @@ def _level_for(fail_count: int) -> str:
 
 def _upsert_warning(db, asid, source_code, warn_type, level, reason, rule_code, now) -> tuple[bool, bool]:
     """按 (acad_student_id, source_code) 幂等 upsert 一条预警：已有在办（非CLOSED/VOID）则按需更新等级，
-    否则新建 + 推送责任辅导员待办。返回 (created, updated)。"""
+    否则新建 + 推送责任辅导员待办。新建 / 等级变化两种场景均向学生本人+责任辅导员推送站内通知
+    （_push_warning_notice，message_type=ACAD_WARNING_NEW；供「预警通知」页留痕）。返回 (created, updated)。"""
     from app.models import AcademicWarning
     exist = db.scalars(select(AcademicWarning).where(
         AcademicWarning.tenant_id == _tid(), AcademicWarning.acad_student_id == asid,
@@ -193,6 +241,8 @@ def _upsert_warning(db, asid, source_code, warn_type, level, reason, rule_code, 
     if exist:
         if exist.level != level:
             exist.level, exist.reason = level, reason
+            cid, sid = _counselor_of(db, asid)
+            _push_warning_notice(db, exist, cid, sid, NOTICE_NEW)
             return False, True
         return False, False
     w = AcademicWarning(tenant_id=_tid(), acad_student_id=asid, warn_type=warn_type,
@@ -200,9 +250,10 @@ def _upsert_warning(db, asid, source_code, warn_type, level, reason, rule_code, 
                         source_code=source_code, rule_code=rule_code, status="PENDING_HANDLE",
                         trigger_time=now, record_status="ACTIVE")
     db.add(w)
-    db.flush()  # 取 warning.id 以关联辅导员待办
+    db.flush()  # 取 warning.id 以关联辅导员待办 / 通知
     cid, sid = _counselor_of(db, asid)
     _push_counselor_todo(db, w, cid, sid)
+    _push_warning_notice(db, w, cid, sid, NOTICE_NEW)
     return True, False
 
 
@@ -609,12 +660,83 @@ def void_warning(user, warning_id, reason) -> dict:
 
 
 def remind_warning(user, warning_id) -> dict:
+    """预警跟进页「提醒」：不再只是计数器，真实向学生本人+责任辅导员各推一条站内通知
+    （message_type=ACAD_WARNING_REMIND），与预警首次生成的通知同源可查（见「预警通知」页）。"""
     with session() as db:
         w = _warning_or_404(db, warning_id)
         _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED" or w.record_status == "VOIDED":
             raise _conflict("预警已关闭或已作废，无法提醒")
         w.remind_count, w.version = (w.remind_count or 0) + 1, w.version + 1
-        _audit(db, "ACAD_WARNING", w.id, "REMIND", f"第 {w.remind_count} 次提醒")
+        cid, sid = _counselor_of(db, w.acad_student_id)
+        sent = _push_warning_notice(db, w, cid, sid, NOTICE_REMIND)
+        _audit(db, "ACAD_WARNING", w.id, "REMIND", f"第 {w.remind_count} 次提醒，推送通知 {sent} 条")
         db.commit()
-        return {"warningId": str(w.id), "remindCount": w.remind_count}
+        return {"warningId": str(w.id), "remindCount": w.remind_count, "notified": sent}
+
+
+# ═══════════ 预警通知台账（读侧；t_unified_message，供「预警通知」三级菜单） ═══════════
+
+def list_notifications(user, warning_id=None, page=1, page_size=20):
+    """预警通知台账列表：t_unified_message 中 source_module=academic-affairs 且
+    message_type∈{ACAD_WARNING_NEW,ACAD_WARNING_REMIND} 的推送记录，经 source_biz_id 关联回
+    t_acad_warning 还原学生/级别/来源展示信息。数据范围收敛口径与 list_warnings 一致
+    （未指定 warning_id 时按当前角色数据范围过滤）。warning_id 传入时仅看该预警下的通知
+    （预警跟进详情页可复用），且仍需落在数据范围内，否则视为不可见（空列表，不 404，避免探测）。"""
+    from app.models import AcademicStudent, AcademicWarning, UnifiedMessage
+    with session() as db:
+        join_w = and_(UnifiedMessage.source_biz_id == AcademicWarning.id,
+                      UnifiedMessage.tenant_id == AcademicWarning.tenant_id)
+        join_s = and_(AcademicStudent.id == AcademicWarning.acad_student_id,
+                      AcademicStudent.tenant_id == AcademicWarning.tenant_id)
+        conds = [UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
+                 UnifiedMessage.source_module == "academic-affairs",
+                 UnifiedMessage.message_type.in_(NOTICE_TYPES)]
+        if warning_id:
+            conds.append(UnifiedMessage.source_biz_id == int(warning_id))
+        scope_ids = _scope_acad_ids(db, user)
+        if scope_ids is not None:
+            if not scope_ids:
+                return [], 0
+            conds.append(AcademicWarning.acad_student_id.in_(scope_ids))
+        total = db.scalar(select(func.count()).select_from(UnifiedMessage)
+                          .join(AcademicWarning, join_w).where(*conds)) or 0
+        offset = (max(1, page) - 1) * page_size
+        rows = db.execute(select(UnifiedMessage, AcademicWarning, AcademicStudent)
+                          .select_from(UnifiedMessage).join(AcademicWarning, join_w)
+                          .outerjoin(AcademicStudent, join_s).where(*conds)
+                          .order_by(UnifiedMessage.id.desc()).offset(offset).limit(page_size)).all()
+        out = []
+        for m, w, a in rows:
+            receiver_is_student = bool(a and a.student_id and int(a.student_id) == int(m.receiver_id))
+            out.append({
+                "id": str(m.id), "warningId": str(w.id), "studentName": a.name if a else "",
+                "className": a.class_name if a else "", "level": w.level,
+                "sourceCode": w.source_code or "", "sourceLabel": SOURCE_LABELS.get(w.source_code or "", w.source_code or ""),
+                "receiverType": "STUDENT" if receiver_is_student else "COUNSELOR",
+                "title": m.title, "content": m.content or "", "scene": m.message_type,
+                "status": m.status, "sentAt": _iso(m.created_at), "readAt": _iso(m.read_at),
+            })
+        return out, total
+
+
+def notification_summary(user) -> dict:
+    """预警通知台账统计：累计推送 / 未读 / 已读（数据范围同 list_notifications）。"""
+    from app.models import AcademicWarning, UnifiedMessage
+    with session() as db:
+        join_w = and_(UnifiedMessage.source_biz_id == AcademicWarning.id,
+                      UnifiedMessage.tenant_id == AcademicWarning.tenant_id)
+        conds = [UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
+                 UnifiedMessage.source_module == "academic-affairs",
+                 UnifiedMessage.message_type.in_(NOTICE_TYPES)]
+        scope_ids = _scope_acad_ids(db, user)
+        if scope_ids is not None:
+            if not scope_ids:
+                return {"total": 0, "unread": 0, "read": 0}
+            conds.append(AcademicWarning.acad_student_id.in_(scope_ids))
+        rows = db.execute(select(UnifiedMessage.status, func.count()).select_from(UnifiedMessage)
+                          .join(AcademicWarning, join_w).where(*conds)
+                          .group_by(UnifiedMessage.status)).all()
+        by_status = {r[0]: r[1] for r in rows}
+        total = sum(by_status.values())
+        return {"total": total, "unread": by_status.get("UNREAD", 0), "read": by_status.get("READ", 0)}

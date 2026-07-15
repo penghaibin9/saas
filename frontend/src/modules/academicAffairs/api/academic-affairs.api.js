@@ -1106,7 +1106,10 @@ export const academicAffairsWarningApi = {
   },
   remind(warningId) {
     return call(() => request(`${BASE}/warnings/${warningId}/remind`, { method: 'POST' }))
-  }
+  },
+  /** 预警通知台账（预警生成/升级自动通知 + 「提醒」人工通知的推送记录，供「预警通知」页）。 */
+  notifications(params = {}) { return callList(`${BASE}/warnings/notifications`, params) },
+  notificationSummary() { return call(() => request(`${BASE}/warnings/notifications/summary`)) }
 }
 
 export default academicAffairsApi

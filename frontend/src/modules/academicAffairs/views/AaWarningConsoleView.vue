@@ -213,20 +213,45 @@
         <p class="mp-note">明细下钻请前往对应分类页签（挂科/学分/绩点/补考重修/毕业风险）查看名单；导出走各分类列表的教务统计域导出。</p>
       </template>
     </div>
+
+    <!-- 预警通知 -->
+    <div v-else-if="tab === 'notify'" class="mp-stack">
+      <AppInlineAlert type="info" description="预警首次生成或再扫描升级等级时，系统自动通知学生本人与责任辅导员；「预警跟进」页的「提醒」按钮会追加一条人工提醒通知。以下为推送台账（站内通知，只读）。" />
+      <LoadingState v-if="notifySummaryLoading" />
+      <div v-else class="aawc-metric-grid">
+        <div class="aawc-metric aawc-metric--total"><div class="aawc-metric__value">{{ notifySummary.total }}</div><div class="aawc-metric__label">累计已发通知</div></div>
+        <div class="aawc-metric"><div class="aawc-metric__value">{{ notifySummary.unread }}</div><div class="aawc-metric__label">未读</div></div>
+        <div class="aawc-metric"><div class="aawc-metric__value">{{ notifySummary.read }}</div><div class="aawc-metric__label">已读</div></div>
+      </div>
+      <ErrorState v-if="notifyError" :description="notifyError" @retry="loadNotifications" />
+      <LoadingState v-else-if="notifyLoading" />
+      <EmptyState v-else-if="!notifyRows.length" title="暂无预警通知" description="预警生成/升级，或在「预警跟进」页对某条预警点击「提醒」后，通知会在此留痕" />
+      <DataTable v-else :columns="notifyColumns" :rows="notifyRows" row-key="id" :pagination="notifyPagination" @page-change="onNotifyPageChange">
+        <template #cell-level="{ row }"><RiskTag :level="row.level" /></template>
+        <template #cell-receiverType="{ row }">{{ NOTIFY_RECEIVER[row.receiverType] || row.receiverType }}</template>
+        <template #cell-scene="{ row }">{{ NOTIFY_SCENE[row.scene] || row.scene }}</template>
+        <template #cell-status="{ row }"><StatusTag :type="notifyStatusColor(row.status)" :label="NOTIFY_STATUS[row.status] || row.status" dot /></template>
+      </DataTable>
+    </div>
   </ModulePageShell>
 </template>
 
 <script>
 /**
  * 学业预警 · 教务处控制台（/admin/academic-affairs/warnings/console）。
- * 9 个页签：看板 / 学分·挂科·绩点·补考重修·毕业风险（多维分类列表）/ 规则 / 跟进 / 统计。
+ * 10 个页签：看板 / 学分·挂科·绩点·补考重修·毕业风险（多维分类列表）/ 规则 / 跟进 / 统计 / 通知。
+ * 通知页只读展示 t_unified_message 推送台账（预警生成/升级自动通知 + 跟进页「提醒」人工通知，见
+ * academic_affairs_warning_service._push_warning_notice），不重复造发通知的写操作入口。
  * 「预警扫描与列表」单页（AaWarningView.vue，/admin/academic-affairs/warnings）保持不变，两页并存、数据同源（t_acad_warning）。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag as StatusTag, AppRiskTag as RiskTag, AppInlineAlert, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { academicAffairsApi, academicAffairsWarningApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { WARNING_LEVEL, WARNING_SOURCE, WARNING_STATUS, warningStatusColor } from '@/modules/academicAffairs/constants/grade-graduation'
+import {
+  WARNING_LEVEL, WARNING_SOURCE, WARNING_STATUS, warningStatusColor,
+  NOTIFY_SCENE, NOTIFY_RECEIVER, NOTIFY_STATUS, notifyStatusColor
+} from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
 
 // scanKey 对应 academicAffairsWarningApi.scan(key)：fail 历史挂 /warnings/scan，其余挂 /warnings/scan/{key}
@@ -248,7 +273,7 @@ export default {
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
-      WARNING_LEVEL, WARNING_SOURCE, WARNING_STATUS,
+      WARNING_LEVEL, WARNING_SOURCE, WARNING_STATUS, NOTIFY_SCENE, NOTIFY_RECEIVER, NOTIFY_STATUS,
       tab: 'dashboard',
       tabs: [
         { key: 'dashboard', label: '预警看板' },
@@ -259,7 +284,8 @@ export default {
         { key: 'graduation', label: '毕业风险预警' },
         { key: 'rules', label: '预警规则' },
         { key: 'followup', label: '预警跟进' },
-        { key: 'stats', label: '预警统计' }
+        { key: 'stats', label: '预警统计' },
+        { key: 'notify', label: '预警通知' }
       ],
       scanning: false, scanResult: null,
       summary: { total: 0, bySource: [], byLevel: [], byStatus: [] }, summaryLoading: true, summaryError: '',
@@ -274,6 +300,15 @@ export default {
       followColumns: [
         { key: 'studentName', title: '学生' }, { key: 'sourceLabel', title: '来源' }, { key: 'level', title: '级别' },
         { key: 'owner', title: '跟进人' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
+      ],
+      notifyRows: [], notifyLoading: false, notifyError: '',
+      notifyPagination: { page: 1, pageSize: 20, total: 0 },
+      notifySummary: { total: 0, unread: 0, read: 0 }, notifySummaryLoading: true,
+      notifyColumns: [
+        { key: 'studentName', title: '学生' }, { key: 'sourceLabel', title: '预警来源' },
+        { key: 'level', title: '级别' }, { key: 'receiverType', title: '接收对象' },
+        { key: 'title', title: '通知标题' }, { key: 'scene', title: '触发场景' },
+        { key: 'status', title: '状态' }, { key: 'sentAt', title: '发送时间' }
       ],
       rulesLoading: true, rulesError: '', rules: [], ruleEdits: {}, ruleSaving: '',
       detailVisible: false, detailLoading: false, detailError: '', detailId: '', detail: null,
@@ -329,6 +364,7 @@ export default {
       else if (this.tab === 'rules') this.loadRules()
       else if (this.tab === 'followup') { this.pagination.page = 1; this.loadFollowList() }
       else if (this.tab === 'stats') this.loadSummary()
+      else if (this.tab === 'notify') { this.notifyPagination.page = 1; this.loadNotifications(); this.loadNotifySummary() }
     },
     async loadSummary() {
       this.summaryLoading = true; this.summaryError = ''
@@ -360,6 +396,21 @@ export default {
       this.listLoading = false
     },
     onFollowPageChange(p) { this.pagination.page = p; this.loadFollowList() },
+    notifyStatusColor,
+    async loadNotifySummary() {
+      this.notifySummaryLoading = true
+      const res = await api.notificationSummary()
+      if (res.code === 0) this.notifySummary = res.data
+      this.notifySummaryLoading = false
+    },
+    async loadNotifications() {
+      this.notifyLoading = true; this.notifyError = ''
+      const res = await api.notifications({ page: this.notifyPagination.page, pageSize: this.notifyPagination.pageSize })
+      if (res.code === 0) { this.notifyRows = res.data.list; this.notifyPagination.total = res.data.total }
+      else this.notifyError = res.message
+      this.notifyLoading = false
+    },
+    onNotifyPageChange(p) { this.notifyPagination.page = p; this.loadNotifications() },
     async scanOne(key) {
       if (this.scanning) return
       this.scanning = true
@@ -421,7 +472,11 @@ export default {
     },
     async remind() {
       const res = await api.remind(this.detailId)
-      if (res.code === 0) { toast.success('已提醒'); this.reloadDetailAndList() } else toast.error(res.message)
+      if (res.code === 0) {
+        const n = res.data && res.data.notified
+        toast.success(n ? `已提醒，推送通知 ${n} 条` : '已提醒（未解析到可通知对象，请检查该生班级/辅导员绑定）')
+        this.reloadDetailAndList()
+      } else toast.error(res.message)
     },
     async submitEscalate({ reason }) {
       this.acting = true
