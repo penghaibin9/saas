@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from app.core.config import settings
 from app.core.context import current_tenant_id
 from app.core.response import success
-from app.core.permissions import require_permission
+from app.core.permissions import require_any_permission, require_permission
 from app.db.session import db_enabled, get_sessionmaker
 
 router = APIRouter()
@@ -120,6 +120,46 @@ def get_system_org_tree(user=Depends(require_permission("systemAdmin.org.view"))
         return success(rows)
     finally:
         db.close()
+
+
+@router.post("/system/org-nodes", summary="创建学院、专业或班级主数据")
+@router.put("/system/org-nodes/{node_id}", summary="更新学院、专业或班级主数据")
+def save_system_org_node(body: dict = Body(...), node_id: int | None = None,
+                         user=Depends(require_any_permission("systemAdmin.org.create", "systemAdmin.org.update",
+                                                              "systemAdmin.org.major.manage", "systemAdmin.org.class.manage"))):
+    from app.core.exceptions import AppException
+    from app.models import College, Major, SchoolClass
+    tenant_id = current_tenant_id(); node_type = str(body.get("type") or "").upper()
+    name = str(body.get("name") or "").strip(); code = str(body.get("code") or "").strip()
+    parent_id = body.get("parentId")
+    if node_type not in {"COLLEGE", "MAJOR", "CLASS"} or not name or not code:
+        raise AppException("VALIDATION_ERROR", "请填写名称、编码，并选择学院/专业/班级类型")
+    model = {"COLLEGE": College, "MAJOR": Major, "CLASS": SchoolClass}[node_type]
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(select(model).where(model.id == node_id, model.tenant_id == tenant_id,
+                                             model.is_deleted.is_(False))).first() if node_id else None
+        if node_id and row is None: raise AppException("DATA_NOT_FOUND", "组织节点不存在")
+        if not row:
+            if node_type == "COLLEGE": row = College(tenant_id=tenant_id, college_name=name, code=code, status="ACTIVE")
+            elif node_type == "MAJOR":
+                if not parent_id: raise AppException("VALIDATION_ERROR", "专业必须归属学院")
+                row = Major(tenant_id=tenant_id, college_id=int(parent_id), major_name=name, code=code, status="ACTIVE")
+            else:
+                if not parent_id: raise AppException("VALIDATION_ERROR", "班级必须归属专业")
+                row = SchoolClass(tenant_id=tenant_id, major_id=int(parent_id), class_name=name, class_code=code, status="ACTIVE")
+            db.add(row)
+        else:
+            if node_type == "COLLEGE": row.college_name = name
+            elif node_type == "MAJOR": row.major_name = name
+            else: row.class_name = name
+        db.commit(); db.refresh(row)
+        from app.services import audit_log
+        audit_log.record("ORG_NODE_SAVE", f"{node_type}:{row.id}", detail={"name": name, "code": code})
+        return success({"id": str(row.id)}, message="组织主数据已保存")
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
 
 
 @router.get("/system/roles", summary="学校预设角色与成员统计（真实库）")

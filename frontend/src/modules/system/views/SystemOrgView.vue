@@ -113,8 +113,7 @@ import { toast } from '@/utils/toast'
 const ORG_TYPES = [
   { value: 'COLLEGE', label: '学院' },
   { value: 'MAJOR', label: '专业' },
-  { value: 'CLASS', label: '班级' },
-  { value: 'DEPT', label: '部门' }
+  { value: 'CLASS', label: '班级' }
 ]
 
 export default {
@@ -202,6 +201,7 @@ export default {
       this.form = {
         open: true,
         id: node ? node.id : '',
+        parentId: parent ? parent.id : '',
         parentName: parent ? parent.name : node ? '' : '（顶级）',
         value: node ? { name: node.name, code: node.code, type: node.type } : { name: '', code: '', type: parent ? (parent.type === 'COLLEGE' ? 'MAJOR' : parent.type === 'MAJOR' ? 'CLASS' : 'DEPT') : 'COLLEGE' },
         errors: {},
@@ -214,11 +214,12 @@ export default {
       if (Object.keys(errors).length) return
       this.form.submitting = true
       const typeLabel = (ORG_TYPES.find((t) => t.value === this.form.value.type) || {}).label
-      const res = await systemApi.saveOrgNode({ id: this.form.id || undefined, ...this.form.value, typeLabel })
+      const res = await systemApi.saveOrgNode({ id: this.form.id || undefined, parentId: this.form.parentId || undefined, ...this.form.value, typeLabel })
       this.form.submitting = false
       if (res.code === 0) {
-        toast.success('组织节点已保存并留痕（演示环境不改变树结构展示）')
+        toast.success('组织节点已保存并留痕')
         this.form.open = false
+        this.load()
       } else {
         toast.error(res.message)
       }

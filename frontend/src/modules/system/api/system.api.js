@@ -630,7 +630,14 @@ export const systemApi = {
     return ok(clone(positionList))
   },
 
-  saveOrgNode(payload) {
+  async saveOrgNode(payload) {
+    try {
+      const path = payload.id ? `/system/org-nodes/${encodeURIComponent(payload.id)}` : '/system/org-nodes'
+      return ok(await request(path, { method: payload.id ? 'PUT' : 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '保存组织节点失败')
+    }
+    /* c8 ignore next */
     audit({ action: payload.id ? 'UPDATE' : 'CREATE', actionLabel: payload.id ? '编辑' : '新增', target: `组织「${payload.name}」`, summary: (payload.id ? '编辑' : '新增') + '组织节点（' + (payload.typeLabel || payload.type) + '）' })
     return ok({ ...payload, id: payload.id || 'org-n' + ++seed })
   },
