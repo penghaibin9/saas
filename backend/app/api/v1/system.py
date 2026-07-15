@@ -63,6 +63,65 @@ def _user_row(account, roles: list) -> dict:
     }
 
 
+@router.get("/system/readiness", summary="学校上线初始化检查（真实库）")
+def get_system_readiness(user=Depends(require_permission("systemAdmin.dashboard.view"))):
+    from app.models import College, Major, Role, SchoolClass, User
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        def count(model):
+            return int(db.scalar(select(func.count(model.id)).where(model.tenant_id == tenant_id,
+                         model.is_deleted.is_(False))) or 0)
+        values = {"accounts": count(User), "roles": count(Role), "colleges": count(College),
+                  "majors": count(Major), "classes": count(SchoolClass)}
+        checks = [
+            {"key": "roles", "label": "预设角色", "passed": values["roles"] >= 26,
+             "message": f"已初始化 {values['roles']} / 26 个角色"},
+            {"key": "org", "label": "组织主数据", "passed": values["colleges"] > 0,
+             "message": f"学院 {values['colleges']}，专业 {values['majors']}，班级 {values['classes']}"},
+            {"key": "accounts", "label": "师生账号", "passed": values["accounts"] > 0,
+             "message": f"已创建 {values['accounts']} 个账号（仅统一导入入口可创建）"},
+        ]
+        return success({"ready": all(item["passed"] for item in checks), "counts": values, "checks": checks})
+    finally:
+        db.close()
+
+
+@router.get("/system/org-tree", summary="学院专业班级组织树（真实库）")
+def get_system_org_tree(user=Depends(require_permission("systemAdmin.org.view"))):
+    from app.models import College, Major, SchoolClass, StudentProfile
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        colleges = db.scalars(select(College).where(College.tenant_id == tenant_id,
+                             College.is_deleted.is_(False)).order_by(College.sort_order, College.college_name)).all()
+        majors = db.scalars(select(Major).where(Major.tenant_id == tenant_id, Major.is_deleted.is_(False))).all()
+        classes = db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == tenant_id,
+                                SchoolClass.is_deleted.is_(False))).all()
+        student_counts = dict(db.execute(select(StudentProfile.class_id, func.count(StudentProfile.id)).where(
+            StudentProfile.tenant_id == tenant_id, StudentProfile.is_deleted.is_(False)).group_by(StudentProfile.class_id)).all())
+        by_college = {c.id: [] for c in colleges}; by_major = {m.id: [] for m in majors}
+        for major in majors: by_college.setdefault(major.college_id, []).append(major)
+        for school_class in classes: by_major.setdefault(school_class.major_id, []).append(school_class)
+        rows = []
+        for college in colleges:
+            major_rows = []
+            for major in by_college.get(college.id, []):
+                class_rows = [{"id": str(c.id), "code": c.class_code or "", "name": c.class_name,
+                               "type": "CLASS", "typeLabel": "班级", "memberCount": int(student_counts.get(c.id, 0)),
+                               "status": "ENABLED" if c.status == "ACTIVE" else "DISABLED", "children": []}
+                              for c in by_major.get(major.id, [])]
+                major_rows.append({"id": str(major.id), "code": major.code or "", "name": major.major_name,
+                                   "type": "MAJOR", "typeLabel": "专业", "memberCount": sum(x["memberCount"] for x in class_rows),
+                                   "status": "ENABLED" if major.status == "ACTIVE" else "DISABLED", "children": class_rows})
+            rows.append({"id": str(college.id), "code": college.code or "", "name": college.college_name,
+                         "type": "COLLEGE", "typeLabel": "学院", "memberCount": sum(x["memberCount"] for x in major_rows),
+                         "status": "ENABLED" if college.status == "ACTIVE" else "DISABLED", "children": major_rows})
+        return success(rows)
+    finally:
+        db.close()
+
+
 @router.get("/system/roles", summary="学校预设角色与成员统计（真实库）")
 def list_system_roles(
         keyword: str = "", type: str = "", status: str = "", page: int = 1, page_size: int = 50,

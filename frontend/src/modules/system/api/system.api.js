@@ -150,7 +150,21 @@ export const systemApi = {
   },
 
   getDashboardSummary() {
-    return ok(clone(dashboardSummary))
+    return withFallback('system.readiness', async () => {
+      const data = await request('/system/readiness')
+      const c = data.counts || {}
+      return ok({
+        stats: [
+          { label: '在册账号', value: String(c.accounts || 0), trend: '仅统一导入入口可创建', trendQuality: 'neutral' },
+          { label: '预设角色', value: String(c.roles || 0), trend: '标准模板自动初始化', trendQuality: c.roles >= 26 ? 'good' : 'bad' },
+          { label: '学院', value: String(c.colleges || 0), trend: `专业 ${c.majors || 0} · 班级 ${c.classes || 0}`, trendQuality: 'neutral' }
+        ],
+        todos: (data.checks || []).filter((item) => !item.passed).map((item) => ({
+          id: item.key, label: item.label, count: 1, tone: 'warning', hint: item.message, route: '/admin/system/org'
+        })),
+        securityAlerts: [], recentOps: []
+      })
+    }, () => ok(clone(dashboardSummary)))
   },
 
   /* ==================== 用户账号 ==================== */
@@ -608,7 +622,8 @@ export const systemApi = {
   /* ==================== 组织结构 ==================== */
 
   getDepartmentTree() {
-    return ok(clone(departmentTree))
+    return withFallback('system.org-tree', async () => ok(await request('/system/org-tree')),
+      () => ok(clone(departmentTree)))
   },
 
   getPositions() {

@@ -101,7 +101,6 @@ export default {
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [
-        { key: 'createUser', label: '＋ 新增用户', variant: 'primary' },
         { key: 'importUsers', label: '导入老师和学生' },
         { key: 'viewOperationLogs', label: '≡ 操作日志' }
       ]
@@ -114,7 +113,6 @@ export default {
   },
   methods: {
     onToolbar(key) {
-      if (key === 'createUser') this.$router.push('/admin/system/users?action=' + key)
       if (key === 'importUsers') this.$router.push('/admin/system/identity-import')
       if (key === 'viewOperationLogs') this.$router.push('/admin/system/logs')
     },
