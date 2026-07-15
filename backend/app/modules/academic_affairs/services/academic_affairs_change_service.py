@@ -362,11 +362,11 @@ def get_change(sc_id, user) -> dict:
 
 def list_changes(user, change_type=None, status=None, student_id=None, page=1, page_size=20):
     from app.models import AaStatusChange, StudentProfile
+    from app.modules.academic_affairs.services.academic_affairs_service import REGISTRATION_CHANGE_TYPES
     with session() as db:
         ctx = build_affairs_context(user, db)
         conds = [AaStatusChange.tenant_id == _tid(), AaStatusChange.is_deleted.is_(False),
-                 AaStatusChange.change_type != "ENROLL_REGISTER",
-                 AaStatusChange.change_type != "ANNUAL_REGISTER"]
+                 AaStatusChange.change_type.notin_(REGISTRATION_CHANGE_TYPES)]
         conds += _scope_conds(db, ctx)
         if change_type:
             conds.append(AaStatusChange.change_type == change_type)
@@ -389,11 +389,11 @@ def list_changes(user, change_type=None, status=None, student_id=None, page=1, p
 def stats(user, term_code=None) -> dict:
     """异动统计（Tier1「异动统计」）：按类型/状态/在途节点聚合，范围收敛同 list_changes。"""
     from app.models import AaStatusChange
+    from app.modules.academic_affairs.services.academic_affairs_service import REGISTRATION_CHANGE_TYPES
     with session() as db:
         ctx = build_affairs_context(user, db)
         conds = [AaStatusChange.tenant_id == _tid(), AaStatusChange.is_deleted.is_(False),
-                 AaStatusChange.change_type != "ENROLL_REGISTER",
-                 AaStatusChange.change_type != "ANNUAL_REGISTER"]
+                 AaStatusChange.change_type.notin_(REGISTRATION_CHANGE_TYPES)]
         conds += _scope_conds(db, ctx)
         if term_code:
             conds.append(AaStatusChange.term_code == term_code)

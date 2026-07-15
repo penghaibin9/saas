@@ -70,12 +70,13 @@ def transcript_my(user) -> dict:
 def status_my(user) -> dict:
     """我的学籍状态 + 我的异动记录。"""
     from app.models import AaStatusChange
+    from app.modules.academic_affairs.services.academic_affairs_service import REGISTRATION_CHANGE_TYPES
     from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
     with session() as db:
         stu = _me(db, user)
         rows = db.scalars(select(AaStatusChange).where(
             AaStatusChange.tenant_id == _tid(), AaStatusChange.student_id == stu.id,
-            AaStatusChange.change_type.notin_(["ENROLL_REGISTER", "ANNUAL_REGISTER"]),
+            AaStatusChange.change_type.notin_(REGISTRATION_CHANGE_TYPES),
             AaStatusChange.is_deleted.is_(False)).order_by(AaStatusChange.id.desc())).all()
         return {
             "studentStatus": stu.student_status, "enrolled": is_enrolled(stu.student_status),

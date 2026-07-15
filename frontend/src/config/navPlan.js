@@ -291,12 +291,17 @@ export const NAV_PLAN = [
       I('注册批次', '/admin/academic-affairs/registration'),
       I('入学注册', '/admin/academic-affairs/registration?type=ENROLL', 'academicAffairs.registration.view'),
       I('学年注册', '/admin/academic-affairs/registration?type=ANNUAL', 'academicAffairs.registration.view'),
-      ...P('学期注册'),
+      // 2026-07-16 续工三级卡：学期注册=第三种 register_type（SEMESTER），与入学/学年共用同一批次引擎/页面，
+      // 仅类型与菜单入口独立（后端 create_registration_batch 已放开校验，见 academic_affairs_service.py）。
+      I('学期注册', '/admin/academic-affairs/registration?type=SEMESTER', 'academicAffairs.registration.view'),
       I('注册资格核验', '/admin/academic-affairs/registration/workbench?tab=eligibility', 'academicAffairs.registration.eligibility.view'),
       I('未注册学生', '/admin/academic-affairs/registration/workbench?tab=unregistered', 'academicAffairs.registration.unregistered.view'),
       I('暂缓注册', '/admin/academic-affairs/registration/workbench?tab=deferral', 'academicAffairs.registration.deferral.view'),
       I('注册异常', '/admin/academic-affairs/registration/workbench?tab=exception', 'academicAffairs.registration.exception.view'),
-      ...P('注册统计', '注册归档')
+      // 注册统计=复用「教务统计」页 tab=registration（同页同接口，见下方 aa-stats 模块同一叶子）；
+      // 注册归档=新增 OPEN→CLOSED→ARCHIVED 批次只读台账+导出（workbench 第 5 个 Tab，关闭/归档动作在「注册批次」列表执行）。
+      I('注册统计', '/admin/academic-affairs/stats?tab=registration', 'academicAffairs.stats.view'),
+      I('注册归档', '/admin/academic-affairs/registration/workbench?tab=archive', 'academicAffairs.registration.archive.view')
     ]),
     mod('aa-status-change', '学籍异动', '/admin/academic-affairs/status-changes', [
       I('异动台账', '/admin/academic-affairs/status-changes'),

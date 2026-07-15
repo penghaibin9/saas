@@ -70,8 +70,8 @@ import { AppStatusTag, AppMetricCard } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 const CHANGE_TYPE_LABEL = {
-  ENROLL_REGISTER: '入学注册', ANNUAL_REGISTER: '学年注册', SUSPEND: '休学', WITHDRAW: '退学',
-  RESUME: '复学', RETAIN: '留级', TRANSFER_MAJOR: '转专业'
+  ENROLL_REGISTER: '入学注册', ANNUAL_REGISTER: '学年注册', SEMESTER_REGISTER: '学期注册',
+  SUSPEND: '休学', WITHDRAW: '退学', RESUME: '复学', RETAIN: '留级', TRANSFER_MAJOR: '转专业'
 }
 const STATUS_LABEL = {
   SUBMITTED: '待审', IN_REVIEW: '审核中', EFFECTIVE: '已生效', REJECTED: '已驳回',

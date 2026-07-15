@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="注册工作台"
-    subtitle="注册资格核验 · 未注册学生处理 · 暂缓注册审批 · 注册异常处理"
+    subtitle="注册资格核验 · 未注册学生处理 · 暂缓注册审批 · 注册异常处理 · 注册归档"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -9,7 +9,7 @@
       <button v-for="t in tabs" :key="t.key" :class="['aarw-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
-    <AppSectionCard class="aarw-batch-bar">
+    <AppSectionCard v-if="tab !== 'archive'" class="aarw-batch-bar">
       <div class="aarw-batch-row">
         <label class="aarw-batch-label">批次</label>
         <AppSelect v-model="batchId" :options="batchOptions" placeholder="选择注册批次" style="max-width:280px" @change="onBatchChange" />
@@ -61,7 +61,7 @@
           <div class="mp-cell-main">{{ row.realName }}</div>
           <div class="mp-cell-sub">{{ row.studentNo }}</div>
         </template>
-        <template #cell-registerType="{ row }">{{ row.registerType === 'ENROLL' ? '入学注册' : row.registerType === 'ANNUAL' ? '学年注册' : '—' }}</template>
+        <template #cell-registerType="{ row }">{{ regTypeLabel(row.registerType) }}</template>
         <template #cell-kind="{ row }">
           <StatusTag :type="row.kind === 'UNREGISTERED' ? 'danger' : 'warning'" :label="row.kind === 'UNREGISTERED' ? '未注册' : '逾期待扫描'" dot />
         </template>
@@ -100,7 +100,7 @@
     </div>
 
     <!-- 注册异常 -->
-    <div v-else class="mp-stack">
+    <div v-else-if="tab === 'exception'" class="mp-stack">
       <div class="aarw-toolbar">
         <AppSelect v-model="exc.status" :options="excStatusOptions" placeholder="全部状态" @change="loadExceptions" />
         <AppButton variant="ghost" size="small" @click="loadExceptions">查询</AppButton>
@@ -121,6 +121,21 @@
         <template #cell-actions="{ row }">
           <button v-if="row.status === 'OPEN'" class="mp-link" @click="askResolveException(row)">处理</button>
           <span v-else class="mp-cell-sub">{{ row.resolutionNote || '—' }}</span>
+        </template>
+      </DataTable>
+    </div>
+
+    <!-- 注册归档：OPEN→CLOSED→ARCHIVED（关闭/归档动作在「注册批次」列表操作列执行），本页只读查阅+导出 -->
+    <div v-else class="mp-stack">
+      <ErrorState v-if="archive.error" :description="archive.error" @retry="loadArchive" />
+      <LoadingState v-else-if="archive.loading" />
+      <EmptyState v-else-if="!archive.rows.length" title="暂无已归档批次" description="批次在「注册批次」列表关闭后再归档，归档后台账只读并可在此导出" />
+      <DataTable v-else :columns="archiveColumns" :rows="archive.rows" row-key="batchId" :pagination="archive.pagination" @page-change="onArchivePage">
+        <template #cell-registerType="{ row }">{{ regTypeLabel(row.registerType) }}</template>
+        <template #cell-completion="{ row }">{{ row.registered === null ? '—' : `${row.registered} / ${row.total}` }}</template>
+        <template #cell-actions="{ row }">
+          <button class="mp-link" @click="goArchiveDetail(row)">查看名单</button>
+          <button class="mp-link" @click="openArchiveExport(row)">导出</button>
         </template>
       </DataTable>
     </div>
@@ -210,6 +225,8 @@ import { toast } from '@/utils/toast'
 const ELIG_STATUS_LABEL = { PENDING: '待核验', ELIGIBLE: '合格', INELIGIBLE: '不合格' }
 const EXC_TYPE_LABEL = { IDENTITY_MISMATCH: '身份不符', UNPAID: '未缴费', MATERIAL_MISSING: '材料缺失', OTHER: '其他' }
 const DEFER_STATUS_LABEL = { PENDING: '待审', APPROVED: '已通过', REJECTED: '已驳回' }
+const REG_TYPE_LABEL = { ENROLL: '入学注册', ANNUAL: '学年注册', SEMESTER: '学期注册' }
+const REG_TYPE_SHORT = { ENROLL: '入学', ANNUAL: '学年', SEMESTER: '学期' }
 
 function emptyPage() {
   return { page: 1, pageSize: 20, total: 0 }
@@ -230,7 +247,8 @@ export default {
         { key: 'eligibility', label: '注册资格核验' },
         { key: 'unregistered', label: '未注册学生' },
         { key: 'deferral', label: '暂缓注册' },
-        { key: 'exception', label: '注册异常' }
+        { key: 'exception', label: '注册异常' },
+        { key: 'archive', label: '注册归档' }
       ],
       batches: [],
       batchId: '',
@@ -281,10 +299,18 @@ export default {
         { key: 'status', title: '状态' },
         { key: 'actions', title: '操作/结果' }
       ],
+      archiveColumns: [
+        { key: 'batchName', title: '批次名称' },
+        { key: 'registerType', title: '类型' },
+        { key: 'completion', title: '注册完成' },
+        { key: 'archivedAt', title: '归档时间' },
+        { key: 'actions', title: '操作', width: '140px' }
+      ],
       elig: { keyword: '', status: '', rows: [], loading: false, error: '', pagination: emptyPage() },
       unreg: { rows: [], loading: false, error: '', pagination: emptyPage() },
       defer: { status: '', rows: [], loading: false, error: '', pagination: emptyPage() },
       exc: { status: '', rows: [], loading: false, error: '', pagination: emptyPage() },
+      archive: { rows: [], loading: false, error: '', pagination: emptyPage() },
       eligDrawer: { visible: false, studentId: '', studentName: '', exceptionType: 'OTHER', note: '', saving: false, formError: '' },
       deferDrawer: { visible: false, studentId: '', reason: '', requestedUntil: '', saving: false, formError: '' },
       excDrawer: { visible: false, studentId: '', exceptionType: 'OTHER', description: '', saving: false, formError: '' },
@@ -295,7 +321,7 @@ export default {
   computed: {
     batchOptions() {
       return [{ label: '全部批次', value: '' }, ...this.batches.map((b) => ({
-        label: `${b.batchName}（${b.registerType === 'ENROLL' ? '入学' : '学年'}·${this.batchStatusCn(b.status)}）`, value: b.batchId
+        label: `${b.batchName}（${REG_TYPE_SHORT[b.registerType] || b.registerType}·${this.batchStatusCn(b.status)}）`, value: b.batchId
       }))]
     },
     batchHint() {
@@ -313,7 +339,10 @@ export default {
   },
   methods: {
     batchStatusCn(s) {
-      return { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已关闭' }[s] || s
+      return { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已关闭', ARCHIVED: '已归档' }[s] || s
+    },
+    regTypeLabel(t) {
+      return REG_TYPE_LABEL[t] || t || '—'
     },
     switchTab(key) {
       this.tab = key
@@ -324,14 +353,17 @@ export default {
       if (this.tab === 'eligibility') this.loadEligibility()
       else if (this.tab === 'unregistered') this.loadUnregistered()
       else if (this.tab === 'deferral') this.loadDeferrals()
-      else this.loadExceptions()
+      else if (this.tab === 'exception') this.loadExceptions()
+      else this.loadArchive()
     },
     onBatchChange() {
       this.loadCurrentTab()
     },
     async loadBatches() {
       const res = await academicAffairsApi.getRegistrationBatches({ page: 1, pageSize: 100 })
-      this.batches = res.code === 0 ? (res.data.list || []) : []
+      const list = res.code === 0 ? (res.data.list || []) : []
+      // 已归档批次只读，不进本工作台（资格核验/未注册/暂缓/异常）批次选择器；查阅走「注册归档」Tab。
+      this.batches = list.filter((b) => b.status !== 'ARCHIVED')
       if (!this.batchId) {
         const open = this.batches.find((b) => b.status === 'OPEN')
         if (open) this.batchId = open.batchId
@@ -498,6 +530,46 @@ export default {
     async resolveException(exceptionId, note) {
       const res = await academicAffairsApi.resolveRegistrationException(exceptionId, note)
       if (res.code === 0) { toast.success('已处理'); this.loadExceptions() } else toast.error(res.message || '处理失败')
+    },
+
+    /* ── 注册归档：批次在「注册批次」列表关闭→归档后进入本清单，只读+导出 ── */
+    onArchivePage(page) { this.archive.pagination.page = page; this.loadArchive() },
+    async loadArchive() {
+      this.archive.loading = true
+      this.archive.error = ''
+      const res = await academicAffairsApi.getArchivedRegistrationBatches({
+        page: this.archive.pagination.page, pageSize: this.archive.pagination.pageSize
+      })
+      if (res.code !== 0) { this.archive.error = res.message; this.archive.loading = false; return }
+      const list = res.data.list || []
+      this.archive.pagination.total = res.data.total
+      const details = await Promise.all(list.map((b) => academicAffairsApi.getRegistrationArchiveDetail(b.batchId)))
+      this.archive.rows = list.map((b, i) => {
+        const d = details[i]
+        const ok = d.code === 0
+        return { ...b, registered: ok ? d.data.stats.registered : null, total: ok ? d.data.stats.total : null,
+                 archivedAt: (ok && d.data.archivedAt) || '' }
+      })
+      this.archive.loading = false
+    },
+    goArchiveDetail(row) {
+      this.$router.push(`/admin/academic-affairs/registration/${row.batchId}`)
+    },
+    async openArchiveExport(row) {
+      const purpose = window.prompt('请填写导出用途（≥5 字，将写入审计与文件水印）：', '')
+      if (purpose === null) return
+      if (!purpose || purpose.trim().length < 5) { toast.error('导出用途必填且不少于 5 个字'); return }
+      const res = await academicAffairsApi.exportRegistrationArchive(row.batchId, purpose.trim())
+      if (res.code !== 0) { toast.error(res.message || '导出失败'); return }
+      const href = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = href
+      a.download = `注册归档-${row.batchName}-${Date.now()}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(href)
+      toast.success('导出成功')
     },
 
     /* ── 通用确认弹窗回调 ── */

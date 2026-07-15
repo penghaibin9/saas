@@ -270,6 +270,28 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/registration-batches/${batchId}/register`, { method: 'POST', body: { studentId } }))
   },
 
+  /* ── 注册归档（续工三级卡 · academicAffairs.registration.archive.*） ── */
+  closeRegistrationBatch(batchId) {
+    return call(() => request(`${BASE}/registration-batches/${batchId}/close`, { method: 'POST' }))
+  },
+  archiveRegistrationBatch(batchId) {
+    return call(() => request(`${BASE}/registration-batches/${batchId}/archive`, { method: 'POST' }))
+  },
+  getArchivedRegistrationBatches(params = {}) {
+    return callList(`${BASE}/registration/archive`, params)
+  },
+  getRegistrationArchiveDetail(batchId) {
+    return call(() => request(`${BASE}/registration/archive/${batchId}`))
+  },
+  async exportRegistrationArchive(batchId, purpose) {
+    try {
+      const blob = await requestBlob(`${BASE}/registration/archive/${batchId}/export`, { method: 'POST', body: { purpose } })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+
   /* ── 注册资格核验（Tier1 R1 · academicAffairs.registration.eligibility.*） ── */
   getRegistrationEligibility(batchId, params = {}) {
     return callList(`${BASE}/registration-batches/${batchId}/eligibility`, params)
