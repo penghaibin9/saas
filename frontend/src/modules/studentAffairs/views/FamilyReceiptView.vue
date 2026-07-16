@@ -30,11 +30,28 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 家长回执：挂 sa.family.result——该词库正是家长反馈口径
+         （家长已知晓将督促/约定每周沟通/在家表现正常/将来校面谈/未接通改短信），与本字段同义。 -->
+    <AppConfirmDialog
+      v-model:visible="recDlg.visible" :title="`登记家长回执 · ${recDlg.who}`" type="primary"
+      confirm-text="登记回执" :submitting="acting === recDlg.contactId" @confirm="submitReceipt"
+    >
+      <AppFormItem label="家长回执内容（可空）">
+        <AppTextarea ref="noteInput" v-model="recDlg.note" :rows="3" :maxlength="500"
+                     placeholder="记录家长的反馈与后续约定" />
+        <AppQuickPhrases scene-key="sa.family.result" @pick="onPickNote" />
+      </AppFormItem>
+    </AppConfirmDialog>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
+  AppQuickPhrases, AppSectionCard, AppStatusTag, AppTextarea
+} from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -43,8 +60,16 @@ const STATUS_FILTERS = [{ key: '', label: '全部' }, { key: 'PENDING', label: '
 
 export default {
   name: 'FamilyReceiptView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
-  data() { return { loading: true, acting: '', errorMessage: '', all: [], items: [], activeStatus: '', statusFilters: STATUS_FILTERS } },
+  components: {
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
+    AppQuickPhrases, AppSectionCard, AppTextarea, StatusTag: AppStatusTag
+  },
+  data() {
+    return {
+      loading: true, acting: '', errorMessage: '', all: [], items: [], activeStatus: '', statusFilters: STATUS_FILTERS,
+      recDlg: { visible: false, contactId: '', who: '', note: '' }
+    }
+  },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
@@ -73,12 +98,22 @@ export default {
       this.loading = false
     },
     setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.load() },
-    async markReceipt(c) {
-      const note = window.prompt('家长回执内容（可空）：') || ''
-      this.acting = c.contactId
-      const res = await studentAffairsApi.markFamilyReceipt(c.contactId, note)
+    markReceipt(c) {
+      this.recDlg = { visible: true, contactId: c.contactId, who: c.realName || c.studentNo || '该生', note: '' }
+    },
+    onPickNote(text) {
+      const el = this.$refs.noteInput && this.$refs.noteInput.$refs.el
+      if (!el) { this.recDlg.note += text; return }
+      const r = insertAtCursor(el, this.recDlg.note, text)
+      this.recDlg.note = r.value
+      this.$nextTick(() => applyInsertion(el, r.selStart, r.selEnd))
+    },
+    async submitReceipt() {
+      const d = this.recDlg
+      this.acting = d.contactId
+      const res = await studentAffairsApi.markFamilyReceipt(d.contactId, d.note.trim())
       this.acting = ''
-      if (res.code === 0) { toast.success('回执已登记'); this.load() } else toast.error(res.message || '登记失败')
+      if (res.code === 0) { d.visible = false; toast.success('回执已登记'); this.load() } else toast.error(res.message || '登记失败')
     },
     typeLabel(t) { return TYPE[t] || t }
   }

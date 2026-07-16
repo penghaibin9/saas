@@ -58,11 +58,20 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 驳回原因：无「志愿服务记录驳回」口径词条，不强行套其他场景的模板 -->
+    <AppConfirmDialog
+      v-model:visible="rejDlg.visible" title="驳回志愿服务记录" type="danger" confirm-text="确认驳回"
+      require-reason :reason-min-length="5" reason-label="驳回原因（≥5 字）"
+      :submitting="acting === rejDlg.recordId" @confirm="submitReject"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -73,12 +82,16 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'VolunteerRecordView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+    StatusTag: AppStatusTag
+  },
   data() {
     return {
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
-      formVisible: false, form: this.blankForm()
+      formVisible: false, form: this.blankForm(),
+      rejDlg: { visible: false, recordId: '' }
     }
   },
   computed: {
@@ -128,13 +141,13 @@ export default {
       this.acting = ''
       if (res.code === 0) { toast.success('已认定，计入志愿时长'); this.load() } else toast.error(res.message || '认定失败')
     },
-    async reject(r) {
-      const reason = window.prompt('驳回原因（至少5字）：')
-      if (!reason) return
-      this.acting = r.recordId
-      const res = await studentAffairsApi.rejectVolunteerRecord(r.recordId, reason)
+    reject(r) { this.rejDlg = { visible: true, recordId: r.recordId } },
+    async submitReject({ reason }) {
+      const d = this.rejDlg
+      this.acting = d.recordId
+      const res = await studentAffairsApi.rejectVolunteerRecord(d.recordId, reason.trim())
       this.acting = ''
-      if (res.code === 0) { toast.success('已驳回'); this.load() } else toast.error(res.message || '驳回失败')
+      if (res.code === 0) { d.visible = false; toast.success('已驳回'); this.load() } else toast.error(res.message || '驳回失败')
     },
     statusType(s) { return ({ PENDING: 'warning', CONFIRMED: 'success', REJECTED: 'danger' })[s] || 'default' }
   }

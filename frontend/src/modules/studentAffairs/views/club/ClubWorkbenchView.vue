@@ -102,11 +102,26 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <!-- 社团审核驳回 / 注销：无社团口径词条，不套用其他场景模板 -->
+    <AppConfirmDialog
+      v-model:visible="rejDlg.visible" title="驳回社团申请" type="danger" confirm-text="确认驳回"
+      require-reason :reason-min-length="5" reason-label="驳回原因（≥5 字）"
+      :submitting="acting === rejDlg.clubId" @confirm="submitReject"
+    />
+    <AppConfirmDialog
+      v-model:visible="disDlg.visible" :title="`注销社团 · ${disDlg.clubName}`" type="danger" confirm-text="确认注销"
+      require-reason :reason-min-length="5" reason-label="注销原因（≥5 字）"
+      description="注销后该社团停止活动，成员关系一并失效。原因记入台账。"
+      :submitting="acting === disDlg.clubId" @confirm="submitDisband"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -119,11 +134,16 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'ClubWorkbenchView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+    StatusTag: AppStatusTag
+  },
   data() {
     return {
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
       activeStatus: '', statusFilters: STATUS_FILTERS, TYPES, ROLES,
+      rejDlg: { visible: false, clubId: '' },
+      disDlg: { visible: false, clubId: '', clubName: '' },
       formVisible: false, form: { clubName: '', clubType: 'INTEREST', advisorName: '', error: '' },
       sel: null, members: [], reviews: [],
       memberForm: { visible: false, studentId: null, role: 'MEMBER' },
@@ -162,18 +182,31 @@ export default {
       if (res.code === 0) { toast.success('已提交待审批'); this.formVisible = false; this.load() } else m.error = res.message || '创建失败'
     },
     async review(c, action) {
-      let reason = ''
-      if (action === 'REJECT') { reason = window.prompt('驳回原因（至少5字）：') || ''; if (!reason) return }
+      if (action === 'REJECT') { this.rejDlg = { visible: true, clubId: c.clubId }; return }
       this.acting = c.clubId
-      const res = await studentAffairsApi.reviewClub(c.clubId, action, reason)
+      const res = await studentAffairsApi.reviewClub(c.clubId, action, '')
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '处理失败')
     },
-    async disband(c) {
-      const reason = window.prompt('注销原因（至少5字）：')
-      if (!reason) return
-      const res = await studentAffairsApi.disbandClub(c.clubId, reason)
-      if (res.code === 0) { toast.success('已注销'); this.load(); if (this.sel && this.sel.clubId === c.clubId) this.sel = null } else toast.error(res.message || '注销失败')
+    async submitReject({ reason }) {
+      const d = this.rejDlg
+      this.acting = d.clubId
+      const res = await studentAffairsApi.reviewClub(d.clubId, 'REJECT', reason.trim())
+      this.acting = ''
+      if (res.code === 0) { d.visible = false; toast.success('已处理'); this.load() } else toast.error(res.message || '处理失败')
+    },
+    disband(c) { this.disDlg = { visible: true, clubId: c.clubId, clubName: c.clubName || '该社团' } },
+    async submitDisband({ reason }) {
+      const d = this.disDlg
+      this.acting = d.clubId
+      const res = await studentAffairsApi.disbandClub(d.clubId, reason.trim())
+      this.acting = ''
+      if (res.code === 0) {
+        d.visible = false
+        toast.success('已注销')
+        this.load()
+        if (this.sel && this.sel.clubId === d.clubId) this.sel = null
+      } else toast.error(res.message || '注销失败')
     },
     async select(c) {
       this.sel = c; this.members = []; this.reviews = []
