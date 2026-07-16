@@ -35,6 +35,39 @@
       </DataTable>
     </div>
 
+    <!-- 自动排课 -->
+    <div v-else-if="tab === 'auto'" class="mp-stack">
+      <div class="aasg-bar">
+        <AppTextInput v-model="autoBatchId" placeholder="课表批次 ID" style="max-width:180px" />
+        <AppButton variant="ghost" size="small" :loading="autoLoading" @click="runAuto(true)">试排预览</AppButton>
+        <AppButton variant="primary" size="small" :loading="autoLoading" @click="doAuto">一键自动排课</AppButton>
+        <AppButton variant="ghost" size="small" @click="doClearAuto">清除自动排课结果</AppButton>
+      </div>
+      <AppInlineAlert type="info" :description="'自动排课只处理「已确认、已设周学时、未标记不排课」的教学任务；只占用自动排课结果，教务员手工排的课不会被覆盖。排不下的任务会给出漏排原因与处置建议。'" />
+      <template v-if="autoResult">
+        <div class="aasg-summary">
+          <span class="is-ok">已排入 {{ autoResult.placedSessions }} 节 / {{ autoResult.placedTasks }} 个任务</span>
+          <span :class="{ 'is-bad': autoResult.missedTasks }">漏排 {{ autoResult.missedTasks }} 个任务</span>
+          <span>可用教室 {{ autoResult.roomPoolSize }} 间</span>
+          <span v-if="autoResult.dryRun" class="is-warn">试排结果（未落库）</span>
+        </div>
+        <div v-if="autoMissSummary.length" class="aasg-section">
+          <div class="aasg-section-title">漏排原因分布（按此调整参数/教室/任务后再次排课）</div>
+          <div class="aasg-reasons">
+            <span v-for="s in autoMissSummary" :key="s.reason" class="aasg-reason-chip">{{ s.reasonLabel }} × {{ s.count }}</span>
+          </div>
+        </div>
+        <DataTable v-if="autoMisses.length" :columns="missColumns" :rows="autoMisses" row-key="taskId">
+          <template #cell-course="{ row }">{{ row.courseName }}<span v-if="row.className" class="aasg-sub">（{{ row.className }}）</span></template>
+          <template #cell-progress="{ row }">{{ row.placedSessions }} / {{ row.needSessions }} 节</template>
+          <template #cell-reason="{ row }"><span class="aasg-tag is-hard">{{ row.reasonLabel }}</span></template>
+          <template #cell-detail="{ row }"><span class="aasg-advice">{{ row.detail }}</span></template>
+        </DataTable>
+        <EmptyState v-else-if="!autoResult.missedTasks" title="全部排课成功" description="所有待排任务均已排入，无漏排" />
+      </template>
+      <EmptyState v-else title="尚未执行自动排课" description="填入课表批次 ID，先试排预览确认无误后再一键落库" />
+    </div>
+
     <!-- 冲突报告 -->
     <div v-else class="mp-stack">
       <div class="aasg-bar">
@@ -81,6 +114,8 @@
         <AppButton variant="primary" :loading="saving" @click="saveRule">保存</AppButton>
       </template>
     </AppDrawer>
+
+    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
   </ModulePageShell>
 </template>
 
@@ -88,25 +123,38 @@
 /** 排课管理增强（/admin/academic-affairs/scheduling）：规则中心 + 教师可用时间采纳 + 全量冲突报告。 */
 import { ModulePageShell, DataTable, StatusTag, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppFormItem, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppFormItem, AppInlineAlert, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi, academicAffairsSchedulingApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaSchedulingConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppInlineAlert, AppConfirmDialog },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
       tab: 'rules',
-      tabs: [{ key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师可用时间' }, { key: 'conflict', label: '冲突报告' }],
+      tabs: [{ key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师可用时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }],
       termId: '', rules: [], avails: [], conflictBatchId: '', conflict: null,
+      autoBatchId: '', autoResult: null, autoLoading: false,
+      confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      missColumns: [{ key: 'course', title: '课程' }, { key: 'teacherName', title: '教师' }, { key: 'progress', title: '已排/需排' }, { key: 'reason', title: '漏排原因' }, { key: 'detail', title: '处置建议' }],
       ruleColumns: [{ key: 'ruleKey', title: '规则键' }, { key: 'value', title: '值' }, { key: 'ops', title: '操作' }],
       availColumns: [{ key: 'teacherName', title: '教师' }, { key: 'slot', title: '时段' }, { key: 'reason', title: '原因' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
       ruleVisible: false, ruleForm: { ruleKey: '', termId: '', ruleValueRaw: '' }, formError: '', saving: false
     }
   },
   watch: { tab(v) { if (v === 'availability') this.loadAvails() } },
+  computed: {
+    autoMisses() { return (this.autoResult && this.autoResult.misses) || [] },
+    autoMissSummary() {
+      const m = this.autoResult && this.autoResult.misses
+      if (!m || !m.length) return []
+      const by = {}
+      m.forEach((x) => { by[x.reason] = by[x.reason] || { reason: x.reason, reasonLabel: x.reasonLabel, count: 0 }; by[x.reason].count += 1 })
+      return Object.values(by).sort((a, b) => b.count - a.count)
+    }
+  },
   async created() {
     const c = await academicAffairsApi.getContext()
     if (c.code === 0) this.ctx = c.data
@@ -154,7 +202,34 @@ export default {
       const res = await api.conflictReport(this.conflictBatchId)
       if (res.code === 0) this.conflict = res.data
       else toast.error(res.message)
-    }
+    },
+    async runAuto(dryRun) {
+      if (!this.autoBatchId) { toast.error('请填课表批次 ID'); return }
+      this.autoLoading = true
+      const res = await api.autoSchedule(this.autoBatchId, dryRun)
+      this.autoLoading = false
+      if (res.code === 0) { this.autoResult = res.data; toast.success(dryRun ? '试排完成（未落库）' : `已排入 ${res.data.placedSessions} 节`) }
+      else toast.error(res.message)
+    },
+    doAuto() {
+      if (!this.autoBatchId) { toast.error('请填课表批次 ID'); return }
+      this.confirmTitle = '自动排课'
+      this.confirmMessage = '确定要对该批次执行自动排课并落库吗？只新增自动排课结果，教务员手工排的课不受影响。'
+      this.pendingAction = () => this.runAuto(false)
+      this.confirmVisible = true
+    },
+    doClearAuto() {
+      if (!this.autoBatchId) { toast.error('请填课表批次 ID'); return }
+      this.confirmTitle = '清除自动排课结果'
+      this.confirmMessage = '确定清除该批次的全部自动排课结果吗？手工/导入排的课会保留。'
+      this.pendingAction = async () => {
+        const res = await api.clearAuto(this.autoBatchId)
+        if (res.code === 0) { toast.success(`已清除 ${res.data.cleared} 节`); this.autoResult = null }
+        else toast.error(res.message)
+      }
+      this.confirmVisible = true
+    },
+    onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
   }
 }
 </script>
@@ -175,4 +250,8 @@ export default {
 .aasg-tag.is-hard { background: #fee2e2; color: #dc2626; }
 .aasg-tag.is-soft { background: #fef3c7; color: #d97706; }
 .aasg-form { display: flex; flex-direction: column; gap: 12px; }
+.aasg-reasons { display: flex; flex-wrap: wrap; gap: 8px; }
+.aasg-reason-chip { padding: 3px 10px; border-radius: 12px; background: #fef3c7; color: #b45309; font-size: 12px; }
+.aasg-advice { color: var(--text-secondary, #64748b); font-size: 12px; }
+.aasg-sub { color: var(--text-secondary, #94a3b8); font-size: 12px; }
 </style>

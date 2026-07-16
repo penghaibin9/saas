@@ -75,7 +75,10 @@ export const NAV_PLAN = [
       I('风险预警', '/admin/data-center/risk'),
       I('专题报表', '/admin/data-center/reports')
     ]),
-    mod('wb-recent', '最近访问', null, P('最近访问'))
+    mod('wb-recent', '最近访问', null, P('最近访问')),
+    // 帮助中心：此前只能靠顶栏搜索进入，等于藏起来了。三级目录由帮助中心页自带左侧栏承载，
+    // 这里不重复列举条目（AdminHelpView 仅支持 ?topic=<id> 深链，无分段路由，列了就是假入口）。
+    mod('wb-help', '帮助中心', '/admin/help', [])
   ]),
 
   /* ═══════════ 一级②：学工中心 ═══════════ */
@@ -260,6 +263,10 @@ export const NAV_PLAN = [
       I('注册异常', '/admin/academic-affairs/registration/workbench?tab=exception', 'academicAffairs.registration.exception.view'),
       ...P('注册统计', '注册归档')
     ]),
+    mod('aa-major-split', '专业分流', '/admin/academic-affairs/major-split', [
+      I('分流批次与分配', '/admin/academic-affairs/major-split', 'academicAffairs.majorSplit.view'),
+      ...P('学生志愿填报（移动端）', '分流统计')
+    ]),
     mod('aa-status-change', '学籍异动', '/admin/academic-affairs/status-changes', [
       I('异动台账', '/admin/academic-affairs/status-changes'),
       I('发起异动', '/admin/academic-affairs/status-changes/new'),
@@ -322,9 +329,10 @@ export const NAV_PLAN = [
     mod('aa-scheduling', '排课管理', '/admin/academic-affairs/scheduling', [
       I('排课规则', '/admin/academic-affairs/scheduling?tab=rules', 'academicAffairs.schedule.view'),
       I('教师可用时间', '/admin/academic-affairs/scheduling?tab=availability', 'academicAffairs.schedule.view'),
+      I('自动排课', '/admin/academic-affairs/scheduling?tab=auto', 'academicAffairs.schedule.view'),
       I('冲突报告', '/admin/academic-affairs/scheduling?tab=conflict', 'academicAffairs.schedule.view'),
       I('人工排课工作台（课表维护）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
-      ...P('排课约束', '教室可用时间', '自动排课预留', '排课结果', '排课调整', '排课归档')
+      ...P('排课约束', '教室可用时间', '排课结果', '排课调整', '排课归档')
     ]),
     mod('aa-schedule', '课表管理', '/admin/academic-affairs/schedule', [
       I('课表批次 / 排课', '/admin/academic-affairs/schedule'),
@@ -344,12 +352,14 @@ export const NAV_PLAN = [
     mod('aa-exam', '考务管理', '/admin/academic-affairs/exam', [
       I('考务控制台（批次/课程/考场/座位/监考/巡考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),
       I('座位表/准考证/门贴打印', '/admin/academic-affairs/exam/print/seating', 'academicAffairs.exam.view'),
+      I('等级考务（四六级/普通话/技能证书）', '/admin/academic-affairs/level-exams', 'academicAffairs.levelExam.view'),
       ...P('缓考审批（并入控制台/学生小程序申请）', '考务归档')
     ]),
     mod('aa-makeup', '补考重修缓考免修', '/admin/academic-affairs/makeup', [
       I('补考批次', '/admin/academic-affairs/makeup?tab=makeup', 'academicAffairs.makeup.view'),
       I('重修审批', '/admin/academic-affairs/makeup?tab=retake', 'academicAffairs.makeup.view'),
       I('免修审批', '/admin/academic-affairs/makeup?tab=exemption', 'academicAffairs.makeup.view'),
+      I('毕业清考', '/admin/academic-affairs/makeup?tab=clearance', 'academicAffairs.makeup.view'),
       I('缓考合流', '/admin/academic-affairs/makeup?tab=deferred', 'academicAffairs.makeup.view'),
       I('重修免修申请（学生自助）', '/admin/academic-affairs/my-makeup', 'academicAffairs.retake.apply'),
       ...P('统计分析', '材料归档')
@@ -359,6 +369,7 @@ export const NAV_PLAN = [
       I('成绩录入（含暂存/提交）', '/admin/academic-affairs/grade-entry'),
       I('挂科清单', '/admin/academic-affairs/grade-fail'),
       I('学生成绩单', '/admin/academic-affairs/transcript'),
+      I('成绩认定/课程替代', '/admin/academic-affairs/grade-recognition', 'academicAffairs.gradeRecognition.view'),
       ...P('成绩导入', '成绩导出', '成绩异常', '成绩统计')
     ]),
     mod('aa-grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', [
@@ -394,6 +405,7 @@ export const NAV_PLAN = [
       I('毕业资格终审', '/admin/academic-affairs/graduation/audit-console?tab=final', 'academicAffairs.graduation.final'),
       ...P('不通过原因'),
       I('审核结果', '/admin/academic-affairs/graduation/audit-console?tab=results', 'academicAffairs.graduation.view'),
+      I('毕业证书管理', '/admin/academic-affairs/certificates', 'academicAffairs.graduationCert.view'),
       I('审核归档', '/admin/academic-affairs/graduation/audit-console?tab=archive', 'academicAffairs.graduation.manage')
     ]),
     mod('aa-textbooks', '教材管理', '/admin/academic-affairs/textbooks', [

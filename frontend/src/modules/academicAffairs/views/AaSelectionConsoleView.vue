@@ -56,6 +56,28 @@
           </div>
 
           <div class="aasel-courses-head">
+            <span>选课轮次（不建轮次 = 全程先到先得）</span>
+            <AppButton v-if="!['LOCKED','ARCHIVED'].includes(current.status)" size="small" variant="ghost" @click="openAddRound">+ 添加轮次</AppButton>
+          </div>
+          <DataTable v-if="rounds.length" :columns="roundColumns" :rows="rounds" row-key="roundId">
+            <template #cell-round="{ row }">第{{ row.roundNo }}轮 · {{ row.roundName }}</template>
+            <template #cell-mode="{ row }">
+              <StatusTag :type="row.mode === 'LOTTERY' ? 'warning' : 'primary'" :label="row.mode === 'LOTTERY' ? '抽签' : '先到先得'" dot />
+            </template>
+            <template #cell-ctrl="{ row }">{{ row.allowEnroll ? '可选' : '禁选' }} / {{ row.allowDrop ? '可退' : '禁退' }}</template>
+            <template #cell-status="{ row }">
+              <StatusTag :type="roundStatusType(row.status)" :label="roundStatusLabel(row.status)" dot />
+            </template>
+            <template #cell-ops="{ row }">
+              <button v-if="['DRAFT','CLOSED'].includes(row.status)" class="mp-link" @click="roundAction(row, 'openRound', '开启轮次')">开启</button>
+              <button v-if="row.status === 'OPEN'" class="mp-link" @click="roundAction(row, 'closeRound', '关闭轮次')">关闭</button>
+              <button v-if="row.status === 'CLOSED' && row.mode === 'LOTTERY'" class="mp-link is-danger" @click="roundAction(row, 'drawRound', '抽签摇号（一次性，不可重摇）')">摇号</button>
+            </template>
+          </DataTable>
+          <AppInlineAlert v-if="drawResult" type="success"
+                          :description="'摇号完成：中签 ' + drawResult.totalWinners + ' 人，未中签 ' + drawResult.totalLosers + ' 人（' + drawResult.courses.map(c => `${c.courseName} ${c.winners}/${c.applicants}`).join('；') + '）'" />
+
+          <div class="aasel-courses-head">
             <span>可选课程供给</span>
             <AppButton v-if="['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openAddCourse">+ 添加课程</AppButton>
           </div>
@@ -121,6 +143,26 @@
       </template>
     </AppDrawer>
 
+    <!-- 建轮次 -->
+    <AppDrawer :visible="roundVisible" title="添加选课轮次" @close="roundVisible = false">
+      <div class="aasel-form">
+        <AppFormItem label="轮次名称" required>
+          <AppTextInput v-model="roundForm.roundName" placeholder="如 第一轮预选 / 正选 / 补退选" :disabled="saving" />
+        </AppFormItem>
+        <AppFormItem label="模式" required>
+          <AppSelect v-model="roundForm.mode" :options="[{ label: '先到先得（实时占容量）', value: 'FCFS' }, { label: '抽签（志愿登记，关轮后摇号）', value: 'LOTTERY' }]" :disabled="saving" />
+        </AppFormItem>
+        <AppFormItem label="选课控制">
+          <AppSelect v-model="roundForm.ctrl" :options="[{ label: '可选可退', value: 'BOTH' }, { label: '只可选（禁退）', value: 'ENROLL_ONLY' }, { label: '只可退（补退选禁新增）', value: 'DROP_ONLY' }]" :disabled="saving" />
+        </AppFormItem>
+        <AppInlineAlert v-if="roundError" type="danger" :description="roundError" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="roundVisible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="saving" @click="submitRound">创建</AppButton>
+      </template>
+    </AppDrawer>
+
     <!-- 名单抽屉 -->
     <AppDrawer :visible="rosterVisible" :title="'选课名单 · ' + (rosterCourse ? rosterCourse.courseName : '')" @close="rosterVisible = false">
       <EmptyState v-if="!rosterRows.length" title="暂无学生" description="该课程尚无有效选课记录" />
@@ -137,7 +179,7 @@
 /** 选课管理 · 教务处控制台（/admin/academic-affairs/selection）：批次生命周期 + 课程供给 + 名单 + 统计。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
 import { academicAffairsApi, academicAffairsSelectionApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -147,8 +189,7 @@ export default {
   name: 'AaSelectionConsoleView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert
-  },
+    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -160,6 +201,12 @@ export default {
       rosterVisible: false, rosterCourse: null, rosterRows: [],
       saving: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      rounds: [], drawResult: null,
+      roundVisible: false, roundForm: { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }, roundError: '',
+      roundColumns: [
+        { key: 'round', title: '轮次' }, { key: 'mode', title: '模式' },
+        { key: 'ctrl', title: '选退控制' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
+      ],
       courseColumns: [
         { key: 'course', title: '课程' }, { key: 'fill', title: '选课情况' },
         { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
@@ -202,12 +249,47 @@ export default {
     },
     async refreshDetail() {
       if (!this.current) return
-      const [cs, st] = await Promise.all([
+      const [cs, st, rd] = await Promise.all([
         api.listCourses(this.current.batchId, { pageSize: 200 }),
-        api.batchStats(this.current.batchId)
+        api.batchStats(this.current.batchId),
+        api.listRounds(this.current.batchId)
       ])
       this.courses = cs.code === 0 ? cs.data.list : []
       this.stats = st.code === 0 ? st.data : null
+      this.rounds = rd.code === 0 ? (rd.data.items || []) : []
+    },
+    roundStatusLabel(s) { return { DRAFT: '草稿', OPEN: '进行中', CLOSED: '已关闭', DRAWN: '已摇号' }[s] || s },
+    roundStatusType(s) {
+      if (s === 'OPEN') return 'success'
+      if (s === 'DRAWN') return 'default'
+      if (s === 'CLOSED') return 'warning'
+      return 'primary'
+    },
+    openAddRound() { this.roundForm = { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }; this.roundError = ''; this.roundVisible = true },
+    async submitRound() {
+      if (!this.roundForm.roundName) { this.roundError = '轮次名称必填'; return }
+      this.saving = true
+      const res = await api.createRound(this.current.batchId, {
+        roundName: this.roundForm.roundName, mode: this.roundForm.mode,
+        allowEnroll: this.roundForm.ctrl !== 'DROP_ONLY',
+        allowDrop: this.roundForm.ctrl !== 'ENROLL_ONLY'
+      })
+      this.saving = false
+      if (res.code === 0) { toast.success('轮次已创建'); this.roundVisible = false; await this.refreshDetail() }
+      else this.roundError = res.message
+    },
+    roundAction(row, fn, label) {
+      this.confirmTitle = label
+      this.confirmMessage = `确认对「第${row.roundNo}轮 ${row.roundName}」执行「${label}」？`
+      this.pendingAction = async () => {
+        const res = await api[fn](row.roundId)
+        if (res.code === 0) {
+          toast.success(res.message || label + '成功')
+          if (fn === 'drawRound') this.drawResult = res.data
+          await this.refreshDetail()
+        } else toast.error(res.message)
+      }
+      this.confirmVisible = true
     },
     openCreate() { this.form = { batchName: '', maxCredits: 0, remark: '' }; this.formError = ''; this.createVisible = true },
     async submitCreate() {

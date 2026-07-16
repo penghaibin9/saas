@@ -129,6 +129,16 @@ export const studentApi = {
   getSelectionCourses: (batchId) => real.acadSelectionCourses(batchId),
   enrollSelection: (selectionCourseId) => real.acadSelectionEnroll(selectionCourseId),
   dropSelection: (selectionCourseId) => real.acadSelectionDrop(selectionCourseId),
-  getMySelections: (batchId) => real.acadSelectionMy(batchId)
+  getMySelections: (batchId) => real.acadSelectionMy(batchId),
+  // 成绩认定/课程替代（学生自助，对标正方 3.16/3.27）
+  getMyRecognition: () => real.acadRecognitionMy(),
+  submitRecognition: (body) => real.acadRecognitionSubmit(body),
+  // 等级考务报名（学生自助，对标正方 3.13）
+  getMyLevelExam: () => real.acadLevelExamMy(),
+  registerLevelExam: (examId) => real.acadLevelRegister(examId),
+  cancelLevelExam: (examId) => real.acadLevelCancel(examId),
+  // 专业分流志愿（学生自助）
+  getMyMajorSplit: () => real.acadMajorSplitMy(),
+  submitMajorSplit: (batchId, choices) => real.acadMajorSplitSubmit(batchId, choices)
 }
 export default studentApi

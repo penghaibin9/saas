@@ -8,7 +8,9 @@
     故本域在 `_resolve_scope` 顶层按业务口径显式归类，**不修改共享 affairs_security 的角色集**（避免影响 R1 成绩审核 scope）。
   · COLLEGE_ADMIN / COLLEGE_SA → 复用 ctx.college_ids / allowed_class_ids（本院），未配 = fail-closed（空，绝不回退全校）。
   · 其它无授权角色 → NONE（fail-closed，指标全 0，传越权 collegeId → NO_DATA_SCOPE）。
-- 4 项底层未建模块（调停课 / 选课 / 考务 / 教学资源）返回 MODULE_NOT_ENABLED 占位，不冒充数据（施工包 §1 更正、D-07）。
+- 原"4 项底层未建模块占位"已核销（2026-07-16）：调停课/选课/考务/教学资源四个 service 均已建成落库，
+  对应指标改为真实聚合（调停课按班级范围收敛；选课为全校口径，受限角色 fail-closed 置零并说明；
+  考务按学院范围收敛；教学资源为全校共享设施口径）。
 - 下钻到学生级明细写审计（STATS_DRILL_*）；证件号沿用 `_mask_id_card` 脱敏（§11）。
 """
 from __future__ import annotations
@@ -26,9 +28,6 @@ from app.services.db_service import _mask_id_card, _tid, session
 # 说明：这是「本域按业务口径的角色归类」而非新 scope 解析器；范围表解析、班级展开仍由 build_affairs_context 承担。
 _AA_TENANT_ALL_ROLES = {"ACADEMIC_ADMIN", "ACADEMIC_TEACHER"}
 
-# 未建底层模块 → 占位（不冒充数据）
-_MODULE_NOT_ENABLED = {"scheduleChange": "调停课模块未启用", "courseSelection": "选课管理模块未启用",
-                       "exam": "考务管理模块未启用", "resource": "教学资源模块（P2）未启用"}
 
 
 @dataclass
@@ -385,14 +384,99 @@ def _i_graduation(db, scope, sids) -> dict:
                 unit="%", drill="graduation")
 
 
-def _unknown(key: str, label: str, biz: str) -> dict:
-    return _ind(key, label, status="MODULE_NOT_ENABLED", message=_MODULE_NOT_ENABLED[biz])
+def _i_schedule_change(db, scope, term_id) -> dict:
+    """调停课统计：总单数 + 批准生效率（按班级范围收敛；受限角色只见本范围班级的单）。"""
+    from app.models import AaScheduleChange
+    q = select(AaScheduleChange.status).where(
+        AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False))
+    if term_id:
+        q = q.where(AaScheduleChange.term_id == int(term_id))
+    if not scope.all:
+        q = q.where(AaScheduleChange.class_id.in_(list(scope.class_ids) or [-1]))
+    statuses = [s for (s,) in db.execute(q).all()]
+    den = len(statuses)
+    num = sum(1 for s in statuses if s in ("APPROVED", "APPLIED"))
+    by = {}
+    for s in statuses:
+        by[s] = by.get(s, 0) + 1
+    return _ind("scheduleChange", "调停课统计", value=den, numerator=num, denominator=den,
+                rate=(round(num / den * 100, 2) if den else None), unit="%", drill="schedule-change",
+                groups=[{"key": k, "count": v} for k, v in sorted(by.items())])
+
+
+def _i_selection(db, scope, term_id) -> dict:
+    """选课统计：批次数 + 容量利用率（Σ已选/Σ容量）。选课批次为全校口径，
+    受限角色 fail-closed 置零并说明，不给全校数冒充本院数。"""
+    from app.models import AaSelectionBatch, AaSelectionCourse
+    if not scope.all:
+        return _ind("courseSelection", "选课统计", value=0, numerator=0, denominator=0, unit="%",
+                    drill="selection", message="选课为全校口径，受数据范围限制不展示（仅教务处可见）")
+    bq = select(AaSelectionBatch.id, AaSelectionBatch.status).where(
+        AaSelectionBatch.tenant_id == _tid(), AaSelectionBatch.is_deleted.is_(False))
+    if term_id:
+        bq = bq.where(AaSelectionBatch.term_id == int(term_id))
+    batches = db.execute(bq).all()
+    bids = [b[0] for b in batches] or [-1]
+    cap, sel = db.execute(select(
+        func.coalesce(func.sum(AaSelectionCourse.capacity), 0),
+        func.coalesce(func.sum(AaSelectionCourse.selected_count), 0)).where(
+        AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.batch_id.in_(bids),
+        AaSelectionCourse.is_deleted.is_(False))).one()
+    by = {}
+    for _bid, s in batches:
+        by[s] = by.get(s, 0) + 1
+    return _ind("courseSelection", "选课统计", value=len(batches), numerator=int(sel),
+                denominator=int(cap), rate=(round(sel / cap * 100, 2) if cap else None), unit="%",
+                drill="selection", groups=[{"key": k, "count": v} for k, v in sorted(by.items())])
+
+
+def _i_exam(db, scope, college_id, term_id) -> dict:
+    """考务统计：确认课程数 + 考场编排完成率（有 ACTIVE 考场的课程占比；按学院范围收敛）。"""
+    from app.models import AaExamBatch, AaExamCourse, AaExamRoom
+    colleges = _college_ids_scope(db, scope, college_id)
+    cq = select(AaExamCourse.id).where(
+        AaExamCourse.tenant_id == _tid(), AaExamCourse.status == "CONFIRMED",
+        AaExamCourse.is_deleted.is_(False))
+    if term_id:
+        bids = [b for (b,) in db.execute(select(AaExamBatch.id).where(
+            AaExamBatch.tenant_id == _tid(), AaExamBatch.term_id == int(term_id),
+            AaExamBatch.is_deleted.is_(False))).all()]
+        cq = cq.where(AaExamCourse.batch_id.in_(bids or [-1]))
+    if colleges is not None:
+        cq = cq.where(AaExamCourse.college_id.in_(list(colleges) or [-1]))
+    cids = [c for (c,) in db.execute(cq).all()]
+    den = len(cids)
+    arranged = {r for (r,) in db.execute(select(AaExamRoom.exam_course_id).where(
+        AaExamRoom.tenant_id == _tid(), AaExamRoom.status == "ACTIVE",
+        AaExamRoom.exam_course_id.in_(cids or [-1]),
+        AaExamRoom.is_deleted.is_(False))).all()}
+    num = len(arranged)
+    return _ind("exam", "考务统计", value=den, numerator=num, denominator=den,
+                rate=(round(num / den * 100, 2) if den else None), unit="%", drill="exam")
+
+
+def _i_resource(db, scope) -> dict:
+    """教学资源统计：可用教室数 + 待审预约数（教室为全校共享设施，全角色同口径）。"""
+    from app.models import AaClassroom, AaClassroomBooking
+    rooms = db.execute(select(AaClassroom.room_type).where(
+        AaClassroom.tenant_id == _tid(), AaClassroom.status == "AVAILABLE",
+        AaClassroom.is_deleted.is_(False))).all()
+    pending = db.execute(select(func.count()).where(
+        AaClassroomBooking.tenant_id == _tid(), AaClassroomBooking.status == "PENDING",
+        AaClassroomBooking.is_deleted.is_(False))).scalar() or 0
+    by = {}
+    for (t,) in rooms:
+        by[t or "OTHER"] = by.get(t or "OTHER", 0) + 1
+    return _ind("resource", "教学资源统计", value=len(rooms), numerator=int(pending),
+                denominator=None, unit="间", drill="classrooms",
+                groups=[{"key": k, "count": v} for k, v in sorted(by.items())],
+                message="教室为全校共享资源（含待审预约数）")
 
 
 # ═══════════ 对外聚合入口 ═══════════
 
 def overview(user: dict, term_id=None, college_id=None, major_id=None) -> dict:
-    """教务总览：11 项已就绪指标 + 4 项 UNKNOWN 占位。"""
+    """教务总览：15 项真实指标（原 4 项"模块未启用"占位已核销为真实聚合，2026-07-16）。"""
     with session() as db:
         scope = _resolve_scope(user, db)
         _validate_college_param(scope, college_id)
@@ -410,10 +494,10 @@ def overview(user: dict, term_id=None, college_id=None, major_id=None) -> dict:
             _i_makeup_retake(db, scope, acad_ids, term_id),
             _i_warning(db, scope, acad_ids),
             _i_graduation(db, scope, sids),
-            _unknown("scheduleChange", "调停课统计", "scheduleChange"),
-            _unknown("courseSelection", "选课统计", "courseSelection"),
-            _unknown("exam", "考务统计", "exam"),
-            _unknown("resource", "教学资源统计", "resource"),
+            _i_schedule_change(db, scope, term_id),
+            _i_selection(db, scope, term_id),
+            _i_exam(db, scope, college_id, term_id),
+            _i_resource(db, scope),
         ]
         return {"indicators": indicators,
                 "scope": {"all": scope.all, "role": scope.role,

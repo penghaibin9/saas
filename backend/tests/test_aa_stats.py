@@ -236,9 +236,10 @@ def test_overview_ok(client, db_mode):
     d = r["data"]
     assert len(d["indicators"]) == 15
     by_key = {i["key"]: i for i in d["indicators"]}
-    # 4 项底层未建 → MODULE_NOT_ENABLED 占位
+    # 原 4 项占位已核销（2026-07-16）：模块均已建成，指标必须是真实聚合而非"未启用"
     for k in ("scheduleChange", "courseSelection", "exam", "resource"):
-        assert by_key[k]["status"] == "MODULE_NOT_ENABLED"
+        assert by_key[k]["status"] == "OK", f"{k} 不应再返回占位"
+        assert by_key[k]["value"] is not None
     # 注册完成率：1 已注册 / 2 应注册 = 50%
     reg = by_key["registration"]
     assert reg["numerator"] == 1 and reg["denominator"] == 2 and reg["rate"] == 50.0

@@ -5,7 +5,7 @@
 所有接口鉴权；查不到本人档案返回空态（hasData=false），不 500。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Path
 
 from app.core.response import success
 from app.core.security import get_current_user
@@ -951,6 +951,44 @@ def academic_selection_drop(body: dict = Body(...), user=Depends(get_current_use
 @router.get("/academic/selection/my", summary="教务·网上选课·本人选课记录")
 def academic_selection_my(batch_id: str = None, user=Depends(get_current_user)):
     return success(aa.selection_records_my(user, batch_id))
+
+
+# ── 成绩认定/课程替代（学生自助） ──
+@router.get("/academic/recognition/my", summary="教务·我的成绩认定/课程替代申请")
+def academic_recognition_my(user=Depends(get_current_user)):
+    return success(aa.recognition_my(user))
+
+
+@router.post("/academic/recognition/submit", summary="教务·本人提交成绩认定申请")
+def academic_recognition_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.recognition_submit_my(user, body), message="认定申请已提交")
+
+
+# ── 等级考务报名（学生自助） ──
+@router.get("/academic/level-exam/my", summary="教务·考级·开放考试+我的报名")
+def academic_level_exam_my(user=Depends(get_current_user)):
+    return success(aa.level_exam_my(user))
+
+
+@router.post("/academic/level-exam/{examId}/register", summary="教务·考级·本人报名")
+def academic_level_register(examId: int = Path(...), user=Depends(get_current_user)):
+    return success(aa.level_register_my(user, examId), message="报名成功")
+
+
+@router.post("/academic/level-exam/{examId}/cancel", summary="教务·考级·取消报名")
+def academic_level_cancel(examId: int = Path(...), user=Depends(get_current_user)):
+    return success(aa.level_cancel_my(user, examId), message="已取消报名")
+
+
+# ── 专业分流志愿（学生自助） ──
+@router.get("/academic/major-split/my", summary="教务·分流·开放批次+我的志愿")
+def academic_major_split_my(user=Depends(get_current_user)):
+    return success(aa.major_split_my(user))
+
+
+@router.post("/academic/major-split/submit", summary="教务·分流·提交志愿")
+def academic_major_split_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.major_split_submit_my(user, body), message="志愿已提交")
 
 
 @router.get("/teacher/academic/grade-tasks", summary="教师·我的成绩录入任务")

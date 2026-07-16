@@ -216,6 +216,18 @@
       "style": { "navigationBarTitleText": "网上选课", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/student/academic-affairs/recognition",
+      "style": { "navigationBarTitleText": "成绩认定/课程替代", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/academic-affairs/level-exam",
+      "style": { "navigationBarTitleText": "等级考试报名", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/academic-affairs/major-split",
+      "style": { "navigationBarTitleText": "专业分流志愿", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/affairs/index",
       "style": { "navigationBarTitleText": "学工待办", "navigationStyle": "custom" }
     },

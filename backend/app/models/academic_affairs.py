@@ -283,6 +283,10 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
     total_hours: Mapped[int | None] = mapped_column(Integer, comment="计划总学时")
     start_week: Mapped[int | None] = mapped_column(Integer, comment="起始周")
     end_week: Mapped[int | None] = mapped_column(Integer, comment="结束周")
+    required_room_type: Mapped[str | None] = mapped_column(String(30),
+                                                           comment="教室类型要求(→AaClassroom.room_type)；空=不限,自动排课可用任意非专用教室。理实一体/实训课须指定 LAB/COMPUTER")
+    no_auto_schedule: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                                   comment="不参与自动排课(如顶岗实习/集中实训/校外课程),自动排课跳过且不计入漏排")
     confirm_at: Mapped[datetime | None] = mapped_column(DateTime)
     reject_reason: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_ASSIGN", index=True)
@@ -303,7 +307,7 @@ class AaScheduleBatch(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
-    """课表项（手工/导入双通道，同一冲突检测器）。EFFECTIVE/CHANGED/CANCELLED（V1 仅 EFFECTIVE）。"""
+    """课表项（手工/导入/自动排课三通道，同一冲突检测器）。EFFECTIVE/CHANGED/CANCELLED（V1 仅 EFFECTIVE）。"""
     __tablename__ = "t_aa_schedule_item"
 
     batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -320,8 +324,13 @@ class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
     end_week: Mapped[int] = mapped_column(Integer, nullable=False, default=18, comment="结束周")
     week_parity: Mapped[str] = mapped_column(String(10), nullable=False, default="ALL",
                                              comment="ALL/ODD/EVEN 全周/单周/双周")
-    classroom_text: Mapped[str | None] = mapped_column(String(100), index=True, comment="教室(V1文本)")
+    classroom_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                     comment="→ t_aa_classroom 教室字典(容量/类型校验依据)；null=仅文本无字典关联(历史/校外场地)")
+    classroom_text: Mapped[str | None] = mapped_column(String(100), index=True,
+                                                       comment="教室显示名快照(字典改名不影响历史课表)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="EFFECTIVE", index=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="MANUAL", index=True,
+                                        comment="MANUAL/IMPORT/AUTO 手工/导入/自动排课(供漏排分析与重排边界识别)")
     change_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
                                                   comment="→ t_aa_schedule_change 生成本项的调停课单(变更标记/回链)；null=原始排课")
 
@@ -415,16 +424,23 @@ class AaGraduationAuditResult(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AaClassroom(PKMixin, TenantMixin, CommonMixin, Base):
-    """教室字典（楼栋/教室/容量/类型/可用状态）。租户级基础数据；排课 UI 从本字典选择，
-    课表 t_aa_schedule_item.classroom_text 保持自由文本快照不改列（方案A，classroom_id 外键化留 backlog）。
-    唯一(tenant,building_code,room_code)。可用状态 AVAILABLE/DISABLED/MAINTENANCE。"""
+    """教室字典（楼栋/教室/容量/类型/可用状态）。租户级基础数据；排课 UI 从本字典选择。
+    唯一(tenant,building_code,room_code)。可用状态 AVAILABLE/DISABLED/MAINTENANCE。
+
+    双容量模型：capacity=上课有效座位（排课容量校验依据）；exam_seats=考试座位
+    （考务编排依据，通常小于 capacity，因需隔座）。为空时考务回退 capacity。
+    is_exclusive=专用教室，自动排课不自动占用（仅可人工指定），如录播室/校企共建实训室。
+    """
     __tablename__ = "t_aa_classroom"
 
     building_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="楼栋编码")
     building_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="楼栋名称")
     room_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="教室编号")
     room_name: Mapped[str | None] = mapped_column(String(100), comment="教室名称(可空,默认楼栋+编号)")
-    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="容量(座位数)")
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="上课有效座位数(排课容量校验依据)")
+    exam_seats: Mapped[int | None] = mapped_column(Integer, comment="考试座位数(考务编排依据,需隔座故通常<capacity;空则回退 capacity)")
+    is_exclusive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                               comment="是否专用教室(True 则自动排课跳过,仅人工可指定)")
     room_type: Mapped[str] = mapped_column(String(30), nullable=False, default="LECTURE",
                                            comment="LECTURE/MULTIMEDIA/COMPUTER/LAB/OTHER 普通/多媒体/机房/实验室/其他")
     campus_code: Mapped[str | None] = mapped_column(String(50), comment="预留多校区")
@@ -565,11 +581,195 @@ class AaSelectionRecord(PKMixin, TenantMixin, CommonMixin, Base):
     dropped_at: Mapped[datetime | None] = mapped_column(DateTime, comment="退课时间")
     adjust_reason: Mapped[str | None] = mapped_column(String(500), comment="LOCKED后教务处人工调整原因")
     re_enroll: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否复选")
+    round_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                 comment="→ t_aa_selection_round 产生本记录的轮次；null=无轮次批次(先到先得)")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="SELECTED", index=True,
-                                        comment="SELECTED/DROPPED/COURSE_CANCELLED/LOCKED")
+                                        comment="SELECTED/DROPPED/COURSE_CANCELLED/LOCKED"
+                                                "/PENDING_LOTTERY 抽签志愿待摇号/LOTTERY_LOST 未中签")
 
     __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "selection_course_id", "student_id",
                                        name="uk_aa_selection_record"),)
+
+
+class AaLevelExam(PKMixin, TenantMixin, CommonMixin, Base):
+    """等级考试（对标商业教务 5-2 等级考务：四六级/普通话/职业技能等级证书等校内组织的报名考试）。
+
+    流程：建考试(类别/等级/费用/报名窗口) → OPEN 学生报名 → 教务缴费确认 → CLOSED →
+    成绩录入(分数或 PASS/FAIL) → FINISHED。费用为登记口径（收缴走财务线下/校园缴费，本表只记确认状态）。
+    """
+    __tablename__ = "t_aa_level_exam"
+
+    exam_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="SKILL",
+                                          comment="CET 大学英语 / PUTONGHUA 普通话 / SKILL 职业技能等级 / OTHER")
+    level: Mapped[str | None] = mapped_column(String(50), comment="等级(四级/六级/二甲/中级 等)")
+    exam_date: Mapped[str | None] = mapped_column(String(20), comment="考试日期 YYYY-MM-DD")
+    fee: Mapped[float | None] = mapped_column(Numeric(8, 2), comment="报名费(元,登记口径)")
+    reg_start: Mapped[datetime | None] = mapped_column(DateTime, comment="报名开始(展示)")
+    reg_end: Mapped[datetime | None] = mapped_column(DateTime)
+    pass_line: Mapped[int | None] = mapped_column(Integer, comment="合格线(分数制考试用;空=按PASS/FAIL录)")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/OPEN/CLOSED/FINISHED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "exam_name", name="uk_aa_level_exam"),)
+
+
+class AaLevelExamReg(PKMixin, TenantMixin, CommonMixin, Base):
+    """等级考试报名（学生自助报名→教务缴费确认→成绩回填）。
+    (tenant,exam,student) 唯一；取消后可重报（复用同行）。"""
+    __tablename__ = "t_aa_level_exam_reg"
+
+    exam_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_student_profile")
+    student_no: Mapped[str | None] = mapped_column(String(50), comment="学号快照")
+    student_name: Mapped[str | None] = mapped_column(String(100), comment="姓名快照")
+    fee_status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNPAID",
+                                            comment="UNPAID/PAID 未缴/已缴(教务确认)")
+    score: Mapped[int | None] = mapped_column(Integer, comment="分数(分数制)")
+    result: Mapped[str | None] = mapped_column(String(20), comment="PASS/FAIL(录分后按合格线判或直接录)")
+    cert_no: Mapped[str | None] = mapped_column(String(100), comment="通过后取得的证书编号(选填)")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="REGISTERED", index=True,
+                                        comment="REGISTERED/CANCELLED/SCORED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "exam_id", "student_id", name="uk_aa_level_reg"),)
+
+
+class AaGraduationCertificate(PKMixin, TenantMixin, CommonMixin, Base):
+    """毕业/结业证书台账（对标商业教务 7-7 毕业证书管理：编号规则+电子注册号+批量生成+台账）。
+
+    编号 = 前缀(学校代码) + 年份 + 5位流水，批量生成时按批次内流水自增，租户内唯一。
+    从毕业审核批次捞终审结论（GRADUATED→毕业证 / COMPLETED→结业证）批量生成，幂等：
+    同学生同证书类型已有未作废证书则跳过。作废须原因≥5字留痕（补发=作废旧证+重新生成）。
+    """
+    __tablename__ = "t_aa_graduation_certificate"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_student_profile")
+    student_no: Mapped[str | None] = mapped_column(String(50), comment="学号快照")
+    student_name: Mapped[str | None] = mapped_column(String(100), comment="姓名快照")
+    audit_batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                       comment="→ t_aa_graduation_audit_batch 来源审核批次")
+    cert_type: Mapped[str] = mapped_column(String(20), nullable=False, default="GRADUATION",
+                                           comment="GRADUATION 毕业证 / COMPLETION 结业证")
+    cert_no: Mapped[str] = mapped_column(String(50), nullable=False, comment="证书编号(前缀+年份+流水)")
+    e_reg_no: Mapped[str | None] = mapped_column(String(50), comment="电子注册号")
+    issue_year: Mapped[str | None] = mapped_column(String(10), comment="签发年份")
+    issue_date: Mapped[str | None] = mapped_column(String(20), comment="签发日期 YYYY-MM-DD")
+    major_name: Mapped[str | None] = mapped_column(String(200), comment="专业名快照(打印用)")
+    void_reason: Mapped[str | None] = mapped_column(String(500), comment="作废原因")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="GENERATED", index=True,
+                                        comment="GENERATED/ISSUED/VOIDED 已生成/已发放/已作废")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "cert_no", name="uk_aa_grad_cert_no"),)
+
+
+class AaGradeRecognition(PKMixin, TenantMixin, CommonMixin, Base):
+    """成绩认定/课程替代（对标商业教务 6-2：转专业/转学学生用原修课程成绩替代现计划课程）。
+
+    流程：申请(学生自助或教务代录) → 教务审核 → 通过即写 t_acad_grade(source=RECOGNIZED，
+    课程名=目标计划课程，分数/学分=原课程) 并刷新学生台账聚合。驳回留原因。
+    幂等约束：同学生同目标课程仅一条在途/通过记录。
+    """
+    __tablename__ = "t_aa_grade_recognition"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_student_profile")
+    student_no: Mapped[str | None] = mapped_column(String(50), comment="学号快照")
+    student_name: Mapped[str | None] = mapped_column(String(100), comment="姓名快照")
+    source_course_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="原修课程名")
+    source_score: Mapped[int | None] = mapped_column(Integer, comment="原成绩(百分制)")
+    source_credit: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="原学分")
+    source_origin: Mapped[str | None] = mapped_column(String(300), comment="来源说明(原专业/原学校/证书等)")
+    target_course_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                         comment="→ t_aa_course 目标校内课程(选择器,对标正方选择校内课程);空=仅文本")
+    target_course_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="替代的现计划课程名(快照)")
+    attachment_file_ids: Mapped[str | None] = mapped_column(String(500),
+                                                            comment="佐证附件 file_id 列表 JSON(→t_file_object,对标正方*附件)")
+    reason: Mapped[str | None] = mapped_column(String(500), comment="申请理由")
+    review_reason: Mapped[str | None] = mapped_column(String(500), comment="审核意见/驳回原因")
+    reviewed_by: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    acad_grade_id: Mapped[int | None] = mapped_column(BigInteger, comment="通过后写入的 t_acad_grade 行回链")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/APPROVED/REJECTED")
+
+
+class AaMajorSplitBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """专业分流批次（对标商业教务的大类招生分流：志愿采集→按绩点排序分配→人工调剂→确认写学籍）。
+
+    分配规则 GPA_FIRST：按学业台账绩点降序（同分按学号稳定序）逐个学生按志愿顺序匹配首个有余量
+    专业——即"分数优先、遵循志愿"，确定性可复核。状态机 DRAFT(配专业)→OPEN(填志愿)→CLOSED→
+    ALLOCATED(可人工调剂)→CONFIRMED(写 StudentProfile.major_id + 审计，终态)。
+    """
+    __tablename__ = "t_aa_major_split_batch"
+
+    batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    grade: Mapped[str] = mapped_column(String(20), nullable=False, comment="分流年级(如 2024)")
+    source_major_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                        comment="大类源专业；空=该年级全部学生可报")
+    max_choices: Mapped[int] = mapped_column(Integer, nullable=False, default=3, comment="志愿数上限")
+    volunteer_start: Mapped[datetime | None] = mapped_column(DateTime, comment="志愿开放时间(展示)")
+    volunteer_end: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/OPEN/CLOSED/ALLOCATED/CONFIRMED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_name", name="uk_aa_major_split_batch"),)
+
+
+class AaMajorSplitOption(PKMixin, TenantMixin, CommonMixin, Base):
+    """分流批次可选专业 + 容量（allocated_count 由分配/调剂维护）。"""
+    __tablename__ = "t_aa_major_split_option"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    major_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    major_name: Mapped[str | None] = mapped_column(String(200), comment="专业名快照")
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    allocated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "major_id", name="uk_aa_split_option"),)
+
+
+class AaMajorSplitVolunteer(PKMixin, TenantMixin, CommonMixin, Base):
+    """学生分流志愿（choices_json=志愿序 majorId 数组；结果含中签专业与第几志愿）。
+    PENDING 已提交待分配 / ALLOCATED 已分配 / UNALLOCATED 志愿全满未分配(待调剂) / CONFIRMED 已确认写学籍。"""
+    __tablename__ = "t_aa_major_split_volunteer"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_student_profile")
+    student_no: Mapped[str | None] = mapped_column(String(50), comment="学号快照")
+    student_name: Mapped[str | None] = mapped_column(String(100), comment="姓名快照")
+    choices_json: Mapped[str | None] = mapped_column(String(500), comment="志愿序 majorId 数组 JSON")
+    gpa_snapshot: Mapped[float | None] = mapped_column(Numeric(4, 2), comment="分配时绩点快照(排序依据,留痕)")
+    result_major_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    result_choice_rank: Mapped[int | None] = mapped_column(Integer, comment="录取的是第几志愿(1起);调剂=0")
+    adjust_reason: Mapped[str | None] = mapped_column(String(500), comment="人工调剂原因")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
+                                        comment="PENDING/ALLOCATED/UNALLOCATED/CONFIRMED")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "student_id", name="uk_aa_split_volunteer"),)
+
+
+class AaSelectionRound(PKMixin, TenantMixin, CommonMixin, Base):
+    """选课轮次（对标商业教务的多轮次选课：预选抽签→正选先到先得→补退选）。
+
+    mode：FCFS 先到先得（实时 CAS 扣容量）/ LOTTERY 抽签（志愿登记不占容量，关轮后统一摇号）。
+    allow_enroll/allow_drop 两布尔位表达"可选可退/只可选/只可退"三态控制。
+    同批次同一时刻至多一个 OPEN 轮次；无轮次的批次保持既有先到先得行为不变。
+    LOTTERY 摇号为确定性算法（按记录id+轮次id派生序），同输入同输出可复核。
+    """
+    __tablename__ = "t_aa_selection_round"
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    round_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="轮次序号")
+    round_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="如 第一轮预选/正选/补退选")
+    mode: Mapped[str] = mapped_column(String(20), nullable=False, default="FCFS",
+                                      comment="FCFS 先到先得 / LOTTERY 抽签")
+    start_at: Mapped[datetime | None] = mapped_column(DateTime, comment="计划开始(展示用,开关以 status 为准)")
+    end_at: Mapped[datetime | None] = mapped_column(DateTime, comment="计划结束(展示用)")
+    allow_enroll: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="本轮可选课")
+    allow_drop: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="本轮可退课")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/OPEN/CLOSED/DRAWN(仅LOTTERY终态)")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "round_no", name="uk_aa_selection_round"),)
 
 
 # ═══════════ 考务管理组（13B-SM-10；批次6态+课程3态+考场/座位/监考/巡考/异常+缓考8态四级审批）═══════════
@@ -615,7 +815,9 @@ class AaExamCourse(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AaExamRoom(PKMixin, TenantMixin, CommonMixin, Base):
-    """考场（classroom_id P2 可空 + classroom_text V1 兜底）。seat_mode SEQUENTIAL/RANDOM。"""
+    """考场（classroom_id 关联教室字典，classroom_text 文本兜底）。
+    seat_mode SEQUENTIAL 按学号 / RANDOM 随机 / SPACED 隔座（奇数座位号，实际容纳减半）。
+    source MANUAL 手工 / AUTO 自动排考——自动重排只清 AUTO 考场，人工编排不动。"""
     __tablename__ = "t_aa_exam_room"
 
     exam_course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -625,7 +827,9 @@ class AaExamRoom(PKMixin, TenantMixin, CommonMixin, Base):
     capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     planned_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     seat_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="SEQUENTIAL",
-                                           comment="SEQUENTIAL 按学号 / RANDOM 随机")
+                                           comment="SEQUENTIAL 按学号 / RANDOM 随机 / SPACED 隔座")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="MANUAL", index=True,
+                                        comment="MANUAL/AUTO 手工/自动排考")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", comment="ACTIVE/VOIDED")
 
     __table_args__ = (UniqueConstraint("tenant_id", "exam_course_id", "room_seq", name="uk_aa_exam_room"),)
@@ -747,6 +951,10 @@ class AaMakeupBatch(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_makeup_batch"
 
     batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="MAKEUP", index=True,
+                                      comment="MAKEUP 常规补考 / CLEARANCE 毕业清考(应届最后机会,自动圈定未通过课程)")
+    target_grades: Mapped[str | None] = mapped_column(String(200),
+                                                      comment="清考限定年级(逗号分隔,如 2022,2023)；MAKEUP 批次为空")
     term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     term_code: Mapped[str | None] = mapped_column(String(50))
     exam_batch_ref: Mapped[int | None] = mapped_column(BigInteger, comment="→ t_aa_exam_batch 关联考务批次")

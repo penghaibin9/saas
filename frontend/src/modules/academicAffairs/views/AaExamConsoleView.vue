@@ -36,6 +36,7 @@
               <AppButton v-if="current.status === 'DRAFT'" size="small" variant="ghost" @click="openAddCourse">+ 圈课</AppButton>
               <AppButton v-if="current.status === 'DRAFT'" size="small" variant="primary" @click="lc('confirmBatchCourses', '推进(课程确认完成)')">推进</AppButton>
               <AppButton v-if="['COURSE_CONFIRMED','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openPatrol">巡考安排</AppButton>
+              <AppButton v-if="current.status === 'COURSE_CONFIRMED'" size="small" variant="ghost" :loading="autoArranging" @click="doAutoArrange">自动排考</AppButton>
               <AppButton v-if="current.status === 'COURSE_CONFIRMED'" size="small" variant="primary" @click="lc('publishBatch', '发布')">发布</AppButton>
               <AppButton v-if="current.status === 'PUBLISHED'" size="small" variant="warning" @click="lc('finishBatch', '结束考试')">结束</AppButton>
               <AppButton v-if="current.status === 'FINISHED'" size="small" variant="ghost" @click="lc('archiveBatch', '归档')">归档</AppButton>
@@ -48,6 +49,24 @@
             <span :class="{ 'is-warn': stats.absentCount }">缺考 {{ stats.absentCount }}</span>
             <span :class="{ 'is-warn': stats.violationCount }">违纪 {{ stats.violationCount }}</span>
           </div>
+
+          <template v-if="autoResult && autoResult.batchId === String(current.batchId)">
+            <AppInlineAlert
+              v-if="autoResult.misses && autoResult.misses.length"
+              type="warning"
+              :description="'自动排考漏排 ' + autoResult.misses.length + ' 门：' + autoResult.misses.map(m => `${m.courseName}（${m.reasonLabel}——${m.detail}）`).join('；')"
+            />
+            <AppInlineAlert
+              v-if="autoResult.invigilatorGaps && autoResult.invigilatorGaps.length"
+              type="warning"
+              :description="'监考缺口 ' + autoResult.invigilatorGaps.length + ' 处：' + autoResult.invigilatorGaps.map(g => `${g.courseName} 考场${g.roomSeq}（需 ${g.needed} 实配 ${g.assigned}）`).join('；') + '，请在考场编排中手工补指'"
+            />
+            <AppInlineAlert
+              v-if="(!autoResult.misses || !autoResult.misses.length) && (!autoResult.invigilatorGaps || !autoResult.invigilatorGaps.length)"
+              type="success"
+              :description="'自动排考完成：编排 ' + autoResult.arrangedCourses + ' 门课程，无漏排、无监考缺口'"
+            />
+          </template>
 
           <div class="aaexam-section-title">考试课程</div>
           <EmptyState v-if="!courses.length" title="未圈定课程" description="从教学任务圈定考试课程" />
@@ -181,6 +200,7 @@ export default {
       arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomText: '', capacity: 50 },
       patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '',
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      autoArranging: false, autoResult: null,
       courseColumns: [
         { key: 'course', title: '课程/班级' }, { key: 'schedule', title: '考试时间' },
         { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
@@ -289,6 +309,22 @@ export default {
         const r = await api.listPatrols(this.current.batchId)
         this.patrols = r.code === 0 ? (r.data.items || []) : []
       } else this.patrolError = res.message
+    },
+    doAutoArrange() {
+      if (!this.current) return
+      this.confirmTitle = '自动排考'
+      this.confirmMessage = `确认对批次「${this.current.batchName}」执行自动排考？将按考生数自动切考场、铺座位、配监考；已有考场的课程会跳过，人工编排不受影响。`
+      this.pendingAction = async () => {
+        this.autoArranging = true
+        const res = await api.autoArrange(this.current.batchId)
+        this.autoArranging = false
+        if (res.code === 0) {
+          this.autoResult = res.data
+          toast.success(`已编排 ${res.data.arrangedCourses} 门，跳过 ${res.data.skippedCourses} 门，漏排 ${res.data.missedCourses} 门`)
+          await this.refresh()
+        } else toast.error(res.message)
+      }
+      this.confirmVisible = true
     },
     onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
   }

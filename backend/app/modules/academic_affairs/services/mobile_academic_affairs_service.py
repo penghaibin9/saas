@@ -210,6 +210,61 @@ def selection_records_my(user, batch_id=None):
     return sel.my_selections(user, batch_id)
 
 
+# ═══════════ 成绩认定/课程替代（学生自助，对标正方 3.16/3.27）═══════════
+
+def recognition_my(user):
+    """我的成绩认定/课程替代申请记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_recognition_service as recog
+    return {"items": recog.my(user)}
+
+
+def recognition_submit_my(user, body) -> dict:
+    """学生本人提交成绩认定申请（校外课程→校内计划课程）。"""
+    from app.modules.academic_affairs.services import academic_affairs_recognition_service as recog
+    b = body or {}
+    if not (b.get("sourceCourseName") and b.get("targetCourseName")):
+        raise AppException("VALIDATION_ERROR", "原课程与目标课程必填")
+    return recog.submit(user, _ns(b))
+
+
+# ═══════════ 等级考务报名（学生自助，对标正方 3.13 考级项目报名）═══════════
+
+def level_exam_my(user):
+    """考级:可报名的开放考试 + 我的报名记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_level_exam_service as lv
+    opens, _ = lv.list_exams(user, status="OPEN", page=1, page_size=50)
+    return {"openExams": opens, "myRegs": lv.my_regs(user)}
+
+
+def level_register_my(user, exam_id) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_level_exam_service as lv
+    return lv.student_register(user, exam_id)
+
+
+def level_cancel_my(user, exam_id) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_level_exam_service as lv
+    return lv.student_cancel(user, exam_id)
+
+
+# ═══════════ 专业分流志愿(学生自助,对标正方转专业/分流) ═══════════
+
+def major_split_my(user):
+    """分流:开放中的分流批次(含可选专业) + 我的志愿与录取结果。"""
+    from app.modules.academic_affairs.services import academic_affairs_major_split_service as ms
+    return {"openBatches": ms.student_open_batches(user), "myVolunteers": ms.my_volunteer(user)}
+
+
+def major_split_submit_my(user, body) -> dict:
+    """学生提交/修改分流志愿。"""
+    from app.modules.academic_affairs.services import academic_affairs_major_split_service as ms
+    b = body or {}
+    batch_id = b.get("batchId")
+    choices = b.get("choices") or []
+    if not batch_id or not choices:
+        raise AppException("VALIDATION_ERROR", "批次与志愿必填")
+    return ms.submit_volunteer(user, batch_id, choices)
+
+
 # ═══════════ 教师端·成绩录入（移动端简版：仅本人授课任务） ═══════════
 
 def teacher_grade_tasks(user, status=None):

@@ -295,6 +295,49 @@ def college_review(task_id, user, action, reason="") -> dict:
         return {"gradeTaskId": str(t.id), "status": t.status}
 
 
+def _course_point(score) -> float:
+    """百分制课程绩点：≥60 → (成绩-50)/10（60→1.0，100→5.0），<60 → 0。
+    高校百分制绩点的通行映射（designSource=project_rule；各校如有自定义档位，后续参数化）。"""
+    s = float(score or 0)
+    return round((s - 50) / 10, 2) if s >= 60 else 0.0
+
+
+def _refresh_aggregates(db, a) -> None:
+    """刷新学生学业台账四项汇总（均分/未通过门数/已得学分/绩点）。
+
+    口径（对齐商业教务系统的学分绩点计算）：
+    - 同课程多条记录（重修/补考回写）按"取最高分"去重，只计一条——
+      否则重修学生的学分会算两遍、挂科记录洗不掉；
+    - failed_count = "最优记录仍不及格"的课程数（即至今未通过的课程数，供学业预警）；
+    - GPA = Σ(课程绩点×学分) / Σ学分（学分加权）；全部课程零学分时退化为绩点简单平均。
+    """
+    from app.models import AcademicGrade
+    all_g = db.scalars(select(AcademicGrade).where(
+        AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
+        AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))).all()
+    best = {}
+    for x in all_g:
+        key = (x.course_name or "").strip() or f"__id_{x.id}"
+        cur = best.get(key)
+        if cur is None or (x.score or -1) > (cur.score or -1) or \
+                ((x.score or -1) == (cur.score or -1) and x.id > cur.id):
+            best[key] = x
+    rows = list(best.values())
+    scored = [x for x in rows if x.score is not None]
+    a.avg_score = round(sum(x.score for x in scored) / len(scored)) if scored else 0
+    a.failed_count = sum(1 for x in rows if x.pass_status in ("FAIL", "FAILED"))
+    a.obtained_credits = sum(float(x.credit_value or 0) for x in rows if x.pass_status == "PASSED")
+    if scored:
+        total_credit = sum(float(x.credit_value or 0) for x in scored)
+        if total_credit > 0:
+            a.gpa = round(sum(_course_point(x.score) * float(x.credit_value or 0)
+                              for x in scored) / total_credit, 2)
+        else:
+            a.gpa = round(sum(_course_point(x.score) for x in scored) / len(scored), 2)
+    else:
+        a.gpa = 0
+
+
 def publish_grades(task_id, user) -> dict:
     """教务处终审发布：合成总评原子回写 t_acad_grade + 刷新学生台账 + 预警扫描 + 不及格生成 RISK_ALERT。"""
     _require_review_role(user)
@@ -326,14 +369,7 @@ def publish_grades(task_id, user) -> dict:
             r.acad_grade_id = g.id
             r.source = "PUBLISH"
             projected += 1
-            all_g = db.scalars(select(AcademicGrade).where(
-                AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
-                AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))).all()
-            scored = [x for x in all_g if x.score is not None]
-            a.avg_score = round(sum(x.score for x in scored) / len(scored)) if scored else 0
-            a.failed_count = sum(1 for x in all_g if x.pass_status == "FAILED")
-            a.obtained_credits = sum(float(x.credit_value or 0) for x in all_g if x.pass_status == "PASSED")
-            a.gpa = round(sum((x.score or 0) / 100 * 4 for x in scored) / len(scored), 2) if scored else 0
+            _refresh_aggregates(db, a)
             if r.pass_status == "FAILED":
                 fail_count += 1
                 dup = db.scalars(select(AffairsRiskRecord).where(

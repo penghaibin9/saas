@@ -27,6 +27,10 @@ const layoutRoute = {
     { path: 'registration', name: 'aa-registration', component: () => import('@/modules/academicAffairs/views/AaRegistrationBatchListView.vue'), meta: meta('academicAffairs.registration.view', '注册管理') },
     { path: 'registration/workbench', name: 'aa-registration-workbench', component: () => import('@/modules/academicAffairs/views/AaRegistrationWorkbenchView.vue'), meta: meta('academicAffairs.registration.eligibility.view', '注册工作台') },
     { path: 'registration/:batchId', name: 'aa-registration-detail', component: () => import('@/modules/academicAffairs/views/AaRegistrationDetailView.vue'), meta: meta('academicAffairs.registration.view', '注册名单') },
+    { path: 'major-split', name: 'aa-major-split', component: () => import('@/modules/academicAffairs/views/AaMajorSplitView.vue'), meta: meta('academicAffairs.majorSplit.view', '专业分流') },
+    { path: 'level-exams', name: 'aa-level-exams', component: () => import('@/modules/academicAffairs/views/AaLevelExamView.vue'), meta: meta('academicAffairs.levelExam.view', '等级考务') },
+    { path: 'certificates', name: 'aa-certificates', component: () => import('@/modules/academicAffairs/views/AaCertificateView.vue'), meta: meta('academicAffairs.graduationCert.view', '毕业证书管理') },
+    { path: 'grade-recognition', name: 'aa-grade-recognition', component: () => import('@/modules/academicAffairs/views/AaGradeRecognitionView.vue'), meta: meta('academicAffairs.gradeRecognition.view', '成绩认定') },
     { path: 'status-changes', name: 'aa-status-changes', component: () => import('@/modules/academicAffairs/views/AaStatusChangeListView.vue'), meta: meta('academicAffairs.statusChange.view', '学籍异动') },
     { path: 'status-changes/new', name: 'aa-status-change-new', component: () => import('@/modules/academicAffairs/views/AaStatusChangeFormView.vue'), meta: meta('academicAffairs.statusChange.manage', '发起异动') },
     // ── Tier1 R1：分类申请入口（休学/复学/退学/转专业，共用 AaStatusChangeTypedListView + changeType meta） ──
