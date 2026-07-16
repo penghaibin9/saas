@@ -4,18 +4,20 @@ import { guard } from '../platform/permissionGuard'
 const routes = [
   { path: '/login', name: 'login', meta: { public: true }, component: () => import('../views/login/LoginView.vue') },
   {
-    path: '/portal',
+    // history base 已经是 /portal/，业务路由不再重复写 portal 前缀。
+    path: '/',
     component: () => import('../layouts/PortalLayout.vue'),
     children: [
-      { path: '', redirect: '/portal/home' },
+      { path: '', redirect: '/home' },
       { path: 'home', name: 'home', component: () => import('../views/home/HomeView.vue') },
       { path: 'not-enabled', name: 'not-enabled', component: () => import('../components/NotEnabledView.vue') },
       { path: 'module-disabled/:module', name: 'module-disabled', component: () => import('../components/ModuleDisabledView.vue') },
+      // 毕设是学生端的重流程模块，使用专用工作台而非通用数据模板页。
+      { path: 'graduation', name: 'graduation-workbench', component: () => import('../views/graduation/GraduationWorkbenchView.vue') },
       { path: ':module', name: 'module', component: () => import('../views/template/ModuleTemplateView.vue') }
     ]
   },
-  { path: '/', redirect: '/portal/home' },
-  { path: '/:pathMatch(.*)*', redirect: '/portal/home' }
+  { path: '/:pathMatch(.*)*', redirect: '/home' }
 ]
 
 // history base 取自 Vite base（默认 /portal/，可 VITE_BASE 覆盖），刷新子路由不 404（配合 nginx try_files）

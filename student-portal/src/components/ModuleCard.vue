@@ -9,6 +9,6 @@
 defineProps({
   title: { type: String, default: '' },
   icon: { type: String, default: '📦' },
-  to: { type: String, default: '/portal/home' }
+  to: { type: String, default: '/home' }
 })
 </script>

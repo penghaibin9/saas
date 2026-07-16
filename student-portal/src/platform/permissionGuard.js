@@ -28,11 +28,12 @@ export async function guard(to, from, next) {
     return next({ name: 'not-enabled' })
   }
 
-  // 模块门禁
-  if (to.name === 'module') {
-    const m = moduleByPath(to.params.module)
+  // 模块门禁：毕业设计有专用工作台路由，也必须与通用模块页一样受配置开关控制。
+  const modulePath = to.name === 'graduation-workbench' ? 'graduation' : (to.name === 'module' ? to.params.module : '')
+  if (modulePath) {
+    const m = moduleByPath(modulePath)
     if (!m || !cfg.isModuleEnabled(m.key)) {
-      return next({ name: 'module-disabled', params: { module: to.params.module } })
+      return next({ name: 'module-disabled', params: { module: modulePath } })
     }
   }
   return next()

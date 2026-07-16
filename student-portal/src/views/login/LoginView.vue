@@ -62,7 +62,7 @@ async function doLogin() {
     cfg.reset()
     await cfg.load()
     const redirect = route.query.redirect
-    router.replace(typeof redirect === 'string' ? redirect : '/portal/home')
+    router.replace(typeof redirect === 'string' ? redirect : '/home')
   } catch (e) {
     error.value = e?.notStudent ? '请使用学生账号登录学生门户' : (e?.message || '登录失败')
   } finally {

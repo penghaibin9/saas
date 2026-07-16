@@ -8,6 +8,6 @@ export function buildMenu(config) {
     key: m.key,
     title: m.title,
     icon: m.icon,
-    to: m.path === 'home' ? '/portal/home' : `/portal/${m.path}`
+    to: m.path === 'home' ? '/home' : `/${m.path}`
   }))
 }
