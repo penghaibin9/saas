@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     TEST_DATABASE_URL: str = "mysql+pymysql://saas_user:@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4"
     JWT_SECRET_KEY: str = ""            # 优先级高于 JWT_SECRET；生产必须改
     JWT_ALGORITHM: str = ""             # 优先级高于 JWT_ALG
+    # 强敏感字段静态加密密钥（家庭经济收入/负债、手机号等 _encrypted 列，Fernet urlsafe-base64
+    # 32 字节）。此为开发默认值，生产必须经 .env / 环境变量覆盖为独立密钥且妥善保管——
+    # 密钥一旦轮换，此前密文将无法解密（需先用旧密钥读出、用新密钥重新写入）。
+    FIELD_ENCRYPTION_KEY: str = "jxd5OL3YvyF335hh52bntwYmmA7ZJ_BXWxyZt4CcGd4="
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120  # legacy 配置名；正式令牌统一读取 JWT_EXPIRES_IN
     UPLOAD_DIR: str = "./uploads"       # 文件落点：local 后端的存储根 / cos 后端的临时·缓存根
     EXPORT_DIR: str = "./exports"       # 就绪探针与异步导出工作目录；生产应挂持久化目录
@@ -170,6 +174,11 @@ class Settings(BaseSettings):
     def sandbox_auto_reset(self) -> bool:
         """沙箱是否启用每晚自动重置（默认关闭；需 DB_ENABLED）。"""
         return (self.SANDBOX_AUTO_RESET or "").strip().lower() not in ("false", "0", "no", "off")
+
+
+    @property
+    def field_encryption_key(self) -> str:
+        return self.FIELD_ENCRYPTION_KEY
 
     @property
     def jwt_secret(self) -> str:

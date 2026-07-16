@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.field_crypto import decrypt_field, encrypt_field
 from app.services.db_service import _iso, _tid, audit_insert, session
 
 LEVELS = {"SPECIAL": "特别困难", "DIFFICULT": "困难", "GENERAL": "一般困难"}
@@ -252,7 +253,7 @@ def _mask_family(fe) -> dict:
         return {}
     tags = json.loads(fe.special_flags_json) if fe.special_flags_json else []
     return {
-        "annualIncomeRange": _income_range(fe.income_encrypted),
+        "annualIncomeRange": _income_range(decrypt_field(fe.income_encrypted)),
         "memberCount": fe.member_count or 0,
         "specialTags": tags,
         "detailMasked": True,
@@ -265,7 +266,7 @@ def _reveal_family(fe) -> dict:
     tags = json.loads(fe.special_flags_json) if fe.special_flags_json else []
     members = json.loads(fe.family_members_json) if fe.family_members_json else []
     return {
-        "annualIncome": fe.income_encrypted, "debt": fe.debt_encrypted,
+        "annualIncome": decrypt_field(fe.income_encrypted), "debt": decrypt_field(fe.debt_encrypted),
         "memberCount": fe.member_count or 0, "familyMembers": members,
         "specialTags": tags, "detailMasked": False,
     }
@@ -393,8 +394,8 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         fe = AidFamilyEconomy(
             tenant_id=_tid(), apply_id=x.id, student_id=student_id,
             member_count=getattr(body, "memberCount", None),
-            income_encrypted=str(getattr(body, "annualIncome", "") or ""),
-            debt_encrypted=str(getattr(body, "debt", "") or ""),
+            income_encrypted=encrypt_field(getattr(body, "annualIncome", None)),
+            debt_encrypted=encrypt_field(getattr(body, "debt", None)),
             family_members_json=json.dumps(getattr(body, "familyMembers", []) or [], ensure_ascii=False),
             special_flags_json=json.dumps(getattr(body, "specialTags", []) or [], ensure_ascii=False))
         db.add(fe)

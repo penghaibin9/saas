@@ -13,6 +13,7 @@ pypdf>=5.0,<7.0
 reportlab>=4.0,<5.0
 openpyxl>=3.1,<4.0
 PyJWT>=2.8,<3.0
+cryptography>=42.0,<47.0
 # 多实例共享鉴权缓存、限流、短时业务缓存；未配置 REDIS_URL 时代码安全回退本机内存/数据库。
 redis[hiredis]>=5.0,<7.0
 # 对象存储（腾讯云 COS）：仅 FILE_STORAGE_BACKEND=cos 时需要，延迟导入，本地模式不依赖

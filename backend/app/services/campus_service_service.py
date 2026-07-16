@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.field_crypto import decrypt_field, encrypt_field
 from app.models import (CsAuditTrail, CsDiscipline, CsDormException, CsDormRecord, CsGrant, CsLeave,
                         CsMentalRecord, CsServiceStudent, CsWorkOrder)
 from app.services.db_service import _iso, _mask_id_card, _mask_phone, _tid, session
@@ -116,7 +117,7 @@ def _stu_row(s: CsServiceStudent) -> dict:
     return {"id": str(s.id), "studentId": str(s.student_id or s.id), "name": s.name,
             "studentNo": s.student_no or "", "gender": s.gender or "", "collegeName": s.college_name or "",
             "majorName": s.major_name or "", "classId": s.class_id or "", "className": s.class_name or "",
-            "grade": s.grade or "", "phone": _mask_phone(s.phone_encrypted),
+            "grade": s.grade or "", "phone": _mask_phone(decrypt_field(s.phone_encrypted)),
             "idCard": _mask_id_card(s.id_card_encrypted), "counselor": s.counselor or "",
             "building": s.building or "", "room": s.room or "",
             "careLevel": s.care_level, "careLevelLabel": L_CARE.get(s.care_level, s.care_level),
@@ -176,7 +177,7 @@ def create_student(body: dict) -> dict:
                              class_id=body.get("classId"), class_name=body.get("className"),
                              care_level=body.get("careLevel") or "NORMAL", room=body.get("room"),
                              building=body.get("building"), counselor=body.get("counselor"),
-                             phone_encrypted=body.get("phone"), record_status="ACTIVE")
+                             phone_encrypted=encrypt_field(body.get("phone")), record_status="ACTIVE")
         db.add(s)
         db.flush()
         _audit(db, "RECORD", s.id, "新增服务记录", f"{name}（{no}）")
