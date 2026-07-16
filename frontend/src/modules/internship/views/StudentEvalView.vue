@@ -68,6 +68,7 @@
                 <div class="cmt">
                   <AppFormItem label="指导教师意见" required>
                     <AppTextarea v-model="cmtForm.advisorOpinion" :rows="3" placeholder="对学生实习表现的鉴定意见" />
+                    <AppQuickFilterChips class="cmt__chips" :options="ADVISOR_EVAL_COMMENT" multiple :model-value="[]" size="compact" @change="onPickAdvisorChip" />
                   </AppFormItem>
                   <AppFormItem label="企业导师意见（可选，如实转录）">
                     <AppTextarea v-model="cmtForm.mentorOpinion" :rows="3" placeholder="企业导师评语（可由企业填写或代填后请企业核对）" />
@@ -112,7 +113,7 @@ import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { studentEvalApi } from '@/modules/internship/api/student-eval.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
-import { ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL } from '@/modules/internship/constants/presetPrompts'
+import { ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL, ADVISOR_EVAL_COMMENT } from '@/modules/internship/constants/presetPrompts'
 
 /* 右栏只渲染 /internship/student-evals/{id} 真实返回字段（见 internship_student_eval_service._row + _full + get_eval） */
 const DETAIL = [
@@ -135,7 +136,7 @@ export default {
     AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTextarea, AppFormItem, AppPagination },
   data() {
     return {
-      ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL,
+      ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL, ADVISOR_EVAL_COMMENT,
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       keyword: '', statusFilter: 'PENDING', statusOptions: STATUS_OPTIONS,
       selectedId: '', doneHint: false,
@@ -194,6 +195,12 @@ export default {
       if (!text) return
       const cur = (this.cmtForm.mentorOpinion || '').trim()
       this.cmtForm.mentorOpinion = cur ? cur + '；' + text : text
+    },
+    onPickAdvisorChip(vals) {
+      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+      if (!text) return
+      const cur = (this.cmtForm.advisorOpinion || '').trim()
+      this.cmtForm.advisorOpinion = cur ? cur + '；' + text : text
     },
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
     exportFn() { return studentEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter }) },
