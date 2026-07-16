@@ -136,6 +136,7 @@ export default {
         checkin: '/pages/teacher/internship-review/index',
         makeup: '/pages/teacher/internship-approval/index',
         leave: '/pages/teacher/internship-approval/index?tab=leave',
+        guidance: '/pages/teacher/internship-guidance/index',
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         follow: '/pages/teacher/employment-follow/index',

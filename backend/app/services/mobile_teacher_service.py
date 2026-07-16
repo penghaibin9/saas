@@ -1135,6 +1135,27 @@ def leave_review(user: dict, leave_id: str, action: str, comment: str | None = N
     return result
 
 
+def internship_my_students(user: dict) -> dict:
+    """指导教师·本人指导实习学生名单（复用 PC 实习学生列表的 owner+数据范围收敛，供移动端选择记指导记录用）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    items, total = internship_service.list_internship_students(1, 100, user=u)
+    return {"list": items, "total": total}
+
+
+def internship_guidance_create(user: dict, body: dict) -> dict:
+    """指导记录·移动端新增（线上/电话等指导留痕，owner 校验在服务层完成，可联动转风险/通知辅导员）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实记录")
+    from app.modules.internship.services import internship_guidance_service as guide_svc
+    result = guide_svc.create(u, body or {})
+    _audit_write("MOBILE_INTERNSHIP_GUIDANCE_CREATE", f"internship-guidance:{result.get('id')}",
+                 {"operator": u.get("realName"), "internshipId": (body or {}).get("internshipId")})
+    return result
+
+
 def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)

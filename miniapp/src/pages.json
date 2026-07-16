@@ -320,6 +320,10 @@
       "style": { "navigationBarTitleText": "实习审批", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/internship-guidance/index",
+      "style": { "navigationBarTitleText": "新增指导记录", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

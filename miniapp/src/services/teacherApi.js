@@ -131,6 +131,9 @@ export const teacherApi = {
   // 实习请假审批：待处理队列 + APPROVE/REJECT（owner+范围校验，真实接口，无 mock 兜底）
   getLeavePending: () => real.teacherLeavePending(),
   reviewLeave: (leaveId, action, comment) => real.teacherLeaveReview(leaveId, action, comment),
+  // 指导记录：本人指导学生名单 + 新增记录（owner 校验，真实接口，无 mock 兜底）
+  getInternshipMyStudents: () => real.teacherInternshipMyStudents(),
+  createInternshipGuidance: (body) => real.teacherInternshipGuidanceCreate(body),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

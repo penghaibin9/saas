@@ -161,6 +161,11 @@ export const teacherLeaveReview = (leaveId, action, comment) =>
   realRequest(`/mobile/teacher/internship/leaves/${leaveId}/review`,
     { method: 'POST', data: { action, comment: comment || '' } })
 
+/** 指导教师·本人指导实习学生名单（供新增指导记录选学生用） / 新增指导记录（owner 校验，真实接口，无 mock 兜底） */
+export const teacherInternshipMyStudents = () => realRequest('/mobile/teacher/internship/my-students')
+export const teacherInternshipGuidanceCreate = (body) =>
+  realRequest('/mobile/teacher/internship/guidance', { method: 'POST', data: body })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

@@ -709,6 +709,16 @@ def teacher_leave_review(leave_id: str, body: dict = Body(...),
                                     body.get("comment") or ""), message="处理完成")
 
 
+@router.get("/teacher/internship/my-students", summary="指导教师·本人指导实习学生名单（范围校验，供选择记指导记录）")
+def teacher_internship_my_students(user=Depends(get_current_user)):
+    return success(tea.internship_my_students(user))
+
+
+@router.post("/teacher/internship/guidance", summary="指导教师·新增指导记录（owner 校验，可联动转风险/通知辅导员）")
+def teacher_internship_guidance_create(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.internship_guidance_create(user, body), message="指导记录已保存")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):
