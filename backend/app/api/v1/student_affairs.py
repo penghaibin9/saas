@@ -168,6 +168,7 @@ class LeaveApply(BaseModel):
 
 class ReasonBody(BaseModel):
     reason: str = Field(..., min_length=1)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class CommentBody(BaseModel):
@@ -265,12 +266,12 @@ def leave_approve(body: CommentBody = CommentBody(), leaveId: int = Path(...), u
 
 @router.post("/leave/{leaveId}/reject", summary="请假驳回（原因≥5字，终态）")
 def leave_reject(body: ReasonBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.approve"))):
-    return success(leave_svc.reject(leaveId, user, body.reason), message="已驳回")
+    return success(leave_svc.reject(leaveId, user, body.reason, body.version), message="已驳回")
 
 
 @router.post("/leave/{leaveId}/return", summary="请假退回重提（原因≥5字）")
 def leave_return(body: ReasonBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.approve"))):
-    return success(leave_svc.return_leave(leaveId, user, body.reason), message="已退回")
+    return success(leave_svc.return_leave(leaveId, user, body.reason, body.version), message="已退回")
 
 
 @router.post("/leave/{leaveId}/resubmit", summary="退回后重新提交")
@@ -623,6 +624,7 @@ def funding_stats(user=Depends(require_permission("studentAffairs.stats.view")))
 class DisbursementIssueBody(BaseModel):
     disburseNo: Optional[str] = None
     bankLast4: Optional[str] = None
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.get("/funding/disbursements", summary="资助发放台账（金额按角色脱敏，不含卡全号）")
@@ -648,7 +650,8 @@ def funding_disbursement_issue(body: DisbursementIssueBody, disbursementId: int 
 @router.post("/funding/disbursements/{disbursementId}/fail", summary="标记发放失败（原因≥5字）")
 def funding_disbursement_fail(body: ReasonBody, disbursementId: int = Path(...),
                               user=Depends(require_permission("studentAffairs.funding.disburse.manage"))):
-    return success(funding_svc.fail_disbursement(disbursementId, user, body.reason or ""), message="已置失败")
+    return success(funding_svc.fail_disbursement(disbursementId, user, body.reason or "", body.version),
+                   message="已置失败")
 
 
 @router.get("/funding/disbursements/stats", summary="发放概览（按状态计数，授权角色见已发放金额合计）")
@@ -1448,7 +1451,9 @@ class ActivityTransitionBody(BaseModel):
     action: str = Field(..., description="ENROLL_CLOSE/START/FINISH")
 
 
-class ReasonBody(BaseModel):
+class ReasonOptionalBody(BaseModel):
+    """reason 由 Pydantic 侧放行为可选/默认空串，真实"≥5字"校验在对应 service 函数内完成。
+    与 169 行 ReasonBody(reason 必填) 是两个不同 schema，此前同名遮蔽，2026-07-17 改名消歧。"""
     reason: Optional[str] = ""
 
 
@@ -1565,7 +1570,7 @@ def activity_confirm(activityId: int = Path(...),
 
 
 @router.post("/activities/{activityId}/unconfirm", summary="撤销确认（原因≥5字）")
-def activity_unconfirm(body: ReasonBody, activityId: int = Path(...),
+def activity_unconfirm(body: ReasonOptionalBody, activityId: int = Path(...),
                        user=Depends(require_permission("studentAffairs.activity.confirm"))):
     return success(activity_svc.unconfirm_activity(activityId, user, body.reason or ""), message="已撤销")
 
@@ -1730,7 +1735,7 @@ def volunteer_confirm(recordId: int = Path(...),
 
 
 @router.post("/volunteer/records/{recordId}/reject", summary="驳回志愿时长补录（原因≥5字）")
-def volunteer_reject(body: ReasonBody, recordId: int = Path(...),
+def volunteer_reject(body: ReasonOptionalBody, recordId: int = Path(...),
                      user=Depends(require_permission("studentAffairs.activity.confirm"))):
     return success(activity_svc.reject_volunteer(recordId, user, body.reason or ""), message="已驳回")
 
@@ -1755,7 +1760,7 @@ def club_review(body: ClubReviewBody, clubId: int = Path(...),
 
 
 @router.post("/clubs/{clubId}/disband", summary="注销社团（原因≥5字）")
-def club_disband(body: ReasonBody, clubId: int = Path(...),
+def club_disband(body: ReasonOptionalBody, clubId: int = Path(...),
                  user=Depends(require_permission("studentAffairs.club.manage"))):
     return success(club_svc.disband_club(clubId, user, body.reason or ""), message="已注销")
 
@@ -1848,7 +1853,7 @@ def league_dev_advance(body: LeagueStageBody, devId: int = Path(...),
 
 
 @router.post("/party-league/dev/{devId}/terminate", summary="终止发展（原因≥5字）")
-def league_dev_terminate(body: ReasonBody, devId: int = Path(...),
+def league_dev_terminate(body: ReasonOptionalBody, devId: int = Path(...),
                          user=Depends(require_permission("studentAffairs.league.manage"))):
     return success(league_svc.terminate_dev(devId, user, body.reason or ""), message="已终止")
 

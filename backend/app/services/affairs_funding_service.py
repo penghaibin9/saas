@@ -728,6 +728,7 @@ def issue_disbursement(disbursement_id, body, user) -> dict:
         _scope_or_403(db, d.student_id, user)
         if d.bank_status == "ISSUED":
             raise AppException("DATA_CONFLICT", "已发放，不可重复")
+        check_version(d.version, getattr(body, "version", None))
         d.bank_status, d.issued_at, d.fail_reason = "ISSUED", datetime.utcnow(), None
         d.disburse_no = getattr(body, "disburseNo", None) or d.disburse_no
         last4 = getattr(body, "bankLast4", None)
@@ -741,7 +742,7 @@ def issue_disbursement(disbursement_id, body, user) -> dict:
         return _disb_row(d, user, s)
 
 
-def fail_disbursement(disbursement_id, user, reason="") -> dict:
+def fail_disbursement(disbursement_id, user, reason="", expected_version=None) -> dict:
     """标记发放失败（原因≥5字；可再改发放）。"""
     from app.models import StudentProfile
     if len((reason or "").strip()) < 5:
@@ -751,6 +752,7 @@ def fail_disbursement(disbursement_id, user, reason="") -> dict:
         _scope_or_403(db, d.student_id, user)
         if d.bank_status == "ISSUED":
             raise AppException("DATA_CONFLICT", "已发放不可置失败")
+        check_version(d.version, expected_version)
         d.bank_status, d.fail_reason, d.version = "FAILED", reason.strip(), d.version + 1
         _audit(db, d.id, "FUNDING_DISBURSE_FAIL", reason.strip())
         db.commit(); db.refresh(d)
