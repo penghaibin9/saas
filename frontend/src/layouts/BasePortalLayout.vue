@@ -119,6 +119,20 @@
           数据范围 · {{ scopeName }}
         </span>
         <slot name="header-right" />
+        <button
+          v-if="ctx"
+          type="button"
+          class="bpl-help"
+          title="帮助中心"
+          aria-label="帮助中心"
+          @click="goHelp"
+        >
+          <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.2 9.3a2.8 2.8 0 015.4 1c0 1.9-2.8 2.5-2.8 2.5" />
+            <path d="M12 17.2h.01" />
+          </svg>
+        </button>
         <span v-if="ctx" class="bpl-bell">
           <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -532,6 +546,10 @@ export default {
     }
   },
   methods: {
+    /** 帮助中心全局入口：任意管理页一键进入 /admin/help（对齐刷新可达性，避免只能靠顶栏搜索发现） */
+    goHelp() {
+      if (this.$route.path !== '/admin/help') this.$router.push('/admin/help')
+    },
     toggleDevPlanner() {
       if (!(import.meta.env && import.meta.env.DEV)) return
       this.devPlannerView = !this.devPlannerView
@@ -1041,6 +1059,29 @@ export default {
 .bpl-scope .bpl-ic {
   width: 13px;
   height: 13px;
+}
+.bpl-help {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t3);
+  cursor: pointer;
+  transition: all 0.12s;
+  font: inherit;
+}
+.bpl-help:hover {
+  background: var(--pri-bg);
+  color: var(--pri);
+}
+.bpl-help .bpl-ic {
+  width: 17px;
+  height: 17px;
 }
 .bpl-bell {
   position: relative;
