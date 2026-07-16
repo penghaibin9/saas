@@ -1,25 +1,16 @@
 <template>
   <AppPageShell title="减免与临时补助" subtitle="学费减免 / 临时困难补助：申请 → 审核 → 发放。金额按角色脱敏。"
     role-name="学工处 / 资助老师" data-scope-name="资助范围（辅导员限本班）" watermark-purpose="减免与临时补助">
+    <template #actions>
+      <AppPermissionButton code="studentAffairs.funding.reduction.manage" @click="openForm">代录申请</AppPermissionButton>
+    </template>
+
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载中..." @retry="load"
                     @back="$router.push('/admin/student-affairs/funding')">
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
-        <AppPermissionButton code="studentAffairs.funding.reduction.manage" @click="formVisible=true">代录申请</AppPermissionButton>
+      <div class="sa-grid sa-grid--metrics">
+        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
-      <AppSectionCard v-if="formVisible" title="申请减免/临补">
-        <div class="fr-grid">
-          <label class="fr-field"><span>学生主档ID *</span><input v-model.number="form.studentId" type="number" class="fr-input" /></label>
-          <label class="fr-field"><span>类型</span><select v-model="form.itemType" class="fr-input"><option value="REDUCTION">学费减免</option><option value="TEMP_AID">临时补助</option></select></label>
-          <label class="fr-field"><span>金额</span><input v-model.number="form.amount" type="number" class="fr-input" /></label>
-          <label class="fr-field fr-wide"><span>理由 *（≥5字）</span><input v-model.trim="form.reason" class="fr-input" /></label>
-        </div>
-        <p v-if="form.error" class="fr-error">{{ form.error }}</p>
-        <div class="fr-actions"><button type="button" class="fr-btn" @click="formVisible=false">取消</button>
-          <AppPermissionButton code="studentAffairs.funding.reduction.manage" :loading="acting==='sub'" @click="submit">提交</AppPermissionButton></div>
-      </AppSectionCard>
+
       <AppSectionCard title="减免/临补台账">
         <div class="fr-filters">
           <button v-for="f in typeFilters" :key="f.key" type="button" class="fr-chip" :class="{ 'is-on': activeType===f.key }" @click="setType(f.key)">{{ f.label }}</button>
@@ -36,7 +27,7 @@
               <td class="fr-ops">
                 <template v-if="x.status==='SUBMITTED'">
                   <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===x.feeId" @click="review(x,'APPROVE')">批准</AppPermissionButton>
-                  <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" variant="secondary" danger @click="review(x,'REJECT')">驳回</AppPermissionButton>
+                  <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" variant="secondary" danger @click="openReject(x)">驳回</AppPermissionButton>
                 </template>
                 <AppPermissionButton v-else-if="x.status==='APPROVED'" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===x.feeId" @click="issue(x)">发放</AppPermissionButton>
                 <span v-else class="fr-muted">—</span>
@@ -45,22 +36,74 @@
             <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无记录</td></tr>
           </tbody>
         </table>
+        <!-- 后端 /student-affairs/fee-reductions 当前不接受 page/pageSize 参数（服务层直接返回全量 items，无 total），
+             暂不引入 AppPagination；如后续台账量增长需先补后端分页能力。 -->
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 代录申请 -->
+    <AppDrawer v-model:visible="drawer.visible" title="申请减免/临补">
+      <div class="sa-form">
+        <AppFormItem label="学生主档ID" required>
+          <AppNumberInput v-model="drawer.form.studentId" :min="1" placeholder="请输入学生主档ID" :disabled="acting==='sub'" />
+        </AppFormItem>
+        <AppFormItem label="类型">
+          <AppSelect v-model="drawer.form.itemType" :options="itemTypeOptions" :disabled="acting==='sub'" />
+        </AppFormItem>
+        <AppFormItem label="金额">
+          <AppNumberInput v-model="drawer.form.amount" :min="0" placeholder="选填" :disabled="acting==='sub'" />
+        </AppFormItem>
+        <AppFormItem label="理由" required hint="至少5字">
+          <AppTextarea v-model="drawer.form.reason" :rows="3" placeholder="请说明申请理由，不少于 5 字" :disabled="acting==='sub'" />
+        </AppFormItem>
+        <AppInlineAlert v-if="drawer.errorMessage" type="danger" :description="drawer.errorMessage" />
+      </div>
+      <template #footer>
+        <button type="button" class="fr-btn" :disabled="acting==='sub'" @click="drawer.visible=false">取消</button>
+        <AppPermissionButton code="studentAffairs.funding.reduction.manage" :loading="acting==='sub'" @click="submit">提交</AppPermissionButton>
+      </template>
+    </AppDrawer>
+
+    <!-- 驳回（原因必填，保留强制校验） -->
+    <AppConfirmDialog
+      v-model:visible="rejectDialog.visible"
+      title="驳回申请"
+      message="驳回后本次申请不予批准，需说明驳回意见。"
+      type="danger"
+      confirm-text="确认驳回"
+      :require-reason="true"
+      reason-label="驳回意见（至少5字）"
+      reason-placeholder="请说明驳回意见，不少于 5 字"
+      phrase-scene-key="sa.aid.reject"
+      :submitting="acting===rejectDialog.feeId"
+      @confirm="onRejectConfirm"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput,
+        AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextarea } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPE_FILTERS = [{ key: '', label: '全部' }, { key: 'REDUCTION', label: '学费减免' }, { key: 'TEMP_AID', label: '临时补助' }]
+const ITEM_TYPE_OPTIONS = [{ label: '学费减免', value: 'REDUCTION' }, { label: '临时补助', value: 'TEMP_AID' }]
 
 export default {
   name: 'FeeReductionView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
-  data() { return { loading: true, acting: '', errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS, formVisible: false, form: this.blank() } },
+  components: { AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+               AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextarea,
+               StatusTag: AppStatusTag },
+  data() {
+    return {
+      loading: true, acting: '', errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS,
+      itemTypeOptions: ITEM_TYPE_OPTIONS,
+      drawer: { visible: false, form: this.blank(), errorMessage: '' },
+      rejectDialog: { visible: false, feeId: '' }
+    }
+  },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
@@ -74,7 +117,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
-    blank() { return { studentId: null, itemType: 'REDUCTION', amount: null, reason: '', error: '' } },
+    blank() { return { studentId: null, itemType: 'REDUCTION', amount: null, reason: '' } },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getFeeReductions({ itemType: this.activeType })
@@ -83,21 +126,35 @@ export default {
       this.loading = false
     },
     setType(k) { if (this.activeType === k) return; this.activeType = k; this.load() },
+    openForm() {
+      this.drawer.form = this.blank()
+      this.drawer.errorMessage = ''
+      this.drawer.visible = true
+    },
     async submit() {
-      const f = this.form
-      if (!f.studentId || !f.reason || f.reason.length < 5) { f.error = '学生ID与理由(≥5字)必填'; return }
-      f.error = ''; this.acting = 'sub'
+      const f = this.drawer.form
+      if (!f.studentId || !f.reason || f.reason.trim().length < 5) { this.drawer.errorMessage = '学生ID与理由(≥5字)必填'; return }
+      this.drawer.errorMessage = ''
+      this.acting = 'sub'
       const res = await studentAffairsApi.submitFeeReduction({ studentId: Number(f.studentId), itemType: f.itemType, amount: f.amount != null ? Number(f.amount) : undefined, reason: f.reason })
       this.acting = ''
-      if (res.code === 0) { toast.success('已提交'); this.formVisible = false; this.form = this.blank(); this.load() } else f.error = res.message || '提交失败'
+      if (res.code === 0) { toast.success('已提交'); this.drawer.visible = false; this.load() } else this.drawer.errorMessage = res.message || '提交失败'
     },
     async review(x, action) {
-      let opinion = ''
-      if (action === 'REJECT') { opinion = window.prompt('驳回意见（至少5字）：') || ''; if (!opinion) return }
       this.acting = x.feeId
-      const res = await studentAffairsApi.reviewFeeReduction(x.feeId, action, opinion)
+      const res = await studentAffairsApi.reviewFeeReduction(x.feeId, action, '')
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
+    },
+    openReject(x) {
+      this.rejectDialog = { visible: true, feeId: x.feeId }
+    },
+    async onRejectConfirm({ reason }) {
+      const feeId = this.rejectDialog.feeId
+      this.acting = feeId
+      const res = await studentAffairsApi.reviewFeeReduction(feeId, 'REJECT', reason)
+      this.acting = ''
+      if (res.code === 0) { toast.success('已处理'); this.rejectDialog.visible = false; this.load() } else toast.error(res.message || '操作失败')
     },
     async issue(x) {
       this.acting = x.feeId
@@ -112,15 +169,7 @@ export default {
 </script>
 
 <style scoped>
-.sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 300px; }
-.fr-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
-.fr-wide { grid-column: span 3; }
-.fr-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); }
-.fr-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
-.fr-error { color: var(--danger-500,#dc2626); font-size: var(--font-size-sm); }
-.fr-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
-.fr-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .fr-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
 .fr-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .fr-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
@@ -130,5 +179,7 @@ export default {
 .fr-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 220px; }
 .fr-ops { display: flex; gap: 6px; }
 .fr-muted { color: var(--text-tertiary); }
-@media (max-width: 960px) { .sa-grid--metrics, .fr-grid { grid-template-columns: 1fr; } .fr-wide { grid-column: span 1; } }
+.sa-form { display: flex; flex-direction: column; gap: var(--space-1); }
+.fr-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
+@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 </style>

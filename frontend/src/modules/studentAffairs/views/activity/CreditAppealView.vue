@@ -58,13 +58,28 @@
             <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无积分申诉</td></tr>
           </tbody>
         </table>
+        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <AppConfirmDialog
+      v-model:visible="reviewDialog.visible"
+      title="驳回积分申诉"
+      type="danger"
+      :message="`确认驳回「${reviewDialog.realName}」的积分申诉？`"
+      require-reason
+      reason-label="驳回意见"
+      reason-placeholder="请填写驳回意见，至少5字"
+      confirm-text="确认驳回"
+      :submitting="acting === reviewDialog.appealId"
+      phrase-scene-key="common.reject"
+      @confirm="onReviewRejectConfirm"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -76,12 +91,14 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'CreditAppealView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
   data() {
     return {
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
-      formVisible: false, form: this.blankForm()
+      formVisible: false, form: this.blankForm(),
+      pagination: { page: 1, pageSize: 20, total: 0 },
+      reviewDialog: { visible: false, appealId: '', realName: '' }
     }
   },
   computed: {
@@ -100,13 +117,22 @@ export default {
     blankForm() { return { studentId: null, appealType: 'MISSING', claimCreditType: 'SECOND_CLASS', claimValue: null, reason: '', error: '' } },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getCreditAppeals({ pageSize: 300 })
-      if (res.code === 0 && res.data) { this.all = res.data.items || []; this.applyFilter() }
-      else this.errorMessage = res.message || '申诉加载失败'
+      // items 走真分页（服务端按 status 过滤+切片）；all 单独按改造前口径（不带 status，pageSize 300 一次性拉取）
+      // 仅供统计卡片聚合使用，避免真分页把统计数字切小。
+      const [res, allRes] = await Promise.all([
+        studentAffairsApi.getCreditAppeals({ status: this.activeStatus, page: this.pagination.page, pageSize: this.pagination.pageSize }),
+        studentAffairsApi.getCreditAppeals({ pageSize: 300 })
+      ])
+      if (res.code === 0 && res.data) {
+        this.items = res.data.items || []
+        this.pagination.total = res.data.total || 0
+      } else {
+        this.errorMessage = res.message || '申诉加载失败'
+      }
+      if (allRes.code === 0 && allRes.data) this.all = allRes.data.items || []
       this.loading = false
     },
-    applyFilter() { this.items = this.activeStatus ? this.all.filter((a) => a.status === this.activeStatus) : this.all },
-    setStatus(k) { this.activeStatus = k; this.applyFilter() },
+    setStatus(k) { this.activeStatus = k; this.pagination.page = 1; this.load() },
     openForm() { this.form = this.blankForm(); this.formVisible = true },
     async save() {
       const m = this.form
@@ -119,13 +145,23 @@ export default {
       this.saving = false
       if (res.code === 0) { toast.success('申诉已提交'); this.formVisible = false; this.load() } else m.error = res.message || '提交失败'
     },
-    async review(a, action) {
-      let opinion = ''
-      if (action === 'REJECT') { opinion = window.prompt('驳回意见（至少5字）：') || ''; if (!opinion) return }
-      this.acting = a.appealId
-      const res = await studentAffairsApi.reviewCreditAppeal(a.appealId, action, opinion)
+    review(a, action) {
+      if (action === 'REJECT') {
+        this.reviewDialog = { visible: true, appealId: a.appealId, realName: a.realName || ('学生#' + a.studentId) }
+        return
+      }
+      this.doReview(a.appealId, action, '')
+    },
+    async doReview(appealId, action, opinion) {
+      this.acting = appealId
+      const res = await studentAffairsApi.reviewCreditAppeal(appealId, action, opinion)
       this.acting = ''
       if (res.code === 0) { toast.success(action === 'APPROVE' ? '已通过并补记' : '已驳回'); this.load() } else toast.error(res.message || '审核失败')
+    },
+    async onReviewRejectConfirm({ reason }) {
+      const { appealId } = this.reviewDialog
+      this.reviewDialog.visible = false
+      await this.doReview(appealId, 'REJECT', reason)
     },
     ctypeLabel(t) { return CTYPE[t] || t },
     statusType(s) { return ({ SUBMITTED: 'warning', APPROVED: 'success', REJECTED: 'default' })[s] || 'default' }

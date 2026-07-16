@@ -106,33 +106,81 @@
             </tr>
           </tbody>
         </table>
+        <AppPagination v-if="risks.length" v-model:page="paging.page" v-model:pageSize="paging.pageSize"
+                       :total="paging.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 新建风险：学生 ID + 标题两个字段，用抽屉承载 -->
+    <AppDrawer v-model:visible="createDrawer.visible" title="新建风险">
+      <div class="sa-form">
+        <AppFormItem label="学生 ID" required :error="createDrawer.errors.studentId">
+          <AppTextInput v-model="createDrawer.form.studentId" placeholder="请输入学生 ID" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="风险标题" required :error="createDrawer.errors.title">
+          <AppTextInput v-model="createDrawer.form.title" placeholder="如：学工风险预警" :disabled="actioning" />
+        </AppFormItem>
+        <AppInlineAlert v-if="createDrawer.errorMessage" type="danger" :description="createDrawer.errorMessage" />
+      </div>
+      <template #footer>
+        <button type="button" class="sa-btn" :disabled="actioning" @click="createDrawer.visible = false">取消</button>
+        <AppPermissionButton code="studentAffairs.risk.create" :loading="actioning" @click="submitCreateRisk">
+          新建
+        </AppPermissionButton>
+      </template>
+    </AppDrawer>
+
+    <!-- 分派/处置 —— 统一走带原因校验的二次确认弹窗 -->
+    <AppConfirmDialog
+      v-model:visible="dialog.visible"
+      :title="dialog.title"
+      :message="dialog.message"
+      :type="dialog.type"
+      :confirm-text="dialog.confirmText"
+      require-reason
+      :reason-label="dialog.reasonLabel"
+      :reason-placeholder="dialog.reasonPlaceholder"
+      :reason-min-length="dialog.reasonMinLength"
+      :submitting="actioning"
+      @confirm="onDialogConfirm"
+    />
   </AppPageShell>
 </template>
 
 <script>
 import {
+  AppConfirmDialog,
+  AppFormItem,
   AppGlobalState,
+  AppInlineAlert,
   AppMetricCard,
   AppPageShell,
+  AppPagination,
   AppPermissionButton,
   AppRiskTag,
   AppSectionCard,
-  AppStatusTag
+  AppStatusTag,
+  AppTextInput
 } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 export default {
   name: 'StudentAffairsRiskListView',
   components: {
+    AppConfirmDialog,
+    AppDrawer,
+    AppFormItem,
     AppGlobalState,
+    AppInlineAlert,
     AppMetricCard,
     AppPageShell,
+    AppPagination,
     AppPermissionButton,
     AppRiskTag,
     AppSectionCard,
-    AppStatusTag
+    AppStatusTag,
+    AppTextInput
   },
   data() {
     return {
@@ -146,6 +194,13 @@ export default {
         source: '',
         riskLevel: '',
         status: ''
+      },
+      paging: { page: 1, pageSize: 20, total: 0 },
+      createDrawer: { visible: false, form: { studentId: '', title: '' }, errors: {}, errorMessage: '' },
+      // 分派/处置共用同一个确认弹窗，riskId 记录当前操作的目标行。
+      dialog: {
+        visible: false, action: '', riskId: '', title: '', message: '', type: 'primary', confirmText: '确认',
+        reasonLabel: '原因', reasonPlaceholder: '', reasonMinLength: 1
       }
     }
   },
@@ -191,9 +246,10 @@ export default {
       this.loading = true
       this.errorMessage = ''
       try {
-        const res = await studentAffairsApi.listRiskRecords({ ...this.filters, page: 1, pageSize: 50 })
+        const res = await studentAffairsApi.listRiskRecords({ ...this.filters, page: this.paging.page, pageSize: this.paging.pageSize })
         this.risks = res.data.items || []
         this.total = res.data.total || this.risks.length
+        this.paging.total = this.total
       } catch (e) {
         this.errorMessage = e.message || '风险数据加载失败'
       } finally {
@@ -202,31 +258,72 @@ export default {
     },
     reload() {
       this.scanResult = ''
+      this.paging.page = 1
       this.load()
     },
-    async createRisk() {
-      const studentId = window.prompt('请输入学生 ID')
-      if (!studentId) return
-      const title = window.prompt('请输入风险标题', '学工风险预警')
-      if (!title) return
-      await this.runAction(() => studentAffairsApi.createRiskRecord({
-        studentId,
-        source: 'MANUAL',
-        sourceRefId: `manual-${Date.now()}`,
-        riskLevel: 'MEDIUM',
-        title,
-        detail: title
-      }))
+    createRisk() {
+      this.createDrawer = { visible: true, form: { studentId: '', title: '' }, errors: {}, errorMessage: '' }
     },
-    async assign(risk) {
-      const ownerId = window.prompt('请输入责任人 ID', risk.ownerId || '')
-      if (!ownerId) return
-      await this.runAction(() => studentAffairsApi.assignRisk(risk.riskId, ownerId))
+    async submitCreateRisk() {
+      const { form, errors } = this.createDrawer
+      errors.studentId = form.studentId.trim() ? '' : '请输入学生 ID'
+      errors.title = form.title.trim() ? '' : '请输入风险标题'
+      if (errors.studentId || errors.title) return
+      this.actioning = true
+      this.createDrawer.errorMessage = ''
+      try {
+        await studentAffairsApi.createRiskRecord({
+          studentId: form.studentId.trim(),
+          source: 'MANUAL',
+          sourceRefId: `manual-${Date.now()}`,
+          riskLevel: 'MEDIUM',
+          title: form.title.trim(),
+          detail: form.title.trim()
+        })
+        this.createDrawer.visible = false
+        await this.load()
+      } catch (e) {
+        this.createDrawer.errorMessage = e.message || '新建失败'
+      } finally {
+        this.actioning = false
+      }
     },
-    async process(risk) {
-      const content = window.prompt('请输入处置记录', '已联系学生并记录处置过程')
-      if (!content) return
-      await this.runAction(() => studentAffairsApi.processRisk(risk.riskId, content))
+    openDialog(action, riskId, opts) {
+      this.dialog = {
+        visible: true, action, riskId,
+        type: 'primary', confirmText: '确认',
+        reasonLabel: '原因', reasonPlaceholder: '', reasonMinLength: 1,
+        ...opts
+      }
+    },
+    assign(risk) {
+      this.openDialog('assign', risk.riskId, {
+        title: '分派责任人',
+        message: `为「${risk.realName || '该学生'}」的风险分派责任人。`,
+        confirmText: '确认分派',
+        reasonLabel: '责任人 ID',
+        reasonPlaceholder: risk.ownerId ? `当前责任人：${risk.ownerId}，请输入新的责任人 ID` : '请输入责任人 ID'
+      })
+    },
+    process(risk) {
+      this.openDialog('process', risk.riskId, {
+        title: '处置风险',
+        message: `记录「${risk.realName || '该学生'}」本次风险的处置过程。`,
+        confirmText: '确认处置',
+        reasonLabel: '处置记录',
+        reasonPlaceholder: '如：已联系学生并记录处置过程'
+      })
+    },
+    async onDialogConfirm(payload) {
+      const reason = (payload && payload.reason) || ''
+      const id = this.dialog.riskId
+      const call = {
+        assign: () => studentAffairsApi.assignRisk(id, reason),
+        process: () => studentAffairsApi.processRisk(id, reason)
+      }[this.dialog.action]
+      if (!call) return
+      await this.runAction(call)
+      this.dialog.visible = false
     },
     async scanTimeout() {
       this.actioning = true
@@ -334,6 +431,13 @@ export default {
   border-radius: var(--radius-base);
   padding: var(--space-4);
 }
+.sa-table + .app-pagination {
+  margin-top: var(--space-3);
+}
+.sa-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.sa-btn { height: 34px; padding: 0 var(--space-4); border-radius: var(--radius-base); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-base); cursor: pointer; }
+.sa-btn:hover { border-color: var(--border-dark); }
+.sa-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 960px) {
   .sa-grid--metrics,
   .sa-rules {

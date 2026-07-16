@@ -68,24 +68,54 @@
             <tr v-if="!evals.length"><td colspan="7" class="sa-empty">暂无考评记录</td></tr>
           </tbody>
         </table>
+        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                       :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 申诉复核 -->
+    <AppDrawer v-model:visible="appealDrawer.visible" title="申诉复核">
+      <div class="sa-form">
+        <AppFormItem label="复核结论" required>
+          <AppSelect v-model="appealDrawer.form.result" :options="appealResultOptions" />
+        </AppFormItem>
+        <AppFormItem label="复核意见" required :error="appealDrawer.errors.opinion">
+          <AppQuickPhrases scene-key="common.reviewOpinion" @pick="onPickOpinion" />
+          <AppTextarea ref="opinionTa" v-model="appealDrawer.form.opinion" placeholder="复核意见（至少5字）" :rows="4" :disabled="!!acting" />
+        </AppFormItem>
+        <AppInlineAlert v-if="appealDrawer.errorMessage" type="danger" :description="appealDrawer.errorMessage" />
+      </div>
+      <template #footer>
+        <button type="button" class="ce-btn" :disabled="!!acting" @click="appealDrawer.visible = false">取消</button>
+        <AppPermissionButton code="studentAffairs.counselorEval.manage" :loading="!!acting" @click="submitAppealReview">提交复核</AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppPermissionButton, AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppTextarea } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { applyInsertion, insertAtCursor } from '@/utils/insertAtCursor'
+
+const APPEAL_RESULT_OPTIONS = [
+  { label: '维持（UPHELD）', value: 'UPHELD' },
+  { label: '调整（ADJUSTED）', value: 'ADJUSTED' }
+]
 
 export default {
   name: 'CounselorEvalView',
-  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppPermissionButton, AppQuickPhrases, AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextarea },
   data() {
     return {
       loading: true, acting: '', errorMessage: '', indicators: [], evals: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
       indForm: { name: '', weight: null },
-      scoreForm: { periodCode: '', counselorKey: '', counselorName: '', scores: {} }
+      scoreForm: { periodCode: '', counselorKey: '', counselorName: '', scores: {} },
+      appealResultOptions: APPEAL_RESULT_OPTIONS,
+      appealDrawer: { visible: false, evalId: '', form: { result: 'UPHELD', opinion: '' }, errors: {}, errorMessage: '' }
     }
   },
   computed: {
@@ -100,11 +130,17 @@ export default {
       this.loading = true; this.errorMessage = ''
       const [ind, ev] = await Promise.all([
         studentAffairsApi.getEvalIndicators(),
-        studentAffairsApi.getCounselorEvals({ pageSize: 300 })
+        studentAffairsApi.getCounselorEvals({ page: this.pagination.page, pageSize: this.pagination.pageSize })
       ])
       if (ind.code === 0 && ind.data) this.indicators = ind.data.items || []
       else this.errorMessage = ind.message || '加载失败'
-      this.evals = (ev.code === 0 && ev.data) ? (ev.data.items || []) : []
+      if (ev.code === 0 && ev.data) {
+        this.evals = ev.data.items || []
+        this.pagination.total = ev.data.total != null ? ev.data.total : this.evals.length
+      } else {
+        this.evals = []
+        if (!this.errorMessage) this.errorMessage = ev.message || '考评记录加载失败'
+      }
       this.loading = false
     },
     async addIndicator() {
@@ -130,15 +166,24 @@ export default {
       this.acting = ''
       if (res.code === 0) { toast.success('已发布'); this.load() } else toast.error(res.message || '发布失败')
     },
-    async reviewAppeal(e) {
-      const result = window.prompt('复核结论：UPHELD 维持 / ADJUSTED 调整', 'UPHELD')
-      if (!result) return
-      const opinion = window.prompt('复核意见（至少5字）：')
-      if (!opinion) return
-      this.acting = e.evalId
-      const res = await studentAffairsApi.reviewEvalAppeal(e.evalId, { result: result.trim().toUpperCase(), opinion })
+    reviewAppeal(e) {
+      this.appealDrawer = { visible: true, evalId: e.evalId, form: { result: 'UPHELD', opinion: '' }, errors: {}, errorMessage: '' }
+    },
+    onPickOpinion(text) {
+      const el = this.$refs.opinionTa?.$refs?.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.appealDrawer.form.opinion, text)
+      this.appealDrawer.form.opinion = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
+    async submitAppealReview() {
+      const { form, evalId } = this.appealDrawer
+      const opinion = (form.opinion || '').trim()
+      if (opinion.length < 5) { this.appealDrawer.errors.opinion = '复核意见不能少于5个字'; return }
+      this.appealDrawer.errors.opinion = ''
+      this.acting = evalId
+      const res = await studentAffairsApi.reviewEvalAppeal(evalId, { result: form.result, opinion })
       this.acting = ''
-      if (res.code === 0) { toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
+      if (res.code === 0) { toast.success('已复核'); this.appealDrawer.visible = false; this.load() } else this.appealDrawer.errorMessage = res.message || '复核失败'
     }
   }
 }
@@ -162,5 +207,9 @@ export default {
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ce-muted { color: var(--text-tertiary); }
 .ce-ops { display: flex; gap: 6px; }
+.sa-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.ce-btn { height: 34px; padding: 0 var(--space-4); border-radius: var(--radius-base); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-base); cursor: pointer; }
+.ce-btn:hover { border-color: var(--border-dark); }
+.ce-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 960px) { .ce-scoreform, .ce-scores { grid-template-columns: 1fr; } }
 </style>

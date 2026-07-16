@@ -49,7 +49,7 @@
                   size="sm"
                   danger
                   :loading="actioning"
-                  @click="escalate(row)"
+                  @click="askEscalate(row)"
                 >
                   升级危机
                 </AppPermissionButton>
@@ -71,25 +71,61 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!--
+      危机升级二次确认：原逻辑为 window.confirm(是否升级) + window.prompt(可选升级说明，默认预填文案，
+      取消/清空按 '' 处理，前后端均未对该说明内容做最少字数校验)。
+      本次仅将两步原生弹窗合并为一个 AppConfirmDialog + 可选说明输入框，
+      不新增、也不放宽任何强制理由校验——原来就没有"必须填写理由才能升级"的红线，这里保持一致，
+      仅保留"是否确认升级"这一个真正的强制确认动作。
+    -->
+    <AppConfirmDialog
+      v-model:visible="escalateDialog.visible"
+      title="确认升级为心理危机"
+      :message="escalateMessage"
+      type="danger"
+      confirm-text="确认升级"
+      :submitting="actioning"
+      @confirm="confirmEscalate"
+      @cancel="escalateDialog.visible = false"
+    >
+      <AppFormItem label="升级说明（可选，无最少字数限制）">
+        <AppQuickPhrases scene-key="sa.mental.escalate" @pick="onPickEscalateContent" />
+        <AppTextarea ref="escalateTa" v-model="escalateDialog.content" placeholder="出现危机信号，立即升级并接入风险处置" />
+      </AppFormItem>
+    </AppConfirmDialog>
   </AppPageShell>
 </template>
 
 <script>
 import {
+  AppConfirmDialog,
+  AppFormItem,
   AppGlobalState,
   AppMetricCard,
   AppPageShell,
   AppPermissionButton,
+  AppQuickPhrases,
   AppSectionCard,
-  AppStatusTag
+  AppStatusTag,
+  AppTextarea
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+
+const DEFAULT_ESCALATE_CONTENT = '出现危机信号，立即升级并接入风险处置'
 
 export default {
   name: 'MentalCrisisView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag },
+  components: { AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppQuickPhrases, AppSectionCard, AppStatusTag, AppTextarea },
   data() {
-    return { loading: true, actioning: false, errorMessage: '', items: [] }
+    return {
+      loading: true,
+      actioning: false,
+      errorMessage: '',
+      items: [],
+      escalateDialog: { visible: false, row: null, content: DEFAULT_ESCALATE_CONTENT }
+    }
   },
   computed: {
     pageState() {
@@ -107,6 +143,11 @@ export default {
         { key: 'escalated', label: '已接风险中枢', value: escalated, accent: 'primary' },
         { key: 'total', label: '关注在册', value: this.items.length, accent: 'info' }
       ]
+    },
+    escalateMessage() {
+      const row = this.escalateDialog.row
+      const name = row ? (row.realName || row.studentNo || row.studentId) : ''
+      return `确认将「${name}」升级为心理危机？将自动生成风险中枢记录并进入处置闭环，升级后不可撤销（幂等，不会重复建单）。`
     }
   },
   mounted() {
@@ -117,6 +158,11 @@ export default {
       this.loading = true
       this.errorMessage = ''
       try {
+        // 注：/mental/list 接口支持 page/pageSize 真分页，但本页顶部的"危机记录/在办危机/
+        // 已接风险中枢/关注在册"统计卡是基于同一次拉取结果直接聚合的。这是安全红线页面，
+        // 若接入 AppPagination 并把 pageSize 从当前的 100 降到常规分页粒度，会让统计卡只反映
+        // 当前页数据、可能低估危机在办数量，风险高于"分页体验不足"，因此保留原有"一次性拉取
+        // 前 100 条"的方式，不接入分页控件。
         const res = await studentAffairsApi.listMentalAttention({ page: 1, pageSize: 100 })
         this.items = res.data.items || []
       } catch (e) {
@@ -125,10 +171,22 @@ export default {
         this.loading = false
       }
     },
-    async escalate(row) {
-      if (!window.confirm(`确认将「${row.realName || row.studentId}」升级为心理危机？将自动生成风险中枢记录并进入处置闭环。`)) return
-      const content = window.prompt('请填写升级说明（可空）', '出现危机信号，立即升级并接入风险处置') || ''
-      await this.runAction(() => studentAffairsApi.escalateMentalReferral(row.referralId, content.trim()))
+    askEscalate(row) {
+      this.escalateDialog = { visible: true, row, content: DEFAULT_ESCALATE_CONTENT }
+    },
+    onPickEscalateContent(text) {
+      const el = this.$refs.escalateTa && this.$refs.escalateTa.$refs && this.$refs.escalateTa.$refs.el
+      if (!el) return
+      const { value, selStart, selEnd } = insertAtCursor(el, this.escalateDialog.content, text)
+      this.escalateDialog.content = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
+    async confirmEscalate() {
+      const row = this.escalateDialog.row
+      const content = this.escalateDialog.content
+      this.escalateDialog.visible = false
+      if (!row) return
+      await this.runAction(() => studentAffairsApi.escalateMentalReferral(row.referralId, (content || '').trim()))
     },
     gotoRisk(riskId) {
       this.$router.push(`/admin/student-affairs/risk/${riskId}`)

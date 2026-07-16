@@ -43,6 +43,8 @@
             </li>
             <li v-if="!items.length" class="lg-empty">暂无发展台账</li>
           </ul>
+          <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                         :total="pagination.total" @change="load" />
         </AppSectionCard>
 
         <AppSectionCard :title="sel ? (sel.realName + ' · 发展阶段时间线') : '阶段详情'" class="lg-detail">
@@ -56,13 +58,13 @@
                   <option v-for="s in nextStages" :key="s.key" :value="s.key">{{ s.label }}</option>
                 </select>
                 <AppPermissionButton code="studentAffairs.league.manage" size="sm" :disabled="!advStage" @click="advance">推进</AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.league.manage" size="sm" variant="secondary" danger @click="terminate">终止</AppPermissionButton>
+                <AppPermissionButton code="studentAffairs.league.manage" size="sm" variant="secondary" danger @click="openTerminate">终止</AppPermissionButton>
               </div>
             </div>
             <ol class="lg-timeline">
               <li v-for="st in stages" :key="st.stageId">
                 <span class="lg-tl__stage">{{ st.toStageLabel }}</span>
-                <span class="lg-tl__meta">{{ (st.occurredAt||'').slice(0,10) }} · {{ st.operator || '—' }}
+                <span class="lg-tl__meta"><AppDateDisplay :value="st.occurredAt" mode="date" empty-text="—" /> · {{ st.operator || '—' }}
                   <em v-if="st.hasMaterial" class="lg-tl__mat">📎 含材料</em></span>
                 <span v-if="st.remark" class="lg-tl__remark">{{ st.remark }}</span>
               </li>
@@ -80,7 +82,7 @@
               <ul class="lg-attach__list">
                 <li v-for="a in attachments" :key="a.attachmentId">
                   <span class="lg-att__name">📎 {{ a.fileName || ('附件#' + a.attachmentId) }}</span>
-                  <span class="lg-att__meta">{{ (a.uploadedAt || '').slice(0, 10) }}</span>
+                  <span class="lg-att__meta"><AppDateDisplay :value="a.uploadedAt" mode="date" empty-text="—" /></span>
                   <AppPermissionButton code="studentAffairs.league.view" size="sm" variant="secondary"
                                        @click="downloadMaterial(a)">下载</AppPermissionButton>
                 </li>
@@ -91,11 +93,23 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <!-- 终止发展台账 -->
+    <AppConfirmDialog
+      v-model:visible="terminateDialog.visible"
+      title="终止发展台账"
+      type="danger"
+      :message="sel ? `确认终止「${sel.realName || ('学生#' + sel.studentId)}」的党团发展台账？` : ''"
+      require-reason
+      reason-label="终止原因"
+      confirm-text="确认终止"
+      @confirm="confirmTerminate"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppConfirmDialog, AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -108,23 +122,23 @@ const STAGE_FILTERS = [{ key: '', label: '全部' }].concat(STAGES)
 
 export default {
   name: 'PartyLeagueView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppConfirmDialog, AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', items: [], activeStage: '', stageFilters: STAGE_FILTERS,
+      total: 0, byStatus: {}, pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: { studentId: null, devType: 'PARTY', branchName: '', error: '' },
-      sel: null, stages: [], advStage: '', attachments: [], uploading: false
+      sel: null, stages: [], advStage: '', attachments: [], uploading: false,
+      terminateDialog: { visible: false }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const ongoing = this.items.filter((d) => d.status === 'ONGOING').length
-      const done = this.items.filter((d) => d.status === 'COMPLETED').length
       return [
-        { key: 't', label: '发展档案', value: this.items.length, accent: 'primary' },
-        { key: 'o', label: '发展中', value: ongoing, accent: 'warning' },
-        { key: 'c', label: '已转正', value: done, accent: 'success' }
+        { key: 't', label: '发展档案', value: this.total, accent: 'primary' },
+        { key: 'o', label: '发展中', value: this.byStatus.ONGOING || 0, accent: 'warning' },
+        { key: 'c', label: '已转正', value: this.byStatus.COMPLETED || 0, accent: 'success' }
       ]
     },
     nextStages() {
@@ -137,12 +151,32 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getLeagueDev({ stage: this.activeStage, pageSize: 300 })
-      if (res.code === 0 && res.data) this.items = res.data.items || []
-      else this.errorMessage = res.message || '发展台账加载失败'
+      // 指标按当前阶段筛选聚合（不分页）；列表按当前阶段 + 真实分页取（后端 /student-affairs/party-league/dev 已支持 page/pageSize）
+      const [all, filtered] = await Promise.all([
+        studentAffairsApi.getLeagueDev({ stage: this.activeStage, pageSize: 500 }),
+        studentAffairsApi.getLeagueDev({ stage: this.activeStage, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      ])
+      if (all.code === 0 && all.data) {
+        const allItems = all.data.items || []
+        this.total = all.data.total != null ? all.data.total : allItems.length
+        this.byStatus = allItems.reduce((m, x) => { m[x.status] = (m[x.status] || 0) + 1; return m }, {})
+      } else {
+        this.errorMessage = all.message || '发展台账加载失败'
+      }
+      if (filtered.code === 0 && filtered.data) {
+        this.items = filtered.data.items || []
+        this.pagination.total = filtered.data.total != null ? filtered.data.total : this.items.length
+      } else if (!this.errorMessage) {
+        this.errorMessage = filtered.message || '发展台账加载失败'
+      }
       this.loading = false
     },
-    setStage(k) { if (this.activeStage === k) return; this.activeStage = k; this.load() },
+    setStage(k) {
+      if (this.activeStage === k) return
+      this.activeStage = k
+      this.pagination.page = 1
+      this.load()
+    },
     openForm() { this.form = { studentId: null, devType: 'PARTY', branchName: '', error: '' }; this.formVisible = true },
     async save() {
       const m = this.form
@@ -183,9 +217,10 @@ export default {
       const res = await studentAffairsApi.advanceLeagueStage(this.sel.devId, { toStage: this.advStage })
       if (res.code === 0) { toast.success('已推进'); this.sel = res.data; this.advStage = ''; this.select(res.data); this.load() } else toast.error(res.message || '推进失败')
     },
-    async terminate() {
-      const reason = window.prompt('终止原因（至少5字）：')
-      if (!reason) return
+    openTerminate() { this.terminateDialog.visible = true },
+    async confirmTerminate({ reason }) {
+      this.terminateDialog.visible = false
+      if (!this.sel) return
       const res = await studentAffairsApi.terminateLeagueDev(this.sel.devId, reason)
       if (res.code === 0) { toast.success('已终止'); this.sel = res.data; this.load() } else toast.error(res.message || '终止失败')
     },

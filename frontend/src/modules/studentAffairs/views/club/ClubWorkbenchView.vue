@@ -44,12 +44,14 @@
               <div class="cf-club__meta">{{ TYPES[c.clubType] || c.clubType }} · 成员 {{ c.memberCount }} · {{ c.advisorName || '无指导老师' }}</div>
               <div class="cf-club__ops" @click.stop>
                 <AppPermissionButton v-if="c.status==='PENDING'" code="studentAffairs.club.manage" size="sm" :loading="acting===c.clubId" @click="review(c,'APPROVE')">通过</AppPermissionButton>
-                <AppPermissionButton v-if="c.status==='PENDING'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger :loading="acting===c.clubId" @click="review(c,'REJECT')">驳回</AppPermissionButton>
-                <AppPermissionButton v-if="c.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger @click="disband(c)">注销</AppPermissionButton>
+                <AppPermissionButton v-if="c.status==='PENDING'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger :loading="acting===c.clubId" @click="openReject(c)">驳回</AppPermissionButton>
+                <AppPermissionButton v-if="c.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger @click="openDisband(c)">注销</AppPermissionButton>
               </div>
             </li>
             <li v-if="!items.length" class="cf-empty">暂无社团，点右上「建社团」</li>
           </ul>
+          <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                         :total="pagination.total" @change="load" />
         </AppSectionCard>
 
         <AppSectionCard :title="sel ? (sel.clubName + ' · 成员与年审') : '社团详情'" class="cf-detail">
@@ -102,11 +104,37 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <!-- 驳回社团申请 -->
+    <AppConfirmDialog
+      v-model:visible="rejectDialog.visible"
+      title="驳回社团申请"
+      type="danger"
+      :message="rejectDialog.club ? `确认驳回「${rejectDialog.club.clubName}」的建社申请？` : ''"
+      require-reason
+      reason-label="驳回原因"
+      confirm-text="确认驳回"
+      :submitting="acting === (rejectDialog.club && rejectDialog.club.clubId)"
+      phrase-scene-key="common.reject"
+      @confirm="confirmReject"
+    />
+
+    <!-- 注销社团 -->
+    <AppConfirmDialog
+      v-model:visible="disbandDialog.visible"
+      title="注销社团"
+      type="danger"
+      :message="disbandDialog.club ? `确认注销「${disbandDialog.club.clubName}」？注销后不可恢复。` : ''"
+      require-reason
+      reason-label="注销原因"
+      confirm-text="确认注销"
+      @confirm="confirmDisband"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -119,25 +147,26 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'ClubWorkbenchView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
   data() {
     return {
-      loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
+      loading: true, saving: false, acting: '', errorMessage: '', total: 0, byStatus: {}, items: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
       activeStatus: '', statusFilters: STATUS_FILTERS, TYPES, ROLES,
       formVisible: false, form: { clubName: '', clubType: 'INTEREST', advisorName: '', error: '' },
       sel: null, members: [], reviews: [],
       memberForm: { visible: false, studentId: null, role: 'MEMBER' },
-      reviewForm: { visible: false, reviewYear: '', result: 'PASS' }
+      reviewForm: { visible: false, reviewYear: '', result: 'PASS' },
+      rejectDialog: { visible: false, club: null }, disbandDialog: { visible: false, club: null }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const s = (k) => this.all.filter((c) => c.status === k).length
       return [
-        { key: 't', label: '社团总数', value: this.all.length, accent: 'primary' },
-        { key: 'p', label: '待审批', value: s('PENDING'), accent: 'warning' },
-        { key: 'a', label: '运营中', value: s('ACTIVE'), accent: 'success' }
+        { key: 't', label: '社团总数', value: this.total, accent: 'primary' },
+        { key: 'p', label: '待审批', value: this.byStatus.PENDING || 0, accent: 'warning' },
+        { key: 'a', label: '运营中', value: this.byStatus.ACTIVE || 0, accent: 'success' }
       ]
     }
   },
@@ -145,13 +174,32 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getClubs({ pageSize: 300 })
-      if (res.code === 0 && res.data) { this.all = res.data.items || []; this.applyFilter() }
-      else this.errorMessage = res.message || '社团加载失败'
+      // 指标基于全量聚合（不分页）；列表按当前筛选 + 真实分页取（后端 /student-affairs/clubs 已支持 page/pageSize）
+      const [all, filtered] = await Promise.all([
+        studentAffairsApi.getClubs({ pageSize: 500 }),
+        studentAffairsApi.getClubs({ status: this.activeStatus, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      ])
+      if (all.code === 0 && all.data) {
+        const allItems = all.data.items || []
+        this.total = all.data.total != null ? all.data.total : allItems.length
+        this.byStatus = allItems.reduce((m, x) => { m[x.status] = (m[x.status] || 0) + 1; return m }, {})
+      } else {
+        this.errorMessage = all.message || '社团加载失败'
+      }
+      if (filtered.code === 0 && filtered.data) {
+        this.items = filtered.data.items || []
+        this.pagination.total = filtered.data.total != null ? filtered.data.total : this.items.length
+      } else if (!this.errorMessage) {
+        this.errorMessage = filtered.message || '社团加载失败'
+      }
       this.loading = false
     },
-    applyFilter() { this.items = this.activeStatus ? this.all.filter((c) => c.status === this.activeStatus) : this.all },
-    setStatus(k) { this.activeStatus = k; this.applyFilter() },
+    setStatus(k) {
+      if (this.activeStatus === k) return
+      this.activeStatus = k
+      this.pagination.page = 1
+      this.load()
+    },
     openForm() { this.form = { clubName: '', clubType: 'INTEREST', advisorName: '', error: '' }; this.formVisible = true },
     async save() {
       const m = this.form
@@ -161,18 +209,26 @@ export default {
       this.saving = false
       if (res.code === 0) { toast.success('已提交待审批'); this.formVisible = false; this.load() } else m.error = res.message || '创建失败'
     },
-    async review(c, action) {
-      let reason = ''
-      if (action === 'REJECT') { reason = window.prompt('驳回原因（至少5字）：') || ''; if (!reason) return }
+    async review(c, action, reason = '') {
       this.acting = c.clubId
       const res = await studentAffairsApi.reviewClub(c.clubId, action, reason)
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '处理失败')
     },
-    async disband(c) {
-      const reason = window.prompt('注销原因（至少5字）：')
-      if (!reason) return
+    openReject(c) { this.rejectDialog = { visible: true, club: c } },
+    async confirmReject({ reason }) {
+      const c = this.rejectDialog.club
+      this.rejectDialog.visible = false
+      if (c) await this.review(c, 'REJECT', reason)
+    },
+    openDisband(c) { this.disbandDialog = { visible: true, club: c } },
+    async confirmDisband({ reason }) {
+      const c = this.disbandDialog.club
+      this.disbandDialog.visible = false
+      if (!c) return
+      this.acting = c.clubId
       const res = await studentAffairsApi.disbandClub(c.clubId, reason)
+      this.acting = ''
       if (res.code === 0) { toast.success('已注销'); this.load(); if (this.sel && this.sel.clubId === c.clubId) this.sel = null } else toast.error(res.message || '注销失败')
     },
     async select(c) {

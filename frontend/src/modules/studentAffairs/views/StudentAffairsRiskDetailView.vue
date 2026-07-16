@@ -71,40 +71,97 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <!-- 分派/处置/跟进/升级/接管/关闭/重开 —— 统一走带原因校验的二次确认弹窗 -->
+    <AppConfirmDialog
+      v-model:visible="dialog.visible"
+      :title="dialog.title"
+      :message="dialog.message"
+      :type="dialog.type"
+      :confirm-text="dialog.confirmText"
+      require-reason
+      :reason-label="dialog.reasonLabel"
+      :reason-placeholder="dialog.reasonPlaceholder"
+      :reason-min-length="dialog.reasonMinLength"
+      :phrase-scene-key="dialogPhraseSceneKey"
+      :submitting="actioning"
+      @confirm="onDialogConfirm"
+    />
+
+    <!-- 转办：换责任人（必填）+ 转办原因（选填），两个字段用抽屉承载 -->
+    <AppDrawer v-model:visible="transferDrawer.visible" title="转办风险">
+      <div class="sa-form">
+        <AppFormItem label="新责任人 ID" required :error="transferDrawer.errors.newOwnerId">
+          <AppTextInput v-model="transferDrawer.form.newOwnerId" placeholder="请输入新责任人 ID" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="转办原因">
+          <AppQuickPhrases scene-key="sa.risk.transfer" @pick="onPickTransferReason" />
+          <AppTextarea ref="transferReasonTa" v-model="transferDrawer.form.reason" :rows="3" placeholder="如：职责调整，转交处理" :disabled="actioning" />
+        </AppFormItem>
+        <AppInlineAlert v-if="transferDrawer.errorMessage" type="danger" :description="transferDrawer.errorMessage" />
+      </div>
+      <template #footer>
+        <button type="button" class="sa-btn" :disabled="actioning" @click="transferDrawer.visible = false">取消</button>
+        <AppPermissionButton code="studentAffairs.risk.transfer" :loading="actioning" @click="submitTransfer">
+          确认转办
+        </AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
 import {
   AppAuditTrail,
+  AppConfirmDialog,
   AppDescriptionList,
+  AppFormItem,
   AppGlobalState,
+  AppInlineAlert,
   AppPageShell,
   AppPermissionButton,
+  AppQuickPhrases,
   AppRiskTag,
   AppSectionCard,
-  AppSensitiveText
+  AppSensitiveText,
+  AppTextarea,
+  AppTextInput
 } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 export default {
   name: 'StudentAffairsRiskDetailView',
   components: {
     AppAuditTrail,
+    AppConfirmDialog,
     AppDescriptionList,
+    AppDrawer,
+    AppFormItem,
     AppGlobalState,
+    AppInlineAlert,
     AppPageShell,
     AppPermissionButton,
+    AppQuickPhrases,
     AppRiskTag,
     AppSectionCard,
-    AppSensitiveText
+    AppSensitiveText,
+    AppTextarea,
+    AppTextInput
   },
   data() {
     return {
       loading: true,
       actioning: false,
       errorMessage: '',
-      detail: {}
+      detail: {},
+      // 分派/处置/跟进/升级/接管/关闭/重开 共用同一个确认弹窗，按 action 分发到对应接口。
+      dialog: {
+        visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认',
+        reasonLabel: '原因', reasonPlaceholder: '', reasonMinLength: 1
+      },
+      transferDrawer: { visible: false, form: { newOwnerId: '', reason: '' }, errors: {}, errorMessage: '' }
     }
   },
   computed: {
@@ -141,6 +198,16 @@ export default {
           result: '成功'
         }
       ]
+    },
+    // 共用弹窗按 dialog.action 切换快捷用语场景；接管（takeover）与分派（assign）词库无对应词条，返回空字符串使 AppQuickPhrases 不渲染。
+    dialogPhraseSceneKey() {
+      return ({
+        process: 'sa.risk.handle',
+        follow: 'sa.risk.followup',
+        escalate: 'sa.risk.escalate',
+        close: 'sa.risk.close',
+        reopen: 'sa.risk.reopen'
+      })[this.dialog.action] || ''
     }
   },
   mounted() {
@@ -159,46 +226,119 @@ export default {
         this.loading = false
       }
     },
-    async assign() {
-      const ownerId = window.prompt('请输入责任人 ID', this.detail.ownerId || '')
-      if (!ownerId) return
-      await this.runAction(() => studentAffairsApi.assignRisk(this.riskId, ownerId))
+    openDialog(action, opts) {
+      this.dialog = {
+        visible: true, action,
+        type: 'primary', confirmText: '确认',
+        reasonLabel: '原因', reasonPlaceholder: '', reasonMinLength: 1,
+        ...opts
+      }
     },
-    async process() {
-      const content = window.prompt('请输入处置内容', '已联系学生并记录处置过程')
-      if (!content) return
-      await this.runAction(() => studentAffairsApi.processRisk(this.riskId, content))
+    assign() {
+      this.openDialog('assign', {
+        title: '分派责任人',
+        message: '将该风险指派给指定责任人跟进处置。',
+        confirmText: '确认分派',
+        reasonLabel: '责任人 ID',
+        reasonPlaceholder: this.detail.ownerId ? `当前责任人：${this.detail.ownerId}，请输入新的责任人 ID` : '请输入责任人 ID'
+      })
     },
-    async follow() {
-      const content = window.prompt('请输入跟进说明', '转入持续跟进')
-      if (content === null) return
-      await this.runAction(() => studentAffairsApi.followRisk(this.riskId, content))
+    process() {
+      this.openDialog('process', {
+        title: '处置风险',
+        message: '记录本次处置过程，处置后进入处置中状态。',
+        confirmText: '确认处置',
+        reasonLabel: '处置内容',
+        reasonPlaceholder: '如：已联系学生并记录处置过程'
+      })
     },
-    async transfer() {
-      const newOwnerId = window.prompt('请输入新责任人 ID')
-      if (!newOwnerId) return
-      const reason = window.prompt('请输入转办原因', '职责调整，转交处理') || ''
-      await this.runAction(() => studentAffairsApi.transferRisk(this.riskId, newOwnerId, reason))
+    follow() {
+      this.openDialog('follow', {
+        title: '转入持续跟进',
+        message: '转入持续跟进状态，并记录跟进说明。',
+        confirmText: '确认跟进',
+        reasonLabel: '跟进说明',
+        reasonPlaceholder: '如：转入持续跟进'
+      })
     },
-    async escalate() {
-      const reason = window.prompt('请输入升级原因', '风险等级提升，需要上级关注')
-      if (reason === null) return
-      await this.runAction(() => studentAffairsApi.escalateRisk(this.riskId, reason))
+    transfer() {
+      this.transferDrawer = { visible: true, form: { newOwnerId: '', reason: '' }, errors: {}, errorMessage: '' }
     },
-    async takeover() {
-      const content = window.prompt('请输入接管说明', '上级接管处置')
-      if (content === null) return
-      await this.runAction(() => studentAffairsApi.takeoverRisk(this.riskId, content))
+    onPickTransferReason(text) {
+      const el = this.$refs.transferReasonTa?.$refs?.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.transferDrawer.form.reason, text)
+      this.transferDrawer.form.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
-    async close() {
-      const conclusion = window.prompt('请输入关闭结论（至少 5 个字）', '学生情况稳定，风险解除')
-      if (!conclusion) return
-      await this.runAction(() => studentAffairsApi.closeRisk(this.riskId, conclusion))
+    async submitTransfer() {
+      const { form, errors } = this.transferDrawer
+      errors.newOwnerId = form.newOwnerId.trim() ? '' : '请输入新责任人 ID'
+      if (errors.newOwnerId) return
+      this.actioning = true
+      this.transferDrawer.errorMessage = ''
+      try {
+        await studentAffairsApi.transferRisk(this.riskId, form.newOwnerId.trim(), form.reason.trim())
+        this.transferDrawer.visible = false
+        await this.load()
+      } catch (e) {
+        this.transferDrawer.errorMessage = e.message || '转办失败'
+      } finally {
+        this.actioning = false
+      }
     },
-    async reopen() {
-      const reason = window.prompt('请输入重开原因', '风险复发，需要重新跟进')
-      if (reason === null) return
-      await this.runAction(() => studentAffairsApi.reopenRisk(this.riskId, reason))
+    escalate() {
+      this.openDialog('escalate', {
+        title: '升级风险',
+        type: 'warning',
+        message: '升级后风险等级上调，提请上级关注处置。',
+        confirmText: '确认升级',
+        reasonLabel: '升级原因',
+        reasonPlaceholder: '如：风险等级提升，需要上级关注'
+      })
+    },
+    takeover() {
+      this.openDialog('takeover', {
+        title: '接管风险',
+        message: '由你直接接管本条风险的后续处置。',
+        confirmText: '确认接管',
+        reasonLabel: '接管说明',
+        reasonPlaceholder: '如：上级接管处置'
+      })
+    },
+    close() {
+      this.openDialog('close', {
+        title: '关闭风险',
+        type: 'warning',
+        message: '关闭前请填写关闭结论，关闭后写入学生 360 时间线。',
+        confirmText: '确认关闭',
+        reasonLabel: '关闭结论',
+        reasonPlaceholder: '如：学生情况稳定，风险解除'
+      })
+    },
+    reopen() {
+      this.openDialog('reopen', {
+        title: '重开风险',
+        type: 'warning',
+        message: '重开后风险恢复为跟进中状态。',
+        confirmText: '确认重开',
+        reasonLabel: '重开原因',
+        reasonPlaceholder: '如：风险复发，需要重新跟进'
+      })
+    },
+    async onDialogConfirm(payload) {
+      const reason = (payload && payload.reason) || ''
+      const call = {
+        assign: () => studentAffairsApi.assignRisk(this.riskId, reason),
+        process: () => studentAffairsApi.processRisk(this.riskId, reason),
+        follow: () => studentAffairsApi.followRisk(this.riskId, reason),
+        escalate: () => studentAffairsApi.escalateRisk(this.riskId, reason),
+        takeover: () => studentAffairsApi.takeoverRisk(this.riskId, reason),
+        close: () => studentAffairsApi.closeRisk(this.riskId, reason),
+        reopen: () => studentAffairsApi.reopenRisk(this.riskId, reason)
+      }[this.dialog.action]
+      if (!call) return
+      await this.runAction(call)
+      this.dialog.visible = false
     },
     async runAction(fn) {
       this.actioning = true
@@ -257,6 +397,10 @@ export default {
 .sa-masked {
   color: var(--text-tertiary);
 }
+.sa-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.sa-btn { height: 34px; padding: 0 var(--space-4); border-radius: var(--radius-base); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-base); cursor: pointer; }
+.sa-btn:hover { border-color: var(--border-dark); }
+.sa-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 960px) {
   .sa-detail-layout {
     grid-template-columns: 1fr;

@@ -43,6 +43,8 @@
             </li>
             <li v-if="!items.length" class="og-empty">暂无学生组织，点右上「建组织」</li>
           </ul>
+          <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                         :total="pagination.total" @change="load" />
         </AppSectionCard>
 
         <AppSectionCard :title="sel ? (sel.orgName + ' · 在任成员') : '组织详情'" class="og-detail">
@@ -76,7 +78,7 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -84,10 +86,11 @@ const TYPES = { STUDENT_UNION: '学生会', SOCIETY_FEDERATION: '社团联合会
 
 export default {
   name: 'StudentOrgView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
   data() {
     return {
-      loading: true, saving: false, errorMessage: '', items: [], TYPES,
+      loading: true, saving: false, errorMessage: '', items: [], TYPES, total: 0, byLevel: {},
+      pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: { orgName: '', orgType: 'STUDENT_UNION', level: 'SCHOOL', advisorName: '', error: '' },
       sel: null, positions: [], apForm: { visible: false, studentId: null, position: '', termCode: '' }
     }
@@ -95,12 +98,10 @@ export default {
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const school = this.items.filter((o) => o.level === 'SCHOOL').length
-      const college = this.items.filter((o) => o.level === 'COLLEGE').length
       return [
-        { key: 't', label: '组织总数', value: this.items.length, accent: 'primary' },
-        { key: 's', label: '校级', value: school, accent: 'success' },
-        { key: 'c', label: '院级', value: college, accent: 'info' }
+        { key: 't', label: '组织总数', value: this.total, accent: 'primary' },
+        { key: 's', label: '校级', value: this.byLevel.SCHOOL || 0, accent: 'success' },
+        { key: 'c', label: '院级', value: this.byLevel.COLLEGE || 0, accent: 'info' }
       ]
     }
   },
@@ -108,9 +109,24 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getOrganizations({ pageSize: 300 })
-      if (res.code === 0 && res.data) this.items = res.data.items || []
-      else this.errorMessage = res.message || '学生组织加载失败'
+      // 指标基于全量聚合（不分页）；列表按真实分页取（后端 /student-affairs/organizations 已支持 page/pageSize）
+      const [all, filtered] = await Promise.all([
+        studentAffairsApi.getOrganizations({ pageSize: 500 }),
+        studentAffairsApi.getOrganizations({ page: this.pagination.page, pageSize: this.pagination.pageSize })
+      ])
+      if (all.code === 0 && all.data) {
+        const allItems = all.data.items || []
+        this.total = all.data.total != null ? all.data.total : allItems.length
+        this.byLevel = allItems.reduce((m, x) => { m[x.level] = (m[x.level] || 0) + 1; return m }, {})
+      } else {
+        this.errorMessage = all.message || '学生组织加载失败'
+      }
+      if (filtered.code === 0 && filtered.data) {
+        this.items = filtered.data.items || []
+        this.pagination.total = filtered.data.total != null ? filtered.data.total : this.items.length
+      } else if (!this.errorMessage) {
+        this.errorMessage = filtered.message || '学生组织加载失败'
+      }
       this.loading = false
     },
     openForm() { this.form = { orgName: '', orgType: 'STUDENT_UNION', level: 'SCHOOL', advisorName: '', error: '' }; this.formVisible = true },

@@ -13,7 +13,7 @@
       </div>
       <AppSectionCard title="异常列表">
         <div class="sa-toolbar">
-          <select v-model="filterStatus" @change="load">
+          <select v-model="filterStatus" @change="onFilterChange">
             <option value="">全部状态</option>
             <option value="PENDING_HANDLE">待处置</option>
             <option value="HANDLED">已处置</option>
@@ -26,28 +26,53 @@
               <td>{{ typeLabel(x.excType) }}</td>
               <td>{{ x.detail || '—' }}</td>
               <td><AppStatusTag :type="x.status === 'HANDLED' ? 'success' : 'warning'" :label="x.status === 'HANDLED' ? '已处置' : '待处置'" /></td>
-              <td>{{ (x.createdAt || '').slice(0, 16) }}</td>
+              <td><AppDateDisplay :value="x.createdAt" mode="datetime" empty-text="—" /></td>
               <td class="sa-actions">
-                <AppPermissionButton v-if="x.status !== 'HANDLED'" code="studentAffairs.dorm.exception.handle" size="sm" :loading="actioning" @click="handle(x)">处置</AppPermissionButton>
+                <AppPermissionButton v-if="x.status !== 'HANDLED'" code="studentAffairs.dorm.exception.handle" size="sm" :loading="actioning" @click="openHandle(x)">处置</AppPermissionButton>
                 <span v-else class="sa-muted">已闭环</span>
               </td>
             </tr>
             <tr v-if="!items.length"><td colspan="5" class="sa-empty">当前范围内暂无宿舍异常</td></tr>
           </tbody>
         </table>
+        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 处置宿舍异常 -->
+    <AppConfirmDialog
+      v-model:visible="handleDialog.visible"
+      title="处置宿舍异常"
+      message="请填写处置说明，处置后该异常将标记为已闭环。"
+      type="warning"
+      confirm-text="确认处置"
+      require-reason
+      reason-label="处置说明"
+      :reason-min-length="5"
+      :submitting="actioning"
+      @confirm="submitHandle"
+    >
+      <AppInlineAlert v-if="handleDialog.errorMessage" type="danger" :description="handleDialog.errorMessage" />
+    </AppConfirmDialog>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppConfirmDialog, AppDateDisplay, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
+        AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 export default {
   name: 'DormExceptionView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag },
-  data() { return { loading: true, actioning: false, errorMessage: '', items: [], filterStatus: '' } },
+  components: { AppConfirmDialog, AppDateDisplay, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
+               AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag },
+  data() {
+    return {
+      loading: true, actioning: false, errorMessage: '', items: [], filterStatus: '',
+      pagination: { page: 1, pageSize: 20, total: 0 },
+      handleDialog: { visible: false, target: null, errorMessage: '' }
+    }
+  },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
@@ -64,15 +89,32 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      try { this.items = (await studentAffairsApi.listDormExceptions({ status: this.filterStatus, pageSize: 100 })).data.items || [] }
-      catch (e) { this.errorMessage = e.message || '异常加载失败' } finally { this.loading = false }
+      try {
+        const res = await studentAffairsApi.listDormExceptions({
+          status: this.filterStatus, page: this.pagination.page, pageSize: this.pagination.pageSize
+        })
+        this.items = res.data.items || []
+        this.pagination.total = res.data.total || 0
+      } catch (e) { this.errorMessage = e.message || '异常加载失败' } finally { this.loading = false }
     },
-    async handle(x) {
-      const reason = window.prompt('处置说明（不少于 5 字）', '')
-      if (!reason || reason.trim().length < 5) { if (reason !== null) window.alert('说明不少于 5 字'); return }
-      this.actioning = true
-      try { await studentAffairsApi.handleDormException(x.exceptionId, reason.trim()); await this.load() }
-      catch (e) { this.errorMessage = e.message || '处置失败' } finally { this.actioning = false }
+    onFilterChange() {
+      this.pagination.page = 1
+      this.load()
+    },
+    openHandle(x) {
+      this.handleDialog.visible = true
+      this.handleDialog.target = x
+      this.handleDialog.errorMessage = ''
+    },
+    async submitHandle({ reason }) {
+      if (!this.handleDialog.target) return
+      this.actioning = true; this.handleDialog.errorMessage = ''
+      try {
+        await studentAffairsApi.handleDormException(this.handleDialog.target.exceptionId, reason)
+        this.handleDialog.visible = false
+        await this.load()
+      } catch (e) { this.handleDialog.errorMessage = e.message || '处置失败' }
+      finally { this.actioning = false }
     },
     typeLabel(t) { return ({ HYGIENE: '卫生', SAFETY: '安全', CONTRABAND: '违禁品', NIGHT_ABSENCE: '夜不归宿', DORM_CHECK: '检查异常' })[t] || (t || '异常') }
   }

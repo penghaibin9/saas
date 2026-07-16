@@ -118,7 +118,9 @@
             <div v-if="detail.leave.status === 'PENDING_REVIEW'" class="mp-card lav-actzone">
               <div class="mp-card__head"><div class="mp-card__title">审批意见</div></div>
               <div class="mp-card__body">
+                <AppQuickPhrases scene-key="sa.leave.approve" @pick="onPickComment" />
                 <textarea
+                  ref="commentTa"
                   v-model="comment"
                   class="lav-comment"
                   rows="2"
@@ -149,6 +151,7 @@
       require-reason
       reason-label="退回原因"
       reason-placeholder="请说明退回原因（如材料不全、时间冲突），不少于 5 个字"
+      phrase-scene-key="sa.leave.return"
       :submitting="returnDialog.submitting"
       @confirm="submitReturn"
     />
@@ -176,6 +179,7 @@
  */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppQuickPhrases } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { ExportDrawer, SplitWorkspace, readListState, writeListState } from '@/modules/campusService/components'
 import {
@@ -183,6 +187,7 @@ import {
   getExportOptions, createExport
 } from '@/modules/campusService/api/campusService.api'
 import { toast } from '@/utils/toast'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 const FILTER_KEYS = ['keyword', 'type', 'status', 'classId']
 const EMPTY_FILTERS = () => ({ keyword: '', type: '', status: '', classId: '' })
@@ -191,7 +196,7 @@ export default {
   name: 'LeaveApprovalView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppConfirmDialog, AppButton, ExportDrawer, SplitWorkspace
+    AppConfirmDialog, AppQuickPhrases, AppButton, ExportDrawer, SplitWorkspace
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -376,6 +381,12 @@ export default {
         await this.load()
         this.loadPendingTotal()
       }
+    },
+    onPickComment(text) {
+      const el = this.$refs.commentTa
+      const { value, selStart, selEnd } = insertAtCursor(el, this.comment, text)
+      this.comment = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
     openReturn() {
       if (!this.can('campus.leave.return') || !this.detail) return

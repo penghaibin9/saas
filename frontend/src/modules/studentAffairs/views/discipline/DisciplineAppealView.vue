@@ -19,7 +19,10 @@
             <tr v-for="c in effectiveCases" :key="c.caseId">
               <td><strong>{{ c.realName || ('学生#' + c.studentId) }}</strong></td>
               <td>{{ discLabel(c.discType) }}</td>
-              <td>{{ c.deliveredAt ? (deliveryLabel(c.deliveryMethod) + ' · ' + c.deliveredAt.slice(0,10)) : '未送达' }}</td>
+              <td>
+                <template v-if="c.deliveredAt">{{ deliveryLabel(c.deliveryMethod) }} · <AppDateDisplay :value="c.deliveredAt" mode="date" /></template>
+                <span v-else>未送达</span>
+              </td>
               <td class="ap-ops">
                 <AppPermissionButton v-if="!c.deliveredAt" code="studentAffairs.discipline.deliver" size="sm" :loading="acting===c.caseId" @click="deliver(c)">登记送达</AppPermissionButton>
                 <AppPermissionButton code="studentAffairs.discipline.appeal.create" size="sm" variant="secondary" :loading="acting===c.caseId" @click="appeal(c)">发起申诉</AppPermissionButton>
@@ -28,6 +31,8 @@
             <tr v-if="!effectiveCases.length"><td colspan="4" class="sa-empty">暂无已生效处分</td></tr>
           </tbody>
         </table>
+        <AppPagination v-if="effectiveCases.length" v-model:page="effectivePaging.page" v-model:pageSize="effectivePaging.pageSize"
+                       :total="effectivePaging.total" @change="loadEffectivePage" />
       </AppSectionCard>
 
       <AppSectionCard title="申诉复核">
@@ -51,15 +56,74 @@
             <tr v-if="!appeals.length"><td colspan="5" class="sa-empty">暂无申诉</td></tr>
           </tbody>
         </table>
+        <AppPagination v-if="appeals.length" v-model:page="appealsPaging.page" v-model:pageSize="appealsPaging.pageSize"
+                       :total="appealsPaging.total" @change="loadAppealsPage" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 登记决定书送达：送达方式为固定枚举，用抽屉里的下拉承载 -->
+    <AppDrawer v-model:visible="deliverDrawer.visible" title="登记决定书送达">
+      <div class="sa-form">
+        <AppFormItem label="送达方式" required>
+          <AppSelect v-model="deliverDrawer.form.method" :options="deliveryOptions" :disabled="!!acting" />
+        </AppFormItem>
+        <AppInlineAlert v-if="deliverDrawer.errorMessage" type="danger" :description="deliverDrawer.errorMessage" />
+      </div>
+      <template #footer>
+        <button type="button" class="ap-btn" :disabled="!!acting" @click="deliverDrawer.visible = false">取消</button>
+        <AppPermissionButton code="studentAffairs.discipline.deliver" :loading="!!acting" @click="submitDeliver">
+          登记送达
+        </AppPermissionButton>
+      </template>
+    </AppDrawer>
+
+    <!-- 发起申诉：单个申诉理由，走带原因校验的确认弹窗（后端 min_length=5 真实强校验） -->
+    <AppConfirmDialog
+      v-model:visible="appealDialog.visible"
+      title="发起处分申诉"
+      message="提交后进入学工处/学院申诉复核流程。"
+      type="primary"
+      confirm-text="提交申诉"
+      require-reason
+      reason-label="申诉理由（≥5字）"
+      reason-placeholder="请客观陈述申诉理由，不少于 5 字"
+      :reason-min-length="5"
+      :submitting="!!acting"
+      @confirm="submitAppeal"
+    />
+
+    <!-- 申诉复核：结论（枚举）+ 复核意见（≥5字），两个字段用抽屉承载 -->
+    <AppDrawer v-model:visible="reviewDrawer.visible" title="申诉复核">
+      <div class="sa-form">
+        <AppFormItem label="复核结论" required>
+          <AppSelect v-model="reviewDrawer.form.result" :options="resultOptions" :disabled="!!acting" />
+        </AppFormItem>
+        <AppFormItem label="复核意见（≥5字）" required :error="reviewDrawer.errors.opinion">
+          <AppQuickPhrases scene-key="common.reviewOpinion" @pick="insertOpinionPhrase" />
+          <AppTextarea ref="reviewOpinionTa" v-model="reviewDrawer.form.opinion" :rows="3" placeholder="请填写复核意见，不少于 5 字" :disabled="!!acting" />
+        </AppFormItem>
+        <AppInlineAlert v-if="reviewDrawer.errorMessage" type="danger" :description="reviewDrawer.errorMessage" />
+      </div>
+      <template #footer>
+        <button type="button" class="ap-btn" :disabled="!!acting" @click="reviewDrawer.visible = false">取消</button>
+        <AppPermissionButton code="studentAffairs.discipline.appeal.review" :loading="!!acting" @click="submitReview">
+          提交复核
+        </AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppDateDisplay, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+  AppPageShell, AppPagination, AppPermissionButton, AppQuickPhrases, AppSectionCard, AppSelect,
+  AppStatusTag, AppTextarea
+} from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 const DISC = { WARNING: '警告', SERIOUS_WARNING: '严重警告', DEMERIT: '记过', PROBATION: '留校察看', EXPEL: '开除' }
 const DELIVERY = { DIRECT: '直接送达', MAIL: '邮寄', PUBLIC: '公告', LEAVE: '留置' }
@@ -71,17 +135,33 @@ const APPEAL_FILTERS = [
 
 export default {
   name: 'DisciplineAppealView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppDateDisplay, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+    AppPageShell, AppPagination, AppPermissionButton, AppQuickPhrases, AppSectionCard, AppSelect,
+    StatusTag: AppStatusTag, AppTextarea
+  },
   data() {
-    return { loading: true, acting: '', errorMessage: '', effectiveCases: [], appeals: [], appealStatus: '', appealFilters: APPEAL_FILTERS }
+    return {
+      loading: true, acting: '', errorMessage: '',
+      // 「已生效处分」「申诉」各拆成两路请求：*MetricsAll 保持与旧版一致的大 pageSize 全量快照，只喂头部统计卡；
+      // 表格本体（effectiveCases / appeals）改走真实 page/pageSize，翻页不影响统计卡数字。
+      effectiveMetricsAll: [], effectiveCases: [], effectivePaging: { page: 1, pageSize: 20, total: 0 },
+      appealsMetricsAll: [], appeals: [], appealsPaging: { page: 1, pageSize: 20, total: 0 },
+      appealStatus: '', appealFilters: APPEAL_FILTERS,
+      deliveryOptions: Object.entries(DELIVERY).map(([value, label]) => ({ value, label })),
+      resultOptions: Object.entries(RESULT).map(([value, label]) => ({ value, label })),
+      deliverDrawer: { visible: false, caseId: '', form: { method: 'DIRECT' }, errorMessage: '' },
+      appealDialog: { visible: false, caseId: '' },
+      reviewDrawer: { visible: false, appealId: '', form: { result: 'UPHELD', opinion: '' }, errors: {}, errorMessage: '' }
+    }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const undelivered = this.effectiveCases.filter((c) => !c.deliveredAt).length
-      const pending = this.appeals.filter((a) => ['SUBMITTED', 'REVIEWING'].includes(a.status)).length
+      const undelivered = this.effectiveMetricsAll.filter((c) => !c.deliveredAt).length
+      const pending = this.appealsMetricsAll.filter((a) => ['SUBMITTED', 'REVIEWING'].includes(a.status)).length
       return [
-        { key: 'e', label: '已生效处分', value: this.effectiveCases.length, accent: 'primary' },
+        { key: 'e', label: '已生效处分', value: this.effectiveMetricsAll.length, accent: 'primary' },
         { key: 'u', label: '待送达', value: undelivered, accent: undelivered ? 'warning' : 'success' },
         { key: 'p', label: '待复核申诉', value: pending, accent: pending ? 'warning' : 'success' }
       ]
@@ -89,43 +169,105 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    insertOpinionPhrase(text) {
+      const el = this.$refs.reviewOpinionTa?.$refs?.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.reviewDrawer.form.opinion, text)
+      this.reviewDrawer.form.opinion = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const [cs, ap] = await Promise.all([
+      const [effMeta, apMeta] = await Promise.all([
         studentAffairsApi.getDisciplineCases({ status: 'EFFECTIVE', pageSize: 300 }),
         studentAffairsApi.getDisciplineAppeals({ status: this.appealStatus, pageSize: 300 })
       ])
-      if (cs.code === 0 && cs.data) this.effectiveCases = cs.data.items || []
-      else this.errorMessage = cs.message || '加载失败'
-      this.appeals = (ap.code === 0 && ap.data) ? (ap.data.items || []) : []
+      if (effMeta.code === 0 && effMeta.data) this.effectiveMetricsAll = effMeta.data.items || []
+      else this.errorMessage = effMeta.message || '加载失败'
+      this.appealsMetricsAll = (apMeta.code === 0 && apMeta.data) ? (apMeta.data.items || []) : []
+      await Promise.all([this.loadEffectivePage(), this.loadAppealsPage()])
       this.loading = false
     },
-    setAppealStatus(k) { if (this.appealStatus === k) return; this.appealStatus = k; this.load() },
-    async deliver(c) {
-      const method = window.prompt('送达方式：DIRECT 直接 / MAIL 邮寄 / PUBLIC 公告 / LEAVE 留置', 'DIRECT')
-      if (!method) return
-      this.acting = c.caseId
-      const res = await studentAffairsApi.deliverDiscipline(c.caseId, { method: method.trim().toUpperCase() })
-      this.acting = ''
-      if (res.code === 0) { toast.success('已登记送达'); this.load() } else toast.error(res.message || '送达失败')
+    async loadEffectivePage() {
+      const res = await studentAffairsApi.getDisciplineCases({
+        status: 'EFFECTIVE', page: this.effectivePaging.page, pageSize: this.effectivePaging.pageSize
+      })
+      if (res.code === 0 && res.data) {
+        this.effectiveCases = res.data.items || []
+        this.effectivePaging.total = res.data.total || 0
+      }
     },
-    async appeal(c) {
-      const reason = window.prompt('申诉理由（至少5字）：')
-      if (!reason) return
-      this.acting = c.caseId
-      const res = await studentAffairsApi.submitDisciplineAppeal(c.caseId, reason)
-      this.acting = ''
-      if (res.code === 0) { toast.success('申诉已提交'); this.load() } else toast.error(res.message || '申诉失败')
+    async loadAppealsPage() {
+      const res = await studentAffairsApi.getDisciplineAppeals({
+        status: this.appealStatus, page: this.appealsPaging.page, pageSize: this.appealsPaging.pageSize
+      })
+      if (res.code === 0 && res.data) {
+        this.appeals = res.data.items || []
+        this.appealsPaging.total = res.data.total || 0
+      }
     },
-    async review(a) {
-      const result = window.prompt('复核结论：UPHELD 维持 / REVISED 变更 / REVOKED 撤销', 'UPHELD')
-      if (!result) return
-      const opinion = window.prompt('复核意见（至少5字）：')
-      if (!opinion) return
-      this.acting = a.appealId
-      const res = await studentAffairsApi.reviewDisciplineAppeal(a.appealId, result.trim().toUpperCase(), opinion)
+    setAppealStatus(k) {
+      if (this.appealStatus === k) return
+      this.appealStatus = k
+      this.appealsPaging.page = 1
+      this.reloadAppeals()
+    },
+    async reloadAppeals() {
+      const apMeta = await studentAffairsApi.getDisciplineAppeals({ status: this.appealStatus, pageSize: 300 })
+      this.appealsMetricsAll = (apMeta.code === 0 && apMeta.data) ? (apMeta.data.items || []) : []
+      await this.loadAppealsPage()
+    },
+    deliver(c) {
+      this.deliverDrawer = { visible: true, caseId: c.caseId, form: { method: 'DIRECT' }, errorMessage: '' }
+    },
+    async submitDeliver() {
+      const { caseId, form } = this.deliverDrawer
+      this.acting = caseId
+      this.deliverDrawer.errorMessage = ''
+      const res = await studentAffairsApi.deliverDiscipline(caseId, { method: form.method })
       this.acting = ''
-      if (res.code === 0) { toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
+      if (res.code === 0) {
+        toast.success('已登记送达')
+        this.deliverDrawer.visible = false
+        this.load()
+      } else {
+        this.deliverDrawer.errorMessage = res.message || '送达失败'
+      }
+    },
+    appeal(c) {
+      this.appealDialog = { visible: true, caseId: c.caseId }
+    },
+    async submitAppeal(payload) {
+      const reason = (payload && payload.reason) || ''
+      const caseId = this.appealDialog.caseId
+      this.acting = caseId
+      const res = await studentAffairsApi.submitDisciplineAppeal(caseId, reason)
+      this.acting = ''
+      if (res.code === 0) {
+        toast.success('申诉已提交')
+        this.appealDialog.visible = false
+        this.load()
+      } else {
+        toast.error(res.message || '申诉失败')
+      }
+    },
+    review(a) {
+      this.reviewDrawer = { visible: true, appealId: a.appealId, form: { result: 'UPHELD', opinion: '' }, errors: {}, errorMessage: '' }
+    },
+    async submitReview() {
+      const { appealId, form, errors } = this.reviewDrawer
+      errors.opinion = (form.opinion || '').trim().length >= 5 ? '' : '复核意见不能少于 5 个字'
+      if (errors.opinion) return
+      this.acting = appealId
+      this.reviewDrawer.errorMessage = ''
+      const res = await studentAffairsApi.reviewDisciplineAppeal(appealId, form.result, form.opinion.trim())
+      this.acting = ''
+      if (res.code === 0) {
+        toast.success('已复核')
+        this.reviewDrawer.visible = false
+        this.load()
+      } else {
+        this.reviewDrawer.errorMessage = res.message || '复核失败'
+      }
     },
     discLabel(t) { return DISC[t] || t },
     deliveryLabel(m) { return DELIVERY[m] || m },
@@ -145,5 +287,10 @@ export default {
 .ap-reason, .ap-opinion { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 260px; }
 .ap-ops { display: flex; gap: 6px; }
 .ap-dash { color: var(--text-tertiary); }
+.sa-table + .app-pagination { margin-top: var(--space-3); }
+.sa-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.ap-btn { height: 34px; padding: 0 var(--space-4); border-radius: var(--radius-base); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-base); cursor: pointer; }
+.ap-btn:hover { border-color: var(--border-dark); }
+.ap-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 </style>

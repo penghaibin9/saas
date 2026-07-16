@@ -21,7 +21,7 @@
           <label class="vf-field"><span>服务名称 *</span><input v-model.trim="form.serviceName" class="vf-input" placeholder="如：社区图书整理" /></label>
           <label class="vf-field"><span>时长(小时) *</span><input v-model.number="form.hours" type="number" min="0" step="0.5" class="vf-input" /></label>
           <label class="vf-field"><span>服务单位</span><input v-model.trim="form.orgName" class="vf-input" placeholder="如：社区服务中心" /></label>
-          <label class="vf-field"><span>服务日期</span><input v-model="form.serviceDate" type="date" class="vf-input" /></label>
+          <div class="vf-field"><AppDatePicker v-model="form.serviceDate" label="服务日期" /></div>
         </div>
         <p v-if="form.error" class="vf-error">{{ form.error }}</p>
         <div class="vf-actions">
@@ -56,13 +56,28 @@
             <tr v-if="!items.length"><td colspan="6" class="sa-empty">当前范围与筛选下暂无志愿记录</td></tr>
           </tbody>
         </table>
+        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <AppConfirmDialog
+      v-model:visible="rejectDialog.visible"
+      title="驳回志愿时长补录"
+      type="danger"
+      :message="`确认驳回「${rejectDialog.serviceName}」的志愿时长补录？`"
+      require-reason
+      reason-label="驳回原因"
+      reason-placeholder="请填写驳回原因，至少5字"
+      confirm-text="确认驳回"
+      :submitting="acting === rejectDialog.recordId"
+      phrase-scene-key="common.reject"
+      @confirm="onRejectConfirm"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppConfirmDialog, AppDatePicker, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -73,12 +88,14 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'VolunteerRecordView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppConfirmDialog, AppDatePicker, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
   data() {
     return {
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
-      formVisible: false, form: this.blankForm()
+      formVisible: false, form: this.blankForm(),
+      pagination: { page: 1, pageSize: 20, total: 0 },
+      rejectDialog: { visible: false, recordId: '', serviceName: '' }
     }
   },
   computed: {
@@ -98,17 +115,22 @@ export default {
     blankForm() { return { studentId: null, serviceName: '', hours: null, orgName: '', serviceDate: '', error: '' } },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getVolunteerRecords({ pageSize: 300 })
+      // items 走真分页（服务端按 status 过滤+切片）；all 单独按改造前口径（不带 status，pageSize 300 一次性拉取）
+      // 仅供统计卡片聚合使用，避免真分页把统计数字切小。
+      const [res, allRes] = await Promise.all([
+        studentAffairsApi.getVolunteerRecords({ status: this.activeStatus, page: this.pagination.page, pageSize: this.pagination.pageSize }),
+        studentAffairsApi.getVolunteerRecords({ pageSize: 300 })
+      ])
       if (res.code === 0 && res.data) {
-        this.all = res.data.items || []
-        this.applyFilter()
+        this.items = res.data.items || []
+        this.pagination.total = res.data.total || 0
       } else {
         this.errorMessage = res.message || '志愿记录加载失败'
       }
+      if (allRes.code === 0 && allRes.data) this.all = allRes.data.items || []
       this.loading = false
     },
-    applyFilter() { this.items = this.activeStatus ? this.all.filter((x) => x.status === this.activeStatus) : this.all },
-    setStatus(k) { this.activeStatus = k; this.applyFilter() },
+    setStatus(k) { this.activeStatus = k; this.pagination.page = 1; this.load() },
     openForm() { this.form = this.blankForm(); this.formVisible = true },
     async save() {
       const m = this.form
@@ -128,13 +150,15 @@ export default {
       this.acting = ''
       if (res.code === 0) { toast.success('已认定，计入志愿时长'); this.load() } else toast.error(res.message || '认定失败')
     },
-    async reject(r) {
-      const reason = window.prompt('驳回原因（至少5字）：')
-      if (!reason) return
-      this.acting = r.recordId
-      const res = await studentAffairsApi.rejectVolunteerRecord(r.recordId, reason)
+    reject(r) {
+      this.rejectDialog = { visible: true, recordId: r.recordId, serviceName: r.serviceName }
+    },
+    async onRejectConfirm({ reason }) {
+      const { recordId } = this.rejectDialog
+      this.acting = recordId
+      const res = await studentAffairsApi.rejectVolunteerRecord(recordId, reason)
       this.acting = ''
-      if (res.code === 0) { toast.success('已驳回'); this.load() } else toast.error(res.message || '驳回失败')
+      if (res.code === 0) { toast.success('已驳回'); this.rejectDialog.visible = false; this.load() } else toast.error(res.message || '驳回失败')
     },
     statusType(s) { return ({ PENDING: 'warning', CONFIRMED: 'success', REJECTED: 'danger' })[s] || 'default' }
   }

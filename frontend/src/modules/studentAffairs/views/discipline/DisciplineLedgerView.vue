@@ -36,19 +36,21 @@
               <td>{{ discTypeLabel(c.discType) }}</td>
               <td class="dl-doc">{{ c.docNo || '—' }}</td>
               <td><StatusTag :type="statusType(c.status)" :label="c.statusLabel || c.status" dot /></td>
-              <td>{{ (c.effectiveAt || '').slice(0, 10) || '—' }}</td>
-              <td>{{ (c.removedAt || '').slice(0, 10) || '—' }}</td>
+              <td><AppDateDisplay :value="c.effectiveAt" mode="date" empty-text="—" /></td>
+              <td><AppDateDisplay :value="c.removedAt" mode="date" empty-text="—" /></td>
             </tr>
             <tr v-if="!items.length"><td colspan="7" class="sa-empty">当前范围与筛选下暂无处分记录</td></tr>
           </tbody>
         </table>
+        <AppPagination v-if="items.length" v-model:page="paging.page" v-model:pageSize="paging.pageSize"
+                       :total="paging.total" @change="loadPage" />
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const DISC_TYPES = { WARNING: '警告', SERIOUS_WARNING: '严重警告', DEMERIT: '记过', PROBATION: '留校察看', EXPEL: '开除' }
@@ -61,19 +63,25 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'DisciplineLedgerView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag },
   data() {
-    return { loading: true, errorMessage: '', all: [], items: [], recon: { effectiveCases: 0, activeProjections: 0, consistent: true }, activeStatus: '', statusFilters: STATUS_FILTERS }
+    return {
+      loading: true, errorMessage: '', items: [],
+      // 三项全局统计只取后端 total（pageSize=1 的轻量请求），与「处分记录」表的真实分页互相独立，
+      // 避免表格翻页时头部统计卡跟着变化。
+      metrics: { all: 0, eff: 0, removed: 0 },
+      recon: { effectiveCases: 0, activeProjections: 0, consistent: true },
+      activeStatus: '', statusFilters: STATUS_FILTERS,
+      paging: { page: 1, pageSize: 20, total: 0 }
+    }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const eff = this.all.filter((c) => c.status === 'EFFECTIVE').length
-      const removed = this.all.filter((c) => c.status === 'REMOVED').length
       return [
-        { key: 'all', label: '处分记录数', value: this.all.length, accent: 'primary' },
-        { key: 'eff', label: '生效中', value: eff, accent: 'risk' },
-        { key: 'rm', label: '已解除', value: removed, accent: 'success' }
+        { key: 'all', label: '处分记录数', value: this.metrics.all, accent: 'primary' },
+        { key: 'eff', label: '生效中', value: this.metrics.eff, accent: 'risk' },
+        { key: 'rm', label: '已解除', value: this.metrics.removed, accent: 'success' }
       ]
     }
   },
@@ -81,23 +89,42 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const [cases, rec] = await Promise.all([
-        studentAffairsApi.getDisciplineCases({ pageSize: 500 }),
+      const [allRes, effRes, rmRes, rec] = await Promise.all([
+        studentAffairsApi.getDisciplineCases({ pageSize: 1 }),
+        studentAffairsApi.getDisciplineCases({ status: 'EFFECTIVE', pageSize: 1 }),
+        studentAffairsApi.getDisciplineCases({ status: 'REMOVED', pageSize: 1 }),
         studentAffairsApi.reconcileDiscipline()
       ])
-      if (cases.code === 0 && cases.data) {
-        this.all = cases.data.items || []
-        this.applyFilter()
+      if (allRes.code === 0 && allRes.data) {
+        this.metrics = {
+          all: allRes.data.total || 0,
+          eff: (effRes.code === 0 && effRes.data && effRes.data.total) || 0,
+          removed: (rmRes.code === 0 && rmRes.data && rmRes.data.total) || 0
+        }
         if (rec.code === 0 && rec.data) this.recon = rec.data
+        await this.loadPage()
       } else {
-        this.errorMessage = cases.message || '处分台账加载失败'
+        this.errorMessage = allRes.message || '处分台账加载失败'
       }
       this.loading = false
     },
-    applyFilter() {
-      this.items = this.activeStatus ? this.all.filter((c) => c.status === this.activeStatus) : this.all
+    async loadPage() {
+      const res = await studentAffairsApi.getDisciplineCases({
+        status: this.activeStatus, page: this.paging.page, pageSize: this.paging.pageSize
+      })
+      if (res.code === 0 && res.data) {
+        this.items = res.data.items || []
+        this.paging.total = res.data.total || 0
+      } else {
+        this.errorMessage = res.message || '处分记录加载失败'
+      }
     },
-    setStatus(k) { this.activeStatus = k; this.applyFilter() },
+    setStatus(k) {
+      if (this.activeStatus === k) return
+      this.activeStatus = k
+      this.paging.page = 1
+      this.loadPage()
+    },
     discTypeLabel(t) { return DISC_TYPES[t] || t || '—' },
     statusType(s) {
       if (s === 'EFFECTIVE') return 'danger'
@@ -125,5 +152,6 @@ export default {
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .dl-doc { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.sa-table + .app-pagination { margin-top: var(--space-3); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 </style>
