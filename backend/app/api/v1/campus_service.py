@@ -71,12 +71,12 @@ def leave_detail(lid: str, user=Depends(require_permission("campusService.leave.
 
 @router.post("/leaves/{lid}/approve", summary="请假通过")
 def leave_approve(lid: str, body: CommentBody = CommentBody(), user=Depends(require_permission("campusService.leave.approve"))):
-    return success(svc.approve_leave(lid, body.comment), message="已通过")
+    return success(svc.approve_leave(lid, body.comment, body.version), message="已通过")
 
 
 @router.post("/leaves/{lid}/return", summary="请假退回（原因≥5字）")
 def leave_return(lid: str, body: ReasonBody, user=Depends(require_permission("campusService.leave.approve"))):
-    return success(svc.return_leave(lid, body.reason), message="已退回")
+    return success(svc.return_leave(lid, body.reason, body.version), message="已退回")
 
 
 @router.post("/leaves/batch-approve", summary="批量通过请假")
@@ -100,12 +100,12 @@ def grant_detail(gid: str, user=Depends(require_permission("campusService.grant.
 
 @router.post("/grants/{gid}/approve", summary="资助通过")
 def grant_approve(gid: str, body: CommentBody = CommentBody(), user=Depends(require_permission("campusService.grant.approve"))):
-    return success(svc.approve_grant(gid, body.comment), message="已通过")
+    return success(svc.approve_grant(gid, body.comment, body.version), message="已通过")
 
 
 @router.post("/grants/{gid}/return", summary="资助退回（原因≥5字）")
 def grant_return(gid: str, body: ReasonBody, user=Depends(require_permission("campusService.grant.approve"))):
-    return success(svc.return_grant(gid, body.reason), message="已退回")
+    return success(svc.return_grant(gid, body.reason, body.version), message="已退回")
 
 
 @router.post("/grants/batch-approve", summary="批量通过资助")
@@ -137,7 +137,7 @@ def dorm_exc_mark(body: DormExcMark, user=Depends(require_permission("campusServ
 
 @router.post("/dorm-exceptions/{eid}/handle", summary="处理宿舍异常（说明≥5字）")
 def dorm_exc_handle(eid: str, body: DormExcHandle, user=Depends(require_permission("campusService.dorm.handle"))):
-    return success(svc.handle_dorm_exception(eid, body.note, body.complete), message="已处理")
+    return success(svc.handle_dorm_exception(eid, body.note, body.complete, body.version), message="已处理")
 
 
 # 违纪
@@ -191,12 +191,12 @@ def work_order_assign(body: AssignBody, user=Depends(require_permission("campusS
 
 @router.post("/work-orders/{wid}/handle", summary="处理工单（说明≥5字）")
 def work_order_handle(wid: str, body: HandleBody, user=Depends(require_permission("campusService.workOrder.handle"))):
-    return success(svc.handle_work_order(wid, body.note, body.close), message="已处理")
+    return success(svc.handle_work_order(wid, body.note, body.close, body.version), message="已处理")
 
 
 @router.post("/work-orders/{wid}/close", summary="关闭工单（原因≥5字）")
 def work_order_close(wid: str, body: ReasonBody, user=Depends(require_permission("campusService.workOrder.handle"))):
-    return success(svc.close_work_order(wid, body.reason), message="已关闭")
+    return success(svc.close_work_order(wid, body.reason, body.version), message="已关闭")
 
 
 # 心理关怀 + 审计

@@ -8,14 +8,17 @@ from pydantic import BaseModel, Field
 
 class ReasonBody(BaseModel):
     reason: str = Field(..., min_length=1)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class NoteBody(BaseModel):
     note: Optional[str] = Field(default="")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class CommentBody(BaseModel):
     comment: Optional[str] = Field(default="")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class IdsBody(BaseModel):
@@ -51,6 +54,7 @@ class DormExcMark(BaseModel):
 class DormExcHandle(BaseModel):
     note: str = Field(..., min_length=1)
     complete: bool = False
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class DisciplineCreate(BaseModel):
@@ -84,3 +88,4 @@ class AssignBody(BaseModel):
 class HandleBody(BaseModel):
     note: str = Field(..., min_length=1)
     close: bool = False
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")

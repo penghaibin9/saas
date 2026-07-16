@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.core.field_crypto import decrypt_field, encrypt_field
 from app.models import (CsAuditTrail, CsDiscipline, CsDormException, CsDormRecord, CsGrant, CsLeave,
                         CsMentalRecord, CsServiceStudent, CsWorkOrder)
@@ -269,7 +269,8 @@ def get_leave_detail(lid) -> dict:
                 "history": [_leave_row(h, stu) for h in hist]}
 
 
-def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=None, action=""):
+def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=None, action="",
+               expected_version=None):
     if need_reason and (not reason or len(reason.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
@@ -284,6 +285,7 @@ def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=Non
             raise AppException("DATA_CONFLICT", "该请假已接入新版多级审批流程，请到「请假销假」工作台处理审批")
         if x.status in ("APPROVED", "RETURNED"):
             raise AppException("DATA_CONFLICT", "该请假已处理，请刷新")
+        check_version(x.version, expected_version)
         before = x.status
         n, _ = _op()
         x.status = target
@@ -297,12 +299,12 @@ def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=Non
         return {"id": str(x.id), "status": target}
 
 
-def approve_leave(lid, comment=""):
-    return _leave_act(lid, "APPROVED", comment, False, None, "审批通过")
+def approve_leave(lid, comment="", expected_version=None):
+    return _leave_act(lid, "APPROVED", comment, False, None, "审批通过", expected_version)
 
 
-def return_leave(lid, reason):
-    return _leave_act(lid, "RETURNED", None, True, reason, "退回修改")
+def return_leave(lid, reason, expected_version=None):
+    return _leave_act(lid, "RETURNED", None, True, reason, "退回修改", expected_version)
 
 
 def batch_approve_leaves(ids):
@@ -363,7 +365,7 @@ def get_grant_detail(gid) -> dict:
         return {"grant": _grant_row(x, stu, mask=False), "student": _stu_row(stu) if stu else None}
 
 
-def _grant_act(gid, target, need_reason=False, reason=None, node="", action=""):
+def _grant_act(gid, target, need_reason=False, reason=None, node="", action="", expected_version=None):
     if need_reason and (not reason or len(reason.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
@@ -373,6 +375,7 @@ def _grant_act(gid, target, need_reason=False, reason=None, node="", action=""):
         _require_cs_scope(db, x.cs_student_id)
         if x.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该资助已终审，请刷新")
+        check_version(x.version, expected_version)
         before = x.status
         n, _ = _op()
         x.status = target
@@ -387,12 +390,12 @@ def _grant_act(gid, target, need_reason=False, reason=None, node="", action=""):
         return {"id": str(x.id), "status": target}
 
 
-def approve_grant(gid, comment=""):
-    return _grant_act(gid, "APPROVED", False, None, "已办结", "审批通过")
+def approve_grant(gid, comment="", expected_version=None):
+    return _grant_act(gid, "APPROVED", False, None, "已办结", "审批通过", expected_version)
 
 
-def return_grant(gid, reason):
-    return _grant_act(gid, "RETURNED", True, reason, "学生补充材料", "退回补充")
+def return_grant(gid, reason, expected_version=None):
+    return _grant_act(gid, "RETURNED", True, reason, "学生补充材料", "退回补充", expected_version)
 
 
 def batch_approve_grants(ids):
@@ -487,7 +490,7 @@ def mark_dorm_exception(body: dict) -> dict:
         return {"id": str(e.id)}
 
 
-def handle_dorm_exception(eid, note, complete=False) -> dict:
+def handle_dorm_exception(eid, note, complete=False, expected_version=None) -> dict:
     if not note or len(note.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "处理说明必填且不少于 5 字")
     with session() as db:
@@ -495,6 +498,7 @@ def handle_dorm_exception(eid, note, complete=False) -> dict:
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("宿舍异常不存在")
         _require_cs_scope(db, e.cs_student_id)
+        check_version(e.version, expected_version)
         before = e.status
         e.status = "COMPLETED" if complete else "PROCESSING"
         e.handle_note = note.strip()
@@ -647,7 +651,7 @@ def assign_work_orders(ids, handler) -> dict:
         return {"count": cnt}
 
 
-def handle_work_order(wid, note, close=False) -> dict:
+def handle_work_order(wid, note, close=False, expected_version=None) -> dict:
     if not note or len(note.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "处理说明必填且不少于 5 字")
     with session() as db:
@@ -655,6 +659,7 @@ def handle_work_order(wid, note, close=False) -> dict:
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, w.cs_student_id)
+        check_version(w.version, expected_version)
         before = w.status
         w.status = "COMPLETED" if close else "PROCESSING"
         if close:
@@ -668,7 +673,7 @@ def handle_work_order(wid, note, close=False) -> dict:
         return {"id": str(w.id), "status": w.status}
 
 
-def close_work_order(wid, reason) -> dict:
+def close_work_order(wid, reason, expected_version=None) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "关闭原因必填且不少于 5 字")
     with session() as db:
@@ -676,6 +681,7 @@ def close_work_order(wid, reason) -> dict:
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, w.cs_student_id)
+        check_version(w.version, expected_version)
         w.status = "CLOSED"
         w.close_time = datetime.utcnow()
         w.version += 1
