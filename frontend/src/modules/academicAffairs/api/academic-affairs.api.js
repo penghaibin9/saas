@@ -439,6 +439,17 @@ export const academicAffairsApi = {
     }
   },
 
+  /* ── 课堂考勤（PC 只读统计/查询；教师逐生录入在移动端） ── */
+  getAttendanceStats(params = {}) {
+    return call(() => request(`${BASE}/attendance/stats`, { params }))
+  },
+  getAttendanceSessions(params = {}) {
+    return callList(`${BASE}/attendance/sessions`, params)
+  },
+  getAttendanceSession(sessionId) {
+    return call(() => request(`${BASE}/attendance/sessions/${sessionId}`))
+  },
+
   /* ── 学业预警（扫描 + 列表；多维分类/规则/跟进/统计见 academicAffairsWarningApi） ── */
   scanWarnings() {
     return call(() => request(`${BASE}/warnings/scan`, { method: 'POST' }))

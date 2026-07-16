@@ -1322,6 +1322,7 @@ class AaAttendanceSession(PKMixin, TenantMixin, CommonMixin, Base):
     teacher_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="任课教师归属")
     session_date: Mapped[str] = mapped_column(String(20), nullable=False, comment="YYYY-MM-DD")
     slot_no: Mapped[int | None] = mapped_column(Integer, comment="第几节")
+    session_type: Mapped[str | None] = mapped_column(String(20), comment="点名类别:常规/实训/晚自习/其他(空=常规)")
     roster_json: Mapped[str | None] = mapped_column(Text, comment="[{studentId,studentNo,realName,status}]")
     total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     present_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

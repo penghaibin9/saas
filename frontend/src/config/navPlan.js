@@ -344,6 +344,10 @@ export const NAV_PLAN = [
       I('调停课审批', '/admin/academic-affairs/schedule-change/approval', 'academicAffairs.scheduleChange.collegeReview'),
       ...P('调停课通知', '调停课冲突检测', '调停课统计', '调停课归档')
     ]),
+    mod('aa-attendance', '课堂考勤', '/admin/academic-affairs/attendance-stats', [
+      I('课堂考勤统计（出勤/迟到/旷课/请假汇总）', '/admin/academic-affairs/attendance-stats', 'academicAffairs.warning.view'),
+      ...P('考勤场次查询', '按点名类别统计', '旷课预警联动')
+    ]),
     mod('aa-course-selection', '选课管理', '/admin/academic-affairs/selection', [
       I('选课批次控制台（批次/课程/名单/统计）', '/admin/academic-affairs/selection', 'academicAffairs.selection.view'),
       I('我的选课（学生自助）', '/admin/academic-affairs/my-selection', 'academicAffairs.selection.enroll'),

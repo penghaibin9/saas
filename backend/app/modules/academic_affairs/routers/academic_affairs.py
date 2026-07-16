@@ -18,6 +18,7 @@ def _require_student(user: dict = Depends(get_current_user)) -> dict:
         raise AppException("NO_PERMISSION", "仅学生本人可访问选课自助端点", http_status=403)
     return user
 from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_svc
+from app.modules.academic_affairs.services import academic_affairs_attendance_service as attendance_svc
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
 from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
@@ -974,6 +975,26 @@ def grade_analysis_export(body: GradeAnalysisExportBody,
         io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=grade_analysis.xlsx"})
+
+
+# ═══════════ 课堂考勤（PC 只读查询/统计；教师逐生录入在移动端，正方 教学点名 2.4/查询 4.19 对标）═══════════
+@router.get("/attendance/sessions", summary="课堂考勤场次列表（PC 查询，按行政班/学期/类别筛选，数据范围收敛）")
+def attendance_sessions_list(classId: Optional[str] = None, termCode: Optional[str] = None,
+                             sessionType: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                             user=Depends(require_staff)):
+    items, total = attendance_svc.list_sessions(user, page, pageSize, classId, termCode, sessionType)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/attendance/sessions/{sessionId}", summary="课堂考勤场次详情+名单")
+def attendance_session_detail(sessionId: int = Path(...), user=Depends(require_staff)):
+    return success(attendance_svc.get_session(sessionId, user))
+
+
+@router.get("/attendance/stats", summary="跨堂次考勤统计（按学生汇总出勤/迟到/旷课/请假+缺勤率，正方4.19对标）")
+def attendance_stats_view(classId: Optional[str] = None, termCode: Optional[str] = None,
+                          sessionType: Optional[str] = None, user=Depends(require_staff)):
+    return success(attendance_svc.attendance_stats(user, classId, termCode, sessionType))
 
 
 # ═══════════ 学业预警（P5 规则引擎 + 二级模块 Tier1：看板/多维分类/规则/跟进/统计）═══════════
