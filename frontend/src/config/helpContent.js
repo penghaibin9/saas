@@ -14,6 +14,8 @@ import { INTERNSHIP_HELP_CARDS } from '@/config/help/internshipHelpCards'
 import { GRADUATION_HELP_CARDS } from '@/config/help/graduationHelpCards'
 import { STUDENT_AFFAIRS_HELP_CARDS } from '@/config/help/studentAffairsHelpCards'
 import { ACADEMIC_AFFAIRS_HELP_CARDS } from '@/config/help/academicAffairsHelpCards'
+import { STUDENT_AFFAIRS_HELP_DOCS } from '@/config/help/studentAffairsHelpDocs'
+import { ACADEMIC_AFFAIRS_HELP_DOCS } from '@/config/help/academicAffairsHelpDocs'
 
 /** 功能帮助文档：对现有模块/高频操作的使用说明 */
 export const HELP_DOCS = [
@@ -136,7 +138,10 @@ export const HELP_DOCS = [
       '辅导员只见本人管理学生；学院老师只见本学院；系统管理员见全校。',
       '菜单也随角色变化：无权限的模块不会出现在左侧导航与搜索结果中。'
     ]
-  }
+  },
+  // 模块页面级功能帮助（把学工/教务拆到每个二级模块，说明各页面干什么）
+  ...STUDENT_AFFAIRS_HELP_DOCS,
+  ...ACADEMIC_AFFAIRS_HELP_DOCS
 ]
 
 /** 业务流程图：核心业务的分步流程（依据 13A/13B 流程设计） */
@@ -346,6 +351,156 @@ export const HELP_FLOWS = [
       { name: '周报批阅', who: '指导教师', detail: '学生提交周报，教师批阅' },
       { name: '风险处理', who: '指导教师', detail: '识别并跟进实习风险学生' },
       { name: '就业跟进', who: '就业老师', detail: '就业去向登记、未就业帮扶' }
+    ]
+  },
+  {
+    id: 'flow-in-agreement',
+    title: '实习岗位匹配与三方协议签订流程',
+    keywords: ['实习岗位', '三方协议', '岗位匹配', '实习申请', '协议签订', '电子签', '实习'],
+    summary: '企业岗位上架、学生申请或系统匹配后，三方协议依次由学生、企业、学校确认并电子签。入口：岗位实习中心。',
+    steps: [
+      { name: '岗位上架', who: '实习管理员 / 企业', detail: '岗位从草稿→待审核→上架，学生端可见' },
+      { name: '学生申请 / 匹配', who: '学生 / 管理员', detail: '学生投递申请，或管理员批量匹配分配岗位' },
+      { name: '生成协议', who: '实习管理员', detail: '匹配确定后生成三方实习协议（草稿）' },
+      { name: '学生确认', who: '学生', detail: '协议转「待学生确认」，学生确认信息' },
+      { name: '企业确认', who: '企业导师', detail: '转「待企业确认」，企业确认' },
+      { name: '学校确认', who: '实习管理员', detail: '转「待学校确认」，学校终确认' },
+      { name: '电子签生效', who: '三方', detail: '电子签署完成，协议生效' }
+    ]
+  },
+  {
+    id: 'flow-in-attendance',
+    title: '实习打卡与考勤异常处理流程',
+    keywords: ['实习打卡', '考勤', '缺卡', '考勤异常', '实习请假', '实习'],
+    summary: '学生按批次规则打卡，缺卡/异常自动挂「待核实」，指导教师逐条处理。入口：岗位实习中心 → 考勤打卡。',
+    steps: [
+      { name: '打卡', who: '学生', detail: '小程序按批次规则打卡（定位 / 拍照）' },
+      { name: '生成异常', who: '系统', detail: '缺卡、迟到、位置异常自动生成考勤异常（待核实）' },
+      { name: '实习请假', who: '学生', detail: '需要时提交实习请假' },
+      { name: '处理异常', who: '指导教师', detail: '逐条核实处理，异常置「已处理」' }
+    ]
+  },
+  {
+    id: 'flow-in-report',
+    title: '实习周报批阅流程',
+    keywords: ['周报', '日报', '实习周报', '周报批阅', '过程报告', '实习'],
+    summary: '学生按周期提交周报/日报，指导教师批阅，通过或退回重写。入口：岗位实习中心 → 周报批阅。',
+    steps: [
+      { name: '提交周报', who: '学生', detail: '按规则周期提交周报/日报，状态「待批阅」' },
+      { name: '批阅', who: '指导教师', detail: '审阅内容，通过或退回（退回则学生重写）' },
+      { name: '通过', who: '指导教师', detail: '批阅通过，计入过程材料' }
+    ]
+  },
+  {
+    id: 'flow-in-guidance',
+    title: '实习指导与巡访流程',
+    keywords: ['巡访', '指导记录', '实习指导', '巡访计划', '实习'],
+    summary: '指导教师按计划开展巡访/指导，登记记录，发现异常可转风险处置。入口：岗位实习中心 → 指导巡访。',
+    steps: [
+      { name: '制定指导计划', who: '指导教师', detail: '安排指导 / 巡访计划与周期' },
+      { name: '开展巡访', who: '指导教师', detail: '线上 / 线下巡访学生实习情况' },
+      { name: '登记记录', who: '指导教师', detail: '填写指导 / 巡访记录（可含企业反馈）' },
+      { name: '发现问题', who: '指导教师', detail: '异常可转「实习风险处置」' }
+    ]
+  },
+  {
+    id: 'flow-in-change-risk',
+    title: '实习变更与风险处置流程',
+    keywords: ['实习变更', '换岗', '中止实习', '实习风险', '风险处置', '实习'],
+    summary: '学生实习信息变更需审批；实习风险由责任人跟进到关闭。入口：岗位实习中心 → 变更 / 风险处置。',
+    steps: [
+      { name: '发起变更', who: '学生 / 管理员', detail: '提交换岗 / 中止等变更申请（待审核）' },
+      { name: '审批变更', who: '实习管理员', detail: '通过或驳回，通过后更新实习信息' },
+      { name: '识别风险', who: '系统 / 指导教师', detail: '打卡异常、投诉等触发实习风险（待处理）' },
+      { name: '跟进处置', who: '指导教师', detail: '跟进处理，风险处理中' },
+      { name: '关闭', who: '指导教师', detail: '化解后关闭归档，留痕结果' }
+    ]
+  },
+  {
+    id: 'flow-in-score',
+    title: '实习成绩评定流程',
+    keywords: ['实习成绩', '企业评价', '学生自评', '实习评价', '成绩评定', '实习'],
+    summary: '企业评价、学生自评、指导教师评价按权重合成实习成绩，学校审核后发布。入口：岗位实习中心 → 评价 / 成绩。',
+    steps: [
+      { name: '企业评价', who: '企业导师', detail: '企业对学生实习表现评价（提交后学校审核）' },
+      { name: '学生自评', who: '学生', detail: '学生提交实习自评' },
+      { name: '教师评价', who: '指导教师', detail: '指导教师评价与过程分' },
+      { name: '学校审核', who: '实习管理员', detail: '审核企业评价（通过 / 退回）' },
+      { name: '成绩合成', who: '系统', detail: '按权重（企业 + 自评 + 教师 + 过程）合成实习成绩' },
+      { name: '发布归档', who: '实习管理员', detail: '发布成绩，进入实习归档' }
+    ]
+  },
+  {
+    id: 'flow-gd-topic',
+    title: '毕设选题与任务书流程',
+    keywords: ['毕设选题', '选题', '题目库', '双选', '任务书', '毕业设计'],
+    summary: '教师题目入库审核后开放选题轮次，学生选题/双选确认，导师下发任务书由学生确认。入口：毕业设计中心。',
+    steps: [
+      { name: '题目入库', who: '导师', detail: '教师出题进题目库（待确认 → 审核 → 入池）' },
+      { name: '开放选题轮次', who: '教务 / 管理员', detail: '建选题轮次，开放学生选题' },
+      { name: '学生选题', who: '学生', detail: '学生在轮次内选题（双选 / 志愿）' },
+      { name: '确认师生关系', who: '导师 / 管理员', detail: '确认选题，建立师生指导关系' },
+      { name: '下发任务书', who: '导师', detail: '下发毕设任务书（待学生确认）' },
+      { name: '学生确认任务书', who: '学生', detail: '学生确认任务书，进入开题' }
+    ]
+  },
+  {
+    id: 'flow-gd-proposal',
+    title: '毕设开题流程',
+    keywords: ['开题', '开题报告', '毕设开题', '毕业设计'],
+    summary: '学生提交开题报告，导师/评审批阅，通过后进入过程阶段。入口：毕业设计中心 → 开题。',
+    steps: [
+      { name: '提交开题', who: '学生', detail: '提交开题报告（待评审）' },
+      { name: '评审开题', who: '导师 / 评审组', detail: '批阅开题报告，通过或退回修改' },
+      { name: '通过', who: '导师', detail: '开题通过，进入中期阶段' }
+    ]
+  },
+  {
+    id: 'flow-gd-midterm',
+    title: '毕设中期检查流程',
+    keywords: ['中期检查', '中期', '毕设中期', '限期整改', '毕业设计'],
+    summary: '学生提交中期材料，检查通过或列入限期整改。入口：毕业设计中心 → 中期检查。',
+    steps: [
+      { name: '提交中期', who: '学生', detail: '提交中期进展材料（待检查）' },
+      { name: '中期检查', who: '导师 / 检查组', detail: '检查进展：通过 或 限期整改' },
+      { name: '整改复查', who: '学生 / 导师', detail: '限期整改后复查' }
+    ]
+  },
+  {
+    id: 'flow-gd-review',
+    title: '毕设成果提交、查重与评阅流程',
+    keywords: ['成果提交', '查重', '评阅', '送评', '毕设评阅', '毕业设计'],
+    summary: '学生提交成果，记录查重，送评阅老师评阅给出意见。入口：毕业设计中心 → 成果 / 评阅。',
+    steps: [
+      { name: '提交成果', who: '学生', detail: '提交论文 / 作品成果（待批阅）' },
+      { name: '查重', who: '教务 / 系统', detail: '记录查重结果' },
+      { name: '送评', who: '管理员', detail: '分配评阅老师（待评阅）' },
+      { name: '评阅', who: '评阅老师', detail: '评阅中 → 完成，给出评阅意见（或退回）' }
+    ]
+  },
+  {
+    id: 'flow-gd-defense',
+    title: '毕设答辩与成绩评定流程',
+    keywords: ['答辩', '答辩分组', '答辩成绩', '毕设成绩', '成绩发布', '毕业设计'],
+    summary: '编答辩分组，答辩评分确认后核算成绩、发布，学生可申诉。入口：毕业设计中心 → 答辩 / 成绩。',
+    steps: [
+      { name: '答辩分组', who: '管理员', detail: '编排答辩组与安排' },
+      { name: '答辩评分', who: '答辩组', detail: '待评分 → 已评分 → 确认' },
+      { name: '核算成绩', who: '系统 / 教务', detail: '待核算 → 已核算（按各环节权重）' },
+      { name: '发布成绩', who: '教务', detail: '发布毕设成绩' },
+      { name: '成绩申诉', who: '学生', detail: '有异议可申诉（待审核 → 通过 / 驳回）' }
+    ]
+  },
+  {
+    id: 'flow-gd-archive',
+    title: '毕设风险与归档流程',
+    keywords: ['毕设风险', '毕设归档', '归档', '风险处置', '毕业设计'],
+    summary: '毕设风险按待受理→处理→关闭跟进；成绩确认后档案待生成→待提交→已提交归档。入口：毕业设计中心 → 风险 / 归档。',
+    steps: [
+      { name: '识别风险', who: '系统 / 导师', detail: '进度滞后等触发毕设风险（待受理）' },
+      { name: '跟进处置', who: '导师 / 管理员', detail: '处理中 → 关闭' },
+      { name: '生成档案', who: '系统', detail: '成绩确认后生成毕设档案（待生成 → 待提交）' },
+      { name: '提交归档', who: '管理员', detail: '提交档案完成归档（已提交）' }
     ]
   }
 ]

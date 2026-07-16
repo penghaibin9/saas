@@ -442,6 +442,73 @@ def my_students(user: dict, class_id=None) -> dict:
         return {"hasData": bool(out), "items": out, "total": len(out)}
 
 
+# ══════════ 家校联系（移动端包装：辅导员登记联系记录 + 登记家长回执。
+# 学工域范围口径独立于 resolve_teacher_scope，统一走 _allowed_class_ids/build_affairs_context，
+# 与 affairs_talk_service._scope_or_403 强制使用同一口径，避免"选得到、提交却 403"的错位）══════════
+
+def affairs_family_contact_students(user: dict) -> dict:
+    """家校联系·可登记学生名单（与 create_contact 内部 _scope_or_403 同一范围口径）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.models import SchoolClass, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with _session() as db:
+        allowed, _scope = _allowed_class_ids(db, u)
+        if allowed is not None and not allowed:
+            return {"list": [], "total": 0}
+        conds = [StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed))
+        rows = db.scalars(select(StudentProfile).where(*conds)
+                          .order_by(StudentProfile.id.desc()).limit(200)).all()
+        cids = {r.class_id for r in rows if r.class_id}
+        cls_map = {c.id: c.class_name for c in db.scalars(
+            select(SchoolClass).where(SchoolClass.id.in_(cids))).all()} if cids else {}
+        items = [{"studentId": str(r.id), "studentNo": r.student_no, "name": r.real_name,
+                  "className": cls_map.get(r.class_id, "")} for r in rows]
+        return {"list": items, "total": len(items)}
+
+
+def affairs_family_contact_list(user: dict, receipt_status: str | None = None) -> dict:
+    """家校联系·全局记录列表（数据范围过滤，不含号码本体，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_talk_service as talk_svc
+    items, total = talk_svc.list_all_contacts(u, receipt_status, 1, 50)
+    return {"list": items, "total": total}
+
+
+def affairs_family_contact_create(user: dict, student_id: str, body: dict) -> dict:
+    """家校联系·登记（owner+范围校验在服务层完成，查看完整号码须填≥5字原因并触发敏感审计）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.api.v1.student_affairs import ContactCreate
+    from app.services import affairs_talk_service as talk_svc
+    b = body or {}
+    payload = ContactCreate(contactType=b.get("contactType") or "PHONE", reason=b.get("reason") or "",
+                            result=b.get("result") or "", fullPhoneView=bool(b.get("fullPhoneView")),
+                            viewReason=b.get("viewReason") or "")
+    result = talk_svc.create_contact(student_id, u, payload)
+    _audit_write("MOBILE_FAMILY_CONTACT_CREATE", f"family-contact:{result.get('contactId')}",
+                 {"operator": u.get("realName"), "studentId": str(student_id)})
+    return result
+
+
+def affairs_family_contact_receipt(user: dict, contact_id: str, note: str | None = None) -> dict:
+    """家校联系·登记家长回执（PENDING→RECEIVED，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_talk_service as talk_svc
+    result = talk_svc.mark_receipt(contact_id, u, note or "")
+    _audit_write("MOBILE_FAMILY_CONTACT_RECEIPT", f"family-contact:{contact_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
 # ══════════ 数据看板（移动端包装，直接复用既有 affairs_dashboard_service.get_dashboard，
 # 该函数已按数据范围收敛且指标全部真实聚合，零改造） ══════════
 

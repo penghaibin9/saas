@@ -238,6 +238,15 @@ export const teacherGraduationDefenseScorePending = () => realRequest('/mobile/t
 export const teacherGraduationDefenseScoreEntry = (gdStudentId, body) =>
   realRequest(`/mobile/teacher/graduation/defense/${gdStudentId}/score`, { method: 'POST', data: body })
 
+/** 家校联系：可登记学生名单 / 记录列表 / 登记联系 / 登记回执（owner+范围校验，真实接口，无 mock 兜底） */
+export const teacherFamilyContactStudents = () => realRequest('/mobile/teacher/affairs/family-contacts/students')
+export const teacherFamilyContactList = (receiptStatus) =>
+  realRequest('/mobile/teacher/affairs/family-contacts' + (receiptStatus ? `?receiptStatus=${receiptStatus}` : ''))
+export const teacherFamilyContactCreate = (studentId, body) =>
+  realRequest(`/mobile/teacher/affairs/family-contacts/${studentId}`, { method: 'POST', data: body })
+export const teacherFamilyContactReceipt = (contactId, note) =>
+  realRequest(`/mobile/teacher/affairs/family-contacts/${contactId}/receipt`, { method: 'POST', data: { note: note || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

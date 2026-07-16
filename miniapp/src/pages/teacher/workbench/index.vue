@@ -163,6 +163,7 @@ export default {
         talk: '/pages/teacher/affairs/talk/index',
         mental: '/pages/teacher/affairs/mental/index',
         affairs: '/pages/teacher/affairs/index',
+        familyContact: '/pages/teacher/family-contact/index',
         notifyPublish: '/pages/teacher/notify-publish/index',
         overview: '/pages/teacher/dashboard/index',
         orientationVerify: '/pages/teacher/orientation/verify/index',

@@ -51,6 +51,7 @@ export const roleConfigs = {
       { key: 'risk', label: '风险学生', icon: '⚠' },
       { key: 'care', label: '创建关怀', icon: '♥' },
       { key: 'affairs', label: '学工待办', icon: '📋' },
+      { key: 'familyContact', label: '家校联系', icon: '👨‍👩‍👧' },
       { key: 'campus-service', label: '在校服务', icon: '📄' },
       { key: 'affairs-stats', label: '学工统计', icon: '📈' },
       { key: 'notifyPublish', label: '发布通知', icon: '📣' },

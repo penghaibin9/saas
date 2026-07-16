@@ -545,6 +545,28 @@ def teacher_my_students(classId: str = None, user=Depends(get_current_user)):
     return success(tea.my_students(user, classId))
 
 
+@router.get("/teacher/affairs/family-contacts/students", summary="辅导员·可登记家校联系学生名单（范围校验）")
+def teacher_family_contact_students(user=Depends(get_current_user)):
+    return success(tea.affairs_family_contact_students(user))
+
+
+@router.get("/teacher/affairs/family-contacts", summary="辅导员·家校联系记录列表（范围校验，可按回执状态筛）")
+def teacher_family_contact_list(receiptStatus: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_family_contact_list(user, receiptStatus))
+
+
+@router.post("/teacher/affairs/family-contacts/{student_id}", summary="辅导员·登记家校联系（owner 校验+审计）")
+def teacher_family_contact_create(student_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_family_contact_create(user, student_id, body), message="已登记")
+
+
+@router.post("/teacher/affairs/family-contacts/{contact_id}/receipt", summary="辅导员·登记家长回执（owner 校验）")
+def teacher_family_contact_receipt(contact_id: str, body: dict = Body(default={}),
+                                   user=Depends(get_current_user)):
+    return success(tea.affairs_family_contact_receipt(user, contact_id, (body or {}).get("note")),
+                   message="回执已登记")
+
+
 @router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
 def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.notify_publish(user, body), message="通知已发布")

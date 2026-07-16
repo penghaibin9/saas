@@ -368,6 +368,10 @@
       "style": { "navigationBarTitleText": "答辩评分", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/family-contact/index",
+      "style": { "navigationBarTitleText": "家校联系", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

@@ -174,6 +174,11 @@ export const teacherApi = {
   // 答辩评委·本人待评分学生名单 + 录入评分（judgeName 服务端强制，真实接口，无 mock 兜底）
   getGraduationDefenseScorePending: () => real.teacherGraduationDefenseScorePending(),
   submitGraduationDefenseScore: (gdStudentId, body) => real.teacherGraduationDefenseScoreEntry(gdStudentId, body),
+  // 家校联系：可登记学生名单 + 记录列表 + 登记联系 + 登记回执（owner 校验，真实接口，无 mock 兜底）
+  getFamilyContactStudents: () => real.teacherFamilyContactStudents(),
+  getFamilyContactList: (receiptStatus) => real.teacherFamilyContactList(receiptStatus),
+  createFamilyContact: (studentId, body) => real.teacherFamilyContactCreate(studentId, body),
+  markFamilyContactReceipt: (contactId, note) => real.teacherFamilyContactReceipt(contactId, note),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),
