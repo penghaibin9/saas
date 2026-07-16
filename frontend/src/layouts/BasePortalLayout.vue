@@ -133,13 +133,20 @@
             <path d="M12 17.2h.01" />
           </svg>
         </button>
-        <span v-if="ctx" class="bpl-bell">
+        <button
+          v-if="ctx"
+          type="button"
+          class="bpl-bell"
+          :title="pendingCount ? ('待办提醒：' + pendingCount + ' 项待处理') : '待办提醒'"
+          aria-label="待办提醒"
+          @click="goBell"
+        >
           <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.7 21a2 2 0 01-3.4 0" />
           </svg>
           <span v-if="pendingCount" class="bpl-bell__b">{{ pendingCount }}</span>
-        </span>
+        </button>
         <slot name="user">
           <AppUserChip embedded />
         </slot>
@@ -549,6 +556,11 @@ export default {
     /** 帮助中心全局入口：任意管理页一键进入 /admin/help（对齐刷新可达性，避免只能靠顶栏搜索发现） */
     goHelp() {
       if (this.$route.path !== '/admin/help') this.$router.push('/admin/help')
+    },
+    /** 顶栏铃铛：角标为待办计数（ctx.pendingCount），点击进「我的待办」。
+     *  统一消息中心落地前的过渡入口——先消灭"角标可见却不可点"的死元素。 */
+    goBell() {
+      if (this.$route.path !== '/admin/approval/todos') this.$router.push('/admin/approval/todos')
     },
     toggleDevPlanner() {
       if (!(import.meta.env && import.meta.env.DEV)) return
@@ -1087,6 +1099,9 @@ export default {
   position: relative;
   width: 32px;
   height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -1094,6 +1109,7 @@ export default {
   color: var(--t3);
   cursor: pointer;
   transition: all 0.12s;
+  font: inherit;
 }
 .bpl-bell:hover {
   background: var(--pri-bg);
