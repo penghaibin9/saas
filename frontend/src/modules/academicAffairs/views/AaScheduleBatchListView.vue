@@ -52,6 +52,7 @@
       type="danger"
       confirm-text="确认作废"
       :require-reason="true"
+      phrase-scene-key="aa.void"
       reason-label="作废原因"
       :submitting="voidDlg.submitting"
       @confirm="doVoid"

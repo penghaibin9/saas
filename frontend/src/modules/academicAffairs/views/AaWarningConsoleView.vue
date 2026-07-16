@@ -172,7 +172,10 @@
         <AppFormItem label="跟进方式" required>
           <AppSelect v-model="followForm.way" :options="wayOptions" :disabled="acting" />
         </AppFormItem>
-        <AppFormItem label="跟进内容" required><AppTextarea v-model="followForm.content" placeholder="记录本次跟进过程与学生情况（不少于5字）" :disabled="acting" /></AppFormItem>
+        <AppFormItem label="跟进内容" required>
+          <AppTextarea ref="followInput" v-model="followForm.content" placeholder="记录本次跟进过程与学生情况（不少于5字）" :disabled="acting" />
+          <AppQuickPhrases scene-key="aa.warning.follow" @pick="onPickFollow" />
+        </AppFormItem>
         <AppFormItem label="跟进结果"><AppTextInput v-model="followForm.result" :disabled="acting" /></AppFormItem>
         <AppFormItem label="下一步计划"><AppTextInput v-model="followForm.nextPlan" :disabled="acting" /></AppFormItem>
         <template #footer>
@@ -181,9 +184,9 @@
         </template>
       </AppDrawer>
 
-      <AppConfirmDialog v-model:visible="escalateVisible" type="warning" title="升级预警" message="确认升级该预警为高风险？升级后需学院教务/教务处跟进关闭。" confirm-text="确认升级" require-reason reason-label="升级说明" reason-placeholder="请说明升级依据（不少于5字）" :submitting="acting" @confirm="submitEscalate" />
-      <AppConfirmDialog v-model:visible="closeVisible" type="primary" title="关闭预警" message="确认关闭该预警？" confirm-text="确认关闭" require-reason reason-label="关闭说明" reason-placeholder="请说明关闭依据，如成绩回升/学分补齐（不少于5字）" :submitting="acting" @confirm="submitClose" />
-      <AppConfirmDialog v-model:visible="voidVisible" type="danger" title="作废预警（误报）" message="作废为逻辑处理，预警与处理过程保留可追溯。" confirm-text="确认作废" require-reason reason-label="误报说明" reason-placeholder="请说明误报原因（不少于5字）" :submitting="acting" @confirm="submitVoid" />
+      <AppConfirmDialog v-model:visible="escalateVisible" type="warning" title="升级预警" message="确认升级该预警为高风险？升级后需学院教务/教务处跟进关闭。" confirm-text="确认升级" require-reason phrase-scene-key="aa.warning.escalate" reason-label="升级说明" reason-placeholder="请说明升级依据（不少于5字）" :submitting="acting" @confirm="submitEscalate" />
+      <AppConfirmDialog v-model:visible="closeVisible" type="primary" title="关闭预警" message="确认关闭该预警？" confirm-text="确认关闭" require-reason phrase-scene-key="aa.warning.close" reason-label="关闭说明" reason-placeholder="请说明关闭依据，如成绩回升/学分补齐（不少于5字）" :submitting="acting" @confirm="submitClose" />
+      <AppConfirmDialog v-model:visible="voidVisible" type="danger" title="作废预警（误报）" message="作废为逻辑处理，预警与处理过程保留可追溯。" confirm-text="确认作废" require-reason phrase-scene-key="aa.warning.void" reason-label="误报说明" reason-placeholder="请说明误报原因（不少于5字）" :submitting="acting" @confirm="submitVoid" />
     </div>
 
     <!-- 预警统计 -->
@@ -245,8 +248,9 @@
  * 「预警扫描与列表」单页（AaWarningView.vue，/admin/academic-affairs/warnings）保持不变，两页并存、数据同源（t_acad_warning）。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag as StatusTag, AppRiskTag as RiskTag, AppInlineAlert, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar } from '@/components/common'
+import { AppStatusTag as StatusTag, AppRiskTag as RiskTag, AppInlineAlert, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi, academicAffairsWarningApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import {
   WARNING_LEVEL, WARNING_SOURCE, WARNING_STATUS, warningStatusColor,
@@ -267,7 +271,7 @@ export default {
   name: 'AaWarningConsoleView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, StatusTag, RiskTag, AppInlineAlert,
-    AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar,
+    AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases,
     AppButton, AppDrawer
   },
   data() {
@@ -343,6 +347,12 @@ export default {
   },
   methods: {
     warningStatusColor,
+    onPickFollow(text) {
+      const el = this.$refs.followInput && this.$refs.followInput.$refs.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.followForm.content, text)
+      this.followForm.content = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     wayLabel(w) { return (this.wayOptions.find((o) => o.value === w) || {}).label || w },
     barWidth(count, list) {
       const max = Math.max(1, ...(list || []).map((s) => s.count))

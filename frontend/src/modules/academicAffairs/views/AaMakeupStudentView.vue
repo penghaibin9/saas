@@ -25,7 +25,10 @@
       <div class="aamks-form">
         <AppFormItem label="课程名称" required><AppTextInput v-model="form.courseName" placeholder="课程名" :disabled="saving" /></AppFormItem>
         <AppFormItem label="学期"><AppTextInput v-model="form.termCode" placeholder="如 2024-2" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="理由"><AppTextarea v-model="form.reason" placeholder="选填" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="理由">
+          <AppTextarea ref="reasonInput" v-model="form.reason" placeholder="选填" :disabled="saving" />
+          <AppQuickPhrases scene-key="aa.makeup.reason" @pick="onPickReason" />
+        </AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
         <AppInlineAlert v-if="tab === 'exemption'" type="info" description="免修需上传证书/先修证明材料（本页暂以理由说明，材料附件后续接入）。已获及格成绩的课程不可申请。" />
       </div>
@@ -41,13 +44,14 @@
 /** 重修/免修学生自助（/admin/academic-affairs/my-makeup）：报名+申请+我的申请列表。 */
 import { ModulePageShell, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppTextarea, AppFormItem, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppTextarea, AppFormItem, AppInlineAlert, AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaMakeupStudentView',
-  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppInlineAlert, AppQuickPhrases },
   data() {
     return {
       tab: 'retake', loading: true, rows: [],
@@ -57,6 +61,12 @@ export default {
   created() { this.reload() },
   methods: {
     stType(s) { return ['APPROVED', 'ENROLLED', 'FINISHED'].includes(s) ? 'success' : s === 'REJECTED' ? 'danger' : 'primary' },
+    onPickReason(text) {
+      const el = this.$refs.reasonInput && this.$refs.reasonInput.$refs.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.form.reason, text)
+      this.form.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     switchTab(k) { this.tab = k; this.reload() },
     async reload() {
       this.loading = true

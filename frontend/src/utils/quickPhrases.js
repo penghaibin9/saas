@@ -171,6 +171,156 @@ const CLASS_MATERIAL = [
   '期【中/末】考风考纪教育班会'
 ]
 
+/**
+ * 教务中心 · 便捷提示词 L1（来源：docs 外部制度材料整理，见配置方案 §一 §五——教育部41号令、
+ * 江苏大学/东北财经/厦门南洋职院调停课规定、人大/南大/大连理工/河北经贸成绩更正流程、
+ * 山东农大/池州学院学籍异动流程、人大/清华/西北大学缓考办法、广西大学/西电学业预警办法等）。
+ * 词条为真实制度文件表述整理，非编造；【】为占位符。
+ */
+const AA_SCHEDCHG_REASON = [
+  '因公出差参加【会议/活动名称】，时间与本课程冲突（已附会议通知）。',
+  '因病无法授课（已附医院证明），申请调课/停课。',
+  '参加【竞赛/评审/监考】等校内公务，与本课程时间冲突。',
+  '教学进度调整：本班【实训/考试/实践周】占用原时段，需整体后移。',
+  '教室设备故障/教室临时被征用，申请更换时间地点。',
+  '承担【学校/学院】统一安排的【招生/评估/培训】工作。'
+]
+const AA_SCHEDCHG_MAKEUP = [
+  '第【N】周星期【X】第【节次】节，在【教室】补授本次课程内容，已通知全体学生。',
+  '与学生协商一致，利用第【N】周【自习/晚间】时段集中补课，教室已申请。',
+  '本次内容并入第【N】周课程连堂讲授，教学进度不受影响。',
+  '改为线上直播补课：【日期 时间】，平台【名称】，录播同步供回看。'
+]
+const AA_SCHEDCHG_REJECT = [
+  '证明材料缺失：因病请附医院证明，因公请附会议通知/公函，补充后重新提交。',
+  '未按规定提前【3】天申请，临时调课请先经学院教学负责人电话确认。',
+  '停课申请未填写补课安排，请补充补课周次、节次与教室后重报。',
+  '目标时段与【班级课表/教室占用/教师监考】冲突，请另选时间。',
+  '本课程本学期调课已达【N】次上限，原则上不再受理，特殊情况请附学院意见。'
+]
+const AA_SCHEDCHG_CANCEL = ['撤销：原冲突事项已取消，恢复按原课表上课，学生已另行通知。']
+
+const AA_GRADE_CHANGE = [
+  '登分错误：试卷实际得分【X】分，录入时误登为【Y】分（附试卷复印件）。',
+  '合分错误：各题得分合计有误，复核后总分应为【X】分（附试卷复印件）。',
+  '批阅疏漏：第【N】题漏批/错批，复核后该题得分【X】分（附试卷及评分标准）。',
+  '平时成绩计算错误：按计分规则复算后平时分应为【X】分（附平时成绩计分说明）。',
+  '缓考/补考成绩补录：学生已参加【批次】考试，成绩为【X】分。',
+  '违纪认定撤销：原旷考/违纪标记经复核撤销，恢复实际成绩。'
+]
+const AA_GRADE_CHANGE_REVIEW = [
+  '已核对试卷与成绩单，更正理由充分、材料齐全，同意更正。',
+  '材料不全：请附试卷复印件及详细更改说明（缺一不可），退回补充。',
+  '申请理由不充分，不予通过；如有异议请按成绩复核程序办理。',
+  '成绩分布异常（不及格率【X】%/优秀率【X】%），请任课教师提交试卷分析后再审。'
+]
+const AA_GRADE_RETURN = [
+  '缺考名单与考务记录不符，请核对旷考/缓考标记后重新提交。',
+  '特殊成绩标记（旷考/作弊/违纪）缺认定材料，请补充后重报。',
+  '成绩提交超过规定时限，请说明原因并经学院教学负责人签署意见。'
+]
+
+const AA_STATUSCHG_GROUPS = {
+  SUSPEND: [
+    '因病需长期治疗休养（附二级甲等以上医院诊断证明），申请休学【一学年】。',
+    '应征入伍（附入伍通知书），申请保留学籍至退役后【2】年内。',
+    '参加创新创业实践（附项目证明），按学校规定申请弹性学制休学。'
+  ],
+  RESUME: ['休学期满，恢复情况良好（因病休学附二甲以上医院康复证明），申请于【学期】复学。'],
+  TRANSFER_MAJOR: ['对【目标专业】有浓厚兴趣且符合接收条件，现专业学习确有困难，申请转入。'],
+  WITHDRAW: ['因个人发展规划调整，经与家长充分沟通，自愿申请退学。'],
+  RETAIN: ['因【学分未修满/毕业设计未完成】，申请延长学习年限【一年】。']
+}
+const AA_STATUSCHG_OPINION = [
+  '情况属实，材料齐全，符合《学籍管理规定》相关条款，同意办理。',
+  '经学院党政联席会议研究，同意该生异动，报教务处审批。',
+  '已与学生本人及家长确认，知情同意书已签署，同意上报。',
+  '材料不全：请补充【医院证明/家长意见/部队通知书】后重新提交。',
+  '不符合转专业接收/复学条件（【原因】），不予同意，已告知学生本人。'
+]
+
+const AA_WARNING_FOLLOW = [
+  '已约谈学生，分析预警课程失分原因为【原因】，共同制定学习计划，每两周复查进度。',
+  '已安排学业帮扶结对（帮扶人【姓名】），重点辅导【课程】，周期至学期末。',
+  '已电话告知家长预警情况，家长知情并表示配合督促。',
+  '学生本学期已重修/补考【课程】，目前出勤与作业情况明显好转。',
+  '学生存在心理/经济/健康方面困难，已转介学工（谈心谈话/资助/心理）协同帮扶。'
+]
+const AA_WARNING_ESCALATE = ['连续两次跟进无改善，本学期新增不及格【N】门，风险加剧，需学院教务牵头处置。']
+const AA_WARNING_CLOSE = [
+  '补考/重修通过，学分已补齐，绩点回升至【X】，预警解除。',
+  '本学期各科目成绩正常，出勤稳定，经确认解除预警。'
+]
+const AA_WARNING_VOID = ['数据同步错误/规则误命中（【说明】），实际学业状态正常，作废本条。']
+
+const AA_REG_FAIL = [
+  '学费未缴清且未办理绿色通道/缓缴手续，暂不予注册。',
+  '报到材料不全（缺录取通知书/身份证/档案），限期补交。',
+  '入学资格复查存疑（【项目】待核实），暂缓注册待复查结论。'
+]
+const AA_REG_DEFER = [
+  '家庭经济困难，已通过绿色通道申请缓缴学费，先行注册待资助落实。',
+  '因病暂不能到校（附医院证明），申请暂缓注册至【日期】。',
+  '应征入伍体检/政审期间，暂缓办理，结果确定后按学籍规定处理。'
+]
+
+const AA_MAKEUP_REASON = [
+  '因病无法参加考试（附二甲以上医院或校医院证明，证明覆盖考试时间），申请缓考。',
+  '两门考试时间冲突（【课程A】与【课程B】），申请其中一门缓考。',
+  '直系亲属病危/丧事，需紧急返家（附相关证明），申请缓考。',
+  '代表学校参加【竞赛/演出/比赛】（附学校公函），与考试时间冲突。',
+  '已通过【等级证书/先修课程】，按规定申请免修（附证书复印件）。'
+]
+const AA_MAKEUP_REVIEW = [
+  '医院证明未覆盖考试时间/非二甲以上医院出具，退回补充有效证明。',
+  '申请时间晚于考试时间且无突发情况证明，按缺考处理，不予受理。',
+  '材料不全：请补交证明材料后重新提交。',
+  '不符合免修条件（该课程为实践类/思政类必修，按规定不可免修）。'
+]
+
+const AA_TASK_RETURN = [
+  '教师本学期工作量已超限（【X】学时），需重新分配任课教师。',
+  '任课资格不符：该课程要求【职称/专业】条件，请更换教师。',
+  '教学班人数/合班安排有误，请核对后重新下达。'
+]
+const AA_TASK_REJECT = [
+  '与本人其他课表时间冲突（【课程/时段】），请调整时段或另行安排。',
+  '本学期已承担【N】门课程，工作量饱和，无法再接新任务。',
+  '该课程与本人专业方向不符，建议安排【方向】教师承担。'
+]
+
+const AA_REVIEW_RETURN = [
+  '学分结构不符：总学分/实践学分比例与专业教学标准不符，请调整后重报。',
+  '先修关系错误：【课程A】应先于【课程B】开设，请核对课程序列。',
+  '课程信息不完整：缺学时分配/考核方式/教材信息，补齐后重新提交。',
+  '与上一版方案差异较大，请附修订说明及专业建设委员会审议意见。'
+]
+
+const AA_VOID = [
+  '重复建档：与学号【X】记录重复，保留原记录，本条作废。',
+  '录入错误：批次/学生信息登错，已在正确批次重新登记。',
+  '学籍异动：学生已转专业/退学，本条台账随异动作废。',
+  '批次重复导入，作废本批冗余数据。'
+]
+
+const AA_EXPORT_PURPOSE = [
+  '期末教学质量分析会议材料',
+  '本科教学工作合格评估/审核评估支撑材料',
+  '上级教育主管部门检查报送',
+  '学院教学工作例会数据通报'
+]
+
+const AA_REMARK = [
+  '教室备注：多媒体设备【型号】；合班教室，容量【N】；维修中，预计【日期】恢复。',
+  '合并说明：小班合并授课 / 同一教师同一课程跨班合并。'
+]
+const AA_TEXTBOOK_REDUCE = [
+  '家庭经济困难学生按资助政策减免教材费。',
+  '教材循环使用，本学期免征订费用。'
+]
+const AA_ARCHIVE_UNFREEZE = ['审计/复查需要，经学校管理员批准，限期【日期】前重新冻结。']
+const AA_CLASSROOM_REJECT = ['该时段已有教学安排，教学用途优先，请改约【时段】。']
+
 /** sceneKey → 简单数组，或 { groups, all } 结构（含条件分组置顶场景） */
 export const QUICK_PHRASES = {
   'sa.leave.approve': LEAVE_APPROVE,
@@ -199,7 +349,37 @@ export const QUICK_PHRASES = {
   'sa.dorm.exception': { groups: DORM_EXCEPTION_GROUPS, all: Object.values(DORM_EXCEPTION_GROUPS).flat() },
   'sa.dorm.reject': COMMON_REJECT,
   'common.revealReason': REVEAL_REASON,
-  'sa.class.material': CLASS_MATERIAL
+  'sa.class.material': CLASS_MATERIAL,
+
+  // —— 教务中心（aa.*）——
+  'aa.schedchg.reason': AA_SCHEDCHG_REASON,
+  'aa.schedchg.makeup': AA_SCHEDCHG_MAKEUP,
+  'aa.schedchg.reject': AA_SCHEDCHG_REJECT,
+  'aa.schedchg.cancel': AA_SCHEDCHG_CANCEL,
+  'aa.grade.change': AA_GRADE_CHANGE,
+  'aa.grade.changeReject': AA_GRADE_CHANGE_REVIEW,
+  'aa.grade.collegeReview': AA_GRADE_CHANGE_REVIEW,
+  'aa.grade.return': AA_GRADE_RETURN,
+  'aa.statuschg.reason': { groups: AA_STATUSCHG_GROUPS, all: Object.values(AA_STATUSCHG_GROUPS).flat() },
+  'aa.statuschg.opinion': AA_STATUSCHG_OPINION,
+  'aa.warning.follow': AA_WARNING_FOLLOW,
+  'aa.warning.escalate': AA_WARNING_ESCALATE,
+  'aa.warning.close': AA_WARNING_CLOSE,
+  'aa.warning.void': AA_WARNING_VOID,
+  'aa.reg.fail': AA_REG_FAIL,
+  'aa.reg.defer': AA_REG_DEFER,
+  'aa.makeup.reason': AA_MAKEUP_REASON,
+  'aa.makeup.reject': AA_MAKEUP_REVIEW,
+  'aa.makeup.supplement': AA_MAKEUP_REVIEW,
+  'aa.task.return': AA_TASK_RETURN,
+  'aa.task.reject': AA_TASK_REJECT,
+  'aa.review.return': AA_REVIEW_RETURN,
+  'aa.void': AA_VOID,
+  'common.exportPurpose': AA_EXPORT_PURPOSE,
+  'aa.remark': AA_REMARK,
+  'aa.textbook.reduce': AA_TEXTBOOK_REDUCE,
+  'aa.archive.unfreeze': AA_ARCHIVE_UNFREEZE,
+  'aa.classroom.reject': AA_CLASSROOM_REJECT
 }
 
 /** 取某个 sceneKey 下的词条列表；group 命中时该组置顶，其余分组词条仍追加在后（不是不可见，只是不置顶）。 */

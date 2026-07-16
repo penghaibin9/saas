@@ -61,6 +61,11 @@
     </AppDrawer>
 
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
+    <AppConfirmDialog
+      v-model:visible="reasonDialog.visible" title="特批解冻（仅学校管理员）" type="danger"
+      require-reason phrase-scene-key="aa.archive.unfreeze" reason-label="解冻原因（≥5字）"
+      :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -83,7 +88,8 @@ export default {
       loading: true, rows: [], current: null, items: [],
       itemColumns: [{ key: 'domain', title: '数据域' }, { key: 'recordCount', title: '记录数' }, { key: 'present', title: '完整性' }, { key: 'remark', title: '备注' }],
       createVisible: false, form: { termId: '' }, formError: '', saving: false,
-      confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
+      confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      reasonDialog: { visible: false, submitting: false, action: null }
     }
   },
   async created() {
@@ -127,11 +133,21 @@ export default {
       }
       this.confirmVisible = true
     },
-    async doUnfreeze() {
-      const reason = window.prompt('特批解冻原因（≥5字，仅学校管理员）')
-      if (!reason || reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      const res = await api.unfreeze(this.current.batchId, reason.trim())
-      if (res.code === 0) { toast.success('已解冻'); await this.load(); await this.select(this.current) } else toast.error(res.message)
+    doUnfreeze() {
+      this.reasonDialog = {
+        visible: true, submitting: false,
+        action: async (reason) => {
+          const res = await api.unfreeze(this.current.batchId, reason)
+          if (res.code === 0) { toast.success('已解冻'); await this.load(); await this.select(this.current) } else toast.error(res.message)
+        }
+      }
+    },
+    async onReasonConfirm({ reason }) {
+      const action = this.reasonDialog.action
+      this.reasonDialog.submitting = true
+      if (action) await action(reason)
+      this.reasonDialog.submitting = false
+      this.reasonDialog.visible = false
     },
     doCancel() {
       this.confirmTitle = '取消批次'; this.confirmMessage = `确认取消归档批次「${this.current.batchName}」？`

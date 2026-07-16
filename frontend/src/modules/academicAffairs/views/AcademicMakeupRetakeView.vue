@@ -93,6 +93,7 @@
       :message="'确认作废「' + (voidDialog.row ? voidDialog.row.name + ' · ' + voidDialog.row.courseName : '') + '」补考记录？作废为逻辑删除并留痕。'"
       confirm-text="确认作废"
       require-reason
+      phrase-scene-key="aa.void"
       reason-label="作废原因"
       :submitting="voidDialog.submitting"
       @confirm="submitVoid"

@@ -101,6 +101,7 @@
       :message="'确认作废「' + (voidDialog.row ? voidDialog.row.name + ' · ' + voidDialog.row.courseName : '') + '」成绩记录？作废为逻辑删除，原始分数保留可追溯。'"
       confirm-text="确认作废"
       require-reason
+      phrase-scene-key="aa.void"
       reason-label="作废原因"
       reason-placeholder="请说明作废原因（如录入错误、批次重复），不少于 5 个字"
       :submitting="voidDialog.submitting"

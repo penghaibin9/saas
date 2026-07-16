@@ -36,6 +36,7 @@
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
+      phrase-scene-key="aa.schedchg.reject"
       reason-label="驳回原因（≥5 字）" :submitting="submitting" @confirm="onConfirm"
     />
   </ModulePageShell>

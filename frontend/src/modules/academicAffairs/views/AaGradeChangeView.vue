@@ -14,7 +14,10 @@
           <label class="aa-field"><span>新平时分</span><input v-model.number="reqForm.newUsualScore" type="number" min="0" max="100" class="aa-input" placeholder="不改则留空" /></label>
           <label class="aa-field"><span>新期末分</span><input v-model.number="reqForm.newFinalScore" type="number" min="0" max="100" class="aa-input" placeholder="不改则留空" /></label>
         </div>
-        <label class="aa-field aa-field--full"><span class="req">更正原因（≥5字）</span><textarea v-model.trim="reqForm.reason" class="aa-textarea" rows="2" maxlength="500"></textarea></label>
+        <label class="aa-field aa-field--full"><span class="req">更正原因（≥5字）</span>
+          <textarea ref="reasonInput" v-model.trim="reqForm.reason" class="aa-textarea" rows="2" maxlength="500"></textarea>
+          <AppQuickPhrases scene-key="aa.grade.change" @pick="onPickReason" />
+        </label>
         <div class="aa-actions">
           <button class="mp-btn mp-btn--primary" :disabled="requesting" @click="submitRequest">{{ requesting ? '提交中…' : '提交更正申请' }}</button>
         </div>
@@ -46,6 +49,7 @@
       type="danger"
       confirm-text="确认驳回"
       :require-reason="true"
+      phrase-scene-key="aa.grade.changeReject"
       reason-label="驳回原因"
       :submitting="rejectDlg.submitting"
       @confirm="doRejectConfirm"
@@ -56,13 +60,14 @@
 <script>
 /** 成绩更正（/admin/academic-affairs/grade-change）：发起+两级审核。 */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard, AppConfirmDialog } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaGradeChangeView',
-  components: { ModulePageShell, AppSectionCard, AppConfirmDialog },
+  components: { ModulePageShell, AppSectionCard, AppConfirmDialog, AppQuickPhrases },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -74,6 +79,12 @@ export default {
     }
   },
   methods: {
+    onPickReason(text) {
+      const el = this.$refs.reasonInput
+      const { value, selStart, selEnd } = insertAtCursor(el, this.reqForm.reason, text)
+      this.reqForm.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     async submitRequest() {
       if (this.requesting) return
       if (!this.reqForm.taskId || !this.reqForm.recordId) { toast.error('请填写任务ID与记录ID'); return }

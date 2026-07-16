@@ -106,7 +106,8 @@
     <AppDrawer :visible="exportVisible" title="导出教务运行质量报告" @close="exportVisible = false">
       <div class="aaql-form">
         <AppFormItem label="导出用途" required>
-          <AppTextInput v-model="exportPurpose" placeholder="如 期末教学质量分析（≥5字，写审计）" :disabled="exporting" />
+          <AppTextInput ref="purposeInput" v-model="exportPurpose" placeholder="如 期末教学质量分析（≥5字，写审计）" :disabled="exporting" />
+          <AppQuickPhrases scene-key="common.exportPurpose" @pick="onPickPurpose" />
         </AppFormItem>
         <AppInlineAlert type="info" description="报告含挂科率/预警/发布率/毕业通过率等质量指标，导出带水印+审计。" />
         <AppInlineAlert v-if="exportError" type="danger" :description="exportError" />
@@ -226,7 +227,8 @@
  *  R3 续工：docs/03-业务模块设计/教务中心/施工包/教学质量/三级施工卡/{01..06,09}-*.md。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert, AppTimeline, AppDateTimePicker } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert, AppTimeline, AppDateTimePicker, AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi, academicAffairsQualityApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -255,7 +257,7 @@ export default {
   name: 'AaQualityDashboardView',
   components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer,
                AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert,
-               AppTimeline, AppDateTimePicker },
+               AppTimeline, AppDateTimePicker, AppQuickPhrases },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -338,6 +340,12 @@ export default {
     if (this.tab === 'dashboard') this.load()
   },
   methods: {
+    onPickPurpose(text) {
+      const el = this.$refs.purposeInput && this.$refs.purposeInput.$refs.input
+      const { value, selStart, selEnd } = insertAtCursor(el, this.exportPurpose, text)
+      this.exportPurpose = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     fmt(s) { return s ? String(s).replace('T', ' ').slice(0, 16) : '' },
     recTypeLabel(rt) { const m = Object.values(_REC_TYPE_META).find((x) => x.type === rt); return m ? m.label : rt },
     recStatusLabel(s) { return _REC_STATUS_LABEL[s] || s },

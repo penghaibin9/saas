@@ -65,6 +65,7 @@
       :type="dlg.type"
       :confirm-text="dlg.confirmText"
       :require-reason="dlg.requireReason"
+      phrase-scene-key="aa.review.return"
       reason-label="审核意见"
       :submitting="dlg.submitting"
       @confirm="doReview"

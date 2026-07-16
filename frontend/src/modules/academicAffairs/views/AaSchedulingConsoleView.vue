@@ -209,6 +209,11 @@
         </label>
       </div>
     </AppConfirmDialog>
+    <AppConfirmDialog
+      v-model:visible="reasonDialog.visible" title="驳回教室可用性申报" type="danger"
+      require-reason phrase-scene-key="common.reject" reason-label="驳回原因"
+      :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -261,7 +266,8 @@ export default {
       // 11 排课调整
       objectForm: { batchId: '', itemId: '', reason: '' }, submittingObjection: false,
       adjustBatchId: '', objections: [],
-      adjustDlg: { visible: false, submitting: false, itemId: '', batchId: '', courseName: '', weekday: 1, slotNo: 1, classroom: '', weekParity: 'ALL' }
+      adjustDlg: { visible: false, submitting: false, itemId: '', batchId: '', courseName: '', weekday: 1, slotNo: 1, classroom: '', weekParity: 'ALL' },
+      reasonDialog: { visible: false, submitting: false, action: null }
     }
   },
   computed: {
@@ -326,10 +332,21 @@ export default {
       const res = await api.reviewAvailability(id, action)
       if (res.code === 0) { toast.success('已采纳'); this.loadAvails() } else toast.error(res.message)
     },
-    async rejectAvail(id) {
-      const reason = window.prompt('驳回原因')
-      const res = await api.reviewAvailability(id, 'REJECT', reason || '')
-      if (res.code === 0) { toast.success('已驳回'); this.loadAvails() } else toast.error(res.message)
+    rejectAvail(id) {
+      this.reasonDialog = {
+        visible: true, submitting: false,
+        action: async (reason) => {
+          const res = await api.reviewAvailability(id, 'REJECT', reason || '')
+          if (res.code === 0) { toast.success('已驳回'); this.loadAvails() } else toast.error(res.message)
+        }
+      }
+    },
+    async onReasonConfirm({ reason }) {
+      const action = this.reasonDialog.action
+      this.reasonDialog.submitting = true
+      if (action) await action(reason)
+      this.reasonDialog.submitting = false
+      this.reasonDialog.visible = false
     },
     async loadConflict() {
       if (!this.conflictBatchId) { toast.error('请填课表批次 ID'); return }

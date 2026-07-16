@@ -30,6 +30,7 @@
     <AppConfirmDialog
       v-model:visible="dlg.visible" :title="dlg.title" :message="dlg.message"
       :type="dlg.type" :confirm-text="dlg.confirmText" :require-reason="dlg.requireReason"
+      phrase-scene-key="aa.statuschg.opinion"
       reason-label="审批意见" :submitting="submitting" @confirm="onConfirm"
     />
   </ModulePageShell>

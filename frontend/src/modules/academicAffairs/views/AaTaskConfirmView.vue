@@ -28,8 +28,9 @@
       confirm-text="确认退回" :submitting="acting === returnDialog.batchId" @confirm="doReturn"
     >
       <label class="aa-note-label">退回原因（必填，≥5 字）
-        <textarea v-model.trim="returnDialog.reason" class="aa-textarea" rows="3" placeholder="如：教师工作量超限需重新安排" />
+        <textarea ref="returnReasonInput" v-model.trim="returnDialog.reason" class="aa-textarea" rows="3" placeholder="如：教师工作量超限需重新安排" />
       </label>
+      <AppQuickPhrases scene-key="aa.task.return" @pick="onPickReturnReason" />
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
@@ -41,14 +42,15 @@
  * 与既有 /submit（单步直提）并存，本页只展示两级链路的操作入口。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, taskBatchColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTaskConfirmView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -89,6 +91,12 @@ export default {
       else { toast.error(res.message || '操作失败') }
     },
     openReturn(row) { this.returnDialog = { visible: true, batchId: row.batchId, reason: '' } },
+    onPickReturnReason(text) {
+      const el = this.$refs.returnReasonInput
+      const { value, selStart, selEnd } = insertAtCursor(el, this.returnDialog.reason, text)
+      this.returnDialog.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     async doReturn() {
       if (!this.returnDialog.reason || this.returnDialog.reason.length < 5) { toast.error('退回原因必填且不少于 5 字'); return }
       this.acting = this.returnDialog.batchId

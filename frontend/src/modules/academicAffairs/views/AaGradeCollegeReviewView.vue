@@ -24,6 +24,7 @@
       :type="dlg.type"
       :confirm-text="dlg.confirmText"
       :require-reason="dlg.requireReason"
+      phrase-scene-key="aa.grade.collegeReview"
       reason-label="审核意见"
       :submitting="dlg.submitting"
       @confirm="doReview"

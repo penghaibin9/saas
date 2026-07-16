@@ -148,7 +148,8 @@
           <AppSelect v-model="eligDrawer.exceptionType" :options="excTypeOptions" :disabled="eligDrawer.saving" />
         </AppFormItem>
         <AppFormItem label="核验意见" required>
-          <AppTextarea v-model="eligDrawer.note" placeholder="不合格原因（将转入注册异常并通知辅导员）" :disabled="eligDrawer.saving" />
+          <AppTextarea ref="eligNoteInput" v-model="eligDrawer.note" placeholder="不合格原因（将转入注册异常并通知辅导员）" :disabled="eligDrawer.saving" />
+          <AppQuickPhrases scene-key="aa.reg.fail" @pick="onPickEligNote" />
         </AppFormItem>
         <AppInlineAlert v-if="eligDrawer.formError" type="danger" :description="eligDrawer.formError" />
       </div>
@@ -165,7 +166,8 @@
           <AppStudentPicker v-model="deferDrawer.studentId" :remote-search="searchStudents" :disabled="deferDrawer.saving" />
         </AppFormItem>
         <AppFormItem label="暂缓原因" required>
-          <AppTextarea v-model="deferDrawer.reason" placeholder="如材料未齐 / 特殊原因说明" :disabled="deferDrawer.saving" />
+          <AppTextarea ref="deferReasonInput" v-model="deferDrawer.reason" placeholder="如材料未齐 / 特殊原因说明" :disabled="deferDrawer.saving" />
+          <AppQuickPhrases scene-key="aa.reg.defer" @pick="onPickDeferReason" />
         </AppFormItem>
         <AppFormItem label="申请延后至">
           <AppDatePicker v-model="deferDrawer.requestedUntil" placeholder="留空=不限期，由教务处后续处理" :disabled="deferDrawer.saving" />
@@ -217,8 +219,9 @@ import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyS
 import { AppButton, AppDrawer } from '@/components/ui'
 import {
   AppTextInput, AppTextarea, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog,
-  AppSectionCard, AppStudentPicker, AppDatePicker
+  AppSectionCard, AppStudentPicker, AppDatePicker, AppQuickPhrases
 } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -237,7 +240,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppTextarea, AppSelect, AppFormItem, AppInlineAlert,
-    AppConfirmDialog, AppSectionCard, AppStudentPicker, AppDatePicker
+    AppConfirmDialog, AppSectionCard, AppStudentPicker, AppDatePicker, AppQuickPhrases
   },
   data() {
     return {
@@ -338,6 +341,18 @@ export default {
     this.loadCurrentTab()
   },
   methods: {
+    onPickEligNote(text) {
+      const el = this.$refs.eligNoteInput && this.$refs.eligNoteInput.$refs.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.eligDrawer.note, text)
+      this.eligDrawer.note = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
+    onPickDeferReason(text) {
+      const el = this.$refs.deferReasonInput && this.$refs.deferReasonInput.$refs.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.deferDrawer.reason, text)
+      this.deferDrawer.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     batchStatusCn(s) {
       return { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已关闭', ARCHIVED: '已归档' }[s] || s
     },

@@ -32,6 +32,12 @@
         <AppButton variant="primary" :loading="saving" @click="submitBook">提交</AppButton>
       </template>
     </AppDrawer>
+
+    <AppConfirmDialog
+      v-model:visible="reasonDialog.visible" title="驳回教室预约" type="danger"
+      require-reason phrase-scene-key="aa.classroom.reject" reason-label="驳回原因（≥5字）"
+      :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -39,7 +45,7 @@
 /** 教室预约（/admin/academic-affairs/classroom-bookings）：占用登记+冲突检测+审核。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog } from '@/components/common'
 import { academicAffairsClassroomBookingApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -47,13 +53,14 @@ const _SL = { PENDING: '待审', APPROVED: '已通过', REJECTED: '已驳回', C
 
 export default {
   name: 'AaClassroomBookingView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog },
   data() {
     return {
       loading: true, rows: [], filterStatus: '',
       statusOptions: [{ label: '全部状态', value: '' }, { label: '待审', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }],
       columns: [{ key: 'classroomText', title: '教室' }, { key: 'slot', title: '时段' }, { key: 'purpose', title: '用途' }, { key: 'applicantName', title: '申请人' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
-      bookVisible: false, form: { classroomId: '', bookingDate: '', slotNo: 1, purpose: '' }, formError: '', saving: false
+      bookVisible: false, form: { classroomId: '', bookingDate: '', slotNo: 1, purpose: '' }, formError: '', saving: false,
+      reasonDialog: { visible: false, submitting: false, action: null }
     }
   },
   created() { this.load() },
@@ -78,11 +85,21 @@ export default {
       const res = await api.review(id, action)
       if (res.code === 0) { toast.success('已通过'); this.load() } else toast.error(res.message)
     },
-    async reject(id) {
-      const reason = window.prompt('驳回原因（≥5字）')
-      if (!reason || reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      const res = await api.review(id, 'REJECT', reason.trim())
-      if (res.code === 0) { toast.success('已驳回'); this.load() } else toast.error(res.message)
+    reject(id) {
+      this.reasonDialog = {
+        visible: true, submitting: false,
+        action: async (reason) => {
+          const res = await api.review(id, 'REJECT', reason)
+          if (res.code === 0) { toast.success('已驳回'); this.load() } else toast.error(res.message)
+        }
+      }
+    },
+    async onReasonConfirm({ reason }) {
+      const action = this.reasonDialog.action
+      this.reasonDialog.submitting = true
+      if (action) await action(reason)
+      this.reasonDialog.submitting = false
+      this.reasonDialog.visible = false
     }
   }
 }
