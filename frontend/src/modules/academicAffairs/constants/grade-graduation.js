@@ -47,7 +47,7 @@ export const NOTIFY_RECEIVER = { STUDENT: '学生本人', COUNSELOR: '责任辅�
 export const NOTIFY_STATUS = { UNREAD: '未读', READ: '已读' }
 export function notifyStatusColor(status) { return status === 'READ' ? 'default' : 'warning' }
 
-/** 毕业资格审核十项供数编码 → 中文（顺序对齐后端 _run_items）。 */
+/** 毕业资格审核十一项供数编码 → 中文（顺序对齐后端 _run_items）。 */
 export const GRAD_ITEM_LABEL = {
   STATUS: '学籍状态',
   CREDIT: '学分达成',
@@ -58,7 +58,8 @@ export const GRAD_ITEM_LABEL = {
   GRADUATION_DESIGN: '毕业设计',
   DISCIPLINE: '违纪处分',
   EMPLOYMENT: '就业去向',
-  ARCHIVE: '迎新归档'
+  ARCHIVE: '迎新归档',
+  FEE: '费用结清'
 }
 
 /** 「课程达成审核」叶子覆盖的两项（必修全通过 + 选修学分达标）。 */

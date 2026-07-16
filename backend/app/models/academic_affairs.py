@@ -1347,6 +1347,18 @@ class AaStudentCorrection(PKMixin, TenantMixin, CommonMixin, Base):
     old_value: Mapped[str | None] = mapped_column(String(500), comment="发起时快照（脱敏展示用原文，见服务层）")
     new_value: Mapped[str] = mapped_column(String(500), nullable=False)
     reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    # 证明材料附件（file_id JSON 数组，回链既有 t_file_object 文件中心，与 AaExemption.material_file_ids 同款）。
+    # 关键身份字段（姓名/性别/证件号）**必填**——这不是产品选择，是国家办法条文的合规红线：
+    #   ·《中等职业学历教育学生学籍电子注册办法（试行）》教职成〔2014〕12号第十六条：「学生个人信息变更，
+    #     学校在学生或监护人按有关规定提供相应证明后的10个工作日内，通过学生系统启动信息变更手续，
+    #     **上传证明材料**……」，且第二十六条(二)对"因管理不善造成学生信息违规变更"设追责条款；
+    #   ·《普通高等学校学生管理规定》教育部令41号第三十四条：变更姓名、出生日期等证书需填写的个人信息，
+    #     「应当有合理、充分的理由，并**提供有法定效力的相应证明文件**」；
+    #   ·《全国中小学生学籍信息管理系统关键业务应用指南》教基一〔2014〕8号：身份证号/姓名/性别/出生日期
+    #     变更「需提供**户籍部门出具**的证明材料」，非关键信息则由学校直接维护、不要求附件。
+    # 学号/年级不强制：户籍部门无法为"学号"这类校内编码或"年级"这类学业属性出具证明，强制即不可用。
+    material_file_ids: Mapped[str | None] = mapped_column(String(1000),
+                                                          comment="证明材料 file_id JSON 数组（关键身份字段必填）")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True,
                                         comment="PENDING/APPROVED/REJECTED")
     review_note: Mapped[str | None] = mapped_column(String(500))

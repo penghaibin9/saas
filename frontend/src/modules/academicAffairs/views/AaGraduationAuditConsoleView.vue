@@ -227,6 +227,10 @@ const TAB_CONFIG = {
   thesis: { label: '毕设状态联动', item: 'GRADUATION_DESIGN' },
   internship: { label: '实习状态联动', item: 'INTERNSHIP' },
   discipline: { label: '处分状态联动', item: 'DISCIPLINE' },
+  // 费用结清：后端 _check_fee 恒返回 UNKNOWN + "待接入学校财务系统"，不阻断毕业资格。真实职校毕业审核
+  // 确有该条件，但核查责任方是财务处/后勤/图书馆、落点在离校手续领证环节（正方把它做成独立的离校管理
+  // 平台产品）；本系统当前无可用欠费数据源，故如实展示"未对接"而非假装已联动，详见后端 _check_fee 注释。
+  fee: { label: '费用结清', item: 'FEE' },
   final: { label: '毕业资格终审', status: 'ACADEMIC_REVIEW' },
   roster: { label: '毕业学生名单' },
   reason: { label: '不通过原因' },

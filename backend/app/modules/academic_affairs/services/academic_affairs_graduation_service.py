@@ -204,7 +204,34 @@ def _run_items(db, s) -> list:
     # 就业默认提醒非卡审 → 有记录 PASS，无则 UNKNOWN（不判 FAIL）
     items.append(_check_domain_exists(db, "EMPLOYMENT", EmpStudent, "student_id", s, "AA_STAFF"))
     items.append({"item": "ARCHIVE", "result": "UNKNOWN", "owner": "COUNSELOR", "evidence": "迎新归档待接入", "refId": None})
+    items.append(_check_fee(db, s))
     return items
+
+
+def _check_fee(db, s) -> dict:
+    """费用结清（欠费状态联动）——恒 UNKNOWN（提醒不卡审），如实标注"未对接财务系统"，不伪造结论。
+
+    外部对标（R3 联网核验）：职业院校毕业资格审核确实把"费用结清"列为核心条件（沧州航空职业学院
+    《关于做好2023级学生毕业资格审核工作的通知》第六项："学费、住宿费等应缴费用全部结清，无欠费"），
+    但该项的核查责任方是**财务处/后勤/图书馆联合核查**，落点在"离校手续→领证"，不在教务的学业审核；
+    正方软件更是把它做成与教学管理平台并列的独立《离校管理服务平台》产品。硬/软是分级的：普通欠费
+    不进"结业"清单、不改变学业结论（软），仅"长期恶意欠费"才作暂缓毕业（硬）。故本项设为不阻断，
+    与项目冻结口径一致（13A-13B-学校参数配置中心设计.md：graduation.conditions.feeCheck 默认 false；
+    对标审计与补丁建议：欠费卡审为"供数接口位"，默认"提醒不卡审"）。
+
+    为什么不接现有数据：全仓审计确认**本系统没有可用于毕业欠费判定的数据源**——
+      · `t_aa_textbook_fee_ledger`（教材费）是真实欠费数据，但只覆盖教材费、且依赖签收记录生成，
+        而毕业审核要的是"学费、住宿费"，用它代表毕业欠费会以偏概全；
+      · 奖助域的 `FeeReduction`（学费减免申请）/`StudentLoan`（助学贷款登记）是**资助**语义，不是
+        应收欠费——误当欠费用会把受助/贷款学生判成欠费生挡在毕业门外，性质严重，坚决不用；
+      · `t_orientation_student.payment_status` 是入学报到缴费快照，对毕业班是数年前的陈旧数据；
+      · 后端无任何财务系统对接接口/配置/适配器（全仓 grep 命中全部落在 docs 与小程序 mock）。
+    缺的是前置条件（学校财务系统对接），不是代码能力，故照 ARCHIVE 同款先例做诚实占位。
+    后续路径：P2 财务处按批次 Excel 回填（走既有导入 dry-run 管线）→ P3 财务适配器只读拉取，
+    准入=学校书面确认财务系统接口能力与对账口径。
+    """
+    return {"item": "FEE", "result": "UNKNOWN", "owner": "FINANCE",
+            "evidence": "待接入学校财务系统（未对接，本项不阻断毕业资格）", "refId": None}
 
 
 def _overall(items) -> str:

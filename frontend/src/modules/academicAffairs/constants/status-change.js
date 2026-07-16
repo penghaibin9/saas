@@ -6,6 +6,7 @@ export const TYPE_LABEL = {
   SUSPEND: '休学',
   WITHDRAW: '退学',
   RESUME: '复学',
+  PRESERVE: '保留学籍',
   RETAIN: '留级',
   TRANSFER_MAJOR: '转专业',
   TRANSFER_CLASS: '转班'
@@ -35,6 +36,7 @@ export const CHANGE_FLOW_NODES = {
   SUSPEND: ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'AA_OFFICE_FINAL'],
   WITHDRAW: ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'AA_OFFICE_FINAL'],
   RESUME: ['COUNSELOR_REVIEW', 'COLLEGE_ASSIGN_CLASS', 'AA_OFFICE_FINAL'],
+  PRESERVE: ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'AA_OFFICE_FINAL'],
   RETAIN: ['COLLEGE_REVIEW', 'AA_OFFICE_FINAL'],
   TRANSFER_MAJOR: ['COUNSELOR_REVIEW', 'OUT_COLLEGE_REVIEW', 'IN_COLLEGE_REVIEW', 'AA_OFFICE_FINAL'],
   TRANSFER_CLASS: ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'AA_OFFICE_FINAL']
@@ -57,15 +59,18 @@ export function isActive(status) {
   return status === 'SUBMITTED' || status === 'IN_REVIEW' || status === 'DRAFT'
 }
 
-/** 分类申请入口路径段（Tier1 R1：休学/复学/退学/转专业；学籍异动三级模块续工补建：转班/留级，
- *  路由 /admin/academic-affairs/status-changes/<segment>）。 */
+/** 分类申请入口路径段（Tier1 R1：休学/复学/退学/转专业；学籍异动三级模块续工补建：转班/保留学籍，
+ *  路由 /admin/academic-affairs/status-changes/<segment>）。
+ *  留级(RETAIN)不设分类入口，沿用「发起异动」通用页——与真实高校实践一致：多数教务系统的「学籍异动」
+ *  枚举只含保留学籍不含留级（山东农业大学7类、华侨大学4类、池州学院6类的公开异动清单均如此），
+ *  留级归「学业处理」而非「学籍异动」（41号令第十五条把留级授权给学校自定）。 */
 export const TYPE_PATH_SEGMENT = {
   SUSPEND: 'suspend',
   RESUME: 'resume',
   WITHDRAW: 'withdraw',
   TRANSFER_MAJOR: 'transfer-major',
   TRANSFER_CLASS: 'transfer-class',
-  RETAIN: 'retain'
+  PRESERVE: 'preserve'
 }
 
 /** 分类申请页标题/副标题（Tier1 R1 四个 + 续工补建两个「申请入口」页文案）。 */
@@ -75,9 +80,13 @@ export const TYPE_PAGE_META = {
   WITHDRAW: { title: '退学申请', subtitle: '退学为学籍终态，终审生效后不可再对该生发起其它学籍异动' },
   TRANSFER_MAJOR: { title: '转专业申请', subtitle: '需填写目标学院/专业/班级；终审生效后同步迁移学籍主档院系班' },
   TRANSFER_CLASS: { title: '转班申请', subtitle: '同专业换班（学院/专业不变，仅换班级）；跨专业请使用「转专业申请」' },
-  // 甲方决策待确认：navPlan 原始占位文案为「保留学籍申请」，但项目冻结的学籍状态机（13B-教务中心状态机与
-  // 权限矩阵.md SM-02，14 态）没有独立的「保留学籍」状态，唯一匹配的既有状态是 RETAINED（留级）。本页按
-  // RETAIN/留级 实现并如实标注，如学校实际所指是参军/创业/病休等区别于「留级」的独立保留学籍政策
-  // （SM-02 未覆盖的第 15 类状态），需另行确认业务规则（适用条件/最长年限/是否计在籍）后再单独设计。
-  RETAIN: { title: '留级申请（保留学籍）', subtitle: '学业成绩条件命中的留级认定；如需参军/创业/病休等「保留学籍」政策请见页内说明' }
+  // 保留学籍(PRESERVE)：R3 外部法规核验后从「留级」拆出为独立异动类型。教育部令41号第二十七条
+  // 法定情形为应征入伍（保留至退役后2年）与跨校联合培养；第二十八条明确保留学籍期间"不享受在校
+  // 学习学生待遇"，故不计在籍。与留级(RETAIN，41号令第十五条授权学校自定的学业处理)语义相反，
+  // 不可合并。中职差异：教职成〔2010〕7号无"保留学籍"，中职服兵役按休学办理，中职租户可不使用本入口。
+  PRESERVE: {
+    title: '保留学籍申请',
+    subtitle: '法定情形：应征入伍（保留至退役后2年）、跨校联合培养期间。保留期间学籍留存但不在校、不计在籍；' +
+              '入伍情形另需按学校规定报武装部核验（线下办理）。学业不达标的留级/降级请走「发起异动」通用页。'
+  }
 }

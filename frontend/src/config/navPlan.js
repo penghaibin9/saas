@@ -269,7 +269,7 @@ export const NAV_PLAN = [
       I('学籍状态', '/admin/academic-affairs/roster/status', 'academicAffairs.roster.view'),
       I('学籍异动记录', '/admin/academic-affairs/roster/changes', 'academicAffairs.statusChange.view'),
       I('学籍导入导出', '/admin/academic-affairs/roster/import-export', 'academicAffairs.roster.import'),
-      // 2026-07-16 Tier1 R3 续工：休学/退学/保留学籍=学籍名册按 student_status 过滤的分类视图
+      // 2026-07-16 Tier1 R3 续工：休学/退学/保留学籍(PRESERVED，非留级)=学籍名册按 student_status 过滤的分类视图
       // （AaRosterListView 新支持 ?status= 深链预填，不重复造页）；复学/转专业因终态回落 REGISTERED、
       // 无法用 student_status 区分，改从「学籍异动」流水按 changeType 取结果视图（AaRosterChangeResultListView，
       // 只读+链接学籍档案，不提供发起入口，不与学籍异动模块的申请/审批功能重复）；学籍信息更正=全新生产级
@@ -280,7 +280,7 @@ export const NAV_PLAN = [
       I('复学学生', '/admin/academic-affairs/roster/resumed-students', 'academicAffairs.statusChange.view'),
       I('退学学生', '/admin/academic-affairs/roster?status=WITHDRAWN', 'academicAffairs.roster.view'),
       I('转专业学生', '/admin/academic-affairs/roster/transferred-major-students', 'academicAffairs.statusChange.view'),
-      I('保留学籍', '/admin/academic-affairs/roster?status=RETAINED', 'academicAffairs.roster.view'),
+      I('保留学籍', '/admin/academic-affairs/roster?status=PRESERVED', 'academicAffairs.roster.view'),
       I('学籍信息更正', '/admin/academic-affairs/roster/corrections', 'academicAffairs.roster.correction.view'),
       // 注意：navRefMatches 比较候选 query 时用原始字符串（不重新排序），故这里必须已按 key 字母序书写
       // （scope < tab），否则真实点击该叶子时 $route.fullPath 排序后与候选串不等，导致高亮失效。
@@ -315,12 +315,14 @@ export const NAV_PLAN = [
       I('异动统计', '/admin/academic-affairs/status-changes/stats', 'academicAffairs.statusChange.view'),
       // 2026-07-16 学籍异动三级模块续工（第三轮补缺）：转班/保留学籍/异动归档三叶子翻 implemented。
       // 转班=新异动类型 TRANSFER_CLASS（同专业换班，区别于跨专业 TRANSFER_MAJOR），全栈新建。
-      // 保留学籍申请=按既有 RETAIN(留级) 类型补建分类入口（沿用「留级(RETAIN)不设分类入口，走通用页」
-      // 之前的缺口）；冻结的学籍状态机(SM-02,14态)无独立「保留学籍」状态，RETAIN 是唯一匹配的既有状态，
-      // 页内已如实标注：如学校实际所指是参军/创业/病休等区别于留级的独立保留学籍政策，需另行业务确认，
-      // 待用户决定，未冒充已完成。异动归档=复用异动台账/统计只读端点组合的在途监控视图，不新增后端接口。
+      // 保留学籍申请=独立异动类型 PRESERVE→学籍状态 PRESERVED（R3 外部法规核验后从「留级」拆出：
+      //   教育部令41号第二十七/二十八条法定情形为应征入伍/跨校联合培养，人离校、不计在籍；而留级
+      //   (RETAIN/RETAINED) 是第十五条授权学校自定的学业处理，人在校、计在籍——两者语义相反，此前
+      //   误接同一类型会虚增对教育主管部门报送的在册学生数）。留级维持不设分类入口、走「发起异动」
+      //   通用页，与真实高校实践一致（多数教务系统异动枚举只含保留学籍、不含留级）。
+      // 异动归档=复用异动台账/统计只读端点组合的在途监控视图，不新增后端接口。
       I('转班申请', '/admin/academic-affairs/status-changes/transfer-class', 'academicAffairs.statusChange.apply'),
-      I('保留学籍申请', '/admin/academic-affairs/status-changes/retain', 'academicAffairs.statusChange.apply'),
+      I('保留学籍申请', '/admin/academic-affairs/status-changes/preserve', 'academicAffairs.statusChange.apply'),
       I('异动归档', '/admin/academic-affairs/status-changes/archive', 'academicAffairs.statusChange.view')
     ]),
     mod('aa-orgs', '学院专业班级', '/admin/academic-affairs/orgs', [
@@ -360,13 +362,20 @@ export const NAV_PLAN = [
       I('课程性质', '/admin/academic-affairs/courses/console?tab=nature', 'academicAffairs.course.view'),
       I('学分学时', '/admin/academic-affairs/courses/console?tab=credit', 'academicAffairs.course.view'),
       // Tier1 R3 续工（2026-07-16）：课程大纲/课程材料新增 t_aa_course_material（附件回链既有 t_file_object）；
-      // 考核方式复用既有 exam_mode 字段读写端点；课程归档为纯前端派生只读视图（不新增状态机状态）。
+      // 考核方式复用既有 exam_mode 字段读写端点。
+      // 末叶原 navPlan 模板占位名为「课程归档」，R3 外部核验后改名为「历史课程（已停用/旧版本）」：
+      //   真实教务系统的课程库没有"归档"概念——条目终态是停用/禁用（强智叫"禁用"、南开课程库清理叫
+      //   "沉淀处理"、正方课程库表单连状态字段都没有、北理工官方定义课程库维护只有增/删/改）；而"归档"
+      //   在教务语境专指教学档案（成绩单/学籍卡）移交档案馆，本项目"归档"一词也已被「教务归档」二级模块
+      //   （按学期批次归档9个数据域）占用，同词不同义会真实误导教务处用户。本叶展示的实际内容就是
+      //   "已停用 + 被新版本取代的旧版本"，故按实命名。仍为纯前端派生只读视图，不新增状态机状态
+      //   （SM-05 冻结 6 态无 ARCHIVED，DISABLED 即终态）。
       I('课程大纲', '/admin/academic-affairs/courses/console?tab=outline', 'academicAffairs.course.view'),
       I('考核方式', '/admin/academic-affairs/courses/console?tab=assessment', 'academicAffairs.course.view'),
       I('课程负责人', '/admin/academic-affairs/courses/console?tab=owner', 'academicAffairs.course.view'),
       I('课程材料', '/admin/academic-affairs/courses/console?tab=material', 'academicAffairs.course.view'),
       I('课程停用', '/admin/academic-affairs/courses/console?tab=disable', 'academicAffairs.course.view'),
-      I('课程归档', '/admin/academic-affairs/courses/console?tab=archive', 'academicAffairs.course.view')
+      I('历史课程（已停用/旧版本）', '/admin/academic-affairs/courses/console?tab=archive', 'academicAffairs.course.view')
     ]),
     // 教学计划：按手册 P6 冻结决定 + 用户 2026-07-14 拍板「收编」——不建独立域，叶子指向既有等价功能页
     // 年级/专业教学计划=培养方案(AaProgramBinding方案-年级绑定)；学期教学计划/课程开设计划=教学任务批次(AaTeachingTaskBatch学期开课计划)；计划归档=教务归档
@@ -502,7 +511,14 @@ export const NAV_PLAN = [
       I('实践环节审核', '/admin/academic-affairs/graduation/audit-console?tab=practice', 'academicAffairs.graduation.view'),
       I('毕设状态联动', '/admin/academic-affairs/graduation/audit-console?tab=thesis', 'academicAffairs.graduation.view'),
       I('实习状态联动', '/admin/academic-affairs/graduation/audit-console?tab=internship', 'academicAffairs.graduation.view'),
-      ...P('欠费状态联动'),
+      // 欠费状态联动（R3 外部核验后落地为「诚实占位」，非完整功能）：真实职校毕业审核确有"费用结清"
+      //   核心条件，但核查责任方是财务处/后勤/图书馆，落点在"离校手续→领证"，不在教务学业审核里
+      //   （正方更是把它做成独立的《离校管理服务平台》产品）；且普通欠费不改变学业结论（软提醒），
+      //   仅"长期恶意欠费"才暂缓毕业。本系统当前**无可用欠费数据源**（教材费只覆盖教材、奖助域的
+      //   减免/助学贷款是资助语义误用会把受助学生挡在毕业门外、迎新缴费是入学快照、无财务系统对接），
+      //   故审核项恒 UNKNOWN + 明示"待接入学校财务系统"、不阻断毕业，页面如实说明而非假装已对接。
+      //   后续：P2 财务处 Excel 回填 → P3 财务适配器，准入=学校确认财务接口能力。见 _check_fee 注释。
+      I('费用结清（待接入财务系统）', '/admin/academic-affairs/graduation/audit-console?tab=fee', 'academicAffairs.graduation.view'),
       I('处分状态联动', '/admin/academic-affairs/graduation/audit-console?tab=discipline', 'academicAffairs.graduation.view'),
       I('毕业资格终审', '/admin/academic-affairs/graduation/audit-console?tab=final', 'academicAffairs.graduation.final'),
       I('不通过原因', '/admin/academic-affairs/graduation/audit-console?tab=reason', 'academicAffairs.graduation.view'),

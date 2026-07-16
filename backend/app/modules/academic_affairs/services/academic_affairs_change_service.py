@@ -33,6 +33,12 @@ CHANGE_FLOW = {
     "SUSPEND": ("SUSPENDED", ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
     "WITHDRAW": ("WITHDRAWN", ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
     "RESUME": ("REGISTERED", ["COUNSELOR_REVIEW", "COLLEGE_ASSIGN_CLASS", "AA_OFFICE_FINAL"]),
+    # 保留学籍（PRESERVE）与留级（RETAIN）是两个独立异动类型，勿合并——法规依据、在校状态、
+    # 触发原因全不同（详见 academic_affairs_status_service.STATUSES 注释）。审批链沿用休学同款三级
+    # （辅导员→学院→教务处）：41号令第二十七条的入伍情形，学校实务中另需武装部核验（如山东农业大学
+    # 《学籍异动办理流程说明》"参军入伍保留学籍的报学校武装部审核通过后统一办理"），本系统未建武装部
+    # 角色，该环节走线下，系统内以教务处终审为准——如实标注，不假装系统已覆盖武装部审核。
+    "PRESERVE": ("PRESERVED", ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
     "RETAIN": ("RETAINED", ["COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
     "TRANSFER_MAJOR": ("REGISTERED", ["COUNSELOR_REVIEW", "OUT_COLLEGE_REVIEW",
                                       "IN_COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
@@ -40,12 +46,14 @@ CHANGE_FLOW = {
     "TRANSFER_CLASS": ("REGISTERED", ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "AA_OFFICE_FINAL"]),
 }
 _WF_CODE = {"SUSPEND": "ACAD_STATUS_SUSPEND", "WITHDRAW": "ACAD_STATUS_WITHDRAW",
-            "RESUME": "ACAD_STATUS_RESUME", "RETAIN": "ACAD_STATUS_RETAIN",
+            "RESUME": "ACAD_STATUS_RESUME", "PRESERVE": "ACAD_STATUS_PRESERVE",
+            "RETAIN": "ACAD_STATUS_RETAIN",
             "TRANSFER_MAJOR": "ACAD_STATUS_TRANSFER_MAJOR",
             "TRANSFER_CLASS": "ACAD_STATUS_TRANSFER_CLASS"}
 _ACTIVE = {"DRAFT", "SUBMITTED", "IN_REVIEW"}  # 在途（未终结）异动状态
 
-L_CT = {"SUSPEND": "休学", "WITHDRAW": "退学", "RESUME": "复学", "RETAIN": "留级",
+L_CT = {"SUSPEND": "休学", "WITHDRAW": "退学", "RESUME": "复学",
+        "PRESERVE": "保留学籍", "RETAIN": "留级",
         "TRANSFER_MAJOR": "转专业", "TRANSFER_CLASS": "转班"}
 
 # 审批节点 → 所需 permissionCode（Tier1 R1：异动审批权限实例化）。
@@ -246,16 +254,22 @@ def submit(body, user) -> dict:
             raise AppException("VALIDATION_ERROR", f"学生已处于终态 {cur}，不可发起异动")
         # 前置状态校验（真实业务）
         if ct == "RESUME":
-            if cur != "SUSPENDED":
-                raise AppException("DATA_CONFLICT", "仅休学中的学生可申请复学")
-            # 真实业务：休学超期未复学应作退学处理，禁复学
+            # 休学(SUSPENDED)与保留学籍(PRESERVED)都是"人离校、学籍留着"，都经复学回到在籍
+            # （41号令第三十条(二)把两者并列："休学、保留学籍期满，在学校规定期限内未提出复学申请…"）。
+            if cur not in ("SUSPENDED", "PRESERVED"):
+                raise AppException("DATA_CONFLICT", "仅休学中或保留学籍中的学生可申请复学")
+            # 真实业务：休学超期未复学应作退学处理，禁复学。
+            # 保留学籍不做同款超期拦截——41号令第二十七条的期限是"退役后2年"，退役日期在提交保留学籍
+            # 申请时无法预知，故 expire_date 恒空（见下方 submit 落库处注释），此处按空值自然跳过。
             prior = db.scalars(select(AaStatusChange).where(
                 AaStatusChange.tenant_id == _tid(), AaStatusChange.student_id == student_id,
-                AaStatusChange.change_type == "SUSPEND", AaStatusChange.status == "EFFECTIVE",
+                AaStatusChange.change_type.in_(("SUSPEND", "PRESERVE")),
+                AaStatusChange.status == "EFFECTIVE",
                 AaStatusChange.is_deleted.is_(False)).order_by(AaStatusChange.id.desc())).first()
             if prior and prior.expire_date and prior.expire_date < datetime.utcnow():
                 raise AppException("DATA_CONFLICT", "休学已超过最长年限，应作退学处理，不可复学")
-        if ct in ("SUSPEND", "WITHDRAW", "RETAIN", "TRANSFER_MAJOR", "TRANSFER_CLASS") and not is_enrolled(cur):
+        if (ct in ("SUSPEND", "PRESERVE", "WITHDRAW", "RETAIN", "TRANSFER_MAJOR", "TRANSFER_CLASS")
+                and not is_enrolled(cur)):
             raise AppException("DATA_CONFLICT", "仅在籍学生可发起该异动")
         # 转班（TRANSFER_CLASS）真实业务校验：目标班须存在、在读、且与学生当前专业一致（跨专业请走
         # 「转专业申请」）；目标班不得与当前班相同。目标学院/专业由服务端按学生当前值强制推导，
@@ -297,6 +311,9 @@ def submit(body, user) -> dict:
         # 休学到期日（真实补充：最长年限）
         if ct == "SUSPEND":
             x.expire_date = datetime.utcnow() + timedelta(days=365 * _suspend_max_years())
+        # 保留学籍不设 expire_date：41号令第二十七条的法定期限是"至退役后 2 年"，而退役日期在提交
+        # 申请时不可知；跨校联合培养同理（培养期由联培协议定）。此处留空是如实建模，不是遗漏——
+        # 真实到期日应在学生退役/联培结束回校办理复学时按实际情况认定，不由系统臆测。
         db.add(x)
         db.flush()
         assignee = _assignee_for(db, first, student_id)

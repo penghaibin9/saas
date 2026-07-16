@@ -762,7 +762,7 @@ def roster(user, keyword=None, status=None, page=1, page_size=20):
 _STATUS_LABEL = {
     "NORMAL": "正常", "MERGED": "已合并", "RECYCLED": "已回收",
     "PENDING_REGISTER": "待注册", "REGISTERED": "在籍注册", "UNREGISTERED": "未注册",
-    "SUSPENDED": "休学", "RETAINED": "留级", "WITHDRAWN": "退学",
+    "SUSPENDED": "休学", "PRESERVED": "保留学籍", "RETAINED": "留级", "WITHDRAWN": "退学",
     "TRANSFER_SCHOOL": "转学", "GRADUATED": "毕业", "COMPLETED": "结业", "INCOMPLETE": "肄业",
 }
 
@@ -884,6 +884,18 @@ def roster_status_summary(user) -> dict:
 _CORRECTION_FIELD_LABEL = {"STUDENT_NO": "学号", "REAL_NAME": "姓名", "GENDER": "性别",
                            "ID_CARD": "证件号", "GRADE": "年级"}
 
+# 关键身份字段：更正必须上传证明材料（且实务中须由户籍/公安部门出具）。合规依据（R3 外部法规核验）：
+#   ·《中等职业学历教育学生学籍电子注册办法（试行）》教职成〔2014〕12号第十六条——"上传证明材料"
+#     是条文原文（本项目面向职业院校，中职直接适用）；第十二条要求证明材料归入学籍档案；
+#     第二十六条(二)对"因管理不善造成学生信息违规变更"设追责条款；
+#   ·《普通高等学校学生管理规定》教育部令41号第三十四条（高职适用）——"提供有法定效力的相应证明文件"；
+#   ·《全国中小学生学籍信息管理系统关键业务应用指南》教基一〔2014〕8号——身份证号/姓名/性别/出生日期
+#     为关键信息，需"户籍部门出具的证明材料"；非关键信息由学校直接维护、不要求附件。
+# 学号/年级不在此列：户籍部门无法为"学号"这类校内编码或"年级"这类学业属性出具证明，强制要求等于把功能
+# 变成不可用；二者仍为教务员发起 + 全程审计留痕，风险可控。
+# 注：本系统学籍档案无独立"出生日期"字段（出生日期含在证件号内），故关键字段在此表现为三项。
+_CORRECTION_MATERIAL_REQUIRED = {"REAL_NAME", "GENDER", "ID_CARD"}
+
 
 def _correction_current_value(s, field_key):
     return {"STUDENT_NO": s.student_no or "", "REAL_NAME": s.real_name or "", "GENDER": s.gender or "",
@@ -908,19 +920,53 @@ def _correction_clean_value(field_key, new_value):
 
 
 def _correction_row(c, s=None, reveal=False) -> dict:
+    import json
     old_v, new_v = c.old_value or "", c.new_value or ""
     if c.field_key == "ID_CARD" and not reveal:
         old_v, new_v = _mask_id_card(old_v), _mask_id_card(new_v)
+    file_ids = []
+    if c.material_file_ids:
+        try:
+            file_ids = [str(x) for x in json.loads(c.material_file_ids)]
+        except (ValueError, TypeError):
+            file_ids = []
     return {"correctionId": str(c.id), "studentId": str(c.student_id),
             "realName": s.real_name if s else "", "studentNo": s.student_no if s else "",
             "fieldKey": c.field_key, "fieldLabel": _CORRECTION_FIELD_LABEL.get(c.field_key, c.field_key),
             "oldValue": old_v, "newValue": new_v, "sensitive": c.field_key == "ID_CARD",
             "reason": c.reason or "", "status": c.status, "reviewNote": c.review_note or "",
+            "materialFileIds": file_ids, "materialRequired": c.field_key in _CORRECTION_MATERIAL_REQUIRED,
             "reviewedAt": _iso(c.reviewed_at), "createdAt": _iso(c.created_at)}
 
 
-def create_roster_correction(user, student_id, field_key, new_value, reason) -> dict:
-    """发起学籍信息更正：教务员/学院教务对某学生的身份类字段据实纠错，提交后待审（不即时生效）。"""
+def _correction_material_ids(db, field_key, material_file_ids):
+    """证明材料校验：关键身份字段必填（合规红线，见 _CORRECTION_MATERIAL_REQUIRED 注释）；
+    传入的 file_id 必须是本租户真实文件对象（与 AaExemption 免修材料同款校验，防伪造 id）。
+    返回可直接落库的 JSON 字符串（无附件时为 None）。"""
+    import json
+    from app.models import FileObject
+    ids = material_file_ids if isinstance(material_file_ids, list) else (
+        [material_file_ids] if material_file_ids else [])
+    int_ids = [int(x) for x in ids if str(x).isdigit()]
+    if field_key in _CORRECTION_MATERIAL_REQUIRED and not int_ids:
+        raise AppException(
+            "VALIDATION_ERROR",
+            f"更正「{_CORRECTION_FIELD_LABEL[field_key]}」必须上传证明材料"
+            "（须由户籍/公安部门出具；依据教职成〔2014〕12号第十六条、教育部令41号第三十四条）")
+    if not int_ids:
+        return None
+    found = db.query(FileObject).filter(FileObject.tenant_id == _tid(),
+                                        FileObject.id.in_(int_ids)).count()
+    if found != len(int_ids):
+        raise AppException("VALIDATION_ERROR", "证明材料包含无效文件，请重新上传")
+    return json.dumps([str(x) for x in int_ids], ensure_ascii=False)
+
+
+def create_roster_correction(user, student_id, field_key, new_value, reason,
+                             material_file_ids=None) -> dict:
+    """发起学籍信息更正：教务员/学院教务对某学生的身份类字段据实纠错，提交后待审（不即时生效）。
+    关键身份字段（姓名/性别/证件号）必须随附证明材料——国家办法条文硬要求，非产品选择，
+    详见 _CORRECTION_MATERIAL_REQUIRED 注释的三条法规依据。"""
     from app.core.permissions import has_permission
     from app.models import AaStudentCorrection
     field_key = (field_key or "").strip().upper()
@@ -935,6 +981,7 @@ def create_roster_correction(user, student_id, field_key, new_value, reason) -> 
         ctx = build_affairs_context(user, db)
         s = ctx.require_student(db, int(student_id))
         clean_value = _correction_clean_value(field_key, new_value)
+        material_json = _correction_material_ids(db, field_key, material_file_ids)
         current = _correction_current_value(s, field_key)
         if clean_value == current:
             raise AppException("VALIDATION_ERROR", "更正后的值与当前值相同")
@@ -945,7 +992,8 @@ def create_roster_correction(user, student_id, field_key, new_value, reason) -> 
         if dup:
             raise AppException("DATA_CONFLICT", "该学生该字段已有待审核的更正申请，不可重复发起", http_status=409)
         c = AaStudentCorrection(tenant_id=_tid(), student_id=s.id, field_key=field_key,
-                                old_value=current, new_value=clean_value, reason=reason, status="PENDING")
+                                old_value=current, new_value=clean_value, reason=reason,
+                                material_file_ids=material_json, status="PENDING")
         db.add(c)
         db.flush()
         _audit(db, "AA_STUDENT_CORRECTION", c.id, "APPLY",

@@ -3,6 +3,8 @@
 C1 更正审核通过→主档字段同步+审计留痕；C2 驳回需理由≥5字，驳回后主档不变；
 C3 同学生同字段在途重复409；C4 更正字段范围排除学籍状态（单一写入口红线，400）；
 C5 无权限角色（辅导员）发起更正403；C6 性别非法取值400。
+C7-C10（R3 合规补建）：关键身份字段无证明材料400 / 带真实材料200并回显 / 伪造file_id 400 /
+非关键字段材料选填200。
 （HTTP 状态口径对齐 app/core/exceptions.py CODE_HTTP：VALIDATION_ERROR→400，非 422，
  与本仓库 test_aa_course.py/test_aa_calendar_period.py 等既有校验失败用例一致。）
 """
@@ -34,16 +36,31 @@ def _seed(db_mode):
     return ids
 
 
-def _apply(client, hdr, sid, field_key, new_value, reason="数据录入错误据实更正"):
-    return client.post(f"{BASE}/roster/corrections", headers=hdr,
-                       json={"studentId": str(sid), "fieldKey": field_key,
-                            "newValue": new_value, "reason": reason})
+def _seed_file(db_mode, name="户籍证明.pdf"):
+    """造一个真实 t_file_object（证明材料附件回链目标，与 AaExemption 免修材料同款机制）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject
+    db = get_sessionmaker()()
+    f = FileObject(tenant_id=TID, file_key=f"test/{name}", file_name=name, ext="pdf",
+                   mime_type="application/pdf", size_bytes=1024, biz_type="ATTACHMENT", status="STORED")
+    db.add(f); db.flush()
+    fid = f.id
+    db.commit()
+    db.close()
+    return str(fid)
+
+
+def _apply(client, hdr, sid, field_key, new_value, reason="数据录入错误据实更正", material=None):
+    body = {"studentId": str(sid), "fieldKey": field_key, "newValue": new_value, "reason": reason}
+    if material is not None:
+        body["materialFileIds"] = material if isinstance(material, list) else [material]
+    return client.post(f"{BASE}/roster/corrections", headers=hdr, json=body)
 
 
 def test_c1_approve_syncs_profile_and_audits(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    r = _apply(client, hdr, ids["s"], "REAL_NAME", "更正乙")
+    r = _apply(client, hdr, ids["s"], "REAL_NAME", "更正乙", material=_seed_file(db_mode))
     assert r.status_code == 200, r.text
     cid = r.json()["data"]["correctionId"]
     rv = client.post(f"{BASE}/roster/corrections/{cid}/review", headers=hdr,
@@ -110,3 +127,50 @@ def test_c6_gender_invalid_value_400(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     r = _apply(client, hdr, ids["s"], "GENDER", "other")
     assert r.status_code == 400
+
+
+# ═══════════ 证明材料强制（R3 外部法规核验后补建的合规红线）═══════════
+# 依据：教职成〔2014〕12号第十六条（中职直接适用，"上传证明材料"是条文原文）+ 教育部令41号
+# 第三十四条（"提供有法定效力的相应证明文件"）+ 教基一〔2014〕8号（身份证号/姓名/性别/出生日期
+# 为关键信息，需户籍部门出具）。学号/年级不强制——户籍部门无法为校内编码/学业属性出具证明。
+
+
+def test_c7_key_field_without_material_400(client, db_mode):
+    """关键身份字段（姓名/性别/证件号）无证明材料 → 400（合规红线，不是可选项）。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    for field, value in (("REAL_NAME", "无附件甲"), ("GENDER", "女"), ("ID_CARD", "110101200002022345")):
+        r = _apply(client, hdr, ids["s"], field, value)
+        assert r.status_code == 400, f"{field} 应因缺证明材料被拒：{r.text}"
+        assert "证明材料" in r.json()["message"], r.text
+
+
+def test_c8_key_field_with_material_ok_and_echo(client, db_mode):
+    """关键身份字段带真实证明材料 → 200，且 materialFileIds/materialRequired 正确回显。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    fid = _seed_file(db_mode)
+    r = _apply(client, hdr, ids["s"], "ID_CARD", "110101200002022345", material=fid)
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["materialFileIds"] == [fid]
+    assert d["materialRequired"] is True
+
+
+def test_c9_material_invalid_file_id_400(client, db_mode):
+    """证明材料 file_id 不是本租户真实文件对象 → 400（防伪造 id，同 AaExemption 免修材料校验）。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    r = _apply(client, hdr, ids["s"], "REAL_NAME", "伪造附件甲", material="99999999")
+    assert r.status_code == 400, r.text
+    assert "无效文件" in r.json()["message"], r.text
+
+
+def test_c10_non_key_field_material_optional(client, db_mode):
+    """非关键字段（年级）无证明材料仍可提交 → 200，materialRequired=False。
+    教基一〔2014〕8号：非关键信息由学校直接维护，不要求附件；且户籍部门无法为"年级"出具证明。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    r = _apply(client, hdr, ids["s"], "GRADE", "2022")
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["materialRequired"] is False

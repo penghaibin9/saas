@@ -54,7 +54,12 @@ def test_gr1_precheck_passed(client, db_mode):
     assert r["passed"] == 1 and r["abnormal"] == 0  # 在籍PASS，其余UNKNOWN不阻断
     rid = _result_id(client, hdr, bid)
     d = client.get(f"{BASE}/graduation-results/{rid}", headers=hdr).json()["data"]
-    assert d["overall"] == "SYSTEM_PASSED" and len(d["items"]) == 10  # 十项（Tier1 R1 扩展）
+    # 十一项（Tier1 R1 扩展十项 + R3 补 FEE 费用结清）。FEE 恒 UNKNOWN（待接入学校财务系统）且
+    # 不阻断——overall 仍为 SYSTEM_PASSED，正是"提醒不卡审"的既定口径（见 _check_fee 注释与
+    # graduation.conditions.feeCheck 默认 false）。
+    assert d["overall"] == "SYSTEM_PASSED" and len(d["items"]) == 11
+    fee = next(i for i in d["items"] if i["item"] == "FEE")
+    assert fee["result"] == "UNKNOWN" and "财务系统" in fee["evidence"]
 
 
 def test_gr2_status_abnormal(client, db_mode):

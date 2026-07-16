@@ -313,9 +313,10 @@ def test_sc18_transfer_class_missing_target_rejected(client, db_mode):
 
 
 def test_sc19_retain_full_flow(client, db_mode):
-    """留级(RETAIN，「保留学籍申请」分类入口底层类型)全链路首次端到端覆盖：两节点(学院→教务处)。
+    """留级(RETAIN)全链路端到端覆盖：两节点(学院→教务处)。
     NORMAL→RETAINED 不在 change_student_status() 合法转移白名单内（真实业务：留级认定针对已注册在读
-    学生，非入学未注册状态），故本测试起点造 REGISTERED 学生，不复用别测试的 NORMAL 起点种子。"""
+    学生，非入学未注册状态），故本测试起点造 REGISTERED 学生，不复用别测试的 NORMAL 起点种子。
+    注意：留级(RETAINED)与保留学籍(PRESERVED)是两个语义相反的独立类型，后者见 sc20/sc21/sc22。"""
     from app.db.session import get_sessionmaker
     from app.models import SchoolClass, StudentProfile
     db = get_sessionmaker()()
@@ -333,3 +334,66 @@ def test_sc19_retain_full_flow(client, db_mode):
     r = _approve(client, hdr, cid, 2)  # 学院→教务处
     assert r["data"]["status"] == "EFFECTIVE" and r["data"]["toStatus"] == "RETAINED"
     assert _status(client, sid, hdr) == "RETAINED"
+
+
+# ═══════════ 保留学籍（PRESERVE，R3 法规核验后从「留级」拆出的独立异动类型）═══════════
+# 依据：教育部令41号第二十七条（应征入伍保留学籍至退役后2年、跨校联合培养期间保留）、
+# 第二十八条（保留学籍期间"不享受在校学习学生待遇"→不计在籍）、第三十条(二)（休学、保留学籍
+# 期满未复学可退学）。与留级(RETAIN/RETAINED，第十五条授权学校自定的学业处理)语义相反，勿混。
+
+
+def _seed_registered(db_mode, student_no, real_name):
+    """造一个 REGISTERED 在读学生（保留学籍/留级都要求发起时在籍）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import SchoolClass, StudentProfile
+    db = get_sessionmaker()()
+    c = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE")
+    db.add(c); db.flush()
+    s = StudentProfile(tenant_id=TID, student_no=student_no, real_name=real_name, class_id=c.id,
+                       college_id=10, major_id=1, current_stage="ON_CAMPUS",
+                       student_status="REGISTERED", status="ACTIVE")
+    db.add(s); db.flush()
+    sid = s.id
+    db.commit()
+    db.close()
+    return sid
+
+
+def test_sc20_preserve_full_flow_and_not_enrolled(client, db_mode):
+    """保留学籍全链路：三节点(辅导员→学院→教务处)生效为 PRESERVED；且 PRESERVED 不计在籍
+    （41号令第二十八条"不享受在校学习学生待遇"；若误算在籍会虚增对教育主管部门报送的在册数）。"""
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
+    sid = _seed_registered(db_mode, "AA030", "入伍甲")
+    hdr = _hdr(client, "school_admin01")
+    cid = _submit(client, hdr, sid, "PRESERVE").json()["data"]["changeId"]
+    r = _approve(client, hdr, cid, 3)
+    assert r["data"]["status"] == "EFFECTIVE" and r["data"]["toStatus"] == "PRESERVED"
+    assert _status(client, sid, hdr) == "PRESERVED"
+    # 关键断言：保留学籍不在籍，留级在籍——两者语义相反
+    assert is_enrolled("PRESERVED") is False
+    assert is_enrolled("RETAINED") is True
+
+
+def test_sc21_preserve_then_resume(client, db_mode):
+    """保留学籍期满复学：PRESERVED→复学→REGISTERED（41号令第三十条(二)把休学与保留学籍并列，
+    两者都经复学回到在籍）。保留学籍不设 expire_date（退役日期提交时不可知），故不触发超期拦截。"""
+    sid = _seed_registered(db_mode, "AA031", "入伍乙")
+    hdr = _hdr(client, "school_admin01")
+    cid = _submit(client, hdr, sid, "PRESERVE").json()["data"]["changeId"]
+    _approve(client, hdr, cid, 3)
+    assert _status(client, sid, hdr) == "PRESERVED"
+    cid2 = _submit(client, hdr, sid, "RESUME").json()["data"]["changeId"]
+    r = _approve(client, hdr, cid2, 3)
+    assert r["data"]["status"] == "EFFECTIVE"
+    assert _status(client, sid, hdr) == "REGISTERED"
+
+
+def test_sc22_preserve_not_enrolled_student_409(client, db_mode):
+    """非在籍学生不可发起保留学籍：先休学，再发起保留学籍 → 409（仅在籍学生可发起该异动）。"""
+    sid = _seed_registered(db_mode, "AA032", "休学丙")
+    hdr = _hdr(client, "school_admin01")
+    cid = _submit(client, hdr, sid, "SUSPEND").json()["data"]["changeId"]
+    _approve(client, hdr, cid, 3)
+    assert _status(client, sid, hdr) == "SUSPENDED"
+    r = _submit(client, hdr, sid, "PRESERVE")
+    assert r.status_code == 409, r.text

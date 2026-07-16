@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="课程库 · 控制台"
-    subtitle="课程分类 · 课程性质 · 学分学时 · 课程大纲 · 考核方式 · 课程负责人 · 课程材料 · 课程停用 · 课程归档"
+    subtitle="课程分类 · 课程性质 · 学分学时 · 课程大纲 · 考核方式 · 课程负责人 · 课程材料 · 课程停用 · 历史课程"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -33,7 +33,7 @@
       <button class="aacc-chip" :class="{ 'is-active': statusFilter === 'ENABLED' }" @click="statusFilter = 'ENABLED'">已启用（{{ enabledCount }}）</button>
       <button class="aacc-chip" :class="{ 'is-active': statusFilter === 'DISABLED' }" @click="statusFilter = 'DISABLED'">已停用（{{ disabledCount }}）</button>
     </div>
-    <!-- 课程归档：已停用 / 历史版本（被新版本取代）筛选 -->
+    <!-- 历史课程：已停用 / 旧版本（被新版本取代）筛选 -->
     <div v-if="tab === 'archive'" class="aacc-chips">
       <button class="aacc-chip" :class="{ 'is-active': !archiveFilter }" @click="archiveFilter = ''">全部（{{ archiveRows.length }}）</button>
       <button class="aacc-chip" :class="{ 'is-active': archiveFilter === 'DISABLED' }" @click="archiveFilter = 'DISABLED'">已停用（{{ archiveDisabledCount }}）</button>
@@ -183,7 +183,7 @@
 
 <script>
 /** 课程库控制台（/admin/academic-affairs/courses/console?tab=xxx）：
- * 课程分类 / 课程性质 / 学分学时 / 课程大纲 / 考核方式 / 课程负责人 / 课程材料 / 课程停用 / 课程归档
+ * 课程分类 / 课程性质 / 学分学时 / 课程大纲 / 考核方式 / 课程负责人 / 课程材料 / 课程停用 / 历史课程
  * 9 个三级模块共用同一台账不同 ?tab= 视角，对齐既有「培养方案」「学院专业班级」控制台模式。
  * 深编辑/两级审核仍走 /courses/:id 详情页与 /courses/:id/edit 表单。
  * 维度类写操作（分类/性质/学分学时/考核方式/负责人）一律取当前完整课程记录 merge 目标字段后整体 PUT
@@ -194,9 +194,12 @@
  *   （POST /api/v1/files/upload），materialType=SYLLABUS 即「课程大纲」子集，两个三级菜单共用同一套
  *   Drawer 组件（materialPanel/materialForm），仅 lockedType 不同；
  * - 考核方式：字段（exam_mode）与读写端点此前已存在（Tier1 R2 铺底），本轮只补齐控制台 Tab 入口；
- * - 课程归档：不新增状态机状态（SM-05 冻结 6 态无 ARCHIVED），改为纯前端只读视图——按 courseCode 分组取
- *   最大 version 为当前版本，DISABLED 或非最大版本视为「已归档」（已停用 / 历史版本），数据完全来自既有
- *   version/status 字段，不需要新后端接口。 */
+ * - 历史课程（R3 外部核验后由 navPlan 模板占位名「课程归档」改名）：真实教务系统的课程库没有"归档"
+ *   概念——条目终态是停用/禁用（强智"禁用"、南开课程库清理"沉淀处理"、正方课程库表单无状态字段、
+ *   北理工官方定义课程库维护只有增/删/改）；"归档"在教务语境专指教学档案移交档案馆，且本项目该词已被
+ *   「教务归档」模块（按学期批次归档9域）占用，同词不同义会误导教务处用户。本 tab 展示的实际内容就是
+ *   "已停用 + 被新版本取代的旧版本"，故按实命名。不新增状态机状态（SM-05 冻结 6 态无 ARCHIVED，
+ *   DISABLED 即终态），纯前端只读派生，数据完全来自既有 version/status 字段，不需要新后端接口。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import {
@@ -228,7 +231,7 @@ export default {
         { key: 'owner', label: '课程负责人' },
         { key: 'material', label: '课程材料' },
         { key: 'disable', label: '课程停用' },
-        { key: 'archive', label: '课程归档' }
+        { key: 'archive', label: '历史课程' }
       ],
       dimForm: { visible: false, dim: 'category', row: null, value: '' },
       creditForm: { visible: false, row: null, credit: 0, hoursTotal: null, hoursTheory: null, hoursPractice: null, hoursExperiment: null, hoursComputer: null },
@@ -257,12 +260,17 @@ export default {
     togglableRows() { return this.rows.filter((r) => r.status === 'ENABLED' || r.status === 'DISABLED') },
     enabledCount() { return this.rows.filter((r) => r.status === 'ENABLED').length },
     disabledCount() { return this.rows.filter((r) => r.status === 'DISABLED').length },
-    /** 课程归档（纯前端派生，不建新状态）：按 courseCode 分组取最大 version 视为当前版本；
-     * DISABLED 或非最大版本一律计入归档视图（历史版本仍可能是 ENABLED——旧版本供历史培养方案引用，
-     * 见 SM-05 冻结规则，不代表已停用，archiveReason 分别标注区分）。 */
+    /** 历史课程（纯前端派生，不建新状态）：按 courseCode 分组取"最大**已定稿**版本"视为当前版本；
+     * DISABLED 或版本低于当前版本者计入本视图（历史版本仍可能是 ENABLED——旧版本供历史培养方案引用，
+     * 见 SM-05 冻结规则，不代表已停用，archiveReason 分别标注区分）。
+     * 当前版本判定只认 ENABLED/DISABLED 两个已定稿态：SM-05 规定已发布课程的改动会先生成新版本 DRAFT，
+     * 若把在途的 DRAFT/审核中/RETURNED 版本也计入 max，正在使用的 ENABLED v1 会在有人刚起草 v2 的瞬间
+     * 被误标成"已有新版本（历史版本）"——而 v2 可能被退回后永不通过，v1 其实一直是现行课程。 */
     archiveRows() {
+      const SETTLED = ['ENABLED', 'DISABLED']
       const maxVerByCode = {}
       this.rows.forEach((r) => {
+        if (!SETTLED.includes(r.status)) return
         const v = Number(r.version) || 1
         if (!maxVerByCode[r.courseCode] || v > maxVerByCode[r.courseCode]) maxVerByCode[r.courseCode] = v
       })
@@ -339,11 +347,33 @@ export default {
       return res.code === 0 ? (res.data.items || []) : []
     },
     async load() {
+      // 全量拉取（非单页截断）：本控制台 9 个 tab 全部从 this.rows 前端派生，其中「历史课程」tab 的
+      // 当前版本判定（maxVerByCode）必须基于同一 courseCode 的**全部**版本才正确——只取首页会让
+      // 未加载到的更高版本缺席，把实际的历史版本误判成当前版本。真实规模佐证：同类职业院校（常州工业
+      // 职业技术学院）正方课程库实测 3863 条，此前固定 pageSize:500 会静默截断约 8 倍数据。
+      // 故按 total 循环取完所有页；单页 500 仅作为分批粒度，不再是数据上限。
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getCourses({ page: 1, pageSize: 500 })
-      if (res.code === 0) this.rows = res.data.list
-      else this.error = res.message
+      const PAGE_SIZE = 500
+      const first = await academicAffairsApi.getCourses({ page: 1, pageSize: PAGE_SIZE })
+      if (first.code !== 0) {
+        this.error = first.message
+        this.loading = false
+        return
+      }
+      let all = first.data.list
+      const total = Number(first.data.total) || all.length
+      const pages = Math.ceil(total / PAGE_SIZE)
+      for (let p = 2; p <= pages; p++) {
+        const res = await academicAffairsApi.getCourses({ page: p, pageSize: PAGE_SIZE })
+        if (res.code !== 0) {
+          this.error = res.message
+          this.loading = false
+          return
+        }
+        all = all.concat(res.data.list)
+      }
+      this.rows = all
       this.loading = false
     },
     // ── 通用：整表 merge 后 PUT ──

@@ -400,6 +400,10 @@ class RosterCorrectionCreate(BaseModel):
     fieldKey: str = Field(..., description="STUDENT_NO/REAL_NAME/GENDER/ID_CARD/GRADE")
     newValue: str = Field(..., min_length=1)
     reason: str = Field(..., min_length=5, description="更正原因（≥5 字，必填，写审计）")
+    materialFileIds: Optional[List[str]] = Field(
+        None, description="证明材料 file_id 列表（先经 POST /api/v1/files/upload 上传）。"
+                          "更正姓名/性别/证件号时**必填**且须户籍/公安部门出具——合规硬要求，"
+                          "依据教职成〔2014〕12号第十六条、教育部令41号第三十四条；学号/年级选填。")
 
 
 class RosterCorrectionReview(BaseModel):
@@ -409,7 +413,8 @@ class RosterCorrectionReview(BaseModel):
 
 @router.post("/roster/corrections", summary="发起学籍信息更正（学号/姓名/性别/证件号/年级）")
 def roster_correction_create(body: RosterCorrectionCreate, user=Depends(require_permission(_ROSTER_CORRECTION_APPLY))):
-    return success(svc.create_roster_correction(user, body.studentId, body.fieldKey, body.newValue, body.reason),
+    return success(svc.create_roster_correction(user, body.studentId, body.fieldKey, body.newValue, body.reason,
+                                                body.materialFileIds),
                    message="更正申请已提交")
 
 
