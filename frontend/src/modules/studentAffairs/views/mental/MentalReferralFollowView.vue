@@ -63,27 +63,93 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 登记转介：原为「学生ID→事由摘要→去向」3 连原生弹窗。
+         本页固定按重点关注（FOCUS）登记，与改造前一致，未擅自加等级选择。 -->
+    <AppDrawer :visible="refDlg.visible" title="登记心理转介" @close="refDlg.visible = false">
+      <div class="dr-form">
+        <AppFormItem label="学生" required>
+          <AppStudentPicker v-model="refDlg.studentId" :remote-search="searchStudents"
+                            placeholder="按姓名 / 学号搜索" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="转介去向">
+          <AppSelect v-model="refDlg.channel" :options="CHANNELS" placeholder="可空" clearable :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="转介事由摘要（≥5 字）" required>
+          <AppTextarea ref="refInput" v-model="refDlg.reasonSummary" :rows="3" :maxlength="500" :disabled="actioning"
+                       placeholder="客观描述观察到的表现与转介必要性" />
+          <AppQuickPhrases scene-key="sa.mental.referral" @pick="onPickReferral" />
+          <p class="dr-hint">仅记录客观表现与转介事由，不作诊断结论。登记后按重点关注（FOCUS）进入名单。</p>
+        </AppFormItem>
+        <AppInlineAlert v-if="refDlg.error" type="danger" :description="refDlg.error" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="actioning" @click="refDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="actioning" @click="submitReferral">登记</AppButton>
+      </template>
+    </AppDrawer>
+
+    <!-- 回访 / 关闭 -->
+    <AppConfirmDialog
+      v-model:visible="txtDlg.visible" :title="txtDlg.title" :type="txtDlg.type"
+      :confirm-text="txtDlg.confirmText" require-reason :reason-min-length="5"
+      :reason-label="txtDlg.reasonLabel" :phrase-scene-key="txtDlg.sceneKey"
+      :submitting="actioning" @confirm="submitText"
+    />
   </AppPageShell>
 </template>
 
 <script>
 import {
+  AppConfirmDialog,
+  AppFormItem,
   AppGlobalState,
+  AppInlineAlert,
   AppMetricCard,
   AppPageShell,
   AppPermissionButton,
+  AppQuickPhrases,
   AppSectionCard,
-  AppStatusTag
+  AppSelect,
+  AppStatusTag,
+  AppStudentPicker,
+  AppTextarea
 } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+/** 转介去向：沿用原 prompt 提示里的四个既有选项，未自行扩充。 */
+const CHANNELS = ['校内咨询', '校医院', '专业机构', '家长'].map((v) => ({ value: v, label: v }))
 
 export default {
   name: 'MentalReferralFollowView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag },
+  components: {
+    AppButton,
+    AppConfirmDialog,
+    AppDrawer,
+    AppFormItem,
+    AppGlobalState,
+    AppInlineAlert,
+    AppMetricCard,
+    AppPageShell,
+    AppPermissionButton,
+    AppQuickPhrases,
+    AppSectionCard,
+    AppSelect,
+    AppStatusTag,
+    AppStudentPicker,
+    AppTextarea
+  },
   data() {
-    return { loading: true, actioning: false, errorMessage: '', items: [] }
+    return {
+      loading: true, actioning: false, errorMessage: '', items: [],
+      refDlg: { visible: false, studentId: '', channel: '校内咨询', reasonSummary: '', error: '' },
+      txtDlg: { visible: false, kind: '', row: null, title: '', type: 'primary', confirmText: '确认', reasonLabel: '', sceneKey: '' }
+    }
   },
   computed: {
+    CHANNELS: () => CHANNELS,
     pageState() {
       if (this.loading) return 'loading'
       if (this.errorMessage) return 'error'
@@ -120,42 +186,59 @@ export default {
         this.loading = false
       }
     },
-    async createReferral() {
-      const studentId = window.prompt('请输入学生 ID')
-      if (!studentId) return
-      const reasonSummary = window.prompt('请输入转介事由摘要（人工填写，非诊断，不少于 5 字）', '')
-      if (!reasonSummary || reasonSummary.trim().length < 5) {
-        if (reasonSummary !== null) window.alert('事由摘要不少于 5 字')
-        return
-      }
-      const channel = window.prompt('转介去向（校医院/专业机构/家长/校内咨询，可空）', '校内咨询') || ''
-      await this.runAction(() => studentAffairsApi.createMentalReferral({
-        studentId, level: 'FOCUS', channel, reasonSummary: reasonSummary.trim()
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
+    createReferral() {
+      this.refDlg = { visible: true, studentId: '', channel: '校内咨询', reasonSummary: '', error: '' }
+    },
+    onPickReferral(text) {
+      const el = this.$refs.refInput && this.$refs.refInput.$refs.el
+      if (!el) { this.refDlg.reasonSummary += text; return }
+      const r = insertAtCursor(el, this.refDlg.reasonSummary, text)
+      this.refDlg.reasonSummary = r.value
+      this.$nextTick(() => applyInsertion(el, r.selStart, r.selEnd))
+    },
+    async submitReferral() {
+      const d = this.refDlg
+      if (!d.studentId) { d.error = '请选择学生'; return }
+      if (d.reasonSummary.trim().length < 5) { d.error = '转介事由摘要不少于 5 字'; return }
+      d.error = ''
+      const ok = await this.runAction(() => studentAffairsApi.createMentalReferral({
+        studentId: d.studentId, level: 'FOCUS', channel: d.channel || '', reasonSummary: d.reasonSummary.trim()
       }))
+      if (ok) d.visible = false
+      else d.error = this.errorMessage
     },
-    async follow(row) {
-      const content = window.prompt('请输入本次回访记录（不少于 5 字）', '')
-      if (!content || content.trim().length < 5) {
-        if (content !== null) window.alert('回访记录不少于 5 字')
-        return
+    follow(row) {
+      this.txtDlg = {
+        visible: true, kind: 'follow', row, title: `登记回访 · ${row.realName || '该生'}`, type: 'primary',
+        confirmText: '确认登记', reasonLabel: '本次回访记录（≥5 字）', sceneKey: 'sa.mental.followup'
       }
-      await this.runAction(() => studentAffairsApi.followMentalReferral(row.referralId, content.trim()))
     },
-    async close(row) {
-      const conclusion = window.prompt('请输入关闭结论（不少于 5 字）', '')
-      if (!conclusion || conclusion.trim().length < 5) {
-        if (conclusion !== null) window.alert('结论不少于 5 字')
-        return
+    close(row) {
+      this.txtDlg = {
+        visible: true, kind: 'close', row, title: `关闭心理关注 · ${row.realName || '该生'}`, type: 'warning',
+        confirmText: '确认关闭', reasonLabel: '关闭结论（≥5 字）', sceneKey: 'sa.mental.close'
       }
-      await this.runAction(() => studentAffairsApi.closeMentalReferral(row.referralId, conclusion.trim()))
     },
+    async submitText({ reason }) {
+      const d = this.txtDlg
+      const fn = d.kind === 'follow'
+        ? () => studentAffairsApi.followMentalReferral(d.row.referralId, reason.trim())
+        : () => studentAffairsApi.closeMentalReferral(d.row.referralId, reason.trim())
+      const ok = await this.runAction(fn)
+      if (ok) d.visible = false
+    },
+    /** @returns {boolean} 是否成功；失败时保留弹窗与已填内容。 */
     async runAction(fn) {
       this.actioning = true
+      this.errorMessage = ''
       try {
         await fn()
         await this.load()
+        return true
       } catch (e) {
         this.errorMessage = e.message || '操作失败'
+        return false
       } finally {
         this.actioning = false
       }
@@ -212,5 +295,15 @@ export default {
   .sa-grid--metrics {
     grid-template-columns: 1fr;
   }
+}
+.dr-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.dr-hint {
+  margin: var(--space-1) 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
 }
 </style>
