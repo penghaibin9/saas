@@ -277,6 +277,20 @@ export const studentAffairsApi = {
     return items.map((u) => ({ value: String(u.id), label: u.name || u.loginName, desc: u.loginName || '' }))
   },
 
+  /**
+   * 学生搜索（供 AppStudentPicker remoteSearch 注入）：真实 /students 端点。
+   * 与 studentAffairs.api.js 的同名方法同源同形，此处重复一份是因为 B 组页面只 import 本文件；
+   * 两处若要改动请同步。返回 [{ label, value, desc }]，value=学生 id。
+   */
+  async searchStudents(keyword) {
+    const d = await request('/students', { params: { keyword, page: 1, pageSize: 20 } })
+    return (d.items || []).map((s) => ({
+      value: String(s.id),
+      label: `${s.realName}（${s.studentNo}）`,
+      desc: s.className || s.grade || ''
+    }))
+  },
+
   async assignRisk(riskId, ownerId) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/assign`, {
       method: 'POST',
