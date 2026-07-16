@@ -412,8 +412,11 @@ def list_dorm_records(page, page_size, keyword=None, status=None):
         if status:
             q = q.where(CsDormRecord.status == status)
         rows = db.scalars(q.order_by(CsDormRecord.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
         items = []
         for x in rows:
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
             stu = _stu_of(db, x.cs_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
@@ -440,8 +443,11 @@ def list_dorm_exceptions(page, page_size, keyword=None, type=None, status=None):
         if status:
             q = q.where(CsDormException.status == status)
         rows = db.scalars(q.order_by(CsDormException.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
         items = []
         for x in rows:
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
             stu = _stu_of(db, x.cs_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
@@ -559,8 +565,11 @@ def list_work_orders(page, page_size, keyword=None, type=None, status=None, prio
         if priority:
             q = q.where(CsWorkOrder.priority == priority)
         rows = db.scalars(q.order_by(CsWorkOrder.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
         items = []
         for x in rows:
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
             stu = _stu_of(db, x.cs_student_id)
             if keyword and (not stu or (keyword.strip() not in (stu.name or "") and keyword.strip() not in x.title)):
                 continue
@@ -665,8 +674,11 @@ def list_mental(page, page_size, keyword=None, user=None, reason=None):
     with session() as db:
         rows = db.scalars(select(CsMentalRecord).where(CsMentalRecord.tenant_id == _tid(),
                           CsMentalRecord.is_deleted.is_(False)).order_by(CsMentalRecord.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
         items = []
         for x in rows:
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
             stu = _stu_of(db, x.cs_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue

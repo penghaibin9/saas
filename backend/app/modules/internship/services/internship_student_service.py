@@ -304,6 +304,10 @@ def create_student_record(body) -> dict:
 def update_student_record(rec_id, body) -> dict:
     with session() as db:
         r = _get(db, rec_id)
+        stu = db.get(StudentProfile, r.student_id)
+        if not _rec_in_scope(_current_scope(), db, r, stu):  # P0-D：越数据范围编辑 → 403
+            from app.core.exceptions import no_permission
+            raise no_permission("该实习学生不在你的数据范围内")
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可编辑")
         before_advisor = r.advisor_user_id
@@ -326,6 +330,10 @@ def update_student_record(rec_id, body) -> dict:
 def assign_advisor(rec_id, advisor_user_id, reason: str = "") -> dict:
     with session() as db:
         r = _get(db, rec_id)
+        stu = db.get(StudentProfile, r.student_id)
+        if not _rec_in_scope(_current_scope(), db, r, stu):  # P0-D：越数据范围改指导教师 → 403
+            from app.core.exceptions import no_permission
+            raise no_permission("该实习学生不在你的数据范围内")
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可变更指导教师")
         advisor = _advisor(db, advisor_user_id)
@@ -345,6 +353,10 @@ def assign_advisor(rec_id, advisor_user_id, reason: str = "") -> dict:
 def assign_position(rec_id, position_id) -> dict:
     with session() as db:
         r = _get(db, rec_id)
+        stu = db.get(StudentProfile, r.student_id)
+        if not _rec_in_scope(_current_scope(), db, r, stu):  # P0-D：越数据范围分配岗位 → 403
+            from app.core.exceptions import no_permission
+            raise no_permission("该实习学生不在你的数据范围内")
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可分配岗位")
         p = db.get(InternshipPosition, int(position_id))

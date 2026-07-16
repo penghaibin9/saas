@@ -59,11 +59,10 @@ export default {
     },
     submit() {
       if ((this.form.reason || '').trim().length < 5) return safeToast('请填写申请原因（≥5字）')
-      if (!this._lock.acquire()) return
       this.submitting = true
-      studentApi.submitStatusChange({ changeType: this.form.changeType, reason: this.form.reason.trim() })
+      this._lock.run(() => studentApi.submitStatusChange({ changeType: this.form.changeType, reason: this.form.reason.trim() }))
         .then(() => { safeToast('已提交', 'success'); this.form = { changeType: '', reason: '' }; this.load() })
-        .catch(toastError)
+        .catch((e) => { if (e && e.code === 'LOCKED') return; toastError(e) })
         .finally(() => { this.submitting = false })
     }
   }
