@@ -93,13 +93,32 @@ def _require_review_role(user):
         raise no_permission("仅教务处可执行该操作")
 
 
+def _compose_total(t, usual, mid, final):
+    """按任务平时/期中/期末占比合成总评。期中占比=0 时退化为「平时+期末」，与旧任务结果完全一致。"""
+    return round((usual or 0) * (t.usual_ratio or 0) / 100
+                 + (mid or 0) * (getattr(t, "midterm_ratio", 0) or 0) / 100
+                 + (final or 0) * (t.final_ratio or 0) / 100)
+
+
+def _scores_complete(t, usual, mid, final):
+    """占比>0 的分项都已录入才算录全（可合成总评）；占比=0 的分项不要求录入。"""
+    if (t.usual_ratio or 0) > 0 and usual is None:
+        return False
+    if (getattr(t, "midterm_ratio", 0) or 0) > 0 and mid is None:
+        return False
+    if (t.final_ratio or 0) > 0 and final is None:
+        return False
+    return True
+
+
 # ═══════════ 成绩录入任务 ═══════════
 
 def create_grade_task(body, user) -> dict:
     usual = int(getattr(body, "usualRatio", 30) or 30)
     final = int(getattr(body, "finalRatio", 70) or 70)
-    if usual + final != 100:
-        raise AppException("VALIDATION_ERROR", "平时占比+期末占比必须=100")
+    midterm = int(getattr(body, "midtermRatio", 0) or 0)
+    if usual + midterm + final != 100:
+        raise AppException("VALIDATION_ERROR", "平时+期中+期末占比之和必须=100")
     with session() as db:
         from app.models import AaGradeTask, AaTeachingTask
         teaching_task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
@@ -115,7 +134,8 @@ def create_grade_task(body, user) -> dict:
                         term_code=getattr(body, "termCode", None), course_name=getattr(body, "courseName", None),
                         class_id=(int(body.classId) if getattr(body, "classId", None) else None),
                         teacher_key=teacher_key,
-                        credit=getattr(body, "credit", None), usual_ratio=usual, final_ratio=final,
+                        credit=getattr(body, "credit", None), usual_ratio=usual, midterm_ratio=midterm,
+                        final_ratio=final,
                         pass_line=int(getattr(body, "passLine", 60) or 60), status="NOT_STARTED")
         db.add(t)
         db.flush()
@@ -123,13 +143,14 @@ def create_grade_task(body, user) -> dict:
         db.commit()
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "courseName": t.course_name or "", "usualRatio": t.usual_ratio,
-                "finalRatio": t.final_ratio, "status": t.status}
+                "midtermRatio": t.midterm_ratio, "finalRatio": t.final_ratio, "status": t.status}
 
 
 def _task_row(t) -> dict:
     return {"gradeTaskId": str(t.id), "courseName": t.course_name or "", "termCode": t.term_code or "",
             "classId": str(t.class_id or ""), "teacherKey": t.teacher_key or "",
-            "usualRatio": t.usual_ratio, "finalRatio": t.final_ratio, "passLine": t.pass_line,
+            "usualRatio": t.usual_ratio, "midtermRatio": t.midterm_ratio, "finalRatio": t.final_ratio,
+            "passLine": t.pass_line,
             "status": t.status, "returnReason": t.return_reason or "", "publishAt": _iso(t.publish_at)}
 
 
@@ -178,22 +199,24 @@ def enter_score(task_id, user, body) -> dict:
             raise AppException("DATA_CONFLICT", "当前状态不可录入（已提交/已发布，如需修改请走成绩更正）")
         sid = int(body.studentId)
         usual = getattr(body, "usualScore", None)
+        mid = getattr(body, "midtermScore", None)
         final = getattr(body, "finalScore", None)
         exception_flag = (getattr(body, "exceptionFlag", None) or "NORMAL").upper()
         if exception_flag not in ("NORMAL", "ABSENT", "DEFERRED", "EXEMPT"):
             raise AppException("VALIDATION_ERROR", "异常标记非法")
         total = None
-        if exception_flag == "NORMAL" and usual is not None and final is not None:
-            total = round(usual * t.usual_ratio / 100 + final * t.final_ratio / 100)
-        elif exception_flag != "NORMAL":
-            usual = final = None  # 缺考/缓考/免修与正常分互斥
+        if exception_flag == "NORMAL":
+            if _scores_complete(t, usual, mid, final):
+                total = _compose_total(t, usual, mid, final)
+        else:
+            usual = mid = final = None  # 缺考/缓考/免修与正常分互斥
         rec = db.scalars(select(AaGradeRecord).where(
             AaGradeRecord.tenant_id == _tid(), AaGradeRecord.task_id == t.id,
             AaGradeRecord.student_id == sid, AaGradeRecord.is_deleted.is_(False))).first()
         if not rec:
             rec = AaGradeRecord(tenant_id=_tid(), task_id=t.id, student_id=sid)
             db.add(rec)
-        rec.usual_score, rec.final_score, rec.total_score = usual, final, total
+        rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score = usual, mid, final, total
         rec.exception_flag = exception_flag
         rec.pass_status = ("PASSED" if (total is not None and total >= t.pass_line) else
                            ("FAILED" if total is not None else None))
@@ -203,8 +226,8 @@ def enter_score(task_id, user, body) -> dict:
         _audit(db, "AA_GRADE_TASK", t.id, "ENTER", f"student={sid}")
         db.commit()
         return {"recordId": str(rec.id), "studentId": str(sid), "usualScore": usual,
-                "finalScore": final, "totalScore": total, "passStatus": rec.pass_status,
-                "exceptionFlag": exception_flag}
+                "midtermScore": mid, "finalScore": final, "totalScore": total,
+                "passStatus": rec.pass_status, "exceptionFlag": exception_flag}
 
 
 def submit_task(task_id, user) -> dict:
@@ -457,12 +480,15 @@ def change_request(task_id, record_id, user, body) -> dict:
         if existing:
             raise AppException("DATA_CONFLICT", "该成绩已有在途更正申请，不可重复发起")
         n, r, uid = _op()
-        rec.prev_usual_score, rec.prev_final_score, rec.prev_total_score = (
-            rec.usual_score, rec.final_score, rec.total_score)
+        rec.prev_usual_score, rec.prev_midterm_score, rec.prev_final_score, rec.prev_total_score = (
+            rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score)
         new_usual = getattr(body, "newUsualScore", None)
+        new_mid = getattr(body, "newMidtermScore", None)
         new_final = getattr(body, "newFinalScore", None)
         if new_usual is not None:
             rec.usual_score = new_usual
+        if new_mid is not None:
+            rec.midterm_score = new_mid
         if new_final is not None:
             rec.final_score = new_final
         rec.change_reason = reason
@@ -503,10 +529,11 @@ def _change_review(record_id, user, action, reason, node, next_node_or_final):
             if wtask:
                 wtask.status, wtask.action_reason, wtask.acted_at = "REJECTED", reason.strip(), datetime.utcnow()
             inst.status = "REJECTED"
-            if rec.prev_usual_score is not None or rec.prev_final_score is not None:
-                rec.usual_score, rec.final_score, rec.total_score = (
-                    rec.prev_usual_score, rec.prev_final_score, rec.prev_total_score)
-            rec.prev_usual_score = rec.prev_final_score = rec.prev_total_score = None
+            if (rec.prev_usual_score is not None or rec.prev_midterm_score is not None
+                    or rec.prev_final_score is not None):
+                rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score = (
+                    rec.prev_usual_score, rec.prev_midterm_score, rec.prev_final_score, rec.prev_total_score)
+            rec.prev_usual_score = rec.prev_midterm_score = rec.prev_final_score = rec.prev_total_score = None
             _audit(db, "AA_GRADE_RECORD", rec.id, "CHANGE_REJECT", reason.strip())
             db.commit()
             return {"recordId": str(rec.id), "status": "PUBLISHED"}
@@ -552,8 +579,8 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
                 raise not_found("成绩明细不存在")
             t = db.get(AaGradeTask, int(rec.task_id)) if rec.task_id else None
             new_total = None
-            if rec.usual_score is not None and rec.final_score is not None and t:
-                new_total = round(rec.usual_score * t.usual_ratio / 100 + rec.final_score * t.final_ratio / 100)
+            if t and _scores_complete(t, rec.usual_score, rec.midterm_score, rec.final_score):
+                new_total = _compose_total(t, rec.usual_score, rec.midterm_score, rec.final_score)
             rec.total_score = new_total
             rec.pass_status = "PASSED" if (new_total is not None and t and new_total >= t.pass_line) else "FAILED"
             rec.source = "CHANGE"

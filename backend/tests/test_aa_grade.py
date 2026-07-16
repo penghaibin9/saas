@@ -141,6 +141,30 @@ def test_g9_analysis_export_xlsx(client, db_mode):
     assert ok.content[:2] == b"PK"
 
 
+def test_g10_midterm_three_component(client, db_mode):
+    """成绩分项扩展(正方对标)：平时30+期中30+期末40 三分项按比例合成总评；期中未录则未录全。"""
+    sids = _seed(db_mode, 1)
+    hdr = _hdr(client, "school_admin01")
+    tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "钳工实训", "termCode": "2026-1", "credit": 3,
+        "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40}).json()["data"]["gradeTaskId"]
+    r = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
+        "studentId": str(sids[0]), "usualScore": 80, "midtermScore": 90, "finalScore": 100}).json()
+    assert r["data"]["totalScore"] == 91  # 80*.3 + 90*.3 + 100*.4 = 24+27+40
+    assert r["data"]["passStatus"] == "PASSED"
+    r2 = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
+        "studentId": str(sids[0]), "usualScore": 80, "finalScore": 100}).json()  # 缺期中→未录全
+    assert r2["data"]["totalScore"] is None
+
+
+def test_g11_midterm_ratio_sum_must_100(client, db_mode):
+    hdr = _hdr(client, "school_admin01")
+    assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "X", "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30}).status_code == 400
+    assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "Y", "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40}).status_code == 200
+
+
 def test_g6_fail_list_no_n_plus_one(client, db_mode):
     """挂科清单读侧：命中 t_acad_student 次数与挂科行数无关（JOIN 批量，非逐行 db.get）。"""
     from sqlalchemy import event

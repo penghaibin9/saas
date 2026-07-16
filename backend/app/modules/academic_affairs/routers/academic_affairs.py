@@ -788,6 +788,7 @@ class GradeTaskCreate(BaseModel):
     classId: Optional[str] = None
     credit: Optional[float] = None
     usualRatio: int = Field(30, ge=0, le=100, description="平时占比%")
+    midtermRatio: int = Field(0, ge=0, le=100, description="期中占比%(0=不启用期中)")
     finalRatio: int = Field(70, ge=0, le=100, description="期末占比%")
     passLine: int = Field(60, ge=0, le=100)
 
@@ -795,6 +796,7 @@ class GradeTaskCreate(BaseModel):
 class ScoreBody(BaseModel):
     studentId: str = Field(..., min_length=1)
     usualScore: Optional[int] = Field(None, ge=0, le=100)
+    midtermScore: Optional[int] = Field(None, ge=0, le=100)
     finalScore: Optional[int] = Field(None, ge=0, le=100)
     exceptionFlag: Optional[str] = Field(None, description="NORMAL/ABSENT/DEFERRED/EXEMPT")
 
@@ -810,6 +812,7 @@ class GradeReturnBody(BaseModel):
 
 class GradeChangeRequestBody(BaseModel):
     newUsualScore: Optional[int] = Field(None, ge=0, le=100)
+    newMidtermScore: Optional[int] = Field(None, ge=0, le=100)
     newFinalScore: Optional[int] = Field(None, ge=0, le=100)
     reason: str = Field(..., min_length=5, max_length=500)
     attachmentIds: Optional[list] = Field(default_factory=list)
