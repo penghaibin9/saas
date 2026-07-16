@@ -12,6 +12,7 @@ export { default as AppStudentCard } from './AppStudentCard.vue'
 export { default as AppSensitiveText } from './AppSensitiveText.vue'
 export { default as AppGlobalState } from './AppGlobalState.vue'
 export { default as AppConfirmDialog } from './AppConfirmDialog.vue'
+export { default as AppQuickPhrases } from './AppQuickPhrases.vue'
 export { default as AppExportConfirm } from './AppExportConfirm.vue'
 export { default as AppInlineAlert } from './AppInlineAlert.vue'
 export { default as AppStepBar } from './AppStepBar.vue'
@@ -59,6 +60,7 @@ export {
   AppTextInput,
   AppNumberInput,
   AppTextarea,
+  AppTemplateChips,
   AppSelect,
   AppMultiSelect,
   AppRadioGroup,

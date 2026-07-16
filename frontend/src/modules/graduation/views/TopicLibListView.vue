@@ -188,6 +188,7 @@
       :confirm-text="confirm.confirmText"
       :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel"
+      :reason-chips="confirm.reasonChips || []"
       :submitting="submitting"
       @confirm="onConfirm"
     />
@@ -271,6 +272,13 @@ const PANEL_HINTS = {
 }
 
 const SOURCE_TONE = { TEACHER: 'info', ENTERPRISE: 'processing', STUDENT: 'warning', ADMIN: 'default' }
+
+const TOPIC_REVIEW_REJECT_REASON_CHIPS = [
+  '选题不符合专业培养目标或应用领域要求',
+  '工作量不足，难以支撑毕业设计要求',
+  '实施方案不清晰，可行性不足',
+  '选题与已入库课题重复'
+]
 
 const BASE_COLUMNS = [
   { key: 'title', title: '题目' },
@@ -657,7 +665,9 @@ export default {
         visible: true, title: action === 'APPROVE' ? '审核通过' : '驳回题目',
         message: action === 'APPROVE' ? `通过后题目入池，可分配给学生。` : `驳回须填写原因（≥5字）。`,
         type: action === 'APPROVE' ? 'primary' : 'danger', confirmText: action === 'APPROVE' ? '通过' : '驳回',
-        requireReason: action === 'REJECT', reasonLabel: '驳回原因', action: 'review', row, payload: { action }
+        requireReason: action === 'REJECT', reasonLabel: '驳回原因',
+        reasonChips: action === 'REJECT' ? TOPIC_REVIEW_REJECT_REASON_CHIPS : [],
+        action: 'review', row, payload: { action }
       }
     },
     askDisable(row) {

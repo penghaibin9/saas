@@ -29,6 +29,7 @@
             </div>
             <label class="mp-note" style="display: block; margin-bottom: var(--space-1)">批阅意见（驳回时必填，≥5 字）</label>
             <textarea v-model="comment" class="mp-textarea" :disabled="!canReview" rows="3" placeholder="批注将随批阅结果同步学生端…"></textarea>
+            <AppTemplateChips v-if="canReview" :options="REJECT_REASON_CHIPS" @pick="(t) => (comment = comment ? comment + '\n' + t : t)" />
             <p v-if="formError" class="mp-form-err">{{ formError }}</p>
             <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过</AppPermissionButton>
@@ -45,6 +46,7 @@
             <template v-else>
               <label class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">开题答辩评语（不通过时必填 ≥5 字）</label>
               <textarea v-model="defenseComment" class="mp-textarea" rows="2" placeholder="现场开题答辩评语…"></textarea>
+              <AppTemplateChips :options="DEFENSE_COMMENT_CHIPS" @pick="(t) => (defenseComment = defenseComment ? defenseComment + '\n' + t : t)" />
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
                 <AppButton variant="primary" :loading="submitting" style="flex: 1" @click="submitDefense('PASS')">✓ 答辩通过</AppButton>
                 <AppButton variant="warning" :loading="submitting" style="flex: 1" @click="submitDefense('FAIL')">✕ 答辩不通过</AppButton>
@@ -90,14 +92,18 @@
  */
 import { StatusTag, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList } from '@/components/common'
+import { AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList, AppTemplateChips } from '@/components/common'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
+
+const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达标，需修改', '格式不符合学校规范', '与选题方向不符']
+const DEFENSE_COMMENT_CHIPS = ['选题有实际意义，完成度高', '回答问题思路清晰', '论文结构完整，工作量饱满', '部分问题回答不够深入']
 
 export default {
   name: 'ProposalReviewCard',
-  components: { StatusTag, LoadingState, ErrorState, AppButton, AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList },
+  components: { StatusTag, LoadingState, ErrorState, AppButton, AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList, AppTemplateChips },
   props: {
     ctx: { type: Object, required: true },
     proposalId: { type: [String, Number], required: true },
@@ -106,7 +112,10 @@ export default {
   },
   emits: ['reviewed', 'conflict'],
   data() {
-    return { loading: true, error: '', detail: null, comment: '', formError: '', submitting: false, defenseComment: '' }
+    return {
+      REJECT_REASON_CHIPS, DEFENSE_COMMENT_CHIPS,
+      loading: true, error: '', detail: null, comment: '', formError: '', submitting: false, defenseComment: ''
+    }
   },
   computed: {
     proposalMetaItems() {
@@ -138,9 +147,8 @@ export default {
     proposalId: { immediate: true, handler() { this.load() } }
   },
   methods: {
-    /** ISO 时间转老师可读格式（2026-07-06T18:57:14 → 2026-07-06 18:57） */
     fmtTime(s) {
-      return (s || '').toString().replace('T', ' ').slice(0, 16)
+      return formatDateTime(s, '')
     },
     async load() {
       this.loading = true

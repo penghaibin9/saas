@@ -135,7 +135,13 @@
             <template v-else-if="reviewKind === 'peer'">
               <view class="rv__tags"><text class="rv__tag">{{ detail.statusLabel }}</text><text v-if="detail.score != null" class="rv__tag">原评分 {{ detail.score }}</text></view>
               <view class="rv__block"><text class="rv__label">评分（0-100）</text><input class="rv__input" type="number" v-model="peerScore" placeholder="请输入评分" /></view>
-              <view class="rv__block"><text class="rv__label">评阅意见（≥5字）</text><textarea class="rv__ta" v-model="peerOpinion" :maxlength="2000" placeholder="填写评阅意见" placeholder-class="rv__ph" /></view>
+              <view class="rv__block">
+                <text class="rv__label">评阅意见（≥5字）</text>
+                <textarea class="rv__ta" v-model="peerOpinion" :maxlength="2000" placeholder="填写评阅意见" placeholder-class="rv__ph" />
+                <view class="rv__chips">
+                  <view v-for="(t, i) in PEER_OPINION_CHIPS" :key="i" class="rv__chip" @click="pickPeerOpinionChip(t)"><text>{{ t }}</text></view>
+                </view>
+              </view>
             </template>
 
             <!-- 成绩：三段构成 -->
@@ -200,10 +206,12 @@ import { ENV } from '@/config/env'
 import { getToken } from '@/services/request'
 
 const KIND_LABEL = { proposal: '开题批阅', final: '成果批阅', midterm: '中期检查', peer: '评阅', grade: '成绩复核' }
+const PEER_OPINION_CHIPS = ['格式不符合毕业设计课程标准', '内容深度不足，需修改', '疑似抄袭，建议复核查重']
 
 export default {
   data() {
     return {
+      PEER_OPINION_CHIPS,
       data: null, state: 'loading', f: 'all', acting: false,
       reviewQueue: [], finalQueue: [],
       tab: 'review', midtermQueue: [], reviews: [], defense: [], gradeQueue: [],
@@ -283,6 +291,9 @@ export default {
       this.mode = 'list'; this.detail = null; this.detailState = 'loading'
       this.peerScore = ''; this.peerOpinion = ''
       this.reloadTab()
+    },
+    pickPeerOpinionChip(t) {
+      this.peerOpinion = this.peerOpinion ? this.peerOpinion + '\n' + t : t
     },
     curId() {
       const it = this.current || {}
@@ -464,6 +475,9 @@ export default {
 .rv__ver { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 3px; line-height: 1.5; }
 .rv__input { height: 44px; border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); font-size: var(--font-size-base); box-sizing: border-box; }
 .rv__ta { width: 100%; min-height: 80px; border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); font-size: var(--font-size-base); box-sizing: border-box; }
+.rv__chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.rv__chip { border: 1px dashed var(--border-base); border-radius: var(--radius-full); padding: 4px var(--space-3); }
+.rv__chip text { font-size: var(--font-size-xs); color: var(--text-secondary); }
 .rv__att { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--border-light); }
 .rv__att:last-child { border-bottom: none; }
 .rv__att-name { font-size: var(--font-size-base); color: var(--text-primary); }

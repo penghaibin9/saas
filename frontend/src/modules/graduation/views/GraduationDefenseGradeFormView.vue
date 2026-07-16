@@ -12,6 +12,7 @@
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">{{ f.label }} <i v-if="f.required">*</i></span>
           <textarea v-if="f.type === 'textarea'" v-model.trim="form[f.key]" class="ie-in" rows="2" />
           <input v-else v-model="form[f.key]" class="ie-in" :readonly="f.readonly" />
+          <AppTemplateChips v-if="f.chips" :options="f.chips" @pick="(v) => onPickChip(f, v)" />
         </label>
       </template>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
@@ -26,9 +27,23 @@
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
+import { AppTemplateChips } from '@/components/common'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
+
+const DEFENSE_COMMENT_CHIPS = [
+  '选题有实际意义，完成度高',
+  '回答问题思路清晰',
+  '论文结构完整，工作量饱满',
+  '部分问题回答不够深入'
+]
+const ADVISOR_SCORE_CHIPS = [
+  { label: '优秀 92', value: 92 },
+  { label: '良好 83', value: 83 },
+  { label: '中等 75', value: 75 },
+  { label: '及格 65', value: 65 }
+]
 
 const FORM_PRESETS = {
   plagiarismResult: {
@@ -49,7 +64,7 @@ const FORM_PRESETS = {
   },
   scoreEntry: {
     title: '录入评委评分',
-    fields: [{ key: 'judgeName', label: '评委姓名', required: true }, { key: 'score', label: '评分(0-100)' }, { key: 'comment', label: '评语', type: 'textarea' }]
+    fields: [{ key: 'judgeName', label: '评委姓名', required: true }, { key: 'score', label: '评分(0-100)' }, { key: 'comment', label: '评语', type: 'textarea', chips: DEFENSE_COMMENT_CHIPS }]
   },
   secondDefense: {
     title: '创建二次答辩',
@@ -58,7 +73,7 @@ const FORM_PRESETS = {
   calculate: {
     title: '核算成绩',
     fields: [
-      { key: 'advisorScore', label: '导师分', required: true },
+      { key: 'advisorScore', label: '导师分', required: true, chips: ADVISOR_SCORE_CHIPS },
       { key: 'reviewerScore', label: '评阅分（自动汇总）', readonly: true },
       { key: 'defenseScore', label: '答辩分（自动汇总）', required: true, readonly: true }
     ]
@@ -75,7 +90,7 @@ const FORM_PRESETS = {
 
 export default {
   name: 'GraduationDefenseGradeFormView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState },
+  components: { GraduationFormPageShell, LoadingState, ErrorState, AppTemplateChips },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -93,6 +108,11 @@ export default {
   },
   created() { this.init() },
   methods: {
+    onPickChip(f, value) {
+      this.form[f.key] = f.type === 'textarea'
+        ? (this.form[f.key] ? this.form[f.key] + '\n' + value : String(value))
+        : value
+    },
     async init() {
       this.loading = true
       this.error = ''

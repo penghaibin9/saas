@@ -54,7 +54,7 @@
               <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ selectedRisk.studentName }} · {{ selectedRisk.studentNo }}</span></div>
               <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ selectedRisk.advisorName || '未分配导师' }}</span></div>
               <div v-if="selectedRisk.detail" class="mp-kv"><span class="mp-kv__k">风险详情</span><span class="mp-kv__v">{{ selectedRisk.detail }}</span></div>
-              <div v-if="selectedRisk.createdAt" class="mp-kv"><span class="mp-kv__k">首次触发</span><span class="mp-kv__v">{{ (selectedRisk.createdAt || '').replace('T', ' ').slice(0, 16) }}</span></div>
+              <div v-if="selectedRisk.createdAt" class="mp-kv"><span class="mp-kv__k">首次触发</span><span class="mp-kv__v">{{ formatDateTime(selectedRisk.createdAt) }}</span></div>
               <div v-if="selectedRisk.handleNote" class="mp-kv"><span class="mp-kv__k">处理记录</span><span class="mp-kv__v">{{ selectedRisk.handleNote }}</span></div>
               <div class="ie-actions" style="justify-content: flex-start; margin-top: var(--space-3)">
                 <button v-if="selectedRisk.status === 'OPEN'" class="mp-btn mp-btn--primary" @click="doAccept(selectedRisk)">受理</button>
@@ -185,7 +185,7 @@
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
-      :reason-label="confirm.reasonLabel" @confirm="onConfirm"
+      :reason-label="confirm.reasonLabel" :reason-chips="confirm.reasonChips || []" @confirm="onConfirm"
     />
   </ModulePageShell>
 </template>
@@ -199,6 +199,15 @@ import { AppExportButton, AppPagination, AppStackedBarChart } from '@/components
 import { AppDateRangePicker } from '@/components/common/date'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
+
+const ARCHIVE_REJECT_REASON_CHIPS = [
+  '材料不齐全，缺相关附件/签字页',
+  '签字或日期不完整（签字应早于答辩日期）',
+  '装订顺序不符合规范',
+  '重复度超标未完成整改',
+  '电子版与纸质版内容不一致'
+]
 
 export default {
   name: 'GraduationRiskArchiveView',
@@ -273,6 +282,7 @@ export default {
     }
   },
   methods: {
+    formatDateTime,
     /** 页签切换同步到 URL，保证刷新/分享/左侧菜单高亮一致 */
     switchTab(t) {
       this.tab = t
@@ -392,7 +402,11 @@ export default {
       if (res.code === 0) { toast.success('已归档'); this.loadArchives() } else toast.error(res.message)
     },
     doReject(row) {
-      this.confirm = { visible: true, title: '驳回归档', message: '', type: 'danger', confirmText: '确认驳回', requireReason: true, reasonLabel: '驳回原因', action: 'reject-archive', row }
+      this.confirm = {
+        visible: true, title: '驳回归档', message: '', type: 'danger', confirmText: '确认驳回',
+        requireReason: true, reasonLabel: '驳回原因', reasonChips: ARCHIVE_REJECT_REASON_CHIPS,
+        action: 'reject-archive', row
+      }
     },
     exportArchivesFn() {
       return graduationRiskArchiveApi.exportArchives({ ...this.archiveFilters })

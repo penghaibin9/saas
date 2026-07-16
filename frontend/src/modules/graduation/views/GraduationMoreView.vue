@@ -56,7 +56,7 @@
       </DataTable>
     </div>
 
-    <AppConfirmDialog v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message" :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason" reason-label="驳回理由" :submitting="submitting" @confirm="onConfirmAppeal" />
+    <AppConfirmDialog v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message" :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason" reason-label="驳回理由" :reason-chips="confirm.reasonChips || []" :submitting="submitting" @confirm="onConfirmAppeal" />
   </ModulePageShell>
 </template>
 
@@ -66,6 +66,12 @@ import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, Err
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
+
+const APPEAL_REJECT_REASON_CHIPS = [
+  '经复核，原评分依据充分，予以维持',
+  '复核未发现评分错误或遗漏依据',
+  '申诉材料不足以证明评分存在错误'
+]
 
 export default {
   name: 'GraduationMoreView',
@@ -120,7 +126,11 @@ export default {
     askAppeal(row, action) {
       this.confirm = action === 'APPROVE'
         ? { visible: true, title: '受理申诉', message: `受理「${row.studentName}」的成绩申诉？受理后将撤回其成绩，走重新核算。`, type: 'primary', confirmText: '受理', requireReason: false, action: 'APPROVE', row }
-        : { visible: true, title: '驳回申诉', message: `驳回「${row.studentName}」的申诉，请填写理由（≥5字）。`, type: 'danger', confirmText: '驳回', requireReason: true, action: 'REJECT', row }
+        : {
+          visible: true, title: '驳回申诉', message: `驳回「${row.studentName}」的申诉，请填写理由（≥5字）。`,
+          type: 'danger', confirmText: '驳回', requireReason: true, reasonChips: APPEAL_REJECT_REASON_CHIPS,
+          action: 'REJECT', row
+        }
     },
     async onConfirmAppeal({ reason } = {}) {
       this.submitting = true

@@ -8,6 +8,7 @@
     <form class="ie-form" @submit.prevent="save">
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">答辩组名称 <i>*</i></span>
         <input v-model.trim="form.groupName" class="ie-in" placeholder="如 软件工程专业第一答辩组" />
+        <AppTemplateChips :options="GROUP_NAME_CHIPS" @pick="(t) => (form.groupName = t)" />
       </label>
       <AppDateTimePicker v-model="form.defenseDate" class="ie-fld" label="答辩时间" hint="建议提前一周排期" />
       <label class="ie-fld"><span class="ie-lbl">答辩地点</span><input v-model.trim="form.location" class="ie-in" placeholder="如 实训楼 A301" /></label>
@@ -62,18 +63,21 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { EmptyState } from '@/components/business'
 import { AppDateTimePicker } from '@/components/common/date'
-import { AppMentorPicker } from '@/components/common'
+import { AppMentorPicker, AppTemplateChips } from '@/components/common'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { toast } from '@/utils/toast'
 import { toDateTimeInputValue, addDays } from '@/utils/dateUtils'
 
+const GROUP_NAME_CHIPS = ['答辩第1组', '答辩第2组', '答辩第3组', '补答辩组', '优秀论文答辩组']
+
 export default {
   name: 'DefenseGroupFormView',
-  components: { GraduationFormPageShell, AppDateTimePicker, EmptyState, AppMentorPicker },
+  components: { GraduationFormPageShell, AppDateTimePicker, EmptyState, AppMentorPicker, AppTemplateChips },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      GROUP_NAME_CHIPS,
       groupId: null, submitting: false,
       form: { groupName: '', defenseDate: '', location: '', chair: '', secretary: '', membersText: '' },
       formError: '',
