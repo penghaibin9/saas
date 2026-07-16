@@ -17,12 +17,12 @@
     </div>
 
     <div class="bar">
-      <input v-model="keyword" class="bar__kw" placeholder="按姓名搜索" @keyup.enter="load" />
-      <select v-if="tab !== 'checkins'" v-model="statusFilter" class="bar__sel" @change="load">
+      <input v-model="keyword" class="bar__kw" placeholder="按姓名搜索" @keyup.enter="search" />
+      <select v-if="tab !== 'checkins'" v-model="statusFilter" class="bar__sel" @change="search">
         <option value="">全部状态</option>
         <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
       </select>
-      <button class="bar__go" @click="load">查询</button>
+      <button class="bar__go" @click="search">查询</button>
       <span class="bar__hint">共 {{ total }} 条 · 数据范围内可见</span>
     </div>
 
@@ -57,6 +57,8 @@
           </tr>
         </tbody>
       </table>
+      <AppPagination v-model:page="page" :page-size="pageSize" :total="total"
+                    :show-size-changer="false" :disabled="loading" @change="load" />
     </div>
 
     <AppConfirmDialog v-model:visible="dlg.visible" :title="dlg.title" :content="dlg.content"
@@ -68,7 +70,7 @@
 <script>
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppPagination } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
 import { canCode } from '@/modules/internship/composables/permission'
@@ -107,12 +109,12 @@ const TAB_PANEL = { checkins: 'checkins', exceptions: 'exceptions', makeups: 'ma
 export default {
   name: 'AttendanceView',
   props: { ctx: { type: Object, default: () => ({}) } },
-  components: { ModulePageShell, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, ModuleSummaryStrip },
+  components: { ModulePageShell, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, ModuleSummaryStrip, AppPagination },
   data() {
     return {
       tab: 'checkins',
       tabs: [{ key: 'checkins', label: '打卡台账' }, { key: 'exceptions', label: '打卡异常' }, { key: 'makeups', label: '补卡审批' }],
-      rows: [], total: 0, loading: false, error: '',
+      rows: [], total: 0, page: 1, pageSize: 50, loading: false, error: '',
       tabTotals: { checkins: null, exceptions: null, makeupsAll: null, makeupsPending: null },
       keyword: '', statusFilter: '',
       dlg: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: true, submitting: false },
@@ -150,8 +152,10 @@ export default {
       this.tab = tab
       this.keyword = ''
       this.statusFilter = statusFilter
+      this.page = 1
       this.load()
     },
+    search() { this.page = 1; this.load() },
     switchTab(k) {
       const panel = TAB_PANEL[k] || k
       if (this.$route.query.panel !== panel) {
@@ -162,7 +166,7 @@ export default {
     },
     async load() {
       this.loading = true; this.error = ''
-      const params = { page: 1, pageSize: 50, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
       if (this.statusFilter) params.status = this.statusFilter
       const api = { checkins: 'getCheckins', exceptions: 'getExceptions', makeups: 'getMakeups' }[this.tab]
       const res = await attendanceApi[api](params)

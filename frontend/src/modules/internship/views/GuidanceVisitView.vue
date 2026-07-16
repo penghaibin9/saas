@@ -50,11 +50,8 @@
           </ul>
         </template>
         <template #aside-foot>
-          <div class="gv-pager">
-            <button type="button" class="mp-link" :disabled="page <= 1 || loading" @click="onPageChange(page - 1)">上一页</button>
-            <span class="mp-note">第 {{ page }} / 共 {{ pageCount }} 页</span>
-            <button type="button" class="mp-link" :disabled="page >= pageCount || loading" @click="onPageChange(page + 1)">下一页</button>
-          </div>
+          <AppPagination v-model:page="page" :page-size="pageSize" :total="total"
+                        :show-total="false" :show-size-changer="false" :disabled="loading" @change="load" />
         </template>
 
         <!-- 右栏：当前记录详情（原详情弹窗内容 + 附件 + 审计 + 操作） -->
@@ -113,7 +110,7 @@
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
@@ -152,7 +149,7 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview },
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination },
   data() {
     return {
       tab: 'guidance',
@@ -192,7 +189,6 @@ export default {
       return this.statsCards.slice(0, 5).map((c) => ({ label: c.label, value: c.value }))
     },
     detailFields() { return DETAIL[this.tab] },
-    pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
     detailItems() { const d = this.detail.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: d[f.key] })) },
     attachmentFiles() { const a = this.detail.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
     auditRecords() {
@@ -277,10 +273,6 @@ export default {
       }
     },
     reload() { this.page = 1; this.load() },
-    onPageChange(p) {
-      if (p < 1 || p > this.pageCount || p === this.page) return
-      this.page = p; this.load()
-    },
     async load() {
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
@@ -373,7 +365,6 @@ export default {
 .gv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .gv-item__name { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
 .gv-item__sub { margin-top: 2px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.gv-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 
 /* 右栏详情与固定操作区 */
 .gv-main { display: flex; flex-direction: column; min-height: 320px; }

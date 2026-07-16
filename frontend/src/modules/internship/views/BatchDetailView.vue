@@ -103,6 +103,7 @@ import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppTimeline, AppAuditTrail, AppDescriptionList } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
+import { formatDate, formatDateTime } from '@/utils/dateUtils'
 
 const ACTION_LABEL = { CREATE: '新建批次', UPDATE: '编辑批次', ACTIVATE: '启用批次', CLOSE: '结束批次', ARCHIVE: '归档批次', VOID: '作废批次' }
 
@@ -229,10 +230,10 @@ export default {
   },
   methods: {
     dateShort(v) {
-      return v ? String(v).slice(0, 10) : ''
+      return formatDate(v, '')
     },
     dateTime(v) {
-      return v ? String(v).slice(0, 16).replace('T', ' ') : '未设置'
+      return formatDateTime(v)
     },
     pct(v) {
       return `${Math.round((v || 0) * 100)}%`
