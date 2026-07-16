@@ -17,6 +17,9 @@
             <view class="at__input at__date">{{ form.sessionDate || '选择考勤日期（必填）' }}</view>
           </picker>
           <input class="at__input" type="number" v-model="form.slotNo" placeholder="第几节（选填）" placeholder-class="at__ph" />
+          <picker mode="selector" :range="sessionTypes" @change="onTypeChange">
+            <view class="at__input at__date">点名类别：{{ form.sessionType || '常规' }}</view>
+          </picker>
           <button class="btn btn-primary" :disabled="!form.classId || !form.sessionDate || creating" @click="createSession">
             {{ creating ? '创建中…' : '按行政班圈定名单并新建' }}
           </button>
@@ -83,13 +86,15 @@ export default {
   data() {
     return {
       sessions: [], loaded: false, state: 'loading', showForm: false, creating: false,
-      form: { classId: '', courseName: '', termCode: '', sessionDate: '', slotNo: '' },
+      sessionTypes: ['常规', '实训', '晚自习', '其他'],
+      form: { classId: '', courseName: '', termCode: '', sessionDate: '', slotNo: '', sessionType: '' },
       active: null, items: [], submitting: false, STATUS_OPTS
     }
   },
   onLoad() { this.load() },
   methods: {
     onDateChange(e) { this.form.sessionDate = e.detail.value },
+    onTypeChange(e) { this.form.sessionType = this.sessionTypes[Number(e.detail.value)] || '' },
     load() {
       this.state = 'loading'
       teacherApi.getAttendanceSessions().then((d) => {
@@ -104,11 +109,12 @@ export default {
       teacherApi.createAttendanceSession({
         classId: Number(this.form.classId), courseName: this.form.courseName.trim() || undefined,
         termCode: this.form.termCode.trim() || undefined, sessionDate: this.form.sessionDate,
-        slotNo: this.form.slotNo ? Number(this.form.slotNo) : undefined
+        slotNo: this.form.slotNo ? Number(this.form.slotNo) : undefined,
+        sessionType: this.form.sessionType || undefined
       }).then(() => {
         uni.showToast({ title: '考勤场次已创建', icon: 'success' })
         this.showForm = false
-        this.form = { classId: '', courseName: '', termCode: '', sessionDate: '', slotNo: '' }
+        this.form = { classId: '', courseName: '', termCode: '', sessionDate: '', slotNo: '', sessionType: '' }
         this.load()
       }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '创建失败，请稍后重试'))
         .finally(() => { this.creating = false })

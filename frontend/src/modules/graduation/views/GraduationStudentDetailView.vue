@@ -232,6 +232,7 @@ import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskb
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 
 export default {
   name: 'GraduationStudentDetailView',
@@ -311,7 +312,7 @@ export default {
     this.ensureTabData(this.tab)
   },
   methods: {
-    fmtTime(s) { return (s || '').toString().replace('T', ' ').slice(0, 16) },
+    fmtTime(s) { return formatDateTime(s, '') },
     switchTab(k) {
       this.tab = k
       this.$router.replace({ query: { ...this.$route.query, tab: k } })

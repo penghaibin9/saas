@@ -97,7 +97,8 @@
             </div>
             <div class="fm-item">
               <label class="fm-label">材料标题<i>*</i></label>
-              <AppTextInput v-model="fm.values.title" placeholder="如：第3周主题班会记录" :maxlength="200" />
+              <AppQuickPhrases scene-key="sa.class.material" @pick="onPickMaterialTitle" />
+              <AppTextInput ref="matTitleTa" v-model="fm.values.title" placeholder="如：第3周主题班会记录" :maxlength="200" />
             </div>
             <div class="fm-item">
               <label class="fm-label">材料日期</label>
@@ -111,7 +112,8 @@
             </div>
             <div class="fm-item">
               <label class="fm-label">备注</label>
-              <AppTextarea v-model="fm.values.remark" placeholder="选填" :rows="2" :maxlength="500" show-count />
+              <AppQuickPhrases scene-key="sa.class.material" @pick="onPickMaterialRemark" />
+              <AppTextarea ref="matRemarkTa" v-model="fm.values.remark" placeholder="选填" :rows="2" :maxlength="500" show-count />
             </div>
           </template>
           <template v-else>
@@ -141,11 +143,12 @@
  * 聚合指标 + 学生名单(脱敏) + 班级材料(附件走文件中心) + 班干部任免。真实对接 /student-affairs/classes/*。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppConfirmDialog, AppSelect, AppTextInput, AppTextarea, AppDatePicker } from '@/components/common'
+import { AppMetricCard, AppConfirmDialog, AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppQuickPhrases } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { classApi } from '@/modules/studentAffairs/api/class.api'
 import { requestUpload, requestBlob } from '@/services/http/client'
 import { toast } from '@/utils/toast'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 const MATERIAL_TYPES = [
   { label: '班会记录', value: 'CLASS_MEETING' }, { label: '主题活动', value: 'THEME_ACTIVITY' },
@@ -172,7 +175,7 @@ export default {
   name: 'ClassProfileView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppConfirmDialog,
-    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppButton
+    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppButton, AppQuickPhrases
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -256,6 +259,20 @@ export default {
         values: { position: '', studentId: '' } }
     },
     closeForm() { this.fm.visible = false },
+    onPickMaterialTitle(text) {
+      const el = this.$refs.matTitleTa && this.$refs.matTitleTa.$refs && this.$refs.matTitleTa.$refs.input
+      if (!el) return
+      const { value, selStart, selEnd } = insertAtCursor(el, this.fm.values.title, text)
+      this.fm.values.title = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
+    onPickMaterialRemark(text) {
+      const el = this.$refs.matRemarkTa && this.$refs.matRemarkTa.$refs && this.$refs.matRemarkTa.$refs.el
+      if (!el) return
+      const { value, selStart, selEnd } = insertAtCursor(el, this.fm.values.remark, text)
+      this.fm.values.remark = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     async onFilePick(e) {
       const file = e.target.files && e.target.files[0]
       if (!file) return

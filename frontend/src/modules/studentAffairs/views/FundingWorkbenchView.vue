@@ -8,20 +8,10 @@
   >
     <div class="fd-ctxbar">
       <label class="fd-ctxsel"><span>资助项目</span>
-        <select v-model="projectId" class="fd-input" @change="onProjectChange">
-          <option value="">（选择项目）</option>
-          <option v-for="p in projects" :key="p.projectId" :value="p.projectId">
-            {{ projectTypeLabel(p.projectType) }} · {{ p.projectName }}
-          </option>
-        </select>
+        <AppSelect v-model="projectId" :options="projectSelectOptions" placeholder="（选择项目）" @change="onProjectChange" />
       </label>
       <label class="fd-ctxsel"><span>批次</span>
-        <select v-model="batchId" class="fd-input" :disabled="!projectId" @change="onBatchChange">
-          <option value="">（选择批次）</option>
-          <option v-for="b in filteredBatches" :key="b.batchId" :value="b.batchId">
-            {{ b.schoolYear }} · {{ batchStatusLabel(b.status) }}
-          </option>
-        </select>
+        <AppSelect v-model="batchId" :options="batchSelectOptions" placeholder="（选择批次）" :disabled="!projectId" @change="onBatchChange" />
       </label>
       <div class="fd-ctxtools">
         <button type="button" class="fd-btn" @click="openProject">建项目</button>
@@ -111,77 +101,75 @@
       :require-reason="dialog.requireReason"
       :reason-label="dialog.reasonLabel"
       :reason-placeholder="dialog.reasonPlaceholder"
+      :phrase-scene-key="dialogPhraseSceneKey"
       :submitting="acting"
       @confirm="onDialogConfirm"
     />
 
-    <!-- 建项目 modal -->
-    <div v-if="projectModal.visible" class="fd-mask" @click.self="projectModal.visible = false">
-      <div class="fd-modal">
-        <h3 class="fd-modal__title">新建资助项目</h3>
-        <label class="fd-field"><span>项目类型 <i>*</i></span>
-          <select v-model="projectModal.projectType" class="fd-input">
-            <option value="SCHOLARSHIP">奖学金</option>
-            <option value="GRANT">助学金</option>
-          </select>
-        </label>
-        <label class="fd-field"><span>项目名称 <i>*</i></span>
-          <input v-model.trim="projectModal.projectName" class="fd-input" placeholder="如：国家励志奖学金 / 国家助学金" />
-        </label>
+    <!-- 建项目 -->
+    <AppDrawer v-model:visible="projectModal.visible" title="新建资助项目">
+      <div class="sa-form">
+        <AppFormItem label="项目类型" required>
+          <AppSelect v-model="projectModal.projectType" :options="projectTypeOptions" />
+        </AppFormItem>
+        <AppFormItem label="项目名称" required>
+          <AppTextInput v-model="projectModal.projectName" placeholder="如：国家励志奖学金 / 国家助学金" />
+        </AppFormItem>
         <div class="fd-grid2">
-          <label class="fd-field"><span>金额（元）</span><input v-model.number="projectModal.amount" type="number" class="fd-input" /></label>
-          <label class="fd-field"><span>名额</span><input v-model.number="projectModal.quota" type="number" class="fd-input" /></label>
+          <AppFormItem label="金额（元）"><AppNumberInput v-model="projectModal.amount" :min="0" /></AppFormItem>
+          <AppFormItem label="名额"><AppNumberInput v-model="projectModal.quota" :min="0" /></AppFormItem>
         </div>
         <p class="fd-modal__hint">助学金申请将硬校验困难库在库；奖学金将硬校验学籍/处分/成绩。</p>
-        <p v-if="projectModal.error" class="fd-err">{{ projectModal.error }}</p>
-        <div class="fd-modal__foot">
-          <button type="button" class="fd-btn" @click="projectModal.visible = false">取消</button>
-          <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitProject">创建</button>
-        </div>
+        <AppInlineAlert v-if="projectModal.error" type="danger" :description="projectModal.error" />
       </div>
-    </div>
+      <template #footer>
+        <button type="button" class="fd-btn" @click="projectModal.visible = false">取消</button>
+        <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitProject">创建</button>
+      </template>
+    </AppDrawer>
 
-    <!-- 建批次 modal -->
-    <div v-if="batchModal.visible" class="fd-mask" @click.self="batchModal.visible = false">
-      <div class="fd-modal">
-        <h3 class="fd-modal__title">新建资助批次</h3>
-        <label class="fd-field"><span>学年 <i>*</i></span><input v-model.trim="batchModal.schoolYear" class="fd-input" placeholder="如：2025-2026" /></label>
+    <!-- 建批次 -->
+    <AppDrawer v-model:visible="batchModal.visible" title="新建资助批次">
+      <div class="sa-form">
+        <AppFormItem label="学年" required>
+          <AppTextInput v-model="batchModal.schoolYear" placeholder="如：2025-2026" />
+        </AppFormItem>
         <div class="fd-grid2">
-          <label class="fd-field"><span>公示天数</span><input v-model.number="batchModal.publicityDays" type="number" min="0" class="fd-input" placeholder="快测填 0" /></label>
-          <label class="fd-field"><span>名额</span><input v-model.number="batchModal.quota" type="number" class="fd-input" /></label>
+          <AppFormItem label="公示天数"><AppNumberInput v-model="batchModal.publicityDays" :min="0" placeholder="快测填 0" /></AppFormItem>
+          <AppFormItem label="名额"><AppNumberInput v-model="batchModal.quota" :min="0" /></AppFormItem>
         </div>
         <label class="fd-check"><input v-model="batchModal.publish" type="checkbox" /> 立即发布（开放受理）</label>
-        <p v-if="batchModal.error" class="fd-err">{{ batchModal.error }}</p>
-        <div class="fd-modal__foot">
-          <button type="button" class="fd-btn" @click="batchModal.visible = false">取消</button>
-          <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitBatch">保存</button>
-        </div>
+        <AppInlineAlert v-if="batchModal.error" type="danger" :description="batchModal.error" />
       </div>
-    </div>
+      <template #footer>
+        <button type="button" class="fd-btn" @click="batchModal.visible = false">取消</button>
+        <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitBatch">保存</button>
+      </template>
+    </AppDrawer>
 
-    <!-- 受理申请 modal -->
-    <div v-if="applyModal.visible" class="fd-mask" @click.self="applyModal.visible = false">
-      <div class="fd-modal">
-        <h3 class="fd-modal__title">受理资助申请</h3>
-        <div class="fd-field"><span>学生 <i>*</i></span>
+    <!-- 受理申请 -->
+    <AppDrawer v-model:visible="applyModal.visible" title="受理资助申请">
+      <div class="sa-form">
+        <AppFormItem label="学生" required>
           <AppStudentPicker v-model="applyModal.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
-        </div>
-        <label class="fd-field"><span>申请来源</span>
-          <select v-model="applyModal.applySource" class="fd-input">
-            <option value="SELF">自主申请</option>
-            <option value="RECOMMEND">推荐</option>
-          </select>
-        </label>
-        <label class="fd-field"><span>申请金额（元）</span><input v-model.number="applyModal.amount" type="number" class="fd-input" /></label>
-        <label class="fd-field"><span>申请说明</span><textarea v-model.trim="applyModal.statement" class="fd-textarea" rows="3" placeholder="选填" /></label>
+        </AppFormItem>
+        <AppFormItem label="申请来源">
+          <AppSelect v-model="applyModal.applySource" :options="applySourceOptions" />
+        </AppFormItem>
+        <AppFormItem label="申请金额（元）">
+          <AppNumberInput v-model="applyModal.amount" :min="0" />
+        </AppFormItem>
+        <AppFormItem label="申请说明">
+          <AppTextarea v-model="applyModal.statement" :rows="3" placeholder="选填" />
+        </AppFormItem>
         <p class="fd-modal__hint">受理时将硬校验资格；不满足条件将被拒绝并提示原因。</p>
-        <p v-if="applyModal.error" class="fd-err">{{ applyModal.error }}</p>
-        <div class="fd-modal__foot">
-          <button type="button" class="fd-btn" @click="applyModal.visible = false">取消</button>
-          <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitApply">受理</button>
-        </div>
+        <AppInlineAlert v-if="applyModal.error" type="danger" :description="applyModal.error" />
       </div>
-    </div>
+      <template #footer>
+        <button type="button" class="fd-btn" @click="applyModal.visible = false">取消</button>
+        <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitApply">受理</button>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
@@ -192,7 +180,9 @@
  * 助学金硬校验困难库在库，奖学金硬校验学籍/处分/成绩；不满足受理即被 409 拦截并透出原因。金额按角色脱敏。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppConfirmDialog, AppStatusTag, AppStudentPicker } from '@/components/common'
+import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppSelect, AppStatusTag,
+        AppStudentPicker, AppTextInput, AppTextarea } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -207,7 +197,8 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
 
 export default {
   name: 'FundingWorkbenchView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, StatusTag: AppStatusTag, AppStudentPicker },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDrawer, AppFormItem,
+               AppInlineAlert, AppNumberInput, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -230,6 +221,18 @@ export default {
     filteredBatches() {
       return this.batches.filter((b) => b.projectId === this.projectId)
     },
+    projectSelectOptions() {
+      return this.projects.map((p) => ({ label: `${this.projectTypeLabel(p.projectType)} · ${p.projectName}`, value: p.projectId }))
+    },
+    batchSelectOptions() {
+      return this.filteredBatches.map((b) => ({ label: `${b.schoolYear} · ${this.batchStatusLabel(b.status)}`, value: b.batchId }))
+    },
+    projectTypeOptions() {
+      return [{ label: '奖学金', value: 'SCHOLARSHIP' }, { label: '助学金', value: 'GRANT' }]
+    },
+    applySourceOptions() {
+      return [{ label: '自主申请', value: 'SELF' }, { label: '推荐', value: 'RECOMMEND' }]
+    },
     currentBatchOpen() {
       const b = this.batches.find((x) => x.batchId === this.batchId)
       return !!b && b.status === 'OPEN'
@@ -249,6 +252,10 @@ export default {
       if (this.activeStatus === 'REVIEW') arr = arr.filter((x) => FUND_NODES.includes(x.status))
       else if (this.activeStatus !== 'ALL') arr = arr.filter((x) => x.status === this.activeStatus)
       return arr
+    },
+    // 通用确认弹窗按当前动作切换快捷用语场景；仅“驳回”命中 sa.aid.reject（词库 §3.12：A8/B13 均归入 sa.aid.reject）
+    dialogPhraseSceneKey() {
+      return this.dialog.action === 'reject' ? 'sa.aid.reject' : ''
     },
     detailActions() {
       const s = this.selected && this.selected.status
@@ -374,8 +381,9 @@ export default {
     },
     async submitProject() {
       const m = this.projectModal
-      if (!m.projectName) { m.error = '请填写项目名称'; return }
-      const res = await studentAffairsApi.createFundingProject({ projectName: m.projectName, projectType: m.projectType, amount: m.amount || null, quota: m.quota || null })
+      const projectName = (m.projectName || '').trim()
+      if (!projectName) { m.error = '请填写项目名称'; return }
+      const res = await studentAffairsApi.createFundingProject({ projectName, projectType: m.projectType, amount: m.amount || null, quota: m.quota || null })
       if (res.code === 0) {
         toast.success('项目已创建')
         this.projectModal.visible = false
@@ -388,8 +396,9 @@ export default {
     },
     async submitBatch() {
       const m = this.batchModal
-      if (!m.schoolYear) { m.error = '请填写学年'; return }
-      const res = await studentAffairsApi.createFundingBatch({ projectId: String(this.projectId), schoolYear: m.schoolYear, publicityDays: Number(m.publicityDays) || 0, quota: m.quota || null, publish: !!m.publish })
+      const schoolYear = (m.schoolYear || '').trim()
+      if (!schoolYear) { m.error = '请填写学年'; return }
+      const res = await studentAffairsApi.createFundingBatch({ projectId: String(this.projectId), schoolYear, publicityDays: Number(m.publicityDays) || 0, quota: m.quota || null, publish: !!m.publish })
       if (res.code === 0) {
         toast.success('批次已保存')
         this.batchModal.visible = false
@@ -406,7 +415,7 @@ export default {
     async submitApply() {
       const m = this.applyModal
       if (!m.studentId) { m.error = '请选择学生'; return }
-      const body = { batchId: String(this.batchId), studentId: String(m.studentId), applySource: m.applySource, amount: m.amount || null, statement: m.statement || '' }
+      const body = { batchId: String(this.batchId), studentId: String(m.studentId), applySource: m.applySource, amount: m.amount || null, statement: (m.statement || '').trim() }
       const ok = await this.runAction(() => studentAffairsApi.applyFunding(body), '申请已受理')
       if (ok) this.applyModal.visible = false
       else this.applyModal.error = this._lastErr || '受理失败（可能资格校验未通过）'
@@ -638,46 +647,10 @@ export default {
   font-size: var(--font-size-sm);
   color: var(--text-tertiary);
 }
-.fd-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.fd-modal {
-  width: 460px;
-  max-width: calc(100vw - 32px);
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  box-shadow: var(--shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.2));
-}
-.fd-modal__title {
-  margin: 0 0 var(--space-3);
-  font-size: var(--font-size-lg);
-  color: var(--text-primary);
-}
 .fd-modal__hint {
   margin: 0 0 var(--space-3);
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
-}
-.fd-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
-}
-.fd-field > span {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.fd-field i {
-  color: var(--danger-600, #dc2626);
-  font-style: normal;
 }
 .fd-grid2 {
   display: grid;
@@ -692,28 +665,9 @@ export default {
   color: var(--text-secondary);
   margin-bottom: var(--space-3);
 }
-.fd-input,
-.fd-textarea {
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  padding: var(--space-2);
-  outline: none;
-}
-.fd-textarea {
-  resize: vertical;
-}
-.fd-err {
-  margin: 0 0 var(--space-2);
-  color: var(--danger-600, #dc2626);
-  font-size: var(--font-size-xs);
-}
-.fd-modal__foot {
+.sa-form {
   display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
 }
 </style>

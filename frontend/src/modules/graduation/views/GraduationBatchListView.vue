@@ -17,7 +17,26 @@
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无毕设批次" description="点「＋ 新建批次」创建一届毕业设计批次" />
+      <!-- 空态分两种：筛选无果 ≠ 真的还没建。前者给「清空筛选」，后者给「怎么开始」。 -->
+      <EmptyState
+        v-else-if="!rows.length && filtered"
+        title="没有符合条件的批次"
+        description="当前筛选条件下没有批次。可以放宽条件，或清空筛选看全部。"
+      >
+        <template #actions>
+          <button class="mp-btn" @click="reset">清空筛选</button>
+        </template>
+      </EmptyState>
+      <EmptyState
+        v-else-if="!rows.length"
+        title="还没有毕设批次"
+        description="批次是一届毕业设计的容器——学生、题目、导师、答辩、成绩都挂在批次下。建好批次并配好阶段时间轴，才能开始选题。"
+      >
+        <template #actions>
+          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/batches/create')">＋ 新建批次</button>
+          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-batch-create')">怎么建批次？</button>
+        </template>
+      </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-batch="{ row }">
           <div class="mp-cell-main">{{ row.batchName }}</div>
@@ -43,6 +62,8 @@
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
     />
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-batches" />
   </ModulePageShell>
 </template>
 
@@ -50,7 +71,7 @@
 /** 毕设批次列表（/admin/graduation/batches）：生产级只走真实后端；建/改/阶段+规则配置/状态机/作废/Excel台账导出。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton } from '@/components/common'
+import { AppExportButton, AppPageGuide } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationBatchApi } from '@/modules/graduation/api/graduation-batch.api'
 import { BATCH_STATUS } from '@/modules/graduation/constants/graduation-batch.constants'
@@ -62,7 +83,7 @@ import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'GraduationBatchListView',
-  components: { GraduationBatchStrip,
+  components: { AppPageGuide, GraduationBatchStrip,
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppConfirmDialog, AppDateDisplay, AppExportButton
   },

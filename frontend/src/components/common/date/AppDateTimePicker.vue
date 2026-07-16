@@ -5,26 +5,21 @@
       <span v-if="hint" class="app-dt__hint-inline">{{ hint }}</span>
     </label>
     <div class="app-dt__row">
-      <input
-        class="app-dt__control"
-        type="datetime-local"
-        :value="inner"
-        :disabled="disabled"
-        :min="min"
-        :max="max"
-        step="60"
-        :aria-label="label || placeholder"
-        @change="onNativeChange"
-      />
-      <button
-        v-if="clearable && inner && !disabled"
-        type="button"
-        class="app-dt__clear"
-        title="清空"
-        @click="clear"
-      >清空</button>
+      <el-config-provider :locale="zhCn">
+        <el-date-picker
+          type="datetime"
+          :model-value="inner || null"
+          value-format="YYYY-MM-DD[T]HH:mm"
+          time-format="HH:mm"
+          :placeholder="placeholder"
+          :disabled="disabled"
+          :clearable="clearable"
+          :disabled-date="disabledDate"
+          :aria-label="label || placeholder"
+          @update:model-value="onPick"
+        />
+      </el-config-provider>
     </div>
-    <p v-if="!inner && showEmptyHint" class="app-dt__placeholder">{{ placeholder }}</p>
     <p v-if="errorText" class="app-dt__err">{{ errorText }}</p>
   </div>
 </template>
@@ -32,11 +27,18 @@
 <script>
 /**
  * AppDateTimePicker — 日期+时间（YYYY-MM-DDTHH:mm，对齐 datetime-local）。
+ * 内部使用 Element Plus DatePicker（datetime 模式，含「此刻/确定」面板），对外 API 与旧版一致；
+ * 业务页只允许用本组件，不得直接引 el-date-picker。
  */
-import { toDateTimeInputValue, parseDate, isEmptyDate } from '@/utils/dateUtils'
+import { ElDatePicker, ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import 'element-plus/es/components/date-picker/style/css'
+import 'element-plus/es/components/config-provider/style/css'
+import { toDateTimeInputValue, parseDate, isEmptyDate, formatDate } from '@/utils/dateUtils'
 
 export default {
   name: 'AppDateTimePicker',
+  components: { ElDatePicker, ElConfigProvider },
   props: {
     modelValue: { type: [String, Date], default: '' },
     label: { type: String, default: '' },
@@ -53,6 +55,9 @@ export default {
     role: { type: String, default: 'single' }
   },
   emits: ['update:modelValue', 'change', 'clear'],
+  data() {
+    return { zhCn }
+  },
   computed: {
     inner() {
       return toDateTimeInputValue(this.modelValue)
@@ -72,15 +77,18 @@ export default {
     }
   },
   methods: {
-    onNativeChange(e) {
-      const v = e.target.value || ''
-      this.$emit('update:modelValue', v)
-      this.$emit('change', v)
+    onPick(v) {
+      const val = v || ''
+      this.$emit('update:modelValue', val)
+      this.$emit('change', val)
+      if (!val) this.$emit('clear')
     },
-    clear() {
-      this.$emit('update:modelValue', '')
-      this.$emit('clear')
-      this.$emit('change', '')
+    disabledDate(date) {
+      const s = formatDate(date, '')
+      if (!s) return false
+      if (this.min && s < String(this.min).slice(0, 10)) return true
+      if (this.max && s > String(this.max).slice(0, 10)) return true
+      return false
     }
   }
 }
@@ -96,34 +104,10 @@ export default {
 }
 .app-dt__label i { color: var(--danger-600, #dc2626); font-style: normal; }
 .app-dt__hint-inline { font-weight: 400; color: var(--text-tertiary, #94a3b8); margin-left: 4px; }
-.app-dt__row { display: flex; align-items: center; gap: 6px; }
-.app-dt__control {
-  flex: 1; min-width: 0; height: 34px;
-  border: 1px solid var(--border-base, #e2e8f0);
-  border-radius: var(--radius-base, 6px);
-  background: var(--bg-card, #fff);
-  color: var(--text-primary, #0f172a);
-  font: inherit; font-size: var(--font-size-sm, 13px);
-  padding: 0 8px; outline: none;
+.app-dt__row { display: flex; align-items: center; min-width: 0; }
+.app-dt__row :deep(.el-date-editor.el-input) { --el-date-editor-width: 100%; width: 100%; }
+.app-dt.is-invalid :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--danger-600, #dc2626) inset;
 }
-.app-dt__control:focus {
-  border-color: var(--primary-500, #2563eb);
-  box-shadow: 0 0 0 3px var(--primary-50, #eff6ff);
-}
-.app-dt.is-disabled .app-dt__control {
-  background: var(--bg-section-blue, #f8fafc);
-  color: var(--text-tertiary, #94a3b8);
-  cursor: not-allowed;
-}
-.app-dt.is-invalid .app-dt__control { border-color: var(--danger-600, #dc2626); }
-.app-dt__clear {
-  flex-shrink: 0; height: 28px; padding: 0 8px;
-  border: 1px solid var(--border-base, #e2e8f0);
-  border-radius: 6px; background: #fff;
-  color: var(--text-secondary, #64748b);
-  font-size: 12px; cursor: pointer;
-}
-.app-dt__clear:hover { color: var(--danger-600, #dc2626); border-color: var(--danger-600, #dc2626); }
-.app-dt__placeholder, .app-dt__err { margin: 0; font-size: 12px; color: var(--text-tertiary, #94a3b8); }
-.app-dt__err { color: var(--danger-600, #dc2626); }
+.app-dt__err { margin: 0; font-size: 12px; color: var(--danger-600, #dc2626); }
 </style>

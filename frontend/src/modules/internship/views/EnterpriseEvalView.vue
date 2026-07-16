@@ -39,11 +39,8 @@
           </ul>
         </template>
         <template #aside-foot>
-          <div class="lv-pager">
-            <button type="button" class="mp-link" :disabled="page <= 1 || loading" @click="onPageChange(page - 1)">上一页</button>
-            <span class="mp-note">第 {{ page }} / 共 {{ pageCount }} 页</span>
-            <button type="button" class="mp-link" :disabled="page >= pageCount || loading" @click="onPageChange(page + 1)">下一页</button>
-          </div>
+          <AppPagination v-model:page="page" :page-size="pageSize" :total="total"
+                        :show-total="false" :show-size-changer="false" :disabled="loading" @change="load" />
         </template>
 
         <!-- 右栏：当前企业评价详情与审核操作 -->
@@ -110,7 +107,7 @@
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
@@ -142,7 +139,7 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview },
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -155,7 +152,6 @@ export default {
     }
   },
   computed: {
-    pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
     summaryMetrics() {
       // 仅在列表真实加载成功后展示服务端 total；loading / error 一律不展示
       if (this.loading || this.error) return []
@@ -193,10 +189,6 @@ export default {
     exportFn() { return enterpriseEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     reload() { this.page = 1; this.load() },
-    onPageChange(p) {
-      if (p < 1 || p > this.pageCount || p === this.page) return
-      this.page = p; this.load()
-    },
     async load() {
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
@@ -285,7 +277,6 @@ export default {
 .lv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .lv-item__name { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
 .lv-item__sub { margin-top: 2px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.lv-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 
 /* 右栏详情与固定操作区 */
 .lv-main { display: flex; flex-direction: column; min-height: 320px; }

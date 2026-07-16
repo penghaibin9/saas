@@ -17,20 +17,23 @@
             v-for="d in WEEKDAYS"
             :key="d.v"
             class="aa-grid__cell"
-            :class="{ 'is-editable': editable, 'is-conflict': isConflict(d.v, slot.slotNo) }"
+            :class="{ 'is-editable': editable, 'is-conflict': isConflict(d.v, slot.slotNo), 'is-drop-target': isDropTarget(d.v, slot.slotNo) }"
             @click="onCellClick(d.v, slot.slotNo, $event)"
+            @dragover.prevent="onDragOver(d.v, slot.slotNo)"
+            @dragleave="dropTarget = null"
+            @drop.prevent="onDrop(d.v, slot.slotNo)"
           >
             <div
               v-for="it in itemsAt(d.v, slot.slotNo)"
-              :key="(it.itemId || (it.courseName + it.weekday + it.slotNo)) + (it.source || '')"
+              :key="it.itemId || (it.courseName + it.weekday + it.slotNo)"
               class="aa-grid__item"
-              :class="{ 'is-enrolled': it.source === 'ENROLLED' }"
+              :class="{ 'is-dragging': dragging && dragging.itemId === it.itemId }"
+              :draggable="editable && !!it.itemId"
+              @dragstart="onDragStart(it, $event)"
+              @dragend="dragging = null; dropTarget = null"
               @click.stop="$emit('item-click', it)"
             >
-              <div class="aa-grid__course">
-                {{ it.courseName }}
-                <span v-if="it.source === 'ENROLLED'" class="aa-grid__tag">选修</span>
-              </div>
+              <div class="aa-grid__course">{{ it.courseName }}</div>
               <div class="aa-grid__meta">
                 <span v-if="it.teacherName">{{ it.teacherName }}</span>
                 <span v-if="it.classroom">@{{ it.classroom }}</span>
@@ -57,6 +60,8 @@
  * AaScheduleGrid — 周历课表网格（教务中心自建，不引第三方日历库，手册 D5）。
  * 列=周一至周日，行=作息节次（GET /time-slots）；单元格渲染课表项（课程/教师/教室/周次段/单双周）。
  * 只读 / 编辑两态：editable 时空格显示「＋」可点击（emit cell-click），课表项可点击（emit item-click）。
+ * 拖拽调格（对标商业教务图形化排课）：editable 时课表项可拖到任意格，emit item-move
+ * {item, weekday, slotNo}；冲突判定由后端同一检测器裁决（409 由调用方 toast），前端不做假校验。
  * 冲突高亮：conflict={weekday,slotNo} 时该格红框。
  */
 const WEEKDAYS = [
@@ -72,9 +77,9 @@ export default {
     editable: { type: Boolean, default: false },
     conflict: { type: Object, default: null }
   },
-  emits: ['cell-click', 'item-click'],
+  emits: ['cell-click', 'item-click', 'item-move'],
   data() {
-    return { WEEKDAYS }
+    return { WEEKDAYS, dragging: null, dropTarget: null }
   },
   methods: {
     itemsAt(weekday, slotNo) {
@@ -83,11 +88,31 @@ export default {
     isConflict(weekday, slotNo) {
       return this.conflict && Number(this.conflict.weekday) === weekday && Number(this.conflict.slotNo) === slotNo
     },
+    isDropTarget(weekday, slotNo) {
+      return this.dragging && this.dropTarget && this.dropTarget.weekday === weekday && this.dropTarget.slotNo === slotNo
+    },
     onCellClick(weekday, slotNo, e) {
       if (!this.editable) return
       // 点击到课表项内部由 item-click 处理，这里只处理空白格
       if (e.target.closest('.aa-grid__item')) return
       this.$emit('cell-click', { weekday, slotNo })
+    },
+    onDragStart(it, e) {
+      if (!this.editable || !it.itemId) return
+      this.dragging = it
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', String(it.itemId))
+    },
+    onDragOver(weekday, slotNo) {
+      if (this.dragging) this.dropTarget = { weekday, slotNo }
+    },
+    onDrop(weekday, slotNo) {
+      const it = this.dragging
+      this.dragging = null
+      this.dropTarget = null
+      if (!it) return
+      if (Number(it.weekday) === weekday && Number(it.slotNo) === slotNo) return
+      this.$emit('item-move', { item: it, weekday, slotNo })
     }
   }
 }
@@ -104,10 +129,11 @@ export default {
 .aa-grid__cell.is-editable { cursor: pointer; }
 .aa-grid__cell.is-editable:hover { background: var(--fill-50, #f7f8fa); }
 .aa-grid__cell.is-conflict { outline: 2px solid var(--danger-500, #ef4444); outline-offset: -2px; background: var(--danger-50, #fef2f2); }
+.aa-grid__cell.is-drop-target { outline: 2px dashed var(--primary-400, #60a5fa); outline-offset: -2px; background: var(--primary-50, #eff6ff); }
 .aa-grid__item { background: var(--primary-50, #eff6ff); border-left: 3px solid var(--primary-400, #60a5fa); border-radius: 4px; padding: 4px 6px; margin-bottom: 4px; cursor: pointer; }
-.aa-grid__item.is-enrolled { background: var(--success-50, #ecfdf5); border-left-color: var(--success-400, #34d399); }
+.aa-grid__item[draggable='true'] { cursor: grab; }
+.aa-grid__item.is-dragging { opacity: 0.4; }
 .aa-grid__course { font-size: 12px; font-weight: 500; color: var(--text-900, #1f2329); }
-.aa-grid__tag { display: inline-block; font-size: 10px; font-weight: 500; color: var(--success-600, #059669); background: var(--success-100, #d1fae5); border-radius: 3px; padding: 0 4px; margin-left: 4px; vertical-align: middle; }
 .aa-grid__meta { font-size: 11px; color: var(--text-600, #566073); display: flex; gap: 6px; }
 .aa-grid__weeks { font-size: 11px; color: var(--text-400, #8a9099); }
 .aa-grid__parity { color: var(--warning-600, #d97706); margin-left: 2px; }

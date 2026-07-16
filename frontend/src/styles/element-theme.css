@@ -1,0 +1,19 @@
+/**
+ * Element Plus 主题对齐 —— 仅日期选择器（AppDatePicker / AppDateTimePicker / AppDateRangePicker）内部使用。
+ * 把 el 的主题变量映射到本项目设计令牌，保证日历弹层与全站蓝色一致。
+ * 用 :root:root 提升优先级，确保覆盖 element 自带的 :root 默认值（打包后的 CSS 顺序不可控）。
+ */
+:root:root {
+  --el-color-primary: var(--primary-600, #2563eb);
+  --el-color-primary-light-3: var(--primary-500, #3b82f6);
+  --el-color-primary-light-5: #93c5fd;
+  --el-color-primary-light-7: #bfdbfe;
+  --el-color-primary-light-8: var(--primary-100, #dbeafe);
+  --el-color-primary-light-9: var(--primary-50, #eff6ff);
+  --el-color-primary-dark-2: var(--primary-700, #1d4ed8);
+  --el-border-radius-base: var(--radius-base, 6px);
+  --el-font-family: var(--font-family-base, inherit);
+  --el-text-color-regular: var(--text-primary, #0f172a);
+  --el-text-color-placeholder: var(--text-tertiary, #94a3b8);
+  --el-border-color: var(--border-base, #e2e8f0);
+}

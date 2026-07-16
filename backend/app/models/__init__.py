@@ -7,6 +7,7 @@ from app.models.student import StudentContact, StudentImportBatch, StudentProfil
 from app.models.approval import UnifiedTodo, WorkflowInstance, WorkflowTask  # noqa: F401
 from app.models.message import UnifiedMessage  # noqa: F401
 from app.models.notification_preference import NotificationPreference  # noqa: F401
+from app.models.user_preference import UserPreference  # noqa: F401
 from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401
 from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
@@ -106,6 +107,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaExamCourse, AaExamIncident,
                                          AaExamInvigilator, AaExamPatrol,
                                          AaExamRoom, AaExamRoomStudent,
+                                         AaGradeRecheck, AaWorkloadDeclaration,
                                          AaGradeRecord, AaGradeTask,
                                          AaGraduationAuditBatch,
                                          AaGraduationAuditResult, AaProgram,
@@ -121,7 +123,12 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaScheduleRule,
                                          AaSelectionBatch,
                                          AaTeacherAvailability,
+                                         AaGradeRecognition, AaGraduationCertificate,
+                                         AaLevelExam, AaLevelExamReg,
+                                         AaMajorSplitBatch, AaMajorSplitOption,
+                                         AaMajorSplitVolunteer,
                                          AaSelectionCourse, AaSelectionRecord,
+                                         AaSelectionRound,
                                          AaStatusChange, AaStudentCorrection,
                                          AaTeachingTask,
                                          AaTeachingTaskBatch, AaTerm,

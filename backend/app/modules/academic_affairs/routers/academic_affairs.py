@@ -24,6 +24,9 @@ def _require_student(user: dict = Depends(get_current_user)) -> dict:
         raise AppException("NO_PERMISSION", "仅学生本人可访问选课自助端点", http_status=403)
     return user
 from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_svc
+from app.modules.academic_affairs.services import academic_affairs_attendance_service as attendance_svc
+from app.modules.academic_affairs.services import academic_affairs_grade_recheck_service as recheck_svc
+from app.modules.academic_affairs.services import academic_affairs_workload_service as workload_svc
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
 from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
@@ -31,6 +34,12 @@ from app.modules.academic_affairs.services import academic_affairs_graduation_se
 from app.modules.academic_affairs.services import academic_affairs_org_service as org_svc
 from app.modules.academic_affairs.services import academic_affairs_program_service as prog_svc
 from app.modules.academic_affairs.services import academic_affairs_resource_service as resource_svc
+from app.modules.academic_affairs.services import academic_affairs_autoexam_service as autoexam_svc
+from app.modules.academic_affairs.services import academic_affairs_autoschedule_service as autosched_svc
+from app.modules.academic_affairs.services import academic_affairs_level_exam_service as level_exam_svc
+from app.modules.academic_affairs.services import academic_affairs_major_split_service as major_split_svc
+from app.modules.academic_affairs.services import academic_affairs_recognition_service as recog_svc
+from app.modules.academic_affairs.services import academic_affairs_selection_round_service as selection_round_svc
 from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as sched_change_svc
 from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
 from app.modules.academic_affairs.services import academic_affairs_scheduling_service as scheduling_svc
@@ -1248,6 +1257,16 @@ def schedule_import(body: ScheduleImportBody, batchId: int = Path(...), user=Dep
     return success(sched_svc.import_items(batchId, user, body.items), message="导入完成")
 
 
+class ScheduleMoveBody(BaseModel):
+    weekday: int = Field(..., ge=1, le=7)
+    slotNo: int = Field(..., ge=1)
+
+
+@router.put("/schedule-items/{itemId}/move", summary="拖拽调格（同一冲突检测器，冲突409原位不动）")
+def schedule_move_item(body: ScheduleMoveBody, itemId: int = Path(...), user=Depends(require_staff)):
+    return success(sched_svc.move_item(itemId, user, body), message="已调整")
+
+
 @router.post("/schedule-batches/{batchId}/pre-publish", summary="课表预发布")
 def schedule_pre_publish(batchId: int = Path(...), user=Depends(require_staff)):
     return success(sched_svc.pre_publish(batchId, user), message="已预发布")
@@ -1359,6 +1378,7 @@ class GradeTaskCreate(BaseModel):
     classId: Optional[str] = None
     credit: Optional[float] = None
     usualRatio: int = Field(30, ge=0, le=100, description="平时占比%")
+    midtermRatio: int = Field(0, ge=0, le=100, description="期中占比%(0=不启用期中)")
     finalRatio: int = Field(70, ge=0, le=100, description="期末占比%")
     passLine: int = Field(60, ge=0, le=100)
 
@@ -1366,6 +1386,7 @@ class GradeTaskCreate(BaseModel):
 class ScoreBody(BaseModel):
     studentId: str = Field(..., min_length=1)
     usualScore: Optional[int] = Field(None, ge=0, le=100)
+    midtermScore: Optional[int] = Field(None, ge=0, le=100)
     finalScore: Optional[int] = Field(None, ge=0, le=100)
     exceptionFlag: Optional[str] = Field(None, description="NORMAL/ABSENT/DEFERRED/EXEMPT")
 
@@ -1394,6 +1415,7 @@ class GradeReturnBody(BaseModel):
 
 class GradeChangeRequestBody(BaseModel):
     newUsualScore: Optional[int] = Field(None, ge=0, le=100)
+    newMidtermScore: Optional[int] = Field(None, ge=0, le=100)
     newFinalScore: Optional[int] = Field(None, ge=0, le=100)
     reason: str = Field(..., min_length=5, max_length=500)
     attachmentIds: Optional[list] = Field(default_factory=list)
@@ -1521,6 +1543,55 @@ def grade_change_academic_review(body: GradeChangeReviewBody, recordId: int = Pa
     return success(grade_svc.change_academic_review(recordId, user, body.action, body.reason or ""), message="已处理")
 
 
+# ── 成绩认定/课程替代（转专业/转学：原修课程替代现计划课程，审核通过写 source=RECOGNIZED）──
+class RecognitionSubmitBody(BaseModel):
+    sourceCourseName: str = Field(..., min_length=1, max_length=200)
+    sourceScore: int = Field(..., ge=0, le=100)
+    sourceCredit: Optional[float] = Field(None, ge=0, le=30)
+    sourceOrigin: Optional[str] = Field(None, max_length=300)
+    targetCourseId: Optional[str] = Field(None, description="课程库选择器；优先于 targetCourseName")
+    targetCourseName: Optional[str] = Field(None, max_length=200, description="手填目标课程（无选择器时）")
+    attachmentFileIds: Optional[list[str]] = Field(None, description="佐证附件 file_id 列表")
+    reason: Optional[str] = Field(None, max_length=500)
+    studentNo: Optional[str] = Field(None, description="教务代录时必填；学生自助忽略")
+
+
+class RecognitionReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE/REJECT")
+    reason: Optional[str] = Field("", max_length=500)
+
+
+@router.post("/grade-recognitions", summary="教务代录成绩认定申请")
+def recog_submit_staff(body: RecognitionSubmitBody,
+                       user=Depends(require_permission("academicAffairs.gradeRecognition.manage"))):
+    if not body.studentNo:
+        raise AppException("VALIDATION_ERROR", "教务代录必须提供学号")
+    return success(recog_svc.submit(user, body, student_no=body.studentNo), message="已提交认定申请")
+
+
+@router.get("/grade-recognitions", summary="成绩认定列表")
+def recog_list(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+               user=Depends(require_permission("academicAffairs.gradeRecognition.view"))):
+    items, total = recog_svc.list_all(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/grade-recognitions/{rid}/review", summary="教务审核（通过写 RECOGNIZED 成绩并刷新台账）")
+def recog_review(body: RecognitionReviewBody, rid: int = Path(...),
+                 user=Depends(require_permission("academicAffairs.gradeRecognition.manage"))):
+    return success(recog_svc.review(user, rid, body.action, body.reason or ""), message="已处理")
+
+
+@router.post("/grade-recognitions/student/submit", summary="学生自助提交认定申请")
+def recog_submit_student(body: RecognitionSubmitBody, user=Depends(_require_student)):
+    return success(recog_svc.submit(user, body), message="已提交认定申请")
+
+
+@router.get("/grade-recognitions/my", summary="我的认定申请")
+def recog_my(user=Depends(_require_student)):
+    return success({"items": recog_svc.my(user)})
+
+
 @router.get("/students/{studentId}/transcript", summary="学生成绩单（读侧）")
 def grade_transcript(studentId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.view"))):
     return success(grade_svc.transcript(studentId, user))
@@ -1544,9 +1615,89 @@ def grade_fail_list(term: Optional[str] = None, page: int = 1, pageSize: int = 5
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/grade-views/analysis", summary="成绩分析（分数段分布+及格率）")
-def grade_analysis(term: Optional[str] = None, user=Depends(require_staff)):
-    return success(grade_svc.grade_analysis(user, term))
+@router.get("/grade-views/analysis", summary="成绩分析（分数段+及格率+优秀率+平均分，可按课程/班级分组）")
+def grade_analysis(term: Optional[str] = None, dimension: Optional[str] = None,
+                   user=Depends(require_staff)):
+    return success(grade_svc.grade_analysis(user, term, dimension))
+
+
+class GradeAnalysisExportBody(BaseModel):
+    term: Optional[str] = None
+    dimension: str = "course"
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，写审计）")
+
+
+@router.post("/grade-views/analysis/export", summary="成绩分析统计表导出 xlsx（按课程/班级，水印+审计，同步下载）")
+def grade_analysis_export(body: GradeAnalysisExportBody,
+                          user=Depends(require_permission("academicAffairs.grade.view"))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = grade_svc.export_grade_analysis_xlsx(user, body.term, body.dimension, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=grade_analysis.xlsx"})
+
+
+# ═══════════ 课堂考勤（PC 只读查询/统计；教师逐生录入在移动端，正方 教学点名 2.4/查询 4.19 对标）═══════════
+@router.get("/attendance/sessions", summary="课堂考勤场次列表（PC 查询，按行政班/学期/类别筛选，数据范围收敛）")
+def attendance_sessions_list(classId: Optional[str] = None, termCode: Optional[str] = None,
+                             sessionType: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                             user=Depends(require_staff)):
+    items, total = attendance_svc.list_sessions(user, page, pageSize, classId, termCode, sessionType)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/attendance/sessions/{sessionId}", summary="课堂考勤场次详情+名单")
+def attendance_session_detail(sessionId: int = Path(...), user=Depends(require_staff)):
+    return success(attendance_svc.get_session(sessionId, user))
+
+
+@router.get("/attendance/stats", summary="跨堂次考勤统计（按学生汇总出勤/迟到/旷课/请假+缺勤率，正方4.19对标）")
+def attendance_stats_view(classId: Optional[str] = None, termCode: Optional[str] = None,
+                          sessionType: Optional[str] = None, user=Depends(require_staff)):
+    return success(attendance_svc.attendance_stats(user, classId, termCode, sessionType))
+
+
+# ═══════════ 成绩复查（学生发起在移动端；教务处复审在 PC，正方 学生端3.12/教师端3.11 对标）═══════════
+@router.get("/grade-rechecks", summary="成绩复查台账（教务处，按状态筛选）")
+def grade_recheck_list(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                       user=Depends(require_permission("academicAffairs.grade.view"))):
+    items, total = recheck_svc.list_all(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class GradeRecheckReviewBody(BaseModel):
+    action: str = Field(..., description="UPHOLD 维持 / ADJUST 调整 / REJECT 不予受理")
+    note: Optional[str] = Field("", max_length=500)
+    newScore: Optional[int] = Field(None, ge=0, le=100, description="ADJUST 时必填")
+
+
+@router.post("/grade-rechecks/{recheckId}/review", summary="成绩复查复审（维持/调整回写t_acad_grade+通知学生/不予受理）")
+def grade_recheck_review(body: GradeRecheckReviewBody, recheckId: int = Path(...),
+                         user=Depends(require_permission("academicAffairs.grade.publish"))):
+    return success(recheck_svc.review(user, recheckId, body.action, body.note, body.newScore))
+
+
+# ═══════════ 教师工作量申报（教师端申报在移动端；教务处审核在 PC，正方教师端1.18/1.19对标）═══════════
+@router.get("/workload-declarations", summary="工作量申报台账（教务处，按状态/学期筛选）")
+def workload_decl_list(status: Optional[str] = None, termCode: Optional[str] = None,
+                       page: int = 1, pageSize: int = 20,
+                       user=Depends(require_permission("academicAffairs.stats.view"))):
+    items, total = workload_svc.list_all(user, status, termCode, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class WorkloadReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE 通过 / REJECT 驳回")
+    note: Optional[str] = Field("", max_length=500)
+
+
+@router.post("/workload-declarations/{declId}/review", summary="工作量申报审核（通过计入统计/驳回）")
+def workload_decl_review(body: WorkloadReviewBody, declId: int = Path(...),
+                         user=Depends(require_permission("academicAffairs.stats.view"))):
+    return success(workload_svc.review(user, declId, body.action, body.note))
 
 
 @router.get("/grade-views/exception-list", summary="成绩异常清单（缺考/缓考/免修标记学生汇总，读侧下钻）")
@@ -1787,6 +1938,47 @@ def grad_college_review(body: GradReviewBody, resultId: int = Path(...),
 @router.post("/graduation-results/{resultId}/final", summary="毕业资格终审（结论→经单一入口写学籍，强制二次确认）")
 def grad_final(body: GradFinalBody, resultId: int = Path(...), user=Depends(require_permission(_GRAD_FINAL))):
     return success(grad_svc.academic_final(resultId, user, body.conclusion, body.confirm), message="已终审")
+
+
+# ── 毕业/结业证书管理（编号规则+批量生成+台账+发放+作废）──
+class CertGenerateBody(BaseModel):
+    prefix: str = Field(..., min_length=1, max_length=20, description="编号前缀(学校代码)")
+    year: str = Field(..., min_length=4, max_length=4, description="签发年份")
+    eRegPrefix: Optional[str] = Field(None, max_length=20, description="电子注册号前缀(空=不生成)")
+    issueDate: Optional[str] = Field(None, description="签发日期 YYYY-MM-DD")
+
+
+class CertVoidBody(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+@router.post("/graduation-batches/{batchId}/certificates/generate",
+             summary="按终审结论批量生成证书编号（毕业证/结业证，幂等跳过已有）")
+def cert_generate(body: CertGenerateBody, batchId: int = Path(...),
+                  user=Depends(require_permission("academicAffairs.graduationCert.manage"))):
+    r = grad_svc.generate_certificates(batchId, user, body)
+    return success(r, message=f"已生成 {r['created']} 张（跳过已有 {r['skipped']}）")
+
+
+@router.get("/graduation-certificates", summary="证书台账")
+def cert_list(status: Optional[str] = None, certType: Optional[str] = None,
+              batchId: Optional[str] = None, keyword: Optional[str] = None,
+              page: int = 1, pageSize: int = 50,
+              user=Depends(require_permission("academicAffairs.graduationCert.view"))):
+    items, total = grad_svc.list_certificates(user, status, certType, batchId, keyword, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/graduation-certificates/{certId}/issue", summary="登记发放（GENERATED→ISSUED）")
+def cert_issue(certId: int = Path(...),
+               user=Depends(require_permission("academicAffairs.graduationCert.manage"))):
+    return success(grad_svc.issue_certificate(certId, user), message="已登记发放")
+
+
+@router.post("/graduation-certificates/{certId}/void", summary="作废（原因≥5字；编号不回收）")
+def cert_void(body: CertVoidBody, certId: int = Path(...),
+              user=Depends(require_permission("academicAffairs.graduationCert.manage"))):
+    return success(grad_svc.void_certificate(certId, user, body.reason), message="已作废")
 
 
 # ══════════════ 教务统计（只读聚合，/academic-affairs/stats/*） ══════════════
@@ -2919,6 +3111,210 @@ def sel_archive_export(body: ExportPurposeBody, batchId: int = Path(...),
     return StreamingResponse(
         io.BytesIO(content), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=selection_archive.xlsx"})
+# ── 选课轮次与抽签（多轮次：预选抽签→正选先到先得→补退选；无轮次批次行为不变）──
+class SelectionRoundBody(BaseModel):
+    roundName: str = Field(..., min_length=1, max_length=100)
+    mode: Optional[str] = Field("FCFS", description="FCFS 先到先得 / LOTTERY 抽签")
+    allowEnroll: Optional[bool] = True
+    allowDrop: Optional[bool] = True
+
+
+@router.post("/selection/batches/{bid}/rounds", summary="新增选课轮次")
+def sel_round_create(body: SelectionRoundBody, bid: int = Path(...),
+                     user=Depends(require_permission(_SEL_RULE))):
+    return success(selection_round_svc.create_round(user, bid, body), message="已创建轮次")
+
+
+@router.get("/selection/batches/{bid}/rounds", summary="轮次列表")
+def sel_rounds(bid: int = Path(...), user=Depends(require_permission(_SEL_VIEW))):
+    return success({"items": selection_round_svc.list_rounds(user, bid)})
+
+
+@router.post("/selection/rounds/{rid}/open", summary="开启轮次（同批次同时仅一个 OPEN）")
+def sel_round_open(rid: int = Path(...), user=Depends(require_permission(_SEL_RULE))):
+    return success(selection_round_svc.open_round(user, rid), message="轮次已开启")
+
+
+@router.post("/selection/rounds/{rid}/close", summary="关闭轮次")
+def sel_round_close(rid: int = Path(...), user=Depends(require_permission(_SEL_RULE))):
+    return success(selection_round_svc.close_round(user, rid), message="轮次已关闭")
+
+
+@router.post("/selection/rounds/{rid}/draw", summary="抽签摇号（仅 CLOSED 的 LOTTERY 轮，一次性）")
+def sel_round_draw(rid: int = Path(...), user=Depends(require_permission(_SEL_RULE))):
+    r = selection_round_svc.draw_round(user, rid)
+    return success(r, message=f"摇号完成：中签 {r['totalWinners']}，未中签 {r['totalLosers']}")
+
+
+# ══════════════ 等级考务（/academic-affairs/level-exams/*；四六级/普通话/技能等级证书报名闭环） ══════════════
+class LevelExamBody(BaseModel):
+    examName: str = Field(..., min_length=1, max_length=200)
+    category: Optional[str] = Field("SKILL", description="CET/PUTONGHUA/SKILL/OTHER")
+    level: Optional[str] = Field(None, max_length=50)
+    examDate: Optional[str] = None
+    fee: Optional[float] = Field(None, ge=0)
+    passLine: Optional[int] = Field(None, ge=0, le=750)
+
+
+class LevelResultBody(BaseModel):
+    score: Optional[int] = Field(None, ge=0, le=750)
+    result: Optional[str] = Field(None, description="PASS/FAIL(结论制)")
+    certNo: Optional[str] = Field(None, max_length=100)
+
+
+@router.post("/level-exams", summary="建等级考试")
+def level_exam_create(body: LevelExamBody,
+                      user=Depends(require_permission("academicAffairs.levelExam.manage"))):
+    return success(level_exam_svc.create_exam(user, body), message="已创建")
+
+
+@router.get("/level-exams", summary="等级考试列表")
+def level_exams(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                user=Depends(require_permission("academicAffairs.levelExam.view"))):
+    items, total = level_exam_svc.list_exams(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/level-exams/{eid}/transition", summary="状态推进（OPEN 开放报名/CLOSE 截止/FINISH 完成）")
+def level_exam_transition(action: str, eid: int = Path(...),
+                          user=Depends(require_permission("academicAffairs.levelExam.manage"))):
+    return success(level_exam_svc.transition(user, eid, action), message="已推进")
+
+
+@router.get("/level-exams/{eid}/registrations", summary="报名名单（含缴费/成绩状态）")
+def level_exam_regs(eid: int = Path(...), status: Optional[str] = None,
+                    page: int = 1, pageSize: int = 100,
+                    user=Depends(require_permission("academicAffairs.levelExam.view"))):
+    items, total = level_exam_svc.list_regs(user, eid, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/level-exam-regs/{rid}/confirm-fee", summary="缴费确认（UNPAID→PAID）")
+def level_fee_confirm(rid: int = Path(...),
+                      user=Depends(require_permission("academicAffairs.levelExam.manage"))):
+    return success(level_exam_svc.confirm_fee(user, rid), message="已确认缴费")
+
+
+@router.post("/level-exam-regs/{rid}/result", summary="录入成绩（分数按合格线判/结论制直录；通过可填证书号）")
+def level_result(body: LevelResultBody, rid: int = Path(...),
+                 user=Depends(require_permission("academicAffairs.levelExam.manage"))):
+    return success(level_exam_svc.enter_result(user, rid, body), message="已录入")
+
+
+# ── 学生端 ──
+@router.post("/level-exams/{eid}/register", summary="学生报名等级考试")
+def level_student_register(eid: int = Path(...), user=Depends(_require_student)):
+    return success(level_exam_svc.student_register(user, eid), message="报名成功")
+
+
+@router.post("/level-exams/{eid}/cancel", summary="学生取消报名（截止前）")
+def level_student_cancel(eid: int = Path(...), user=Depends(_require_student)):
+    return success(level_exam_svc.student_cancel(user, eid), message="已取消报名")
+
+
+@router.get("/level-exams/my", summary="我的等级考试报名与成绩")
+def level_my(user=Depends(_require_student)):
+    return success({"items": level_exam_svc.my_regs(user)})
+
+
+# ══════════════ 专业分流（/academic-affairs/major-split/*；大类招生分流：志愿→绩点分配→调剂→写学籍） ══════════════
+_SPLIT_MANAGE = "academicAffairs.majorSplit.manage"
+_SPLIT_VIEW = "academicAffairs.majorSplit.view"
+
+
+class SplitBatchBody(BaseModel):
+    batchName: str = Field(..., min_length=1, max_length=200)
+    grade: str = Field(..., min_length=1, max_length=20)
+    sourceMajorId: Optional[str] = None
+    maxChoices: Optional[int] = Field(3, ge=1, le=10)
+
+
+class SplitOptionBody(BaseModel):
+    majorId: str = Field(..., min_length=1)
+    capacity: int = Field(..., ge=1)
+
+
+class SplitVolunteerBody(BaseModel):
+    choices: list[str] = Field(..., min_length=1, description="志愿序 majorId 数组")
+
+
+class SplitReassignBody(BaseModel):
+    majorId: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+@router.post("/major-split/batches", summary="建专业分流批次")
+def split_batch_create(body: SplitBatchBody, user=Depends(require_permission(_SPLIT_MANAGE))):
+    return success(major_split_svc.create_batch(user, body), message="已创建")
+
+
+@router.get("/major-split/batches", summary="分流批次列表")
+def split_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                  user=Depends(require_permission(_SPLIT_VIEW))):
+    items, total = major_split_svc.list_batches(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/major-split/batches/{bid}/options", summary="添加可选专业与容量")
+def split_option_add(body: SplitOptionBody, bid: int = Path(...),
+                     user=Depends(require_permission(_SPLIT_MANAGE))):
+    return success(major_split_svc.add_option(user, bid, body), message="已添加")
+
+
+@router.get("/major-split/batches/{bid}/options", summary="可选专业列表（含余量）")
+def split_options(bid: int = Path(...), user=Depends(require_permission(_SPLIT_VIEW))):
+    return success({"items": major_split_svc.list_options(user, bid)})
+
+
+@router.post("/major-split/batches/{bid}/open", summary="开放志愿填报")
+def split_open(bid: int = Path(...), user=Depends(require_permission(_SPLIT_MANAGE))):
+    return success(major_split_svc.open_batch(user, bid), message="已开放填报")
+
+
+@router.post("/major-split/batches/{bid}/close", summary="截止志愿")
+def split_close(bid: int = Path(...), user=Depends(require_permission(_SPLIT_MANAGE))):
+    return success(major_split_svc.close_batch(user, bid), message="已截止")
+
+
+@router.post("/major-split/batches/{bid}/allocate", summary="自动分配（绩点降序×志愿顺序；dryRun 试分）")
+def split_allocate(bid: int = Path(...), dryRun: bool = False,
+                   user=Depends(require_permission(_SPLIT_MANAGE))):
+    r = major_split_svc.allocate(user, bid, dry_run=dryRun)
+    msg = ("试分完成（未落库）" if dryRun
+           else f"已分配 {r['allocated']} 人，待调剂 {r['unallocated']} 人")
+    return success(r, message=msg)
+
+
+@router.get("/major-split/batches/{bid}/volunteers", summary="志愿与分配结果名单")
+def split_volunteers(bid: int = Path(...), status: Optional[str] = None,
+                     page: int = 1, pageSize: int = 100,
+                     user=Depends(require_permission(_SPLIT_VIEW))):
+    items, total = major_split_svc.list_volunteers(user, bid, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/major-split/volunteers/{vid}/reassign", summary="人工调剂（原因≥5字，容量守护）")
+def split_reassign(body: SplitReassignBody, vid: int = Path(...),
+                   user=Depends(require_permission(_SPLIT_MANAGE))):
+    return success(major_split_svc.reassign(user, vid, body.majorId, body.reason), message="已调剂")
+
+
+@router.post("/major-split/batches/{bid}/confirm", summary="确认分流（写学籍专业+逐生审计；待调剂未清零禁止）")
+def split_confirm(bid: int = Path(...), user=Depends(require_permission(_SPLIT_MANAGE))):
+    r = major_split_svc.confirm(user, bid)
+    return success(r, message=f"分流已生效 {r['confirmed']} 人")
+
+
+# ── 学生端 ──
+@router.post("/major-split/batches/{bid}/volunteer", summary="学生提交/修改分流志愿")
+def split_volunteer_submit(body: SplitVolunteerBody, bid: int = Path(...),
+                           user=Depends(_require_student)):
+    return success(major_split_svc.submit_volunteer(user, bid, body.choices), message="志愿已提交")
+
+
+@router.get("/major-split/my", summary="我的分流志愿与结果")
+def split_my(batchId: Optional[str] = None, user=Depends(_require_student)):
+    return success({"items": major_split_svc.my_volunteer(user, batchId)})
 
 
 # ══════════════ 考务管理（13B-SM-10，/academic-affairs/exam/*、/deferred-exams*） ══════════════
@@ -3063,6 +3459,33 @@ def exam_invig_add(body: InvigilatorBody, roomId: int = Path(...), user=Depends(
 @router.get("/exam/rooms/{roomId}/invigilators", summary="监考列表")
 def exam_invigs(roomId: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
     return success({"items": exam_svc.list_invigilators(user, roomId)})
+
+
+# ── 自动排考引擎（编排时间→切考场→铺座位→配监考；dryRun 只算不落）──
+class ExamAutoTimesBody(BaseModel):
+    dates: list[str] = Field(..., min_length=1, description="考试日期列表 YYYY-MM-DD")
+    sessions: list[dict] = Field(..., min_length=1, description="每日场次 [{start:'09:00',end:'11:00'}]")
+    maxPerDayPerClass: Optional[int] = Field(1, ge=1, le=4, description="同班每日最多场次")
+
+
+@router.post("/exam/batches/{bid}/auto-times", summary="自动编排考试时间（日期×场次网格；班级/教师不撞；dryRun 试排）")
+def exam_auto_times(body: ExamAutoTimesBody, bid: int = Path(...), dryRun: bool = False,
+                    user=Depends(require_permission(_EXAM_ARRANGE))):
+    r = autoexam_svc.auto_assign_times(user, bid, body, dry_run=dryRun)
+    msg = ("试排完成（未落库）" if dryRun else f"已定时 {r['assigned']} 门，无可用时段 {r['missed']} 门")
+    return success(r, message=msg)
+@router.post("/exam/batches/{bid}/auto-arrange", summary="自动排考（增量：已有考场的课程跳过）")
+def exam_auto_arrange(bid: int = Path(...), dryRun: bool = False,
+                      user=Depends(require_permission(_EXAM_ARRANGE))):
+    r = autoexam_svc.auto_arrange(user, bid, dry_run=dryRun)
+    msg = ("试排完成（未落库）" if dryRun
+           else f"已编排 {r['arrangedCourses']} 门，漏排 {r['missedCourses']} 门")
+    return success(r, message=msg)
+
+
+@router.delete("/exam/batches/{bid}/auto-arrange", summary="清除自动排考结果（仅 AUTO 考场，人工编排保留）")
+def exam_auto_clear(bid: int = Path(...), user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(autoexam_svc.clear_auto(user, bid), message="已清除自动排考结果")
 
 
 class PatrolBody(BaseModel):
@@ -3232,10 +3655,38 @@ def makeup_batch_create(body: MakeupBatchBody, user=Depends(require_permission(_
     return success(makeup_svc.create_makeup_batch(user, body), message="已创建")
 
 
-@router.get("/makeup/batches", summary="补考批次列表")
-def makeup_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+@router.get("/makeup/batches", summary="补考批次列表（kind 可筛 MAKEUP/CLEARANCE）")
+def makeup_batches(status: Optional[str] = None, kind: Optional[str] = None,
+                   page: int = 1, pageSize: int = 20,
                    user=Depends(require_permission(_MK_VIEW))):
-    items, total = makeup_svc.list_makeup_batches(user, status, page, pageSize)
+    items, total = makeup_svc.list_makeup_batches(user, status, page, pageSize, kind)
+    return success(paginate(items, total, page, pageSize))
+
+
+# ── 毕业清考（应届生未通过课程的最后考核机会；复用补考审核链与回写，source=CLEARANCE）──
+class ClearanceBatchBody(BaseModel):
+    batchName: str = Field(..., min_length=1, max_length=200)
+    targetGrades: list[str] = Field(..., min_length=1, description="限定毕业年级，如 ['2022']")
+    termCode: Optional[str] = None
+
+
+@router.post("/makeup/clearance/batches", summary="建毕业清考批次（限定毕业年级，计分 CAP60）")
+def clearance_batch_create(body: ClearanceBatchBody, user=Depends(require_permission(_MK_MANAGE))):
+    return success(makeup_svc.create_clearance_batch(user, body), message="已创建清考批次")
+
+
+@router.post("/makeup/clearance/batches/{bid}/scan", summary="自动圈定清考名单（最优成绩仍不及格的课程；dryRun 预览）")
+def clearance_scan(bid: int = Path(...), dryRun: bool = False,
+                   user=Depends(require_permission(_MK_MANAGE))):
+    r = makeup_svc.clearance_scan(user, bid, dry_run=dryRun)
+    msg = ("预览完成（未落库）" if dryRun else f"已圈定 {r['added']} 条（跳过已存在 {r['skipped']}）")
+    return success(r, message=msg)
+
+
+@router.get("/makeup/clearance/batches/{bid}/records", summary="清考批次名单")
+def clearance_records(bid: int = Path(...), page: int = 1, pageSize: int = 100,
+                      user=Depends(require_permission(_MK_VIEW))):
+    items, total = makeup_svc.clearance_records(user, bid, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -3728,6 +4179,29 @@ def schedule_adjust_item(body: AdjustItemBody, batchId: int = Path(...), itemId:
 @router.post("/schedule-batches/{batchId}/archive", summary="排课归档（13号卡：学期结束正式归档）")
 def schedule_archive(batchId: int = Path(...), user=Depends(require_permission(_SCHED_ARCHIVE))):
     return success(sched_svc.archive(batchId, user), message="已归档")
+# ── 自动排课引擎（参数→编排→漏排归因→迭代续排）──
+@router.get("/scheduling/rule-catalog", summary="排课参数说明书（供参数面板渲染）")
+def sched_rule_catalog(user=Depends(require_permission(_SCHED_VIEW))):
+    return success(autosched_svc.rule_catalog(user))
+
+
+@router.get("/scheduling/batches/{bid}/miss-report", summary="漏排数据分析（只读试排，不落库）")
+def sched_miss_report(bid: int = Path(...), user=Depends(require_permission(_SCHED_VIEW))):
+    return success(autosched_svc.miss_report(user, bid))
+
+
+@router.post("/scheduling/batches/{bid}/auto", summary="自动编排课表（增量续排；dryRun 只算不落）")
+def sched_auto(bid: int = Path(...), dryRun: bool = False,
+               user=Depends(require_permission(_SCHED_RULE))):
+    r = autosched_svc.auto_schedule(user, bid, dry_run=dryRun)
+    msg = ("试排完成（未落库）" if dryRun
+           else f"已排入 {r['placedSessions']} 节，漏排 {r['missedTasks']} 个任务")
+    return success(r, message=msg)
+
+
+@router.delete("/scheduling/batches/{bid}/auto", summary="清除自动排课结果（仅 AUTO 项，人工排课保留）")
+def sched_auto_clear(bid: int = Path(...), user=Depends(require_permission(_SCHED_RULE))):
+    return success(autosched_svc.clear_auto_items(user, bid), message="已清除自动排课结果")
 
 
 # ══════════════ 教学评价（13B，/academic-affairs/evaluation/*） ══════════════
@@ -3753,6 +4227,7 @@ class EvalBatchBody(BaseModel):
 
 class EvalGenTasksBody(BaseModel):
     teachingTaskIds: list[str] = Field(default_factory=list)
+    evaluatorType: str = Field("STUDENT", description="STUDENT/SELF/PEER/SUPERVISOR")
 
 
 class EvalSubmitBody(BaseModel):
@@ -3807,7 +4282,8 @@ def eval_batch_detail(bid: int = Path(...), user=Depends(require_permission(_EVA
 
 @router.post("/evaluation/batches/{bid}/tasks", summary="生成应评任务（挂教学任务）")
 def eval_gen_tasks(body: EvalGenTasksBody, bid: int = Path(...), user=Depends(require_permission(_EVAL_MANAGE))):
-    return success(evaluation_svc.generate_tasks(user, bid, body.teachingTaskIds), message="已生成")
+    return success(evaluation_svc.generate_tasks(user, bid, body.teachingTaskIds, body.evaluatorType),
+                   message="已生成")
 
 
 @router.get("/evaluation/batches/{bid}/tasks", summary="应评任务列表")

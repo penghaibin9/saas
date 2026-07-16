@@ -6,37 +6,17 @@
     data-scope-name="资助范围（学工处全校）"
     watermark-purpose="资助项目管理"
   >
+    <template #actions>
+      <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="openForm">
+        建项目
+      </AppPermissionButton>
+    </template>
+
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载资助项目..." @retry="load"
                     @back="$router.push('/admin/student-affairs/funding')">
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
-        <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="openForm">
-          建项目
-        </AppPermissionButton>
+      <div class="sa-grid sa-grid--metrics">
+        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
-
-      <AppSectionCard v-if="formVisible" title="新建资助项目">
-        <div class="pf-grid">
-          <label class="pf-field"><span>项目名称 *</span>
-            <input v-model.trim="form.projectName" class="pf-input" placeholder="如：国家励志奖学金" /></label>
-          <label class="pf-field"><span>项目类型 *</span>
-            <select v-model="form.projectType" class="pf-input">
-              <option value="SCHOLARSHIP">奖学金</option>
-              <option value="GRANT">助学金</option>
-            </select></label>
-          <label class="pf-field"><span>金额（元）</span>
-            <input v-model.number="form.amount" type="number" min="0" class="pf-input" placeholder="如：3300" /></label>
-          <label class="pf-field"><span>名额</span>
-            <input v-model.number="form.quota" type="number" min="0" class="pf-input" placeholder="如：50" /></label>
-        </div>
-        <p v-if="form.error" class="pf-error">{{ form.error }}</p>
-        <div class="pf-actions">
-          <button type="button" class="pf-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="save">保存</AppPermissionButton>
-        </div>
-      </AppSectionCard>
 
       <AppSectionCard title="项目列表">
         <div class="pf-filters">
@@ -56,13 +36,42 @@
             <tr v-if="!filtered.length"><td colspan="5" class="sa-empty">暂无资助项目，点右上「建项目」</td></tr>
           </tbody>
         </table>
+        <!-- 资助项目是学校级项目目录（数量级远小于申请/发放台账），后端 /funding/projects 虽支持 page/pageSize，
+             但项目总数统计卡依赖一次性拉取的完整列表；实际项目数不会达到需要分页浏览的规模，暂不引入 AppPagination。 -->
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 新建资助项目 -->
+    <AppDrawer v-model:visible="drawer.visible" title="新建资助项目">
+      <div class="sa-form">
+        <AppFormItem label="项目名称" required>
+          <AppTextInput v-model="drawer.form.projectName" placeholder="如：国家励志奖学金" :disabled="saving" />
+        </AppFormItem>
+        <AppFormItem label="项目类型" required>
+          <AppSelect v-model="drawer.form.projectType" :options="projectTypeOptions" :disabled="saving" />
+        </AppFormItem>
+        <div class="pf-grid2">
+          <AppFormItem label="金额（元）">
+            <AppNumberInput v-model="drawer.form.amount" :min="0" placeholder="如：3300" :disabled="saving" />
+          </AppFormItem>
+          <AppFormItem label="名额">
+            <AppNumberInput v-model="drawer.form.quota" :min="0" placeholder="如：50" :disabled="saving" />
+          </AppFormItem>
+        </div>
+        <AppInlineAlert v-if="drawer.errorMessage" type="danger" :description="drawer.errorMessage" />
+      </div>
+      <template #footer>
+        <button type="button" class="pf-btn" :disabled="saving" @click="drawer.visible = false">取消</button>
+        <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="save">保存</AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
+        AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextInput } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -71,14 +80,21 @@ const TYPES = [
   { key: 'SCHOLARSHIP', label: '奖学金' },
   { key: 'GRANT', label: '助学金' }
 ]
+const PROJECT_TYPE_OPTIONS = [{ label: '奖学金', value: 'SCHOLARSHIP' }, { label: '助学金', value: 'GRANT' }]
+
+function freshForm() {
+  return { projectName: '', projectType: 'GRANT', amount: null, quota: null }
+}
 
 export default {
   name: 'FundingProjectView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput,
+               AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', projects: [], activeType: '', typeFilters: TYPES,
-      formVisible: false, form: { projectName: '', projectType: 'GRANT', amount: null, quota: null, error: '' }
+      projectTypeOptions: PROJECT_TYPE_OPTIONS,
+      drawer: { visible: false, form: freshForm(), errorMessage: '' }
     }
   },
   computed: {
@@ -107,24 +123,25 @@ export default {
       this.loading = false
     },
     openForm() {
-      this.form = { projectName: '', projectType: 'GRANT', amount: null, quota: null, error: '' }
-      this.formVisible = true
+      this.drawer.form = freshForm()
+      this.drawer.errorMessage = ''
+      this.drawer.visible = true
     },
     async save() {
-      const m = this.form
-      if (!m.projectName) { m.error = '项目名称必填'; return }
-      m.error = ''
+      const f = this.drawer.form
+      if (!f.projectName) { this.drawer.errorMessage = '项目名称必填'; return }
+      this.drawer.errorMessage = ''
       this.saving = true
-      const body = { projectName: m.projectName, projectType: m.projectType }
-      if (m.amount != null && m.amount !== '') body.amount = Number(m.amount)
-      if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
+      const body = { projectName: f.projectName, projectType: f.projectType }
+      if (f.amount != null && f.amount !== '') body.amount = Number(f.amount)
+      if (f.quota != null && f.quota !== '') body.quota = Number(f.quota)
       const res = await studentAffairsApi.createFundingProject(body)
       if (res.code === 0) {
         toast.success('项目已创建')
-        this.formVisible = false
+        this.drawer.visible = false
         await this.load()
       } else {
-        m.error = res.message || '创建失败'
+        this.drawer.errorMessage = res.message || '创建失败'
       }
       this.saving = false
     },
@@ -135,19 +152,17 @@ export default {
 </script>
 
 <style scoped>
-.sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
-.pf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-3); }
-.pf-field { display: flex; flex-direction: column; gap: 6px; font-size: var(--font-size-sm); }
-.pf-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 8px 12px; }
-.pf-error { color: var(--danger-500, #dc2626); font-size: var(--font-size-sm); margin: 4px 0; }
-.pf-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
-.pf-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 8px 18px; cursor: pointer; }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .pf-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .pf-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .pf-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .pf-grid { grid-template-columns: 1fr; } }
+.sa-form { display: flex; flex-direction: column; gap: var(--space-1); }
+.pf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.pf-btn { height: 34px; padding: 0 var(--space-4); border-radius: var(--radius-base); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-base); cursor: pointer; }
+.pf-btn:hover { border-color: var(--border-dark); }
+.pf-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .pf-grid2 { grid-template-columns: 1fr; } }
 </style>

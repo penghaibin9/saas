@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{display:flex;flex-direction:column;gap:44px;padding:52px 24px 80px;align-items:center}
+.row{display:flex;gap:56px;flex-wrap:wrap;justify-content:center}
+.rowlb{font-size:15px;font-weight:800;color:#0f1e3d;letter-spacing:.02em;display:flex;align-items:center;gap:10px}
+.rowlb i{width:9px;height:9px;border-radius:3px;background:#1a56be}
+.cap{display:flex;flex-direction:column;align-items:center;gap:14px}
+.cap-lb{font-size:13px;color:#334155;font-weight:600}
+.cap-note{font-size:11px;color:#8494b5;text-align:center;line-height:1.6;max-width:340px}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f1f4f9;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+.scroll{flex:1;overflow-y:auto;position:relative}
+.scroll::-webkit-scrollbar{display:none}
+/* shared header chrome */
+.sb{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 12px 6px;font-size:15px;font-weight:600;color:#fff;position:relative;z-index:2}
+.sb-r{display:flex;align-items:center;gap:6px}
+.navbar{height:40px;display:flex;align-items:center;justify-content:center;position:relative;z-index:2}
+.navbar b{font-size:17px;font-weight:700;color:#fff;letter-spacing:.02em}
+.capsule{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:80px;height:30px;border-radius:15px;border:1px solid rgba(255,255,255,.5);display:flex;align-items:center}
+.capsule .c1{flex:1;display:flex;align-items:center;justify-content:center;gap:4px}
+.capsule .c1 i{width:4px;height:4px;border-radius:50%;background:#fff;display:block}
+.capsule .dv{width:1px;height:15px;background:rgba(255,255,255,.4)}
+.capsule .c2{flex:1;display:flex;align-items:center;justify-content:center}
+.capsule .ring{width:14px;height:14px;border-radius:50%;border:1.5px solid #fff;position:relative}
+.capsule .ring::after{content:'';position:absolute;inset:3px;border-radius:50%;border:1.5px solid #fff;border-right-color:transparent;border-bottom-color:transparent;transform:rotate(45deg)}
+/* hero (home) */
+.hero{position:relative;background:linear-gradient(162deg,#0e3a80 0%,#1a56be 60%,#2f76dd 128%);padding:0 20px 30px;overflow:hidden;flex-shrink:0}
+.hero::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 85%)}
+.horb{position:absolute;right:-60px;top:-50px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(255,255,255,.14),transparent 64%)}
+.greet{position:relative;z-index:2;display:flex;align-items:center;gap:13px;margin-top:14px}
+.ava{width:50px;height:50px;border-radius:15px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0}
+.greet-tx b{font-size:18px;color:#fff;font-weight:700;letter-spacing:.01em}
+.greet-tx p{margin:4px 0 0;font-size:12px;color:rgba(255,255,255,.8)}
+.greet-bell{margin-left:auto;position:relative;z-index:2;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center}
+.greet-bell b{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:#ff5a5a;border:1.5px solid #1a56be}
+.stats{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:20px;background:rgba(255,255,255,.14);border-radius:14px;overflow:hidden}
+.stat{padding:13px 6px;text-align:center}
+.stat b{display:block;font-size:20px;font-weight:800;color:#fff;letter-spacing:.02em}
+.stat span{font-size:11px;color:rgba(255,255,255,.8)}
+/* prof (me) */
+.prof{position:relative;background:linear-gradient(160deg,#0e3a80 0%,#1a56be 72%,#2f76dd 130%);padding:0 18px 22px;overflow:hidden;flex-shrink:0}
+.prof::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 88%)}
+.porb{position:absolute;right:-50px;top:-40px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(255,255,255,.14),transparent 64%)}
+.prow{position:relative;z-index:2;display:flex;align-items:center;gap:14px;margin-top:10px}
+.pava{width:62px;height:62px;border-radius:19px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#fff;flex-shrink:0}
+.pinfo{flex:1;min-width:0}
+.pinfo .nm{display:flex;align-items:center;gap:8px}
+.pinfo .nm b{font-size:20px;color:#fff;font-weight:700}
+.rtag{font-size:11px;color:#fff;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.3);padding:2px 9px;border-radius:8px}
+.pinfo p{margin:6px 0 0;font-size:12.5px;color:rgba(255,255,255,.82)}
+.pedit{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pstats{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);margin-top:20px;background:rgba(255,255,255,.14);border-radius:14px;overflow:hidden}
+.pstat{padding:12px 6px;text-align:center}
+.pstat+.pstat{border-left:1px solid rgba(255,255,255,.14)}
+.pstat b{display:block;font-size:19px;font-weight:800;color:#fff}
+.pstat span{font-size:11px;color:rgba(255,255,255,.8)}
+/* hd (msgs / service / approval) */
+.hd{position:relative;background:linear-gradient(160deg,#0e3a80 0%,#1a56be 78%,#2f76dd 130%);padding:0 18px 16px;overflow:hidden;flex-shrink:0}
+.hd::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 92%)}
+.search{position:relative;z-index:2;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.94);border-radius:11px;padding:10px 14px;margin-top:6px;color:#94a3b8;font-size:13px}
+/* cards / feature grid */
+.wrap{padding:14px 16px 96px}
+.card{background:#fff;border-radius:16px;padding:16px;margin-top:14px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.card:first-child{margin-top:0}
+.card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-hd b{font-size:14.5px;color:#0f1e3d;font-weight:700}
+.card-hd .more{font-size:12px;color:#94a3b8}
+.mgbtn{display:flex;align-items:center;gap:5px;font-size:12px;color:#1a56be;cursor:pointer;font-weight:600;background:#eaf1fe;padding:5px 11px;border-radius:15px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 4px}
+.gi{display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;cursor:pointer}
+.gi-ic{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700}
+.gi-lb{font-size:12px;color:#475569;white-space:nowrap;letter-spacing:-.01em;text-align:center}
+.gi.soon .gi-ic{filter:grayscale(1);opacity:.5}
+.gi.soon .gi-lb{color:#b3bccb}
+.gi.add .gi-ic{background:#fff;border:1.5px dashed #cbd5e1;color:#94a3b8}
+.gi.add .gi-lb{color:#94a3b8}
+.rm{position:absolute;top:-4px;left:calc(50% + 10px);width:18px;height:18px;border-radius:50%;background:#e64c4c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;font-weight:700;z-index:2}
+.soonbadge{position:absolute;top:-4px;left:calc(50% + 6px);font-size:9px;font-weight:700;color:#e8890c;background:#fff6e6;border:1px solid #fbd995;border-radius:5px;padding:0 4px;line-height:14px;z-index:2}
+.b1{background:linear-gradient(145deg,#2f76dd,#1a56be)}.b2{background:linear-gradient(145deg,#4c9af5,#2f76dd)}
+.b3{background:linear-gradient(145deg,#12b886,#0ca678)}.b4{background:linear-gradient(145deg,#f59f00,#f08c00)}
+.b5{background:linear-gradient(145deg,#7c6bf5,#6549e8)}.b6{background:linear-gradient(145deg,#f76a6a,#e64c4c)}
+.b7{background:linear-gradient(145deg,#22b0d6,#1495bd)}.b8{background:linear-gradient(145deg,#8a94a6,#6b7688)}
+.steps{display:flex;align-items:flex-start;justify-content:space-between;position:relative;padding:4px 2px 0}
+.steps::before{content:'';position:absolute;top:10px;left:22px;right:22px;height:2px;background:#e6ebf3}
+.step{display:flex;flex-direction:column;align-items:center;gap:7px;position:relative;z-index:1;flex:1}
+.dot{width:20px;height:20px;border-radius:50%;background:#e6ebf3;border:3px solid #fff;box-shadow:0 0 0 1px #e6ebf3}
+.step.done .dot{background:#1a56be;box-shadow:0 0 0 1px #1a56be}
+.step.now .dot{background:#12b886;box-shadow:0 0 0 3px rgba(18,184,134,.2)}
+.step span{font-size:11px;color:#94a3b8}
+.step.done span,.step.now span{color:#334155;font-weight:600}
+.todo{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f1f4f9}
+.todo:last-child{border-bottom:none}
+.todo-ic{width:38px;height:38px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff}
+.todo-tx{flex:1;min-width:0}
+.todo-tx b{display:block;font-size:13.5px;color:#0f1e3d;font-weight:600}
+.todo-tx p{margin:3px 0 0;font-size:11.5px;color:#94a3b8}
+.todo-tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;flex-shrink:0}
+.tg-red{background:#fff0f0;color:#e64c4c}.tg-amber{background:#fff6e6;color:#e8890c}.tg-blue{background:#eef4ff;color:#1a56be}
+.tg-green{background:#e7f8f1;color:#0ca678}.tg-slate{background:#eef1f6;color:#64748b}
+.notice{display:flex;align-items:center;gap:9px;background:#fff;border-radius:12px;padding:11px 14px;margin-top:14px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.notice .nt{font-size:10px;font-weight:700;color:#1a56be;background:#eef4ff;padding:3px 7px;border-radius:6px;flex-shrink:0}
+.notice p{margin:0;font-size:12.5px;color:#475569;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* me list */
+.lst{background:#fff;border-radius:16px;overflow:hidden;margin-top:14px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.lst:first-child{margin-top:0}
+.lst-t{font-size:12px;color:#94a3b8;font-weight:600;padding:14px 16px 4px}
+.li{display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #f4f6fa;cursor:pointer}
+.lst-t+.li{border-top:none}
+.li-ic{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.li b{flex:1;font-size:14px;color:#0f1e3d;font-weight:500}
+.li .val{font-size:12.5px;color:#94a3b8}
+.li .ch{color:#c3cde0;flex-shrink:0}
+.t-blue{background:#eaf1fe;color:#1a56be}.t-green{background:#e6f7f0;color:#0ca678}.t-amber{background:#fef3e2;color:#e8890c}
+.t-violet{background:#eeebfd;color:#6549e8}.t-gray{background:#eef1f6;color:#64748b}.t-cyan{background:#e4f5fa;color:#1495bd}
+.logout{width:100%;height:48px;background:#fff;border:none;border-radius:14px;margin-top:16px;color:#e64c4c;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.backdrop{position:absolute;inset:0;background:rgba(0,0,0,.42);z-index:20}
+.confirm{position:absolute;left:12px;right:12px;bottom:14px;z-index:25}
+.confirm-c{background:rgba(248,249,251,.98);border-radius:16px;overflow:hidden;text-align:center}
+.confirm-c .q{padding:18px 16px 16px;font-size:12.5px;color:#8494b5;line-height:1.5}
+.confirm-c .q b{display:block;font-size:15px;color:#0f1e3d;margin-bottom:5px}
+.confirm-c .act{border-top:1px solid #e9edf3;padding:15px;font-size:16px;color:#e64c4c;font-weight:600;cursor:pointer}
+.confirm-cancel{background:#fff;border-radius:16px;margin-top:8px;padding:16px;text-align:center;font-size:16px;color:#1a56be;font-weight:600;cursor:pointer}
+.toast{position:absolute;left:50%;top:46%;transform:translateX(-50%);background:rgba(15,23,42,.88);color:#fff;font-size:13px;padding:12px 20px;border-radius:12px;z-index:30}
+/* messages */
+.cats{display:flex;justify-content:space-between;padding:18px 22px 6px;background:#fff}
+.catq{display:flex;flex-direction:column;align-items:center;gap:8px;position:relative}
+.catq-ic{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#fff}
+.catq-lb{font-size:11.5px;color:#475569}
+.catq .bdg{position:absolute;top:-4px;right:2px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#e64c4c;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff}
+.c1c{background:linear-gradient(145deg,#2f76dd,#1a56be)}.c2c{background:linear-gradient(145deg,#12b886,#0ca678)}
+.c3c{background:linear-gradient(145deg,#f59f00,#f08c00)}.c4c{background:linear-gradient(145deg,#8a94a6,#6b7688)}.c5c{background:linear-gradient(145deg,#7c6bf5,#6549e8)}
+.listbar{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 8px}
+.listbar b{font-size:13px;color:#64748b;font-weight:600}
+.readall{display:flex;align-items:center;gap:4px;font-size:12px;color:#1a56be;cursor:pointer}
+.readall.done{color:#b6c0d0}
+.msgs{background:#fff}
+.msg{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid #f1f4f9;position:relative;cursor:pointer}
+.msg:last-child{border-bottom:none}
+.msg-ic{width:46px;height:46px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.msg-main{flex:1;min-width:0}
+.msg-top{display:flex;align-items:baseline;gap:8px}
+.msg-top b{font-size:14px;color:#0f1e3d;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-top span{font-size:11px;color:#b6c0d0;flex-shrink:0}
+.msg-main p{margin:5px 0 0;font-size:12.5px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdot{position:absolute;left:50px;top:12px;width:9px;height:9px;border-radius:50%;background:#e64c4c;border:1.5px solid #fff}
+.cbadge{position:absolute;left:48px;top:9px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#e64c4c;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff}
+/* service hall + approval */
+.subtabs{display:flex;gap:24px;padding:12px 16px 0;background:#fff}
+.subtab{position:relative;font-size:14px;color:#9ca3af;font-weight:500;padding-bottom:12px;cursor:pointer}
+.subtab.on{color:#1f2937;font-weight:600}
+.subtab .u{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:24px;height:3px;border-radius:2px;background:#1a56be}
+.subtab .bdg{position:absolute;top:-2px;right:-16px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#e64c4c;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.chips{display:flex;gap:8px;padding:14px 16px 0;overflow-x:auto}
+.chips::-webkit-scrollbar{display:none}
+.chip{font-size:12px;padding:6px 14px;border-radius:16px;background:#eef1f6;color:#64748b;border:none;cursor:pointer;white-space:nowrap;font-weight:600}
+.chip.on{background:#1a56be;color:#fff}
+.ap-h{display:flex;align-items:flex-start;gap:8px}
+.ap-h .apt{font-size:14.5px;color:#0f1e3d;font-weight:700}
+.urgent{font-size:10px;color:#fff;background:#e64c4c;padding:2px 6px;border-radius:5px;font-weight:600}
+.ap-type{font-size:12px;color:#64748b;margin-top:4px}
+.stu{display:flex;align-items:center;gap:8px;margin:12px 0}
+.stu-av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.stu-nm{font-size:12.5px;color:#334155}
+.stu-tm{margin-left:auto;font-size:11px;color:#94a3b8}
+.fields{background:#f8fafc;border-radius:11px;padding:6px 12px}
+.frw{display:flex;gap:12px;padding:6px 0}
+.frw .k{font-size:12px;color:#94a3b8;width:72px;flex-shrink:0}
+.frw .v{font-size:12.5px;color:#334155;flex:1}
+.flow{display:flex;margin:14px 0 4px}
+.fn{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;position:relative}
+.fn::before{content:'';position:absolute;top:5px;left:-50%;width:100%;height:2px;background:#e6ebf3;z-index:0}
+.fn:first-child::before{display:none}
+.fn.done::before{background:#12b886}
+.fn .fdot{width:12px;height:12px;border-radius:50%;background:#d1d9e6;z-index:1}
+.fn.done .fdot{background:#12b886}
+.fn.current .fdot{background:#1a56be;box-shadow:0 0 0 4px rgba(26,86,190,.16)}
+.fn .fname{font-size:11px;color:#64748b;text-align:center;line-height:1.3}
+.fn .ftime{font-size:9.5px;color:#94a3b8}
+.acts{display:flex;gap:9px;margin-top:14px}
+.ab{flex:1;height:40px;border-radius:11px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;border:none}
+.ab.ghost{background:#eef1f6;color:#475569}
+.ab.reject{background:#fff;border:1px solid #f2b8b8;color:#e64c4c}
+.ab.approve{background:linear-gradient(145deg,#2f76dd,#1a56be);color:#fff}
+.donebar{margin-top:12px;padding:9px;border-radius:11px;text-align:center;font-size:13px;font-weight:600}
+.db-green{background:#e7f8f1;color:#0ca678}.db-red{background:#fff0f0;color:#e64c4c}.db-slate{background:#eef1f6;color:#64748b}
+.empty{text-align:center;padding:60px 20px;color:#94a3b8;font-size:13px;line-height:1.7}
+/* role switch */
+.rolepill{position:relative;z-index:2;display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);padding:6px 11px 6px 8px;border-radius:20px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-top:12px}
+.rolepill .rdot{width:6px;height:6px;border-radius:50%;background:#3ddc84;flex-shrink:0}
+.rtag.rolepill-sm{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.rolesheet-wrap{position:absolute;left:12px;right:12px;bottom:14px;z-index:25}
+.rolesheet{background:#fff;border-radius:18px;overflow:hidden}
+.rolesheet-hd{padding:16px 18px 8px;font-size:12px;color:#94a3b8;font-weight:600}
+.rolesheet-row{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid #f4f6fa;cursor:pointer}
+.rolesheet-row:first-child{border-top:none}
+.rolesheet-ic{width:36px;height:36px;border-radius:10px;background:#eaf1fe;color:#1a56be;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0}
+.rolesheet-row b{flex:1;font-size:13.5px;color:#0f1e3d;font-weight:600}
+.rolesheet-scope{display:block;font-size:11px;color:#94a3b8;margin-top:2px;font-weight:400}
+.rolesheet-cur{font-size:10.5px;color:#0d9488;background:#e6f6f4;padding:2px 8px;border-radius:20px;font-weight:600;flex-shrink:0}
+.rolesheet-cancel{background:#fff;border-radius:16px;margin-top:8px;padding:15px;text-align:center;font-size:15px;color:#1a56be;font-weight:600;cursor:pointer}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:76px;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-top:1px solid #eef1f6;display:flex;padding-bottom:16px;z-index:5}
+.tabi{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:#9aa5b6}
+.tabi.on{color:#1a56be}
+.tabi span{font-size:10.5px;font-weight:500}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:134px;height:5px;border-radius:3px;background:#0f172a;opacity:.75;z-index:6}
+</style></helmet>
+<div class="stage">
+
+<div class="rowlb"><i></i>Tab 1 · 首页 / 工作台</div>
+<div class="row">
+<div class="cap"><div class="cap-lb">学生端 · 首页</div>
+<div class="phone"><div class="screen"><div class="scroll">
+<div class="hero"><div class="horb"></div>
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="greet"><div class="ava">李</div><div class="greet-tx"><b>下午好，李思远</b><p>软件学院 · 软件2201班 · 学号 2022130118</p></div><div class="greet-bell"><b></b><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M6 8a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path d="M10 19a2 2 0 004 0"></path></svg></div></div>
+<div class="stats"><div class="stat"><b>4.32</b><span>学分绩点</span></div><div class="stat"><b>26</b><span>本学期学分</span></div><div class="stat"><b>96%</b><span>出勤率</span></div></div>
+</div>
+<div class="wrap">
+<div class="notice"><span class="nt">通知</span><p>关于2026届毕业设计中期检查安排的通知</p></div>
+<div class="card"><div class="card-hd"><b>常用服务</b><span class="more">全部 ›</span></div>
+<div class="grid">
+<div class="gi"><div class="gi-ic b1"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></div><div class="gi-lb">我的课表</div></div>
+<div class="gi"><div class="gi-ic b2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h6M9 8h3"></path></svg></div><div class="gi-lb">成绩查询</div></div>
+<div class="gi"><div class="gi-ic b3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0116 5v2"></path></svg></div><div class="gi-lb">实习管理</div></div>
+<div class="gi"><div class="gi-ic b5"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><div class="gi-lb">毕业设计</div></div>
+<div class="gi"><div class="gi-ic b4"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M8 6h10M8 12h10M8 18h10M4 6h.01M4 12h.01M4 18h.01"></path></svg></div><div class="gi-lb">请假销假</div></div>
+<div class="gi"><div class="gi-ic b7"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="5" width="18" height="13" rx="2.5"></rect><path d="M3 10h18M7 14h4"></path></svg></div><div class="gi-lb">校园卡</div></div>
+<div class="gi"><div class="gi-ic b6"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 1.5"></path></svg></div><div class="gi-lb">缴费中心</div></div>
+<div class="gi"><div class="gi-ic b8"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="6" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="18" cy="12" r="1.6"></circle></svg></div><div class="gi-lb">更多</div></div>
+</div></div>
+<div class="card"><div class="card-hd"><b>我的学业全周期</b><span class="more">大二 · 在读</span></div>
+<div class="steps"><div class="step done"><div class="dot"></div><span>入学</span></div><div class="step done"><div class="dot"></div><span>培养方案</span></div><div class="step now"><div class="dot"></div><span>课程在读</span></div><div class="step"><div class="dot"></div><span>顶岗实习</span></div><div class="step"><div class="dot"></div><span>毕业设计</span></div></div>
+</div>
+<div class="card"><div class="card-hd"><b>待办事项</b><span class="more">3 项待处理</span></div>
+<div class="todo"><div class="todo-ic b3"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 13h6M9 17h4"></path></svg></div><div class="todo-tx"><b>实习周报（第 6 周）待提交</b><p>截止 06-15 24:00</p></div><span class="todo-tag tg-red">去提交</span></div>
+<div class="todo"><div class="todo-ic b5"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path></svg></div><div class="todo-tx"><b>毕业设计中期检查材料</b><p>导师：王建国 · 待上传</p></div><span class="todo-tag tg-amber">待上传</span></div>
+<div class="todo"><div class="todo-ic b1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></div><div class="todo-tx"><b>下学期选课即将开放</b><p>06-20 10:00 开始</p></div><span class="todo-tag tg-blue">查看</span></div>
+</div>
+</div>
+</div>
+<div class="tabbar"><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>首页</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>服务</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 工作台</div>
+<div class="phone"><div class="screen"><div class="scroll">
+<div class="hero"><div class="horb"></div>
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="greet"><div class="ava">王</div><div class="greet-tx"><b>下午好，王建国 老师</b><p>软件学院</p></div><div class="greet-bell"><b></b><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M6 8a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path d="M10 19a2 2 0 004 0"></path></svg></div></div>
+<div class="rolepill" onClick="{{ roleWb.openFn }}"><span class="rdot"></span>当前身份：{{ tRoleLabel }}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg></div>
+<div class="stats"><div class="stat"><b>128</b><span>我的学生</span></div><div class="stat"><b>12</b><span>待审批</span></div><div class="stat"><b>8</b><span>待批阅</span></div></div>
+</div>
+<sc-if value="{{ roleWb.isOpen }}" hint-placeholder-val="{{ false }}">
+<div class="backdrop" onClick="{{ roleWb.close }}"></div>
+<div class="rolesheet-wrap"><div class="rolesheet"><div class="rolesheet-hd">切换工作身份</div>
+<sc-for list="{{ teacherRoles }}" as="r" hint-placeholder-count="6"><div class="rolesheet-row" onClick="{{ r.onPick }}"><div class="rolesheet-ic">{{ r.icon }}</div><div><b>{{ r.label }}</b><span class="rolesheet-scope">{{ r.scope }}</span></div><sc-if value="{{ r.current }}" hint-placeholder-val="{{ false }}"><span class="rolesheet-cur">当前</span></sc-if></div></sc-for>
+</div>
+<div class="rolesheet-cancel" onClick="{{ roleWb.close }}">取消</div></div>
+</sc-if>
+<div class="wrap">
+<div class="notice"><span class="nt">教务</span><p>请于本周五前完成学生实习成绩录入</p></div>
+<div class="card"><div class="card-hd"><b>教学管理</b><span class="more">全部 ›</span></div>
+<div class="grid">
+<div class="gi"><div class="gi-ic b1"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0"></path><path d="M16 6a3 3 0 010 6M17.5 19a5.5 5.5 0 00-3-4.9"></path></svg></div><div class="gi-lb">学生管理</div></div>
+<div class="gi"><div class="gi-ic b4"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 6h10M4 12h10M4 18h6"></path><path d="M17 15l2.2 2.2L23 13"></path></svg></div><div class="gi-lb">请假审批</div></div>
+<div class="gi"><div class="gi-ic b3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0116 5v2"></path><path d="M9.5 13.5l2 2 3.5-3.5"></path></svg></div><div class="gi-lb">实习审核</div></div>
+<div class="gi"><div class="gi-ic b5"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><div class="gi-lb">毕设指导</div></div>
+<div class="gi"><div class="gi-ic b2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h6"></path><path d="M14 3v4h4"></path></svg></div><div class="gi-lb">成绩录入</div></div>
+<div class="gi"><div class="gi-ic b7"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4M8.5 14l2 2 3.5-3.5"></path></svg></div><div class="gi-lb">考勤管理</div></div>
+<div class="gi"><div class="gi-ic b6"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="gi-lb">通知发布</div></div>
+<div class="gi"><div class="gi-ic b8"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg></div><div class="gi-lb">数据看板</div></div>
+</div></div>
+<div class="card"><div class="card-hd"><b>班级全周期概览</b><span class="more">软件2201班</span></div>
+<div class="steps"><div class="step done"><div class="dot"></div><span>在籍 48</span></div><div class="step done"><div class="dot"></div><span>选课完成</span></div><div class="step now"><div class="dot"></div><span>实习中 32</span></div><div class="step"><div class="dot"></div><span>毕设 16</span></div><div class="step"><div class="dot"></div><span>待毕业</span></div></div>
+</div>
+<div class="card"><div class="card-hd"><b>待我审批</b><span class="more">12 项待处理</span></div>
+<div class="todo"><div class="todo-ic b3"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 13h6"></path></svg></div><div class="todo-tx"><b>5 份实习周报待审核</b><p>软件2201班 · 顶岗实习</p></div><span class="todo-tag tg-red">去审核</span></div>
+<div class="todo"><div class="todo-ic b4"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 6h10M4 12h8"></path><path d="M17 15l2 2 3-3.5"></path></svg></div><div class="todo-tx"><b>3 条学生请假待批</b><p>含 1 条病假申请</p></div><span class="todo-tag tg-amber">待批</span></div>
+<div class="todo"><div class="todo-ic b5"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path></svg></div><div class="todo-tx"><b>毕设中期检查待评阅</b><p>本组 16 人 · 已提交 11</p></div><span class="todo-tag tg-blue">评阅</span></div>
+</div>
+</div>
+</div>
+<div class="tabbar"><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>工作台</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>审批</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+<div class="rowlb"><i></i>Tab 2 · 服务 / 审批（重新设计）</div>
+<div class="row">
+<div class="cap"><div class="cap-lb">学生端 · 服务大厅</div>
+<div class="cap-note">按教务/实习/毕设/学工分中心组织；配置驱动，管理模式下可移除/新增服务项。</div>
+<div class="phone"><div class="screen">
+<div class="hd">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>服务大厅</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>搜索服务、课程、老师</div>
+</div>
+<div class="scroll"><div class="wrap" style="padding-top:0">
+<sc-for list="{{ svcCenters }}" as="c" hint-placeholder-count="4">
+<div class="card">
+<div class="card-hd"><b>{{ c.title }}</b><div class="mgbtn" onClick="{{ c.onManage }}">{{ c.manageLabel }}</div></div>
+<div class="grid">
+<sc-for list="{{ c.items }}" as="it" hint-placeholder-count="4">
+<div class="{{ it.cls }}" onClick="{{ it.onTap }}"><sc-if value="{{ it.showRemove }}" hint-placeholder-val="{{ false }}"><span class="rm">×</span></sc-if><sc-if value="{{ it.soon }}" hint-placeholder-val="{{ false }}"><span class="soonbadge">建设中</span></sc-if><div class="gi-ic {{ it.grad }}">{{ it.icon }}</div><div class="gi-lb">{{ it.label }}</div></div>
+</sc-for>
+<sc-if value="{{ c.manage }}" hint-placeholder-val="{{ false }}"><div class="gi add" onClick="{{ c.onAdd }}"><div class="gi-ic">＋</div><div class="gi-lb">新增</div></div></sc-if>
+</div>
+</div>
+</sc-for>
+</div></div>
+<sc-if value="{{ svcToast }}" hint-placeholder-count="0"><div class="toast">{{ svcToast }}</div></sc-if>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>首页</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>服务</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 审批中心</div>
+<div class="cap-note">待审批/已审批/我发起的三个子 Tab；卡片带学生信息、字段详情与审批流，操作后即时呈现结果。</div>
+<div class="phone"><div class="screen">
+<div class="hd">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>审批中心</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>搜索学生、审批单号</div>
+<div class="rolepill" onClick="{{ roleAp.openFn }}" style="margin-top:10px"><span class="rdot"></span>当前身份：{{ tRoleLabel }}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg></div>
+</div>
+<sc-if value="{{ roleAp.isOpen }}" hint-placeholder-val="{{ false }}">
+<div class="backdrop" onClick="{{ roleAp.close }}"></div>
+<div class="rolesheet-wrap"><div class="rolesheet"><div class="rolesheet-hd">切换工作身份</div>
+<sc-for list="{{ teacherRoles }}" as="r" hint-placeholder-count="6"><div class="rolesheet-row" onClick="{{ r.onPick }}"><div class="rolesheet-ic">{{ r.icon }}</div><div><b>{{ r.label }}</b><span class="rolesheet-scope">{{ r.scope }}</span></div><sc-if value="{{ r.current }}" hint-placeholder-val="{{ false }}"><span class="rolesheet-cur">当前</span></sc-if></div></sc-for>
+</div>
+<div class="rolesheet-cancel" onClick="{{ roleAp.close }}">取消</div></div>
+</sc-if>
+<div class="subtabs"><div class="{{ apSub.pendingCls }}" onClick="{{ apSub.setPending }}">待审批<span class="bdg">{{ apPendingCount }}</span><sc-if value="{{ apSub.isPending }}" hint-placeholder-val="{{ true }}"><span class="u"></span></sc-if></div><div class="{{ apSub.doneCls }}" onClick="{{ apSub.setDone }}">已审批<sc-if value="{{ apSub.isDone }}" hint-placeholder-val="{{ false }}"><span class="u"></span></sc-if></div><div class="{{ apSub.mineCls }}" onClick="{{ apSub.setMine }}">我发起的<sc-if value="{{ apSub.isMine }}" hint-placeholder-val="{{ false }}"><span class="u"></span></sc-if></div></div>
+<div class="scroll" style="background:#f9fafb">
+<sc-if value="{{ apSub.isPending }}" hint-placeholder-val="{{ true }}">
+<div class="chips">
+<sc-for list="{{ apChips }}" as="ch" hint-placeholder-count="3"><div class="{{ ch.cls }}" onClick="{{ ch.onClick }}">{{ ch.label }}</div></sc-for>
+</div>
+<div class="wrap" style="padding-top:6px">
+<sc-for list="{{ apList }}" as="a" hint-placeholder-count="3">
+<div class="card">
+<div class="card-hd" style="align-items:flex-start"><div class="ap-h"><span class="apt">{{ a.title }}</span><sc-if value="{{ a.urgent }}" hint-placeholder-val="{{ false }}"><span class="urgent">加急</span></sc-if></div><span class="todo-tag {{ a.statusTagCls }}">{{ a.statusLabel }}</span></div>
+<div class="ap-type">{{ a.type }}</div>
+<div class="stu"><span class="stu-av t-blue">{{ a.avatar }}</span><span class="stu-nm">{{ a.student }} · {{ a.className }}</span><span class="stu-tm">提交 {{ a.submitTimeShort }}</span></div>
+<div class="fields"><sc-for list="{{ a.fields }}" as="f" hint-placeholder-count="3"><div class="frw"><span class="k">{{ f.label }}</span><span class="v">{{ f.value }}</span></div></sc-for></div>
+<div class="flow"><sc-for list="{{ a.flow }}" as="n" hint-placeholder-count="3"><div class="{{ n.cls }}"><div class="fdot"></div><span class="fname">{{ n.node }}</span><span class="ftime">{{ n.time }}</span></div></sc-for></div>
+<sc-if value="{{ a.pending }}" hint-placeholder-val="{{ true }}"><div class="acts"><button class="ab ghost" onClick="{{ a.onReturn }}">退回</button><button class="ab reject" onClick="{{ a.onReject }}">驳回</button><button class="ab approve" onClick="{{ a.onApprove }}">通过</button></div></sc-if>
+<sc-if value="{{ a.doneShow }}" hint-placeholder-val="{{ false }}"><div class="donebar {{ a.doneCls }}">{{ a.doneText }}</div></sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ apSub.isDone }}" hint-placeholder-val="{{ false }}"><div class="empty">处理过的审批会显示在这里，<br>方便追溯审批意见与时间。</div></sc-if>
+<sc-if value="{{ apSub.isMine }}" hint-placeholder-val="{{ false }}"><div class="empty">你自己发起的申请（如请假、用章）<br>会显示在这里。</div></sc-if>
+</div>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>工作台</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg><span>审批</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+<div class="rowlb"><i></i>Tab 3 · 消息</div>
+<div class="row">
+<div class="cap"><div class="cap-lb">学生端 · 消息中心</div>
+<div class="phone"><div class="screen">
+<div class="hd">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>消息</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>搜索通知、消息</div>
+</div>
+<div class="scroll">
+<div class="cats">
+<div class="catq"><sc-if value="{{ msgAUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">3</span></sc-if><div class="catq-ic c1c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="catq-lb">通知公告</div></div>
+<div class="catq"><sc-if value="{{ msgAUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">2</span></sc-if><div class="catq-ic c1c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></div><div class="catq-lb">教务提醒</div></div>
+<div class="catq"><sc-if value="{{ msgAUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">1</span></sc-if><div class="catq-ic c2c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0116 5v2"></path></svg></div><div class="catq-lb">实习毕设</div></div>
+<div class="catq"><div class="catq-ic c4c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L16.2 3H11.8l-.4 2.5a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 005 12"></path></svg></div><div class="catq-lb">系统消息</div></div>
+</div>
+<div class="listbar"><b>最近消息</b><div class="{{ msgAReadCls }}" onClick="{{ setMsgARead }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"></path></svg>全部已读</div></div>
+<div class="msgs">
+<div class="msg"><sc-if value="{{ msgAUnread }}" hint-placeholder-val="{{ true }}"><span class="mdot"></span></sc-if><div class="msg-ic t-blue"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="msg-main"><div class="msg-top"><b>教务处通知</b><span>09:20</span></div><p>关于2026届毕业设计中期检查安排的通知</p></div></div>
+<div class="msg"><sc-if value="{{ msgAUnread }}" hint-placeholder-val="{{ true }}"><span class="mdot"></span></sc-if><div class="msg-ic t-blue"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></div><div class="msg-main"><div class="msg-top"><b>选课提醒</b><span>昨天</span></div><p>下学期选课将于 06-20 10:00 开放，请及时选课</p></div></div>
+<div class="msg"><sc-if value="{{ msgAUnread }}" hint-placeholder-val="{{ true }}"><span class="mdot"></span></sc-if><div class="msg-ic t-green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h4"></path></svg></div><div class="msg-main"><div class="msg-top"><b>实习管理</b><span>昨天</span></div><p>你的第 6 周实习周报即将截止（06-15 24:00）</p></div></div>
+<div class="msg"><div class="msg-ic t-amber"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0"></path><path d="M16 6a3 3 0 010 6"></path></svg></div><div class="msg-main"><div class="msg-top"><b>辅导员 · 王老师</b><span>周一</span></div><p>本周班会时间调整为周三下午，请相互转告</p></div></div>
+<div class="msg"><div class="msg-ic t-violet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><div class="msg-main"><div class="msg-top"><b>毕设导师 · 王建国</b><span>周一</span></div><p>你的开题报告已通过，请按计划推进中期工作</p></div></div>
+<div class="msg"><div class="msg-ic t-gray"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></div><div class="msg-main"><div class="msg-top"><b>系统消息</b><span>06-01</span></div><p>你的登录密码已于近期更新，请妥善保管</p></div></div>
+</div>
+</div>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>首页</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>服务</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 消息中心</div>
+<div class="phone"><div class="screen">
+<div class="hd">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>消息</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>搜索通知、学生、消息</div>
+</div>
+<div class="scroll">
+<div class="cats">
+<div class="catq"><sc-if value="{{ msgBUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">12</span></sc-if><div class="catq-ic c1c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg></div><div class="catq-lb">待办审批</div></div>
+<div class="catq"><sc-if value="{{ msgBUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">2</span></sc-if><div class="catq-ic c1c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="catq-lb">教务通知</div></div>
+<div class="catq"><sc-if value="{{ msgBUnread }}" hint-placeholder-val="{{ true }}"><span class="bdg">5</span></sc-if><div class="catq-ic c5c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0M16 6a3 3 0 010 6"></path></svg></div><div class="catq-lb">学生消息</div></div>
+<div class="catq"><div class="catq-ic c4c"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L16.2 3H11.8l-.4 2.5a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 005 12"></path></svg></div><div class="catq-lb">系统消息</div></div>
+</div>
+<div class="listbar"><b>最近消息</b><div class="{{ msgBReadCls }}" onClick="{{ setMsgBRead }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"></path></svg>全部已读</div></div>
+<div class="msgs">
+<div class="msg"><sc-if value="{{ msgBUnread }}" hint-placeholder-val="{{ true }}"><span class="cbadge">5</span></sc-if><div class="msg-ic t-green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg></div><div class="msg-main"><div class="msg-top"><b>审批提醒</b><span>09:35</span></div><p>5 份实习周报、3 条请假待你审批</p></div></div>
+<div class="msg"><sc-if value="{{ msgBUnread }}" hint-placeholder-val="{{ true }}"><span class="mdot"></span></sc-if><div class="msg-ic t-blue"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5h16v10H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg></div><div class="msg-main"><div class="msg-top"><b>教务处通知</b><span>08:50</span></div><p>请于本周五前完成学生实习成绩录入</p></div></div>
+<div class="msg"><sc-if value="{{ msgBUnread }}" hint-placeholder-val="{{ true }}"><span class="mdot"></span></sc-if><div class="msg-ic t-violet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0M16 6a3 3 0 010 6"></path></svg></div><div class="msg-main"><div class="msg-top"><b>陈晓（软件2201）</b><span>昨天</span></div><p>王老师，我的毕设中期材料已提交，麻烦评阅</p></div></div>
+<div class="msg"><div class="msg-ic t-violet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 3v4M17 3v4M3 10h18"></path></svg></div><div class="msg-main"><div class="msg-top"><b>软件2201班级群</b><span>昨天</span></div><p>刘洋：老师，实习单位需要一份在校证明…</p></div></div>
+<div class="msg"><div class="msg-ic t-amber"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-6"></path></svg></div><div class="msg-main"><div class="msg-top"><b>教学质量中心</b><span>周一</span></div><p>本学期期中教学评价结果已发布，请查看</p></div></div>
+<div class="msg"><div class="msg-ic t-gray"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></div><div class="msg-main"><div class="msg-top"><b>系统消息</b><span>06-01</span></div><p>你的账号已在新设备登录，如非本人操作请修改密码</p></div></div>
+</div>
+</div>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>工作台</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>审批</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+<div class="rowlb"><i></i>Tab 4 · 我的</div>
+<div class="row">
+<div class="cap"><div class="cap-lb">学生端 · 我的</div>
+<div class="phone"><div class="screen">
+<div class="prof"><div class="porb"></div>
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>我的</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="prow"><div class="pava">李</div><div class="pinfo"><div class="nm"><b>李思远</b><span class="rtag">学生</span></div><p>软件学院 · 软件2201班 · 学号 2022130118</p></div><div class="pedit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></div></div>
+<div class="pstats"><div class="pstat"><b>4.32</b><span>学分绩点</span></div><div class="pstat"><b>132</b><span>已修学分</span></div><div class="pstat"><b>12</b><span>专业排名</span></div></div>
+</div>
+<div class="scroll"><div class="wrap">
+<div class="lst"><div class="lst-t">我的学业</div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h4"></path></svg></div><b>我的档案</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5z"></path><path d="M9 11h6M9 15h4"></path></svg></div><b>成绩单</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6M9 13h6"></path></svg></div><b>学籍信息</b><span class="val">在读</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 19h16M8 15v-3M12 15V9M16 15v-5"></path></svg></div><b>我的培养方案</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">实习与毕设</div>
+<div class="li"><div class="li-ic t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0116 5v2"></path></svg></div><b>实习档案</b><span class="val">顶岗实习中</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-violet"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><b>毕设进度</b><span class="val">中期</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">账号与安全</div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path></svg></div><b>账号与安全</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg></div><b>实名认证</b><span class="val">已认证</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg></div><b>修改密码</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path d="M10 19a2 2 0 004 0"></path></svg></div><b>消息通知设置</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">其他</div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4z"></path></svg></div><b>意见反馈</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></div><b>关于校园通</b><span class="val">v2.6.0</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<button class="logout" onClick="{{ meA.open }}">退出登录</button>
+</div></div>
+<sc-if value="{{ meA.toast }}" hint-placeholder-count="0"><div class="toast">{{ meA.toast }}</div></sc-if>
+<sc-if value="{{ meA.sheet }}" hint-placeholder-val="{{ false }}">
+<div class="backdrop" onClick="{{ meA.close }}"></div>
+<div class="confirm"><div class="confirm-c"><div class="q"><b>确认退出登录？</b>退出后需重新通过微信或账号登录</div><div class="act" onClick="{{ meA.confirm }}">退出登录</div></div><div class="confirm-cancel" onClick="{{ meA.close }}">取消</div></div>
+</sc-if>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>首页</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg><span>服务</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 我的</div>
+<div class="phone"><div class="screen">
+<div class="prof"><div class="porb"></div>
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navbar"><b>我的</b><div class="capsule"><div class="c1"><i></i><i></i><i></i></div><div class="dv"></div><div class="c2"><div class="ring"></div></div></div></div>
+<div class="prow"><div class="pava">王</div><div class="pinfo"><div class="nm"><b>王建国</b><span class="rtag rolepill-sm" onClick="{{ roleMe.openFn }}">{{ tRoleLabel }} ▾</span></div><p>软件学院 · 工号 T20130</p></div><div class="pedit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></div></div>
+<div class="pstats"><div class="pstat"><b>128</b><span>指导学生</span></div><div class="pstat"><b>3</b><span>任教课程</span></div><div class="pstat"><b>2</b><span>管理班级</span></div></div>
+</div>
+<sc-if value="{{ roleMe.isOpen }}" hint-placeholder-val="{{ false }}">
+<div class="backdrop" onClick="{{ roleMe.close }}"></div>
+<div class="rolesheet-wrap"><div class="rolesheet"><div class="rolesheet-hd">切换工作身份</div>
+<sc-for list="{{ teacherRoles }}" as="r" hint-placeholder-count="6"><div class="rolesheet-row" onClick="{{ r.onPick }}"><div class="rolesheet-ic">{{ r.icon }}</div><div><b>{{ r.label }}</b><span class="rolesheet-scope">{{ r.scope }}</span></div><sc-if value="{{ r.current }}" hint-placeholder-val="{{ false }}"><span class="rolesheet-cur">当前</span></sc-if></div></sc-for>
+</div>
+<div class="rolesheet-cancel" onClick="{{ roleMe.close }}">取消</div></div>
+</sc-if>
+<div class="scroll"><div class="wrap">
+<div class="lst"><div class="lst-t">我的工作</div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"></circle><path d="M3.5 19a5.5 5.5 0 0111 0M16 6a3 3 0 010 6"></path></svg></div><b>我的班级</b><span class="val">2 个</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"></path><path d="M4 9h16M8 5v14"></path></svg></div><b>我的课程</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-violet"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4L2.5 8.5 12 13l9.5-4.5z"></path><path d="M6 10.5V15c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"></path></svg></div><b>指导学生</b><span class="val">毕设 16 人</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4M16 3v4M4 10h16"></path></svg></div><b>我的日程</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">教学档案</div>
+<div class="li"><div class="li-ic t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14v16H5z"></path><path d="M9 8h6M9 12h6M9 16h3"></path></svg></div><b>个人一张表</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5L12 15.5 7 18.2l1-5.5-4-3.9 5.5-.8z"></path></svg></div><b>教学成果</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5z"></path><path d="M9 12h6M9 16h4"></path></svg></div><b>教研教改</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">账号与安全</div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path></svg></div><b>账号与安全</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg></div><b>实名认证</b><span class="val">已认证</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg></div><b>修改密码</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<div class="lst"><div class="lst-t">其他</div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4z"></path></svg></div><b>意见反馈</b><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+<div class="li"><div class="li-ic t-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></div><b>关于校园通</b><span class="val">v2.6.0</span><span class="ch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"></path></svg></span></div>
+</div>
+<button class="logout" onClick="{{ meB.open }}">退出登录</button>
+</div></div>
+<sc-if value="{{ meB.toast }}" hint-placeholder-count="0"><div class="toast">{{ meB.toast }}</div></sc-if>
+<sc-if value="{{ meB.sheet }}" hint-placeholder-val="{{ false }}">
+<div class="backdrop" onClick="{{ meB.close }}"></div>
+<div class="confirm"><div class="confirm-c"><div class="q"><b>确认退出登录？</b>退出后需重新通过微信或账号登录</div><div class="act" onClick="{{ meB.confirm }}">退出登录</div></div><div class="confirm-cancel" onClick="{{ meB.close }}">取消</div></div>
+</sc-if>
+<div class="tabbar"><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11l8-6 8 6"></path><path d="M6 10v9h12v-9"></path></svg><span>工作台</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l2 2 4-4"></path><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg><span>审批</span></div><div class="tabi"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg><span>消息</span></div><div class="tabi on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"></circle><path d="M4 20a8 8 0 0116 0"></path></svg><span>我的</span></div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    svcManage: false, svcToast: '',
+    svcCenters: [
+      { title: '教务中心 · 学业过程', items: [
+        { key: 'schedule', label: '我的课表', icon: '课', grad: 'b1', status: 'ready' },
+        { key: 'transcript', label: '课程成绩', icon: '绩', grad: 'b2', status: 'ready' },
+        { key: 'credits', label: '学分修读', icon: '分', grad: 'b7', status: 'ready' },
+        { key: 'warning', label: '学业预警', icon: '警', grad: 'b6', status: 'ready' },
+        { key: 'makeup', label: '补考重修', icon: '补', grad: 'b4', status: 'ready' },
+        { key: 'select', label: '网上选课', icon: '选', grad: 'b8', status: 'ready' }
+      ] },
+      { title: '岗位实习中心', items: [
+        { key: 'checkin', label: '实习打卡', icon: '卡', grad: 'b3', status: 'ready' },
+        { key: 'report', label: '实习周报', icon: '报', grad: 'b1', status: 'ready' },
+        { key: 'agreement', label: '申请与协议', icon: '协', grad: 'b2', status: 'ready' },
+        { key: 'leave', label: '打卡请假', icon: '假', grad: 'b6', status: 'ready' },
+        { key: 'guidance', label: '指导巡访', icon: '访', grad: 'b7', status: 'ready' },
+        { key: 'employment', label: '就业跟进', icon: '业', grad: 'b8', status: 'ready' }
+      ] },
+      { title: '毕业设计中心', items: [
+        { key: 'topic', label: '毕设选题', icon: '题', grad: 'b5', status: 'ready' },
+        { key: 'task', label: '任务书', icon: '书', grad: 'b7', status: 'ready' },
+        { key: 'process', label: '中期检查', icon: '中', grad: 'b1', status: 'ready' },
+        { key: 'defense', label: '答辩安排', icon: '辩', grad: 'b8', status: 'ready' }
+      ] },
+      { title: '学工中心', items: [
+        { key: 'lv', label: '我的请假', icon: '假', grad: 'b6', status: 'ready' },
+        { key: 'dorm', label: '我的宿舍', icon: '舍', grad: 'b4', status: 'ready' },
+        { key: 'funding', label: '奖助申请', icon: '助', grad: 'b3', status: 'ready' },
+        { key: 'profile', label: '学生画像', icon: '像', grad: 'b2', status: 'ready' },
+        { key: 'activity', label: '活动与二课', icon: '动', grad: 'b5', status: 'ready' },
+        { key: 'talk', label: '谈心谈话', icon: '谈', grad: 'b7', status: 'ready' }
+      ] }
+    ],
+    apTab: 'pending', apFilter: 'all', apStatus: {},
+    teacherRole: 'counselor', roleSheet: ''
+  };
+
+  teacherRoleDefs = [
+    { key: 'counselor', label: '辅导员', icon: '辅', scope: '所负责班级' },
+    { key: 'mentor', label: '毕设指导教师', icon: '毕', scope: '本人指导学生' },
+    { key: 'intern_mentor', label: '实习指导教师', icon: '实', scope: '本人实习学生' },
+    { key: 'employment', label: '就业老师', icon: '就', scope: '本学院范围' },
+    { key: 'academic', label: '教务老师', icon: '教', scope: '本学院范围' },
+    { key: 'college_admin', label: '学院管理员', icon: '院', scope: '本学院范围' }
+  ];
+  toastTimer = null;
+  showSvcToast(msg) {
+    this.setState({ svcToast: msg });
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.setState({ svcToast: '' }), 2200);
+  }
+  toggleManage(ci) {
+    this.setState(s => {
+      const svcCenters = s.svcCenters.map((c, i) => i === ci ? { ...c, manage: !c.manage } : c);
+      return { svcCenters };
+    });
+  }
+  removeItem(ci, ii) {
+    this.setState(s => {
+      const svcCenters = s.svcCenters.map((c, i) => i !== ci ? c : { ...c, items: c.items.filter((_, j) => j !== ii) });
+      return { svcCenters };
+    });
+    this.showSvcToast('已移除该服务（后端同步下发配置）');
+  }
+
+  approvals = [
+    { id: 'AP1', cat: 'leave', title: '学生请假申请', type: '请假 · 病假', student: '孙雨桐', className: '软件2401', submitTimeShort: '07-03 08:30', urgent: false,
+      fields: [ { label: '请假类型', value: '病假' }, { label: '起止时间', value: '2026-07-05 全天' }, { label: '事由', value: '感冒发热，需就医休息' }, { label: '附件', value: '就诊记录.jpg' } ],
+      flow: [ { node: '学生提交', time: '07-03 08:30', done: true }, { node: '辅导员审批', time: '待处理', done: false, current: true }, { node: '学院备案', time: '—', done: false } ] },
+    { id: 'AP2', cat: 'leave', title: '实习请假申请', type: '请假 · 事假', student: '李思远', className: '软件2401', submitTimeShort: '07-02 19:10', urgent: true,
+      fields: [ { label: '请假类型', value: '事假' }, { label: '起止时间', value: '2026-07-07 半天' }, { label: '事由', value: '办理银行卡（发薪需要）' }, { label: '企业导师意见', value: '同意' } ],
+      flow: [ { node: '学生提交', time: '07-02 19:10', done: true }, { node: '企业导师确认', time: '07-02 20:00', done: true }, { node: '校内导师审批', time: '待处理', done: false, current: true } ] },
+    { id: 'AP3', cat: 'proof', title: '在校证明开具', type: '证明 · 在校证明', student: '陈子涵', className: '软件2401', submitTimeShort: '07-01 14:00', urgent: false,
+      fields: [ { label: '证明类型', value: '在校证明' }, { label: '用途', value: '办理助学贷款' }, { label: '接收单位', value: '某银行支行' } ],
+      flow: [ { node: '学生提交', time: '07-01 14:00', done: true }, { node: '辅导员审批', time: '待处理', done: false, current: true }, { node: '教务盖章', time: '—', done: false } ] }
+  ];
+
+  renderVals() {
+    const s = this.state;
+    const svcCenters = s.svcCenters.map((c, ci) => ({
+      title: c.title, manage: !!c.manage,
+      onManage: () => this.toggleManage(ci), manageLabel: c.manage ? '完成' : '管理',
+      onAdd: () => this.showSvcToast('从模块库选择服务加入「' + c.title + '」'),
+      items: c.items.map((it, ii) => {
+        const soon = it.status === 'soon';
+        return {
+          label: it.label, icon: it.icon, grad: it.grad, soon,
+          cls: 'gi' + (soon ? ' soon' : ''), showRemove: !!c.manage,
+          onTap: c.manage ? () => this.removeItem(ci, ii) : () => this.showSvcToast(soon ? (it.label + '：功能建设中，敬请期待') : ('打开 ' + it.label))
+        };
+      })
+    }));
+
+    const cls = (v) => s.apTab === v ? 'subtab on' : 'subtab';
+    const set = (patch) => () => this.setState(patch);
+    const apChipDefs = [ { k: 'all', label: '全部' }, { k: 'leave', label: '请假' }, { k: 'proof', label: '证明' } ];
+    const apChips = apChipDefs.map(c => ({ label: c.label, cls: 'chip' + (s.apFilter === c.k ? ' on' : ''), onClick: () => this.setState({ apFilter: c.k }) }));
+
+    const stMap = { pending: { label: '待审批', cls: 'tg-amber' }, approve: { label: '已通过', cls: 'tg-green' }, reject: { label: '已驳回', cls: 'tg-red' }, return: { label: '已退回', cls: 'tg-slate' } };
+    const doneMap = { approve: { text: '✓ 已通过', cls: 'db-green' }, reject: { text: '✕ 已驳回', cls: 'db-red' }, return: { text: '↩ 已退回', cls: 'db-slate' } };
+    const setAp = (id, t) => this.setState(p => ({ apStatus: { ...p.apStatus, [id]: t } }));
+    const apList = this.approvals.filter(a => s.apFilter === 'all' || a.cat === s.apFilter).map(a => {
+      const st = s.apStatus[a.id] || 'pending';
+      return {
+        ...a, avatar: a.student.slice(0, 1),
+        statusLabel: stMap[st].label, statusTagCls: stMap[st].cls,
+        pending: st === 'pending', doneShow: st !== 'pending',
+        doneText: st !== 'pending' ? doneMap[st].text : '', doneCls: st !== 'pending' ? doneMap[st].cls : '',
+        flow: a.flow.map(n => ({ ...n, cls: 'fn' + (n.done ? ' done' : '') + (n.current ? ' current' : '') })),
+        onApprove: () => setAp(a.id, 'approve'), onReject: () => setAp(a.id, 'reject'), onReturn: () => setAp(a.id, 'return')
+      };
+    });
+    const apPendingCount = this.approvals.filter(a => (s.apStatus[a.id] || 'pending') === 'pending').length;
+
+    const buildMe = (k) => ({
+      sheet: !!s[k + 'Sheet'], toast: s[k + 'Toast'] || '',
+      open: () => this.setState({ [k + 'Sheet']: true }),
+      close: () => this.setState({ [k + 'Sheet']: false }),
+      confirm: () => {
+        this.setState({ [k + 'Sheet']: false, [k + 'Toast']: '已退出登录' });
+        clearTimeout(this[k + 'Timer']);
+        this[k + 'Timer'] = setTimeout(() => this.setState({ [k + 'Toast']: '' }), 2000);
+      }
+    });
+
+    const roleObj = this.teacherRoleDefs.find(r => r.key === s.teacherRole) || this.teacherRoleDefs[0];
+    const teacherRoles = this.teacherRoleDefs.map(r => ({
+      icon: r.icon, label: r.label, scope: r.scope, current: r.key === s.teacherRole,
+      onPick: () => this.setState({ teacherRole: r.key, roleSheet: '' })
+    }));
+    const buildRoleSheet = (id) => ({
+      isOpen: s.roleSheet === id,
+      openFn: () => this.setState({ roleSheet: id }),
+      close: () => this.setState({ roleSheet: '' })
+    });
+
+    return {
+      svcCenters, svcToast: s.svcToast,
+      apSub: { isPending: s.apTab === 'pending', isDone: s.apTab === 'done', isMine: s.apTab === 'mine', pendingCls: cls('pending'), doneCls: cls('done'), mineCls: cls('mine'), setPending: set({ apTab: 'pending' }), setDone: set({ apTab: 'done' }), setMine: set({ apTab: 'mine' }) },
+      apChips, apList, apPendingCount,
+      msgAUnread: !s.msgARead, msgBUnread: !s.msgBRead,
+      msgAReadCls: 'readall' + (s.msgARead ? ' done' : ''), msgBReadCls: 'readall' + (s.msgBRead ? ' done' : ''),
+      setMsgARead: () => this.setState({ msgARead: true }), setMsgBRead: () => this.setState({ msgBRead: true }),
+      meA: buildMe('meA'), meB: buildMe('meB'),
+      tRoleLabel: roleObj.label, teacherRoles,
+      roleWb: buildRoleSheet('wb'), roleAp: buildRoleSheet('ap'), roleMe: buildRoleSheet('me')
+    };
+  }
+}
+</script>
+</body>
+</html>

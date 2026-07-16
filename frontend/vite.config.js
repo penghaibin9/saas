@@ -15,6 +15,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/@antv/g2')) return 'vendor-g2'
+          if (id.includes('node_modules/element-plus') || id.includes('node_modules/dayjs') || id.includes('node_modules/@popperjs') || id.includes('node_modules/@element-plus')) return 'vendor-element'
           if (id.includes('node_modules/vue/') || id.includes('node_modules/@vue/')) return 'vendor-vue'
           if (id.includes('node_modules/vue-router')) return 'vendor-vue-router'
           if (id.includes('node_modules/pinia')) return 'vendor-pinia'
@@ -25,10 +26,12 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    // 开发态 API 走同源 /api → 后端，避免端口变化（5174/5175）触发 CORS 拦截导致登录失败
+    // 开发态 API 走同源 /api → 后端，避免端口变化（5174/5175）触发 CORS 拦截导致登录失败。
+    // 并行开发（多窗口/多 worktree）时用 VITE_PROXY_TARGET 指到自己那份后端，免得几个人抢 8000；
+    // 不设该变量时行为与以往完全一致。
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
         changeOrigin: true
       }
     }

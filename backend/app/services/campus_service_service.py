@@ -518,57 +518,23 @@ def list_disciplines(page, page_size, keyword=None, type=None, status=None):
         return _page(items, page, page_size)
 
 
+# 旧版违纪直接编辑入口已废弃（甲方拍板保留新版流程、下线旧版）：新旧两套写入路径共用同一张
+# t_cs_discipline 表、权限体系分裂，且旧版 update_discipline 的 REVOKED 分支不同步新版对账用的
+# record_status 字段，导致奖助/毕业资格判定会把旧版"已撤销"的处分继续当生效处分——已坐实的真实
+# 缺陷（见 review_appeal 修复同期复核）。三个写操作全部拒绝，只保留 list/get 只读查询与既有数据兼容。
+_DISCIPLINE_RETIRED_MSG = "违纪登记（现有）写操作已下线，请到「学工中心 → 违纪处分」新版工作台处理"
+
+
 def create_discipline(body: dict) -> dict:
-    reason = str(body.get("reason") or "").strip()
-    if not body.get("studentId") or not body.get("type") or len(reason) < 5:
-        raise AppException("VALIDATION_ERROR", "学生、处分类型必填，事由不少于 5 字")
-    with session() as db:
-        s = _get_stu(db, body.get("studentId"))
-        code = f"DIS-{datetime.now():%Y}-{db.scalar(select(func.count()).select_from(CsDiscipline).where(CsDiscipline.tenant_id == _tid())) + 1:04d}"
-        d = CsDiscipline(tenant_id=_tid(), cs_student_id=s.id, disc_type=body["type"], reason=reason,
-                         decide_date=datetime.utcnow(), doc_no=body.get("docNo"), code=code,
-                         status="EFFECTIVE", record_status="ACTIVE")
-        db.add(d)
-        db.flush()
-        _audit(db, "DISCIPLINE", d.id, "新增处分", reason)
-        db.commit()
-        return {"id": str(d.id)}
+    raise AppException("DATA_CONFLICT", _DISCIPLINE_RETIRED_MSG)
 
 
 def update_discipline(did, body: dict) -> dict:
-    with session() as db:
-        d = db.get(CsDiscipline, int(did))
-        if not d or d.is_deleted or d.tenant_id != _tid():
-            raise not_found("处分记录不存在")
-        _require_cs_scope(db, d.cs_student_id)
-        if body.get("status") == "REVOKED":
-            d.status = "REVOKED"
-            d.revoke_date = datetime.utcnow()
-            d.revoke_reason = body.get("revokeReason") or ""
-        for k, col in {"type": "disc_type", "reason": "reason"}.items():
-            if body.get(k) is not None:
-                setattr(d, col, body[k])
-        d.version += 1
-        _audit(db, "DISCIPLINE", d.id, "更新处分")
-        db.commit()
-        return {"id": str(d.id)}
+    raise AppException("DATA_CONFLICT", _DISCIPLINE_RETIRED_MSG)
 
 
 def void_discipline(did, reason) -> dict:
-    if not reason or len(reason.strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
-    with session() as db:
-        d = db.get(CsDiscipline, int(did))
-        if not d or d.is_deleted or d.tenant_id != _tid():
-            raise not_found("处分记录不存在")
-        _require_cs_scope(db, d.cs_student_id)
-        d.record_status = "VOIDED"
-        d.void_reason = reason.strip()
-        d.is_deleted = True
-        d.version += 1
-        _audit(db, "DISCIPLINE", d.id, "作废处分", reason.strip())
-        db.commit()
-        return {"id": str(d.id)}
+    raise AppException("DATA_CONFLICT", _DISCIPLINE_RETIRED_MSG)
 
 
 # ═══ 工单 ═══

@@ -26,7 +26,16 @@ _BATCH_DRAFT, _BATCH_PUBLISHED, _BATCH_OPEN = "DRAFT", "PUBLISHED", "OPEN"
 _BATCH_CLOSED, _BATCH_LOCKED, _BATCH_ARCHIVED = "CLOSED", "LOCKED", "ARCHIVED"
 _REC_SELECTED, _REC_DROPPED = "SELECTED", "DROPPED"
 _REC_COURSE_CANCELLED, _REC_LOCKED = "COURSE_CANCELLED", "LOCKED"
+_REC_PENDING, _REC_LOST = "PENDING_LOTTERY", "LOTTERY_LOST"  # 抽签轮：志愿待摇号/未中签
 _COURSE_OPEN, _COURSE_CANCELLED = "OPEN", "COURSE_CANCELLED"
+
+
+def _active_round(db, batch_id):
+    """批次当前 OPEN 轮次（同批次至多一个；无轮次=既有先到先得行为）。"""
+    from app.models import AaSelectionRound
+    return db.query(AaSelectionRound).filter(
+        AaSelectionRound.tenant_id == _tid(), AaSelectionRound.batch_id == int(batch_id),
+        AaSelectionRound.status == "OPEN", AaSelectionRound.is_deleted.is_(False)).first()
 
 
 def _conflict(msg: str) -> AppException:
@@ -540,11 +549,49 @@ def student_enroll(user, body) -> dict:
         my = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.batch_id == b.id, AaSelectionRecord.tenant_id == _tid(),
             AaSelectionRecord.student_id == student.id).all()
+        # 补选（06号卡）：CLOSED 批次且学生确有待补选(COURSE_CANCELLED)记录才放宽；资格后端独立核验，不信任请求体标志位
         allow_reselect = b.status == _BATCH_CLOSED and any(
             r.status == _REC_COURSE_CANCELLED for r in my)
         _validate_enroll(db, b, c, student, my, float(c.credit or 0),
                          allow_reselect_closed=allow_reselect)
-        # 行锁原子扣减：selected_count < capacity 时 +1，受影响行数=0 → 容量满
+        rnd = _active_round(db, b.id)
+        if rnd and not rnd.allow_enroll:
+            raise _invalid("本轮次仅可退课，不可选课")
+
+        if rnd and rnd.mode == "LOTTERY":
+            # ── 抽签轮：志愿登记不占容量，关轮后统一摇号（对标商业教务"预选抽签"）──
+            for r in my:
+                if r.course_id == c.course_id and r.status == _REC_PENDING:
+                    raise _conflict("已登记该课程志愿，待摇号")
+            max_credits = _rule(db, b, "maxCredits", 0)
+            if max_credits and max_credits > 0:
+                cur = sum(float(r.credit or 0) for r in my
+                          if r.status in (_REC_SELECTED, _REC_LOCKED, _REC_PENDING))
+                if cur + float(c.credit or 0) > float(max_credits):
+                    raise AppException("VALIDATION_ERROR",
+                                       f"含待摇号志愿已超过本批次选课学分上限 {max_credits}")
+            existing = next((r for r in my if r.selection_course_id == c.id), None)
+            if existing:
+                existing.status, existing.round_id = _REC_PENDING, rnd.id
+                existing.enrolled_at, existing.dropped_at = datetime.utcnow(), None
+                existing.re_enroll = True
+                rec = existing
+            else:
+                rec = AaSelectionRecord(
+                    tenant_id=_tid(), batch_id=b.id, selection_course_id=c.id,
+                    course_id=c.course_id, course_name=c.course_name, credit=c.credit,
+                    student_id=student.id, student_no=student.student_no,
+                    student_name=student.real_name, enrolled_at=datetime.utcnow(),
+                    status=_REC_PENDING, round_id=rnd.id)
+                db.add(rec)
+            db.flush()
+            _audit(db, rec.id, "SELECTION_LOTTERY_REGISTER", f"抽签志愿 {c.course_name}（第{rnd.round_no}轮）")
+            db.commit()
+            return {"recordId": str(rec.id), "selectionCourseId": str(c.id),
+                    "courseName": c.course_name, "status": rec.status,
+                    "roundNo": rnd.round_no, "lottery": True}
+
+        # ── 先到先得（无轮次批次 / FCFS 轮次）：行锁原子扣减，selected_count<capacity 时 +1 ──
         upd = db.query(AaSelectionCourse).filter(
             AaSelectionCourse.id == c.id, AaSelectionCourse.tenant_id == _tid(),
             AaSelectionCourse.selected_count < AaSelectionCourse.capacity).update(
@@ -560,13 +607,15 @@ def student_enroll(user, body) -> dict:
             existing.enrolled_at = datetime.utcnow()
             existing.dropped_at = None
             existing.re_enroll = True
+            existing.round_id = rnd.id if rnd else existing.round_id
             rec = existing
         else:
             rec = AaSelectionRecord(
                 tenant_id=_tid(), batch_id=b.id, selection_course_id=c.id,
                 course_id=c.course_id, course_name=c.course_name, credit=c.credit,
                 student_id=student.id, student_no=student.student_no, student_name=student.real_name,
-                enrolled_at=datetime.utcnow(), status=_REC_SELECTED, re_enroll=allow_reselect)
+                enrolled_at=datetime.utcnow(), status=_REC_SELECTED,
+                round_id=(rnd.id if rnd else None))
             db.add(rec)
         db.flush()
         _audit(db, rec.id, "SELECTION_ENROLL",
@@ -592,8 +641,17 @@ def student_drop(user, body) -> dict:
         rec = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.selection_course_id == c.id, AaSelectionRecord.tenant_id == _tid(),
             AaSelectionRecord.student_id == student.id).first()
+        if rec and rec.status == _REC_PENDING:
+            # 撤回抽签志愿：未占容量，直接落 DROPPED，不做容量回退
+            rec.status, rec.dropped_at = _REC_DROPPED, datetime.utcnow()
+            _audit(db, rec.id, "SELECTION_LOTTERY_WITHDRAW", f"撤回抽签志愿 {c.course_name}")
+            db.commit()
+            return {"recordId": str(rec.id), "status": rec.status}
         if not rec or rec.status != _REC_SELECTED:
             raise _invalid("无可退课的选课记录")
+        rnd = _active_round(db, b.id)
+        if rnd and not rnd.allow_drop:
+            raise _invalid("本轮次仅可选课，不可退课")
         rec.status = _REC_DROPPED
         rec.dropped_at = datetime.utcnow()
         db.query(AaSelectionCourse).filter(

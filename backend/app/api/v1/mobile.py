@@ -5,7 +5,7 @@
 所有接口鉴权；查不到本人档案返回空态（hasData=false），不 500。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Path
 
 from app.core.response import success
 from app.core.security import get_current_user
@@ -993,6 +993,64 @@ def academic_selection_my(batch_id: str = None, user=Depends(get_current_user)):
     return success(aa.selection_records_my(user, batch_id))
 
 
+# ── 成绩认定/课程替代（学生自助） ──
+@router.get("/academic/recognition/my", summary="教务·我的成绩认定/课程替代申请")
+def academic_recognition_my(user=Depends(get_current_user)):
+    return success(aa.recognition_my(user))
+
+
+@router.post("/academic/recognition/submit", summary="教务·本人提交成绩认定申请")
+def academic_recognition_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.recognition_submit_my(user, body), message="认定申请已提交")
+
+
+@router.get("/academic/grade-recheck/my", summary="教务·我的成绩复查申请")
+def academic_recheck_my(user=Depends(get_current_user)):
+    return success(aa.grade_recheck_my(user))
+
+
+@router.post("/academic/grade-recheck/submit", summary="教务·本人对已发布成绩发起复查")
+def academic_recheck_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.grade_recheck_submit_my(user, body), message="复查申请已提交")
+
+
+@router.get("/academic/textbook/my", summary="教务·我的教材领用与费用")
+def academic_textbook_my(user=Depends(get_current_user)):
+    return success(aa.textbook_my(user))
+
+
+@router.post("/academic/textbook/{record_id}/sign", summary="教务·学生签收本人教材")
+def academic_textbook_sign(record_id: str, user=Depends(get_current_user)):
+    return success(aa.textbook_sign_my(user, record_id), message="签收成功")
+
+
+# ── 等级考务报名（学生自助） ──
+@router.get("/academic/level-exam/my", summary="教务·考级·开放考试+我的报名")
+def academic_level_exam_my(user=Depends(get_current_user)):
+    return success(aa.level_exam_my(user))
+
+
+@router.post("/academic/level-exam/{examId}/register", summary="教务·考级·本人报名")
+def academic_level_register(examId: int = Path(...), user=Depends(get_current_user)):
+    return success(aa.level_register_my(user, examId), message="报名成功")
+
+
+@router.post("/academic/level-exam/{examId}/cancel", summary="教务·考级·取消报名")
+def academic_level_cancel(examId: int = Path(...), user=Depends(get_current_user)):
+    return success(aa.level_cancel_my(user, examId), message="已取消报名")
+
+
+# ── 专业分流志愿（学生自助） ──
+@router.get("/academic/major-split/my", summary="教务·分流·开放批次+我的志愿")
+def academic_major_split_my(user=Depends(get_current_user)):
+    return success(aa.major_split_my(user))
+
+
+@router.post("/academic/major-split/submit", summary="教务·分流·提交志愿")
+def academic_major_split_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.major_split_submit_my(user, body), message="志愿已提交")
+
+
 @router.get("/teacher/academic/grade-tasks", summary="教师·我的成绩录入任务")
 def teacher_grade_tasks(status: str = None, user=Depends(get_current_user)):
     return success(aa.teacher_grade_tasks(user, status))
@@ -1036,3 +1094,13 @@ def teacher_attendance_mark(session_id: str, body: dict = Body(...), user=Depend
 @router.post("/teacher/academic/attendance/sessions/{session_id}/submit", summary="教师·课堂考勤·提交场次（不可再改）")
 def teacher_attendance_submit(session_id: str, user=Depends(get_current_user)):
     return success(aa.teacher_attendance_submit(session_id, user), message="考勤已提交")
+
+
+@router.get("/teacher/academic/workload/my", summary="教师·我的工作量申报")
+def teacher_workload_my(user=Depends(get_current_user)):
+    return success(aa.workload_my(user))
+
+
+@router.post("/teacher/academic/workload/submit", summary="教师·工作量申报（教学/监考/阅卷/出卷）")
+def teacher_workload_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.workload_submit_my(user, body), message="工作量申报已提交")

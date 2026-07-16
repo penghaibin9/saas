@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.domain_request_permissions import require_academic_process_request_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.schemas.academic import (AssignBody, GradeCreate, GradeUpdate, IdsBody, InterventionBody,
@@ -12,7 +13,10 @@ from app.schemas.academic import (AssignBody, GradeCreate, GradeUpdate, IdsBody,
                                    StudentCreate, StudentUpdate, WarningCreate)
 from app.services import academic_service as svc
 
-router = APIRouter(prefix="/academic", tags=["学业过程"])
+# P1-2（生产级审计整改）：router 级权限码裁决——读=academicAffairs.process.view、
+# 导出=.export、写=.manage。此前 27 个端点仅 require_staff，任意教职工可改成绩/预警。
+router = APIRouter(prefix="/academic", tags=["学业过程"],
+                   dependencies=[Depends(require_academic_process_request_permission)])
 
 
 def _p(i, t, page, ps):

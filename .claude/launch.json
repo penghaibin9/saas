@@ -5,13 +5,35 @@
       "name": "backend",
       "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["-c", "import os; os.chdir('backend'); import uvicorn; uvicorn.run('app.main:app', host='127.0.0.1', port=8000)"],
-      "port": 8000
+      "port": 8000,
+      "autoPort": false
     },
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "frontend-5187",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "5187"],
+      "port": 5187,
+      "autoPort": false
+    },
+    {
+      "name": "backend-8010",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-c", "import os; os.chdir('backend'); import uvicorn; uvicorn.run('app.main:app', host='127.0.0.1', port=8010)"],
+      "port": 8010,
+      "autoPort": false
+    },
+    {
+      "name": "frontend-5199",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set VITE_PROXY_TARGET=http://127.0.0.1:8010 && npm --prefix frontend run dev -- --port 5199"],
+      "port": 5199,
+      "autoPort": false
     },
     {
       "name": "miniapp-h5",

@@ -74,6 +74,7 @@ import { TableActionColumn, NoPermissionState } from '@/modules/internship/compo
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
+import { formatDate } from '@/utils/dateUtils'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '' })
 const BATCH_PANEL_PRESETS = {
@@ -235,7 +236,7 @@ export default {
       this.load()
     },
     dateShort(v) {
-      return v ? String(v).slice(0, 10) : ''
+      return formatDate(v, '')
     },
     onToolbar(key) {
       if (key === 'create') this.openCreate()

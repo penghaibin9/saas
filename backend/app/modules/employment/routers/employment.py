@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.domain_request_permissions import require_employment_request_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.modules.employment.schemas.employment import (AssignTeacherBody, CommentBody, CompanyCreate, FollowUpCreate,
@@ -12,7 +13,10 @@ from app.modules.employment.schemas.employment import (AssignTeacherBody, Commen
                                      StudentUpdate)
 from app.modules.employment.services import employment_service as svc
 
-router = APIRouter(prefix="/employment", tags=["就业服务"])
+# P1-2（生产级审计整改）：router 级权限码裁决——读=employment.view、导出=.export、
+# 写=.manage。此前 24 个端点仅挂载层身份门禁，任意教职工可标注就业去向/作废记录。
+router = APIRouter(prefix="/employment", tags=["就业服务"],
+                   dependencies=[Depends(require_employment_request_permission)])
 
 
 def _p(i, t, page, ps):

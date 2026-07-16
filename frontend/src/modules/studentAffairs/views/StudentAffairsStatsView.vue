@@ -6,9 +6,13 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="学工统计查阅"
   >
-    <LoadingState v-if="loading" text="正在汇总学工统计…" />
-    <ErrorState v-else-if="error" :description="error" @retry="load" />
-    <template v-else>
+    <AppGlobalState
+      :state="pageState"
+      :description="error"
+      loading-text="正在汇总学工统计…"
+      @retry="load"
+      @back="$router.push('/admin/student-affairs/dashboard')"
+    >
       <!-- 关键指标 -->
       <section class="st-block">
         <h3 class="st-block__title">关键指标</h3>
@@ -66,7 +70,7 @@
           <EmptyState v-if="!riskBySource.length" title="暂无在办风险" />
         </section>
       </div>
-    </template>
+    </AppGlobalState>
   </ModulePageShell>
 </template>
 
@@ -76,7 +80,8 @@
  * 真实聚合：dashboard 关键指标 + talks/stats 谈话完成率 + dorm/occupancy 入住率 +
  * discipline/reconcile 投影对账 + aid/difficult-students 困难库 + 风险按来源分组（客户端）。
  */
-import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, EmptyState } from '@/components/business'
+import { AppGlobalState } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const TALK_TYPE = { DAILY: '日常', ACADEMIC: '学业', PSYCHOLOGY: '心理', DISCIPLINE: '违纪', EMPLOYMENT: '就业', INTERNSHIP: '实习', AID: '资助', DORM: '宿舍' }
@@ -84,7 +89,7 @@ const SOURCE_LABEL = { LEAVE_OVERDUE: '请假逾期', ACADEMIC_WARNING: '学业�
 
 export default {
   name: 'StudentAffairsStatsView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, EmptyState, AppGlobalState },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -93,6 +98,9 @@ export default {
     }
   },
   computed: {
+    pageState() {
+      return this.loading ? 'loading' : (this.error ? 'error' : 'ready')
+    },
     roleName() {
       return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || ''
     },

@@ -23,7 +23,16 @@
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无导师" description="点「＋ 申报导师」新增一位导师" />
+      <EmptyState
+        v-else-if="!rows.length"
+        title="还没有导师"
+        description="导师报上来是「待审核」，审过变「已认证」才能带学生。记得给每位导师定容量——不定容量，分配时就拦不住超载。"
+      >
+        <template #actions>
+          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/mentors/create')">＋ 申报导师</button>
+          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-mentor-maintain')">怎么维护导师？</button>
+        </template>
+      </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-mentor="{ row }">
           <div class="mp-cell-main">{{ row.teacherName }}</div>
@@ -92,6 +101,8 @@
       :download-errors-fn="({ rows, errors }) => graduationMentorApi.downloadImportErrors(rows, errors)"
       @imported="onImported"
     />
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-mentors" />
   </ModulePageShell>
 </template>
 
@@ -99,7 +110,7 @@
 /** 导师管理 + 导师分配（/admin/graduation/mentors）：生产级只走真实后端；申报/审核/停用/启用/归档 + 分配/调导师/取消 + Excel。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton } from '@/components/common'
+import { AppExportButton, AppPageGuide } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { MENTOR_QUALIFICATION_STATUS, MENTOR_TYPE } from '@/modules/graduation/constants/graduation-mentor.constants'
@@ -112,7 +123,7 @@ import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'GraduationMentorListView',
-  components: { GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -142,12 +142,16 @@ def list_students(page, page_size, keyword=None, class_id=None, stage=None, repo
             q = q.where(OrientationStudent.risk_level == risk_level)
         if class_id:
             q = q.where(OrientationStudent.class_id == class_id)
-        rows = db.scalars(q.order_by(OrientationStudent.id)).all()
         if keyword:
-            kw = keyword.strip()
-            rows = [r for r in rows if kw in (r.name or "") or kw in (r.admission_no or "")]
-        items, total = _page([_stu_row(r) for r in rows], page, page_size)
-        return items, total
+            kw = f"%{keyword.strip()}%"
+            q = q.where(or_(OrientationStudent.name.like(kw),
+                            OrientationStudent.admission_no.like(kw)))
+        # P1-4（生产级审计整改）：DB 侧 count + offset/limit——此前整表拉取后 Python 分页，
+        # 5000 新生的学校每次翻页都是「拉全量 + 序列化全量 + 丢弃绝大多数」。
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.scalars(q.order_by(OrientationStudent.id)
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_stu_row(r) for r in rows], total
 
 
 def get_student_detail(sid) -> dict:
@@ -269,12 +273,15 @@ def list_progress(page, page_size, keyword=None, blocked_only="NO"):
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
                                              OrientationStudent.record_status == "ACTIVE")
-        rows = db.scalars(q.order_by(OrientationStudent.id)).all()
         if keyword:
-            kw = keyword.strip()
-            rows = [r for r in rows if kw in (r.name or "") or kw in (r.admission_no or "")]
+            kw = f"%{keyword.strip()}%"
+            q = q.where(or_(OrientationStudent.name.like(kw),
+                            OrientationStudent.admission_no.like(kw)))
         if blocked_only == "YES":
-            rows = [r for r in rows if r.blocked_step]
+            q = q.where(OrientationStudent.blocked_step.is_not(None))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.scalars(q.order_by(OrientationStudent.id)
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         items = []
         for r in rows:
             steps = r.steps_json or {}
@@ -335,15 +342,16 @@ def list_payments(page, page_size, keyword=None, payment_status=None):
                                              OrientationStudent.record_status == "ACTIVE")
         if payment_status:
             q = q.where(OrientationStudent.payment_status == payment_status)
-        rows = db.scalars(q.order_by(OrientationStudent.id)).all()
         if keyword:
-            kw = keyword.strip()
-            rows = [r for r in rows if kw in (r.name or "")]
+            q = q.where(OrientationStudent.name.like(f"%{keyword.strip()}%"))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.scalars(q.order_by(OrientationStudent.id)
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         items = [{"id": str(r.id), "name": r.name, "className": r.class_name or "",
                   "payableAmount": f"¥{_amt(r.payable_amount):.0f}", "paidAmount": f"¥{_amt(r.paid_amount):.0f}",
                   "paymentStatus": r.payment_status, "paymentStatusLabel": L_PAY.get(r.payment_status, r.payment_status),
                   "phone": _mask_phone(r.phone_encrypted)} for r in rows]
-        return _page(items, page, page_size)
+        return items, total
 
 
 # ═══ 绿色通道 ═══
@@ -360,18 +368,19 @@ def _gc_row(g: GreenChannelApplication, stu: OrientationStudent | None = None) -
 
 def list_green_channels(page, page_size, keyword=None, status=None):
     with session() as db:
-        q = select(GreenChannelApplication).where(GreenChannelApplication.tenant_id == _tid(),
-                                                  GreenChannelApplication.is_deleted.is_(False))
+        # P1-4：join 学生表消 N+1（此前每行一次 db.get），keyword/分页全部下沉 DB
+        q = (select(GreenChannelApplication, OrientationStudent)
+             .join(OrientationStudent, OrientationStudent.id == GreenChannelApplication.ori_student_id)
+             .where(GreenChannelApplication.tenant_id == _tid(),
+                    GreenChannelApplication.is_deleted.is_(False)))
         if status:
             q = q.where(GreenChannelApplication.status == status)
-        rows = db.scalars(q.order_by(GreenChannelApplication.id.desc())).all()
-        items = []
-        for g in rows:
-            stu = db.get(OrientationStudent, g.ori_student_id)
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_gc_row(g, stu))
-        return _page(items, page, page_size)
+        if keyword:
+            q = q.where(OrientationStudent.name.like(f"%{keyword.strip()}%"))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.execute(q.order_by(GreenChannelApplication.id.desc())
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_gc_row(g, stu) for g, stu in rows], total
 
 
 def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=False, action_label=""):
@@ -610,16 +619,17 @@ def list_dorms(page, page_size, keyword=None, dorm_status=None, building=None):
             q = q.where(OrientationStudent.dorm_status == dorm_status)
         if building:
             q = q.where(OrientationStudent.building == building)
-        rows = db.scalars(q.order_by(OrientationStudent.id)).all()
         if keyword:
-            kw = keyword.strip()
-            rows = [r for r in rows if kw in (r.name or "")]
+            q = q.where(OrientationStudent.name.like(f"%{keyword.strip()}%"))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.scalars(q.order_by(OrientationStudent.id)
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         items = [{"id": str(r.id), "name": r.name, "className": r.class_name or "",
                   "building": r.building or "", "room": r.room or "",
                   "dormStatus": r.dorm_status, "dormStatusLabel": L_DORM.get(r.dorm_status, r.dorm_status),
                   "checkinTime": _iso(r.checkin_time) or "", "exceptionNote": r.exception_note or "",
                   "phone": _mask_phone(r.phone_encrypted)} for r in rows]
-        return _page(items, page, page_size)
+        return items, total
 
 
 def update_dorm(sid, body: dict) -> dict:

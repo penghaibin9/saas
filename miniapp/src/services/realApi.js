@@ -701,6 +701,26 @@ export const acadSelectionDrop = (selectionCourseId) =>
   realRequest('/mobile/academic/selection/drop', { method: 'POST', data: { selectionCourseId } })
 export const acadSelectionMy = (batchId) =>
   realRequest('/mobile/academic/selection/my' + (batchId ? `?batch_id=${batchId}` : ''))
+/** 成绩认定/课程替代（学生自助，对标正方 3.16/3.27） */
+export const acadRecognitionMy = () => realRequest('/mobile/academic/recognition/my')
+export const acadRecognitionSubmit = (body) =>
+  realRequest('/mobile/academic/recognition/submit', { method: 'POST', data: body })
+/** 等级考务报名（学生自助，对标正方 3.13） */
+export const acadRecheckMy = () => realRequest('/mobile/academic/grade-recheck/my')
+export const acadRecheckSubmit = (body) =>
+  realRequest('/mobile/academic/grade-recheck/submit', { method: 'POST', data: body })
+export const acadTextbookMy = () => realRequest('/mobile/academic/textbook/my')
+export const acadTextbookSign = (recordId) =>
+  realRequest(`/mobile/academic/textbook/${recordId}/sign`, { method: 'POST' })
+export const acadLevelExamMy = () => realRequest('/mobile/academic/level-exam/my')
+export const acadLevelRegister = (examId) =>
+  realRequest(`/mobile/academic/level-exam/${examId}/register`, { method: 'POST' })
+export const acadLevelCancel = (examId) =>
+  realRequest(`/mobile/academic/level-exam/${examId}/cancel`, { method: 'POST' })
+/** 专业分流志愿（学生自助） */
+export const acadMajorSplitMy = () => realRequest('/mobile/academic/major-split/my')
+export const acadMajorSplitSubmit = (batchId, choices) =>
+  realRequest('/mobile/academic/major-split/submit', { method: 'POST', data: { batchId, choices } })
 
 /** 缓考申请（考务管理·SM-10 8态四级审批，学生自助，真实接口，无 mock 兜底） */
 export const acadExamDeferOptions = () => realRequest('/mobile/academic/exam/defer-options')
@@ -732,3 +752,6 @@ export const teacherAttendanceMark = (sessionId, studentId, status) =>
     { method: 'POST', data: { studentId, status } })
 export const teacherAttendanceSubmit = (sessionId) =>
   realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}/submit`, { method: 'POST' })
+export const teacherWorkloadMy = () => realRequest('/mobile/teacher/academic/workload/my')
+export const teacherWorkloadSubmit = (body) =>
+  realRequest('/mobile/teacher/academic/workload/submit', { method: 'POST', data: body })

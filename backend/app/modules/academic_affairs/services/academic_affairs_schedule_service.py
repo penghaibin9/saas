@@ -757,3 +757,33 @@ def list_schedule_adjustments(user, biz_type=None, action=None, page=1, page_siz
                   "action": a.action, "operator": a.operator or "", "roleName": a.role_name or "",
                   "detail": a.detail or "", "occurredAt": _iso(a.occurred_at)} for a in rows]
         return items, total
+def move_item(item_id, user, body) -> dict:
+    """拖拽调格（对标商业教务图形化排课）：改星期/节次，走同一三重冲突检测器，冲突 409 原位不动。
+    仅 DRAFT/PRE_PUBLISHED 批次可拖；已发布课表走调停课流程。"""
+    with session() as db:
+        from app.models import AaScheduleBatch, AaScheduleItem
+        it = db.get(AaScheduleItem, int(item_id))
+        if not it or it.is_deleted or it.tenant_id != _tid() or it.status != "EFFECTIVE":
+            raise not_found("课表项不存在")
+        b = db.get(AaScheduleBatch, int(it.batch_id))
+        if not b or b.status not in ("DRAFT", "PRE_PUBLISHED"):
+            raise AppException("DATA_CONFLICT", "已发布课表不可拖拽调整（请走调停课）", http_status=409)
+        weekday, slot_no = int(body.weekday), int(body.slotNo)
+        if weekday not in WEEKDAYS:
+            raise AppException("VALIDATION_ERROR", "星期非法")
+        if weekday == it.weekday and slot_no == it.slot_no:
+            return {"itemId": str(it.id), "weekday": it.weekday, "slotNo": it.slot_no, "moved": False}
+        conflict = _detect_conflict(db, it.batch_id, weekday, slot_no, it.start_week, it.end_week,
+                                    it.week_parity, it.teacher_key, it.class_id, it.classroom_text,
+                                    exclude_id=it.id)
+        if conflict:
+            raise AppException("DATA_CONFLICT", f"目标时段冲突：{conflict['detail']}", http_status=409)
+        old = f"周{it.weekday}第{it.slot_no}节"
+        it.weekday, it.slot_no = weekday, slot_no
+        # 拖拽属人工决策：自动排的课被人工挪动后按人工口径保护（重排不再清它）
+        if getattr(it, "source", None) == "AUTO":
+            it.source = "MANUAL"
+        _audit(db, "AA_SCHEDULE_ITEM", it.id, "ITEM_MOVE",
+               f"{it.course_name} {old}→周{weekday}第{slot_no}节")
+        db.commit()
+        return {"itemId": str(it.id), "weekday": weekday, "slotNo": slot_no, "moved": True}

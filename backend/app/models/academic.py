@@ -53,6 +53,8 @@ class AcademicGrade(PKMixin, TenantMixin, CommonMixin, Base):
 class AcademicMakeup(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_acad_makeup"
     acad_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="MAKEUP", index=True,
+                                      comment="MAKEUP 常规补考 / CLEARANCE 毕业清考")
     course_name: Mapped[str] = mapped_column(String(200), nullable=False)
     term: Mapped[str | None] = mapped_column(String(50))
     origin_score: Mapped[int | None] = mapped_column(Integer)

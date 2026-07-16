@@ -37,6 +37,8 @@
             <tr v-if="!items.length"><td colspan="5" class="sa-empty">当前无公示中的资助申请</td></tr>
           </tbody>
         </table>
+        <!-- 本页仅展示 status=PUBLICITY 的待办队列，属于随时清空的工作队列而非历史台账，
+             规模受限于当前同时在公示期内的申请数，暂不引入 AppPagination。 -->
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
