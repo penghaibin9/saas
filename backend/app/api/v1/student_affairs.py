@@ -881,23 +881,28 @@ class RiskCreate(BaseModel):
 
 class RiskAssignBody(BaseModel):
     ownerId: str = Field(..., min_length=1)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class RiskContentBody(BaseModel):
     content: Optional[str] = Field("", max_length=1000)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class RiskTransferBody(BaseModel):
     newOwnerId: str = Field(..., min_length=1)
     reason: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class RiskReasonBody(BaseModel):
     reason: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class RiskCloseBody(BaseModel):
     conclusion: str = Field(..., min_length=1, description="关闭结论≥5字")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.post("/risk/records", summary="建风险记录（多来源，去重）")
@@ -928,49 +933,50 @@ def risk_owner_candidates(keyword: Optional[str] = None,
 @router.post("/risk/records/{riskId}/assign", summary="分派责任人")
 def risk_assign(body: RiskAssignBody, riskId: int = Path(...),
                 user=Depends(require_permission("studentAffairs.risk.assign"))):
-    return success(risk_svc.assign(riskId, user, body.ownerId), message="已分派")
+    return success(risk_svc.assign(riskId, user, body.ownerId, body.version), message="已分派")
 
 
 @router.post("/risk/records/{riskId}/process", summary="处置（首条→PROCESSING）")
 def risk_process(body: RiskContentBody, riskId: int = Path(...),
                  user=Depends(require_permission("studentAffairs.risk.handle"))):
-    return success(risk_svc.process(riskId, user, body.content or ""), message="已处置")
+    return success(risk_svc.process(riskId, user, body.content or "", body.version), message="已处置")
 
 
 @router.post("/risk/records/{riskId}/follow", summary="转持续跟进")
 def risk_follow(body: RiskContentBody = RiskContentBody(), riskId: int = Path(...),
                 user=Depends(require_permission("studentAffairs.risk.handle"))):
-    return success(risk_svc.follow(riskId, user, body.content or ""), message="已转跟进")
+    return success(risk_svc.follow(riskId, user, body.content or "", body.version), message="已转跟进")
 
 
 @router.post("/risk/records/{riskId}/transfer", summary="转办（换责任人）")
 def risk_transfer(body: RiskTransferBody, riskId: int = Path(...),
                   user=Depends(require_permission("studentAffairs.risk.transfer"))):
-    return success(risk_svc.transfer(riskId, user, body.newOwnerId, body.reason or ""), message="已转办")
+    return success(risk_svc.transfer(riskId, user, body.newOwnerId, body.reason or "", body.version),
+                   message="已转办")
 
 
 @router.post("/risk/records/{riskId}/escalate", summary="升级")
 def risk_escalate(body: RiskReasonBody = RiskReasonBody(), riskId: int = Path(...),
                   user=Depends(require_permission("studentAffairs.risk.escalate"))):
-    return success(risk_svc.escalate(riskId, user, body.reason or ""), message="已升级")
+    return success(risk_svc.escalate(riskId, user, body.reason or "", body.version), message="已升级")
 
 
 @router.post("/risk/records/{riskId}/takeover", summary="上级接管")
 def risk_takeover(body: RiskContentBody = RiskContentBody(), riskId: int = Path(...),
                   user=Depends(require_permission("studentAffairs.risk.handle"))):
-    return success(risk_svc.takeover(riskId, user, body.content or ""), message="已接管")
+    return success(risk_svc.takeover(riskId, user, body.content or "", body.version), message="已接管")
 
 
 @router.post("/risk/records/{riskId}/close", summary="关闭（结论≥5字，进360）")
 def risk_close(body: RiskCloseBody, riskId: int = Path(...),
                user=Depends(require_permission("studentAffairs.risk.close"))):
-    return success(risk_svc.close(riskId, user, body.conclusion), message="已关闭")
+    return success(risk_svc.close(riskId, user, body.conclusion, body.version), message="已关闭")
 
 
 @router.post("/risk/records/{riskId}/reopen", summary="复发重开")
 def risk_reopen(body: RiskReasonBody = RiskReasonBody(), riskId: int = Path(...),
                 user=Depends(require_permission("studentAffairs.risk.reopen"))):
-    return success(risk_svc.reopen(riskId, user, body.reason or ""), message="已重开")
+    return success(risk_svc.reopen(riskId, user, body.reason or "", body.version), message="已重开")
 
 
 @router.post("/risk/scan-timeout", summary="风险超时扫描（分派/升级，幂等）")

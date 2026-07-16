@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 SOURCES = ("LEAVE_OVERDUE", "ACADEMIC_WARNING", "DORM", "MENTAL", "DISCIPLINE", "INTERNSHIP",
@@ -315,12 +315,13 @@ def create_risk(body, user) -> dict:
         return _row(x, user, s)
 
 
-def assign(risk_id, user, owner_id) -> dict:
+def assign(risk_id, user, owner_id, expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("NEW", "REOPENED", "TRANSFERRED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可分派")
+        check_version(x.version, expected_version)
         valid_owner_id = _validate_owner(db, owner_id)
         frm = x.status
         x.owner_id, x.status, x.assigned_at, x.escalated_at, x.version = \
@@ -337,7 +338,7 @@ def assign(risk_id, user, owner_id) -> dict:
 
 # ═══════════ 处置 ═══════════
 
-def process(risk_id, user, content="") -> dict:
+def process(risk_id, user, content="", expected_version=None) -> dict:
     if not content or len(content.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "处置记录必填且不少于 5 字")
     with session() as db:
@@ -346,6 +347,7 @@ def process(risk_id, user, content="") -> dict:
         _require_owner_or_admin(db, x, user, label="填写处置")
         if x.status not in ("ASSIGNED", "PROCESSING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可处置")
+        check_version(x.version, expected_version)
         frm = x.status
         x.status, x.version = "PROCESSING", x.version + 1
         _handle(db, x.id, "PROCESS", content.strip(), frm, "PROCESSING")
@@ -356,13 +358,14 @@ def process(risk_id, user, content="") -> dict:
         return _row(x, user, s)
 
 
-def follow(risk_id, user, content="") -> dict:
+def follow(risk_id, user, content="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="转跟进")
         if x.status not in ("PROCESSING", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可转跟进")
+        check_version(x.version, expected_version)
         frm = x.status
         x.status, x.version = "FOLLOWING", x.version + 1
         _handle(db, x.id, "FOLLOW", (content or "").strip(), frm, "FOLLOWING")
@@ -373,13 +376,14 @@ def follow(risk_id, user, content="") -> dict:
         return _row(x, user, s)
 
 
-def transfer(risk_id, user, new_owner_id, reason="") -> dict:
+def transfer(risk_id, user, new_owner_id, reason="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="转办")
         if x.status not in ("PROCESSING", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可转办")
+        check_version(x.version, expected_version)
         valid_owner_id = _validate_owner(db, new_owner_id)
         frm = x.status
         _handle(db, x.id, "TRANSFER", f"转办：{reason}", frm, "ASSIGNED")
@@ -397,13 +401,14 @@ def transfer(risk_id, user, new_owner_id, reason="") -> dict:
 _LEVEL_UP = {"LOW": "MEDIUM", "MEDIUM": "HIGH", "HIGH": "CRITICAL", "CRITICAL": "CRITICAL"}
 
 
-def escalate(risk_id, user, reason="") -> dict:
+def escalate(risk_id, user, reason="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="升级")
         if x.status not in ("PROCESSING", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可升级")
+        check_version(x.version, expected_version)
         frm = x.status
         x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
         x.status, x.escalated_at, x.version = "ESCALATED", datetime.utcnow(), x.version + 1
@@ -417,13 +422,14 @@ def escalate(risk_id, user, reason="") -> dict:
         return _row(x, user, s)
 
 
-def takeover(risk_id, user, content="") -> dict:
+def takeover(risk_id, user, content="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_takeover_authority(db, user)
         if x.status != "ESCALATED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已升级的风险可接管")
+        check_version(x.version, expected_version)
         uid = _uid_int(user)
         x.status, x.version = "PROCESSING", x.version + 1
         if uid:
@@ -437,7 +443,7 @@ def takeover(risk_id, user, content="") -> dict:
         return _row(x, user, s)
 
 
-def close(risk_id, user, conclusion="") -> dict:
+def close(risk_id, user, conclusion="", expected_version=None) -> dict:
     if not conclusion or len(conclusion.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "关闭结论必填且不少于 5 字")
     with session() as db:
@@ -447,6 +453,7 @@ def close(risk_id, user, conclusion="") -> dict:
         _require_owner_or_admin(db, x, user, label="关闭")
         if x.status not in ("PROCESSING", "FOLLOWING", "ESCALATED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可关闭")
+        check_version(x.version, expected_version)
         if _handle_count(db, x.id) == 0:
             raise AppException("DATA_CONFLICT", "关闭前须至少一条处置记录")
         frm = x.status
@@ -464,13 +471,14 @@ def close(risk_id, user, conclusion="") -> dict:
         return _row(x, user, s)
 
 
-def reopen(risk_id, user, reason="") -> dict:
+def reopen(risk_id, user, reason="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_takeover_authority(db, user)  # 重开属上级动作，防同班互改
         if x.status != "CLOSED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已关闭的风险可重开")
+        check_version(x.version, expected_version)
         x.status, x.version = "REOPENED", x.version + 1
         _handle(db, x.id, "REOPEN", (reason or "复发重开").strip(), "CLOSED", "REOPENED")
         _msg(db, x.owner_id, "风险重开", reason or "风险复发已重开", "RISK_ALERT", x.id)

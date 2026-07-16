@@ -185,6 +185,26 @@ def test_r11_invalid_source_ref_400_not_500(client, db_mode):
     assert r2.status_code == 200 and r2.json()["data"]["source"] == "MANUAL"
 
 
+def test_r13_optimistic_lock_stale_version_409(client, db_mode):
+    """真乐观锁：version 此前只自增从未比对，APPROVAL_VERSION_CONFLICT 只挡状态、挡不住并发
+    双提交。传 expectedVersion 与当前不符（即便状态允许该动作）→ 409；不传 version 不受影响
+    （兼容未升级前端）；传当前正确 version → 正常通过。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
+    r0 = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+                     json={"ownerId": str(ids["owner"]), "version": 0}).json()
+    assert r0["data"]["status"] == "ASSIGNED" and r0["data"]["version"] == 1
+    # 用分派前的旧 version(0) 处置 → 409（模拟并发场景：另一请求已抢先修改，version 已推进到 1）
+    stale = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
+                        json={"content": "并发场景下的处置尝试", "version": 0})
+    assert stale.status_code == 409 and stale.json()["bizCode"] == "APPROVAL_VERSION_CONFLICT"
+    # 不传 version（旧前端行为）→ 不受影响，正常处置
+    ok = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
+                     json={"content": "不带 version 的处置"})
+    assert ok.status_code == 200 and ok.json()["data"]["status"] == "PROCESSING"
+
+
 def test_r12_cross_tenant_isolation_404(client, db_mode):
     """跨租户隔离：他租户风险记录对本租户不可见（_load tenant 校验 → 404）。"""
     ids = _seed(db_mode)

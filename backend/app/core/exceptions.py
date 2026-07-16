@@ -67,6 +67,22 @@ def tenant_not_found(msg: str = "租户不存在或已停用"):
     return AppException("TENANT_NOT_FOUND", msg)
 
 
+def check_version(current_version: int, expected_version) -> None:
+    """真乐观锁：调用方传了 expectedVersion 时才校验，未传时不阻断（兼容尚未升级的前端）。
+    安全审计 2026-07-17 发现：各审批服务的 version 此前只自增、从未在任何地方与客户端期望
+    版本比对，"APPROVAL_VERSION_CONFLICT" 实际只是状态机判断，挡不住并发双批准（两个请求
+    都读到同一旧状态、都通过状态检查、都提交）。此函数提供真正的版本比对，由各写操作在状态
+    校验之后、落库之前调用。"""
+    if expected_version is None:
+        return
+    try:
+        expected = int(expected_version)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "版本号非法")
+    if expected != current_version:
+        raise AppException("APPROVAL_VERSION_CONFLICT", "数据已被他人修改，请刷新后重试")
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppException)
     async def _app_exc(request: Request, exc: AppException):
