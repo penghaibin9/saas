@@ -423,8 +423,20 @@ export const academicAffairsApi = {
   getFailList(params = {}) {
     return callList(`${BASE}/grade-views/fail-list`, params)
   },
-  getGradeAnalysis(term) {
-    return call(() => request(`${BASE}/grade-views/analysis`, { params: term ? { term } : {} }))
+  getGradeAnalysis(term, dimension) {
+    const params = {}
+    if (term) params.term = term
+    if (dimension) params.dimension = dimension
+    return call(() => request(`${BASE}/grade-views/analysis`, { params }))
+  },
+  /** 成绩分析统计表导出 xlsx（按课程/班级）：返回 Blob；purpose 必填（≥5 字）。 */
+  async exportGradeAnalysis(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/grade-views/analysis/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
   },
 
   /* ── 学业预警（扫描 + 列表；多维分类/规则/跟进/统计见 academicAffairsWarningApi） ── */

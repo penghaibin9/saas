@@ -948,9 +948,29 @@ def grade_fail_list(term: Optional[str] = None, page: int = 1, pageSize: int = 5
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/grade-views/analysis", summary="成绩分析（分数段分布+及格率）")
-def grade_analysis(term: Optional[str] = None, user=Depends(require_staff)):
-    return success(grade_svc.grade_analysis(user, term))
+@router.get("/grade-views/analysis", summary="成绩分析（分数段+及格率+优秀率+平均分，可按课程/班级分组）")
+def grade_analysis(term: Optional[str] = None, dimension: Optional[str] = None,
+                   user=Depends(require_staff)):
+    return success(grade_svc.grade_analysis(user, term, dimension))
+
+
+class GradeAnalysisExportBody(BaseModel):
+    term: Optional[str] = None
+    dimension: str = "course"
+    purpose: str = Field(..., min_length=5, description="导出用途（≥5 字，写审计）")
+
+
+@router.post("/grade-views/analysis/export", summary="成绩分析统计表导出 xlsx（按课程/班级，水印+审计，同步下载）")
+def grade_analysis_export(body: GradeAnalysisExportBody,
+                          user=Depends(require_permission("academicAffairs.grade.view"))):
+    import io
+
+    from fastapi.responses import StreamingResponse
+    content = grade_svc.export_grade_analysis_xlsx(user, body.term, body.dimension, body.purpose)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=grade_analysis.xlsx"})
 
 
 # ═══════════ 学业预警（P5 规则引擎 + 二级模块 Tier1：看板/多维分类/规则/跟进/统计）═══════════

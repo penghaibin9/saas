@@ -624,31 +624,103 @@ def fail_list(user, term=None, page=1, page_size=50):
         return out, total
 
 
-def grade_analysis(user, term=None):
-    """成绩分析：分数段分布 + 及格率（读侧聚合）。"""
-    from app.models import AcademicGrade
+_BUCKET_KEYS = ("90-100", "80-89", "70-79", "60-69", "0-59")
+
+
+def _bucket_of(sc):
+    if sc >= 90:
+        return "90-100"
+    if sc >= 80:
+        return "80-89"
+    if sc >= 70:
+        return "70-79"
+    if sc >= 60:
+        return "60-69"
+    return "0-59"
+
+
+def _score_stats(scores, passed):
+    """一组分数 → 分数段分布 / 及格率 / 优秀率 / 良好率 / 平均分 / 最高最低（正方式成绩分析统计口径）。"""
+    total = len(scores)
+    buckets = {k: 0 for k in _BUCKET_KEYS}
+    for sc in scores:
+        buckets[_bucket_of(sc)] += 1
+    if not total:
+        return {"total": 0, "passRate": 0.0, "excellentRate": 0.0, "goodRate": 0.0,
+                "avgScore": 0.0, "maxScore": 0, "minScore": 0,
+                "distribution": [{"range": k, "count": 0} for k in _BUCKET_KEYS]}
+    return {"total": total, "passRate": round(passed / total, 3),
+            "excellentRate": round(buckets["90-100"] / total, 3),
+            "goodRate": round(buckets["80-89"] / total, 3),
+            "avgScore": round(sum(scores) / total, 1),
+            "maxScore": max(scores), "minScore": min(scores),
+            "distribution": [{"range": k, "count": buckets[k]} for k in _BUCKET_KEYS]}
+
+
+def grade_analysis(user, term=None, dimension=None):
+    """成绩分析统计表（正方对标）：总体分数段分布+及格率+优秀率+平均分+最高最低；
+    dimension=course/class 时追加「按课程 / 按班级」分组统计表（读侧聚合，已发布成绩口径，全租户）。
+    向后兼容：不传 dimension 时返回结构在旧字段(total/passRate/distribution)上仅新增指标字段。"""
+    from app.models import AcademicGrade, AcademicStudent
     with session() as db:
         conds = [AcademicGrade.tenant_id == _tid(), AcademicGrade.score.is_not(None),
                  AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False)]
         if term:
             conds.append(AcademicGrade.term == term)
-        rows = db.scalars(select(AcademicGrade).where(*conds)).all()
-        buckets = {"90-100": 0, "80-89": 0, "70-79": 0, "60-69": 0, "0-59": 0}
-        passed = 0
-        for g in rows:
-            sc = g.score or 0
-            if sc >= 90:
-                buckets["90-100"] += 1
-            elif sc >= 80:
-                buckets["80-89"] += 1
-            elif sc >= 70:
-                buckets["70-79"] += 1
-            elif sc >= 60:
-                buckets["60-69"] += 1
-            else:
-                buckets["0-59"] += 1
-            if g.pass_status == "PASSED":
-                passed += 1
-        total = len(rows)
-        return {"total": total, "passRate": round(passed / total, 3) if total else 0.0,
-                "distribution": [{"range": k, "count": v} for k, v in buckets.items()]}
+        groups: dict[str, list] = {}
+        if dimension == "class":
+            join = and_(AcademicStudent.id == AcademicGrade.acad_student_id,
+                        AcademicStudent.tenant_id == AcademicGrade.tenant_id)
+            recs = db.execute(select(AcademicGrade.score, AcademicGrade.pass_status,
+                                     AcademicStudent.class_id)
+                              .outerjoin(AcademicStudent, join).where(*conds)).all()
+            for sc, ps, cid in recs:
+                groups.setdefault(str(cid) if cid else "未分班", []).append((int(sc), ps))
+        else:
+            recs = db.execute(select(AcademicGrade.score, AcademicGrade.pass_status,
+                                     AcademicGrade.course_name).where(*conds)).all()
+            if dimension == "course":
+                for sc, ps, cn in recs:
+                    groups.setdefault(cn or "未命名课程", []).append((int(sc), ps))
+        all_scores = [int(r[0]) for r in recs]
+        passed_all = sum(1 for r in recs if r[1] == "PASSED")
+        result = _score_stats(all_scores, passed_all)
+        if dimension in ("course", "class"):
+            rows = []
+            for name, pairs in groups.items():
+                st = _score_stats([p[0] for p in pairs], sum(1 for p in pairs if p[1] == "PASSED"))
+                st["name"] = name
+                rows.append(st)
+            rows.sort(key=lambda x: (-x["total"], x["name"]))
+            result["dimension"] = dimension
+            result["rows"] = rows
+        return result
+
+
+def export_grade_analysis_xlsx(user, term=None, dimension="course", purpose="") -> bytes:
+    """成绩分析统计表导出 xlsx（水印+审计，同步下载；正方「课程/班级成绩分析统计表」业务对标）。"""
+    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    if dimension not in ("course", "class"):
+        dimension = "course"
+    data = grade_analysis(user, term, dimension)
+    from app.services.xlsx_util import build_ledger_xlsx
+    u = get_current_user_ctx() or {}
+    watermark = (f"导出人：{u.get('realName') or u.get('loginName') or '-'}  "
+                 f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}")
+    dim_label = "按课程" if dimension == "course" else "按班级"
+    title = f"成绩分析统计表（{dim_label}{('·' + term) if term else ''}）"
+    headers = ["名称", "记录数", "平均分", "最高分", "最低分", "及格率(%)", "优秀率(%)",
+               "90-100", "80-89", "70-79", "60-69", "0-59"]
+    rows = []
+    for r in data.get("rows", []):
+        dist = {d["range"]: d["count"] for d in r["distribution"]}
+        rows.append([r["name"], r["total"], r["avgScore"], r["maxScore"], r["minScore"],
+                     round(r["passRate"] * 100, 1), round(r["excellentRate"] * 100, 1),
+                     dist["90-100"], dist["80-89"], dist["70-79"], dist["60-69"], dist["0-59"]])
+    content = build_ledger_xlsx(title, headers, rows, watermark=watermark)
+    with session() as db:
+        _audit(db, "AC_GRADE_ANALYSIS", None, "GRADE_ANALYSIS_EXPORT",
+               f"{title} 用途={purpose.strip()[:100]}")
+        db.commit()
+    return content
