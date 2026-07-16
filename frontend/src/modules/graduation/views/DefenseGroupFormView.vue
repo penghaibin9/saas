@@ -21,7 +21,7 @@
 
     <template v-if="groupId">
       <div class="dg-sec">
-        <div class="dg-sec__head">已分配学生（{{ assigned.length }}/30）</div>
+        <div class="dg-sec__head"><span>已分配学生（{{ assigned.length }}/30）</span><span class="dg-capacity">剩余 {{ Math.max(0, 30 - assigned.length) }} 个名额</span></div>
         <EmptyState v-if="!assigned.length" title="暂未分配学生" description="从下方候选学生中勾选分配" />
         <div v-for="s in assigned" :key="s.id" class="dg-row">
           <div>
@@ -39,7 +39,7 @@
           <input v-model.trim="eligKeyword" class="ie-in dg-search" placeholder="搜索姓名" @input="loadEligible" />
         </div>
         <EmptyState v-if="!eligibleFree.length" title="暂无可分配学生" />
-        <div v-for="s in eligibleFree" :key="s.id" class="dg-row" @click="togglePick(s.id)">
+        <div v-for="s in eligibleFree" :key="s.id" class="dg-row dg-row--pick" tabindex="0" role="checkbox" :aria-checked="picked.includes(s.id)" @click="togglePick(s.id)" @keydown.enter.prevent="togglePick(s.id)" @keydown.space.prevent="togglePick(s.id)">
           <div>
             <div class="dg-row__main">
               <input type="checkbox" :checked="picked.includes(s.id)" @click.stop="togglePick(s.id)" /> {{ s.name }} · {{ s.className }}
@@ -197,10 +197,14 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.dg-sec { margin-top: var(--space-4); }
+.dg-sec { margin-top: var(--space-4); padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); }
 .dg-sec__head { font-weight: 600; margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-2); }
+.dg-capacity { margin-left: auto; padding: 3px 8px; border-radius: var(--radius-full, 999px); color: var(--text-secondary); background: var(--gray-50, #f8fafc); font-size: var(--font-size-xs, 12px); font-weight: var(--font-weight-normal, 400); white-space: nowrap; }
 .dg-search { max-width: 200px; }
 .dg-row { display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px dashed var(--line, #eef1f6); cursor: pointer; }
+.dg-row--pick { padding-left: var(--space-2); padding-right: var(--space-2); border-radius: var(--radius-sm, 6px); transition: background .12s ease; }
+.dg-row--pick:hover { background: var(--gray-50, #f8fafc); }
+.dg-row--pick:focus-visible { outline: 2px solid var(--primary-400, #60a5fa); outline-offset: -2px; }
 .dg-row__main { font-size: 13px; }
 .dg-row__sub { font-size: 12px; color: var(--t3, #64748b); }
 .mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }

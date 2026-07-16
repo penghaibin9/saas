@@ -191,14 +191,14 @@
   --font-family-base: var(--f);
   --font-numeric: tabular-nums;
 
-  --font-size-xs: 12px; /* 辅助文字 */
-  --font-size-sm: 13px; /* 表格正文 / 辅助 */
-  --font-size-base: 14px; /* 正文 */
-  --font-size-md: 15px; /* 移动端正文 / 按钮 */
-  --font-size-lg: 16px; /* 卡片标题 */
-  --font-size-xl: 18px; /* 移动端大标题 */
-  --font-size-2xl: 20px; /* 页面大标题 */
-  --font-size-3xl: 22px;
+  --font-size-xs: 13px; /* 辅助文字 */
+  --font-size-sm: 14px; /* 表格正文 / 辅助 */
+  --font-size-base: 15px; /* 正文 */
+  --font-size-md: 16px; /* 正文 / 按钮 */
+  --font-size-lg: 18px; /* 卡片标题 */
+  --font-size-xl: 20px; /* 小标题 */
+  --font-size-2xl: 24px; /* 页面大标题 */
+  --font-size-3xl: 28px;
   --font-size-metric-sm: 24px; /* 指标数字 */
   --font-size-metric: 27px;
   --font-size-metric-lg: 32px;

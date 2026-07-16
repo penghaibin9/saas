@@ -88,13 +88,13 @@ export default {
   position: relative;
 }
 .mh__title {
-  font-size: 18px;
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.01em;
 }
 .mh__subtitle {
   margin-top: var(--space-1);
-  font-size: 12.5px;
+  font-size: var(--font-size-sm);
   color: var(--hero-sub);
 }
 .mh__chips {
@@ -103,7 +103,7 @@ export default {
   flex-wrap: wrap;
 }
 .mh__chip {
-  height: 26px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   padding: 0 12px;
@@ -111,7 +111,7 @@ export default {
   background: var(--hero-chip-bg);
   border: 1px solid var(--hero-chip-bd);
   color: var(--hero-chip-tx);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
@@ -129,7 +129,7 @@ export default {
   box-shadow: none;
 }
 .mh__stat-value {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: var(--font-weight-bold);
   font-variant-numeric: var(--font-numeric);
   line-height: 1.15;
@@ -138,13 +138,13 @@ export default {
 }
 .mh__stat-label {
   margin-top: 3px;
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: var(--hero-sub);
   white-space: nowrap;
 }
 .mh__stat-trend {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
@@ -178,7 +178,7 @@ export default {
   z-index: 1;
   flex: 1;
   color: var(--hero-sub);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 .mh__flow-count {
   min-width: 46px;
@@ -191,7 +191,7 @@ export default {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-bold);
   font-variant-numeric: var(--font-numeric);
 }

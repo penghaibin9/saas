@@ -173,7 +173,7 @@ export default {
 }
 .dt__th {
   padding: 10px 14px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--t3);
   background: var(--bg-section);
@@ -182,7 +182,7 @@ export default {
 }
 .dt__td {
   padding: 11px 14px;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   border-bottom: 1px solid var(--dv);
   vertical-align: middle;
   transition: background 0.1s;
@@ -207,7 +207,7 @@ export default {
   justify-content: space-between;
   padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--dv);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--t3);
 }
 .dt__pager-info {

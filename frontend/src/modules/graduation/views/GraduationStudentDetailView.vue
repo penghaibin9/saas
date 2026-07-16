@@ -11,7 +11,21 @@
 
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
-    <div v-else class="mp-grid-2">
+    <div v-else class="mp-stack gsd-page">
+      <section class="gsd-summary" aria-label="毕设学生摘要">
+        <div class="gsd-summary__identity">
+          <div class="gsd-summary__avatar">{{ (detail.name || '学').slice(0, 1) }}</div>
+          <div>
+            <strong>{{ detail.name }}</strong>
+            <span><AppSensitiveText :value="detail.studentNo" type="generic" /> · {{ detail.className || '未关联班级' }}</span>
+          </div>
+        </div>
+        <div class="gsd-summary__item"><span>当前节点</span><StatusTag :type="detail.stageTone || 'processing'" :label="detail.stageLabel" dot /></div>
+        <div class="gsd-summary__item"><span>指导教师</span><b>{{ detail.advisorName || '待分配' }}</b></div>
+        <div class="gsd-summary__item"><span>风险状态</span><b :class="{ 'is-danger': detail.riskLevel === 'HIGH' || detail.riskLevel === 'CRITICAL' }">{{ detail.riskLabel || '无风险' }}</b></div>
+      </section>
+
+    <div class="mp-grid-2">
       <div class="mp-stack">
         <AppSectionCard title="课题信息">
           <template #header-extra>
@@ -42,7 +56,7 @@
 
       <div class="mp-stack">
         <section class="mp-card">
-          <div class="mp-tabs" style="padding: 0 var(--space-4)">
+          <div class="mp-tabs gsd-tabs" style="padding: 0 var(--space-4)">
             <button v-for="t in tabs" :key="t.key" class="mp-tab" :class="{ 'is-active': tab === t.key }" @click="switchTab(t.key)">
               {{ t.label }}
             </button>
@@ -197,6 +211,7 @@
           <AppAuditTrail :records="auditRecords" empty-text="暂无审计记录" compact :show-ip="false" />
         </AppSectionCard>
       </div>
+    </div>
     </div>
 
     <AppConfirmDialog
@@ -402,4 +417,19 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gsd-page { gap: var(--space-4); }
+.gsd-summary { display: grid; grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)); align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--primary-100, #dbeafe); border-radius: var(--radius-md, 8px); background: linear-gradient(100deg, var(--primary-50, #eff6ff), var(--card, #fff) 68%); }
+.gsd-summary__identity { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.gsd-summary__avatar { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: var(--radius-full); background: var(--primary-100, #dbeafe); color: var(--primary-700, #1d4ed8); font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }
+.gsd-summary__identity strong, .gsd-summary__identity span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gsd-summary__identity strong { color: var(--text-primary); font-size: var(--font-size-md); }
+.gsd-summary__identity span { margin-top: 2px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.gsd-summary__item { display: grid; gap: 4px; min-width: 0; }
+.gsd-summary__item > span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.gsd-summary__item b { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.gsd-summary__item b.is-danger { color: var(--danger, #dc2626); }
+.gsd-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.gsd-tabs .mp-tab { flex: 0 0 auto; white-space: nowrap; }
+@media (max-width: 1050px) { .gsd-summary { grid-template-columns: minmax(220px, 1.5fr) repeat(2, minmax(130px, 1fr)); } }
+@media (max-width: 680px) { .gsd-summary { grid-template-columns: 1fr 1fr; } .gsd-summary__identity { grid-column: 1 / -1; } }
 </style>
