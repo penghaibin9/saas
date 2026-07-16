@@ -1364,6 +1364,50 @@ def process_report_review(user: dict, report_id: str, action: str, comment: str 
     return result
 
 
+def plan_task_pending(user: dict) -> dict:
+    """实习计划任务完成度·待确认队列（本人指导学生，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_plan_task_service as task_svc
+    items, total = task_svc.list_progress(1, 50, status="SUBMITTED", user=u)
+    return {"list": items, "total": total}
+
+
+def plan_task_review(user: dict, progress_id: str, action: str, comment: str | None = None) -> dict:
+    """实习计划任务完成度确认（APPROVE/REJECT，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.internship.services import internship_plan_task_service as task_svc
+    result = task_svc.review_progress(progress_id, action, comment or "", user=u)
+    _audit_write("MOBILE_PLAN_TASK_REVIEW", f"internship-plan-task:{progress_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
+def internship_application_pending(user: dict) -> dict:
+    """实习申请·待审核队列（本人指导学生，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_application_service as app_svc
+    items, total = app_svc.list_applications(1, 50, status="PENDING_REVIEW", user=u)
+    return {"list": items, "total": total}
+
+
+def internship_application_review(user: dict, application_id: str, action: str, comment: str | None = None) -> dict:
+    """实习申请审核（APPROVE/REJECT，owner 校验在服务层完成，通过后落岗/落自主实习）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.internship.services import internship_application_service as app_svc
+    result = app_svc.review_application(application_id, action, comment or "", user=u)
+    _audit_write("MOBILE_INTERNSHIP_APPLICATION_REVIEW", f"internship-application:{application_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
 def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)

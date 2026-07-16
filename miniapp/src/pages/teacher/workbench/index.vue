@@ -144,6 +144,8 @@ export default {
         'internship-score': '/pages/teacher/internship-score/index',
         'agreement-confirm': '/pages/teacher/agreement-confirm/index',
         'process-report': '/pages/teacher/process-report-review/index',
+        'plan-task': '/pages/teacher/plan-task-review/index',
+        'internship-application': '/pages/teacher/internship-application/index',
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         follow: '/pages/teacher/employment-follow/index',

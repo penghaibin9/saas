@@ -160,6 +160,12 @@ export const teacherApi = {
   getProcessReportPending: () => real.teacherProcessReportPending(),
   getProcessReportDetail: (reportId) => real.teacherProcessReportDetail(reportId),
   reviewProcessReport: (reportId, action, comment) => real.teacherProcessReportReview(reportId, action, comment),
+  // 实习计划任务完成度：教师端待确认队列 + 确认（owner 校验，真实接口，无 mock 兜底）
+  getPlanTaskPending: () => real.teacherPlanTaskPending(),
+  reviewPlanTask: (progressId, action, comment) => real.teacherPlanTaskReview(progressId, action, comment),
+  // 实习申请：教师端待审核队列 + 审核（owner 校验，真实接口，无 mock 兜底）
+  getInternshipApplicationPending: () => real.teacherInternshipApplicationPending(),
+  reviewInternshipApplication: (applicationId, action, comment) => real.teacherInternshipApplicationReview(applicationId, action, comment),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

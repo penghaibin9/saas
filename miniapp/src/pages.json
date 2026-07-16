@@ -352,6 +352,14 @@
       "style": { "navigationBarTitleText": "过程报告批阅", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/plan-task-review/index",
+      "style": { "navigationBarTitleText": "实习计划任务确认", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-application/index",
+      "style": { "navigationBarTitleText": "实习申请审核", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

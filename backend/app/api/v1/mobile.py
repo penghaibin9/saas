@@ -832,6 +832,33 @@ def teacher_process_report_review(report_id: str, body: dict = Body(...),
                                              body.get("comment") or ""), message="批阅完成")
 
 
+@router.get("/teacher/internship/plan-tasks/pending", summary="指导教师·实习计划任务完成度待确认队列（范围校验）")
+def teacher_plan_task_pending(user=Depends(get_current_user)):
+    return success(tea.plan_task_pending(user))
+
+
+@router.post("/teacher/internship/plan-tasks/{progress_id}/review",
+             summary="指导教师·实习计划任务完成度确认（APPROVE/REJECT，owner 校验）")
+def teacher_plan_task_review(progress_id: str, body: dict = Body(...),
+                             user=Depends(get_current_user)):
+    return success(tea.plan_task_review(user, progress_id, str(body.get("action") or "").upper(),
+                                        body.get("comment") or ""), message="处理完成")
+
+
+@router.get("/teacher/internship/applications/pending", summary="指导教师·实习申请待审核队列（范围校验）")
+def teacher_internship_application_pending(user=Depends(get_current_user)):
+    return success(tea.internship_application_pending(user))
+
+
+@router.post("/teacher/internship/applications/{application_id}/review",
+             summary="指导教师·实习申请审核（APPROVE/REJECT，owner 校验，通过后落岗）")
+def teacher_internship_application_review(application_id: str, body: dict = Body(...),
+                                          user=Depends(get_current_user)):
+    return success(tea.internship_application_review(
+        user, application_id, str(body.get("action") or "").upper(), body.get("comment") or ""),
+        message="审核完成")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):

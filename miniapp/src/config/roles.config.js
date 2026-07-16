@@ -96,7 +96,9 @@ export const roleConfigs = {
       { key: 'internship-change', label: '调岗退岗初审', icon: '🔀' },
       { key: 'internship-score', label: '实习成绩', icon: '💯' },
       { key: 'agreement-confirm', label: '协议确认', icon: '📃' },
-      { key: 'process-report', label: '过程报告批阅', icon: '📰' }
+      { key: 'process-report', label: '过程报告批阅', icon: '📰' },
+      { key: 'plan-task', label: '计划任务确认', icon: '☑' },
+      { key: 'internship-application', label: '实习申请审核', icon: '📥' }
     ],
     permissionActions: ['intern.weekly.review', 'intern.leave.approve', 'intern.checkin.handle', 'visit.create']
   },
