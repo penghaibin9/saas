@@ -1683,6 +1683,33 @@ def graduation_taskbook_change(user: dict, gd_student_id: str, body: dict) -> di
     return result
 
 
+def graduation_defense_score_pending(user: dict) -> list:
+    """答辩评委·本人待评分学生名单（已发布分组，含本人当前轮次评分状态，范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return []
+    from app.modules.graduation.services import graduation_defense_score_service as ds
+    return ds.judge_pending()
+
+
+def graduation_defense_score_entry(user: dict, gd_student_id: str, body: dict) -> dict:
+    """答辩评委·录入/更新本人评分（judgeName 由服务端强制取当前登录人姓名，不信任客户端传入，
+    比 PC 端更严格——PC 端 judgeName 由调用方在请求体自报，本函数不改动 PC 行为，仅收紧移动端）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    b = body or {}
+    judge_name = u.get("realName") or ""
+    if not judge_name:
+        raise AppException("VALIDATION_ERROR", "无法确认评委身份，请重新登录")
+    from app.modules.graduation.services import graduation_defense_score_service as ds
+    result = ds.enter_score(gd_student_id, judge_name, score=b.get("score"), comment=b.get("comment"),
+                            absent=bool(b.get("absent")), absent_reason=b.get("absentReason"))
+    _audit_write("MOBILE_GD_DEFENSE_SCORE_ENTRY", f"graduation-defense-score:{result.get('id')}",
+                 {"operator": judge_name, "gdStudentId": str(gd_student_id), "absent": bool(b.get("absent"))})
+    return result
+
+
 def _require_gd_student_scope(u: dict, scope: dict, gd_student_id) -> dict:
     """加载毕设学生并做范围校验（非 ADMIN 只能本人指导学生）。不存在 404、越权 403。返回轻量快照。"""
     from app.models import GraduationStudent

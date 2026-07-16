@@ -1006,6 +1006,18 @@ def teacher_graduation_taskbook_change(gd_student_id: str, body: dict = Body(...
     return success(tea.graduation_taskbook_change(user, gd_student_id, body), message="已提交变更")
 
 
+@router.get("/teacher/graduation/defense/pending", summary="答辩评委·本人待评分学生名单（范围校验）")
+def teacher_graduation_defense_score_pending(user=Depends(get_current_user)):
+    return success(tea.graduation_defense_score_pending(user))
+
+
+@router.post("/teacher/graduation/defense/{gd_student_id}/score",
+             summary="答辩评委·录入/更新本人评分（judgeName 服务端强制取当前登录人，范围校验）")
+def teacher_graduation_defense_score_entry(gd_student_id: str, body: dict = Body(...),
+                                           user=Depends(get_current_user)):
+    return success(tea.graduation_defense_score_entry(user, gd_student_id, body), message="已保存")
+
+
 @router.post("/teacher/academic/warning/{warning_id}/handle",
              summary="教师·学业预警处理（CLOSE/ESCALATE，范围校验+审计）")
 def teacher_warning_handle(warning_id: str, body: dict = Body(...),

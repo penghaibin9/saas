@@ -171,6 +171,9 @@ export const teacherApi = {
   getGraduationTaskbookList: () => real.teacherGraduationTaskbookList(),
   issueGraduationTaskbook: (gdStudentId, body) => real.teacherGraduationTaskbookIssue(gdStudentId, body),
   changeGraduationTaskbook: (gdStudentId, body) => real.teacherGraduationTaskbookChange(gdStudentId, body),
+  // 答辩评委·本人待评分学生名单 + 录入评分（judgeName 服务端强制，真实接口，无 mock 兜底）
+  getGraduationDefenseScorePending: () => real.teacherGraduationDefenseScorePending(),
+  submitGraduationDefenseScore: (gdStudentId, body) => real.teacherGraduationDefenseScoreEntry(gdStudentId, body),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

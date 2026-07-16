@@ -364,6 +364,10 @@
       "style": { "navigationBarTitleText": "毕设任务书", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/defense-score/index",
+      "style": { "navigationBarTitleText": "答辩评分", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

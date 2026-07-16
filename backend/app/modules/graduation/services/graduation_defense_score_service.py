@@ -68,6 +68,47 @@ def list_scores(page: int, page_size: int, gd_student_id=None, judge_name=None,
         return items, total
 
 
+def judge_pending() -> list[dict]:
+    """答辩评委（本人）·待评分学生名单（已发布分组，含本人当前轮次评分状态）。
+    范围口径复用 accessible_student_ids（对 GD_DEFENSE_EXPERT/SECRETARY 按面板成员姓名收敛，与
+    enter_score 内部的 assert_student_access 一致，不会出现"看得到但打不了分"的落差）。"""
+    from app.models import GraduationDefenseGroup
+
+    judge_name, _role = _op()
+    with session() as db:
+        scope_ids = accessible_student_ids(db, _tid())
+        if not scope_ids:
+            return []
+        stus = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.tenant_id == _tid(), GraduationStudent.id.in_(scope_ids),
+            GraduationStudent.defense_group_id.is_not(None),
+            GraduationStudent.is_deleted.is_(False))).all()
+        out = []
+        for stu in stus:
+            group = db.get(GraduationDefenseGroup, stu.defense_group_id)
+            if not group or group.is_deleted or not group.published:
+                continue
+            latest_round = int(db.scalar(select(func.max(GraduationDefenseScore.round_no)).where(
+                GraduationDefenseScore.tenant_id == _tid(),
+                GraduationDefenseScore.gd_student_id == stu.id)) or 1)
+            mine = db.scalars(select(GraduationDefenseScore).where(
+                GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.gd_student_id == stu.id,
+                GraduationDefenseScore.judge_name == judge_name,
+                GraduationDefenseScore.round_no == latest_round,
+                GraduationDefenseScore.is_deleted.is_(False))).first()
+            my_status = mine.status if mine else "PENDING"
+            out.append({
+                "gdStudentId": str(stu.id), "studentName": stu.name, "studentNo": stu.student_no or "",
+                "topicTitle": stu.topic_title or "（未选题）", "groupName": group.group_name,
+                "defenseDate": group.defense_date or "待定", "location": group.location or "待定",
+                "roundNo": latest_round, "myScoreId": str(mine.id) if mine else "",
+                "myScore": mine.score if mine else None, "myAbsent": bool(mine.absent) if mine else False,
+                "myComment": mine.comment if mine else "", "myStatus": my_status,
+                "myStatusLabel": STATUS_LABEL.get(my_status, "待评分"),
+            })
+        return out
+
+
 def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent=False,
                 absent_reason=None, defense_group_id=None) -> dict:
     with session() as db:

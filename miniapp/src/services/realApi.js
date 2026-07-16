@@ -233,6 +233,11 @@ export const teacherGraduationTaskbookIssue = (gdStudentId, body) =>
 export const teacherGraduationTaskbookChange = (gdStudentId, body) =>
   realRequest(`/mobile/teacher/graduation/taskbooks/${gdStudentId}/change`, { method: 'POST', data: body })
 
+/** 答辩评委·本人待评分学生名单 / 录入评分（judgeName 服务端强制取当前登录人，真实接口，无 mock 兜底） */
+export const teacherGraduationDefenseScorePending = () => realRequest('/mobile/teacher/graduation/defense/pending')
+export const teacherGraduationDefenseScoreEntry = (gdStudentId, body) =>
+  realRequest(`/mobile/teacher/graduation/defense/${gdStudentId}/score`, { method: 'POST', data: body })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }
