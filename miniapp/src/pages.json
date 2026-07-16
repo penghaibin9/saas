@@ -224,6 +224,10 @@
       "style": { "navigationBarTitleText": "成绩复查申请", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/student/academic-affairs/textbook",
+      "style": { "navigationBarTitleText": "我的教材", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/student/academic-affairs/level-exam",
       "style": { "navigationBarTitleText": "等级考试报名", "navigationStyle": "custom" }
     },

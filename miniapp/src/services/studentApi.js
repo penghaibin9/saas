@@ -135,6 +135,8 @@ export const studentApi = {
   submitRecognition: (body) => real.acadRecognitionSubmit(body),
   getMyRecheck: () => real.acadRecheckMy(),
   submitRecheck: (body) => real.acadRecheckSubmit(body),
+  getMyTextbook: () => real.acadTextbookMy(),
+  signTextbook: (recordId) => real.acadTextbookSign(recordId),
   // 等级考务报名（学生自助，对标正方 3.13）
   getMyLevelExam: () => real.acadLevelExamMy(),
   registerLevelExam: (examId) => real.acadLevelRegister(examId),

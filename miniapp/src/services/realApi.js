@@ -709,6 +709,9 @@ export const acadRecognitionSubmit = (body) =>
 export const acadRecheckMy = () => realRequest('/mobile/academic/grade-recheck/my')
 export const acadRecheckSubmit = (body) =>
   realRequest('/mobile/academic/grade-recheck/submit', { method: 'POST', data: body })
+export const acadTextbookMy = () => realRequest('/mobile/academic/textbook/my')
+export const acadTextbookSign = (recordId) =>
+  realRequest(`/mobile/academic/textbook/${recordId}/sign`, { method: 'POST' })
 export const acadLevelExamMy = () => realRequest('/mobile/academic/level-exam/my')
 export const acadLevelRegister = (examId) =>
   realRequest(`/mobile/academic/level-exam/${examId}/register`, { method: 'POST' })

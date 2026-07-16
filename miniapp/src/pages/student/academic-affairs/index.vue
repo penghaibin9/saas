@@ -45,6 +45,7 @@ const ENTRIES = [
   { key: 'graduation', label: '毕业进度', icon: '🎓', route: '/pages/student/academic-affairs/graduation' },
   { key: 'recognition', label: '成绩认定', icon: '🔄', route: '/pages/student/academic-affairs/recognition' },
   { key: 'recheck', label: '成绩复查', icon: '🔍', route: '/pages/student/academic-affairs/recheck' },
+  { key: 'textbook', label: '我的教材', icon: '📚', route: '/pages/student/academic-affairs/textbook' },
   { key: 'levelExam', label: '等级考试', icon: '🏅', route: '/pages/student/academic-affairs/level-exam' },
   { key: 'majorSplit', label: '专业分流', icon: '🧭', route: '/pages/student/academic-affairs/major-split' }
 ]

@@ -251,6 +251,22 @@ def workload_submit_my(user, body) -> dict:
     return wl.submit(user, body or {})
 
 
+def textbook_my(user):
+    """学生本人教材领用记录 + 费用汇总（正方学生端6.13/6.14 对标）。"""
+    from app.modules.academic_affairs.services import academic_affairs_textbook_service as tb
+    with session() as db:
+        sid = _me(db, user).id
+    return {"distributions": tb.my_distributions(user, sid), "fees": tb.my_fees(user, sid)}
+
+
+def textbook_sign_my(user, record_id):
+    """学生本人签收自己的教材发放记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_textbook_service as tb
+    with session() as db:
+        sid = _me(db, user).id
+    return tb.sign_receipt_my(user, sid, record_id)
+
+
 # ═══════════ 等级考务报名（学生自助，对标正方 3.13 考级项目报名）═══════════
 
 def level_exam_my(user):

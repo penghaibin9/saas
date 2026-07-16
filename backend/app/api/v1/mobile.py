@@ -974,6 +974,16 @@ def academic_recheck_submit(body: dict = Body(...), user=Depends(get_current_use
     return success(aa.grade_recheck_submit_my(user, body), message="复查申请已提交")
 
 
+@router.get("/academic/textbook/my", summary="教务·我的教材领用与费用")
+def academic_textbook_my(user=Depends(get_current_user)):
+    return success(aa.textbook_my(user))
+
+
+@router.post("/academic/textbook/{record_id}/sign", summary="教务·学生签收本人教材")
+def academic_textbook_sign(record_id: str, user=Depends(get_current_user)):
+    return success(aa.textbook_sign_my(user, record_id), message="签收成功")
+
+
 # ── 等级考务报名（学生自助） ──
 @router.get("/academic/level-exam/my", summary="教务·考级·开放考试+我的报名")
 def academic_level_exam_my(user=Depends(get_current_user)):
