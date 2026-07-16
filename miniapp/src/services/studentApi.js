@@ -1,5 +1,5 @@
 /** 学生端数据服务：真实后端优先（主链：首页/档案/消息），其余仍 mock；失败自动回退。 */
-import { mockRequest, realFirst, realFirstStrict } from './request'
+import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
 import * as real from './realApi'
 import * as M from '@/mock'
 
@@ -134,6 +134,7 @@ export const studentApi = {
   getMyDeferOptions: () => real.acadExamDeferOptions(),
   getMyDeferrals: (status) => real.acadExamDeferMy(status),
   applyDefer: (examCourseId, reasonType, reason) => real.acadExamDeferApply(examCourseId, reasonType, reason),
-  resubmitDefer: (deferId) => real.acadExamDeferResubmit(deferId)
+  resubmitDefer: (deferId) => real.acadExamDeferResubmit(deferId),
+  exportMyData: () => realRequest('/mobile/me/export-data')
 }
 export default studentApi
