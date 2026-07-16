@@ -134,6 +134,11 @@ export const teacherApi = {
   // 指导记录：本人指导学生名单 + 新增记录（owner 校验，真实接口，无 mock 兜底）
   getInternshipMyStudents: () => real.teacherInternshipMyStudents(),
   createInternshipGuidance: (body) => real.teacherInternshipGuidanceCreate(body),
+  // 学生实习鉴定：队列 + 详情 + 填写意见 + 审核（owner 校验，真实接口，无 mock 兜底）
+  getStudentEvalPending: () => real.teacherStudentEvalPending(),
+  getStudentEvalDetail: (evalId) => real.teacherStudentEvalDetail(evalId),
+  submitStudentEvalAdvisorComment: (evalId, body) => real.teacherStudentEvalAdvisorComment(evalId, body),
+  reviewStudentEval: (evalId, action, comment) => real.teacherStudentEvalReview(evalId, action, comment),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

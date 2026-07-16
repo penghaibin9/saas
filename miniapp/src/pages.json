@@ -324,6 +324,10 @@
       "style": { "navigationBarTitleText": "新增指导记录", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/student-eval/index",
+      "style": { "navigationBarTitleText": "学生实习鉴定", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

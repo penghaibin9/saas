@@ -89,7 +89,8 @@ export const roleConfigs = {
       { key: 'makeup', label: '补卡审批', icon: '🔖' },
       { key: 'leave', label: '请假审批', icon: '✈' },
       { key: 'visit', label: '新增巡访', icon: '✎' },
-      { key: 'guidance', label: '指导记录', icon: '📝' }
+      { key: 'guidance', label: '指导记录', icon: '📝' },
+      { key: 'stu-eval', label: '实习鉴定', icon: '📋' }
     ],
     permissionActions: ['intern.weekly.review', 'intern.leave.approve', 'intern.checkin.handle', 'visit.create']
   },

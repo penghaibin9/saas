@@ -1156,6 +1156,49 @@ def internship_guidance_create(user: dict, body: dict) -> dict:
     return result
 
 
+def student_eval_pending(user: dict) -> dict:
+    """指导教师·学生实习鉴定队列（本人指导学生的自评，供填写意见/审核，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_student_eval_service as se
+    items, total = se.list_evals(1, 50, user=u)
+    return {"list": items, "total": total}
+
+
+def student_eval_detail(user: dict, eval_id: str) -> dict:
+    """学生实习鉴定详情（自评/意见/审核留痕，owner+范围校验）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实鉴定材料")
+    from app.modules.internship.services import internship_student_eval_service as se
+    return se.get_eval(eval_id, user=u)
+
+
+def student_eval_advisor_comment(user: dict, eval_id: str, body: dict) -> dict:
+    """指导教师·填写学生鉴定意见（owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.internship.services import internship_student_eval_service as se
+    result = se.advisor_comment(u, eval_id, body or {})
+    _audit_write("MOBILE_STU_EVAL_ADVISOR_COMMENT", f"internship-student-eval:{eval_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def student_eval_review(user: dict, eval_id: str, action: str, comment: str | None = None) -> dict:
+    """学生实习鉴定审核（APPROVE/RETURN，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.internship.services import internship_student_eval_service as se
+    result = se.review(u, eval_id, action, comment or "")
+    _audit_write("MOBILE_STU_EVAL_REVIEW", f"internship-student-eval:{eval_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
 def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)

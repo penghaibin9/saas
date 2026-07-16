@@ -137,6 +137,7 @@ export default {
         makeup: '/pages/teacher/internship-approval/index',
         leave: '/pages/teacher/internship-approval/index?tab=leave',
         guidance: '/pages/teacher/internship-guidance/index',
+        'stu-eval': '/pages/teacher/student-eval/index',
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         follow: '/pages/teacher/employment-follow/index',

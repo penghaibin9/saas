@@ -719,6 +719,31 @@ def teacher_internship_guidance_create(body: dict = Body(...), user=Depends(get_
     return success(tea.internship_guidance_create(user, body), message="指导记录已保存")
 
 
+@router.get("/teacher/internship/student-evals", summary="指导教师·学生实习鉴定队列（范围校验）")
+def teacher_student_eval_pending(user=Depends(get_current_user)):
+    return success(tea.student_eval_pending(user))
+
+
+@router.get("/teacher/internship/student-evals/{eval_id}", summary="指导教师·学生实习鉴定详情（自评/意见/审核留痕，范围校验）")
+def teacher_student_eval_detail(eval_id: str, user=Depends(get_current_user)):
+    return success(tea.student_eval_detail(user, eval_id))
+
+
+@router.post("/teacher/internship/student-evals/{eval_id}/advisor-comment",
+             summary="指导教师·填写学生鉴定意见（owner 校验）")
+def teacher_student_eval_advisor_comment(eval_id: str, body: dict = Body(...),
+                                         user=Depends(get_current_user)):
+    return success(tea.student_eval_advisor_comment(user, eval_id, body), message="已保存意见")
+
+
+@router.post("/teacher/internship/student-evals/{eval_id}/review",
+             summary="指导教师·审核学生实习鉴定（APPROVE/RETURN，owner 校验）")
+def teacher_student_eval_review(eval_id: str, body: dict = Body(...),
+                                user=Depends(get_current_user)):
+    return success(tea.student_eval_review(user, eval_id, str(body.get("action") or "").upper(),
+                                           body.get("comment") or ""), message="审核完成")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):
