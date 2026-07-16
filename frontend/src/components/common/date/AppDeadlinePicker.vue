@@ -5,22 +5,20 @@
       <span v-if="hint" class="app-ddl__hint-inline">{{ hint }}</span>
     </label>
     <div class="app-ddl__row">
-      <input
-        class="app-ddl__control"
-        type="datetime-local"
-        :value="inner"
-        :disabled="disabled"
-        step="60"
-        :aria-label="label || '截止时间'"
-        @change="onNativeChange"
-      />
-      <button
-        v-if="clearable && inner && !disabled"
-        type="button"
-        class="app-ddl__clear"
-        title="清空"
-        @click="clear"
-      >清空</button>
+      <el-config-provider :locale="zhCn">
+        <el-date-picker
+          type="datetime"
+          :model-value="inner || null"
+          value-format="YYYY-MM-DD[T]HH:mm"
+          time-format="HH:mm"
+          :default-time="defaultTime"
+          placeholder="请选择截止时间"
+          :disabled="disabled"
+          :clearable="clearable"
+          :aria-label="label || '截止时间'"
+          @update:model-value="onPick"
+        />
+      </el-config-provider>
     </div>
     <AppDateDisplay
       v-if="showStatus"
@@ -48,8 +46,13 @@
 <script>
 /**
  * AppDeadlinePicker — 截止时间选择。
- * 选日期后默认落到 23:59；提供「今天/明天/本周五/7/14/30 天 / 批次截止 / 清空」快捷项。
+ * 内部使用 Element Plus DatePicker（datetime 日历弹层，点选日期默认落到 23:59）；
+ * 提供「今天/明天/本周五/7/14/30 天 / 批次截止 / 清空」快捷项。业务页不得直接引 el-date-picker。
  */
+import { ElDatePicker, ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import 'element-plus/es/components/date-picker/style/css'
+import 'element-plus/es/components/config-provider/style/css'
 import AppDateDisplay from './AppDateDisplay.vue'
 import {
   toDateTimeInputValue,
@@ -60,7 +63,7 @@ import {
 
 export default {
   name: 'AppDeadlinePicker',
-  components: { AppDateDisplay },
+  components: { AppDateDisplay, ElDatePicker, ElConfigProvider },
   props: {
     modelValue: { type: [String, Date], default: '' },
     label: { type: String, default: '截止时间' },
@@ -78,6 +81,10 @@ export default {
     completed: { type: Boolean, default: false }
   },
   emits: ['update:modelValue', 'change', 'clear'],
+  data() {
+    // default-time：日历里只点日期时，时间部分自动落到 23:59
+    return { zhCn, defaultTime: new Date(2000, 0, 1, 23, 59, 0) }
+  },
   computed: {
     resolvedBatchDeadline() {
       if (!isEmptyDate(this.batchDeadline)) return this.batchDeadline
@@ -117,16 +124,16 @@ export default {
       if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return withDeadlineTime(v)
       return v
     },
-    onNativeChange(e) {
-      const raw = e.target.value || ''
+    onPick(raw) {
+      if (!raw) {
+        this.$emit('update:modelValue', '')
+        this.$emit('clear')
+        this.$emit('change', '')
+        return
+      }
       const v = this.normalize(raw)
       this.$emit('update:modelValue', v)
       this.$emit('change', v)
-    },
-    clear() {
-      this.$emit('update:modelValue', '')
-      this.$emit('clear')
-      this.$emit('change', '')
     },
     applyShortcut(s) {
       const v = typeof s.value === 'function' ? s.value() : s.value
@@ -156,33 +163,8 @@ export default {
 }
 .app-ddl__label i { color: var(--danger-600, #dc2626); font-style: normal; }
 .app-ddl__hint-inline { font-weight: 400; color: var(--text-tertiary, #94a3b8); margin-left: 4px; }
-.app-ddl__row { display: flex; align-items: center; gap: 6px; }
-.app-ddl__control {
-  flex: 1; min-width: 0; height: 34px;
-  border: 1px solid var(--border-base, #e2e8f0);
-  border-radius: var(--radius-base, 6px);
-  background: var(--bg-card, #fff);
-  color: var(--text-primary, #0f172a);
-  font: inherit; font-size: var(--font-size-sm, 13px);
-  padding: 0 8px; outline: none;
-}
-.app-ddl__control:focus {
-  border-color: var(--primary-500, #2563eb);
-  box-shadow: 0 0 0 3px var(--primary-50, #eff6ff);
-}
-.app-ddl.is-disabled .app-ddl__control {
-  background: var(--bg-section-blue, #f8fafc);
-  color: var(--text-tertiary, #94a3b8);
-  cursor: not-allowed;
-}
-.app-ddl__clear {
-  flex-shrink: 0; height: 28px; padding: 0 8px;
-  border: 1px solid var(--border-base, #e2e8f0);
-  border-radius: 6px; background: #fff;
-  color: var(--text-secondary, #64748b);
-  font-size: 12px; cursor: pointer;
-}
-.app-ddl__clear:hover { color: var(--danger-600, #dc2626); border-color: var(--danger-600, #dc2626); }
+.app-ddl__row { display: flex; align-items: center; min-width: 0; }
+.app-ddl__row :deep(.el-date-editor.el-input) { --el-date-editor-width: 100%; width: 100%; }
 .app-ddl__status { margin-top: 2px; }
 .app-ddl__shortcuts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .app-ddl__chip {
