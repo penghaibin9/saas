@@ -1277,6 +1277,62 @@ def internship_change_review(user: dict, change_id: str, action: str, comment: s
     return result
 
 
+def internship_score_list(user: dict) -> dict:
+    """实习成绩·教师端列表（本人指导学生已核算的成绩，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_score_service as score_svc
+    items, total = score_svc.list_scores(1, 50, user=u)
+    return {"list": items, "total": total}
+
+
+def internship_score_compute(user: dict, body: dict) -> dict:
+    """实习成绩·核算（五项加权，owner 校验在服务层完成，企业评价分未填时自动取已通过均分）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实核算")
+    from app.modules.internship.services import internship_score_service as score_svc
+    result = score_svc.compute(u, body or {})
+    _audit_write("MOBILE_INTERNSHIP_SCORE_COMPUTE", f"internship-score:{result.get('id')}",
+                 {"operator": u.get("realName"), "internshipId": (body or {}).get("internshipId")})
+    return result
+
+
+def internship_score_publish(user: dict, score_id: str) -> dict:
+    """实习成绩·发布（owner 校验在服务层完成，缺项不可发布）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实发布")
+    from app.modules.internship.services import internship_score_service as score_svc
+    result = score_svc.publish(u, score_id)
+    _audit_write("MOBILE_INTERNSHIP_SCORE_PUBLISH", f"internship-score:{score_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def agreement_pending_school(user: dict) -> dict:
+    """三方协议·待学校确认队列（本人指导学生，已记录企业签署，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_agreement_service as agr
+    items, total = agr.list_agreements(1, 50, status="PENDING_SCHOOL", user=u)
+    return {"list": items, "total": total}
+
+
+def agreement_school_confirm(user: dict, agreement_id: str) -> dict:
+    """三方协议·学校确认生效（PENDING_SCHOOL→EFFECTIVE，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.internship.services import internship_agreement_service as agr
+    result = agr.school_confirm(u, agreement_id)
+    _audit_write("MOBILE_AGREEMENT_SCHOOL_CONFIRM", f"internship-agreement:{agreement_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
 def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)

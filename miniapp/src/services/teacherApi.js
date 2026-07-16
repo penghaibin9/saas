@@ -149,6 +149,13 @@ export const teacherApi = {
   // 调岗/退岗初审：待处理队列 + 审核（owner 校验，真实接口，无 mock 兜底）
   getInternshipChangePending: () => real.teacherInternshipChangePending(),
   reviewInternshipChange: (changeId, action, comment) => real.teacherInternshipChangeReview(changeId, action, comment),
+  // 实习成绩：教师端列表 + 核算(五项加权) + 发布（owner 校验，真实接口，无 mock 兜底）
+  getInternshipScoreList: () => real.teacherInternshipScoreList(),
+  computeInternshipScore: (body) => real.teacherInternshipScoreCompute(body),
+  publishInternshipScore: (scoreId) => real.teacherInternshipScorePublish(scoreId),
+  // 三方协议：待学校确认队列 + 学校确认生效（owner 校验，真实接口，无 mock 兜底）
+  getAgreementPendingSchool: () => real.teacherAgreementPendingSchool(),
+  confirmAgreementSchool: (agreementId) => real.teacherAgreementSchoolConfirm(agreementId),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

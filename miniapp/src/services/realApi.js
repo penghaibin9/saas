@@ -195,6 +195,18 @@ export const teacherInternshipChangeReview = (changeId, action, comment) =>
   realRequest(`/mobile/teacher/internship/change-requests/${changeId}/review`,
     { method: 'POST', data: { action, comment: comment || '' } })
 
+/** 实习成绩：教师端列表 / 核算(五项加权) / 发布（owner 校验，真实接口，无 mock 兜底） */
+export const teacherInternshipScoreList = () => realRequest('/mobile/teacher/internship/scores')
+export const teacherInternshipScoreCompute = (body) =>
+  realRequest('/mobile/teacher/internship/scores/compute', { method: 'POST', data: body })
+export const teacherInternshipScorePublish = (scoreId) =>
+  realRequest(`/mobile/teacher/internship/scores/${scoreId}/publish`, { method: 'POST' })
+
+/** 三方协议：待学校确认队列 / 学校确认生效（owner 校验，真实接口，无 mock 兜底） */
+export const teacherAgreementPendingSchool = () => realRequest('/mobile/teacher/internship/agreements/pending-school')
+export const teacherAgreementSchoolConfirm = (agreementId) =>
+  realRequest(`/mobile/teacher/internship/agreements/${agreementId}/school-confirm`, { method: 'POST' })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

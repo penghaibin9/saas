@@ -340,6 +340,14 @@
       "style": { "navigationBarTitleText": "调岗退岗初审", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/internship-score/index",
+      "style": { "navigationBarTitleText": "实习成绩", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/agreement-confirm/index",
+      "style": { "navigationBarTitleText": "三方协议学校确认", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

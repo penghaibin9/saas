@@ -788,6 +788,32 @@ def teacher_internship_change_review(change_id: str, body: dict = Body(...),
                                                 body.get("comment") or ""), message="审核完成")
 
 
+@router.get("/teacher/internship/scores", summary="指导教师·实习成绩列表（范围校验）")
+def teacher_internship_score_list(user=Depends(get_current_user)):
+    return success(tea.internship_score_list(user))
+
+
+@router.post("/teacher/internship/scores/compute", summary="指导教师·实习成绩核算（五项加权，owner 校验）")
+def teacher_internship_score_compute(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.internship_score_compute(user, body), message="核算完成")
+
+
+@router.post("/teacher/internship/scores/{score_id}/publish", summary="指导教师·实习成绩发布（owner 校验，缺项不可发布）")
+def teacher_internship_score_publish(score_id: str, user=Depends(get_current_user)):
+    return success(tea.internship_score_publish(user, score_id), message="已发布")
+
+
+@router.get("/teacher/internship/agreements/pending-school", summary="指导教师·三方协议待学校确认队列（范围校验）")
+def teacher_agreement_pending_school(user=Depends(get_current_user)):
+    return success(tea.agreement_pending_school(user))
+
+
+@router.post("/teacher/internship/agreements/{agreement_id}/school-confirm",
+             summary="指导教师·三方协议学校确认生效（owner 校验）")
+def teacher_agreement_school_confirm(agreement_id: str, user=Depends(get_current_user)):
+    return success(tea.agreement_school_confirm(user, agreement_id), message="已确认生效")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):

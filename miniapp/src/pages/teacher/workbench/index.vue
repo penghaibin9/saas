@@ -141,6 +141,8 @@ export default {
         'ent-eval': '/pages/teacher/enterprise-eval/index',
         insurance: '/pages/teacher/insurance-verify/index',
         'internship-change': '/pages/teacher/internship-change/index',
+        'internship-score': '/pages/teacher/internship-score/index',
+        'agreement-confirm': '/pages/teacher/agreement-confirm/index',
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         follow: '/pages/teacher/employment-follow/index',
