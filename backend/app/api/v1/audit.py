@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from app.core.exceptions import no_permission
+from app.core.permissions import enforce_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.services import audit_log
@@ -32,6 +33,8 @@ def list_audit_logs(action: Optional[str] = Query(default=None,
                     pageSize: int = Query(default=20, ge=1, le=100),
                     user=Depends(get_current_user)):
     _ensure_staff(user)
+    # 【P1-8】安全审计仅授权角色可读：辅导员/宿管等普通教职工无 systemAdmin.audit.view → 403 + 写拒绝审计
+    enforce_permission(user, "systemAdmin.audit.view")
     items, total = audit_log.query(page, pageSize, action)
     return success(paginate(items, total, page, pageSize))
 
@@ -49,6 +52,8 @@ def audit_logs(action: Optional[str] = Query(default=None),
                pageSize: int = Query(default=20, ge=1, le=100),
                user=Depends(get_current_user)):
     _ensure_staff(user)
+    # 【P1-8】安全审计仅授权角色可读：辅导员/宿管等普通教职工无 systemAdmin.audit.view → 403 + 写拒绝审计
+    enforce_permission(user, "systemAdmin.audit.view")
     items, total = audit_log.query(page, pageSize, action, operator, dateFrom, dateTo)
     return success(paginate(items, total, page, pageSize))
 
