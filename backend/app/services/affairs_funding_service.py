@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 PROJECT_TYPES = {"SCHOLARSHIP", "GRANT", "WORK_STUDY", "LOAN",
@@ -455,7 +455,7 @@ def _act_task(db, x, action, reason=""):
     return inst
 
 
-def review(app_id, user, action, reason="") -> dict:
+def review(app_id, user, action, reason="", expected_version=None) -> dict:
     action = (action or "").upper()
     with session() as db:
         from app.models import WorkflowTask
@@ -463,6 +463,7 @@ def review(app_id, user, action, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in FUND_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
+        check_version(x.version, expected_version)
         _check_fund_review_node(db, x, user)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
@@ -554,12 +555,13 @@ def scan_publicity() -> dict:
         return {"count": cnt, "skippedAppeal": skipped}
 
 
-def confirm_publicity(app_id, user) -> dict:
+def confirm_publicity(app_id, user, expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, app_id)
         _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在公示状态")
+        check_version(x.version, expected_version)
         _assert_no_open_appeal(db, x.id)
         _grant_one(db, x)
         db.commit()

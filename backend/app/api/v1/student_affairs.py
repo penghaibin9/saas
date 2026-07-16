@@ -505,6 +505,11 @@ class FundingApplyBody(BaseModel):
 class FundingReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT/RETURN")
     reason: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+
+
+class FundingVersionOnlyBody(BaseModel):
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class FundingAppealBody(BaseModel):
@@ -561,13 +566,15 @@ def funding_application(applicationId: int = Path(...), user=Depends(require_per
 
 @router.post("/funding/applications/{applicationId}/review", summary="各级评审")
 def funding_review(body: FundingReviewBody, applicationId: int = Path(...), user=Depends(require_permission("studentAffairs.funding.approve"))):
-    return success(funding_svc.review(applicationId, user, body.action, body.reason or ""),
+    return success(funding_svc.review(applicationId, user, body.action, body.reason or "", body.version),
                    message="已处理")
 
 
 @router.post("/funding/applications/{applicationId}/publicity-confirm", summary="确认公示期满→获资助")
-def funding_publicity_confirm(applicationId: int = Path(...), user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
-    return success(funding_svc.confirm_publicity(applicationId, user), message="已通过")
+def funding_publicity_confirm(body: FundingVersionOnlyBody = FundingVersionOnlyBody(),
+                              applicationId: int = Path(...),
+                              user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
+    return success(funding_svc.confirm_publicity(applicationId, user, body.version), message="已通过")
 
 
 @router.post("/funding/scan-publicity", summary="资助公示扫描（定时/手动，幂等）")
