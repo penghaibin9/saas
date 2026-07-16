@@ -360,6 +360,10 @@
       "style": { "navigationBarTitleText": "实习申请审核", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/graduation-taskbook/index",
+      "style": { "navigationBarTitleText": "毕设任务书", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

@@ -154,6 +154,7 @@ export default {
         progress: '/pages/teacher/academic-affairs/index',
         status: '/pages/teacher/academic-affairs/index',
         'topic-review': '/pages/teacher/graduation-topics/index',
+        taskbook: '/pages/teacher/graduation-taskbook/index',
         'guide-log': '/pages/teacher/graduation-guide/index',
         'affairs-stats': '/pages/teacher/affairs/stats/index',
         'campus-service': '/pages/teacher/campus-service/index',

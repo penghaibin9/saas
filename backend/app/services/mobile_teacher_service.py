@@ -1649,6 +1649,40 @@ def graduation_guidance_create(user: dict, gd_student_id: str, body: dict) -> di
     return result
 
 
+def graduation_taskbook_list(user: dict) -> dict:
+    """任务书·教师端列表（本人指导学生，owner+范围校验在服务层完成，复用 GD_MENTOR 指导关系判定）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.graduation.services import graduation_taskbook_service as tb
+    items, total = tb.list_taskbooks(1, 50)
+    return {"list": items, "total": total}
+
+
+def graduation_taskbook_issue(user: dict, gd_student_id: str, body: dict) -> dict:
+    """任务书·下达（owner 校验在服务层完成，须已分配导师且尚无任务书）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.graduation.services import graduation_taskbook_service as tb
+    result = tb.issue_taskbook(gd_student_id, body or {})
+    _audit_write("MOBILE_GD_TASKBOOK_ISSUE", f"graduation-taskbook:{gd_student_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def graduation_taskbook_change(user: dict, gd_student_id: str, body: dict) -> dict:
+    """任务书·变更（原因≥5字，仅已确认任务书可变更，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.graduation.services import graduation_taskbook_service as tb
+    result = tb.change_taskbook(gd_student_id, body or {})
+    _audit_write("MOBILE_GD_TASKBOOK_CHANGE", f"graduation-taskbook:{gd_student_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
 def _require_gd_student_scope(u: dict, scope: dict, gd_student_id) -> dict:
     """加载毕设学生并做范围校验（非 ADMIN 只能本人指导学生）。不存在 404、越权 403。返回轻量快照。"""
     from app.models import GraduationStudent

@@ -68,6 +68,7 @@ export const roleConfigs = {
     workbench: ['gd-review', 'guide'],
     quickActions: [
       { key: 'topic-review', label: '选题审核', icon: '📝' },
+      { key: 'taskbook', label: '任务书', icon: '📔' },
       { key: 'review-open', label: '批阅开题', icon: '▤' },
       { key: 'review-mid', label: '批阅中期', icon: '▥' },
       { key: 'review-result', label: '批阅成果', icon: '▦' },

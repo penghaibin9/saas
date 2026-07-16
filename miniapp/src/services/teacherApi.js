@@ -166,6 +166,11 @@ export const teacherApi = {
   // 实习申请：教师端待审核队列 + 审核（owner 校验，真实接口，无 mock 兜底）
   getInternshipApplicationPending: () => real.teacherInternshipApplicationPending(),
   reviewInternshipApplication: (applicationId, action, comment) => real.teacherInternshipApplicationReview(applicationId, action, comment),
+  // 毕设任务书：教师端列表 + 下达 + 变更（owner 校验，真实接口，无 mock 兜底）
+  getGraduationMyStudents: () => real.gdTeacherMyStudents(),
+  getGraduationTaskbookList: () => real.teacherGraduationTaskbookList(),
+  issueGraduationTaskbook: (gdStudentId, body) => real.teacherGraduationTaskbookIssue(gdStudentId, body),
+  changeGraduationTaskbook: (gdStudentId, body) => real.teacherGraduationTaskbookChange(gdStudentId, body),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

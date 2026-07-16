@@ -226,6 +226,13 @@ export const teacherInternshipApplicationReview = (applicationId, action, commen
   realRequest(`/mobile/teacher/internship/applications/${applicationId}/review`,
     { method: 'POST', data: { action, comment: comment || '' } })
 
+/** 毕设任务书：教师端列表 / 下达 / 变更（owner 校验，真实接口，无 mock 兜底） */
+export const teacherGraduationTaskbookList = () => realRequest('/mobile/teacher/graduation/taskbooks')
+export const teacherGraduationTaskbookIssue = (gdStudentId, body) =>
+  realRequest(`/mobile/teacher/graduation/taskbooks/${gdStudentId}/issue`, { method: 'POST', data: body })
+export const teacherGraduationTaskbookChange = (gdStudentId, body) =>
+  realRequest(`/mobile/teacher/graduation/taskbooks/${gdStudentId}/change`, { method: 'POST', data: body })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

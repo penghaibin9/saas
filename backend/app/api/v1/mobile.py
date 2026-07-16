@@ -987,6 +987,25 @@ def teacher_graduation_guidance_create(gd_student_id: str, body: dict = Body(...
     return success(tea.graduation_guidance_create(user, gd_student_id, body), message="已记录")
 
 
+@router.get("/teacher/graduation/taskbooks", summary="指导教师·任务书列表（范围校验）")
+def teacher_graduation_taskbook_list(user=Depends(get_current_user)):
+    return success(tea.graduation_taskbook_list(user))
+
+
+@router.post("/teacher/graduation/taskbooks/{gd_student_id}/issue",
+             summary="指导教师·下达任务书（须已分配导师且尚无任务书，owner 校验）")
+def teacher_graduation_taskbook_issue(gd_student_id: str, body: dict = Body(...),
+                                      user=Depends(get_current_user)):
+    return success(tea.graduation_taskbook_issue(user, gd_student_id, body), message="任务书已下达")
+
+
+@router.post("/teacher/graduation/taskbooks/{gd_student_id}/change",
+             summary="指导教师·变更任务书（原因≥5字，仅已确认可变更，owner 校验）")
+def teacher_graduation_taskbook_change(gd_student_id: str, body: dict = Body(...),
+                                       user=Depends(get_current_user)):
+    return success(tea.graduation_taskbook_change(user, gd_student_id, body), message="已提交变更")
+
+
 @router.post("/teacher/academic/warning/{warning_id}/handle",
              summary="教师·学业预警处理（CLOSE/ESCALATE，范围校验+审计）")
 def teacher_warning_handle(warning_id: str, body: dict = Body(...),
