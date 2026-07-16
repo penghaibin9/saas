@@ -300,6 +300,22 @@
       "style": { "navigationBarTitleText": "毕设指导" }
     },
     {
+      "path": "pages/teacher/graduation-topics/index",
+      "style": { "navigationBarTitleText": "毕设选题审核", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/academic-warning/index",
+      "style": { "navigationBarTitleText": "学业预警待处理", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/affairs/stats/index",
+      "style": { "navigationBarTitleText": "学工统计", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/campus-service/index",
+      "style": { "navigationBarTitleText": "在校服务待处理", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

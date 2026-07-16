@@ -302,6 +302,25 @@ export const gdTeacherGradeDetail = (gdStudentId) => realRequest(`/mobile/teache
 export const gdTeacherGradeReview = (gdStudentId, action, comment) =>
   realRequest(`/mobile/teacher/graduation/grade/${gdStudentId}/review`, { method: 'POST', data: { action, comment: comment || '' } })
 
+/** 教师·毕设选题志愿确认（本人指导题目下待确认志愿 + CONFIRM/REJECT，范围校验+审计，无 mock 兜底） */
+export const gdTeacherChoicesPending = () => realRequest('/mobile/teacher/graduation/choices/pending')
+export const gdTeacherChoiceReview = (choiceId, action, reason) =>
+  realRequest(`/mobile/teacher/graduation/choices/${choiceId}/review`,
+    { method: 'POST', data: { action, reason: reason || '' } })
+/** 教师·毕设选题变更审核（与本人相关的待审变更 + APPROVE/REJECT，范围校验+审计，无 mock 兜底） */
+export const gdTeacherChangeRequestsPending = () => realRequest('/mobile/teacher/graduation/change-requests/pending')
+export const gdTeacherChangeRequestReview = (requestId, action, comment) =>
+  realRequest(`/mobile/teacher/graduation/change-requests/${requestId}/review`,
+    { method: 'POST', data: { action, comment: comment || '' } })
+
+/** 教师·学工统计（谈话工作量 / 心理关注，仅聚合，真实接口，无 mock 兜底） */
+export const teacherTalkStats = () => realRequest('/mobile/teacher/talk-stats')
+export const teacherMentalStats = () => realRequest('/mobile/teacher/mental-stats')
+
+/** 教师·在校服务待处理 & 学业预警待处理列表（真实接口，_domain 结构：{hasData,list,total,module}，范围过滤，无 mock 兜底） */
+export const teacherCampusServicePending = () => realRequest('/mobile/teacher/campus-service')
+export const teacherAcademicWarnings = () => realRequest('/mobile/teacher/academic')
+
 export const employmentMy = () => realRequest('/mobile/employment/my')
 
 export async function enrichCampusService(mock) {

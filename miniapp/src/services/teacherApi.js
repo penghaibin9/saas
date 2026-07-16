@@ -90,6 +90,18 @@ export const teacherApi = {
   // 毕设评阅：本人任务 / 提交评分+意见
   getGraduationMyReviews: () => real.gdTeacherReviewsMy(),
   submitReview: (id, score, opinion) => real.gdTeacherReviewSubmit(id, score, opinion),
+  // 毕设选题志愿确认（本人指导题目下待确认 + CONFIRM/REJECT，真实接口，无 mock 兜底）
+  getGraduationChoicesPending: () => real.gdTeacherChoicesPending(),
+  reviewGraduationChoice: (choiceId, action, reason) => real.gdTeacherChoiceReview(choiceId, action, reason),
+  // 毕设选题变更审核（与本人相关的待审变更 + APPROVE/REJECT，真实接口，无 mock 兜底）
+  getGraduationChangeRequestsPending: () => real.gdTeacherChangeRequestsPending(),
+  reviewGraduationChangeRequest: (requestId, action, comment) => real.gdTeacherChangeRequestReview(requestId, action, comment),
+  // 学工统计（谈话工作量 / 心理关注，仅聚合，真实接口，无 mock 兜底）
+  getTalkStats: () => real.teacherTalkStats(),
+  getMentalStats: () => real.teacherMentalStats(),
+  // 在校服务待处理 / 学业预警待处理列表（真实接口，范围过滤，无 mock 兜底）
+  getCampusServicePending: () => real.teacherCampusServicePending(),
+  getAcademicWarnings: () => real.teacherAcademicWarnings(),
   // 毕设答辩安排（只读）
   getGraduationDefenseArrangements: () => real.gdTeacherDefenseArrangements(),
   // 毕设成绩：队列 / 详情 / 复核

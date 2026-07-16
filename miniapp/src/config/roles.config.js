@@ -51,6 +51,8 @@ export const roleConfigs = {
       { key: 'risk', label: '风险学生', icon: '⚠' },
       { key: 'care', label: '创建关怀', icon: '♥' },
       { key: 'affairs', label: '学工待办', icon: '📋' },
+      { key: 'campus-service', label: '在校服务', icon: '📄' },
+      { key: 'affairs-stats', label: '学工统计', icon: '📈' },
       { key: 'notifyPublish', label: '发布通知', icon: '📣' },
       { key: 'orientationVerify', label: '迎新核验', icon: '▣' }
     ],
@@ -65,6 +67,7 @@ export const roleConfigs = {
     dataScopeText: '本人指导学生',
     workbench: ['gd-review', 'guide'],
     quickActions: [
+      { key: 'topic-review', label: '选题审核', icon: '📝' },
       { key: 'review-open', label: '批阅开题', icon: '▤' },
       { key: 'review-mid', label: '批阅中期', icon: '▥' },
       { key: 'review-result', label: '批阅成果', icon: '▦' },
