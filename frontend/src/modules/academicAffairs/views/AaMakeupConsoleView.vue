@@ -185,7 +185,8 @@ export default {
         visible: true, title: '驳回', sceneKey: 'aa.makeup.reject', submitting: false,
         action: async (reason) => {
           const res = await api[fn](id, 'REJECT', reason)
-          if (res.code === 0) { toast.success('已驳回'); this.reload() } else toast.error(res.message)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已驳回'); this.reload(); return true
         }
       }
     },
@@ -194,16 +195,19 @@ export default {
         visible: true, title: '退回补材料', sceneKey: 'aa.makeup.supplement', submitting: false,
         action: async (reason) => {
           const res = await api.exemptionReview(id, 'RETURN', reason)
-          if (res.code === 0) { toast.success('已退回'); this.reload() } else toast.error(res.message)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已退回'); this.reload(); return true
         }
       }
     },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
     async onReasonConfirm({ reason }) {
       const action = this.reasonDialog.action
+      if (!action) return
       this.reasonDialog.submitting = true
-      if (action) await action(reason)
+      const ok = await action(reason)
       this.reasonDialog.submitting = false
-      this.reasonDialog.visible = false
+      if (ok) this.reasonDialog.visible = false
     },
     async enrollRetake(id) {
       const res = await api.retakeEnroll(id, '')

@@ -46,6 +46,13 @@
       :download-errors-fn="({ rows, errors }) => academicAffairsApi.downloadRosterImportErrors(rows, errors)"
       @imported="onImported"
     />
+
+    <AppConfirmDialog
+      v-model:visible="exportDialog.visible" title="导出学籍名册台账" type="warning"
+      message="导出文件带水印，敏感字段按脱敏规则输出，用途将写入审计留痕。"
+      confirm-text="确认导出" require-reason phrase-scene-key="common.exportPurpose"
+      reason-label="导出用途（≥5 字）" :submitting="exporting" @confirm="doExportConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -56,7 +63,7 @@
  * 待注册/正常/在籍注册三态，休学/退学等仍须导入建档后走学籍异动办理）。
  * 导出：与本模块既有 export_unregistered_xlsx 同款 xlsx_util 直出 + 用途必填≥5字口径一致。 */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -69,7 +76,7 @@ const STATUS_LABEL = {
 
 export default {
   name: 'AaRosterImportExportView',
-  components: { ModulePageShell, AppSectionCard, AppExcelImportDrawer },
+  components: { ModulePageShell, AppSectionCard, AppExcelImportDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -77,6 +84,7 @@ export default {
       STATUS_LABEL,
       importVisible: false,
       exporting: false,
+      exportDialog: { visible: false },
       exportFilters: { keyword: '', status: '' }
     }
   },
@@ -84,16 +92,13 @@ export default {
     onImported(data) {
       toast.success(`已导入 ${data?.created ?? 0} 名学生学籍档案`)
     },
-    async doExport() {
-      const purpose = window.prompt('请填写导出用途（≥5 字，将写入审计与文件水印）：', '')
-      if (purpose === null) return
-      if (!purpose || purpose.trim().length < 5) {
-        toast.error('导出用途必填且不少于 5 个字')
-        return
-      }
+    doExport() {
+      this.exportDialog.visible = true
+    },
+    async doExportConfirm({ reason }) {
       this.exporting = true
       const res = await academicAffairsApi.exportRoster({
-        purpose: purpose.trim(),
+        purpose: reason,
         keyword: this.exportFilters.keyword || undefined,
         status: this.exportFilters.status || undefined
       })
@@ -102,6 +107,7 @@ export default {
         toast.error(res.message || '导出失败')
         return
       }
+      this.exportDialog.visible = false
       const href = URL.createObjectURL(res.data)
       const a = document.createElement('a')
       a.href = href

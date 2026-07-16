@@ -199,11 +199,13 @@ export default {
       if (res.code === 0) { toast.success('已推进'); this.reload() } else toast.error(res.message)
     },
     advanceReturn(id) {
+      // sceneKey 留空：配置方案 B3「征订退回」未给词条，不硬套其它场景（AppQuickPhrases 会静默不渲染）
       this.reasonDialog = {
         visible: true, title: '退回教材审核', sceneKey: '', submitting: false,
         action: async (reason) => {
           const res = await api.reviewAdvance(id, 'RETURN', reason)
-          if (res.code === 0) { toast.success('已退回'); this.reload() } else toast.error(res.message)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已退回'); this.reload(); return true
         }
       }
     },
@@ -238,16 +240,19 @@ export default {
         visible: true, title: '减免教材费', sceneKey: 'aa.textbook.reduce', submitting: false,
         action: async (reason) => {
           const res = await api.markFee(id, 'WAIVE', reason)
-          if (res.code === 0) { toast.success('已减免'); this.reload() } else toast.error(res.message)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已减免'); this.reload(); return true
         }
       }
     },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
     async onReasonConfirm({ reason }) {
       const action = this.reasonDialog.action
+      if (!action) return
       this.reasonDialog.submitting = true
-      if (action) await action(reason)
+      const ok = await action(reason)
       this.reasonDialog.submitting = false
-      this.reasonDialog.visible = false
+      if (ok) this.reasonDialog.visible = false
     },
     onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
   }

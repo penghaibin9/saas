@@ -201,7 +201,6 @@
       title="退回学院重新核对"
       type="danger"
       require-reason
-      phrase-scene-key="common.reject"
       reason-label="退回原因（≥5字）"
       :submitting="detailBusy"
       @confirm="doCollegeReject"

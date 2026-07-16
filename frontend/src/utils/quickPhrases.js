@@ -208,11 +208,18 @@ const AA_GRADE_CHANGE = [
   '缓考/补考成绩补录：学生已参加【批次】考试，成绩为【X】分。',
   '违纪认定撤销：原旷考/违纪标记经复核撤销，恢复实际成绩。'
 ]
+// 成绩「更正申请」审核（AaGradeChangeView 发起/驳回专用；措辞围绕"更正"这一动作）
 const AA_GRADE_CHANGE_REVIEW = [
   '已核对试卷与成绩单，更正理由充分、材料齐全，同意更正。',
   '材料不全：请附试卷复印件及详细更改说明（缺一不可），退回补充。',
-  '申请理由不充分，不予通过；如有异议请按成绩复核程序办理。',
-  '成绩分布异常（不及格率【X】%/优秀率【X】%），请任课教师提交试卷分析后再审。'
+  '申请理由不充分，不予通过；如有异议请按成绩复核程序办理。'
+]
+// 成绩「录入任务」学院审核（AaGradeCollegeReviewView 专用；对象是整份成绩录入任务，不是更正申请，
+// 故不能复用 AA_GRADE_CHANGE_REVIEW 的"同意更正/附试卷复印件"措辞）
+const AA_GRADE_TASK_REVIEW = [
+  '成绩分布异常（不及格率【X】%/优秀率【X】%），请任课教师提交试卷分析后再审。',
+  '成绩已核对完整，无缺录、无异常，同意提交教务处终审。',
+  '存在缺录/未提交学生【N】人，请补齐后重新提交。'
 ]
 const AA_GRADE_RETURN = [
   '缺考名单与考务记录不符，请核对旷考/缓考标记后重新提交。',
@@ -220,6 +227,10 @@ const AA_GRADE_RETURN = [
   '成绩提交超过规定时限，请说明原因并经学院教学负责人签署意见。'
 ]
 
+// 分组键必须与 AaStatusChangeFormView 的 changeType 取值一致（TYPE_LABEL）。
+// 未收录：RETAIN（代码含义为「留级/保留学籍」，配置方案给的是「延长学年」词条，语义不同，不套用）、
+//         TRANSFER_CLASS（转班，配置方案未给词条）。这两类由页面判断后不展示 chips，
+//         避免分组未命中时 getQuickPhrases 回落 all、把休学/退学词条显示在转班表单上。
 const AA_STATUSCHG_GROUPS = {
   SUSPEND: [
     '因病需长期治疗休养（附二级甲等以上医院诊断证明），申请休学【一学年】。',
@@ -228,13 +239,12 @@ const AA_STATUSCHG_GROUPS = {
   ],
   RESUME: ['休学期满，恢复情况良好（因病休学附二甲以上医院康复证明），申请于【学期】复学。'],
   TRANSFER_MAJOR: ['对【目标专业】有浓厚兴趣且符合接收条件，现专业学习确有困难，申请转入。'],
-  WITHDRAW: ['因个人发展规划调整，经与家长充分沟通，自愿申请退学。'],
-  RETAIN: ['因【学分未修满/毕业设计未完成】，申请延长学习年限【一年】。']
+  WITHDRAW: ['因个人发展规划调整，经与家长充分沟通，自愿申请退学。']
 }
+// 学籍异动审批意见。AaStatusChangeApprovalView 只在「退回/驳回」时要求填意见（通过为无原因动作，
+// 不渲染 chips），故此处只收录退回/驳回口径；配置方案里的 3 条"同意办理/同意上报"在该 UI 下永远
+// 不会被展示，收录进来只会让驳回框弹出"同意"词条，故不收录。
 const AA_STATUSCHG_OPINION = [
-  '情况属实，材料齐全，符合《学籍管理规定》相关条款，同意办理。',
-  '经学院党政联席会议研究，同意该生异动，报教务处审批。',
-  '已与学生本人及家长确认，知情同意书已签署，同意上报。',
   '材料不全：请补充【医院证明/家长意见/部队通知书】后重新提交。',
   '不符合转专业接收/复学条件（【原因】），不予同意，已告知学生本人。'
 ]
@@ -264,13 +274,9 @@ const AA_REG_DEFER = [
   '应征入伍体检/政审期间，暂缓办理，结果确定后按学籍规定处理。'
 ]
 
-const AA_MAKEUP_REASON = [
-  '因病无法参加考试（附二甲以上医院或校医院证明，证明覆盖考试时间），申请缓考。',
-  '两门考试时间冲突（【课程A】与【课程B】），申请其中一门缓考。',
-  '直系亲属病危/丧事，需紧急返家（附相关证明），申请缓考。',
-  '代表学校参加【竞赛/演出/比赛】（附学校公函），与考试时间冲突。',
-  '已通过【等级证书/先修课程】，按规定申请免修（附证书复印件）。'
-]
+// 说明：配置方案 A13 把「缓考申请理由」指向 AaMakeupStudentView，但该页实际是「重修/免修申请」，
+// 且缓考申请由学生在小程序端提交（见 AaExamConsoleView「学生小程序提交后在此审批」），PC 端无填写入口。
+// 故不收录缓考申请理由词条（无处可挂）；缓考的「审核」词条见 AA_MAKEUP_REVIEW，在 PC 审批页有真实落点。
 const AA_MAKEUP_REVIEW = [
   '医院证明未覆盖考试时间/非二甲以上医院出具，退回补充有效证明。',
   '申请时间晚于考试时间且无突发情况证明，按缺考处理，不予受理。',
@@ -303,9 +309,11 @@ const AA_VOID = [
   '批次重复导入，作废本批冗余数据。'
 ]
 
+// 导出用途（写入审计与文件水印）。配置方案原文含「本科教学工作合格评估/审核评估支撑材料」，
+// 本产品面向职业院校（CLAUDE.md §1），该口径不通用，改用职教适用的「教学诊断与改进/督导检查」。
 const AA_EXPORT_PURPOSE = [
   '期末教学质量分析会议材料',
-  '本科教学工作合格评估/审核评估支撑材料',
+  '教学工作诊断与改进（诊改）支撑材料',
   '上级教育主管部门检查报送',
   '学院教学工作例会数据通报'
 ]
@@ -319,7 +327,8 @@ const AA_TEXTBOOK_REDUCE = [
   '教材循环使用，本学期免征订费用。'
 ]
 const AA_ARCHIVE_UNFREEZE = ['审计/复查需要，经学校管理员批准，限期【日期】前重新冻结。']
-const AA_CLASSROOM_REJECT = ['该时段已有教学安排，教学用途优先，请改约【时段】。']
+// 场地借用驳回（教室/实训室同一业务场景，共用同一组词条；来源：配置方案 §3.17）
+const AA_BOOKING_REJECT = ['该时段已有教学安排，教学用途优先，请改约【时段】。']
 
 /** sceneKey → 简单数组，或 { groups, all } 结构（含条件分组置顶场景） */
 export const QUICK_PHRASES = {
@@ -358,7 +367,7 @@ export const QUICK_PHRASES = {
   'aa.schedchg.cancel': AA_SCHEDCHG_CANCEL,
   'aa.grade.change': AA_GRADE_CHANGE,
   'aa.grade.changeReject': AA_GRADE_CHANGE_REVIEW,
-  'aa.grade.collegeReview': AA_GRADE_CHANGE_REVIEW,
+  'aa.grade.taskReview': AA_GRADE_TASK_REVIEW,
   'aa.grade.return': AA_GRADE_RETURN,
   'aa.statuschg.reason': { groups: AA_STATUSCHG_GROUPS, all: Object.values(AA_STATUSCHG_GROUPS).flat() },
   'aa.statuschg.opinion': AA_STATUSCHG_OPINION,
@@ -368,7 +377,6 @@ export const QUICK_PHRASES = {
   'aa.warning.void': AA_WARNING_VOID,
   'aa.reg.fail': AA_REG_FAIL,
   'aa.reg.defer': AA_REG_DEFER,
-  'aa.makeup.reason': AA_MAKEUP_REASON,
   'aa.makeup.reject': AA_MAKEUP_REVIEW,
   'aa.makeup.supplement': AA_MAKEUP_REVIEW,
   'aa.task.return': AA_TASK_RETURN,
@@ -379,7 +387,17 @@ export const QUICK_PHRASES = {
   'aa.remark': AA_REMARK,
   'aa.textbook.reduce': AA_TEXTBOOK_REDUCE,
   'aa.archive.unfreeze': AA_ARCHIVE_UNFREEZE,
-  'aa.classroom.reject': AA_CLASSROOM_REJECT
+  'aa.classroom.reject': AA_BOOKING_REJECT,
+  'aa.lab.reject': AA_BOOKING_REJECT
+}
+
+/** 分组型场景下，指定 group 是否有专属词条。
+ *  用途：group 未命中时 getQuickPhrases 会回落到 all（其它分组的词条），对"按类型联动"的表单
+ *  （如学籍异动按异动类型）会串场景。调用方可先用本函数判断，未命中就不展示 chips。 */
+export function hasGroupPhrases(sceneKey, group) {
+  const entry = QUICK_PHRASES[sceneKey]
+  if (!entry || Array.isArray(entry)) return false
+  return !!(group && entry.groups[group] && entry.groups[group].length)
 }
 
 /** 取某个 sceneKey 下的词条列表；group 命中时该组置顶，其余分组词条仍追加在后（不是不可见，只是不置顶）。 */

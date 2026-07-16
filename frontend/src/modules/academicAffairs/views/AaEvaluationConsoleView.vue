@@ -211,7 +211,7 @@
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
     <AppConfirmDialog
       v-model:visible="reasonDialog.visible" title="驳回申诉" type="danger"
-      require-reason phrase-scene-key="common.reject" reason-label="驳回原因（≥5字）"
+      require-reason reason-label="驳回原因（≥5字）"
       :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
     />
   </ModulePageShell>
@@ -358,16 +358,19 @@ export default {
         visible: true, submitting: false,
         action: async (reason) => {
           const res = await api.reviewAppeal(id, 'REJECT', reason)
-          if (res.code === 0) { toast.success('已驳回'); this.loadAppeals() } else toast.error(res.message)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已驳回'); this.loadAppeals(); return true
         }
       }
     },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
     async onReasonConfirm({ reason }) {
       const action = this.reasonDialog.action
+      if (!action) return
       this.reasonDialog.submitting = true
-      if (action) await action(reason)
+      const ok = await action(reason)
       this.reasonDialog.submitting = false
-      this.reasonDialog.visible = false
+      if (ok) this.reasonDialog.visible = false
     },
     onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() },
 

@@ -34,6 +34,12 @@
         <AppButton variant="primary" :loading="saving" @click="submitBook">提交</AppButton>
       </template>
     </AppDrawer>
+
+    <AppConfirmDialog
+      v-model:visible="reasonDialog.visible" title="驳回实训室预约" type="danger"
+      require-reason phrase-scene-key="aa.lab.reject" reason-label="驳回原因（≥5字）"
+      :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -41,7 +47,7 @@
 /** 教学资源续卡 · 实训室预约（/admin/academic-affairs/resources/lab-bookings）：占用登记+冲突检测+审核，与教室预约同一算法。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog } from '@/components/common'
 import { academicAffairsLabBookingApi as api, academicAffairsLabApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -49,9 +55,10 @@ const _SL = { PENDING: '待审', APPROVED: '已通过', REJECTED: '已驳回', C
 
 export default {
   name: 'AaLabBookingView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog },
   data() {
     return {
+      reasonDialog: { visible: false, submitting: false, action: null },
       loading: true, rows: [], filterStatus: '',
       statusOptions: [{ label: '全部状态', value: '' }, { label: '待审', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }],
       columns: [{ key: 'labText', title: '实训室' }, { key: 'slot', title: '时段' }, { key: 'purpose', title: '用途' }, { key: 'applicantName', title: '申请人' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
@@ -89,11 +96,24 @@ export default {
       const res = await api.review(id, action)
       if (res.code === 0) { toast.success('已通过'); this.load() } else toast.error(res.message)
     },
-    async reject(id) {
-      const reason = window.prompt('驳回原因（≥5字）')
-      if (!reason || reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      const res = await api.review(id, 'REJECT', reason.trim())
-      if (res.code === 0) { toast.success('已驳回'); this.load() } else toast.error(res.message)
+    reject(id) {
+      this.reasonDialog = {
+        visible: true, submitting: false,
+        action: async (reason) => {
+          const res = await api.review(id, 'REJECT', reason)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已驳回'); this.load(); return true
+        }
+      }
+    },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
+    async onReasonConfirm({ reason }) {
+      const action = this.reasonDialog.action
+      if (!action) return
+      this.reasonDialog.submitting = true
+      const ok = await action(reason)
+      this.reasonDialog.submitting = false
+      if (ok) this.reasonDialog.visible = false
     }
   }
 }

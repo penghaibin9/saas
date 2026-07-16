@@ -201,6 +201,11 @@
     </AppDrawer>
 
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
+    <AppConfirmDialog
+      v-model:visible="reasonDialog.visible" :title="reasonDialog.title" type="danger"
+      require-reason :phrase-scene-key="reasonDialog.sceneKey" reason-label="原因（≥5字）"
+      :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -241,6 +246,7 @@ export default {
       arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomText: '', capacity: 50 },
       patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '',
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      reasonDialog: { visible: false, title: '', sceneKey: '', submitting: false, action: null },
       courseColumns: [
         { key: 'course', title: '课程/班级' }, { key: 'schedule', title: '考试时间' },
         { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
@@ -307,17 +313,32 @@ export default {
       this.deferLoading = false
     },
     async deferAct(row, action) {
-      let reason = ''
-      if (action !== 'APPROVE') {
-        reason = window.prompt(action === 'RETURN' ? '退回补材料原因（≥5字）' : '驳回原因（≥5字）') || ''
-        if (reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      }
-      const fn = row.status === 'COUNSELOR_REVIEW' ? 'deferCounselorReview' : 'deferReview'
-      const res = await api[fn](row.deferId, action, reason.trim())
-      if (res.code === 0) {
+      const submit = async (reason) => {
+        const fn = row.status === 'COUNSELOR_REVIEW' ? 'deferCounselorReview' : 'deferReview'
+        const res = await api[fn](row.deferId, action, reason)
+        if (res.code !== 0) { toast.error(res.message); return false }
         toast.success(action === 'APPROVE' ? '已通过' : action === 'RETURN' ? '已退回' : '已驳回')
         await this.loadDefer()
-      } else toast.error(res.message)
+        return true
+      }
+      if (action === 'APPROVE') { await submit(''); return }
+      // 缓考驳回/退回补材料：走真实对话框（原生 prompt 无法多行、样式不可控、放不下快捷用语）
+      this.reasonDialog = {
+        visible: true,
+        title: action === 'RETURN' ? '退回补材料' : '驳回缓考申请',
+        sceneKey: action === 'RETURN' ? 'aa.makeup.supplement' : 'aa.makeup.reject',
+        submitting: false,
+        action: submit
+      }
+    },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
+    async onReasonConfirm({ reason }) {
+      const action = this.reasonDialog.action
+      if (!action) return
+      this.reasonDialog.submitting = true
+      const ok = await action(reason)
+      this.reasonDialog.submitting = false
+      if (ok) this.reasonDialog.visible = false
     },
     async loadArchive() {
       this.archiveLoading = true; this.archiveError = ''

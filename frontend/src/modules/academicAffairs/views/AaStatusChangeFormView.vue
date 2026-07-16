@@ -81,7 +81,8 @@
           <label class="aa-form__label">申请原因</label>
           <div class="aa-form__field">
             <textarea ref="reasonInput" v-model.trim="form.reason" class="aa-textarea" rows="3" maxlength="500" placeholder="选填，便于审批参考"></textarea>
-            <AppQuickPhrases scene-key="aa.statuschg.reason" :group="form.changeType" @pick="onPickReason" />
+            <!-- 仅当该异动类型有专属词条时才展示；否则分组未命中会回落显示全部类型的词条（如转班表单弹出休学词条） -->
+            <AppQuickPhrases v-if="reasonPhraseScene" :scene-key="reasonPhraseScene" :group="form.changeType" @pick="onPickReason" />
           </div>
         </div>
       </div>
@@ -106,6 +107,7 @@
 import { ModulePageShell } from '@/components/business'
 import { AppSectionCard, AppQuickPhrases } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+import { hasGroupPhrases } from '@/utils/quickPhrases'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TYPE_LABEL, TYPE_PATH_SEGMENT } from '@/modules/academicAffairs/constants/status-change'
 import { toast } from '@/utils/toast'
@@ -153,6 +155,10 @@ export default {
     },
     typeHint() {
       return TYPE_HINT[this.form.changeType] || ''
+    },
+    /** 该异动类型有专属词条才给 sceneKey；无专属词条（如转班/留级）返回空 → 不展示 chips */
+    reasonPhraseScene() {
+      return hasGroupPhrases('aa.statuschg.reason', this.form.changeType) ? 'aa.statuschg.reason' : ''
     },
     classSelectPlaceholder() {
       if (!this.form.studentId) return '请先选择学生'

@@ -90,16 +90,19 @@ export default {
         visible: true, submitting: false,
         action: async (reason) => {
           const res = await api.review(id, 'REJECT', reason)
-          if (res.code === 0) { toast.success('已驳回'); this.load() } else toast.error(res.message)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已驳回'); this.load(); return true
         }
       }
     },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭（api 层吞异常恒 resolve，不能无条件关） */
     async onReasonConfirm({ reason }) {
       const action = this.reasonDialog.action
+      if (!action) return
       this.reasonDialog.submitting = true
-      if (action) await action(reason)
+      const ok = await action(reason)
       this.reasonDialog.submitting = false
-      this.reasonDialog.visible = false
+      if (ok) this.reasonDialog.visible = false
     }
   }
 }
