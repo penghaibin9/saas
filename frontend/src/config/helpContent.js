@@ -13,6 +13,7 @@
 import { INTERNSHIP_HELP_CARDS } from '@/config/help/internshipHelpCards'
 import { GRADUATION_HELP_CARDS } from '@/config/help/graduationHelpCards'
 import { STUDENT_AFFAIRS_HELP_CARDS } from '@/config/help/studentAffairsHelpCards'
+import { ACADEMIC_AFFAIRS_HELP_CARDS } from '@/config/help/academicAffairsHelpCards'
 
 /** 功能帮助文档：对现有模块/高频操作的使用说明 */
 export const HELP_DOCS = [
@@ -354,13 +355,14 @@ export const HELP_FLOWS = [
  * 数据源拆分在 config/help/*.js，本文件仅聚合与索引。
  * 每张卡：id / module / title / roles / route / entry / keywords / summary / steps / fields / faq / related。
  */
-export const HELP_CARDS = [...STUDENT_AFFAIRS_HELP_CARDS, ...INTERNSHIP_HELP_CARDS, ...GRADUATION_HELP_CARDS]
+export const HELP_CARDS = [...STUDENT_AFFAIRS_HELP_CARDS, ...ACADEMIC_AFFAIRS_HELP_CARDS, ...INTERNSHIP_HELP_CARDS, ...GRADUATION_HELP_CARDS]
 
 /** 分类聚合，供帮助中心页面侧栏渲染 */
 export const HELP_SECTIONS = [
   { key: 'docs', label: '功能帮助', items: HELP_DOCS },
   { key: 'flows', label: '业务流程图', items: HELP_FLOWS },
   { key: 'sa-cards', label: '学工中心 · 任务卡', items: STUDENT_AFFAIRS_HELP_CARDS },
+  { key: 'aa-cards', label: '教务中心 · 任务卡', items: ACADEMIC_AFFAIRS_HELP_CARDS },
   { key: 'in-cards', label: '岗位实习 · 任务卡', items: INTERNSHIP_HELP_CARDS },
   { key: 'gd-cards', label: '毕业设计 · 任务卡', items: GRADUATION_HELP_CARDS }
 ]
