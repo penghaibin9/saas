@@ -14,7 +14,19 @@
           <label class="app-confirm-dialog__label">
             {{ reasonLabel }}<span class="app-confirm-dialog__required">*</span>
           </label>
+          <AppQuickPhrases
+            v-if="phraseSceneKey"
+            :scene-key="phraseSceneKey"
+            :group="phraseGroup"
+            @pick="onPickPhrase"
+          />
+          <AppTemplateChips
+            v-if="reasonChips.length"
+            :options="reasonChips"
+            @pick="onPickPhrase"
+          />
           <textarea
+            ref="reasonEl"
             v-model="reason"
             class="app-confirm-dialog__textarea"
             :placeholder="reasonPlaceholder"
@@ -54,12 +66,18 @@
  *  - 确认按钮必须写清楚动作（confirmText），不允许只写“确定”
  * Props: visible(v-model)、title、message、type: primary|warning|danger、
  *        confirmText、cancelText、requireReason、reasonLabel、reasonPlaceholder、
- *        reasonMinLength、showNotify（是否显示“通知学生”勾选）、notifyLabel、submitting（防重复提交）
+ *        reasonMinLength、showNotify（是否显示“通知学生”勾选）、notifyLabel、submitting（防重复提交）、
+ *        phraseSceneKey/phraseGroup（学工中心场景化词库）、reasonChips（调用方直传的原因芯片文案数组）
  * Emits: update:visible、confirm({ reason, notify })、cancel
  * Slots: default（补充说明 / 影响范围 / 附件区）
  */
+import AppQuickPhrases from './AppQuickPhrases.vue'
+import AppTemplateChips from './form/AppTemplateChips.vue'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+
 export default {
   name: 'AppConfirmDialog',
+  components: { AppQuickPhrases, AppTemplateChips },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },
@@ -83,7 +101,13 @@ export default {
     notifyLabel: { type: String, default: '通知学生' },
     submitting: { type: Boolean, default: false },
     /** loading: submitting 的别名 */
-    loading: { type: Boolean, default: false }
+    loading: { type: Boolean, default: false },
+    /** 快捷用语场景 key（见 @/utils/quickPhrases.js）；不传则不显示快捷用语区 */
+    phraseSceneKey: { type: String, default: '' },
+    /** 快捷用语分组（如谈话类型/宿舍检查类型），命中分组的词条置顶 */
+    phraseGroup: { type: String, default: '' },
+    /** 驳回/原因快捷芯片（调用方直传文案数组，与 phraseSceneKey 二选一） */
+    reasonChips: { type: Array, default: () => [] }
   },
   emits: ['update:visible', 'confirm', 'cancel'],
   data() {
@@ -124,6 +148,12 @@ export default {
       }
       this.reasonError = ''
       this.$emit('confirm', { reason: this.reason.trim(), notify: this.notify })
+    },
+    onPickPhrase(text) {
+      const el = this.$refs.reasonEl
+      const { value, selStart, selEnd } = insertAtCursor(el, this.reason, text)
+      this.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     }
   }
 }

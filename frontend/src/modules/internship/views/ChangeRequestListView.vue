@@ -32,11 +32,8 @@
           </ul>
         </template>
         <template #aside-foot>
-          <div class="lv-pager">
-            <button type="button" class="mp-link" :disabled="pagination.page <= 1 || loading" @click="onPageChange(pagination.page - 1)">上一页</button>
-            <span class="mp-note">第 {{ pagination.page }} / 共 {{ pageCount }} 页</span>
-            <button type="button" class="mp-link" :disabled="pagination.page >= pageCount || loading" @click="onPageChange(pagination.page + 1)">下一页</button>
-          </div>
+          <AppPagination v-model:page="pagination.page" :page-size="pagination.pageSize" :total="pagination.total"
+                        :show-total="false" :show-size-changer="false" :disabled="loading" @change="load" />
         </template>
 
         <!-- 右栏：当前变更申请详情与审核操作 -->
@@ -77,6 +74,7 @@
 
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
+      :reason-chips="cd.requireReason ? REJECT_CHANGE : []"
       reason-label="审核意见" :submitting="cd.submitting" @confirm="onConfirm" />
   </ModulePageShell>
 </template>
@@ -89,19 +87,21 @@
  * 页签（panel 深链 pending/approved/rejected/all）沿用原映射。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail, AppPermissionButton } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { REJECT_CHANGE } from '@/modules/internship/constants/presetPrompts'
 
 export default {
   name: 'ChangeRequestListView',
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog,
-    AppDescriptionList, AppAuditTrail, AppPermissionButton },
+    AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      REJECT_CHANGE,
       loading: true, error: '', rows: [],
       filters: { status: 'PENDING' },
       pagination: { page: 1, pageSize: 10, total: 0 },
@@ -119,7 +119,6 @@ export default {
   },
   computed: {
     canReview() { return canCode(this.ctx, 'internship.change.review') },
-    pageCount() { return Math.max(1, Math.ceil(this.pagination.total / this.pagination.pageSize)) },
     detailItems() {
       const d = this.detail.data || {}
       return [
@@ -170,10 +169,6 @@ export default {
         this.pagination.page = 1
         this.load()
       }
-    },
-    onPageChange(page) {
-      if (page < 1 || page > this.pageCount || page === this.pagination.page) return
-      this.pagination.page = page; this.load()
     },
     async load() {
       this.loading = true
@@ -274,7 +269,6 @@ export default {
 .lv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .lv-item__name { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
 .lv-item__sub { margin-top: 2px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.lv-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 
 /* 右栏详情与固定操作区 */
 .lv-main { display: flex; flex-direction: column; min-height: 320px; }

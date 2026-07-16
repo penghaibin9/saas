@@ -64,7 +64,7 @@
           <div class="mp-card__body">
             <div class="ef-grid">
               <AppFormItem label="联系人" prop="contactPerson">
-                <AppTextInput v-model="form.contactPerson" />
+                <AppTextInput v-model="form.contactPerson" placeholder="HR / 企业导师姓名" />
               </AppFormItem>
               <AppFormItem
                 label="联系电话"
@@ -74,7 +74,7 @@
                 <AppTextInput v-model="form.contactPhone" :placeholder="isEdit ? '留空保持原号码不变' : '敏感字段，列表默认脱敏'" />
               </AppFormItem>
               <AppFormItem class="ef-grid__full" label="统一社会信用代码" prop="creditCode" hint="租户内唯一，重复将被后端拦截">
-                <AppTextInput v-model="form.creditCode" placeholder="租户内唯一" />
+                <AppTextInput v-model="form.creditCode" placeholder="18 位，租户内唯一" />
               </AppFormItem>
             </div>
           </div>

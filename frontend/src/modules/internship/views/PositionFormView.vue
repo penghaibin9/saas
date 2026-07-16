@@ -57,7 +57,7 @@
                 />
               </AppFormItem>
               <AppFormItem label="岗位名称" prop="title" required>
-                <AppTextInput v-model="form.title" :disabled="readonly" />
+                <AppTextInput v-model="form.title" :disabled="readonly" placeholder="如：Java开发实习生 / 市场营销实习生 / 化工工艺实习生" />
               </AppFormItem>
               <AppFormItem label="容量" prop="headcount" required :hint="isEdit && detail ? `已分配 ${detail.allocatedCount} 人，容量不能低于已分配数` : ''">
                 <AppNumberInput v-model="form.headcount" :min="1" :disabled="readonly" />
@@ -87,13 +87,20 @@
           <div class="mp-card__body">
             <div class="pf-grid">
               <AppFormItem label="工作地点" prop="workLocation">
-                <AppTextInput v-model="form.workLocation" :disabled="readonly" />
+                <AppTextInput v-model="form.workLocation" :disabled="readonly" placeholder="如：深圳市南山区科技园" />
               </AppFormItem>
               <AppFormItem label="薪资" prop="salaryRange">
                 <AppTextInput v-model="form.salaryRange" :disabled="readonly" placeholder="如 3k-4k" />
               </AppFormItem>
-              <AppFormItem label="补贴" prop="subsidy">
-                <AppTextInput v-model="form.subsidy" :disabled="readonly" />
+              <AppFormItem class="pf-grid__full" label="补贴" prop="subsidy" hint="点击下方标签追加，或手动输入">
+                <AppTextInput v-model="form.subsidy" :disabled="readonly" placeholder="如：五险一金、包吃住、交通补贴" />
+                <AppTemplateChips
+                  v-if="!readonly"
+                  class="pf-welfare-chips"
+                  :options="welfareChips"
+                  size="compact"
+                  @pick="onPickWelfare"
+                />
               </AppFormItem>
             </div>
           </div>
@@ -155,7 +162,7 @@ import { ModulePageShell, LoadingState, ErrorState } from '@/components/business
 import { AppButton } from '@/components/ui'
 import {
   AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-  AppSubmitBar, AppCompanyPicker, AppMentorPicker
+  AppSubmitBar, AppCompanyPicker, AppMentorPicker, AppTemplateChips
 } from '@/components/common'
 import { searchEnterprises } from './components/entityPickerAdapters'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -167,12 +174,18 @@ const blankForm = () => ({
   workLocation: '', salaryRange: '', subsidy: '', headcount: 1, mentorContactId: '', remark: ''
 })
 
+// 岗位福利快捷标签（20-岗位实习预设便捷字段与提示词.md §5），点击追加进「补贴」字段
+const WELFARE_CHIPS = [
+  '餐补', '交通补贴', '住宿补贴', '五险', '节日福利', '带薪年假',
+  '团队活动', '转正机会', '弹性工时', '免费零食', '员工培训'
+]
+
 export default {
   name: 'PositionFormView',
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
     AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-    AppSubmitBar, AppCompanyPicker, AppMentorPicker
+    AppSubmitBar, AppCompanyPicker, AppMentorPicker, AppTemplateChips
   },
   data() {
     return {
@@ -213,6 +226,9 @@ export default {
       }
       return '新增岗位为草稿态，须先关联合作企业；提交审核、上架/下架、风险标记在岗位库列表操作'
     },
+    welfareChips() {
+      return WELFARE_CHIPS
+    },
     formRules() {
       const rules = {
         title: [{ required: true, message: '岗位名称必填' }],
@@ -242,6 +258,13 @@ export default {
   methods: {
     // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
     searchEnterprises,
+    onPickWelfare(text) {
+      if (!text) return
+      const cur = (this.form.subsidy || '').split(/[、,，]/).map((s) => s.trim()).filter(Boolean)
+      if (cur.includes(text)) return
+      cur.push(text)
+      this.form.subsidy = cur.join('、')
+    },
     goBack() {
       const back = this.$router.options.history.state && this.$router.options.history.state.back
       if (typeof back === 'string' && back.startsWith('/admin/internship/positions')) this.$router.back()
@@ -340,6 +363,9 @@ export default {
 .pf-aside {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
+}
+.pf-welfare-chips {
+  margin-top: var(--space-2);
 }
 @media (max-width: 960px) {
   .pf-grid {

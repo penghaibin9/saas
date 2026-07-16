@@ -30,6 +30,11 @@ import { studentApi } from '@/services/studentApi'
 import { toast, back } from '@/utils/nav'
 
 const TYPE_LABEL = { DAILY: '日报', MONTHLY: '月报', SUMMARY: '实习总结' }
+// 默认结构模板（20-岗位实习预设便捷字段与提示词.md §7.5/§7.9），仅用于新建报告时预填骨架，学生按小节填空
+const DEFAULT_TPL = {
+  MONTHLY: '一、本月实习概况：\n\n二、主要工作与成果：\n\n三、能力提升：\n\n四、存在问题与改进：\n\n五、下月计划：\n',
+  SUMMARY: '一、单位与岗位：\n\n二、工作内容：\n\n三、收获体会：\n\n四、不足与改进：\n'
+}
 
 export default {
   data() {
@@ -61,6 +66,8 @@ export default {
       const d = new Date()
       this.form.periodKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     }
+    // 新建报告预填结构骨架，方便学生分节填写；日报无对应预设结构，维持空白 + placeholder 提示
+    if (DEFAULT_TPL[this.reportType]) this.form.content = DEFAULT_TPL[this.reportType]
     this.loaded = true
     this.pageState = 'ready'
   },

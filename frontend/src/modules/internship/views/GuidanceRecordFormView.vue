@@ -47,11 +47,20 @@
 
         <template v-else>
           <AppFormSection title="巡访反馈">
-            <AppFormItem label="企业反馈"><AppTextInput v-model="form.enterpriseFeedback" placeholder="企业对学生的反馈" /></AppFormItem>
-            <AppFormItem label="学生反馈"><AppTextInput v-model="form.studentFeedback" placeholder="学生对岗位/实习的反馈" /></AppFormItem>
+            <AppFormItem label="企业反馈">
+              <AppTextInput v-model="form.enterpriseFeedback" placeholder="企业对学生的反馈" />
+              <AppTemplateChips class="grf__chips" :options="VISIT_GUIDANCE" size="compact" @pick="(v) => pickInto('enterpriseFeedback', v)" />
+            </AppFormItem>
+            <AppFormItem label="学生反馈">
+              <AppTextInput v-model="form.studentFeedback" placeholder="学生对岗位/实习的反馈" />
+              <AppTemplateChips class="grf__chips" :options="VISIT_STATUS" size="compact" @pick="(v) => pickInto('studentFeedback', v)" />
+            </AppFormItem>
           </AppFormSection>
           <AppFormSection title="安全隐患与整改" description="填写安全隐患或整改要求后，该巡访自动进入「整改中」">
-            <AppFormItem label="安全隐患"><AppTextInput v-model="form.safetyIssue" placeholder="填写后自动进入「整改中」" /></AppFormItem>
+            <AppFormItem label="安全隐患">
+              <AppTextInput v-model="form.safetyIssue" placeholder="填写后自动进入「整改中」" />
+              <AppTemplateChips class="grf__chips" :options="VISIT_ISSUE" size="compact" @pick="(v) => pickInto('safetyIssue', v)" />
+            </AppFormItem>
             <AppFormItem label="整改要求"><AppTextInput v-model="form.rectifyRequire" placeholder="填写后自动进入「整改中」" /></AppFormItem>
             <AppFormItem label="整改截止"><AppDatePicker v-model="form.rectifyDeadline" /></AppFormItem>
           </AppFormSection>
@@ -88,10 +97,11 @@
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppForm, AppFormSection, AppFormItem, AppSubmitBar, AppSelect, AppTextInput, AppTextarea,
-  AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips } from '@/components/common'
+  AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips, AppTemplateChips } from '@/components/common'
 import { searchInternStudents } from './components/entityPickerAdapters'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import { toast } from '@/utils/toast'
+import { VISIT_STATUS, VISIT_GUIDANCE, VISIT_ISSUE } from '@/modules/internship/constants/presetPrompts'
 
 const TYPE_META = { guidance: { label: '指导记录' }, visit: { label: '巡访记录' } }
 const METHODS = {
@@ -112,9 +122,10 @@ function emptyForm() {
 export default {
   name: 'GuidanceRecordFormView',
   components: { ModulePageShell, AppButton, AppForm, AppFormSection, AppFormItem, AppSubmitBar,
-    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips },
+    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips, AppTemplateChips },
   data() {
     return {
+      VISIT_STATUS, VISIT_GUIDANCE, VISIT_ISSUE,
       type: 'guidance',
       typeOptions: [{ label: '指导记录', value: 'guidance' }, { label: '巡访记录', value: 'visit' }],
       flagOptions: [{ label: '标记为风险线索', value: 'toRisk' }, { label: '通知辅导员', value: 'notifyCounselor' }],
@@ -146,6 +157,11 @@ export default {
   methods: {
     // 选择器远程搜索（岗位实习模块适配层，关键字与数据范围由后端裁定）
     searchInternStudents,
+    pickInto(field, text) {
+      if (!text) return
+      const cur = (this.form[field] || '').trim()
+      this.form[field] = cur ? cur + '；' + text : text
+    },
     applyType(t) {
       this.type = TYPE_META[t] ? t : 'guidance'
       // 方式选项随类型联动：当前值不在新选项内时回退到第一项
@@ -211,4 +227,5 @@ export default {
 .grf__file-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-height: 32px; }
 .grf__file { font-size: var(--font-size-xs); }
 .grf__att { font-size: var(--font-size-xs); color: var(--success-700); }
+.grf__chips { margin-top: var(--space-2); }
 </style>

@@ -35,11 +35,8 @@
           </ul>
         </template>
         <template #aside-foot>
-          <div class="lv-pager">
-            <button type="button" class="mp-link" :disabled="page <= 1 || loading" @click="onPageChange(page - 1)">上一页</button>
-            <span class="mp-note">第 {{ page }} / 共 {{ pageCount }} 页</span>
-            <button type="button" class="mp-link" :disabled="page >= pageCount || loading" @click="onPageChange(page + 1)">下一页</button>
-          </div>
+          <AppPagination v-model:page="page" :page-size="pageSize" :total="total"
+                        :show-total="false" :show-size-changer="false" :disabled="loading" @change="load" />
         </template>
 
         <!-- 右栏：当前学生鉴定详情、教师意见与审核操作 -->
@@ -71,9 +68,11 @@
                 <div class="cmt">
                   <AppFormItem label="指导教师意见" required>
                     <AppTextarea v-model="cmtForm.advisorOpinion" :rows="3" placeholder="对学生实习表现的鉴定意见" />
+                    <AppTemplateChips class="cmt__chips" :options="ADVISOR_EVAL_COMMENT" size="compact" @pick="onPickAdvisorChip" />
                   </AppFormItem>
                   <AppFormItem label="企业导师意见（可选，如实转录）">
-                    <AppTextarea v-model="cmtForm.mentorOpinion" :rows="3" placeholder="企业导师对学生的意见" />
+                    <AppTextarea v-model="cmtForm.mentorOpinion" :rows="3" placeholder="企业导师评语（可由企业填写或代填后请企业核对）" />
+                    <AppTemplateChips class="cmt__chips" :options="ENTERPRISE_EVAL_COMMENT" size="compact" @pick="onPickMentorChip" />
                   </AppFormItem>
                   <div class="cmt__actions">
                     <AppPermissionButton code="internship.eval.advisor.manage" :allowed="canBtn('internship.eval.advisor.manage')" variant="primary" size="sm"
@@ -99,6 +98,7 @@
 
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
+      :reason-chips="cd.requireReason ? REJECT_STUDENT_EVAL : []"
       reason-label="审核意见" :submitting="cd.submitting" @confirm="onConfirm" />
   </ModulePageShell>
 </template>
@@ -107,12 +107,13 @@
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTextarea, AppFormItem } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTemplateChips, AppTextarea, AppFormItem, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { studentEvalApi } from '@/modules/internship/api/student-eval.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL, ADVISOR_EVAL_COMMENT } from '@/modules/internship/constants/presetPrompts'
 
 /* 右栏只渲染 /internship/student-evals/{id} 真实返回字段（见 internship_student_eval_service._row + _full + get_eval） */
 const DETAIL = [
@@ -132,9 +133,10 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTextarea, AppFormItem },
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTemplateChips, AppTextarea, AppFormItem, AppPagination },
   data() {
     return {
+      ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL, ADVISOR_EVAL_COMMENT,
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       keyword: '', statusFilter: 'PENDING', statusOptions: STATUS_OPTIONS,
       selectedId: '', doneHint: false,
@@ -146,7 +148,6 @@ export default {
     }
   },
   computed: {
-    pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
     summaryMetrics() {
       // 仅在列表真实加载成功后展示服务端 total；loading / error 一律不展示
       if (this.loading || this.error) return []
@@ -189,14 +190,20 @@ export default {
   created() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    onPickMentorChip(text) {
+      if (!text) return
+      const cur = (this.cmtForm.mentorOpinion || '').trim()
+      this.cmtForm.mentorOpinion = cur ? cur + '；' + text : text
+    },
+    onPickAdvisorChip(text) {
+      if (!text) return
+      const cur = (this.cmtForm.advisorOpinion || '').trim()
+      this.cmtForm.advisorOpinion = cur ? cur + '；' + text : text
+    },
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
     exportFn() { return studentEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     reload() { this.page = 1; this.load() },
-    onPageChange(p) {
-      if (p < 1 || p > this.pageCount || p === this.page) return
-      this.page = p; this.load()
-    },
     async load() {
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
@@ -292,7 +299,6 @@ export default {
 .lv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .lv-item__name { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
 .lv-item__sub { margin-top: 2px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.lv-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 
 /* 右栏详情与固定操作区 */
 .lv-main { display: flex; flex-direction: column; min-height: 320px; }
@@ -305,5 +311,6 @@ export default {
 /* 右栏内联意见表单 */
 .cmt { border: 1px solid var(--border-light); border-radius: var(--radius-md, 8px); padding: var(--space-3); }
 .cmt__actions { display: flex; justify-content: flex-end; }
+.cmt__chips { margin-top: var(--space-2); }
 
 </style>
