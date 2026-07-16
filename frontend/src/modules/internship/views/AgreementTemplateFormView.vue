@@ -69,6 +69,15 @@
           </div>
           <div class="mp-card__body">
             <AppFormItem class="atf-body-item" label="正文内容" prop="body">
+              <AppQuickFilterChips
+                v-if="!readonly"
+                class="atf-body-chips"
+                :options="AGREEMENT_CLAUSE"
+                multiple
+                :model-value="[]"
+                size="compact"
+                @change="onPickClause"
+              />
               <AppTextarea
                 v-model="form.body"
                 class="atf-body"
@@ -122,11 +131,12 @@
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
-  AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar
+  AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar, AppQuickFilterChips
 } from '@/components/common'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
+import { AGREEMENT_CLAUSE } from '@/modules/internship/constants/presetPrompts'
 
 const CATEGORY_OPTS = ['三方协议', '顶岗实习协议', '安全责任书', '实习承诺书', '保密协议']
 const blankForm = () => ({
@@ -139,10 +149,11 @@ export default {
   name: 'AgreementTemplateFormView',
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
-    AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar
+    AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar, AppQuickFilterChips
   },
   data() {
     return {
+      AGREEMENT_CLAUSE,
       ctx: null,
       loading: false,
       error: '',
@@ -211,6 +222,12 @@ export default {
   methods: {
     braced(key) {
       return '{' + '{' + key + '}' + '}'
+    },
+    onPickClause(vals) {
+      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+      if (!text) return
+      const cur = (this.form.body || '').replace(/\n+$/, '')
+      this.form.body = cur ? cur + '\n' + text : text
     },
     goBack() {
       // 从列表/详情进入时走历史返回（保留筛选/页码）；深链直入时兜底到模板库列表
@@ -308,6 +325,9 @@ export default {
 }
 .atf-body-item {
   width: 100%;
+}
+.atf-body-chips {
+  margin-bottom: var(--space-2);
 }
 .atf-body :deep(textarea) {
   font-size: 13px;

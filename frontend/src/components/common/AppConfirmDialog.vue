@@ -14,6 +14,10 @@
           <label class="app-confirm-dialog__label">
             {{ reasonLabel }}<span class="app-confirm-dialog__required">*</span>
           </label>
+          <div v-if="reasonChips.length" class="app-confirm-dialog__chips">
+            <span class="app-confirm-dialog__chips-label">快捷填入：</span>
+            <AppQuickFilterChips :options="reasonChips" multiple :model-value="[]" size="compact" @change="onPickChip" />
+          </div>
           <textarea
             v-model="reason"
             class="app-confirm-dialog__textarea"
@@ -54,12 +58,17 @@
  *  - 确认按钮必须写清楚动作（confirmText），不允许只写“确定”
  * Props: visible(v-model)、title、message、type: primary|warning|danger、
  *        confirmText、cancelText、requireReason、reasonLabel、reasonPlaceholder、
- *        reasonMinLength、showNotify（是否显示“通知学生”勾选）、notifyLabel、submitting（防重复提交）
+ *        reasonMinLength、showNotify（是否显示“通知学生”勾选）、notifyLabel、submitting（防重复提交）、
+ *        reasonChips（可选，字符串数组；requireReason 时在原因框上方渲染快捷芯片，点击追加进原因框，
+ *        已有内容用「；」拼接，不覆盖已输入内容；不传则不渲染，不影响任何既有调用方）
  * Emits: update:visible、confirm({ reason, notify })、cancel
  * Slots: default（补充说明 / 影响范围 / 附件区）
  */
+import AppQuickFilterChips from './display/AppQuickFilterChips.vue'
+
 export default {
   name: 'AppConfirmDialog',
+  components: { AppQuickFilterChips },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },
@@ -79,6 +88,7 @@ export default {
     reasonLabel: { type: String, default: '处理原因' },
     reasonPlaceholder: { type: String, default: '请填写具体原因，便于对方理解和修改' },
     reasonMinLength: { type: Number, default: 5 },
+    reasonChips: { type: Array, default: () => [] },
     showNotify: { type: Boolean, default: false },
     notifyLabel: { type: String, default: '通知学生' },
     submitting: { type: Boolean, default: false },
@@ -110,6 +120,13 @@ export default {
     }
   },
   methods: {
+    onPickChip(vals) {
+      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+      if (!text) return
+      const cur = (this.reason || '').replace(/[；;\s]+$/, '')
+      this.reason = cur ? cur + '；' + text : text
+      this.reasonError = ''
+    },
     onCancel() {
       this.$emit('update:visible', false)
       this.$emit('cancel')
@@ -200,6 +217,18 @@ export default {
 .app-confirm-dialog__required {
   color: var(--danger-600);
   margin-left: 2px;
+}
+.app-confirm-dialog__chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.app-confirm-dialog__chips-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
 }
 .app-confirm-dialog__textarea {
   width: 100%;

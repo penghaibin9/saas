@@ -12,15 +12,15 @@
         <view class="card se__form">
           <view class="se__field">
             <text class="se__label">实习总结 <text class="se__req">*</text></text>
-            <textarea v-model="form.selfSummary" class="se__textarea" maxlength="2000" placeholder="概述实习期间的主要工作与表现" />
+            <textarea v-model="form.selfSummary" class="se__textarea" maxlength="2000" placeholder="如：本次实习期间，我在企业从事了相关专业工作，认真完成各项任务，将专业理论知识与实践相结合…" />
           </view>
           <view class="se__field">
             <text class="se__label">主要收获</text>
-            <textarea v-model="form.selfHarvest" class="se__textarea" maxlength="1000" placeholder="技能、经验与体会" />
+            <textarea v-model="form.selfHarvest" class="se__textarea" maxlength="1000" placeholder="如：学会了相关工具的使用，了解了企业实际工作流程与规范，增强了团队协作能力…" />
           </view>
           <view class="se__field">
             <text class="se__label">存在问题</text>
-            <textarea v-model="form.selfProblem" class="se__textarea" maxlength="1000" placeholder="尚待改进之处（可选）" />
+            <textarea v-model="form.selfProblem" class="se__textarea" maxlength="1000" placeholder="如：在某方面经验不足，今后计划通过系统学习加以弥补（可选）" />
           </view>
           <view class="se__field">
             <text class="se__label">对企业评分（1-5）</text>

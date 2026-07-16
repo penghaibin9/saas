@@ -90,6 +90,7 @@
       :danger="confirm.danger"
       :confirm-text="confirm.confirmText"
       :require-reason="confirm.requireReason"
+      :reason-chips="confirm.requireReason ? REJECT_APPLICATION : []"
       reason-label="审核意见"
       :submitting="confirm.submitting"
       @confirm="submitReview"
@@ -109,6 +110,7 @@ import { downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
 import { internshipApplicationApi } from '@/modules/internship/api/internship-application.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { REJECT_APPLICATION } from '@/modules/internship/constants/presetPrompts'
 
 const TYPE_OPTIONS = [
   { value: '', label: '全部申请' },
@@ -142,6 +144,7 @@ export default {
   },
   data() {
     return {
+      REJECT_APPLICATION,
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       applicationType: '', status: 'PENDING_REVIEW', keyword: '',
       typeOptions: TYPE_OPTIONS, statusOptions: STATUS_OPTIONS, columns: COLUMNS,

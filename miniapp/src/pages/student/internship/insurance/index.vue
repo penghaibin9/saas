@@ -7,8 +7,8 @@
           <text v-if="info" class="ins__status">{{ info.statusLabel }}</text>
         </view>
         <view class="card stack">
-          <view class="ins__field"><text class="ins__label">承保单位 *</text><input v-model="form.insurerName" class="ins__input" /></view>
-          <view class="ins__field"><text class="ins__label">保单号 *</text><input v-model="form.policyNo" class="ins__input" /></view>
+          <view class="ins__field"><text class="ins__label">承保单位 *</text><input v-model="form.insurerName" class="ins__input" placeholder="如：平安保险/人保财险/太平洋保险" /></view>
+          <view class="ins__field"><text class="ins__label">保单号 *</text><input v-model="form.policyNo" class="ins__input" placeholder="保险公司出具的保单编号" /></view>
           <view class="ins__field"><text class="ins__label">险种</text><input v-model="form.coverageType" class="ins__input" placeholder="如 实习责任险" /></view>
           <view class="ins__field"><text class="ins__label">生效日期</text><input v-model="form.effectiveDate" class="ins__input" placeholder="YYYY-MM-DD" /></view>
           <view class="ins__field"><text class="ins__label">到期日期</text><input v-model="form.expiryDate" class="ins__input" placeholder="YYYY-MM-DD" /></view>

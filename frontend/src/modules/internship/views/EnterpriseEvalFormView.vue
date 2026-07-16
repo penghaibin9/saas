@@ -32,7 +32,10 @@
         </AppFormSection>
 
         <AppFormSection title="评语与建议">
-          <AppFormItem label="综合评语"><AppTextarea v-model="form.overallComment" :rows="2" placeholder="企业对学生的综合评语" /></AppFormItem>
+          <AppFormItem label="综合评语">
+            <AppTextarea v-model="form.overallComment" :rows="2" placeholder="企业对学生的综合评语" />
+            <AppQuickFilterChips class="eef__chips" :options="ENTERPRISE_EVAL_COMMENT" multiple :model-value="[]" size="compact" @change="onPickComment" />
+          </AppFormItem>
           <label class="eef__chk"><input v-model="form.recommendHire" type="checkbox" />建议录用</label>
         </AppFormSection>
 
@@ -67,10 +70,11 @@
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppForm, AppFormSection, AppFormItem, AppSubmitBar, AppTextInput, AppNumberInput,
-  AppTextarea, AppStudentPicker } from '@/components/common'
+  AppTextarea, AppStudentPicker, AppQuickFilterChips } from '@/components/common'
 import { searchInternStudents } from './components/entityPickerAdapters'
 import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
 import { toast } from '@/utils/toast'
+import { ENTERPRISE_EVAL_COMMENT } from '@/modules/internship/constants/presetPrompts'
 
 const SCORES = [
   { key: 'attendanceScore', label: '出勤' }, { key: 'skillScore', label: '技能' },
@@ -86,9 +90,10 @@ function emptyForm() {
 export default {
   name: 'EnterpriseEvalFormView',
   components: { ModulePageShell, AppButton, AppForm, AppFormSection, AppFormItem, AppSubmitBar,
-    AppTextInput, AppNumberInput, AppTextarea, AppStudentPicker },
+    AppTextInput, AppNumberInput, AppTextarea, AppStudentPicker, AppQuickFilterChips },
   data() {
     return {
+      ENTERPRISE_EVAL_COMMENT,
       scoreDefs: SCORES,
       form: emptyForm(),
       attachName: '', uploadingFile: false, submitting: false,
@@ -117,6 +122,12 @@ export default {
   methods: {
     // 选择器远程搜索（岗位实习模块适配层，关键字与数据范围由后端裁定）
     searchInternStudents,
+    onPickComment(vals) {
+      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+      if (!text) return
+      const cur = (this.form.overallComment || '').trim()
+      this.form.overallComment = cur ? cur + '；' + text : text
+    },
     backToList() {
       // 从列表进入时走历史返回（保留筛选/页码/选中）；深链直入时兜底到列表
       const back = this.$router.options.history.state && this.$router.options.history.state.back
@@ -161,6 +172,7 @@ export default {
 .eef__scores { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .eef__score { width: calc(20% - var(--space-2)); min-width: 90px; }
 .eef__chk { display: flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-3); }
+.eef__chips { margin-top: var(--space-2); }
 .eef__file-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-height: 32px; }
 .eef__file { font-size: var(--font-size-xs); }
 .eef__att { font-size: var(--font-size-xs); color: var(--success-700); }

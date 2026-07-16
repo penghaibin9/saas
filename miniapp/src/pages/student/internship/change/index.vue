@@ -24,7 +24,7 @@
           </view>
           <view class="chg__field">
             <text class="chg__label">变更原因 <text class="chg__req">*</text></text>
-            <textarea v-model="form.reason" class="chg__textarea" maxlength="500" placeholder="请说明变更原因（不少于 5 字）" />
+            <textarea v-model="form.reason" class="chg__textarea" maxlength="500" placeholder="如：原岗位与专业方向不符，申请更换至更对口的岗位（不少于 5 字）" />
           </view>
         </view>
 
