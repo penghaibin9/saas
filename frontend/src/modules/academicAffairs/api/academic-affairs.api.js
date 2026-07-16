@@ -807,7 +807,7 @@ export const academicAffairsEvaluationApi = {
   listBatches(params = {}) { return callList(`${BASE}/evaluation/batches`, params) },
   getBatch(id) { return call(() => request(`${BASE}/evaluation/batches/${id}`)) },
   createBatch(body) { return call(() => request(`${BASE}/evaluation/batches`, { method: 'POST', body })) },
-  genTasks(id, teachingTaskIds) { return call(() => request(`${BASE}/evaluation/batches/${id}/tasks`, { method: 'POST', body: { teachingTaskIds } })) },
+  genTasks(id, teachingTaskIds, evaluatorType = 'STUDENT') { return call(() => request(`${BASE}/evaluation/batches/${id}/tasks`, { method: 'POST', body: { teachingTaskIds, evaluatorType } })) },
   listTasks(id, params = {}) { return call(() => request(`${BASE}/evaluation/batches/${id}/tasks`, { params })) },
   publish(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/publish`, { method: 'POST' })) },
   open(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/open`, { method: 'POST' })) },

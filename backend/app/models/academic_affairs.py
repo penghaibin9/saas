@@ -1277,6 +1277,12 @@ class AaEvaluationResult(PKMixin, TenantMixin, CommonMixin, Base):
     course_name: Mapped[str | None] = mapped_column(String(200))
     student_avg: Mapped[float | None] = mapped_column(Numeric(5, 2), comment="学生评教均分")
     student_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    self_score: Mapped[float | None] = mapped_column(Numeric(5, 2), comment="教师自评分")
+    peer_avg: Mapped[float | None] = mapped_column(Numeric(5, 2), comment="同行评价均分")
+    peer_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    supervisor_avg: Mapped[float | None] = mapped_column(Numeric(5, 2), comment="督导评价均分")
+    supervisor_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    composite_score: Mapped[float | None] = mapped_column(Numeric(5, 2), comment="多来源加权综合分")
     level: Mapped[str | None] = mapped_column(String(20), index=True,
                                               comment="EXCELLENT/GOOD/PASS/NEED_IMPROVE")
     published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否已对教师发布")

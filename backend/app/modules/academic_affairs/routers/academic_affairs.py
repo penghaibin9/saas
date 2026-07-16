@@ -2951,6 +2951,7 @@ class EvalBatchBody(BaseModel):
 
 class EvalGenTasksBody(BaseModel):
     teachingTaskIds: list[str] = Field(default_factory=list)
+    evaluatorType: str = Field("STUDENT", description="STUDENT/SELF/PEER/SUPERVISOR")
 
 
 class EvalSubmitBody(BaseModel):
@@ -2990,7 +2991,8 @@ def eval_batch_detail(bid: int = Path(...), user=Depends(require_permission(_EVA
 
 @router.post("/evaluation/batches/{bid}/tasks", summary="生成应评任务（挂教学任务）")
 def eval_gen_tasks(body: EvalGenTasksBody, bid: int = Path(...), user=Depends(require_permission(_EVAL_MANAGE))):
-    return success(evaluation_svc.generate_tasks(user, bid, body.teachingTaskIds), message="已生成")
+    return success(evaluation_svc.generate_tasks(user, bid, body.teachingTaskIds, body.evaluatorType),
+                   message="已生成")
 
 
 @router.get("/evaluation/batches/{bid}/tasks", summary="应评任务列表")

@@ -74,6 +74,14 @@
 
     <AppDrawer :visible="genVisible" title="生成应评任务" @close="genVisible = false">
       <div class="aaev-form">
+        <AppFormItem label="评价来源">
+          <select v-model="genType" class="aaev-select" :disabled="saving">
+            <option value="STUDENT">学生评教</option>
+            <option value="SELF">教师自评</option>
+            <option value="PEER">同行评价</option>
+            <option value="SUPERVISOR">督导评价</option>
+          </select>
+        </AppFormItem>
         <AppFormItem label="教学任务 ID（逗号分隔）" required><AppTextInput v-model="genRaw" placeholder="如 1,2,3" :disabled="saving" /></AppFormItem>
       </div>
       <template #footer>
@@ -106,10 +114,10 @@ export default {
       tab: 'batches', tabs: [{ key: 'batches', label: '评教批次' }, { key: 'appeals', label: '申诉审核' }],
       rows: [], current: null, tasks: [], results: [], appeals: [],
       taskColumns: [{ key: 'courseName', title: '课程' }, { key: 'teacherName', title: '教师' }, { key: 'submittedCount', title: '已评' }, { key: 'status', title: '状态' }],
-      resultColumns: [{ key: 'teacherName', title: '教师' }, { key: 'courseName', title: '课程' }, { key: 'studentAvg', title: '均分' }, { key: 'studentCount', title: '评价数' }, { key: 'level', title: '等级' }],
+      resultColumns: [{ key: 'teacherName', title: '教师' }, { key: 'courseName', title: '课程' }, { key: 'studentAvg', title: '学生均分' }, { key: 'supervisorAvg', title: '督导' }, { key: 'peerAvg', title: '同行' }, { key: 'selfScore', title: '自评' }, { key: 'compositeScore', title: '综合分' }, { key: 'level', title: '等级' }],
       appealColumns: [{ key: 'teacherKey', title: '教师' }, { key: 'reason', title: '申诉理由' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
       createVisible: false, form: { batchName: '', termId: '' }, formError: '',
-      genVisible: false, genRaw: '',
+      genVisible: false, genRaw: '', genType: 'STUDENT',
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
     }
   },
@@ -150,12 +158,12 @@ export default {
       this.saving = false
       if (res.code === 0) { toast.success('已创建'); this.createVisible = false; this.loadBatches() } else this.formError = res.message
     },
-    openGenTasks() { this.genRaw = ''; this.genVisible = true },
+    openGenTasks() { this.genRaw = ''; this.genType = 'STUDENT'; this.genVisible = true },
     async submitGen() {
       const ids = this.genRaw.split(',').map(s => s.trim()).filter(Boolean)
       if (!ids.length) { toast.error('请填教学任务 ID'); return }
       this.saving = true
-      const res = await api.genTasks(this.current.batchId, ids)
+      const res = await api.genTasks(this.current.batchId, ids, this.genType)
       this.saving = false
       if (res.code === 0) { toast.success(`已生成 ${res.data.taskCount} 条`); this.genVisible = false; this.select(this.current) } else toast.error(res.message)
     },
