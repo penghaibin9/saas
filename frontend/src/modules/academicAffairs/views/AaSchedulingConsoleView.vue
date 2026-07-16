@@ -209,6 +209,16 @@
         </label>
       </div>
     </AppConfirmDialog>
+    <!-- 驳回原因保持「选填」：原实现为 window.prompt 且未做任何长度校验（reason || ''），
+         此处不加 require-reason，避免把选填字段悄悄变成必填 -->
+    <AppConfirmDialog
+      v-model:visible="reasonDialog.visible" title="驳回教师可用时间申报" type="danger"
+      confirm-text="确认驳回" :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
+    >
+      <label class="aasg-reason-label">驳回原因（选填）
+        <textarea v-model.trim="reasonDialog.reason" class="aa-input" rows="3" placeholder="如：该时段已排本人其它课程" />
+      </label>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -261,7 +271,8 @@ export default {
       // 11 排课调整
       objectForm: { batchId: '', itemId: '', reason: '' }, submittingObjection: false,
       adjustBatchId: '', objections: [],
-      adjustDlg: { visible: false, submitting: false, itemId: '', batchId: '', courseName: '', weekday: 1, slotNo: 1, classroom: '', weekParity: 'ALL' }
+      adjustDlg: { visible: false, submitting: false, itemId: '', batchId: '', courseName: '', weekday: 1, slotNo: 1, classroom: '', weekParity: 'ALL' },
+      reasonDialog: { visible: false, submitting: false, reason: '', action: null }
     }
   },
   computed: {
@@ -326,10 +337,24 @@ export default {
       const res = await api.reviewAvailability(id, action)
       if (res.code === 0) { toast.success('已采纳'); this.loadAvails() } else toast.error(res.message)
     },
-    async rejectAvail(id) {
-      const reason = window.prompt('驳回原因')
-      const res = await api.reviewAvailability(id, 'REJECT', reason || '')
-      if (res.code === 0) { toast.success('已驳回'); this.loadAvails() } else toast.error(res.message)
+    rejectAvail(id) {
+      this.reasonDialog = {
+        visible: true, submitting: false, reason: '',
+        action: async (reason) => {
+          const res = await api.reviewAvailability(id, 'REJECT', reason || '')
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已驳回'); this.loadAvails(); return true
+        }
+      }
+    },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭（避免接口失败后用户重打一遍） */
+    async onReasonConfirm() {
+      const action = this.reasonDialog.action
+      if (!action) return
+      this.reasonDialog.submitting = true
+      const ok = await action(this.reasonDialog.reason)
+      this.reasonDialog.submitting = false
+      if (ok) this.reasonDialog.visible = false
     },
     async loadConflict() {
       if (!this.conflictBatchId) { toast.error('请填课表批次 ID'); return }
@@ -429,6 +454,8 @@ export default {
 .aasg-assign-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .aasg-assign-form__grow { grid-column: 1 / -1; }
 .aasg-assign-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
+.aasg-reason-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
+.aasg-reason-label textarea.aa-input { height: auto; padding: 8px 10px; resize: vertical; }
 .aa-input { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
 .mp-btn { height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-300, #d0d3d9); background: var(--bg-white, #fff); cursor: pointer; font-size: 13px; }
 </style>

@@ -80,7 +80,9 @@
         <div class="aa-form__row">
           <label class="aa-form__label">申请原因</label>
           <div class="aa-form__field">
-            <textarea v-model.trim="form.reason" class="aa-textarea" rows="3" maxlength="500" placeholder="选填，便于审批参考"></textarea>
+            <textarea ref="reasonInput" v-model.trim="form.reason" class="aa-textarea" rows="3" maxlength="500" placeholder="选填，便于审批参考"></textarea>
+            <!-- 仅当该异动类型有专属词条时才展示；否则分组未命中会回落显示全部类型的词条（如转班表单弹出休学词条） -->
+            <AppQuickPhrases v-if="reasonPhraseScene" :scene-key="reasonPhraseScene" :group="form.changeType" @pick="onPickReason" />
           </div>
         </div>
       </div>
@@ -103,7 +105,9 @@
  *  TRANSFER_CLASS（转班）目标班选择器：选定学生后拉取其当前专业（GET /roster/{id}），
  *  再按该专业过滤班级候选（GET /orgs/classes?majorId=），跨专业一致性由后端 submit() 强制复核。 */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard } from '@/components/common'
+import { AppSectionCard, AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+import { hasGroupPhrases } from '@/utils/quickPhrases'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TYPE_LABEL, TYPE_PATH_SEGMENT } from '@/modules/academicAffairs/constants/status-change'
 import { toast } from '@/utils/toast'
@@ -119,7 +123,7 @@ const TYPE_HINT = {
 
 export default {
   name: 'AaStatusChangeFormView',
-  components: { ModulePageShell, AppSectionCard },
+  components: { ModulePageShell, AppSectionCard, AppQuickPhrases },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -152,6 +156,10 @@ export default {
     typeHint() {
       return TYPE_HINT[this.form.changeType] || ''
     },
+    /** 该异动类型有专属词条才给 sceneKey；无专属词条（如转班/留级）返回空 → 不展示 chips */
+    reasonPhraseScene() {
+      return hasGroupPhrases('aa.statuschg.reason', this.form.changeType) ? 'aa.statuschg.reason' : ''
+    },
     classSelectPlaceholder() {
       if (!this.form.studentId) return '请先选择学生'
       if (this.loadingClasses) return '加载班级中…'
@@ -168,6 +176,12 @@ export default {
     if (this.form.changeType === 'TRANSFER_CLASS' && this.form.studentId) this.loadStudentOrgInfo()
   },
   methods: {
+    onPickReason(text) {
+      const el = this.$refs.reasonInput
+      const { value, selStart, selEnd } = insertAtCursor(el, this.form.reason, text)
+      this.form.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     goBack() {
       const seg = this.lockedType && TYPE_PATH_SEGMENT[this.form.changeType]
       this.$router.push(seg ? `/admin/academic-affairs/status-changes/${seg}` : '/admin/academic-affairs/status-changes')

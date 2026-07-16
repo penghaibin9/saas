@@ -52,6 +52,7 @@
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
+      phrase-scene-key="aa.schedchg.cancel"
       reason-label="撤销原因" :submitting="submitting" @confirm="onConfirm"
     />
   </ModulePageShell>

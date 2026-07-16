@@ -99,6 +99,13 @@
         <AppButton variant="primary" :loading="submitting" @click="submitCreate">提交</AppButton>
       </template>
     </AppDrawer>
+
+    <!-- 驳回原因未挂快捷用语：配置方案未给「学籍更正驳回」场景词条，不硬套其它场景（会串味） -->
+    <AppConfirmDialog
+      v-model:visible="rejectDialog.visible" title="驳回学籍更正申请" type="danger"
+      confirm-text="确认驳回" require-reason reason-label="驳回原因（≥5字，将回传申请人）"
+      :submitting="acting" @confirm="doReject"
+    />
   </ModulePageShell>
 </template>
 
@@ -108,10 +115,10 @@
  * GET/POST /academic-affairs/roster/corrections、POST /roster/corrections/{id}/review。
  * 区别于「学籍异动」：只纠正学号/姓名/性别/证件号/年级录入错误，不产生学籍状态迁移，
  * 字段范围明确排除学籍状态/院系专业班级（那些变更走 change_student_status 单一入口）。
- * 审核通过/驳回沿用本模块「特批解冻」同款 window.prompt 轻量交互（AaArchiveConsoleView 同例）。
+ * 驳回走 AppConfirmDialog（原因≥5字由组件校验）；通过为无原因动作，沿用 window.confirm。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert } from '@/components/common'
+import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppConfirmDialog } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -128,11 +135,12 @@ function emptyForm() {
 export default {
   name: 'AaRosterCorrectionListView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag,
-               AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppButton, AppDrawer },
+               AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppButton, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       FIELD_LABEL,
+      rejectDialog: { visible: false, row: null },
       loading: true,
       error: '',
       rows: [],
@@ -235,15 +243,21 @@ export default {
       this.acting = false
       if (res.code === 0) { toast.success('已通过，主档已同步'); this.load() } else toast.error(res.message)
     },
-    async reject(row) {
+    reject(row) {
       if (this.acting) return
-      const note = window.prompt('驳回原因（≥5字，将回传申请人）')
-      if (note === null) return
-      if (note.trim().length < 5) { toast.error('驳回原因至少5字'); return }
+      this.rejectDialog = { visible: true, row }
+    },
+    async doReject({ reason }) {
+      const row = this.rejectDialog.row
+      if (!row) return
       this.acting = true
-      const res = await academicAffairsApi.reviewRosterCorrection(row.correctionId, 'REJECT', note.trim())
+      const res = await academicAffairsApi.reviewRosterCorrection(row.correctionId, 'REJECT', reason)
       this.acting = false
-      if (res.code === 0) { toast.success('已驳回'); this.load() } else toast.error(res.message)
+      if (res.code === 0) {
+        this.rejectDialog.visible = false
+        toast.success('已驳回')
+        this.load()
+      } else toast.error(res.message)
     },
     async load() {
       this.loading = true

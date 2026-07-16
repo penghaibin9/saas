@@ -100,6 +100,7 @@
       :message="'确认作废「' + (voidDialog.row ? voidDialog.row.code : '') + '」？作废为逻辑删除，预警与处理过程保留可追溯。'"
       confirm-text="确认作废"
       require-reason
+      phrase-scene-key="aa.warning.void"
       reason-label="误报说明"
       reason-placeholder="请说明误报原因（如数据同步错误、规则误命中），不少于 5 个字"
       :submitting="voidDialog.submitting"

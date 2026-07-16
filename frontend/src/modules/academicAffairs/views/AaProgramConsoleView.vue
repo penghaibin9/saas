@@ -264,6 +264,7 @@
       :type="reviewDlg.type"
       :confirm-text="reviewDlg.confirmText"
       :require-reason="reviewDlg.requireReason"
+      phrase-scene-key="aa.review.return"
       reason-label="审核意见"
       :submitting="reviewDlg.submitting"
       @confirm="doReview"

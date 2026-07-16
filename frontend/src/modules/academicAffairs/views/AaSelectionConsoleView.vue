@@ -145,6 +145,8 @@
         <AppFormItem label="选课学分上限">
           <AppNumberInput v-model="form.maxCredits" :min="0" :max="50" :disabled="saving" />
         </AppFormItem>
+        <!-- 未挂快捷用语：aa.remark 两条分别讲教室设备与合班授课，与选课批次备注无关；
+             配置方案未给选课批次备注词条，不硬套 -->
         <AppFormItem label="备注">
           <AppTextarea v-model="form.remark" placeholder="选填" :disabled="saving" />
         </AppFormItem>

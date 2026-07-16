@@ -49,11 +49,38 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 标记发放：原为「批次号→银行卡后4位」2 连原生弹窗。
+         银行卡后 4 位属敏感信息，走浏览器原生框既无格式约束、也无任何用途说明。 -->
+    <AppConfirmDialog
+      v-model:visible="issDlg.visible" :title="`标记为已发放 · ${issDlg.who}`" type="primary"
+      confirm-text="确认发放" :submitting="acting === issDlg.disbursementId" @confirm="submitIssue"
+    >
+      <AppFormItem label="发放批次号">
+        <AppTextInput v-model="issDlg.disburseNo" placeholder="可空；如银行回单批次号" :maxlength="64" />
+      </AppFormItem>
+      <AppFormItem label="银行卡后 4 位">
+        <AppTextInput v-model="issDlg.bankLast4" placeholder="可空；只填最后 4 位数字" :maxlength="4" />
+        <p class="fd-hint">仅用于核对到账账户，系统只存后 4 位，不存完整卡号。请勿填写完整卡号。</p>
+      </AppFormItem>
+      <AppInlineAlert v-if="issDlg.error" type="danger" :description="issDlg.error" />
+    </AppConfirmDialog>
+
+    <!-- 发放失败原因 -->
+    <AppConfirmDialog
+      v-model:visible="failDlg.visible" :title="`标记发放失败 · ${failDlg.who}`" type="danger"
+      confirm-text="确认置失败" require-reason :reason-min-length="5" reason-label="失败原因（≥5 字）"
+      description="置为失败后该笔发放可重新处理。原因将记入发放台账。"
+      :submitting="acting === failDlg.disbursementId" @confirm="submitFail"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
+  AppPermissionButton, AppSectionCard, AppStatusTag, AppTextInput
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -64,9 +91,14 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'FundingDisbursementView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
+    AppPermissionButton, AppSectionCard, AppTextInput, StatusTag: AppStatusTag
+  },
   data() {
     return {
+      issDlg: { visible: false, disbursementId: '', who: '', disburseNo: '', bankLast4: '', error: '' },
+      failDlg: { visible: false, disbursementId: '', who: '' },
       loading: true, acting: '', errorMessage: '', items: [], batches: [], stats: {},
       activeStatus: '', statusFilters: STATUS_FILTERS, genBatchId: ''
     }
@@ -108,21 +140,35 @@ export default {
       if (res.code === 0) { toast.success(`已生成 ${res.data.generated || 0} 条发放记录`); this.load() }
       else toast.error(res.message || '生成失败')
     },
-    async issue(d) {
-      const no = window.prompt('发放批次号（可空）：') || ''
-      const last4 = window.prompt('银行卡号（仅存后4位，可空）：') || ''
-      this.acting = d.disbursementId
-      const res = await studentAffairsApi.issueDisbursement(d.disbursementId, { disburseNo: no || undefined, bankLast4: last4 || undefined })
-      this.acting = ''
-      if (res.code === 0) { toast.success('已标记发放'); this.load() } else toast.error(res.message || '标记失败')
+    issue(d) {
+      this.issDlg = {
+        visible: true, disbursementId: d.disbursementId, who: d.realName || d.studentNo || '该笔',
+        disburseNo: '', bankLast4: '', error: ''
+      }
     },
-    async fail(d) {
-      const reason = window.prompt('失败原因（至少5字）：')
-      if (!reason) return
+    async submitIssue() {
+      const d = this.issDlg
+      const last4 = d.bankLast4.trim()
+      // 原生 prompt 对「仅存后4位」毫无约束，粘完整卡号也照单全收；这里挡在前面。
+      if (last4 && !/^\d{4}$/.test(last4)) { d.error = '银行卡后 4 位须为 4 位数字；请勿填写完整卡号'; return }
+      d.error = ''
       this.acting = d.disbursementId
-      const res = await studentAffairsApi.failDisbursement(d.disbursementId, reason)
+      const res = await studentAffairsApi.issueDisbursement(d.disbursementId, {
+        disburseNo: d.disburseNo.trim() || undefined, bankLast4: last4 || undefined
+      })
       this.acting = ''
-      if (res.code === 0) { toast.success('已置失败'); this.load() } else toast.error(res.message || '操作失败')
+      if (res.code === 0) { d.visible = false; toast.success('已标记发放'); this.load() }
+      else { d.error = res.message || '标记失败' }
+    },
+    fail(d) {
+      this.failDlg = { visible: true, disbursementId: d.disbursementId, who: d.realName || d.studentNo || '该笔' }
+    },
+    async submitFail({ reason }) {
+      const d = this.failDlg
+      this.acting = d.disbursementId
+      const res = await studentAffairsApi.failDisbursement(d.disbursementId, reason.trim())
+      this.acting = ''
+      if (res.code === 0) { d.visible = false; toast.success('已置失败'); this.load() } else toast.error(res.message || '操作失败')
     },
     typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || t || '' },
     amountText(a) { return (a == null || a === '') ? '—' : (typeof a === 'number' ? ('¥' + a) : a) },
@@ -145,5 +191,6 @@ export default {
 .fd-reason { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .fd-ops { display: flex; gap: 6px; }
 .fd-dash { color: var(--text-tertiary); font-size: var(--font-size-sm); }
+.fd-hint { margin: var(--space-1) 0 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
 </style>

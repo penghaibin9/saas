@@ -40,17 +40,71 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 发起调宿：原为「学生 ID→目标床位 ID→事由」3 连原生弹窗，两个 ID 全靠手打，
+         而后端 buildings/rooms/beds 三个端点本就是为「选床级联」设计的（见 service docstring），前端此前未用。 -->
+    <AppDrawer :visible="dlg.visible" title="发起调宿" @close="dlg.visible = false">
+      <div class="dr-form">
+        <AppFormItem label="调宿学生" required>
+          <AppStudentPicker v-model="dlg.studentId" :remote-search="searchStudents"
+                            placeholder="按姓名 / 学号搜索" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="目标楼栋" required>
+          <AppSelect v-model="dlg.buildingId" :options="buildingOptions" placeholder="选择楼栋"
+                     :disabled="actioning" @change="onBuildingChange" />
+        </AppFormItem>
+        <AppFormItem label="目标房间" required>
+          <AppSelect v-model="dlg.roomId" :options="roomOptions" :disabled="actioning || !dlg.buildingId"
+                     :placeholder="dlg.buildingId ? '选择房间' : '请先选楼栋'" @change="onRoomChange" />
+        </AppFormItem>
+        <AppFormItem label="目标床位（仅列空床）" required>
+          <AppSelect v-model="dlg.toBedId" :options="bedOptions" :disabled="actioning || !dlg.roomId"
+                     :placeholder="bedPlaceholder" />
+        </AppFormItem>
+        <AppFormItem label="调宿事由">
+          <AppTextarea v-model="dlg.reason" :rows="3" :maxlength="500" :disabled="actioning"
+                       placeholder="如：与同宿舍同学作息冲突，申请调至同楼层空床" />
+        </AppFormItem>
+        <p class="dr-hint">提交后走「辅导员 → 宿管」两级审批，终审通过自动执行换床。</p>
+        <AppInlineAlert v-if="dlg.error" type="danger" :description="dlg.error" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="actioning" @click="dlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="actioning" @click="submitDlg">提交申请</AppButton>
+      </template>
+    </AppDrawer>
+
+    <!-- 驳回原因：原生 prompt 无法多行、无快捷用语 -->
+    <AppConfirmDialog
+      v-model:visible="rejDlg.visible" title="驳回调宿申请" type="danger" confirm-text="确认驳回"
+      require-reason :reason-min-length="5" reason-label="驳回原因（≥5 字）"
+      phrase-scene-key="sa.dorm.reject" :submitting="actioning" @confirm="submitReject"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+  AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextarea
+} from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 export default {
   name: 'DormTransferView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag },
-  data() { return { loading: true, actioning: false, errorMessage: '', items: [] } },
+  components: {
+    AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+    AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextarea
+  },
+  data() {
+    return {
+      loading: true, actioning: false, errorMessage: '', items: [],
+      buildings: [], rooms: [], beds: [],
+      dlg: { visible: false, studentId: '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' },
+      rejDlg: { visible: false, transferId: '' }
+    }
+  },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
@@ -63,34 +117,81 @@ export default {
         { key: 'r', label: '已驳回', value: rejected, accent: 'info' },
         { key: 't', label: '合计', value: this.items.length, accent: 'info' }
       ]
+    },
+    buildingOptions() {
+      return this.buildings.map((b) => ({ value: String(b.buildingId), label: b.buildingName || `楼栋 #${b.buildingId}` }))
+    },
+    roomOptions() {
+      return this.rooms.map((r) => ({
+        value: String(r.roomId),
+        label: `${r.roomNo || `房间 #${r.roomId}`}${r.vacantBeds != null ? `（空 ${r.vacantBeds}）` : ''}`
+      }))
+    },
+    /** 只列空床——调宿目标必须是空床，列出已住床位只会让人选错后被后端打回。 */
+    bedOptions() {
+      return this.beds.filter((b) => b.status === 'VACANT')
+        .map((b) => ({ value: String(b.bedId), label: `${b.bedNo} 号床` }))
+    },
+    bedPlaceholder() {
+      if (!this.dlg.roomId) return '请先选房间'
+      return this.bedOptions.length ? '选择空床' : '该房间当前无空床'
     }
   },
-  mounted() { this.load() },
+  mounted() { this.load(); this.loadBuildings() },
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
       try { this.items = (await studentAffairsApi.listDormTransfers({ pageSize: 100 })).data.items || [] }
       catch (e) { this.errorMessage = e.message || '调宿加载失败' } finally { this.loading = false }
     },
-    async submitTransfer() {
-      const sid = window.prompt('调宿学生 ID', '')
-      if (!sid) return
-      const toBedId = window.prompt('目标床位 ID（空床）', '')
-      if (!toBedId) return
-      const reason = window.prompt('调宿事由', '') || ''
-      await this.runAction(() => studentAffairsApi.submitDormTransfer({ studentId: sid.trim(), toBedId: toBedId.trim(), reason }))
+    async loadBuildings() {
+      try { this.buildings = (await studentAffairsApi.listDormBuildings({ pageSize: 200 })).data.items || [] }
+      catch (e) { this.buildings = [] }
     },
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
+    /* ── 发起调宿：学生选择器 + 楼栋/房间/床位三级联动 ── */
+    submitTransfer() {
+      this.dlg = { visible: true, studentId: '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' }
+      this.rooms = []; this.beds = []
+    },
+    async onBuildingChange() {
+      this.dlg.roomId = ''; this.dlg.toBedId = ''; this.beds = []
+      if (!this.dlg.buildingId) { this.rooms = []; return }
+      try { this.rooms = (await studentAffairsApi.listDormRooms(this.dlg.buildingId, { pageSize: 500 })).data.items || [] }
+      catch (e) { this.rooms = []; this.dlg.error = e.message || '房间加载失败' }
+    },
+    async onRoomChange() {
+      this.dlg.toBedId = ''
+      if (!this.dlg.roomId) { this.beds = []; return }
+      try { this.beds = (await studentAffairsApi.listDormBeds(this.dlg.roomId)).data.items || [] }
+      catch (e) { this.beds = []; this.dlg.error = e.message || '床位加载失败' }
+    },
+    async submitDlg() {
+      const d = this.dlg
+      if (!d.studentId) { d.error = '请选择调宿学生'; return }
+      if (!d.toBedId) { d.error = '请选择目标空床'; return }
+      d.error = ''
+      const ok = await this.runAction(() => studentAffairsApi.submitDormTransfer({
+        studentId: d.studentId, toBedId: d.toBedId, reason: (d.reason || '').trim()
+      }))
+      if (ok) d.visible = false
+      else d.error = this.errorMessage
+    },
+    /* ── 审批 ── */
     async review(t, action) {
-      let reason = ''
-      if (action === 'REJECT') {
-        reason = window.prompt('驳回原因（不少于 5 字）', '')
-        if (!reason || reason.trim().length < 5) { if (reason !== null) window.alert('原因不少于 5 字'); return }
-      }
-      await this.runAction(() => studentAffairsApi.reviewDormTransfer(t.transferId, action, (reason || '').trim()))
+      if (action === 'REJECT') { this.rejDlg = { visible: true, transferId: t.transferId }; return }
+      await this.runAction(() => studentAffairsApi.reviewDormTransfer(t.transferId, action, ''))
     },
+    async submitReject({ reason }) {
+      const ok = await this.runAction(() => studentAffairsApi.reviewDormTransfer(this.rejDlg.transferId, 'REJECT', reason.trim()))
+      if (ok) this.rejDlg.visible = false
+    },
+    /** @returns {boolean} 是否成功；失败时保留弹窗与已填内容。 */
     async runAction(fn) {
-      this.actioning = true
-      try { await fn(); await this.load() } catch (e) { this.errorMessage = e.message || '操作失败' } finally { this.actioning = false }
+      this.actioning = true; this.errorMessage = ''
+      try { await fn(); await this.load(); return true }
+      catch (e) { this.errorMessage = e.message || '操作失败'; return false }
+      finally { this.actioning = false }
     },
     isPending(s) { return s === 'COUNSELOR_REVIEW' || s === 'DORM_MANAGER_REVIEW' || s === 'SUBMITTED' },
     nodeLabel(n) { return ({ COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核' })[n] || (n || '—') },
@@ -108,5 +209,7 @@ export default {
 .sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sa-muted { color: var(--text-tertiary); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
+.dr-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.dr-hint { margin: 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
 </style>

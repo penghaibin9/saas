@@ -71,25 +71,59 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 升级为心理危机：原为 window.confirm + window.prompt 两步——
+         先盲点一个确认框、再弹个单行框填说明。现合并为一屏，影响说明与说明输入同时可见。 -->
+    <AppConfirmDialog
+      v-model:visible="dlg.visible" :title="`升级为心理危机 · ${dlg.who}`" type="danger"
+      confirm-text="确认升级"
+      description="升级后将自动生成风险中枢记录并进入处置闭环，同时通知相关责任人。该动作留痕，请谨慎操作。"
+      :submitting="actioning" @confirm="submitEscalate"
+    >
+      <AppFormItem label="升级说明（可空）">
+        <AppTextarea ref="contentInput" v-model="dlg.content" :rows="3" :maxlength="500" :disabled="actioning"
+                     placeholder="写清触发升级的危机信号与已采取的动作" />
+        <AppQuickPhrases scene-key="sa.mental.escalate" @pick="onPickContent" />
+      </AppFormItem>
+    </AppConfirmDialog>
   </AppPageShell>
 </template>
 
 <script>
 import {
+  AppConfirmDialog,
+  AppFormItem,
   AppGlobalState,
   AppMetricCard,
   AppPageShell,
   AppPermissionButton,
+  AppQuickPhrases,
   AppSectionCard,
-  AppStatusTag
+  AppStatusTag,
+  AppTextarea
 } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 export default {
   name: 'MentalCrisisView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag },
+  components: {
+    AppConfirmDialog,
+    AppFormItem,
+    AppGlobalState,
+    AppMetricCard,
+    AppPageShell,
+    AppPermissionButton,
+    AppQuickPhrases,
+    AppSectionCard,
+    AppStatusTag,
+    AppTextarea
+  },
   data() {
-    return { loading: true, actioning: false, errorMessage: '', items: [] }
+    return {
+      loading: true, actioning: false, errorMessage: '', items: [],
+      dlg: { visible: false, row: null, who: '', content: '' }
+    }
   },
   computed: {
     pageState() {
@@ -125,21 +159,42 @@ export default {
         this.loading = false
       }
     },
-    async escalate(row) {
-      if (!window.confirm(`确认将「${row.realName || row.studentId}」升级为心理危机？将自动生成风险中枢记录并进入处置闭环。`)) return
-      const content = window.prompt('请填写升级说明（可空）', '出现危机信号，立即升级并接入风险处置') || ''
-      await this.runAction(() => studentAffairsApi.escalateMentalReferral(row.referralId, content.trim()))
+    escalate(row) {
+      // 原为 confirm + prompt 两步；合并成一个弹窗：影响说明与升级说明同屏，不用先盲点确认再填字。
+      // 预填话术沿用改造前的原文，未改动。
+      this.dlg = {
+        visible: true,
+        row,
+        who: row.realName || row.studentNo || row.studentId,
+        content: '出现危机信号，立即升级并接入风险处置'
+      }
+    },
+    onPickContent(text) {
+      const el = this.$refs.contentInput && this.$refs.contentInput.$refs.el
+      if (!el) { this.dlg.content += text; return }
+      const r = insertAtCursor(el, this.dlg.content, text)
+      this.dlg.content = r.value
+      this.$nextTick(() => applyInsertion(el, r.selStart, r.selEnd))
+    },
+    async submitEscalate() {
+      const ok = await this.runAction(() =>
+        studentAffairsApi.escalateMentalReferral(this.dlg.row.referralId, (this.dlg.content || '').trim()))
+      if (ok) this.dlg.visible = false
     },
     gotoRisk(riskId) {
       this.$router.push(`/admin/student-affairs/risk/${riskId}`)
     },
+    /** @returns {boolean} 是否成功；失败时保留弹窗与已填内容。 */
     async runAction(fn) {
       this.actioning = true
+      this.errorMessage = ''
       try {
         await fn()
         await this.load()
+        return true
       } catch (e) {
         this.errorMessage = e.message || '操作失败'
+        return false
       } finally {
         this.actioning = false
       }

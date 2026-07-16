@@ -20,14 +20,9 @@
 
       <AppSectionCard title="选床入住">
         <div class="sa-toolbar">
-          <select v-model="curBuilding" @change="loadRooms">
-            <option value="">选择楼栋</option>
-            <option v-for="b in buildings" :key="b.buildingId" :value="b.buildingId">{{ b.buildingName }}（空床 {{ b.vacantBeds }}）</option>
-          </select>
-          <select v-model="curRoom" @change="loadBeds" :disabled="!curBuilding">
-            <option value="">选择房间</option>
-            <option v-for="r in rooms" :key="r.roomId" :value="r.roomId">{{ r.roomNo }}（空 {{ r.vacantBeds }}）</option>
-          </select>
+          <AppSelect v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
+          <AppSelect v-model="curRoom" :options="roomOptions" placeholder="选择房间" class="sa-pick"
+                     :disabled="!curBuilding" @change="loadBeds" />
         </div>
         <table class="sa-table" v-if="curRoom">
           <thead><tr><th>床号</th><th>状态</th><th>入住学生</th><th>操作</th></tr></thead>
@@ -47,20 +42,77 @@
         <p v-else class="sa-empty">请先选择楼栋与房间</p>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 入住：原为「请输入入住学生 ID」原生弹窗，要求老师手打学生内部 ID -->
+    <AppConfirmDialog
+      v-model:visible="inDlg.visible" :title="`办理入住 · ${inDlg.bedLabel}`" type="primary"
+      confirm-text="确认入住" :submitting="actioning" @confirm="submitCheckin"
+    >
+      <AppFormItem label="入住学生" required>
+        <AppStudentPicker v-model="inDlg.studentId" :remote-search="searchStudents"
+                          placeholder="按姓名 / 学号搜索" :disabled="actioning" />
+      </AppFormItem>
+      <AppInlineAlert v-if="inDlg.error" type="danger" :description="inDlg.error" />
+    </AppConfirmDialog>
+
+    <!-- 退宿确认：原为 window.confirm -->
+    <AppConfirmDialog
+      v-model:visible="outDlg.visible" title="办理退宿" type="warning" confirm-text="确认退宿"
+      :description="`确认为 ${outDlg.who} 办理退宿？该床位将立即释放为空床。`"
+      :submitting="actioning" @confirm="submitCheckout"
+    />
+
+    <!-- 自选宿舍开关：全校级策略，原为 window.confirm，看不出影响面 -->
+    <AppConfirmDialog
+      v-model:visible="modeDlg.visible"
+      :title="config.selfSelectEnabled ? '关闭学生自选宿舍' : '开放学生自选宿舍'"
+      :type="config.selfSelectEnabled ? 'warning' : 'primary'"
+      :confirm-text="config.selfSelectEnabled ? '确认关闭' : '确认开放'"
+      :description="config.selfSelectEnabled
+        ? '关闭后学生端将无法自选床位，改回由辅导员/宿管统一分配。已选定的床位不受影响。'
+        : '开放后学生可在学生端自行选择空床位。该开关对全校生效。'"
+      :submitting="actioning" @confirm="submitToggle"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
+  AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 export default {
   name: 'DormCheckinView',
-  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag },
-  data() {
-    return { loading: true, actioning: false, errorMessage: '', config: {}, buildings: [], curBuilding: '', rooms: [], curRoom: '', beds: [] }
+  components: {
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
+    AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker
   },
-  computed: { pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') } },
+  data() {
+    return {
+      loading: true, actioning: false, errorMessage: '', config: {}, buildings: [], curBuilding: '',
+      rooms: [], curRoom: '', beds: [],
+      inDlg: { visible: false, bedId: '', bedLabel: '', studentId: '', error: '' },
+      outDlg: { visible: false, bedId: '', who: '' },
+      modeDlg: { visible: false }
+    }
+  },
+  computed: {
+    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    buildingOptions() {
+      return this.buildings.map((b) => ({
+        value: String(b.buildingId),
+        label: `${b.buildingName || `楼栋 #${b.buildingId}`}${b.vacantBeds != null ? `（空床 ${b.vacantBeds}）` : ''}`
+      }))
+    },
+    roomOptions() {
+      return this.rooms.map((r) => ({
+        value: String(r.roomId),
+        label: `${r.roomNo || `房间 #${r.roomId}`}${r.vacantBeds != null ? `（空 ${r.vacantBeds}）` : ''}`
+      }))
+    }
+  },
   mounted() { this.load() },
   methods: {
     async load() {
@@ -81,26 +133,41 @@ export default {
       try { this.beds = (await studentAffairsApi.listDormBeds(this.curRoom)).data.items || [] }
       catch (e) { this.errorMessage = e.message }
     },
-    async checkin(bd) {
-      const sid = window.prompt('请输入入住学生 ID', '')
-      if (!sid) return
-      await this.runAction(() => studentAffairsApi.dormCheckin(bd.bedId, sid.trim()))
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
+    checkin(bd) {
+      this.inDlg = { visible: true, bedId: bd.bedId, bedLabel: `${bd.bedNo} 号床`, studentId: '', error: '' }
     },
-    async checkout(bd) {
-      if (!window.confirm(`确认为 ${bd.occupantName || bd.bedNo} 办理退宿？`)) return
-      await this.runAction(() => studentAffairsApi.dormCheckout(bd.bedId))
+    async submitCheckin() {
+      const d = this.inDlg
+      if (!d.studentId) { d.error = '请选择入住学生'; return }
+      d.error = ''
+      const ok = await this.runAction(() => studentAffairsApi.dormCheckin(d.bedId, d.studentId))
+      if (ok) d.visible = false
+      else d.error = this.errorMessage
     },
-    async toggleSelfSelect() {
+    checkout(bd) {
+      this.outDlg = { visible: true, bedId: bd.bedId, who: bd.occupantName || `${bd.bedNo} 号床` }
+    },
+    async submitCheckout() {
+      const ok = await this.runAction(() => studentAffairsApi.dormCheckout(this.outDlg.bedId))
+      if (ok) this.outDlg.visible = false
+    },
+    toggleSelfSelect() { this.modeDlg.visible = true },
+    async submitToggle() {
       const next = !this.config.selfSelectEnabled
-      if (!window.confirm(next ? '确认开放学生自选宿舍？' : '确认关闭学生自选、改回统一分配？')) return
-      this.actioning = true
-      try { this.config = (await studentAffairsApi.setDormSelfSelect(next)).data; await this.load() }
-      catch (e) { this.errorMessage = e.message } finally { this.actioning = false }
+      this.actioning = true; this.errorMessage = ''
+      try {
+        this.config = (await studentAffairsApi.setDormSelfSelect(next)).data
+        await this.load()
+        this.modeDlg.visible = false
+      } catch (e) { this.errorMessage = e.message } finally { this.actioning = false }
     },
+    /** @returns {boolean} 是否成功；失败时保留弹窗与已选内容。 */
     async runAction(fn) {
-      this.actioning = true
-      try { await fn(); await this.loadBeds(); await this.loadRooms2() }
-      catch (e) { this.errorMessage = e.message || '操作失败' } finally { this.actioning = false }
+      this.actioning = true; this.errorMessage = ''
+      try { await fn(); await this.loadBeds(); await this.loadRooms2(); return true }
+      catch (e) { this.errorMessage = e.message || '操作失败'; return false }
+      finally { this.actioning = false }
     },
     async loadRooms2() {
       // 刷新空床数

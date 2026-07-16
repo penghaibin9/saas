@@ -148,7 +148,8 @@
           <AppSelect v-model="eligDrawer.exceptionType" :options="excTypeOptions" :disabled="eligDrawer.saving" />
         </AppFormItem>
         <AppFormItem label="核验意见" required>
-          <AppTextarea v-model="eligDrawer.note" placeholder="不合格原因（将转入注册异常并通知辅导员）" :disabled="eligDrawer.saving" />
+          <AppTextarea ref="eligNoteInput" v-model="eligDrawer.note" placeholder="不合格原因（将转入注册异常并通知辅导员）" :disabled="eligDrawer.saving" />
+          <AppQuickPhrases scene-key="aa.reg.fail" @pick="onPickEligNote" />
         </AppFormItem>
         <AppInlineAlert v-if="eligDrawer.formError" type="danger" :description="eligDrawer.formError" />
       </div>
@@ -165,7 +166,8 @@
           <AppStudentPicker v-model="deferDrawer.studentId" :remote-search="searchStudents" :disabled="deferDrawer.saving" />
         </AppFormItem>
         <AppFormItem label="暂缓原因" required>
-          <AppTextarea v-model="deferDrawer.reason" placeholder="如材料未齐 / 特殊原因说明" :disabled="deferDrawer.saving" />
+          <AppTextarea ref="deferReasonInput" v-model="deferDrawer.reason" placeholder="如材料未齐 / 特殊原因说明" :disabled="deferDrawer.saving" />
+          <AppQuickPhrases scene-key="aa.reg.defer" @pick="onPickDeferReason" />
         </AppFormItem>
         <AppFormItem label="申请延后至">
           <AppDatePicker v-model="deferDrawer.requestedUntil" placeholder="留空=不限期，由教务处后续处理" :disabled="deferDrawer.saving" />
@@ -205,6 +207,27 @@
       :type="confirm.type"
       @confirm="onConfirm"
     />
+
+    <!-- 导出用途（未注册名单 / 注册归档共用；用途写入审计与文件水印） -->
+    <AppConfirmDialog
+      v-model:visible="exportDialog.visible" :title="exportDialog.title" type="warning"
+      message="导出文件带水印，用途将写入审计留痕。"
+      confirm-text="确认导出" require-reason phrase-scene-key="common.exportPurpose"
+      reason-label="导出用途（≥5 字）" :submitting="exportDialog.submitting" @confirm="onExportConfirm"
+    />
+
+    <!-- 暂缓注册驳回 / 注册异常处理说明：配置方案未给这两个场景词条，只做对话框化不挂快捷用语。
+         reason-min-length=1 保持原口径「非空即可」，不擅自收紧为 ≥5 字（原实现只校验 !note.trim()） -->
+    <AppConfirmDialog
+      v-model:visible="deferRejectDialog.visible" title="驳回暂缓注册申请" type="danger"
+      confirm-text="确认驳回" require-reason :reason-min-length="1" reason-label="驳回理由"
+      :submitting="deferRejectDialog.submitting" @confirm="onDeferRejectConfirm"
+    />
+    <AppConfirmDialog
+      v-model:visible="resolveDialog.visible" title="处理注册异常" type="primary"
+      confirm-text="确认处理" require-reason :reason-min-length="1" reason-label="处理说明"
+      :submitting="resolveDialog.submitting" @confirm="onResolveConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -217,8 +240,9 @@ import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyS
 import { AppButton, AppDrawer } from '@/components/ui'
 import {
   AppTextInput, AppTextarea, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog,
-  AppSectionCard, AppStudentPicker, AppDatePicker
+  AppSectionCard, AppStudentPicker, AppDatePicker, AppQuickPhrases
 } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -237,7 +261,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppTextarea, AppSelect, AppFormItem, AppInlineAlert,
-    AppConfirmDialog, AppSectionCard, AppStudentPicker, AppDatePicker
+    AppConfirmDialog, AppSectionCard, AppStudentPicker, AppDatePicker, AppQuickPhrases
   },
   data() {
     return {
@@ -315,7 +339,10 @@ export default {
       deferDrawer: { visible: false, studentId: '', reason: '', requestedUntil: '', saving: false, formError: '' },
       excDrawer: { visible: false, studentId: '', exceptionType: 'OTHER', description: '', saving: false, formError: '' },
       confirm: { visible: false, title: '', message: '', type: 'primary' },
-      pendingAction: null
+      pendingAction: null,
+      exportDialog: { visible: false, title: '', submitting: false, action: null },
+      deferRejectDialog: { visible: false, deferralId: '', submitting: false },
+      resolveDialog: { visible: false, exceptionId: '', submitting: false }
     }
   },
   computed: {
@@ -338,6 +365,37 @@ export default {
     this.loadCurrentTab()
   },
   methods: {
+    async onExportConfirm({ reason }) {
+      const action = this.exportDialog.action
+      this.exportDialog.submitting = true
+      const ok = action ? await action(reason) : false
+      this.exportDialog.submitting = false
+      if (ok) this.exportDialog.visible = false
+    },
+    async onDeferRejectConfirm({ reason }) {
+      this.deferRejectDialog.submitting = true
+      const ok = await this.reviewDeferral(this.deferRejectDialog.deferralId, 'REJECT', reason)
+      this.deferRejectDialog.submitting = false
+      if (ok) this.deferRejectDialog.visible = false
+    },
+    async onResolveConfirm({ reason }) {
+      this.resolveDialog.submitting = true
+      const ok = await this.resolveException(this.resolveDialog.exceptionId, reason)
+      this.resolveDialog.submitting = false
+      if (ok) this.resolveDialog.visible = false
+    },
+    onPickEligNote(text) {
+      const el = this.$refs.eligNoteInput && this.$refs.eligNoteInput.$refs.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.eligDrawer.note, text)
+      this.eligDrawer.note = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
+    onPickDeferReason(text) {
+      const el = this.$refs.deferReasonInput && this.$refs.deferReasonInput.$refs.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.deferDrawer.reason, text)
+      this.deferDrawer.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     batchStatusCn(s) {
       return { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已关闭', ARCHIVED: '已归档' }[s] || s
     },
@@ -429,21 +487,28 @@ export default {
         this.loadUnregistered()
       } else toast.error(res.message || '扫描失败')
     },
-    async openExport() {
-      const purpose = window.prompt('请填写导出用途（≥5 字，将写入审计与文件水印）：', '')
-      if (purpose === null) return
-      if (!purpose || purpose.trim().length < 5) { toast.error('导出用途必填且不少于 5 个字'); return }
-      const res = await academicAffairsApi.exportUnregistered({ batchId: this.batchId || undefined, purpose: purpose.trim() })
-      if (res.code !== 0) { toast.error(res.message || '导出失败'); return }
-      const href = URL.createObjectURL(res.data)
+    openExport() {
+      this.exportDialog = {
+        visible: true, title: '导出未注册学生名单', submitting: false,
+        action: async (purpose) => {
+          const res = await academicAffairsApi.exportUnregistered({ batchId: this.batchId || undefined, purpose })
+          if (res.code !== 0) { toast.error(res.message || '导出失败'); return false }
+          this.downloadBlob(res.data, `未注册学生名单-${Date.now()}.xlsx`)
+          toast.success('导出成功')
+          return true
+        }
+      }
+    },
+    /** 统一 blob 下载（未注册名单 / 注册归档共用，避免每处重复一份 createObjectURL 样板） */
+    downloadBlob(blob, filename) {
+      const href = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = href
-      a.download = `未注册学生名单-${Date.now()}.xlsx`
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       a.remove()
       URL.revokeObjectURL(href)
-      toast.success('导出成功')
     },
 
     /* ── 暂缓注册 ── */
@@ -477,18 +542,17 @@ export default {
     },
     askDeferralReview(row, action) {
       if (action === 'REJECT') {
-        const note = window.prompt('请填写驳回理由：', '')
-        if (note === null) return
-        if (!note.trim()) { toast.error('驳回理由必填'); return }
-        this.reviewDeferral(row.deferralId, 'REJECT', note.trim())
+        this.deferRejectDialog = { visible: true, deferralId: row.deferralId, submitting: false }
         return
       }
       this.confirm = { visible: true, title: '通过暂缓注册申请', message: `确认「${row.realName}」暂缓注册申请通过？`, type: 'primary' }
       this.pendingAction = { kind: 'deferralApprove', row }
     },
+    /** @returns {boolean} 是否成功（调用方据此决定关不关弹窗，失败时保留用户已填内容） */
     async reviewDeferral(deferralId, action, note) {
       const res = await academicAffairsApi.reviewRegistrationDeferral(deferralId, { action, note })
-      if (res.code === 0) { toast.success('已处理'); this.loadDeferrals() } else toast.error(res.message || '处理失败')
+      if (res.code !== 0) { toast.error(res.message || '处理失败'); return false }
+      toast.success('已处理'); this.loadDeferrals(); return true
     },
 
     /* ── 注册异常 ── */
@@ -522,14 +586,13 @@ export default {
       if (res.code === 0) { toast.success('已标记注册异常并通知辅导员'); this.excDrawer.visible = false; this.loadExceptions() } else this.excDrawer.formError = res.message
     },
     askResolveException(row) {
-      const note = window.prompt('请填写处理说明：', '')
-      if (note === null) return
-      if (!note.trim()) { toast.error('处理说明必填'); return }
-      this.resolveException(row.exceptionId, note.trim())
+      this.resolveDialog = { visible: true, exceptionId: row.exceptionId, submitting: false }
     },
+    /** @returns {boolean} 是否成功（同 reviewDeferral，失败不关弹窗） */
     async resolveException(exceptionId, note) {
       const res = await academicAffairsApi.resolveRegistrationException(exceptionId, note)
-      if (res.code === 0) { toast.success('已处理'); this.loadExceptions() } else toast.error(res.message || '处理失败')
+      if (res.code !== 0) { toast.error(res.message || '处理失败'); return false }
+      toast.success('已处理'); this.loadExceptions(); return true
     },
 
     /* ── 注册归档：批次在「注册批次」列表关闭→归档后进入本清单，只读+导出 ── */
@@ -555,21 +618,17 @@ export default {
     goArchiveDetail(row) {
       this.$router.push(`/admin/academic-affairs/registration/${row.batchId}`)
     },
-    async openArchiveExport(row) {
-      const purpose = window.prompt('请填写导出用途（≥5 字，将写入审计与文件水印）：', '')
-      if (purpose === null) return
-      if (!purpose || purpose.trim().length < 5) { toast.error('导出用途必填且不少于 5 个字'); return }
-      const res = await academicAffairsApi.exportRegistrationArchive(row.batchId, purpose.trim())
-      if (res.code !== 0) { toast.error(res.message || '导出失败'); return }
-      const href = URL.createObjectURL(res.data)
-      const a = document.createElement('a')
-      a.href = href
-      a.download = `注册归档-${row.batchName}-${Date.now()}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(href)
-      toast.success('导出成功')
+    openArchiveExport(row) {
+      this.exportDialog = {
+        visible: true, title: `导出注册归档 · ${row.batchName}`, submitting: false,
+        action: async (purpose) => {
+          const res = await academicAffairsApi.exportRegistrationArchive(row.batchId, purpose)
+          if (res.code !== 0) { toast.error(res.message || '导出失败'); return false }
+          this.downloadBlob(res.data, `注册归档-${row.batchName}-${Date.now()}.xlsx`)
+          toast.success('导出成功')
+          return true
+        }
+      }
     },
 
     /* ── 通用确认弹窗回调 ── */

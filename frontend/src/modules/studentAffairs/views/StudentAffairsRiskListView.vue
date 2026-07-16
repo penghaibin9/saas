@@ -108,40 +108,114 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 建风险单：原为「学生ID + 标题」两连 prompt，且风险等级写死 MEDIUM、detail 直接复制 title -->
+    <AppDrawer :visible="createDlg.visible" title="新建风险记录" @close="createDlg.visible = false">
+      <div class="sa-form">
+        <AppFormItem label="学生" required>
+          <AppStudentPicker v-model="createDlg.studentId" :remote-search="searchStudents"
+                            placeholder="按姓名 / 学号搜索" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="风险等级" required>
+          <AppSelect v-model="createDlg.riskLevel" :options="RISK_LEVELS" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="风险标题" required>
+          <AppTextInput v-model="createDlg.title" placeholder="一句话概括，如：连续两周未到课" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="风险详情" required hint="写清时间、表现、已了解到的情况，供责任人接手">
+          <AppTextarea v-model="createDlg.detail" :rows="4" :disabled="actioning" />
+        </AppFormItem>
+        <AppInlineAlert v-if="createDlg.error" type="danger" :description="createDlg.error" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="actioning" @click="createDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="actioning" @click="submitCreate">建单</AppButton>
+      </template>
+    </AppDrawer>
+
+    <!-- 分派：责任人从后端候选集选（只含持学工风险处置角色的在职账号） -->
+    <AppConfirmDialog
+      v-model:visible="assignDlg.visible" title="分派责任人" type="primary" confirm-text="确认分派"
+      :submitting="actioning" @confirm="submitAssign"
+    >
+      <AppFormItem label="责任人" required>
+        <AppTeacherPicker v-model="assignDlg.ownerId" :remote-search="searchRiskOwners"
+                          placeholder="按姓名 / 工号搜索"
+                          data-scope-hint="仅可选持学工风险处置角色的在职账号" />
+      </AppFormItem>
+    </AppConfirmDialog>
+
+    <!-- 处置记录：sa.risk.handle 词条已核对与本动作一致 -->
+    <AppConfirmDialog
+      v-model:visible="processDlg.visible" title="记录处置" type="primary" confirm-text="确认处置"
+      require-reason reason-label="处置内容（≥5字）" phrase-scene-key="sa.risk.handle"
+      :submitting="actioning" @confirm="submitProcess"
+    />
   </AppPageShell>
 </template>
 
 <script>
 import {
+  AppConfirmDialog,
+  AppFormItem,
   AppGlobalState,
+  AppInlineAlert,
   AppMetricCard,
   AppPageShell,
   AppPermissionButton,
   AppRiskTag,
   AppSectionCard,
-  AppStatusTag
+  AppSelect,
+  AppStatusTag,
+  AppStudentPicker,
+  AppTeacherPicker,
+  AppTextInput,
+  AppTextarea
 } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+/** 风险等级（后端 affairs_risk_service.LEVELS）——原建单写死 MEDIUM，无法选 */
+const RISK_LEVELS = [
+  { value: 'LOW', label: '低风险' },
+  { value: 'MEDIUM', label: '中风险' },
+  { value: 'HIGH', label: '高风险' },
+  { value: 'CRITICAL', label: '危急' }
+]
 
 export default {
   name: 'StudentAffairsRiskListView',
   components: {
+    AppButton,
+    AppConfirmDialog,
+    AppDrawer,
+    AppFormItem,
     AppGlobalState,
+    AppInlineAlert,
     AppMetricCard,
     AppPageShell,
     AppPermissionButton,
     AppRiskTag,
+    AppSelect,
+    AppStudentPicker,
+    AppTeacherPicker,
+    AppTextInput,
+    AppTextarea,
     AppSectionCard,
     AppStatusTag
   },
   data() {
     return {
+      RISK_LEVELS,
       loading: true,
       actioning: false,
       errorMessage: '',
       risks: [],
       total: 0,
       scanResult: '',
+      createDlg: { visible: false, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' },
+      assignDlg: { visible: false, riskId: '', ownerId: '' },
+      processDlg: { visible: false, riskId: '' },
       filters: {
         source: '',
         riskLevel: '',
@@ -204,29 +278,46 @@ export default {
       this.scanResult = ''
       this.load()
     },
-    async createRisk() {
-      const studentId = window.prompt('请输入学生 ID')
-      if (!studentId) return
-      const title = window.prompt('请输入风险标题', '学工风险预警')
-      if (!title) return
-      await this.runAction(() => studentAffairsApi.createRiskRecord({
-        studentId,
+    searchStudents(keyword) {
+      return studentAffairsApi.searchStudents(keyword)
+    },
+    searchRiskOwners(keyword) {
+      return studentAffairsApi.searchRiskOwners(keyword)
+    },
+    createRisk() {
+      this.createDlg = { visible: true, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' }
+    },
+    async submitCreate() {
+      const d = this.createDlg
+      if (!d.studentId) { d.error = '请选择学生'; return }
+      if (!d.title.trim()) { d.error = '请填写风险标题'; return }
+      if (d.detail.trim().length < 5) { d.error = '风险详情不少于 5 字'; return }
+      d.error = ''
+      const ok = await this.runAction(() => studentAffairsApi.createRiskRecord({
+        studentId: d.studentId,
         source: 'MANUAL',
         sourceRefId: `manual-${Date.now()}`,
-        riskLevel: 'MEDIUM',
-        title,
-        detail: title
+        riskLevel: d.riskLevel,
+        title: d.title.trim(),
+        detail: d.detail.trim()
       }))
+      if (ok) d.visible = false
     },
-    async assign(risk) {
-      const ownerId = window.prompt('请输入责任人 ID', risk.ownerId || '')
-      if (!ownerId) return
-      await this.runAction(() => studentAffairsApi.assignRisk(risk.riskId, ownerId))
+    assign(risk) {
+      this.assignDlg = { visible: true, riskId: risk.riskId, ownerId: risk.ownerId || '' }
     },
-    async process(risk) {
-      const content = window.prompt('请输入处置记录', '已联系学生并记录处置过程')
-      if (!content) return
-      await this.runAction(() => studentAffairsApi.processRisk(risk.riskId, content))
+    async submitAssign() {
+      const d = this.assignDlg
+      if (!d.ownerId) { this.errorMessage = '请选择责任人'; return }
+      const ok = await this.runAction(() => studentAffairsApi.assignRisk(d.riskId, d.ownerId))
+      if (ok) d.visible = false
+    },
+    process(risk) {
+      this.processDlg = { visible: true, riskId: risk.riskId }
+    },
+    async submitProcess({ reason }) {
+      const ok = await this.runAction(() => studentAffairsApi.processRisk(this.processDlg.riskId, reason))
+      if (ok) this.processDlg.visible = false
     },
     async scanTimeout() {
       this.actioning = true
@@ -240,13 +331,17 @@ export default {
         this.actioning = false
       }
     },
+    /** @returns {boolean} 是否成功。调用方据此决定关不关弹窗——失败时保留已填内容。 */
     async runAction(fn) {
       this.actioning = true
+      this.errorMessage = ''
       try {
         await fn()
         await this.load()
+        return true
       } catch (e) {
         this.errorMessage = e.message || '操作失败'
+        return false
       } finally {
         this.actioning = false
       }
@@ -271,6 +366,11 @@ export default {
 </script>
 
 <style scoped>
+.sa-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
 .sa-grid--metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

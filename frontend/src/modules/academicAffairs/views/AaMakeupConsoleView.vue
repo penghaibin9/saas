@@ -90,6 +90,11 @@
     </AppDrawer>
 
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
+    <AppConfirmDialog
+      v-model:visible="reasonDialog.visible" :title="reasonDialog.title" type="danger"
+      require-reason :phrase-scene-key="reasonDialog.sceneKey" reason-label="原因（≥5字）"
+      :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -123,7 +128,8 @@ export default {
       poolColumns: [{ key: 'student', title: '缓考学生' }, { key: 'ops', title: '操作' }],
       batchVisible: false, batchForm: { batchName: '', termCode: '' }, formError: '',
       mergeVisible: false, mergeRow: null, mergeBatchId: '',
-      saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
+      saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      reasonDialog: { visible: false, title: '', sceneKey: '', submitting: false, action: null }
     }
   },
   async created() {
@@ -174,17 +180,34 @@ export default {
       const res = await api[fn](id, action)
       if (res.code === 0) { toast.success('已通过'); this.reload() } else toast.error(res.message)
     },
-    async reject(fn, id) {
-      const reason = window.prompt('驳回原因（≥5字）')
-      if (!reason || reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      const res = await api[fn](id, 'REJECT', reason.trim())
-      if (res.code === 0) { toast.success('已驳回'); this.reload() } else toast.error(res.message)
+    reject(fn, id) {
+      this.reasonDialog = {
+        visible: true, title: '驳回', sceneKey: 'aa.makeup.reject', submitting: false,
+        action: async (reason) => {
+          const res = await api[fn](id, 'REJECT', reason)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已驳回'); this.reload(); return true
+        }
+      }
     },
-    async returnEx(id) {
-      const reason = window.prompt('退回补材料原因（≥5字）')
-      if (!reason || reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      const res = await api.exemptionReview(id, 'RETURN', reason.trim())
-      if (res.code === 0) { toast.success('已退回'); this.reload() } else toast.error(res.message)
+    returnEx(id) {
+      this.reasonDialog = {
+        visible: true, title: '退回补材料', sceneKey: 'aa.makeup.supplement', submitting: false,
+        action: async (reason) => {
+          const res = await api.exemptionReview(id, 'RETURN', reason)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已退回'); this.reload(); return true
+        }
+      }
+    },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
+    async onReasonConfirm({ reason }) {
+      const action = this.reasonDialog.action
+      if (!action) return
+      this.reasonDialog.submitting = true
+      const ok = await action(reason)
+      this.reasonDialog.submitting = false
+      if (ok) this.reasonDialog.visible = false
     },
     async enrollRetake(id) {
       const res = await api.retakeEnroll(id, '')

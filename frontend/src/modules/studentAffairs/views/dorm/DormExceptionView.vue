@@ -37,17 +37,35 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 处置说明：原生 prompt 无法多行、无快捷用语；分组按本条异常类型置顶对应话术 -->
+    <AppConfirmDialog
+      v-model:visible="dlg.visible" :title="`处置宿舍异常 · ${typeLabel(dlg.excType)}`" type="primary"
+      confirm-text="确认处置" require-reason :reason-min-length="5" reason-label="处置说明（≥5 字）"
+      phrase-scene-key="sa.dorm.exception" :phrase-group="dlg.excType"
+      :description="dlg.detail ? `原始异常：${dlg.detail}` : ''"
+      :submitting="actioning" @confirm="submitHandle"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 export default {
   name: 'DormExceptionView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag },
-  data() { return { loading: true, actioning: false, errorMessage: '', items: [], filterStatus: '' } },
+  components: {
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+  },
+  data() {
+    return {
+      loading: true, actioning: false, errorMessage: '', items: [], filterStatus: '',
+      dlg: { visible: false, exceptionId: '', excType: '', detail: '' }
+    }
+  },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
@@ -67,12 +85,16 @@ export default {
       try { this.items = (await studentAffairsApi.listDormExceptions({ status: this.filterStatus, pageSize: 100 })).data.items || [] }
       catch (e) { this.errorMessage = e.message || '异常加载失败' } finally { this.loading = false }
     },
-    async handle(x) {
-      const reason = window.prompt('处置说明（不少于 5 字）', '')
-      if (!reason || reason.trim().length < 5) { if (reason !== null) window.alert('说明不少于 5 字'); return }
-      this.actioning = true
-      try { await studentAffairsApi.handleDormException(x.exceptionId, reason.trim()); await this.load() }
-      catch (e) { this.errorMessage = e.message || '处置失败' } finally { this.actioning = false }
+    handle(x) {
+      this.dlg = { visible: true, exceptionId: x.exceptionId, excType: x.excType || '', detail: x.detail || '' }
+    },
+    async submitHandle({ reason }) {
+      this.actioning = true; this.errorMessage = ''
+      try {
+        await studentAffairsApi.handleDormException(this.dlg.exceptionId, reason.trim())
+        await this.load()
+        this.dlg.visible = false
+      } catch (e) { this.errorMessage = e.message || '处置失败' } finally { this.actioning = false }
     },
     typeLabel(t) { return ({ HYGIENE: '卫生', SAFETY: '安全', CONTRABAND: '违禁品', NIGHT_ABSENCE: '夜不归宿', DORM_CHECK: '检查异常' })[t] || (t || '异常') }
   }

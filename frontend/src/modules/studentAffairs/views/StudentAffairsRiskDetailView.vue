@@ -71,19 +71,47 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <!-- 分派 / 转办：责任人从后端候选集里选（只含持学工风险处置角色的在职账号），不再手打内部 ID -->
+    <AppConfirmDialog
+      v-model:visible="ownerDlg.visible" :title="ownerDlg.title" type="primary"
+      :confirm-text="ownerDlg.confirmText" :require-reason="ownerDlg.requireReason"
+      :reason-min-length="1" :reason-label="ownerDlg.reasonLabel"
+      :submitting="actioning" @confirm="submitOwnerDlg"
+    >
+      <AppFormItem label="责任人" required>
+        <AppTeacherPicker
+          v-model="ownerDlg.ownerId"
+          :remote-search="searchRiskOwners"
+          placeholder="按姓名 / 工号搜索"
+          data-scope-hint="仅可选持学工风险处置角色的在职账号"
+        />
+      </AppFormItem>
+    </AppConfirmDialog>
+
+    <!-- 处置/跟进/升级/接管/关闭/重开：统一走必填说明弹窗（原生 prompt 无法多行、样式不可控） -->
+    <AppConfirmDialog
+      v-model:visible="textDlg.visible" :title="textDlg.title" :type="textDlg.type"
+      :confirm-text="textDlg.confirmText" require-reason
+      :reason-min-length="textDlg.minLength" :reason-label="textDlg.reasonLabel"
+      :phrase-scene-key="textDlg.sceneKey" :submitting="actioning" @confirm="submitTextDlg"
+    />
   </AppPageShell>
 </template>
 
 <script>
 import {
   AppAuditTrail,
+  AppConfirmDialog,
   AppDescriptionList,
+  AppFormItem,
   AppGlobalState,
   AppPageShell,
   AppPermissionButton,
   AppRiskTag,
   AppSectionCard,
-  AppSensitiveText
+  AppSensitiveText,
+  AppTeacherPicker
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
@@ -91,20 +119,25 @@ export default {
   name: 'StudentAffairsRiskDetailView',
   components: {
     AppAuditTrail,
+    AppConfirmDialog,
     AppDescriptionList,
+    AppFormItem,
     AppGlobalState,
     AppPageShell,
     AppPermissionButton,
     AppRiskTag,
     AppSectionCard,
-    AppSensitiveText
+    AppSensitiveText,
+    AppTeacherPicker
   },
   data() {
     return {
       loading: true,
       actioning: false,
       errorMessage: '',
-      detail: {}
+      detail: {},
+      ownerDlg: { visible: false, title: '', confirmText: '确认', reasonLabel: '', requireReason: false, ownerId: '', kind: '' },
+      textDlg: { visible: false, title: '', type: 'primary', confirmText: '确认', reasonLabel: '', sceneKey: '', minLength: 5, kind: '' }
     }
   },
   computed: {
@@ -159,54 +192,62 @@ export default {
         this.loading = false
       }
     },
-    async assign() {
-      const ownerId = window.prompt('请输入责任人 ID', this.detail.ownerId || '')
-      if (!ownerId) return
-      await this.runAction(() => studentAffairsApi.assignRisk(this.riskId, ownerId))
+    searchRiskOwners(keyword) {
+      return studentAffairsApi.searchRiskOwners(keyword)
     },
-    async process() {
-      const content = window.prompt('请输入处置内容', '已联系学生并记录处置过程')
-      if (!content) return
-      await this.runAction(() => studentAffairsApi.processRisk(this.riskId, content))
+    /* ── 分派 / 转办：责任人走候选集选择器 ── */
+    assign() {
+      this.ownerDlg = { visible: true, kind: 'assign', title: '分派责任人', confirmText: '确认分派',
+        requireReason: false, reasonLabel: '', ownerId: this.detail.ownerId || '' }
     },
-    async follow() {
-      const content = window.prompt('请输入跟进说明', '转入持续跟进')
-      if (content === null) return
-      await this.runAction(() => studentAffairsApi.followRisk(this.riskId, content))
+    transfer() {
+      this.ownerDlg = { visible: true, kind: 'transfer', title: '转办给其他责任人', confirmText: '确认转办',
+        requireReason: true, reasonLabel: '转办原因', ownerId: '' }
     },
-    async transfer() {
-      const newOwnerId = window.prompt('请输入新责任人 ID')
-      if (!newOwnerId) return
-      const reason = window.prompt('请输入转办原因', '职责调整，转交处理') || ''
-      await this.runAction(() => studentAffairsApi.transferRisk(this.riskId, newOwnerId, reason))
+    async submitOwnerDlg({ reason } = {}) {
+      const d = this.ownerDlg
+      if (!d.ownerId) { this.errorMessage = '请选择责任人'; return }
+      const ok = await this.runAction(() => (d.kind === 'assign'
+        ? studentAffairsApi.assignRisk(this.riskId, d.ownerId)
+        : studentAffairsApi.transferRisk(this.riskId, d.ownerId, reason || '')))
+      if (ok) d.visible = false
     },
-    async escalate() {
-      const reason = window.prompt('请输入升级原因', '风险等级提升，需要上级关注')
-      if (reason === null) return
-      await this.runAction(() => studentAffairsApi.escalateRisk(this.riskId, reason))
+    /* ── 处置类：统一走必填说明弹窗；sceneKey 均已核对与本动作语义一致 ── */
+    process() { this._openText('process', '记录处置', '确认处置', '处置内容', 'sa.risk.handle') },
+    follow() { this._openText('follow', '转入持续跟进', '确认跟进', '跟进说明', 'sa.risk.followup') },
+    escalate() { this._openText('escalate', '升级风险', '确认升级', '升级原因', 'sa.risk.escalate', 'warning') },
+    // 接管无对应词条（sa.risk.takeover 不存在），不挂 chips
+    takeover() { this._openText('takeover', '上级接管', '确认接管', '接管说明', '') },
+    close() { this._openText('close', '关闭风险', '确认关闭', '关闭结论（≥5字）', 'sa.risk.close', 'danger') },
+    reopen() { this._openText('reopen', '重开风险', '确认重开', '重开原因', 'sa.risk.reopen', 'warning') },
+    _openText(kind, title, confirmText, reasonLabel, sceneKey, type = 'primary') {
+      this.textDlg = { visible: true, kind, title, type, confirmText, reasonLabel, sceneKey, minLength: 5 }
     },
-    async takeover() {
-      const content = window.prompt('请输入接管说明', '上级接管处置')
-      if (content === null) return
-      await this.runAction(() => studentAffairsApi.takeoverRisk(this.riskId, content))
+    async submitTextDlg({ reason }) {
+      const fnMap = {
+        process: (t) => studentAffairsApi.processRisk(this.riskId, t),
+        follow: (t) => studentAffairsApi.followRisk(this.riskId, t),
+        escalate: (t) => studentAffairsApi.escalateRisk(this.riskId, t),
+        takeover: (t) => studentAffairsApi.takeoverRisk(this.riskId, t),
+        close: (t) => studentAffairsApi.closeRisk(this.riskId, t),
+        reopen: (t) => studentAffairsApi.reopenRisk(this.riskId, t)
+      }
+      const fn = fnMap[this.textDlg.kind]
+      if (!fn) return
+      const ok = await this.runAction(() => fn(reason))
+      if (ok) this.textDlg.visible = false
     },
-    async close() {
-      const conclusion = window.prompt('请输入关闭结论（至少 5 个字）', '学生情况稳定，风险解除')
-      if (!conclusion) return
-      await this.runAction(() => studentAffairsApi.closeRisk(this.riskId, conclusion))
-    },
-    async reopen() {
-      const reason = window.prompt('请输入重开原因', '风险复发，需要重新跟进')
-      if (reason === null) return
-      await this.runAction(() => studentAffairsApi.reopenRisk(this.riskId, reason))
-    },
+    /** @returns {boolean} 是否成功。调用方据此决定关不关弹窗——失败时保留用户已填内容，不让人重打一遍。 */
     async runAction(fn) {
       this.actioning = true
+      this.errorMessage = ''
       try {
         await fn()
         await this.load()
+        return true
       } catch (e) {
         this.errorMessage = e.message || '操作失败'
+        return false
       } finally {
         this.actioning = false
       }

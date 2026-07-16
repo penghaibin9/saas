@@ -102,6 +102,7 @@
       :message="'确认作废「' + (voidDialog.row ? voidDialog.row.name : '') + '」的学业记录？作废为逻辑删除，记录保留并可追溯，不可物理删除。'"
       confirm-text="确认作废"
       require-reason
+      phrase-scene-key="aa.void"
       reason-label="作废原因"
       reason-placeholder="请说明作废原因（如重复建档、学籍异动等），不少于 5 个字"
       :submitting="voidDialog.submitting"

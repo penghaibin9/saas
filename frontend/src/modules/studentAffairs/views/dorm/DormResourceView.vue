@@ -62,20 +62,89 @@
         </div>
       </AppSectionCard>
     </AppGlobalState>
+
+    <AppDrawer :visible="buildDlg.visible" title="新增楼栋" @close="buildDlg.visible = false">
+      <div class="dr-form">
+        <AppFormItem label="楼栋名称" required>
+          <AppTextInput v-model="buildDlg.name" placeholder="如：1 号楼 / 西苑 3 栋" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="性别限制" required>
+          <AppSelect v-model="buildDlg.gender" :options="GENDER_LIMITS" :disabled="actioning" />
+        </AppFormItem>
+        <label class="dr-check">
+          <input v-model="buildDlg.autoFill" type="checkbox" :disabled="actioning" />
+          一键铺满整栋（按下面的层数 × 每层房数 × 每间床位自动建房间与床位）
+        </label>
+        <template v-if="buildDlg.autoFill">
+          <AppFormItem label="层数" required>
+            <AppNumberInput v-model="buildDlg.floors" :min="1" :max="50" :disabled="actioning" />
+          </AppFormItem>
+          <AppFormItem label="每层房数" required>
+            <AppNumberInput v-model="buildDlg.roomsPerFloor" :min="1" :max="100" :disabled="actioning" />
+          </AppFormItem>
+          <AppFormItem label="每间床位" required>
+            <AppNumberInput v-model="buildDlg.bedsPerRoom" :min="1" :max="12" :disabled="actioning" />
+          </AppFormItem>
+          <p class="dr-hint">将建 {{ buildDlg.floors * buildDlg.roomsPerFloor }} 间房、
+            {{ buildDlg.floors * buildDlg.roomsPerFloor * buildDlg.bedsPerRoom }} 个床位。</p>
+        </template>
+        <AppInlineAlert v-if="buildDlg.error" type="danger" :description="buildDlg.error" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="actioning" @click="buildDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="actioning" @click="submitBuilding">新增</AppButton>
+      </template>
+    </AppDrawer>
+
+    <AppDrawer :visible="genDlg.visible" :title="`一键铺满 · ${genDlg.buildingName}`" @close="genDlg.visible = false">
+      <div class="dr-form">
+        <AppFormItem label="层数" required>
+          <AppNumberInput v-model="genDlg.floors" :min="1" :max="50" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="每层房数" required>
+          <AppNumberInput v-model="genDlg.roomsPerFloor" :min="1" :max="100" :disabled="actioning" />
+        </AppFormItem>
+        <AppFormItem label="每间床位" required>
+          <AppNumberInput v-model="genDlg.bedsPerRoom" :min="1" :max="12" :disabled="actioning" />
+        </AppFormItem>
+        <p class="dr-hint">将建 {{ genDlg.floors * genDlg.roomsPerFloor }} 间房、
+          {{ genDlg.floors * genDlg.roomsPerFloor * genDlg.bedsPerRoom }} 个床位。</p>
+        <AppInlineAlert v-if="genDlg.error" type="danger" :description="genDlg.error" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="actioning" @click="genDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="actioning" @click="submitGenerate">铺满</AppButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard } from '@/components/common'
+import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
+  AppPermissionButton, AppSectionCard, AppSelect, AppTextInput } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+/** 性别限制（后端 genderLimit）——原为 window.prompt 让用户手打 MALE/FEMALE/MIXED */
+const GENDER_LIMITS = [
+  { value: 'MIXED', label: '混合' },
+  { value: 'MALE', label: '男寝' },
+  { value: 'FEMALE', label: '女寝' }
+]
 
 export default {
   name: 'DormResourceView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard },
+  components: { AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+    AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput },
   data() {
     return {
+      GENDER_LIMITS,
       loading: true, actioning: false, errorMessage: '', buildings: [], occ: {},
-      curBuilding: '', curBuildingName: '', rooms: [], curRoom: '', curRoomNo: '', beds: []
+      curBuilding: '', curBuildingName: '', rooms: [], curRoom: '', curRoomNo: '', beds: [],
+      // 建楼栋：原为「楼名→性别→是否铺满→层数→每层房数→每间床位」6 连 prompt
+      buildDlg: { visible: false, name: '', gender: 'MIXED', autoFill: false, floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
+      // 一键铺满：原为 3 连 prompt
+      genDlg: { visible: false, buildingId: '', buildingName: '', floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
     }
   },
   computed: {
@@ -108,29 +177,47 @@ export default {
       try { this.beds = (await studentAffairsApi.listDormBeds(r.roomId)).data.items || [] }
       catch (e) { this.errorMessage = e.message || '床位加载失败' }
     },
-    async createBuilding() {
-      const name = window.prompt('楼栋名称', '')
-      if (!name) return
-      const gender = (window.prompt('性别限制 MALE/FEMALE/MIXED', 'MIXED') || 'MIXED').toUpperCase()
-      const body = { buildingName: name.trim(), genderLimit: gender }
-      if (window.confirm('是否一键铺满整栋（层数×每层房数×每间床位）？')) {
-        body.floors = parseInt(window.prompt('层数', '6') || '0', 10)
-        body.roomsPerFloor = parseInt(window.prompt('每层房数', '10') || '0', 10)
-        body.bedsPerRoom = parseInt(window.prompt('每间床位', '4') || '0', 10)
+    createBuilding() {
+      this.buildDlg = { visible: true, name: '', gender: 'MIXED', autoFill: false,
+        floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
+    },
+    async submitBuilding() {
+      const d = this.buildDlg
+      if (!d.name.trim()) { d.error = '请填写楼栋名称'; return }
+      const body = { buildingName: d.name.trim(), genderLimit: d.gender }
+      if (d.autoFill) {
+        if (!(d.floors > 0 && d.roomsPerFloor > 0 && d.bedsPerRoom > 0)) {
+          d.error = '一键铺满时，层数 / 每层房数 / 每间床位均须大于 0'
+          return
+        }
+        Object.assign(body, { floors: d.floors, roomsPerFloor: d.roomsPerFloor, bedsPerRoom: d.bedsPerRoom })
       }
-      await this.runAction(() => studentAffairsApi.createDormBuilding(body))
+      d.error = ''
+      if (await this.runAction(() => studentAffairsApi.createDormBuilding(body))) d.visible = false
     },
-    async generate(b) {
-      const floors = parseInt(window.prompt('层数', '6') || '0', 10)
-      if (!floors) return
-      const roomsPerFloor = parseInt(window.prompt('每层房数', '10') || '0', 10)
-      const bedsPerRoom = parseInt(window.prompt('每间床位', '4') || '0', 10)
-      await this.runAction(() => studentAffairsApi.generateDormLayout(b.buildingId, { floors, roomsPerFloor, bedsPerRoom }))
+    generate(b) {
+      this.genDlg = { visible: true, buildingId: b.buildingId, buildingName: b.buildingName || '',
+        floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
     },
+    async submitGenerate() {
+      const d = this.genDlg
+      if (!(d.floors > 0 && d.roomsPerFloor > 0 && d.bedsPerRoom > 0)) {
+        d.error = '层数 / 每层房数 / 每间床位均须大于 0'
+        return
+      }
+      d.error = ''
+      const ok = await this.runAction(() => studentAffairsApi.generateDormLayout(d.buildingId, {
+        floors: d.floors, roomsPerFloor: d.roomsPerFloor, bedsPerRoom: d.bedsPerRoom
+      }))
+      if (ok) d.visible = false
+    },
+    /** @returns {boolean} 是否成功（失败保留弹窗与已填内容） */
     async runAction(fn) {
       this.actioning = true
-      try { await fn(); await this.load() }
-      catch (e) { this.errorMessage = e.message || '操作失败' } finally { this.actioning = false }
+      this.errorMessage = ''
+      try { await fn(); await this.load(); return true }
+      catch (e) { this.errorMessage = e.message || '操作失败'; return false }
+      finally { this.actioning = false }
     },
     genderLabel(g) { return ({ MALE: '男寝', FEMALE: '女寝', MIXED: '混合' })[g] || g }
   }
@@ -138,6 +225,9 @@ export default {
 </script>
 
 <style scoped>
+.dr-form { display: flex; flex-direction: column; gap: var(--space-3); }
+.dr-check { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); color: var(--text-secondary); }
+.dr-hint { margin: 0; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }

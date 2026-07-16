@@ -142,6 +142,7 @@
       message="确认关闭该预警？关闭后学生学业状态将按剩余预警重新计算，关闭结果会同步学生端。"
       confirm-text="确认关闭"
       require-reason
+      phrase-scene-key="aa.warning.close"
       reason-label="关闭说明"
       reason-placeholder="请说明关闭依据（如成绩回升、学分补齐、补考通过），不少于 5 个字"
       :submitting="closeDialog.submitting"
@@ -155,6 +156,7 @@
       message="确认升级该预警？升级后等级将调整为高风险，并转交学院学业帮扶专班跟进。"
       confirm-text="确认升级"
       require-reason
+      phrase-scene-key="aa.warning.escalate"
       reason-label="升级说明"
       reason-placeholder="请说明升级依据（如跟进无效、风险加剧），不少于 5 个字"
       :submitting="escalateDialog.submitting"

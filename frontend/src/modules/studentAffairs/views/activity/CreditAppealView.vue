@@ -60,11 +60,21 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 驳回意见：不挂快捷用语——现有词库无「二课积分申诉驳回」口径，
+         sa.aid.reject 是资助、common.reject 是违纪立案，套过来都不对。 -->
+    <AppConfirmDialog
+      v-model:visible="rejDlg.visible" title="驳回积分申诉" type="danger" confirm-text="确认驳回"
+      require-reason :reason-min-length="5" reason-label="驳回意见（≥5 字）"
+      :submitting="acting === rejDlg.appealId" @confirm="submitReject"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -76,12 +86,16 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'CreditAppealView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+    StatusTag: AppStatusTag
+  },
   data() {
     return {
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
-      formVisible: false, form: this.blankForm()
+      formVisible: false, form: this.blankForm(),
+      rejDlg: { visible: false, appealId: '' }
     }
   },
   computed: {
@@ -120,12 +134,18 @@ export default {
       if (res.code === 0) { toast.success('申诉已提交'); this.formVisible = false; this.load() } else m.error = res.message || '提交失败'
     },
     async review(a, action) {
-      let opinion = ''
-      if (action === 'REJECT') { opinion = window.prompt('驳回意见（至少5字）：') || ''; if (!opinion) return }
+      if (action === 'REJECT') { this.rejDlg = { visible: true, appealId: a.appealId }; return }
       this.acting = a.appealId
-      const res = await studentAffairsApi.reviewCreditAppeal(a.appealId, action, opinion)
+      const res = await studentAffairsApi.reviewCreditAppeal(a.appealId, action, '')
       this.acting = ''
-      if (res.code === 0) { toast.success(action === 'APPROVE' ? '已通过并补记' : '已驳回'); this.load() } else toast.error(res.message || '审核失败')
+      if (res.code === 0) { toast.success('已通过并补记'); this.load() } else toast.error(res.message || '审核失败')
+    },
+    async submitReject({ reason }) {
+      const d = this.rejDlg
+      this.acting = d.appealId
+      const res = await studentAffairsApi.reviewCreditAppeal(d.appealId, 'REJECT', reason.trim())
+      this.acting = ''
+      if (res.code === 0) { d.visible = false; toast.success('已驳回'); this.load() } else toast.error(res.message || '审核失败')
     },
     ctypeLabel(t) { return CTYPE[t] || t },
     statusType(s) { return ({ SUBMITTED: 'warning', APPROVED: 'success', REJECTED: 'default' })[s] || 'default' }

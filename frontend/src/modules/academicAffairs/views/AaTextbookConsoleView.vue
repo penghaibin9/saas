@@ -95,6 +95,11 @@
     </AppDrawer>
 
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
+    <AppConfirmDialog
+      v-model:visible="reasonDialog.visible" :title="reasonDialog.title" type="danger"
+      require-reason :phrase-scene-key="reasonDialog.sceneKey" reason-label="原因（≥5字）"
+      :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -124,7 +129,8 @@ export default {
       partialVisible: false, partialRow: null, partialAmount: 0,
       tbVisible: false, tbForm: { name: '', isbn: '', publisher: '', unitPrice: 0 }, formError: '',
       arrivalVisible: false, arrivalRow: null, arrivalItems: [], arrivalQty: {},
-      saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
+      saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      reasonDialog: { visible: false, title: '', sceneKey: '', submitting: false, action: null }
     }
   },
   computed: {
@@ -192,11 +198,16 @@ export default {
       const res = await api.reviewAdvance(id, action)
       if (res.code === 0) { toast.success('已推进'); this.reload() } else toast.error(res.message)
     },
-    async advanceReturn(id) {
-      const reason = window.prompt('退回原因（≥5字）')
-      if (!reason || reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      const res = await api.reviewAdvance(id, 'RETURN', reason.trim())
-      if (res.code === 0) { toast.success('已退回'); this.reload() } else toast.error(res.message)
+    advanceReturn(id) {
+      // sceneKey 留空：配置方案 B3「征订退回」未给词条，不硬套其它场景（AppQuickPhrases 会静默不渲染）
+      this.reasonDialog = {
+        visible: true, title: '退回教材审核', sceneKey: '', submitting: false,
+        action: async (reason) => {
+          const res = await api.reviewAdvance(id, 'RETURN', reason)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已退回'); this.reload(); return true
+        }
+      }
     },
     async createReview() {
       const sels = await api.listSelections({ status: 'SUBMITTED', pageSize: 200 })
@@ -224,11 +235,24 @@ export default {
       const res = await api.markFee(id, action)
       if (res.code === 0) { toast.success('已标记'); this.reload() } else toast.error(res.message)
     },
-    async waiveFee(id) {
-      const reason = window.prompt('减免原因（≥5字）')
-      if (!reason || reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      const res = await api.markFee(id, 'WAIVE', reason.trim())
-      if (res.code === 0) { toast.success('已减免'); this.reload() } else toast.error(res.message)
+    waiveFee(id) {
+      this.reasonDialog = {
+        visible: true, title: '减免教材费', sceneKey: 'aa.textbook.reduce', submitting: false,
+        action: async (reason) => {
+          const res = await api.markFee(id, 'WAIVE', reason)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已减免'); this.reload(); return true
+        }
+      }
+    },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
+    async onReasonConfirm({ reason }) {
+      const action = this.reasonDialog.action
+      if (!action) return
+      this.reasonDialog.submitting = true
+      const ok = await action(reason)
+      this.reasonDialog.submitting = false
+      if (ok) this.reasonDialog.visible = false
     },
     onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
   }

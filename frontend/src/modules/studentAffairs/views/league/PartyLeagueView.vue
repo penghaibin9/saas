@@ -91,11 +91,21 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <!-- 终止发展：无党团发展口径词条，不套用其他场景模板 -->
+    <AppConfirmDialog
+      v-model:visible="terDlg.visible" title="终止发展流程" type="danger" confirm-text="确认终止"
+      require-reason :reason-min-length="5" reason-label="终止原因（≥5 字）"
+      description="终止后该生发展流程置为已终止，原因记入档案。"
+      :submitting="saving" @confirm="submitTerminate"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -108,12 +118,16 @@ const STAGE_FILTERS = [{ key: '', label: '全部' }].concat(STAGES)
 
 export default {
   name: 'PartyLeagueView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+    StatusTag: AppStatusTag
+  },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', items: [], activeStage: '', stageFilters: STAGE_FILTERS,
       formVisible: false, form: { studentId: null, devType: 'PARTY', branchName: '', error: '' },
-      sel: null, stages: [], advStage: '', attachments: [], uploading: false
+      sel: null, stages: [], advStage: '', attachments: [], uploading: false,
+      terDlg: { visible: false }
     }
   },
   computed: {
@@ -183,11 +197,15 @@ export default {
       const res = await studentAffairsApi.advanceLeagueStage(this.sel.devId, { toStage: this.advStage })
       if (res.code === 0) { toast.success('已推进'); this.sel = res.data; this.advStage = ''; this.select(res.data); this.load() } else toast.error(res.message || '推进失败')
     },
-    async terminate() {
-      const reason = window.prompt('终止原因（至少5字）：')
-      if (!reason) return
-      const res = await studentAffairsApi.terminateLeagueDev(this.sel.devId, reason)
-      if (res.code === 0) { toast.success('已终止'); this.sel = res.data; this.load() } else toast.error(res.message || '终止失败')
+    terminate() { this.terDlg.visible = true },
+    async submitTerminate({ reason }) {
+      const res = await studentAffairsApi.terminateLeagueDev(this.sel.devId, reason.trim())
+      if (res.code === 0) {
+        this.terDlg.visible = false
+        toast.success('已终止')
+        this.sel = res.data
+        this.load()
+      } else toast.error(res.message || '终止失败')
     },
     statusType(s) { return ({ ONGOING: 'warning', COMPLETED: 'success', TERMINATED: 'default' })[s] || 'default' }
   }

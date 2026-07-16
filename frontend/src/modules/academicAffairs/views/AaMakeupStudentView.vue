@@ -25,7 +25,11 @@
       <div class="aamks-form">
         <AppFormItem label="课程名称" required><AppTextInput v-model="form.courseName" placeholder="课程名" :disabled="saving" /></AppFormItem>
         <AppFormItem label="学期"><AppTextInput v-model="form.termCode" placeholder="如 2024-2" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="理由"><AppTextarea v-model="form.reason" placeholder="选填" :disabled="saving" /></AppFormItem>
+        <!-- 未挂快捷用语：aa.makeup.reason 全部是「缓考」申请理由（缓考页在 AaExamConsoleView），
+             与本页的重修/免修业务不符；配置方案未给重修/免修理由词条，不硬套 -->
+        <AppFormItem label="理由">
+          <AppTextarea v-model="form.reason" placeholder="选填" :disabled="saving" />
+        </AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
         <AppInlineAlert v-if="tab === 'exemption'" type="info" description="免修需上传证书/先修证明材料（本页暂以理由说明，材料附件后续接入）。已获及格成绩的课程不可申请。" />
       </div>

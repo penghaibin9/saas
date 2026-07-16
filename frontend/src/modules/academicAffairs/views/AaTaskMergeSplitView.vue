@@ -57,8 +57,9 @@
       <p class="mp-note">将把选中的 {{ selected.length }} 条教学任务合并为一个教学班（人数相加），
         以最早一条为主任务；如需还原请在合班后使用「拆班」。</p>
       <label class="aa-note-label">合班备注（选填）
-        <input v-model.trim="mergeDialog.note" class="aa-input" placeholder="如：小班合并授课" maxlength="200" />
+        <input ref="noteInput" v-model.trim="mergeDialog.note" class="aa-input" placeholder="如：小班合并授课" maxlength="200" />
       </label>
+      <AppQuickPhrases scene-key="aa.remark" @pick="onPickNote" />
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
@@ -70,7 +71,8 @@
  * POST /teaching-tasks/merge + POST /teaching-tasks/{taskId}/split。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
@@ -79,7 +81,7 @@ const PRE_CONFIRM = ['PENDING_ASSIGN', 'ASSIGNED']
 
 export default {
   name: 'AaTaskMergeSplitView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -119,6 +121,12 @@ export default {
   },
   created() { this.load() },
   methods: {
+    onPickNote(text) {
+      const el = this.$refs.noteInput
+      const { value, selStart, selEnd } = insertAtCursor(el, this.mergeDialog.note, text)
+      this.mergeDialog.note = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     taskColor,
     statusLabel(s) { return TASK_STATUS[s] || s || '' },
     canSplit(row) { return PRE_CONFIRM.includes(row.status) },

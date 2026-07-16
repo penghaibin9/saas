@@ -166,7 +166,7 @@
         <div v-if="canCollegeReview(detail.row)" class="agc-actions">
           <div class="agc-actions__title">学院初审</div>
           <button class="mp-btn mp-btn--primary" :disabled="detailBusy" @click="doCollegeReview('APPROVE')">通过</button>
-          <button class="mp-btn" :disabled="detailBusy" @click="doCollegeReview('REJECT')">退回学院（需≥5字原因）</button>
+          <button class="mp-btn" :disabled="detailBusy" @click="openCollegeReject">退回学院（需≥5字原因）</button>
         </div>
 
         <div v-if="detail.row.status === 'ACADEMIC_REVIEW'" class="agc-actions">
@@ -195,6 +195,15 @@
       :message="'将该批次已终审的毕业/结业结果标记为已归档，归档后不可在本页撤销，是否确认？'"
       :submitting="archiving"
       @confirm="doArchive"
+    />
+    <AppConfirmDialog
+      v-model:visible="collegeRejectDlg.visible"
+      title="退回学院重新核对"
+      type="danger"
+      require-reason
+      reason-label="退回原因（≥5字）"
+      :submitting="detailBusy"
+      @confirm="doCollegeReject"
     />
   </ModulePageShell>
 </template>
@@ -264,6 +273,7 @@ export default {
       finalConclusion: 'GRADUATED',
       finalDlg: { visible: false, submitting: false },
       archiveDlg: { visible: false },
+      collegeRejectDlg: { visible: false },
       archiving: false,
       itemColumns: [
         { key: 'studentId', title: '学号' }, { key: 'realName', title: '姓名' },
@@ -416,14 +426,23 @@ export default {
       this.finalConclusion = 'GRADUATED'
     },
     openFinal(row) { this.openDetail(row) },
-    async doCollegeReview(action) {
-      let note = ''
-      if (action === 'REJECT') {
-        note = window.prompt('退回原因（≥5字）') || ''
-        if (note.trim().length < 5) { toast.error('原因至少 5 字'); return }
-      }
+    openCollegeReject() {
+      this.collegeRejectDlg.visible = true
+    },
+    async doCollegeReject({ reason }) {
       this.detailBusy = true
-      const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, action, note)
+      const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'REJECT', reason)
+      this.detailBusy = false
+      if (res.code === 0) {
+        toast.success('已处理')
+        this.collegeRejectDlg.visible = false
+        this.detail.visible = false
+        this.loadTab()
+      } else toast.error(res.message)
+    },
+    async doCollegeReview(action) {
+      this.detailBusy = true
+      const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, action, '')
       this.detailBusy = false
       if (res.code === 0) {
         toast.success('已处理')

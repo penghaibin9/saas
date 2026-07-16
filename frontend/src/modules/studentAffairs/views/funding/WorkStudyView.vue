@@ -66,19 +66,46 @@
         </div>
       </div>
     </AppGlobalState>
+
+    <!-- 岗位申请：原为「学生主档ID」原生弹窗，要老师手打内部 ID -->
+    <AppConfirmDialog
+      v-model:visible="appDlg.visible" :title="`为学生申请岗位 · ${appDlg.postName}`" type="primary"
+      confirm-text="提交申请" :submitting="!!acting" @confirm="submitApply"
+    >
+      <AppFormItem label="申请学生" required>
+        <AppStudentPicker v-model="appDlg.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索" />
+      </AppFormItem>
+      <AppInlineAlert v-if="appDlg.error" type="danger" :description="appDlg.error" />
+    </AppConfirmDialog>
+
+    <!-- 终止原因：后端 act_work_study 卡 ≥5 字，前端此前只判非空，失败要重打 -->
+    <AppConfirmDialog
+      v-model:visible="terDlg.visible" title="终止勤工助学" type="danger" confirm-text="确认终止"
+      require-reason :reason-min-length="5" reason-label="终止原因（≥5 字）"
+      description="终止后该生岗位记录置为已终止，原因记入台账。"
+      :submitting="acting === terDlg.recordId" @confirm="submitTerminate"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
+  AppSectionCard, AppStatusTag, AppStudentPicker
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'WorkStudyView',
-  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
+    AppSectionCard, AppStudentPicker, StatusTag: AppStatusTag
+  },
   data() {
     return { loading: true, acting: '', errorMessage: '', posts: [], records: [], selPost: '', postForm: { deptName: '', postName: '', salary: null },
+      appDlg: { visible: false, postId: '', postName: '', studentId: '', error: '' },
+      terDlg: { visible: false, recordId: '' },
       mm: { visible: false, recordId: '', name: '', subsidyTotal: null, list: [], form: this.blankMonthly() } }
   },
   computed: { pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') } },
@@ -101,19 +128,33 @@ export default {
       if (res.code === 0) { toast.success('已发岗'); this.postForm = { deptName: '', postName: '', salary: null }; this.load() } else toast.error(res.message || '发岗失败')
     },
     selectPost(p) { this.selPost = this.selPost === p.postId ? '' : p.postId; this.load() },
-    async applyTo(p) {
-      const sid = window.prompt('学生主档ID：')
-      if (!sid) return
-      const res = await studentAffairsApi.applyWorkStudy(p.postId, Number(sid))
-      if (res.code === 0) { toast.success('已申请'); this.load() } else toast.error(res.message || '申请失败')
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
+    applyTo(p) {
+      this.appDlg = { visible: true, postId: p.postId, postName: p.postName || '该岗位', studentId: '', error: '' }
+    },
+    async submitApply() {
+      const d = this.appDlg
+      if (!d.studentId) { d.error = '请选择申请学生'; return }
+      d.error = ''
+      this.acting = d.postId
+      const res = await studentAffairsApi.applyWorkStudy(d.postId, Number(d.studentId))
+      this.acting = ''
+      if (res.code === 0) { d.visible = false; toast.success('已申请'); this.load() }
+      else { d.error = res.message || '申请失败' }
     },
     async act(r, action) {
-      let reason = ''
-      if (action === 'TERMINATE') { reason = window.prompt('终止原因（至少5字）：') || ''; if (!reason) return }
+      if (action === 'TERMINATE') { this.terDlg = { visible: true, recordId: r.recordId }; return }
       this.acting = r.recordId
-      const res = await studentAffairsApi.actWorkStudy(r.recordId, action, reason)
+      const res = await studentAffairsApi.actWorkStudy(r.recordId, action, '')
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
+    },
+    async submitTerminate({ reason }) {
+      const d = this.terDlg
+      this.acting = d.recordId
+      const res = await studentAffairsApi.actWorkStudy(d.recordId, 'TERMINATE', reason.trim())
+      this.acting = ''
+      if (res.code === 0) { d.visible = false; toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
     },
     wsType(s) { return ({ APPLIED: 'warning', APPROVED: 'processing', ONBOARD: 'success', REJECTED: 'default', TERMINATED: 'default' })[s] || 'default' },
     amountText(a) { return (a == null || a === '') ? '¥0' : (typeof a === 'number' ? ('¥' + a) : a) },

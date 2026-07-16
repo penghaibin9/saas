@@ -24,7 +24,8 @@
 
         <div class="sc-fld sc-fld--full">
           <label class="sc-lbl">原因 <i>*</i>（≥5 字）</label>
-          <input class="sc-in" v-model.trim="form.reason" placeholder="如：教师因公出差需调整" />
+          <input ref="reasonInput" class="sc-in" v-model.trim="form.reason" placeholder="如：教师因公出差需调整" />
+          <AppQuickPhrases scene-key="aa.schedchg.reason" @pick="onPickReason" />
         </div>
 
         <template v-if="form.changeType !== 'STOP'">
@@ -77,7 +78,8 @@
         <div class="sc-fld sc-fld--full">
           <label class="sc-lbl">{{ form.changeType === 'STOP' ? '停课后续安排' : '补课/备注说明' }}
             <i v-if="form.changeType === 'STOP'">*</i></label>
-          <input class="sc-in" v-model.trim="form.makeupPlan" placeholder="停课须填写补课/后续安排" />
+          <input ref="makeupInput" class="sc-in" v-model.trim="form.makeupPlan" placeholder="停课须填写补课/后续安排" />
+          <AppQuickPhrases scene-key="aa.schedchg.makeup" @pick="onPickMakeup" />
         </div>
 
         <p v-if="err" class="sc-err">{{ err }}</p>
@@ -93,6 +95,8 @@
 <script>
 /** 发起调停课（/admin/academic-affairs/schedule-change/apply）：提交即冲突预检，冲突后端 409 → 单据不落库。 */
 import { ModulePageShell } from '@/components/business'
+import { AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { scheduleChangeApi, CHANGE_TYPES } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 import { toast } from '@/utils/toast'
 
@@ -104,7 +108,7 @@ const EMPTY = () => ({
 
 export default {
   name: 'AaScheduleChangeApplyView',
-  components: { ModulePageShell },
+  components: { ModulePageShell, AppQuickPhrases },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {
@@ -133,6 +137,18 @@ export default {
   },
   methods: {
     conflictTypeLabel(t) { return { TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' }[t] || t },
+    onPickReason(text) {
+      const el = this.$refs.reasonInput
+      const { value, selStart, selEnd } = insertAtCursor(el, this.form.reason, text)
+      this.form.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
+    onPickMakeup(text) {
+      const el = this.$refs.makeupInput
+      const { value, selStart, selEnd } = insertAtCursor(el, this.form.makeupPlan, text)
+      this.form.makeupPlan = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     async checkConflict() {
       if (!this.canCheckConflict) return
       this.checkingConflict = true

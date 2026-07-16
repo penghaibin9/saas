@@ -70,7 +70,8 @@
           <AppSelect v-model="form.roomType" :options="typeOptions.slice(1)" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="备注">
-          <AppTextarea v-model="form.remark" placeholder="选填" :disabled="saving" />
+          <AppTextarea ref="remarkInput" v-model="form.remark" placeholder="选填" :disabled="saving" />
+          <AppQuickPhrases scene-key="aa.remark" @pick="onPickRemark" />
         </AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
@@ -94,7 +95,8 @@
 /** 教学资源 · 教室字典（/admin/academic-affairs/classrooms）：楼栋/教室/容量/类型/可用状态 CRUD 最小闭环。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem, AppConfirmDialog, AppInlineAlert, AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -106,7 +108,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem,
-    AppConfirmDialog, AppInlineAlert
+    AppConfirmDialog, AppInlineAlert, AppQuickPhrases
   },
   data() {
     return {
@@ -155,6 +157,12 @@ export default {
     this.load()
   },
   methods: {
+    onPickRemark(text) {
+      const el = this.$refs.remarkInput && this.$refs.remarkInput.$refs.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.form.remark, text)
+      this.form.remark = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     statusType(s) {
       return s === 'AVAILABLE' ? 'success' : s === 'MAINTENANCE' ? 'warning' : 'default'
     },

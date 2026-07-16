@@ -36,8 +36,9 @@
       confirm-text="确认退回" :submitting="acting === rejectDialog.taskId" @confirm="doReject"
     >
       <label class="aa-note-label">退回原因（必填，≥5 字）
-        <textarea v-model.trim="rejectDialog.reason" class="aa-textarea" rows="3" placeholder="如：与本人其他课表时间冲突" />
+        <textarea ref="rejectReasonInput" v-model.trim="rejectDialog.reason" class="aa-textarea" rows="3" placeholder="如：与本人其他课表时间冲突" />
       </label>
+      <AppQuickPhrases scene-key="aa.task.reject" @pick="onPickRejectReason" />
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
@@ -49,14 +50,15 @@
  * POST /teaching-tasks/{taskId}/teacher-act。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppQuickPhrases } from '@/components/common'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeacherTaskConfirmView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -89,6 +91,12 @@ export default {
       else { toast.error(res.message || '确认失败') }
     },
     openReject(row) { this.rejectDialog = { visible: true, taskId: row.taskId, reason: '' } },
+    onPickRejectReason(text) {
+      const el = this.$refs.rejectReasonInput
+      const { value, selStart, selEnd } = insertAtCursor(el, this.rejectDialog.reason, text)
+      this.rejectDialog.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     async doReject() {
       if (!this.rejectDialog.reason || this.rejectDialog.reason.length < 5) { toast.error('退回原因必填且不少于 5 字'); return }
       this.acting = this.rejectDialog.taskId

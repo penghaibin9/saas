@@ -265,6 +265,32 @@ export const studentAffairsApi = {
     }))
   },
 
+  /**
+   * 风险责任人搜索（供 AppTeacherPicker remoteSearch 注入）。
+   * 后端只返回持学工风险处置角色（COUNSELOR/STUDENT_AFFAIRS/PSYCHOLOGY_TEACHER 等）的在职账号——
+   * 分派给无该权限的人，对方收到待办点开即 403，故候选集由后端按角色收敛，前端不自行放大。
+   * 返回 [{ label, value, desc }]，直接喂给 AppRemoteSelect。
+   */
+  async searchRiskOwners(keyword) {
+    const r = ok(await request('/student-affairs/risk/owner-candidates', { params: { keyword } }))
+    const items = (r && r.data && r.data.items) || []
+    return items.map((u) => ({ value: String(u.id), label: u.name || u.loginName, desc: u.loginName || '' }))
+  },
+
+  /**
+   * 学生搜索（供 AppStudentPicker remoteSearch 注入）：真实 /students 端点。
+   * 与 studentAffairs.api.js 的同名方法同源同形，此处重复一份是因为 B 组页面只 import 本文件；
+   * 两处若要改动请同步。返回 [{ label, value, desc }]，value=学生 id。
+   */
+  async searchStudents(keyword) {
+    const d = await request('/students', { params: { keyword, page: 1, pageSize: 20 } })
+    return (d.items || []).map((s) => ({
+      value: String(s.id),
+      label: `${s.realName}（${s.studentNo}）`,
+      desc: s.className || s.grade || ''
+    }))
+  },
+
   async assignRisk(riskId, ownerId) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/assign`, {
       method: 'POST',

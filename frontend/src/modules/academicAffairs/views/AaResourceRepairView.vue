@@ -52,6 +52,17 @@
         <AppButton variant="primary" :loading="saving" @click="submitReport">提交</AppButton>
       </template>
     </AppDrawer>
+
+    <!-- 维修说明/取消原因均为选填：不设 require-reason，也不挂快捷用语（配置方案未给该场景词条） -->
+    <AppConfirmDialog
+      v-model:visible="noteDialog.visible" :title="noteDialog.title"
+      :type="noteDialog.type" :confirm-text="noteDialog.confirmText"
+      :submitting="noteDialog.submitting" @confirm="onNoteConfirm"
+    >
+      <label class="aarr-note-label">{{ noteDialog.label }}
+        <AppTextarea v-model="noteDialog.note" :placeholder="noteDialog.placeholder" :disabled="noteDialog.submitting" />
+      </label>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -59,7 +70,7 @@
 /** 教学资源续卡 · 资源维修（/admin/academic-affairs/resources/repairs）：教室/实训室/设备共用工单台账。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppSelect, AppTextarea, AppFormItem, AppInlineAlert } from '@/components/common'
+import { AppSelect, AppTextarea, AppFormItem, AppInlineAlert, AppConfirmDialog } from '@/components/common'
 import { academicAffairsResourceApi, academicAffairsApi, academicAffairsLabApi, academicAffairsEquipmentApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -68,9 +79,10 @@ const _STATUS_LABEL = { REPORTED: '已报修', IN_REPAIR: '维修中', DONE: '�
 
 export default {
   name: 'AaResourceRepairView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppSelect, AppTextarea, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppSelect, AppTextarea, AppFormItem, AppInlineAlert, AppConfirmDialog },
   data() {
     return {
+      noteDialog: { visible: false, title: '', label: '', placeholder: '', type: 'primary', confirmText: '确认', note: '', submitting: false, action: null },
       loading: true,
       error: '',
       rows: [],
@@ -168,15 +180,38 @@ export default {
       const res = await academicAffairsResourceApi.startRepair(id)
       if (res.code === 0) { toast.success('已开始维修'); this.load() } else toast.error(res.message)
     },
-    async complete(id) {
-      const note = window.prompt('维修处理说明（选填）') || ''
-      const res = await academicAffairsResourceApi.completeRepair(id, note)
-      if (res.code === 0) { toast.success('已完成'); this.load() } else toast.error(res.message)
+    complete(id) {
+      this.noteDialog = {
+        visible: true, title: '完成维修', label: '维修处理说明（选填）',
+        placeholder: '如：已更换灯管并测试正常', type: 'primary', confirmText: '确认完成',
+        note: '', submitting: false,
+        action: async (note) => {
+          const res = await academicAffairsResourceApi.completeRepair(id, note)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已完成'); this.load(); return true
+        }
+      }
     },
-    async cancel(id) {
-      const reason = window.prompt('取消原因（选填）') || ''
-      const res = await academicAffairsResourceApi.cancelRepair(id, reason)
-      if (res.code === 0) { toast.success('已取消'); this.load() } else toast.error(res.message)
+    cancel(id) {
+      this.noteDialog = {
+        visible: true, title: '取消维修工单', label: '取消原因（选填）',
+        placeholder: '如：报修信息有误，重复报修', type: 'danger', confirmText: '确认取消',
+        note: '', submitting: false,
+        action: async (note) => {
+          const res = await academicAffairsResourceApi.cancelRepair(id, note)
+          if (res.code !== 0) { toast.error(res.message); return false }
+          toast.success('已取消'); this.load(); return true
+        }
+      }
+    },
+    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
+    async onNoteConfirm() {
+      const action = this.noteDialog.action
+      if (!action) return
+      this.noteDialog.submitting = true
+      const ok = await action((this.noteDialog.note || '').trim())
+      this.noteDialog.submitting = false
+      if (ok) this.noteDialog.visible = false
     }
   }
 }
@@ -185,6 +220,8 @@ export default {
 <style scoped>
 .aarr-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
 .aarr-form { display: flex; flex-direction: column; gap: 12px; }
+.aarr-note-label { display: block; font-size: 13px; color: var(--text-secondary, #64748b); }
+.aarr-note-label > * { margin-top: 6px; }
 .mp-link.is-danger { color: var(--danger-500); }
 .mp-link + .mp-link { margin-left: var(--space-2); }
 </style>

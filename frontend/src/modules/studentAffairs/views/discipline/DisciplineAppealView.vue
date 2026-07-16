@@ -53,17 +53,54 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 登记送达：原要手打 DIRECT/MAIL/PUBLIC/LEAVE -->
+    <AppConfirmDialog
+      v-model:visible="delDlg.visible" title="登记处分送达" type="primary" confirm-text="确认登记"
+      :submitting="acting === delDlg.caseId" @confirm="submitDeliver"
+    >
+      <AppFormItem label="送达方式" required>
+        <AppSelect v-model="delDlg.method" :options="DELIVERY_OPTIONS" />
+      </AppFormItem>
+    </AppConfirmDialog>
+
+    <!-- 提交申诉：申诉理由由申诉人自述，不挂模板 -->
+    <AppConfirmDialog
+      v-model:visible="apDlg.visible" title="提交申诉" type="warning" confirm-text="提交申诉"
+      require-reason :reason-min-length="5" reason-label="申诉理由（≥5 字）"
+      description="申诉将进入复核流程，由处分复核组核查后给出维持/变更/撤销结论。"
+      :submitting="acting === apDlg.caseId" @confirm="submitAppeal"
+    />
+
+    <!-- 复核申诉：结论原要手打 UPHELD/REVISED/REVOKED。
+         挂 common.reviewOpinion——该词库四条恰为「维持原决定 / 部分成立予以更正 / 原决定撤销 /
+         补充核实」，正好覆盖本页三种结论，是其对口场景。 -->
+    <AppConfirmDialog
+      v-model:visible="revDlg.visible" title="复核申诉" type="primary" confirm-text="提交复核"
+      require-reason :reason-min-length="5" reason-label="复核意见（≥5 字）"
+      phrase-scene-key="common.reviewOpinion" :submitting="acting === revDlg.appealId" @confirm="submitReview"
+    >
+      <AppFormItem label="复核结论" required>
+        <AppSelect v-model="revDlg.result" :options="RESULT_OPTIONS" />
+      </AppFormItem>
+    </AppConfirmDialog>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
+  AppSectionCard, AppSelect, AppStatusTag
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const DISC = { WARNING: '警告', SERIOUS_WARNING: '严重警告', DEMERIT: '记过', PROBATION: '留校察看', EXPEL: '开除' }
 const DELIVERY = { DIRECT: '直接送达', MAIL: '邮寄', PUBLIC: '公告', LEAVE: '留置' }
 const RESULT = { UPHELD: '维持原处分', REVISED: '变更处分', REVOKED: '撤销处分' }
+/** 下拉选项直接由页面既有的 DELIVERY / RESULT 映射派生，不另造一份，避免两处取值走散。 */
+const DELIVERY_OPTIONS = Object.entries(DELIVERY).map(([value, label]) => ({ value, label }))
+const RESULT_OPTIONS = Object.entries(RESULT).map(([value, label]) => ({ value, label }))
 const APPEAL_FILTERS = [
   { key: '', label: '全部' }, { key: 'SUBMITTED', label: '待复核' },
   { key: 'UPHELD', label: '已维持' }, { key: 'REVISED', label: '已变更' }, { key: 'REVOKED', label: '已撤销' }
@@ -71,11 +108,21 @@ const APPEAL_FILTERS = [
 
 export default {
   name: 'DisciplineAppealView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag
+  },
   data() {
-    return { loading: true, acting: '', errorMessage: '', effectiveCases: [], appeals: [], appealStatus: '', appealFilters: APPEAL_FILTERS }
+    return {
+      loading: true, acting: '', errorMessage: '', effectiveCases: [], appeals: [], appealStatus: '', appealFilters: APPEAL_FILTERS,
+      delDlg: { visible: false, caseId: '', method: 'DIRECT' },
+      apDlg: { visible: false, caseId: '' },
+      revDlg: { visible: false, appealId: '', result: 'UPHELD' }
+    }
   },
   computed: {
+    DELIVERY_OPTIONS: () => DELIVERY_OPTIONS,
+    RESULT_OPTIONS: () => RESULT_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const undelivered = this.effectiveCases.filter((c) => !c.deliveredAt).length
@@ -101,31 +148,29 @@ export default {
       this.loading = false
     },
     setAppealStatus(k) { if (this.appealStatus === k) return; this.appealStatus = k; this.load() },
-    async deliver(c) {
-      const method = window.prompt('送达方式：DIRECT 直接 / MAIL 邮寄 / PUBLIC 公告 / LEAVE 留置', 'DIRECT')
-      if (!method) return
-      this.acting = c.caseId
-      const res = await studentAffairsApi.deliverDiscipline(c.caseId, { method: method.trim().toUpperCase() })
+    deliver(c) { this.delDlg = { visible: true, caseId: c.caseId, method: 'DIRECT' } },
+    async submitDeliver() {
+      const d = this.delDlg
+      this.acting = d.caseId
+      const res = await studentAffairsApi.deliverDiscipline(d.caseId, { method: d.method })
       this.acting = ''
-      if (res.code === 0) { toast.success('已登记送达'); this.load() } else toast.error(res.message || '送达失败')
+      if (res.code === 0) { d.visible = false; toast.success('已登记送达'); this.load() } else toast.error(res.message || '送达失败')
     },
-    async appeal(c) {
-      const reason = window.prompt('申诉理由（至少5字）：')
-      if (!reason) return
-      this.acting = c.caseId
-      const res = await studentAffairsApi.submitDisciplineAppeal(c.caseId, reason)
+    appeal(c) { this.apDlg = { visible: true, caseId: c.caseId } },
+    async submitAppeal({ reason }) {
+      const d = this.apDlg
+      this.acting = d.caseId
+      const res = await studentAffairsApi.submitDisciplineAppeal(d.caseId, reason.trim())
       this.acting = ''
-      if (res.code === 0) { toast.success('申诉已提交'); this.load() } else toast.error(res.message || '申诉失败')
+      if (res.code === 0) { d.visible = false; toast.success('申诉已提交'); this.load() } else toast.error(res.message || '申诉失败')
     },
-    async review(a) {
-      const result = window.prompt('复核结论：UPHELD 维持 / REVISED 变更 / REVOKED 撤销', 'UPHELD')
-      if (!result) return
-      const opinion = window.prompt('复核意见（至少5字）：')
-      if (!opinion) return
-      this.acting = a.appealId
-      const res = await studentAffairsApi.reviewDisciplineAppeal(a.appealId, result.trim().toUpperCase(), opinion)
+    review(a) { this.revDlg = { visible: true, appealId: a.appealId, result: 'UPHELD' } },
+    async submitReview({ reason }) {
+      const d = this.revDlg
+      this.acting = d.appealId
+      const res = await studentAffairsApi.reviewDisciplineAppeal(d.appealId, d.result, reason.trim())
       this.acting = ''
-      if (res.code === 0) { toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
+      if (res.code === 0) { d.visible = false; toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
     },
     discLabel(t) { return DISC[t] || t },
     deliveryLabel(m) { return DELIVERY[m] || m },

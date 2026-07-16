@@ -32,6 +32,7 @@
       :type="dlg.type"
       :confirm-text="dlg.confirmText"
       :require-reason="dlg.requireReason"
+      phrase-scene-key="aa.grade.return"
       reason-label="退回原因"
       :submitting="dlg.submitting"
       @confirm="doAction"
