@@ -20,6 +20,7 @@ def _require_student(user: dict = Depends(get_current_user)) -> dict:
 from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_svc
 from app.modules.academic_affairs.services import academic_affairs_attendance_service as attendance_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_recheck_service as recheck_svc
+from app.modules.academic_affairs.services import academic_affairs_workload_service as workload_svc
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
 from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
@@ -1016,6 +1017,26 @@ class GradeRecheckReviewBody(BaseModel):
 def grade_recheck_review(body: GradeRecheckReviewBody, recheckId: int = Path(...),
                          user=Depends(require_permission("academicAffairs.grade.publish"))):
     return success(recheck_svc.review(user, recheckId, body.action, body.note, body.newScore))
+
+
+# ═══════════ 教师工作量申报（教师端申报在移动端；教务处审核在 PC，正方教师端1.18/1.19对标）═══════════
+@router.get("/workload-declarations", summary="工作量申报台账（教务处，按状态/学期筛选）")
+def workload_decl_list(status: Optional[str] = None, termCode: Optional[str] = None,
+                       page: int = 1, pageSize: int = 20,
+                       user=Depends(require_permission("academicAffairs.stats.view"))):
+    items, total = workload_svc.list_all(user, status, termCode, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class WorkloadReviewBody(BaseModel):
+    action: str = Field(..., description="APPROVE 通过 / REJECT 驳回")
+    note: Optional[str] = Field("", max_length=500)
+
+
+@router.post("/workload-declarations/{declId}/review", summary="工作量申报审核（通过计入统计/驳回）")
+def workload_decl_review(body: WorkloadReviewBody, declId: int = Path(...),
+                         user=Depends(require_permission("academicAffairs.stats.view"))):
+    return success(workload_svc.review(user, declId, body.action, body.note))
 
 
 # ═══════════ 学业预警（P5 规则引擎 + 二级模块 Tier1：看板/多维分类/规则/跟进/统计）═══════════

@@ -1044,3 +1044,13 @@ def teacher_attendance_mark(session_id: str, body: dict = Body(...), user=Depend
 @router.post("/teacher/academic/attendance/sessions/{session_id}/submit", summary="教师·课堂考勤·提交场次（不可再改）")
 def teacher_attendance_submit(session_id: str, user=Depends(get_current_user)):
     return success(aa.teacher_attendance_submit(session_id, user), message="考勤已提交")
+
+
+@router.get("/teacher/academic/workload/my", summary="教师·我的工作量申报")
+def teacher_workload_my(user=Depends(get_current_user)):
+    return success(aa.workload_my(user))
+
+
+@router.post("/teacher/academic/workload/submit", summary="教师·工作量申报（教学/监考/阅卷/出卷）")
+def teacher_workload_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.workload_submit_my(user, body), message="工作量申报已提交")

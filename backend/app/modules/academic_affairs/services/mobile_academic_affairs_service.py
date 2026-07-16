@@ -239,6 +239,18 @@ def grade_recheck_submit_my(user, body) -> dict:
     return rc.submit(user, body or {})
 
 
+def workload_my(user):
+    """教师本人工作量申报记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_workload_service as wl
+    return {"items": wl.my(user)}
+
+
+def workload_submit_my(user, body) -> dict:
+    """教师本人工作量申报(教学/监考/阅卷/出卷/其他)。"""
+    from app.modules.academic_affairs.services import academic_affairs_workload_service as wl
+    return wl.submit(user, body or {})
+
+
 # ═══════════ 等级考务报名（学生自助，对标正方 3.13 考级项目报名）═══════════
 
 def level_exam_my(user):

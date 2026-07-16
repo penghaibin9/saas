@@ -123,6 +123,8 @@ export const teacherApi = {
   createAttendanceSession: (body) => real.teacherAttendanceCreate(body),
   getAttendanceDetail: (sessionId) => real.teacherAttendanceDetail(sessionId),
   markAttendance: (sessionId, studentId, status) => real.teacherAttendanceMark(sessionId, studentId, status),
-  submitAttendanceSession: (sessionId) => real.teacherAttendanceSubmit(sessionId)
+  submitAttendanceSession: (sessionId) => real.teacherAttendanceSubmit(sessionId),
+  getWorkloadDeclarations: () => real.teacherWorkloadMy(),
+  submitWorkload: (body) => real.teacherWorkloadSubmit(body)
 }
 export default teacherApi

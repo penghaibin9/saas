@@ -458,6 +458,14 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/grade-rechecks/${recheckId}/review`, { method: 'POST', body }))
   },
 
+  /* ── 教师工作量申报（教师端申报在小程序；教务处审核在 PC） ── */
+  getWorkloadDeclarations(params = {}) {
+    return callList(`${BASE}/workload-declarations`, params)
+  },
+  reviewWorkloadDeclaration(declId, body) {
+    return call(() => request(`${BASE}/workload-declarations/${declId}/review`, { method: 'POST', body }))
+  },
+
   /* ── 学业预警（扫描 + 列表；多维分类/规则/跟进/统计见 academicAffairsWarningApi） ── */
   scanWarnings() {
     return call(() => request(`${BASE}/warnings/scan`, { method: 'POST' }))

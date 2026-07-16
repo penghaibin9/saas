@@ -415,6 +415,28 @@ class AaGradeRecheck(PKMixin, TenantMixin, CommonMixin, Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class AaWorkloadDeclaration(PKMixin, TenantMixin, CommonMixin, Base):
+    """教师工作量申报（对标正方 教师端1.18教学工作量申报/1.19考试工作量申报）。
+
+    教师申报需增记的课时工作量(教学/监考/阅卷/出卷/其他) → 教务审核(通过/驳回)。
+    通过后计入教务侧工作量统计的「申报工时」，仅供教务参考；绑定职称/薪酬系数的正式核算属人事系统，不在此实现。
+    """
+    __tablename__ = "t_aa_workload_declaration"
+
+    teacher_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True, comment="申报教师归属")
+    teacher_name: Mapped[str | None] = mapped_column(String(100), comment="姓名快照")
+    term_code: Mapped[str | None] = mapped_column(String(50), index=True)
+    category: Mapped[str] = mapped_column(String(20), nullable=False,
+                                          comment="TEACHING/INVIGILATE/MARKING/PAPER/OTHER")
+    hours: Mapped[float] = mapped_column(Numeric(6, 1), nullable=False, default=0, comment="申报课时")
+    description: Mapped[str | None] = mapped_column(String(500), comment="工作说明")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/APPROVED/REJECTED")
+    review_note: Mapped[str | None] = mapped_column(String(500))
+    reviewed_by: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 # ═══════════ 毕业资格预审组（13B-P6；七项跨域供数三态判定）═══════════
 
 

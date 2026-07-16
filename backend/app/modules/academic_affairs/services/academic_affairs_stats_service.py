@@ -997,7 +997,14 @@ def workload_stats(user, term_id=None, college_id=None) -> dict:
                                       "totalHours": 0, "taskCount": 0})
             item["totalHours"] += int(t.total_hours or 0)
             item["taskCount"] += 1
-        ranking = sorted(agg.values(), key=lambda x: -x["totalHours"])
+        # 并入教务审核通过的工作量申报课时（正方教师端1.18/1.19 → 统计口径）；仅并入范围内已有教师，防跨范围泄露
+        from app.modules.academic_affairs.services import academic_affairs_workload_service as _wl
+        declared = _wl.approved_hours_by_teacher(db)
+        for item in agg.values():
+            dh = round(declared.get(item["teacherKey"], 0.0), 1)
+            item["declaredHours"] = dh
+            item["combinedHours"] = round(item["totalHours"] + dh, 1)
+        ranking = sorted(agg.values(), key=lambda x: -x["combinedHours"])
         return {"ranking": ranking, "disclaimer": _WORKLOAD_DISCLAIMER,
                 "scope": {"blocked": scope.blocked}}
 

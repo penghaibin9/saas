@@ -740,3 +740,6 @@ export const teacherAttendanceMark = (sessionId, studentId, status) =>
     { method: 'POST', data: { studentId, status } })
 export const teacherAttendanceSubmit = (sessionId) =>
   realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}/submit`, { method: 'POST' })
+export const teacherWorkloadMy = () => realRequest('/mobile/teacher/academic/workload/my')
+export const teacherWorkloadSubmit = (body) =>
+  realRequest('/mobile/teacher/academic/workload/submit', { method: 'POST', data: body })

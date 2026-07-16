@@ -81,6 +81,7 @@ const layoutRoute = {
     { path: 'graduation/audit-console', name: 'aa-graduation-audit-console', component: () => import('@/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue'), meta: meta('academicAffairs.graduation.view', '毕业资格审核工作台') },
     // ── 教务统计（只读聚合，11 项指标 + 下钻 + 导出） ──
     { path: 'stats', name: 'aa-stats', component: () => import('@/modules/academicAffairs/views/AaStatsOverviewView.vue'), meta: meta('academicAffairs.stats.view', '教务统计') },
+    { path: 'workload-review', name: 'aa-workload-review', component: () => import('@/modules/academicAffairs/views/AaWorkloadReviewView.vue'), meta: meta('academicAffairs.stats.view', '工作量申报审核') },
     // ── R3 学院专业班级（组织架构，单控制台按 ?tab= 切换 学院/专业/年级/行政班/教学班/组织树/统计） ──
     { path: 'orgs', name: 'aa-orgs', component: () => import('@/modules/academicAffairs/views/AaOrgConsole.vue'), meta: meta('academicAffairs.org.view', '学院专业班级') },
     // ── R4 教学资源 · 教室字典 ──

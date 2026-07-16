@@ -452,6 +452,7 @@ export const NAV_PLAN = [
       I('学业预警统计', '/admin/academic-affairs/stats?tab=warning', 'academicAffairs.stats.view'),
       I('毕业资格统计', '/admin/academic-affairs/stats?tab=graduation', 'academicAffairs.stats.view'),
       I('教师工作量统计', '/admin/academic-affairs/stats?tab=workload', 'academicAffairs.stats.view'),
+      I('工作量申报审核（教师申报）', '/admin/academic-affairs/workload-review', 'academicAffairs.stats.view'),
       ...P('教学资源统计'),
       I('导出报表', '/admin/academic-affairs/stats?tab=export', 'academicAffairs.stats.export')
     ])

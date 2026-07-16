@@ -268,6 +268,10 @@
       "style": { "navigationBarTitleText": "课堂考勤", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/academic-affairs/workload",
+      "style": { "navigationBarTitleText": "工作量申报", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/workbench/index",
       "style": { "navigationBarTitleText": "工作台", "navigationStyle": "custom", "enablePullDownRefresh": true }
     },
