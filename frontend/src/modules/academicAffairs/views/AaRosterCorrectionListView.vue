@@ -100,6 +100,19 @@
       </template>
     </AppDrawer>
 
+    <!-- 通过：无原因动作，但会立即写学籍主档，故仍给正规弹窗把新旧值摆出来核对 -->
+    <AppConfirmDialog
+      v-model:visible="approveDialog.visible" title="通过学籍更正申请" type="warning"
+      confirm-text="确认通过并同步主档"
+      description="通过后立即写入学籍主档，该动作不可撤销。请先核对下方新旧值。"
+      :submitting="acting" @confirm="doApprove"
+    >
+      <AppDescriptionList v-if="approveDialog.row" :items="approveItems" :columns="1" bordered />
+      <p v-if="approveDialog.row && approveDialog.row.sensitive" class="rc-mask-note">
+        证件号按敏感字段脱敏显示，与列表页一致；如需核对完整号码请查阅申请人上传的证明材料。
+      </p>
+    </AppConfirmDialog>
+
     <!-- 驳回原因未挂快捷用语：配置方案未给「学籍更正驳回」场景词条，不硬套其它场景（会串味） -->
     <AppConfirmDialog
       v-model:visible="rejectDialog.visible" title="驳回学籍更正申请" type="danger"
@@ -115,10 +128,11 @@
  * GET/POST /academic-affairs/roster/corrections、POST /roster/corrections/{id}/review。
  * 区别于「学籍异动」：只纠正学号/姓名/性别/证件号/年级录入错误，不产生学籍状态迁移，
  * 字段范围明确排除学籍状态/院系专业班级（那些变更走 change_student_status 单一入口）。
- * 驳回走 AppConfirmDialog（原因≥5字由组件校验）；通过为无原因动作，沿用 window.confirm。
+ * 通过与驳回均走 AppConfirmDialog：通过虽无原因入参，但会立即写学籍主档且不可撤销，
+ * 故仍需正规弹窗把新旧值摆出来核对（原为 window.confirm，与学工中心同类动作不一致）。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppConfirmDialog } from '@/components/common'
+import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppConfirmDialog, AppDescriptionList } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -135,11 +149,13 @@ function emptyForm() {
 export default {
   name: 'AaRosterCorrectionListView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag,
-               AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppButton, AppDrawer, AppConfirmDialog },
+               AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppButton, AppDrawer,
+               AppConfirmDialog, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       FIELD_LABEL,
+      approveDialog: { visible: false, row: null },
       rejectDialog: { visible: false, row: null },
       loading: true,
       error: '',
@@ -169,6 +185,21 @@ export default {
     },
     fieldPlaceholder() {
       return FIELD_PLACEHOLDER[this.form.fieldKey] || ''
+    },
+    /**
+     * 通过确认弹窗里的新旧值对比——写主档前让人看清到底改的是谁的哪一项。
+     * 证件号的新旧值由后端 _correction_row 默认脱敏（reveal=false 时走 _mask_id_card），
+     * 此处如实展示脱敏值：与列表页、与改造前的原生确认框口径一致，不在此处放开明文。
+     */
+    approveItems() {
+      const r = this.approveDialog.row
+      if (!r) return []
+      return [
+        { label: '学生', value: `${r.realName || ''} ${r.studentNo || ''}`.trim() || '—' },
+        { label: '更正字段', value: r.fieldLabel || FIELD_LABEL[r.fieldKey] || r.fieldKey },
+        { label: '原值', value: r.oldValue || '—' },
+        { label: '新值', value: r.newValue || '—' }
+      ]
     }
   },
   created() {
@@ -235,13 +266,21 @@ export default {
         this.formError = res.message
       }
     },
-    async approve(row) {
+    approve(row) {
       if (this.acting) return
-      if (!window.confirm(`确认「${row.fieldLabel}」更正通过？通过后立即同步学籍主档：${row.oldValue || '—'} → ${row.newValue}`)) return
+      this.approveDialog = { visible: true, row }
+    },
+    async doApprove() {
+      const row = this.approveDialog.row
+      if (!row) return
       this.acting = true
       const res = await academicAffairsApi.reviewRosterCorrection(row.correctionId, 'APPROVE', '')
       this.acting = false
-      if (res.code === 0) { toast.success('已通过，主档已同步'); this.load() } else toast.error(res.message)
+      if (res.code === 0) {
+        this.approveDialog.visible = false
+        toast.success('已通过，主档已同步')
+        this.load()
+      } else toast.error(res.message)
     },
     reject(row) {
       if (this.acting) return
@@ -295,4 +334,5 @@ export default {
 .aa-cand-list { list-style: none; margin: 10px 0 0; padding: 0; border: 1px solid var(--border-100, #f0f1f2); border-radius: 6px; }
 .aa-cand-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 13px; }
 .aa-cand-item:last-child { border-bottom: none; }
+.rc-mask-note { margin: 12px 0 0; color: var(--text-tertiary); font-size: 13px; }
 </style>
