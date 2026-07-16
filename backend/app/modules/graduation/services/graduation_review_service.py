@@ -12,11 +12,12 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (GraduationAuditTrail, GraduationFinal, GraduationPlagiarismCheck,
                         GraduationReview, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
-from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+from app.modules.graduation.services.graduation_scope_service import (
+    accessible_student_ids, assert_student_access, has_full_scope)
 
 PLAG_STATUS_LABEL = {"CHECKING": "检测中", "DONE": "已完成", "FAILED": "失败"}
 REVIEW_STATUS_LABEL = {"ASSIGNED": "待评阅", "REVIEWING": "评阅中", "COMPLETED": "已完成", "RETURNED": "已退回"}
@@ -280,6 +281,11 @@ def submit_review(rid, score: int, opinion: str) -> dict:
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
         assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "review.submit")
+        # 评阅提交是本人动作：仅被指派评阅人可提交/覆盖本任务，避免同一学生的另一评阅人
+        # 越权改写他人评分（管理岗全范围角色可代为处置）。
+        submitter = (get_current_user_ctx() or {}).get("realName", "").strip()
+        if not has_full_scope() and (r.reviewer_name or "").strip() != submitter:
+            raise no_permission("仅被指派的评阅人可提交本评阅任务")
         if r.status == "COMPLETED" and r.score == score and (r.opinion or "") == opinion:
             return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status not in ("ASSIGNED", "REVIEWING", "RETURNED"):

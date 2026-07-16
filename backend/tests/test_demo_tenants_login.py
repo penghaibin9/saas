@@ -12,7 +12,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 DEMO_TID = 1000000000000000003
-SBX_TID = 1000000000000000004
+SBX_TID = 1000000000000000007
 
 
 @pytest.fixture()

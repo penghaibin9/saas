@@ -3,7 +3,7 @@
 - demo-school   (1000000000000000003) 正式演示租户：账号 admin / teacher / student（123456）
   组织 2 学院 / 3 专业 / 3 班级；学生 ≥20；六大业务域三态样例；教师范围=看得见即能处理。
   该租户在中间件层强制只读（写操作 403），数据不会被参观者改动。
-- sandbox-school(1000000000000000004) 自由体验租户：账号 admin2 / teacher2 / student2（123456）
+- sandbox-school(1000000000000000007) 自由体验租户：账号 admin2 / teacher2 / student2（123456）
   沙箱种子/重置的唯一实现在 app/services/sandbox_service.py（手动恢复与可选定时任务共用）。
 密码只以 pbkdf2 hash 落库（复用全局 hash_password），绝无明文；弱密码账号仅存在于这两个租户。
 所有账号走真实 /api/v1/auth/login，与 mock-login 无关。
@@ -26,7 +26,7 @@ from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, Attenda
 DEMO_TID = 1000000000000000003
 DEMO_CODE = "demo-school"
 DEMO_NAME = "演示职业技术学校"
-SANDBOX_TID = 1000000000000000004
+SANDBOX_TID = 1000000000000000007
 SANDBOX_CODE = "sandbox-school"
 SANDBOX_NAME = "体验沙箱学校"
 

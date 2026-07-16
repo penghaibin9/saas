@@ -29,7 +29,7 @@ _MOCK_TENANTS = {
         "status": "ACTIVE",
     },
     "sandbox-school": {
-        "tenantId": "1000000000000000004",
+        "tenantId": "1000000000000000007",
         "tenantCode": "sandbox-school",
         "tenantName": "体验沙箱学校",
         "status": "ACTIVE",

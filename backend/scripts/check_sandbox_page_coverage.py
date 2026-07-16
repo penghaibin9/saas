@@ -91,7 +91,7 @@ def run() -> int:
         from scripts._seed_sandbox_coverage import sandbox_flow_coverage_report
         db = get_sessionmaker()()
         try:
-            coverage = sandbox_flow_coverage_report(db, 1000000000000000004)
+            coverage = sandbox_flow_coverage_report(db, 1000000000000000007)
             status_rows = {}
             if coverage["missing"]:
                 from app.models import Base
@@ -101,7 +101,7 @@ def run() -> int:
                     status_rows[missing["table"]] = [
                         {"id": str(row.id), "status": row.status}
                         for row in db.execute(select(table.c.id, table.c.status).where(
-                            table.c.tenant_id == 1000000000000000004)).all()
+                            table.c.tenant_id == 1000000000000000007)).all()
                     ]
         finally:
             db.close()

@@ -1,9 +1,10 @@
 """体验沙箱租户（sandbox-school）种子与重置 —— 运营平台手动恢复与可选定时任务共用。
 ────────────────────────────────────────────────────────────
 安全边界（写死，不接受参数覆盖）：
-- 只操作 tenant_id == SANDBOX_TID（1000000000000000004）的行；
+- 只操作 tenant_id == SANDBOX_TID（1000000000000000007）的行；
 - 保留 t_tenant / t_tenant_brand_config 行（租户身份不删）；
-- 绝不无租户条件删除、绝不 truncate、绝不触碰 demo-school 与正式租户。
+- 绝不无租户条件删除、绝不 truncate、绝不触碰 demo-school 与正式租户；
+- 清空/重灌前强制校验目标租户 tenant_code == sandbox-school，杜绝误伤 trial/expired/disabled 等平台租户槽位。
 """
 from __future__ import annotations
 
@@ -16,10 +17,18 @@ from app.core.student_lifecycle import ENROLLED, INTERN
 
 logger = logging.getLogger("app.sandbox")
 
-SANDBOX_TID = 1000000000000000004
+SANDBOX_TID = 1000000000000000007
 SANDBOX_CODE = "sandbox-school"
 SANDBOX_NAME = "体验沙箱学校"
 DEMO_TID = 1000000000000000003  # 保护对象：任何情况下不得删除
+# 平台种子已占用的租户槽位（_seed_platform.py）：主/演示/trial/expired/disabled。
+# 沙箱 ID 绝不能落在这些值上，否则一次「恢复沙箱」会清空/改写真实平台租户。
+_RESERVED_TENANT_IDS = frozenset({
+    1000000000000000000, 1000000000000000001, 1000000000000000002,
+    1000000000000000003, 1000000000000000004, 1000000000000000005,
+    1000000000000000006,
+})
+assert SANDBOX_TID not in _RESERVED_TENANT_IDS, "沙箱租户 ID 撞上平台已分配租户槽位"
 
 SBX_STUDENT_NAME = "李体验"
 SBX_STUDENT_NO = "2026S0001"
@@ -80,9 +89,22 @@ def _revoke_sandbox_logins(db) -> int:
     return int(res.rowcount or 0)
 
 
+def _assert_target_is_sandbox(db) -> None:
+    """清空/重灌前置守卫：目标租户若已存在，其 tenant_code 必须是 sandbox-school。
+    杜绝沙箱 ID 万一撞上 trial/expired/disabled 等平台租户时静默清空真实数据。"""
+    from app.models import Tenant
+    from app.core.exceptions import AppException
+    assert SANDBOX_TID != DEMO_TID, "安全断言：沙箱租户 ID 不得等于演示租户"
+    tenant = db.get(Tenant, SANDBOX_TID)
+    if tenant is not None and (tenant.tenant_code or "") != SANDBOX_CODE:
+        raise AppException("DATA_CONFLICT",
+                           f"拒绝操作：租户 {SANDBOX_TID} 的 code 是 {tenant.tenant_code!r}，"
+                           f"不是 {SANDBOX_CODE}，可能是平台真实租户，已阻断清空/重灌。")
+
+
 def wipe_sandbox(db) -> dict[str, int]:
     """按租户条件清空沙箱业务数据（不含 t_tenant / 品牌行）。返回各表删除行数。"""
-    assert SANDBOX_TID != DEMO_TID, "安全断言：沙箱租户 ID 不得等于演示租户"
+    _assert_target_is_sandbox(db)
     removed: dict[str, int] = {}
     removed["_auth_refresh_revoked"] = _revoke_sandbox_logins(db)
     for tbl in _tenant_tables(db):
@@ -102,6 +124,7 @@ def seed_sandbox(db) -> dict:
                             Role, SchoolClass, StudentContact, StudentProfile, TeacherStudentScope,
                             Tenant, TenantBrandConfig, UnifiedMessage, UnifiedTodo, User,
                             UserRole, WeeklyReport, WorkflowInstance, WorkflowTask)
+    _assert_target_is_sandbox(db)
     out = {}
     tenant = db.get(Tenant, SANDBOX_TID)
     if tenant is None:

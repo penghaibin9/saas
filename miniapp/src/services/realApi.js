@@ -219,12 +219,14 @@ export async function enrichGraduation(mock) {
   const r = await realRequest('/mobile/graduation/my')
   if (!r || !r.hasData) return { ...mock, hasBatch: false, _real: false }
   const primary = GD_PRIMARY[r.stage] || { title: '毕业设计进行中', desc: '按导师指导推进各节点', actionText: '查看', anchor: 'nodes' }
-  return { ...mock, hasBatch: true, topic: r.topicTitle || mock.topic, mentor: r.advisorName || mock.mentor,
+  // 已确有真实毕设档案（hasData=true）：字段一律以真实值为准，缺失只给中性占位，
+  // 绝不回落 mock 演示值，避免真实学生看到假课题/假导师/假节点。
+  return { ...mock, hasBatch: true, topic: r.topicTitle || '（未选题）', mentor: r.advisorName || '（未分配导师）',
     stage: r.stage, stageLabel: r.stageLabel || '', defenseGroup: r.defenseGroup, plagiarismRate: r.plagiarismRate,
     hasTopic: !!r.topicTitle && r.topicTitle !== '（未选题）',
     // 真实覆盖 mock 骨架：批次名 / 节点进度 / 指导记录 / 当前主任务
-    batch: r.batchName || r.stageLabel || mock.batch,
-    nodes: (r.nodes && r.nodes.length) ? r.nodes : mock.nodes,
+    batch: r.batchName || r.stageLabel || '',
+    nodes: (r.nodes && r.nodes.length) ? r.nodes : [],
     guideLogs: r.guideLogs || [],
     primaryAction: primary,
     returnedNote: '',
