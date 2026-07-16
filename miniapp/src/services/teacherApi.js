@@ -139,6 +139,10 @@ export const teacherApi = {
   getStudentEvalDetail: (evalId) => real.teacherStudentEvalDetail(evalId),
   submitStudentEvalAdvisorComment: (evalId, body) => real.teacherStudentEvalAdvisorComment(evalId, body),
   reviewStudentEval: (evalId, action, comment) => real.teacherStudentEvalReview(evalId, action, comment),
+  // 企业评价：教师端列表 + 录入(五维评分) + 审核（owner 校验，真实接口，无 mock 兜底）
+  getEnterpriseEvalPending: () => real.teacherEnterpriseEvalPending(),
+  createEnterpriseEval: (body) => real.teacherEnterpriseEvalCreate(body),
+  reviewEnterpriseEval: (evalId, action, comment) => real.teacherEnterpriseEvalReview(evalId, action, comment),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

@@ -1199,6 +1199,40 @@ def student_eval_review(user: dict, eval_id: str, action: str, comment: str | No
     return result
 
 
+def enterprise_eval_pending(user: dict) -> dict:
+    """企业评价·教师端列表（本人指导学生的企业评价，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_enterprise_eval_service as ee
+    items, total = ee.list_evals(1, 50, user=u)
+    return {"list": items, "total": total}
+
+
+def enterprise_eval_create(user: dict, body: dict) -> dict:
+    """企业评价·教师录入（学校录入企业纸质评价，五维评分，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实录入")
+    from app.modules.internship.services import internship_enterprise_eval_service as ee
+    result = ee.create(u, body or {})
+    _audit_write("MOBILE_ENTERPRISE_EVAL_CREATE", f"internship-enterprise-eval:{result.get('id')}",
+                 {"operator": u.get("realName"), "internshipId": (body or {}).get("internshipId")})
+    return result
+
+
+def enterprise_eval_review(user: dict, eval_id: str, action: str, comment: str | None = None) -> dict:
+    """企业评价审核（APPROVE/RETURN，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.internship.services import internship_enterprise_eval_service as ee
+    result = ee.review(u, eval_id, action, comment or "")
+    _audit_write("MOBILE_ENTERPRISE_EVAL_REVIEW", f"internship-enterprise-eval:{eval_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
 def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)

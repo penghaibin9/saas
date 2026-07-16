@@ -744,6 +744,24 @@ def teacher_student_eval_review(eval_id: str, body: dict = Body(...),
                                            body.get("comment") or ""), message="审核完成")
 
 
+@router.get("/teacher/internship/enterprise-evals", summary="指导教师·企业评价列表（范围校验）")
+def teacher_enterprise_eval_pending(user=Depends(get_current_user)):
+    return success(tea.enterprise_eval_pending(user))
+
+
+@router.post("/teacher/internship/enterprise-evals", summary="指导教师·录入企业评价（学校录入企业纸质评价，五维评分，owner 校验）")
+def teacher_enterprise_eval_create(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.enterprise_eval_create(user, body), message="已录入企业评价")
+
+
+@router.post("/teacher/internship/enterprise-evals/{eval_id}/review",
+             summary="指导教师·审核企业评价（APPROVE/RETURN，owner 校验）")
+def teacher_enterprise_eval_review(eval_id: str, body: dict = Body(...),
+                                   user=Depends(get_current_user)):
+    return success(tea.enterprise_eval_review(user, eval_id, str(body.get("action") or "").upper(),
+                                              body.get("comment") or ""), message="审核完成")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):

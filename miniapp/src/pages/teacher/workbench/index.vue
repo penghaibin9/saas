@@ -138,6 +138,7 @@ export default {
         leave: '/pages/teacher/internship-approval/index?tab=leave',
         guidance: '/pages/teacher/internship-guidance/index',
         'stu-eval': '/pages/teacher/student-eval/index',
+        'ent-eval': '/pages/teacher/enterprise-eval/index',
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         follow: '/pages/teacher/employment-follow/index',

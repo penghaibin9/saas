@@ -175,6 +175,14 @@ export const teacherStudentEvalReview = (evalId, action, comment) =>
   realRequest(`/mobile/teacher/internship/student-evals/${evalId}/review`,
     { method: 'POST', data: { action, comment: comment || '' } })
 
+/** 企业评价：教师端列表 / 录入(五维评分) / 审核（APPROVE/RETURN，owner 校验，真实接口，无 mock 兜底） */
+export const teacherEnterpriseEvalPending = () => realRequest('/mobile/teacher/internship/enterprise-evals')
+export const teacherEnterpriseEvalCreate = (body) =>
+  realRequest('/mobile/teacher/internship/enterprise-evals', { method: 'POST', data: body })
+export const teacherEnterpriseEvalReview = (evalId, action, comment) =>
+  realRequest(`/mobile/teacher/internship/enterprise-evals/${evalId}/review`,
+    { method: 'POST', data: { action, comment: comment || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }
