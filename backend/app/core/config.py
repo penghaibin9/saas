@@ -40,12 +40,16 @@ class Settings(BaseSettings):
     # 实习请假逾期扫描：生产环境默认开启；多实例通过数据库幂等规则保证重复扫描安全。
     INTERNSHIP_OVERDUE_AUTO_SCAN: bool = True
 
+    # ── 反向代理 ──
+    # 可信代理（逗号分隔，支持单 IP 或 CIDR 网段，如 172.16.0.0/12）。请求直连方 IP 命中时，
+    # 才信任 X-Forwarded-For/X-Real-IP 解析真实客户端 IP（登录限流、审计日志按真实 IP 计）；
+    # 否则一律用直连 IP，防头部伪造。默认仅本机回环（Nginx 与后端同机直装拓扑）；
+    # docker compose 拓扑请设为容器网段（见 deploy/docker/docker-compose.mysql.yml）。
+    TRUSTED_PROXY_IPS: str = "127.0.0.1,::1"
+
     # ── 多租户（对齐 DB 冻结册：单库/单 schema + tenant_id 行级隔离）──
     TENANCY_MODE: str = "single"         # single(私有化单校) / multi(SaaS 多校)
     DEFAULT_TENANT_CODE: str = "demo"
-
-    # ── 平台运营控制面（跨租户，独立令牌，与学校角色边界隔离）──
-    PLATFORM_ADMIN_TOKEN: str = ""       # 未配置则平台端接口默认关闭
 
     # ── 微信小程序一键登录（jscode2session）──
     WX_APPID: str = ""                   # 小程序 AppID；未配置则微信登录端点返回"未配置"错误，不影响账号密码登录

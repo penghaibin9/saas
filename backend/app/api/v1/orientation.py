@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Query
 
+from app.core.domain_request_permissions import require_orientation_request_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchUpdate, BlockedBody,
@@ -13,7 +14,10 @@ from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchUpdate, Bl
                                       ReasonBody, RemarkBody, StudentCreate, StudentUpdate, VerifyBody)
 from app.services import orientation_service as svc
 
-router = APIRouter(prefix="/orientation", tags=["数字迎新"])
+# P1-1（生产级审计整改）：router 级权限码裁决——读=studentAffairs.orientation.view、
+# 导出=.export、写=.manage。此前 49 个端点仅 require_staff，任意教职工可读全量新生隐私。
+router = APIRouter(prefix="/orientation", tags=["数字迎新"],
+                   dependencies=[Depends(require_orientation_request_permission)])
 
 
 @router.get("/dashboard", summary="迎新看板")
