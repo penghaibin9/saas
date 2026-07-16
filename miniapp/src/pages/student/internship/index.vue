@@ -62,11 +62,6 @@
           </view>
         </view>
 
-        <!-- 功能入口 -->
-        <view class="section-head"><text class="section-head__title">实习功能</text></view>
-        <view class="in__entries card">
-          <text v-for="e in i.entries" :key="e" class="in__entry" @click="entryTap(e)">{{ e }}</text>
-        </view>
       </view>
     </MobileGlobalState>
 
@@ -106,10 +101,6 @@ export default {
       this.state = 'loading'
       studentApi.getInternship().then((d) => { this.i = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
-    entryTap(e) {
-      if (String(e).indexOf('周报') >= 0) return this.weekly()
-      toast(e + '：入口即将开放')
-    },
     weekly() {
       if (this.i.weekly.submitted || useSubmissionsStore().hasWeekly(this.i.weekly.week)) {
         this.i.weekly.submitted = true
@@ -145,6 +136,4 @@ export default {
 .in__nav-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--space-3) 0; }
 .in__nav-icon { font-size: 26px; line-height: 1; }
 .in__nav-label { font-size: var(--font-size-xs); color: var(--text-secondary); }
-.in__entries { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.in__entry { font-size: var(--font-size-sm); color: var(--text-secondary); background: var(--gray-50); border: 1px solid var(--border-base); padding: 7px 12px; border-radius: var(--radius-md); }
 </style>
