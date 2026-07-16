@@ -450,6 +450,14 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/attendance/sessions/${sessionId}`))
   },
 
+  /* ── 成绩复查（学生发起在小程序；教务处复审在 PC：维持/调整/不予受理） ── */
+  getGradeRechecks(params = {}) {
+    return callList(`${BASE}/grade-rechecks`, params)
+  },
+  reviewGradeRecheck(recheckId, body) {
+    return call(() => request(`${BASE}/grade-rechecks/${recheckId}/review`, { method: 'POST', body }))
+  },
+
   /* ── 学业预警（扫描 + 列表；多维分类/规则/跟进/统计见 academicAffairsWarningApi） ── */
   scanWarnings() {
     return call(() => request(`${BASE}/warnings/scan`, { method: 'POST' }))

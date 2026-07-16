@@ -390,6 +390,31 @@ class AaGradeRecord(PKMixin, TenantMixin, CommonMixin, Base):
                                                         comment="NORMAL/ABSENT/DEFERRED/EXEMPT")
 
 
+class AaGradeRecheck(PKMixin, TenantMixin, CommonMixin, Base):
+    """成绩复查申请（学生对已发布成绩发起复查，正方 学生端3.12成绩复查申请/教师端3.11复查审核 对标）。
+
+    流程：学生对本人某门已发布成绩(t_acad_grade)发起复查 → 教务复审：
+    维持原成绩(UPHELD) / 调整成绩(ADJUSTED，回写 t_acad_grade source=RECHECK + 刷新学生台账 + 通知学生)
+    / 不予受理(REJECTED，留原因)。幂等：同一 acad_grade 仅一条在途(SUBMITTED)记录。
+    """
+    __tablename__ = "t_aa_grade_recheck"
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_student_profile")
+    student_no: Mapped[str | None] = mapped_column(String(50), comment="学号快照")
+    student_name: Mapped[str | None] = mapped_column(String(100), comment="姓名快照")
+    acad_grade_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="→ t_acad_grade 被复查成绩")
+    course_name: Mapped[str | None] = mapped_column(String(200), comment="课程名快照")
+    term: Mapped[str | None] = mapped_column(String(50), comment="学期快照")
+    original_score: Mapped[int | None] = mapped_column(Integer, comment="申请时原成绩快照")
+    reason: Mapped[str] = mapped_column(String(500), nullable=False, comment="复查理由")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="SUBMITTED", index=True,
+                                        comment="SUBMITTED/UPHELD/ADJUSTED/REJECTED")
+    new_score: Mapped[int | None] = mapped_column(Integer, comment="调整后成绩(ADJUSTED)")
+    review_note: Mapped[str | None] = mapped_column(String(500), comment="复查意见")
+    reviewed_by: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 # ═══════════ 毕业资格预审组（13B-P6；七项跨域供数三态判定）═══════════
 
 

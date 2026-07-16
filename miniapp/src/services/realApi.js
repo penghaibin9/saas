@@ -706,6 +706,9 @@ export const acadRecognitionMy = () => realRequest('/mobile/academic/recognition
 export const acadRecognitionSubmit = (body) =>
   realRequest('/mobile/academic/recognition/submit', { method: 'POST', data: body })
 /** 等级考务报名（学生自助，对标正方 3.13） */
+export const acadRecheckMy = () => realRequest('/mobile/academic/grade-recheck/my')
+export const acadRecheckSubmit = (body) =>
+  realRequest('/mobile/academic/grade-recheck/submit', { method: 'POST', data: body })
 export const acadLevelExamMy = () => realRequest('/mobile/academic/level-exam/my')
 export const acadLevelRegister = (examId) =>
   realRequest(`/mobile/academic/level-exam/${examId}/register`, { method: 'POST' })

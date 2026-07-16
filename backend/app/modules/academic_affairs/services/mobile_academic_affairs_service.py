@@ -227,6 +227,18 @@ def recognition_submit_my(user, body) -> dict:
     return recog.submit(user, _ns(b))
 
 
+def grade_recheck_my(user):
+    """我的成绩复查申请记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_grade_recheck_service as rc
+    return {"items": rc.my(user)}
+
+
+def grade_recheck_submit_my(user, body) -> dict:
+    """学生本人对已发布成绩(t_acad_grade)发起复查。"""
+    from app.modules.academic_affairs.services import academic_affairs_grade_recheck_service as rc
+    return rc.submit(user, body or {})
+
+
 # ═══════════ 等级考务报名（学生自助，对标正方 3.13 考级项目报名）═══════════
 
 def level_exam_my(user):

@@ -133,6 +133,8 @@ export const studentApi = {
   // 成绩认定/课程替代（学生自助，对标正方 3.16/3.27）
   getMyRecognition: () => real.acadRecognitionMy(),
   submitRecognition: (body) => real.acadRecognitionSubmit(body),
+  getMyRecheck: () => real.acadRecheckMy(),
+  submitRecheck: (body) => real.acadRecheckSubmit(body),
   // 等级考务报名（学生自助，对标正方 3.13）
   getMyLevelExam: () => real.acadLevelExamMy(),
   registerLevelExam: (examId) => real.acadLevelRegister(examId),

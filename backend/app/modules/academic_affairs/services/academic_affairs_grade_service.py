@@ -622,8 +622,9 @@ def transcript(student_id, user) -> dict:
             AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
             AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))
             .order_by(AcademicGrade.term)).all()
-        items = [{"courseName": g.course_name, "term": g.term or "", "credit": float(g.credit_value or 0),
-                  "score": g.score, "passStatus": g.pass_status, "source": g.source or "LEGACY"} for g in rows]
+        items = [{"gradeId": str(g.id), "courseName": g.course_name, "term": g.term or "",
+                  "credit": float(g.credit_value or 0), "score": g.score,
+                  "passStatus": g.pass_status, "source": g.source or "LEGACY"} for g in rows]
         earned = sum(float(g.credit_value or 0) for g in rows if g.pass_status == "PASSED")
         return {"items": items, "earnedCredits": earned, "gpa": float(a.gpa or 0),
                 "failCount": sum(1 for g in rows if g.pass_status in ("FAIL", "FAILED"))}

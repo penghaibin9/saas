@@ -19,6 +19,7 @@ def _require_student(user: dict = Depends(get_current_user)) -> dict:
     return user
 from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_svc
 from app.modules.academic_affairs.services import academic_affairs_attendance_service as attendance_svc
+from app.modules.academic_affairs.services import academic_affairs_grade_recheck_service as recheck_svc
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
 from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
@@ -995,6 +996,26 @@ def attendance_session_detail(sessionId: int = Path(...), user=Depends(require_s
 def attendance_stats_view(classId: Optional[str] = None, termCode: Optional[str] = None,
                           sessionType: Optional[str] = None, user=Depends(require_staff)):
     return success(attendance_svc.attendance_stats(user, classId, termCode, sessionType))
+
+
+# ═══════════ 成绩复查（学生发起在移动端；教务处复审在 PC，正方 学生端3.12/教师端3.11 对标）═══════════
+@router.get("/grade-rechecks", summary="成绩复查台账（教务处，按状态筛选）")
+def grade_recheck_list(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                       user=Depends(require_permission("academicAffairs.grade.view"))):
+    items, total = recheck_svc.list_all(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+class GradeRecheckReviewBody(BaseModel):
+    action: str = Field(..., description="UPHOLD 维持 / ADJUST 调整 / REJECT 不予受理")
+    note: Optional[str] = Field("", max_length=500)
+    newScore: Optional[int] = Field(None, ge=0, le=100, description="ADJUST 时必填")
+
+
+@router.post("/grade-rechecks/{recheckId}/review", summary="成绩复查复审（维持/调整回写t_acad_grade+通知学生/不予受理）")
+def grade_recheck_review(body: GradeRecheckReviewBody, recheckId: int = Path(...),
+                         user=Depends(require_permission("academicAffairs.grade.publish"))):
+    return success(recheck_svc.review(user, recheckId, body.action, body.note, body.newScore))
 
 
 # ═══════════ 学业预警（P5 规则引擎 + 二级模块 Tier1：看板/多维分类/规则/跟进/统计）═══════════

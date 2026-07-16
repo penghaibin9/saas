@@ -964,6 +964,16 @@ def academic_recognition_submit(body: dict = Body(...), user=Depends(get_current
     return success(aa.recognition_submit_my(user, body), message="认定申请已提交")
 
 
+@router.get("/academic/grade-recheck/my", summary="教务·我的成绩复查申请")
+def academic_recheck_my(user=Depends(get_current_user)):
+    return success(aa.grade_recheck_my(user))
+
+
+@router.post("/academic/grade-recheck/submit", summary="教务·本人对已发布成绩发起复查")
+def academic_recheck_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.grade_recheck_submit_my(user, body), message="复查申请已提交")
+
+
 # ── 等级考务报名（学生自助） ──
 @router.get("/academic/level-exam/my", summary="教务·考级·开放考试+我的报名")
 def academic_level_exam_my(user=Depends(get_current_user)):
