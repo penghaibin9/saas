@@ -38,7 +38,7 @@ def _seed_term(db_mode, year_code, term_no, status):
 
 def _term(client, hdr, year="2026-2027", no=1):
     return client.post(f"{BASE}/terms", headers=hdr, json={
-        "yearCode": year, "termNo": no, "termName": f"{year}第{no}学期",
+        "yearCode": year, "termNo": no, "termName": f"{year} 第{no}学期",
         "startDate": "2026-09-01", "endDate": "2027-01-15", "teachingWeeks": 18})
 
 
