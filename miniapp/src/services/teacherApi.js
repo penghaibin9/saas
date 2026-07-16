@@ -156,6 +156,10 @@ export const teacherApi = {
   // 三方协议：待学校确认队列 + 学校确认生效（owner 校验，真实接口，无 mock 兜底）
   getAgreementPendingSchool: () => real.teacherAgreementPendingSchool(),
   confirmAgreementSchool: (agreementId) => real.teacherAgreementSchoolConfirm(agreementId),
+  // 过程报告(日报/月报/总结)：教师端待批阅队列 + 详情 + 批阅（owner 校验，真实接口，无 mock 兜底）
+  getProcessReportPending: () => real.teacherProcessReportPending(),
+  getProcessReportDetail: (reportId) => real.teacherProcessReportDetail(reportId),
+  reviewProcessReport: (reportId, action, comment) => real.teacherProcessReportReview(reportId, action, comment),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

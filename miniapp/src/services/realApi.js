@@ -207,6 +207,13 @@ export const teacherAgreementPendingSchool = () => realRequest('/mobile/teacher/
 export const teacherAgreementSchoolConfirm = (agreementId) =>
   realRequest(`/mobile/teacher/internship/agreements/${agreementId}/school-confirm`, { method: 'POST' })
 
+/** 过程报告(日报/月报/总结)：教师端待批阅队列 / 详情 / 批阅（APPROVE/RETURN，owner+范围校验，真实接口，无 mock 兜底） */
+export const teacherProcessReportPending = () => realRequest('/mobile/teacher/internship/process-reports')
+export const teacherProcessReportDetail = (reportId) => realRequest(`/mobile/teacher/internship/process-reports/${reportId}`)
+export const teacherProcessReportReview = (reportId, action, comment) =>
+  realRequest(`/mobile/teacher/internship/process-reports/${reportId}/review`,
+    { method: 'POST', data: { action, comment: comment || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

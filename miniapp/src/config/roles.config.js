@@ -95,7 +95,8 @@ export const roleConfigs = {
       { key: 'insurance', label: '保险核验', icon: '🛡' },
       { key: 'internship-change', label: '调岗退岗初审', icon: '🔀' },
       { key: 'internship-score', label: '实习成绩', icon: '💯' },
-      { key: 'agreement-confirm', label: '协议确认', icon: '📃' }
+      { key: 'agreement-confirm', label: '协议确认', icon: '📃' },
+      { key: 'process-report', label: '过程报告批阅', icon: '📰' }
     ],
     permissionActions: ['intern.weekly.review', 'intern.leave.approve', 'intern.checkin.handle', 'visit.create']
   },

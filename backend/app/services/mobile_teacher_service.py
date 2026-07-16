@@ -1333,6 +1333,37 @@ def agreement_school_confirm(user: dict, agreement_id: str) -> dict:
     return result
 
 
+def process_report_pending(user: dict) -> dict:
+    """过程报告(日报/月报/总结)·待批阅队列（本人指导学生，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_process_report_service as pr
+    items, total = pr.list_reports(1, 50, status="PENDING_REVIEW", user=u)
+    return {"list": items, "total": total}
+
+
+def process_report_detail(user: dict, report_id: str) -> dict:
+    """过程报告详情（含正文，owner+范围校验）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实报告")
+    from app.modules.internship.services import internship_process_report_service as pr
+    return pr.get_report(report_id, user=u)
+
+
+def process_report_review(user: dict, report_id: str, action: str, comment: str | None = None) -> dict:
+    """过程报告批阅（APPROVE/RETURN，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
+    from app.modules.internship.services import internship_process_report_service as pr
+    result = pr.review_report(report_id, action, comment or "", user=u)
+    _audit_write("MOBILE_PROCESS_REPORT_REVIEW", f"internship-process-report:{report_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
 def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)

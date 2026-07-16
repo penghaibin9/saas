@@ -348,6 +348,10 @@
       "style": { "navigationBarTitleText": "三方协议学校确认", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/process-report-review/index",
+      "style": { "navigationBarTitleText": "过程报告批阅", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

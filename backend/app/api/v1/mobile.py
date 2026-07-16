@@ -814,6 +814,24 @@ def teacher_agreement_school_confirm(agreement_id: str, user=Depends(get_current
     return success(tea.agreement_school_confirm(user, agreement_id), message="已确认生效")
 
 
+@router.get("/teacher/internship/process-reports", summary="指导教师·过程报告(日报/月报/总结)待批阅队列（范围校验）")
+def teacher_process_report_pending(user=Depends(get_current_user)):
+    return success(tea.process_report_pending(user))
+
+
+@router.get("/teacher/internship/process-reports/{report_id}", summary="指导教师·过程报告详情（含正文，范围校验）")
+def teacher_process_report_detail(report_id: str, user=Depends(get_current_user)):
+    return success(tea.process_report_detail(user, report_id))
+
+
+@router.post("/teacher/internship/process-reports/{report_id}/review",
+             summary="指导教师·过程报告批阅（APPROVE/RETURN，owner 校验）")
+def teacher_process_report_review(report_id: str, body: dict = Body(...),
+                                  user=Depends(get_current_user)):
+    return success(tea.process_report_review(user, report_id, str(body.get("action") or "").upper(),
+                                             body.get("comment") or ""), message="批阅完成")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):
