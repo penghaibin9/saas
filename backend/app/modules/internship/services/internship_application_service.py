@@ -323,9 +323,9 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
         self_company, self_position = app.company_name, app.position_name
     # Existing assignment is the only authoritative capacity write path.
     if app_type == "POSITION":
-        student_svc.assign_position(record_id, position_id)
+        student_svc.assign_position(record_id, position_id, user=user)
     else:
-        student_svc.set_destination(record_id, "SELF_ARRANGED", "审核通过自主实习申请")
+        student_svc.set_destination(record_id, "SELF_ARRANGED", "审核通过自主实习申请", user=user)
         with session() as db:
             rec = db.get(InternshipRecord, record_id)
             rec.enterprise_name = self_company

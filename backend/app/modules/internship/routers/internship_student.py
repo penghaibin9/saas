@@ -125,21 +125,21 @@ def intern_student_detail(record_id: str, user=Depends(require_permission(_P_VIE
 
 @router.put("/intern-students/{record_id}", summary="编辑实习学生（已归档不可编辑）")
 def update_intern_student(record_id: str, body: StudentRecordUpdate, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.update_student_record(record_id, body)
+    result = svc.update_student_record(record_id, body, user=user)
     audit_log.record("编辑实习学生", f"internship-student:{record_id}")
     return success(result, message="已保存")
 
 
 @router.post("/intern-students/{record_id}/assign", summary="分配岗位（校验上架/黑名单/满员；回填 allocated_count）")
 def assign_position(record_id: str, body: AssignPositionRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.assign_position(record_id, body.positionId)
+    result = svc.assign_position(record_id, body.positionId, user=user)
     audit_log.record("分配实习岗位", f"internship-student:{record_id}", detail={"positionId": body.positionId})
     return success(result, message="已分配")
 
 
 @router.post("/intern-students/{record_id}/advisor", summary="分配或变更校内指导教师（绑定真实教职工账号并审计）")
 def assign_advisor(record_id: str, body: AdvisorAssignmentRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.assign_advisor(record_id, body.advisorUserId, body.reason or "")
+    result = svc.assign_advisor(record_id, body.advisorUserId, body.reason or "", user=user)
     audit_log.record("分配实习指导教师", f"internship-student:{record_id}",
                      detail={"advisorUserId": body.advisorUserId})
     return success(result, message="指导教师已分配")
@@ -147,27 +147,27 @@ def assign_advisor(record_id: str, body: AdvisorAssignmentRequest, user=Depends(
 
 @router.post("/intern-students/{record_id}/unassign", summary="退岗（释放岗位名额）")
 def unassign_position(record_id: str, body: UnassignRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.unassign_position(record_id, body.reason or "")
+    result = svc.unassign_position(record_id, body.reason or "", user=user)
     audit_log.record("实习退岗", f"internship-student:{record_id}")
     return success(result, message="已退岗")
 
 
 @router.post("/intern-students/{record_id}/status", summary="实习状态机（待上岗/上岗/考核/归档）")
 def student_status(record_id: str, body: StudentStatusRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.set_status(record_id, body.action, body.reason or "")
+    result = svc.set_status(record_id, body.action, body.reason or "", user=user)
     audit_log.record("实习状态变更", f"internship-student:{record_id}", detail={"action": body.action})
     return success(result, message="已更新")
 
 
 @router.post("/intern-students/{record_id}/eligibility", summary="实习资格认定（合格/不合格）")
 def student_eligibility(record_id: str, body: EligibilityRequest, user=Depends(require_permission(_P_ELIGIBILITY))):
-    result = svc.set_eligibility(record_id, body.status, body.reason or "")
+    result = svc.set_eligibility(record_id, body.status, body.reason or "", user=user)
     audit_log.record("实习资格认定", f"internship-student:{record_id}", detail={"status": body.status})
     return success(result, message="已更新")
 
 
 @router.post("/intern-students/{record_id}/destination", summary="实习去向（自主实习/免实习/未落实）")
 def student_destination(record_id: str, body: DestinationRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.set_destination(record_id, body.destination, body.reason or "")
+    result = svc.set_destination(record_id, body.destination, body.reason or "", user=user)
     audit_log.record("实习去向变更", f"internship-student:{record_id}", detail={"destination": body.destination})
     return success(result, message="已更新")

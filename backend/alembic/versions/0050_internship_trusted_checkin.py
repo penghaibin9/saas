@@ -23,7 +23,9 @@ def _columns(bind, table: str) -> set[str]:
 
 
 def _add(table: str, column: sa.Column) -> None:
-    if column.name not in _columns(op.get_bind(), table):
+    cols = _columns(op.get_bind(), table)
+    # 表已存在才补列；缺失表（全新库）交由 0053 基线迁移建全量结构，避免对缺失表 add_column 崩溃。
+    if cols and column.name not in cols:
         op.add_column(table, column)
 
 

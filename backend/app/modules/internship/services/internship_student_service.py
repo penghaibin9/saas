@@ -46,6 +46,16 @@ def _get(db, rec_id) -> InternshipRecord:
     return r
 
 
+def _assert_write_scope(db, r: InternshipRecord, user) -> None:
+    """写操作数据范围校验：越出教师数据范围的写 → 403（与详情读 get_student 同边界）。
+    ADMIN_TENANT（校级管理员）恒通过；SCOPED（指导教师/学院负责人）按本人指导/本院收敛。
+    _current_scope / _rec_in_scope 在本模块下方定义，调用时已就绪（Python 运行期解析）。"""
+    stu = db.get(StudentProfile, r.student_id)
+    if not _rec_in_scope(_current_scope(user), db, r, stu):
+        from app.core.exceptions import no_permission
+        raise no_permission("该实习学生不在你的数据范围内")
+
+
 def _students_map(db, ids: list[int]) -> dict:
     if not ids:
         return {}
@@ -301,9 +311,10 @@ def create_student_record(body) -> dict:
         return _row_of(db, r)
 
 
-def update_student_record(rec_id, body) -> dict:
+def update_student_record(rec_id, body, user=None) -> dict:
     with session() as db:
         r = _get(db, rec_id)
+        _assert_write_scope(db, r, user)
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可编辑")
         before_advisor = r.advisor_user_id
@@ -323,9 +334,10 @@ def update_student_record(rec_id, body) -> dict:
         return _row_of(db, r)
 
 
-def assign_advisor(rec_id, advisor_user_id, reason: str = "") -> dict:
+def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None) -> dict:
     with session() as db:
         r = _get(db, rec_id)
+        _assert_write_scope(db, r, user)
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可变更指导教师")
         advisor = _advisor(db, advisor_user_id)
@@ -342,9 +354,10 @@ def assign_advisor(rec_id, advisor_user_id, reason: str = "") -> dict:
 
 # ═══════════ 学生-岗位分配（岗位库 allocated_count 收口）═══════════
 
-def assign_position(rec_id, position_id) -> dict:
+def assign_position(rec_id, position_id, user=None) -> dict:
     with session() as db:
         r = _get(db, rec_id)
+        _assert_write_scope(db, r, user)
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可分配岗位")
         p = db.get(InternshipPosition, int(position_id))
@@ -384,9 +397,10 @@ def assign_position(rec_id, position_id) -> dict:
         return _row_of(db, r)
 
 
-def unassign_position(rec_id, reason: str = "") -> dict:
+def unassign_position(rec_id, reason: str = "", user=None) -> dict:
     with session() as db:
         r = _get(db, rec_id)
+        _assert_write_scope(db, r, user)
         if not r.position_id:
             raise AppException("DATA_CONFLICT", "该学生未分配岗位")
         p = db.get(InternshipPosition, r.position_id)
@@ -408,10 +422,11 @@ def unassign_position(rec_id, reason: str = "") -> dict:
 
 # ═══════════ 状态机 / 资格 / 去向 ═══════════
 
-def set_status(rec_id, action: str, reason: str = "") -> dict:
+def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
     """READY / ONBOARD / ASSESS / ARCHIVE。上岗需已合格 + 已分配岗位。"""
     with session() as db:
         r = _get(db, rec_id)
+        _assert_write_scope(db, r, user)
         if action == "READY":
             if r.status != "PREPARING":
                 raise AppException("DATA_CONFLICT", "仅「准备中」可置为待上岗")
@@ -441,23 +456,25 @@ def set_status(rec_id, action: str, reason: str = "") -> dict:
         return _row_of(db, r)
 
 
-def set_eligibility(rec_id, status: str, reason: str = "") -> dict:
+def set_eligibility(rec_id, status: str, reason: str = "", user=None) -> dict:
     if status not in ("QUALIFIED", "UNQUALIFIED", "PENDING"):
         raise AppException("VALIDATION_ERROR", "非法资格状态")
     with session() as db:
         r = _get(db, rec_id)
+        _assert_write_scope(db, r, user)
         r.eligibility_status = status
         _trail(db, r.id, "ELIGIBILITY", {"status": status, "reason": reason})
         db.commit()
         return _row_of(db, r)
 
 
-def set_destination(rec_id, destination: str, reason: str = "") -> dict:
+def set_destination(rec_id, destination: str, reason: str = "", user=None) -> dict:
     """自主实习 / 免实习 / 未落实。已分配岗位(ASSIGNED)请走退岗，不在此改。"""
     if destination not in ("SELF_ARRANGED", "EXEMPTED", "NONE"):
         raise AppException("VALIDATION_ERROR", "非法去向（分配岗位请用分配接口）")
     with session() as db:
         r = _get(db, rec_id)
+        _assert_write_scope(db, r, user)
         if r.position_id:
             raise AppException("DATA_CONFLICT", "已分配岗位，请先退岗再改去向")
         r.destination_type = destination

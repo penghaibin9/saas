@@ -580,7 +580,7 @@ def list_conflicts(page: int, page_size: int, keyword=None, user=None) -> tuple[
     return list_matches(page, page_size, keyword=keyword, conflict_only=True, user=user)
 
 
-def confirm_match(mid) -> dict:
+def confirm_match(mid, user=None) -> dict:
     """确认匹配 → 调用已有 assign_position 落岗。"""
     with session() as db:
         m = _get_match(db, mid)
@@ -591,8 +591,8 @@ def confirm_match(mid) -> dict:
             pass
         record_id, position_id = m.record_id, m.position_id
         match_id = m.id
-    # assign 使用独立 session；成功后再更新 match
-    student_svc.assign_position(record_id, position_id)
+    # assign 使用独立 session；成功后再更新 match（数据范围校验在 assign_position 内部执行）
+    student_svc.assign_position(record_id, position_id, user=user)
     with session() as db:
         m = _get_match(db, match_id)
         m.status = "CONFIRMED"

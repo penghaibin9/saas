@@ -191,7 +191,7 @@ def export_matches(keyword: Optional[str] = None, status: Optional[str] = None,
 
 @router.post("/{match_id}/confirm", summary="确认匹配并落岗（复用 assign）")
 def confirm(match_id: str, user=Depends(require_permission(_P_MANUAL))):
-    result = svc.confirm_match(match_id)
+    result = svc.confirm_match(match_id, user=user)
     audit_log.record("确认岗位匹配", f"internship-match:{match_id}")
     return success(result, message="已确认并分配岗位")
 
