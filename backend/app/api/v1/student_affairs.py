@@ -786,10 +786,16 @@ class DisciplineRegister(BaseModel):
 class DiscReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT/RETURN")
     reason: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class DiscRemoveBody(BaseModel):
     reason: str = Field(..., min_length=1, description="解除理由≥5字")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+
+
+class DiscVersionOnlyBody(BaseModel):
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.post("/discipline/cases", summary="登记违纪处分")
@@ -820,34 +826,37 @@ def discipline_case(caseId: int = Path(...), user=Depends(require_permission("st
 
 
 @router.post("/discipline/cases/{caseId}/submit", summary="提交学院初审")
-def discipline_submit(caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.create"))):
-    return success(disc_svc.submit(caseId, user), message="已提交")
+def discipline_submit(body: DiscVersionOnlyBody = DiscVersionOnlyBody(), caseId: int = Path(...),
+                      user=Depends(require_permission("studentAffairs.discipline.create"))):
+    return success(disc_svc.submit(caseId, user, body.version), message="已提交")
 
 
 @router.post("/discipline/cases/{caseId}/cancel", summary="撤销登记")
-def discipline_cancel(caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.create"))):
-    return success(disc_svc.cancel(caseId, user), message="已撤销")
+def discipline_cancel(body: DiscVersionOnlyBody = DiscVersionOnlyBody(), caseId: int = Path(...),
+                      user=Depends(require_permission("studentAffairs.discipline.create"))):
+    return success(disc_svc.cancel(caseId, user, body.version), message="已撤销")
 
 
 @router.post("/discipline/cases/{caseId}/review", summary="处分审批（学院初审/学工处复核/校级）")
 def discipline_review(body: DiscReviewBody, caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.approve"))):
-    return success(disc_svc.review(caseId, user, body.action, body.reason or ""), message="已处理")
+    return success(disc_svc.review(caseId, user, body.action, body.reason or "", body.version), message="已处理")
 
 
 @router.post("/discipline/cases/{caseId}/remove", summary="发起处分解除申请")
 def discipline_remove(body: DiscRemoveBody, caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.remove.create"))):
-    return success(disc_svc.submit_remove(caseId, user, body.reason), message="解除已提交")
+    return success(disc_svc.submit_remove(caseId, user, body.reason, body.version), message="解除已提交")
 
 
 @router.post("/discipline/cases/{caseId}/remove-review", summary="处分解除审批（辅→院→处）")
 def discipline_remove_review(body: DiscReviewBody, caseId: int = Path(...), user=Depends(require_permission("studentAffairs.discipline.remove.approve"))):
-    return success(disc_svc.review_remove(caseId, user, body.action, body.reason or ""), message="已处理")
+    return success(disc_svc.review_remove(caseId, user, body.action, body.reason or "", body.version), message="已处理")
 
 
 # ── 决定送达 + 申诉复核（C 包）──
 class DiscDeliverBody(BaseModel):
     method: str = Field(..., description="DIRECT/MAIL/PUBLIC/LEAVE")
     remark: Optional[str] = None
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class DiscAppealSubmitBody(BaseModel):
@@ -857,6 +866,7 @@ class DiscAppealSubmitBody(BaseModel):
 class DiscAppealReviewBody(BaseModel):
     result: str = Field(..., description="UPHELD/REVISED/REVOKED")
     opinion: str = Field(..., min_length=5, description="复核意见≥5字")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.post("/discipline/cases/{caseId}/deliver", summary="登记决定书送达（仅已生效）")

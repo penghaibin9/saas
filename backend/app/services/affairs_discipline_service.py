@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 DISC_TYPES = ("WARNING", "SERIOUS_WARNING", "DEMERIT", "PROBATION", "EXPEL")
@@ -253,12 +253,13 @@ def register(body, user) -> dict:
         return _row(x, s)
 
 
-def submit(case_id, user) -> dict:
+def submit(case_id, user, expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, case_id)
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("REGISTERED", "RETURNED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅登记/退回的处分可提交")
+        check_version(x.version, expected_version)
         x.status, x.version = "COLLEGE_REVIEW", x.version + 1
         assignee = _assignee_for(db, "COLLEGE_REVIEW", x.student_id)
         if not x.workflow_instance_id:
@@ -273,12 +274,13 @@ def submit(case_id, user) -> dict:
         return _row(x, s)
 
 
-def cancel(case_id, user) -> dict:
+def cancel(case_id, user, expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, case_id)
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("REGISTERED", "RETURNED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅登记/退回的处分可撤销")
+        check_version(x.version, expected_version)
         x.status, x.version = "CANCELLED", x.version + 1
         _todo_done(db, x.id)
         _audit(db, x.id, "CANCELLED")
@@ -323,7 +325,7 @@ def _act_task(db, x, action, reason=""):
     return inst
 
 
-def review(case_id, user, action, reason="") -> dict:
+def review(case_id, user, action, reason="", expected_version=None) -> dict:
     action = (action or "").upper()
     with session() as db:
         from app.models import WorkflowTask
@@ -331,6 +333,7 @@ def review(case_id, user, action, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该处分当前状态不可审批，请刷新")
+        check_version(x.version, expected_version)
         _check_disc_node(db, x.status, user, workflow_instance_id=x.workflow_instance_id)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
@@ -376,7 +379,7 @@ def review(case_id, user, action, reason="") -> dict:
 
 # ═══════════ 解除子流程 ═══════════
 
-def submit_remove(case_id, user, reason="") -> dict:
+def submit_remove(case_id, user, reason="", expected_version=None) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "解除理由必填且不少于 5 字")
     with session() as db:
@@ -385,6 +388,7 @@ def submit_remove(case_id, user, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "处分未生效或已解除，不可发起解除")
+        check_version(x.version, expected_version)
         # 在途解除申请查重 → 409
         dup = db.scalars(select(DisciplineRemoveApply).where(
             DisciplineRemoveApply.tenant_id == _tid(), DisciplineRemoveApply.case_id == x.id,
@@ -411,7 +415,7 @@ def submit_remove(case_id, user, reason="") -> dict:
         return _row(x, s)
 
 
-def review_remove(case_id, user, action, reason="") -> dict:
+def review_remove(case_id, user, action, reason="", expected_version=None) -> dict:
     """解除审批：辅→院→处三节点推进；终审通过→REMOVED（更新投影 record_status，进360）。"""
     action = (action or "").upper()
     with session() as db:
@@ -420,6 +424,7 @@ def review_remove(case_id, user, action, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "REMOVE_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该处分不在解除审批状态")
+        check_version(x.version, expected_version)
         ra = db.scalars(select(DisciplineRemoveApply).where(
             DisciplineRemoveApply.tenant_id == _tid(), DisciplineRemoveApply.case_id == x.id,
             DisciplineRemoveApply.status.notin_(["APPROVED", "REJECTED"]),
@@ -585,6 +590,7 @@ def deliver_case(case_id, body, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "仅已生效处分可登记送达")
+        check_version(x.version, getattr(body, "version", None))
         x.delivered_at, x.delivery_method = datetime.utcnow(), method
         x.delivery_remark, x.version = getattr(body, "remark", None), x.version + 1
         _audit(db, x.id, "DISCIPLINE_DELIVER", method)
@@ -669,6 +675,7 @@ def review_appeal(appeal_id, body, user) -> dict:
         _scope_or_403(db, a.student_id, user)
         if a.status not in ("SUBMITTED", "REVIEWING"):
             raise AppException("DATA_CONFLICT", "该申诉已结案")
+        check_version(a.version, getattr(body, "version", None))
         status_map = {"UPHELD": "UPHELD", "REVISED": "REVISED", "REVOKED": "REVOKED"}
         a.status, a.result = status_map[result], result
         a.review_opinion, a.reviewer = opinion, _op()[0]
