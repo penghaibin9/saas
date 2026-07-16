@@ -649,6 +649,7 @@ export const NAV_PLAN = [
       I('分配冲突检测', '/admin/graduation/mentors/conflicts')
     ]),
     mod('gd-process', '过程指导', '/admin/graduation/process?panel=taskbook', [
+      I('规范流程', '/admin/graduation/process?panel=workflow'),
       I('任务书', '/admin/graduation/process?panel=taskbook'),
       I('指导记录', '/admin/graduation/process?panel=guidance'),
       I('中期检查', '/admin/graduation/process?panel=midterm'),

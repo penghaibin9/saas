@@ -905,6 +905,19 @@ def graduation_grade(user: dict) -> dict:
     return {"hasData": True, "published": True, **detail}
 
 
+def graduation_archive(user: dict) -> dict:
+    """归档·学生仅查看本人材料清单与学校归档状态，不暴露归档管理动作。"""
+    u = _require_student(user)
+    if not db_enabled():
+        return _empty("演示模式")
+    with _session() as db:
+        g = _resolve_gd_student(db, u)
+        if not g:
+            return _empty("你暂无毕设记录")
+    from app.modules.graduation.services import graduation_archive_service as archive_svc
+    return {"hasData": True, **archive_svc.get_archive(g.id)}
+
+
 def employment_my(user: dict) -> dict:
     u = _require_student(user)
     if not db_enabled():

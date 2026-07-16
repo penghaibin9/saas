@@ -330,6 +330,21 @@ def graduation_my(user=Depends(get_current_user)):
     return success(stu.graduation_my(user))
 
 
+@router.get("/graduation/materials/{file_id}/download", summary="下载本人毕业设计材料")
+def graduation_material_download(file_id: str, user=Depends(get_current_user)):
+    """学生下载入口：不走 PC 管理端 staff 门禁，仍由材料绑定关系做本人鉴权。"""
+    from fastapi.responses import FileResponse
+    from app.core.exceptions import not_found
+    from app.modules.graduation.services import graduation_service as gd_svc
+
+    stu._require_student(user)
+    resolved = gd_svc.resolve_material_download(file_id)
+    if not resolved:
+        raise not_found("毕业设计材料不存在或无权访问")
+    path, filename = resolved
+    return FileResponse(str(path), filename=filename)
+
+
 @router.get("/graduation/topics", summary="选题·浏览可选题目库（已入池未满员）")
 def graduation_topics(batchId: str = None, user=Depends(get_current_user)):
     return success(stu.graduation_topics(user, batch_id=batchId))
@@ -411,6 +426,11 @@ def graduation_defense(user=Depends(get_current_user)):
 @router.get("/graduation/grade", summary="成绩·查看本人已发布成绩")
 def graduation_grade(user=Depends(get_current_user)):
     return success(stu.graduation_grade(user))
+
+
+@router.get("/graduation/archive", summary="归档·查看本人毕业设计材料清单与归档状态")
+def graduation_archive(user=Depends(get_current_user)):
+    return success(stu.graduation_archive(user))
 
 
 @router.post("/graduation/grade/appeal", summary="成绩·发起更正申诉（须已发布）")

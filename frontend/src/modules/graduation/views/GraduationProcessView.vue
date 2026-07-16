@@ -36,6 +36,7 @@
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'taskbook' }" @click="switchTab('taskbook')">任务书</button>
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'guidance' }" @click="switchTab('guidance')">指导记录</button>
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'midterm' }" @click="switchTab('midterm')">中期检查</button>
+            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'workflow' }" @click="switchTab('workflow')">规范流程</button>
           </div>
 
           <ErrorState v-if="loadError" :description="loadError" @retry="loadAll" />
@@ -99,6 +100,37 @@
               </div>
             </template>
           </div>
+
+          <!-- 规范流程：将毕业论文（设计）手册转化为系统可执行的关卡 -->
+          <div v-if="tab === 'workflow'" class="gp-panel gp-workflow">
+            <div class="gp-workflow__intro">
+              <div>
+                <div class="gm-section-title">毕业论文（设计）核心流程</div>
+                <p>以选题到归档的八个关卡组织业务；每个关卡都明确责任人、交付材料和下一关准入条件。</p>
+              </div>
+              <span class="gp-workflow__badge">按批次规则执行</span>
+            </div>
+            <ol class="gp-workflow__steps">
+              <li v-for="step in manualWorkflow" :key="step.key" class="gp-workflow__step">
+                <span class="gp-workflow__order">{{ step.order }}</span>
+                <div class="gp-workflow__body">
+                  <div class="gp-workflow__head">
+                    <strong>{{ step.title }}</strong>
+                    <span>{{ step.owner }}</span>
+                  </div>
+                  <p><b>交付：</b>{{ step.deliverable }}</p>
+                  <p><b>关卡：</b>{{ step.gate }}</p>
+                </div>
+                <button type="button" class="mp-link gp-workflow__go" @click="$router.push(step.route)">进入处理</button>
+              </li>
+            </ol>
+            <div class="gp-workflow__gates">
+              <div class="gm-section-title">执行原则</div>
+              <ul>
+                <li v-for="gate in manualGates" :key="gate">{{ gate }}</li>
+              </ul>
+            </div>
+          </div>
         </template>
       </div>
     </div>
@@ -112,6 +144,7 @@ import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import { GRADUATION_MANUAL_GATES, GRADUATION_MANUAL_WORKFLOW } from '@/modules/graduation/constants/graduationManualWorkflow'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import { toast } from '@/utils/toast'
 
@@ -125,17 +158,19 @@ export default {
       sideError: '', loadError: '',
       taskbook: null, tbLoading: false,
       guidanceList: [], guidanceLoading: false,
-      midterm: null, mtLoading: false
+      midterm: null, mtLoading: false,
+      manualWorkflow: GRADUATION_MANUAL_WORKFLOW,
+      manualGates: GRADUATION_MANUAL_GATES
     }
   },
   created() {
-    this.tab = ['taskbook', 'guidance', 'midterm'].includes(this.$route.query.panel) ? this.$route.query.panel : 'taskbook'
+    this.tab = ['taskbook', 'guidance', 'midterm', 'workflow'].includes(this.$route.query.panel) ? this.$route.query.panel : 'taskbook'
     this.searchStudents()
   },
   watch: {
     // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
     '$route.query.panel'(p) {
-      if (['taskbook', 'guidance', 'midterm'].includes(p) && p !== this.tab) this.tab = p
+      if (['taskbook', 'guidance', 'midterm', 'workflow'].includes(p) && p !== this.tab) this.tab = p
     }
   },
   methods: {
@@ -264,6 +299,22 @@ export default {
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .mp-link--danger { color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); }
+.gp-workflow { max-width: 960px; }
+.gp-workflow__intro { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.gp-workflow__intro p { max-width: 680px; margin: 4px 0 0; color: var(--text-secondary, #475569); line-height: 1.6; }
+.gp-workflow__badge { flex: none; padding: 4px 8px; border-radius: var(--radius-full); background: var(--primary-50, #eff6ff); color: var(--primary-700, #1d4ed8); font-size: var(--font-size-xs); }
+.gp-workflow__steps { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; counter-reset: none; }
+.gp-workflow__step { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md); background: var(--gray-50, #f8fafc); }
+.gp-workflow__order { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--primary-100, #dbeafe); color: var(--primary-700, #1d4ed8); font-size: var(--font-size-xs); font-weight: var(--font-weight-bold); }
+.gp-workflow__body { min-width: 0; }
+.gp-workflow__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2); }
+.gp-workflow__head strong { color: var(--text-primary); }
+.gp-workflow__head span { color: var(--text-tertiary, #64748b); font-size: var(--font-size-xs); }
+.gp-workflow__body p { margin: 5px 0 0; color: var(--text-secondary, #475569); line-height: 1.55; }
+.gp-workflow__body b { color: var(--text-primary, #0f172a); font-weight: var(--font-weight-medium); }
+.gp-workflow__go { align-self: center; white-space: nowrap; }
+.gp-workflow__gates { margin-top: var(--space-4); padding: var(--space-3); border-left: 3px solid var(--primary-400, #60a5fa); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--primary-50, #eff6ff); }
+.gp-workflow__gates ul { display: grid; gap: 6px; margin: var(--space-2) 0 0; padding-left: 18px; color: var(--text-secondary, #475569); line-height: 1.5; }
 @media (max-width: 960px) { .gp-layout { flex-direction: column; } .gp-side, .gp-main { width: 100%; box-sizing: border-box; } .gp-stu-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); max-height: 260px; gap: var(--space-1); } }
-@media (max-width: 640px) { .gp-main { padding: var(--space-3); } .gp-context__stage { display: none; } }
+@media (max-width: 640px) { .gp-main { padding: var(--space-3); } .gp-context__stage { display: none; } .gp-workflow__intro { flex-direction: column; } .gp-workflow__step { grid-template-columns: 32px minmax(0, 1fr); } .gp-workflow__go { grid-column: 2; justify-self: start; } }
 </style>
