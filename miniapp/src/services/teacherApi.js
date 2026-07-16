@@ -125,6 +125,12 @@ export const teacherApi = {
   // 指导巡访：本月计划学生列表 + 记录巡访（真实写操作，业务错误透出）
   getInternshipVisitPlans: () => real.teacherInternshipVisitPlans(),
   recordInternshipVisit: (internshipId) => real.teacherInternshipVisitRecord(internshipId),
+  // 补卡审批：待处理队列 + APPROVE/REJECT（owner+范围校验，真实接口，无 mock 兜底）
+  getMakeupPending: () => real.teacherMakeupPending(),
+  reviewMakeup: (makeupId, action, comment) => real.teacherMakeupReview(makeupId, action, comment),
+  // 实习请假审批：待处理队列 + APPROVE/REJECT（owner+范围校验，真实接口，无 mock 兜底）
+  getLeavePending: () => real.teacherLeavePending(),
+  reviewLeave: (leaveId, action, comment) => real.teacherLeaveReview(leaveId, action, comment),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

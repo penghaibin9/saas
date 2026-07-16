@@ -316,6 +316,10 @@
       "style": { "navigationBarTitleText": "在校服务待处理", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/internship-approval/index",
+      "style": { "navigationBarTitleText": "实习审批", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

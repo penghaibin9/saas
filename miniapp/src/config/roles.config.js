@@ -86,6 +86,7 @@ export const roleConfigs = {
     quickActions: [
       { key: 'weekly', label: '批阅周报', icon: '▤' },
       { key: 'checkin', label: '异常打卡', icon: '📍' },
+      { key: 'makeup', label: '补卡审批', icon: '🔖' },
       { key: 'leave', label: '请假审批', icon: '✈' },
       { key: 'visit', label: '新增巡访', icon: '✎' }
     ],

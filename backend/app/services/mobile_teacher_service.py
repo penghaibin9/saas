@@ -1091,6 +1091,50 @@ def exception_handle(user: dict, exception_id: str, action: str, comment: str | 
     return result
 
 
+def makeup_pending(user: dict) -> dict:
+    """补卡审批·待处理队列（移动端范围过滤，复用 PC 补卡审批服务的 owner+数据范围校验）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_makeup_service as mk
+    items, total = mk.list_makeups(1, 50, status="PENDING", user=u)
+    return {"list": items, "total": total}
+
+
+def makeup_review(user: dict, makeup_id: str, action: str, comment: str | None = None) -> dict:
+    """补卡·教师审批（APPROVE/REJECT）。owner 校验在服务层完成，通过时真实补写打卡。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实审批")
+    from app.modules.internship.services import internship_makeup_service as mk
+    result = mk.review(u, makeup_id, action, comment or "")
+    _audit_write("MOBILE_MAKEUP_REVIEW", f"internship-makeup:{makeup_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
+def leave_pending(user: dict) -> dict:
+    """实习请假审批·待处理队列（移动端范围过滤，复用 PC 请假审批服务的 owner+数据范围校验）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_leave_service as lv_svc
+    items, total = lv_svc.list_leaves(1, 50, status="PENDING", user=u)
+    return {"list": items, "total": total}
+
+
+def leave_review(user: dict, leave_id: str, action: str, comment: str | None = None) -> dict:
+    """实习请假·教师审批（APPROVE/REJECT）。owner 校验在服务层完成。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实审批")
+    from app.modules.internship.services import internship_leave_service as lv_svc
+    result = lv_svc.review(u, leave_id, action, comment or "")
+    _audit_write("MOBILE_LEAVE_REVIEW", f"internship-leave:{leave_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
 def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)

@@ -683,6 +683,32 @@ def teacher_exception_handle(exception_id: str, body: dict = Body(...),
                                         body.get("comment") or ""), message="处理完成")
 
 
+@router.get("/teacher/internship/makeups/pending", summary="教师·补卡审批待处理队列（范围校验）")
+def teacher_makeup_pending(user=Depends(get_current_user)):
+    return success(tea.makeup_pending(user))
+
+
+@router.post("/teacher/internship/makeups/{makeup_id}/review",
+             summary="教师·补卡审批（APPROVE/REJECT，owner+范围校验，通过真实补写打卡）")
+def teacher_makeup_review(makeup_id: str, body: dict = Body(...),
+                          user=Depends(get_current_user)):
+    return success(tea.makeup_review(user, makeup_id, str(body.get("action") or "").upper(),
+                                     body.get("comment") or ""), message="处理完成")
+
+
+@router.get("/teacher/internship/leaves/pending", summary="教师·实习请假审批待处理队列（范围校验）")
+def teacher_leave_pending(user=Depends(get_current_user)):
+    return success(tea.leave_pending(user))
+
+
+@router.post("/teacher/internship/leaves/{leave_id}/review",
+             summary="教师·实习请假审批（APPROVE/REJECT，owner+范围校验）")
+def teacher_leave_review(leave_id: str, body: dict = Body(...),
+                         user=Depends(get_current_user)):
+    return success(tea.leave_review(user, leave_id, str(body.get("action") or "").upper(),
+                                    body.get("comment") or ""), message="处理完成")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):
