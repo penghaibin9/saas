@@ -93,18 +93,33 @@ def test_dorm_exception_closed_loop(client, auth_headers, db_mode):
     assert mk["code"] == 0
 
 
-def test_discipline_crud(client, auth_headers, db_mode):
+def test_discipline_legacy_write_retired(client, auth_headers, db_mode):
+    """旧版违纪直接编辑入口已下线（甲方拍板保留新版流程）：create/update/void 三个写操作
+    一律 DATA_CONFLICT；existing 存量数据仍可通过 list 只读查询，不受影响。"""
     ids = _seed(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import CsDiscipline
+    db = get_sessionmaker()()
+    d = CsDiscipline(tenant_id=MAIN_TID, code="DIS-T-1", cs_student_id=ids["student"],
+                     disc_type="WARNING", reason="历史存量处分记录", status="EFFECTIVE",
+                     record_status="ACTIVE")
+    db.add(d); db.commit()
+    did = d.id
+    db.close()
+
+    lst = client.get("/api/v1/campus-service/disciplines", headers=auth_headers).json()
+    assert lst["code"] == 0 and lst["data"]["total"] == 1
+
     c = client.post("/api/v1/campus-service/disciplines", headers=auth_headers,
                     json={"studentId": str(ids["student"]), "type": "WARNING",
                           "reason": "违反宿舍管理规定给予警告"}).json()
-    assert c["code"] == 0
-    did = c["data"]["id"]
-    lst = client.get("/api/v1/campus-service/disciplines", headers=auth_headers).json()
-    assert lst["data"]["total"] == 1
+    assert c["code"] != 0 and c["bizCode"] == "DATA_CONFLICT"
+    u = client.put(f"/api/v1/campus-service/disciplines/{did}", headers=auth_headers,
+                  json={"status": "REVOKED"}).json()
+    assert u["code"] != 0 and u["bizCode"] == "DATA_CONFLICT"
     v = client.post(f"/api/v1/campus-service/disciplines/{did}/void", headers=auth_headers,
                     json={"reason": "处分决定撤销"}).json()
-    assert v["code"] == 0
+    assert v["code"] != 0 and v["bizCode"] == "DATA_CONFLICT"
 
 
 def test_work_order_closed_loop(client, auth_headers, db_mode):
