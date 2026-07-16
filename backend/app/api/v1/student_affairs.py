@@ -172,30 +172,40 @@ class ReasonBody(BaseModel):
 
 class CommentBody(BaseModel):
     comment: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class ExtensionBody(BaseModel):
     newEnd: str = Field(..., description="新结束时间")
     reason: Optional[str] = Field(None, max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class ExtensionReviewBody(BaseModel):
     action: str = Field("APPROVE", description="APPROVE 续假通过 / REJECT 续假驳回")
     reason: Optional[str] = Field("", max_length=500, description="驳回原因≥5字")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class CancelBody(BaseModel):
     proofNote: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class ProxyCancelBody(BaseModel):
     actualReturnAt: str = Field(..., description="实际返校时间 YYYY-MM-DD[ HH:MM:SS]")
     note: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+
+
+class LeaveVersionOnlyBody(BaseModel):
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class OverdueHandleBody(BaseModel):
     handleType: str = Field(..., description="CONTACT 联系 / TO_HOME_SCHOOL 转家校 / CLOSE 处置关闭")
     note: str = Field(..., min_length=1, description="处置说明≥5字")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class ConfirmBody(BaseModel):
@@ -203,6 +213,7 @@ class ConfirmBody(BaseModel):
     actualReturnAt: Optional[str] = Field(None, description="确认时可校对实际返校时间")
     reason: Optional[str] = Field("", max_length=500, description="退回原因≥5字")
     note: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.post("/leave", summary="发起请假")
@@ -249,7 +260,7 @@ def leave_detail(leaveId: int = Path(...), user=Depends(require_permission("stud
 
 @router.post("/leave/{leaveId}/approve", summary="请假审批通过（多级逐节点推进）")
 def leave_approve(body: CommentBody = CommentBody(), leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.approve"))):
-    return success(leave_svc.approve(leaveId, user, body.comment or ""), message="已通过")
+    return success(leave_svc.approve(leaveId, user, body.comment or "", body.version), message="已通过")
 
 
 @router.post("/leave/{leaveId}/reject", summary="请假驳回（原因≥5字，终态）")
@@ -263,13 +274,14 @@ def leave_return(body: ReasonBody, leaveId: int = Path(...), user=Depends(requir
 
 
 @router.post("/leave/{leaveId}/resubmit", summary="退回后重新提交")
-def leave_resubmit(leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.create"))):
-    return success(leave_svc.resubmit(leaveId, user), message="已重新提交")
+def leave_resubmit(body: LeaveVersionOnlyBody = LeaveVersionOnlyBody(), leaveId: int = Path(...),
+                   user=Depends(require_permission("studentAffairs.leave.create"))):
+    return success(leave_svc.resubmit(leaveId, user, body.version), message="已重新提交")
 
 
 @router.post("/leave/{leaveId}/cancel", summary="发起销假")
 def leave_cancel(body: CancelBody = CancelBody(), leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.create"))):
-    return success(leave_svc.submit_cancel(leaveId, user, body.proofNote or ""), message="销假已提交")
+    return success(leave_svc.submit_cancel(leaveId, user, body.proofNote or "", body.version), message="销假已提交")
 
 
 @router.post("/leave/{leaveId}/cancel-confirm", summary="销假确认/退回（辅导员）→ CLOSED 进360 / 退回 APPROVED")
@@ -277,32 +289,33 @@ def leave_cancel_confirm(body: ConfirmBody = ConfirmBody(), leaveId: int = Path(
                          user=Depends(require_permission("studentAffairs.leave.cancelLeaveConfirm"))):
     r = leave_svc.confirm_cancel(leaveId, user, action=body.action,
                                  actual_return_at=body.actualReturnAt, reason=body.reason or "",
-                                 note=body.note or "")
+                                 note=body.note or "", expected_version=body.version)
     return success(r, message="已退回" if (body.action or "").upper() == "RETURN" else "已销假")
 
 
 @router.post("/leave/{leaveId}/proxy-cancel", summary="辅导员代登记销假 → WAIT_CANCEL_LEAVE")
 def leave_proxy_cancel(body: ProxyCancelBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.cancelLeaveConfirm"))):
-    return success(leave_svc.proxy_cancel(leaveId, user, body.actualReturnAt, body.note or ""),
+    return success(leave_svc.proxy_cancel(leaveId, user, body.actualReturnAt, body.note or "", body.version),
                    message="已代登记销假")
 
 
 @router.post("/leave/{leaveId}/overdue-handle", summary="逾期处置登记（联系/转家校/处置关闭）")
 def leave_overdue_handle(body: OverdueHandleBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.overdue.handle"))):
-    return success(leave_svc.handle_overdue(leaveId, user, body.handleType, body.note),
+    return success(leave_svc.handle_overdue(leaveId, user, body.handleType, body.note, body.version),
                    message="已登记")
 
 
 @router.post("/leave/{leaveId}/extension", summary="发起续假")
 def leave_extension(body: ExtensionBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.create"))):
-    return success(leave_svc.apply_extension(leaveId, user, body.newEnd, body.reason or ""),
+    return success(leave_svc.apply_extension(leaveId, user, body.newEnd, body.reason or "", body.version),
                    message="续假已提交")
 
 
 @router.post("/leave/{leaveId}/extension-approve", summary="续假审批（通过/驳回）")
 def leave_extension_approve(body: ExtensionReviewBody = ExtensionReviewBody(), leaveId: int = Path(...),
                             user=Depends(require_permission("studentAffairs.leave.extension.approve"))):
-    r = leave_svc.approve_extension(leaveId, user, action=body.action, reason=body.reason or "")
+    r = leave_svc.approve_extension(leaveId, user, action=body.action, reason=body.reason or "",
+                                    expected_version=body.version)
     return success(r, message="续假已驳回" if (body.action or "").upper() == "REJECT" else "续假已通过")
 
 

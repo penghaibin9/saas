@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 # ── 审批层级阈值（规则中心键 affairs.leave.*_threshold_days，默认 3/7；P0 §5）──
@@ -394,7 +394,7 @@ def _act_task(db, x, action, reason=""):
     return inst
 
 
-def approve(leave_id, user, comment="") -> dict:
+def approve(leave_id, user, comment="", expected_version=None) -> dict:
     with session() as db:
         from app.models import WorkflowTask
         x, s = _load(db, leave_id)
@@ -402,6 +402,7 @@ def approve(leave_id, user, comment="") -> dict:
         aff = x.affairs_status
         if aff not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可审批，请刷新")
+        check_version(x.version, expected_version)
         _check_review_node(db, x, user)
         inst = _act_task(db, x, "APPROVED", comment)
         wf = inst.workflow_code if inst else _wf_code(float(x.days or 1))
@@ -435,7 +436,7 @@ def approve(leave_id, user, comment="") -> dict:
     return out
 
 
-def reject(leave_id, user, reason) -> dict:
+def reject(leave_id, user, reason, expected_version=None) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     with session() as db:
@@ -443,6 +444,7 @@ def reject(leave_id, user, reason) -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可驳回，请刷新")
+        check_version(x.version, expected_version)
         _check_review_node(db, x, user)
         inst = _act_task(db, x, "REJECTED", reason.strip())
         x.affairs_status, x.status, x.return_reason = "REJECTED", "RETURNED", reason.strip()
@@ -460,7 +462,7 @@ def reject(leave_id, user, reason) -> dict:
     return out
 
 
-def return_leave(leave_id, user, reason) -> dict:
+def return_leave(leave_id, user, reason, expected_version=None) -> dict:
     """退回申请人重提（区别于 reject 终态）。"""
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
@@ -469,6 +471,7 @@ def return_leave(leave_id, user, reason) -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可退回，请刷新")
+        check_version(x.version, expected_version)
         _check_review_node(db, x, user)
         inst = _act_task(db, x, "TRANSFERRED", reason.strip())
         x.affairs_status, x.status, x.return_reason = "RETURNED", "RETURNED", reason.strip()
@@ -501,6 +504,7 @@ def resubmit(leave_id, user, *, self_only: bool = False, reason: str | None = No
         x, s = _load(db, leave_id)
         if x.affairs_status != "RETURNED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅被退回的请假可重新提交")
+        check_version(x.version, expected_version)
         if self_only:
             from app.services.mobile_student_service import resolve_student
             me = resolve_student(db, user or {})
@@ -542,6 +546,7 @@ def submit_cancel(leave_id, user, proof_note="", *, self_only: bool = False) -> 
             _scope_or_403(db, x, user)
         if x.affairs_status not in ("APPROVED", "OVERDUE"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过/逾期的请假可发起销假")
+        check_version(x.version, expected_version)
         now = datetime.utcnow()
         rec = AffairsLeaveCancelRecord(tenant_id=_tid(), leave_id=x.id, student_id=x.student_id,
                                        actual_return_at=now, proof_note=proof_note, status="SUBMITTED",
@@ -558,7 +563,8 @@ def submit_cancel(leave_id, user, proof_note="", *, self_only: bool = False) -> 
         return _resolve_class_names(db, [_row(x, s)])[0]
 
 
-def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reason="", note="") -> dict:
+def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reason="", note="",
+                   expected_version=None) -> dict:
     """销假确认(CONFIRM→CLOSED进360) / 销假退回(RETURN→APPROVED，证明不符重新销假)。契约 #23。"""
     action = (action or "CONFIRM").upper()
     if action not in ("CONFIRM", "RETURN"):
@@ -571,6 +577,7 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
         _scope_or_403(db, x, user)
         if x.affairs_status != "WAIT_CANCEL_LEAVE":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假不在待销假确认状态")
+        check_version(x.version, expected_version)
         _check_leave_action_assignee(db, x, user, todo_type="LEAVE_CANCEL")
         rec = db.scalars(select(AffairsLeaveCancelRecord).where(
             AffairsLeaveCancelRecord.tenant_id == _tid(), AffairsLeaveCancelRecord.leave_id == x.id,
@@ -645,6 +652,7 @@ def apply_extension(leave_id, user, new_end, reason="", *, self_only: bool = Fal
             _scope_or_403(db, x, user)
         if x.affairs_status not in ("APPROVED", "OVERDUE"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过的请假可续假")
+        check_version(x.version, expected_version)
         ne = _parse_dt(new_end)
         if not ne or (x.end_time and ne <= x.end_time):
             raise AppException("VALIDATION_ERROR", "续假结束时间必须晚于原结束时间")
@@ -666,7 +674,7 @@ def apply_extension(leave_id, user, new_end, reason="", *, self_only: bool = Fal
         return _resolve_class_names(db, [_row(x, s)])[0]
 
 
-def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
+def approve_extension(leave_id, user, action="APPROVE", reason="", expected_version=None) -> dict:
     """续假审批：APPROVE（更新结束时间→APPROVED）/ REJECT（维持原假期与原到期日）。契约 #24。"""
     action = (action or "APPROVE").upper()
     if action not in ("APPROVE", "REJECT"):
@@ -679,6 +687,7 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status != "EXTENSION_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假不在续假审批状态")
+        check_version(x.version, expected_version)
         _check_leave_action_assignee(db, x, user, todo_type="LEAVE_EXTENSION")
         ext = db.scalars(select(AffairsLeaveExtension).where(
             AffairsLeaveExtension.tenant_id == _tid(), AffairsLeaveExtension.leave_id == x.id,
@@ -722,7 +731,7 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
 
 # ═══════════ 代登记销假 + 逾期处置 ═══════════
 
-def proxy_cancel(leave_id, user, actual_return_at, note="") -> dict:
+def proxy_cancel(leave_id, user, actual_return_at, note="", expected_version=None) -> dict:
     """辅导员代登记销假（学生无法操作时）→ WAIT_CANCEL_LEAVE。契约 #26。"""
     with session() as db:
         from app.models import AffairsLeaveCancelRecord
@@ -730,6 +739,7 @@ def proxy_cancel(leave_id, user, actual_return_at, note="") -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status not in ("APPROVED", "OVERDUE"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过/逾期的请假可代登记销假")
+        check_version(x.version, expected_version)
         ret = _parse_dt(actual_return_at)
         if not ret:
             raise AppException("VALIDATION_ERROR", "实际返校时间必填")
@@ -758,7 +768,7 @@ def proxy_cancel(leave_id, user, actual_return_at, note="") -> dict:
         return _resolve_class_names(db, [_row(x, s)])[0]
 
 
-def handle_overdue(leave_id, user, handle_type, note="") -> dict:
+def handle_overdue(leave_id, user, handle_type, note="", expected_version=None) -> dict:
     """逾期处置登记：CONTACT/TO_HOME_SCHOOL 留痕不改状态；CLOSE→CLOSED 进360。契约 #25 / 状态机 §1 OVERDUE 分支。"""
     handle_type = (handle_type or "").upper()
     if handle_type not in OVERDUE_HANDLE_TYPES:
@@ -771,6 +781,7 @@ def handle_overdue(leave_id, user, handle_type, note="") -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status != "OVERDUE":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅逾期未销假的请假可登记逾期处置")
+        check_version(x.version, expected_version)
         if handle_type == "CLOSE":
             x.affairs_status, x.status = "CLOSED", "APPROVED"
             x.version += 1
