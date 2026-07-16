@@ -52,13 +52,47 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 提交异议：原为「异议理由→异议人」2 连原生弹窗。
+         此处不挂快捷用语——现有 sa.aid.reject 是「驳回资助申请」口径，
+         与「对公示结果提异议」不是一回事；异议理由本就该由异议人自述，套模板反而失真。 -->
+    <AppConfirmDialog
+      v-model:visible="objDlg.visible" :title="`对公示提出异议 · ${objDlg.who}`" type="warning"
+      confirm-text="提交异议" require-reason :reason-min-length="5" reason-label="异议理由（≥5 字）"
+      description="异议将进入复核流程，由资助工作组核查后给出成立/不成立结论。"
+      :submitting="acting === objDlg.applyId" @confirm="submitObjection"
+    >
+      <AppFormItem label="异议人">
+        <AppTextInput v-model="objDlg.objectorName" placeholder="可空；留空按匿名异议处理" />
+      </AppFormItem>
+    </AppConfirmDialog>
+
+    <!-- 复核异议：原为「结论码 SUSTAINED/OVERRULED→复核意见」2 连弹窗，结论要手打英文 -->
+    <AppConfirmDialog
+      v-model:visible="revDlg.visible" title="复核异议" type="primary"
+      confirm-text="提交复核" require-reason :reason-min-length="5" reason-label="复核意见（≥5 字）"
+      :submitting="acting === revDlg.objectionId" @confirm="submitReview"
+    >
+      <AppFormItem label="复核结论" required>
+        <AppSelect v-model="revDlg.result" :options="OBJECTION_RESULTS" />
+      </AppFormItem>
+    </AppConfirmDialog>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
+  AppSectionCard, AppSelect, AppStatusTag, AppTextInput
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+
+/** 与后端复核结论取值一一对应；括号内为对原认定的影响，避免只看英文码选反。 */
+const OBJECTION_RESULTS = [
+  { value: 'OVERRULED', label: '不成立 —— 维持原认定结果' },
+  { value: 'SUSTAINED', label: '成立 —— 驳回原认定结果' }
+]
 
 const LEVELS = { SPECIAL: '特别困难', DIFFICULT: '困难', GENERAL: '一般困难' }
 const STATUS_FILTERS = [
@@ -67,11 +101,19 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'AidObjectionView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
+    AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag
+  },
   data() {
-    return { loading: true, acting: '', errorMessage: '', publicity: [], objections: [], objStatus: '', statusFilters: STATUS_FILTERS }
+    return {
+      loading: true, acting: '', errorMessage: '', publicity: [], objections: [], objStatus: '', statusFilters: STATUS_FILTERS,
+      objDlg: { visible: false, applyId: '', who: '', objectorName: '' },
+      revDlg: { visible: false, objectionId: '', result: 'OVERRULED' }
+    }
   },
   computed: {
+    OBJECTION_RESULTS: () => OBJECTION_RESULTS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const pending = this.objections.filter((o) => o.status === 'SUBMITTED').length
@@ -97,24 +139,27 @@ export default {
       this.loading = false
     },
     setStatus(k) { if (this.objStatus === k) return; this.objStatus = k; this.load() },
-    async objecte(a) {
-      const reason = window.prompt('异议理由（至少5字）：')
-      if (!reason) return
-      const objectorName = window.prompt('异议人（可空/匿名）：') || ''
-      this.acting = a.applyId
-      const res = await studentAffairsApi.submitAidObjection(a.applyId, { reason, objectorName: objectorName || undefined })
-      this.acting = ''
-      if (res.code === 0) { toast.success('异议已提交'); this.load() } else toast.error(res.message || '提交失败')
+    objecte(a) {
+      this.objDlg = { visible: true, applyId: a.applyId, who: a.realName || a.studentNo || '该生', objectorName: '' }
     },
-    async review(o) {
-      const result = window.prompt('复核结论：SUSTAINED 成立(驳回) / OVERRULED 不成立(维持)', 'OVERRULED')
-      if (!result) return
-      const opinion = window.prompt('复核意见（至少5字）：')
-      if (!opinion) return
-      this.acting = o.objectionId
-      const res = await studentAffairsApi.reviewAidObjection(o.objectionId, result.trim().toUpperCase(), opinion)
+    async submitObjection({ reason }) {
+      const d = this.objDlg
+      this.acting = d.applyId
+      const res = await studentAffairsApi.submitAidObjection(d.applyId, {
+        reason: reason.trim(), objectorName: d.objectorName.trim() || undefined
+      })
       this.acting = ''
-      if (res.code === 0) { toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
+      if (res.code === 0) { d.visible = false; toast.success('异议已提交'); this.load() } else toast.error(res.message || '提交失败')
+    },
+    review(o) {
+      this.revDlg = { visible: true, objectionId: o.objectionId, result: 'OVERRULED' }
+    },
+    async submitReview({ reason }) {
+      const d = this.revDlg
+      this.acting = d.objectionId
+      const res = await studentAffairsApi.reviewAidObjection(d.objectionId, d.result, reason.trim())
+      this.acting = ''
+      if (res.code === 0) { d.visible = false; toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
     },
     levelLabel(l) { return LEVELS[l] || l || '—' },
     objType(o) {

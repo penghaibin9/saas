@@ -47,11 +47,22 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 驳回意见：后端 review_reduction 卡 ≥5 字。挂 sa.aid.reject——该词库是「家庭经济困难认定驳回」
+         口径（收入证明不全/材料不符/不符合本批次条件/已享受同类资助），学费减免同为资助事项、
+         同一套判据，可直接复用；未新增或改动任何词条。 -->
+    <AppConfirmDialog
+      v-model:visible="rejDlg.visible" title="驳回减免/补助申请" type="danger" confirm-text="确认驳回"
+      require-reason :reason-min-length="5" reason-label="驳回意见（≥5 字）"
+      phrase-scene-key="sa.aid.reject" :submitting="acting === rejDlg.feeId" @confirm="submitReject"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -59,8 +70,13 @@ const TYPE_FILTERS = [{ key: '', label: '全部' }, { key: 'REDUCTION', label: '
 
 export default {
   name: 'FeeReductionView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
-  data() { return { loading: true, acting: '', errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS, formVisible: false, form: this.blank() } },
+  components: { AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  data() {
+    return {
+      loading: true, acting: '', errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS,
+      formVisible: false, form: this.blank(), rejDlg: { visible: false, feeId: '' }
+    }
+  },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
@@ -92,12 +108,18 @@ export default {
       if (res.code === 0) { toast.success('已提交'); this.formVisible = false; this.form = this.blank(); this.load() } else f.error = res.message || '提交失败'
     },
     async review(x, action) {
-      let opinion = ''
-      if (action === 'REJECT') { opinion = window.prompt('驳回意见（至少5字）：') || ''; if (!opinion) return }
+      if (action === 'REJECT') { this.rejDlg = { visible: true, feeId: x.feeId }; return }
       this.acting = x.feeId
-      const res = await studentAffairsApi.reviewFeeReduction(x.feeId, action, opinion)
+      const res = await studentAffairsApi.reviewFeeReduction(x.feeId, action, '')
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
+    },
+    async submitReject({ reason }) {
+      const d = this.rejDlg
+      this.acting = d.feeId
+      const res = await studentAffairsApi.reviewFeeReduction(d.feeId, 'REJECT', reason.trim())
+      this.acting = ''
+      if (res.code === 0) { d.visible = false; toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
     },
     async issue(x) {
       this.acting = x.feeId
