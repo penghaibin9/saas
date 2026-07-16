@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, no_permission, not_found
+from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.services.db_service import _iso, _tid, session
 
 GENDER_LIMITS = ("MALE", "FEMALE", "MIXED")
@@ -495,7 +495,7 @@ def _transfer_row(t) -> dict:
             "version": t.version}
 
 
-def review_transfer(transfer_id, user, action, reason="") -> dict:
+def review_transfer(transfer_id, user, action, reason="", expected_version=None) -> dict:
     """辅导员→宿管两级；终审通过即执行(原床释放/新床占用/回写)。"""
     action = (action or "").upper()
     with session() as db:
@@ -509,6 +509,7 @@ def review_transfer(transfer_id, user, action, reason="") -> dict:
                 _require_dorm_scope(db, to_bed_for_scope.building_id, user)
         if t.status not in TRANSFER_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该调宿当前状态不可审批")
+        check_version(t.version, expected_version)
         from app.models import StudentProfile
         stu = db.get(StudentProfile, int(t.student_id)) if t.student_id else None
         stu_name = (stu.real_name if stu else "") or ""
@@ -795,13 +796,13 @@ def list_exceptions(user, status=None, page=1, page_size=50):
             out.append({"exceptionId": str(x.id), "csStudentId": str(x.cs_student_id or ""),
                        "realName": real_name, "studentNo": student_no,
                        "excType": x.exc_type or "", "detail": x.detail or "", "status": x.status,
-                       "createdAt": _iso(x.created_at)})
+                       "createdAt": _iso(x.created_at), "version": x.version})
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total
 
 
-def handle_exception(exception_id, user, note=""):
+def handle_exception(exception_id, user, note="", expected_version=None):
     if not note or len(note.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "处置说明必填且不少于 5 字")
     with session() as db:
@@ -813,8 +814,9 @@ def handle_exception(exception_id, user, note=""):
         _require_dorm_scope(db, building_id, user)
         if x.status == "HANDLED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该异常已处置")
+        check_version(x.version, expected_version)
         x.status = "HANDLED"
         _todo_done(db, x.id, TODO_EXCEPTION)
         _audit(db, "DORM_EXCEPTION", x.id, "HANDLE", note.strip()[:100])
         db.commit()
-        return {"exceptionId": str(x.id), "status": x.status}
+        return {"exceptionId": str(x.id), "status": x.status, "version": x.version}

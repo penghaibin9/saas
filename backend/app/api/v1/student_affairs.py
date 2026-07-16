@@ -1225,6 +1225,7 @@ class TransferSubmit(BaseModel):
 class DormReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT")
     reason: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class CheckTaskCreate(BaseModel):
@@ -1329,7 +1330,7 @@ def dorm_transfers(status: Optional[str] = None, page: int = 1, pageSize: int = 
 @router.post("/dorm/transfers/{transferId}/review", summary="调宿审批（辅导员→宿管→执行）")
 def dorm_transfer_review(body: DormReviewBody, transferId: int = Path(...),
                          user=Depends(require_permission("studentAffairs.dorm.transfer.approve"))):
-    return success(dorm_svc.review_transfer(transferId, user, body.action, body.reason or ""),
+    return success(dorm_svc.review_transfer(transferId, user, body.action, body.reason or "", body.version),
                    message="已处理")
 
 
@@ -1368,12 +1369,13 @@ def dorm_exceptions(status: Optional[str] = None, page: int = 1, pageSize: int =
 
 class DormExcHandleBody(BaseModel):
     reason: str = Field("", description="处置说明≥5字")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.post("/dorm/exceptions/{exceptionId}/handle", summary="处理宿舍异常（说明≥5字）")
 def dorm_exception_handle(exceptionId: int = Path(...), body: DormExcHandleBody = DormExcHandleBody(),
                           user=Depends(require_permission("studentAffairs.dorm.exception.handle"))):
-    return success(dorm_svc.handle_exception(exceptionId, user, body.reason or ""), message="已处理")
+    return success(dorm_svc.handle_exception(exceptionId, user, body.reason or "", body.version), message="已处理")
 
 
 # ═══════════ 学工归档（P6，archive）═══════════
