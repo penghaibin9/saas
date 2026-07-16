@@ -95,6 +95,8 @@
       </div>
     </div>
 
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-process" />
   </ModulePageShell>
 </template>
 
@@ -102,6 +104,7 @@
 /** 过程指导（/admin/graduation/process）：任务书下达/确认/变更 + 指导记录时间线 + 中期检查三档结论/整改闭环。 */
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDateDisplay } from '@/components/common/date'
+import { AppPageGuide } from '@/components/common'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
@@ -109,7 +112,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationProcessView',
-  components: { GraduationBatchStrip, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
+  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

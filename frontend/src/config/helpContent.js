@@ -255,6 +255,33 @@ export function searchHelp(query) {
   return [...cards, ...docs, ...flows]
 }
 
+/** 拆 '/a/b?panel=x' → { path:'/a/b', panel:'x' }；无 query 时 panel 为 ''。 */
+function splitRoute(route) {
+  const [path, qs = ''] = String(route || '').split('?')
+  const panel = new URLSearchParams(qs).get('panel') || ''
+  return { path, panel }
+}
+
+/**
+ * 按当前路由找最贴切的帮助任务卡，供顶栏「?」按钮做「本页帮助」跳转。
+ * 匹配优先级：同路径且同 panel > 同路径（无 panel 或 panel 不同） > 同路径前缀（详情页回落到列表页的卡）。
+ * 找不到返回 null，此时顶栏应退回帮助中心首页而不是乱跳。
+ * @param {string} fullPath 当前 $route.fullPath
+ * @returns {{id:string,title:string}|null}
+ */
+export function findHelpForRoute(fullPath) {
+  const cur = splitRoute(fullPath)
+  if (!cur.path) return null
+  const cards = HELP_CARDS.map((c) => ({ card: c, r: splitRoute(c.route) }))
+  const exact = cards.find((x) => x.r.path === cur.path && x.r.panel === cur.panel)
+  const samePath = exact || cards.find((x) => x.r.path === cur.path)
+  // 详情页（/topic-lib/12/edit）回落到最长的同前缀列表页卡（/topic-lib）
+  const prefix = samePath || cards
+    .filter((x) => x.r.path && cur.path.startsWith(x.r.path + '/'))
+    .sort((a, b) => b.r.path.length - a.r.path.length)[0]
+  return prefix ? { id: prefix.card.id, title: prefix.card.title } : null
+}
+
 /** 按 id 取帮助条目（含类型），供帮助中心页面按 ?topic= 定位 */
 export function getHelpById(id) {
   const card = HELP_CARDS.find((c) => c.id === id)

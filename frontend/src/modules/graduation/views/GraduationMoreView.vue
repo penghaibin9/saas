@@ -20,7 +20,15 @@
 
     <!-- 成果互查整改 -->
     <div v-else-if="tab === 'peer'" class="mp-stack">
-      <EmptyState v-if="!rows.length" title="暂无互查记录" description="点右上「分配互查」为学生指定互查人" />
+      <EmptyState
+        v-if="!rows.length"
+        title="还没有互查记录"
+        description="成果互查是让学生之间互相查论文、再据此整改。这一步不是必做的——学校要求做才做。"
+      >
+        <template #actions>
+          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/more/peer-assign')">分配互查</button>
+        </template>
+      </EmptyState>
       <DataTable v-else :columns="peerCols" :rows="rows" row-key="id">
         <template #cell-pair="{ row }"><div class="mp-cell-main">{{ row.reviewerName }} 查 {{ row.studentName }}</div><div class="mp-cell-sub">{{ row.opinion || '（待互查）' }}{{ row.rectifyNote ? ' · 整改：' + row.rectifyNote : '' }}</div></template>
         <template #cell-status="{ row }"><StatusTag :type="row.status === 'RECTIFIED' ? 'success' : row.status === 'REVIEWED' ? 'warning' : 'default'" :label="row.statusLabel" dot /></template>
@@ -29,7 +37,15 @@
 
     <!-- 答辩专家库 -->
     <div v-else-if="tab === 'experts'" class="mp-stack">
-      <EmptyState v-if="!rows.length" title="暂无答辩专家" description="点右上「新增专家」建立评委库（可标回避规则）" />
+      <EmptyState
+        v-if="!rows.length"
+        title="还没有答辩专家"
+        description="把评委先录进专家库，之后每次排答辩直接从库里挑，不用重复录入。校外专家可以标记，需要回避的也能在这里记上。"
+      >
+        <template #actions>
+          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/more/expert/create')">＋ 新增专家</button>
+        </template>
+      </EmptyState>
       <DataTable v-else :columns="expertCols" :rows="rows" row-key="id">
         <template #cell-expert="{ row }"><div class="mp-cell-main">{{ row.expertName }} <StatusTag v-if="row.isExternal" type="info" label="校外" /></div><div class="mp-cell-sub">{{ row.title || '—' }} · {{ row.collegeName || '—' }}{{ row.avoidNote ? ' · 回避：' + row.avoidNote : '' }}</div></template>
         <template #cell-status="{ row }"><StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="row.statusLabel" dot /></template>

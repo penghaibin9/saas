@@ -98,6 +98,8 @@
 
       <p class="mp-note">筛选默认「全部时间」，空日期不会导致查无数据；窄屏下点击列表将进入整页批阅详情。</p>
     </div>
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-proposal" />
   </ModulePageShell>
 </template>
 
@@ -110,7 +112,7 @@
  */
 import { ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppExportButton, AppSearchBox, AppPagination } from '@/components/common'
+import { AppExportButton, AppSearchBox, AppPagination, AppPageGuide } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
@@ -120,7 +122,7 @@ import ProposalReviewCard from './_shared/ProposalReviewCard.vue'
 
 export default {
   name: 'ProposalListView',
-  components: {
+  components: { AppPageGuide,
     ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppExportButton, AppSearchBox, AppPagination, AppDateDisplay,
     GraduationBatchStrip, ProposalReviewCard

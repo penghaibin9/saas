@@ -18,7 +18,25 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" :title="'当前暂无' + typeLabel" :description="'点击右上角「新建' + typeLabel + '」创建'" />
+      <!-- 页签筛选无果 ≠ 这类模板还没建，两种空态给不同出路 -->
+      <EmptyState
+        v-else-if="!rows.length && filters.status"
+        :title="'当前页签没有' + typeLabel"
+        :description="'切到「全部」可以看这一类的所有' + typeLabel + '。'"
+      >
+        <template #actions>
+          <button class="mp-btn" @click="switchTab('')">看全部</button>
+        </template>
+      </EmptyState>
+      <EmptyState
+        v-else-if="!rows.length"
+        :title="'还没有' + typeLabel"
+        :description="emptyDesc"
+      >
+        <template #actions>
+          <button class="mp-btn mp-btn--primary" @click="openCreate">＋ 新建{{ typeLabel }}</button>
+        </template>
+      </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
         <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.name }}
@@ -60,6 +78,13 @@ import { toast } from '@/utils/toast'
 
 const TYPE_LABEL = { MATERIAL: '材料模板', TASKBOOK: '任务书模板', PROPOSAL: '开题模板' }
 
+/** 空态说明：讲清楚这类模板给谁用、不建会怎样，而不是只说「点右上角新建」 */
+const TYPE_EMPTY_DESC = {
+  MATERIAL: '材料模板是学生交材料时下载的格式范本。不建模板，学生就各交各的格式，最后归档时你要一份份返工。',
+  TASKBOOK: '任务书模板是导师给学生下达任务时套用的范本。建好模板，导师下达任务书时直接套用，不用每人从头写。',
+  PROPOSAL: '开题模板是学生写开题报告时下载的范本。统一了模板，你批阅时才好对照着看，学生也少问一半的问题。'
+}
+
 export default {
   name: 'GraduationTemplateView',
   components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
@@ -87,7 +112,9 @@ export default {
   },
   computed: {
     templateType() { return this.$route.query.type || 'MATERIAL' },
-    typeLabel() { return TYPE_LABEL[this.templateType] || '材料模板' }
+    typeLabel() { return TYPE_LABEL[this.templateType] || '材料模板' },
+    /** 空态说明：按模板类型讲清楚「这类模板是给谁用的、不建会怎样」 */
+    emptyDesc() { return TYPE_EMPTY_DESC[this.templateType] || TYPE_EMPTY_DESC.MATERIAL }
   },
   watch: {
     '$route.query.type'() { this.pagination.page = 1; this.filters.status = ''; this.load() }

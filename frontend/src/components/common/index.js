@@ -117,6 +117,7 @@ export {
   AppPrintButton,
   AppAvatarGroup,
   AppStepGuide,
+  AppPageGuide,
   AppKeyboardShortcut,
   AppQRCode
 } from './experience'

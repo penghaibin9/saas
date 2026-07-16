@@ -141,6 +141,8 @@
 
       <p class="mp-note">初稿 / 定稿顺序、查重超标拦截均由后端真实状态机校验；筛选默认「全部时间」。</p>
     </div>
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-final-review" />
   </ModulePageShell>
 </template>
 
@@ -153,7 +155,7 @@
  */
 import { ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppTemplateChips } from '@/components/common'
+import { AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppTemplateChips, AppPageGuide } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
@@ -164,7 +166,7 @@ const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达�
 
 export default {
   name: 'FinalSubmissionListView',
-  components: {
+  components: { AppPageGuide,
     ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppDateDisplay,
     GraduationBatchStrip, AppTemplateChips

@@ -19,7 +19,17 @@
     <GraduationBatchStrip />
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
-    <EmptyState v-else-if="!rows.length" title="暂无答辩组" description="点击「新增答辩组」创建分组并排期" />
+    <EmptyState
+      v-else-if="!rows.length"
+      title="还没有答辩组"
+      description="答辩要先建组：把学生分进组、排好时间地点，再发通知。评委可以从「答辩专家库」里选，不用每次重新录。"
+    >
+      <template #actions>
+        <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/defense/groups/create')">＋ 新增答辩组</button>
+        <button class="mp-btn" @click="$router.push('/admin/graduation/more?panel=experts')">先维护答辩专家库</button>
+        <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-defense-grade')">怎么安排答辩？</button>
+      </template>
+    </EmptyState>
     <div v-else class="mp-stack">
       <!-- 编排摘要：一眼看清当前编排缺口，点击即过滤对应队列 -->
       <div class="ds-summary">
@@ -67,6 +77,8 @@
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       type="warning" confirm-text="确认发布" :submitting="submitting" @confirm="doPublish"
     />
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-defense" />
   </ModulePageShell>
 </template>
 
@@ -74,7 +86,7 @@
 /** 答辩安排（/admin/graduation/defense）：答辩组 CRUD + 学生分配 + 评委回避 + 发布 + 导出。 */
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDateDisplay } from '@/components/common/date'
-import { AppExportButton } from '@/components/common'
+import { AppExportButton, AppPageGuide } from '@/components/common'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
@@ -84,7 +96,7 @@ import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'DefenseScheduleView',
-  components: { GraduationBatchStrip, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton, AppConfirmDialog },
+  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

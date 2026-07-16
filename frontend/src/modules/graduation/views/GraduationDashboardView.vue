@@ -74,17 +74,20 @@
 
       <p class="mp-note">进度洞察可下钻：滞后学生 → 毕设学生列表（按风险筛选）；批量提醒 / 导出均写入审计日志。</p>
     </div>
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-dashboard" />
   </ModulePageShell>
 </template>
 
 <script>
 /** 毕业设计中心 · 管理看板（/admin/graduation）。 */
+import { AppPageGuide } from '@/components/common'
 import { ModulePageShell, ModuleHero, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 
 export default {
   name: 'GraduationDashboardView',
-  components: { ModulePageShell, ModuleHero, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState },
+  components: { AppPageGuide, ModulePageShell, ModuleHero, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', hero: { stats: [], flow: [], todos: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' } }

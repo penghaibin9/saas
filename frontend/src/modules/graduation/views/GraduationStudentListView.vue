@@ -27,7 +27,15 @@
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
+      <!-- 名单页签且非筛选态才给「怎么开始」的出路：其余页签的空态多是好消息（没缺口/没待办），
+           给按钮反而误导。动作直接复用 onToolbar，不另起一套跳转。 -->
+      <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
+        <template v-if="showRosterEmptyActions" #actions>
+          <button class="mp-btn mp-btn--primary" @click="onToolbar('create')">＋ 建档</button>
+          <button class="mp-btn" @click="onToolbar('import')">导入 Excel</button>
+          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-students')">怎么导入名单？</button>
+        </template>
+      </EmptyState>
       <DataTable
         v-else
         :columns="columns"
@@ -155,6 +163,8 @@
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
     />
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-students" />
   </ModulePageShell>
 </template>
 
@@ -165,7 +175,7 @@ import {
   StatusTag, RiskTag, LoadingState, ErrorState, EmptyState
 } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppSensitiveText, AppExportButton } from '@/components/common'
+import { AppSensitiveText, AppExportButton, AppPageGuide } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import {
@@ -285,7 +295,7 @@ import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'GraduationStudentListView',
-  components: { GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
+  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -300,6 +310,15 @@ export default {
     }
   },
   computed: {
+    /** 是否处于筛选态（archiveView 是页签自带的视图切换，不算用户筛选） */
+    filtered() {
+      const f = this.filters
+      return Object.keys(f).some((k) => k !== 'archiveView' && f[k])
+    },
+    /** 只有「学生名单」页签、且不是筛选没结果时，空态才给建档/导入的出路 */
+    showRosterEmptyActions() {
+      return this.activePanel === 'roster' && !this.filtered
+    },
     columns() {
       return COLUMN_PRESETS[this.activePanel] || COLUMN_PRESETS.default
     },
@@ -364,7 +383,12 @@ export default {
       return m[this.activePanel] || '暂无毕设学生'
     },
     emptyDesc() {
-      if (this.activePanel === 'roster') return '可「＋ 建档」或「导入 Excel」录入毕设学生'
+      // 按钮已经写了「做什么」，描述就该讲「为什么」和「注意什么」，不重复按钮文字。
+      if (this.activePanel === 'roster') {
+        return this.filtered
+          ? '当前筛选条件下没有学生。可以放宽条件，或清空筛选看全部。'
+          : '名单是毕设的起点——没有名单，选题、导师分配、答辩都无从谈起。人多建议用 Excel 导入，传之前系统会先给你看一遍预览，有问题的行会告诉你第几行错在哪。'
+      }
       return '可调整筛选条件或从其他入口建档'
     }
   },
