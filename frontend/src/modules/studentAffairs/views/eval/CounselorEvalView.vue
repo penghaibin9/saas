@@ -70,22 +70,42 @@
         </table>
       </AppSectionCard>
     </AppGlobalState>
+
+    <AppConfirmDialog
+      v-model:visible="appealDlg.visible" title="复核考评申诉" type="primary"
+      confirm-text="提交复核" require-reason reason-label="复核意见（≥5字）"
+      :submitting="appealDlg.submitting" @confirm="submitAppealReview"
+    >
+      <AppFormItem label="复核结论" required>
+        <AppSelect v-model="appealDlg.result" :options="APPEAL_RESULTS" :disabled="appealDlg.submitting" />
+      </AppFormItem>
+    </AppConfirmDialog>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag,
+  AppConfirmDialog, AppFormItem, AppSelect } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
+/** 复核结论枚举：原为 window.prompt 让用户手打 UPHELD/ADJUSTED，打错即失败 */
+const APPEAL_RESULTS = [
+  { value: 'UPHELD', label: '维持原考评结果' },
+  { value: 'ADJUSTED', label: '调整考评结果' }
+]
+
 export default {
   name: 'CounselorEvalView',
-  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag,
+    AppConfirmDialog, AppFormItem, AppSelect },
   data() {
     return {
+      APPEAL_RESULTS,
       loading: true, acting: '', errorMessage: '', indicators: [], evals: [],
       indForm: { name: '', weight: null },
-      scoreForm: { periodCode: '', counselorKey: '', counselorName: '', scores: {} }
+      scoreForm: { periodCode: '', counselorKey: '', counselorName: '', scores: {} },
+      appealDlg: { visible: false, evalId: '', result: 'UPHELD', submitting: false }
     }
   },
   computed: {
@@ -130,15 +150,21 @@ export default {
       this.acting = ''
       if (res.code === 0) { toast.success('已发布'); this.load() } else toast.error(res.message || '发布失败')
     },
-    async reviewAppeal(e) {
-      const result = window.prompt('复核结论：UPHELD 维持 / ADJUSTED 调整', 'UPHELD')
-      if (!result) return
-      const opinion = window.prompt('复核意见（至少5字）：')
-      if (!opinion) return
-      this.acting = e.evalId
-      const res = await studentAffairsApi.reviewEvalAppeal(e.evalId, { result: result.trim().toUpperCase(), opinion })
+    /** 复核申诉：结论走下拉（原让用户手打 UPHELD/ADJUSTED），意见走弹窗必填区（≥5字由组件校验） */
+    reviewAppeal(e) {
+      this.appealDlg = { visible: true, evalId: e.evalId, result: 'UPHELD', submitting: false }
+    },
+    async submitAppealReview({ reason }) {
+      const d = this.appealDlg
+      d.submitting = true
+      this.acting = d.evalId
+      const res = await studentAffairsApi.reviewEvalAppeal(d.evalId, { result: d.result, opinion: reason })
+      d.submitting = false
       this.acting = ''
-      if (res.code === 0) { toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
+      if (res.code !== 0) { toast.error(res.message || '复核失败'); return }
+      d.visible = false
+      toast.success('已复核')
+      this.load()
     }
   }
 }

@@ -22,6 +22,61 @@ LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
 # 校/平台超管（超管查看心理明细仍强制填写原因 + 写 SENSITIVE_VIEW 审计，见 get_risk）。
 _MENTAL_ROLES = {"SCHOOL_ADMIN", "PSYCHOLOGY_TEACHER", "PLATFORM_SUPER_ADMIN", "ADMIN"}
 
+# 风险责任人候选角色：分派后会给 owner 建待办(_todo_upsert)+发站内信(_msg)，owner 打开待办必须
+# 能真正处置，即必须持有 studentAffairs.risk.*（见 app/core/permissions.py ROLE_PERMISSIONS）。
+# 分派给任课教师等无该权限的账号会让待办变成点开即 403 的死信，故按角色码收敛候选集。
+OWNER_ROLE_CODES = ("COUNSELOR", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN",
+                    "PSYCHOLOGY_TEACHER", "COLLEGE_ADMIN", "SCHOOL_ADMIN")
+
+
+def _owner_role_user_ids(db) -> set[int]:
+    """持有学工风险处置角色、且角色与授权本身有效的账号 id 集合。"""
+    from app.models import Role, UserRole
+    rows = db.scalars(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(
+        UserRole.tenant_id == _tid(), UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE",
+        Role.tenant_id == _tid(), Role.is_deleted.is_(False), Role.status == "ACTIVE",
+        Role.role_code.in_(OWNER_ROLE_CODES))).all()
+    return {int(v) for v in rows}
+
+
+def list_owner_candidates(keyword: str | None = None) -> list[dict]:
+    """可分派的风险责任人（在职 + 同租户 + 持处置角色）。供前端责任人选择器远程搜索。"""
+    from app.models import User
+    with session() as db:
+        eligible = _owner_role_user_ids(db)
+        if not eligible:
+            return []
+        q = select(User).where(User.tenant_id == _tid(), User.is_deleted.is_(False),
+                               User.status == "ACTIVE", User.id.in_(eligible))
+        if keyword:
+            like = f"%{keyword.strip()}%"
+            q = q.where((User.real_name.like(like)) | (User.login_name.like(like)))
+        rows = db.scalars(q.order_by(User.real_name, User.id).limit(200)).all()
+        return [{"id": str(u.id), "name": u.real_name, "loginName": u.login_name,
+                 "userType": u.user_type} for u in rows]
+
+
+# ⚠️ 已知欠账（本轮未修，见 docs 历史欠账）：assign()/transfer() 对 owner_id 是
+# int(owner_id or 0) 零校验——不校验账号是否存在/同租户/是否持处置角色。填不存在的 id 会把
+# 待办与站内信发给虚空账号，填非数字直接 ValueError→500。
+# 未在本轮修复的原因：现有 tests/test_affairs_risk.py 的 r1/r2/r3 等用例直接断言
+# ownerId="486"（conftest 不建 User，该 id 不对应任何账号）能分派成功，即测试固化了这个
+# 缺陷；补校验必然改红这批用例，而本轮无法在共享 MySQL 测试库上复跑验证（并行会话正在
+# 对该库做 DDL）。修复方案：_seed() 播种一个持 OWNER_ROLE_CODES 角色的在职 User，
+# 用例改用该 id，再启用下面的校验。
+#
+# def _validate_owner(db, owner_id) -> int:
+#     from app.models import User
+#     raw = str(owner_id or "").strip()
+#     if not raw or not raw.isdigit():
+#         raise AppException("VALIDATION_ERROR", "请选择有效责任人")
+#     u = db.get(User, int(raw))
+#     if not u or u.is_deleted or u.tenant_id != _tid() or u.status != "ACTIVE":
+#         raise AppException("VALIDATION_ERROR", "责任人不存在或已停用")
+#     if u.id not in _owner_role_user_ids(db):
+#         raise AppException("VALIDATION_ERROR", "该账号无学工风险处置角色，不能作为责任人")
+#     return int(u.id)
+
 L_RISK = {
     "NEW": "新建", "ASSIGNED": "已分派", "PROCESSING": "处置中", "FOLLOWING": "持续跟进",
     "TRANSFERRED": "已转办", "ESCALATED": "已升级", "CLOSED": "已关闭", "REOPENED": "已重开",

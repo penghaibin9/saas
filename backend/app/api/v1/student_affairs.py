@@ -886,6 +886,12 @@ def risk_record(riskId: int = Path(...), reason: Optional[str] = None,
     return success(risk_svc.get_risk(riskId, user, reason))
 
 
+@router.get("/risk/owner-candidates", summary="可分派的风险责任人（在职+持学工风险处置角色）")
+def risk_owner_candidates(keyword: Optional[str] = None,
+                          user=Depends(require_permission("studentAffairs.risk.assign"))):
+    return success({"items": risk_svc.list_owner_candidates(keyword)})
+
+
 @router.post("/risk/records/{riskId}/assign", summary="分派责任人")
 def risk_assign(body: RiskAssignBody, riskId: int = Path(...),
                 user=Depends(require_permission("studentAffairs.risk.assign"))):
