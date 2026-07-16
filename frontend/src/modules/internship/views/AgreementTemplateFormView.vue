@@ -69,14 +69,12 @@
           </div>
           <div class="mp-card__body">
             <AppFormItem class="atf-body-item" label="正文内容" prop="body">
-              <AppQuickFilterChips
+              <AppTemplateChips
                 v-if="!readonly"
                 class="atf-body-chips"
                 :options="AGREEMENT_CLAUSE"
-                multiple
-                :model-value="[]"
                 size="compact"
-                @change="onPickClause"
+                @pick="onPickClause"
               />
               <AppTextarea
                 v-model="form.body"
@@ -131,7 +129,7 @@
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
-  AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar, AppQuickFilterChips
+  AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar, AppTemplateChips
 } from '@/components/common'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -149,7 +147,7 @@ export default {
   name: 'AgreementTemplateFormView',
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
-    AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar, AppQuickFilterChips
+    AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar, AppTemplateChips
   },
   data() {
     return {
@@ -223,8 +221,7 @@ export default {
     braced(key) {
       return '{' + '{' + key + '}' + '}'
     },
-    onPickClause(vals) {
-      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+    onPickClause(text) {
       if (!text) return
       const cur = (this.form.body || '').replace(/\n+$/, '')
       this.form.body = cur ? cur + '\n' + text : text

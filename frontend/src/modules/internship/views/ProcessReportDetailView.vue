@@ -40,7 +40,7 @@
                 <input type="radio" :checked="action === 'RETURN'" />
                 <div><div class="mp-radio__title">退回修改</div><div class="mp-radio__desc">退回原因必填（≥5 字）</div></div>
               </div>
-              <AppQuickFilterChips class="pr-chips" :options="activeChips" multiple :model-value="[]" size="compact" @change="onPickChip" />
+              <AppTemplateChips class="pr-chips" :options="activeChips" size="compact" @pick="onPickChip" />
               <textarea v-model="comment" class="mp-textarea" :placeholder="action === 'RETURN' ? '请写明退回原因…' : '评语（选填）'"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
@@ -64,7 +64,7 @@
 
 <script>
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppAuditTrail, AppQuickFilterChips } from '@/components/common'
+import { AppStatusTag, AppAuditTrail, AppTemplateChips } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -73,7 +73,7 @@ import { APPROVE_REPORT_SHORT, REJECT_PROCESS_REPORT } from '@/modules/internshi
 
 export default {
   name: 'ProcessReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppQuickFilterChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
@@ -100,8 +100,7 @@ export default {
   },
   created() { this.load() },
   methods: {
-    onPickChip(vals) {
-      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+    onPickChip(text) {
       if (!text) return
       const cur = (this.comment || '').trim()
       this.comment = cur ? cur + '；' + text : text

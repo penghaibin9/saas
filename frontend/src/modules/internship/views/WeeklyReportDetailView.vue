@@ -76,7 +76,7 @@
               <label class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">
                 {{ action === 'RETURN' ? '退回原因（必填，≥5 字）' : '评语（选填）' }}
               </label>
-              <AppQuickFilterChips class="wr-chips" :options="activeChips" multiple :model-value="[]" size="compact" @change="onPickChip" />
+              <AppTemplateChips class="wr-chips" :options="activeChips" size="compact" @pick="onPickChip" />
               <textarea v-model="comment" class="mp-textarea" :placeholder="action === 'RETURN' ? '请写明退回原因，将原样同步学生端…' : '例如：联调记录完整，下周补充量化数据…'"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
@@ -106,7 +106,7 @@
  * 闭环：查看正文/附件/版本 → 通过 / 退回（原因必填）→ 留痕 → 学生端同步。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppRiskTag, AppAuditTrail, AppQuickFilterChips } from '@/components/common'
+import { AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -116,7 +116,7 @@ import { APPROVE_WEEKLY, REJECT_WEEKLY } from '@/modules/internship/constants/pr
 
 export default {
   name: 'WeeklyReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppQuickFilterChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
+  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
@@ -149,8 +149,7 @@ export default {
     this.load()
   },
   methods: {
-    onPickChip(vals) {
-      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+    onPickChip(text) {
       if (!text) return
       const cur = (this.comment || '').trim()
       this.comment = cur ? cur + '；' + text : text

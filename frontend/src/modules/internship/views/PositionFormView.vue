@@ -94,14 +94,12 @@
               </AppFormItem>
               <AppFormItem class="pf-grid__full" label="补贴" prop="subsidy" hint="点击下方标签追加，或手动输入">
                 <AppTextInput v-model="form.subsidy" :disabled="readonly" placeholder="如：五险一金、包吃住、交通补贴" />
-                <AppQuickFilterChips
+                <AppTemplateChips
                   v-if="!readonly"
                   class="pf-welfare-chips"
                   :options="welfareChips"
-                  multiple
-                  :model-value="[]"
                   size="compact"
-                  @change="onPickWelfare"
+                  @pick="onPickWelfare"
                 />
               </AppFormItem>
             </div>
@@ -164,7 +162,7 @@ import { ModulePageShell, LoadingState, ErrorState } from '@/components/business
 import { AppButton } from '@/components/ui'
 import {
   AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-  AppSubmitBar, AppCompanyPicker, AppMentorPicker, AppQuickFilterChips
+  AppSubmitBar, AppCompanyPicker, AppMentorPicker, AppTemplateChips
 } from '@/components/common'
 import { searchEnterprises } from './components/entityPickerAdapters'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -187,7 +185,7 @@ export default {
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
     AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-    AppSubmitBar, AppCompanyPicker, AppMentorPicker, AppQuickFilterChips
+    AppSubmitBar, AppCompanyPicker, AppMentorPicker, AppTemplateChips
   },
   data() {
     return {
@@ -260,8 +258,7 @@ export default {
   methods: {
     // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
     searchEnterprises,
-    onPickWelfare(vals) {
-      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+    onPickWelfare(text) {
       if (!text) return
       const cur = (this.form.subsidy || '').split(/[、,，]/).map((s) => s.trim()).filter(Boolean)
       if (cur.includes(text)) return

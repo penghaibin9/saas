@@ -49,17 +49,17 @@
           <AppFormSection title="巡访反馈">
             <AppFormItem label="企业反馈">
               <AppTextInput v-model="form.enterpriseFeedback" placeholder="企业对学生的反馈" />
-              <AppQuickFilterChips class="grf__chips" :options="VISIT_GUIDANCE" multiple :model-value="[]" size="compact" @change="(v) => pickInto('enterpriseFeedback', v)" />
+              <AppTemplateChips class="grf__chips" :options="VISIT_GUIDANCE" size="compact" @pick="(v) => pickInto('enterpriseFeedback', v)" />
             </AppFormItem>
             <AppFormItem label="学生反馈">
               <AppTextInput v-model="form.studentFeedback" placeholder="学生对岗位/实习的反馈" />
-              <AppQuickFilterChips class="grf__chips" :options="VISIT_STATUS" multiple :model-value="[]" size="compact" @change="(v) => pickInto('studentFeedback', v)" />
+              <AppTemplateChips class="grf__chips" :options="VISIT_STATUS" size="compact" @pick="(v) => pickInto('studentFeedback', v)" />
             </AppFormItem>
           </AppFormSection>
           <AppFormSection title="安全隐患与整改" description="填写安全隐患或整改要求后，该巡访自动进入「整改中」">
             <AppFormItem label="安全隐患">
               <AppTextInput v-model="form.safetyIssue" placeholder="填写后自动进入「整改中」" />
-              <AppQuickFilterChips class="grf__chips" :options="VISIT_ISSUE" multiple :model-value="[]" size="compact" @change="(v) => pickInto('safetyIssue', v)" />
+              <AppTemplateChips class="grf__chips" :options="VISIT_ISSUE" size="compact" @pick="(v) => pickInto('safetyIssue', v)" />
             </AppFormItem>
             <AppFormItem label="整改要求"><AppTextInput v-model="form.rectifyRequire" placeholder="填写后自动进入「整改中」" /></AppFormItem>
             <AppFormItem label="整改截止"><AppDatePicker v-model="form.rectifyDeadline" /></AppFormItem>
@@ -97,7 +97,7 @@
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppForm, AppFormSection, AppFormItem, AppSubmitBar, AppSelect, AppTextInput, AppTextarea,
-  AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips } from '@/components/common'
+  AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips, AppTemplateChips } from '@/components/common'
 import { searchInternStudents } from './components/entityPickerAdapters'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import { toast } from '@/utils/toast'
@@ -122,7 +122,7 @@ function emptyForm() {
 export default {
   name: 'GuidanceRecordFormView',
   components: { ModulePageShell, AppButton, AppForm, AppFormSection, AppFormItem, AppSubmitBar,
-    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips },
+    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips, AppTemplateChips },
   data() {
     return {
       VISIT_STATUS, VISIT_GUIDANCE, VISIT_ISSUE,
@@ -157,8 +157,7 @@ export default {
   methods: {
     // 选择器远程搜索（岗位实习模块适配层，关键字与数据范围由后端裁定）
     searchInternStudents,
-    pickInto(field, vals) {
-      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+    pickInto(field, text) {
       if (!text) return
       const cur = (this.form[field] || '').trim()
       this.form[field] = cur ? cur + '；' + text : text

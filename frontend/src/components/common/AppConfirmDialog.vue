@@ -14,11 +14,19 @@
           <label class="app-confirm-dialog__label">
             {{ reasonLabel }}<span class="app-confirm-dialog__required">*</span>
           </label>
-          <div v-if="reasonChips.length" class="app-confirm-dialog__chips">
-            <span class="app-confirm-dialog__chips-label">快捷填入：</span>
-            <AppQuickFilterChips :options="reasonChips" multiple :model-value="[]" size="compact" @change="onPickChip" />
-          </div>
+          <AppQuickPhrases
+            v-if="phraseSceneKey"
+            :scene-key="phraseSceneKey"
+            :group="phraseGroup"
+            @pick="onPickPhrase"
+          />
+          <AppTemplateChips
+            v-if="reasonChips.length"
+            :options="reasonChips"
+            @pick="onPickPhrase"
+          />
           <textarea
+            ref="reasonEl"
             v-model="reason"
             class="app-confirm-dialog__textarea"
             :placeholder="reasonPlaceholder"
@@ -59,16 +67,17 @@
  * Props: visible(v-model)、title、message、type: primary|warning|danger、
  *        confirmText、cancelText、requireReason、reasonLabel、reasonPlaceholder、
  *        reasonMinLength、showNotify（是否显示“通知学生”勾选）、notifyLabel、submitting（防重复提交）、
- *        reasonChips（可选，字符串数组；requireReason 时在原因框上方渲染快捷芯片，点击追加进原因框，
- *        已有内容用「；」拼接，不覆盖已输入内容；不传则不渲染，不影响任何既有调用方）
+ *        phraseSceneKey/phraseGroup（学工中心场景化词库）、reasonChips（调用方直传的原因芯片文案数组）
  * Emits: update:visible、confirm({ reason, notify })、cancel
  * Slots: default（补充说明 / 影响范围 / 附件区）
  */
-import AppQuickFilterChips from './display/AppQuickFilterChips.vue'
+import AppQuickPhrases from './AppQuickPhrases.vue'
+import AppTemplateChips from './form/AppTemplateChips.vue'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 export default {
   name: 'AppConfirmDialog',
-  components: { AppQuickFilterChips },
+  components: { AppQuickPhrases, AppTemplateChips },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },
@@ -88,12 +97,17 @@ export default {
     reasonLabel: { type: String, default: '处理原因' },
     reasonPlaceholder: { type: String, default: '请填写具体原因，便于对方理解和修改' },
     reasonMinLength: { type: Number, default: 5 },
-    reasonChips: { type: Array, default: () => [] },
     showNotify: { type: Boolean, default: false },
     notifyLabel: { type: String, default: '通知学生' },
     submitting: { type: Boolean, default: false },
     /** loading: submitting 的别名 */
-    loading: { type: Boolean, default: false }
+    loading: { type: Boolean, default: false },
+    /** 快捷用语场景 key（见 @/utils/quickPhrases.js）；不传则不显示快捷用语区 */
+    phraseSceneKey: { type: String, default: '' },
+    /** 快捷用语分组（如谈话类型/宿舍检查类型），命中分组的词条置顶 */
+    phraseGroup: { type: String, default: '' },
+    /** 驳回/原因快捷芯片（调用方直传文案数组，与 phraseSceneKey 二选一） */
+    reasonChips: { type: Array, default: () => [] }
   },
   emits: ['update:visible', 'confirm', 'cancel'],
   data() {
@@ -120,13 +134,6 @@ export default {
     }
   },
   methods: {
-    onPickChip(vals) {
-      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
-      if (!text) return
-      const cur = (this.reason || '').replace(/[；;\s]+$/, '')
-      this.reason = cur ? cur + '；' + text : text
-      this.reasonError = ''
-    },
     onCancel() {
       this.$emit('update:visible', false)
       this.$emit('cancel')
@@ -141,6 +148,12 @@ export default {
       }
       this.reasonError = ''
       this.$emit('confirm', { reason: this.reason.trim(), notify: this.notify })
+    },
+    onPickPhrase(text) {
+      const el = this.$refs.reasonEl
+      const { value, selStart, selEnd } = insertAtCursor(el, this.reason, text)
+      this.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     }
   }
 }
@@ -217,18 +230,6 @@ export default {
 .app-confirm-dialog__required {
   color: var(--danger-600);
   margin-left: 2px;
-}
-.app-confirm-dialog__chips {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-.app-confirm-dialog__chips-label {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-  flex-shrink: 0;
 }
 .app-confirm-dialog__textarea {
   width: 100%;

@@ -34,7 +34,7 @@
         <AppFormSection title="评语与建议">
           <AppFormItem label="综合评语">
             <AppTextarea v-model="form.overallComment" :rows="2" placeholder="企业对学生的综合评语" />
-            <AppQuickFilterChips class="eef__chips" :options="ENTERPRISE_EVAL_COMMENT" multiple :model-value="[]" size="compact" @change="onPickComment" />
+            <AppTemplateChips class="eef__chips" :options="ENTERPRISE_EVAL_COMMENT" size="compact" @pick="onPickComment" />
           </AppFormItem>
           <label class="eef__chk"><input v-model="form.recommendHire" type="checkbox" />建议录用</label>
         </AppFormSection>
@@ -70,7 +70,7 @@
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppForm, AppFormSection, AppFormItem, AppSubmitBar, AppTextInput, AppNumberInput,
-  AppTextarea, AppStudentPicker, AppQuickFilterChips } from '@/components/common'
+  AppTextarea, AppStudentPicker, AppTemplateChips } from '@/components/common'
 import { searchInternStudents } from './components/entityPickerAdapters'
 import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
 import { toast } from '@/utils/toast'
@@ -90,7 +90,7 @@ function emptyForm() {
 export default {
   name: 'EnterpriseEvalFormView',
   components: { ModulePageShell, AppButton, AppForm, AppFormSection, AppFormItem, AppSubmitBar,
-    AppTextInput, AppNumberInput, AppTextarea, AppStudentPicker, AppQuickFilterChips },
+    AppTextInput, AppNumberInput, AppTextarea, AppStudentPicker, AppTemplateChips },
   data() {
     return {
       ENTERPRISE_EVAL_COMMENT,
@@ -122,8 +122,7 @@ export default {
   methods: {
     // 选择器远程搜索（岗位实习模块适配层，关键字与数据范围由后端裁定）
     searchInternStudents,
-    onPickComment(vals) {
-      const text = Array.isArray(vals) ? vals[vals.length - 1] : vals
+    onPickComment(text) {
       if (!text) return
       const cur = (this.form.overallComment || '').trim()
       this.form.overallComment = cur ? cur + '；' + text : text
