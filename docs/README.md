@@ -69,7 +69,7 @@
 docs/
 ├── 00-项目入口与总控/     总导航、项目入口、project-map
 ├── 01-产品需求与范围/     商业化需求、范围冻结
-├── 02-总体架构与公共底座/ 公共组件、backend-integration、frontend
+├── 02-总体架构与公共底座/ 五端与 SaaS 总体架构、公共组件、backend-integration、frontend
 ├── 03-业务模块设计/       各业务中心 + 跨模块融合
 ├── 04-UI与全端交互/       ui、design
 ├── 05-数据接口权限与安全/ api、database、rbac、security
