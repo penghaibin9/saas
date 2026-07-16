@@ -134,3 +134,4 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401
+from app.models.sandbox import SandboxBaseline  # noqa: F401

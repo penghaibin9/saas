@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
-SBX_TID = 1000000000000000007
+SBX_TID = 1000000000000000004
 
 
 def _count(db, model):

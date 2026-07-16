@@ -171,6 +171,23 @@ def tenant_reset_demo(tenant_id: int, user=Depends(require_platform_super_admin)
     return success(out, message="演示数据已重置为基线（5 名学生）")
 
 
+@router.post("/tenants/{tenant_id}/reset-sandbox-data", summary="恢复真实演示沙箱")
+def tenant_reset_sandbox(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.db.session import db_enabled, get_sessionmaker
+    from app.services.sandbox_service import SANDBOX_CODE, SANDBOX_TID, reset_sandbox
+    if tenant_id != SANDBOX_TID:
+        raise AppException("NO_PERMISSION", f"仅 {SANDBOX_CODE} 支持恢复演示数据")
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "恢复演示沙箱需要启用真实数据库")
+    db = get_sessionmaker()()
+    try:
+        out = reset_sandbox(db, dry_run=False)
+    finally:
+        db.close()
+    _audit("PLATFORM_SANDBOX_RESET", str(tenant_id), out)
+    return success(out, message="真实演示沙箱已恢复；账号与权限已保留")
+
+
 @router.get("/tenants/{tenant_id}/usage", summary="租户用量")
 def tenant_usage(tenant_id: int, user=Depends(require_platform_super_admin)):
     t = svc.get_tenant(tenant_id)

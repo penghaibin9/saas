@@ -6,8 +6,11 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from app.models import (AttendanceException, InternshipAuditTrail, InternshipBatch,
-                        InternshipRecord, RiskRecord, StudentProfile, WeeklyReport)
+from app.models import (
+    AttendanceException, EmpCompany, InternshipApplication, InternshipAuditTrail,
+    InternshipBatch, InternshipLeave, InternshipMatch, InternshipPosition, InternshipRecord, RiskRecord,
+    Role, StudentProfile, User, UserRole, WeeklyReport,
+)
 
 TID = 1000000000000000001
 
@@ -45,6 +48,100 @@ def seed_internship(db, tenant_id: int = TID) -> dict:
         db.add(r)
         db.flush()
         recs.append(r)
+
+    # 真实关联的企业、岗位、正式申请、匹配冲突与校内指导教师账号。
+    company = EmpCompany(
+        tenant_id=tenant_id, name="华信智能科技有限公司", credit_code="91320594DEMO202601",
+        industry="软件和信息技术服务业", nature="民营企业", city="苏州",
+        contact_person="周明", cooperation_level="核心合作", status="ACTIVE",
+        region="江苏省苏州市", address="吴中区数字产业园8号楼", scale="中型",
+        source="SCHOOL_ENTERPRISE", coop_status="ACTIVE", qualification_status="PASSED",
+    )
+    db.add(company)
+    db.flush()
+    position = InternshipPosition(
+        tenant_id=tenant_id, company_id=company.id, company_name=company.name, batch_id=batch.id,
+        title="前端开发实习生", category="软件开发", major_requirement="软件技术/计算机应用",
+        grade_requirement="2026届", work_location="苏州市吴中区", salary_range="3500-5000元/月",
+        subsidy="餐补+交通补贴", headcount=5, allocated_count=1, mentor_name="周明",
+        status="PUBLISHED", publish_at=now - timedelta(days=45),
+    )
+    db.add(position)
+    db.flush()
+    recs[0].enterprise_id = company.id
+    recs[0].position_id = position.id
+    recs[0].destination_type = "ASSIGNED"
+    recs[0].eligibility_status = "QUALIFIED"
+
+    role = db.scalars(select(Role).where(
+        Role.tenant_id == tenant_id, Role.role_code == "INTERN_MENTOR")).first()
+    if role is None:
+        role = Role(tenant_id=tenant_id, role_code="INTERN_MENTOR", role_name="岗位实习指导教师",
+                    role_type="SYSTEM", status="ACTIVE")
+        db.add(role)
+        db.flush()
+    teacher = db.scalars(select(User).where(
+        User.tenant_id == tenant_id, User.login_name == "demo_intern_mentor")).first()
+    if teacher is None:
+        fallback = db.scalars(select(User).where(User.tenant_id == tenant_id).order_by(User.id)).first()
+        teacher = User(tenant_id=tenant_id, login_name="demo_intern_mentor", real_name="刘强",
+                       password_hash=fallback.password_hash if fallback else "demo-not-for-login",
+                       user_type="TEACHER", status="ACTIVE")
+        db.add(teacher)
+        db.flush()
+    if not db.scalars(select(UserRole).where(
+            UserRole.tenant_id == tenant_id, UserRole.user_id == teacher.id,
+            UserRole.role_id == role.id)).first():
+        db.add(UserRole(tenant_id=tenant_id, user_id=teacher.id, role_id=role.id, status="ACTIVE"))
+    recs[0].advisor_user_id = teacher.id
+    recs[0].advisor_name = teacher.real_name
+
+    db.add_all([
+        InternshipApplication(
+            tenant_id=tenant_id, record_id=recs[0].id, student_id=students[0].id, batch_id=batch.id,
+            application_type="POSITION", volunteer_no=1, position_id=position.id,
+            company_name=company.name, position_name=position.title, work_address=position.work_location,
+            contact_name="周明", contact_phone="13800001234", application_note="第一志愿，专业对口",
+            status="PENDING_REVIEW", submitted_at=now - timedelta(days=4),
+        ),
+        InternshipApplication(
+            tenant_id=tenant_id, record_id=recs[1].id, student_id=students[1].id, batch_id=batch.id,
+            application_type="SELF_ARRANGED", volunteer_no=0, company_name="星辰网络技术有限公司",
+            position_name="软件测试实习生", work_address="苏州工业园区", contact_name="陈经理",
+            contact_phone="13900005678", evidence_file_id="demo-internship-agreement-01",
+            application_note="学生自主联系，协议及资质材料齐全", status="APPROVED",
+            submitted_at=now - timedelta(days=12), reviewed_by_name="实习就业处",
+            reviewed_at=now - timedelta(days=10), review_comment="材料完整，同意",
+        ),
+        InternshipMatch(
+            tenant_id=tenant_id, record_id=recs[2].id, student_id=students[2].id,
+            position_id=position.id, company_id=company.id, match_type="AUTO_MAJOR", score=92,
+            major_hit=True, enterprise_hit=True, conflict_flag=True,
+            conflict_reason="岗位容量临近上限，需人工确认名额", status="CONFLICT",
+            remark="系统自动匹配后转人工复核",
+        ),
+        InternshipLeave(
+            tenant_id=tenant_id, internship_id=recs[3].id, student_id=students[3].id,
+            leave_type="SICK", start_date=(now + timedelta(days=20)).strftime("%Y-%m-%d"),
+            end_date=(now + timedelta(days=21)).strftime("%Y-%m-%d"), days=2,
+            reason="发热就医，已上传门诊证明", status="APPROVED",
+            apply_by_name=students[3].real_name, review_by_name="刘强",
+            review_at=now - timedelta(days=1), review_comment="证明有效，同意请假",
+            file_id="demo-intern-leave-proof-01",
+        ),
+        InternshipAuditTrail(
+            tenant_id=tenant_id, target_id=recs[0].id, target_type="INTERN_STUDENT",
+            action="ASSIGN_POSITION", operator_name="实习就业处",
+            detail_json={"companyName": company.name, "positionName": position.title},
+            occurred_at=now - timedelta(days=8),
+        ),
+        InternshipAuditTrail(
+            tenant_id=tenant_id, target_id=recs[0].id, target_type="INTERN_STUDENT",
+            action="ASSIGN_ADVISOR", operator_name="实习就业处",
+            detail_json={"advisorUserId": str(teacher.id), "advisorName": teacher.real_name},
+            occurred_at=now - timedelta(days=7),
+        ),
+    ])
 
     # 打卡异常 3 条（1 条连续 3 天，待核实）
     db.add_all([

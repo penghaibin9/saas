@@ -90,7 +90,7 @@ export default {
       const tid = this.user?.tenantId
       if (tid === '1000000000000000003') return '演示职业技术学校（只读演示）'
       if (tid === '1000000000000000004') return '沙箱职校（可写体验）'
-      if (tid === '1000000000000000007') return '体验沙箱学校（每晚 0 点重置）'
+      if (tid === '1000000000000000004') return '体验沙箱学校（运营平台可恢复）'
       return ''
     }
   },

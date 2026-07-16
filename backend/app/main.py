@@ -62,7 +62,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _sandbox_midnight_reset():
-        """体验沙箱每晚 0 点自动重置（单实例进程内定时；多实例部署请改用 cron 跑
+        """可选的体验沙箱每晚 0 点自动重置（默认关闭；单实例进程内定时；多实例部署请改用 cron 跑
         scripts/reset_sandbox_school.py --confirm 并置 SANDBOX_AUTO_RESET=false）。"""
         import asyncio
 

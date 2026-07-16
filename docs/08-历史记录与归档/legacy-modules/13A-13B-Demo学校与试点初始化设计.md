@@ -13,7 +13,7 @@
 
 | 项 | demo-school 正式演示租户 | sandbox-school 体验沙箱租户 | 证据 |
 |---|---|---|---|
-| tenant_id | 1000000000000000003 | **1000000000000000007** | backend/app/services/sandbox_service.py 第 17/20 行（SANDBOX_TID/DEMO_TID）；速查 §2 |
+| tenant_id | 1000000000000000003 | **1000000000000000004** | backend/app/services/sandbox_service.py 第 17/20 行（SANDBOX_TID/DEMO_TID）；速查 §2 |
 | tenant_code | demo-school | sandbox-school | 同上 |
 | 写保护 | **中间件只读锁：写操作一律 403**，页面引导去沙箱 | 可写，**每晚 0 点自动重置** | 速查 §2/§11 |
 | 账号（密码均 123456） | admin（陈管理·SCHOOL_ADMIN）/ teacher（李导师·COUNSELOR）/ student（张同学·STUDENT） | admin2 / teacher2（王老师）/ student2（李体验） | backend/scripts/_seed_two_tenants.py `_add_user`；backend/app/services/auth_service_db.py 第 22 行 ROLE_BY_LOGIN |
