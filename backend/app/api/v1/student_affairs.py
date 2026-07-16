@@ -339,11 +339,17 @@ class AidReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT/RETURN")
     level: Optional[str] = Field(None, description="终审核定/初审建议等级")
     reason: Optional[str] = Field("", max_length=500)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class AidAdjustBody(BaseModel):
     targetLevel: str = Field(..., description="SPECIAL/DIFFICULT/GENERAL")
     reason: str = Field(..., min_length=1)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+
+
+class AidVersionOnlyBody(BaseModel):
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class AidObjectionBody(BaseModel):
@@ -432,13 +438,15 @@ def aid_review(body: AidReviewBody, applyId: int = Path(...),
 
 
 @router.post("/aid/applications/{applyId}/resubmit", summary="退回后重新提交")
-def aid_resubmit(applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.create"))):
-    return success(aid_svc.resubmit(applyId, user), message="已重新提交")
+def aid_resubmit(body: AidVersionOnlyBody = AidVersionOnlyBody(), applyId: int = Path(...),
+                 user=Depends(require_permission("studentAffairs.aid.create"))):
+    return success(aid_svc.resubmit(applyId, user, body.version), message="已重新提交")
 
 
 @router.post("/aid/applications/{applyId}/publicity-confirm", summary="人工确认公示期满→通过")
-def aid_publicity_confirm(applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.approve"))):
-    return success(aid_svc.confirm_publicity(applyId, user), message="已通过")
+def aid_publicity_confirm(body: AidVersionOnlyBody = AidVersionOnlyBody(), applyId: int = Path(...),
+                          user=Depends(require_permission("studentAffairs.aid.approve"))):
+    return success(aid_svc.confirm_publicity(applyId, user, body.version), message="已通过")
 
 
 @router.post("/aid/scan-publicity", summary="公示期满扫描（定时/手动，幂等）")
@@ -448,13 +456,14 @@ def aid_scan_publicity(user=Depends(require_permission("studentAffairs.aid.appro
 
 @router.post("/aid/applications/{applyId}/adjust", summary="发起困难等级动态调整")
 def aid_adjust(body: AidAdjustBody, applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.adjust"))):
-    return success(aid_svc.adjust(applyId, user, body.targetLevel, body.reason), message="调整已提交")
+    return success(aid_svc.adjust(applyId, user, body.targetLevel, body.reason, body.version), message="调整已提交")
 
 
 @router.post("/aid/applications/{applyId}/adjust-approve", summary="动态调整审批")
 def aid_adjust_approve(body: AidReviewBody = None, applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.adjust"))):
     action = body.action if body else "APPROVE"
-    return success(aid_svc.approve_adjust(applyId, user, action), message="已处理")
+    version = body.version if body else None
+    return success(aid_svc.approve_adjust(applyId, user, action, version), message="已处理")
 
 
 @router.post("/aid/applications/{applyId}/reveal", summary="查看完整家庭经济（sensitiveView+审计）")

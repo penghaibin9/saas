@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, no_permission, not_found
+from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.core.field_crypto import decrypt_field, encrypt_field
 from app.services.db_service import _iso, _tid, audit_insert, session
 
@@ -439,7 +439,7 @@ def _act_task(db, x, action, reason=""):
     return inst
 
 
-def review(apply_id, user, action, level=None, reason="") -> dict:
+def review(apply_id, user, action, level=None, reason="", expected_version=None) -> dict:
     action = (action or "").upper()
     with session() as db:
         from app.models import WorkflowTask
@@ -447,6 +447,7 @@ def review(apply_id, user, action, level=None, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in AID_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
+        check_version(x.version, expected_version)
         _check_node_authority(user, x)
         _check_aid_assignee(db, x, user)
         if action == "APPROVE":
@@ -502,7 +503,7 @@ def review(apply_id, user, action, level=None, reason="") -> dict:
         return _apply_row(x, s, _family_of(db, x.id))
 
 
-def resubmit(apply_id, user) -> dict:
+def resubmit(apply_id, user, expected_version=None) -> dict:
     """退回(DRAFT)后重新提交 → 回班级评议（新审批周期）。"""
     with session() as db:
         from app.models import WorkflowInstance, WorkflowTask
@@ -510,6 +511,7 @@ def resubmit(apply_id, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "DRAFT":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅被退回的申请可重新提交")
+        check_version(x.version, expected_version)
         first = AID_NODES[0]
         x.status, x.return_reason, x.version = first, None, x.version + 1
         inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
@@ -577,13 +579,14 @@ def scan_publicity() -> dict:
         return {"count": cnt, "skippedObjection": skipped}
 
 
-def confirm_publicity(apply_id, user) -> dict:
+def confirm_publicity(apply_id, user, expected_version=None) -> dict:
     """人工确认公示期满（提前结束公示，同 scan 效果）。"""
     with session() as db:
         x, s = _load(db, apply_id)
         _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在公示状态")
+        check_version(x.version, expected_version)
         _assert_no_open_objection(db, x.id)
         _confirm_one(db, x)
         db.commit()
@@ -594,7 +597,7 @@ def confirm_publicity(apply_id, user) -> dict:
 
 # ═══════════ 动态调整 ═══════════
 
-def adjust(apply_id, user, target_level, reason="") -> dict:
+def adjust(apply_id, user, target_level, reason="", expected_version=None) -> dict:
     if target_level not in LEVELS:
         raise AppException("VALIDATION_ERROR", "目标等级非法")
     if not reason or len(reason.strip()) < 5:
@@ -604,6 +607,7 @@ def adjust(apply_id, user, target_level, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "APPROVED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过的认定可发起动态调整")
+        check_version(x.version, expected_version)
         x.status, x.suggest_level, x.version = "ADJUST_REVIEW", target_level, x.version + 1
         assignee = _assignee_for(db, "COUNSELOR_REVIEW", x.student_id)
         _todo_upsert(db, x.id, assignee, x.student_id, f"困难等级调整待审：{s.real_name if s else ''}",
@@ -626,6 +630,7 @@ def approve_adjust(apply_id, user, action="APPROVE") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "ADJUST_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在调整审批状态")
+        check_version(x.version, expected_version)
         _check_aid_assignee(db, x, user, todo_type="AID_ADJUST")
         if (action or "").upper() == "APPROVE":
             old = x.final_level
