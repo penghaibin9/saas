@@ -1233,6 +1233,50 @@ def enterprise_eval_review(user: dict, eval_id: str, action: str, comment: str |
     return result
 
 
+def insurance_pending(user: dict) -> dict:
+    """实习保险·待核验队列（本人指导学生，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_insurance_service as ins_svc
+    items, total = ins_svc.list_insurances(1, 50, status="PENDING_VERIFY", user=u)
+    return {"list": items, "total": total}
+
+
+def insurance_verify(user: dict, insurance_id: str, action: str, comment: str | None = None) -> dict:
+    """实习保险·核验（APPROVE/REJECT，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.internship.services import internship_insurance_service as ins_svc
+    result = ins_svc.verify_insurance(insurance_id, action, comment or "", user=u)
+    _audit_write("MOBILE_INSURANCE_VERIFY", f"internship-insurance:{insurance_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
+def internship_change_pending(user: dict) -> dict:
+    """调岗/退岗初审·待处理队列（本人指导学生，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_change_service as change_svc
+    items, total = change_svc.list_changes(1, 50, status="PENDING", user=u)
+    return {"list": items, "total": total}
+
+
+def internship_change_review(user: dict, change_id: str, action: str, comment: str | None = None) -> dict:
+    """调岗/退岗初审（APPROVE/REJECT，owner 校验在服务层完成，通过后联动更新实习记录）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.internship.services import internship_change_service as change_svc
+    result = change_svc.review_change(change_id, action, comment or "", user=u)
+    _audit_write("MOBILE_INTERNSHIP_CHANGE_REVIEW", f"internship-change:{change_id}",
+                 {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+    return result
+
+
 def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)

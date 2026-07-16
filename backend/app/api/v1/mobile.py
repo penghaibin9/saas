@@ -762,6 +762,32 @@ def teacher_enterprise_eval_review(eval_id: str, body: dict = Body(...),
                                               body.get("comment") or ""), message="审核完成")
 
 
+@router.get("/teacher/internship/insurances/pending", summary="指导教师·实习保险待核验队列（范围校验）")
+def teacher_insurance_pending(user=Depends(get_current_user)):
+    return success(tea.insurance_pending(user))
+
+
+@router.post("/teacher/internship/insurances/{insurance_id}/verify",
+             summary="指导教师·实习保险核验（APPROVE/REJECT，owner 校验）")
+def teacher_insurance_verify(insurance_id: str, body: dict = Body(...),
+                             user=Depends(get_current_user)):
+    return success(tea.insurance_verify(user, insurance_id, str(body.get("action") or "").upper(),
+                                        body.get("comment") or ""), message="核验完成")
+
+
+@router.get("/teacher/internship/change-requests/pending", summary="指导教师·调岗退岗初审待处理队列（范围校验）")
+def teacher_internship_change_pending(user=Depends(get_current_user)):
+    return success(tea.internship_change_pending(user))
+
+
+@router.post("/teacher/internship/change-requests/{change_id}/review",
+             summary="指导教师·调岗退岗初审（APPROVE/REJECT，owner 校验）")
+def teacher_internship_change_review(change_id: str, body: dict = Body(...),
+                                     user=Depends(get_current_user)):
+    return success(tea.internship_change_review(user, change_id, str(body.get("action") or "").upper(),
+                                                body.get("comment") or ""), message="审核完成")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):

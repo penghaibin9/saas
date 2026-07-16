@@ -332,6 +332,14 @@
       "style": { "navigationBarTitleText": "企业评价", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/insurance-verify/index",
+      "style": { "navigationBarTitleText": "实习保险核验", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-change/index",
+      "style": { "navigationBarTitleText": "调岗退岗初审", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

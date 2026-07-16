@@ -139,6 +139,8 @@ export default {
         guidance: '/pages/teacher/internship-guidance/index',
         'stu-eval': '/pages/teacher/student-eval/index',
         'ent-eval': '/pages/teacher/enterprise-eval/index',
+        insurance: '/pages/teacher/insurance-verify/index',
+        'internship-change': '/pages/teacher/internship-change/index',
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         follow: '/pages/teacher/employment-follow/index',

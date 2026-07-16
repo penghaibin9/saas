@@ -143,6 +143,12 @@ export const teacherApi = {
   getEnterpriseEvalPending: () => real.teacherEnterpriseEvalPending(),
   createEnterpriseEval: (body) => real.teacherEnterpriseEvalCreate(body),
   reviewEnterpriseEval: (evalId, action, comment) => real.teacherEnterpriseEvalReview(evalId, action, comment),
+  // 实习保险：待核验队列 + 核验（owner 校验，真实接口，无 mock 兜底）
+  getInsurancePending: () => real.teacherInsurancePending(),
+  verifyInsurance: (insuranceId, action, comment) => real.teacherInsuranceVerify(insuranceId, action, comment),
+  // 调岗/退岗初审：待处理队列 + 审核（owner 校验，真实接口，无 mock 兜底）
+  getInternshipChangePending: () => real.teacherInternshipChangePending(),
+  reviewInternshipChange: (changeId, action, comment) => real.teacherInternshipChangeReview(changeId, action, comment),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

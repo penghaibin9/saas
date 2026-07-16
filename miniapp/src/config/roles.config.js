@@ -91,7 +91,9 @@ export const roleConfigs = {
       { key: 'visit', label: '新增巡访', icon: '✎' },
       { key: 'guidance', label: '指导记录', icon: '📝' },
       { key: 'stu-eval', label: '实习鉴定', icon: '📋' },
-      { key: 'ent-eval', label: '企业评价', icon: '🏢' }
+      { key: 'ent-eval', label: '企业评价', icon: '🏢' },
+      { key: 'insurance', label: '保险核验', icon: '🛡' },
+      { key: 'internship-change', label: '调岗退岗初审', icon: '🔀' }
     ],
     permissionActions: ['intern.weekly.review', 'intern.leave.approve', 'intern.checkin.handle', 'visit.create']
   },

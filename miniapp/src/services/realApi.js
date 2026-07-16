@@ -183,6 +183,18 @@ export const teacherEnterpriseEvalReview = (evalId, action, comment) =>
   realRequest(`/mobile/teacher/internship/enterprise-evals/${evalId}/review`,
     { method: 'POST', data: { action, comment: comment || '' } })
 
+/** 实习保险·待核验队列 / 核验（APPROVE/REJECT，owner+范围校验，真实接口，无 mock 兜底） */
+export const teacherInsurancePending = () => realRequest('/mobile/teacher/internship/insurances/pending')
+export const teacherInsuranceVerify = (insuranceId, action, comment) =>
+  realRequest(`/mobile/teacher/internship/insurances/${insuranceId}/verify`,
+    { method: 'POST', data: { action, comment: comment || '' } })
+
+/** 调岗/退岗初审：待处理队列 / 审核（APPROVE/REJECT，owner+范围校验，真实接口，无 mock 兜底） */
+export const teacherInternshipChangePending = () => realRequest('/mobile/teacher/internship/change-requests/pending')
+export const teacherInternshipChangeReview = (changeId, action, comment) =>
+  realRequest(`/mobile/teacher/internship/change-requests/${changeId}/review`,
+    { method: 'POST', data: { action, comment: comment || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }
