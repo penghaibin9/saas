@@ -10,6 +10,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.response import success
 from app.core.security import get_current_user
 from app.student_portal.services import academic_service as academic
+from app.student_portal.services import affairs_service as affairs
 from app.student_portal.services import common_service as common
 from app.student_portal.services import graduation_service as graduation
 from app.student_portal.services import guardian_service as guardian
@@ -161,6 +162,42 @@ def academic_retake_apply(user=Depends(get_current_user), body: dict = Body(...)
 @router.get("/academic/graduation-audit", summary="毕业资格自查（本人·进度/学分/预警）")
 def academic_graduation_audit(user=Depends(get_current_user)):
     return success(academic.graduation_audit(user))
+
+
+# ── 学工事务（第4期）：自视图聚合 + 通用事务申请 + 打印 ──
+@router.get("/affairs/overview", summary="学工总览（本人）")
+def affairs_overview(user=Depends(get_current_user)):
+    return success(affairs.overview(user))
+
+
+@router.get("/affairs/leave", summary="我的请假（本人）")
+def affairs_leave(user=Depends(get_current_user)):
+    return success(affairs.leave(user))
+
+
+@router.get("/affairs/funding", summary="我的奖助勤贷补（本人）")
+def affairs_funding(user=Depends(get_current_user)):
+    return success(affairs.funding(user))
+
+
+@router.get("/affairs/aid", summary="我的困难资助等级（本人）")
+def affairs_aid(user=Depends(get_current_user)):
+    return success(affairs.aid(user))
+
+
+@router.get("/affairs/discipline", summary="我的违纪处分（本人·数量）")
+def affairs_discipline(user=Depends(get_current_user)):
+    return success(affairs.discipline(user))
+
+
+@router.post("/affairs/service-apply", summary="通用学工事务申请（请假/咨询/工单，本人）")
+def affairs_service_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.service_apply(user, body))
+
+
+@router.post("/affairs/print", summary="打印学工回执/请假条（本人）")
+def affairs_print(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.print_doc(user, body))
 
 
 # ── 首页工作台聚合 ──
