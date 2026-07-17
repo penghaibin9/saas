@@ -33,13 +33,16 @@
 
         <AppSectionCard title="分数段分布">
           <EmptyState v-if="!data.total" title="暂无成绩数据" description="发布成绩录入任务后，这里出现分数段分布" />
-          <div v-else class="aa-dist">
-            <div v-for="d in data.distribution" :key="d.range" class="aa-dist__row">
-              <span class="aa-dist__label">{{ d.range }}</span>
-              <div class="aa-dist__bar-wrap"><div class="aa-dist__bar" :style="{ width: barWidth(d.count) }"></div></div>
-              <span class="aa-dist__count">{{ d.count }}</span>
+          <template v-else>
+            <AppG2Chart :spec="distSpec" :height="260" />
+            <div class="aa-dist">
+              <div v-for="d in data.distribution" :key="d.range" class="aa-dist__row">
+                <span class="aa-dist__label">{{ d.range }}</span>
+                <div class="aa-dist__bar-wrap"><div class="aa-dist__bar" :style="{ width: barWidth(d.count) }"></div></div>
+                <span class="aa-dist__count">{{ d.count }}</span>
+              </div>
             </div>
-          </div>
+          </template>
         </AppSectionCard>
 
         <AppSectionCard v-if="dimension" :title="dimension === 'course' ? '按课程成绩分析统计表' : '按班级成绩分析统计表'">
@@ -62,7 +65,7 @@
 /** 成绩分析（/admin/academic-affairs/grade-overview）：GET /grade-views/analysis（可按课程/班级分组）+ 导出 xlsx。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput } from '@/components/common'
+import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -70,7 +73,7 @@ export default {
   name: 'AaGradeOverviewView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-    AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput
+    AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -85,6 +88,15 @@ export default {
   },
   computed: {
     maxCount() { return Math.max(1, ...(this.data.distribution || []).map((d) => d.count)) },
+    distSpec() {
+      return {
+        type: 'interval',
+        data: (this.data.distribution || []).map((d) => ({ name: d.range, value: d.count })),
+        encode: { x: 'name', y: 'value' },
+        axis: { y: { title: null } },
+        style: { radiusTopLeft: 4, radiusTopRight: 4 }
+      }
+    },
     columns() {
       return [
         { key: 'name', title: this.dimension === 'course' ? '课程' : '班级' },
