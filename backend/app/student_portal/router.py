@@ -12,6 +12,7 @@ from app.core.security import get_current_user
 from app.student_portal.services import academic_service as academic
 from app.student_portal.services import affairs_service as affairs
 from app.student_portal.services import common_service as common
+from app.student_portal.services import employment_service as employment
 from app.student_portal.services import graduation_service as graduation
 from app.student_portal.services import guardian_service as guardian
 from app.student_portal.services import internship_service as internship
@@ -276,6 +277,22 @@ def internship_agreement_print(user=Depends(get_current_user), body: dict = Body
 @router.post("/internship/score/appeal", summary="实习成绩申诉（本人）")
 def internship_score_appeal(user=Depends(get_current_user), body: dict = Body(...)):
     return success(internship.score_appeal(user, body))
+
+
+# ── 就业服务（第5期）：我的就业 + 去向登记 + 打印 ──
+@router.get("/employment/my", summary="我的就业（本人）")
+def employment_my(user=Depends(get_current_user)):
+    return success(employment.my(user))
+
+
+@router.post("/employment/destination", summary="就业去向登记（本人）")
+def employment_destination(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(employment.destination_register(user, body))
+
+
+@router.post("/employment/destination/print", summary="打印就业协议/回执（本人）")
+def employment_destination_print(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(employment.destination_print(user, body))
 
 
 # ── 首页工作台聚合 ──
