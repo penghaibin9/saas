@@ -23,8 +23,11 @@ def _now_iso() -> str:
     return datetime.now(tz).isoformat(timespec="seconds")
 
 
-def record(action: str, resource: str, detail: dict | None = None, result: str = "SUCCESS") -> dict:
-    """写一条审计（fire-and-forget 语义：任何异常不影响主流程）。"""
+def record(action: str, resource: str, detail: dict | None = None, result: str = "SUCCESS",
+           *, tenant_id: int | str | None = None) -> dict:
+    """写一条审计（fire-and-forget 语义：任何异常不影响主流程）。
+    tenant_id：显式指定审计归属租户（平台超管跨租户操作时传"被操作学校"），
+               不传则沿用请求上下文租户。"""
     global _SEQ
     try:
         _SEQ += 1
@@ -37,7 +40,7 @@ def record(action: str, resource: str, detail: dict | None = None, result: str =
             "result": result,              # SUCCESS / FAIL / DENIED
             "actorId": user.get("userId"),
             "actorName": user.get("realName"),
-            "tenantId": tenant.get("tenantId"),
+            "tenantId": str(tenant_id) if tenant_id is not None else tenant.get("tenantId"),
             "requestId": get_trace_id(),   # traceId = 审计表 request_id（契约 §二）
             "detail": detail or {},
             "occurredAt": _now_iso(),
@@ -47,7 +50,8 @@ def record(action: str, resource: str, detail: dict | None = None, result: str =
             from app.db.session import db_enabled
             if db_enabled():
                 from app.services import db_service
-                db_service.audit_insert(action, resource, detail, result)
+                db_service.audit_insert(action, resource, detail, result,
+                                        tenant_id=int(tenant_id) if tenant_id is not None else None)
         except Exception:  # noqa: BLE001 — 审计落库失败不阻塞主业务
             pass
         return entry
