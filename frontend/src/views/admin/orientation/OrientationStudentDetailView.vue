@@ -1,7 +1,10 @@
 <template>
   <ModulePageShell title="新生报到详情" :subtitle="detail ? `${detail.student.className} · ${detail.student.admissionNo}` : ''" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="新生详情查阅">
     <template #actions>
-      <button type="button" class="ori-back" @click="$router.back()">← 返回列表</button>
+      <button v-if="wlHasQueue" type="button" class="ori-back" :disabled="!prevId" @click="goSibling(prevId)">← 上一个</button>
+      <span v-if="wlHasQueue" class="ori-wl-pos">待办 {{ wlIndex + 1 }} / {{ wlTotal }}</span>
+      <button v-if="wlHasQueue" type="button" class="ori-back" :disabled="!nextId" @click="goSibling(nextId)">下一个 →</button>
+      <button type="button" class="ori-back" @click="$router.back()">返回列表</button>
     </template>
 
     <LoadingState v-if="loading" />
@@ -213,6 +216,7 @@
 import { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { EditDrawer, DeleteConfirmDialog, AuditTrailPanel } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
+import { orientationWorklist } from '@/modules/orientation/constants/orientation.worklist'
 import {
   STAGE_TAG_TYPE,
   PAYMENT_TAG_TYPE,
@@ -297,6 +301,27 @@ export default {
     },
     showMaterialActions() {
       return this.detail?.student?.recordStatus !== 'VOIDED' && !this.isHidden('orientation.material.review')
+    },
+    /* ---------------- 待办队列：上一个/下一个流水线导航 ---------------- */
+    wlIndex() {
+      return orientationWorklist.ids.indexOf(String(this.$route.params.studentId))
+    },
+    wlTotal() {
+      return orientationWorklist.ids.length
+    },
+    wlHasQueue() {
+      return this.wlIndex >= 0 && this.wlTotal > 1
+    },
+    prevId() {
+      return this.wlIndex > 0 ? orientationWorklist.ids[this.wlIndex - 1] : null
+    },
+    nextId() {
+      return this.wlIndex >= 0 && this.wlIndex < this.wlTotal - 1 ? orientationWorklist.ids[this.wlIndex + 1] : null
+    }
+  },
+  watch: {
+    '$route.params.studentId'(id) {
+      if (id) this.load()
     }
   },
   created() {
@@ -464,6 +489,12 @@ export default {
         fields: [{ key: 'note', label: '异常说明', type: 'textarea', required: true, placeholder: '请说明入住异常情况（不少于5字）' }],
         handler: (f) => this.runApi(() => api.markDormException(id, { note: f.note }), '已标记宿舍入住异常')
       })
+    },
+    /* ---------------- 待办队列：翻到相邻学生（同组件复用，靠 watch 重载） ---------------- */
+    goSibling(id) {
+      if (id && String(id) !== String(this.$route.params.studentId)) {
+        this.$router.push(`/admin/orientation/students/${id}`)
+      }
     }
   }
 }
@@ -561,6 +592,16 @@ export default {
 }
 .ori-act:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
+}
+.ori-wl-pos {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  align-self: center;
+  padding: 0 var(--space-1);
+}
+.ori-back:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 .ori-mat-table {
