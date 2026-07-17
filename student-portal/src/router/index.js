@@ -20,6 +20,8 @@ const routes = [
       { path: 'employment', name: 'employment', meta: { modulePath: 'employment' }, component: () => import('../views/employment/EmploymentView.vue') },
       { path: 'orientation', name: 'orientation', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
       { path: 'messages', name: 'messages', meta: { modulePath: 'messages' }, component: () => import('../views/messages/MessagesView.vue') },
+      // 办事大厅：一站式聚合入口，始终可见（不含独立后端模块开关）。
+      { path: 'service-hall', name: 'service-hall', component: () => import('../views/hall/ServiceHallView.vue') },
       // 毕设是学生端的重流程模块，使用专用工作台而非通用数据模板页。
       { path: 'graduation', name: 'graduation-workbench', component: () => import('../views/graduation/GraduationWorkbenchView.vue') },
       { path: ':module', name: 'module', component: () => import('../views/template/ModuleTemplateView.vue') }
