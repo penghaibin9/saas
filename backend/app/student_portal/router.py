@@ -5,16 +5,46 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.response import success
 from app.core.security import get_current_user
 from app.student_portal.services import common_service as common
 from app.student_portal.services import guardian_service as guardian
+from app.student_portal.services import home_service as home
+from app.student_portal.services import messages_service as messages
 from app.student_portal.services import parent_link_service as parent
 from app.student_portal.services import profile_service as profile
 
 router = APIRouter(prefix="/portal", tags=["学生PC门户"])
+
+
+# ── 首页工作台聚合 ──
+@router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
+def home_overview(user=Depends(get_current_user)):
+    return success(home.overview(user))
+
+
+# ── 消息通知 PC 视图 ──
+@router.get("/messages", summary="消息中心（本人·分页）")
+def messages_inbox(user=Depends(get_current_user),
+                   page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100)):
+    return success(messages.inbox(user, page, pageSize))
+
+
+@router.post("/messages/{message_id}/read", summary="标记消息已读（本人）")
+def messages_read(message_id: str, user=Depends(get_current_user)):
+    return success(messages.mark_read(user, message_id))
+
+
+@router.get("/messages/preferences", summary="通知偏好（本人）")
+def messages_preferences(user=Depends(get_current_user)):
+    return success(messages.get_preferences(user))
+
+
+@router.post("/messages/preferences", summary="设置通知偏好（本人）")
+def messages_set_preference(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(messages.set_preference(user, body))
 
 
 # ── PC 重活公共底座：电子签署（可插拔）+ 打印/导出留痕 ──
