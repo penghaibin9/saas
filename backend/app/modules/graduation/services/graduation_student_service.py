@@ -266,11 +266,16 @@ def get_student(sid) -> dict:
             or_(*audit_conds)).order_by(
             GraduationAuditTrail.id.desc()).limit(30)).all()
         base = _row(s, batch if batch and not batch.is_deleted else None, _material_snapshot(db, s.id))
-        taskbook = "任务书待确认"
-        if s.stage in ("TASKBOOK_CONFIRM",):
-            taskbook = "任务书待学生确认"
-        elif s.stage not in ("TOPIC_SELECTING",):
-            taskbook = "任务书已确认"
+        # 此前按 s.stage 猜任务书状态（非 TOPIC_SELECTING 即判"已确认"），与任务书 tab
+        # 的真实查询（GraduationTaskBook 是否存在）矛盾——学生越过任务书环节直接到开题
+        # 等阶段时，摘要卡会谎报"已确认"而任务书 tab 如实显示"尚未下达"。改为查真实记录。
+        from app.models import GraduationTaskBook
+        tb = db.scalars(select(GraduationTaskBook).where(
+            GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == s.id,
+            GraduationTaskBook.is_deleted.is_(False)).order_by(GraduationTaskBook.id.desc())).first()
+        _TB_LABEL = {"PENDING_CONFIRM": "任务书待学生确认", "CONFIRMED": "任务书已确认",
+                    "CHANGE_PENDING": "任务书变更待确认"}
+        taskbook = _TB_LABEL.get(tb.status, "任务书待确认") if tb else "尚未下达任务书"
         return {
             **base,
             "taskbook": taskbook,
