@@ -71,7 +71,7 @@ export const createFollowupReal = (body) =>
 /** 学生首页：真实阶段 / 待办 / 通知 / 未读数 / 阻断全部覆盖 mock 骨架，不再展示假数量。
  * 今日课程、快捷服务入口暂无对应真实数据源，保留 mock 骨架（P13 夜间补强已知欠账，见施工记录）。 */
 export async function enrichHome(mockHome) {
-  const ov = await realRequest('/mobile/me/overview')
+  const ov = await realRequest('/mobile/home')
   const stu = (ov && ov.student) || {}
   if (stu.stage && mockHome.stageCard) {
     mockHome.stageCard.stageText = STAGE_TEXT[stu.stage] || mockHome.stageCard.stageText
@@ -99,6 +99,8 @@ export async function enrichHome(mockHome) {
     mockHome.metrics.unread = ov.unreadCount
   }
   mockHome.realApi = true
+  mockHome.orientation = (ov && ov.orientation) || null
+  mockHome.orientationBatch = (ov && ov.orientationBatch) || { open: false, daysLeft: 0 }
   return mockHome
 }
 

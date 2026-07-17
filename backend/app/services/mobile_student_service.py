@@ -47,9 +47,62 @@ def _empty(reason="尚未建立你的学生档案或暂无数据"):
     return {"hasData": False, "note": reason}
 
 
+def _find_orientation_student(db, stu):
+    """Resolve by immutable student_id; name fallback is legacy-only until backfill completes."""
+    from app.models import OrientationStudent
+    base = select(OrientationStudent).where(
+        OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False))
+    row = db.scalars(base.where(OrientationStudent.student_id == stu.id)).first()
+    if row is not None:
+        return row
+    return db.scalars(base.where(
+        OrientationStudent.student_id.is_(None),
+        OrientationStudent.name == stu.real_name)).first()
+
+
+def _find_academic_student(db, stu):
+    from app.models import AcademicStudent
+    base = select(AcademicStudent).where(
+        AcademicStudent.tenant_id == _tid(), AcademicStudent.is_deleted.is_(False))
+    row = db.scalars(base.where(AcademicStudent.student_id == stu.id)).first()
+    if row is not None:
+        return row
+    return db.scalars(base.where(
+        AcademicStudent.student_id.is_(None),
+        AcademicStudent.student_no == stu.student_no)).first()
+
+
+def _find_employment_student(db, stu):
+    from app.models import EmpStudent
+    base = select(EmpStudent).where(
+        EmpStudent.tenant_id == _tid(), EmpStudent.is_deleted.is_(False))
+    row = db.scalars(base.where(EmpStudent.student_id == stu.id)).first()
+    if row is not None:
+        return row
+    return db.scalars(base.where(
+        EmpStudent.student_id.is_(None),
+        EmpStudent.student_no == stu.student_no)).first()
+
+
+def _orientation_payload(o) -> dict:
+    if not o:
+        return _empty("你暂无迎新报到记录")
+    return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": o.payment_status,
+            "materialStatus": o.material_status, "dormStatus": o.dorm_status,
+            "greenChannelStatus": o.green_channel_status,
+            "building": o.building or "", "room": o.room or "",
+            "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
+            "steps": [{"key": k, "status": v} for k, v in (o.steps_json or {}).items()],
+            "admissionNo": o.admission_no, "name": o.name,
+            "reportCodeValid": o.report_status not in ("CHECKED_IN", "COLLEGE_CONFIRMED"),
+            "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
+            "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
+            "phoneMasked": _mask_phone(o.phone_encrypted) if o.phone_encrypted else ""}
+
+
 # ─────────── 我的首页 overview ───────────
 
-def me_overview(user: dict) -> dict:
+def me_overview(user: dict, include_home: bool = False) -> dict:
     u = _require_student(user)
     if not db_enabled():
         return {"student": None, **_empty("演示模式")}
@@ -82,21 +135,15 @@ def me_overview(user: dict) -> dict:
         intern = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == sid,
             InternshipRecord.is_deleted.is_(False))).first()
-        ori = db.scalars(select(OrientationStudent).where(
-            OrientationStudent.tenant_id == _tid(), OrientationStudent.name == name,
-            OrientationStudent.is_deleted.is_(False))).first()
-        acad = db.scalars(select(AcademicStudent).where(
-            AcademicStudent.tenant_id == _tid(), AcademicStudent.name == name,
-            AcademicStudent.is_deleted.is_(False))).first()
+        ori = _find_orientation_student(db, stu)
+        acad = _find_academic_student(db, stu)
         warn = 0
         if acad:
             warn = db.scalar(select(func.count()).select_from(AcademicWarning).where(
                 AcademicWarning.tenant_id == _tid(), AcademicWarning.acad_student_id == acad.id,
                 AcademicWarning.is_deleted.is_(False),
                 AcademicWarning.status.in_(["PENDING_HANDLE", "PROCESSING", "ESCALATED"]))) or 0
-        emp = db.scalars(select(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(), EmpStudent.name == name,
-            EmpStudent.is_deleted.is_(False))).first()
+        emp = _find_employment_student(db, stu)
         unread_count = (db.scalar(select(func.count()).select_from(UnifiedMessage).where(
             UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
             UnifiedMessage.receiver_id.in_(personal_ids), UnifiedMessage.status == "UNREAD")) or 0)
@@ -106,7 +153,7 @@ def me_overview(user: dict) -> dict:
         if ori and ori.blocked_step:
             alerts.append({"level": "MEDIUM", "title": f"报到卡点：{ori.blocked_reason or ori.blocked_step}",
                            "domain": "orientation"})
-        return {
+        result = {
             "student": {"name": name, "studentNo": stu.student_no, "grade": stu.grade or "",
                         "className": (stu.grade + "级") if stu.grade else "", "stage": stu.current_stage},
             "stage": {"code": stu.current_stage, "label": student_stage_label(stu.current_stage)},
@@ -131,6 +178,35 @@ def me_overview(user: dict) -> dict:
             ],
             "hasData": True,
         }
+        if include_home:
+            result["orientation"] = _orientation_payload(ori)
+            result["orientationBatch"] = _orientation_batch_status_db(db)
+        return result
+
+
+def _home_cache_key(user: dict) -> str:
+    return (f"home:student:{user.get('tenantId') or _tid()}:"
+            f"{user.get('studentNo') or user.get('userId') or '-'}")
+
+
+def invalidate_home_cache(user: dict) -> None:
+    from app.core.redis_client import cache_delete
+    cache_delete(_home_cache_key(user or {}))
+
+
+def home(user: dict) -> dict:
+    """One authenticated request for overview + orientation + public batch state."""
+    u = _require_student(user)
+    from app.core.config import settings
+    from app.core.redis_client import cache_get_json, cache_set_json
+    key = _home_cache_key(u)
+    cached = cache_get_json(key)
+    if isinstance(cached, dict):
+        cached["cacheHit"] = True
+        return cached
+    data = me_overview(u, include_home=True)
+    cache_set_json(key, data, settings.HOME_CACHE_TTL)
+    return data
 
 
 def my_todos(user: dict) -> dict:
@@ -144,7 +220,7 @@ def my_todos(user: dict) -> dict:
         from app.models import UnifiedTodo
         rows = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == _tid(), UnifiedTodo.is_deleted.is_(False),
-            UnifiedTodo.student_id == stu.id).order_by(UnifiedTodo.id.desc())).all()
+            UnifiedTodo.student_id == stu.id).order_by(UnifiedTodo.id.desc()).limit(100)).all()
         return {"list": [{"id": str(t.id), "title": t.title, "type": t.todo_type,
                           "status": t.status} for t in rows], "hasData": True}
 
@@ -272,6 +348,7 @@ def message_mark_read(user: dict, message_id) -> dict:
             m.read_at = _dt.utcnow()
             m.version += 1
             db.commit()
+            invalidate_home_cache(u)
         return {"messageId": str(m.id), "status": "READ"}
 
 
@@ -285,36 +362,15 @@ def orientation_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        from app.models import OrientationStudent
-        o = db.scalars(select(OrientationStudent).where(
-            OrientationStudent.tenant_id == _tid(), OrientationStudent.name == stu.real_name,
-            OrientationStudent.is_deleted.is_(False))).first()
-        if not o:
-            return _empty("你暂无迎新报到记录")
-        return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": o.payment_status,
-                "materialStatus": o.material_status, "dormStatus": o.dorm_status,
-                "greenChannelStatus": o.green_channel_status,
-                "building": o.building or "", "room": o.room or "",
-                "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
-                "steps": [{"key": k, "status": v} for k, v in (o.steps_json or {}).items()],
-                # 报到码：复用录取编号，供电子报到码屏展示 + 现场核验扫码核对；已现场报到/学院确认后失效
-                "admissionNo": o.admission_no, "name": o.name,
-                "reportCodeValid": o.report_status not in ("CHECKED_IN", "COLLEGE_CONFIRMED"),
-                # 预报到信息采集屏展示用（基础身份只读 + 联系方式/生源地可编辑）
-                "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
-                "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
-                "phoneMasked": _mask_phone(o.phone_encrypted) if o.phone_encrypted else ""}
+        return _orientation_payload(_find_orientation_student(db, stu))
 
 
 def _resolve_orientation_student(db, u: dict):
     """按当前登录学生姓名解析其新生报到台账（找不到返回 None，供采集/绿色通道提交前置校验）。"""
-    from app.models import OrientationStudent
     stu = resolve_student(db, u)
     if not stu:
         return None
-    return db.scalars(select(OrientationStudent).where(
-        OrientationStudent.tenant_id == _tid(), OrientationStudent.name == stu.real_name,
-        OrientationStudent.is_deleted.is_(False))).first()
+    return _find_orientation_student(db, stu)
 
 
 def orientation_collect_submit(user: dict, body: dict) -> dict:
@@ -329,6 +385,7 @@ def orientation_collect_submit(user: dict, body: dict) -> dict:
         oid = o.id
     from app.services.orientation_service import student_submit_collect
     result = student_submit_collect(oid, phone=(body or {}).get("phone", ""), origin=(body or {}).get("origin", ""))
+    invalidate_home_cache(u)
     audit_log.record("学生提交预报到信息", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
     return result
 
@@ -346,8 +403,27 @@ def orientation_green_channel_submit(user: dict, body: dict) -> dict:
     from app.services.orientation_service import student_submit_green_channel
     b = body or {}
     result = student_submit_green_channel(oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""))
+    invalidate_home_cache(u)
     audit_log.record("学生提交绿色通道申请", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
     return result
+
+
+def _orientation_batch_status_db(db) -> dict:
+    from app.models import OrientationBatch
+    now = datetime.utcnow()
+    b = db.scalars(select(OrientationBatch).where(
+        OrientationBatch.tenant_id == _tid(), OrientationBatch.is_deleted.is_(False),
+        OrientationBatch.status == "ACTIVE",
+        OrientationBatch.report_start_date.is_not(None),
+        OrientationBatch.report_end_date.is_not(None),
+        OrientationBatch.report_start_date <= now,
+        OrientationBatch.report_end_date >= now,
+    ).order_by(OrientationBatch.report_end_date.asc())).first()
+    if not b:
+        return {"open": False}
+    days_left = max(0, (b.report_end_date.date() - now.date()).days)
+    return {"open": True, "batchName": b.batch_name, "batchNo": b.batch_no,
+            "reportEndDate": _iso(b.report_end_date), "daysLeft": days_left}
 
 
 def orientation_batch_status() -> dict:
@@ -355,22 +431,8 @@ def orientation_batch_status() -> dict:
     只回批次名称与倒计时天数，不含任何学生个人数据。"""
     if not db_enabled():
         return {"open": False}
-    from app.models import OrientationBatch
-    now = datetime.utcnow()
     with _session() as db:
-        b = db.scalars(select(OrientationBatch).where(
-            OrientationBatch.tenant_id == _tid(), OrientationBatch.is_deleted.is_(False),
-            OrientationBatch.status == "ACTIVE",
-            OrientationBatch.report_start_date.is_not(None),
-            OrientationBatch.report_end_date.is_not(None),
-            OrientationBatch.report_start_date <= now,
-            OrientationBatch.report_end_date >= now,
-        ).order_by(OrientationBatch.report_end_date.asc())).first()
-        if not b:
-            return {"open": False}
-        days_left = max(0, (b.report_end_date.date() - now.date()).days)
-        return {"open": True, "batchName": b.batch_name, "batchNo": b.batch_no,
-                "reportEndDate": _iso(b.report_end_date), "daysLeft": days_left}
+        return _orientation_batch_status_db(db)
 
 
 def campus_service_my(user: dict) -> dict:
@@ -419,14 +481,8 @@ def academic_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        from app.models import AcademicGrade, AcademicStudent, AcademicWarning
-        a = db.scalars(select(AcademicStudent).where(
-            AcademicStudent.tenant_id == _tid(), AcademicStudent.student_no == stu.student_no,
-            AcademicStudent.is_deleted.is_(False))).first()
-        if not a:
-            a = db.scalars(select(AcademicStudent).where(
-                AcademicStudent.tenant_id == _tid(), AcademicStudent.name == stu.real_name,
-                AcademicStudent.is_deleted.is_(False))).first()
+        from app.models import AcademicGrade, AcademicWarning
+        a = _find_academic_student(db, stu)
         if not a:
             return _empty("你暂无学业记录")
         grades = db.scalars(select(AcademicGrade).where(AcademicGrade.tenant_id == _tid(),
@@ -950,14 +1006,8 @@ def employment_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        from app.models import EmpFollowup, EmpMaterial, EmpStudent
-        e = db.scalars(select(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(), EmpStudent.student_no == stu.student_no,
-            EmpStudent.is_deleted.is_(False))).first()
-        if not e:
-            e = db.scalars(select(EmpStudent).where(
-                EmpStudent.tenant_id == _tid(), EmpStudent.name == stu.real_name,
-                EmpStudent.is_deleted.is_(False))).first()
+        from app.models import EmpFollowup, EmpMaterial
+        e = _find_employment_student(db, stu)
         if not e:
             return _empty("你暂无就业记录")
         mats = db.scalars(select(EmpMaterial).where(EmpMaterial.tenant_id == _tid(),

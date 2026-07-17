@@ -26,6 +26,11 @@ def me_overview(user=Depends(get_current_user)):
     return success(stu.me_overview(user))
 
 
+@router.get("/home", summary="学生首页聚合（总览+迎新+批次，一次鉴权）")
+def student_home(user=Depends(get_current_user)):
+    return success(stu.home(user))
+
+
 @router.get("/me/todos", summary="我的待办（本人）")
 def me_todos(user=Depends(get_current_user)):
     return success(stu.my_todos(user))

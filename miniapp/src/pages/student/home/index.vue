@@ -246,20 +246,24 @@ export default {
       return GRAD_CLASSES[i % GRAD_CLASSES.length]
     },
     load(done) {
+      if (this._homeLoading) {
+        done && done()
+        return
+      }
+      this._homeLoading = true
       this.state = 'loading'
       studentApi.getHome().then((data) => {
         this.home = data
+        this.orientation = data.orientation || null
+        this.orientationBatch = data.orientationBatch || { open: false, daysLeft: 0 }
         this.greeting = data.greeting || '你好'
         this.state = 'ready'
-        done && done()
       }).catch(() => {
         this.state = 'error'
+      }).finally(() => {
+        this._homeLoading = false
         done && done()
       })
-      studentApi.getOrientation().then((d) => { this.orientation = d }).catch(() => {})
-      studentApi.getOrientationBatchStatus().then((d) => {
-        if (d && d.open) this.orientationBatch = { open: true, daysLeft: d.daysLeft }
-      }).catch(() => {})
     }
   }
 }

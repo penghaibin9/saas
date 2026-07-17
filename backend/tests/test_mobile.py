@@ -101,6 +101,20 @@ def test_tenant_isolation(client, db_mode):
     assert r["code"] == 0 and r["data"]["hasData"] is False  # 跨租户查不到
 
 
+def test_home_aggregation_and_cross_tenant_isolation(client, db_mode):
+    _seed_two_students(db_mode)
+    own = client.get("/api/v1/mobile/home", headers=_stu_token("学生甲")).json()
+    assert own["code"] == 0
+    assert own["data"]["student"]["studentNo"] == "MB0001"
+    assert "orientation" in own["data"] and "orientationBatch" in own["data"]
+
+    other = client.get(
+        "/api/v1/mobile/home",
+        headers=_stu_token("学生甲", tenant_id=DEMO, tid="demo-school"),
+    ).json()
+    assert other["code"] == 0 and other["data"]["hasData"] is False
+
+
 def test_requires_login(client):
     assert client.get("/api/v1/mobile/me/overview").json()["code"] == 401001
     assert client.get("/api/v1/mobile/teacher/overview").json()["code"] == 401001
