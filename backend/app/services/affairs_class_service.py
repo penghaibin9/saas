@@ -12,7 +12,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.affairs_dashboard_service import (_allowed_class_ids, _audit,
                                                     _class_in_scope_or_403)
 from app.services.db_service import _iso, _mask_phone, _tid, session
@@ -283,7 +283,7 @@ _L_ASSESS = {"PENDING": "待评分", "SCORED": "已评分"}
 def _period_row(p) -> dict:
     return {"id": str(p.id), "periodName": p.period_name, "semester": p.semester or "",
             "status": p.status, "statusLabel": _L_PERIOD.get(p.status or "", p.status or ""),
-            "remark": p.remark or "", "createdAt": _iso(p.created_at)}
+            "remark": p.remark or "", "createdAt": _iso(p.created_at), "version": p.version}
 
 
 def _assess_row(a) -> dict:
@@ -301,7 +301,7 @@ def _assess_row(a) -> dict:
         "collegeScore": float(a.college_score) if a.college_score is not None else None,
         "totalScore": float(a.total_score) if a.total_score is not None else None,
         "rankNo": a.rank_no, "status": a.status, "statusLabel": _L_ASSESS.get(a.status or "", a.status or ""),
-        "scoredBy": a.scored_by or "", "scoredAt": _iso(a.scored_at),
+        "scoredBy": a.scored_by or "", "scoredAt": _iso(a.scored_at), "version": a.version,
     }
 
 
@@ -341,7 +341,7 @@ def _auto_score(metrics: dict) -> float:
     return round(min(100.0, 60.0 + min(40, load)), 1)
 
 
-def collect_assessments(period_id, user) -> dict:
+def collect_assessments(period_id, user, expected_version=None) -> dict:
     """按数据范围内班级的辅导员自动生成考评行（幂等：已存在则更新指标）。"""
     from app.models import (AffairsClassMaterial, AffairsCounselorAssessment,
                             AffairsCounselorAssessmentPeriod, AffairsRiskRecord, CsLeave,
@@ -352,6 +352,7 @@ def collect_assessments(period_id, user) -> dict:
             raise not_found("考评周期不存在")
         if p.status == "PUBLISHED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "考评已发布，不可重新生成")
+        check_version(p.version, expected_version)
         allowed, _ = _allowed_class_ids(db, user)
         q = select(SchoolClass).where(SchoolClass.tenant_id == _tid(),
                                       SchoolClass.is_deleted.is_(False),
@@ -409,7 +410,7 @@ def collect_assessments(period_id, user) -> dict:
         _recompute_ranks(db, int(period_id))
         _audit(db, "COUNSELOR_EVAL", p.id, "COLLECT", f"counselors={count}")
         db.commit()
-        return {"periodId": str(period_id), "counselors": count}
+        return {"periodId": str(period_id), "counselors": count, "version": p.version}
 
 
 def _recompute_ranks(db, period_id):
@@ -437,7 +438,7 @@ def list_assessments(period_id, user):
         return [_assess_row(a) for a in rows]
 
 
-def score_assessment(assessment_id, user, college_score) -> dict:
+def score_assessment(assessment_id, user, college_score, expected_version=None) -> dict:
     from app.models import AffairsCounselorAssessment, AffairsCounselorAssessmentPeriod
     try:
         cs = float(college_score)
@@ -452,6 +453,7 @@ def score_assessment(assessment_id, user, college_score) -> dict:
         p = db.get(AffairsCounselorAssessmentPeriod, int(a.period_id))
         if p and p.status == "PUBLISHED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "考评已发布，不可再评分")
+        check_version(a.version, expected_version)
         from app.core.context import get_current_user_ctx
         a.college_score = cs
         a.total_score = round(float(a.auto_score or 0) * 0.6 + cs * 0.4, 1)
@@ -469,7 +471,7 @@ def score_assessment(assessment_id, user, college_score) -> dict:
         return _assess_row(a)
 
 
-def publish_period(period_id, user) -> dict:
+def publish_period(period_id, user, expected_version=None) -> dict:
     from app.models import AffairsCounselorAssessmentPeriod
     with session() as db:
         p = db.get(AffairsCounselorAssessmentPeriod, int(period_id))
@@ -477,6 +479,7 @@ def publish_period(period_id, user) -> dict:
             raise not_found("考评周期不存在")
         if p.status not in ("COLLECTED", "SCORING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已生成/评分中的考评可发布")
+        check_version(p.version, expected_version)
         p.status = "PUBLISHED"
         p.version += 1
         _recompute_ranks(db, int(period_id))

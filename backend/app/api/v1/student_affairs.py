@@ -122,6 +122,11 @@ class PeriodCreate(BaseModel):
 
 class ScoreBody(BaseModel):
     collegeScore: float = Field(..., ge=0, le=100, description="学院评分 0-100")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+
+
+class ClassVersionOnlyBody(BaseModel):
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.post("/counselor-assessment/periods", summary="新建辅导员考评周期（旧入口·权限对齐正式考评）")
