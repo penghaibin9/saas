@@ -150,3 +150,12 @@ def test_d7_cross_class_403(client, db_mode):
     cid = _register(client, admin, ids["sb"]).json()["data"]["caseId"]
     r = client.get(f"{BASE}/discipline/cases/{cid}", headers=_hdr(client, "counselor01"))
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
+
+
+def test_d_register_non_digit_student_400_not_500(client, db_mode):
+    """历史欠账收口：登记违纪 studentId 非数字此前 int() 抛 500，现应 400 VALIDATION_ERROR。"""
+    _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    r = client.post(f"{BASE}/discipline/cases", headers=hdr, json={
+        "studentId": "abc", "discType": "WARNING", "reason": "考试违纪，情节较轻，予以处分"})
+    assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"

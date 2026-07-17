@@ -191,9 +191,12 @@ def create_risk(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "风险来源非法")
     if (body.riskLevel or "MEDIUM") not in LEVELS:
         raise AppException("VALIDATION_ERROR", "风险等级非法")
+    raw_sid = str(getattr(body, "studentId", None) or "").strip()
+    if not raw_sid.isdigit():
+        raise AppException("VALIDATION_ERROR", "请选择有效学生")
     with session() as db:
         from app.models import AffairsRiskRecord, StudentProfile
-        s = db.get(StudentProfile, int(body.studentId))
+        s = db.get(StudentProfile, int(raw_sid))
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
         _scope_or_403(db, s.id, user)

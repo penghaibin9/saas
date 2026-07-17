@@ -241,8 +241,16 @@ def list_batches(user, school_year=None, status=None, page=1, page_size=20):
 
 # ═══════════ 申请（管理端受理直达班级评议）═══════════
 
+def _req_int(v, field):
+    """必填数字字段安全转 int：非数字→400（原裸 int() 抛 ValueError→500）。"""
+    raw = str(v or "").strip()
+    if not raw.isdigit():
+        raise AppException("VALIDATION_ERROR", f"请选择有效{field}")
+    return int(raw)
+
+
 def apply(body, user, *, skip_scope_check: bool = False) -> dict:
-    student_id = int(body.studentId)
+    student_id = _req_int(getattr(body, "studentId", None), "学生")
     if (body.applyLevel or "") not in LEVELS:
         raise AppException("VALIDATION_ERROR", "申请等级非法")
     st = (body.statement or "").strip()
@@ -257,7 +265,7 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         # 解析，不接受客户端指定）；越范围禁止为他院学生建困难认定的校验只对代发起场景生效。
         if not skip_scope_check:
             _scope_or_403(db, student_id, user)
-        b = db.get(AidBatch, int(body.batchId))
+        b = db.get(AidBatch, _req_int(getattr(body, "batchId", None), "批次"))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("认定批次不存在")
         if b.status != "OPEN":

@@ -151,6 +151,14 @@ def _load(db, case_id):
 
 # ═══════════ 登记 / 提交 ═══════════
 
+def _req_int(v, field):
+    """必填数字字段安全转 int：非数字→400（原裸 int() 抛 ValueError→500）。"""
+    raw = str(v or "").strip()
+    if not raw.isdigit():
+        raise AppException("VALIDATION_ERROR", f"请选择有效{field}")
+    return int(raw)
+
+
 def register(body, user) -> dict:
     if (body.discType or "") not in DISC_TYPES:
         raise AppException("VALIDATION_ERROR", "处分类型非法")
@@ -158,7 +166,7 @@ def register(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "违纪事实必填且不少于 5 字")
     with session() as db:
         from app.models import DisciplineCase, StudentProfile
-        s = db.get(StudentProfile, int(body.studentId))
+        s = db.get(StudentProfile, _req_int(getattr(body, "studentId", None), "学生"))
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
         _scope_or_403(db, s.id, user)
