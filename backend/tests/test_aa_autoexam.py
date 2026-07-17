@@ -271,3 +271,28 @@ def test_student_forbidden(client, db_mode):
     r = client.post(f"{BASE}/exam/batches/{bid}/auto-arrange",
                     headers=_stu_token("张三", "AX2401"))
     assert r.status_code == 403, r.text
+
+
+def test_assign_times_teacher_slot_overlap(client, db_mode):
+    """排考时间编排按时段重叠判撞（而非 start 精确相等）：同教师(teacher_b)跨班两门课，
+    场次 09:00-11:00 与 10:00-12:00 重叠。修复前 start 10:00≠09:00 会漏判，把第二门错排到
+    10:00 造成同教师时间冲突；修复后第二门须跳到不重叠的 14:00-16:00。"""
+    ids = _seed(db_mode, students=4, rooms=[], extra_class=True)
+    admin = _hdr(client, "school_admin01")
+    bid = client.post(f"{BASE}/exam/batches", headers=admin,
+                      json={"batchName": "时段重叠回归"}).json()["data"]["batchId"]
+    for tt in ("tt2", "tt3"):  # tt2=软件2401·teacher_b, tt3=空班2402·teacher_b（同教师不同班）
+        cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
+                          json={"teachingTaskId": str(ids[tt])}).json()["data"]["examCourseId"]
+        client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+    client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    r = client.post(f"{BASE}/exam/batches/{bid}/auto-times", headers=admin, json={
+        "dates": ["2027-06-20"],
+        "sessions": [{"start": "09:00", "end": "11:00"}, {"start": "10:00", "end": "12:00"},
+                     {"start": "14:00", "end": "16:00"}],
+        "maxPerDayPerClass": 1})
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["assigned"] == 2 and d["missed"] == 0, d
+    times = sorted(i["startTime"] for i in d["items"])
+    assert times == ["09:00", "14:00"], f"同教师时段重叠未生效，第二门错排到重叠场次: {times}"

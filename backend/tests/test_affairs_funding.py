@@ -146,3 +146,29 @@ def test_f7_amount_desensitized_by_role(client, db_mode):
     # 学工处见真实金额
     items = client.get(f"{BASE}/funding/applications", headers=admin).json()["data"]["items"]
     assert any(a["amount"] == 3000 for a in items)
+
+
+def test_f8_review_approve_without_workflow_instance_not_500(client, db_mode):
+    """历史欠账回归：无 workflow 实例的申请（如沙箱种子直接置 COUNSELOR_REVIEW，未走 apply()）
+    审核通过此前在 `instance_id=inst.id`（inst=None）处 AttributeError→500。现应正常推进状态机。"""
+    ids = _seed(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import FundingApplication, FundingBatch, FundingProject
+    db = get_sessionmaker()()
+    p = FundingProject(tenant_id=TID, project_name="国家助学金", project_type="GRANT",
+                       amount=3300, quota=5, status="ENABLED")
+    db.add(p); db.flush()
+    b = FundingBatch(tenant_id=TID, project_id=p.id, project_type="GRANT", year_code="2025-2026",
+                     status="OPEN", quota=5, publicity_days=5)
+    db.add(b); db.flush()
+    x = FundingApplication(tenant_id=TID, batch_id=b.id, student_id=ids["sa"], apply_source="SELF",
+                           project_type="GRANT", amount=3300, status="COUNSELOR_REVIEW",
+                           statement="家庭经济困难，申请国家助学金资助。")  # 注意：不设 workflow_instance_id
+    db.add(x); db.commit()
+    app_id = x.id
+    db.close()
+    admin = _hdr(client, "school_admin01")
+    r = client.post(f"{BASE}/funding/applications/{app_id}/review", headers=admin,
+                    json={"action": "APPROVE"})
+    assert r.status_code == 200, f"无 workflow 实例的申请审核通过不应 500，实得 {r.status_code}"
+    assert r.json()["data"]["status"] == "COLLEGE_REVIEW"  # COUNSELOR_REVIEW → 下一节点

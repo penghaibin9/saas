@@ -7,6 +7,7 @@ record() 的调用点与字段即为将来落库的埋点，路由层不需要�
 """
 from __future__ import annotations
 
+import logging
 from collections import deque
 from datetime import datetime, timedelta, timezone
 
@@ -16,6 +17,14 @@ from app.core.context import get_current_user_ctx, get_tenant, get_trace_id
 _MAX = 500
 _LOGS: deque[dict] = deque(maxlen=_MAX)
 _SEQ = 0
+_logger = logging.getLogger("app.audit")
+# 落库健康状态（历史欠账收口：落库失败此前 except: pass 静默吞掉，现记错误日志 + 暴露 /health/ready）。
+_DB_HEALTH = {"lastFailure": None, "consecutiveFailures": 0}
+
+
+def get_audit_db_health() -> dict:
+    """审计落库健康状态快照，供 /health/ready 消费。"""
+    return dict(_DB_HEALTH)
 
 
 def _now_iso() -> str:
@@ -52,8 +61,11 @@ def record(action: str, resource: str, detail: dict | None = None, result: str =
                 from app.services import db_service
                 db_service.audit_insert(action, resource, detail, result,
                                         tenant_id=int(tenant_id) if tenant_id is not None else None)
-        except Exception:  # noqa: BLE001 — 审计落库失败不阻塞主业务
-            pass
+                _DB_HEALTH["consecutiveFailures"] = 0
+        except Exception as e:  # noqa: BLE001 — 审计落库失败不阻塞主业务，但必须留痕，不能无声无息
+            _DB_HEALTH["consecutiveFailures"] += 1
+            _DB_HEALTH["lastFailure"] = {"occurredAt": _now_iso(), "action": action, "error": str(e)[:200]}
+            _logger.error("审计落库失败 action=%s resource=%s err=%s", action, resource, e)
         return entry
     except Exception:  # noqa: BLE001 — 审计绝不阻塞主业务
         return {}

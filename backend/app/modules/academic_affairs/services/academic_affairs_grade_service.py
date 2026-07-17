@@ -143,9 +143,12 @@ def create_grade_task(body, user) -> dict:
         teaching_task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
         teacher_key = None
         if teaching_task_id:
+            # 租户隔离收口：教学任务必须属本租户，否则拒绝——此前 db.get 不校验 tenant_id，
+            # 传他租户 teachingTaskId 会把他租户 teacher_key 带进本租户新成绩任务。
             tt = db.get(AaTeachingTask, teaching_task_id)
-            if tt:
-                teacher_key = tt.teacher_key
+            if not tt or tt.is_deleted or tt.tenant_id != _tid():
+                raise not_found("教学任务不存在或不在当前数据范围内")
+            teacher_key = tt.teacher_key
         if not teacher_key:
             teacher_key = next(iter(_user_keys(user)), None)
         t = AaGradeTask(tenant_id=_tid(), teaching_task_id=teaching_task_id,

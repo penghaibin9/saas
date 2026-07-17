@@ -430,12 +430,62 @@ def create_class(user, body) -> dict:
         return _class_dto(c)
 
 
+def _sync_counselor_scope(db, c, old_counselor_id) -> str:
+    """辅导员绑定变更后同步 t_teacher_student_scope（历史欠账 CL-1 残余收口）。
+
+    学工数据范围完全由 scope 表驱动（affairs_security.build_affairs_context）——此前改绑只写
+    SchoolClass.counselor_id 不动 scope，导致旧辅导员仍看得到该班、新辅导员 fail-closed 看不到。
+    口径与 school_onboarding_service 一致：teacher_key=登录名、role_code=COUNSELOR、
+    scope_type=CLASS、ref_value=班级名。撤旧行兼容 teacher_key=登录名或 userId 两种历史口径。
+    新辅导员 User 不存在时不写 scope（保持既有 API 的宽松行为），在审计里如实标注。"""
+    from app.models import TeacherStudentScope, User
+    notes = []
+    # 撤旧：旧辅导员对本班的 CLASS scope 置 INACTIVE（软撤留痕，不物理删）
+    if old_counselor_id:
+        old_u = db.get(User, int(old_counselor_id))
+        old_keys = [str(old_counselor_id)] + ([old_u.login_name] if old_u else [])
+        for row in db.scalars(select(TeacherStudentScope).where(
+                TeacherStudentScope.tenant_id == _tid(),
+                TeacherStudentScope.teacher_key.in_(old_keys),
+                TeacherStudentScope.role_code == "COUNSELOR",
+                TeacherStudentScope.scope_type == "CLASS",
+                TeacherStudentScope.ref_value == c.class_name,
+                TeacherStudentScope.status == "ACTIVE",
+                TeacherStudentScope.is_deleted.is_(False))).all():
+            row.status, row.version = "INACTIVE", int(row.version or 0) + 1
+            notes.append(f"撤旧scope:{row.teacher_key}")
+    # 立新：新辅导员 upsert 本班 CLASS scope
+    if c.counselor_id:
+        new_u = db.get(User, int(c.counselor_id))
+        if new_u and not new_u.is_deleted and new_u.tenant_id == _tid():
+            existing = db.scalars(select(TeacherStudentScope).where(
+                TeacherStudentScope.tenant_id == _tid(),
+                TeacherStudentScope.teacher_key == new_u.login_name,
+                TeacherStudentScope.role_code == "COUNSELOR",
+                TeacherStudentScope.scope_type == "CLASS",
+                TeacherStudentScope.ref_value == c.class_name)).first()
+            if existing:
+                existing.is_deleted, existing.status = False, "ACTIVE"
+                existing.version = int(existing.version or 0) + 1
+            else:
+                db.add(TeacherStudentScope(tenant_id=_tid(), teacher_key=new_u.login_name,
+                                           teacher_name=new_u.real_name, role_code="COUNSELOR",
+                                           scope_type="CLASS", ref_value=c.class_name,
+                                           status="ACTIVE"))
+            notes.append(f"立新scope:{new_u.login_name}")
+        else:
+            notes.append(f"新辅导员user_id={c.counselor_id}不存在,未写scope")
+    return ";".join(notes)
+
+
 def update_class(user, class_id, body) -> dict:
+    from app.models import TeacherStudentScope
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_class(db, class_id)
         _require_college_write(ctx, db, _class_college_id(db, c.id))
         before = _class_dto(c)
+        old_class_name, old_counselor_id = c.class_name, c.counselor_id
         for attr, key in (("class_name", "className"), ("class_code", "classCode"), ("grade", "grade"),
                           ("graduate_year", "graduateYear"), ("remark", "remark"), ("status", "status")):
             v = getattr(body, key, None)
@@ -455,8 +505,24 @@ def update_class(user, class_id, body) -> dict:
             v = getattr(body, key, None)
             if v is not None:
                 setattr(c, attr, int(v) if v else None)
+        # 班级改名：CLASS scope 按班级名引用，批量跟随改 ref_value，否则全部指向旧名失效
+        scope_notes = ""
+        if c.class_name != old_class_name:
+            for row in db.scalars(select(TeacherStudentScope).where(
+                    TeacherStudentScope.tenant_id == _tid(),
+                    TeacherStudentScope.scope_type == "CLASS",
+                    TeacherStudentScope.ref_value == old_class_name,
+                    TeacherStudentScope.is_deleted.is_(False))).all():
+                row.ref_value, row.version = c.class_name, int(row.version or 0) + 1
+            scope_notes = f"班名scope跟随:{old_class_name}->{c.class_name}"
+        # 辅导员改绑：同步 scope（撤旧+立新），学工数据范围随绑定真实生效
+        if getattr(body, "counselorId", None) is not None and \
+                int(c.counselor_id or 0) != int(old_counselor_id or 0):
+            note = _sync_counselor_scope(db, c, old_counselor_id)
+            scope_notes = f"{scope_notes};{note}" if scope_notes else note
         db.flush()
-        _audit(db, "AA_ORG_CLASS", c.id, "UPDATE", c.class_name,
+        _audit(db, "AA_ORG_CLASS", c.id, "UPDATE",
+               f"{c.class_name}({scope_notes})" if scope_notes else c.class_name,
                before=str(before), after=str(_class_dto(c)))
         db.commit()
         db.refresh(c)

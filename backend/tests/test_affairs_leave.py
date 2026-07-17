@@ -364,6 +364,16 @@ def test_l17_counselor_cannot_skip_college_review_node(client, db_mode):
     assert r5["code"] == 0 and r5["data"]["affairsStatus"] == "APPROVED"
 
 
+def test_l19_apply_non_digit_student_400_not_500(client, db_mode):
+    """历史欠账收口：辅导员代发起请假若 studentId 非数字，此前 int() 抛 ValueError→500，现应 400。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    r = client.post("/api/v1/student-affairs/leave", headers=admin, json={
+        "studentId": "abc", "leaveType": "PERSONAL",
+        "startTime": "2026-03-01", "endTime": "2026-03-02", "reason": "回家有事"})
+    assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"
+
+
 def test_l18_pending_list_hides_node_not_yours(client, db_mode):
     """待审批列表节点过滤配套：请假推进到 COLLEGE_REVIEW 后，辅导员的待办列表里不应再出现该条
     （避免误导性展示——辅导员看得到但审批不了的数据不应出现在"待我审批"队列里）。"""

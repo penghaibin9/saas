@@ -3,11 +3,17 @@
 Revision ID: 4c722c7c33fa
 Revises: aa_sandbox_baseline
 Create Date: 2026-07-17 07:28:34.422538
+
+守卫说明（2026-07-17 加固）：0001_init_core_tables 是 `metadata.create_all` 活基线——全新库
+跑链时第一步就会按当前代码建出全部模型表（含本表），故本迁移必须幂等：表已存在则整体跳过，
+否则全新库纯迁移建库在此处撞 "table t_feedback already exists"（增量升级的现网库不受影响，
+表不存在时照常创建）。与 0085-0098 / aa_sandbox_baseline 的 inspect 守卫同款。
 """
 from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 revision = '4c722c7c33fa'
@@ -17,6 +23,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if 't_feedback' in inspect(op.get_bind()).get_table_names():
+        return
     op.create_table(
         't_feedback',
         sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
@@ -43,6 +51,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if 't_feedback' not in inspect(op.get_bind()).get_table_names():
+        return
     op.drop_index('ix_t_feedback_user_key', table_name='t_feedback')
     op.drop_index('ix_t_feedback_tenant_id', table_name='t_feedback')
     op.drop_table('t_feedback')
