@@ -46,6 +46,16 @@ def graduation_proposal_submit(user=Depends(get_current_user), body: dict = Body
     return success(graduation.submit_proposal(user, body))
 
 
+@router.get("/graduation/midterm", summary="查看本人中期检查（含导师批注）")
+def graduation_midterm(user=Depends(get_current_user)):
+    return success(graduation.midterm(user))
+
+
+@router.post("/graduation/midterm/rectify", summary="对照批注提交整改（本人）")
+def graduation_midterm_rectify(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(graduation.midterm_rectify(user, body))
+
+
 # ── 首页工作台聚合 ──
 @router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
 def home_overview(user=Depends(get_current_user)):

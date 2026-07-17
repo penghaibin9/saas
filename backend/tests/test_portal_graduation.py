@@ -137,7 +137,42 @@ def test_submit_proposal_no_gd_record(client, db_mode):
                        json={"background": "x内容"}).json()["code"] != 0
 
 
+def _seed_gd_midterm_rectifying(no, name):
+    """建毕设学生 + 一条 RECTIFYING(需整改) 的中期检查。"""
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm, GraduationStudent
+    db = get_sessionmaker()()
+    g = GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
+                          stage="MIDTERM", risk_level="LOW", eligibility_status="PENDING",
+                          grad_qual_status="PENDING", record_status="ACTIVE")
+    db.add(g)
+    db.flush()
+    db.add(GraduationMidterm(tenant_id=TID, gd_student_id=g.id, status="RECTIFYING",
+                             rectify_attempts=0))
+    db.commit()
+    db.close()
+
+
+def test_view_and_rectify_midterm(client, db_mode):
+    _seed_student("GD-P-201", "中期一")
+    _seed_gd_midterm_rectifying("GD-P-201", "中期一")
+    h = _stu_token("中期一", "GD-P-201")
+    v = client.get(f"{PORTAL}/midterm", headers=h).json()
+    assert v["code"] == 0 and v["data"]["hasData"] is True
+    r = client.post(f"{PORTAL}/midterm/rectify", headers=h,
+                    json={"content": "已按导师批注补充实验数据与文献综述。"}).json()
+    assert r["code"] == 0
+
+
+def test_midterm_rectify_empty_rejected(client, db_mode):
+    _seed_student("GD-P-202", "中期二")
+    _seed_gd_midterm_rectifying("GD-P-202", "中期二")
+    h = _stu_token("中期二", "GD-P-202")
+    assert client.post(f"{PORTAL}/midterm/rectify", headers=h, json={"content": "  "}).json()["code"] != 0
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/taskbook", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/proposal", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/midterm", headers=admin).json()["code"] == 403001

@@ -68,3 +68,19 @@ def submit_proposal(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "附件格式不正确")
     return stu.graduation_submit_proposal(user, {
         "background": background, "plan": plan, "outcome": outcome, "attachments": attachments})
+
+
+# ── 中期检查：批注对照与整改（复用现有 mobile 中期流程） ──
+
+def midterm(user: dict) -> dict:
+    """查看本人中期检查（含导师批注/问题清单/整改状态）。"""
+    return stu.graduation_midterm(user)
+
+
+def midterm_rectify(user: dict, body: dict) -> dict:
+    """对照导师批注逐条整改并回复（整改说明非空；仅 RECTIFYING 态可提交）。"""
+    body = body or {}
+    content = str(body.get("content") or "").strip()
+    if not content:
+        raise AppException("VALIDATION_ERROR", "整改说明不能为空")
+    return stu.graduation_midterm_rectify(user, content)
