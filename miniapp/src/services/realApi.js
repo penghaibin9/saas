@@ -247,6 +247,30 @@ export const teacherFamilyContactCreate = (studentId, body) =>
 export const teacherFamilyContactReceipt = (contactId, note) =>
   realRequest(`/mobile/teacher/affairs/family-contacts/${contactId}/receipt`, { method: 'POST', data: { note: note || '' } })
 
+/** 学工请假审批链：待审批队列 / 后续处理台账 / 详情 / 审批通过驳回退回 / 销假确认代登记 /
+ * 逾期处置 / 续假审批（owner+审批节点校验，真实接口，无 mock 兜底） */
+export const teacherAffairsLeavePending = () => realRequest('/mobile/teacher/affairs/leaves/pending')
+export const teacherAffairsLeaveFollowup = () => realRequest('/mobile/teacher/affairs/leaves/followup')
+export const teacherAffairsLeaveDetail = (leaveId) => realRequest(`/mobile/teacher/affairs/leaves/${leaveId}`)
+export const teacherAffairsLeaveApprove = (leaveId, comment) =>
+  realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/approve`, { method: 'POST', data: { comment: comment || '' } })
+export const teacherAffairsLeaveReject = (leaveId, reason) =>
+  realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/reject`, { method: 'POST', data: { reason } })
+export const teacherAffairsLeaveReturn = (leaveId, reason) =>
+  realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/return`, { method: 'POST', data: { reason } })
+export const teacherAffairsLeaveCancelConfirm = (leaveId, action, body) =>
+  realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/cancel-confirm`,
+    { method: 'POST', data: { action, ...(body || {}) } })
+export const teacherAffairsLeaveProxyCancel = (leaveId, actualReturnAt, note) =>
+  realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/proxy-cancel`,
+    { method: 'POST', data: { actualReturnAt, note: note || '' } })
+export const teacherAffairsLeaveOverdueHandle = (leaveId, handleType, note) =>
+  realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/overdue-handle`,
+    { method: 'POST', data: { handleType, note } })
+export const teacherAffairsLeaveExtensionApprove = (leaveId, action, reason) =>
+  realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/extension-approve`,
+    { method: 'POST', data: { action, reason: reason || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

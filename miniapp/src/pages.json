@@ -372,6 +372,10 @@
       "style": { "navigationBarTitleText": "家校联系", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/affairs-leave/index",
+      "style": { "navigationBarTitleText": "学生请假管理", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

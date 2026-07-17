@@ -338,3 +338,41 @@ def test_l16_proxy_cancel_cross_class_403(client, db_mode):
                     headers=_hdr(client, "counselor01"),
                     json={"actualReturnAt": "2026-03-02"})
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
+
+
+def test_l17_counselor_cannot_skip_college_review_node(client, db_mode):
+    """节点越权修复回归：辅导员(范围=A班)在 COUNSELOR_REVIEW 节点可正常审批（本人职责范围）；
+    推进到 COLLEGE_REVIEW 后，同一辅导员不可再审批/驳回——此前 _scope_or_403 只校验学生是否在
+    调用者班级范围内，不校验当前节点是否轮到调用者审批，导致辅导员可越级把学院/学工处环节的
+    请假直接批了，跳过上级审批。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    couns = _hdr(client, "counselor01")
+    lid = _apply(client, admin, ids["sa"], "2026-03-01", "2026-03-06").json()["data"]["id"]  # 5天→LONG两级
+    r1 = client.post(f"/api/v1/student-affairs/leave/{lid}/approve", headers=couns).json()
+    assert r1["code"] == 0 and r1["data"]["affairsStatus"] == "COLLEGE_REVIEW"
+    r2 = client.post(f"/api/v1/student-affairs/leave/{lid}/approve", headers=couns)
+    assert r2.status_code == 403 and r2.json()["bizCode"] == "NO_PERMISSION"
+    r3 = client.post(f"/api/v1/student-affairs/leave/{lid}/reject", headers=couns,
+                     json={"reason": "越权测试驳回原因"})
+    assert r3.status_code == 403 and r3.json()["bizCode"] == "NO_PERMISSION"
+    r4 = client.post(f"/api/v1/student-affairs/leave/{lid}/return", headers=couns,
+                     json={"reason": "越权测试退回原因"})
+    assert r4.status_code == 403 and r4.json()["bizCode"] == "NO_PERMISSION"
+    # 校级管理员（TENANT_ALL）不受节点限制，仍可正常推进到终态
+    r5 = client.post(f"/api/v1/student-affairs/leave/{lid}/approve", headers=admin).json()
+    assert r5["code"] == 0 and r5["data"]["affairsStatus"] == "APPROVED"
+
+
+def test_l18_pending_list_hides_node_not_yours(client, db_mode):
+    """待审批列表节点过滤配套：请假推进到 COLLEGE_REVIEW 后，辅导员的待办列表里不应再出现该条
+    （避免误导性展示——辅导员看得到但审批不了的数据不应出现在"待我审批"队列里）。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    couns = _hdr(client, "counselor01")
+    lid = _apply(client, admin, ids["sa"], "2026-03-01", "2026-03-06").json()["data"]["id"]  # LONG两级
+    p1 = client.get("/api/v1/student-affairs/leave/pending", headers=couns).json()
+    assert any(x["id"] == lid for x in p1["data"]["items"])
+    client.post(f"/api/v1/student-affairs/leave/{lid}/approve", headers=couns)  # 推进到 COLLEGE_REVIEW
+    p2 = client.get("/api/v1/student-affairs/leave/pending", headers=couns).json()
+    assert not any(x["id"] == lid for x in p2["data"]["items"])

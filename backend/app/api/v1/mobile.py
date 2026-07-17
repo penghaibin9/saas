@@ -567,6 +567,69 @@ def teacher_family_contact_receipt(contact_id: str, body: dict = Body(default={}
                    message="回执已登记")
 
 
+@router.get("/teacher/affairs/leaves/pending", summary="辅导员·请假待审批队列（数据范围+审批节点双重收敛）")
+def teacher_affairs_leave_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_leave_pending(user))
+
+
+@router.get("/teacher/affairs/leaves/followup", summary="辅导员·请假后续处理台账（已通过/续假中/待销假/逾期）")
+def teacher_affairs_leave_followup(user=Depends(get_current_user)):
+    return success(tea.affairs_leave_followup(user))
+
+
+@router.get("/teacher/affairs/leaves/{leave_id}", summary="辅导员·请假详情（含销假/续假/审计留痕，范围校验）")
+def teacher_affairs_leave_detail(leave_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_leave_detail(user, leave_id))
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/approve", summary="辅导员·请假审批通过（owner+节点校验）")
+def teacher_affairs_leave_approve(leave_id: str, body: dict = Body(default={}),
+                                  user=Depends(get_current_user)):
+    return success(tea.affairs_leave_approve(user, leave_id, (body or {}).get("comment")), message="已通过")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/reject", summary="辅导员·请假驳回（原因≥5字，owner+节点校验）")
+def teacher_affairs_leave_reject(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_leave_reject(user, leave_id, body.get("reason") or ""), message="已驳回")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/return", summary="辅导员·请假退回重提（原因≥5字，owner+节点校验）")
+def teacher_affairs_leave_return(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_leave_return(user, leave_id, body.get("reason") or ""), message="已退回")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/cancel-confirm",
+             summary="辅导员·销假确认(CONFIRM)/退回(RETURN)（owner 校验）")
+def teacher_affairs_leave_cancel_confirm(leave_id: str, body: dict = Body(...),
+                                         user=Depends(get_current_user)):
+    return success(tea.affairs_leave_cancel_confirm(
+        user, leave_id, str(body.get("action") or "CONFIRM").upper(),
+        body.get("actualReturnAt"), body.get("reason"), body.get("note")), message="已处理")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/proxy-cancel", summary="辅导员·代登记销假（owner 校验）")
+def teacher_affairs_leave_proxy_cancel(leave_id: str, body: dict = Body(...),
+                                       user=Depends(get_current_user)):
+    return success(tea.affairs_leave_proxy_cancel(
+        user, leave_id, body.get("actualReturnAt") or "", body.get("note")), message="已登记")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/overdue-handle",
+             summary="辅导员·逾期处置登记（CONTACT/TO_HOME_SCHOOL/CLOSE，说明≥5字，owner 校验）")
+def teacher_affairs_leave_overdue_handle(leave_id: str, body: dict = Body(...),
+                                         user=Depends(get_current_user)):
+    return success(tea.affairs_leave_overdue_handle(
+        user, leave_id, str(body.get("handleType") or "").upper(), body.get("note") or ""), message="已登记")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/extension-approve",
+             summary="辅导员·续假审批(APPROVE/REJECT)（owner 校验）")
+def teacher_affairs_leave_extension_approve(leave_id: str, body: dict = Body(default={}),
+                                            user=Depends(get_current_user)):
+    return success(tea.affairs_leave_extension_approve(
+        user, leave_id, str(body.get("action") or "APPROVE").upper(), body.get("reason")), message="已处理")
+
+
 @router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
 def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.notify_publish(user, body), message="通知已发布")

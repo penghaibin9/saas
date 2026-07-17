@@ -179,6 +179,17 @@ export const teacherApi = {
   getFamilyContactList: (receiptStatus) => real.teacherFamilyContactList(receiptStatus),
   createFamilyContact: (studentId, body) => real.teacherFamilyContactCreate(studentId, body),
   markFamilyContactReceipt: (contactId, note) => real.teacherFamilyContactReceipt(contactId, note),
+  // 学工请假审批链：待审批+后续处理台账+详情+审批+销假+逾期+续假（owner+节点校验，真实接口，无 mock 兜底）
+  getAffairsLeavePending: () => real.teacherAffairsLeavePending(),
+  getAffairsLeaveFollowup: () => real.teacherAffairsLeaveFollowup(),
+  getAffairsLeaveDetail: (leaveId) => real.teacherAffairsLeaveDetail(leaveId),
+  approveAffairsLeave: (leaveId, comment) => real.teacherAffairsLeaveApprove(leaveId, comment),
+  rejectAffairsLeave: (leaveId, reason) => real.teacherAffairsLeaveReject(leaveId, reason),
+  returnAffairsLeave: (leaveId, reason) => real.teacherAffairsLeaveReturn(leaveId, reason),
+  cancelConfirmAffairsLeave: (leaveId, action, body) => real.teacherAffairsLeaveCancelConfirm(leaveId, action, body),
+  proxyCancelAffairsLeave: (leaveId, actualReturnAt, note) => real.teacherAffairsLeaveProxyCancel(leaveId, actualReturnAt, note),
+  overdueHandleAffairsLeave: (leaveId, handleType, note) => real.teacherAffairsLeaveOverdueHandle(leaveId, handleType, note),
+  extensionApproveAffairsLeave: (leaveId, action, reason) => real.teacherAffairsLeaveExtensionApprove(leaveId, action, reason),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

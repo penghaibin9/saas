@@ -509,6 +509,127 @@ def affairs_family_contact_receipt(user: dict, contact_id: str, note: str | None
     return result
 
 
+# ══════════ 学工请假审批（移动端包装：辅导员多级审批链核心操作 + 销假闭环 + 逾期处置 + 续假审批。
+# 数据范围+审批节点身份校验均在服务层 _scope_or_403/_check_review_node 完成，直接复用 PC 侧
+# affairs_leave_service（节点越权缺口已在服务层修复，见 _check_review_node/_node_visible）。══════════
+
+def affairs_leave_pending(user: dict) -> dict:
+    """请假待审批队列（本人数据范围+审批节点双重收敛，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_leave_service as leave_svc
+    items, total = leave_svc.list_pending(u, 1, 50)
+    return {"list": items, "total": total}
+
+
+def affairs_leave_followup(user: dict) -> dict:
+    """请假后续处理台账（已通过/续假审批中/待销假确认/逾期，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_leave_service as leave_svc
+    items, total = leave_svc.list_leaves(u, followup_only=True, page=1, page_size=50)
+    return {"list": items, "total": total}
+
+
+def affairs_leave_detail(user: dict, leave_id: str) -> dict:
+    """请假详情（含销假/续假/审计留痕，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_leave_service as leave_svc
+    return leave_svc.get_detail(leave_id, u)
+
+
+def affairs_leave_approve(user: dict, leave_id: str, comment: str | None = None) -> dict:
+    """请假审批通过（owner+审批节点身份校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_leave_service as leave_svc
+    result = leave_svc.approve(leave_id, u, comment or "")
+    _audit_write("MOBILE_AFFAIRS_LEAVE_APPROVE", f"affairs-leave:{leave_id}", {"operator": u.get("realName")})
+    return result
+
+
+def affairs_leave_reject(user: dict, leave_id: str, reason: str) -> dict:
+    """请假驳回（原因≥5字，owner+审批节点身份校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_leave_service as leave_svc
+    result = leave_svc.reject(leave_id, u, reason)
+    _audit_write("MOBILE_AFFAIRS_LEAVE_REJECT", f"affairs-leave:{leave_id}",
+                 {"operator": u.get("realName"), "reason": (reason or "")[:200]})
+    return result
+
+
+def affairs_leave_return(user: dict, leave_id: str, reason: str) -> dict:
+    """请假退回重提（原因≥5字，owner+审批节点身份校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_leave_service as leave_svc
+    result = leave_svc.return_leave(leave_id, u, reason)
+    _audit_write("MOBILE_AFFAIRS_LEAVE_RETURN", f"affairs-leave:{leave_id}",
+                 {"operator": u.get("realName"), "reason": (reason or "")[:200]})
+    return result
+
+
+def affairs_leave_cancel_confirm(user: dict, leave_id: str, action: str,
+                                 actual_return_at: str | None = None,
+                                 reason: str | None = None, note: str | None = None) -> dict:
+    """销假确认(CONFIRM)/退回(RETURN)，owner 校验在服务层完成。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_leave_service as leave_svc
+    result = leave_svc.confirm_cancel(leave_id, u, action=action, actual_return_at=actual_return_at,
+                                      reason=reason or "", note=note or "")
+    _audit_write("MOBILE_AFFAIRS_LEAVE_CANCEL_CONFIRM", f"affairs-leave:{leave_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
+def affairs_leave_proxy_cancel(user: dict, leave_id: str, actual_return_at: str,
+                               note: str | None = None) -> dict:
+    """代登记销假（学生无法自行操作时，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_leave_service as leave_svc
+    result = leave_svc.proxy_cancel(leave_id, u, actual_return_at, note or "")
+    _audit_write("MOBILE_AFFAIRS_LEAVE_PROXY_CANCEL", f"affairs-leave:{leave_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def affairs_leave_overdue_handle(user: dict, leave_id: str, handle_type: str, note: str) -> dict:
+    """逾期处置登记（CONTACT/TO_HOME_SCHOOL/CLOSE，说明≥5字，owner 校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_leave_service as leave_svc
+    result = leave_svc.handle_overdue(leave_id, u, handle_type, note)
+    _audit_write("MOBILE_AFFAIRS_LEAVE_OVERDUE_HANDLE", f"affairs-leave:{leave_id}",
+                 {"operator": u.get("realName"), "handleType": handle_type})
+    return result
+
+
+def affairs_leave_extension_approve(user: dict, leave_id: str, action: str = "APPROVE",
+                                    reason: str | None = None) -> dict:
+    """续假审批(APPROVE/REJECT)，owner 校验在服务层完成。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_leave_service as leave_svc
+    result = leave_svc.approve_extension(leave_id, u, action=action, reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_LEAVE_EXTENSION_APPROVE", f"affairs-leave:{leave_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
 # ══════════ 数据看板（移动端包装，直接复用既有 affairs_dashboard_service.get_dashboard，
 # 该函数已按数据范围收敛且指标全部真实聚合，零改造） ══════════
 
