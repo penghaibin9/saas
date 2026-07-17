@@ -120,7 +120,7 @@ export default {
     },
     async onItemMove({ item, weekday, slotNo }) {
       // 拖拽调格：后端同一冲突检测器裁决，409 时提示并回原位（前端不做假校验）
-      const res = await api.moveScheduleItem(item.itemId, weekday, slotNo)
+      const res = await academicAffairsApi.moveScheduleItem(item.itemId, weekday, slotNo)
       if (res.code === 0) { toast.success(`已调整到周${weekday}第${slotNo}节`); await this.loadClass() } else toast.error(res.message)
     },
     async doAdd() {

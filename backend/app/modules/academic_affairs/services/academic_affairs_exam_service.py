@@ -27,6 +27,24 @@ _D_APPROVED, _D_RETURNED, _D_REJECTED = "APPROVED", "RETURNED", "REJECTED"
 _DEFER_CHAIN = {_D_COUNSELOR: _D_TEACHER, _D_TEACHER: _D_COLLEGE, _D_COLLEGE: _D_FINAL, _D_FINAL: _D_APPROVED}
 
 
+def _resolve_classroom_id(db, text):
+    """人工建考场只填 classroom_text（纯文本），若不回填 classroom_id，自动排考引擎按
+    classroom_id.isnot(None) 建占用索引时会把人工考场整体过滤掉，导致同一间教室被再排给另一场
+    考试——这里按教室字典显示名（room_name，或 building_name+room_code）精确匹配回填，匹配不上
+    则保持 None（无法感知冲突，与此前行为一致，不是新增风险）。"""
+    text = (text or "").strip()
+    if not text:
+        return None
+    from app.models import AaClassroom
+    rows = db.query(AaClassroom).filter(AaClassroom.tenant_id == _tid(),
+                                        AaClassroom.is_deleted.is_(False)).all()
+    for r in rows:
+        label = (r.room_name or "").strip() or f"{r.building_name}{r.room_code}"
+        if label == text:
+            return r.id
+    return None
+
+
 def _conflict(msg):
     return AppException("DATA_CONFLICT", msg, http_status=409)
 
@@ -286,8 +304,9 @@ def add_room(user, cid, body):
             raise _invalid("仅 COURSE_CONFIRMED 阶段可编排考场")
         seq = (db.query(AaExamRoom).filter(AaExamRoom.exam_course_id == c.id, AaExamRoom.tenant_id == _tid(),
                                            AaExamRoom.is_deleted.is_(False)).count()) + 1
+        classroom_text = getattr(body, "classroomText", None)
         r = AaExamRoom(tenant_id=_tid(), exam_course_id=c.id, room_seq=seq,
-                       classroom_text=getattr(body, "classroomText", None),
+                       classroom_text=classroom_text, classroom_id=_resolve_classroom_id(db, classroom_text),
                        capacity=int(getattr(body, "capacity", 0) or 0),
                        seat_mode=getattr(body, "seatMode", None) or "SEQUENTIAL", status="ACTIVE")
         db.add(r); db.flush()
