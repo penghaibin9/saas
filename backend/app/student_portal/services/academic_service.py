@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from app.core.exceptions import AppException
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
 from app.services.mobile_student_service import _require_student
 from app.student_portal.services import common_service as common
@@ -45,6 +46,34 @@ def selection_records(user: dict, batch_id=None) -> dict:
     """选课·本人选课记录。"""
     _require_student(user)
     return aa.selection_records_my(user, batch_id)
+
+
+# ── 学籍信息 + 学籍异动申请（复用教务学生自视图；PC 加打印审批表） ──
+
+def status(user: dict) -> dict:
+    """我的学籍状态 + 异动记录。"""
+    return aa.status_my(user)  # aa._me 收口本人+非学生403
+
+
+def submit_status_change(user: dict, body: dict) -> dict:
+    """本人发起学籍异动申请（转专业/休学/复学等）。底层不收附件，PC 只提交核心字段。"""
+    _require_student(user)
+    body = body or {}
+    change_type = str(body.get("changeType") or "").strip()
+    reason = str(body.get("reason") or "").strip()
+    if not change_type:
+        raise AppException("VALIDATION_ERROR", "异动类型（changeType）必填")
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "异动事由至少 5 个字")
+    return aa.submit_status_change_my(user, body)
+
+
+def status_change_print(user: dict, body: dict) -> dict:
+    """打印学籍异动申请审批表（PORTAL_PRINT + 水印）。"""
+    _require_student(user)
+    return common.print_log(user, {"bizType": "STATUS_CHANGE",
+                                   "bizId": str((body or {}).get("bizId") or ""),
+                                   "docName": "学籍异动申请审批表"})
 
 
 def transcript_print(user: dict, body: dict) -> dict:

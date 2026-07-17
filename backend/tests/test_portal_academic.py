@@ -62,6 +62,20 @@ def test_enroll_requires_course_id(client, db_mode):
     assert client.post(f"{PORTAL}/course-selection/drop", headers=h, json={}).json()["code"] != 0
 
 
+def test_status_view_and_change_guards(client, db_mode):
+    _seed("AC-020", "教务廿")
+    h = _stu_token("教务廿", "AC-020")
+    assert client.get(f"{PORTAL}/status", headers=h).json()["code"] == 0
+    # 缺 changeType / 事由过短 → 校验失败
+    assert client.post(f"{PORTAL}/status-change", headers=h,
+                       json={"reason": "家庭原因需转专业"}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/status-change", headers=h,
+                       json={"changeType": "TRANSFER_MAJOR", "reason": "短"}).json()["code"] != 0
+    # 打印审批表
+    p = client.post(f"{PORTAL}/status-change/print", headers=h, json={"bizId": "SC1"}).json()
+    assert p["code"] == 0 and p["data"]["watermark"] == "教务廿"
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/transcript", headers=admin).json()["code"] == 403001
@@ -70,3 +84,6 @@ def test_non_student_rejected(client, db_mode):
     assert client.get(f"{PORTAL}/course-selection", headers=admin).json()["code"] == 403001
     assert client.post(f"{PORTAL}/course-selection/enroll", headers=admin,
                        json={"selectionCourseId": "1"}).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/status", headers=admin).json()["code"] == 403001
+    assert client.post(f"{PORTAL}/status-change", headers=admin,
+                       json={"changeType": "TRANSFER_MAJOR", "reason": "家庭原因需转专业"}).json()["code"] == 403001

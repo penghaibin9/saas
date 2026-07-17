@@ -118,6 +118,21 @@ def academic_course_records(user=Depends(get_current_user), batchId: str | None 
     return success(academic.selection_records(user, batchId))
 
 
+@router.get("/academic/status", summary="我的学籍状态与异动记录（本人）")
+def academic_status(user=Depends(get_current_user)):
+    return success(academic.status(user))
+
+
+@router.post("/academic/status-change", summary="发起学籍异动申请（本人）")
+def academic_status_change(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.submit_status_change(user, body))
+
+
+@router.post("/academic/status-change/print", summary="打印学籍异动申请审批表（本人）")
+def academic_status_change_print(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.status_change_print(user, body))
+
+
 # ── 首页工作台聚合 ──
 @router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
 def home_overview(user=Depends(get_current_user)):
