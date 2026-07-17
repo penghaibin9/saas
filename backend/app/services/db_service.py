@@ -262,6 +262,21 @@ def list_tasks(page: int, page_size: int, status: Optional[str] = None) -> tuple
         return [_task_row(t, insts.get(t.instance_id)) for t in rows], total
 
 
+def tasks_by_biz_type() -> list[dict]:
+    with session() as db:
+        rows = db.execute(
+            select(WorkflowInstance.source_biz_type, func.count(WorkflowTask.id),
+                   func.min(WorkflowTask.created_at))
+            .select_from(WorkflowTask)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
+            .where(WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
+                   WorkflowTask.status == "PENDING", WorkflowInstance.tenant_id == _tid(),
+                   WorkflowInstance.is_deleted.is_(False))
+            .group_by(WorkflowInstance.source_biz_type)
+        ).all()
+        return [{"bizType": r[0] or "GENERAL", "count": r[1], "earliest": _iso(r[2])} for r in rows]
+
+
 def get_task(task_id) -> dict:
     with session() as db:
         t = db.get(WorkflowTask, int(task_id))

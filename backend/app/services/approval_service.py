@@ -46,6 +46,23 @@ def list_tasks(page: int, page_size: int, status: Optional[str] = None) -> tuple
     return page_slice(rows, page, page_size), len(rows)
 
 
+def biz_type_summary() -> list[dict]:
+    if db_enabled():
+        from app.services import db_service
+        return db_service.tasks_by_biz_type()
+    from collections import Counter
+    rows = [r for r in _visible(_TASKS) if r["status"] == "PENDING"]
+    counts = Counter(r["sourceBizType"] for r in rows)
+    return [
+        {
+            "bizType": biz_type,
+            "count": count,
+            "earliest": min(r["submittedAt"] for r in rows if r["sourceBizType"] == biz_type),
+        }
+        for biz_type, count in counts.items()
+    ]
+
+
 def get_task(task_id: str) -> dict:
     if db_enabled():
         from app.services import db_service
