@@ -3,6 +3,8 @@ import { guard } from '../platform/permissionGuard'
 
 const routes = [
   { path: '/login', name: 'login', meta: { public: true }, component: () => import('../views/login/LoginView.vue') },
+  // 家长端：独立只读子应用（手机验证码登录，与学生门户外壳物理隔离）。
+  { path: '/guardian', name: 'guardian', meta: { public: true }, component: () => import('../views/guardian/GuardianView.vue') },
   {
     // history base 已经是 /portal/，业务路由不再重复写 portal 前缀。
     path: '/',

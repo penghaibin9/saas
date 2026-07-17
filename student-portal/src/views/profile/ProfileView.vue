@@ -85,8 +85,8 @@
           <StateBlock v-else-if="!guardians.length" type="empty" text="尚未授权任何家长" />
           <div v-else style="display:flex;flex-direction:column;gap:10px">
             <div v-for="g in guardians" :key="g.id || g.linkId" class="prow">
-              <span class="pav">{{ (g.name || g.guardianName || '家').slice(0,1) }}</span>
-              <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:var(--t1)">{{ g.name || g.guardianName || '家长' }} · {{ g.relation || '监护人' }} · {{ g.phoneMasked || g.phone || '' }}</div><div style="font-size:11.5px;color:var(--t4);margin-top:2px">四项范围只读</div></div>
+              <span class="pav">{{ (g.guardianName || g.name || '家').slice(0,1) }}</span>
+              <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:var(--t1)">{{ g.guardianName || g.name || '家长' }} · {{ relationText(g.relation) }} · {{ g.guardianPhone || g.phoneMasked || '' }}</div><div style="font-size:11.5px;color:var(--t4);margin-top:2px">可见：成绩课表 / 缴费资助 / 异常提醒 / 就业进度</div></div>
               <template v-if="confirmRevoke === (g.id || g.linkId)">
                 <button class="linkbtn" style="color:var(--danger-fg)" :disabled="busy" @click="doRevoke(g.id||g.linkId)">确认</button>
                 <button class="linkbtn" @click="confirmRevoke=''">取消</button>
@@ -160,9 +160,16 @@ async function confirmReveal(field) {
 }
 async function bind() {
   busy.value = true
-  try { await portalApi.bindGuardian({ ...bindForm }); ui.notify('已提交家长授权'); showBind.value = false; bindForm.name = ''; bindForm.phone = ''; loadGuardians() }
-  catch (e) { ui.notify(e?.message || '授权失败') } finally { busy.value = false }
+  try {
+    await portalApi.bindGuardian({
+      guardianName: bindForm.name, guardianPhone: bindForm.phone, relation: 'PARENT',
+      visibleScopes: ['ACADEMIC_GRADE', 'FEE_AID_STATUS', 'CAMPUS_ALERT', 'CAREER_PROGRESS']
+    })
+    ui.notify('已提交家长授权'); showBind.value = false; bindForm.name = ''; bindForm.phone = ''; loadGuardians()
+  } catch (e) { ui.notify(e?.message || '授权失败') } finally { busy.value = false }
 }
+const RELATION_MAP = { FATHER: '父亲', MOTHER: '母亲', GUARDIAN: '监护人', PARENT: '家长', OTHER: '其他' }
+function relationText(r) { return RELATION_MAP[r] || r || '监护人' }
 async function doRevoke(id) {
   busy.value = true
   try { await portalApi.revokeGuardian(id); ui.notify('已撤销授权'); confirmRevoke.value = ''; loadGuardians() }
