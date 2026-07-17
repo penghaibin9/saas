@@ -91,25 +91,22 @@ def test_overview_and_tenant_lifecycle(client, db_mode):
 
 def test_disabled_tenant_login_blocked(client, db_mode):
     h = _owner_headers()
-    from app.core.security import hash_password
-    from app.db.session import get_sessionmaker
-    from app.models import User
 
     created = client.post("/api/v1/platform/tenants", headers=h, json={
         "tenantCode": "t-block", "tenantName": "停用登录测试学院"}).json()["data"]
-    db = get_sessionmaker()()
-    db.add(User(tenant_id=int(created["tenantId"]), login_name="blocked_admin",
-                real_name="被停用管理员", password_hash=hash_password("Block@2026"),
-                user_type="SCHOOL_ADMIN", status="ACTIVE"))
-    db.commit(); db.close()
+    # 经平台端正规接口建号（User+Role+UserRole 全链路）。此前手工插 User 不建 UserRole，
+    # 登录在"停用前"一步就被 fail-closed 拒（LOGIN_NO_ACTIVE_ROLE），测不到停用拦截。
+    u = client.post(f"/api/v1/platform/tenants/{created['tenantId']}/users", headers=h,
+                    json={"loginName": "blocked_admin", "realName": "被停用管理员"}).json()["data"]
+    pwd = u["initialPassword"]
 
     ok = client.post("/api/v1/auth/login",
-                     json={"loginName": "blocked_admin", "password": "Block@2026"}).json()
+                     json={"loginName": "blocked_admin", "password": pwd}).json()
     assert ok["code"] == 0  # 停用前可登录
 
     client.post(f"/api/v1/platform/tenants/{created['tenantId']}/disable", headers=h)
     blocked = client.post("/api/v1/auth/login",
-                          json={"loginName": "blocked_admin", "password": "Block@2026"}).json()
+                          json={"loginName": "blocked_admin", "password": pwd}).json()
     assert blocked["code"] == 403001 and blocked["bizCode"] == "NO_PERMISSION"
 
 
