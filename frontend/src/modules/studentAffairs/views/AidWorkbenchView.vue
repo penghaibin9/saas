@@ -10,17 +10,12 @@
     <div class="ad-batchbar">
       <label class="ad-batchsel">
         <span>认定批次</span>
-        <select v-model="batchId" class="ad-input" @change="onBatchChange">
-          <option value="">（请选择批次）</option>
-          <option v-for="b in batches" :key="b.batchId" :value="b.batchId">
-            {{ b.batchName }}（{{ b.schoolYear }} · {{ batchStatusLabel(b.status) }}）
-          </option>
-        </select>
+        <AppSelect v-model="batchId" class="ad-batchpick" :options="batchOptions" placeholder="（请选择批次）" @change="onBatchChange" />
       </label>
       <div class="ad-batchtools">
-        <button type="button" class="ad-btn" @click="openBatch">建批次</button>
-        <button type="button" class="ad-btn" :disabled="scanning" @click="onScanPublicity">公示扫描</button>
-        <button type="button" class="ad-btn ad-btn--primary" :disabled="!currentBatchOpen" @click="openApply">受理申请</button>
+        <AppPermissionButton code="studentAffairs.aid.batch.manage" variant="secondary" size="sm" @click="openBatch">建批次</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.aid.approve" variant="secondary" size="sm" :loading="scanning" @click="onScanPublicity">公示扫描</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.aid.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
       </div>
     </div>
 
@@ -41,31 +36,29 @@
 
     <div class="ad-workspace">
       <div class="ad-list">
-        <AppGlobalState :state="listState" :title="listStateTitle" :description="listStateDescription"
-                        loading-text="正在加载认定申请…">
-          <template #actions>
-            <button v-if="listState === 'error'" type="button" class="ad-btn ad-btn--primary" @click="loadApplications">重试</button>
-          </template>
-          <ul class="ad-queue">
-            <li
-              v-for="it in filteredList"
-              :key="it.applyId"
-              class="ad-qitem"
-              :class="{ 'is-active': selected && selected.applyId === it.applyId }"
-              @click="select(it)"
-            >
-              <div class="ad-qitem__top">
-                <span class="ad-qitem__name">{{ it.realName || ('学生#' + it.studentId) }}</span>
-                <StatusTag :type="statusType(it.status)" :label="it.statusLabel" dot />
-              </div>
-              <div class="ad-qitem__meta">
-                申请：{{ levelLabel(it.applyLevel) }}
-                <span v-if="it.finalLevel"> · 核定：{{ levelLabel(it.finalLevel) }}</span>
-                <span class="ad-qitem__income">家庭年收入：{{ (it.familyEconomy && it.familyEconomy.annualIncomeRange) || '—' }}</span>
-              </div>
-            </li>
-          </ul>
-        </AppGlobalState>
+        <LoadingState v-if="loading" text="正在加载认定申请…" />
+        <ErrorState v-else-if="listError" :description="listError" @retry="loadApplications" />
+        <EmptyState v-else-if="!batchId" title="请先选择认定批次" description="从上方选择一个批次，或点「建批次」新建" />
+        <EmptyState v-else-if="!filteredList.length" title="该批次暂无申请" description="可点「受理申请」为学生受理，或调整筛选条件" />
+        <ul v-else class="ad-queue">
+          <li
+            v-for="it in filteredList"
+            :key="it.applyId"
+            class="ad-qitem"
+            :class="{ 'is-active': selected && selected.applyId === it.applyId }"
+            @click="select(it)"
+          >
+            <div class="ad-qitem__top">
+              <span class="ad-qitem__name">{{ it.realName || ('学生#' + it.studentId) }}</span>
+              <StatusTag :type="statusType(it.status)" :label="it.statusLabel" dot />
+            </div>
+            <div class="ad-qitem__meta">
+              申请：{{ levelLabel(it.applyLevel) }}
+              <span v-if="it.finalLevel"> · 核定：{{ levelLabel(it.finalLevel) }}</span>
+              <span class="ad-qitem__income">家庭年收入：{{ (it.familyEconomy && it.familyEconomy.annualIncomeRange) || '—' }}</span>
+            </div>
+          </li>
+        </ul>
       </div>
 
       <div class="ad-detail">
@@ -109,17 +102,15 @@
           </section>
 
           <div v-if="detailActions.length" class="ad-actions">
-            <button
+            <AppPermissionButton
               v-for="a in detailActions"
               :key="a.key"
-              type="button"
-              class="ad-btn"
-              :class="{ 'ad-btn--primary': a.tone === 'primary', 'ad-btn--danger': a.tone === 'danger' }"
-              :disabled="acting"
+              :code="a.code"
+              :variant="a.tone === 'primary' ? 'primary' : (a.tone === 'danger' ? 'danger' : 'secondary')"
+              size="sm"
+              :loading="acting"
               @click="onAction(a.key)"
-            >
-              {{ a.label }}
-            </button>
+            >{{ a.label }}</AppPermissionButton>
           </div>
           <p v-else class="ad-terminal">该申请已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
         </template>
@@ -141,35 +132,33 @@
       @confirm="onDialogConfirm"
     />
 
-    <!-- 查看完整家庭经济（原因必填，落 SENSITIVE 审计）；复用 AppConfirmDialog 的强制原因校验 -->
-    <AppConfirmDialog
-      v-model:visible="revealModal.visible"
-      title="查看完整家庭经济"
-      message="该操作将记录敏感查看审计（谁、何时、查看谁、原因）。仅授权角色可见明文，无权限返回 403。"
-      type="danger"
-      confirm-text="确认查看"
-      :require-reason="true"
-      reason-label="查看原因"
-      reason-placeholder="如：核对家庭经济，办理助学金前置校验"
-      phrase-scene-key="common.revealReason"
-      :submitting="revealing"
-      @confirm="submitReveal"
-    >
-      <AppInlineAlert v-if="revealModal.error" type="danger" :description="revealModal.error" />
-    </AppConfirmDialog>
+    <!-- 查看完整家庭经济 modal（原因必填，落 SENSITIVE 审计） -->
+    <div v-if="revealModal.visible" class="ad-mask" @click.self="revealModal.visible = false">
+      <div class="ad-modal">
+        <h3 class="ad-modal__title">查看完整家庭经济</h3>
+        <p class="ad-modal__hint">该操作将记录敏感查看审计（谁、何时、查看谁、原因）。仅授权角色可见明文，无权限返回 403。</p>
+        <label class="ad-field"><span>查看原因 <i>*</i></span>
+          <AppQuickPhrases scene-key="common.revealReason" @pick="onPickRevealReason" />
+          <AppTextarea v-model="revealModal.reason" :rows="3" placeholder="如：核对家庭经济，办理助学金前置校验" />
+        </label>
+        <p v-if="revealModal.error" class="ad-err">{{ revealModal.error }}</p>
+        <div class="ad-modal__foot">
+          <button type="button" class="ad-btn" @click="revealModal.visible = false">取消</button>
+          <button type="button" class="ad-btn ad-btn--primary" :disabled="revealing" @click="submitReveal">确认查看</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 动态调整 modal -->
     <div v-if="adjustModal.visible" class="ad-mask" @click.self="adjustModal.visible = false">
       <div class="ad-modal">
         <h3 class="ad-modal__title">困难等级动态调整</h3>
         <label class="ad-field"><span>目标等级 <i>*</i></span>
-          <select v-model="adjustModal.targetLevel" class="ad-input">
-            <option v-for="l in levelOptions" :key="l.value" :value="l.value">{{ l.label }}</option>
-          </select>
+          <AppSelect v-model="adjustModal.targetLevel" :options="levelOptions" placeholder="" />
         </label>
         <label class="ad-field"><span>调整原因（≥5字） <i>*</i></span>
           <AppQuickPhrases scene-key="sa.aid.adjust" @pick="onPickAdjustReason" />
-          <textarea ref="adjustReasonTa" v-model.trim="adjustModal.reason" class="ad-textarea" rows="3" placeholder="说明调整原因，不少于 5 字" />
+          <AppTextarea v-model="adjustModal.reason" :rows="3" placeholder="说明调整原因，不少于 5 字" />
         </label>
         <p v-if="adjustModal.error" class="ad-err">{{ adjustModal.error }}</p>
         <div class="ad-modal__foot">
@@ -184,13 +173,13 @@
       <div class="ad-modal">
         <h3 class="ad-modal__title">新建认定批次</h3>
         <label class="ad-field"><span>批次名称 <i>*</i></span>
-          <input v-model.trim="batchModal.batchName" class="ad-input" placeholder="如：2026 春季家庭经济困难认定" />
+          <AppTextInput v-model="batchModal.batchName" placeholder="如：2026 春季家庭经济困难认定" />
         </label>
         <label class="ad-field"><span>学年 <i>*</i></span>
-          <input v-model.trim="batchModal.schoolYear" class="ad-input" placeholder="如：2025-2026" />
+          <AppTextInput v-model="batchModal.schoolYear" placeholder="如：2025-2026" />
         </label>
         <label class="ad-field"><span>公示天数</span>
-          <input v-model.number="batchModal.publicityDays" type="number" min="0" class="ad-input" placeholder="默认 5，快测可填 0" />
+          <AppNumberInput v-model="batchModal.publicityDays" :min="0" placeholder="默认 5，快测可填 0" />
         </label>
         <label class="ad-check"><input v-model="batchModal.publish" type="checkbox" /> 立即发布（开放受理）</label>
         <p v-if="batchModal.error" class="ad-err">{{ batchModal.error }}</p>
@@ -209,24 +198,22 @@
           <AppStudentPicker v-model="applyModal.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
         </div>
         <label class="ad-field"><span>申请等级 <i>*</i></span>
-          <select v-model="applyModal.applyLevel" class="ad-input">
-            <option v-for="l in levelOptions" :key="l.value" :value="l.value">{{ l.label }}</option>
-          </select>
+          <AppSelect v-model="applyModal.applyLevel" :options="levelOptions" placeholder="" />
         </label>
         <label class="ad-field"><span>困难情况说明（10-500字） <i>*</i></span>
           <AppQuickPhrases scene-key="sa.aid.statement" @pick="onPickStatement" />
-          <textarea ref="statementTa" v-model.trim="applyModal.statement" class="ad-textarea" rows="3" placeholder="客观描述家庭困难情况，10-500 字" />
+          <AppTextarea v-model="applyModal.statement" :rows="3" placeholder="客观描述家庭困难情况，10-500 字" />
         </label>
         <div class="ad-grid2">
           <label class="ad-field"><span>家庭人数</span>
-            <input v-model.number="applyModal.memberCount" type="number" min="0" class="ad-input" />
+            <AppNumberInput v-model="applyModal.memberCount" :min="0" />
           </label>
           <label class="ad-field"><span>家庭年收入（元）</span>
-            <input v-model.trim="applyModal.annualIncome" class="ad-input" placeholder="强敏感，隔离存储" />
+            <AppTextInput v-model="applyModal.annualIncome" placeholder="强敏感，隔离存储" />
           </label>
         </div>
         <label class="ad-field"><span>负债（元）</span>
-          <input v-model.trim="applyModal.debt" class="ad-input" placeholder="选填" />
+          <AppTextInput v-model="applyModal.debt" placeholder="选填" />
         </label>
         <p v-if="applyModal.error" class="ad-err">{{ applyModal.error }}</p>
         <div class="ad-modal__foot">
@@ -244,10 +231,12 @@
  * 真实对接 /api/v1/student-affairs/aid/*：批次 → 受理 → 班级评议/辅导员初审/学院复审/学校终审 → 公示 → 通过（进困难库+360）→ 动态调整。
  * 家庭经济默认脱敏（年收入区间）；查看完整走 reveal（sensitiveView 鉴权 + SENSITIVE 审计，非授权 403）。
  */
-import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppConfirmDialog, AppGlobalState, AppInlineAlert, AppQuickPhrases, AppStatusTag, AppStudentPicker } from '@/components/common'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import {
+  AppConfirmDialog, AppNumberInput, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
+  AppStudentPicker, AppTextInput, AppTextarea
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
-import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { toast } from '@/utils/toast'
 
 const AID_NODES = ['CLASS_REVIEW', 'COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'SCHOOL_REVIEW']
@@ -261,7 +250,10 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
 
 export default {
   name: 'AidWorkbenchView',
-  components: { ModulePageShell, EmptyState, AppConfirmDialog, AppGlobalState, AppInlineAlert, AppQuickPhrases, StatusTag: AppStatusTag, AppStudentPicker },
+  components: {
+    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppNumberInput,
+    AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+  },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -270,7 +262,7 @@ export default {
       revealed: false, revealedFam: {}, revealing: false,
       activeStatus: 'ALL',
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
-      revealModal: { visible: false, error: '' },
+      revealModal: { visible: false, reason: '', error: '' },
       adjustModal: { visible: false, targetLevel: 'DIFFICULT', reason: '', error: '' },
       batchModal: { visible: false, batchName: '', schoolYear: '', publicityDays: 0, publish: true, error: '' },
       applyModal: { visible: false, studentId: '', applyLevel: 'DIFFICULT', statement: '', memberCount: null, annualIncome: '', debt: '', error: '' },
@@ -278,11 +270,20 @@ export default {
     }
   },
   computed: {
+    dialogPhraseSceneKey() {
+      return this.dialog.action === 'reject' ? 'sa.aid.reject' : ''
+    },
     roleName() {
       return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || ''
     },
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
+    },
+    batchOptions() {
+      return this.batches.map((b) => ({
+        value: b.batchId,
+        label: `${b.batchName}（${b.schoolYear} · ${this.batchStatusLabel(b.status)}）`
+      }))
     },
     currentBatchOpen() {
       const b = this.batches.find((x) => x.batchId === this.batchId)
@@ -290,10 +291,6 @@ export default {
     },
     fam() {
       return (this.selected && this.selected.familyEconomy) || {}
-    },
-    // 通用确认弹窗按当前动作切换快捷用语场景；仅“驳回”命中 sa.aid.reject，其余动作（退回等）不挂快捷词
-    dialogPhraseSceneKey() {
-      return this.dialog.action === 'reject' ? 'sa.aid.reject' : ''
     },
     statusFilters() {
       const c = (arr) => this.list.filter((x) => arr.includes(x.status)).length
@@ -312,42 +309,24 @@ export default {
       else if (this.activeStatus !== 'ALL') arr = arr.filter((x) => x.status === this.activeStatus)
       return arr
     },
-    listState() {
-      if (this.loading) return 'loading'
-      if (this.listError) return 'error'
-      if (!this.batchId) return 'empty'
-      if (!this.filteredList.length) return 'empty'
-      return 'ready'
-    },
-    listStateTitle() {
-      if (this.listState !== 'empty') return ''
-      return this.batchId ? '该批次暂无申请' : '请先选择认定批次'
-    },
-    listStateDescription() {
-      if (this.listState === 'error') return this.listError
-      if (this.listState === 'empty') {
-        return this.batchId ? '可点「受理申请」为学生受理，或调整筛选条件' : '从上方选择一个批次，或点「建批次」新建'
-      }
-      return ''
-    },
     detailActions() {
       const s = this.selected && this.selected.status
       if (!s) return []
       if (AID_NODES.includes(s)) {
         const label = { CLASS_REVIEW: '评议通过', COUNSELOR_REVIEW: '初审通过', COLLEGE_REVIEW: '复审通过', SCHOOL_REVIEW: '终审通过' }[s]
         return [
-          { key: 'approve', label, tone: 'primary' },
-          { key: 'return', label: '退回', tone: 'default' },
-          { key: 'reject', label: '驳回', tone: 'danger' }
+          { key: 'approve', label, tone: 'primary', code: 'studentAffairs.aid.approve' },
+          { key: 'return', label: '退回', tone: 'default', code: 'studentAffairs.aid.approve' },
+          { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.aid.approve' }
         ]
       }
-      if (s === 'DRAFT') return [{ key: 'resubmit', label: '重新提交', tone: 'primary' }]
-      if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary' }]
-      if (s === 'APPROVED') return [{ key: 'adjust', label: '动态调整', tone: 'default' }]
+      if (s === 'DRAFT') return [{ key: 'resubmit', label: '重新提交', tone: 'primary', code: 'studentAffairs.aid.create' }]
+      if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary', code: 'studentAffairs.aid.approve' }]
+      if (s === 'APPROVED') return [{ key: 'adjust', label: '动态调整', tone: 'default', code: 'studentAffairs.aid.adjust' }]
       if (s === 'ADJUST_REVIEW') {
         return [
-          { key: 'adjustApprove', label: '调整通过', tone: 'primary' },
-          { key: 'adjustReject', label: '调整驳回', tone: 'danger' }
+          { key: 'adjustApprove', label: '调整通过', tone: 'primary', code: 'studentAffairs.aid.adjust' },
+          { key: 'adjustReject', label: '调整驳回', tone: 'danger', code: 'studentAffairs.aid.adjust' }
         ]
       }
       return []
@@ -357,6 +336,9 @@ export default {
     this.loadBatches()
   },
   methods: {
+    onPickRevealReason(text) { this.revealModal.reason = (this.revealModal.reason || '') + text },
+    onPickAdjustReason(text) { this.adjustModal.reason = (this.adjustModal.reason || '') + text },
+    onPickStatement(text) { this.applyModal.statement = (this.applyModal.statement || '') + text },
     levelLabel(l) {
       return LEVEL[l] || ''
     },
@@ -446,13 +428,14 @@ export default {
       }[a])
       this.dialog.visible = false
     },
-    // ── 敏感查看（原因必填 + 强制留审计，由 AppConfirmDialog 的 require-reason 保证不可绕过） ──
+    // ── 敏感查看 ──
     openReveal() {
       if (this.revealed) return
-      this.revealModal = { visible: true, error: '' }
+      this.revealModal = { visible: true, reason: '', error: '' }
     },
-    async submitReveal(payload) {
-      const reason = (payload && payload.reason) || ''
+    async submitReveal() {
+      const reason = (this.revealModal.reason || '').trim()
+      if (!reason || reason.length < 5) { this.revealModal.error = '查看原因不少于 5 字'; return }
       this.revealing = true
       const res = await studentAffairsApi.revealAidFamily(this.selected.applyId, reason)
       this.revealing = false
@@ -470,22 +453,11 @@ export default {
     openAdjust() {
       this.adjustModal = { visible: true, targetLevel: this.selected.finalLevel || 'DIFFICULT', reason: '', error: '' }
     },
-    onPickAdjustReason(text) {
-      const el = this.$refs.adjustReasonTa
-      const { value, selStart, selEnd } = insertAtCursor(el, this.adjustModal.reason, text)
-      this.adjustModal.reason = value
-      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
-    },
-    onPickStatement(text) {
-      const el = this.$refs.statementTa
-      const { value, selStart, selEnd } = insertAtCursor(el, this.applyModal.statement, text)
-      this.applyModal.statement = value
-      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
-    },
     async submitAdjust() {
-      if (!this.adjustModal.reason || this.adjustModal.reason.length < 5) { this.adjustModal.error = '调整原因不少于 5 字'; return }
+      const reason = (this.adjustModal.reason || '').trim()
+      if (!reason || reason.length < 5) { this.adjustModal.error = '调整原因不少于 5 字'; return }
       const ok = await this.runAction(
-        () => studentAffairsApi.adjustAid(this.selected.applyId, this.adjustModal.targetLevel, this.adjustModal.reason),
+        () => studentAffairsApi.adjustAid(this.selected.applyId, this.adjustModal.targetLevel, reason),
         '调整已提交'
       )
       if (ok) this.adjustModal.visible = false
@@ -497,8 +469,10 @@ export default {
     },
     async submitBatch() {
       const m = this.batchModal
-      if (!m.batchName || !m.schoolYear) { m.error = '批次名称与学年必填'; return }
-      const body = { batchName: m.batchName, schoolYear: m.schoolYear, publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish }
+      const batchName = (m.batchName || '').trim()
+      const schoolYear = (m.schoolYear || '').trim()
+      if (!batchName || !schoolYear) { m.error = '批次名称与学年必填'; return }
+      const body = { batchName, schoolYear, publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish }
       const res = await studentAffairsApi.createAidBatch(body)
       if (res.code === 0) {
         toast.success('批次已保存')
@@ -519,11 +493,12 @@ export default {
     async submitApply() {
       const m = this.applyModal
       if (!m.studentId) { m.error = '请选择学生'; return }
-      if (!m.statement || m.statement.length < 10 || m.statement.length > 500) { m.error = '困难情况说明需 10-500 字'; return }
+      const statement = (m.statement || '').trim()
+      if (!statement || statement.length < 10 || statement.length > 500) { m.error = '困难情况说明需 10-500 字'; return }
       const body = {
         batchId: String(this.batchId), studentId: String(m.studentId), applyLevel: m.applyLevel,
-        statement: m.statement, memberCount: m.memberCount || null,
-        annualIncome: m.annualIncome || '', debt: m.debt || '', familyMembers: [], specialTags: []
+        statement, memberCount: m.memberCount || null,
+        annualIncome: (m.annualIncome || '').trim(), debt: (m.debt || '').trim(), familyMembers: [], specialTags: []
       }
       const ok = await this.runAction(() => studentAffairsApi.applyAid(body), '申请已受理')
       if (ok) this.applyModal.visible = false
@@ -573,6 +548,9 @@ export default {
   background: var(--primary-50);
   border: 1px solid var(--primary-100);
   border-radius: var(--radius-lg);
+}
+.ad-batchpick {
+  width: 320px;
 }
 .ad-batchsel {
   display: flex;

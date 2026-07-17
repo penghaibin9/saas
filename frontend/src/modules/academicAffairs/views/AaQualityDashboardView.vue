@@ -142,22 +142,9 @@
 
     <!-- 问题记录：详情 -->
     <AppDrawer :visible="recDetailVisible" title="记录详情" @close="recDetailVisible = false">
-      <div v-if="recCurrent" class="aaql-detail">
-        <div class="aaql-detail-row"><span>类型</span><b>{{ recTypeLabel(recCurrent.recordType) }}</b></div>
-        <div class="aaql-detail-row"><span>标题</span><b>{{ recCurrent.title }}</b></div>
-        <div class="aaql-detail-row"><span>状态</span><StatusTag :type="recStatusType(recCurrent.status)" :label="recStatusLabel(recCurrent.status)" dot /></div>
-        <div class="aaql-detail-row"><span>教师</span><b>{{ recCurrent.teacherName || '—' }}</b></div>
-        <div class="aaql-detail-row"><span>课程</span><b>{{ recCurrent.courseName || '—' }}</b></div>
-        <div class="aaql-detail-row"><span>发生时间</span><b>{{ fmt(recCurrent.occurredAt) || '—' }}</b></div>
-        <div class="aaql-detail-row"><span>地点</span><b>{{ recCurrent.location || '—' }}</b></div>
-        <div class="aaql-detail-row"><span>分类/等级</span><b>{{ recCurrent.category || '—' }}</b></div>
-        <div class="aaql-detail-row" v-if="recCurrent.score != null"><span>评分</span><b>{{ recCurrent.score }}</b></div>
-        <div class="aaql-detail-row"><span>结论</span><b>{{ recCurrent.conclusion || '—' }}</b></div>
-        <div class="aaql-detail-row"><span>详细描述</span><p>{{ recCurrent.description || '—' }}</p></div>
-        <div class="aaql-detail-row" v-if="recCurrent.handlingNote"><span>处理意见</span><p>{{ recCurrent.handlingNote }}</p></div>
-        <div class="aaql-detail-row"><span>记录人</span><b>{{ recCurrent.recorderName || '—' }}</b></div>
-        <div class="aaql-detail-row" v-if="recCurrent.confirmedByName"><span>确认人</span><b>{{ recCurrent.confirmedByName }}（{{ fmt(recCurrent.confirmedAt) }}）</b></div>
-      </div>
+      <AppDescriptionList v-if="recCurrent" :items="recDescItems" :columns="2">
+        <template #status="{ item }"><StatusTag :type="recStatusType(recCurrent.status)" :label="recStatusLabel(recCurrent.status)" dot /></template>
+      </AppDescriptionList>
     </AppDrawer>
 
     <!-- 整改任务：发起（含来源问题记录一键发起） -->
@@ -178,13 +165,10 @@
     <!-- 整改任务：详情 + 跟进时间线 -->
     <AppDrawer :visible="rectDetailVisible" title="整改任务详情" @close="rectDetailVisible = false">
       <div v-if="rectCurrent" class="aaql-detail">
-        <div class="aaql-detail-row"><span>标题</span><b>{{ rectCurrent.title }}</b></div>
-        <div class="aaql-detail-row"><span>状态</span><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" dot /></div>
-        <div class="aaql-detail-row" v-if="rectCurrent.sourceTitle"><span>来源记录</span><b>{{ rectCurrent.sourceTitle }}（{{ recTypeLabel(rectCurrent.sourceType) }}）</b></div>
-        <div class="aaql-detail-row"><span>整改要求</span><p>{{ rectCurrent.requirement }}</p></div>
-        <div class="aaql-detail-row"><span>责任人</span><b>{{ rectCurrent.responsibleName || '—' }}</b></div>
-        <div class="aaql-detail-row"><span>期限</span><b :class="{ 'aaql-danger': rectCurrent.overdue }">{{ fmt(rectCurrent.deadline) || '—' }}<span v-if="rectCurrent.overdue">（已逾期）</span></b></div>
-        <div class="aaql-detail-row" v-if="rectCurrent.resultNote"><span>复核结论</span><p>{{ rectCurrent.resultNote }}</p></div>
+        <AppDescriptionList :items="rectDescItems" :columns="2">
+          <template #status="{ item }"><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" dot /></template>
+          <template #deadline="{ item }"><b :class="{ 'aaql-danger': rectCurrent.overdue }">{{ fmt(rectCurrent.deadline) || '—' }}<span v-if="rectCurrent.overdue">（已逾期）</span></b></template>
+        </AppDescriptionList>
         <div class="aaql-section-title">跟进时间线</div>
         <AppTimeline :items="rectTimelineItems" />
       </div>
@@ -227,7 +211,7 @@
  *  R3 续工：docs/03-业务模块设计/教务中心/施工包/教学质量/三级施工卡/{01..06,09}-*.md。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert, AppTimeline, AppDateTimePicker, AppQuickPhrases } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert, AppTimeline, AppDateTimePicker, AppQuickPhrases, AppDescriptionList } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi, academicAffairsQualityApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -257,7 +241,7 @@ export default {
   name: 'AaQualityDashboardView',
   components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer,
                AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert,
-               AppTimeline, AppDateTimePicker, AppQuickPhrases },
+               AppTimeline, AppDateTimePicker, AppQuickPhrases, AppDescriptionList },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -311,6 +295,43 @@ export default {
         rows = [...rows].sort((a, b) => (b.overdue === a.overdue ? 0 : b.overdue ? 1 : -1))
       }
       return rows
+    },
+    /** 记录详情键值 → AppDescriptionList items（仅展示层映射，数据取自 recCurrent，不改数据流）。 */
+    recDescItems() {
+      const r = this.recCurrent
+      if (!r) return []
+      const items = [
+        { label: '类型', value: this.recTypeLabel(r.recordType) },
+        { label: '标题', value: r.title },
+        { key: 'status', label: '状态', value: '' },
+        { label: '教师', value: r.teacherName || '—' },
+        { label: '课程', value: r.courseName || '—' },
+        { label: '发生时间', value: this.fmt(r.occurredAt) || '—' },
+        { label: '地点', value: r.location || '—' },
+        { label: '分类/等级', value: r.category || '—' }
+      ]
+      if (r.score != null) items.push({ label: '评分', value: r.score })
+      items.push({ label: '结论', value: r.conclusion || '—' })
+      items.push({ label: '详细描述', value: r.description || '—', span: 2 })
+      if (r.handlingNote) items.push({ label: '处理意见', value: r.handlingNote, span: 2 })
+      items.push({ label: '记录人', value: r.recorderName || '—' })
+      if (r.confirmedByName) items.push({ label: '确认人', value: `${r.confirmedByName}（${this.fmt(r.confirmedAt)}）` })
+      return items
+    },
+    /** 整改任务详情键值 → AppDescriptionList items（status/deadline 用具名插槽保留标签与逾期红色）。 */
+    rectDescItems() {
+      const r = this.rectCurrent
+      if (!r) return []
+      const items = [
+        { label: '标题', value: r.title },
+        { key: 'status', label: '状态', value: '' }
+      ]
+      if (r.sourceTitle) items.push({ label: '来源记录', value: `${r.sourceTitle}（${this.recTypeLabel(r.sourceType)}）` })
+      items.push({ label: '整改要求', value: r.requirement, span: 2 })
+      items.push({ label: '责任人', value: r.responsibleName || '—' })
+      items.push({ key: 'deadline', label: '期限', value: '' })
+      if (r.resultNote) items.push({ label: '复核结论', value: r.resultNote, span: 2 })
+      return items
     },
     /** 整改详情跟进时间线：progressLog[{time,operator,action,note}] → AppTimeline items。 */
     rectTimelineItems() {

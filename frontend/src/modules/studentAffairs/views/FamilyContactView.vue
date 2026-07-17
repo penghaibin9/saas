@@ -11,7 +11,7 @@
       <div class="fc-picker__control">
         <AppStudentPicker v-model="studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" @change="onPick" />
       </div>
-      <button type="button" class="fc-btn fc-btn--primary" :disabled="!studentId" @click="openCreate">登记联系</button>
+      <AppPermissionButton code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记联系</AppPermissionButton>
     </div>
 
     <EmptyState v-if="!studentId" title="请选择一名学生" description="查看并登记该生的家校联系记录" />
@@ -77,7 +77,7 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppDateDisplay, AppFormItem, AppInlineAlert, AppPagination,
+  AppDateDisplay, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
   AppQuickPhrases, AppSelect, AppStudentPicker, AppTextInput, AppTextarea
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -92,7 +92,7 @@ export default {
   name: 'FamilyContactView',
   components: {
     ModulePageShell, LoadingState, ErrorState, EmptyState,
-    AppDateDisplay, AppDrawer, AppFormItem, AppInlineAlert, AppPagination,
+    AppDateDisplay, AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
     AppQuickPhrases, AppSelect, AppStudentPicker, AppTextInput, AppTextarea
   },
   props: { ctx: { type: Object, default: null } },

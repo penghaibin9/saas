@@ -9,61 +9,31 @@
     <div v-else class="aars-wrap">
       <div class="aars-section-title">资源数量与可用率</div>
       <div class="aars-grid">
-        <div class="aars-card">
-          <div class="aars-value">{{ data.classroom.total }}</div>
-          <div class="aars-label">教室总数</div>
-          <div class="aars-sub">可用率 {{ pct(data.classroom.availableRate) }}</div>
-        </div>
-        <div class="aars-card">
-          <div class="aars-value">{{ data.lab.total }}</div>
-          <div class="aars-label">实训室总数</div>
-          <div class="aars-sub">可用率 {{ pct(data.lab.availableRate) }}</div>
-        </div>
-        <div class="aars-card">
-          <div class="aars-value">{{ data.equipment.total }}</div>
-          <div class="aars-label">设备总数</div>
-          <div class="aars-sub">在用率 {{ pct(data.equipment.inUseRate) }}</div>
-        </div>
+        <AppMetricCard title="教室总数" :value="data.classroom.total" :trend-label="`可用率 ${pct(data.classroom.availableRate)}`" />
+        <AppMetricCard title="实训室总数" :value="data.lab.total" :trend-label="`可用率 ${pct(data.lab.availableRate)}`" />
+        <AppMetricCard title="设备总数" :value="data.equipment.total" :trend-label="`在用率 ${pct(data.equipment.inUseRate)}`" />
       </div>
 
       <div class="aars-section-title">预约审批</div>
       <div class="aars-grid">
-        <div class="aars-card">
-          <div class="aars-value">{{ data.classroomBooking.total }}</div>
-          <div class="aars-label">教室预约总数</div>
-          <div class="aars-sub">通过率 {{ pct(data.classroomBooking.approvalRate) }}</div>
-        </div>
-        <div class="aars-card">
-          <div class="aars-value">{{ data.labBooking.total }}</div>
-          <div class="aars-label">实训室预约总数</div>
-          <div class="aars-sub">通过率 {{ pct(data.labBooking.approvalRate) }}</div>
-        </div>
-        <div class="aars-card">
-          <div class="aars-value">{{ data.repair.openCount }}</div>
-          <div class="aars-label">维修工单未结数</div>
-          <div class="aars-sub">累计 {{ data.repair.total }} 单</div>
-        </div>
+        <AppMetricCard title="教室预约总数" :value="data.classroomBooking.total" :trend-label="`通过率 ${pct(data.classroomBooking.approvalRate)}`" />
+        <AppMetricCard title="实训室预约总数" :value="data.labBooking.total" :trend-label="`通过率 ${pct(data.labBooking.approvalRate)}`" />
+        <AppMetricCard title="维修工单未结数" :value="data.repair.openCount" accent="warning" :trend-label="`累计 ${data.repair.total} 单`" />
       </div>
 
       <div class="aars-section-title">状态分布明细</div>
       <div class="aars-detail-grid">
         <div class="aars-detail-block">
           <div class="aars-detail-title">教室</div>
-          <div v-for="(n, s) in data.classroom.byStatus" :key="s" class="aars-detail-row">
-            <span>{{ statusLabel(s) }}</span><span>{{ n }}</span>
-          </div>
+          <AppDescriptionList :items="classroomDescItems" :columns="1" size="compact" />
         </div>
         <div class="aars-detail-block">
           <div class="aars-detail-title">实训室</div>
-          <div v-for="(n, s) in data.lab.byStatus" :key="s" class="aars-detail-row">
-            <span>{{ statusLabel(s) }}</span><span>{{ n }}</span>
-          </div>
+          <AppDescriptionList :items="labDescItems" :columns="1" size="compact" />
         </div>
         <div class="aars-detail-block">
           <div class="aars-detail-title">设备</div>
-          <div v-for="(n, s) in data.equipment.byStatus" :key="s" class="aars-detail-row">
-            <span>{{ equipStatusLabel(s) }}</span><span>{{ n }}</span>
-          </div>
+          <AppDescriptionList :items="equipmentDescItems" :columns="1" size="compact" />
         </div>
       </div>
     </div>
@@ -74,6 +44,7 @@
 /** 教学资源续卡 · 资源统计（/admin/academic-affairs/resources/stats）：数量/状态分布/预约审批率/维修工单只读聚合。 */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
+import { AppMetricCard, AppDescriptionList } from '@/components/common'
 import { academicAffairsResourceApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 const _STATUS_LABEL = { AVAILABLE: '可用', DISABLED: '停用', MAINTENANCE: '维修中',
@@ -91,9 +62,20 @@ const EMPTY = () => ({
 
 export default {
   name: 'AaResourceStatsView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppButton },
+  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppMetricCard, AppDescriptionList },
   data() {
     return { loading: true, error: '', data: EMPTY() }
+  },
+  computed: {
+    classroomDescItems() {
+      return Object.entries(this.data.classroom.byStatus || {}).map(([s, n]) => ({ label: this.statusLabel(s), value: n }))
+    },
+    labDescItems() {
+      return Object.entries(this.data.lab.byStatus || {}).map(([s, n]) => ({ label: this.statusLabel(s), value: n }))
+    },
+    equipmentDescItems() {
+      return Object.entries(this.data.equipment.byStatus || {}).map(([s, n]) => ({ label: this.equipStatusLabel(s), value: n }))
+    }
   },
   created() { this.load() },
   methods: {

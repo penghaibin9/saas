@@ -11,12 +11,12 @@
       </div>
       <AppSectionCard v-if="formVisible" title="登记助学贷款">
         <div class="ln-grid">
-          <label class="ln-field"><span>学生主档ID *</span><input v-model.number="form.studentId" type="number" class="ln-input" /></label>
-          <label class="ln-field"><span>类型</span><select v-model="form.loanType" class="ln-input"><option value="ORIGIN">生源地</option><option value="CAMPUS">校园地</option></select></label>
-          <label class="ln-field"><span>银行</span><input v-model.trim="form.bankName" class="ln-input" /></label>
-          <label class="ln-field"><span>银行卡号（仅存后4位）</span><input v-model.trim="form.bankLast4" class="ln-input" /></label>
-          <label class="ln-field"><span>学年</span><input v-model.trim="form.yearCode" class="ln-input" placeholder="2025-2026" /></label>
-          <label class="ln-field"><span>金额</span><input v-model.number="form.amount" type="number" class="ln-input" /></label>
+          <div class="ln-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <label class="ln-field"><span>类型</span><AppSelect v-model="form.loanType" :options="LOAN_TYPE_OPTIONS" placeholder="" /></label>
+          <label class="ln-field"><span>银行</span><AppTextInput v-model="form.bankName" /></label>
+          <label class="ln-field"><span>银行卡号（仅存后4位）</span><AppTextInput v-model="form.bankLast4" :maxlength="4" /></label>
+          <label class="ln-field"><span>学年</span><AppTextInput v-model="form.yearCode" placeholder="2025-2026" /></label>
+          <label class="ln-field"><span>金额</span><AppNumberInput v-model="form.amount" :min="0" /></label>
         </div>
         <div class="ln-actions"><button type="button" class="ln-btn" @click="formVisible=false">取消</button>
           <AppPermissionButton code="studentAffairs.funding.loan.manage" :loading="acting==='reg'" @click="register">登记</AppPermissionButton></div>
@@ -43,17 +43,25 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const NEXT = { REGISTERED: '上传回执', RECEIPT: '核对', VERIFIED: '确认' }
+const LOAN_TYPE_OPTIONS = [{ value: 'ORIGIN', label: '生源地' }, { value: 'CAMPUS', label: '校园地' }]
 
 export default {
   name: 'StudentLoanView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
+    AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+  },
   data() { return { loading: true, acting: '', errorMessage: '', loans: [], formVisible: false, form: this.blank() } },
   computed: {
+    LOAN_TYPE_OPTIONS: () => LOAN_TYPE_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const s = (k) => this.loans.filter((l) => l.status === k).length
@@ -66,7 +74,8 @@ export default {
   },
   mounted() { this.load() },
   methods: {
-    blank() { return { studentId: null, loanType: 'ORIGIN', bankName: '', bankLast4: '', yearCode: '', amount: null } },
+    blank() { return { studentId: '', loanType: 'ORIGIN', bankName: '', bankLast4: '', yearCode: '', amount: null } },
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getLoans()
@@ -76,9 +85,9 @@ export default {
     },
     async register() {
       const f = this.form
-      if (!f.studentId) { toast.error('学生ID必填'); return }
+      if (!f.studentId) { toast.error('请选择学生'); return }
       this.acting = 'reg'
-      const res = await studentAffairsApi.registerLoan({ studentId: Number(f.studentId), loanType: f.loanType, bankName: f.bankName || undefined, bankLast4: f.bankLast4 || undefined, yearCode: f.yearCode || undefined, amount: f.amount != null ? Number(f.amount) : undefined })
+      const res = await studentAffairsApi.registerLoan({ studentId: Number(f.studentId), loanType: f.loanType, bankName: (f.bankName || '').trim() || undefined, bankLast4: (f.bankLast4 || '').trim() || undefined, yearCode: (f.yearCode || '').trim() || undefined, amount: f.amount != null ? Number(f.amount) : undefined })
       this.acting = ''
       if (res.code === 0) { toast.success('已登记'); this.formVisible = false; this.form = this.blank(); this.load() } else toast.error(res.message || '登记失败')
     },

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Path
 
+from app.core.permissions import require_permission
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_makeup_service as mk
@@ -655,6 +656,21 @@ def teacher_affairs_cadre_remove(cadre_id: str, body: dict = Body(default={}), u
     return success(tea.affairs_cadre_remove(user, cadre_id, (body or {}).get("reason")), message="已免去")
 
 
+@router.get("/teacher/affairs/classes/{class_id}/materials", summary="辅导员·班级材料列表（范围校验）")
+def teacher_affairs_class_materials(class_id: str, materialType: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_class_materials(user, class_id, materialType))
+
+
+@router.post("/teacher/affairs/classes/{class_id}/materials", summary="辅导员·新增班级材料（范围校验）")
+def teacher_affairs_class_material_add(class_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_class_material_add(user, class_id, body), message="已新增")
+
+
+@router.post("/teacher/affairs/classes/materials/{material_id}/void", summary="辅导员·作废班级材料（owner 校验）")
+def teacher_affairs_class_material_void(material_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(tea.affairs_class_material_void(user, material_id, (body or {}).get("reason")), message="已作废")
+
+
 @router.get("/teacher/academic/tasks", summary="教务老师·我的教学任务（按本人 teacherKey 收敛）")
 def teacher_academic_my_tasks(status: str = None, user=Depends(get_current_user)):
     return success(tea.affairs_academic_my_tasks(user, status))
@@ -1218,6 +1234,53 @@ def teacher_warning_handle(warning_id: str, body: dict = Body(...),
 @router.post("/teacher/employment/followup", summary="教师·新增就业跟进（范围校验+审计）")
 def teacher_followup_create(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.followup_create(user, body), message="跟进已记录")
+
+
+@router.get("/teacher/employment/my-students", summary="就业老师·我负责的学生（供转交前选人）")
+def teacher_employment_my_students(user=Depends(get_current_user)):
+    return success(tea.affairs_employment_my_students(user))
+
+
+@router.post("/teacher/employment/students/{student_id}/transfer", summary="就业老师·转交本人负责的学生给他人")
+def teacher_employment_transfer(student_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_employment_transfer_student(
+        user, student_id, (body or {}).get("newTeacher") or ""), message="已转交")
+
+
+# ── 就业·企业/岗位库（校级共享主数据，路由挂 employment.company/job 权限，仅就业老师/校管可操作）──
+@router.get("/teacher/employment/companies", summary="就业老师·企业列表")
+def teacher_employment_companies(status: str = None, user=Depends(require_permission("employment.company.view"))):
+    return success(tea.affairs_employment_companies(user, status))
+
+
+@router.post("/teacher/employment/companies", summary="就业老师·新增企业")
+def teacher_employment_company_create(body: dict = Body(...),
+                                      user=Depends(require_permission("employment.company.manage"))):
+    return success(tea.affairs_employment_company_create(user, body), message="已新增")
+
+
+@router.post("/teacher/employment/companies/{company_id}/disable", summary="就业老师·停用企业（级联关闭岗位）")
+def teacher_employment_company_disable(company_id: str, body: dict = Body(default={}),
+                                       user=Depends(require_permission("employment.company.manage"))):
+    return success(tea.affairs_employment_company_disable(user, company_id, (body or {}).get("reason")), message="已停用")
+
+
+@router.get("/teacher/employment/jobs", summary="就业老师·岗位列表")
+def teacher_employment_jobs(companyId: str = None, status: str = None,
+                            user=Depends(require_permission("employment.job.view"))):
+    return success(tea.affairs_employment_jobs(user, companyId, status))
+
+
+@router.post("/teacher/employment/jobs", summary="就业老师·新增岗位")
+def teacher_employment_job_create(body: dict = Body(...),
+                                  user=Depends(require_permission("employment.job.manage"))):
+    return success(tea.affairs_employment_job_create(user, body), message="已新增")
+
+
+@router.post("/teacher/employment/jobs/{job_id}/disable", summary="就业老师·停用岗位")
+def teacher_employment_job_disable(job_id: str, body: dict = Body(default={}),
+                                   user=Depends(require_permission("employment.job.manage"))):
+    return success(tea.affairs_employment_job_disable(user, job_id, (body or {}).get("reason")), message="已停用")
 
 
 # ── 13A 学工中心·学生自视图（P7 多端收口，本人只读）──

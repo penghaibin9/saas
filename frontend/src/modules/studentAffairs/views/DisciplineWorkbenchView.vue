@@ -20,12 +20,9 @@
         </button>
       </div>
       <div class="dp-tools">
-        <select v-model="typeFilter" class="dp-input" title="按处分类型筛选">
-          <option value="">全部类型</option>
-          <option v-for="t in discTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
-        </select>
-        <button type="button" class="dp-btn" :disabled="reconciling" @click="onReconcile">投影对账</button>
-        <button type="button" class="dp-btn dp-btn--primary" @click="openRegister">登记处分</button>
+        <AppSelect v-model="typeFilter" class="dp-typepick" :options="typeFilterOptions" placeholder="" title="按处分类型筛选" />
+        <AppPermissionButton code="studentAffairs.discipline.view" variant="secondary" size="sm" :loading="reconciling" @click="onReconcile">投影对账</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.discipline.create" variant="primary" size="sm" @click="openRegister">登记处分</AppPermissionButton>
       </div>
     </div>
 
@@ -73,17 +70,17 @@
           </dl>
 
           <div v-if="detailActions.length" class="dp-actions">
-            <button
+            <AppPermissionButton
               v-for="a in detailActions"
               :key="a.key"
-              type="button"
-              class="dp-btn"
-              :class="{ 'dp-btn--primary': a.tone === 'primary', 'dp-btn--danger': a.tone === 'danger' }"
-              :disabled="acting"
+              :code="a.code"
+              :variant="a.tone === 'primary' ? 'primary' : (a.tone === 'danger' ? 'danger' : 'secondary')"
+              size="sm"
+              :loading="acting"
               @click="onAction(a.key)"
             >
               {{ a.label }}
-            </button>
+            </AppPermissionButton>
           </div>
           <p v-else class="dp-terminal">该处分已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
         </template>
@@ -140,7 +137,7 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppConfirmDialog, AppDateDisplay, AppFormItem, AppInlineAlert, AppQuickPhrases, AppSelect, AppStatusTag,
+  AppConfirmDialog, AppDateDisplay, AppFormItem, AppInlineAlert, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
   AppStudentPicker, AppTextarea, AppTextInput
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -162,7 +159,7 @@ export default {
   name: 'DisciplineWorkbenchView',
   components: {
     ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay, AppDrawer,
-    AppFormItem, AppInlineAlert, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextarea, AppTextInput
+    AppFormItem, AppInlineAlert, AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextarea, AppTextInput
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -201,27 +198,30 @@ export default {
       if (this.typeFilter) arr = arr.filter((x) => x.discType === this.typeFilter)
       return arr
     },
+    typeFilterOptions() {
+      return [{ value: '', label: '全部类型' }, ...this.discTypes]
+    },
     detailActions() {
       const s = this.selected && this.selected.status
       if (!s) return []
       if (['REGISTERED', 'RETURNED'].includes(s)) {
         return [
-          { key: 'submit', label: '提交初审', tone: 'primary' },
-          { key: 'cancel', label: '撤销登记', tone: 'default' }
+          { key: 'submit', label: '提交初审', tone: 'primary', code: 'studentAffairs.discipline.create' },
+          { key: 'cancel', label: '撤销登记', tone: 'default', code: 'studentAffairs.discipline.create' }
         ]
       }
       if (REVIEW_NODES.includes(s)) {
         return [
-          { key: 'approve', label: '审批通过', tone: 'primary' },
-          { key: 'return', label: '退回重登', tone: 'default' },
-          { key: 'reject', label: '驳回', tone: 'danger' }
+          { key: 'approve', label: '审批通过', tone: 'primary', code: 'studentAffairs.discipline.approve' },
+          { key: 'return', label: '退回重登', tone: 'default', code: 'studentAffairs.discipline.approve' },
+          { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.discipline.approve' }
         ]
       }
-      if (s === 'EFFECTIVE') return [{ key: 'remove', label: '发起解除', tone: 'primary' }]
+      if (s === 'EFFECTIVE') return [{ key: 'remove', label: '发起解除', tone: 'primary', code: 'studentAffairs.discipline.remove.create' }]
       if (s === 'REMOVE_REVIEW') {
         return [
-          { key: 'removeApprove', label: '解除通过', tone: 'primary' },
-          { key: 'removeReject', label: '解除驳回', tone: 'danger' }
+          { key: 'removeApprove', label: '解除通过', tone: 'primary', code: 'studentAffairs.discipline.remove.approve' },
+          { key: 'removeReject', label: '解除驳回', tone: 'danger', code: 'studentAffairs.discipline.remove.approve' }
         ]
       }
       return []
@@ -396,6 +396,9 @@ export default {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+.dp-typepick {
+  width: 150px;
 }
 .dp-btn {
   height: 30px;

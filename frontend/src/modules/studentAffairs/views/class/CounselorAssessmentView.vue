@@ -34,7 +34,7 @@
             <template #cell-totalScore="{ row }"><b>{{ fmtScore(row.totalScore) }}</b></template>
             <template #cell-status="{ row }"><AppStatusTag :status="row.status" :label="row.statusLabel" dot /></template>
             <template #cell-actions="{ row }">
-              <button type="button" class="mp-link" :disabled="isPublished" :class="{ 'is-disabled': isPublished }" @click="openScore(row)">学院评分</button>
+              <AppPermissionButton code="studentAffairs.class.create" variant="secondary" size="sm" :disabled="isPublished" @click="openScore(row)">学院评分</AppPermissionButton>
             </template>
           </DataTable>
         </AppGlobalState>
@@ -76,7 +76,7 @@
  * 建周期 → 系统自动抓取工作量指标 → 学院评分 → 综合排名 → 发布。真实对接 /student-affairs/counselor-assessment/*。
  */
 import { ModulePageShell, DataTable } from '@/components/business'
-import { AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput } from '@/components/common'
+import { AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { assessmentApi } from '@/modules/studentAffairs/api/class.api'
 import { toast } from '@/utils/toast'
@@ -89,7 +89,7 @@ const COLUMNS = [
 
 export default {
   name: 'CounselorAssessmentView',
-  components: { ModulePageShell, DataTable, AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppButton },
+  components: { ModulePageShell, DataTable, AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton, AppButton },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {

@@ -17,10 +17,10 @@
 
       <AppSectionCard v-if="formVisible" title="建党团发展台账">
         <div class="lg-grid">
-          <label class="lg-field"><span>学生主档ID *</span><input v-model.number="form.studentId" type="number" class="lg-input" /></label>
+          <div class="lg-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="lg-field"><span>类型</span>
-            <select v-model="form.devType" class="lg-input"><option value="PARTY">党员发展</option><option value="LEAGUE">团员发展</option></select></label>
-          <label class="lg-field"><span>党/团支部</span><input v-model.trim="form.branchName" class="lg-input" /></label>
+            <AppSelect v-model="form.devType" :options="DEV_TYPE_OPTIONS" placeholder="" /></label>
+          <label class="lg-field"><span>党/团支部</span><AppTextInput v-model="form.branchName" /></label>
         </div>
         <p v-if="form.error" class="lg-error">{{ form.error }}</p>
         <div class="lg-actions">
@@ -51,10 +51,7 @@
             <div class="lg-subhead">
               <div>当前阶段：<b>{{ sel.currentStageLabel }}</b> · <StatusTag :type="statusType(sel.status)" :label="sel.statusLabel" dot /></div>
               <div v-if="sel.status==='ONGOING'" class="lg-adv">
-                <select v-model="advStage" class="lg-input">
-                  <option value="">推进到…</option>
-                  <option v-for="s in nextStages" :key="s.key" :value="s.key">{{ s.label }}</option>
-                </select>
+                <AppSelect v-model="advStage" class="lg-advpick" :options="nextStageOptions" placeholder="推进到…" />
                 <AppPermissionButton code="studentAffairs.league.manage" size="sm" :disabled="!advStage" @click="advance">推进</AppPermissionButton>
                 <AppPermissionButton code="studentAffairs.league.manage" size="sm" variant="secondary" danger @click="terminate">终止</AppPermissionButton>
               </div>
@@ -104,7 +101,8 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -115,12 +113,13 @@ const STAGES = [
   { key: 'FULL_MEMBER', label: '正式党员' }
 ]
 const STAGE_FILTERS = [{ key: '', label: '全部' }].concat(STAGES)
+const DEV_TYPE_OPTIONS = [{ value: 'PARTY', label: '党员发展' }, { value: 'LEAGUE', label: '团员发展' }]
 
 export default {
   name: 'PartyLeagueView',
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
-    StatusTag: AppStatusTag
+    AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   data() {
     return {
@@ -145,6 +144,10 @@ export default {
       if (!this.sel) return []
       const i = STAGES.findIndex((s) => s.key === this.sel.currentStage)
       return STAGES.slice(i + 1)
+    },
+    DEV_TYPE_OPTIONS: () => DEV_TYPE_OPTIONS,
+    nextStageOptions() {
+      return this.nextStages.map((s) => ({ value: s.key, label: s.label }))
     }
   },
   mounted() { this.load() },
@@ -157,12 +160,13 @@ export default {
       this.loading = false
     },
     setStage(k) { if (this.activeStage === k) return; this.activeStage = k; this.load() },
-    openForm() { this.form = { studentId: null, devType: 'PARTY', branchName: '', error: '' }; this.formVisible = true },
+    openForm() { this.form = { studentId: '', devType: 'PARTY', branchName: '', error: '' }; this.formVisible = true },
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async save() {
       const m = this.form
-      if (!m.studentId) { m.error = '学生ID必填'; return }
+      if (!m.studentId) { m.error = '请选择学生'; return }
       m.error = ''; this.saving = true
-      const res = await studentAffairsApi.createLeagueDev({ studentId: Number(m.studentId), devType: m.devType, branchName: m.branchName || undefined })
+      const res = await studentAffairsApi.createLeagueDev({ studentId: Number(m.studentId), devType: m.devType, branchName: (m.branchName || '').trim() || undefined })
       this.saving = false
       if (res.code === 0) { toast.success('已建档'); this.formVisible = false; this.load() } else m.error = res.message || '建档失败'
     },
@@ -222,6 +226,7 @@ export default {
 .lg-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
 .lg-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
 .lg-layout { display: grid; grid-template-columns: 360px 1fr; gap: var(--space-4); }
+.lg-advpick { width: 170px; }
 .lg-filters { display: flex; gap: 6px; margin-bottom: var(--space-3); flex-wrap: wrap; }
 .lg-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 3px 10px; font-size: var(--font-size-xs); cursor: pointer; }
 .lg-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }

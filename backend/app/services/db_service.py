@@ -374,13 +374,22 @@ def message_read(message_id) -> dict:
 
 # ═══════════ 审计 ═══════════
 
-def audit_insert(action: str, resource: str, detail: dict | None, result: str) -> None:
+def audit_insert(action: str, resource: str, detail: dict | None, result: str,
+                 *, tenant_id: int | None = None, resource_id: str | None = None) -> None:
+    """写一条安全审计。
+    tenant_id：显式指定审计归属租户（平台超管跨租户操作时传"被操作学校"，
+               使该校自身审计可见平台侧动作；默认沿用请求上下文租户）。
+    operator_id：从上下文 userId（db-<id>）解析真实操作人主键，不再恒为 None。"""
     user = get_current_user_ctx() or {}
     meta = get_request_meta()
+    raw_uid = str(user.get("userId") or "")
+    operator_id = int(raw_uid[3:]) if raw_uid.startswith("db-") and raw_uid[3:].isdigit() else None
     with session() as db:
         db.add(SecurityAuditLog(
-            tenant_id=_tid(), operator_id=None, operator_name=user.get("realName"),
+            tenant_id=tenant_id if tenant_id is not None else _tid(),
+            operator_id=operator_id, operator_name=user.get("realName"),
             current_role=user.get("currentRoleCode"), action=action, resource=resource,
+            resource_id=resource_id,
             ip=meta.get("ip"), user_agent=meta.get("userAgent"),
             request_method=meta.get("method"), request_path=meta.get("path"),
             trace_id=get_trace_id(), result=result, detail_json=detail or {},

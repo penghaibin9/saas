@@ -9,7 +9,7 @@
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <form v-else-if="topic" class="ie-form" @submit.prevent="submit">
-      <div class="gb-kv"><span>当前已选</span><span>{{ topic.selected }} 人</span></div>
+      <div class="mp-kv"><span class="mp-kv__k">当前已选</span><span class="mp-kv__v">{{ topic.selected }} 人</span></div>
       <label class="ie-fld"><span class="ie-lbl">新容量 <i>*</i></span>
         <input v-model.number="capacity" type="number" :min="topic.selected || 1" max="99" class="ie-in" />
       </label>
@@ -71,8 +71,5 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gb-kv { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
-.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

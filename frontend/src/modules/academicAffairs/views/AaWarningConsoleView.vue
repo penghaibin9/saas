@@ -125,12 +125,7 @@
               <span><RiskTag :level="detail.warning.level" /><StatusTag :type="warningStatusColor(detail.warning.status)" :label="WARNING_STATUS[detail.warning.status]" dot style="margin-left:8px" /></span>
             </div>
             <div class="mp-card__body">
-              <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ detail.warning.sourceLabel }}</span></div>
-              <div class="mp-kv"><span class="mp-kv__k">原因</span><span class="mp-kv__v">{{ detail.warning.reason }}</span></div>
-              <div class="mp-kv"><span class="mp-kv__k">跟进人</span><span class="mp-kv__v">{{ detail.warning.owner || '未分配' }}</span></div>
-              <div class="mp-kv"><span class="mp-kv__k">已提醒</span><span class="mp-kv__v">{{ detail.warning.remindCount }} 次</span></div>
-              <div v-if="detail.student" class="mp-kv"><span class="mp-kv__k">班级</span><span class="mp-kv__v">{{ detail.student.className }}（{{ detail.student.collegeName }}）</span></div>
-              <div v-if="detail.student" class="mp-kv"><span class="mp-kv__k">GPA / 学分</span><span class="mp-kv__v">{{ detail.student.gpa.toFixed(1) }} / {{ detail.student.obtainedCredits }}·{{ detail.student.requiredCredits }}</span></div>
+              <AppDescriptionList :items="detailDescItems" :columns="2" />
             </div>
           </section>
 
@@ -248,7 +243,7 @@
  * 「预警扫描与列表」单页（AaWarningView.vue，/admin/academic-affairs/warnings）保持不变，两页并存、数据同源（t_acad_warning）。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag as StatusTag, AppRiskTag as RiskTag, AppInlineAlert, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases } from '@/components/common'
+import { AppStatusTag as StatusTag, AppRiskTag as RiskTag, AppInlineAlert, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases, AppDescriptionList } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi, academicAffairsWarningApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -272,7 +267,7 @@ export default {
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, StatusTag, RiskTag, AppInlineAlert,
     AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases,
-    AppButton, AppDrawer
+    AppDescriptionList, AppButton, AppDrawer
   },
   data() {
     return {
@@ -336,7 +331,23 @@ export default {
       const u = keys.reduce((s, k) => s + (this.scanResult[k].updated || 0), 0)
       return `一键扫描完成：合计新增 ${c} · 更新 ${u}`
     },
-    isClosed() { return !this.detail || this.detail.warning.status === 'CLOSED' || this.detail.warning.recordStatus === 'VOIDED' }
+    isClosed() { return !this.detail || this.detail.warning.status === 'CLOSED' || this.detail.warning.recordStatus === 'VOIDED' },
+    detailDescItems() {
+      if (!this.detail) return []
+      const w = this.detail.warning
+      const s = this.detail.student
+      const items = [
+        { label: '来源', value: w.sourceLabel },
+        { label: '原因', value: w.reason, span: 2 },
+        { label: '跟进人', value: w.owner || '未分配' },
+        { label: '已提醒', value: `${w.remindCount} 次` }
+      ]
+      if (s) {
+        items.push({ label: '班级', value: `${s.className}（${s.collegeName}）` })
+        items.push({ label: 'GPA / 学分', value: `${s.gpa.toFixed(1)} / ${s.obtainedCredits}·${s.requiredCredits}` })
+      }
+      return items
+    }
   },
   async created() {
     const c = await academicAffairsApi.getContext()

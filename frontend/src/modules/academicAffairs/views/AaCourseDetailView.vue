@@ -14,21 +14,11 @@
     <LoadingState v-else-if="loading" />
     <div v-else-if="course" class="mp-stack">
       <AppSectionCard title="课程信息">
-        <div class="aa-kv-grid">
-          <div class="aa-kv"><span>课程编码</span><b>{{ course.courseCode }}</b></div>
-          <div class="aa-kv"><span>状态</span><b><AppStatusTag :type="reviewStatusColor(course.status)" dot>{{ statusLabel(course.status) }}</AppStatusTag></b></div>
-          <div class="aa-kv"><span>类别</span><b>{{ course.categoryLabel }}</b></div>
-          <div class="aa-kv"><span>性质</span><b>{{ course.natureLabel }}</b></div>
-          <div class="aa-kv"><span>学分</span><b>{{ course.credit }}</b></div>
-          <div class="aa-kv"><span>总学时</span><b>{{ course.hoursTotal ?? '—' }}（理论{{ course.hoursTheory ?? 0 }}/实践{{ course.hoursPractice ?? 0 }}）</b></div>
-          <div class="aa-kv"><span>考核方式</span><b>{{ examLabel(course.examMode) }}</b></div>
-          <div class="aa-kv"><span>核心课程</span><b>{{ course.isCore ? '是' : '否' }}</b></div>
-          <div class="aa-kv"><span>课程负责人</span><b>{{ course.ownerTeacherId ? ('教师 #' + course.ownerTeacherId) : '未指定' }}</b></div>
-          <div class="aa-kv"><span>适用专业</span><b>{{ applicableMajorText }}</b></div>
-          <div class="aa-kv"><span>版本</span><b>v{{ course.version }}</b></div>
-          <div class="aa-kv aa-kv--full"><span>先修课程</span><b>{{ (course.prerequisiteCodes || []).join('、') || '无' }}</b></div>
-          <div class="aa-kv aa-kv--full"><span>课程简介</span><b>{{ course.description || '无' }}</b></div>
-        </div>
+        <AppDescriptionList :items="descItems" :columns="2">
+          <template #status="{ item }">
+            <AppStatusTag :type="reviewStatusColor(item.raw)" dot>{{ statusLabel(item.raw) }}</AppStatusTag>
+          </template>
+        </AppDescriptionList>
       </AppSectionCard>
 
       <AppSectionCard title="审核操作">
@@ -77,14 +67,14 @@
 /** 课程详情 + 两级审核 + 停用管理（/admin/academic-affairs/courses/:id）。
  * Tier1「课程停用」续工：新增启用/停用按钮 + 被引用查询（停用被拦截时提示具体方案）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { REVIEW_STATUS, EXAM_MODE, reviewStatusColor, inReview, canSubmit } from '@/modules/academicAffairs/constants/course-program'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaCourseDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -100,6 +90,25 @@ export default {
       if (this.course.isAllMajor) return '全校通用'
       const n = (this.course.applicableMajors || []).length
       return n > 0 ? `${n} 个专业` : '未设置'
+    },
+    descItems() {
+      const c = this.course
+      if (!c) return []
+      return [
+        { label: '课程编码', value: c.courseCode },
+        { key: 'status', label: '状态', raw: c.status },
+        { label: '类别', value: c.categoryLabel },
+        { label: '性质', value: c.natureLabel },
+        { label: '学分', value: c.credit },
+        { label: '总学时', value: `${c.hoursTotal ?? '—'}（理论${c.hoursTheory ?? 0}/实践${c.hoursPractice ?? 0}）` },
+        { label: '考核方式', value: this.examLabel(c.examMode) },
+        { label: '核心课程', value: c.isCore ? '是' : '否' },
+        { label: '课程负责人', value: c.ownerTeacherId ? ('教师 #' + c.ownerTeacherId) : '未指定' },
+        { label: '适用专业', value: this.applicableMajorText },
+        { label: '版本', value: 'v' + c.version },
+        { label: '先修课程', value: (c.prerequisiteCodes || []).join('、') || '无', span: 2 },
+        { label: '课程简介', value: c.description || '无', span: 2 }
+      ]
     }
   },
   created() { this.load() },

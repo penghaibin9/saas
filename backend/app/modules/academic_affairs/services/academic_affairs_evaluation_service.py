@@ -446,15 +446,21 @@ def list_results(user, bid, mine=False, page=1, page_size=50):
 
 
 def submit_appeal(user, result_id, reason):
+    """教师对结果申诉。修复：此前未校验 result 是否属于当前登录教师本人——任何持
+    require_staff 权限者传任意 resultId 即可代任意教师发起申诉，属越权。现补齐：非
+    TENANT_ALL（教务处/学校管理员，允许代管）角色必须 result.teacher_key 命中 _derive_keys。"""
     from app.models import AaEvaluationAppeal, AaEvaluationResult
     with session() as db:
-        _ctx(user, db)
+        ctx = _ctx(user, db)
         reason = (reason or "").strip()
         if len(reason) < 5:
             raise _bad("申诉理由必填且不少于5字")
         r = db.query(AaEvaluationResult).filter(AaEvaluationResult.id == result_id, AaEvaluationResult.tenant_id == _tid()).first()
         if not r:
             raise not_found("评价结果不存在")
+        if ctx.scope_type != "TENANT_ALL":
+            if not r.teacher_key or r.teacher_key not in _derive_keys(user):
+                raise no_data_scope("仅可对本人的评价结果发起申诉")
         a = AaEvaluationAppeal(tenant_id=_tid(), result_id=result_id, teacher_key=_tkey(), reason=reason,
                                current_node="COLLEGE", status="COLLEGE_REVIEW")
         db.add(a); db.flush()

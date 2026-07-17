@@ -6,9 +6,9 @@
       <div class="ws-cols">
         <AppSectionCard title="岗位（部门发岗）" class="ws-posts">
           <div class="ws-add">
-            <input v-model.trim="postForm.deptName" class="ws-input" placeholder="用人部门" />
-            <input v-model.trim="postForm.postName" class="ws-input" placeholder="岗位名称" />
-            <input v-model.number="postForm.salary" type="number" class="ws-input ws-sm" placeholder="月薪" />
+            <AppTextInput v-model="postForm.deptName" placeholder="用人部门" />
+            <AppTextInput v-model="postForm.postName" placeholder="岗位名称" />
+            <AppNumberInput v-model="postForm.salary" class="ws-sm" :min="0" placeholder="月薪" />
             <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='post'" @click="addPost">发岗</AppPermissionButton>
           </div>
           <ul class="ws-postlist">
@@ -46,10 +46,10 @@
         <div class="ws-modal">
           <h3 class="ws-modal__title">{{ mm.name }} · 月度考核（累计补贴 {{ amountText(mm.subsidyTotal) }}）</h3>
           <div class="ws-madd">
-            <input v-model.trim="mm.form.monthCode" class="ws-input" placeholder="考核月 2025-10" />
-            <select v-model="mm.form.rating" class="ws-input"><option value="GOOD">优</option><option value="PASS">合格</option><option value="FAIL">不合格</option></select>
-            <input v-model.number="mm.form.workHours" type="number" class="ws-input ws-sm" placeholder="工时" />
-            <input v-model.number="mm.form.subsidyAmount" type="number" class="ws-input ws-sm" placeholder="补贴" />
+            <AppTextInput v-model="mm.form.monthCode" placeholder="考核月 2025-10" />
+            <AppSelect v-model="mm.form.rating" :options="RATING_OPTIONS" placeholder="" />
+            <AppNumberInput v-model="mm.form.workHours" class="ws-sm" :min="0" placeholder="工时" />
+            <AppNumberInput v-model="mm.form.subsidyAmount" class="ws-sm" :min="0" placeholder="补贴" />
             <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
           </div>
           <table class="sa-table">
@@ -90,17 +90,19 @@
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-  AppSectionCard, AppStatusTag, AppStudentPicker
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
+  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
+const RATING_OPTIONS = [{ value: 'GOOD', label: '优' }, { value: 'PASS', label: '合格' }, { value: 'FAIL', label: '不合格' }]
+
 export default {
   name: 'WorkStudyView',
   components: {
-    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppStudentPicker, StatusTag: AppStatusTag
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
+    AppPermissionButton, AppSectionCard, AppSelect, AppStudentPicker, StatusTag: AppStatusTag, AppTextInput
   },
   data() {
     return { loading: true, acting: '', errorMessage: '', posts: [], records: [], selPost: '', postForm: { deptName: '', postName: '', salary: null },
@@ -108,7 +110,10 @@ export default {
       terDlg: { visible: false, recordId: '' },
       mm: { visible: false, recordId: '', name: '', subsidyTotal: null, list: [], form: this.blankMonthly() } }
   },
-  computed: { pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') } },
+  computed: {
+    RATING_OPTIONS: () => RATING_OPTIONS,
+    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') }
+  },
   mounted() { this.load() },
   methods: {
     async load() {
@@ -121,9 +126,11 @@ export default {
     },
     async addPost() {
       const f = this.postForm
-      if (!f.deptName || !f.postName) { toast.error('部门与岗位名称必填'); return }
+      const deptName = (f.deptName || '').trim()
+      const postName = (f.postName || '').trim()
+      if (!deptName || !postName) { toast.error('部门与岗位名称必填'); return }
       this.acting = 'post'
-      const res = await studentAffairsApi.createWorkStudyPost({ deptName: f.deptName, postName: f.postName, salary: f.salary != null ? Number(f.salary) : undefined })
+      const res = await studentAffairsApi.createWorkStudyPost({ deptName, postName, salary: f.salary != null ? Number(f.salary) : undefined })
       this.acting = ''
       if (res.code === 0) { toast.success('已发岗'); this.postForm = { deptName: '', postName: '', salary: null }; this.load() } else toast.error(res.message || '发岗失败')
     },
@@ -166,9 +173,10 @@ export default {
     },
     async addMonthly() {
       const f = this.mm.form
-      if (!f.monthCode) { toast.error('考核月必填'); return }
+      const monthCode = (f.monthCode || '').trim()
+      if (!monthCode) { toast.error('考核月必填'); return }
       this.acting = 'mon'
-      const res = await studentAffairsApi.addWorkStudyMonthly(this.mm.recordId, { monthCode: f.monthCode, rating: f.rating, workHours: f.workHours != null ? Number(f.workHours) : undefined, subsidyAmount: f.subsidyAmount != null ? Number(f.subsidyAmount) : undefined })
+      const res = await studentAffairsApi.addWorkStudyMonthly(this.mm.recordId, { monthCode, rating: f.rating, workHours: f.workHours != null ? Number(f.workHours) : undefined, subsidyAmount: f.subsidyAmount != null ? Number(f.subsidyAmount) : undefined })
       this.acting = ''
       if (res.code === 0) {
         toast.success('已录入'); this.mm.form = this.blankMonthly()
@@ -184,9 +192,11 @@ export default {
 
 <style scoped>
 .ws-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
-.ws-add { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.ws-add { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
+.ws-add > *, .ws-madd > * { flex: 1 1 130px; min-width: 110px; }
+.ws-add > .app-perm-btn, .ws-madd > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
 .ws-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
-.ws-sm { width: 90px; }
+.ws-sm { flex: 0 0 100px; min-width: 90px; }
 .ws-postlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .ws-post { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
 .ws-post.is-on { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
@@ -198,7 +208,7 @@ export default {
 .ws-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .ws-modal { width: 560px; max-width: calc(100vw - 32px); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-5); max-height: 80vh; overflow: auto; }
 .ws-modal__title { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
-.ws-madd { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.ws-madd { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
 .ws-mfoot { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
 .ws-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 18px; cursor: pointer; }
 @media (max-width: 960px) { .ws-cols { grid-template-columns: 1fr; } }

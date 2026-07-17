@@ -34,7 +34,7 @@
 
       <AppSectionCard title="按学生查预警摘要（无明细）">
         <div class="sa-toolbar">
-          <input v-model="queryStudentId" class="sa-input" placeholder="输入学生 ID 查询摘要" @keyup.enter="querySummary" />
+          <AppSearchBox v-model="queryStudentId" class="sa-input" placeholder="输入学生 ID 查询摘要" :debounce="0" @search="querySummary" />
           <AppPermissionButton code="studentAffairs.risk.view" variant="secondary" :loading="actioning" @click="querySummary">
             查询摘要
           </AppPermissionButton>
@@ -69,6 +69,7 @@ import {
   AppMetricCard,
   AppPageShell,
   AppPermissionButton,
+  AppSearchBox,
   AppSectionCard,
   AppStatusTag
 } from '@/components/common'
@@ -82,7 +83,7 @@ const LEVELS = [
 
 export default {
   name: 'MentalWarningSummaryView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSearchBox, AppSectionCard, AppStatusTag },
   data() {
     return { loading: true, actioning: false, errorMessage: '', stats: null, queryStudentId: '', summary: null }
   },
@@ -155,11 +156,7 @@ export default {
   margin-bottom: var(--space-4);
 }
 .sa-input {
-  min-width: 220px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-surface);
-  padding: var(--space-2) var(--space-3);
+  width: 260px;
 }
 .sa-table {
   width: 100%;

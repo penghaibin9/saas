@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
-                        GraduationProposal, GraduationStudent, GraduationTopic, StudentContact, StudentProfile)
+                        GraduationPlagiarismCheck, GraduationProposal, GraduationReview, GraduationStudent,
+                        GraduationTopic, StudentContact, StudentProfile)
 from app.services import excel
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 from app.services.db_service import _iso, _mask_phone, _tid, session
@@ -239,9 +240,30 @@ def get_student(sid) -> dict:
         finals = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == s.id,
             GraduationFinal.is_deleted.is_(False)).order_by(GraduationFinal.id.desc())).all()
+        # 学生详情审计：该生自身事件(STUDENT) + 催交(remind-{id}) + 本人各业务实体
+        # (开题/成果/评阅/查重)事件。此前只按 biz_id==student.id 过滤，导致开题/成果批阅
+        # (biz_id=提案/成果自身ID)全部漏记。按 (biz_type,biz_id) 精确匹配，避免不同表
+        # 主键撞号误纳入他人事件；不含导师库(MENTOR)/答辩组(DEFENSE)等跨学生的组级事件。
+        proposal_ids = [str(p.id) for p in props]
+        final_ids = [str(f.id) for f in finals]
+        review_ids = [str(r) for r in db.scalars(select(GraduationReview.id).where(
+            GraduationReview.tenant_id == _tid(), GraduationReview.gd_student_id == s.id,
+            GraduationReview.is_deleted.is_(False))).all()]
+        plag_ids = [str(p) for p in db.scalars(select(GraduationPlagiarismCheck.id).where(
+            GraduationPlagiarismCheck.tenant_id == _tid(), GraduationPlagiarismCheck.gd_student_id == s.id,
+            GraduationPlagiarismCheck.is_deleted.is_(False))).all()]
+        audit_conds = [
+            and_(GraduationAuditTrail.biz_type == "STUDENT", GraduationAuditTrail.biz_id == str(s.id)),
+            GraduationAuditTrail.biz_id == f"remind-{s.id}",
+        ]
+        for biz_type, ids in (("PROPOSAL", proposal_ids), ("FINAL", final_ids),
+                              ("REVIEW", review_ids), ("PLAGIARISM", plag_ids)):
+            if ids:
+                audit_conds.append(and_(GraduationAuditTrail.biz_type == biz_type,
+                                        GraduationAuditTrail.biz_id.in_(ids)))
         logs = db.scalars(select(GraduationAuditTrail).where(
             GraduationAuditTrail.tenant_id == _tid(),
-            GraduationAuditTrail.biz_id == str(s.id)).order_by(
+            or_(*audit_conds)).order_by(
             GraduationAuditTrail.id.desc()).limit(30)).all()
         base = _row(s, batch if batch and not batch.is_deleted else None, _material_snapshot(db, s.id))
         taskbook = "任务书待确认"

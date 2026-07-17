@@ -6,7 +6,7 @@
     watermark-purpose="学生画像列表查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.profile.refresh" variant="secondary" @click="load">
+      <AppPermissionButton code="studentAffairs.student.view" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
       <AppExportButton :export-fn="exportLedger" :has-permission="true" />
@@ -15,14 +15,8 @@
     <AppSectionCard title="筛选">
       <div class="sa-filter">
         <AppSearchBox v-model="filters.keyword" placeholder="搜索姓名、学号" @search="load" />
-        <select v-model="filters.riskLevel" class="sa-select" @change="load">
-          <option value="">全部风险</option>
-          <option value="LOW">低风险</option>
-          <option value="MEDIUM">中风险</option>
-          <option value="HIGH">高风险</option>
-          <option value="CRITICAL">严重风险</option>
-        </select>
-        <AppPermissionButton code="studentAffairs.profile.search" variant="secondary" @click="load">
+        <AppSelect v-model="filters.riskLevel" class="sa-select" :options="RISK_FILTER_OPTIONS" placeholder="" @change="load" />
+        <AppPermissionButton code="studentAffairs.student.view" variant="secondary" @click="load">
           查询
         </AppPermissionButton>
       </div>
@@ -62,7 +56,7 @@
                 <td><AppDateDisplay :value="row.updatedAt" mode="datetime" empty-text="未设置" /></td>
                 <td>
                   <AppPermissionButton
-                    code="studentAffairs.profile.view"
+                    code="studentAffairs.student.view"
                     size="sm"
                     variant="secondary"
                     @click="$router.push(`/admin/student-affairs/profile/${row.studentId}`)"
@@ -96,10 +90,19 @@ import {
   AppRiskTag,
   AppSearchBox,
   AppSectionCard,
+  AppSelect,
   AppSensitiveText,
   AppStatusTag
 } from '@/components/common'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+const RISK_FILTER_OPTIONS = [
+  { value: '', label: '全部风险' },
+  { value: 'LOW', label: '低风险' },
+  { value: 'MEDIUM', label: '中风险' },
+  { value: 'HIGH', label: '高风险' },
+  { value: 'CRITICAL', label: '严重风险' }
+]
 
 export default {
   name: 'StudentAffairsProfileListView',
@@ -113,11 +116,13 @@ export default {
     AppRiskTag,
     AppSearchBox,
     AppSectionCard,
+    AppSelect,
     AppSensitiveText,
     AppStatusTag
   },
   data() {
     return {
+      RISK_FILTER_OPTIONS,
       loading: true,
       errorMessage: '',
       filters: { keyword: '', riskLevel: '' },
@@ -169,13 +174,7 @@ export default {
   flex-wrap: wrap;
 }
 .sa-select {
-  height: 34px;
-  min-width: 140px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  padding: 0 var(--space-3);
+  width: 150px;
 }
 .sa-table {
   overflow-x: auto;

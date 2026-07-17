@@ -34,9 +34,7 @@
         <div class="aa-form__row">
           <label class="aa-form__label required">异动类型</label>
           <div class="aa-form__field">
-            <select v-if="!lockedType" v-model="form.changeType" class="aa-input">
-              <option v-for="(label, val) in TYPE_LABEL" :key="val" :value="val">{{ label }}</option>
-            </select>
+            <AppSelect v-if="!lockedType" v-model="form.changeType" :options="changeTypeOptions" placeholder="" />
             <div v-else class="aa-picked">{{ TYPE_LABEL[form.changeType] || form.changeType }}</div>
             <div class="aa-form__hint">{{ typeHint }}</div>
           </div>
@@ -105,7 +103,7 @@
  *  TRANSFER_CLASS（转班）目标班选择器：选定学生后拉取其当前专业（GET /roster/{id}），
  *  再按该专业过滤班级候选（GET /orgs/classes?majorId=），跨专业一致性由后端 submit() 强制复核。 */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard, AppQuickPhrases } from '@/components/common'
+import { AppSectionCard, AppQuickPhrases, AppSelect } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { hasGroupPhrases } from '@/utils/quickPhrases'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -123,7 +121,7 @@ const TYPE_HINT = {
 
 export default {
   name: 'AaStatusChangeFormView',
-  components: { ModulePageShell, AppSectionCard, AppQuickPhrases },
+  components: { ModulePageShell, AppSectionCard, AppQuickPhrases, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -155,6 +153,9 @@ export default {
     },
     typeHint() {
       return TYPE_HINT[this.form.changeType] || ''
+    },
+    changeTypeOptions() {
+      return Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))
     },
     /** 该异动类型有专属词条才给 sceneKey；无专属词条（如转班/留级）返回空 → 不展示 chips */
     reasonPhraseScene() {

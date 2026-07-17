@@ -35,8 +35,9 @@ def require_platform_super_admin(request: Request, user=Depends(get_current_user
     return user
 
 
-def _audit(action: str, resource: str, detail: dict | None = None):
-    audit_log.record(action, resource, detail=detail or {}, result="SUCCESS")
+def _audit(action: str, resource: str, detail: dict | None = None, *, tenant_id: int | None = None):
+    """平台侧审计。tenant_id 传"被操作学校"，使该校自身审计可见平台动作（跨租户责任追溯）。"""
+    audit_log.record(action, resource, detail=detail or {}, result="SUCCESS", tenant_id=tenant_id)
 
 
 # ── §二 总览 ──
@@ -58,7 +59,8 @@ def tenants(keyword: Optional[str] = Query(default=None), status: Optional[str] 
 @router.post("/tenants", summary="新建租户（学校）")
 def tenant_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
     out = svc.create_tenant(body)
-    _audit("PLATFORM_TENANT_CREATE", out["tenantCode"], {"tenantId": out["tenantId"]})
+    _audit("PLATFORM_TENANT_CREATE", out["tenantCode"], {"tenantId": out["tenantId"]},
+           tenant_id=int(out["tenantId"]))
     return success(out, message="租户已创建")
 
 
@@ -71,22 +73,31 @@ def tenant_get(tenant_id: int, user=Depends(require_platform_super_admin)):
 def tenant_update(tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)):
     allow = {"schoolType", "province", "city", "contactName", "contactPhone", "contactWechat",
              "environment", "remark"}
-    out = svc.update_tenant_meta(tenant_id, {k: v for k, v in body.items() if k in allow})
-    _audit("PLATFORM_TENANT_UPDATE", str(tenant_id))
+    patch = {k: v for k, v in body.items() if k in allow}
+    before = svc.tenant_meta(tenant_id)
+    out = svc.update_tenant_meta(tenant_id, patch)
+    _audit("PLATFORM_TENANT_UPDATE", str(tenant_id),
+           {"changedKeys": list(patch),
+            "before": {k: before.get(k) for k in patch}, "after": patch},
+           tenant_id=tenant_id)
     return success(out)
 
 
 @router.post("/tenants/{tenant_id}/enable", summary="启用租户")
 def tenant_enable(tenant_id: int, user=Depends(require_platform_super_admin)):
+    before = svc.tenant_meta(tenant_id).get("status")
     out = svc.update_tenant_meta(tenant_id, {"status": "active"})
-    _audit("PLATFORM_TENANT_ENABLE", str(tenant_id))
+    _audit("PLATFORM_TENANT_ENABLE", str(tenant_id),
+           {"before": {"status": before}, "after": {"status": "active"}}, tenant_id=tenant_id)
     return success(out, message="已启用")
 
 
 @router.post("/tenants/{tenant_id}/disable", summary="停用租户（该校全员即刻无法登录）")
 def tenant_disable(tenant_id: int, user=Depends(require_platform_super_admin)):
+    before = svc.tenant_meta(tenant_id).get("status")
     out = svc.update_tenant_meta(tenant_id, {"status": "disabled"})
-    _audit("PLATFORM_TENANT_DISABLE", str(tenant_id))
+    _audit("PLATFORM_TENANT_DISABLE", str(tenant_id),
+           {"before": {"status": before}, "after": {"status": "disabled"}}, tenant_id=tenant_id)
     return success(out, message="已停用，该校账号将无法登录")
 
 
@@ -106,7 +117,9 @@ def tenant_extend_trial(tenant_id: int, body: dict = Body(default={}),
     new_end = (start + timedelta(days=days)).isoformat(timespec="seconds")
     out = svc.update_tenant_meta(tenant_id, {"trialEndAt": new_end, "expireAt": new_end,
                                              "status": meta.get("status") if meta.get("status") == "active" else "trial"})
-    _audit("PLATFORM_TENANT_EXTEND_TRIAL", str(tenant_id), {"days": days, "newExpireAt": new_end})
+    _audit("PLATFORM_TENANT_EXTEND_TRIAL", str(tenant_id),
+           {"days": days, "before": {"expireAt": meta.get("expireAt")}, "after": {"expireAt": new_end}},
+           tenant_id=tenant_id)
     return success(out, message=f"已延长 {days} 天")
 
 
@@ -116,20 +129,26 @@ def tenant_convert(tenant_id: int, body: dict = Body(default={}),
     from datetime import datetime, timedelta
     pkg = svc.get_package(str(body.get("packageCode") or "standard"))
     days = int(body.get("durationDays") or pkg["durationDays"])
+    before = svc.tenant_meta(tenant_id)
     new_end = (datetime.now() + timedelta(days=days)).isoformat(timespec="seconds")
     out = svc.update_tenant_meta(tenant_id, {"status": "active", "packageCode": pkg["packageCode"],
                                              "expireAt": new_end})
     _audit("PLATFORM_TENANT_CONVERT_PAID", str(tenant_id),
-           {"packageCode": pkg["packageCode"], "expireAt": new_end})
+           {"before": {"status": before.get("status"), "packageCode": before.get("packageCode")},
+            "after": {"status": "active", "packageCode": pkg["packageCode"], "expireAt": new_end}},
+           tenant_id=tenant_id)
     return success(out, message=f"已开通 {pkg['packageName']}")
 
 
 @router.post("/tenants/{tenant_id}/expire", summary="手动标记到期（转只读）")
 def tenant_expire(tenant_id: int, user=Depends(require_platform_super_admin)):
     from datetime import datetime, timedelta
+    before = svc.tenant_meta(tenant_id)
     past = (datetime.now() - timedelta(minutes=1)).isoformat(timespec="seconds")
     out = svc.update_tenant_meta(tenant_id, {"status": "expired", "expireAt": past})
-    _audit("PLATFORM_TENANT_EXPIRE", str(tenant_id))
+    _audit("PLATFORM_TENANT_EXPIRE", str(tenant_id),
+           {"before": {"status": before.get("status"), "expireAt": before.get("expireAt")},
+            "after": {"status": "expired", "expireAt": past}}, tenant_id=tenant_id)
     return success(out, message="已标记到期（租户进入只读）")
 
 
@@ -139,10 +158,13 @@ def tenant_change_package(tenant_id: int, body: dict = Body(...),
     pkg = svc.get_package(str(body.get("packageCode") or ""))
     if pkg["packageCode"] != body.get("packageCode"):
         raise AppException("VALIDATION_ERROR", "packageCode 不存在")
+    before = svc.tenant_meta(tenant_id).get("packageCode")
     out = svc.update_tenant_meta(tenant_id, {"packageCode": pkg["packageCode"],
                                              "maxStudents": None, "maxUsers": None,
                                              "storageLimitMb": None})
-    _audit("PLATFORM_TENANT_CHANGE_PACKAGE", str(tenant_id), {"packageCode": pkg["packageCode"]})
+    _audit("PLATFORM_TENANT_CHANGE_PACKAGE", str(tenant_id),
+           {"before": {"packageCode": before}, "after": {"packageCode": pkg["packageCode"]}},
+           tenant_id=tenant_id)
     return success(out, message=f"已切换为 {pkg['packageName']}")
 
 
@@ -157,8 +179,10 @@ def tenant_quota(tenant_id: int, body: dict = Body(...), user=Depends(require_pl
             patch[k] = v
     if not patch:
         raise AppException("VALIDATION_ERROR", "至少提供一个容量参数")
+    before = svc.tenant_meta(tenant_id)
     out = svc.update_tenant_meta(tenant_id, patch)
-    _audit("PLATFORM_TENANT_QUOTA", str(tenant_id), patch)
+    _audit("PLATFORM_TENANT_QUOTA", str(tenant_id),
+           {"before": {k: before.get(k) for k in patch}, "after": patch}, tenant_id=tenant_id)
     return success(out)
 
 
@@ -167,7 +191,7 @@ def tenant_reset_demo(tenant_id: int, user=Depends(require_platform_super_admin)
     if tenant_id != svc.DEMO_TID:
         raise AppException("NO_PERMISSION", "仅演示租户 demo-school 支持重置演示数据")
     out = svc.reset_demo_data()
-    _audit("PLATFORM_DEMO_RESET", str(tenant_id), out)
+    _audit("PLATFORM_DEMO_RESET", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="演示数据已重置为基线（5 名学生）")
 
 
@@ -184,7 +208,7 @@ def tenant_reset_sandbox(tenant_id: int, user=Depends(require_platform_super_adm
         out = reset_sandbox(db, dry_run=False)
     finally:
         db.close()
-    _audit("PLATFORM_SANDBOX_RESET", str(tenant_id), out)
+    _audit("PLATFORM_SANDBOX_RESET", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="真实演示沙箱已恢复；账号与权限已保留")
 
 
@@ -250,9 +274,11 @@ def features_put(tenant_id: int, body: dict = Body(...), user=Depends(require_pl
     if not patch:
         raise AppException("VALIDATION_ERROR", "没有可更新的功能开关键")
     cur = svc.get_config_json(tenant_id, "FEATURES") or {}
+    before = {k: cur.get(k) for k in patch}
     cur.update(patch)
     svc.put_config_json(tenant_id, "FEATURES", "-", cur)
-    _audit("PLATFORM_FEATURES_UPDATE", str(tenant_id), patch)
+    _audit("PLATFORM_FEATURES_UPDATE", str(tenant_id),
+           {"before": before, "after": patch}, tenant_id=tenant_id)
     return success({"tenantId": str(tenant_id), "features": svc.effective_features(tenant_id)})
 
 
@@ -278,7 +304,8 @@ def rules_put(tenant_id: int, body: dict = Body(...), user=Depends(require_platf
     for g, kv in payload.items():
         cur.setdefault(g, {}).update(kv)
     svc.put_config_json(tenant_id, "RULES", "-", cur)
-    _audit("PLATFORM_RULES_UPDATE", str(tenant_id), {"groups": list(payload)})
+    _audit("PLATFORM_RULES_UPDATE", str(tenant_id),
+           {"groups": list(payload), "after": payload}, tenant_id=tenant_id)
     return success({"tenantId": str(tenant_id), "rules": svc.effective_rules(tenant_id)})
 
 
@@ -305,7 +332,8 @@ def workflow_put(tenant_id: int, workflow_code: str, body: dict = Body(...),
     cur = svc.get_config_json(tenant_id, "WORKFLOWS") or {}
     cur.setdefault(workflow_code, {}).update(patch)
     svc.put_config_json(tenant_id, "WORKFLOWS", "-", cur)
-    _audit("PLATFORM_WORKFLOW_UPDATE", f"{tenant_id}:{workflow_code}")
+    _audit("PLATFORM_WORKFLOW_UPDATE", f"{tenant_id}:{workflow_code}",
+           {"workflowCode": workflow_code, "after": patch}, tenant_id=tenant_id)
     return success({"workflowCode": workflow_code,
                     "workflow": svc.effective_workflows(tenant_id)[workflow_code]})
 
@@ -357,9 +385,11 @@ def brand_put(tenant_id: int, body: dict = Body(...), user=Depends(require_platf
     if not patch:
         raise AppException("VALIDATION_ERROR", "没有可更新的品牌字段")
     cur = svc.get_config_json(tenant_id, "BRAND") or {}
+    before = {k: cur.get(k) for k in patch}
     cur.update(patch)
     svc.put_config_json(tenant_id, "BRAND", "-", cur)
-    _audit("PLATFORM_BRAND_UPDATE", str(tenant_id), {"keys": list(patch)})
+    _audit("PLATFORM_BRAND_UPDATE", str(tenant_id),
+           {"keys": list(patch), "before": before, "after": patch}, tenant_id=tenant_id)
     return success({"tenantId": str(tenant_id), "brand": svc.effective_brand(tenant_id)})
 
 
@@ -380,28 +410,32 @@ def users_create(tenant_id: int, body: dict = Body(...), user=Depends(require_pl
         raise AppException("VALIDATION_ERROR", "loginName / realName 必填")
     out = svc.create_school_admin(tenant_id, login_name, real_name)
     # 审计不落初始密码
-    _audit("PLATFORM_USER_CREATE", f"{tenant_id}:{login_name}")
+    _audit("PLATFORM_USER_CREATE", f"{tenant_id}:{login_name}",
+           {"userId": out.get("userId"), "loginName": login_name}, tenant_id=tenant_id)
     return success(out, message="账号已创建，初始密码仅本次显示")
 
 
 @router.post("/users/{user_id}/enable", summary="启用账号")
 def user_enable(user_id: int, user=Depends(require_platform_super_admin)):
     out = svc.set_user_status(user_id, "ACTIVE")
-    _audit("PLATFORM_USER_ENABLE", str(user_id))
+    _audit("PLATFORM_USER_ENABLE", str(user_id), {"userId": out["userId"]},
+           tenant_id=int(out["tenantId"]))
     return success(out)
 
 
 @router.post("/users/{user_id}/disable", summary="停用账号")
 def user_disable(user_id: int, user=Depends(require_platform_super_admin)):
     out = svc.set_user_status(user_id, "DISABLED")
-    _audit("PLATFORM_USER_DISABLE", str(user_id))
+    _audit("PLATFORM_USER_DISABLE", str(user_id), {"userId": out["userId"]},
+           tenant_id=int(out["tenantId"]))
     return success(out)
 
 
 @router.post("/users/{user_id}/reset-password", summary="重置密码（新密码仅显示一次，不写日志）")
 def user_reset_pwd(user_id: int, user=Depends(require_platform_super_admin)):
     out = svc.reset_user_password(user_id)
-    _audit("PLATFORM_USER_RESET_PWD", str(user_id))  # 不含密码
+    _audit("PLATFORM_USER_RESET_PWD", str(user_id), {"userId": out["userId"]},
+           tenant_id=int(out["tenantId"]))  # 不含密码
     return success(out)
 
 

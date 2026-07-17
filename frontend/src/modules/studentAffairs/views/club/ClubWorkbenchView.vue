@@ -17,12 +17,10 @@
 
       <AppSectionCard v-if="formVisible" title="新建社团">
         <div class="cf-grid">
-          <label class="cf-field"><span>社团名称 *</span><input v-model.trim="form.clubName" class="cf-input" /></label>
+          <label class="cf-field"><span>社团名称 *</span><AppTextInput v-model="form.clubName" /></label>
           <label class="cf-field"><span>类型</span>
-            <select v-model="form.clubType" class="cf-input">
-              <option v-for="(l,k) in TYPES" :key="k" :value="k">{{ l }}</option>
-            </select></label>
-          <label class="cf-field"><span>指导教师</span><input v-model.trim="form.advisorName" class="cf-input" /></label>
+            <AppSelect v-model="form.clubType" :options="TYPE_OPTIONS" placeholder="" /></label>
+          <label class="cf-field"><span>指导教师</span><AppTextInput v-model="form.advisorName" /></label>
         </div>
         <p v-if="form.error" class="cf-error">{{ form.error }}</p>
         <div class="cf-actions">
@@ -60,11 +58,9 @@
               <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" @click="openMember">增补成员</AppPermissionButton>
             </div>
             <div v-if="memberForm.visible" class="cf-inline">
-              <input v-model.number="memberForm.studentId" type="number" class="cf-input" placeholder="学生主档ID" />
-              <select v-model="memberForm.role" class="cf-input">
-                <option v-for="(l,k) in ROLES" :key="k" :value="k">{{ l }}</option>
-              </select>
-              <button type="button" class="cf-btn" @click="addMember">加入</button>
+              <AppStudentPicker v-model="memberForm.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
+              <AppSelect v-model="memberForm.role" :options="ROLE_OPTIONS" placeholder="" />
+              <AppPermissionButton code="studentAffairs.club.manage" size="sm" @click="addMember">加入</AppPermissionButton>
             </div>
             <table class="sa-table">
               <thead><tr><th>学生</th><th>任职</th><th>操作</th></tr></thead>
@@ -82,11 +78,9 @@
               <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" @click="openReview">登记年审</AppPermissionButton>
             </div>
             <div v-if="reviewForm.visible" class="cf-inline">
-              <input v-model.trim="reviewForm.reviewYear" class="cf-input" placeholder="学年 如 2025-2026" />
-              <select v-model="reviewForm.result" class="cf-input">
-                <option value="PASS">通过</option><option value="CONDITIONAL">限期整改</option><option value="FAIL">不通过</option>
-              </select>
-              <button type="button" class="cf-btn" @click="addReview">提交</button>
+              <AppTextInput v-model="reviewForm.reviewYear" placeholder="学年 如 2025-2026" />
+              <AppSelect v-model="reviewForm.result" :options="REVIEW_RESULT_OPTIONS" placeholder="" />
+              <AppPermissionButton code="studentAffairs.club.manage" size="sm" @click="addReview">提交</AppPermissionButton>
             </div>
             <table class="sa-table">
               <thead><tr><th>学年</th><th>结果</th><th>活动数</th><th>审核人</th></tr></thead>
@@ -120,13 +114,19 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPES = { INTEREST: '兴趣', ACADEMIC: '学术', SPORTS: '体育', ARTS: '文艺', VOLUNTEER: '公益', PRACTICE: '实践' }
 const ROLES = { MEMBER: '成员', DEPT_HEAD: '部长', VICE_PRESIDENT: '副社长', PRESIDENT: '社长' }
+const TYPE_OPTIONS = Object.entries(TYPES).map(([value, label]) => ({ value, label }))
+const ROLE_OPTIONS = Object.entries(ROLES).map(([value, label]) => ({ value, label }))
+const REVIEW_RESULT_OPTIONS = [
+  { value: 'PASS', label: '通过' }, { value: 'CONDITIONAL', label: '限期整改' }, { value: 'FAIL', label: '不通过' }
+]
 const STATUS_FILTERS = [
   { key: '', label: '全部' }, { key: 'PENDING', label: '待审批' }, { key: 'ACTIVE', label: '运营中' },
   { key: 'SUSPENDED', label: '暂停' }, { key: 'DISBANDED', label: '已注销' }
@@ -136,7 +136,7 @@ export default {
   name: 'ClubWorkbenchView',
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
-    StatusTag: AppStatusTag
+    AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   data() {
     return {
@@ -151,6 +151,9 @@ export default {
     }
   },
   computed: {
+    TYPE_OPTIONS: () => TYPE_OPTIONS,
+    ROLE_OPTIONS: () => ROLE_OPTIONS,
+    REVIEW_RESULT_OPTIONS: () => REVIEW_RESULT_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const s = (k) => this.all.filter((c) => c.status === k).length
@@ -173,11 +176,13 @@ export default {
     applyFilter() { this.items = this.activeStatus ? this.all.filter((c) => c.status === this.activeStatus) : this.all },
     setStatus(k) { this.activeStatus = k; this.applyFilter() },
     openForm() { this.form = { clubName: '', clubType: 'INTEREST', advisorName: '', error: '' }; this.formVisible = true },
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async save() {
       const m = this.form
-      if (!m.clubName) { m.error = '社团名称必填'; return }
+      const clubName = (m.clubName || '').trim()
+      if (!clubName) { m.error = '社团名称必填'; return }
       m.error = ''; this.saving = true
-      const res = await studentAffairsApi.createClub({ clubName: m.clubName, clubType: m.clubType, advisorName: m.advisorName || undefined })
+      const res = await studentAffairsApi.createClub({ clubName, clubType: m.clubType, advisorName: (m.advisorName || '').trim() || undefined })
       this.saving = false
       if (res.code === 0) { toast.success('已提交待审批'); this.formVisible = false; this.load() } else m.error = res.message || '创建失败'
     },
@@ -215,9 +220,9 @@ export default {
       if (mm.code === 0 && mm.data) this.members = mm.data.items || []
       if (rr.code === 0 && rr.data) this.reviews = rr.data.items || []
     },
-    openMember() { this.memberForm = { visible: true, studentId: null, role: 'MEMBER' } },
+    openMember() { this.memberForm = { visible: true, studentId: '', role: 'MEMBER' } },
     async addMember() {
-      if (!this.memberForm.studentId) { toast.error('请输入学生ID'); return }
+      if (!this.memberForm.studentId) { toast.error('请选择学生'); return }
       const res = await studentAffairsApi.addClubMember(this.sel.clubId, { studentId: Number(this.memberForm.studentId), role: this.memberForm.role })
       if (res.code === 0) { toast.success('已加入'); this.memberForm.visible = false; this.select(this.sel); this.load() } else toast.error(res.message || '加入失败')
     },
@@ -227,8 +232,9 @@ export default {
     },
     openReview() { this.reviewForm = { visible: true, reviewYear: '', result: 'PASS' } },
     async addReview() {
-      if (!this.reviewForm.reviewYear) { toast.error('请输入学年'); return }
-      const res = await studentAffairsApi.createClubAnnualReview(this.sel.clubId, { reviewYear: this.reviewForm.reviewYear, result: this.reviewForm.result })
+      const reviewYear = (this.reviewForm.reviewYear || '').trim()
+      if (!reviewYear) { toast.error('请输入学年'); return }
+      const res = await studentAffairsApi.createClubAnnualReview(this.sel.clubId, { reviewYear, result: this.reviewForm.result })
       if (res.code === 0) { toast.success('年审已记录'); this.reviewForm.visible = false; this.select(this.sel) } else toast.error(res.message || '年审失败')
     },
     statusType(s) { return ({ PENDING: 'warning', ACTIVE: 'success', SUSPENDED: 'processing', DISBANDED: 'default' })[s] || 'default' },
@@ -260,7 +266,9 @@ export default {
 .cf-empty, .cf-hint { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .cf-subhead { display: flex; justify-content: space-between; align-items: center; margin: var(--space-3) 0 var(--space-2); }
 .cf-subhead h4 { margin: 0; font-size: var(--font-size-md); }
-.cf-inline { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
+.cf-inline { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
+.cf-inline > * { flex: 1 1 180px; min-width: 180px; }
+.cf-inline > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }

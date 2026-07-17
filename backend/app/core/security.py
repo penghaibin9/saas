@@ -91,6 +91,7 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
         "studentNo": claims.get("studentNo"),
+        "guardianPhoneHash": claims.get("guardianPhoneHash"),  # 学生PC门户·家长proxy令牌标识
         "tokenJti": claims.get("jti"),
         "tokenExp": claims.get("exp"),
     }
@@ -104,10 +105,10 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
 
 def require_staff(user: dict = Depends(get_current_user)) -> dict:
     """FastAPI 依赖：仅教职工/管理员可访问的 PC 管理端接口。
-    学生令牌一律 403，防止学生越权访问全校学生主档/审批/待办/导入导出/审计等 PC 接口。
-    学生的合法入口是 /mobile/* 专用端点（严格本人 + 脱敏）。"""
-    if (user.get("userType") or "").strip().upper() == "STUDENT":
-        raise no_permission("该接口仅教职工可用，请使用移动端个人页")
+    学生/家长令牌一律 403，防止越权访问全校学生主档/审批/待办/导入导出/审计等 PC 接口。
+    学生合法入口是 /mobile/* 与 /portal/*（严格本人 + 脱敏）；家长合法入口是 /portal/guardian/*（只读）。"""
+    if (user.get("userType") or "").strip().upper() in ("STUDENT", "GUARDIAN"):
+        raise no_permission("该接口仅教职工可用，请使用个人/家长门户")
     return user
 
 

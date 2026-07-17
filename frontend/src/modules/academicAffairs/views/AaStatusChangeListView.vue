@@ -10,22 +10,7 @@
     </template>
 
     <div class="mp-stack">
-      <div class="aa-filter">
-        <label class="aa-filter__item">
-          异动类型
-          <select v-model="filters.changeType" class="aa-select" @change="search">
-            <option value="">全部</option>
-            <option v-for="(label, val) in TYPE_LABEL" :key="val" :value="val">{{ label }}</option>
-          </select>
-        </label>
-        <label class="aa-filter__item">
-          状态
-          <select v-model="filters.status" class="aa-select" @change="search">
-            <option value="">全部</option>
-            <option v-for="(label, val) in STATUS_LABEL" :key="val" :value="val">{{ label }}</option>
-          </select>
-        </label>
-      </div>
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -66,14 +51,14 @@
 
 <script>
 /** 学籍异动列表（/admin/academic-affairs/status-changes）：GET /academic-affairs/status-changes。 */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TYPE_LABEL, STATUS_LABEL, NODE_LABEL, statusColor } from '@/modules/academicAffairs/constants/status-change'
 
 export default {
   name: 'AaStatusChangeListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AdvancedFilter },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -94,6 +79,24 @@ export default {
     }
   },
   computed: {
+    filterFields() {
+      return [
+        {
+          key: 'changeType',
+          label: '异动类型',
+          type: 'select',
+          placeholder: '全部',
+          options: Object.keys(TYPE_LABEL).map((val) => ({ value: val, label: TYPE_LABEL[val] }))
+        },
+        {
+          key: 'status',
+          label: '状态',
+          type: 'select',
+          placeholder: '全部',
+          options: Object.keys(STATUS_LABEL).map((val) => ({ value: val, label: STATUS_LABEL[val] }))
+        }
+      ]
+    },
     pageStats() {
       const m = {}
       for (const r of this.rows) m[r.status] = (m[r.status] || 0) + 1
@@ -117,6 +120,11 @@ export default {
     search() {
       this.pagination.page = 1
       this.load()
+    },
+    reset() {
+      this.filters.changeType = ''
+      this.filters.status = ''
+      this.search()
     },
     async load() {
       this.loading = true

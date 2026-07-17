@@ -17,8 +17,8 @@
             <span v-if="!indicators.length" class="ce-muted">尚未配置指标</span>
           </div>
           <div class="ce-indadd">
-            <input v-model.trim="indForm.name" class="ce-input" placeholder="指标名称" />
-            <input v-model.number="indForm.weight" type="number" class="ce-input ce-input--sm" placeholder="权重%" />
+            <AppTextInput v-model="indForm.name" placeholder="指标名称" />
+            <AppNumberInput v-model="indForm.weight" class="ce-input--sm" :min="0" placeholder="权重%" />
             <AppPermissionButton code="studentAffairs.counselorEval.manage" size="sm" :loading="acting==='ind'" @click="addIndicator">加指标</AppPermissionButton>
           </div>
         </div>
@@ -26,14 +26,14 @@
 
       <AppSectionCard title="录入 / 修改评分（发布前）">
         <div class="ce-scoreform">
-          <label class="ce-field"><span>考评周期 *</span><input v-model.trim="scoreForm.periodCode" class="ce-input" placeholder="如 2025-2026-1" /></label>
-          <label class="ce-field"><span>辅导员标识 *</span><input v-model.trim="scoreForm.counselorKey" class="ce-input" placeholder="工号/登录名" /></label>
-          <label class="ce-field"><span>姓名</span><input v-model.trim="scoreForm.counselorName" class="ce-input" /></label>
+          <label class="ce-field"><span>考评周期 *</span><AppTextInput v-model="scoreForm.periodCode" placeholder="如 2025-2026-1" /></label>
+          <label class="ce-field"><span>辅导员标识 *</span><AppTextInput v-model="scoreForm.counselorKey" placeholder="工号/登录名" /></label>
+          <label class="ce-field"><span>姓名</span><AppTextInput v-model="scoreForm.counselorName" /></label>
         </div>
         <div class="ce-scores">
           <label v-for="i in indicators" :key="i.indicatorId" class="ce-field">
             <span>{{ i.name }}（满分{{ i.maxScore || 100 }}）</span>
-            <input v-model.number="scoreForm.scores[i.indicatorId]" type="number" min="0" class="ce-input" />
+            <AppNumberInput v-model="scoreForm.scores[i.indicatorId]" :min="0" />
           </label>
         </div>
         <div class="ce-actions">
@@ -85,7 +85,7 @@
 
 <script>
 import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag,
-  AppConfirmDialog, AppFormItem, AppSelect } from '@/components/common'
+  AppConfirmDialog, AppFormItem, AppNumberInput, AppSelect, AppTextInput } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -98,7 +98,7 @@ const APPEAL_RESULTS = [
 export default {
   name: 'CounselorEvalView',
   components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag,
-    AppConfirmDialog, AppFormItem, AppSelect },
+    AppConfirmDialog, AppFormItem, AppNumberInput, AppSelect, AppTextInput },
   data() {
     return {
       APPEAL_RESULTS,
@@ -128,19 +128,22 @@ export default {
       this.loading = false
     },
     async addIndicator() {
-      if (!this.indForm.name) { toast.error('请输入指标名称'); return }
+      const name = (this.indForm.name || '').trim()
+      if (!name) { toast.error('请输入指标名称'); return }
       this.acting = 'ind'
-      const res = await studentAffairsApi.createEvalIndicator({ name: this.indForm.name, weight: this.indForm.weight != null ? Number(this.indForm.weight) : undefined })
+      const res = await studentAffairsApi.createEvalIndicator({ name, weight: this.indForm.weight != null ? Number(this.indForm.weight) : undefined })
       this.acting = ''
       if (res.code === 0) { toast.success('已加指标'); this.indForm = { name: '', weight: null }; this.load() } else toast.error(res.message || '创建失败')
     },
     async saveScore() {
       const f = this.scoreForm
-      if (!f.periodCode || !f.counselorKey) { toast.error('周期与辅导员标识必填'); return }
+      const periodCode = (f.periodCode || '').trim()
+      const counselorKey = (f.counselorKey || '').trim()
+      if (!periodCode || !counselorKey) { toast.error('周期与辅导员标识必填'); return }
       const scores = {}
       Object.keys(f.scores).forEach((k) => { if (f.scores[k] != null && f.scores[k] !== '') scores[k] = Number(f.scores[k]) })
       this.acting = 'save'
-      const res = await studentAffairsApi.upsertCounselorEval({ periodCode: f.periodCode, counselorKey: f.counselorKey, counselorName: f.counselorName || undefined, scores })
+      const res = await studentAffairsApi.upsertCounselorEval({ periodCode, counselorKey, counselorName: (f.counselorName || '').trim() || undefined, scores })
       this.acting = ''
       if (res.code === 0) { toast.success('评分已保存'); this.load() } else toast.error(res.message || '保存失败')
     },
@@ -176,8 +179,10 @@ export default {
 .ce-indtag { border: 1px solid var(--border-light); border-radius: var(--radius-full); padding: 4px 12px; font-size: var(--font-size-sm); }
 .ce-indtag em { color: var(--text-tertiary); font-style: normal; margin-left: 4px; }
 .ce-indadd { display: flex; gap: var(--space-2); align-items: center; }
+.ce-indadd > * { flex: 1 1 140px; min-width: 120px; }
+.ce-indadd > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
 .ce-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
-.ce-input--sm { width: 90px; }
+.ce-input--sm { flex: 0 0 110px; min-width: 90px; width: 90px; }
 .ce-scoreform, .ce-scores { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
 .ce-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); }
 .ce-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-4); }

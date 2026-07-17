@@ -22,14 +22,7 @@
             </span>
           </div>
           <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">预警类型</span><span class="mp-kv__v">{{ typeLabel(detail.warning.type) }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">触发原因</span><span class="mp-kv__v">{{ detail.warning.reason }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">触发时间</span><span class="mp-kv__v">{{ detail.warning.triggerTime }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">处理期限</span><span class="mp-kv__v">{{ detail.warning.deadline || '未设置' }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">跟进人</span><span class="mp-kv__v">{{ detail.warning.owner || '未分配' }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">已提醒</span><span class="mp-kv__v">{{ detail.warning.remindCount }} 次</span></div>
-            <div v-if="detail.warning.closeResult" class="mp-kv"><span class="mp-kv__k">关闭说明</span><span class="mp-kv__v">{{ detail.warning.closeResult }}</span></div>
-            <div v-if="detail.warning.recordStatus === 'VOIDED'" class="mp-kv"><span class="mp-kv__k">误报说明</span><span class="mp-kv__v">{{ detail.warning.voidReason }}</span></div>
+            <AppDescriptionList :items="warningDescItems" :columns="2" />
           </div>
         </section>
 
@@ -39,12 +32,7 @@
             <button class="mp-link" @click="$router.push('/admin/academic/students/' + detail.student.id)">学业详情 →</button>
           </div>
           <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ detail.student.name }} · {{ maskNo(detail.student.studentNo) }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">班级</span><span class="mp-kv__v">{{ detail.student.className }}（{{ detail.student.collegeName }}）</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">GPA / 挂科</span><span class="mp-kv__v">{{ detail.student.gpa.toFixed(1) }} / {{ detail.student.failedCount }} 门</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">学分进度</span><span class="mp-kv__v">{{ detail.student.obtainedCredits }} / {{ detail.student.requiredCredits }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">辅导员</span><span class="mp-kv__v">{{ detail.student.counselor }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">联系电话</span><span class="mp-kv__v">{{ detail.student.phone || '未登记' }}</span></div>
+            <AppDescriptionList :items="studentDescItems" :columns="2" />
           </div>
         </section>
 
@@ -171,6 +159,7 @@
  * 闭环：预警信息 + 学生信息 + 关联学业数据 → 新增跟进 → 关闭（说明留痕）/ 升级（转专班留痕）→ 操作审计。
  */
 import { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppDescriptionList } from '@/components/common'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { FormDrawer } from '@/modules/academicAffairs/components'
 import { getWarningDetail, createIntervention, closeWarning, escalateWarning, remindWarnings } from '@/modules/academicAffairs/api/academic.api'
@@ -178,7 +167,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AcademicWarningDetailView',
-  components: { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, FormDrawer },
+  components: { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppDescriptionList, AppConfirmDialog, FormDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -207,6 +196,33 @@ export default {
           disabled: !pa[a.permission].allowed || this.closedOrVoided,
           disabledReason: !pa[a.permission].allowed ? pa[a.permission].reason : '预警已关闭或已作废'
         }))
+    },
+    warningDescItems() {
+      if (!this.detail) return []
+      const w = this.detail.warning
+      const items = [
+        { label: '预警类型', value: this.typeLabel(w.type) },
+        { label: '触发原因', value: w.reason, span: 2 },
+        { label: '触发时间', value: w.triggerTime },
+        { label: '处理期限', value: w.deadline || '未设置' },
+        { label: '跟进人', value: w.owner || '未分配' },
+        { label: '已提醒', value: w.remindCount + ' 次' }
+      ]
+      if (w.closeResult) items.push({ label: '关闭说明', value: w.closeResult, span: 2 })
+      if (w.recordStatus === 'VOIDED') items.push({ label: '误报说明', value: w.voidReason, span: 2 })
+      return items
+    },
+    studentDescItems() {
+      if (!this.detail || !this.detail.student) return []
+      const s = this.detail.student
+      return [
+        { label: '学生', value: s.name + ' · ' + this.maskNo(s.studentNo) },
+        { label: '班级', value: s.className + '（' + s.collegeName + '）' },
+        { label: 'GPA / 挂科', value: s.gpa.toFixed(1) + ' / ' + s.failedCount + ' 门' },
+        { label: '学分进度', value: s.obtainedCredits + ' / ' + s.requiredCredits },
+        { label: '辅导员', value: s.counselor },
+        { label: '联系电话', value: s.phone || '未登记' }
+      ]
     },
     followFields() {
       return [

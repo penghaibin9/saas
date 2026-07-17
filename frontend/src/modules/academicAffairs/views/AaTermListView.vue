@@ -10,16 +10,12 @@
     </template>
 
     <div class="mp-stack">
-      <div class="aa-filter">
-        <label class="aa-filter__item">
-          状态
-          <select v-model="filters.status" class="aa-select" @change="search">
-            <option value="">全部</option>
-            <option value="DRAFT">草稿</option>
-            <option value="PUBLISHED">进行中</option>
-          </select>
-        </label>
-      </div>
+      <AdvancedFilter
+        v-model="filters"
+        :fields="filterFields"
+        @search="search"
+        @reset="reset"
+      />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -87,7 +83,7 @@
 
 <script>
 /** 学年学期列表（/admin/academic-affairs/terms）：GET /academic-affairs/terms + POST /terms/{id}/publish。 */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { AppStatusTag, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -96,7 +92,7 @@ const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中' }
 
 export default {
   name: 'AaTermListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppStatusTag, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -113,6 +109,23 @@ export default {
         { key: 'current', title: '当前学期' },
         { key: 'status', title: '状态' },
         { key: 'actions', title: '操作', width: '160px' }
+      ]
+    }
+  },
+  computed: {
+    filterFields() {
+      return [
+        {
+          key: 'status',
+          label: '状态',
+          type: 'select',
+          placeholder: '全部',
+          options: [
+            { value: '', label: '全部' },
+            { value: 'DRAFT', label: '草稿' },
+            { value: 'PUBLISHED', label: '进行中' }
+          ]
+        }
       ]
     }
   },
@@ -133,6 +146,10 @@ export default {
     search() {
       this.pagination.page = 1
       this.load()
+    },
+    reset() {
+      this.filters.status = ''
+      this.search()
     },
     askPublish(row) {
       this.publishDialog = {

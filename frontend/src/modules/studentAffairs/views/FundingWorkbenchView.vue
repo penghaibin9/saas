@@ -14,10 +14,10 @@
         <AppSelect v-model="batchId" :options="batchSelectOptions" placeholder="（选择批次）" :disabled="!projectId" @change="onBatchChange" />
       </label>
       <div class="fd-ctxtools">
-        <button type="button" class="fd-btn" @click="openProject">建项目</button>
-        <button type="button" class="fd-btn" :disabled="!projectId" @click="openBatch">建批次</button>
-        <button type="button" class="fd-btn" :disabled="scanning" @click="onScan">公示扫描</button>
-        <button type="button" class="fd-btn fd-btn--primary" :disabled="!currentBatchOpen" @click="openApply">受理申请</button>
+        <AppPermissionButton code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="openProject">建项目</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.funding.project.manage" variant="secondary" size="sm" :disabled="!projectId" @click="openBatch">建批次</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :loading="scanning" @click="onScan">公示扫描</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.funding.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
       </div>
     </div>
 
@@ -77,15 +77,15 @@
           <p v-if="selected.checkSnapshot" class="fd-snap">资格校验：{{ snapshotText(selected.checkSnapshot) }}</p>
 
           <div v-if="detailActions.length" class="fd-actions">
-            <button
+            <AppPermissionButton
               v-for="a in detailActions"
               :key="a.key"
-              type="button"
-              class="fd-btn"
-              :class="{ 'fd-btn--primary': a.tone === 'primary', 'fd-btn--danger': a.tone === 'danger' }"
-              :disabled="acting"
+              :code="a.code"
+              :variant="a.tone === 'primary' ? 'primary' : (a.tone === 'danger' ? 'danger' : 'secondary')"
+              size="sm"
+              :loading="acting"
               @click="onAction(a.key)"
-            >{{ a.label }}</button>
+            >{{ a.label }}</AppPermissionButton>
           </div>
           <p v-else class="fd-terminal">该申请已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
         </template>
@@ -180,7 +180,7 @@
  * 助学金硬校验困难库在库，奖学金硬校验学籍/处分/成绩；不满足受理即被 409 拦截并透出原因。金额按角色脱敏。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppSelect, AppStatusTag,
+import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppPermissionButton, AppSelect, AppStatusTag,
         AppStudentPicker, AppTextInput, AppTextarea } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
@@ -198,7 +198,7 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
 export default {
   name: 'FundingWorkbenchView',
   components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDrawer, AppFormItem,
-               AppInlineAlert, AppNumberInput, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea },
+               AppInlineAlert, AppNumberInput, AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -262,12 +262,12 @@ export default {
       if (!s) return []
       if (FUND_NODES.includes(s)) {
         return [
-          { key: 'approve', label: '审批通过', tone: 'primary' },
-          { key: 'return', label: '退回', tone: 'default' },
-          { key: 'reject', label: '驳回', tone: 'danger' }
+          { key: 'approve', label: '审批通过', tone: 'primary', code: 'studentAffairs.funding.approve' },
+          { key: 'return', label: '退回', tone: 'default', code: 'studentAffairs.funding.approve' },
+          { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.funding.approve' }
         ]
       }
-      if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary' }]
+      if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary', code: 'studentAffairs.funding.publicity.manage' }]
       return []
     }
   },

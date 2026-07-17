@@ -17,26 +17,18 @@
 
       <AppSectionCard v-if="formVisible" title="新建活动">
         <div class="af-grid">
-          <label class="af-field"><span>活动名称 *</span><input v-model.trim="form.activityName" class="af-input" placeholder="如：2026 迎新晚会" /></label>
+          <label class="af-field"><span>活动名称 *</span><AppTextInput v-model="form.activityName" placeholder="如：2026 迎新晚会" /></label>
           <label class="af-field"><span>类型</span>
-            <select v-model="form.activityType" class="af-input">
-              <option value="ACTIVITY">活动</option><option value="VOLUNTEER">志愿服务</option>
-              <option value="LECTURE">讲座报告</option><option value="COMPETITION">竞赛</option><option value="PRACTICE">社会实践</option>
-            </select></label>
+            <AppSelect v-model="form.activityType" :options="TYPE_OPTIONS" placeholder="" /></label>
           <label class="af-field"><span>学分类型</span>
-            <select v-model="form.creditType" class="af-input">
-              <option value="SECOND_CLASS">第二课堂学时</option><option value="MORAL">德育积分</option><option value="VOLUNTEER_HOUR">志愿时长</option>
-            </select></label>
-          <label class="af-field"><span>学时/积分/时长</span><input v-model.number="form.creditValue" type="number" min="0" step="0.5" class="af-input" placeholder="如：2" /></label>
+            <AppSelect v-model="form.creditType" :options="CREDIT_TYPE_OPTIONS" placeholder="" /></label>
+          <label class="af-field"><span>学时/积分/时长</span><AppNumberInput v-model="form.creditValue" :min="0" :step="0.5" placeholder="如：2" /></label>
           <label class="af-field"><span>二课类目</span>
-            <select v-model="form.categoryCode" class="af-input">
-              <option value="">（不限）</option>
-              <option v-for="c in categories" :key="c.categoryCode" :value="c.categoryCode">{{ c.categoryName }}</option>
-            </select></label>
-          <label class="af-field"><span>名额</span><input v-model.number="form.quota" type="number" min="0" class="af-input" placeholder="空=不限" /></label>
-          <div class="af-field"><AppDateTimePicker v-model="form.startAt" label="开始时间" /></div>
-          <div class="af-field"><AppDateTimePicker v-model="form.endAt" label="结束时间" /></div>
-          <label class="af-field af-field--wide"><span>地点</span><input v-model.trim="form.location" class="af-input" /></label>
+            <AppSelect v-model="form.categoryCode" :options="categoryOptions" placeholder="" /></label>
+          <label class="af-field"><span>名额</span><AppNumberInput v-model="form.quota" :min="0" placeholder="空=不限" /></label>
+          <label class="af-field"><span>开始时间</span><AppDateTimePicker v-model="form.startAt" role="start" :end-value="form.endAt" /></label>
+          <label class="af-field"><span>结束时间</span><AppDateTimePicker v-model="form.endAt" role="end" :start-value="form.startAt" /></label>
+          <label class="af-field af-field--wide"><span>地点</span><AppTextInput v-model="form.location" /></label>
         </div>
         <p v-if="form.error" class="af-error">{{ form.error }}</p>
         <div class="af-actions">
@@ -54,7 +46,7 @@
           <thead><tr><th>活动</th><th>类型</th><th>学分</th><th>报名</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="a in items" :key="a.activityId">
-              <td><strong>{{ a.activityName }}</strong><em v-if="a.startAt" class="af-time"><AppDateDisplay :value="a.startAt" mode="datetime" /></em></td>
+              <td><strong>{{ a.activityName }}</strong><em v-if="a.startAt" class="af-time">{{ (a.startAt||'').slice(0,16).replace('T',' ') }}</em></td>
               <td>{{ typeLabel(a.activityType) }}</td>
               <td>{{ a.creditValue != null ? (a.creditValue + creditUnit(a.creditType)) : '—' }}</td>
               <td>{{ a.signupCount != null ? a.signupCount : 0 }}</td>
@@ -72,7 +64,6 @@
             <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无活动，点右上「建活动」</td></tr>
           </tbody>
         </table>
-        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="load" />
       </AppSectionCard>
 
       <div v-if="pv.visible" class="af-mask" @click.self="pv.visible=false">
@@ -82,7 +73,7 @@
             <tbody>
               <tr v-for="p in pv.list" :key="p.signupId">
                 <td>{{ p.realName || ('#'+p.studentId) }}</td><td>{{ p.studentNo||'—' }}</td>
-                <td>{{ signupLabel(p.signupStatus) }}</td><td><AppDateDisplay :value="p.checkinAt" mode="datetime" empty-text="—" /></td>
+                <td>{{ signupLabel(p.signupStatus) }}</td><td>{{ (p.checkinAt||'').slice(0,16).replace('T',' ')||'—' }}</td>
               </tr>
               <tr v-if="!pv.list.length"><td colspan="4" class="sa-empty">暂无报名</td></tr>
             </tbody></table>
@@ -94,11 +85,18 @@
 </template>
 
 <script>
-import { AppDateDisplay, AppDateTimePicker, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppSectionCard, AppSelect, AppStatusTag, AppTextInput
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPE = { ACTIVITY: '活动', VOLUNTEER: '志愿服务', LECTURE: '讲座报告', COMPETITION: '竞赛', PRACTICE: '社会实践' }
+const TYPE_OPTIONS = Object.entries(TYPE).map(([value, label]) => ({ value, label }))
+const CREDIT_TYPE_OPTIONS = [
+  { value: 'SECOND_CLASS', label: '第二课堂学时' }, { value: 'MORAL', label: '德育积分' }, { value: 'VOLUNTEER_HOUR', label: '志愿时长' }
+]
 const STATUS_FILTERS = [
   { key: '', label: '全部' }, { key: 'DRAFT', label: '草稿' }, { key: 'PUBLISHED', label: '报名中' },
   { key: 'ONGOING', label: '进行中' }, { key: 'FINISHED', label: '待确认' }, { key: 'CONFIRMED', label: '已确认' }
@@ -106,17 +104,26 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'ActivityWorkbenchView',
-  components: { AppDateDisplay, AppDateTimePicker, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput
+  },
   data() {
     return {
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], categories: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
       formVisible: false, form: this.blankForm(),
-      pv: { visible: false, name: '', list: [] },
-      pagination: { page: 1, pageSize: 20, total: 0 }
+      pv: { visible: false, name: '', list: [] }
     }
   },
   computed: {
+    TYPE_OPTIONS: () => TYPE_OPTIONS,
+    CREDIT_TYPE_OPTIONS: () => CREDIT_TYPE_OPTIONS,
+    categoryOptions() {
+      return [{ value: '', label: '（不限）' }].concat(
+        this.categories.map((c) => ({ value: c.categoryCode, label: c.categoryName }))
+      )
+    },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const s = (k) => this.all.filter((a) => a.status === k).length
@@ -133,36 +140,33 @@ export default {
     blankForm() { return { activityName: '', activityType: 'ACTIVITY', creditType: 'SECOND_CLASS', creditValue: null, categoryCode: '', quota: null, startAt: '', endAt: '', location: '', error: '' } },
     async load() {
       this.loading = true; this.errorMessage = ''
-      // 活动列表按真分页加载（items/pagination.total）；同时按改造前口径（status过滤+大pageSize一次性拉取）
-      // 单独取一份全量快照存入 all，仅供上方统计卡片聚合使用，避免分页后统计数字被真分页“切小”。
-      const [res, allRes, cat] = await Promise.all([
-        studentAffairsApi.getActivities({ status: this.activeStatus, page: this.pagination.page, pageSize: this.pagination.pageSize }),
+      const [res, cat] = await Promise.all([
         studentAffairsApi.getActivities({ status: this.activeStatus, pageSize: 200 }),
         studentAffairsApi.getCreditCategories()
       ])
       if (res.code === 0 && res.data) {
-        this.items = res.data.items || []
-        this.pagination.total = res.data.total || 0
+        this.all = res.data.items || []
+        this.items = this.all
+        this.categories = (cat.code === 0 && cat.data) ? (cat.data.items || []) : []
       } else {
         this.errorMessage = res.message || '活动加载失败'
       }
-      if (allRes.code === 0 && allRes.data) this.all = allRes.data.items || []
-      this.categories = (cat.code === 0 && cat.data) ? (cat.data.items || []) : []
       this.loading = false
     },
-    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.pagination.page = 1; this.load() },
+    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.load() },
     openForm() { this.form = this.blankForm(); this.formVisible = true },
     async save() {
       const m = this.form
-      if (!m.activityName) { m.error = '活动名称必填'; return }
+      const activityName = (m.activityName || '').trim()
+      if (!activityName) { m.error = '活动名称必填'; return }
       m.error = ''; this.saving = true
-      const body = { activityName: m.activityName, activityType: m.activityType, creditType: m.creditType }
+      const body = { activityName, activityType: m.activityType, creditType: m.creditType }
       if (m.creditValue != null && m.creditValue !== '') body.creditValue = Number(m.creditValue)
       if (m.categoryCode) body.categoryCode = m.categoryCode
       if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
       if (m.startAt) body.startAt = m.startAt
       if (m.endAt) body.endAt = m.endAt
-      if (m.location) body.location = m.location
+      if ((m.location || '').trim()) body.location = m.location.trim()
       const res = await studentAffairsApi.createActivity(body)
       this.saving = false
       if (res.code === 0) { toast.success('活动草稿已创建'); this.formVisible = false; this.load() }

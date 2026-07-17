@@ -25,7 +25,7 @@
           <option v-for="t in talkTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
         </select>
         <span v-if="stats" class="tk-stat">完成率 {{ Math.round((stats.completionRate || 0) * 100) }}%（{{ stats.completed }}/{{ stats.total }}）</span>
-        <button type="button" class="tk-btn tk-btn--primary" @click="openCreate">发起谈话</button>
+        <AppPermissionButton code="studentAffairs.talk.create" variant="primary" size="sm" @click="openCreate">发起谈话</AppPermissionButton>
       </div>
     </div>
 
@@ -83,7 +83,7 @@
               <label class="tk-check"><input v-model="recordForm.needFollowUp" type="checkbox" /> 需持续跟进</label>
             </div>
             <p v-if="recordForm.error" class="tk-err">{{ recordForm.error }}</p>
-            <button type="button" class="tk-btn tk-btn--primary" :disabled="acting" @click="submitRecord">提交记录（进 360）</button>
+            <AppPermissionButton code="studentAffairs.talk.create" variant="primary" size="sm" :loading="acting" @click="submitRecord">提交记录（进 360）</AppPermissionButton>
           </section>
 
           <!-- 已谈话内容 + 跟进动作 -->
@@ -96,17 +96,17 @@
               <p v-if="selected.relatedContactId" class="tk-linked">已转家校联系 #{{ selected.relatedContactId }}</p>
             </section>
             <div v-if="detailActions.length" class="tk-actions">
-              <button
+              <AppPermissionButton
                 v-for="a in detailActions"
                 :key="a.key"
-                type="button"
-                class="tk-btn"
-                :class="{ 'tk-btn--primary': a.tone === 'primary' }"
-                :disabled="acting"
+                code="studentAffairs.talk.create"
+                :variant="a.tone === 'primary' ? 'primary' : 'secondary'"
+                size="sm"
+                :loading="acting"
                 @click="onAction(a.key)"
               >
                 {{ a.label }}
-              </button>
+              </AppPermissionButton>
             </div>
             <p v-else class="tk-terminal">该谈话已办结，仅可查看。</p>
           </template>
@@ -157,7 +157,7 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppConfirmDialog, AppDateDisplay, AppDateTimePicker, AppFormItem, AppInlineAlert,
+  AppConfirmDialog, AppDateDisplay, AppDateTimePicker, AppFormItem, AppInlineAlert, AppPermissionButton,
   AppQuickPhrases, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -178,7 +178,7 @@ export default {
   name: 'TalkWorkbenchView',
   components: {
     ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog,
-    AppDateDisplay, AppDateTimePicker, AppDrawer, AppFormItem, AppInlineAlert,
+    AppDateDisplay, AppDateTimePicker, AppDrawer, AppFormItem, AppInlineAlert, AppPermissionButton,
     AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   props: { ctx: { type: Object, default: null } },

@@ -243,7 +243,16 @@ def create_tenant(body: dict) -> dict:
                                               Tenant.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", f"tenantCode「{code}」已存在")
-        tid = int(datetime.now().strftime("%y%m%d%H%M%S")) * 1000 + secrets.randbelow(1000)
+        # 主键=时间戳+随机，同秒同随机会撞主键；生成后逐个预检存在性，避免落 DB 500。
+        base = int(datetime.now().strftime("%y%m%d%H%M%S")) * 1000
+        tid = None
+        for _ in range(10):
+            candidate = base + secrets.randbelow(1000)
+            if db.get(Tenant, candidate) is None:
+                tid = candidate
+                break
+        if tid is None:
+            raise AppException("SERVER_ERROR", "租户 ID 生成冲突，请稍后重试")
         t = Tenant(id=tid, tenant_code=code, school_name=name, status="ACTIVE")
         db.add(t)
         db.add(TenantBrandConfig(tenant_id=tid, platform_name="高校学生全生命周期管理平台",
@@ -433,7 +442,7 @@ def set_user_status(user_id: int, status: str) -> dict:
         if status != "ACTIVE":
             from app.core.token_store import revoke_refresh_by_user
             revoke_refresh_by_user(f"db-{u.id}")
-        return {"userId": str(u.id), "status": u.status}
+        return {"userId": str(u.id), "status": u.status, "tenantId": str(u.tenant_id)}
 
 
 def reset_user_password(user_id: int) -> dict:
@@ -450,7 +459,7 @@ def reset_user_password(user_id: int) -> dict:
         db.commit()
         from app.core.token_store import revoke_refresh_by_user
         revoke_refresh_by_user(f"db-{u.id}")
-        return {"userId": str(u.id), "newPassword": pwd,
+        return {"userId": str(u.id), "newPassword": pwd, "tenantId": str(u.tenant_id),
                 "notice": "新密码仅本次显示，不写入日志"}
 
 
@@ -479,10 +488,14 @@ def reset_demo_data() -> dict:
 
 
 def feature_enabled(tenant_id: int, key: str) -> bool:
-    """业务端功能开关检查：配置缺失/异常时默认放行（不因总控故障阻断业务）。"""
+    """业务端功能开关检查：配置缺失/异常时默认放行（不因总控故障阻断业务）。
+    fail-open 是刻意设计，但异常必须留痕以便运营发现总控读取故障。"""
     try:
         return bool(effective_features(tenant_id).get(key, True))
     except Exception:
+        import logging
+        logging.getLogger("platform.feature").warning(
+            "feature_enabled 读取失败，已 fail-open 放行 tenant=%s key=%s", tenant_id, key)
         return True
 
 

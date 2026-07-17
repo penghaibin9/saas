@@ -8,13 +8,7 @@
     <div class="mp-stack">
       <div class="aa-filter">
         <label class="aa-filter__item">状态
-          <select v-model="filterStatus" class="aa-select" @change="load">
-            <option value="">全部（默认按未完成分配优先）</option>
-            <option value="PENDING_ASSIGN">待分配</option>
-            <option value="REJECTED_BY_TEACHER">教师退回</option>
-            <option value="ASSIGNED">已分配（待教师确认）</option>
-            <option value="TEACHER_CONFIRMED">教师已确认</option>
-          </select>
+          <AppSelect v-model="filterStatus" :options="statusOptions" placeholder="" class="aa-select" @change="load" />
         </label>
         <button class="mp-btn" :disabled="loading" @click="load">刷新</button>
       </div>
@@ -68,18 +62,25 @@
  * GET /academic-affairs/teaching-tasks（跨批次）+ POST /teaching-tasks/{taskId}/assign。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeacherAssignConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', rows: [], filterStatus: '',
+      statusOptions: [
+        { value: '', label: '全部（默认按未完成分配优先）' },
+        { value: 'PENDING_ASSIGN', label: '待分配' },
+        { value: 'REJECTED_BY_TEACHER', label: '教师退回' },
+        { value: 'ASSIGNED', label: '已分配（待教师确认）' },
+        { value: 'TEACHER_CONFIRMED', label: '教师已确认' }
+      ],
       pagination: { page: 1, pageSize: 20, total: 0 },
       assign: { visible: false, submitting: false, taskId: '', teacherName: '', teacherKey: '', weeklyHours: null, expectedStudents: null },
       columns: [
@@ -132,7 +133,7 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .aa-filter { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-.aa-select { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; min-width: 220px; }
+.aa-select { min-width: 220px; }
 .aa-assign-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .aa-assign-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }

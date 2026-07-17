@@ -17,10 +17,7 @@
         </label>
         <label class="aa-filter__item">
           学期
-          <select v-model="termId" class="aa-select">
-            <option value="">当前已发布批次</option>
-            <option v-for="t in terms" :key="t.termId" :value="t.termId">{{ t.yearCode }} 第 {{ t.termNo }} 学期</option>
-          </select>
+          <AppSelect v-model="termId" :options="termOptions" placeholder="" />
         </label>
         <label class="aa-filter__item">
           周次
@@ -50,20 +47,28 @@
  * academicAffairs.classroom.view，不新增教室专属 key。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppRemoteSelect } from '@/components/common'
+import { AppSectionCard, AppRemoteSelect, AppSelect } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaRoomScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppRemoteSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppRemoteSelect, AppSelect, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       classroomId: this.$route.params.classroomId || '',
       classroomText: '', termId: '', week: null,
       terms: [], slots: [], items: [], note: '', loading: false, error: ''
+    }
+  },
+  computed: {
+    termOptions() {
+      return [
+        { value: '', label: '当前已发布批次' },
+        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
+      ]
     }
   },
   created() {

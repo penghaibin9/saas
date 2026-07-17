@@ -13,11 +13,7 @@
       </div>
       <AppSectionCard title="异常列表">
         <div class="sa-toolbar">
-          <select v-model="filterStatus" @change="load">
-            <option value="">全部状态</option>
-            <option value="PENDING_HANDLE">待处置</option>
-            <option value="HANDLED">已处置</option>
-          </select>
+          <AppSelect v-model="filterStatus" class="sa-filter" :options="STATUS_OPTIONS" placeholder="" @change="load" />
         </div>
         <table class="sa-table">
           <thead><tr><th>类型</th><th>说明</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
@@ -51,17 +47,26 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppSelect, AppStatusTag
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+const STATUS_OPTIONS = [
+  { value: '', label: '全部状态' },
+  { value: 'PENDING_HANDLE', label: '待处置' },
+  { value: 'HANDLED', label: '已处置' }
+]
 
 export default {
   name: 'DormExceptionView',
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+    AppSelect, AppStatusTag
   },
   data() {
     return {
+      STATUS_OPTIONS,
       loading: true, actioning: false, errorMessage: '', items: [], filterStatus: '',
       dlg: { visible: false, exceptionId: '', excType: '', detail: '' }
     }
@@ -105,6 +110,7 @@ export default {
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .sa-toolbar { margin-bottom: var(--space-4); }
 .sa-toolbar select { min-width: 160px; border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-surface); padding: var(--space-2) var(--space-3); }
+.sa-filter { width: 160px; }
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-actions { display: flex; gap: var(--space-2); }

@@ -14,10 +14,7 @@
         <label class="aa-filter__item">学期<input v-model.trim="term" class="aa-input aa-input--sm" placeholder="学期码（空=全部）" @keyup.enter="search" /></label>
         <label class="aa-filter__item">
           异常类型
-          <select v-model="exceptionFlag" class="aa-select" @change="search">
-            <option value="">全部</option>
-            <option v-for="(label, val) in EXCEPTION_FLAG_LABEL" :key="val" :value="val">{{ label }}</option>
-          </select>
+          <AppSelect v-model="exceptionFlag" :options="exceptionFlagOptions" placeholder="" @change="search" />
         </label>
         <button class="mp-btn" @click="search">查询</button>
       </div>
@@ -44,7 +41,7 @@
 /** 成绩异常（/admin/academic-affairs/grade-exception）：GET /grade-views/exception-list。
  * 汇总各录入任务中 exception_flag ∈ {ABSENT/DEFERRED/EXEMPT} 的学生（跨任务读侧下钻，零写入）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag } from '@/components/common'
+import { AppStatusTag, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { EXCEPTION_FLAG_LABEL, exceptionFlagColor } from '@/modules/academicAffairs/constants/grade-graduation'
 
@@ -56,7 +53,7 @@ const TASK_STATUS_LABEL = {
 
 export default {
   name: 'AaGradeExceptionView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -72,6 +69,11 @@ export default {
         { key: 'taskStatus', title: '任务状态' },
         { key: 'actions', title: '操作', width: '80px' }
       ]
+    }
+  },
+  computed: {
+    exceptionFlagOptions() {
+      return [{ value: '', label: '全部' }, ...Object.entries(EXCEPTION_FLAG_LABEL).map(([value, label]) => ({ value, label }))]
     }
   },
   created() { this.load() },

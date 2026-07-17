@@ -17,7 +17,8 @@ export const ROLE = {
   INTERN_MENTOR: 'intern_mentor', // 实习指导教师
   EMPLOYMENT: 'employment', // 就业老师
   ACADEMIC: 'academic', // 教务老师
-  COLLEGE_ADMIN: 'college_admin' // 学院管理员
+  COLLEGE_ADMIN: 'college_admin', // 学院管理员
+  GD_DEFENSE_EXPERT: 'gd_defense_expert' // 答辩评委（面板成员，仅评分权限，答辩秘书 GD_DEFENSE_SECRETARY 侧重分组管理不接此身份）
 }
 
 export const roleConfigs = {
@@ -53,6 +54,7 @@ export const roleConfigs = {
       { key: 'affairs', label: '学工待办', icon: '📋' },
       { key: 'affairsLeave', label: '请假管理', icon: '🗓' },
       { key: 'classCadre', label: '班干部管理', icon: '🎖' },
+      { key: 'classMaterial', label: '班级材料', icon: '📁' },
       { key: 'examDefer', label: '缓考审批', icon: '📝' },
       { key: 'familyContact', label: '家校联系', icon: '👨‍👩‍👧' },
       { key: 'campus-service', label: '在校服务', icon: '📄' },
@@ -119,7 +121,9 @@ export const roleConfigs = {
       { key: 'follow', label: '就业跟进', icon: '☎' },
       { key: 'recommend', label: '岗位推荐', icon: '★' },
       { key: 'verify', label: '去向核验', icon: '✓' },
-      { key: 'unemployed', label: '未就业', icon: '⚑' }
+      { key: 'unemployed', label: '未就业', icon: '⚑' },
+      { key: 'employmentTransfer', label: '转交学生', icon: '🔄' },
+      { key: 'employmentCompany', label: '企业岗位库', icon: '🏢' }
     ],
     permissionActions: ['employment.follow', 'employment.verify', 'job.recommend', 'student360.view']
   },
@@ -161,12 +165,26 @@ export const roleConfigs = {
       { key: 'orientationDashboard', label: '迎新看板', icon: '🎒' }
     ],
     permissionActions: ['college.overview', 'risk.handle', 'approval.handle', 'urge.send']
+  },
+  [ROLE.GD_DEFENSE_EXPERT]: {
+    key: ROLE.GD_DEFENSE_EXPERT,
+    label: '答辩评委',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'DEFENSE_PANEL',
+    dataScopeText: '本人所在答辩组',
+    workbench: ['gd-review'],
+    quickActions: [
+      { key: 'defenseScore', label: '答辩评分', icon: '🏅' }
+    ],
+    permissionActions: ['defense.score']
   }
 }
 
 // 教师端「多身份切换」：同一个人可绑定多个教师身份（08B 3.2 当前工作上下文）
 export const teacherIdentities = [
-  ROLE.COUNSELOR, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN
+  ROLE.COUNSELOR, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN,
+  ROLE.GD_DEFENSE_EXPERT
 ]
 
 export function getRoleConfig(roleKey) {

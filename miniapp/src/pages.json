@@ -408,6 +408,10 @@
       "style": { "navigationBarTitleText": "班干部管理", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/class-material/index",
+      "style": { "navigationBarTitleText": "班级材料", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/academic-task/index",
       "style": { "navigationBarTitleText": "教学任务确认", "navigationStyle": "custom" }
     },
@@ -426,6 +430,14 @@
     {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
+    },
+    {
+      "path": "pages/teacher/employment-transfer/index",
+      "style": { "navigationBarTitleText": "转交学生", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/employment-company/index",
+      "style": { "navigationBarTitleText": "企业岗位库", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/messages/index",

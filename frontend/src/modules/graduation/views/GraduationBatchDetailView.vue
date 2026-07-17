@@ -8,51 +8,65 @@
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else-if="detail">
-      <section class="gb-summary" aria-label="批次配置摘要">
-        <div class="gb-summary__name">
-          <span>毕业设计批次</span>
-          <strong>{{ detail.batchName }}</strong>
-          <small>{{ detail.batchNo }} · {{ detail.academicYear || detail.gradeYear || '未设置学年' }}</small>
+      <div class="mp-stack">
+        <section class="mp-card">
+          <div class="mp-card__body summary-grid">
+            <div class="summary-name">
+              <span>毕业设计批次</span>
+              <strong>{{ detail.batchName }}</strong>
+              <small>{{ detail.batchNo }} · {{ detail.academicYear || detail.gradeYear || '未设置学年' }}</small>
+            </div>
+            <div class="summary-item"><span>状态</span><StatusTag :type="detail.statusTone" :label="detail.statusLabel" dot /></div>
+            <div class="summary-item"><span>计划人数</span><b>{{ detail.plannedCount || 0 }} 人</b></div>
+            <div class="summary-item"><span>配置权限</span><b :class="{ 'is-locked': configLocked }">{{ configLocked ? '已锁定' : '可编辑' }}</b></div>
+          </div>
+        </section>
+
+        <div class="mp-tabs">
+          <button v-for="t in detailTabs" :key="t.key" class="mp-tab" :class="{ 'is-active': dtab === t.key }" @click="dtab = t.key">{{ t.label }}</button>
         </div>
-        <div class="gb-summary__item"><span>状态</span><StatusTag :type="detail.statusTone" :label="detail.statusLabel" dot /></div>
-        <div class="gb-summary__item"><span>计划人数</span><b>{{ detail.plannedCount || 0 }} 人</b></div>
-        <div class="gb-summary__item"><span>配置权限</span><b :class="{ 'is-locked': configLocked }">{{ configLocked ? '已锁定' : '可编辑' }}</b></div>
-      </section>
-      <div class="gb-tabs">
-        <button v-for="t in detailTabs" :key="t.key" class="gb-tabs__item" :class="{ 'is-active': dtab === t.key }" @click="dtab = t.key">{{ t.label }}</button>
-      </div>
 
-      <div v-show="dtab === 'stages'" class="gb-sec">
-        <p class="ie-hint">阶段时间轴（编辑后点「保存阶段」）。{{ configLocked ? '已结束/归档/作废批次不可改。' : '' }}</p>
-        <table class="gb-tbl">
-          <thead><tr><th>阶段</th><th>开始</th><th>结束</th></tr></thead>
-          <tbody>
-            <tr v-for="(s, i) in stages" :key="i">
-              <td>{{ s.name }}</td>
-              <td><AppDatePicker v-model="s.startDate" role="start" :end-value="s.endDate" :disabled="configLocked" /></td>
-              <td><AppDatePicker v-model="s.endDate" role="end" :start-value="s.startDate" :disabled="configLocked" /></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <section v-show="dtab === 'stages'" class="mp-card">
+          <header class="mp-card__head"><span class="mp-card__title">阶段时间轴</span></header>
+          <div class="mp-card__body">
+            <p class="ie-hint">阶段时间轴（编辑后点「保存阶段」）。{{ configLocked ? '已结束/归档/作废批次不可改。' : '' }}</p>
+            <table class="gd-tbl">
+              <thead><tr><th>阶段</th><th>开始</th><th>结束</th></tr></thead>
+              <tbody>
+                <tr v-for="(s, i) in stages" :key="i">
+                  <td>{{ s.name }}</td>
+                  <td><AppDatePicker v-model="s.startDate" role="start" :end-value="s.endDate" :disabled="configLocked" /></td>
+                  <td><AppDatePicker v-model="s.endDate" role="end" :start-value="s.startDate" :disabled="configLocked" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
 
-      <div v-show="dtab === 'rules'" class="gb-sec">
-        <p class="ie-hint">规则配置（查重/答辩/成绩权重）。保存前会校验成绩权重合计为 100%。</p>
-        <label class="gb-kv"><span>查重阈值(%)</span><input v-model.number="rules.plagiarism.thresholdPercent" type="number" min="0" max="100" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-        <label class="gb-kv"><span>查重通过才可答辩</span><input v-model="rules.plagiarism.mustPassToDefense" type="checkbox" :disabled="configLocked" /></label>
-        <label class="gb-kv"><span>答辩组人数</span><input v-model.number="rules.defense.groupSize" type="number" min="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-        <label class="gb-kv"><span>答辩及格分</span><input v-model.number="rules.defense.passScore" type="number" min="0" max="100" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-        <label class="gb-kv"><span>导师权重</span><input v-model.number="rules.score.advisorWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-        <label class="gb-kv"><span>评阅权重</span><input v-model.number="rules.score.reviewerWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-        <label class="gb-kv"><span>答辩权重</span><input v-model.number="rules.score.defenseWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
-        <div class="gb-rule-total" :class="{ 'is-valid': scoreWeightValid, 'is-invalid': !scoreWeightValid }">
-          成绩权重合计 <b>{{ Math.round(scoreWeightTotal * 100) }}%</b>
-          <span>{{ scoreWeightValid ? '可保存' : '请调整至 100%' }}</span>
-        </div>
-      </div>
+        <section v-show="dtab === 'rules'" class="mp-card">
+          <header class="mp-card__head"><span class="mp-card__title">规则配置</span></header>
+          <div class="mp-card__body">
+            <p class="ie-hint">规则配置（查重/答辩/成绩权重）。保存前会校验成绩权重合计为 100%。</p>
+            <label class="mp-kv"><span class="mp-kv__k">查重阈值(%)</span><input v-model.number="rules.plagiarism.thresholdPercent" type="number" min="0" max="100" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
+            <label class="mp-kv"><span class="mp-kv__k">查重通过才可答辩</span><input v-model="rules.plagiarism.mustPassToDefense" type="checkbox" :disabled="configLocked" /></label>
+            <label class="mp-kv"><span class="mp-kv__k">答辩组人数</span><input v-model.number="rules.defense.groupSize" type="number" min="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
+            <label class="mp-kv"><span class="mp-kv__k">答辩及格分</span><input v-model.number="rules.defense.passScore" type="number" min="0" max="100" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
+            <label class="mp-kv"><span class="mp-kv__k">导师权重</span><input v-model.number="rules.score.advisorWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
+            <label class="mp-kv"><span class="mp-kv__k">评阅权重</span><input v-model.number="rules.score.reviewerWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
+            <label class="mp-kv"><span class="mp-kv__k">答辩权重</span><input v-model.number="rules.score.defenseWeight" type="number" step="0.1" min="0" max="1" class="ie-in ie-in--sm" :disabled="configLocked" /></label>
+            <div class="rule-total" :class="{ 'is-valid': scoreWeightValid, 'is-invalid': !scoreWeightValid }">
+              成绩权重合计 <b>{{ Math.round(scoreWeightTotal * 100) }}%</b>
+              <span>{{ scoreWeightValid ? '可保存' : '请调整至 100%' }}</span>
+            </div>
+          </div>
+        </section>
 
-      <div v-show="dtab === 'audit'" class="gb-sec">
-        <AppAuditTrail :records="batchAuditRecords" compact :show-ip="false" />
+        <section v-show="dtab === 'audit'" class="mp-card">
+          <header class="mp-card__head"><span class="mp-card__title">操作审计</span></header>
+          <div class="mp-card__body">
+            <AppAuditTrail :records="batchAuditRecords" compact :show-ip="false" />
+          </div>
+        </section>
       </div>
     </template>
     <template v-if="detail && dtab !== 'audit'" #footer>
@@ -155,29 +169,20 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gb-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }
-.gb-tabs__item { padding: 8px 12px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
-.gb-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
-.gb-sec { font-size: 13px; }
-.gb-summary { display: grid; grid-template-columns: minmax(210px, 1.5fr) repeat(3, minmax(120px, 1fr)); align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); border: 1px solid var(--primary-100, #dbeafe); border-radius: var(--radius-md, 8px); background: linear-gradient(100deg, var(--primary-50, #eff6ff), var(--card, #fff) 68%); }
-.gb-summary__name { display: grid; gap: 2px; min-width: 0; }
-.gb-summary__name span, .gb-summary__name small, .gb-summary__item > span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.gb-summary__name strong { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
-.gb-summary__item { display: grid; gap: 4px; }
-.gb-summary__item b { color: var(--text-primary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); }
-.gb-summary__item b.is-locked { color: var(--warning-700, #b45309); }
-.gb-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-.gb-tbl th, .gb-tbl td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line, #eef1f6); }
-.gb-tbl th { color: var(--t3, #64748b); font-weight: 500; font-size: 12px; }
-.gb-kv { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 6px 0; border-bottom: 1px dashed var(--line, #eef1f6); }
-.gb-kv > span { color: var(--t2, #475569); }
-.gb-kv .ie-in--sm { width: 120px; flex: none; }
-.gb-rule-total { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin-top: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--gray-50, #f8fafc); }
-.gb-rule-total span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.gb-rule-total.is-valid b { color: var(--success-700, #047857); }
-.gb-rule-total.is-invalid b, .gb-rule-total.is-invalid span { color: var(--danger, #dc2626); }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
-.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
+.summary-grid { display: grid; grid-template-columns: minmax(210px, 1.5fr) repeat(3, minmax(120px, 1fr)); align-items: center; gap: var(--space-3); }
+.summary-name { display: grid; gap: 2px; min-width: 0; }
+.summary-name span, .summary-name small, .summary-item > span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.summary-name strong { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
+.summary-item { display: grid; gap: 4px; }
+.summary-item b { color: var(--text-primary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); }
+.summary-item b.is-locked { color: var(--warning-700, #b45309); }
+.gd-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.gd-tbl th, .gd-tbl td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--dv, #eef1f6); }
+.gd-tbl th { color: var(--text-tertiary, #64748b); font-weight: 500; font-size: 12px; }
+.ie-in--sm { width: 120px; flex: none; }
+.rule-total { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin-top: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--gray-50, #f8fafc); }
+.rule-total span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.rule-total.is-valid b { color: var(--success-700, #047857); }
+.rule-total.is-invalid b, .rule-total.is-invalid span { color: var(--danger, #dc2626); }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-@media (max-width: 760px) { .gb-summary { grid-template-columns: 1fr 1fr; } .gb-summary__name { grid-column: 1 / -1; } }
 </style>

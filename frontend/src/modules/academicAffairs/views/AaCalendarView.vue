@@ -10,11 +10,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
-          <select v-model="termId" class="aa-select" @change="onTermChange">
-            <option v-for="t in terms" :key="t.termId" :value="t.termId">
-              {{ t.yearCode }} 第 {{ t.termNo }} 学期{{ t.isCurrent ? '（当前）' : '' }} · {{ statusLabel(t.status) }}
-            </option>
-          </select>
+          <AppSelect v-model="termId" :options="termOptions" @change="onTermChange" />
         </label>
       </div>
 
@@ -225,6 +221,12 @@ export default {
     }
   },
   computed: {
+    termOptions() {
+      return this.terms.map((t) => ({
+        value: t.termId,
+        label: `${t.yearCode} 第 ${t.termNo} 学期${t.isCurrent ? '（当前）' : ''} · ${this.statusLabel(t.status)}`
+      }))
+    },
     selectedTerm() {
       return this.terms.find((t) => t.termId === this.termId) || null
     },

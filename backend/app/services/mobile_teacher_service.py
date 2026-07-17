@@ -666,15 +666,14 @@ def affairs_class_students(user: dict, class_id: str) -> dict:
 
 
 def affairs_cadre_list(user: dict, class_id: str) -> dict:
-    """在任班干部名单（owner+范围校验在服务层完成，附学生姓名/学号补全展示）。
-    PC 端 list_cadres 不按 status 过滤（历史已免去记录 status=REMOVED 但不做软删除，
-    PC 前端也原样渲染），移动端主动收紧只展示在任(ACTIVE)成员，不改 PC 行为。"""
+    """在任班干部名单（owner+范围校验+在任状态过滤均在服务层 list_cadres 完成，
+    移动端只附加学生姓名/学号补全展示）。"""
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.models import StudentProfile
     from app.services import affairs_dashboard_service as dash
-    items = [it for it in dash.list_cadres(class_id, u) if it.get("status") == "ACTIVE"]
+    items = list(dash.list_cadres(class_id, u))
     with _session() as db:
         for it in items:
             s = db.get(StudentProfile, int(it["studentId"])) if it.get("studentId") else None
@@ -707,6 +706,50 @@ def affairs_cadre_remove(user: dict, cadre_id: str, reason: str | None = None) -
     from app.services import affairs_dashboard_service as dash
     result = dash.remove_cadre(cadre_id, u, reason or "")
     _audit_write("MOBILE_CADRE_REMOVE", f"class-cadre:{cadre_id}", {"operator": u.get("realName")})
+    return result
+
+
+# ══════════ 班级材料（辅导员本班范围内查看/新增/作废，owner+范围校验在服务层
+# affairs_class_service 完成；COUNSELOR 权限矩阵本就含 studentAffairs.class.create，
+# PC 端无权限缺口，此处仅补移动端入口） ══════════
+
+def affairs_class_materials(user: dict, class_id: str, material_type: str | None = None) -> dict:
+    """班级材料列表（在任 ACTIVE 材料，范围校验在服务层 _class_in_scope_or_403 完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_class_service as cls
+    items, total = cls.list_materials(class_id, u, material_type, page=1, page_size=200)
+    return {"list": items, "total": total}
+
+
+def affairs_class_material_add(user: dict, class_id: str, body: dict) -> dict:
+    """新增班级材料（类型/标题必填，范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_class_service as cls
+    b = body or {}
+    payload = _ns({
+        "materialType": b.get("materialType") or "OTHER", "title": b.get("title") or "",
+        "fileId": b.get("fileId"), "fileName": b.get("fileName"),
+        "materialAt": b.get("materialAt"), "remark": b.get("remark"),
+    })
+    result = cls.add_material(class_id, u, payload)
+    _audit_write("MOBILE_CLASS_MATERIAL_ADD", f"class-material:{result.get('id')}",
+                 {"operator": u.get("realName"), "classId": str(class_id), "title": payload.title})
+    return result
+
+
+def affairs_class_material_void(user: dict, material_id: str, reason: str | None = None) -> dict:
+    """作废班级材料（owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_class_service as cls
+    result = cls.void_material(material_id, u, reason or "")
+    _audit_write("MOBILE_CLASS_MATERIAL_VOID", f"class-material:{material_id}",
+                 {"operator": u.get("realName")})
     return result
 
 
@@ -799,29 +842,12 @@ def affairs_academic_schedule_changes(user: dict, status: str | None = None) -> 
 
 
 def affairs_academic_schedule_change_detail(user: dict, change_id: str) -> dict:
-    """调停课单详情：PC 端 get_change 本身无归属校验（任何持权限者可查他人详情），
-    移动端在此补一道与 list_changes/cancel 完全一致的范围校验（TENANT_ALL 放行；
-    COLLEGE 按所辖班级；其余教师仅本人 teacher_key），不改 PC 行为。"""
+    """调停课单详情（归属校验已在服务层 get_change 完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
-    from app.core.affairs_security import _derive_keys, build_affairs_context
     from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
-    with _session() as db:
-        ctx = build_affairs_context(u, db)
-    result = chg_svc.get_change(change_id, u)
-    if ctx.scope_type == "TENANT_ALL":
-        return result
-    if ctx.scope_type == "COLLEGE":
-        with _session() as db:
-            allowed = ctx.allowed_class_ids(db)
-        if result.get("classId") and int(result["classId"]) in (allowed or set()):
-            return result
-        raise AppException("NO_DATA_SCOPE", "该调停课单不在您的数据范围内")
-    keys = _derive_keys(u)
-    if result.get("teacherKey") and result["teacherKey"] in keys:
-        return result
-    raise AppException("NO_DATA_SCOPE", "仅可查看本人发起的调停课单")
+    return chg_svc.get_change(change_id, u)
 
 
 # ══════════ 缓考审批（辅导员初审 + 任课教师确认两个节点身份，复用同一 defer_review；
@@ -833,7 +859,9 @@ _DEFER_NODE_STATUS_BY_ROLE = {"COUNSELOR": "COUNSELOR_REVIEW", "ACADEMIC_TEACHER
 
 
 def affairs_academic_defer_pending(user: dict) -> dict:
-    """缓考待我审批（覆盖 COUNSELOR/ACADEMIC_TEACHER 两个节点身份，其余身份返回空列表）。"""
+    """缓考待我审批（覆盖 COUNSELOR/ACADEMIC_TEACHER 两个节点身份，其余身份返回空列表）。
+    defer_list(status=node_status) 已在服务层按真实业务关系过滤（_visible_defer_record），
+    对某一具体节点状态而言与「当前是否轮到我审批」等价，不需要再逐条复核。"""
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
@@ -841,23 +869,9 @@ def affairs_academic_defer_pending(user: dict) -> dict:
     node_status = _DEFER_NODE_STATUS_BY_ROLE.get(role)
     if not node_status:
         return {"list": [], "total": 0}
-    from app.core.exceptions import AppException as _AppExc
     from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
-    rows, _total = exam_svc.defer_list(u, status=node_status, page=1, page_size=500)
-    items = []
-    with _session() as db:
-        from app.models import AaDeferredExam
-        ctx = exam_svc.build_affairs_context(u, db)
-        for row in rows:
-            d = db.get(AaDeferredExam, int(row["deferId"]))
-            if not d:
-                continue
-            try:
-                exam_svc._check_defer_scope(u, db, ctx, d)
-            except _AppExc:
-                continue
-            items.append(row)
-    return {"list": items, "total": len(items)}
+    items, total = exam_svc.defer_list(u, status=node_status, page=1, page_size=500)
+    return {"list": items, "total": total}
 
 
 def affairs_academic_defer_review(user: dict, defer_id: str, action: str, reason: str | None = None) -> dict:
@@ -934,21 +948,11 @@ def affairs_academic_evaluation_my_results(user: dict) -> dict:
 
 
 def affairs_academic_evaluation_submit_appeal(user: dict, result_id: str, reason: str) -> dict:
-    """结果申诉：PC 端 submit_appeal 本身不校验 result 是否属于当前教师本人（任何持
-    require_staff 权限者传任意 resultId 即可发起申诉），移动端在此补一道归属校验，不改 PC 行为。"""
+    """结果申诉（归属校验已在服务层 submit_appeal 完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
-    from app.core.affairs_security import _derive_keys
     from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
-    from app.core.exceptions import not_found
-    with _session() as db:
-        from app.models import AaEvaluationResult
-        r = db.get(AaEvaluationResult, int(result_id))
-        if not r or r.tenant_id != _tid():
-            raise not_found("评价结果不存在")
-        if not r.teacher_key or r.teacher_key not in _derive_keys(u):
-            raise AppException("NO_DATA_SCOPE", "仅可对本人的评价结果发起申诉")
     result = eval_svc.submit_appeal(u, result_id, reason)
     _audit_write("MOBILE_ACADEMIC_EVAL_APPEAL", f"eval-result:{result_id}", {"operator": u.get("realName")})
     return result
@@ -1317,6 +1321,116 @@ def employment(user: dict) -> dict:
             {"key": "verify", "label": "待核验"}, {"key": "done", "label": "已落实"}]
     return {"hasData": stotal > 0, "stats": stats, "tabs": tabs, "students": students,
             "jobPool": jobs, "scopeMode": scope["mode"]}
+
+
+# ══════════ 就业老师·转交学生（保守设计，designSource=ai_proposal）══════════
+# 背景：employment_service 全模块无调用者范围收敛，employment_teacher 是自由文本字段，
+# 无 FK 无强类型「学生归属哪个就业老师」关系可复用。为在无更好锚点下取最小安全实现，
+# 移动端只允许调用者转交「当前 employmentTeacher 字段精确等于调用者本人 realName」的学生
+# （即"我负责的学生我可以转给别人"），不允许调剂任意学生；新老师名自由文本录入（PC 端本身
+# 也是自由文本）。局限：依赖 realName 精确字符串匹配，同名教师会误判——若学校有员工工号
+# 体系应改用该体系重构。该口径是否等同学校"就业老师互相调剂"的实际业务需用户确认。
+
+def affairs_employment_my_students(user: dict) -> dict:
+    """我负责的就业学生（employmentTeacher 字段 == 本人 realName），供转交前选人。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    my_name = (u.get("realName") or "").strip()
+    if not my_name:
+        return {"list": [], "total": 0}
+    students, _ = _safe_list(employment_service.list_students, 1, 500)
+    mine = [s for s in students if (s.get("employmentTeacher") or "").strip() == my_name]
+    return {"list": mine, "total": len(mine)}
+
+
+def affairs_employment_transfer_student(user: dict, student_id: str, new_teacher: str) -> dict:
+    """把本人负责的学生转交给另一位就业老师。仅当目标学生当前 employment_teacher == 本人
+    realName 时放行（保守设计，见上）；否则 403。新老师名自由文本。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    new_teacher = (new_teacher or "").strip()
+    if not new_teacher:
+        raise AppException("VALIDATION_ERROR", "接收就业老师姓名必填")
+    my_name = (u.get("realName") or "").strip()
+    detail = employment_service.get_student_detail(student_id)
+    # get_student_detail 返回 {"student": {...}, "materials": ...}，归属字段在 student 子对象里，
+    # 不能读顶层 detail["employmentTeacher"]（恒 None 会导致本人学生也被误判 403）。
+    owner = ((detail.get("student") or {}).get("employmentTeacher") or "").strip()
+    if not my_name or owner != my_name:
+        raise AppException("NO_DATA_SCOPE", "只能转交当前由本人负责的学生")
+    result = employment_service.assign_teacher([student_id], new_teacher)
+    _audit_write("MOBILE_EMPLOYMENT_TRANSFER", f"emp-student:{student_id}",
+                 {"operator": my_name, "newTeacher": new_teacher})
+    return result
+
+
+# ══════════ 就业·企业/岗位库（校级共享主数据，employment_service 已有 CRUD 但无 router 暴露，
+# 移动端首次对外接入。门禁在 mobile.py 路由层用 employment.company/job.view/manage，靠
+# employment.* 通配放行就业老师/校管、挡其他身份。service 层已校验必填/停用原因≥5字/级联，
+# 此处仅包装 + 审计。注意 list_* 返回元组 (items,total)，create_*/disable_* 不接 operator 参数） ══════════
+
+def affairs_employment_companies(user: dict, status: str | None = None) -> dict:
+    """企业列表（校级共享，前 200 条 + 状态过滤）。"""
+    _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    items, total = employment_service.list_companies(1, 200, status=status)
+    return {"list": items, "total": total}
+
+
+def affairs_employment_company_create(user: dict, body: dict) -> dict:
+    """新增企业（name+creditCode 必填，缺失由 service 抛 VALIDATION_ERROR）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    result = employment_service.create_company(body or {})
+    _audit_write("MOBILE_EMPLOYMENT_COMPANY_CREATE", f"emp-company:{result.get('id')}",
+                 {"operator": u.get("realName"), "name": (body or {}).get("name")})
+    return result
+
+
+def affairs_employment_company_disable(user: dict, company_id: str, reason: str | None = None) -> dict:
+    """停用企业（原因≥5字，级联关闭岗位；校验与级联都在 service 层）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    result = employment_service.disable_company(company_id, reason or "")
+    _audit_write("MOBILE_EMPLOYMENT_COMPANY_DISABLE", f"emp-company:{company_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def affairs_employment_jobs(user: dict, company_id: str | None = None, status: str | None = None) -> dict:
+    """岗位列表（可按企业/状态过滤）。"""
+    _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    items, total = employment_service.list_jobs(1, 200, status=status, company_id=company_id)
+    return {"list": items, "total": total}
+
+
+def affairs_employment_job_create(user: dict, body: dict) -> dict:
+    """新增岗位（companyId+title 必填，缺失由 service 抛 VALIDATION_ERROR）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    result = employment_service.create_job(body or {})
+    _audit_write("MOBILE_EMPLOYMENT_JOB_CREATE", f"emp-job:{result.get('id')}",
+                 {"operator": u.get("realName"), "title": (body or {}).get("title")})
+    return result
+
+
+def affairs_employment_job_disable(user: dict, job_id: str, reason: str | None = None) -> dict:
+    """停用岗位（原因≥5字，校验在 service 层）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    result = employment_service.disable_job(job_id, reason or "")
+    _audit_write("MOBILE_EMPLOYMENT_JOB_DISABLE", f"emp-job:{job_id}",
+                 {"operator": u.get("realName")})
+    return result
 
 
 # 保留原迎新/在校/学业待处理列表（工作台跳转用）

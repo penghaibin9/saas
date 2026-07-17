@@ -9,11 +9,15 @@
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载驾驶舱..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
       <div class="cp-grid">
-        <div v-for="d in domains" :key="d.key" class="cp-card" @click="go(d)">
-          <div class="cp-card__label">{{ d.label }}</div>
-          <div class="cp-card__total">{{ d.total }}</div>
-          <div class="cp-card__hl">{{ d.highlightLabel }}：<b>{{ d.highlight }}</b></div>
-          <div class="cp-card__more">查看分域统计 →</div>
+        <div v-for="d in domains" :key="d.key" class="cp-cell">
+          <AppMetricCard
+            :title="d.label"
+            :value="d.total"
+            drillable
+            :drill-target="d.route || ''"
+            @drill="goRoute"
+          />
+          <div v-if="d.highlightLabel" class="cp-cell__hl">{{ d.highlightLabel }}：<b>{{ d.highlight }}</b></div>
         </div>
       </div>
 
@@ -33,12 +37,12 @@
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 export default {
   name: 'StudentAffairsCockpitView',
-  components: { AppGlobalState, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
   data() { return { loading: true, errorMessage: '', domains: [], totals: {}, reconcileOk: true } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') }
@@ -57,19 +61,16 @@ export default {
       }
       this.loading = false
     },
-    go(d) { if (d.route) this.$router.push(d.route) }
+    goRoute(route) { if (route) this.$router.push(route) }
   }
 }
 </script>
 
 <style scoped>
 .cp-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.cp-card { border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: var(--space-4); cursor: pointer; background: var(--bg-card); transition: box-shadow .15s; }
-.cp-card:hover { box-shadow: var(--shadow-card); border-color: var(--color-primary); }
-.cp-card__label { color: var(--text-secondary); font-size: var(--font-size-sm); }
-.cp-card__total { font-size: 32px; font-weight: 700; margin: var(--space-2) 0; }
-.cp-card__hl { font-size: var(--font-size-sm); color: var(--text-secondary); }
-.cp-card__more { margin-top: var(--space-2); color: var(--color-primary); font-size: var(--font-size-xs); }
+.cp-cell { display: flex; flex-direction: column; gap: var(--space-1); }
+.cp-cell__hl { font-size: var(--font-size-sm); color: var(--text-secondary); padding: 0 var(--space-1); }
+.cp-cell__hl b { color: var(--text-primary); }
 .cp-totals { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-3); }
 .cp-total { display: flex; flex-direction: column; }
 .cp-total span { color: var(--text-tertiary); font-size: var(--font-size-xs); }

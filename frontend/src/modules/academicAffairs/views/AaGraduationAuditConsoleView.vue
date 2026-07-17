@@ -12,12 +12,15 @@
     <div class="mp-stack">
       <AppSectionCard title="当前批次">
         <div class="agc-batch-bar">
-          <select v-model="batchId" class="aa-select" :disabled="loadingBatches" @change="onBatchChange">
-            <option value="">{{ loadingBatches ? '批次加载中…' : '选择批次' }}</option>
-            <option v-for="b in batches" :key="b.batchId" :value="b.batchId">
-              {{ b.batchName }}（{{ b.status }}，应审 {{ b.total }}）
-            </option>
-          </select>
+          <div class="agc-batch-select">
+            <AppSelect
+              v-model="batchId"
+              :options="batchOptions"
+              :disabled="loadingBatches"
+              :placeholder="loadingBatches ? '批次加载中…' : '选择批次'"
+              @change="onBatchChange"
+            />
+          </div>
           <template v-if="currentBatch">
             <span class="agc-chip">应审 {{ currentBatch.total }}</span>
             <span class="agc-chip is-pass">系统通过 {{ currentBatch.passed }}</span>
@@ -219,7 +222,7 @@
  * 「审核批次」（建批次/圈定/预审）仍在既有 AaGraduationBatchView.vue（/graduation），本页不重复。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppStatusTag from '@/components/common/AppStatusTag.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -256,7 +259,7 @@ const LINK_ITEM = {
 
 export default {
   name: 'AaGraduationAuditConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -304,6 +307,12 @@ export default {
   computed: {
     currentTabLabel() { return TAB_CONFIG[this.tab] ? TAB_CONFIG[this.tab].label : '' },
     currentBatch() { return this.batches.find((b) => b.batchId === this.batchId) || null },
+    batchOptions() {
+      return this.batches.map((b) => ({
+        value: b.batchId,
+        label: `${b.batchName}（${b.status}，应审 ${b.total}）`
+      }))
+    },
     rosterGroups() {
       if (!this.rosterData) return []
       const kw = (this.rosterKeyword || '').trim()
@@ -482,6 +491,7 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .agc-batch-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.agc-batch-select { width: 260px; }
 .aa-select { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; min-width: 260px; }
 .agc-chip { padding: 4px 10px; border-radius: 12px; font-size: 12px; background: var(--fill-100, #f2f3f5); color: var(--text-700, #4e5969); }
 .agc-chip.is-pass { background: var(--success-50, #eafff3); color: var(--success-600, #16a34a); }

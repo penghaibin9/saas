@@ -11,7 +11,7 @@
       <div class="av-side">
         <div class="av-side__head">
           归档批次
-          <button type="button" class="av-btn av-btn--primary av-btn--sm" @click="openBatch">建批次</button>
+          <AppPermissionButton code="studentAffairs.archive.batch.manage" variant="primary" size="sm" @click="openBatch">建批次</AppPermissionButton>
         </div>
         <EmptyState v-if="!batches.length" title="暂无批次" description="点「建批次」新建归档批次" />
         <ul v-else class="av-blist">
@@ -61,8 +61,8 @@
           </div>
 
           <div class="av-actions">
-            <button v-if="canCollect" type="button" class="av-btn av-btn--primary" :disabled="acting" @click="openCollect">圈定学生</button>
-            <button v-if="advanceLabel" type="button" class="av-btn av-btn--primary" :disabled="acting" @click="onAdvance">{{ advanceLabel }}</button>
+            <AppPermissionButton v-if="canCollect" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="openCollect">圈定学生</AppPermissionButton>
+            <AppPermissionButton v-if="advanceLabel" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="onAdvance">{{ advanceLabel }}</AppPermissionButton>
             <span v-if="current.status === 'ARCHIVED'" class="av-archived">✓ 已归档（水印包已登记）</span>
           </div>
 
@@ -123,7 +123,7 @@
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
 import {
-  AppFormItem, AppInlineAlert, AppPagination, AppStatusTag, AppStudentPicker, AppTextInput
+  AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { AppButton } from '@/components/ui'
@@ -144,7 +144,7 @@ export default {
   name: 'ArchiveManageView',
   components: {
     ModulePageShell, EmptyState, StatusTag: AppStatusTag, AppStudentPicker,
-    AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppTextInput, AppButton
+    AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppTextInput, AppButton
   },
   props: { ctx: { type: Object, default: null } },
   data() {
