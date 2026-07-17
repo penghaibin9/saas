@@ -58,6 +58,25 @@ def test_print(client, db_mode):
     assert r["code"] == 0 and r["data"]["watermark"] == "学工三"
 
 
+def test_psy_and_applications(client, db_mode):
+    _seed("SA-010", "学工十")
+    h = _stu_token("学工十", "SA-010")
+    assert client.get(f"{PORTAL}/psy/questions", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/psy/history", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/applications", headers=h).json()["code"] == 0
+    # 心理测评未作答拒绝
+    assert client.post(f"{PORTAL}/psy/submit", headers=h, json={"answers": []}).json()["code"] != 0
+
+
+def test_discipline_appeal(client, db_mode):
+    _seed("SA-011", "学工十一")
+    h = _stu_token("学工十一", "SA-011")
+    ok = client.post(f"{PORTAL}/discipline/appeal", headers=h,
+                     json={"reason": "对处分认定的事实有异议，特此书面申辩说明。"}).json()
+    assert ok["code"] == 0
+    assert client.post(f"{PORTAL}/discipline/appeal", headers=h, json={"reason": "短"}).json()["code"] != 0
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/leave", headers=admin).json()["code"] == 403001
@@ -65,3 +84,5 @@ def test_non_student_rejected(client, db_mode):
     assert client.post(f"{PORTAL}/service-apply", headers=admin,
                        json={"serviceKey": "CONSULT", "reason": "咨询相关问题事项"}).json()["code"] == 403001
     assert client.post(f"{PORTAL}/print", headers=admin, json={}).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/psy/questions", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/applications", headers=admin).json()["code"] == 403001

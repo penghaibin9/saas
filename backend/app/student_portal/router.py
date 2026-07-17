@@ -200,6 +200,31 @@ def affairs_print(user=Depends(get_current_user), body: dict = Body(...)):
     return success(affairs.print_doc(user, body))
 
 
+@router.get("/affairs/psy/questions", summary="心理自评·题目（本人）")
+def affairs_psy_questions(user=Depends(get_current_user)):
+    return success(affairs.psy_questions(user))
+
+
+@router.post("/affairs/psy/submit", summary="心理自评·提交（本人）")
+def affairs_psy_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.psy_submit(user, body))
+
+
+@router.get("/affairs/psy/history", summary="心理自评·历史（本人）")
+def affairs_psy_history(user=Depends(get_current_user)):
+    return success(affairs.psy_history(user))
+
+
+@router.get("/affairs/applications", summary="我的申请（本人聚合）")
+def affairs_applications(user=Depends(get_current_user)):
+    return success(affairs.applications(user))
+
+
+@router.post("/affairs/discipline/appeal", summary="违纪处分申辩/申诉（本人）")
+def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.discipline_appeal(user, body))
+
+
 # ── 首页工作台聚合 ──
 @router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
 def home_overview(user=Depends(get_current_user)):

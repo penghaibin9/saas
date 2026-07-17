@@ -7,6 +7,7 @@ overview_my，均经 aff._me 收口本人+非学生403）。学生写入口为 c
 """
 from __future__ import annotations
 
+from app.core.exceptions import AppException
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_student_service as stu
 from app.services.mobile_student_service import _require_student
@@ -51,3 +52,37 @@ def print_doc(user: dict, body: dict) -> dict:
     doc_name = str(body.get("docName") or "学工申请回执")
     return common.print_log(user, {"bizType": biz_type,
                                    "bizId": str(body.get("bizId") or ""), "docName": doc_name})
+
+
+# ── 心理测评（PC 接出）+ 我的申请聚合 + 违纪申诉 ──
+
+def psy_questions(user: dict) -> dict:
+    """心理健康自评·题目（本人）。"""
+    return stu.psy_survey_questions(user)
+
+
+def psy_submit(user: dict, body: dict) -> dict:
+    """心理健康自评·提交（本人，需作答）。"""
+    body = body or {}
+    if not body.get("answers"):
+        raise AppException("VALIDATION_ERROR", "请先作答再提交")
+    return stu.psy_survey_submit(user, body)
+
+
+def psy_history(user: dict) -> dict:
+    """心理健康自评·本人历史。"""
+    return stu.psy_survey_history(user)
+
+
+def applications(user: dict) -> dict:
+    """我的申请（本人聚合）。"""
+    return stu.my_applications(user)
+
+
+def discipline_appeal(user: dict, body: dict) -> dict:
+    """违纪处分申辩/申诉（书面陈述，复用通用事务申请）。"""
+    body = body or {}
+    reason = str(body.get("reason") or body.get("content") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "申辩内容至少 5 个字")
+    return stu.campus_service_apply(user, {"serviceKey": "DISCIPLINE_APPEAL", "reason": reason})
