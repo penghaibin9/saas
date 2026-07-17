@@ -27,7 +27,7 @@
 
         <AppSectionCard title="学生考勤汇总（按旷课次数降序）">
           <EmptyState v-if="!data.students.length" title="暂无考勤统计" description="教师在移动端完成并提交课堂点名后，这里出现跨堂次汇总" />
-          <DataTable v-else :columns="columns" :rows="data.students" row-key="studentId">
+          <DataTable v-else :columns="columns" :rows="data.students" row-key="studentId" :row-class="rowClass">
             <template #cell-absent="{ row }"><span :class="{ 'aa-cell-danger': row.absent > 0 }">{{ row.absent }}</span></template>
             <template #cell-absentRate="{ row }">{{ pct(row.absentRate) }}%</template>
           </DataTable>
@@ -61,9 +61,9 @@ export default {
       ],
       columns: [
         { key: 'realName', title: '学生' }, { key: 'studentNo', title: '学号' },
-        { key: 'sessions', title: '总堂次' }, { key: 'present', title: '出勤' },
-        { key: 'late', title: '迟到' }, { key: 'absent', title: '旷课' },
-        { key: 'leave', title: '请假' }, { key: 'absentRate', title: '缺勤率' }
+        { key: 'sessions', title: '总堂次', align: 'center' }, { key: 'present', title: '出勤', align: 'center' },
+        { key: 'late', title: '迟到', align: 'center' }, { key: 'absent', title: '旷课', align: 'center' },
+        { key: 'leave', title: '请假', align: 'center' }, { key: 'absentRate', title: '缺勤率', align: 'center' }
       ]
     }
   },
@@ -73,6 +73,7 @@ export default {
   created() { this.load() },
   methods: {
     pct(v) { return Math.round((v || 0) * 100) },
+    rowClass(row) { return row.absent >= 3 ? 'aa-row-danger' : '' },
     async load() {
       this.loading = true
       this.error = ''
@@ -95,4 +96,6 @@ export default {
 .aa-filter__label { font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .aa-cell-danger { color: var(--danger-600, #f53f3f); font-weight: 600; }
+/* 旷课≥3 整行标红（旷课多的重点学生一眼可见）——DataTable rowClass 上色 */
+:deep(.aa-row-danger) { background: var(--danger-50, #fff1f0); }
 </style>

@@ -75,10 +75,10 @@ export default {
         { label: '已通过', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }
       ],
       columns: [
-        { key: 'teacher', title: '教师' }, { key: 'termCode', title: '学期' },
-        { key: 'categoryLabel', title: '类别' }, { key: 'hours', title: '申报课时' },
-        { key: 'description', title: '工作说明' }, { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作' }
+        { key: 'teacher', title: '教师' }, { key: 'termCode', title: '学期', align: 'center' },
+        { key: 'categoryLabel', title: '类别', align: 'center' }, { key: 'hours', title: '申报课时', align: 'center' },
+        { key: 'description', title: '工作说明' }, { key: 'status', title: '状态', align: 'center' },
+        { key: 'actions', title: '操作', align: 'center' }
       ]
     }
   },

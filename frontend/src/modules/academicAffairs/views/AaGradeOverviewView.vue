@@ -88,9 +88,9 @@ export default {
     columns() {
       return [
         { key: 'name', title: this.dimension === 'course' ? '课程' : '班级' },
-        { key: 'total', title: '记录数' }, { key: 'avgScore', title: '平均分' },
-        { key: 'maxScore', title: '最高' }, { key: 'minScore', title: '最低' },
-        { key: 'passRate', title: '及格率' }, { key: 'excellentRate', title: '优秀率' }
+        { key: 'total', title: '记录数', align: 'center' }, { key: 'avgScore', title: '平均分', align: 'center' },
+        { key: 'maxScore', title: '最高', align: 'center' }, { key: 'minScore', title: '最低', align: 'center' },
+        { key: 'passRate', title: '及格率', align: 'center' }, { key: 'excellentRate', title: '优秀率', align: 'center' }
       ]
     }
   },

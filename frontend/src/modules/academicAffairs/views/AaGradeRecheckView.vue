@@ -83,10 +83,10 @@ export default {
       ],
       columns: [
         { key: 'studentName', title: '学生' }, { key: 'studentNo', title: '学号' },
-        { key: 'courseName', title: '课程' }, { key: 'term', title: '学期' },
-        { key: 'originalScore', title: '原成绩' }, { key: 'newScore', title: '调整后' },
-        { key: 'reason', title: '理由' }, { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作' }
+        { key: 'courseName', title: '课程' }, { key: 'term', title: '学期', align: 'center' },
+        { key: 'originalScore', title: '原成绩', align: 'center' }, { key: 'newScore', title: '调整后', align: 'center' },
+        { key: 'reason', title: '理由' }, { key: 'status', title: '状态', align: 'center' },
+        { key: 'actions', title: '操作', align: 'center' }
       ]
     }
   },
