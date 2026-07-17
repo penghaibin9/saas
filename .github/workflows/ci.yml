@@ -16,6 +16,22 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # 后端测试为 MySQL-only（conftest 拒绝回落 SQLite）；CI 提供 MySQL 服务库
+      TEST_DATABASE_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,6 +42,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install cryptography   # PyMySQL 连 MySQL8 caching_sha2_password 认证所需
       - name: 岗位实习专项测试（20分钟硬超时）
         run: timeout 20m pytest tests/test_internship*.py -q -p no:warnings --durations=20
 
@@ -45,6 +62,22 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # 后端测试为 MySQL-only（conftest 拒绝回落 SQLite）；CI 提供 MySQL 服务库
+      TEST_DATABASE_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,6 +88,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install cryptography   # PyMySQL 连 MySQL8 caching_sha2_password 认证所需
       - name: 运行 pytest
         run: pytest -q -p no:warnings
 
