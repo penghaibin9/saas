@@ -16,7 +16,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 # 明细可见角色（按角色）：心理老师 + 校/平台超管（超管查看仍须原因+审计）。
@@ -212,7 +212,7 @@ def create_referral(user, body) -> dict:
         return _ref_row(x, s, reveal=True)  # 登记人当次可见自填明细
 
 
-def follow_referral(user, ref_id, content="") -> dict:
+def follow_referral(user, ref_id, content="", expected_version=None) -> dict:
     """回访（→FOLLOWING，记录回访时间）。"""
     if not content or len(content.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "回访记录必填且不少于 5 字")
@@ -221,13 +221,14 @@ def follow_referral(user, ref_id, content="") -> dict:
         _scope_or_403(user, psy_scope_ids(db, user), x.student_id)
         if x.status not in ("REFERRED", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可回访")
+        check_version(x.version, expected_version)
         x.status, x.last_follow_time, x.version = "FOLLOWING", datetime.utcnow(), x.version + 1
         _biz_audit(db, x.id, "FOLLOW", content.strip()[:100])
         db.commit(); db.refresh(x)
         return _ref_row(x, _stu(db, x.student_id), reveal=True)
 
 
-def escalate_crisis(user, ref_id, content="") -> dict:
+def escalate_crisis(user, ref_id, content="", expected_version=None) -> dict:
     """危机升级 → 接入风险中枢（建 source=MENTAL 风险记录，去重于 (MENTAL, referral_id)），回链 risk_id。"""
     with session() as db:
         from app.models import AffairsRiskRecord
@@ -239,6 +240,7 @@ def escalate_crisis(user, ref_id, content="") -> dict:
         if x.risk_id:
             db.refresh(x)
             return _ref_row(x, _stu(db, x.student_id), reveal=True)
+        check_version(x.version, expected_version)
         r = AffairsRiskRecord(tenant_id=_tid(), student_id=int(x.student_id), source="MENTAL",
                               source_ref_id=int(x.id), risk_level="CRITICAL",
                               title="心理危机升级", detail="[心理危机·明细受限]", status="NEW")
@@ -249,7 +251,7 @@ def escalate_crisis(user, ref_id, content="") -> dict:
         return _ref_row(x, _stu(db, x.student_id), reveal=True)
 
 
-def close_referral(user, ref_id, conclusion="") -> dict:
+def close_referral(user, ref_id, conclusion="", expected_version=None) -> dict:
     """关闭（结论≥5字）。"""
     if not conclusion or len(conclusion.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "关闭结论必填且不少于 5 字")
@@ -258,6 +260,7 @@ def close_referral(user, ref_id, conclusion="") -> dict:
         _scope_or_403(user, psy_scope_ids(db, user), x.student_id)
         if x.status == "CLOSED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该转介已关闭")
+        check_version(x.version, expected_version)
         x.status, x.closed_reason, x.version = "CLOSED", conclusion.strip(), x.version + 1
         _biz_audit(db, x.id, "CLOSE", conclusion.strip()[:100])
         db.commit(); db.refresh(x)

@@ -1043,10 +1043,12 @@ class PsyReferralCreate(BaseModel):
 
 class PsyContentBody(BaseModel):
     content: str = Field("", description="回访/升级说明")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class PsyCloseBody(BaseModel):
     conclusion: str = Field(..., min_length=1, description="关闭结论≥5字")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.get("/mental/list", summary="心理关注名单（PSY_STUDENT 数据范围，列表仅摘要）")
