@@ -86,12 +86,13 @@
               <tr v-for="r in rows" :key="r.studentId">
                 <td>{{ r.realName }}</td>
                 <td>
-                  <select v-model="r.exceptionFlag" class="aa-input aa-input--xs" :disabled="!editable">
-                    <option value="NORMAL">正常</option>
-                    <option value="ABSENT">缺考</option>
-                    <option value="DEFERRED">缓考</option>
-                    <option value="EXEMPT">免修</option>
-                  </select>
+                  <AppSelect
+                    v-model="r.exceptionFlag"
+                    :options="exceptionOptions"
+                    :disabled="!editable"
+                    placeholder=""
+                    size="compact"
+                  />
                 </td>
                 <td><input v-model.number="r.usual" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
                 <td><input v-model.number="r.final" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
@@ -114,7 +115,7 @@
 <script>
 /** 成绩录入（/admin/academic-affairs/grade-entry）：POST /grade-tasks + /scores + /submit。 */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -128,7 +129,7 @@ const EDITABLE_STATUS = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
 
 export default {
   name: 'AaGradeEntryView',
-  components: { ModulePageShell, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert, AppExcelImportDrawer },
+  components: { ModulePageShell, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert, AppExcelImportDrawer, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -139,7 +140,15 @@ export default {
     }
   },
   computed: {
-    editable() { return this.task && EDITABLE_STATUS.has(this.task.status) }
+    editable() { return this.task && EDITABLE_STATUS.has(this.task.status) },
+    exceptionOptions() {
+      return [
+        { value: 'NORMAL', label: '正常' },
+        { value: 'ABSENT', label: '缺考' },
+        { value: 'DEFERRED', label: '缓考' },
+        { value: 'EXEMPT', label: '免修' }
+      ]
+    }
   },
   created() {
     this.loadTasks()

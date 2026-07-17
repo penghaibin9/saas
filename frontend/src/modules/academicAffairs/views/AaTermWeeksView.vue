@@ -9,11 +9,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
-          <select v-model="termId" class="aa-select" @change="loadWeeks">
-            <option v-for="t in terms" :key="t.termId" :value="t.termId">
-              {{ t.yearCode }} 第 {{ t.termNo }} 学期{{ t.isCurrent ? '（当前）' : '' }}
-            </option>
-          </select>
+          <AppSelect v-model="termId" :options="termOptions" @change="loadWeeks" />
         </label>
       </div>
 
@@ -53,7 +49,7 @@
 <script>
 /** 学期周次（/admin/academic-affairs/terms/weeks）：GET /terms/{id}/weeks（只读计算，来自学期开学日+教学周数+校历）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag } from '@/components/common'
+import { AppStatusTag, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 const TYPE_LABEL = { TEACHING: '教学周', EXAM: '考试周', HOLIDAY: '假期', INTERNSHIP: '实习周' }
@@ -61,7 +57,7 @@ const TYPE_COLOR = { TEACHING: 'default', EXAM: 'danger', HOLIDAY: 'success', IN
 
 export default {
   name: 'AaTermWeeksView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -78,6 +74,14 @@ export default {
         { key: 'weekType', title: '类型' },
         { key: 'remark', title: '备注' }
       ]
+    }
+  },
+  computed: {
+    termOptions() {
+      return this.terms.map((t) => ({
+        value: t.termId,
+        label: `${t.yearCode} 第 ${t.termNo} 学期${t.isCurrent ? '（当前）' : ''}`
+      }))
     }
   },
   created() {

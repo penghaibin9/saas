@@ -25,13 +25,16 @@
         </div>
         <AppSectionCard title="分数段分布">
           <EmptyState v-if="!data.total" title="暂无成绩数据" description="发布成绩录入任务后，这里出现分数段分布" />
-          <div v-else class="aa-dist">
+          <template v-else>
+            <AppG2Chart :spec="distSpec" :height="260" />
+            <div class="aa-dist">
             <div v-for="d in data.distribution" :key="d.range" class="aa-dist__row">
               <span class="aa-dist__label">{{ d.range }}</span>
               <div class="aa-dist__bar-wrap"><div class="aa-dist__bar" :style="{ width: barWidth(d.count) }"></div></div>
               <span class="aa-dist__count">{{ d.count }}</span>
             </div>
-          </div>
+            </div>
+          </template>
         </AppSectionCard>
       </template>
     </div>
@@ -41,19 +44,28 @@
 <script>
 /** 成绩总览（/admin/academic-affairs/grade-overview）：GET /grade-views/analysis。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppSectionCard } from '@/components/common'
+import { AppMetricCard, AppSectionCard, AppG2Chart } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 export default {
   name: 'AaGradeOverviewView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppMetricCard, AppSectionCard },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppMetricCard, AppSectionCard, AppG2Chart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', term: '', data: { total: 0, passRate: 0, distribution: [] } }
   },
   computed: {
     passRatePct() { return Math.round((this.data.passRate || 0) * 100) },
-    maxCount() { return Math.max(1, ...(this.data.distribution || []).map((d) => d.count)) }
+    maxCount() { return Math.max(1, ...(this.data.distribution || []).map((d) => d.count)) },
+    distSpec() {
+      return {
+        type: 'interval',
+        data: (this.data.distribution || []).map((d) => ({ name: d.range, value: d.count })),
+        encode: { x: 'name', y: 'value' },
+        axis: { y: { title: null } },
+        style: { radiusTopLeft: 4, radiusTopRight: 4 }
+      }
+    }
   },
   created() { this.load() },
   methods: {

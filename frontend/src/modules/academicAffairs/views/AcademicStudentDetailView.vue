@@ -26,14 +26,7 @@
             </span>
           </div>
           <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">学院 / 专业</span><span class="mp-kv__v">{{ detail.student.collegeName }} · {{ detail.student.majorName }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">GPA / 平均成绩</span><span class="mp-kv__v">{{ detail.student.gpa.toFixed(1) }} / {{ detail.student.avgScore }} 分</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">挂科门数</span><span class="mp-kv__v">{{ detail.student.failedCount }} 门</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">学分进度</span><span class="mp-kv__v">{{ detail.student.obtainedCredits }} / {{ detail.student.requiredCredits }}（中期应达 60）</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">补考 / 重修</span><span class="mp-kv__v">{{ detail.student.makeupCount }} / {{ detail.student.retakeCount }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">辅导员</span><span class="mp-kv__v">{{ detail.student.counselor }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">联系电话</span><span class="mp-kv__v">{{ detail.student.phone || '未登记' }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">更新时间</span><span class="mp-kv__v">{{ detail.student.updateTime }}</span></div>
+            <AppDescriptionList :items="profileItems" :columns="2" />
           </div>
         </section>
 
@@ -172,12 +165,13 @@
 <script>
 /** 学生学业详情（/admin/academic/students/:id）：画像 + 学分 + 预警 + 四页签（成绩/考试/补考重修/干预）+ 审计留痕。 */
 import { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppDescriptionList } from '@/components/common'
 import { getStudentAcademicDetail, batchRemindStudents } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AcademicStudentDetailView',
-  components: { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -194,6 +188,20 @@ export default {
     }
   },
   computed: {
+    profileItems() {
+      const s = this.detail && this.detail.student
+      if (!s) return []
+      return [
+        { label: '学院 / 专业', value: s.collegeName + ' · ' + s.majorName },
+        { label: 'GPA / 平均成绩', value: s.gpa.toFixed(1) + ' / ' + s.avgScore + ' 分' },
+        { label: '挂科门数', value: s.failedCount + ' 门' },
+        { label: '学分进度', value: s.obtainedCredits + ' / ' + s.requiredCredits + '（中期应达 60）' },
+        { label: '补考 / 重修', value: s.makeupCount + ' / ' + s.retakeCount },
+        { label: '辅导员', value: s.counselor },
+        { label: '联系电话', value: s.phone || '未登记' },
+        { label: '更新时间', value: s.updateTime }
+      ]
+    },
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [

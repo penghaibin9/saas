@@ -13,10 +13,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
-          <select v-model="termId" class="aa-select" @change="onTermChange">
-            <option value="">当前已发布批次</option>
-            <option v-for="t in terms" :key="t.termId" :value="t.termId">{{ t.yearCode }} 第 {{ t.termNo }} 学期</option>
-          </select>
+          <AppSelect v-model="termId" :options="termOptions" placeholder="" @change="onTermChange" />
         </label>
         <label class="aa-filter__item">
           周次
@@ -110,7 +107,7 @@
  * teaching-class），仅前端组合，与「班级课表」等单维度页数据来源完全一致。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppClassPicker, AppRemoteSelect } from '@/components/common'
+import { AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
@@ -123,7 +120,7 @@ const DIMS = [
 
 export default {
   name: 'AaWeekScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppClassPicker, AppRemoteSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     const u = currentUserFromToken() || {}
@@ -139,6 +136,10 @@ export default {
     }
   },
   computed: {
+    termOptions() {
+      return [{ value: '', label: '当前已发布批次' },
+        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))]
+    },
     hasSelection() {
       if (this.dim === 'class') return !!this.classId
       if (this.dim === 'teacher') return !!this.teacherKey

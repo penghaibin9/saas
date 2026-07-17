@@ -10,24 +10,7 @@
     </template>
 
     <div class="mp-stack">
-      <div class="aa-filter">
-        <label class="aa-filter__item">
-          审核状态
-          <select v-model="filters.status" class="aa-select" @change="search">
-            <option value="">全部</option>
-            <option value="PENDING">待审核</option>
-            <option value="APPROVED">已通过</option>
-            <option value="REJECTED">已驳回</option>
-          </select>
-        </label>
-        <label class="aa-filter__item">
-          更正字段
-          <select v-model="filters.fieldKey" class="aa-select" @change="search">
-            <option value="">全部</option>
-            <option v-for="(label, key) in FIELD_LABEL" :key="key" :value="key">{{ label }}</option>
-          </select>
-        </label>
-      </div>
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="resetFilters" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -131,7 +114,7 @@
  * 通过与驳回均走 AppConfirmDialog：通过虽无原因入参，但会立即写学籍主档且不可撤销，
  * 故仍需正规弹窗把新旧值摆出来核对（原为 window.confirm，与学工中心同类动作不一致）。
  */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppConfirmDialog, AppDescriptionList } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -148,7 +131,7 @@ function emptyForm() {
 
 export default {
   name: 'AaRosterCorrectionListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag,
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppStatusTag,
                AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppButton, AppDrawer,
                AppConfirmDialog, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
@@ -182,6 +165,28 @@ export default {
   computed: {
     fieldOptions() {
       return Object.keys(FIELD_LABEL).map((k) => ({ label: FIELD_LABEL[k], value: k }))
+    },
+    filterFields() {
+      return [
+        {
+          key: 'status',
+          label: '审核状态',
+          type: 'select',
+          placeholder: '全部',
+          options: [
+            { value: 'PENDING', label: '待审核' },
+            { value: 'APPROVED', label: '已通过' },
+            { value: 'REJECTED', label: '已驳回' }
+          ]
+        },
+        {
+          key: 'fieldKey',
+          label: '更正字段',
+          type: 'select',
+          placeholder: '全部',
+          options: Object.keys(FIELD_LABEL).map((k) => ({ value: k, label: FIELD_LABEL[k] }))
+        }
+      ]
     },
     fieldPlaceholder() {
       return FIELD_PLACEHOLDER[this.form.fieldKey] || ''
@@ -225,6 +230,7 @@ export default {
     goRoster(row) { this.$router.push(`/admin/academic-affairs/roster/${row.studentId}`) },
     onPageChange(page) { this.pagination.page = page; this.load() },
     search() { this.pagination.page = 1; this.load() },
+    resetFilters() { this.filters.status = ''; this.filters.fieldKey = ''; this.search() },
     onFieldChange() { this.form.newValue = '' },
     openCreate() {
       this.form = emptyForm()

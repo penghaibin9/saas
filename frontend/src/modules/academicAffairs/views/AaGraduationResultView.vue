@@ -19,11 +19,7 @@
       </AppSectionCard>
 
       <div class="aa-filter">
-        <select v-model="filters.overall" class="aa-select" @change="search">
-          <option value="">全部预审结果</option>
-          <option value="SYSTEM_PASSED">系统通过</option>
-          <option value="SYSTEM_ABNORMAL">系统异常</option>
-        </select>
+        <AppSelect v-model="filters.overall" :options="overallOptions" placeholder="" @change="search" />
         <button class="mp-btn" @click="search">查询</button>
       </div>
 
@@ -76,14 +72,14 @@
 <script>
 /** 毕业预审结果 + 复核（/admin/academic-affairs/graduation/:batchId/results）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { GRAD_ITEM_LABEL, GRAD_ITEM_RESULT, gradItemColor, OVERALL_LABEL, overallColor, CONCLUSION_LABEL, GRAD_STATUS_LABEL } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaGraduationResultView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -95,7 +91,14 @@ export default {
     }
   },
   computed: {
-    batchId() { return this.$route.params.batchId }
+    batchId() { return this.$route.params.batchId },
+    overallOptions() {
+      return [
+        { value: '', label: '全部预审结果' },
+        { value: 'SYSTEM_PASSED', label: '系统通过' },
+        { value: 'SYSTEM_ABNORMAL', label: '系统异常' }
+      ]
+    }
   },
   created() { this.load(); this.loadRosters() },
   methods: {
@@ -149,6 +152,7 @@ export default {
 .aa-roster-chip.is-comp { background: var(--fill-100, #f2f3f5); color: var(--text-700, #4e5969); }
 .aa-roster-chip.is-delay { background: var(--warning-50, #fffbeb); color: var(--warning-600, #d97706); }
 .aa-filter { display: flex; gap: 12px; align-items: center; }
+.aa-filter :deep(.app-select) { width: 220px; }
 .aa-select { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; }
 .aa-result-list { display: flex; flex-direction: column; gap: 12px; }
 .aa-items { display: flex; flex-wrap: wrap; gap: 8px 20px; }

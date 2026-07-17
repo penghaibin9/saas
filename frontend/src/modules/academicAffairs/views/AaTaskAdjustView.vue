@@ -13,14 +13,7 @@
 
       <div class="aa-filter">
         <label class="aa-filter__item">状态
-          <select v-model="filterStatus" class="aa-select" @change="load">
-            <option value="">全部（不含已并入合班）</option>
-            <option value="PENDING_ASSIGN">待分配</option>
-            <option value="ASSIGNED">已分配(待教师确认)</option>
-            <option value="REJECTED_BY_TEACHER">教师退回</option>
-            <option value="TEACHER_CONFIRMED">教师已确认</option>
-            <option value="READY">已就绪(可排课)</option>
-          </select>
+          <AppSelect v-model="filterStatus" :options="statusOptions" :placeholder="''" @change="load" />
         </label>
         <button class="mp-btn" :disabled="loading" @click="load">刷新</button>
       </div>
@@ -83,14 +76,14 @@
  * GET /academic-affairs/teaching-tasks（跨批次，排除 MERGED）+ POST /teaching-tasks/{taskId}/adjust。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTaskAdjustView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppInlineAlert },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -110,6 +103,16 @@ export default {
     }
   },
   computed: {
+    statusOptions() {
+      return [
+        { value: '', label: '全部（不含已并入合班）' },
+        { value: 'PENDING_ASSIGN', label: '待分配' },
+        { value: 'ASSIGNED', label: '已分配(待教师确认)' },
+        { value: 'REJECTED_BY_TEACHER', label: '教师退回' },
+        { value: 'TEACHER_CONFIRMED', label: '教师已确认' },
+        { value: 'READY', label: '已就绪(可排课)' }
+      ]
+    },
     rows() {
       // MERGED 成员任务不可调整（须先拆班），列表侧直接排除，避免用户点进死路
       return this.all.filter((r) => r.status !== 'MERGED')

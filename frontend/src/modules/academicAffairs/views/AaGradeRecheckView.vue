@@ -8,16 +8,12 @@
     <div class="mp-stack">
       <AppSectionCard title="选择成绩录入任务">
         <div class="aa-filter-row">
-          <select v-model="statusFilter" class="aa-input" @change="onFilterChange">
-            <option value="">全部状态</option>
-            <option value="NOT_STARTED">未开始</option>
-            <option value="INPUTTING">录入中</option>
-            <option value="SUBMITTED">待学院审核</option>
-            <option value="ACADEMIC_REVIEW">待教务终审</option>
-            <option value="PUBLISHED">已发布</option>
-            <option value="RETURNED">已退回</option>
-            <option value="ARCHIVED">已归档</option>
-          </select>
+          <AppSelect
+            v-model="statusFilter"
+            :options="statusOptions"
+            placeholder=""
+            @change="onFilterChange"
+          />
         </div>
         <ErrorState v-if="taskError" :description="taskError" @retry="loadTasks" />
         <LoadingState v-else-if="taskLoading" />
@@ -75,7 +71,7 @@
  * 学院教务员/教务处管理员/学校管理员不受 COURSE 范围收敛。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 const STATUS_LABEL = {
@@ -87,11 +83,21 @@ const EXCEPTION_LABEL = { NORMAL: '正常', ABSENT: '缺考', DEFERRED: '缓考'
 
 export default {
   name: 'AaGradeRecheckView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       statusFilter: '',
+      statusOptions: [
+        { value: '', label: '全部状态' },
+        { value: 'NOT_STARTED', label: '未开始' },
+        { value: 'INPUTTING', label: '录入中' },
+        { value: 'SUBMITTED', label: '待学院审核' },
+        { value: 'ACADEMIC_REVIEW', label: '待教务终审' },
+        { value: 'PUBLISHED', label: '已发布' },
+        { value: 'RETURNED', label: '已退回' },
+        { value: 'ARCHIVED', label: '已归档' }
+      ],
       taskLoading: true, taskError: '', taskRows: [],
       taskPagination: { page: 1, pageSize: 10, total: 0 },
       taskColumns: [

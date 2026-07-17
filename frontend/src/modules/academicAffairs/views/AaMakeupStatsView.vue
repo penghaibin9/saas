@@ -51,12 +51,15 @@
         <div v-if="groups" class="aamk-groups">
           <AppSectionCard v-for="c in cards" :key="`g-${c.key}`" :title="`${c.title} · ${dimensionLabel}分布`">
             <EmptyState v-if="!(groups[c.key] || []).length" title="暂无分组数据" />
-            <ul v-else class="aamk-group-list">
-              <li v-for="g in groups[c.key]" :key="g.key" class="aamk-group-item">
-                <span class="aamk-group-item__key">{{ g.key }}</span>
-                <span class="aamk-group-item__count">{{ g.count }}</span>
-              </li>
-            </ul>
+            <template v-else>
+              <AppG2Chart :spec="groupChartSpec(groups[c.key])" :height="220" />
+              <ul class="aamk-group-list">
+                <li v-for="g in groups[c.key]" :key="g.key" class="aamk-group-item">
+                  <span class="aamk-group-item__key">{{ g.key }}</span>
+                  <span class="aamk-group-item__count">{{ g.count }}</span>
+                </li>
+              </ul>
+            </template>
           </AppSectionCard>
         </div>
 
@@ -80,7 +83,7 @@
 <script>
 /** 补考重修缓考免修 · 统计分析（三级施工卡 10）：/admin/academic-affairs/makeup/stats，独立页面（非 console tab）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppSectionCard, AppExportConfirm } from '@/components/common'
+import { AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -100,7 +103,7 @@ const _DETAIL_COLUMNS = {
 
 export default {
   name: 'AaMakeupStatsView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppSectionCard, AppExportConfirm },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -133,6 +136,15 @@ export default {
     this.search()
   },
   methods: {
+    groupChartSpec(rows) {
+      return {
+        type: 'interval',
+        data: (rows || []).map((g) => ({ name: g.key, value: g.count })),
+        encode: { x: 'name', y: 'value' },
+        axis: { y: { title: null } },
+        style: { radiusTopLeft: 4, radiusTopRight: 4 }
+      }
+    },
     async search() {
       this.loading = true; this.error = ''; this.drillLine = ''; this.detailRows = []
       const res = await api.stats({

@@ -29,10 +29,7 @@
         <div class="aa-grid2">
           <label class="aa-field"><span class="req">成绩明细记录ID</span><input v-model.trim="reviewForm.recordId" class="aa-input" /></label>
           <label class="aa-field"><span class="req">审核节点</span>
-            <select v-model="reviewForm.node" class="aa-input">
-              <option value="college">学院初审</option>
-              <option value="academic">教务处终审</option>
-            </select>
+            <AppSelect v-model="reviewForm.node" :options="reviewNodeOptions" />
           </label>
         </div>
         <div class="aa-review-btns">
@@ -60,20 +57,24 @@
 <script>
 /** 成绩更正（/admin/academic-affairs/grade-change）：发起+两级审核。 */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard, AppConfirmDialog, AppQuickPhrases } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaGradeChangeView',
-  components: { ModulePageShell, AppSectionCard, AppConfirmDialog, AppQuickPhrases },
+  components: { ModulePageShell, AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       reqForm: { taskId: '', recordId: '', newUsualScore: null, newFinalScore: null, reason: '' },
       requesting: false,
       reviewForm: { recordId: '', node: 'college' },
+      reviewNodeOptions: [
+        { value: 'college', label: '学院初审' },
+        { value: 'academic', label: '教务处终审' }
+      ],
       reviewing: false,
       rejectDlg: { visible: false, submitting: false }
     }

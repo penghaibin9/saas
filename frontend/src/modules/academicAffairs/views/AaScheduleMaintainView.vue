@@ -62,11 +62,11 @@
         <label>起始周<input v-model.number="add.startWeek" type="number" min="1" class="aa-input" /></label>
         <label>结束周<input v-model.number="add.endWeek" type="number" min="1" class="aa-input" /></label>
         <label>单双周
-          <select v-model="add.weekParity" class="aa-input">
-            <option value="ALL">全周</option>
-            <option value="ODD">单周</option>
-            <option value="EVEN">双周</option>
-          </select>
+          <AppSelect
+            v-model="add.weekParity"
+            :options="weekParityOptions"
+            placeholder=""
+          />
         </label>
       </div>
     </AppConfirmDialog>
@@ -76,14 +76,14 @@
 <script>
 /** 课表维护（/admin/academic-affairs/schedule/:batchId/edit）：AaScheduleGrid 编辑态 + 排课 + 冲突 + 导入。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
-import { AppSectionCard, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaScheduleMaintainView',
-  components: { ModulePageShell, LoadingState, AppSectionCard, AppConfirmDialog, AppInlineAlert, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -94,7 +94,14 @@ export default {
     }
   },
   computed: {
-    batchId() { return this.$route.params.batchId }
+    batchId() { return this.$route.params.batchId },
+    weekParityOptions() {
+      return [
+        { value: 'ALL', label: '全周' },
+        { value: 'ODD', label: '单周' },
+        { value: 'EVEN', label: '双周' }
+      ]
+    }
   },
   created() { this.loadSlots() },
   methods: {

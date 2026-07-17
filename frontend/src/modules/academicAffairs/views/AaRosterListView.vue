@@ -6,21 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <div class="aa-filter">
-        <label class="aa-filter__item">
-          关键字
-          <input v-model.trim="filters.keyword" class="aa-input" placeholder="姓名 / 学号" @keyup.enter="search" />
-        </label>
-        <label class="aa-filter__item">
-          学籍状态
-          <select v-model="filters.status" class="aa-select">
-            <option value="">全部</option>
-            <option v-for="(label, val) in STATUS_LABEL" :key="val" :value="val">{{ label }}</option>
-          </select>
-        </label>
-        <button class="mp-btn" @click="search">查询</button>
-        <button class="mp-btn" @click="reset">重置</button>
-      </div>
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -59,7 +45,7 @@
 
 <script>
 /** 学籍名册（/admin/academic-affairs/roster）：GET /academic-affairs/roster（只读脱敏，无独立详情端点）。 */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
@@ -74,7 +60,7 @@ const CATEGORY_TITLE = { SUSPENDED: '休学学生', WITHDRAWN: '退学学生', R
 
 export default {
   name: 'AaRosterListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AdvancedFilter },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -102,6 +88,18 @@ export default {
     pageTitle() {
       const q = this.$route.query.status
       return (q && CATEGORY_TITLE[q]) || '学籍名册'
+    },
+    filterFields() {
+      return [
+        { key: 'keyword', label: '关键字', type: 'text', placeholder: '姓名 / 学号' },
+        {
+          key: 'status',
+          label: '学籍状态',
+          type: 'select',
+          placeholder: '全部',
+          options: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))
+        }
+      ]
     }
   },
   created() {

@@ -7,12 +7,7 @@
   >
     <div class="mp-stack">
       <div class="aa-filter-row">
-        <select v-model="bizType" class="aa-input" @change="onFilterChange">
-          <option value="">全部对象</option>
-          <option value="AA_GRADE_TASK">成绩任务（录入/提交/审核/发布/退回/归档）</option>
-          <option value="AA_GRADE_RECORD">成绩明细更正</option>
-          <option value="AA_GRADE_TRANSCRIPT">成绩单导出</option>
-        </select>
+        <AppSelect v-model="bizType" :options="bizTypeOptions" placeholder="" @change="onFilterChange" />
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -35,6 +30,7 @@
  * ACADEMIC_ADMIN/SCHOOL_ADMIN/COLLEGE_ADMIN 查全量，ACADEMIC_TEACHER 仅本人操作，其余角色 403。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 const BIZ_TYPE_LABEL = {
@@ -50,11 +46,17 @@ const ACTION_LABEL = {
 
 export default {
   name: 'AaGradeAuditView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       bizType: '',
+      bizTypeOptions: [
+        { value: '', label: '全部对象' },
+        { value: 'AA_GRADE_TASK', label: '成绩任务（录入/提交/审核/发布/退回/归档）' },
+        { value: 'AA_GRADE_RECORD', label: '成绩明细更正' },
+        { value: 'AA_GRADE_TRANSCRIPT', label: '成绩单导出' }
+      ],
       loading: true, error: '', rows: [],
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
