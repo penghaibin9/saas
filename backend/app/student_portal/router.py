@@ -36,6 +36,16 @@ def graduation_taskbook_print(user=Depends(get_current_user), body: dict = Body(
     return success(graduation.taskbook_print(user, body))
 
 
+@router.get("/graduation/proposal", summary="查看本人开题报告（本人）")
+def graduation_proposal(user=Depends(get_current_user)):
+    return success(graduation.proposal(user))
+
+
+@router.post("/graduation/proposal/submit", summary="提交/重交开题报告（长文本+附件）")
+def graduation_proposal_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(graduation.submit_proposal(user, body))
+
+
 # ── 首页工作台聚合 ──
 @router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
 def home_overview(user=Depends(get_current_user)):

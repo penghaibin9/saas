@@ -43,3 +43,28 @@ def taskbook_print(user: dict, body: dict) -> dict:
     return common.print_log(user, {"bizType": "GRADUATION_TASKBOOK",
                                    "bizId": str(body.get("bizId") or ""),
                                    "docName": "毕业设计任务书"})
+
+
+# ── 开题报告：长文档撰写 + 附件提交（复用现有 mobile 开题流程） ──
+
+def proposal(user: dict) -> dict:
+    """查看本人开题报告状态（可提交/可重交/驳回意见/历史）。"""
+    return stu.graduation_proposal(user)
+
+
+def submit_proposal(user: dict, body: dict) -> dict:
+    """提交/重交开题报告：长文本正文（研究背景/方案/预期成果）+ 附件 file_id 列表。
+
+    附件先经 /files/upload 得到 file_id，再随本接口以 attachments=[file_id,...] 携带。
+    """
+    body = body or {}
+    background = str(body.get("background") or "").strip()
+    plan = str(body.get("plan") or "").strip()
+    outcome = str(body.get("outcome") or "").strip()
+    attachments = body.get("attachments") or []
+    if not (background or plan or outcome):
+        raise AppException("VALIDATION_ERROR", "开题报告内容不能为空（研究背景/研究方案/预期成果至少填一项）")
+    if not isinstance(attachments, list):
+        raise AppException("VALIDATION_ERROR", "附件格式不正确")
+    return stu.graduation_submit_proposal(user, {
+        "background": background, "plan": plan, "outcome": outcome, "attachments": attachments})

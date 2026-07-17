@@ -97,6 +97,47 @@ def test_print_log(client, db_mode):
     assert r["code"] == 0 and r["data"]["watermark"] == "毕四"
 
 
+def _seed_gd_ready_for_proposal(no, name):
+    """建毕设学生（已过选题阶段，可提交开题）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
+    db = get_sessionmaker()()
+    db.add(GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
+                             topic_id=1, topic_title="XX系统的设计与实现", stage="PROPOSAL",
+                             risk_level="LOW", eligibility_status="PENDING",
+                             grad_qual_status="PENDING", record_status="ACTIVE"))
+    db.commit()
+    db.close()
+
+
+def test_view_and_submit_proposal(client, db_mode):
+    _seed_student("GD-P-101", "开题一")
+    _seed_gd_ready_for_proposal("GD-P-101", "开题一")
+    h = _stu_token("开题一", "GD-P-101")
+    v = client.get(f"{PORTAL}/proposal", headers=h).json()
+    assert v["code"] == 0 and v["data"]["hasData"] is True and v["data"]["canSubmit"] is True
+    r = client.post(f"{PORTAL}/proposal/submit", headers=h, json={
+        "background": "本课题研究XX系统，背景意义……（长文本）",
+        "plan": "需求分析→设计→实现→测试", "outcome": "系统+论文", "attachments": []}).json()
+    assert r["code"] == 0 and r["data"].get("id")
+
+
+def test_submit_proposal_empty_rejected(client, db_mode):
+    _seed_student("GD-P-102", "开题二")
+    _seed_gd_ready_for_proposal("GD-P-102", "开题二")
+    h = _stu_token("开题二", "GD-P-102")
+    assert client.post(f"{PORTAL}/proposal/submit", headers=h,
+                       json={"background": "", "plan": "", "outcome": ""}).json()["code"] != 0
+
+
+def test_submit_proposal_no_gd_record(client, db_mode):
+    _seed_student("GD-P-103", "开题三")  # 无毕设记录
+    h = _stu_token("开题三", "GD-P-103")
+    assert client.post(f"{PORTAL}/proposal/submit", headers=h,
+                       json={"background": "x内容"}).json()["code"] != 0
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/taskbook", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/proposal", headers=admin).json()["code"] == 403001
