@@ -21,6 +21,7 @@ LOCK_SECONDS = 15 * 60
 
 _refresh: dict[str, dict] = {}          # refreshToken -> {claims, exp}（内存回落）
 _blocked_jti: dict[str, float] = {}     # jti -> exp（内存回落 + L1 缓存）
+_allowed_jti: dict[str, float] = {}     # jti -> short L1 expiry; avoids DB-per-request when Redis is down
 _fail: dict[str, list] = {}             # key -> [count, first_ts, locked_until]
 _buckets: dict[str, deque] = defaultdict(deque)
 
@@ -128,6 +129,9 @@ def block_jti(jti: str, exp_ts: float | None = None) -> None:
         return
     exp = exp_ts or (_now() + 7200)
     _blocked_jti[jti] = exp  # L1：本进程立即生效
+    _allowed_jti.pop(jti, None)
+    from app.core.redis_client import cache_set
+    cache_set(f"auth:jti:{jti}", "1", max(1, int(exp - _now())))
     db = _db()
     if db is not None:
         try:
@@ -152,6 +156,19 @@ def jti_blocked(jti: str | None) -> bool:
             _blocked_jti.pop(jti, None)
             return False
         return True
+    allowed_until = _allowed_jti.get(jti)
+    if allowed_until is not None:
+        if allowed_until >= _now():
+            return False
+        _allowed_jti.pop(jti, None)
+    from app.core.redis_client import cache_get, cache_set, get_redis
+    cached = cache_get(f"auth:jti:{jti}")
+    if cached == "1":
+        _blocked_jti[jti] = _now() + 60
+        return True
+    if cached == "0":
+        _allowed_jti[jti] = _now() + 60
+        return False
     db = _db()
     if db is not None:
         try:
@@ -160,17 +177,32 @@ def jti_blocked(jti: str | None) -> bool:
             row = db.scalars(select(AuthBlockedJti).where(AuthBlockedJti.jti == jti)).first()
             if row is not None and row.expires_at >= datetime.utcnow():
                 _blocked_jti[jti] = row.expires_at.timestamp()  # 回填 L1
+                cache_set(f"auth:jti:{jti}", "1", max(1, int(row.expires_at.timestamp() - _now())))
                 return True
         except Exception:  # noqa: BLE001 — 查询异常按未拉黑处理（access 本身有过期时间兜底）
             pass
         finally:
             db.close()
+    # Cache a negative lookup.  Redis overwrites this immediately on logout;
+    # when Redis is unavailable the short L1 TTL bounds the revocation delay.
+    if get_redis() is not None:
+        cache_set(f"auth:jti:{jti}", "0", 7200)
+        _allowed_jti[jti] = _now() + 60
+    else:
+        _allowed_jti[jti] = _now() + 5
     return False
 
 
 # ── 登录失败锁定 ──
 def login_locked(key: str) -> int:
     """返回剩余锁定秒数（0=未锁定）。"""
+    from app.core.redis_client import cache_get
+    shared = cache_get(f"auth:login-lock:{key}")
+    if shared:
+        try:
+            return max(0, int(float(shared) - _now()))
+        except (TypeError, ValueError):
+            pass
     rec = _fail.get(key)
     if not rec:
         return 0
@@ -183,6 +215,14 @@ def login_locked(key: str) -> int:
 
 def record_login_failure(key: str) -> tuple[int, int]:
     """记一次失败。返回 (累计次数, 锁定剩余秒数)。达到阈值即锁定 15 分钟。"""
+    from app.core.redis_client import cache_set, increment_with_ttl
+    shared_count = increment_with_ttl(f"auth:login-fail:{key}", LOCK_SECONDS)
+    if shared_count is not None:
+        if shared_count >= LOCK_THRESHOLD:
+            until = _now() + LOCK_SECONDS
+            cache_set(f"auth:login-lock:{key}", str(until), LOCK_SECONDS)
+            return shared_count, LOCK_SECONDS
+        return shared_count, 0
     rec = _fail.setdefault(key, [0, _now(), 0.0])
     rec[0] += 1
     if rec[0] >= LOCK_THRESHOLD:
@@ -192,12 +232,18 @@ def record_login_failure(key: str) -> tuple[int, int]:
 
 
 def reset_login_failures(key: str) -> None:
+    from app.core.redis_client import cache_delete
+    cache_delete(f"auth:login-fail:{key}", f"auth:login-lock:{key}")
     _fail.pop(key, None)
 
 
 # ── 滑动窗口限流 ──
 def rate_limit(bucket: str, limit: int, window: int = 60) -> bool:
     """True=放行；False=超限。"""
+    from app.core.redis_client import fixed_window_allow
+    shared = fixed_window_allow(bucket, limit, window)
+    if shared is not None:
+        return shared
     q = _buckets[bucket]
     now = _now()
     while q and q[0] <= now - window:
@@ -212,5 +258,6 @@ def reset_all_for_tests() -> None:
     """仅测试用：清空全部内存态。"""
     _refresh.clear()
     _blocked_jti.clear()
+    _allowed_jti.clear()
     _fail.clear()
     _buckets.clear()

@@ -99,6 +99,17 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     if str(user.get("userId") or "").startswith("db-"):
         from app.services.auth_service_db import validate_token_subject
         validate_token_subject(user)
+    # Redis 可用时所有 worker 共享限流；不可用时 token_store 自动退回进程内保护，
+    # 不因缓存故障阻断正常鉴权。租户与用户双层桶避免单校/单账号挤占全部资源。
+    tenant_id = str(user.get("tenantId") or "")
+    user_id = str(user.get("userId") or "")
+    if tenant_id and user_id:
+        from app.core.exceptions import AppException
+        from app.core.token_store import rate_limit
+        if not rate_limit(f"api:tenant:{tenant_id}", settings.TENANT_API_RATE_LIMIT_PER_SECOND, 1):
+            raise AppException("RATE_LIMITED", "当前学校请求过于集中，请稍后重试")
+        if not rate_limit(f"api:user:{tenant_id}:{user_id}", settings.USER_API_RATE_LIMIT_PER_SECOND, 1):
+            raise AppException("RATE_LIMITED", "请求过于频繁，请稍后重试")
     set_current_user(user)
     return user
 

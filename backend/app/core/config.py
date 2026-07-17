@@ -58,7 +58,14 @@ class Settings(BaseSettings):
     # ── 数据库 ──
     DB_ENABLED: bool = False             # 关闭时走 mock；开启后按 effective_database_url 连库
     DATABASE_URL: str = ""               # 显式连接串（最高优先级）：sqlite/mysql/postgresql 均可；留空则按 DB_DRIVER 组装
-    REDIS_URL: str = ""                  # 预留（缓存）
+    REDIS_URL: str = ""                  # 多实例共享鉴权、限流与短时业务缓存；空值时安全降级
+    REDIS_KEY_PREFIX: str = "school-lifecycle"
+    REDIS_CONNECT_TIMEOUT: float = 0.3
+    REDIS_SOCKET_TIMEOUT: float = 0.5
+    AUTH_SUBJECT_CACHE_TTL: int = 30      # 账号/租户/角色复核缓存；关键变更会主动失效
+    HOME_CACHE_TTL: int = 20              # 学生首页短缓存，写操作后主动失效
+    TENANT_API_RATE_LIMIT_PER_SECOND: int = 500  # 单校 API 总量保护；Redis 下多实例共享
+    USER_API_RATE_LIMIT_PER_SECOND: int = 120    # 单用户突发保护；正常首页并发不会误伤
     FILE_STORAGE_ENDPOINT: str = ""      # 预留（MinIO/对象存储）
 
     # ── 数据库分项配置（DATABASE_URL 留空时按此组装）──

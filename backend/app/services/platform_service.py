@@ -54,6 +54,9 @@ def put_config_json(tenant_id: int, ctype: str, key: str, payload: dict, enabled
                                  config_json=payload, enabled=enabled)
             db.add(row)
         db.commit()
+        if ctype == "TENANT_META":
+            from app.services.auth_service_db import invalidate_tenant_subject_caches
+            invalidate_tenant_subject_caches(tenant_id)
         return dict(payload)
 
 
@@ -439,6 +442,8 @@ def set_user_status(user_id: int, status: str) -> dict:
         u.status = status
         u.version += 1
         db.commit()
+        from app.services.auth_service_db import invalidate_subject_cache
+        invalidate_subject_cache(f"db-{u.id}", u.tenant_id)
         if status != "ACTIVE":
             from app.core.token_store import revoke_refresh_by_user
             revoke_refresh_by_user(f"db-{u.id}")
@@ -457,6 +462,8 @@ def reset_user_password(user_id: int) -> dict:
         u.must_change_password = True
         u.version += 1
         db.commit()
+        from app.services.auth_service_db import invalidate_subject_cache
+        invalidate_subject_cache(f"db-{u.id}", u.tenant_id)
         from app.core.token_store import revoke_refresh_by_user
         revoke_refresh_by_user(f"db-{u.id}")
         return {"userId": str(u.id), "newPassword": pwd, "tenantId": str(u.tenant_id),

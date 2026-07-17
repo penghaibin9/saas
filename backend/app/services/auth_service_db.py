@@ -11,6 +11,8 @@ from datetime import datetime
 from sqlalchemy import and_, select
 
 from app.core.exceptions import AppException
+from app.core.config import settings
+from app.core.redis_client import cache_delete, cache_get_json, cache_set_json
 from app.core.security import create_access_token, hash_password, verify_password
 from app.core.token_store import (block_jti, issue_refresh, login_locked,
                                   record_login_failure, reset_login_failures,
@@ -31,6 +33,34 @@ LEGACY_DEMO_ROLE_BY_LOGIN = {
     "counselor_demo": ("COUNSELOR", "辅导员", "COUNSELOR_CLASSES", "所带班级学生（演示租户）"),
     "student_demo": ("STUDENT", "学生", "SELF", "本人"),
 }
+
+
+def _subject_cache_key(user_ctx: dict) -> str:
+    return (f"auth:subject:{user_ctx.get('tenantId') or '0'}:"
+            f"{user_ctx.get('userId') or '-'}")
+
+
+def invalidate_subject_cache(user_id: str | int, tenant_id: str | int,
+                             context_id: str | None = None) -> None:
+    """Invalidate a known subject cache entry after security-sensitive writes."""
+    cache_delete(f"auth:subject:{tenant_id}:{user_id}")
+
+
+def invalidate_tenant_subject_caches(tenant_id: str | int) -> int:
+    """Invalidate every cached account/role/status decision for one school."""
+    from app.core.redis_client import cache_delete_pattern
+    return cache_delete_pattern(f"auth:subject:{tenant_id}:*")
+
+
+def _subject_cache_matches(user_ctx: dict) -> bool:
+    cached = cache_get_json(_subject_cache_key(user_ctx))
+    if not isinstance(cached, dict):
+        return False
+    return (
+        cached.get("active") is True
+        and cached.get("roleCode") == user_ctx.get("currentRoleCode")
+        and cached.get("permissionVersion") == user_ctx.get("permissionVersion")
+    )
 
 # 这里只描述角色的默认范围策略；最终可见数据仍由各业务域真实关系解析器收敛。
 ROLE_DEFAULT_SCOPE: dict[str, tuple[str, str]] = {
@@ -344,6 +374,8 @@ def validate_token_subject(user_ctx: dict) -> dict:
     """对真实账号逐请求复核账号、租户、当前角色和权限版本，角色回收立即生效。"""
     if not db_enabled() or not str((user_ctx or {}).get("userId") or "").startswith("db-"):
         return user_ctx
+    if _subject_cache_matches(user_ctx):
+        return user_ctx
     db = get_sessionmaker()()
     try:
         user = _load_token_user(db, user_ctx)
@@ -357,6 +389,11 @@ def validate_token_subject(user_ctx: dict) -> dict:
         token_version = user_ctx.get("permissionVersion")
         if token_version and token_version != _permission_version(user, contexts):
             raise AppException("UNAUTHORIZED", "权限配置已更新，请重新登录")
+        cache_set_json(_subject_cache_key(user_ctx), {
+            "active": True,
+            "roleCode": current["roleCode"],
+            "permissionVersion": _permission_version(user, contexts),
+        }, settings.AUTH_SUBJECT_CACHE_TTL)
         return user_ctx
     finally:
         db.close()
@@ -460,6 +497,8 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
         user.must_change_password = False
         user.version = int(user.version or 0) + 1
         db.commit()
+        invalidate_subject_cache(f"db-{user.id}", user.tenant_id,
+                                 user_ctx.get("activeContextId"))
         revoke_refresh_by_user(f"db-{user.id}")
         from app.services import audit_log
         audit_log.record("PASSWORD_CHANGE", user.login_name, detail={}, result="SUCCESS")

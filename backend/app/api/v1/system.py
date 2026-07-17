@@ -272,6 +272,8 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
             db.add(UserRole(tenant_id=tenant_id, user_id=account.id, role_id=role_id, status="ACTIVE"))
         account.version = int(account.version or 0) + 1
         db.commit()
+        from app.services.auth_service_db import invalidate_subject_cache
+        invalidate_subject_cache(f"db-{account.id}", tenant_id)
         from app.services import audit_log
         audit_log.record("USER_ROLE_ASSIGN", f"user:{account.id}", detail={"loginName": account.login_name,
                          "roleCodes": codes})
@@ -437,6 +439,8 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
         _set_role_scope(role, body.get("scopeCode") or _role_scope(role))
         role.version = int(role.version or 0) + 1
         db.commit()
+        from app.services.auth_service_db import invalidate_tenant_subject_caches
+        invalidate_tenant_subject_caches(tenant_id)
         from app.services import audit_log
         audit_log.record("ROLE_PERMISSION_CONFIG", f"role:{role.id}",
                          detail={"roleCode": role.role_code, "permissionCount": len(codes),
