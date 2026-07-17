@@ -66,12 +66,17 @@ def me_overview(user: dict) -> dict:
             UnifiedTodo.tenant_id == _tid(), UnifiedTodo.is_deleted.is_(False),
             UnifiedTodo.student_id == sid, UnifiedTodo.status == "PENDING").limit(10)).all()
         # P0 修复：原查询未按 receiver_id 过滤，会把租户内其他人（含处分/资助/请假等敏感通知）
-        # 的最新消息展示给本学生。receiver_id 存的是 user_id，不是学生档案 id，
-        # 与 my_messages() 保持一致：解析不到本人 uid 时宁可不展示，也不放开 receiver 过滤。
+        # 的最新消息展示给本学生。
+        # 分角色测试进一步发现：全仓库所有业务写入点（请假/资助/困难认定/学业预警/
+        # 教师发通知等 _msg()/UnifiedMessage(...) 调用，见 affairs_leave_service.py 等）
+        # 一律写 receiver_id=StudentProfile.id，从未写 user_id；这里却只按 _resolve_uid()
+        # 解出的 user_id 过滤，导致真实登录学生的 receiver_id 永远对不上、消息永久不可见
+        # （比"未过滤"更隐蔽：不报错、不泄露，只是安静地什么都不显示）。改为 sid/uid 双兼容。
         uid = _resolve_uid(u)
+        personal_ids = [x for x in (sid, uid) if x is not None]
         notices = db.scalars(select(UnifiedMessage).where(
             UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-            UnifiedMessage.receiver_id.in_([uid, 0]) if uid is not None else UnifiedMessage.receiver_id == 0
+            UnifiedMessage.receiver_id.in_(personal_ids + [0])
         ).order_by(UnifiedMessage.id.desc()).limit(5)).all()
         # 各域是否有我的记录 + 关键状态
         intern = db.scalars(select(InternshipRecord).where(
@@ -94,8 +99,7 @@ def me_overview(user: dict) -> dict:
             EmpStudent.is_deleted.is_(False))).first()
         unread_count = (db.scalar(select(func.count()).select_from(UnifiedMessage).where(
             UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-            UnifiedMessage.receiver_id == uid, UnifiedMessage.status == "UNREAD"))
-            if uid is not None else 0) or 0
+            UnifiedMessage.receiver_id.in_(personal_ids), UnifiedMessage.status == "UNREAD")) or 0)
         alerts = []
         if warn:
             alerts.append({"level": "HIGH", "title": "你有学业预警待跟进", "domain": "academic"})
@@ -179,15 +183,15 @@ def my_messages(user: dict) -> dict:
                               "deadline": _iso(getattr(t, "due_at", None)),
                               "read": (t.status or "") != "PENDING",
                               "status": t.status, "link": t.source_module or ""})
-        # 通知 → 本人接收的统一消息（receiver_id 精准匹配本人 user_id；
-        # mock 演示令牌无数字 uid 时，以学生主档 id 兜底匹配演示种子消息）
+        # 通知 → 本人接收的统一消息。全仓库业务写入点一律 receiver_id=StudentProfile.id
+        # （sid），非 user_id；sid/uid 双兼容，避免真实登录学生因 user_id 对不上而永久
+        # 看不到请假/资助/预警等审批结果通知（分角色测试发现，详见 me_overview 同款注释）。
         uid = _resolve_uid(u)
-        if uid is None:
-            uid = sid
-        if uid is not None:
+        personal_ids = [x for x in (sid, uid) if x is not None]
+        if personal_ids:
             notices = db.scalars(select(UnifiedMessage).where(
                 UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-                UnifiedMessage.receiver_id == uid).order_by(UnifiedMessage.id.desc()).limit(30)).all()
+                UnifiedMessage.receiver_id.in_(personal_ids)).order_by(UnifiedMessage.id.desc()).limit(30)).all()
             for m in notices:
                 notice_msgs.append({"id": "msg-" + str(m.id), "title": m.title,
                                     "content": m.content or "", "module": m.source_module or "通知",
@@ -256,13 +260,12 @@ def message_mark_read(user: dict, message_id) -> dict:
         if not stu:
             raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
         uid = _resolve_uid(u)
-        if uid is None:
-            uid = stu.id
+        personal_ids = {x for x in (stu.id, uid) if x is not None}
         from datetime import datetime as _dt
 
         from app.models import UnifiedMessage
         m = db.get(UnifiedMessage, mid)
-        if m is None or m.is_deleted or m.tenant_id != _tid() or m.receiver_id != uid:
+        if m is None or m.is_deleted or m.tenant_id != _tid() or m.receiver_id not in personal_ids:
             raise AppException("DATA_NOT_FOUND", "消息不存在")
         if (m.status or "") != "READ":
             m.status = "READ"
