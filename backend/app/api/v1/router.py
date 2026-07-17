@@ -18,6 +18,7 @@ from app.api.v1 import notification
 from app.student_portal.router import router as student_portal_router
 from app.api.v1 import onboarding
 from app.api.v1 import user_preference  # 通用用户偏好（/me/preferences，新手引导「已看过」等）
+from app.api.v1 import feedback  # 帮助与反馈工单（/feedback/*，本人提交 + 处理侧受理）
 from app.modules.academic_affairs.routers import academic_affairs
 from app.api.v1 import stats
 from app.api.v1 import student_affairs
@@ -154,4 +155,5 @@ api_router.include_router(student_portal_admin.router)                        # 
 api_router.include_router(onboarding.router)                                  # /api/v1/onboarding/*
 api_router.include_router(notification.router)                                # /api/v1/notification/*
 api_router.include_router(user_preference.router)                             # /api/v1/me/preferences（本人偏好·全端共用）
+api_router.include_router(feedback.router)                                     # /api/v1/feedback/*（帮助与反馈工单）
 api_router.include_router(system.router, tags=["system"])                     # /api/v1/system/info
