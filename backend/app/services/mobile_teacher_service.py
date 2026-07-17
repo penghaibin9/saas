@@ -710,6 +710,31 @@ def affairs_cadre_remove(user: dict, cadre_id: str, reason: str | None = None) -
     return result
 
 
+# ══════════ 教务·教师任务确认（直接复用 academic_affairs_task_service，该函数已按
+# teacher_key 自校验归属，管理角色代管豁免；list 用 mine=True 收敛为本人任务） ══════════
+
+def affairs_academic_my_tasks(user: dict, status: str | None = None) -> dict:
+    """我的教学任务（仅本人 teacher_key 命中的任务，PENDING_ASSIGN/ASSIGNED 等各状态均可查看）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.academic_affairs.services import academic_affairs_task_service as task_svc
+    items, total = task_svc.list_all_tasks(u, status=status, mine=True, page=1, page_size=200)
+    return {"list": items, "total": total}
+
+
+def affairs_academic_task_act(user: dict, task_id: str, action: str, reason: str | None = None) -> dict:
+    """确认/退回教学任务（归属校验在服务层 _check_teacher_scope 完成，退回原因≥5字同 PC 口径）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.academic_affairs.services import academic_affairs_task_service as task_svc
+    result = task_svc.teacher_act(task_id, u, action, reason or "")
+    _audit_write("MOBILE_ACADEMIC_TASK_ACT", f"academic-task:{task_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
 # ══════════ 数据看板（移动端包装，直接复用既有 affairs_dashboard_service.get_dashboard，
 # 该函数已按数据范围收敛且指标全部真实聚合，零改造） ══════════
 

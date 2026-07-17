@@ -196,6 +196,9 @@ export const teacherApi = {
   getAffairsCadreList: (classId) => real.teacherAffairsCadreList(classId),
   appointAffairsCadre: (classId, body) => real.teacherAffairsCadreAppoint(classId, body),
   removeAffairsCadre: (cadreId, reason) => real.teacherAffairsCadreRemove(cadreId, reason),
+  // 教务·教学任务确认（我的任务按 teacherKey 收敛+确认/退回，归属校验在服务层完成，真实接口，无 mock 兜底）
+  getAcademicMyTasks: (status) => real.teacherAcademicMyTasks(status),
+  actAcademicTask: (taskId, action, reason) => real.teacherAcademicTaskAct(taskId, action, reason),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

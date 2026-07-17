@@ -281,6 +281,11 @@ export const teacherAffairsCadreAppoint = (classId, body) =>
 export const teacherAffairsCadreRemove = (cadreId, reason) =>
   realRequest(`/mobile/teacher/affairs/classes/cadres/${cadreId}/remove`, { method: 'POST', data: { reason: reason || '' } })
 
+export const teacherAcademicMyTasks = (status) =>
+  realRequest('/mobile/teacher/academic/tasks', { data: status ? { status } : {} })
+export const teacherAcademicTaskAct = (taskId, action, reason) =>
+  realRequest(`/mobile/teacher/academic/tasks/${taskId}/act`, { method: 'POST', data: { action, reason: reason || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

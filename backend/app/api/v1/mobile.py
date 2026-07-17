@@ -655,6 +655,17 @@ def teacher_affairs_cadre_remove(cadre_id: str, body: dict = Body(default={}), u
     return success(tea.affairs_cadre_remove(user, cadre_id, (body or {}).get("reason")), message="已免去")
 
 
+@router.get("/teacher/academic/tasks", summary="教务老师·我的教学任务（按本人 teacherKey 收敛）")
+def teacher_academic_my_tasks(status: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_my_tasks(user, status))
+
+
+@router.post("/teacher/academic/tasks/{task_id}/act", summary="教务老师·确认/退回教学任务（归属校验在服务层完成）")
+def teacher_academic_task_act(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_task_act(
+        user, task_id, str(body.get("action") or "").upper(), body.get("reason")), message="已处理")
+
+
 @router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
 def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.notify_publish(user, body), message="通知已发布")
