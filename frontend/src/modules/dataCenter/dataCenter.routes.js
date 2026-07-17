@@ -1,8 +1,7 @@
 /**
  * 数据中心（数据驾驶舱）模块路由描述（moduleCode: DATA_CENTER）。
- * 本文件为模块路由描述，待集成阶段接入全局 router，本任务不修改全局 router。
- * 集成方式（后续批次）：在全局路由表中并入 dataCenterRoutes，或逐条 router.addRoute。
- * 禁止在本批次将本文件 import 到任何现有文件。
+ * 已在 router/index.js 中 import dataCenterRoutes 并并入全局路由表（集成完成）。
+ * 早期注释「禁止 import 到任何现有文件」为集成前的批次约束，现已过期，故订正。
  */
 export const dataCenterRoutes = [
   {

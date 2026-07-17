@@ -8,6 +8,9 @@ from sqlalchemy import func, select
 from app.services.db_service import _iso, _tid, session
 
 
+_CALIBER_LABELS = {"REGISTERED": "在册口径", "NATURAL": "自然口径"}
+
+
 def _count(db, model, *conds):
     q = select(func.count()).select_from(model).where(model.tenant_id == _tid(), *conds)
     return db.scalar(q) or 0
@@ -47,9 +50,10 @@ def get_overview(caliber: str = "REGISTERED") -> dict:
         def rate(a, b):
             return f"{(a / b * 100):.1f}" if b else "0.0"
 
+        caliber_label = _CALIBER_LABELS.get(caliber, "在册口径")
         return {
-            "caliber": caliber, "caliberLabel": "在册口径",
-            "caliberNote": "在册口径 = 学籍状态为「在册」的学生；比率类指标分母均为对应在册群体（真实聚合）",
+            "caliber": caliber, "caliberLabel": caliber_label,
+            "caliberNote": f"{caliber_label}：当前各域按学籍在册（record_status=ACTIVE）实时聚合",
             "updatedAt": _iso(datetime.now()),
             "stageFlow": [
                 {"label": "迎新报到", "value": ori},
