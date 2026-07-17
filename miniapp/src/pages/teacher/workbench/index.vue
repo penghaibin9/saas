@@ -168,6 +168,7 @@ export default {
         classCadre: '/pages/teacher/class-cadre/index',
         academicTask: '/pages/teacher/academic-task/index',
         scheduleChange: '/pages/teacher/schedule-change/index',
+        examDefer: '/pages/teacher/exam-defer/index',
         notifyPublish: '/pages/teacher/notify-publish/index',
         overview: '/pages/teacher/dashboard/index',
         orientationVerify: '/pages/teacher/orientation/verify/index',

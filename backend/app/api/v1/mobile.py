@@ -696,6 +696,17 @@ def teacher_academic_schedule_cancel(change_id: str, body: dict = Body(default={
     return success(tea.affairs_academic_schedule_cancel(user, change_id, (body or {}).get("reason")), message="已撤销")
 
 
+@router.get("/teacher/academic/defer/pending", summary="辅导员/任课教师·缓考待我审批（按当前身份节点自动收敛）")
+def teacher_academic_defer_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_academic_defer_pending(user))
+
+
+@router.post("/teacher/academic/defer/{defer_id}/review", summary="辅导员/任课教师·缓考审批（APPROVE/RETURN/REJECT）")
+def teacher_academic_defer_review(defer_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_defer_review(
+        user, defer_id, str(body.get("action") or "").upper(), body.get("reason")), message="已处理")
+
+
 @router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
 def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.notify_publish(user, body), message="通知已发布")

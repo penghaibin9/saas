@@ -299,6 +299,10 @@ export const teacherAcademicScheduleChangeDetail = (changeId) =>
 export const teacherAcademicScheduleCancel = (changeId, reason) =>
   realRequest(`/mobile/teacher/academic/schedule-changes/${changeId}/cancel`, { method: 'POST', data: { reason: reason || '' } })
 
+export const teacherAcademicDeferPending = () => realRequest('/mobile/teacher/academic/defer/pending')
+export const teacherAcademicDeferReview = (deferId, action, reason) =>
+  realRequest(`/mobile/teacher/academic/defer/${deferId}/review`, { method: 'POST', data: { action, reason: reason || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

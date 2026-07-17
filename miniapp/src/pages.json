@@ -392,6 +392,10 @@
       "style": { "navigationBarTitleText": "调停课管理", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/exam-defer/index",
+      "style": { "navigationBarTitleText": "缓考审批", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

@@ -206,6 +206,9 @@ export const teacherApi = {
   getAcademicScheduleChanges: (status) => real.teacherAcademicScheduleChanges(status),
   getAcademicScheduleChangeDetail: (changeId) => real.teacherAcademicScheduleChangeDetail(changeId),
   cancelAcademicScheduleChange: (changeId, reason) => real.teacherAcademicScheduleCancel(changeId, reason),
+  // 缓考审批（辅导员初审+任课教师确认两节点身份共用，按当前身份自动收敛为对应节点队列，真实接口，无 mock 兜底）
+  getAcademicDeferPending: () => real.teacherAcademicDeferPending(),
+  reviewAcademicDefer: (deferId, action, reason) => real.teacherAcademicDeferReview(deferId, action, reason),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

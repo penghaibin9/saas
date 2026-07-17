@@ -824,6 +824,55 @@ def affairs_academic_schedule_change_detail(user: dict, change_id: str) -> dict:
     raise AppException("NO_DATA_SCOPE", "仅可查看本人发起的调停课单")
 
 
+# ══════════ 缓考审批（辅导员初审 + 任课教师确认两个节点身份，复用同一 defer_review；
+# PC 端 defer_list 本身对非学生模式无范围过滤（返回全校数据），不能直接复用，
+# 仿答辩评委 judge_pending() 写法：按当前身份对应节点先圈定候选状态集合，
+# 再逐条复用 PC 端 _check_defer_scope 同款范围判断，只留下真正轮到本人审批的） ══════════
+
+_DEFER_NODE_STATUS_BY_ROLE = {"COUNSELOR": "COUNSELOR_REVIEW", "ACADEMIC_TEACHER": "TEACHER_CONFIRM"}
+
+
+def affairs_academic_defer_pending(user: dict) -> dict:
+    """缓考待我审批（覆盖 COUNSELOR/ACADEMIC_TEACHER 两个节点身份，其余身份返回空列表）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    role = (u.get("currentRoleCode") or "").upper()
+    node_status = _DEFER_NODE_STATUS_BY_ROLE.get(role)
+    if not node_status:
+        return {"list": [], "total": 0}
+    from app.core.exceptions import AppException as _AppExc
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
+    rows, _total = exam_svc.defer_list(u, status=node_status, page=1, page_size=500)
+    items = []
+    with _session() as db:
+        from app.models import AaDeferredExam
+        ctx = exam_svc.build_affairs_context(u, db)
+        for row in rows:
+            d = db.get(AaDeferredExam, int(row["deferId"]))
+            if not d:
+                continue
+            try:
+                exam_svc._check_defer_scope(u, db, ctx, d)
+            except _AppExc:
+                continue
+            items.append(row)
+    return {"list": items, "total": len(items)}
+
+
+def affairs_academic_defer_review(user: dict, defer_id: str, action: str, reason: str | None = None) -> dict:
+    """缓考审批动作（APPROVE 推进/RETURN 退回/REJECT 驳回），节点角色+范围校验在服务层
+    _check_defer_scope 完成（辅导员限本人所带班级/任课教师限本人授课）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
+    result = exam_svc.defer_review(u, defer_id, action, reason or "")
+    _audit_write("MOBILE_ACADEMIC_DEFER_REVIEW", f"defer:{defer_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
 # ══════════ 数据看板（移动端包装，直接复用既有 affairs_dashboard_service.get_dashboard，
 # 该函数已按数据范围收敛且指标全部真实聚合，零改造） ══════════
 
