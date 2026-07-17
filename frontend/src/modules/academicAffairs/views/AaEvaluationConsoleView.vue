@@ -85,7 +85,8 @@
       </template>
     </AppDrawer>
 
-    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
+    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage"
+                      :require-reason="confirmRequireReason" :reason-label="confirmReasonLabel" @confirm="onConfirm" />
   </ModulePageShell>
 </template>
 
@@ -117,7 +118,8 @@ export default {
         { label: '学生评教', value: 'STUDENT' }, { label: '教师自评', value: 'SELF' },
         { label: '同行评价', value: 'PEER' }, { label: '督导评价', value: 'SUPERVISOR' }
       ],
-      saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
+      saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      confirmRequireReason: false, confirmReasonLabel: ''
     }
   },
   async created() {
@@ -167,6 +169,7 @@ export default {
       if (res.code === 0) { toast.success(`已生成 ${res.data.taskCount} 条`); this.genVisible = false; this.select(this.current) } else toast.error(res.message)
     },
     lc(fn, label) {
+      this.confirmRequireReason = false
       this.confirmTitle = label; this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
       this.pendingAction = async () => {
         const res = await api[fn](this.current.batchId)
@@ -179,13 +182,17 @@ export default {
       const res = await api.reviewAppeal(id, action)
       if (res.code === 0) { toast.success('已受理'); this.loadAppeals() } else toast.error(res.message)
     },
-    async rejectAppeal(id) {
-      const reason = window.prompt('驳回原因（≥5字）')
-      if (!reason || reason.trim().length < 5) { toast.error('原因至少5字'); return }
-      const res = await api.reviewAppeal(id, 'REJECT', reason.trim())
-      if (res.code === 0) { toast.success('已驳回'); this.loadAppeals() } else toast.error(res.message)
+    rejectAppeal(id) {
+      this.confirmRequireReason = true
+      this.confirmReasonLabel = '驳回原因（≥5 字）'
+      this.confirmTitle = '驳回申诉'; this.confirmMessage = '请填写驳回原因，将记入审计并通知申诉人。'
+      this.pendingAction = async (reason) => {
+        const res = await api.reviewAppeal(id, 'REJECT', (reason || '').trim())
+        if (res.code === 0) { toast.success('已驳回'); this.loadAppeals() } else toast.error(res.message)
+      }
+      this.confirmVisible = true
     },
-    onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
+    onConfirm(payload = {}) { const a = this.pendingAction; this.pendingAction = null; this.confirmRequireReason = false; if (a) a(payload && payload.reason) }
   }
 }
 </script>

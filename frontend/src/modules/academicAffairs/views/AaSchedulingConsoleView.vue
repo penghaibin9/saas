@@ -115,7 +115,8 @@
       </template>
     </AppDrawer>
 
-    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
+    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage"
+                      :require-reason="confirmRequireReason" :reason-label="confirmReasonLabel" @confirm="onConfirm" />
   </ModulePageShell>
 </template>
 
@@ -138,6 +139,7 @@ export default {
       termId: '', rules: [], avails: [], conflictBatchId: '', conflict: null,
       autoBatchId: '', autoResult: null, autoLoading: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      confirmRequireReason: false, confirmReasonLabel: '',
       missColumns: [{ key: 'course', title: '课程' }, { key: 'teacherName', title: '教师' }, { key: 'progress', title: '已排/需排' }, { key: 'reason', title: '漏排原因' }, { key: 'detail', title: '处置建议' }],
       ruleColumns: [{ key: 'ruleKey', title: '规则键' }, { key: 'value', title: '值' }, { key: 'ops', title: '操作' }],
       availColumns: [{ key: 'teacherName', title: '教师' }, { key: 'slot', title: '时段' }, { key: 'reason', title: '原因' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
@@ -192,10 +194,15 @@ export default {
       const res = await api.reviewAvailability(id, action)
       if (res.code === 0) { toast.success('已采纳'); this.loadAvails() } else toast.error(res.message)
     },
-    async rejectAvail(id) {
-      const reason = window.prompt('驳回原因')
-      const res = await api.reviewAvailability(id, 'REJECT', reason || '')
-      if (res.code === 0) { toast.success('已驳回'); this.loadAvails() } else toast.error(res.message)
+    rejectAvail(id) {
+      this.confirmRequireReason = true
+      this.confirmReasonLabel = '驳回原因（≥5 字）'
+      this.confirmTitle = '驳回停课/换课申请'; this.confirmMessage = '请填写驳回原因，将记入审计并通知申请教师。'
+      this.pendingAction = async (reason) => {
+        const res = await api.reviewAvailability(id, 'REJECT', (reason || '').trim())
+        if (res.code === 0) { toast.success('已驳回'); this.loadAvails() } else toast.error(res.message)
+      }
+      this.confirmVisible = true
     },
     async loadConflict() {
       if (!this.conflictBatchId) { toast.error('请填课表批次 ID'); return }
@@ -213,6 +220,7 @@ export default {
     },
     doAuto() {
       if (!this.autoBatchId) { toast.error('请填课表批次 ID'); return }
+      this.confirmRequireReason = false
       this.confirmTitle = '自动排课'
       this.confirmMessage = '确定要对该批次执行自动排课并落库吗？只新增自动排课结果，教务员手工排的课不受影响。'
       this.pendingAction = () => this.runAuto(false)
@@ -220,6 +228,7 @@ export default {
     },
     doClearAuto() {
       if (!this.autoBatchId) { toast.error('请填课表批次 ID'); return }
+      this.confirmRequireReason = false
       this.confirmTitle = '清除自动排课结果'
       this.confirmMessage = '确定清除该批次的全部自动排课结果吗？手工/导入排的课会保留。'
       this.pendingAction = async () => {
@@ -229,7 +238,7 @@ export default {
       }
       this.confirmVisible = true
     },
-    onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
+    onConfirm(payload = {}) { const a = this.pendingAction; this.pendingAction = null; this.confirmRequireReason = false; if (a) a(payload && payload.reason) }
   }
 }
 </script>
