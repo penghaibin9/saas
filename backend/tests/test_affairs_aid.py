@@ -170,3 +170,18 @@ def test_a7_cross_class_403(client, db_mode):
     r = client.get(f"{BASE}/aid/applications/{aid_id}", headers=_hdr(client, "counselor01"))
     assert r.status_code == 403
     assert r.json()["bizCode"] == "NO_DATA_SCOPE"
+
+
+def test_a_apply_non_digit_ids_400_not_500(client, db_mode):
+    """历史欠账收口：studentId/batchId 非数字此前 int() 抛 500，现应 400 VALIDATION_ERROR。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid = _open_batch(client, admin)
+    r1 = client.post(f"{BASE}/aid/applications", headers=admin, json={
+        "batchId": str(bid), "studentId": "abc", "applyLevel": "DIFFICULT",
+        "statement": "家庭收入较低，需要资助支持完成学业"})
+    assert r1.status_code == 400 and r1.json()["bizCode"] == "VALIDATION_ERROR"
+    r2 = client.post(f"{BASE}/aid/applications", headers=admin, json={
+        "batchId": "notnum", "studentId": str(ids["sa"]), "applyLevel": "DIFFICULT",
+        "statement": "家庭收入较低，需要资助支持完成学业"})
+    assert r2.status_code == 400 and r2.json()["bizCode"] == "VALIDATION_ERROR"

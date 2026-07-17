@@ -92,7 +92,7 @@ def _row(p: InternshipPosition) -> dict:
 # ═══════════ 列表 / 详情 ═══════════
 
 def list_positions(page: int, page_size: int, keyword=None, status=None,
-                   company_id=None, risk=None) -> tuple[list[dict], int]:
+                   company_id=None, batch_id=None, risk=None) -> tuple[list[dict], int]:
     with session() as db:
         q = select(InternshipPosition).where(InternshipPosition.tenant_id == _tid(),
                                              InternshipPosition.is_deleted.is_(False))
@@ -103,8 +103,12 @@ def list_positions(page: int, page_size: int, keyword=None, status=None,
                             InternshipPosition.major_requirement.like(like)))
         if status:
             q = q.where(InternshipPosition.status == status)
-        if company_id:
-            q = q.where(InternshipPosition.company_id == int(company_id))
+        cid = _opt_int(company_id, "企业")
+        if cid is not None:
+            q = q.where(InternshipPosition.company_id == cid)
+        bid = _opt_int(batch_id, "批次")  # 岗位按实习批次筛选（batch_id 联调收口）
+        if bid is not None:
+            q = q.where(InternshipPosition.batch_id == bid)
         if risk is not None:
             q = q.where(InternshipPosition.risk_flag.is_(bool(risk)))
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)

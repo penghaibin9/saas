@@ -32,6 +32,14 @@ L_FUND = {
 }
 
 
+def _req_int(v, field):
+    """必填数字字段安全转 int：非数字→400（原裸 int() 抛 ValueError→500）。"""
+    raw = str(v or "").strip()
+    if not raw.isdigit():
+        raise AppException("VALIDATION_ERROR", f"请选择有效{field}")
+    return int(raw)
+
+
 def _op():
     u = get_current_user_ctx() or {}
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
@@ -303,7 +311,7 @@ def list_batches(user, project_id=None, status=None, page=1, page_size=20):
 # ═══════════ 申请（含资格硬校验）═══════════
 
 def apply(body, user, *, skip_scope_check: bool = False) -> dict:
-    student_id = int(body.studentId)
+    student_id = _req_int(getattr(body, "studentId", None), "学生")
     with session() as db:
         from app.models import FundingApplication, FundingBatch, StudentProfile
         s = db.get(StudentProfile, student_id)
@@ -313,7 +321,7 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         # 解析，不接受客户端指定）；越范围禁止为他院学生建奖助申请的校验只对代发起场景生效。
         if not skip_scope_check:
             _scope_or_403(db, student_id, user)
-        b = db.get(FundingBatch, int(body.batchId))
+        b = db.get(FundingBatch, _req_int(getattr(body, "batchId", None), "批次"))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("资助批次不存在")
         if b.status != "OPEN":

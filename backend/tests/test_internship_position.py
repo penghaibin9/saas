@@ -38,6 +38,18 @@ def test_create_and_list(client, auth_headers, db_mode):
     assert lst["code"] == 0 and lst["data"]["total"] >= 1
 
 
+def test_list_filter_by_batch(client, auth_headers, db_mode):
+    """batch_id 联调收口：岗位列表按 batchId 筛选（只返回该批次岗位）。"""
+    cid = _company(client, auth_headers, cc="91310000POSBAT1XA")
+    _mk(client, auth_headers, cid, title="批次A岗位", batchId="101")
+    _mk(client, auth_headers, cid, title="批次B岗位", batchId="202")
+    _mk(client, auth_headers, cid, title="无批次岗位")
+    only_a = client.get(f"{POS}?batchId=101", headers=auth_headers).json()["data"]
+    assert only_a["total"] == 1 and only_a["items"][0]["title"] == "批次A岗位"
+    # 非数字 batchId → 400（不再 int() 500）
+    assert client.get(f"{POS}?batchId=abc", headers=auth_headers).status_code == 400
+
+
 def test_status_machine_publish(client, auth_headers, db_mode):
     cid = _company(client, auth_headers)  # 已审核 → 合作中
     pid = _mk(client, auth_headers, cid)["data"]["id"]
