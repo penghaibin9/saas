@@ -182,7 +182,13 @@ export const dataCenterApi = {
   },
 
   /** 排行分析（level：COLLEGE / MAJOR / CLASS） */
-  getRankings(params = {}) {
+  async getRankings(params = {}) {
+    // 真分支：从学生主档按组织维度真实聚合（completionRate 口径待校准，见后端注释）。
+    if (shouldTryReal()) {
+      const q = { level: params.level || 'COLLEGE', collegeId: params.collegeId, majorId: params.majorId }
+      try { return Promise.resolve({ code: 0, data: await request('/stats/rankings', { params: q }), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     const level = params.level || 'COLLEGE'
     const data = RANKING_MAP[level]
     if (!data) return fail('未知排行维度')
@@ -202,7 +208,14 @@ export const dataCenterApi = {
   },
 
   /** 下钻学生清单（重点关注学生样本，分页；字段由页面展示时脱敏） */
-  getDrilldownStudents(params = {}) {
+  async getDrilldownStudents(params = {}) {
+    // 真分支：从学生主档真实查询 + 服务端脱敏学号（手机号在加密联系表、主档无明文，一律不下发）。
+    if (shouldTryReal()) {
+      const q = { collegeId: params.collegeId, majorId: params.majorId, classId: params.classId,
+        stage: params.stage, keyword: params.keyword, page: params.page || 1, pageSize: params.pageSize || 10 }
+      try { return Promise.resolve({ code: 0, data: await request('/stats/drilldown', { params: q }), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     let list = [...drilldownStudents]
     if (params.metricKey && params.metricKey !== 'ALL') {
       list = list.filter((s) => s.metricKeys.includes(params.metricKey))
