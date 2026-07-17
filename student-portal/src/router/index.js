@@ -12,6 +12,14 @@ const routes = [
       { path: 'home', name: 'home', component: () => import('../views/home/HomeView.vue') },
       { path: 'not-enabled', name: 'not-enabled', component: () => import('../components/NotEnabledView.vue') },
       { path: 'module-disabled/:module', name: 'module-disabled', component: () => import('../components/ModuleDisabledView.vue') },
+      // 各二级模块专用工作台（消费 /portal/* 重活接口）。meta.modulePath 供守卫做模块开关门禁。
+      { path: 'profile', name: 'profile', meta: { modulePath: 'profile' }, component: () => import('../views/profile/ProfileView.vue') },
+      { path: 'academic', name: 'academic', meta: { modulePath: 'academic' }, component: () => import('../views/academic/AcademicView.vue') },
+      { path: 'campus-service', name: 'campus-service', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/AffairsView.vue') },
+      { path: 'internship', name: 'internship', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipView.vue') },
+      { path: 'employment', name: 'employment', meta: { modulePath: 'employment' }, component: () => import('../views/employment/EmploymentView.vue') },
+      { path: 'orientation', name: 'orientation', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
+      { path: 'messages', name: 'messages', meta: { modulePath: 'messages' }, component: () => import('../views/messages/MessagesView.vue') },
       // 毕设是学生端的重流程模块，使用专用工作台而非通用数据模板页。
       { path: 'graduation', name: 'graduation-workbench', component: () => import('../views/graduation/GraduationWorkbenchView.vue') },
       { path: ':module', name: 'module', component: () => import('../views/template/ModuleTemplateView.vue') }
