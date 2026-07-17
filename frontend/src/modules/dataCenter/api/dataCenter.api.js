@@ -365,9 +365,11 @@ export const dataCenterApi = {
       action: '导出' + scopeLabel,
       target: targetName || scopeLabel,
       targetId,
-      detail: '用途：' + purposeLabel + ' · 已脱敏 + 追踪水印（任务 ' + taskId + '）'
+      // 演示态：仅登记导出任务与审计留痕，尚未生成实际文件；脱敏/水印为后端导出服务落地项，未在前端 mock 兑现。
+      detail: '用途：' + purposeLabel + ' · 演示态导出登记，未生成实际文件（任务 ' + taskId + '）'
     })
-    return ok({ taskId, masked: true, watermark: true, auditId: entry.id })
+    // demo=true 明确本次为占位登记；masked/watermark 仍为后端职责，未在此兑现，故置 false 不做虚假标记。
+    return ok({ taskId, demo: true, masked: false, watermark: false, auditId: entry.id })
   },
 
   /** 审计日志（targetId 可选：仅取某报表 / 对象相关记录） */
