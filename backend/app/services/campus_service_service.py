@@ -480,6 +480,7 @@ def handle_dorm_exception(eid, note, complete=False) -> dict:
         e = db.get(CsDormException, int(eid))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("宿舍异常不存在")
+        _require_cs_scope(db, e.cs_student_id)
         before = e.status
         e.status = "COMPLETED" if complete else "PROCESSING"
         e.handle_note = note.strip()
@@ -582,6 +583,7 @@ def get_work_order_detail(wid) -> dict:
         x = db.get(CsWorkOrder, int(wid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("工单不存在")
+        _require_cs_scope(db, x.cs_student_id)
         stu = _stu_of(db, x.cs_student_id)
         row = _wo_row(x, stu)
         row["trail"] = x.trail_json or []
@@ -610,10 +612,13 @@ def create_work_order(body: dict) -> dict:
 def assign_work_orders(ids, handler) -> dict:
     cnt = 0
     with session() as db:
+        scope_ids = _cs_scope_student_ids(db)
         for wid in ids:
             w = db.get(CsWorkOrder, int(wid))
             if not w or w.tenant_id != _tid() or w.is_deleted:
                 continue
+            if scope_ids is not None and int(w.cs_student_id or 0) not in scope_ids:
+                continue  # 越数据范围工单跳过，不整批 403
             w.handler = handler or _op()[0]
             if w.status == "PENDING_HANDLE":
                 w.status = "PROCESSING"
@@ -633,6 +638,7 @@ def handle_work_order(wid, note, close=False) -> dict:
         w = db.get(CsWorkOrder, int(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
+        _require_cs_scope(db, w.cs_student_id)
         before = w.status
         w.status = "COMPLETED" if close else "PROCESSING"
         if close:
@@ -653,6 +659,7 @@ def close_work_order(wid, reason) -> dict:
         w = db.get(CsWorkOrder, int(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
+        _require_cs_scope(db, w.cs_student_id)
         w.status = "CLOSED"
         w.close_time = datetime.utcnow()
         w.version += 1

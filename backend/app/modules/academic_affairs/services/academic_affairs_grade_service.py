@@ -237,23 +237,26 @@ def list_records(task_id, user) -> dict:
         return {"items": items}
 
 
-def _write_score_row(db, t, sid, usual, final, exception_flag):
+def _write_score_row(db, t, sid, usual, final, exception_flag, mid=None):
     """录入/批量导入共用的落库逻辑：合成总评 + upsert AaGradeRecord。
-    不做 audit/commit（由调用方负责，供批量导入整批一次提交）。"""
+    不做 audit/commit（由调用方负责，供批量导入整批一次提交）。
+    与 enter_score 同款：按 平时/期中/期末 占比合成；占比>0 的分项未录全 → total=None，
+    发布门禁会拦为「未录全」，绝不产出缺权重的错误总评（批量导入模板无期中列时 mid 恒 None）。"""
     from app.models import AaGradeRecord
     exception_flag = (exception_flag or "NORMAL").upper()
     total = None
-    if exception_flag == "NORMAL" and usual is not None and final is not None:
-        total = round(usual * t.usual_ratio / 100 + final * t.final_ratio / 100)
-    elif exception_flag != "NORMAL":
-        usual = final = None  # 缺考/缓考/免修与正常分互斥
+    if exception_flag == "NORMAL":
+        if _scores_complete(t, usual, mid, final):
+            total = _compose_total(t, usual, mid, final)
+    else:
+        usual = mid = final = None  # 缺考/缓考/免修与正常分互斥
     rec = db.scalars(select(AaGradeRecord).where(
         AaGradeRecord.tenant_id == _tid(), AaGradeRecord.task_id == t.id,
         AaGradeRecord.student_id == sid, AaGradeRecord.is_deleted.is_(False))).first()
     if not rec:
         rec = AaGradeRecord(tenant_id=_tid(), task_id=t.id, student_id=sid)
         db.add(rec)
-    rec.usual_score, rec.final_score, rec.total_score = usual, final, total
+    rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score = usual, mid, final, total
     rec.exception_flag = exception_flag
     rec.pass_status = ("PASSED" if (total is not None and total >= t.pass_line) else
                        ("FAILED" if total is not None else None))
@@ -787,7 +790,8 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
     _require_review_role(user)
     if action == "APPROVE":
         with session() as db:
-            from app.models import AaGradeRecord, AaGradeTask, AcademicGrade, UnifiedMessage
+            from app.models import (AaGradeRecord, AaGradeTask, AcademicGrade,
+                                     AcademicStudent, UnifiedMessage)
             rec = db.get(AaGradeRecord, int(record_id))
             if not rec or rec.is_deleted or rec.tenant_id != _tid():
                 raise not_found("成绩明细不存在")
@@ -806,6 +810,9 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
                 g = db.get(AcademicGrade, int(rec.acad_grade_id))
                 if g:
                     g.score, g.pass_status, g.source = new_total, rec.pass_status, "CHANGE"
+                    a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
+                    if a:
+                        _refresh_aggregates(db, a)  # 更正终审后即时重算 GPA/学分/挂科聚合（与 publish/复查一致）
             db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(rec.student_id), source_module="academic-affairs",
                                   source_biz_id=rec.id, title="成绩已更正",
                                   content=f"{t.course_name if t else ''} 成绩已更正为 {new_total}",
