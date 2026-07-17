@@ -75,12 +75,7 @@
     <AppDrawer :visible="genVisible" title="生成应评任务" @close="genVisible = false">
       <div class="aaev-form">
         <AppFormItem label="评价来源">
-          <select v-model="genType" class="aaev-select" :disabled="saving">
-            <option value="STUDENT">学生评教</option>
-            <option value="SELF">教师自评</option>
-            <option value="PEER">同行评价</option>
-            <option value="SUPERVISOR">督导评价</option>
-          </select>
+          <AppSelect v-model="genType" :options="genTypeOptions" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="教学任务 ID（逗号分隔）" required><AppTextInput v-model="genRaw" placeholder="如 1,2,3" :disabled="saving" /></AppFormItem>
       </div>
@@ -98,7 +93,7 @@
 /** 教学评价 · 教务处控制台（/admin/academic-affairs/evaluation）：批次生命周期 + 结果分级 + 申诉。 */
 import { ModulePageShell, DataTable, StatusTag, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppFormItem, AppSelect, AppConfirmDialog, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi, academicAffairsEvaluationApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -107,7 +102,7 @@ const _LV = { EXCELLENT: '优秀', GOOD: '良好', PASS: '合格', NEED_IMPROVE:
 
 export default {
   name: 'AaEvaluationConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppSelect, AppConfirmDialog, AppInlineAlert },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -118,6 +113,10 @@ export default {
       appealColumns: [{ key: 'teacherKey', title: '教师' }, { key: 'reason', title: '申诉理由' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
       createVisible: false, form: { batchName: '', termId: '' }, formError: '',
       genVisible: false, genRaw: '', genType: 'STUDENT',
+      genTypeOptions: [
+        { label: '学生评教', value: 'STUDENT' }, { label: '教师自评', value: 'SELF' },
+        { label: '同行评价', value: 'PEER' }, { label: '督导评价', value: 'SUPERVISOR' }
+      ],
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
     }
   },
