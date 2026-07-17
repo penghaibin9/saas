@@ -454,7 +454,8 @@ def internship_my(user: dict) -> dict:
             return _empty()
         from datetime import datetime as _dt
 
-        from app.models import AttendanceException, InternshipCheckin, InternshipRecord, WeeklyReport
+        from app.models import (AttendanceException, InternshipCheckin, InternshipFinalScore,
+                                InternshipProcessReport, InternshipRecord, WeeklyReport)
         rec = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
             InternshipRecord.is_deleted.is_(False))).first()
@@ -467,6 +468,14 @@ def internship_my(user: dict) -> dict:
                           AttendanceException.internship_id == rec.id,
                           AttendanceException.is_deleted.is_(False)).order_by(
                           AttendanceException.id.desc())).all()
+        proc_reports = db.scalars(select(InternshipProcessReport).where(
+            InternshipProcessReport.tenant_id == _tid(), InternshipProcessReport.internship_id == rec.id,
+            InternshipProcessReport.is_deleted.is_(False)).order_by(
+            InternshipProcessReport.submitted_at.desc(), InternshipProcessReport.id.desc())).all()
+        score = db.scalars(select(InternshipFinalScore).where(
+            InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == rec.id,
+            InternshipFinalScore.status == "PUBLISHED", InternshipFinalScore.is_deleted.is_(False)
+            )).first()
         today = f"{_dt.now():%Y-%m-%d}"
         today_ck = db.scalars(select(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
@@ -486,8 +495,20 @@ def internship_my(user: dict) -> dict:
                                    "workContent": r.work_content or "", "harvestContent": r.harvest_content or "",
                                    "planContent": r.plan_content or "", "submittedAt": _iso(r.submitted_at)}
                                   for r in reports],
+                "processReports": [{"id": str(pr.id), "reportType": pr.report_type,
+                                    "periodKey": pr.period_key, "status": pr.status,
+                                    "reviewComment": pr.review_comment or "",
+                                    "submittedAt": _iso(pr.submitted_at)} for pr in proc_reports],
                 "attendanceExceptions": [{"type": e.exception_type, "status": e.status,
-                                          "date": _iso(e.exception_date)} for e in excs]}
+                                          "date": _iso(e.exception_date),
+                                          "handleComment": e.handle_comment or "",
+                                          "appealStatus": e.appeal_status,
+                                          "appealNote": e.appeal_note or ""} for e in excs],
+                "score": ({"totalScore": score.total_score, "isPass": score.is_pass,
+                          "checkinScore": score.checkin_score, "weeklyScore": score.weekly_score,
+                          "monthlyScore": score.monthly_score, "enterpriseScore": score.enterprise_score,
+                          "schoolScore": score.school_score, "publishedAt": _iso(score.published_at)}
+                         if score else None)}
 
 
 # 毕设阶段流水线（选题→任务书→开题指导→中期→成果→答辩→归档），用于移动端真实节点进度条。
