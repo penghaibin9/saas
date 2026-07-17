@@ -8,6 +8,9 @@ on:
     branches: [ "**" ]
   pull_request:
     branches: [ "**" ]
+  schedule:
+    # 每日 18:00 UTC（北京 02:00）跑后端全量；push/PR 仅跑 portal 相关快测（每用例重建~250表，全量很慢）
+    - cron: "0 18 * * *"
 
 jobs:
   internship-production-gates:
@@ -57,8 +60,9 @@ jobs:
       - run: node scripts/check/check-graduation-production-gates.mjs
 
   backend:
-    name: 后端 pytest
+    name: 后端 pytest（PR:portal子集 / 定时:全量）
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: backend
@@ -89,8 +93,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography   # PyMySQL 连 MySQL8 caching_sha2_password 认证所需
-      - name: 运行 pytest
-        run: pytest -q -p no:warnings
+      - name: 运行 pytest（push/PR 只跑 portal 相关；schedule 跑全量）
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "定时全量：pytest 全部用例"
+            pytest -q -p no:warnings
+          else
+            echo "push/PR 快测：仅 portal 相关用例"
+            pytest tests/test_portal_*.py -q -p no:warnings
+          fi
 
   frontend:
     name: PC 管理端 lint + build
