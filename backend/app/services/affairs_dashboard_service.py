@@ -198,11 +198,16 @@ def list_classes(user: dict) -> list[dict]:
 
 
 def list_cadres(class_id, user: dict) -> list[dict]:
+    """在任班干部名单。修复：此前不按 status 过滤，配合 remove_cadre 只置
+    status=REMOVED（不做软删除 is_deleted）的既有设计，已免去成员会永久残留在「在任班干部」
+    列表里，PC 前端 ClassProfileView.vue 也原样渲染出一个始终可点的「免去」按钮——不是越权
+    问题，但会让辅导员误判在任情况。免去记录仍可经审计追溯，此处只收紧列表口径为在任成员。"""
     with session() as db:
         _class_in_scope_or_403(db, class_id, user)
         from app.models import AffairsClassCadre
         rows = db.scalars(select(AffairsClassCadre).where(
             AffairsClassCadre.tenant_id == _tid(), AffairsClassCadre.class_id == int(class_id),
+            AffairsClassCadre.status == "ACTIVE",
             AffairsClassCadre.is_deleted.is_(False)).order_by(AffairsClassCadre.id)).all()
         return [_cadre_row(r) for r in rows]
 
