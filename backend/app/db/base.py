@@ -8,6 +8,8 @@ from app.models import tenant as _tenant  # noqa: F401
 from app.models import org as _org  # noqa: F401
 from app.models import rbac as _rbac  # noqa: F401
 from app.models import student as _student  # noqa: F401
+from app.models import student_parent as _student_parent  # noqa: F401  (学生PC门户·家长授权代理)
+from app.models import portal_otp as _portal_otp  # noqa: F401  (学生PC门户·登录验证码)
 from app.models import approval as _approval  # noqa: F401
 from app.models import audit as _audit  # noqa: F401
 from app.models import file as _file  # noqa: F401

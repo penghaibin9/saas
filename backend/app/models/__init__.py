@@ -5,6 +5,7 @@ from app.models.org import College, Major, SchoolClass  # noqa: F401
 from app.models.rbac import Permission, Role, RolePermission, User, UserRole  # noqa: F401
 from app.models.student import StudentContact, StudentImportBatch, StudentProfile, StudentStageEvent  # noqa: F401
 from app.models.student_parent import StudentParentLink  # noqa: F401  (学生PC门户·家长授权代理)
+from app.models.portal_otp import PortalLoginOtp  # noqa: F401  (学生PC门户·登录验证码)
 from app.models.approval import UnifiedTodo, WorkflowInstance, WorkflowTask  # noqa: F401
 from app.models.message import UnifiedMessage  # noqa: F401
 from app.models.notification_preference import NotificationPreference  # noqa: F401
