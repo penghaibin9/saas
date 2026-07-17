@@ -120,7 +120,7 @@ def create_app() -> FastAPI:
             for tenant_id in tenant_ids:
                 try:
                     set_tenant({"tenantId": str(tenant_id)})
-                    leave_service.refresh_overdue()
+                    leave_service.refresh_overdue(system=True)  # 系统定时扫描：绕过人工触发的校级守卫
                 except Exception:  # noqa: BLE001
                     logging.getLogger("app.internship").exception("internship overdue scan failed tenant=%s", tenant_id)
                 finally:

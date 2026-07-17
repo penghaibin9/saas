@@ -24,7 +24,9 @@ def _columns(bind, table: str) -> set[str]:
 
 def upgrade() -> None:
     bind = op.get_bind()
-    if "rules_version" not in _columns(bind, "t_internship_batch"):
+    _batch_cols = _columns(bind, "t_internship_batch")
+    # 表已存在才 ALTER；缺失表（全新库）交由 0053 基线迁移建全量结构，避免对缺失表 add_column 崩溃。
+    if _batch_cols and "rules_version" not in _batch_cols:
         op.add_column("t_internship_batch", sa.Column("rules_version", sa.Integer(), nullable=False, server_default="1"))
     cols = _columns(bind, "t_internship_final_score")
     if "score_config_id" not in cols:

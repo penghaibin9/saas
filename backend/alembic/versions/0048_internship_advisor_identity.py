@@ -24,7 +24,10 @@ def _columns(bind, table: str) -> set[str]:
 
 def upgrade() -> None:
     bind = op.get_bind()
-    if "advisor_user_id" not in _columns(bind, "t_internship_record"):
+    _cols = _columns(bind, "t_internship_record")
+    # 基表不存在时 _columns 返回空集；要求「表已存在」才 ALTER，避免对缺失表 add_column 崩溃
+    # （全新库由 0053 基线迁移统一建全量结构）。
+    if _cols and "advisor_user_id" not in _cols:
         op.add_column("t_internship_record", sa.Column("advisor_user_id", sa.BigInteger(), nullable=True))
         op.create_index("ix_t_internship_record_advisor_user_id", "t_internship_record", ["advisor_user_id"])
 

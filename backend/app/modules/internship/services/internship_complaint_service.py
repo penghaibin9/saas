@@ -142,6 +142,8 @@ def transition(cid, action, body=None, user=None):
     body = body or {}
     with session() as db:
         c = _get(db, cid)
+        from app.modules.internship.services.internship_service import assert_student_in_scope
+        assert_student_in_scope(db, c.student_id, user, "该投诉关联学生不在你的数据范围内")
         if c.status not in allowed_from:
             raise AppException("DATA_CONFLICT", f"当前状态 {c.status} 不可执行 {action}")
         if action == "ACCEPT":
@@ -164,6 +166,8 @@ def transition(cid, action, body=None, user=None):
 def to_risk(cid, user=None):
     with session() as db:
         c = _get(db, cid)
+        from app.modules.internship.services.internship_service import assert_student_in_scope
+        assert_student_in_scope(db, c.student_id, user, "该投诉关联学生不在你的数据范围内")
         if c.risk_id:
             raise AppException("DATA_CONFLICT", "该投诉已转风险单")
         if c.status in ("WITHDRAWN", "CLOSED", "REJECTED"):
@@ -197,6 +201,8 @@ def followup(cid, result, user=None):
         raise AppException("VALIDATION_ERROR", "回访结果不少于 2 个字符")
     with session() as db:
         c = _get(db, cid)
+        from app.modules.internship.services.internship_service import assert_student_in_scope
+        assert_student_in_scope(db, c.student_id, user, "该投诉关联学生不在你的数据范围内")
         if c.status not in ("RESOLVED", "CLOSED"):
             raise AppException("DATA_CONFLICT", "仅办结/关闭的投诉可回访")
         c.followup_result = result
