@@ -735,6 +735,95 @@ def affairs_academic_task_act(user: dict, task_id: str, action: str, reason: str
     return result
 
 
+# ══════════ 教务·发起调停课（直接复用 academic_affairs_schedule_change_service，
+# submit/cancel/conflict_check/list_changes 均已按 teacher_key/COLLEGE 自校验；
+# get_change PC 端本身无归属校验，移动端补一道校验，不改 PC） ══════════
+
+def affairs_academic_my_schedule(user: dict, term_id: str | None = None, week: int | None = None) -> dict:
+    """我的课表（供选择「原课位」发起调停课）。self_key 推导与 `_user_keys`/`_derive_keys`
+    同口径（登录名优先；mock 登录 JWT claims 里并不携带 loginName，退化为 userId 去掉 'u_' 前缀）。
+    实测过：PC 端「查看本人课表」按字面 `userId||loginName` 取值，在 mock 演示账号下会直接拿到
+    'u_academic01' 前缀，与课表项 teacher_key='academic01' 对不上，查询结果恒为空——此处不是照抄
+    PC，而是按真正决定数据可见性的口径重新推导，确保选课位口径与 submit()/list_changes() 内部
+    的归属校验（_derive_keys）命中同一批数据。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"items": [], "batchId": None, "weeklyHours": 0, "note": ""}
+    from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
+    uid = str(u.get("userId") or "")
+    self_key = u.get("loginName") or (uid[2:] if uid.startswith("u_") else uid)
+    return sched_svc.teacher_schedule(u, self_key, term_id, week)
+
+
+def affairs_academic_schedule_conflict_check(user: dict, body: dict) -> dict:
+    """目标课位冲突预检（只读，归属校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"conflict": None}
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    return chg_svc.conflict_check(_ns(body), u)
+
+
+def affairs_academic_schedule_submit(user: dict, body: dict) -> dict:
+    """发起调停课（调课/停课/补课），提交即冲突预检，归属校验在服务层完成。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    result = chg_svc.submit(_ns(body), u)
+    _audit_write("MOBILE_ACADEMIC_SCHEDULE_SUBMIT", f"schedule-change:{result.get('changeId')}",
+                 {"operator": u.get("realName"), "changeType": result.get("changeType")})
+    return result
+
+
+def affairs_academic_schedule_cancel(user: dict, change_id: str, reason: str | None = None) -> dict:
+    """撤销调停课申请（终审前，归属校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    result = chg_svc.cancel(change_id, u, reason or "")
+    _audit_write("MOBILE_ACADEMIC_SCHEDULE_CANCEL", f"schedule-change:{change_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def affairs_academic_schedule_changes(user: dict, status: str | None = None) -> dict:
+    """我的调停课申请列表（list_changes 内部已按 teacher_key/COLLEGE 自校验范围）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    items, total = chg_svc.list_changes(u, status=status, page=1, page_size=100)
+    return {"list": items, "total": total}
+
+
+def affairs_academic_schedule_change_detail(user: dict, change_id: str) -> dict:
+    """调停课单详情：PC 端 get_change 本身无归属校验（任何持权限者可查他人详情），
+    移动端在此补一道与 list_changes/cancel 完全一致的范围校验（TENANT_ALL 放行；
+    COLLEGE 按所辖班级；其余教师仅本人 teacher_key），不改 PC 行为。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.core.affairs_security import _derive_keys, build_affairs_context
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    with _session() as db:
+        ctx = build_affairs_context(u, db)
+    result = chg_svc.get_change(change_id, u)
+    if ctx.scope_type == "TENANT_ALL":
+        return result
+    if ctx.scope_type == "COLLEGE":
+        with _session() as db:
+            allowed = ctx.allowed_class_ids(db)
+        if result.get("classId") and int(result["classId"]) in (allowed or set()):
+            return result
+        raise AppException("NO_DATA_SCOPE", "该调停课单不在您的数据范围内")
+    keys = _derive_keys(u)
+    if result.get("teacherKey") and result["teacherKey"] in keys:
+        return result
+    raise AppException("NO_DATA_SCOPE", "仅可查看本人发起的调停课单")
+
+
 # ══════════ 数据看板（移动端包装，直接复用既有 affairs_dashboard_service.get_dashboard，
 # 该函数已按数据范围收敛且指标全部真实聚合，零改造） ══════════
 

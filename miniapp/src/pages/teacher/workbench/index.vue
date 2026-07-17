@@ -167,6 +167,7 @@ export default {
         affairsLeave: '/pages/teacher/affairs-leave/index',
         classCadre: '/pages/teacher/class-cadre/index',
         academicTask: '/pages/teacher/academic-task/index',
+        scheduleChange: '/pages/teacher/schedule-change/index',
         notifyPublish: '/pages/teacher/notify-publish/index',
         overview: '/pages/teacher/dashboard/index',
         orientationVerify: '/pages/teacher/orientation/verify/index',

@@ -388,6 +388,10 @@
       "style": { "navigationBarTitleText": "教学任务确认", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/schedule-change/index",
+      "style": { "navigationBarTitleText": "调停课管理", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },

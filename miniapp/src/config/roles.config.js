@@ -136,6 +136,7 @@ export const roleConfigs = {
       { key: 'status', label: '学籍异动', icon: '⇄' },
       { key: 'approval', label: '待审批', icon: '✓' },
       { key: 'academicTask', label: '教学任务确认', icon: '📚' },
+      { key: 'scheduleChange', label: '调停课管理', icon: '🔀' },
       { key: 'notifyPublish', label: '发布通知', icon: '📣' }
     ],
     permissionActions: ['academic.warning.handle', 'status.handle', 'approval.handle']

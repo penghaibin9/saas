@@ -666,6 +666,36 @@ def teacher_academic_task_act(task_id: str, body: dict = Body(...), user=Depends
         user, task_id, str(body.get("action") or "").upper(), body.get("reason")), message="已处理")
 
 
+@router.get("/teacher/academic/schedule/mine", summary="教务老师·我的课表（供选择原课位发起调停课）")
+def teacher_academic_my_schedule(termId: str = None, week: int = None, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_my_schedule(user, termId, week))
+
+
+@router.post("/teacher/academic/schedule-changes/conflict-check", summary="教务老师·调停课目标课位冲突预检")
+def teacher_academic_schedule_conflict_check(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_conflict_check(user, body))
+
+
+@router.post("/teacher/academic/schedule-changes", summary="教务老师·发起调停课（调课/停课/补课）")
+def teacher_academic_schedule_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_submit(user, body), message="已提交")
+
+
+@router.get("/teacher/academic/schedule-changes", summary="教务老师·我的调停课申请列表")
+def teacher_academic_schedule_changes(status: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_changes(user, status))
+
+
+@router.get("/teacher/academic/schedule-changes/{change_id}", summary="教务老师·调停课单详情（移动端补归属校验）")
+def teacher_academic_schedule_change_detail(change_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_change_detail(user, change_id))
+
+
+@router.post("/teacher/academic/schedule-changes/{change_id}/cancel", summary="教务老师·撤销调停课申请（终审前）")
+def teacher_academic_schedule_cancel(change_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_cancel(user, change_id, (body or {}).get("reason")), message="已撤销")
+
+
 @router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
 def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.notify_publish(user, body), message="通知已发布")

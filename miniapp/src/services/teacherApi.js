@@ -199,6 +199,13 @@ export const teacherApi = {
   // 教务·教学任务确认（我的任务按 teacherKey 收敛+确认/退回，归属校验在服务层完成，真实接口，无 mock 兜底）
   getAcademicMyTasks: (status) => real.teacherAcademicMyTasks(status),
   actAcademicTask: (taskId, action, reason) => real.teacherAcademicTaskAct(taskId, action, reason),
+  // 教务·发起调停课（我的课表选原课位 + 冲突预检 + 提交 + 我的申请列表 + 详情(移动端补归属校验) + 撤销，真实接口，无 mock 兜底）
+  getAcademicMySchedule: (termId, week) => real.teacherAcademicMySchedule(termId, week),
+  academicScheduleConflictCheck: (body) => real.teacherAcademicScheduleConflictCheck(body),
+  submitAcademicScheduleChange: (body) => real.teacherAcademicScheduleSubmit(body),
+  getAcademicScheduleChanges: (status) => real.teacherAcademicScheduleChanges(status),
+  getAcademicScheduleChangeDetail: (changeId) => real.teacherAcademicScheduleChangeDetail(changeId),
+  cancelAcademicScheduleChange: (changeId, reason) => real.teacherAcademicScheduleCancel(changeId, reason),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),
