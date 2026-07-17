@@ -17,6 +17,50 @@ def test_students_from_db(client, auth_headers, db_mode):
     assert detail["contacts"] and detail["timeline"] is not None
 
 
+def test_students_filter_and_paginate_in_database(client, auth_headers, db_mode):
+    """组织筛选、分页和联系方式批量加载必须保持租户隔离与准确总数。"""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass, StudentContact, StudentProfile
+
+    tenant_id = 1000000000000000001
+    other_tenant = 1000000000000000002
+    db = get_sessionmaker()()
+    college = College(tenant_id=tenant_id, college_name="信息工程学院", status="ACTIVE")
+    db.add(college); db.flush()
+    major = Major(tenant_id=tenant_id, college_id=college.id, major_name="软件技术", status="ACTIVE")
+    db.add(major); db.flush()
+    school_class = SchoolClass(tenant_id=tenant_id, major_id=major.id,
+                               class_name="软件一班", status="ACTIVE")
+    db.add(school_class); db.flush()
+    for index in (1, 2):
+        student = StudentProfile(
+            tenant_id=tenant_id, student_no=f"2026DB{index:03d}", real_name=f"分页学生{index}",
+            college_id=college.id, major_id=major.id, class_id=school_class.id,
+            current_stage="ENROLLED", student_status="NORMAL", status="ACTIVE")
+        db.add(student); db.flush()
+        db.add(StudentContact(tenant_id=tenant_id, student_id=student.id, contact_type="PHONE",
+                              contact_value_encrypted=f"1390000000{index}", is_primary=True,
+                              verified_status="VERIFIED"))
+    db.add(StudentProfile(tenant_id=other_tenant, student_no="2026OTHER", real_name="外校学生",
+                          current_stage="ENROLLED", student_status="NORMAL", status="ACTIVE"))
+    db.commit(); db.close()
+
+    first = client.get("/api/v1/students?college=信息工程&page=1&pageSize=1",
+                       headers=auth_headers).json()["data"]
+    second = client.get("/api/v1/students?college=信息工程&page=2&pageSize=1",
+                        headers=auth_headers).json()["data"]
+    assert first["total"] == second["total"] == 2
+    assert first["items"][0]["id"] != second["items"][0]["id"]
+    assert first["items"][0]["collegeName"] == "信息工程学院"
+    assert first["items"][0]["majorName"] == "软件技术"
+    assert first["items"][0]["className"] == "软件一班"
+    assert first["items"][0]["phoneMasked"].startswith("139****")
+    by_class = client.get("/api/v1/students?className=软件一班&pageSize=20",
+                          headers=auth_headers).json()["data"]
+    assert by_class["total"] == 2
+    assert all(item["studentNo"] != "2026OTHER" for item in by_class["items"])
+
+
 def test_student_create_void_db(client, auth_headers, db_mode):
     created = client.post("/api/v1/students", headers=auth_headers,
                           json={"studentNo": "2099115999", "realName": "库中新生",

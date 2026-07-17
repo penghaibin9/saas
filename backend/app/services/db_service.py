@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import current_tenant_id, get_current_user_ctx, get_request_meta, get_trace_id
 from app.core.exceptions import AppException, not_found
@@ -67,9 +67,19 @@ def _student_row(s: StudentProfile, phone_plain: str | None = None, id_card_plai
 
 def _org_names(db, rows: list[StudentProfile]) -> None:
     from app.models import College, Major, SchoolClass
-    colleges = {c.id: c.college_name for c in db.scalars(select(College)).all()}
-    majors = {m.id: m.major_name for m in db.scalars(select(Major)).all()}
-    classes = {k.id: k.class_name for k in db.scalars(select(SchoolClass)).all()}
+    tenant_id = _tid()
+    college_ids = {s.college_id for s in rows if s.college_id is not None}
+    major_ids = {s.major_id for s in rows if s.major_id is not None}
+    class_ids = {s.class_id for s in rows if s.class_id is not None}
+    colleges = ({c.id: c.college_name for c in db.scalars(select(College).where(
+        College.tenant_id == tenant_id, College.id.in_(college_ids),
+        College.is_deleted.is_(False))).all()} if college_ids else {})
+    majors = ({m.id: m.major_name for m in db.scalars(select(Major).where(
+        Major.tenant_id == tenant_id, Major.id.in_(major_ids),
+        Major.is_deleted.is_(False))).all()} if major_ids else {})
+    classes = ({k.id: k.class_name for k in db.scalars(select(SchoolClass).where(
+        SchoolClass.tenant_id == tenant_id, SchoolClass.id.in_(class_ids),
+        SchoolClass.is_deleted.is_(False))).all()} if class_ids else {})
     for s in rows:
         s._college_name = colleges.get(s.college_id, "")
         s._major_name = majors.get(s.major_id, "")
@@ -93,8 +103,20 @@ def list_students(page: int, page_size: int, keyword=None, college=None, major=N
     if student_ids is not None and not student_ids:
         return [], 0
     with session() as db:
-        q = select(StudentProfile).where(StudentProfile.tenant_id == _tid(),
-                                         StudentProfile.is_deleted.is_(False))
+        from app.models import College, Major, SchoolClass
+        tenant_id = _tid()
+        q = (select(StudentProfile, College.college_name, Major.major_name, SchoolClass.class_name)
+             .outerjoin(College, and_(College.id == StudentProfile.college_id,
+                                     College.tenant_id == tenant_id,
+                                     College.is_deleted.is_(False)))
+             .outerjoin(Major, and_(Major.id == StudentProfile.major_id,
+                                   Major.tenant_id == tenant_id,
+                                   Major.is_deleted.is_(False)))
+             .outerjoin(SchoolClass, and_(SchoolClass.id == StudentProfile.class_id,
+                                         SchoolClass.tenant_id == tenant_id,
+                                         SchoolClass.is_deleted.is_(False)))
+             .where(StudentProfile.tenant_id == tenant_id,
+                    StudentProfile.is_deleted.is_(False)))
         if class_ids is not None:
             q = q.where(StudentProfile.class_id.in_(list(class_ids)))
         if student_ids is not None:
@@ -106,18 +128,39 @@ def list_students(page: int, page_size: int, keyword=None, college=None, major=N
             q = q.where((StudentProfile.student_status == status) | (StudentProfile.current_stage == status))
         if risk_level:
             q = q.where(StudentProfile.remark == risk_level)
-        rows = db.scalars(q.order_by(StudentProfile.id)).all()
-        _org_names(db, rows)
         if college:
-            rows = [r for r in rows if college in (str(r.college_id), r._college_name)]
+            value = str(college).strip()
+            q = q.where(StudentProfile.college_id == int(value)) if value.isdigit() else q.where(
+                College.college_name.like(f"%{value}%"))
         if major:
-            rows = [r for r in rows if major in (str(r.major_id), r._major_name)]
+            value = str(major).strip()
+            q = q.where(StudentProfile.major_id == int(value)) if value.isdigit() else q.where(
+                Major.major_name.like(f"%{value}%"))
         if class_name:
-            rows = [r for r in rows if class_name == r._class_name]
-        total = len(rows)
-        start = (max(1, page) - 1) * page_size
-        page_rows = rows[start:start + page_size]
-        return [_student_row(s, _primary_phone(db, s.id)) for s in page_rows], total
+            q = q.where(SchoolClass.class_name == class_name)
+
+        total = db.scalar(select(func.count()).select_from(q.order_by(None).subquery())) or 0
+        result_rows = db.execute(q.order_by(StudentProfile.id)
+                                 .offset((max(1, page) - 1) * page_size)
+                                 .limit(page_size)).all()
+        page_rows: list[StudentProfile] = []
+        for student, college_name, major_name, school_class_name in result_rows:
+            student._college_name = college_name or ""
+            student._major_name = major_name or ""
+            student._class_name = school_class_name or ""
+            page_rows.append(student)
+
+        phones: dict[int, str | None] = {}
+        if page_rows:
+            contacts = db.scalars(select(StudentContact).where(
+                StudentContact.tenant_id == tenant_id,
+                StudentContact.student_id.in_([s.id for s in page_rows]),
+                StudentContact.contact_type == "PHONE",
+                StudentContact.is_deleted.is_(False),
+            ).order_by(StudentContact.is_primary.desc(), StudentContact.id)).all()
+            for contact in contacts:
+                phones.setdefault(contact.student_id, contact.contact_value_encrypted)
+        return [_student_row(s, phones.get(s.id)) for s in page_rows], total
 
 
 def _get_profile(db, student_id) -> StudentProfile:
