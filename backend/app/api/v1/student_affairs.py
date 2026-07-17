@@ -1391,10 +1391,12 @@ class ArchiveBatchCreate(BaseModel):
 
 class CollectBody(BaseModel):
     studentIds: list[str] = Field(..., min_length=1)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class AdvanceBody(BaseModel):
     action: Optional[str] = Field("APPROVE")
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 @router.get("/archive/batches", summary="归档批次列表")
@@ -1416,12 +1418,12 @@ def archive_batch(batchId: int = Path(...), user=Depends(require_permission("stu
 
 @router.post("/archive/batches/{batchId}/collect", summary="圈定学生生成档案包")
 def archive_collect(body: CollectBody, batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
-    return success(archive_svc.collect(batchId, user, body.studentIds), message="已收集")
+    return success(archive_svc.collect(batchId, user, body.studentIds, body.version), message="已收集")
 
 
 @router.post("/archive/batches/{batchId}/advance", summary="批次流转（→归档时登记水印包）")
 def archive_advance(body: AdvanceBody = AdvanceBody(), batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
-    return success(archive_svc.advance(batchId, user, body.action or "APPROVE"), message="已流转")
+    return success(archive_svc.advance(batchId, user, body.action or "APPROVE", body.version), message="已流转")
 
 
 # ═══════════ 学生活动与第二课堂（D 包波次1 · /activities /second-class）═══════════

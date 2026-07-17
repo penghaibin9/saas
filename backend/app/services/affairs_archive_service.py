@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 BATCH_FLOW = ["DRAFT", "COLLECTING", "COLLEGE_REVIEW", "SA_CONFIRM", "ARCHIVED"]
@@ -32,7 +32,8 @@ def _audit(db, biz_id, action, detail=""):
 
 def _batch_row(b) -> dict:
     return {"batchId": str(b.id), "batchName": b.batch_name, "yearCode": b.year_code or "",
-            "status": b.status, "confirmBy": b.confirm_by or "", "confirmAt": _iso(b.confirm_at)}
+            "status": b.status, "confirmBy": b.confirm_by or "", "confirmAt": _iso(b.confirm_at),
+            "version": b.version}
 
 
 def list_batches(user, status=None, page=1, page_size=50):
@@ -71,7 +72,7 @@ def create_batch(body, user) -> dict:
         return _batch_row(b)
 
 
-def collect(batch_id, user, student_ids) -> dict:
+def collect(batch_id, user, student_ids, expected_version=None) -> dict:
     """圈定学生生成档案包（每生一行，缺项清单占位）。批次 → COLLECTING。"""
     sids = [int(s) for s in (student_ids or []) if str(s).strip()]
     if not sids:
@@ -83,6 +84,7 @@ def collect(batch_id, user, student_ids) -> dict:
             raise not_found("归档批次不存在")
         if b.status not in ("DRAFT", "COLLECTING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次不可再收集")
+        check_version(b.version, expected_version)
         made = 0
         for sid in sids:
             s = db.get(StudentProfile, sid)
@@ -97,13 +99,14 @@ def collect(batch_id, user, student_ids) -> dict:
                                   missing_items_json=json.dumps([], ensure_ascii=False),
                                   status="PENDING_GEN"))
             made += 1
-        b.status = "COLLECTING"
+        b.status, b.version = "COLLECTING", b.version + 1
         _audit(db, b.id, "COLLECT", f"{made}生")
         db.commit()
-        return {"batchId": str(batch_id), "packagesCreated": made, "status": "COLLECTING"}
+        return {"batchId": str(batch_id), "packagesCreated": made, "status": "COLLECTING",
+                "version": b.version}
 
 
-def advance(batch_id, user, action="APPROVE") -> dict:
+def advance(batch_id, user, action="APPROVE", expected_version=None) -> dict:
     """批次流转 COLLECTING→COLLEGE_REVIEW→SA_CONFIRM→ARCHIVED；ARCHIVED 时登记 t_export_task 水印包。"""
     with session() as db:
         from app.models import ArchiveBatch, ArchivePackage, ExportTask
@@ -112,9 +115,10 @@ def advance(batch_id, user, action="APPROVE") -> dict:
             raise not_found("归档批次不存在")
         if b.status not in ("COLLECTING", "COLLEGE_REVIEW", "SA_CONFIRM"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次当前状态不可流转")
+        check_version(b.version, expected_version)
         i = BATCH_FLOW.index(b.status)
         nxt = BATCH_FLOW[i + 1]
-        b.status = nxt
+        b.status, b.version = nxt, b.version + 1
         if nxt == "ARCHIVED":
             n, _r, _u = _op()
             b.confirm_by, b.confirm_at = n, datetime.utcnow()
