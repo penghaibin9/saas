@@ -298,7 +298,8 @@ def time_band_delete(bandId: int = Path(...), user=Depends(require_permission("a
 # ── 学籍名册 ──
 @router.get("/roster", summary="学籍名册（只读主档，脱敏）")
 def roster(keyword: Optional[str] = None, status: Optional[str] = None,
-           page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+           page: int = 1, pageSize: int = 20,
+           user=Depends(require_permission("academicAffairs.roster.view"))):
     items, total = svc.roster(user, keyword, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 

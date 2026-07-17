@@ -100,9 +100,11 @@ def _check_course_required(db, s):
         AcademicGrade.is_deleted.is_(False))).all()
     if not rows:
         return {"item": "COURSE_REQUIRED", "result": "UNKNOWN", "owner": "AA_STAFF", "evidence": "无必修课程成绩记录"}
-    failed = [r.course_name for r in rows if r.pass_status == "FAILED"]
+    from app.modules.academic_affairs.services.academic_affairs_grade_service import effective_grade_rows
+    eff_rows = effective_grade_rows(rows)  # 同课程按最高分去重：补考/清考已通过的课程不再计入未通过
+    failed = [r.course_name for r in eff_rows if r.pass_status == "FAILED"]
     ok = not failed
-    ev = f"必修 {len(rows)} 门全部通过" if ok else f"必修未通过 {len(failed)} 门：{'、'.join(failed[:3])}{'…' if len(failed) > 3 else ''}"
+    ev = f"必修 {len(eff_rows)} 门全部通过" if ok else f"必修未通过 {len(failed)} 门：{'、'.join(failed[:3])}{'…' if len(failed) > 3 else ''}"
     return {"item": "COURSE_REQUIRED", "result": "PASS" if ok else "FAIL", "owner": "AA_STAFF", "evidence": ev}
 
 

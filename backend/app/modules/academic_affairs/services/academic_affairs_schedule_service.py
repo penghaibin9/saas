@@ -413,6 +413,10 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
             raise AppException("DATA_CONFLICT", f"排课冲突（{conflict['type']}）：{conflict['detail']}")
         it.weekday, it.slot_no, it.classroom_text, it.week_parity = weekday, slot_no, classroom, week_parity
         it.objection_status, it.objection_reason = None, None
+        # 定点改排属人工决策：自动排的课被人工改排后按人工口径保护（与 move_item 同款，否则下次
+        # 清空重排会把教务员刚改好的结果当成自动排课残留一并删除）
+        if getattr(it, "source", None) == "AUTO":
+            it.source = "MANUAL"
         _audit(db, "AA_SCHEDULE", it.id, "ADJUST_ITEM", f"改排至周{weekday}第{slot_no}节")
         db.commit()
         db.refresh(it)

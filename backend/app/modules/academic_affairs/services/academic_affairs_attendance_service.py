@@ -54,8 +54,9 @@ def _row(t) -> dict:
 
 
 def create_session(user, body) -> dict:
-    """教师新建一次考勤：按行政班圈定名单快照为 roster_json，初值全 PRESENT。body 为原始 dict（移动端 JSON 直传）。"""
-    from app.models import AaAttendanceSession, StudentProfile
+    """教师新建一次考勤：按行政班圈定名单快照为 roster_json，初值全 PRESENT。body 为原始 dict（移动端 JSON 直传）。
+    仅对本人确有教学任务（AaTeachingTask.teacher_key 命中该班）的行政班开放，教务处/校管不限。"""
+    from app.models import AaAttendanceSession, AaTeachingTask, StudentProfile
     body = body or {}
     class_id = body.get("classId")
     if not class_id:
@@ -64,7 +65,16 @@ def create_session(user, body) -> dict:
     if not session_date:
         raise AppException("VALIDATION_ERROR", "考勤日期必填")
     slot_no = body.get("slotNo")
+    role = ((user or {}).get("currentRoleCode") or "").upper()
     with session() as db:
+        if role not in ("ACADEMIC_ADMIN", "SCHOOL_ADMIN"):
+            keys = _user_keys(user)
+            owns = keys and db.scalars(select(AaTeachingTask.id).where(
+                AaTeachingTask.tenant_id == _tid(), AaTeachingTask.class_id == int(class_id),
+                AaTeachingTask.teacher_key.in_(keys), AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTask.status != "MERGED")).first()
+            if not owns:
+                raise AppException("NO_DATA_SCOPE", "该行政班不在您的授课范围内")
         rows = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(class_id),
             StudentProfile.is_deleted.is_(False))).all()

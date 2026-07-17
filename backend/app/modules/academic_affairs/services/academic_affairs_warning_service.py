@@ -263,10 +263,16 @@ def scan_warnings(user) -> dict:
     now = datetime.utcnow()
     with session() as db:
         from app.models import AcademicGrade
-        fails = db.execute(select(AcademicGrade.acad_student_id, func.count().label("n")).where(
-            AcademicGrade.tenant_id == _tid(), AcademicGrade.pass_status == "FAILED",
-            AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))
-            .group_by(AcademicGrade.acad_student_id)).all()
+        from app.modules.academic_affairs.services.academic_affairs_grade_service import effective_grade_rows
+        # 取全部有效成绩行按 (学生,课程) 去重后再统计挂科门数，避免补考/清考已通过的课程仍被计入挂科
+        all_rows = db.scalars(select(AcademicGrade).where(
+            AcademicGrade.tenant_id == _tid(), AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.is_deleted.is_(False))).all()
+        counts: dict = {}
+        for g in effective_grade_rows(all_rows):
+            if g.pass_status == "FAILED":
+                counts[g.acad_student_id] = counts.get(g.acad_student_id, 0) + 1
+        fails = list(counts.items())
         created = updated = 0
         for asid, n in fails:
             if n < thr:

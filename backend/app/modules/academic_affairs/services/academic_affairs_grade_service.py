@@ -23,6 +23,23 @@ _WF_SUBMIT = "AC_GRADE_REVIEW"
 _WF_CHANGE = "AC_GRADE_CHANGE"
 
 
+def effective_grade_rows(rows):
+    """按 (acad_student_id, course_name) 取分数最高的一行作为该生该课程的「有效成绩」。
+
+    同一门课可能存在多条历史 t_acad_grade 行（正常考试 PUBLISH / 补考 MAKEUP / 清考 CLEARANCE /
+    成绩更正 CHANGE），补考通过后应以补考行覆盖原挂科结论，而不是让毕业资格审核、学业预警等
+    只读扫描直接把原始 FAILED 行也算作一门未通过——那会导致已补考合格的学生被系统持续误判为
+    「未达标」。凡是按学生汇总挂科/统计课程通过情况，一律先经本函数去重，不要直接扫原始行。
+    """
+    best: dict = {}
+    for g in rows:
+        key = (g.acad_student_id, g.course_name)
+        cur = best.get(key)
+        if cur is None or (g.score if g.score is not None else -1) > (cur.score if cur.score is not None else -1):
+            best[key] = g
+    return list(best.values())
+
+
 def _op():
     u = get_current_user_ctx() or {}
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or "").upper(), str(u.get("userId") or "")
@@ -483,6 +500,16 @@ def publish_grades(task_id, user) -> dict:
         incomplete = [r for r in recs if r.total_score is None and (r.exception_flag or "NORMAL") == "NORMAL"]
         if not recs or incomplete:
             raise AppException("DATA_CONFLICT", f"仍有 {len(incomplete)} 名学生成绩未录全，不可发布")
+        # 条件更新抢占发布权：仅一个并发请求能把状态从 ACADEMIC_REVIEW 转为 PUBLISHED，
+        # 防止双击/网络重试并发触发两次下方插入循环，在正式成绩单里产生重复行
+        claim = db.query(AaGradeTask).filter(
+            AaGradeTask.id == t.id, AaGradeTask.tenant_id == _tid(),
+            AaGradeTask.status == "ACADEMIC_REVIEW").update(
+            {AaGradeTask.status: "PUBLISHED"}, synchronize_session=False)
+        if not claim:
+            db.rollback()
+            raise AppException("APPROVAL_VERSION_CONFLICT", "成绩已发布")
+        t.status = "PUBLISHED"
         projected, fail_count = 0, 0
         for r in recs:
             s = db.get(StudentProfile, int(r.student_id))
@@ -499,10 +526,12 @@ def publish_grades(task_id, user) -> dict:
             all_g = db.scalars(select(AcademicGrade).where(
                 AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
                 AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))).all()
-            scored = [x for x in all_g if x.score is not None]
+            # 同课程多次考核（正常/补考/清考/更正）按最高分去重取真实结论，避免补考已通过仍计入挂科门数
+            eff_g = effective_grade_rows(all_g)
+            scored = [x for x in eff_g if x.score is not None]
             a.avg_score = round(sum(x.score for x in scored) / len(scored)) if scored else 0
-            a.failed_count = sum(1 for x in all_g if x.pass_status == "FAILED")
-            a.obtained_credits = sum(float(x.credit_value or 0) for x in all_g if x.pass_status == "PASSED")
+            a.failed_count = sum(1 for x in eff_g if x.pass_status == "FAILED")
+            a.obtained_credits = sum(float(x.credit_value or 0) for x in eff_g if x.pass_status == "PASSED")
             a.gpa = round(sum((x.score or 0) / 100 * 4 for x in scored) / len(scored), 2) if scored else 0
             if r.pass_status == "FAILED":
                 fail_count += 1
@@ -514,7 +543,7 @@ def publish_grades(task_id, user) -> dict:
                                              source_ref_id=r.id, risk_level="MEDIUM",
                                              title=f"{t.course_name or ''} 课程不及格",
                                              detail=f"总评 {r.total_score}，及格线 {t.pass_line}", status="NEW"))
-        t.status, t.publish_at = "PUBLISHED", datetime.utcnow()
+        t.publish_at = datetime.utcnow()
         t.academic_reviewed_at = datetime.utcnow()
         n, r2, uid = _op()
         t.academic_reviewer_id = int(uid) if uid.isdigit() else None

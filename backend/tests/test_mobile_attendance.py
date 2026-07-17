@@ -33,8 +33,22 @@ def _seed_class(n_students=3, tenant_id=MAIN):
         db.close()
 
 
+def _seed_teaching_task(class_id, teacher_key, tenant_id=MAIN):
+    """新建考勤场次现要求调用者对该行政班确有教学任务归属（P0 越权修复），测试需先建好教学任务。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask
+    db = get_sessionmaker()()
+    try:
+        db.add(AaTeachingTask(tenant_id=tenant_id, batch_id=1, course_id=1, class_id=class_id,
+                              teacher_key=teacher_key, status="PENDING_ASSIGN"))
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_attendance_full_flow(client, db_mode):
     cid = _seed_class(n_students=3)
+    _seed_teaching_task(cid, "周老师")
     hdr = _teacher_token("周老师")
     r = client.post(f"{BASE}/sessions", headers=hdr,
                     json={"classId": cid, "courseName": "高等数学", "sessionDate": "2026-07-15"}).json()
@@ -69,6 +83,7 @@ def test_attendance_full_flow(client, db_mode):
 def test_attendance_other_teacher_cannot_view_or_mark(client, db_mode):
     """teacher_key 归属收敛：非本人创建的场次，另一教师应被拦截。"""
     cid = _seed_class(n_students=2)
+    _seed_teaching_task(cid, "张老师")
     owner_hdr = _teacher_token("张老师")
     r = client.post(f"{BASE}/sessions", headers=owner_hdr,
                     json={"classId": cid, "courseName": "英语", "sessionDate": "2026-07-15"}).json()
