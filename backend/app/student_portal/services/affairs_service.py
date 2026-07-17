@@ -93,15 +93,41 @@ def applications(user: dict) -> dict:
 
 
 def discipline_appeal(user: dict, body: dict) -> dict:
-    """违纪处分申辩/申诉（书面陈述，复用通用事务申请）。"""
+    """违纪处分申辩/申诉（对已生效处分发起正式申诉，走 affairs_discipline_service 真实审批链）。
+
+    此前误接入 campus_service_apply 通用事务申请（落无关联学生标识字段的 CsWorkOrder），
+    老师端申诉审核队列读的是 DisciplineAppeal 表，两者从不相交，学生提交后申诉永远
+    进不了审核——修复为按本人生效处分的 caseId 走真实申诉入口。
+    """
     body = body or {}
+    case_id = str(body.get("caseId") or "").strip()
     reason = str(body.get("reason") or body.get("content") or "").strip()
+    if not case_id:
+        raise AppException("VALIDATION_ERROR", "处分案件（caseId）必填")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "申辩内容至少 5 个字")
-    return stu.campus_service_apply(user, {"serviceKey": "DISCIPLINE_APPEAL", "reason": reason})
+    sid = _resolve_self_id(user)
+    from app.models import DisciplineCase
+    from app.services.db_service import _tid
+    with _session() as db:
+        x = db.get(DisciplineCase, int(case_id))
+        if not x or x.is_deleted or x.tenant_id != _tid() or int(x.student_id or 0) != sid:
+            raise AppException("DATA_NOT_FOUND", "处分记录不存在或不属于本人")
+    from types import SimpleNamespace
+    from app.services import affairs_discipline_service as disc
+    ns = SimpleNamespace(reason=reason)
+    return disc.submit_appeal(case_id, ns, user, skip_scope_check=True)
 
 
 # ── 奖助勤贷补申请 / 困难认定申请（PC 长表 + 材料 + 承诺书签署；强制本人） ──
+
+def funding_batches_open(user: dict) -> dict:
+    """当前开放中的奖助勤贷补批次（本人可申请；student_id 强制走 _require_student）。"""
+    _require_student(user)
+    from app.services import affairs_funding_service as funding
+    items, total = funding.list_batches(user, status="OPEN", page=1, page_size=50)
+    return {"items": items, "total": total}
+
 
 def funding_apply(user: dict, body: dict) -> dict:
     """奖助勤贷补申请（studentId 强制为本人；需勾选承诺；成功后承诺书电子签留痕）。"""
@@ -115,13 +141,21 @@ def funding_apply(user: dict, body: dict) -> dict:
                          applySource="SELF", amount=body.get("amount"),
                          statement=str(body.get("statement") or ""))
     from app.services import affairs_funding_service as funding
-    result = funding.apply(ns, user)
+    result = funding.apply(ns, user, skip_scope_check=True)
     common.sign(user, {"bizType": "FUNDING_COMMIT",
                        "bizId": str(result.get("applicationId") or ""),
                        "content": f"资助申请承诺 student={sid} batch={body.get('batchId')} "
                                   f"statement={body.get('statement') or ''}",
                        "confirm": True})
     return result
+
+
+def aid_batches_open(user: dict) -> dict:
+    """当前开放中的困难认定批次（本人可申请）。"""
+    _require_student(user)
+    from app.services import affairs_aid_service as aid_svc
+    items, total = aid_svc.list_batches(user, status="OPEN", page=1, page_size=50)
+    return {"items": items, "total": total}
 
 
 def aid_apply(user: dict, body: dict) -> dict:
@@ -144,7 +178,7 @@ def aid_apply(user: dict, body: dict) -> dict:
         debt=body.get("debt"), familyMembers=body.get("familyMembers") or [],
         specialTags=body.get("specialTags") or [])
     from app.services import affairs_aid_service as aid_svc
-    result = aid_svc.apply(ns, user)
+    result = aid_svc.apply(ns, user, skip_scope_check=True)
     common.sign(user, {"bizType": "DIFFICULTY_COMMIT",
                        "bizId": str(result.get("applyId") or ""),
                        "content": f"困难认定承诺 student={sid} batch={body.get('batchId')} "

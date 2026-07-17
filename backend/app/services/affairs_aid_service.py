@@ -241,7 +241,7 @@ def list_batches(user, school_year=None, status=None, page=1, page_size=20):
 
 # ═══════════ 申请（管理端受理直达班级评议）═══════════
 
-def apply(body, user) -> dict:
+def apply(body, user, *, skip_scope_check: bool = False) -> dict:
     student_id = int(body.studentId)
     if (body.applyLevel or "") not in LEVELS:
         raise AppException("VALIDATION_ERROR", "申请等级非法")
@@ -253,7 +253,10 @@ def apply(body, user) -> dict:
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
-        _scope_or_403(db, student_id, user)  # 越范围禁止为他院学生建困难认定+落家庭经济强敏感表
+        # skip_scope_check=True 仅供学生本人自助申请入口使用（studentId 已由服务端按登录身份
+        # 解析，不接受客户端指定）；越范围禁止为他院学生建困难认定的校验只对代发起场景生效。
+        if not skip_scope_check:
+            _scope_or_403(db, student_id, user)
         b = db.get(AidBatch, int(body.batchId))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("认定批次不存在")

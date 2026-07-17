@@ -60,14 +60,37 @@ def funding_my(user) -> dict:
 
 
 def discipline_my(user) -> dict:
-    """学生端仅回数量，不回明细（既有 t_cs_discipline 约定，13A 沿用）。"""
-    from app.models import DisciplineCase
+    """学生端仅回数量+生效处分的申诉入口所需最小信息（caseId/申诉状态），不回完整卷宗细节
+    （既有 t_cs_discipline 约定，13A 沿用）。"""
+    from app.models import DisciplineAppeal, DisciplineCase
+    L_DISC_TYPE = {"WARNING": "警告", "SERIOUS_WARNING": "严重警告", "DEMERIT": "记过",
+                   "PROBATION": "留校察看", "EXPEL": "开除学籍"}
     with session() as db:
         stu = _me(db, user)
-        active = db.scalar(select(func.count()).select_from(DisciplineCase).where(
+        rows = db.scalars(select(DisciplineCase).where(
             DisciplineCase.tenant_id == _tid(), DisciplineCase.student_id == stu.id,
-            DisciplineCase.status == "EFFECTIVE", DisciplineCase.is_deleted.is_(False))) or 0
-        return {"activeCount": active, "detailNote": "处分明细不在移动端展示，如有疑问请联系辅导员"}
+            DisciplineCase.status == "EFFECTIVE", DisciplineCase.is_deleted.is_(False))
+            .order_by(DisciplineCase.id.desc())).all()
+        appeals = db.scalars(select(DisciplineAppeal).where(
+            DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.student_id == stu.id,
+            DisciplineAppeal.is_deleted.is_(False)).order_by(DisciplineAppeal.id.desc())).all()
+        latest_appeal = {}
+        for a in appeals:
+            latest_appeal.setdefault(str(a.case_id), a)
+        items = []
+        for x in rows:
+            ap = latest_appeal.get(str(x.id))
+            items.append({
+                "caseId": str(x.id), "discType": x.disc_type,
+                "discTypeLabel": L_DISC_TYPE.get(x.disc_type, x.disc_type),
+                "effectiveAt": _iso(x.effective_at),
+                "appealStatus": ap.status if ap else None,
+                "appealResult": ap.result if ap else None,
+                "appealReviewOpinion": ap.review_opinion if ap else "",
+                "canAppeal": not (ap and ap.status in ("SUBMITTED", "REVIEWING")),
+            })
+        return {"activeCount": len(rows), "detailNote": "处分明细不在移动端展示，如有疑问请联系辅导员",
+               "items": items}
 
 
 def dorm_my(user) -> dict:

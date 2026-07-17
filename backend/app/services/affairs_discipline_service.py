@@ -483,15 +483,17 @@ def _appeal_row(a, s=None) -> dict:
             "reviewer": a.reviewer or "", "reviewedAt": _iso(a.reviewed_at)}
 
 
-def submit_appeal(case_id, body, user) -> dict:
-    """提起申诉（EFFECTIVE 后；同一 case 不得有进行中的申诉）。理由≥5字。"""
+def submit_appeal(case_id, body, user, *, skip_scope_check: bool = False) -> dict:
+    """提起申诉（EFFECTIVE 后；同一 case 不得有进行中的申诉）。理由≥5字。
+    skip_scope_check=True 仅供学生本人自助申诉入口使用（case_id 已由调用方核验属于本人）。"""
     from app.models import DisciplineAppeal, StudentProfile
     reason = (getattr(body, "reason", "") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
     with session() as db:
         x, s = _load(db, case_id)
-        _scope_or_403(db, x.student_id, user)
+        if not skip_scope_check:
+            _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "仅已生效处分可申诉")
         dup = db.scalars(select(DisciplineAppeal).where(
