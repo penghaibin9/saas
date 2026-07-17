@@ -15,6 +15,7 @@ from app.db.session import db_enabled, get_sessionmaker
 from app.services.file_service import upload_dir
 
 _MEM_BATCHES: dict[str, dict] = {}
+EXPORT_PAGE_SIZE = 2000
 
 
 def _tid() -> int:
@@ -174,18 +175,30 @@ def create_students_export(purpose: str) -> dict:
     from app.services import db_service
     # 与 /students 目录同口径收敛：辅导员/学院管理员/心理教师不得导出全校台账
     class_ids, student_ids = student_directory_scope(user)
-    items, total = (db_service.list_students(1, 10000, class_ids=class_ids, student_ids=student_ids)
-                    if db_enabled() else ([], 0))
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "学生主档"
+    items, total = (db_service.list_students(
+        1, EXPORT_PAGE_SIZE, class_ids=class_ids, student_ids=student_ids)
+        if db_enabled() else ([], 0))
+    max_rows = int(_rule("export", "exportMaxRows") or 10000)
+    if total > max_rows:
+        raise AppException("VALIDATION_ERROR",
+                           f"导出数据量 {total} 行超过单次上限 {max_rows} 行，请按学院、班级或年级分批导出")
+    # write_only 模式不会把全部单元格常驻内存；后续页跳过 COUNT，固定每页两条 SQL。
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet(title="学生主档")
     watermark = (f"高校学生全生命周期管理平台 · 导出人：{user.get('realName', '-')} · "
                  f"时间：{datetime.now():%Y-%m-%d %H:%M} · 用途：{purpose.strip()} · 敏感字段已脱敏")
     ws.append([watermark])
     ws.append(["学号", "姓名", "性别", "年级", "班级", "阶段", "学籍状态", "手机号(脱敏)", "风险"])
-    for r in items:
-        ws.append([r["studentNo"], r["realName"], r["gender"], r["grade"], r["className"],
-                   r["currentStage"], r["studentStatus"], r["phoneMasked"], r["riskLevel"]])
+    page = 1
+    while True:
+        for r in items:
+            ws.append([r["studentNo"], r["realName"], r["gender"], r["grade"], r["className"],
+                       r["currentStage"], r["studentStatus"], r["phoneMasked"], r["riskLevel"]])
+        if page * EXPORT_PAGE_SIZE >= total:
+            break
+        page += 1
+        items, _ = db_service.list_students(
+            page, EXPORT_PAGE_SIZE, class_ids=class_ids, student_ids=student_ids, count_total=False)
     key = f"exports/{datetime.now():%Y%m%d}/students_{uuid.uuid4().hex[:8]}.xlsx"
     target = upload_dir() / key
     target.parent.mkdir(parents=True, exist_ok=True)

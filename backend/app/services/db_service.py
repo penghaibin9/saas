@@ -96,7 +96,7 @@ def _primary_phone(db, student_id: int) -> str | None:
 
 def list_students(page: int, page_size: int, keyword=None, college=None, major=None,
                   class_name=None, status=None, risk_level=None,
-                  class_ids=None, student_ids=None) -> tuple[list[dict], int]:
+                  class_ids=None, student_ids=None, *, count_total: bool = True) -> tuple[list[dict], int]:
     # 数据范围收敛（SEC 口径）：class_ids/student_ids 由 API 层按角色解析；空集合 = fail-closed
     if class_ids is not None and not class_ids:
         return [], 0
@@ -139,7 +139,8 @@ def list_students(page: int, page_size: int, keyword=None, college=None, major=N
         if class_name:
             q = q.where(SchoolClass.class_name == class_name)
 
-        total = db.scalar(select(func.count()).select_from(q.order_by(None).subquery())) or 0
+        total = (db.scalar(select(func.count()).select_from(q.order_by(None).subquery())) or 0
+                 if count_total else 0)
         result_rows = db.execute(q.order_by(StudentProfile.id)
                                  .offset((max(1, page) - 1) * page_size)
                                  .limit(page_size)).all()

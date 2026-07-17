@@ -154,6 +154,34 @@ def test_p4_export_and_download(client, auth_headers, db_mode):
     assert short["code"] in (400001, 422001)  # 用途 <5 字被拦
 
 
+def test_p4_export_uses_all_database_pages(client, auth_headers, db_mode, monkeypatch):
+    """小分页模拟大导出：不得只写第一页，也不得为后续页重复执行总数统计。"""
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile
+    from app.services import import_export_service as ie
+
+    db = get_sessionmaker()()
+    for index in (2, 3):
+        db.add(StudentProfile(tenant_id=1000000000000000001,
+                              student_no=f"2026EXPORT{index}", real_name=f"导出分页{index}",
+                              current_stage="ENROLLED", student_status="NORMAL", status="ACTIVE"))
+    db.commit(); db.close()
+    monkeypatch.setattr(ie, "EXPORT_PAGE_SIZE", 1)
+
+    task = client.post("/api/v1/export/students", headers=auth_headers,
+                       json={"purpose": "验证分页导出完整性"}).json()["data"]
+    assert task["rowCount"] == 3
+    response = client.get(f"/api/v1/export/tasks/{task['taskId']}/download", headers=auth_headers)
+    workbook = load_workbook(BytesIO(response.content), read_only=True)
+    rows = list(workbook.active.iter_rows(values_only=True))
+    assert len(rows) == 5  # 水印 + 表头 + 3 名学生
+    assert {row[0] for row in rows[2:]} == {"2023115001", "2026EXPORT2", "2026EXPORT3"}
+
+
 def test_p4_audit_filters(client, auth_headers, db_mode):
     client.post("/api/v1/audit/mock-record", headers=auth_headers)
     body = client.get("/api/v1/audit/logs?action=MOCK", headers=auth_headers).json()["data"]
