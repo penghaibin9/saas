@@ -14,6 +14,7 @@ from app.student_portal.services import affairs_service as affairs
 from app.student_portal.services import common_service as common
 from app.student_portal.services import graduation_service as graduation
 from app.student_portal.services import guardian_service as guardian
+from app.student_portal.services import internship_service as internship
 from app.student_portal.services import home_service as home
 from app.student_portal.services import messages_service as messages
 from app.student_portal.services import parent_link_service as parent
@@ -249,6 +250,32 @@ def affairs_activities_my(user=Depends(get_current_user)):
 @router.post("/affairs/activities/{activity_id}/enroll", summary="活动报名（本人）")
 def affairs_activity_enroll(activity_id: str, user=Depends(get_current_user)):
     return success(affairs.activity_enroll(user, activity_id))
+
+
+# ── 岗位实习（第5期）：我的实习 + 周报/月报长文档 + 协议打印 + 成绩申诉 ──
+@router.get("/internship/my", summary="我的实习（本人）")
+def internship_my(user=Depends(get_current_user)):
+    return success(internship.my(user))
+
+
+@router.post("/internship/weekly/submit", summary="提交实习周报（本人）")
+def internship_weekly_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.weekly_submit(user, body))
+
+
+@router.post("/internship/report/submit", summary="提交实习月报/总结长文档（本人）")
+def internship_report_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.report_submit(user, body))
+
+
+@router.post("/internship/agreement/print", summary="打印实习三方协议（本人）")
+def internship_agreement_print(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.agreement_print(user, body))
+
+
+@router.post("/internship/score/appeal", summary="实习成绩申诉（本人）")
+def internship_score_appeal(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.score_appeal(user, body))
 
 
 # ── 首页工作台聚合 ──
