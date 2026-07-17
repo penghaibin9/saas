@@ -201,8 +201,13 @@ async function reload() {
 }
 async function applyLeave() {
   busy.value = true
-  try { await portalApi.affairsServiceApply({ serviceKey: 'LEAVE', reason: leaveForm.reason }); ui.notify('请假申请已提交'); leaveForm.reason = ''; reload() }
-  catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+  try {
+    await portalApi.affairsServiceApply({
+      serviceKey: 'LEAVE', reason: leaveForm.reason, leaveType: leaveForm.leaveType,
+      startTime: leaveForm.startDate, endTime: leaveForm.endDate
+    })
+    ui.notify('请假申请已提交，等待辅导员审批'); leaveForm.reason = ''; leaveForm.startDate = ''; leaveForm.endDate = ''; reload()
+  } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function submitAid() {
   busy.value = true

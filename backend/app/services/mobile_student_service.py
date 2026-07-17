@@ -1079,11 +1079,35 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "申请事由至少 5 个字")
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
+    is_leave = service_key.upper() in ("LEAVE", "SV1", "请假")
+    if is_leave:
+        # 请假必须走正式审批工作流（辅导员/学院/学工处多级节点），不能只落一条脱离
+        # WorkflowInstance/affairs_status 的简化记录——否则学生自己的"我的请假"列表
+        # 和老师端"待审批"队列都读不到这条申请（两条真相数据断层，分角色测试发现）。
+        from types import SimpleNamespace
+        from datetime import datetime as _dt
+        from app.services import affairs_leave_service as leave_svc
+        with _session() as db:
+            stu = resolve_student(db, u)
+            if not stu:
+                raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法提交")
+            sid = stu.id
+        today = _dt.utcnow().strftime("%Y-%m-%d")
+        start_raw = str(body.get("startTime") or body.get("startDate") or "").strip() or today
+        end_raw = str(body.get("endTime") or body.get("endDate") or "").strip() or today
+        leave_type = str(body.get("leaveType") or "PERSONAL").strip().upper()
+        ns = SimpleNamespace(studentId=str(sid), startTime=start_raw, endTime=end_raw,
+                             leaveType=leave_type, reason=content)
+        result = leave_svc.apply_leave(ns, user, skip_scope_check=True)
+        audit_log.record("MOBILE_SERVICE_APPLY", "campus-service:LEAVE",
+                         {"studentNo": u.get("studentNo"), "serviceKey": service_key})
+        return {"id": result.get("id"), "status": result.get("affairsStatus"),
+               "message": "提交成功，等待辅导员审批"}
     with _session() as db:
         stu = resolve_student(db, u)
         if not stu:
             raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法提交")
-        from app.models import CsLeave, CsServiceStudent, CsWorkOrder
+        from app.models import CsServiceStudent, CsWorkOrder
         cs = db.scalars(select(CsServiceStudent).where(
             CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
             (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == stu.real_name))).first()
@@ -1093,28 +1117,18 @@ def campus_service_apply(user: dict, body: dict) -> dict:
             db.add(cs)
             db.flush()
         # 防重复提交：同一学生同一服务、相同事由且仍在待处理，视为重复（409）
-        pending_leave = db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), CsLeave.cs_student_id == cs.id,
-            CsLeave.is_deleted.is_(False), CsLeave.status == "PENDING_REVIEW",
-            CsLeave.reason == content)).first()
+        from datetime import datetime as _dt
         pending_wo = db.scalars(select(CsWorkOrder).where(
             CsWorkOrder.tenant_id == _tid(), CsWorkOrder.cs_student_id == cs.id,
             CsWorkOrder.is_deleted.is_(False), CsWorkOrder.status == "PENDING_HANDLE",
             CsWorkOrder.title == service_key, CsWorkOrder.detail == content)).first()
-        if pending_leave or pending_wo:
+        if pending_wo:
             raise AppException("DATA_CONFLICT", "相同申请已提交且仍在处理中，请勿重复提交")
-        is_leave = service_key.upper() in ("LEAVE", "SV1", "请假")
-        from datetime import datetime as _dt
-        if is_leave:
-            row = CsLeave(tenant_id=_tid(), cs_student_id=cs.id, leave_type="PERSONAL",
-                          reason=content, status="PENDING_REVIEW", apply_time=_dt.utcnow(),
-                          code=f"SV-{_dt.now():%Y%m%d}-{cs.id}")
-        else:
-            row = CsWorkOrder(tenant_id=_tid(), cs_student_id=cs.id, title=service_key,
-                              wo_type="CONSULT", priority="MEDIUM", detail=content,
-                              status="PENDING_HANDLE", code=f"WO-{_dt.now():%Y%m%d}-{cs.id}",
-                              trail_json=[{"title": "学生提交", "desc": content,
-                                           "time": _iso(_dt.utcnow()), "tone": "processing"}])
+        row = CsWorkOrder(tenant_id=_tid(), cs_student_id=cs.id, title=service_key,
+                          wo_type="CONSULT", priority="MEDIUM", detail=content,
+                          status="PENDING_HANDLE", code=f"WO-{_dt.now():%Y%m%d}-{cs.id}",
+                          trail_json=[{"title": "学生提交", "desc": content,
+                                       "time": _iso(_dt.utcnow()), "tone": "processing"}])
         db.add(row)
         db.flush()
         rid, status = row.id, row.status
