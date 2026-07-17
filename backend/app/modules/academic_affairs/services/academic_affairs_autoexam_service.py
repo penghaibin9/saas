@@ -455,16 +455,18 @@ def auto_assign_times(user, batch_id, body, dry_run=False) -> dict:
         courses = db.scalars(select(AaExamCourse).where(
             AaExamCourse.tenant_id == _tid(), AaExamCourse.batch_id == b.id,
             AaExamCourse.status == "CONFIRMED", AaExamCourse.is_deleted.is_(False))).all()
-        # 占用索引：含已定时间的课程（增量绕开）
-        class_slot, class_day, teacher_slot = set(), {}, set()
+        # 占用索引：含已定时间的课程（增量绕开）。判撞用时段重叠 _time_overlap，
+        # 与排考场/监考阶段同源——精确相等只能挡 start 完全一样的场次，8:00-10:00 与
+        # 9:00-11:00 这类 start 不同但重叠的时段会漏判，故按 (date,start,end) 存已占用区间。
+        class_busy, class_day, teacher_busy = {}, {}, {}
         for c in courses:
             if c.exam_date and c.start_time:
                 if c.class_id:
-                    class_slot.add((int(c.class_id), c.exam_date, c.start_time))
+                    class_busy.setdefault(int(c.class_id), []).append((c.exam_date, c.start_time, c.end_time))
                     class_day[(int(c.class_id), c.exam_date)] = \
                         class_day.get((int(c.class_id), c.exam_date), 0) + 1
                 if c.teacher_key:
-                    teacher_slot.add((c.teacher_key, c.exam_date, c.start_time))
+                    teacher_busy.setdefault(c.teacher_key, []).append((c.exam_date, c.start_time, c.end_time))
 
         pending = [c for c in courses if not (c.exam_date and c.start_time)]
         pending.sort(key=lambda c: (-(c.expected_students or 0), c.id))
@@ -472,11 +474,13 @@ def auto_assign_times(user, batch_id, body, dry_run=False) -> dict:
         for c in pending:
             got = None
             for (d, st, et) in slots:
-                if c.class_id and (int(c.class_id), d, st) in class_slot:
+                if c.class_id and any(_time_overlap(d, st, et, bd, bs, be)
+                                      for (bd, bs, be) in class_busy.get(int(c.class_id), ())):
                     continue
                 if c.class_id and class_day.get((int(c.class_id), d), 0) >= max_per_day:
                     continue
-                if c.teacher_key and (c.teacher_key, d, st) in teacher_slot:
+                if c.teacher_key and any(_time_overlap(d, st, et, bd, bs, be)
+                                         for (bd, bs, be) in teacher_busy.get(c.teacher_key, ())):
                     continue
                 got = (d, st, et)
                 break
@@ -489,10 +493,10 @@ def auto_assign_times(user, batch_id, body, dry_run=False) -> dict:
             d, st, et = got
             c.exam_date, c.start_time, c.end_time = d, st, et
             if c.class_id:
-                class_slot.add((int(c.class_id), d, st))
+                class_busy.setdefault(int(c.class_id), []).append((d, st, et))
                 class_day[(int(c.class_id), d)] = class_day.get((int(c.class_id), d), 0) + 1
             if c.teacher_key:
-                teacher_slot.add((c.teacher_key, d, st))
+                teacher_busy.setdefault(c.teacher_key, []).append((d, st, et))
             assigned.append({"courseId": str(c.id), "courseName": c.course_name,
                              "className": c.class_name, "examDate": d,
                              "startTime": st, "endTime": et})
