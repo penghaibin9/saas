@@ -542,9 +542,13 @@ def list_materials(page, page_size, keyword=None, status=None, material_type=Non
         if material_type:
             q = q.where(OrientationMaterial.material_type == material_type)
         rows = db.scalars(q.order_by(OrientationMaterial.id.desc())).all()
+        # 消 N+1：一次批量取回本批材料涉及的迎新学生，替代循环内逐行 db.get（行为等价）。
+        sids = {int(m.ori_student_id) for m in rows if m.ori_student_id}
+        stu_map = {s.id: s for s in db.scalars(select(OrientationStudent).where(
+            OrientationStudent.id.in_(sids))).all()} if sids else {}
         items = []
         for m in rows:
-            stu = db.get(OrientationStudent, m.ori_student_id)
+            stu = stu_map.get(int(m.ori_student_id)) if m.ori_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_mat_row(m, stu))
