@@ -28,3 +28,13 @@ def risk(user=Depends(require_staff)):
 @router.get("/workbench", summary="工作台首页汇总（真实）")
 def workbench(user=Depends(require_staff)):
     return success(svc.get_workbench_summary())
+
+
+@router.get("/lifecycle-board", summary="生命周期驾驶舱聚合（同构前端，有源真实/无源占位）")
+def lifecycle_board(caliber: str = Query("REGISTERED"), user=Depends(require_staff)):
+    return success(svc.get_lifecycle_board(caliber))
+
+
+@router.get("/risk-board", summary="风险驾驶舱聚合（来源/等级真实，进度/趋势待接入）")
+def risk_board(user=Depends(require_staff)):
+    return success(svc.get_risk_board())

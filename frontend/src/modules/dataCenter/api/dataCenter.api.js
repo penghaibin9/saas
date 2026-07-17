@@ -135,7 +135,13 @@ export const dataCenterApi = {
   },
 
   /** 生命周期漏斗 + 各阶段统计（选择学院时按学院在册占比折算漏斗） */
-  getLifecycle(params = {}) {
+  async getLifecycle(params = {}) {
+    // 真分支：DB 启用时返回全校真实聚合（有源真实 / 无源占位 / 趋势待 P3）。
+    // 注：collegeId 等数据范围折算为 mock 演示能力，真实分支的按院收敛属 P1（dataScope），未启用前真分支返回全校。
+    if (shouldTryReal()) {
+      try { return Promise.resolve({ code: 0, data: await request('/stats/lifecycle-board', { params: { caliber: params.caliber || 'REGISTERED' } }), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     const funnel = clone(lifecycleFunnel)
     let scopeLabel = '全校'
     if (params.collegeId) {
@@ -184,7 +190,12 @@ export const dataCenterApi = {
   },
 
   /** 风险预警统计（来源分布 / 等级分布 / 处理进度 / 近 6 月趋势） */
-  getRiskStats(params = {}) {
+  async getRiskStats(params = {}) {
+    // 真分支：来源分布 + 等级分布真实聚合；处理进度/趋势后端暂返空（口径未统一/无快照表），前端空态渲染。
+    if (shouldTryReal()) {
+      try { return Promise.resolve({ code: 0, data: await request('/stats/risk-board'), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     const data = clone(riskStats)
     data.timeRangeLabel = findLabel(filterOptions.timeRanges, params.timeRange || 'LAST_6M')
     return ok(data)
