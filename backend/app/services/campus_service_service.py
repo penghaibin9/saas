@@ -101,6 +101,15 @@ def _stu_of(db, csid):
     return db.get(CsServiceStudent, csid)
 
 
+def _cs_students_by_ids(db, rows, attr="cs_student_id"):
+    """批量取回 rows 涉及的在校服务学生台账 {id: CsServiceStudent}，替代列表循环内逐行
+    _stu_of（消 N+1）。哨兵行 cs_student_id=0 不入集合，循环内 .get(0) 自然落 None。"""
+    ids = {int(getattr(x, attr)) for x in rows if getattr(x, attr, None)}
+    if not ids:
+        return {}
+    return {s.id: s for s in db.scalars(select(CsServiceStudent).where(CsServiceStudent.id.in_(ids))).all()}
+
+
 # ═══ 学生台账 ═══
 
 def _stu_row(s: CsServiceStudent) -> dict:
@@ -227,6 +236,7 @@ def list_leaves(page, page_size, keyword=None, type=None, status=None):
         rows = db.scalars(q.order_by(CsLeave.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
         allowed_classes, _ = _allowed_class_ids(db, get_current_user_ctx() or {})
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if x.cs_student_id:
@@ -237,7 +247,7 @@ def list_leaves(page, page_size, keyword=None, type=None, status=None):
                 s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
                 if not s or s.class_id not in allowed_classes:
                     continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_leave_row(x, stu))
@@ -330,11 +340,12 @@ def list_grants(page, page_size, keyword=None, type=None, status=None):
             q = q.where(CsGrant.status == status)
         rows = db.scalars(q.order_by(CsGrant.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if scope_ids is not None and x.cs_student_id not in scope_ids:
                 continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_grant_row(x, stu, mask=True))
@@ -413,11 +424,12 @@ def list_dorm_records(page, page_size, keyword=None, status=None):
             q = q.where(CsDormRecord.status == status)
         rows = db.scalars(q.order_by(CsDormRecord.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if scope_ids is not None and x.cs_student_id not in scope_ids:
                 continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_dorm_row(x, stu))
@@ -444,11 +456,12 @@ def list_dorm_exceptions(page, page_size, keyword=None, type=None, status=None):
             q = q.where(CsDormException.status == status)
         rows = db.scalars(q.order_by(CsDormException.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if scope_ids is not None and x.cs_student_id not in scope_ids:
                 continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_de_row(x, stu))
@@ -514,11 +527,12 @@ def list_disciplines(page, page_size, keyword=None, type=None, status=None):
             q = q.where(CsDiscipline.status == status)
         rows = db.scalars(q.order_by(CsDiscipline.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if scope_ids is not None and x.cs_student_id not in scope_ids:
                 continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_disc_row(x, stu))
@@ -567,11 +581,12 @@ def list_work_orders(page, page_size, keyword=None, type=None, status=None, prio
             q = q.where(CsWorkOrder.priority == priority)
         rows = db.scalars(q.order_by(CsWorkOrder.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if scope_ids is not None and x.cs_student_id not in scope_ids:
                 continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or (keyword.strip() not in (stu.name or "") and keyword.strip() not in x.title)):
                 continue
             items.append(_wo_row(x, stu))
@@ -682,11 +697,12 @@ def list_mental(page, page_size, keyword=None, user=None, reason=None):
         rows = db.scalars(select(CsMentalRecord).where(CsMentalRecord.tenant_id == _tid(),
                           CsMentalRecord.is_deleted.is_(False)).order_by(CsMentalRecord.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if scope_ids is not None and x.cs_student_id not in scope_ids:
                 continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append({"id": str(x.id), "studentId": str(x.cs_student_id),
