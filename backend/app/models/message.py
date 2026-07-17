@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, String
+from sqlalchemy import BigInteger, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -12,6 +12,10 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 class UnifiedMessage(PKMixin, TenantMixin, CommonMixin, Base):
     """t_unified_message 统一消息（站内通知；渠道下发回执见 t_message_channel_log，后续批次）。"""
     __tablename__ = "t_unified_message"
+    __table_args__ = (
+        Index("ix_msg_tenant_receiver_active_id", "tenant_id", "receiver_id", "is_deleted", "id"),
+        Index("ix_msg_tenant_receiver_unread", "tenant_id", "receiver_id", "is_deleted", "status"),
+    )
 
     receiver_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     source_module: Mapped[str | None] = mapped_column(String(50))

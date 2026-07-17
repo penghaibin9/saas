@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, String
+from sqlalchemy import JSON, BigInteger, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -14,6 +14,10 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 class SecurityAuditLog(PKMixin, TenantMixin, Base):
     """t_security_audit_log 安全审计——登录/登出/身份切换/越权/敏感查看/下载/导入/导出/删除等。append-only。"""
     __tablename__ = "t_security_audit_log"
+    __table_args__ = (
+        Index("ix_audit_tenant_created_id", "tenant_id", "created_at", "id"),
+        Index("ix_audit_tenant_operator_created", "tenant_id", "operator_id", "created_at"),
+    )
 
     operator_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     operator_name: Mapped[str | None] = mapped_column(String(100))

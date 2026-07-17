@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Float, Integer, String, Text,
-                        UniqueConstraint)
+                        Index, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -47,8 +47,10 @@ class InternshipBatch(PKMixin, TenantMixin, CommonMixin, Base):
 class InternshipRecord(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_record 学生实习记录（一名学生一个批次一条）。"""
     __tablename__ = "t_internship_record"
-    __table_args__ = (UniqueConstraint("tenant_id", "student_id", "batch_id",
-                                       name="uk_intern_stu_batch"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "student_id", "batch_id", name="uk_intern_stu_batch"),
+        Index("ix_intern_tenant_student_active", "tenant_id", "student_id", "is_deleted"),
+    )
 
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True,
                                             comment="= t_student_profile.id")

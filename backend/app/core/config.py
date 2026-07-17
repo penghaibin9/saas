@@ -76,6 +76,14 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 10              # MySQL / PG 连接池大小
     DB_MAX_OVERFLOW: int = 20
     DB_POOL_RECYCLE: int = 3600         # 秒；规避 MySQL wait_timeout 断连
+    DB_POOL_TIMEOUT: int = 5            # 秒；池耗尽快速失败，避免请求无限堆积
+    DB_CONNECT_TIMEOUT: int = 5         # 秒；数据库网络故障快速失败
+    DB_READ_TIMEOUT: int = 30
+    DB_WRITE_TIMEOUT: int = 30
+    SLOW_QUERY_MS: int = 500              # 仅记录耗时与 SQL 动词，不记录敏感参数
+    HTTP_SLOW_REQUEST_MS: int = 1000
+    # web=兼容单进程开发；external=生产多 worker，由独立 scheduler 容器执行定时任务。
+    SCHEDULER_MODE: str = "web"
 
     # ── CORS（逗号分隔白名单；留空开发放开）──
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5188"

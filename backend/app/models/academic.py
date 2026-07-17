@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, Numeric, String
+from sqlalchemy import BigInteger, DateTime, Index, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -11,6 +11,9 @@ from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMi
 
 class AcademicStudent(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_acad_student"
+    __table_args__ = (
+        Index("ix_acad_student_tenant_profile_active", "tenant_id", "student_id", "is_deleted"),
+    )
     student_no: Mapped[str | None] = mapped_column(String(50), index=True)
     student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -83,6 +86,9 @@ class AcademicRetake(PKMixin, TenantMixin, CommonMixin, Base):
 
 class AcademicWarning(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_acad_warning"
+    __table_args__ = (
+        Index("ix_warning_tenant_student_status", "tenant_id", "acad_student_id", "is_deleted", "status"),
+    )
     code: Mapped[str | None] = mapped_column(String(50))
     acad_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     warn_type: Mapped[str] = mapped_column(String(50), nullable=False, default="MULTI_FAIL")

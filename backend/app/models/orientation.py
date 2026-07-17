@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -12,7 +12,10 @@ from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMi
 class OrientationStudent(PKMixin, TenantMixin, CommonMixin, Base):
     """t_orientation_student 新生报到台账。"""
     __tablename__ = "t_orientation_student"
-    __table_args__ = (UniqueConstraint("tenant_id", "admission_no", name="uk_ori_admission_no"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "admission_no", name="uk_ori_admission_no"),
+        Index("ix_ori_student_tenant_profile_active", "tenant_id", "student_id", "is_deleted"),
+    )
 
     student_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="关联 t_student_profile.id（可空）")
     name: Mapped[str] = mapped_column(String(100), nullable=False)

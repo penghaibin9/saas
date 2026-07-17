@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -43,8 +43,12 @@ class WorkflowTask(PKMixin, TenantMixin, CommonMixin, Base):
 class UnifiedTodo(PKMixin, TenantMixin, CommonMixin, Base):
     """t_unified_todo 统一待办（单表，全模块统一生成；去重键见冻结册 §11 模块13）。"""
     __tablename__ = "t_unified_todo"
-    __table_args__ = (UniqueConstraint("tenant_id", "source_module", "source_biz_id", "todo_type", "assignee_id",
-                                       name="uk_todo_dedup"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "source_module", "source_biz_id", "todo_type", "assignee_id",
+                         name="uk_todo_dedup"),
+        Index("ix_todo_tenant_student_status_id", "tenant_id", "student_id", "is_deleted", "status", "id"),
+        Index("ix_todo_tenant_assignee_status_id", "tenant_id", "assignee_id", "is_deleted", "status", "id"),
+    )
 
     source_module: Mapped[str] = mapped_column(String(50), nullable=False)
     source_biz_type: Mapped[str | None] = mapped_column(String(100))

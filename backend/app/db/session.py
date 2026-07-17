@@ -36,6 +36,13 @@ def _engine_kwargs(url: str) -> dict:
             pool_size=settings.DB_POOL_SIZE,
             max_overflow=settings.DB_MAX_OVERFLOW,
             pool_recycle=settings.DB_POOL_RECYCLE,
+            pool_timeout=settings.DB_POOL_TIMEOUT,
+            pool_use_lifo=True,
+            connect_args={
+                "connect_timeout": settings.DB_CONNECT_TIMEOUT,
+                "read_timeout": settings.DB_READ_TIMEOUT,
+                "write_timeout": settings.DB_WRITE_TIMEOUT,
+            },
         )
     elif head.startswith("sqlite"):
         # SQLite：允许跨线程（FastAPI 多线程访问同一文件库）
@@ -45,6 +52,8 @@ def _engine_kwargs(url: str) -> dict:
             pool_size=settings.DB_POOL_SIZE,
             max_overflow=settings.DB_MAX_OVERFLOW,
             pool_recycle=settings.DB_POOL_RECYCLE,
+            pool_timeout=settings.DB_POOL_TIMEOUT,
+            pool_use_lifo=True,
         )
     return kwargs
 
@@ -58,6 +67,8 @@ def get_engine(url: Optional[str] = None):
     if _engine is None or url:
         from sqlalchemy import create_engine
         engine = create_engine(target, **_engine_kwargs(target))
+        from app.db.observability import install_engine_observers
+        install_engine_observers(engine)
         if url:
             return engine
         _engine = engine

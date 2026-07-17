@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -11,6 +11,9 @@ from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMi
 
 class EmpStudent(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_emp_student"
+    __table_args__ = (
+        Index("ix_emp_student_tenant_profile_active", "tenant_id", "student_id", "is_deleted"),
+    )
     student_no: Mapped[str | None] = mapped_column(String(50), index=True)
     student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
