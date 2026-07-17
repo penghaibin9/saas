@@ -942,6 +942,8 @@ def get_dashboard_summary(user=None) -> dict:
             "batchRange": (f"{_iso(batch.start_date)[:10]} ~ {_iso(batch.end_date)[:10]}"
                            if batch and batch.start_date and batch.end_date else ""),
             "batchStatus": "进行中" if batch and batch.status == "RUNNING" else "—",
+            # 口径与 stats_service.get_overview 的「实习在岗率」一致：ONBOARD / 全部未删记录。
+            "batchProgress": round(flow_map["ONBOARD"] / len(recs) * 100, 1) if recs else 0,
             "stats": [
                 {"label": "在岗学生", "value": str(flow_map["ONBOARD"]), "trend": "", "trendQuality": "neutral"},
                 {"label": "待处理打卡异常", "value": str(pending_exc),

@@ -99,8 +99,7 @@ export const ADMIN_MENU = [
       { key: 'in-guidance-visit', label: '指导巡访管理', path: '/admin/internship/guidance', moduleCode: 'INTERNSHIP', permissionKey: 'internship.guidance.view' },
       { key: 'in-risk-disposal', label: '风险异常处置', path: '/admin/internship/risk-disposal', moduleCode: 'INTERNSHIP', permissionKey: 'internship.risk.view' },
       { key: 'in-eval-score', label: '评价成绩审核', path: '/admin/internship/scores', moduleCode: 'INTERNSHIP', permissionKey: 'internship.score.view' },
-      /* 就业中心页面的一级归属映射（rail 高亮用），实习正常菜单本轮不挂就业跨中心入口 */
-      { key: 'in-employment-archive-stats', label: '归档与统计', path: '/admin/employment', moduleCode: 'EMPLOYMENT', permissionKey: 'employment.dashboard.view' }
+      { key: 'in-employment-archive-stats', label: '就业转化与归档统计', path: '/admin/internship/archive', moduleCode: 'INTERNSHIP', permissionKey: 'internship.archive.view' }
     ]
   },
   {
