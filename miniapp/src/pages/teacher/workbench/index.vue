@@ -150,6 +150,8 @@ export default {
         risk: '/pages/teacher/risk-students/index',
         follow: '/pages/teacher/employment-follow/index',
         unemployed: '/pages/teacher/employment-follow/index',
+        employmentTransfer: '/pages/teacher/employment-transfer/index',
+        employmentCompany: '/pages/teacher/employment-company/index',
         warning: '/pages/teacher/academic-warning/index',
         progress: '/pages/teacher/academic-affairs/index',
         status: '/pages/teacher/academic-affairs/index',

@@ -408,6 +408,14 @@
       "style": { "navigationBarTitleText": "就业跟进" }
     },
     {
+      "path": "pages/teacher/employment-transfer/index",
+      "style": { "navigationBarTitleText": "转交学生", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/employment-company/index",
+      "style": { "navigationBarTitleText": "企业岗位库", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/messages/index",
       "style": { "navigationBarTitleText": "消息中心", "navigationStyle": "custom" }
     },

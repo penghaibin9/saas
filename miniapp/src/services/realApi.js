@@ -319,6 +319,23 @@ export const teacherAcademicEvaluationResults = () => realRequest('/mobile/teach
 export const teacherAcademicEvaluationAppeal = (resultId, reason) =>
   realRequest(`/mobile/teacher/academic/evaluation/results/${resultId}/appeal`, { method: 'POST', data: { reason } })
 
+export const teacherEmploymentMyStudents = () => realRequest('/mobile/teacher/employment/my-students')
+export const teacherEmploymentTransferStudent = (studentId, newTeacher) =>
+  realRequest(`/mobile/teacher/employment/students/${studentId}/transfer`, { method: 'POST', data: { newTeacher } })
+
+export const teacherEmploymentCompanies = (status) =>
+  realRequest('/mobile/teacher/employment/companies', { data: status ? { status } : {} })
+export const teacherEmploymentCompanyCreate = (body) =>
+  realRequest('/mobile/teacher/employment/companies', { method: 'POST', data: body })
+export const teacherEmploymentCompanyDisable = (companyId, reason) =>
+  realRequest(`/mobile/teacher/employment/companies/${companyId}/disable`, { method: 'POST', data: { reason: reason || '' } })
+export const teacherEmploymentJobs = (companyId, status) =>
+  realRequest('/mobile/teacher/employment/jobs', { data: { companyId: companyId || '', status: status || '' } })
+export const teacherEmploymentJobCreate = (body) =>
+  realRequest('/mobile/teacher/employment/jobs', { method: 'POST', data: body })
+export const teacherEmploymentJobDisable = (jobId, reason) =>
+  realRequest(`/mobile/teacher/employment/jobs/${jobId}/disable`, { method: 'POST', data: { reason: reason || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

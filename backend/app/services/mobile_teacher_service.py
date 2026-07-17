@@ -1323,6 +1323,116 @@ def employment(user: dict) -> dict:
             "jobPool": jobs, "scopeMode": scope["mode"]}
 
 
+# ══════════ 就业老师·转交学生（保守设计，designSource=ai_proposal）══════════
+# 背景：employment_service 全模块无调用者范围收敛，employment_teacher 是自由文本字段，
+# 无 FK 无强类型「学生归属哪个就业老师」关系可复用。为在无更好锚点下取最小安全实现，
+# 移动端只允许调用者转交「当前 employmentTeacher 字段精确等于调用者本人 realName」的学生
+# （即"我负责的学生我可以转给别人"），不允许调剂任意学生；新老师名自由文本录入（PC 端本身
+# 也是自由文本）。局限：依赖 realName 精确字符串匹配，同名教师会误判——若学校有员工工号
+# 体系应改用该体系重构。该口径是否等同学校"就业老师互相调剂"的实际业务需用户确认。
+
+def affairs_employment_my_students(user: dict) -> dict:
+    """我负责的就业学生（employmentTeacher 字段 == 本人 realName），供转交前选人。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    my_name = (u.get("realName") or "").strip()
+    if not my_name:
+        return {"list": [], "total": 0}
+    students, _ = _safe_list(employment_service.list_students, 1, 500)
+    mine = [s for s in students if (s.get("employmentTeacher") or "").strip() == my_name]
+    return {"list": mine, "total": len(mine)}
+
+
+def affairs_employment_transfer_student(user: dict, student_id: str, new_teacher: str) -> dict:
+    """把本人负责的学生转交给另一位就业老师。仅当目标学生当前 employment_teacher == 本人
+    realName 时放行（保守设计，见上）；否则 403。新老师名自由文本。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    new_teacher = (new_teacher or "").strip()
+    if not new_teacher:
+        raise AppException("VALIDATION_ERROR", "接收就业老师姓名必填")
+    my_name = (u.get("realName") or "").strip()
+    detail = employment_service.get_student_detail(student_id)
+    # get_student_detail 返回 {"student": {...}, "materials": ...}，归属字段在 student 子对象里，
+    # 不能读顶层 detail["employmentTeacher"]（恒 None 会导致本人学生也被误判 403）。
+    owner = ((detail.get("student") or {}).get("employmentTeacher") or "").strip()
+    if not my_name or owner != my_name:
+        raise AppException("NO_DATA_SCOPE", "只能转交当前由本人负责的学生")
+    result = employment_service.assign_teacher([student_id], new_teacher)
+    _audit_write("MOBILE_EMPLOYMENT_TRANSFER", f"emp-student:{student_id}",
+                 {"operator": my_name, "newTeacher": new_teacher})
+    return result
+
+
+# ══════════ 就业·企业/岗位库（校级共享主数据，employment_service 已有 CRUD 但无 router 暴露，
+# 移动端首次对外接入。门禁在 mobile.py 路由层用 employment.company/job.view/manage，靠
+# employment.* 通配放行就业老师/校管、挡其他身份。service 层已校验必填/停用原因≥5字/级联，
+# 此处仅包装 + 审计。注意 list_* 返回元组 (items,total)，create_*/disable_* 不接 operator 参数） ══════════
+
+def affairs_employment_companies(user: dict, status: str | None = None) -> dict:
+    """企业列表（校级共享，前 200 条 + 状态过滤）。"""
+    _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    items, total = employment_service.list_companies(1, 200, status=status)
+    return {"list": items, "total": total}
+
+
+def affairs_employment_company_create(user: dict, body: dict) -> dict:
+    """新增企业（name+creditCode 必填，缺失由 service 抛 VALIDATION_ERROR）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    result = employment_service.create_company(body or {})
+    _audit_write("MOBILE_EMPLOYMENT_COMPANY_CREATE", f"emp-company:{result.get('id')}",
+                 {"operator": u.get("realName"), "name": (body or {}).get("name")})
+    return result
+
+
+def affairs_employment_company_disable(user: dict, company_id: str, reason: str | None = None) -> dict:
+    """停用企业（原因≥5字，级联关闭岗位；校验与级联都在 service 层）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    result = employment_service.disable_company(company_id, reason or "")
+    _audit_write("MOBILE_EMPLOYMENT_COMPANY_DISABLE", f"emp-company:{company_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def affairs_employment_jobs(user: dict, company_id: str | None = None, status: str | None = None) -> dict:
+    """岗位列表（可按企业/状态过滤）。"""
+    _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    items, total = employment_service.list_jobs(1, 200, status=status, company_id=company_id)
+    return {"list": items, "total": total}
+
+
+def affairs_employment_job_create(user: dict, body: dict) -> dict:
+    """新增岗位（companyId+title 必填，缺失由 service 抛 VALIDATION_ERROR）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    result = employment_service.create_job(body or {})
+    _audit_write("MOBILE_EMPLOYMENT_JOB_CREATE", f"emp-job:{result.get('id')}",
+                 {"operator": u.get("realName"), "title": (body or {}).get("title")})
+    return result
+
+
+def affairs_employment_job_disable(user: dict, job_id: str, reason: str | None = None) -> dict:
+    """停用岗位（原因≥5字，校验在 service 层）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    result = employment_service.disable_job(job_id, reason or "")
+    _audit_write("MOBILE_EMPLOYMENT_JOB_DISABLE", f"emp-job:{job_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
 # 保留原迎新/在校/学业待处理列表（工作台跳转用）
 def _domain(fn, module, user, **kw):
     _require_teacher(user)

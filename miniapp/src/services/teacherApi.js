@@ -113,6 +113,16 @@ export const teacherApi = {
     realFirst('teacher.employment',
       () => real.teacherEmploymentReal({ stats: M.employmentStats, tabs: M.employmentTabs, list: M.employmentStudents, jobs: M.jobPool }),
       () => mockRequest({ stats: M.employmentStats, tabs: M.employmentTabs, list: M.employmentStudents, jobs: M.jobPool })),
+  // 就业老师·转交学生（我负责的学生 + 转交给他人，真实接口，无 mock 兜底；仅限本人负责的学生）
+  getEmploymentMyStudents: () => real.teacherEmploymentMyStudents(),
+  transferEmploymentStudent: (studentId, newTeacher) => real.teacherEmploymentTransferStudent(studentId, newTeacher),
+  // 就业老师·企业/岗位库（校级共享主数据，新增/停用，门禁在后端路由 employment.company/job.manage）
+  getEmploymentCompanies: (status) => real.teacherEmploymentCompanies(status),
+  createEmploymentCompany: (body) => real.teacherEmploymentCompanyCreate(body),
+  disableEmploymentCompany: (companyId, reason) => real.teacherEmploymentCompanyDisable(companyId, reason),
+  getEmploymentJobs: (companyId, status) => real.teacherEmploymentJobs(companyId, status),
+  createEmploymentJob: (body) => real.teacherEmploymentJobCreate(body),
+  disableEmploymentJob: (jobId, reason) => real.teacherEmploymentJobDisable(jobId, reason),
   // 消息：mobile 范围接口（替代通用 /messages）
   getMessages: () =>
     realFirstStrict('teacher.messages',

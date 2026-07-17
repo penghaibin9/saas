@@ -121,7 +121,9 @@ export const roleConfigs = {
       { key: 'follow', label: '就业跟进', icon: '☎' },
       { key: 'recommend', label: '岗位推荐', icon: '★' },
       { key: 'verify', label: '去向核验', icon: '✓' },
-      { key: 'unemployed', label: '未就业', icon: '⚑' }
+      { key: 'unemployed', label: '未就业', icon: '⚑' },
+      { key: 'employmentTransfer', label: '转交学生', icon: '🔄' },
+      { key: 'employmentCompany', label: '企业岗位库', icon: '🏢' }
     ],
     permissionActions: ['employment.follow', 'employment.verify', 'job.recommend', 'student360.view']
   },
