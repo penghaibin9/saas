@@ -7,11 +7,24 @@ overview_my，均经 aff._me 收口本人+非学生403）。学生写入口为 c
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from app.core.exceptions import AppException
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_student_service as stu
-from app.services.mobile_student_service import _require_student
+from app.services.mobile_student_service import (_require_student, _session,
+                                                 resolve_student)
 from app.student_portal.services import common_service as common
+
+
+def _resolve_self_id(user: dict) -> int:
+    """解析当前登录学生本人的 StudentProfile.id（PC 写入口强制本人，禁止入参指定他人）。"""
+    u = _require_student(user)
+    with _session() as db:
+        me = resolve_student(db, u)
+        if not me:
+            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
+        return int(me.id)
 
 
 def overview(user: dict) -> dict:
@@ -86,3 +99,83 @@ def discipline_appeal(user: dict, body: dict) -> dict:
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "申辩内容至少 5 个字")
     return stu.campus_service_apply(user, {"serviceKey": "DISCIPLINE_APPEAL", "reason": reason})
+
+
+# ── 奖助勤贷补申请 / 困难认定申请（PC 长表 + 材料 + 承诺书签署；强制本人） ──
+
+def funding_apply(user: dict, body: dict) -> dict:
+    """奖助勤贷补申请（studentId 强制为本人；需勾选承诺；成功后承诺书电子签留痕）。"""
+    body = body or {}
+    if not str(body.get("batchId") or "").strip():
+        raise AppException("VALIDATION_ERROR", "资助批次（batchId）必填")
+    if not bool(body.get("confirm")):
+        raise AppException("VALIDATION_ERROR", "请先阅读并勾选确认承诺书")
+    sid = _resolve_self_id(user)
+    ns = SimpleNamespace(studentId=str(sid), batchId=str(body.get("batchId")),
+                         applySource="SELF", amount=body.get("amount"),
+                         statement=str(body.get("statement") or ""))
+    from app.services import affairs_funding_service as funding
+    result = funding.apply(ns, user)
+    common.sign(user, {"bizType": "FUNDING_COMMIT",
+                       "bizId": str(result.get("applicationId") or ""),
+                       "content": f"资助申请承诺 student={sid} batch={body.get('batchId')} "
+                                  f"statement={body.get('statement') or ''}",
+                       "confirm": True})
+    return result
+
+
+def aid_apply(user: dict, body: dict) -> dict:
+    """困难认定申请（长表 + 家庭经济强敏感；studentId 强制本人；承诺书签署）。
+
+    家庭隐私字段仅本人录入 + 审计，不对家长/他人开放（底层 AidFamilyEconomy 独立强敏感存储）。
+    """
+    body = body or {}
+    if not str(body.get("batchId") or "").strip():
+        raise AppException("VALIDATION_ERROR", "认定批次（batchId）必填")
+    if not str(body.get("applyLevel") or "").strip():
+        raise AppException("VALIDATION_ERROR", "申请等级（applyLevel）必填")
+    if not bool(body.get("confirm")):
+        raise AppException("VALIDATION_ERROR", "请先阅读并勾选确认承诺书")
+    sid = _resolve_self_id(user)
+    ns = SimpleNamespace(
+        studentId=str(sid), batchId=str(body.get("batchId")),
+        applyLevel=str(body.get("applyLevel")), statement=str(body.get("statement") or ""),
+        memberCount=body.get("memberCount"), annualIncome=body.get("annualIncome"),
+        debt=body.get("debt"), familyMembers=body.get("familyMembers") or [],
+        specialTags=body.get("specialTags") or [])
+    from app.services import affairs_aid_service as aid_svc
+    result = aid_svc.apply(ns, user)
+    common.sign(user, {"bizType": "DIFFICULTY_COMMIT",
+                       "bizId": str(result.get("applyId") or ""),
+                       "content": f"困难认定承诺 student={sid} batch={body.get('batchId')} "
+                                  f"level={body.get('applyLevel')}",
+                       "confirm": True})
+    return result
+
+
+# ── 活动二课与社团报名（复用 affairs_activity_service） ──
+
+def activities(user: dict, page: int = 1, page_size: int = 20) -> dict:
+    _require_student(user)
+    from app.services import affairs_activity_service as act
+    res = act.list_activities(user, page=page, page_size=page_size)
+    if isinstance(res, tuple):
+        items, total = res
+        return {"items": items, "total": total}
+    return res
+
+
+def activities_my(user: dict) -> dict:
+    _require_student(user)
+    from app.services import affairs_activity_service as act
+    return act.my_activities(user)
+
+
+def activity_enroll(user: dict, activity_id) -> dict:
+    _require_student(user)
+    try:
+        aid = int(activity_id)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "无效的活动ID")
+    from app.services import affairs_activity_service as act
+    return act.enroll(aid, user)

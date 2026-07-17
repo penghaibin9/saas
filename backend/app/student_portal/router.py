@@ -225,6 +225,32 @@ def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(
     return success(affairs.discipline_appeal(user, body))
 
 
+@router.post("/affairs/funding/apply", summary="奖助勤贷补申请（本人·承诺书签署）")
+def affairs_funding_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.funding_apply(user, body))
+
+
+@router.post("/affairs/aid/apply", summary="困难认定申请（本人·长表+承诺书签署）")
+def affairs_aid_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.aid_apply(user, body))
+
+
+@router.get("/affairs/activities", summary="活动二课/社团（本人可报名）")
+def affairs_activities(user=Depends(get_current_user),
+                       page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100)):
+    return success(affairs.activities(user, page, pageSize))
+
+
+@router.get("/affairs/activities/my", summary="我报名的活动（本人）")
+def affairs_activities_my(user=Depends(get_current_user)):
+    return success(affairs.activities_my(user))
+
+
+@router.post("/affairs/activities/{activity_id}/enroll", summary="活动报名（本人）")
+def affairs_activity_enroll(activity_id: str, user=Depends(get_current_user)):
+    return success(affairs.activity_enroll(user, activity_id))
+
+
 # ── 首页工作台聚合 ──
 @router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
 def home_overview(user=Depends(get_current_user)):

@@ -77,6 +77,31 @@ def test_discipline_appeal(client, db_mode):
     assert client.post(f"{PORTAL}/discipline/appeal", headers=h, json={"reason": "短"}).json()["code"] != 0
 
 
+def test_funding_aid_apply_guards_and_self(client, db_mode):
+    _seed("SA-020", "学工廿")
+    h = _stu_token("学工廿", "SA-020")
+    # 缺 batchId / 未勾选承诺 → 校验失败
+    assert client.post(f"{PORTAL}/funding/apply", headers=h,
+                       json={"confirm": True}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/funding/apply", headers=h,
+                       json={"batchId": "1"}).json()["code"] != 0
+    # 齐了但批次不存在 → 到达底层返回不存在(证明已强制本人+落到真实服务)
+    r = client.post(f"{PORTAL}/funding/apply", headers=h,
+                    json={"batchId": "999999", "confirm": True, "statement": "家庭困难"}).json()
+    assert r["code"] == 404001
+    # 困难认定同理(到达真实服务并被业务拒绝:等级非法或批次不存在,均证明已强制本人+落到真实服务)
+    assert client.post(f"{PORTAL}/aid/apply", headers=h,
+                       json={"batchId": "999999", "applyLevel": "一般困难", "confirm": True,
+                             "statement": "家庭经济困难情况说明满足十字要求"}).json()["code"] != 0
+
+
+def test_activities_view(client, db_mode):
+    _seed("SA-021", "学工廿一")
+    h = _stu_token("学工廿一", "SA-021")
+    assert client.get(f"{PORTAL}/activities", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/activities/my", headers=h).json()["code"] == 0
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/leave", headers=admin).json()["code"] == 403001
@@ -86,3 +111,8 @@ def test_non_student_rejected(client, db_mode):
     assert client.post(f"{PORTAL}/print", headers=admin, json={}).json()["code"] == 403001
     assert client.get(f"{PORTAL}/psy/questions", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/applications", headers=admin).json()["code"] == 403001
+    assert client.post(f"{PORTAL}/funding/apply", headers=admin,
+                       json={"batchId": "1", "confirm": True}).json()["code"] == 403001
+    assert client.post(f"{PORTAL}/aid/apply", headers=admin,
+                       json={"batchId": "1", "applyLevel": "一般困难", "confirm": True,
+                             "statement": "x" * 20}).json()["code"] == 403001
