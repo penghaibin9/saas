@@ -303,6 +303,15 @@ export const teacherAcademicDeferPending = () => realRequest('/mobile/teacher/ac
 export const teacherAcademicDeferReview = (deferId, action, reason) =>
   realRequest(`/mobile/teacher/academic/defer/${deferId}/review`, { method: 'POST', data: { action, reason: reason || '' } })
 
+export const teacherAcademicEvaluationBatches = () => realRequest('/mobile/teacher/academic/evaluation/batches')
+export const teacherAcademicEvaluationMyTasks = (evaluatorType, batchId) =>
+  realRequest('/mobile/teacher/academic/evaluation/tasks', { data: { evaluatorType, batchId: batchId || '' } })
+export const teacherAcademicEvaluationSubmit = (taskId, body) =>
+  realRequest(`/mobile/teacher/academic/evaluation/tasks/${taskId}/submit`, { method: 'POST', data: body })
+export const teacherAcademicEvaluationResults = () => realRequest('/mobile/teacher/academic/evaluation/results')
+export const teacherAcademicEvaluationAppeal = (resultId, reason) =>
+  realRequest(`/mobile/teacher/academic/evaluation/results/${resultId}/appeal`, { method: 'POST', data: { reason } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }

@@ -209,6 +209,12 @@ export const teacherApi = {
   // 缓考审批（辅导员初审+任课教师确认两节点身份共用，按当前身份自动收敛为对应节点队列，真实接口，无 mock 兜底）
   getAcademicDeferPending: () => real.teacherAcademicDeferPending(),
   reviewAcademicDefer: (deferId, action, reason) => real.teacherAcademicDeferReview(deferId, action, reason),
+  // 教学评价（自评/同行/督导 + 我的结果(跨批次聚合) + 申诉(移动端补归属校验)，真实接口，无 mock 兜底）
+  getAcademicEvaluationBatches: () => real.teacherAcademicEvaluationBatches(),
+  getAcademicEvaluationMyTasks: (evaluatorType, batchId) => real.teacherAcademicEvaluationMyTasks(evaluatorType, batchId),
+  submitAcademicEvaluation: (taskId, body) => real.teacherAcademicEvaluationSubmit(taskId, body),
+  getAcademicEvaluationResults: () => real.teacherAcademicEvaluationResults(),
+  appealAcademicEvaluation: (resultId, reason) => real.teacherAcademicEvaluationAppeal(resultId, reason),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

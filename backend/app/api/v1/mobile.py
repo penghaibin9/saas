@@ -707,6 +707,33 @@ def teacher_academic_defer_review(defer_id: str, body: dict = Body(...), user=De
         user, defer_id, str(body.get("action") or "").upper(), body.get("reason")), message="已处理")
 
 
+@router.get("/teacher/academic/evaluation/batches", summary="教务老师·评教窗口列表")
+def teacher_academic_evaluation_batches(user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_open_batches(user))
+
+
+@router.get("/teacher/academic/evaluation/tasks", summary="教务老师·我的评价任务（自评/同行/督导）")
+def teacher_academic_evaluation_my_tasks(evaluatorType: str, batchId: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_my_tasks(user, evaluatorType, batchId))
+
+
+@router.post("/teacher/academic/evaluation/tasks/{task_id}/submit", summary="教务老师·提交评价")
+def teacher_academic_evaluation_submit(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_submit(
+        user, task_id, body.get("answers"), body.get("objectiveScore"), body.get("comment")), message="已提交")
+
+
+@router.get("/teacher/academic/evaluation/results", summary="教务老师·我的评价结果（跨批次聚合）")
+def teacher_academic_evaluation_results(user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_my_results(user))
+
+
+@router.post("/teacher/academic/evaluation/results/{result_id}/appeal", summary="教务老师·结果申诉（移动端补归属校验）")
+def teacher_academic_evaluation_appeal(result_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_submit_appeal(
+        user, result_id, body.get("reason")), message="申诉已提交")
+
+
 @router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
 def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.notify_publish(user, body), message="通知已发布")

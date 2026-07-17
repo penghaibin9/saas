@@ -873,6 +873,87 @@ def affairs_academic_defer_review(user: dict, defer_id: str, action: str, reason
     return result
 
 
+# ══════════ 教务·教学评价（自评/同行/督导 + 我的结果 + 申诉，直接复用
+# academic_affairs_evaluation_service 的 list_my_role_tasks/submit_evaluation/list_results
+# ——均已按 evaluator_key/teacher_key 自校验；submit_appeal PC 端未校验 result 归属，
+# 移动端在此补一道校验，不改 PC） ══════════
+
+def affairs_academic_evaluation_open_batches(user: dict) -> dict:
+    """评教窗口列表（status 可选，缺省返回全部；仅批次元信息，非敏感数据，PC 端本身也不做
+    调用者范围收敛，教师需要看到有哪些窗口在开放/已出结果）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
+    status = None
+    items, total = eval_svc.list_batches(u, status=status, page=1, page_size=100)
+    return {"list": items, "total": total}
+
+
+def affairs_academic_evaluation_my_tasks(user: dict, evaluator_type: str, batch_id: str | None = None) -> dict:
+    """我的评价任务（自评/同行/督导，按 evaluator_key 命中当前登录身份，PC 端已自校验）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
+    items = eval_svc.list_my_role_tasks(u, evaluator_type, batch_id)
+    return {"list": items, "total": len(items)}
+
+
+def affairs_academic_evaluation_submit(user: dict, task_id: str, answers: dict | None,
+                                       objective_score: float | None, comment: str | None = None) -> dict:
+    """提交评价（评价人归属+重复提交校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
+    result = eval_svc.submit_evaluation(u, int(task_id), answers, objective_score, comment)
+    _audit_write("MOBILE_ACADEMIC_EVAL_SUBMIT", f"eval-task:{task_id}", {"operator": u.get("realName")})
+    return result
+
+
+def affairs_academic_evaluation_my_results(user: dict) -> dict:
+    """我的评价结果（跨批次聚合，PC 端 list_results 按单个 batchId 查询，没有「全部我的结果」入口，
+    此处仿答辩评委/缓考待审模式新写聚合：遍历已出结果的批次，逐批复用 PC list_results(mine=True)
+    的自校验取本人已发布结果，不重复实现范围逻辑）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
+    batches, _bt = eval_svc.list_batches(u, status=None, page=1, page_size=200)
+    items = []
+    for b in batches:
+        if b["status"] not in ("RESULT_READY", "ARCHIVED"):
+            continue
+        rows, _t = eval_svc.list_results(u, int(b["batchId"]), mine=True, page=1, page_size=200)
+        for r in rows:
+            r["batchId"] = b["batchId"]
+            r["batchName"] = b["batchName"]
+        items.extend(rows)
+    return {"list": items, "total": len(items)}
+
+
+def affairs_academic_evaluation_submit_appeal(user: dict, result_id: str, reason: str) -> dict:
+    """结果申诉：PC 端 submit_appeal 本身不校验 result 是否属于当前教师本人（任何持
+    require_staff 权限者传任意 resultId 即可发起申诉），移动端在此补一道归属校验，不改 PC 行为。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.core.affairs_security import _derive_keys
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
+    from app.core.exceptions import not_found
+    with _session() as db:
+        from app.models import AaEvaluationResult
+        r = db.get(AaEvaluationResult, int(result_id))
+        if not r or r.tenant_id != _tid():
+            raise not_found("评价结果不存在")
+        if not r.teacher_key or r.teacher_key not in _derive_keys(u):
+            raise AppException("NO_DATA_SCOPE", "仅可对本人的评价结果发起申诉")
+    result = eval_svc.submit_appeal(u, result_id, reason)
+    _audit_write("MOBILE_ACADEMIC_EVAL_APPEAL", f"eval-result:{result_id}", {"operator": u.get("realName")})
+    return result
+
+
 # ══════════ 数据看板（移动端包装，直接复用既有 affairs_dashboard_service.get_dashboard，
 # 该函数已按数据范围收敛且指标全部真实聚合，零改造） ══════════
 

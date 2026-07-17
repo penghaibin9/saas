@@ -139,6 +139,7 @@ export const roleConfigs = {
       { key: 'academicTask', label: '教学任务确认', icon: '📚' },
       { key: 'scheduleChange', label: '调停课管理', icon: '🔀' },
       { key: 'examDefer', label: '缓考审批', icon: '📝' },
+      { key: 'evaluation', label: '教学评价', icon: '⭐' },
       { key: 'notifyPublish', label: '发布通知', icon: '📣' }
     ],
     permissionActions: ['academic.warning.handle', 'status.handle', 'approval.handle']

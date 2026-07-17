@@ -169,6 +169,7 @@ export default {
         academicTask: '/pages/teacher/academic-task/index',
         scheduleChange: '/pages/teacher/schedule-change/index',
         examDefer: '/pages/teacher/exam-defer/index',
+        evaluation: '/pages/teacher/evaluation/index',
         notifyPublish: '/pages/teacher/notify-publish/index',
         overview: '/pages/teacher/dashboard/index',
         orientationVerify: '/pages/teacher/orientation/verify/index',

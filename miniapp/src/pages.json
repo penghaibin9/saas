@@ -396,6 +396,10 @@
       "style": { "navigationBarTitleText": "缓考审批", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/evaluation/index",
+      "style": { "navigationBarTitleText": "教学评价", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },
