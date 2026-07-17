@@ -10,6 +10,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.response import success
 from app.core.security import get_current_user
 from app.student_portal.services import common_service as common
+from app.student_portal.services import graduation_service as graduation
 from app.student_portal.services import guardian_service as guardian
 from app.student_portal.services import home_service as home
 from app.student_portal.services import messages_service as messages
@@ -17,6 +18,22 @@ from app.student_portal.services import parent_link_service as parent
 from app.student_portal.services import profile_service as profile
 
 router = APIRouter(prefix="/portal", tags=["学生PC门户"])
+
+
+# ── 毕业设计（第2期）：任务书 PC 电子确认 + 打印 ──
+@router.get("/graduation/taskbook", summary="查看本人毕设任务书（本人）")
+def graduation_taskbook(user=Depends(get_current_user)):
+    return success(graduation.taskbook(user))
+
+
+@router.post("/graduation/taskbook/sign", summary="任务书电子确认（可靠留痕+置确认态）")
+def graduation_taskbook_sign(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(graduation.taskbook_sign(user, body))
+
+
+@router.post("/graduation/taskbook/print", summary="任务书打印留痕（本人）")
+def graduation_taskbook_print(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(graduation.taskbook_print(user, body))
 
 
 # ── 首页工作台聚合 ──
