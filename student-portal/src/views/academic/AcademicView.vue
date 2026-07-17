@@ -34,12 +34,12 @@
             <table v-else class="sp-table">
               <thead><tr><th>课程</th><th>教师</th><th>学分</th><th>容量</th><th style="text-align:right">操作</th></tr></thead>
               <tbody>
-                <tr v-for="c in courses" :key="c.id || c.courseId">
-                  <td style="font-weight:500;color:var(--t1)">{{ c.courseName || c.name || '—' }}</td>
-                  <td>{{ c.teacherName || c.teacher || '—' }}</td>
+                <tr v-for="c in courses" :key="c.selectionCourseId || c.courseId">
+                  <td style="font-weight:500;color:var(--t1)">{{ c.courseName || '—' }}</td>
+                  <td>{{ c.teacherName || '—' }}</td>
                   <td>{{ c.credit ?? '—' }}</td>
-                  <td>{{ c.enrolled ?? c.selected ?? '—' }}/{{ c.capacity ?? '—' }}</td>
-                  <td style="text-align:right"><button class="mini" :disabled="busy" @click="enroll(c)">选课</button></td>
+                  <td>余 {{ c.remain ?? '—' }} / {{ c.capacity ?? '—' }}</td>
+                  <td style="text-align:right"><button class="mini" :disabled="busy || c.remain === 0" @click="enroll(c)">选课</button></td>
                 </tr>
               </tbody>
             </table>
@@ -241,21 +241,21 @@ const changeTypes = [
 ]
 const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
 const studentName = computed(() => session.user?.realName || '同学')
-const selectedCourses = computed(() => courses.value.filter((c) => c.selected || c.enrolled))
-const selectedCredit = computed(() => selectedCourses.value.reduce((a, c) => a + (Number(c.credit) || 0), 0))
+const selectedCourses = computed(() => selectionRecords.value)
+const selectedCredit = computed(() => selectionRecords.value.reduce((a, c) => a + (Number(c.credit) || 0), 0))
 const TIME_ROWS = ['第1-2节\n08:00-09:40', '第3-4节\n10:00-11:40', '第5-6节\n14:00-15:40', '第7-8节\n16:00-17:40', '第9-10节\n19:00-20:40']
 const scheduleRows = computed(() => {
   const items = schedule.value.items || []
   const rows = TIME_ROWS.map((label) => ({ label, cells: [null, null, null, null, null] }))
   for (const it of items) {
-    const day = Number(it.dayOfWeek ?? it.day ?? it.weekday) // 1..5
-    const sec = Number(it.section ?? it.period ?? it.rowIndex) // 1..5 或节次
+    const day = Number(it.weekday ?? it.dayOfWeek ?? it.day) // 1..7
+    const sec = Number(it.slotNo ?? it.section ?? it.period) // 节次(1/3/5/7/9 或 1..10)
     const di = (day >= 1 && day <= 5) ? day - 1 : -1
     let ri = -1
     if (sec >= 1 && sec <= 5) ri = sec - 1
     else if (sec >= 1 && sec <= 10) ri = Math.floor((sec - 1) / 2)
-    if (di >= 0 && ri >= 0) {
-      rows[ri].cells[di] = { name: it.courseName || it.name, room: it.room || it.location || '', teacher: it.teacherName || it.teacher || '' }
+    if (di >= 0 && ri >= 0 && !rows[ri].cells[di]) {
+      rows[ri].cells[di] = { name: it.courseName || it.name, room: it.classroom || it.room || '', teacher: it.teacherName || it.teacher || '' }
     }
   }
   return rows
@@ -293,7 +293,7 @@ async function loadAll() {
     const val = (r, d) => (r.status === 'fulfilled' ? (r.value ?? d) : d)
     schedule.value = val(sc, {}); transcript.value = val(tr, {}); status.value = val(st, {})
     examDefer.value = val(ex, {}); makeup.value = val(mk, {}); audit.value = val(au, {})
-    const c = val(cs, []); courses.value = Array.isArray(c) ? c : (c.items || [])
+    const c = val(cs, []); courses.value = Array.isArray(c) ? c.flatMap((x) => x.courses || []) : (c.courses || c.items || [])
     const r = val(rec, []); selectionRecords.value = Array.isArray(r) ? r : (r.items || [])
     info.value = val(en, {})
   } catch (e) { error.value = e?.message || '学业数据加载失败' } finally { loading.value = false }
@@ -305,7 +305,7 @@ async function printTranscript(reason) {
 }
 async function enroll(c) {
   busy.value = true
-  try { await portalApi.academicEnroll({ courseId: c.id || c.courseId }); ui.notify('选课成功'); loadAll() }
+  try { await portalApi.academicEnroll({ selectionCourseId: c.selectionCourseId }); ui.notify('选课成功'); loadAll() }
   catch (e) { ui.notify(e?.message || '选课失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function submitStatusChange() {
