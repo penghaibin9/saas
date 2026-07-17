@@ -52,6 +52,7 @@ export const portalApi = {
   academicExamDeferApply: (body) => request('/portal/academic/exam/defer/apply', { method: 'POST', body }),
   academicMakeup: () => request('/portal/academic/makeup'),
   academicRetakeApply: (body) => request('/portal/academic/retake/apply', { method: 'POST', body }),
+  academicExemptionApply: (body) => request('/portal/academic/exemption/apply', { method: 'POST', body }),
   academicGraduationAudit: () => request('/portal/academic/graduation-audit'),
 
   // ── 学工事务（在校服务）──

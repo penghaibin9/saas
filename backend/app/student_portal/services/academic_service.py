@@ -108,6 +108,15 @@ def retake_apply(user: dict, body: dict) -> dict:
     return aa.retake_apply_my(user, body)
 
 
+def exemption_apply(user: dict, body: dict) -> dict:
+    """本人发起免修申请（课程名必填）。"""
+    _require_student(user)
+    body = body or {}
+    if not str(body.get("courseName") or "").strip():
+        raise AppException("VALIDATION_ERROR", "课程名必填")
+    return aa.exemption_apply_my(user, body)
+
+
 def graduation_audit(user: dict) -> dict:
     """毕业资格自查：汇总毕业进度七项 + 学分修读 + 学业预警（只读）。"""
     _require_student(user)

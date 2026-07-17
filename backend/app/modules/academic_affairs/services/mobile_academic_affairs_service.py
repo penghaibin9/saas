@@ -103,7 +103,7 @@ def submit_status_change_my(user, body) -> dict:
 
 
 def graduation_progress_my(user) -> dict:
-    """我的毕业进度（最新预审结果七项）。"""
+    """我的毕业进度（最新预审结果，供数维度以 precheck `_run_items` 为准，现 11 项）。"""
     import json
 
     from app.models import AaGraduationAuditResult
@@ -215,6 +215,15 @@ def retake_apply_my(user, body) -> dict:
     if not (body or {}).get("courseName"):
         raise AppException("VALIDATION_ERROR", "课程名必填")
     return makeup.retake_apply(user, _ns(body))
+
+
+def exemption_apply_my(user, body) -> dict:
+    """学生本人发起免修申请。此前学生门户"免修申请"页误接了重修接口（examTab 未参与实际
+    分支，两个入口提交的全是 AaRetakeApply 记录），修复为真正调用免修服务。"""
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
+    if not (body or {}).get("courseName"):
+        raise AppException("VALIDATION_ERROR", "课程名必填")
+    return makeup.exemption_apply(user, _ns(body))
 
 
 def selection_courses_my(user, batch_id=None):

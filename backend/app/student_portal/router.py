@@ -163,6 +163,11 @@ def academic_retake_apply(user=Depends(get_current_user), body: dict = Body(...)
     return success(academic.retake_apply(user, body))
 
 
+@router.post("/academic/exemption/apply", summary="发起免修申请（本人）")
+def academic_exemption_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.exemption_apply(user, body))
+
+
 @router.get("/academic/graduation-audit", summary="毕业资格自查（本人·进度/学分/预警）")
 def academic_graduation_audit(user=Depends(get_current_user)):
     return success(academic.graduation_audit(user))

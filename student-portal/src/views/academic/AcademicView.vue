@@ -168,7 +168,9 @@
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">申请记录</div>
-            <AutoTable :rows="examTab==='缓考申请' ? examDefer.items : makeupRows" empty="暂无申请记录" />
+            <AutoTable v-if="examTab === '缓考申请'" :rows="examDefer.items" empty="暂无申请记录" />
+            <AutoTable v-else-if="examTab === '免修申请'" :rows="exemptionRows" :columns="EXEMPTION_COLS" empty="暂无申请记录" />
+            <AutoTable v-else :rows="retakeRows" :columns="RETAKE_COLS" empty="暂无申请记录" />
           </section>
         </div>
       </section>
@@ -275,7 +277,18 @@ const gradeTerms = computed(() => {
   }
   return Object.values(map).sort((a, b) => (a.term < b.term ? 1 : -1))
 })
-const makeupRows = computed(() => [...(makeup.value.retakes || []), ...(makeup.value.exemptions || [])])
+const retakeRows = computed(() => makeup.value.retakes || [])
+const exemptionRows = computed(() => makeup.value.exemptions || [])
+const RETAKE_COLS = [
+  { key: 'courseName', label: '课程名称' }, { key: 'termCode', label: '学期' },
+  { key: 'reason', label: '申请理由' }, { key: 'retakeCount', label: '第几次' },
+  { key: 'status', label: '状态' }, { key: 'reviewReason', label: '审核意见' }
+]
+const EXEMPTION_COLS = [
+  { key: 'courseName', label: '课程名称' }, { key: 'termCode', label: '学期' },
+  { key: 'reason', label: '申请理由' }, { key: 'status', label: '状态' },
+  { key: 'returnReason', label: '退回原因' }
+]
 const auditPct = computed(() => {
   const c = audit.value.credits || {}
   if (!c.requiredCredits) return 0
@@ -321,7 +334,9 @@ async function submitStatusChange() {
 async function submitExam() {
   busy.value = true
   try {
-    await portalApi.academicRetakeApply({ reason: examForm.reason, courseName: examForm.courseName, type: examTab.value })
+    const body = { reason: examForm.reason, courseName: examForm.courseName }
+    if (examTab.value === '免修申请') await portalApi.academicExemptionApply(body)
+    else await portalApi.academicRetakeApply(body)
     ui.notify('申请已提交'); examForm.reason = ''; examForm.courseName = ''; loadAll()
   } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
