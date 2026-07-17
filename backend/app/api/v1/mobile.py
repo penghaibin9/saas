@@ -655,6 +655,21 @@ def teacher_affairs_cadre_remove(cadre_id: str, body: dict = Body(default={}), u
     return success(tea.affairs_cadre_remove(user, cadre_id, (body or {}).get("reason")), message="已免去")
 
 
+@router.get("/teacher/affairs/classes/{class_id}/materials", summary="辅导员·班级材料列表（范围校验）")
+def teacher_affairs_class_materials(class_id: str, materialType: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_class_materials(user, class_id, materialType))
+
+
+@router.post("/teacher/affairs/classes/{class_id}/materials", summary="辅导员·新增班级材料（范围校验）")
+def teacher_affairs_class_material_add(class_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_class_material_add(user, class_id, body), message="已新增")
+
+
+@router.post("/teacher/affairs/classes/materials/{material_id}/void", summary="辅导员·作废班级材料（owner 校验）")
+def teacher_affairs_class_material_void(material_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(tea.affairs_class_material_void(user, material_id, (body or {}).get("reason")), message="已作废")
+
+
 @router.get("/teacher/academic/tasks", summary="教务老师·我的教学任务（按本人 teacherKey 收敛）")
 def teacher_academic_my_tasks(status: str = None, user=Depends(get_current_user)):
     return success(tea.affairs_academic_my_tasks(user, status))

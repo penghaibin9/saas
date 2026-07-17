@@ -384,6 +384,10 @@
       "style": { "navigationBarTitleText": "班干部管理", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/class-material/index",
+      "style": { "navigationBarTitleText": "班级材料", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/academic-task/index",
       "style": { "navigationBarTitleText": "教学任务确认", "navigationStyle": "custom" }
     },

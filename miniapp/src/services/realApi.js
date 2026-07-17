@@ -281,6 +281,13 @@ export const teacherAffairsCadreAppoint = (classId, body) =>
 export const teacherAffairsCadreRemove = (cadreId, reason) =>
   realRequest(`/mobile/teacher/affairs/classes/cadres/${cadreId}/remove`, { method: 'POST', data: { reason: reason || '' } })
 
+export const teacherAffairsClassMaterials = (classId, materialType) =>
+  realRequest(`/mobile/teacher/affairs/classes/${classId}/materials`, { data: materialType ? { materialType } : {} })
+export const teacherAffairsClassMaterialAdd = (classId, body) =>
+  realRequest(`/mobile/teacher/affairs/classes/${classId}/materials`, { method: 'POST', data: body })
+export const teacherAffairsClassMaterialVoid = (materialId, reason) =>
+  realRequest(`/mobile/teacher/affairs/classes/materials/${materialId}/void`, { method: 'POST', data: { reason: reason || '' } })
+
 export const teacherAcademicMyTasks = (status) =>
   realRequest('/mobile/teacher/academic/tasks', { data: status ? { status } : {} })
 export const teacherAcademicTaskAct = (taskId, action, reason) =>

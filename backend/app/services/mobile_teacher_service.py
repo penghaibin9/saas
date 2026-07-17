@@ -709,6 +709,50 @@ def affairs_cadre_remove(user: dict, cadre_id: str, reason: str | None = None) -
     return result
 
 
+# ══════════ 班级材料（辅导员本班范围内查看/新增/作废，owner+范围校验在服务层
+# affairs_class_service 完成；COUNSELOR 权限矩阵本就含 studentAffairs.class.create，
+# PC 端无权限缺口，此处仅补移动端入口） ══════════
+
+def affairs_class_materials(user: dict, class_id: str, material_type: str | None = None) -> dict:
+    """班级材料列表（在任 ACTIVE 材料，范围校验在服务层 _class_in_scope_or_403 完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_class_service as cls
+    items, total = cls.list_materials(class_id, u, material_type, page=1, page_size=200)
+    return {"list": items, "total": total}
+
+
+def affairs_class_material_add(user: dict, class_id: str, body: dict) -> dict:
+    """新增班级材料（类型/标题必填，范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_class_service as cls
+    b = body or {}
+    payload = _ns({
+        "materialType": b.get("materialType") or "OTHER", "title": b.get("title") or "",
+        "fileId": b.get("fileId"), "fileName": b.get("fileName"),
+        "materialAt": b.get("materialAt"), "remark": b.get("remark"),
+    })
+    result = cls.add_material(class_id, u, payload)
+    _audit_write("MOBILE_CLASS_MATERIAL_ADD", f"class-material:{result.get('id')}",
+                 {"operator": u.get("realName"), "classId": str(class_id), "title": payload.title})
+    return result
+
+
+def affairs_class_material_void(user: dict, material_id: str, reason: str | None = None) -> dict:
+    """作废班级材料（owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_class_service as cls
+    result = cls.void_material(material_id, u, reason or "")
+    _audit_write("MOBILE_CLASS_MATERIAL_VOID", f"class-material:{material_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
 # ══════════ 教务·教师任务确认（直接复用 academic_affairs_task_service，该函数已按
 # teacher_key 自校验归属，管理角色代管豁免；list 用 mine=True 收敛为本人任务） ══════════
 

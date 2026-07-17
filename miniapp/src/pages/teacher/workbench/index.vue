@@ -166,6 +166,7 @@ export default {
         familyContact: '/pages/teacher/family-contact/index',
         affairsLeave: '/pages/teacher/affairs-leave/index',
         classCadre: '/pages/teacher/class-cadre/index',
+        classMaterial: '/pages/teacher/class-material/index',
         academicTask: '/pages/teacher/academic-task/index',
         scheduleChange: '/pages/teacher/schedule-change/index',
         examDefer: '/pages/teacher/exam-defer/index',

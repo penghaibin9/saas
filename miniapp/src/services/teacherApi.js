@@ -196,6 +196,10 @@ export const teacherApi = {
   getAffairsCadreList: (classId) => real.teacherAffairsCadreList(classId),
   appointAffairsCadre: (classId, body) => real.teacherAffairsCadreAppoint(classId, body),
   removeAffairsCadre: (cadreId, reason) => real.teacherAffairsCadreRemove(cadreId, reason),
+  // 班级材料（辅导员本班查看/新增/作废，范围校验在服务层完成，真实接口，无 mock 兜底）
+  getAffairsClassMaterials: (classId, materialType) => real.teacherAffairsClassMaterials(classId, materialType),
+  addAffairsClassMaterial: (classId, body) => real.teacherAffairsClassMaterialAdd(classId, body),
+  voidAffairsClassMaterial: (materialId, reason) => real.teacherAffairsClassMaterialVoid(materialId, reason),
   // 教务·教学任务确认（我的任务按 teacherKey 收敛+确认/退回，归属校验在服务层完成，真实接口，无 mock 兜底）
   getAcademicMyTasks: (status) => real.teacherAcademicMyTasks(status),
   actAcademicTask: (taskId, action, reason) => real.teacherAcademicTaskAct(taskId, action, reason),
