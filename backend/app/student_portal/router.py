@@ -66,6 +66,21 @@ def graduation_final_submit(user=Depends(get_current_user), body: dict = Body(..
     return success(graduation.submit_final(user, body))
 
 
+@router.get("/graduation/defense", summary="查看本人答辩安排（本人）")
+def graduation_defense(user=Depends(get_current_user)):
+    return success(graduation.defense(user))
+
+
+@router.get("/graduation/grade", summary="查看本人毕设成绩（本人）")
+def graduation_grade(user=Depends(get_current_user)):
+    return success(graduation.grade(user))
+
+
+@router.post("/graduation/grade/appeal", summary="毕设成绩申诉（本人）")
+def graduation_grade_appeal(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(graduation.grade_appeal(user, body))
+
+
 # ── 首页工作台聚合 ──
 @router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
 def home_overview(user=Depends(get_current_user)):

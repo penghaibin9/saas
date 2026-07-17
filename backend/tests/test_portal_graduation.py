@@ -219,9 +219,52 @@ def test_submit_final_requires_attachment(client, db_mode):
                        json={"finalType": "xyz", "attachments": ["f1"]}).json()["code"] != 0
 
 
+def _seed_gd_published_grade(no, name):
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationGrade, GraduationStudent
+    db = get_sessionmaker()()
+    g = GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
+                          stage="GRADED", risk_level="LOW", eligibility_status="PENDING",
+                          grad_qual_status="PENDING", record_status="ACTIVE")
+    db.add(g)
+    db.flush()
+    db.add(GraduationGrade(tenant_id=TID, gd_student_id=g.id, status="PUBLISHED"))
+    db.commit()
+    db.close()
+
+
+def test_defense_and_grade_view(client, db_mode):
+    _seed_student("GD-P-401", "答辩一")
+    _seed_gd_ready_for_proposal("GD-P-401", "答辩一")  # 有毕设记录即可
+    h = _stu_token("答辩一", "GD-P-401")
+    assert client.get(f"{PORTAL}/defense", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/grade", headers=h).json()["code"] == 0
+
+
+def test_grade_appeal(client, db_mode):
+    _seed_student("GD-P-402", "答辩二")
+    _seed_gd_published_grade("GD-P-402", "答辩二")
+    h = _stu_token("答辩二", "GD-P-402")
+    ok = client.post(f"{PORTAL}/grade/appeal", headers=h,
+                     json={"reason": "答辩表现与评分不符，申请复核成绩明细。"}).json()
+    assert ok["code"] == 0
+    # 空理由拒绝
+    assert client.post(f"{PORTAL}/grade/appeal", headers=h, json={"reason": ""}).json()["code"] != 0
+
+
+def test_grade_appeal_without_published(client, db_mode):
+    _seed_student("GD-P-403", "答辩三")
+    _seed_gd_ready_for_proposal("GD-P-403", "答辩三")  # 有毕设但成绩未发布
+    h = _stu_token("答辩三", "GD-P-403")
+    r = client.post(f"{PORTAL}/grade/appeal", headers=h,
+                    json={"reason": "申请复核成绩明细内容。"}).json()
+    assert r["code"] == 409001  # 成绩未发布不可申诉
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/taskbook", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/proposal", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/midterm", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/final", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/grade", headers=admin).json()["code"] == 403001

@@ -106,3 +106,24 @@ def submit_final(user: dict, body: dict) -> dict:
     if not isinstance(attachments, list) or not attachments:
         raise AppException("VALIDATION_ERROR", "请先上传论文/成果附件再提交")
     return stu.graduation_submit_final(user, {"finalType": final_type, "attachments": attachments})
+
+
+# ── 答辩安排 + 成绩 + 成绩申诉（复用现有 mobile 流程） ──
+
+def defense(user: dict) -> dict:
+    """查看本人答辩安排（时间/地点/评委，仅已发布）。"""
+    return stu.graduation_defense(user)
+
+
+def grade(user: dict) -> dict:
+    """查看本人毕设成绩（未发布仅提示流转中，不露分数）。"""
+    return stu.graduation_grade(user)
+
+
+def grade_appeal(user: dict, body: dict) -> dict:
+    """对已发布成绩发起更正申诉（须成绩已发布；理由不少于 5 字）。"""
+    body = body or {}
+    reason = str(body.get("reason") or "").strip()
+    if not reason:
+        raise AppException("VALIDATION_ERROR", "申诉理由不能为空")
+    return stu.graduation_grade_appeal(user, reason)
