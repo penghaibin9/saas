@@ -380,10 +380,6 @@
       "style": { "navigationBarTitleText": "学生请假管理", "navigationStyle": "custom" }
     },
     {
-      "path": "pages/teacher/class-cadre/index",
-      "style": { "navigationBarTitleText": "班干部管理", "navigationStyle": "custom" }
-    },
-    {
       "path": "pages/teacher/employment-follow/index",
       "style": { "navigationBarTitleText": "就业跟进" }
     },
