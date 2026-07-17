@@ -6,7 +6,7 @@
     watermark-purpose="学生画像列表查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.profile.refresh" variant="secondary" @click="load">
+      <AppPermissionButton code="studentAffairs.student.view" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
       <AppExportButton :export-fn="exportLedger" :has-permission="true" />
@@ -16,7 +16,7 @@
       <div class="sa-filter">
         <AppSearchBox v-model="filters.keyword" placeholder="搜索姓名、学号" @search="load" />
         <AppSelect v-model="filters.riskLevel" class="sa-select" :options="RISK_FILTER_OPTIONS" placeholder="" @change="load" />
-        <AppPermissionButton code="studentAffairs.profile.search" variant="secondary" @click="load">
+        <AppPermissionButton code="studentAffairs.student.view" variant="secondary" @click="load">
           查询
         </AppPermissionButton>
       </div>
@@ -56,7 +56,7 @@
                 <td>{{ formatDate(row.updatedAt) }}</td>
                 <td>
                   <AppPermissionButton
-                    code="studentAffairs.profile.view"
+                    code="studentAffairs.student.view"
                     size="sm"
                     variant="secondary"
                     @click="$router.push(`/admin/student-affairs/profile/${row.studentId}`)"

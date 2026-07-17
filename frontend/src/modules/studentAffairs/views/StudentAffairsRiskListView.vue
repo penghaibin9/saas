@@ -7,7 +7,7 @@
     watermark-purpose="学工风险预警查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.risk.scan" variant="secondary" :loading="actioning" @click="scanTimeout">
+      <AppPermissionButton code="studentAffairs.risk.handle" variant="secondary" :loading="actioning" @click="scanTimeout">
         扫描超时
       </AppPermissionButton>
       <AppPermissionButton code="studentAffairs.risk.create" :loading="actioning" @click="createRisk">
@@ -70,13 +70,13 @@
                 <small v-if="risk.mentalMasked">心理来源明细已按角色脱敏</small>
               </td>
               <td class="sa-actions">
-                <AppPermissionButton code="studentAffairs.risk.detail" size="sm" variant="secondary" @click="$router.push(`/admin/student-affairs/risk/${risk.riskId}`)">
+                <AppPermissionButton code="studentAffairs.risk.view" size="sm" variant="secondary" @click="$router.push(`/admin/student-affairs/risk/${risk.riskId}`)">
                   详情
                 </AppPermissionButton>
                 <AppPermissionButton code="studentAffairs.risk.assign" size="sm" variant="secondary" :loading="actioning" @click="assign(risk)">
                   分派
                 </AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.risk.process" size="sm" :loading="actioning" @click="process(risk)">
+                <AppPermissionButton code="studentAffairs.risk.handle" size="sm" :loading="actioning" @click="process(risk)">
                   处置
                 </AppPermissionButton>
               </td>
