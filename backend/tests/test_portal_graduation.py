@@ -171,8 +171,57 @@ def test_midterm_rectify_empty_rejected(client, db_mode):
     assert client.post(f"{PORTAL}/midterm/rectify", headers=h, json={"content": "  "}).json()["code"] != 0
 
 
+def _seed_gd_for_final(no, name):
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
+    db = get_sessionmaker()()
+    db.add(GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
+                             topic_id=1, topic_title="XX系统的设计与实现", stage="FINAL",
+                             risk_level="LOW", eligibility_status="PENDING",
+                             grad_qual_status="PENDING", record_status="ACTIVE"))
+    db.commit()
+    db.close()
+
+
+def _seed_pdf_file():
+    """建一个真实 pdf 文件对象（论文附件校验要求真实 file_id + ext∈pdf/doc/docx/zip）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject
+    db = get_sessionmaker()()
+    f = FileObject(tenant_id=TID, file_key="test/thesis-1.pdf", file_name="毕业论文.pdf",
+                   ext="pdf", size_bytes=1024, biz_type="GRADUATION_MATERIAL", status="CONFIRMED")
+    db.add(f)
+    db.commit()
+    fid = str(f.id)
+    db.close()
+    return fid
+
+
+def test_view_and_submit_final(client, db_mode):
+    _seed_student("GD-P-301", "成果一")
+    _seed_gd_for_final("GD-P-301", "成果一")
+    fid = _seed_pdf_file()
+    h = _stu_token("成果一", "GD-P-301")
+    v = client.get(f"{PORTAL}/final", headers=h).json()
+    assert v["code"] == 0 and v["data"]["hasData"] is True and v["data"]["canSubmitDraft"] is True
+    r = client.post(f"{PORTAL}/final/submit", headers=h,
+                    json={"finalType": "初稿", "attachments": [fid]}).json()
+    assert r["code"] == 0 and r["data"].get("id")
+
+
+def test_submit_final_requires_attachment(client, db_mode):
+    _seed_student("GD-P-302", "成果二")
+    _seed_gd_for_final("GD-P-302", "成果二")
+    h = _stu_token("成果二", "GD-P-302")
+    assert client.post(f"{PORTAL}/final/submit", headers=h,
+                       json={"finalType": "初稿", "attachments": []}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/final/submit", headers=h,
+                       json={"finalType": "xyz", "attachments": ["f1"]}).json()["code"] != 0
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/taskbook", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/proposal", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/midterm", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/final", headers=admin).json()["code"] == 403001

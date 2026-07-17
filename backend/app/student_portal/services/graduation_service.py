@@ -84,3 +84,25 @@ def midterm_rectify(user: dict, body: dict) -> dict:
     if not content:
         raise AppException("VALIDATION_ERROR", "整改说明不能为空")
     return stu.graduation_midterm_rectify(user, content)
+
+
+# ── 成果提交（大附件）+ 查重报告展示（复用现有 mobile 成果流程） ──
+
+def final(user: dict) -> dict:
+    """查看本人论文成果状态（可提交初稿/定稿 + 各版本 + 查重率 + 退回意见）。"""
+    return stu.graduation_final(user)
+
+
+def submit_final(user: dict, body: dict) -> dict:
+    """提交/重交论文成果（初稿/定稿）：必须上传论文附件（大文件走 /files/upload）。
+
+    查重率由服务端产出，客户端不得自报（复用 graduation_submit_final 的服务端逻辑）。
+    """
+    body = body or {}
+    final_type = str(body.get("finalType") or "初稿").strip()
+    if final_type not in ("初稿", "定稿"):
+        raise AppException("VALIDATION_ERROR", "finalType 必须是 初稿 或 定稿")
+    attachments = body.get("attachments") or []
+    if not isinstance(attachments, list) or not attachments:
+        raise AppException("VALIDATION_ERROR", "请先上传论文/成果附件再提交")
+    return stu.graduation_submit_final(user, {"finalType": final_type, "attachments": attachments})
