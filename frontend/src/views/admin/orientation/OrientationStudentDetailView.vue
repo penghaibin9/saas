@@ -22,6 +22,38 @@
         <div v-if="detail.student.blockedStep" class="ori-blocked-box">
           当前卡点：{{ stepLabel(detail.student.blockedStep) }} — {{ detail.student.blockedReason }}
         </div>
+        <!-- 就地动作：信息核验 + 卡点管理（无需跳转到其它页面） -->
+        <div v-if="detail.student.recordStatus !== 'VOIDED'" class="ori-actbar">
+          <button
+            v-if="detail.student.steps.INFO !== 'DONE'"
+            type="button"
+            class="ori-act ori-act--primary"
+            :disabled="submitting || isDenied('orientation.student.edit')"
+            :title="isDenied('orientation.student.edit') ? '当前角色无信息核验权限' : ''"
+            @click="verifyPass"
+          >信息核验通过</button>
+          <button
+            v-if="detail.student.steps.INFO !== 'DONE'"
+            type="button"
+            class="ori-act"
+            :disabled="submitting || isDenied('orientation.student.edit')"
+            @click="verifyReturn"
+          >核验退回</button>
+          <button
+            v-if="!detail.student.blockedStep"
+            type="button"
+            class="ori-act ori-act--danger"
+            :disabled="submitting || isDenied('orientation.student.edit')"
+            @click="markBlock"
+          >标记卡点</button>
+          <button
+            v-else
+            type="button"
+            class="ori-act ori-act--primary"
+            :disabled="submitting || isDenied('orientation.student.edit')"
+            @click="resolveBlock"
+          >解除卡点</button>
+        </div>
       </section>
 
       <div class="ori-detail-grid" style="margin-top: var(--space-4)">
@@ -62,6 +94,14 @@
             <div v-for="g in detail.greenChannels" :key="g.id" class="ori-green-item">
               <b>{{ g.applyType }}</b>（¥{{ g.applyAmount }}）· 提交于 {{ g.submitTime }}
               <StatusTag :type="greenTagType[g.status] || 'default'" :label="labelOf('greenChannelStatus', g.status)" />
+              <span
+                v-if="detail.student.recordStatus !== 'VOIDED' && ['SUBMITTED', 'REVIEWING', 'RETURNED'].includes(g.status) && !isHidden('orientation.payment.view')"
+                class="ori-rowact"
+              >
+                <button type="button" class="ori-act ori-act--primary" :disabled="submitting || isDenied('orientation.payment.view')" @click="approveGreen(g)">通过</button>
+                <button type="button" class="ori-act" :disabled="submitting || isDenied('orientation.payment.view')" @click="returnGreen(g)">退回补充</button>
+                <button type="button" class="ori-act ori-act--danger" :disabled="submitting || isDenied('orientation.payment.view')" @click="rejectGreen(g)">驳回</button>
+              </span>
               <div v-if="g.rejectReason" class="ori-inline-note">意见：{{ g.rejectReason }}</div>
             </div>
           </section>
@@ -74,7 +114,7 @@
             <EmptyState v-if="!detail.materials.length" title="暂无上传材料" />
             <table v-else class="ori-mat-table">
               <thead>
-                <tr><th>材料类型</th><th>文件</th><th>提交时间</th><th>状态</th><th>审核意见</th></tr>
+                <tr><th>材料类型</th><th>文件</th><th>提交时间</th><th>状态</th><th>审核意见</th><th v-if="showMaterialActions">操作</th></tr>
               </thead>
               <tbody>
                 <tr v-for="m in detail.materials" :key="m.id">
@@ -83,6 +123,13 @@
                   <td>{{ m.submitTime }}</td>
                   <td><StatusTag :type="materialTagType[m.status] || 'default'" :label="labelOf('materialStatus', m.status)" /></td>
                   <td class="ori-inline-note">{{ m.returnReason || '—' }}</td>
+                  <td v-if="showMaterialActions">
+                    <span v-if="['UPLOADED', 'RETURNED'].includes(m.status)" class="ori-rowact">
+                      <button type="button" class="ori-act ori-act--primary" :disabled="submitting || isDenied('orientation.material.review')" @click="approveMaterial(m)">通过</button>
+                      <button type="button" class="ori-act" :disabled="submitting || isDenied('orientation.material.review')" @click="returnMaterial(m)">退回</button>
+                    </span>
+                    <span v-else class="ori-inline-note">—</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -103,6 +150,23 @@
             </div>
             <div v-if="detail.student.exceptionNote" class="ori-blocked-box" style="margin-top: var(--space-3)">
               宿舍异常：{{ detail.student.exceptionNote }}
+            </div>
+            <div v-if="detail.student.recordStatus !== 'VOIDED' && !isHidden('orientation.dorm.confirm')" class="ori-actbar" style="margin-top: var(--space-3)">
+              <button
+                v-if="detail.student.dormStatus === 'ASSIGNED'"
+                type="button"
+                class="ori-act ori-act--primary"
+                :disabled="submitting || isDenied('orientation.dorm.confirm')"
+                @click="confirmDorm"
+              >确认入住</button>
+              <button
+                v-if="['ASSIGNED', 'CHECKED_IN'].includes(detail.student.dormStatus)"
+                type="button"
+                class="ori-act ori-act--danger"
+                :disabled="submitting || isDenied('orientation.dorm.confirm')"
+                @click="dormException"
+              >标记入住异常</button>
+              <button type="button" class="ori-act" @click="$router.push('/admin/orientation/dorm')">前往宿舍入住管理 →</button>
             </div>
           </section>
 
@@ -129,6 +193,16 @@
         :message="`确认作废「${detail.student.name}」的报到记录？`"
         :submitting="submitting"
         @confirm="onVoidConfirm"
+      />
+      <!-- 就地动作的填原因抽屉（退回/驳回/标记卡点等需理由的动作复用同一个抽屉） -->
+      <EditDrawer
+        v-model:visible="actionDrawer.visible"
+        :title="actionDrawer.title"
+        :fields="actionDrawer.fields"
+        :model="null"
+        :submitting="submitting"
+        :submit-text="actionDrawer.submitText"
+        @submit="onActionSubmit"
       />
     </template>
   </ModulePageShell>
@@ -168,7 +242,8 @@ export default {
       paymentTagType: PAYMENT_TAG_TYPE,
       greenTagType: GREEN_TAG_TYPE,
       materialTagType: MATERIAL_TAG_TYPE,
-      dormTagType: DORM_TAG_TYPE
+      dormTagType: DORM_TAG_TYPE,
+      actionDrawer: { visible: false, title: '', fields: [], submitText: '确认提交', handler: null }
     }
   },
   computed: {
@@ -219,6 +294,9 @@ export default {
         { key: 'phone', label: '联系电话', type: 'text' },
         { key: 'origin', label: '生源地', type: 'text' }
       ]
+    },
+    showMaterialActions() {
+      return this.detail?.student?.recordStatus !== 'VOIDED' && !this.isHidden('orientation.material.review')
     }
   },
   created() {
@@ -282,6 +360,110 @@ export default {
       } finally {
         this.submitting = false
       }
+    },
+    /* ---------------- 就地动作：权限判断 ---------------- */
+    isDenied(key) {
+      const p = this.perms[key]
+      return !!(p && p.allowed === false)
+    },
+    isHidden(key) {
+      const p = this.perms[key]
+      return !!(p && p.visible === false)
+    },
+    /* ---------------- 就地动作：统一执行 + 填原因抽屉 ---------------- */
+    async runApi(fn, okMsg) {
+      this.submitting = true
+      try {
+        const res = await fn()
+        if (res.code === 0) {
+          toast.success(okMsg)
+          this.actionDrawer.visible = false
+          this.load()
+        } else toast.error(res.message)
+      } catch (e) {
+        toast.error(e.message || '操作失败')
+      } finally {
+        this.submitting = false
+      }
+    },
+    openReason({ title, fields, submitText = '确认提交', handler }) {
+      this.actionDrawer = { visible: true, title, fields, submitText, handler }
+    },
+    onActionSubmit(form) {
+      if (this.actionDrawer.handler) this.actionDrawer.handler(form)
+    },
+    /* ---------------- 就地动作：信息核验 / 卡点 ---------------- */
+    verifyPass() {
+      this.runApi(() => api.verifyOrientationStudent(this.detail.student.id, { passed: true }), '信息核验已通过')
+    },
+    verifyReturn() {
+      const id = this.detail.student.id
+      this.openReason({
+        title: '信息核验退回',
+        submitText: '确认退回',
+        fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请说明需重新核对的内容（不少于5字）' }],
+        handler: (f) => this.runApi(() => api.verifyOrientationStudent(id, { passed: false, reason: f.reason }), '已退回，学生需重新核对信息')
+      })
+    },
+    markBlock() {
+      const id = this.detail.student.id
+      this.openReason({
+        title: '标记报到卡点',
+        submitText: '标记卡点',
+        fields: [
+          { key: 'blockedStep', label: '卡在哪个环节', type: 'select', required: true, options: (this.detail.steps || []).map((s) => ({ value: s.key, label: s.label })) },
+          { key: 'blockedReason', label: '卡点原因', type: 'textarea', required: true, placeholder: '请说明卡点原因（不少于5字）' }
+        ],
+        handler: (f) => this.runApi(() => api.updateBlockedIssue(id, { blockedStep: f.blockedStep, blockedReason: f.blockedReason }), '已标记卡点')
+      })
+    },
+    resolveBlock() {
+      this.runApi(() => api.resolveBlockedIssue(this.detail.student.id, { note: '' }), '卡点已解除')
+    },
+    /* ---------------- 就地动作：材料审核 ---------------- */
+    approveMaterial(m) {
+      this.runApi(() => api.approveOrientationMaterial(m.id, { comment: '' }), '材料已通过')
+    },
+    returnMaterial(m) {
+      this.openReason({
+        title: '退回材料',
+        submitText: '确认退回',
+        fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请说明需补充的内容（不少于5字）' }],
+        handler: (f) => this.runApi(() => api.returnOrientationMaterial(m.id, { reason: f.reason }), '材料已退回')
+      })
+    },
+    /* ---------------- 就地动作：绿色通道 ---------------- */
+    approveGreen(g) {
+      this.runApi(() => api.approveGreenChannel(g.id, { remark: '' }), '绿色通道已通过')
+    },
+    returnGreen(g) {
+      this.openReason({
+        title: '退回绿色通道申请',
+        submitText: '确认退回',
+        fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请说明需补充的内容（不少于5字）' }],
+        handler: (f) => this.runApi(() => api.returnGreenChannel(g.id, { reason: f.reason }), '已退回申请人补充')
+      })
+    },
+    rejectGreen(g) {
+      this.openReason({
+        title: '驳回绿色通道申请',
+        submitText: '确认驳回',
+        fields: [{ key: 'reason', label: '驳回原因', type: 'textarea', required: true, placeholder: '请说明驳回理由（不少于5字）' }],
+        handler: (f) => this.runApi(() => api.rejectGreenChannel(g.id, { reason: f.reason }), '已驳回该绿色通道申请')
+      })
+    },
+    /* ---------------- 就地动作：宿舍入住 ---------------- */
+    confirmDorm() {
+      this.runApi(() => api.batchConfirmCheckin([this.detail.student.id]), '已确认入住')
+    },
+    dormException() {
+      const id = this.detail.student.id
+      this.openReason({
+        title: '标记入住异常',
+        submitText: '标记异常',
+        fields: [{ key: 'note', label: '异常说明', type: 'textarea', required: true, placeholder: '请说明入住异常情况（不少于5字）' }],
+        handler: (f) => this.runApi(() => api.markDormException(id, { note: f.note }), '已标记宿舍入住异常')
+      })
     }
   }
 }
@@ -335,6 +517,51 @@ export default {
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   color: var(--danger-600);
+}
+.ori-actbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.ori-rowact {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+}
+.ori-act {
+  padding: 4px 10px;
+  border-radius: var(--radius-base);
+  border: 1px solid var(--border-base);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.ori-act:hover:not(:disabled) {
+  border-color: var(--primary-500);
+  color: var(--primary-500);
+}
+.ori-act--primary {
+  border-color: var(--primary-500);
+  background: var(--primary-500);
+  color: #fff;
+}
+.ori-act--primary:hover:not(:disabled) {
+  color: #fff;
+  box-shadow: 0 0 0 3px var(--primary-50);
+}
+.ori-act--danger {
+  border-color: var(--danger-100);
+  color: var(--danger-600);
+}
+.ori-act--danger:hover:not(:disabled) {
+  background: var(--danger-50);
+}
+.ori-act:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .ori-mat-table {
   width: 100%;
