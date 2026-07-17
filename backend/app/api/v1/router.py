@@ -13,6 +13,7 @@ from app.api.v1 import message as message_simple
 from app.api.v1 import todo as todo_simple
 from app.api.v1 import mobile
 from app.api.v1 import notification
+from app.student_portal.router import router as student_portal_router
 from app.api.v1 import onboarding
 from app.modules.academic_affairs.routers import academic_affairs
 from app.api.v1 import stats
@@ -142,6 +143,7 @@ api_router.include_router(platform.router)                                    # 
 # 系统
 api_router.include_router(stats.router)                                       # /api/v1/stats/*
 api_router.include_router(mobile.router)                                      # /api/v1/mobile/*（含 /me/portal-config）
+api_router.include_router(student_portal_router)                              # /api/v1/portal/*（学生PC门户·重活+家长代理，学生令牌，服务层收口本人）
 from app.api.v1 import student_portal_admin                                    # noqa: E402
 api_router.include_router(student_portal_admin.router)                        # /api/v1/admin/tenants/{id}/student-portal-config
 api_router.include_router(onboarding.router)                                  # /api/v1/onboarding/*
