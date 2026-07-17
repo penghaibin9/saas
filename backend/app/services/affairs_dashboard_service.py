@@ -155,9 +155,12 @@ def get_dashboard(user: dict) -> dict:
 
 # ═══════════ 班级 / 班干部 ═══════════
 
-def _cadre_row(r) -> dict:
+def _cadre_row(r, student=None) -> dict:
     return {
         "cadreId": str(r.id), "classId": str(r.class_id), "studentId": str(r.student_id),
+        # 班干部列表此前只回 studentId，PC 端只能显示内部主键；补 join 学生姓名/学号（历史欠账 §班级 ②）。
+        "studentName": (student.real_name if student else "") or "",
+        "studentNo": (student.student_no if student else "") or "",
         "position": r.position, "termCode": r.term_code or "", "status": r.status,
         "appointedAt": _iso(r.appointed_at), "removedAt": _iso(r.removed_at),
     }
@@ -204,12 +207,15 @@ def list_cadres(class_id, user: dict) -> list[dict]:
     问题，但会让辅导员误判在任情况。免去记录仍可经审计追溯，此处只收紧列表口径为在任成员。"""
     with session() as db:
         _class_in_scope_or_403(db, class_id, user)
-        from app.models import AffairsClassCadre
+        from app.models import AffairsClassCadre, StudentProfile
         rows = db.scalars(select(AffairsClassCadre).where(
             AffairsClassCadre.tenant_id == _tid(), AffairsClassCadre.class_id == int(class_id),
             AffairsClassCadre.status == "ACTIVE",
             AffairsClassCadre.is_deleted.is_(False)).order_by(AffairsClassCadre.id)).all()
-        return [_cadre_row(r) for r in rows]
+        sids = {int(r.student_id) for r in rows if r.student_id}
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_(sids))).all()} if sids else {}
+        return [_cadre_row(r, students.get(int(r.student_id))) for r in rows]
 
 
 def add_cadre(class_id, body, user: dict) -> dict:
@@ -232,7 +238,8 @@ def add_cadre(class_id, body, user: dict) -> dict:
                f"class={class_id},position={body.position},student={body.studentId}")
         db.commit()
         db.refresh(r)
-        return _cadre_row(r)
+        from app.models import StudentProfile
+        return _cadre_row(r, db.get(StudentProfile, int(r.student_id)) if r.student_id else None)
 
 
 def remove_cadre(cadre_id, user: dict, reason: str = "") -> dict:

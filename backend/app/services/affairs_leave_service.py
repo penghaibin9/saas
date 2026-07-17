@@ -252,7 +252,12 @@ def _check_review_node(db, x, user):
 # ═══════════ 申请 ═══════════
 
 def apply_leave(body, user, *, skip_scope_check: bool = False) -> dict:
-    student_id = int(body.studentId)
+    # studentId 为字符串且无数字校验（campus_service schema），非数字直接 int() → 未捕获
+    # ValueError → HTTP 500；改为显式校验返回 400 VALIDATION_ERROR（历史欠账收口）。
+    raw_sid = str(getattr(body, "studentId", "") or "").strip()
+    if not raw_sid.isdigit():
+        raise AppException("VALIDATION_ERROR", "请选择有效学生")
+    student_id = int(raw_sid)
     start = _parse_dt(body.startTime)
     end = _parse_dt(body.endTime)
     days = _days(start, end)

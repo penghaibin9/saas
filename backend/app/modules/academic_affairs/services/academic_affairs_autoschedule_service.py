@@ -294,6 +294,17 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
 
         pend.sort(key=tightness)
 
+        # 历史欠账收口：capacityCheck 开启但任务未填预计人数时，容量过滤对该任务整体失效
+        # （`headcount and ...` 短路），可能被排进坐不下的小教室——此前静默，不上报。
+        # 收口口径=告警不拒排（拒排会阻断既有流程属行为变更），结果与审计里如实上报盲排任务。
+        capacity_warnings = []
+        if params["capacityCheck"]:
+            capacity_warnings = [{
+                "taskId": str(t.id), "courseName": t.course_name,
+                "className": t.teaching_class_name, "reason": "NO_HEADCOUNT",
+                "detail": "未填预计人数(expected_students)，容量校验对该任务失效，可能排入容量不足的教室",
+            } for (t, _n, _h) in pend if not t.expected_students]
+
         placed, misses, new_items = [], [], []
         for (t, need, have) in pend:
             sw = int(t.start_week or params["startWeek"])
@@ -333,7 +344,8 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
                     classroom_text=(_room_label(r) if r else None),
                     status="EFFECTIVE", source="AUTO"))
             _audit(db, b.id, "AUTO_SCHEDULE",
-                   f"排入{len(new_items)}节/{len(placed)}个任务，漏排{len(misses)}")
+                   f"排入{len(new_items)}节/{len(placed)}个任务，漏排{len(misses)}"
+                   + (f"，容量盲排告警{len(capacity_warnings)}" if capacity_warnings else ""))
             db.commit()
 
         return {
@@ -343,6 +355,7 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
             "roomPoolSize": len(rooms),
             "params": params,
             "placed": placed, "misses": misses,
+            "capacityWarnings": capacity_warnings,
         }
 
 

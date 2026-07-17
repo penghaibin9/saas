@@ -91,7 +91,12 @@ def test_mb4_graduation_progress_my(client, db_mode):
                 json={"studentIds": [str(ids["student"])]})
     client.post(f"{AA}/graduation-audit-batches/{bid}/precheck", headers=admin)
     r = client.get(f"{MB}/academic/graduation/my", headers=_stu_token("移动甲", "AAM01")).json()["data"]
-    assert r["hasAudit"] is True and len(r["items"]) == 7
+    assert r["hasAudit"] is True
+    # 毕业预审供数维度（此前断言 7 已过时——precheck `_run_items` 现无条件产出 11 项；
+    # 改为校验维度键集合而非 magic number，增删维度时能精确定位差异，不再静默漂移）。
+    assert {it["item"] for it in r["items"]} == {
+        "STATUS", "CREDIT", "COURSE_REQUIRED", "COURSE_ELECTIVE", "PRACTICE",
+        "INTERNSHIP", "GRADUATION_DESIGN", "DISCIPLINE", "EMPLOYMENT", "ARCHIVE", "FEE"}
 
 
 def test_mb5_teacher_schedule_my(client, db_mode):

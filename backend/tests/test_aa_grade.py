@@ -235,3 +235,22 @@ def test_g9_exception_list_filter_flag_and_student_403(client, db_mode):
     assert only_deferred["items"][0]["exceptionFlag"] == "DEFERRED"
     stu_hdr = _hdr(client, "student01")
     assert client.get(f"{BASE}/grade-views/exception-list", headers=stu_hdr).status_code == 403
+
+
+def test_g10_cross_tenant_teaching_task_rejected(client, db_mode):
+    """租户隔离收口：新建成绩任务引用他租户 teachingTaskId 须拒绝（此前 db.get 不校验
+    tenant_id，会把他租户 teacher_key 带进本租户新任务）。"""
+    _seed(db_mode, 1)
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask
+    db = get_sessionmaker()()
+    other = AaTeachingTask(tenant_id=TID + 1, batch_id=1, course_id=1, course_name="他租户课",
+                           teacher_key="other_teacher", status="READY")
+    db.add(other); db.commit()
+    other_tt_id = other.id
+    db.close()
+    hdr = _hdr(client, "school_admin01")
+    r = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "高数", "termCode": "2026-2027-1", "credit": 4,
+        "usualRatio": 30, "finalRatio": 70, "teachingTaskId": str(other_tt_id)})
+    assert r.status_code == 404 and r.json()["bizCode"] == "DATA_NOT_FOUND"

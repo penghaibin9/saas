@@ -380,11 +380,14 @@ def review(app_id, user, action, reason="") -> dict:
             if i + 1 < len(FUND_NODES):
                 nxt = FUND_NODES[i + 1]
                 x.status, x.version = nxt, x.version + 1
+                assignee = _assignee_for(db, nxt, x.student_id)
+                # 无 workflow 实例的申请（如沙箱种子直接置 COUNSELOR_REVIEW，未走 apply() 开流程）
+                # 仍推进状态机 + 建待办 + 落审计，只跳过需要 instance_id 的 WorkflowTask 行，避免
+                # inst 为 None 时 inst.id 抛 AttributeError → 500（历史欠账：沙箱奖助 review APPROVE 崩）。
                 if inst:
                     inst.current_node = nxt
-                assignee = _assignee_for(db, nxt, x.student_id)
-                db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
-                                    assignee_id=assignee, status="PENDING"))
+                    db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
+                                        assignee_id=assignee, status="PENDING"))
                 _todo_upsert(db, x.id, assignee, x.student_id,
                              f"资助申请待审（{L_FUND[nxt]}）：{s.real_name if s else ''}")
                 _audit(db, x.id, "REVIEW_STEP", f"{FUND_NODES[i]}->{nxt}")
@@ -479,9 +482,13 @@ def list_applications(user, batch_id=None, project_type=None, status=None, page=
             conds.append(FundingApplication.status == status)
         rows = db.scalars(select(FundingApplication).where(*conds).order_by(
             FundingApplication.id.desc())).all()
+        # 消 N+1：批量取本页学生档案，替代循环内逐行 db.get（行为等价，见 list_risks 同款收口）。
+        sids = {int(x.student_id) for x in rows if x.student_id}
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_(sids))).all()} if sids else {}
         out = []
         for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append(_app_row(x, user, s))
@@ -498,11 +505,15 @@ def funding_stats(user) -> dict:
         allowed, _ = _allowed_class_ids(db, user)
         rows = db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(), FundingApplication.is_deleted.is_(False))).all()
+        # 消 N+1：批量取学生档案用于数据范围判定（统计遍历全量，逐行 db.get 放大更明显）。
+        sids = {int(x.student_id) for x in rows if x.student_id}
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_(sids))).all()} if sids else {}
         by_status: dict[str, int] = {}
         by_type: dict[str, int] = {}
         total = 0
         for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             total += 1

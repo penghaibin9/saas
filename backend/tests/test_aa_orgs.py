@@ -136,3 +136,57 @@ def test_o7_teaching_classes_readonly(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     r = client.get(f"{BASE}/teaching-classes", headers=hdr)
     assert r.status_code == 200 and "items" in r.json()["data"]
+
+
+def test_o8_counselor_binding_syncs_scope(client, db_mode):
+    """历史欠账 CL-1 残余收口：改辅导员绑定须同步 t_teacher_student_scope
+    （学工数据范围由 scope 表驱动，此前只写 counselor_id 列，范围不随绑定生效）。"""
+    from sqlalchemy import select as _sel
+
+    from app.db.session import get_sessionmaker
+    from app.models import TeacherStudentScope, User
+    TID_ = 1000000000000000001
+    db = get_sessionmaker()()
+    u1 = User(tenant_id=TID_, login_name="c_bind_old", real_name="旧辅导员",
+              password_hash="x", user_type="TEACHER", status="ACTIVE")
+    u2 = User(tenant_id=TID_, login_name="c_bind_new", real_name="新辅导员",
+              password_hash="x", user_type="TEACHER", status="ACTIVE")
+    db.add(u1); db.add(u2); db.commit()
+    old_id, new_id = u1.id, u2.id
+    db.close()
+
+    hdr = _hdr(client, "school_admin01")
+    col = _mk_college(client, hdr, "绑定学院", "绑院")
+    maj = _mk_major(client, hdr, col["id"], "绑定专业")
+    cls = _mk_class(client, hdr, maj["id"], "绑定2601")
+    # 首绑旧辅导员 → 立新 scope（ACTIVE, ref_value=班级名, teacher_key=登录名）
+    r = client.put(f"{BASE}/classes/{cls['id']}", headers=hdr, json={"counselorId": str(old_id)})
+    assert r.status_code == 200
+    db = get_sessionmaker()()
+    row_old = db.scalars(_sel(TeacherStudentScope).where(
+        TeacherStudentScope.tenant_id == TID_, TeacherStudentScope.teacher_key == "c_bind_old",
+        TeacherStudentScope.role_code == "COUNSELOR", TeacherStudentScope.scope_type == "CLASS",
+        TeacherStudentScope.ref_value == "绑定2601")).first()
+    assert row_old is not None and row_old.status == "ACTIVE"
+    db.close()
+    # 换绑新辅导员 → 旧行 INACTIVE、新行 ACTIVE
+    r2 = client.put(f"{BASE}/classes/{cls['id']}", headers=hdr, json={"counselorId": str(new_id)})
+    assert r2.status_code == 200
+    db = get_sessionmaker()()
+    row_old2 = db.scalars(_sel(TeacherStudentScope).where(
+        TeacherStudentScope.teacher_key == "c_bind_old",
+        TeacherStudentScope.ref_value == "绑定2601")).first()
+    row_new = db.scalars(_sel(TeacherStudentScope).where(
+        TeacherStudentScope.teacher_key == "c_bind_new",
+        TeacherStudentScope.ref_value == "绑定2601")).first()
+    assert row_old2.status == "INACTIVE"
+    assert row_new is not None and row_new.status == "ACTIVE" and row_new.teacher_name == "新辅导员"
+    db.close()
+    # 班级改名 → scope ref_value 跟随（否则按名引用全部失效）
+    r3 = client.put(f"{BASE}/classes/{cls['id']}", headers=hdr, json={"className": "绑定2601A"})
+    assert r3.status_code == 200
+    db = get_sessionmaker()()
+    row_new2 = db.scalars(_sel(TeacherStudentScope).where(
+        TeacherStudentScope.teacher_key == "c_bind_new")).first()
+    assert row_new2.ref_value == "绑定2601A"
+    db.close()

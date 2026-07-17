@@ -253,7 +253,16 @@ def auto_arrange(user, batch_id, dry_run=False) -> dict:
                             AaExamRoomStudent)
     with session() as db:
         _require_school(user, db)
-        b = db.get(AaExamBatch, int(batch_id))
+        # 历史欠账收口（TOCTOU）：排考增量可重跑（批次停在 COURSE_CONFIRMED，不翻状态），
+        # 故并发防护不能靠状态跃迁，改对批次行加 FOR UPDATE 行锁——同批次并发自动排考会
+        # 串行：第二个请求阻塞至第一个提交后再读 arranged_ids（已含首轮成果），增量跳过逻辑
+        # 自然去重，杜绝"两次都读到空 arranged_ids → 同课程重复建考场/座位/准考证号"。
+        # dry_run 不落库，无并发写风险，走普通读避免占锁。
+        if dry_run:
+            b = db.get(AaExamBatch, int(batch_id))
+        else:
+            b = db.scalars(select(AaExamBatch).where(
+                AaExamBatch.id == int(batch_id)).with_for_update()).first()
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("考试批次不存在")
         if b.status != "COURSE_CONFIRMED":

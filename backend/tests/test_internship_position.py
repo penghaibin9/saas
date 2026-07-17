@@ -134,6 +134,15 @@ def test_detail_and_not_found(client, auth_headers, db_mode):
     assert client.get(f"{POS}/99999999", headers=auth_headers).json()["code"] != 0
 
 
+def test_create_non_numeric_ids_400_not_500(client, auth_headers, db_mode):
+    """历史欠账收口：companyId/batchId 非数字此前 int() 抛 ValueError→500，现应 400 VALIDATION_ERROR。"""
+    r1 = client.post(POS, headers=auth_headers, json={"companyId": "abc", "title": "X"})
+    assert r1.status_code == 400 and r1.json()["bizCode"] == "VALIDATION_ERROR"
+    cid = _company(client, auth_headers, cc="91310000POSNUM1XA")
+    r2 = client.post(POS, headers=auth_headers, json={"companyId": cid, "title": "岗位", "batchId": "notnum"})
+    assert r2.status_code == 400 and r2.json()["bizCode"] == "VALIDATION_ERROR"
+
+
 def test_position_xlsx_import_template_and_upload(client, auth_headers, db_mode):
     import io
     from openpyxl import Workbook

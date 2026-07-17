@@ -150,13 +150,20 @@ def draw_round(user, round_id) -> dict:
     中签 → SELECTED 并守护式占容量（绝不超容）；未中签 → LOTTERY_LOST（可进下一轮再选）。
     只允许在 CLOSED 的 LOTTERY 轮次上执行一次；执行后轮次 DRAWN 终态。
     """
-    from app.models import AaSelectionCourse, AaSelectionRecord
+    from app.models import AaSelectionCourse, AaSelectionRecord, AaSelectionRound
     with session() as db:
         _require_manage_scope(_ctx(user, db))
         r = _get_round(db, round_id)
         if r.mode != "LOTTERY":
             raise _invalid("仅抽签轮次可摇号")
-        if r.status != "CLOSED":
+        # 历史欠账收口（TOCTOU）：状态跃迁由"读检查+提交前赋值"改为条件更新抢占——
+        # MySQL 行锁下并发第二个 draw 会阻塞至第一个提交，随后匹配 0 行 → 409，
+        # 消除双摇号窗口（双摇会对同一批 PENDING 记录二次派奖+二次占容量）。
+        grabbed = db.query(AaSelectionRound).filter(
+            AaSelectionRound.id == r.id, AaSelectionRound.tenant_id == _tid(),
+            AaSelectionRound.status == "CLOSED").update(
+            {AaSelectionRound.status: "DRAWN"}, synchronize_session=False)
+        if not grabbed:
             raise _invalid("请先关闭轮次再摇号（开启中不可摇号，已摇号不可重摇）")
 
         pend = db.scalars(select(AaSelectionRecord).where(
@@ -199,7 +206,7 @@ def draw_round(user, round_id) -> dict:
                             "losers": len(losers),
                             "remainingBefore": remaining})
 
-        r.status = "DRAWN"
+        # 状态已在上方条件更新原子置为 DRAWN（抢占即跃迁），此处不再赋值
         _audit(db, r.id, "ROUND_DRAW",
                f"第{r.round_no}轮摇号：{len(by_course)}门课，中签{total_win}/落签{total_lose}")
         db.commit()

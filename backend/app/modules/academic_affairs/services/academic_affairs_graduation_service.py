@@ -321,7 +321,7 @@ def generate(batch_id, user, student_ids=None) -> dict:
 
 
 def precheck(batch_id, user) -> dict:
-    """十项供数三态判定（幂等，结果覆盖非追加）。"""
+    """十一项供数三态判定（幂等，结果覆盖非追加；维度清单见 `_run_items`）。"""
     _require_review_role(user)
     with session() as db:
         from app.models import (AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile)
