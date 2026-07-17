@@ -18,13 +18,13 @@
       class="app-number-input__el"
       type="text"
       inputmode="decimal"
-      :value="displayValue"
+      :value="focused ? raw : displayValue"
       :placeholder="placeholder"
       :disabled="disabled"
       :readonly="readonly"
       :aria-invalid="status === 'error'"
       @input="onInput"
-      @focus="focused = true"
+      @focus="onFocus"
       @blur="onBlur"
     />
     <button
@@ -64,7 +64,7 @@ export default {
   },
   emits: ['update:modelValue', 'change'],
   data() {
-    return { focused: false }
+    return { focused: false, raw: '' }
   },
   computed: {
     numValue() {
@@ -85,7 +85,13 @@ export default {
       if (this.precision != null) v = Number(v.toFixed(this.precision))
       return v
     },
+    onFocus() {
+      // 进入编辑态：用未格式化的当前值初始化本地输入串，避免 toFixed 补零挡住小数录入
+      this.raw = this.numValue === null ? '' : String(this.numValue)
+      this.focused = true
+    },
     onInput(e) {
+      this.raw = e.target.value
       const raw = e.target.value.trim()
       if (raw === '' || raw === '-') {
         this.$emit('update:modelValue', null)

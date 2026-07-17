@@ -53,7 +53,7 @@
                 <td><AppStatusTag :status="row.studentStatus" /></td>
                 <td><AppRiskTag :level="row.riskLevel || 'LOW'" size="sm" /></td>
                 <td><AppSensitiveText :value="row.phoneMasked || '未设置'" /></td>
-                <td>{{ formatDate(row.updatedAt) }}</td>
+                <td><AppDateDisplay :value="row.updatedAt" mode="datetime" empty-text="未设置" /></td>
                 <td>
                   <AppPermissionButton
                     code="studentAffairs.student.view"
@@ -81,6 +81,7 @@
 
 <script>
 import {
+  AppDateDisplay,
   AppExportButton,
   AppGlobalState,
   AppPageShell,
@@ -106,6 +107,7 @@ const RISK_FILTER_OPTIONS = [
 export default {
   name: 'StudentAffairsProfileListView',
   components: {
+    AppDateDisplay,
     AppExportButton,
     AppGlobalState,
     AppPageShell,
@@ -156,9 +158,6 @@ export default {
       this.pagination.page = next.page || next
       if (next.pageSize) this.pagination.pageSize = next.pageSize
       this.load()
-    },
-    formatDate(v) {
-      return (v || '').replace('T', ' ').slice(0, 16) || '未设置'
     },
     exportLedger() {
       return studentAffairsApi.exportProfileLedger({ purpose: '学工学生画像台账导出' })

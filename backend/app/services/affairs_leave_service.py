@@ -261,6 +261,11 @@ def apply_leave(body, user) -> dict:
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
+        # 数据范围：非全域角色只能为本范围学生代发起请假（与 approve/reject 等一致）
+        from app.services.affairs_dashboard_service import _allowed_class_ids
+        _allowed, _ = _allowed_class_ids(db, user)
+        if _allowed is not None and s.class_id not in _allowed:
+            raise AppException("NO_DATA_SCOPE", "该学生不在您的数据范围内")
         # 重复提交：同学生在途请假且时间重叠 → 409
         for a in db.scalars(select(CsLeave).where(
                 CsLeave.tenant_id == _tid(), CsLeave.student_id == student_id,

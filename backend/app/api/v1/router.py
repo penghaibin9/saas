@@ -17,6 +17,7 @@ from app.api.v1 import mobile_orientation_teacher
 from app.api.v1 import notification
 from app.student_portal.router import router as student_portal_router
 from app.api.v1 import onboarding
+from app.api.v1 import user_preference  # 通用用户偏好（/me/preferences，新手引导「已看过」等）
 from app.modules.academic_affairs.routers import academic_affairs
 from app.api.v1 import stats
 from app.api.v1 import student_affairs
@@ -152,4 +153,5 @@ from app.api.v1 import student_portal_admin                                    #
 api_router.include_router(student_portal_admin.router)                        # /api/v1/admin/tenants/{id}/student-portal-config
 api_router.include_router(onboarding.router)                                  # /api/v1/onboarding/*
 api_router.include_router(notification.router)                                # /api/v1/notification/*
+api_router.include_router(user_preference.router)                             # /api/v1/me/preferences（本人偏好·全端共用）
 api_router.include_router(system.router, tags=["system"])                     # /api/v1/system/info

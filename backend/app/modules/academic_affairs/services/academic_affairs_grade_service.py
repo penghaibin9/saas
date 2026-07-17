@@ -110,13 +110,32 @@ def _require_review_role(user):
         raise no_permission("仅教务处可执行该操作")
 
 
+def _compose_total(t, usual, mid, final):
+    """按任务平时/期中/期末占比合成总评。期中占比=0 时退化为「平时+期末」，与旧任务结果完全一致。"""
+    return round((usual or 0) * (t.usual_ratio or 0) / 100
+                 + (mid or 0) * (getattr(t, "midterm_ratio", 0) or 0) / 100
+                 + (final or 0) * (t.final_ratio or 0) / 100)
+
+
+def _scores_complete(t, usual, mid, final):
+    """占比>0 的分项都已录入才算录全（可合成总评）；占比=0 的分项不要求录入。"""
+    if (t.usual_ratio or 0) > 0 and usual is None:
+        return False
+    if (getattr(t, "midterm_ratio", 0) or 0) > 0 and mid is None:
+        return False
+    if (t.final_ratio or 0) > 0 and final is None:
+        return False
+    return True
+
+
 # ═══════════ 成绩录入任务 ═══════════
 
 def create_grade_task(body, user) -> dict:
     usual = int(getattr(body, "usualRatio", 30) or 30)
     final = int(getattr(body, "finalRatio", 70) or 70)
-    if usual + final != 100:
-        raise AppException("VALIDATION_ERROR", "平时占比+期末占比必须=100")
+    midterm = int(getattr(body, "midtermRatio", 0) or 0)
+    if usual + midterm + final != 100:
+        raise AppException("VALIDATION_ERROR", "平时+期中+期末占比之和必须=100")
     with session() as db:
         from app.models import AaGradeTask, AaTeachingTask
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
@@ -134,7 +153,8 @@ def create_grade_task(body, user) -> dict:
                         term_code=getattr(body, "termCode", None), course_name=getattr(body, "courseName", None),
                         class_id=(int(body.classId) if getattr(body, "classId", None) else None),
                         teacher_key=teacher_key,
-                        credit=getattr(body, "credit", None), usual_ratio=usual, final_ratio=final,
+                        credit=getattr(body, "credit", None), usual_ratio=usual, midterm_ratio=midterm,
+                        final_ratio=final,
                         pass_line=int(getattr(body, "passLine", 60) or 60), status="NOT_STARTED")
         db.add(t)
         db.flush()
@@ -142,13 +162,14 @@ def create_grade_task(body, user) -> dict:
         db.commit()
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "courseName": t.course_name or "", "usualRatio": t.usual_ratio,
-                "finalRatio": t.final_ratio, "status": t.status}
+                "midtermRatio": t.midterm_ratio, "finalRatio": t.final_ratio, "status": t.status}
 
 
 def _task_row(t) -> dict:
     return {"gradeTaskId": str(t.id), "courseName": t.course_name or "", "termCode": t.term_code or "",
             "classId": str(t.class_id or ""), "teacherKey": t.teacher_key or "",
-            "usualRatio": t.usual_ratio, "finalRatio": t.final_ratio, "passLine": t.pass_line,
+            "usualRatio": t.usual_ratio, "midtermRatio": t.midterm_ratio, "finalRatio": t.final_ratio,
+            "passLine": t.pass_line,
             "status": t.status, "returnReason": t.return_reason or "", "publishAt": _iso(t.publish_at)}
 
 
@@ -216,23 +237,26 @@ def list_records(task_id, user) -> dict:
         return {"items": items}
 
 
-def _write_score_row(db, t, sid, usual, final, exception_flag):
+def _write_score_row(db, t, sid, usual, final, exception_flag, mid=None):
     """录入/批量导入共用的落库逻辑：合成总评 + upsert AaGradeRecord。
-    不做 audit/commit（由调用方负责，供批量导入整批一次提交）。"""
+    不做 audit/commit（由调用方负责，供批量导入整批一次提交）。
+    与 enter_score 同款：按 平时/期中/期末 占比合成；占比>0 的分项未录全 → total=None，
+    发布门禁会拦为「未录全」，绝不产出缺权重的错误总评（批量导入模板无期中列时 mid 恒 None）。"""
     from app.models import AaGradeRecord
     exception_flag = (exception_flag or "NORMAL").upper()
     total = None
-    if exception_flag == "NORMAL" and usual is not None and final is not None:
-        total = round(usual * t.usual_ratio / 100 + final * t.final_ratio / 100)
-    elif exception_flag != "NORMAL":
-        usual = final = None  # 缺考/缓考/免修与正常分互斥
+    if exception_flag == "NORMAL":
+        if _scores_complete(t, usual, mid, final):
+            total = _compose_total(t, usual, mid, final)
+    else:
+        usual = mid = final = None  # 缺考/缓考/免修与正常分互斥
     rec = db.scalars(select(AaGradeRecord).where(
         AaGradeRecord.tenant_id == _tid(), AaGradeRecord.task_id == t.id,
         AaGradeRecord.student_id == sid, AaGradeRecord.is_deleted.is_(False))).first()
     if not rec:
         rec = AaGradeRecord(tenant_id=_tid(), task_id=t.id, student_id=sid)
         db.add(rec)
-    rec.usual_score, rec.final_score, rec.total_score = usual, final, total
+    rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score = usual, mid, final, total
     rec.exception_flag = exception_flag
     rec.pass_status = ("PASSED" if (total is not None and total >= t.pass_line) else
                        ("FAILED" if total is not None else None))
@@ -245,7 +269,7 @@ def _write_score_row(db, t, sid, usual, final, exception_flag):
 def enter_score(task_id, user, body) -> dict:
     """录入某生平时/期末分，实时合成总评（NOT_STARTED/INPUTTING/RETURNED 可写）。"""
     with session() as db:
-        from app.models import AaGradeTask
+        from app.models import AaGradeRecord, AaGradeTask
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaGradeTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
@@ -256,16 +280,35 @@ def enter_score(task_id, user, body) -> dict:
             raise AppException("DATA_CONFLICT", "当前状态不可录入（已提交/已发布，如需修改请走成绩更正）")
         sid = int(body.studentId)
         usual = getattr(body, "usualScore", None)
+        mid = getattr(body, "midtermScore", None)
         final = getattr(body, "finalScore", None)
         exception_flag = (getattr(body, "exceptionFlag", None) or "NORMAL").upper()
         if exception_flag not in ("NORMAL", "ABSENT", "DEFERRED", "EXEMPT"):
             raise AppException("VALIDATION_ERROR", "异常标记非法")
-        rec = _write_score_row(db, t, sid, usual, final, exception_flag)
+        total = None
+        if exception_flag == "NORMAL":
+            if _scores_complete(t, usual, mid, final):
+                total = _compose_total(t, usual, mid, final)
+        else:
+            usual = mid = final = None  # 缺考/缓考/免修与正常分互斥
+        rec = db.scalars(select(AaGradeRecord).where(
+            AaGradeRecord.tenant_id == _tid(), AaGradeRecord.task_id == t.id,
+            AaGradeRecord.student_id == sid, AaGradeRecord.is_deleted.is_(False))).first()
+        if not rec:
+            rec = AaGradeRecord(tenant_id=_tid(), task_id=t.id, student_id=sid)
+            db.add(rec)
+        rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score = usual, mid, final, total
+        rec.exception_flag = exception_flag
+        rec.pass_status = ("PASSED" if (total is not None and total >= t.pass_line) else
+                           ("FAILED" if total is not None else None))
+        if t.status == "NOT_STARTED":
+            t.status = "INPUTTING"
+        db.flush()
         _audit(db, "AA_GRADE_TASK", t.id, "ENTER", f"student={sid}")
         db.commit()
-        return {"recordId": str(rec.id), "studentId": str(sid), "usualScore": rec.usual_score,
-                "finalScore": rec.final_score, "totalScore": rec.total_score, "passStatus": rec.pass_status,
-                "exceptionFlag": exception_flag}
+        return {"recordId": str(rec.id), "studentId": str(sid), "usualScore": usual,
+                "midtermScore": mid, "finalScore": final, "totalScore": total,
+                "passStatus": rec.pass_status, "exceptionFlag": exception_flag}
 
 
 # ═══════════ 成绩批量导入（学号/平时分/期末分/异常标记；dry-run 逐行零写入 → 确认整批事务） ═══════════
@@ -480,6 +523,49 @@ def college_review(task_id, user, action, reason="") -> dict:
         return {"gradeTaskId": str(t.id), "status": t.status}
 
 
+def _course_point(score) -> float:
+    """百分制课程绩点：≥60 → (成绩-50)/10（60→1.0，100→5.0），<60 → 0。
+    高校百分制绩点的通行映射（designSource=project_rule；各校如有自定义档位，后续参数化）。"""
+    s = float(score or 0)
+    return round((s - 50) / 10, 2) if s >= 60 else 0.0
+
+
+def _refresh_aggregates(db, a) -> None:
+    """刷新学生学业台账四项汇总（均分/未通过门数/已得学分/绩点）。
+
+    口径（对齐商业教务系统的学分绩点计算）：
+    - 同课程多条记录（重修/补考回写）按"取最高分"去重，只计一条——
+      否则重修学生的学分会算两遍、挂科记录洗不掉；
+    - failed_count = "最优记录仍不及格"的课程数（即至今未通过的课程数，供学业预警）；
+    - GPA = Σ(课程绩点×学分) / Σ学分（学分加权）；全部课程零学分时退化为绩点简单平均。
+    """
+    from app.models import AcademicGrade
+    all_g = db.scalars(select(AcademicGrade).where(
+        AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
+        AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))).all()
+    best = {}
+    for x in all_g:
+        key = (x.course_name or "").strip() or f"__id_{x.id}"
+        cur = best.get(key)
+        if cur is None or (x.score or -1) > (cur.score or -1) or \
+                ((x.score or -1) == (cur.score or -1) and x.id > cur.id):
+            best[key] = x
+    rows = list(best.values())
+    scored = [x for x in rows if x.score is not None]
+    a.avg_score = round(sum(x.score for x in scored) / len(scored)) if scored else 0
+    a.failed_count = sum(1 for x in rows if x.pass_status in ("FAIL", "FAILED"))
+    a.obtained_credits = sum(float(x.credit_value or 0) for x in rows if x.pass_status == "PASSED")
+    if scored:
+        total_credit = sum(float(x.credit_value or 0) for x in scored)
+        if total_credit > 0:
+            a.gpa = round(sum(_course_point(x.score) * float(x.credit_value or 0)
+                              for x in scored) / total_credit, 2)
+        else:
+            a.gpa = round(sum(_course_point(x.score) for x in scored) / len(scored), 2)
+    else:
+        a.gpa = 0
+
+
 def publish_grades(task_id, user) -> dict:
     """教务处终审发布：合成总评原子回写 t_acad_grade + 刷新学生台账 + 预警扫描 + 不及格生成 RISK_ALERT。"""
     _require_review_role(user)
@@ -523,16 +609,7 @@ def publish_grades(task_id, user) -> dict:
             r.acad_grade_id = g.id
             r.source = "PUBLISH"
             projected += 1
-            all_g = db.scalars(select(AcademicGrade).where(
-                AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
-                AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))).all()
-            # 同课程多次考核（正常/补考/清考/更正）按最高分去重取真实结论，避免补考已通过仍计入挂科门数
-            eff_g = effective_grade_rows(all_g)
-            scored = [x for x in eff_g if x.score is not None]
-            a.avg_score = round(sum(x.score for x in scored) / len(scored)) if scored else 0
-            a.failed_count = sum(1 for x in eff_g if x.pass_status == "FAILED")
-            a.obtained_credits = sum(float(x.credit_value or 0) for x in eff_g if x.pass_status == "PASSED")
-            a.gpa = round(sum((x.score or 0) / 100 * 4 for x in scored) / len(scored), 2) if scored else 0
+            _refresh_aggregates(db, a)
             if r.pass_status == "FAILED":
                 fail_count += 1
                 dup = db.scalars(select(AffairsRiskRecord).where(
@@ -620,12 +697,15 @@ def change_request(task_id, record_id, user, body) -> dict:
         if existing:
             raise AppException("DATA_CONFLICT", "该成绩已有在途更正申请，不可重复发起")
         n, r, uid = _op()
-        rec.prev_usual_score, rec.prev_final_score, rec.prev_total_score = (
-            rec.usual_score, rec.final_score, rec.total_score)
+        rec.prev_usual_score, rec.prev_midterm_score, rec.prev_final_score, rec.prev_total_score = (
+            rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score)
         new_usual = getattr(body, "newUsualScore", None)
+        new_mid = getattr(body, "newMidtermScore", None)
         new_final = getattr(body, "newFinalScore", None)
         if new_usual is not None:
             rec.usual_score = new_usual
+        if new_mid is not None:
+            rec.midterm_score = new_mid
         if new_final is not None:
             rec.final_score = new_final
         rec.change_reason = reason
@@ -666,10 +746,11 @@ def _change_review(record_id, user, action, reason, node, next_node_or_final):
             if wtask:
                 wtask.status, wtask.action_reason, wtask.acted_at = "REJECTED", reason.strip(), datetime.utcnow()
             inst.status = "REJECTED"
-            if rec.prev_usual_score is not None or rec.prev_final_score is not None:
-                rec.usual_score, rec.final_score, rec.total_score = (
-                    rec.prev_usual_score, rec.prev_final_score, rec.prev_total_score)
-            rec.prev_usual_score = rec.prev_final_score = rec.prev_total_score = None
+            if (rec.prev_usual_score is not None or rec.prev_midterm_score is not None
+                    or rec.prev_final_score is not None):
+                rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score = (
+                    rec.prev_usual_score, rec.prev_midterm_score, rec.prev_final_score, rec.prev_total_score)
+            rec.prev_usual_score = rec.prev_midterm_score = rec.prev_final_score = rec.prev_total_score = None
             _audit(db, "AA_GRADE_RECORD", rec.id, "CHANGE_REJECT", reason.strip())
             db.commit()
             return {"recordId": str(rec.id), "status": "PUBLISHED"}
@@ -709,14 +790,15 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
     _require_review_role(user)
     if action == "APPROVE":
         with session() as db:
-            from app.models import AaGradeRecord, AaGradeTask, AcademicGrade, UnifiedMessage
+            from app.models import (AaGradeRecord, AaGradeTask, AcademicGrade,
+                                     AcademicStudent, UnifiedMessage)
             rec = db.get(AaGradeRecord, int(record_id))
             if not rec or rec.is_deleted or rec.tenant_id != _tid():
                 raise not_found("成绩明细不存在")
             t = db.get(AaGradeTask, int(rec.task_id)) if rec.task_id else None
             new_total = None
-            if rec.usual_score is not None and rec.final_score is not None and t:
-                new_total = round(rec.usual_score * t.usual_ratio / 100 + rec.final_score * t.final_ratio / 100)
+            if t and _scores_complete(t, rec.usual_score, rec.midterm_score, rec.final_score):
+                new_total = _compose_total(t, rec.usual_score, rec.midterm_score, rec.final_score)
             rec.total_score = new_total
             rec.pass_status = "PASSED" if (new_total is not None and t and new_total >= t.pass_line) else "FAILED"
             rec.source = "CHANGE"
@@ -728,6 +810,9 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
                 g = db.get(AcademicGrade, int(rec.acad_grade_id))
                 if g:
                     g.score, g.pass_status, g.source = new_total, rec.pass_status, "CHANGE"
+                    a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
+                    if a:
+                        _refresh_aggregates(db, a)  # 更正终审后即时重算 GPA/学分/挂科聚合（与 publish/复查一致）
             db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(rec.student_id), source_module="academic-affairs",
                                   source_biz_id=rec.id, title="成绩已更正",
                                   content=f"{t.course_name if t else ''} 成绩已更正为 {new_total}",
@@ -799,8 +884,9 @@ def transcript(student_id, user) -> dict:
             AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
             AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))
             .order_by(AcademicGrade.term)).all()
-        items = [{"courseName": g.course_name, "term": g.term or "", "credit": float(g.credit_value or 0),
-                  "score": g.score, "passStatus": g.pass_status, "source": g.source or "LEGACY"} for g in rows]
+        items = [{"gradeId": str(g.id), "courseName": g.course_name, "term": g.term or "",
+                  "credit": float(g.credit_value or 0), "score": g.score,
+                  "passStatus": g.pass_status, "source": g.source or "LEGACY"} for g in rows]
         earned = sum(float(g.credit_value or 0) for g in rows if g.pass_status == "PASSED")
         return {"items": items, "earnedCredits": earned, "gpa": float(a.gpa or 0),
                 "failCount": sum(1 for g in rows if g.pass_status in ("FAIL", "FAILED"))}
@@ -888,31 +974,103 @@ def exception_list(user, term=None, exception_flag=None, page=1, page_size=50):
         return out, total
 
 
-def grade_analysis(user, term=None):
-    """成绩分析：分数段分布 + 及格率（读侧聚合）。"""
-    from app.models import AcademicGrade
+_BUCKET_KEYS = ("90-100", "80-89", "70-79", "60-69", "0-59")
+
+
+def _bucket_of(sc):
+    if sc >= 90:
+        return "90-100"
+    if sc >= 80:
+        return "80-89"
+    if sc >= 70:
+        return "70-79"
+    if sc >= 60:
+        return "60-69"
+    return "0-59"
+
+
+def _score_stats(scores, passed):
+    """一组分数 → 分数段分布 / 及格率 / 优秀率 / 良好率 / 平均分 / 最高最低（正方式成绩分析统计口径）。"""
+    total = len(scores)
+    buckets = {k: 0 for k in _BUCKET_KEYS}
+    for sc in scores:
+        buckets[_bucket_of(sc)] += 1
+    if not total:
+        return {"total": 0, "passRate": 0.0, "excellentRate": 0.0, "goodRate": 0.0,
+                "avgScore": 0.0, "maxScore": 0, "minScore": 0,
+                "distribution": [{"range": k, "count": 0} for k in _BUCKET_KEYS]}
+    return {"total": total, "passRate": round(passed / total, 3),
+            "excellentRate": round(buckets["90-100"] / total, 3),
+            "goodRate": round(buckets["80-89"] / total, 3),
+            "avgScore": round(sum(scores) / total, 1),
+            "maxScore": max(scores), "minScore": min(scores),
+            "distribution": [{"range": k, "count": buckets[k]} for k in _BUCKET_KEYS]}
+
+
+def grade_analysis(user, term=None, dimension=None):
+    """成绩分析统计表（正方对标）：总体分数段分布+及格率+优秀率+平均分+最高最低；
+    dimension=course/class 时追加「按课程 / 按班级」分组统计表（读侧聚合，已发布成绩口径，全租户）。
+    向后兼容：不传 dimension 时返回结构在旧字段(total/passRate/distribution)上仅新增指标字段。"""
+    from app.models import AcademicGrade, AcademicStudent
     with session() as db:
         conds = [AcademicGrade.tenant_id == _tid(), AcademicGrade.score.is_not(None),
                  AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False)]
         if term:
             conds.append(AcademicGrade.term == term)
-        rows = db.scalars(select(AcademicGrade).where(*conds)).all()
-        buckets = {"90-100": 0, "80-89": 0, "70-79": 0, "60-69": 0, "0-59": 0}
-        passed = 0
-        for g in rows:
-            sc = g.score or 0
-            if sc >= 90:
-                buckets["90-100"] += 1
-            elif sc >= 80:
-                buckets["80-89"] += 1
-            elif sc >= 70:
-                buckets["70-79"] += 1
-            elif sc >= 60:
-                buckets["60-69"] += 1
-            else:
-                buckets["0-59"] += 1
-            if g.pass_status == "PASSED":
-                passed += 1
-        total = len(rows)
-        return {"total": total, "passRate": round(passed / total, 3) if total else 0.0,
-                "distribution": [{"range": k, "count": v} for k, v in buckets.items()]}
+        groups: dict[str, list] = {}
+        if dimension == "class":
+            join = and_(AcademicStudent.id == AcademicGrade.acad_student_id,
+                        AcademicStudent.tenant_id == AcademicGrade.tenant_id)
+            recs = db.execute(select(AcademicGrade.score, AcademicGrade.pass_status,
+                                     AcademicStudent.class_id)
+                              .outerjoin(AcademicStudent, join).where(*conds)).all()
+            for sc, ps, cid in recs:
+                groups.setdefault(str(cid) if cid else "未分班", []).append((int(sc), ps))
+        else:
+            recs = db.execute(select(AcademicGrade.score, AcademicGrade.pass_status,
+                                     AcademicGrade.course_name).where(*conds)).all()
+            if dimension == "course":
+                for sc, ps, cn in recs:
+                    groups.setdefault(cn or "未命名课程", []).append((int(sc), ps))
+        all_scores = [int(r[0]) for r in recs]
+        passed_all = sum(1 for r in recs if r[1] == "PASSED")
+        result = _score_stats(all_scores, passed_all)
+        if dimension in ("course", "class"):
+            rows = []
+            for name, pairs in groups.items():
+                st = _score_stats([p[0] for p in pairs], sum(1 for p in pairs if p[1] == "PASSED"))
+                st["name"] = name
+                rows.append(st)
+            rows.sort(key=lambda x: (-x["total"], x["name"]))
+            result["dimension"] = dimension
+            result["rows"] = rows
+        return result
+
+
+def export_grade_analysis_xlsx(user, term=None, dimension="course", purpose="") -> bytes:
+    """成绩分析统计表导出 xlsx（水印+审计，同步下载；正方「课程/班级成绩分析统计表」业务对标）。"""
+    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    if dimension not in ("course", "class"):
+        dimension = "course"
+    data = grade_analysis(user, term, dimension)
+    from app.services.xlsx_util import build_ledger_xlsx
+    u = get_current_user_ctx() or {}
+    watermark = (f"导出人：{u.get('realName') or u.get('loginName') or '-'}  "
+                 f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}")
+    dim_label = "按课程" if dimension == "course" else "按班级"
+    title = f"成绩分析统计表（{dim_label}{('·' + term) if term else ''}）"
+    headers = ["名称", "记录数", "平均分", "最高分", "最低分", "及格率(%)", "优秀率(%)",
+               "90-100", "80-89", "70-79", "60-69", "0-59"]
+    rows = []
+    for r in data.get("rows", []):
+        dist = {d["range"]: d["count"] for d in r["distribution"]}
+        rows.append([r["name"], r["total"], r["avgScore"], r["maxScore"], r["minScore"],
+                     round(r["passRate"] * 100, 1), round(r["excellentRate"] * 100, 1),
+                     dist["90-100"], dist["80-89"], dist["70-79"], dist["60-69"], dist["0-59"]])
+    content = build_ledger_xlsx(title, headers, rows, watermark=watermark)
+    with session() as db:
+        _audit(db, "AC_GRADE_ANALYSIS", None, "GRADE_ANALYSIS_EXPORT",
+               f"{title} 用途={purpose.strip()[:100]}")
+        db.commit()
+    return content

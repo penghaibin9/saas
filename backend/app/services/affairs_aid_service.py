@@ -253,6 +253,7 @@ def apply(body, user) -> dict:
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
+        _scope_or_403(db, student_id, user)  # 越范围禁止为他院学生建困难认定+落家庭经济强敏感表
         b = db.get(AidBatch, int(body.batchId))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("认定批次不存在")

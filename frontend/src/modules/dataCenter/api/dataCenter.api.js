@@ -135,7 +135,13 @@ export const dataCenterApi = {
   },
 
   /** 生命周期漏斗 + 各阶段统计（选择学院时按学院在册占比折算漏斗） */
-  getLifecycle(params = {}) {
+  async getLifecycle(params = {}) {
+    // 真分支：DB 启用时返回全校真实聚合（有源真实 / 无源占位 / 趋势待 P3）。
+    // 注：collegeId 等数据范围折算为 mock 演示能力，真实分支的按院收敛属 P1（dataScope），未启用前真分支返回全校。
+    if (shouldTryReal()) {
+      try { return Promise.resolve({ code: 0, data: await request('/stats/lifecycle-board', { params: { caliber: params.caliber || 'REGISTERED' } }), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     const funnel = clone(lifecycleFunnel)
     let scopeLabel = '全校'
     if (params.collegeId) {
@@ -176,7 +182,13 @@ export const dataCenterApi = {
   },
 
   /** 排行分析（level：COLLEGE / MAJOR / CLASS） */
-  getRankings(params = {}) {
+  async getRankings(params = {}) {
+    // 真分支：从学生主档按组织维度真实聚合（completionRate 口径待校准，见后端注释）。
+    if (shouldTryReal()) {
+      const q = { level: params.level || 'COLLEGE', collegeId: params.collegeId, majorId: params.majorId }
+      try { return Promise.resolve({ code: 0, data: await request('/stats/rankings', { params: q }), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     const level = params.level || 'COLLEGE'
     const data = RANKING_MAP[level]
     if (!data) return fail('未知排行维度')
@@ -184,14 +196,26 @@ export const dataCenterApi = {
   },
 
   /** 风险预警统计（来源分布 / 等级分布 / 处理进度 / 近 6 月趋势） */
-  getRiskStats(params = {}) {
+  async getRiskStats(params = {}) {
+    // 真分支：来源分布 + 等级分布真实聚合；处理进度/趋势后端暂返空（口径未统一/无快照表），前端空态渲染。
+    if (shouldTryReal()) {
+      try { return Promise.resolve({ code: 0, data: await request('/stats/risk-board'), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     const data = clone(riskStats)
     data.timeRangeLabel = findLabel(filterOptions.timeRanges, params.timeRange || 'LAST_6M')
     return ok(data)
   },
 
   /** 下钻学生清单（重点关注学生样本，分页；字段由页面展示时脱敏） */
-  getDrilldownStudents(params = {}) {
+  async getDrilldownStudents(params = {}) {
+    // 真分支：从学生主档真实查询 + 服务端脱敏学号（手机号在加密联系表、主档无明文，一律不下发）。
+    if (shouldTryReal()) {
+      const q = { collegeId: params.collegeId, majorId: params.majorId, classId: params.classId,
+        stage: params.stage, keyword: params.keyword, page: params.page || 1, pageSize: params.pageSize || 10 }
+      try { return Promise.resolve({ code: 0, data: await request('/stats/drilldown', { params: q }), message: 'ok' }) }
+      catch (e) { if (e.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message }) }
+    }
     let list = [...drilldownStudents]
     if (params.metricKey && params.metricKey !== 'ALL') {
       list = list.filter((s) => s.metricKeys.includes(params.metricKey))

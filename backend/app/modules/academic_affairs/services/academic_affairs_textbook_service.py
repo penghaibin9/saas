@@ -453,33 +453,82 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
         return {"distributionBatchId": str(b.id), "recordCount": cnt}
 
 
+def _apply_receipt(db, r, note="签收"):
+    """将发放记录置为已签收并幂等生成费用台账应收。调用方须已校验权限/归属。"""
+    from app.models import AaTextbook, AaTextbookFeeLedger
+    if r.status == "EXCLUDED":
+        raise _invalid("非在籍学生不可签收")
+    if r.status == "RECEIVED":
+        return {"recordId": str(r.id), "status": r.status}
+    r.status = "RECEIVED"
+    r.received_at = datetime.utcnow()
+    r.received_by = _op()
+    exist = db.query(AaTextbookFeeLedger).filter(AaTextbookFeeLedger.tenant_id == _tid(),
+                                                 AaTextbookFeeLedger.distribution_record_id == r.id).first()
+    if not exist:
+        tb = db.query(AaTextbook).filter(AaTextbook.id == r.textbook_id, AaTextbook.tenant_id == _tid()).first()
+        amount = float(tb.unit_price) * (r.qty or 1) if tb and tb.unit_price else 0
+        db.add(AaTextbookFeeLedger(tenant_id=_tid(), distribution_record_id=r.id, student_id=r.student_id,
+                                   textbook_name=r.textbook_name, amount=amount, status="UNPAID"))
+    _audit(db, "AA_TEXTBOOK_DIST", r.id, "TEXTBOOK_SIGN_RECEIPT", note)
+    return {"recordId": str(r.id), "status": r.status}
+
+
 def sign_receipt(user, record_id):
-    """学生签收 → RECEIVED，自动生成费用台账应收（幂等）。"""
-    from app.models import (AaTextbook, AaTextbookDistributionRecord, AaTextbookFeeLedger)
+    """教材管理员/教务处代签收 → RECEIVED，自动生成费用台账应收（幂等）。"""
+    from app.models import AaTextbookDistributionRecord
     with session() as db:
         _require_school(_ctx(user, db))
         r = db.query(AaTextbookDistributionRecord).filter(AaTextbookDistributionRecord.id == record_id,
                                                           AaTextbookDistributionRecord.tenant_id == _tid()).first()
         if not r:
             raise not_found("发放记录不存在")
-        if r.status == "EXCLUDED":
-            raise _invalid("非在籍学生不可签收")
-        if r.status == "RECEIVED":
-            return {"recordId": str(r.id), "status": r.status}
-        r.status = "RECEIVED"
-        r.received_at = datetime.utcnow()
-        r.received_by = _op()
-        # 自动生成费用台账（幂等：distribution_record 唯一）
-        exist = db.query(AaTextbookFeeLedger).filter(AaTextbookFeeLedger.tenant_id == _tid(),
-                                                     AaTextbookFeeLedger.distribution_record_id == r.id).first()
-        if not exist:
-            tb = db.query(AaTextbook).filter(AaTextbook.id == r.textbook_id, AaTextbook.tenant_id == _tid()).first()
-            amount = float(tb.unit_price) * (r.qty or 1) if tb and tb.unit_price else 0
-            db.add(AaTextbookFeeLedger(tenant_id=_tid(), distribution_record_id=r.id, student_id=r.student_id,
-                                       textbook_name=r.textbook_name, amount=amount, status="UNPAID"))
-        _audit(db, "AA_TEXTBOOK_DIST", r.id, "TEXTBOOK_SIGN_RECEIPT", "签收")
+        out = _apply_receipt(db, r)
         db.commit()
-        return {"recordId": str(r.id), "status": r.status}
+        return out
+
+
+def sign_receipt_my(user, student_id, record_id):
+    """学生本人签收自己的教材发放记录（正方学生端领书对标，只能签本人）。"""
+    from app.models import AaTextbookDistributionRecord
+    with session() as db:
+        r = db.query(AaTextbookDistributionRecord).filter(
+            AaTextbookDistributionRecord.id == int(record_id),
+            AaTextbookDistributionRecord.tenant_id == _tid()).first()
+        if not r:
+            raise not_found("发放记录不存在")
+        if int(r.student_id) != int(student_id):
+            raise no_data_scope("只能签收本人教材")
+        out = _apply_receipt(db, r, "学生签收")
+        db.commit()
+        return out
+
+
+def my_distributions(user, student_id):
+    """学生本人教材领用记录（正方学生端6.13教材明细对标，只读本人）。"""
+    from app.models import AaTextbookDistributionRecord
+    with session() as db:
+        rows = db.query(AaTextbookDistributionRecord).filter(
+            AaTextbookDistributionRecord.tenant_id == _tid(),
+            AaTextbookDistributionRecord.student_id == int(student_id)).order_by(
+            AaTextbookDistributionRecord.id.desc()).all()
+        return [{"recordId": str(r.id), "textbookName": r.textbook_name, "qty": r.qty,
+                 "status": r.status, "receivedAt": _iso(r.received_at)} for r in rows]
+
+
+def my_fees(user, student_id):
+    """学生本人教材费用（正方学生端6.14教材费用对标，只读本人；含应缴/已缴/欠费合计）。"""
+    from app.models import AaTextbookFeeLedger
+    with session() as db:
+        rows = db.query(AaTextbookFeeLedger).filter(
+            AaTextbookFeeLedger.tenant_id == _tid(), AaTextbookFeeLedger.student_id == int(student_id),
+            AaTextbookFeeLedger.is_deleted.is_(False)).order_by(AaTextbookFeeLedger.id.desc()).all()
+        total_due = sum(float(f.amount or 0) for f in rows)
+        total_paid = sum(float(f.paid_amount or 0) for f in rows)
+        return {"items": [{"feeId": str(f.id), "textbookName": f.textbook_name, "amount": _fnum(f.amount),
+                           "paidAmount": _fnum(f.paid_amount), "status": f.status} for f in rows],
+                "totalDue": round(total_due, 2), "totalPaid": round(total_paid, 2),
+                "unpaid": round(total_due - total_paid, 2)}
 
 
 def list_distribution_records(user, batch_id, page=1, page_size=100):

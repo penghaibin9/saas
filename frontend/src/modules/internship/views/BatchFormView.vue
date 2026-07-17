@@ -159,6 +159,7 @@ import {
 } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
+import { formatDate } from '@/utils/dateUtils'
 
 const RULE_LABELS = {
   checkin: '打卡', weeklyReport: '周报', guidance: '指导', evaluation: '评价', score: '成绩',
@@ -291,7 +292,7 @@ export default {
   },
   methods: {
     dateShort(v) {
-      return v ? String(v).slice(0, 10) : ''
+      return formatDate(v, '')
     },
     pct(v) {
       return `${Math.round((v || 0) * 100)}%`

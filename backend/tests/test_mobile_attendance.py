@@ -108,3 +108,43 @@ def test_attendance_empty_class_not_found(client, db_mode):
 
 def test_attendance_requires_login(client):
     assert client.get(f"{BASE}/sessions").json()["code"] == 401001
+
+
+def _hdr_admin(client):
+    data = client.post("/api/v1/auth/mock-login",
+                       json={"loginName": "school_admin01", "password": "any"}).json()["data"]
+    return {"Authorization": f"Bearer {data['accessToken']}"}
+
+
+def test_attendance_pc_stats_and_type(client, db_mode):
+    """PC 跨堂次统计(正方4.19)+点名类别：教师建2场次点名提交，教务处按学生汇总旷课并可按类别过滤。"""
+    cid = _seed_class(n_students=3)
+    hdr = _teacher_token("孙老师")
+    PC = "/api/v1/academic-affairs/attendance"
+    # 场次1：常规类别（不传=常规），1 人旷课
+    s1 = client.post(f"{BASE}/sessions", headers=hdr, json={
+        "classId": cid, "courseName": "语文", "termCode": "2026-1", "sessionDate": "2026-07-14"}).json()["data"]
+    absent_sid = client.get(f"{BASE}/sessions/{s1['sessionId']}", headers=hdr).json()["data"]["items"][0]["studentId"]
+    client.post(f"{BASE}/sessions/{s1['sessionId']}/mark", headers=hdr,
+                json={"studentId": absent_sid, "status": "ABSENT"})
+    client.post(f"{BASE}/sessions/{s1['sessionId']}/submit", headers=hdr)
+    # 场次2：实训类别，同一人再旷课
+    s2 = client.post(f"{BASE}/sessions", headers=hdr, json={
+        "classId": cid, "courseName": "语文", "termCode": "2026-1", "sessionDate": "2026-07-15",
+        "sessionType": "实训"}).json()["data"]
+    assert s2["sessionType"] == "实训"
+    client.post(f"{BASE}/sessions/{s2['sessionId']}/mark", headers=hdr,
+                json={"studentId": absent_sid, "status": "ABSENT"})
+    client.post(f"{BASE}/sessions/{s2['sessionId']}/submit", headers=hdr)
+
+    admin = _hdr_admin(client)
+    stats = client.get(f"{PC}/stats", headers=admin, params={"classId": cid}).json()["data"]
+    assert stats["sessionCount"] == 2
+    top = stats["students"][0]  # 按旷课次数降序
+    assert top["studentId"] == absent_sid and top["absent"] == 2 and top["sessions"] == 2
+    # 点名类别过滤：只看实训 → 该生旷课 1、场次 1
+    only = client.get(f"{PC}/stats", headers=admin, params={"classId": cid, "sessionType": "实训"}).json()["data"]
+    assert only["sessionCount"] == 1 and only["students"][0]["absent"] == 1
+    # PC 场次列表可查
+    lst = client.get(f"{PC}/sessions", headers=admin, params={"classId": cid}).json()["data"]
+    assert lst["total"] == 2

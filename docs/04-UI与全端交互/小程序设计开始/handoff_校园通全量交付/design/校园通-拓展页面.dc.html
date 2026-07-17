@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{display:flex;flex-direction:column;gap:44px;padding:52px 24px 80px;align-items:center}
+.row{display:flex;gap:56px;flex-wrap:wrap;justify-content:center}
+.rowlb{font-size:15px;font-weight:800;color:#0f1e3d;letter-spacing:.02em;display:flex;align-items:center;gap:10px;align-self:flex-start;margin-left:calc(50% - 640px)}
+.rowlb i{width:9px;height:9px;border-radius:3px;background:#1a56be}
+.cap{display:flex;flex-direction:column;align-items:center;gap:14px}
+.cap-lb{font-size:13px;color:#334155;font-weight:600}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f1f4f9;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+.scroll{flex:1;overflow-y:auto;position:relative}
+.scroll::-webkit-scrollbar{display:none}
+.nav{position:relative;padding:0 16px 14px;color:#fff;overflow:hidden;flex-shrink:0}
+.nav.blue{background:linear-gradient(162deg,#0e3a80 0%,#1a56be 62%,#2f76dd 130%)}
+.nav.teal{background:linear-gradient(160deg,#0b5f57 0%,#0d9488 62%,#14b8a6 128%)}
+.nav::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 90%)}
+.sb{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 8px 6px;font-size:15px;font-weight:600;position:relative;z-index:2}
+.sb-r{display:flex;align-items:center;gap:6px}
+.navrow{position:relative;z-index:2;display:flex;align-items:center;height:40px;margin-top:2px}
+.navrow .back{width:34px;height:34px;display:flex;align-items:center;justify-content:center;margin-left:-6px}
+.navrow .ntitle{font-size:17px;font-weight:700;letter-spacing:.02em}
+.nsub{position:relative;z-index:2;font-size:12px;color:rgba(255,255,255,.82);margin:2px 0 2px 34px}
+.search{position:relative;z-index:2;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.94);border-radius:11px;padding:10px 14px;margin-top:10px;color:#94a3b8;font-size:13px}
+.wrap{padding:14px 16px 24px}
+.card{background:#fff;border-radius:16px;padding:15px;margin-top:12px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.card:first-child{margin-top:0}
+.row-b{display:flex;align-items:center;justify-content:space-between}
+.ctitle{font-size:15px;color:#0f1e3d;font-weight:700}
+.tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;flex-shrink:0}
+.tg-amber{background:#fff6e6;color:#e8890c}.tg-red{background:#fff0f0;color:#e64c4c}
+.tg-blue{background:#eef4ff;color:#1a56be}.tg-green{background:#e7f8f1;color:#0ca678}
+.tg-slate{background:#eef1f6;color:#64748b}.tg-teal{background:#e6f6f4;color:#0d9488}
+.tmeta{display:flex;gap:16px;flex-wrap:wrap}
+.tmeta div span{font-size:11px;color:#94a3b8;display:block}
+.tmeta div b{font-size:13px;color:#334155;font-weight:600;margin-top:3px;display:block}
+.tlhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.chip{flex-shrink:0;padding:8px 14px;border-radius:20px;background:#eef1f6;font-size:12.5px;color:#64748b;font-weight:600;cursor:pointer;white-space:nowrap}
+.chip.on{background:#1a56be;color:#fff}
+.chip.on.teal{background:#0d9488}
+.row-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f1f4f9}
+.row-item:last-child{border-bottom:none}
+.ic{width:38px;height:38px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:700}
+.b1{background:linear-gradient(145deg,#2f76dd,#1a56be)}.b2{background:linear-gradient(145deg,#4c9af5,#2f76dd)}
+.b3{background:linear-gradient(145deg,#12b886,#0ca678)}.b4{background:linear-gradient(145deg,#f59f00,#f08c00)}
+.b5{background:linear-gradient(145deg,#7c6bf5,#6549e8)}.b6{background:linear-gradient(145deg,#f76a6a,#e64c4c)}
+.b7{background:linear-gradient(145deg,#22b0d6,#1495bd)}.b8{background:linear-gradient(145deg,#8a94a6,#6b7688)}
+.rtx{flex:1;min-width:0}
+.rtx b{display:block;font-size:13.5px;color:#0f1e3d;font-weight:600}
+.rtx p{margin:3px 0 0;font-size:11.5px;color:#94a3b8}
+.pbar{height:7px;border-radius:4px;background:#eef1f6;overflow:hidden;margin-top:8px}
+.pbar i{display:block;height:100%;background:linear-gradient(90deg,#4c9af5,#1a56be);border-radius:4px}
+.btn-sm{height:32px;padding:0 14px;border-radius:9px;font-size:12.5px;font-weight:600;border:none;cursor:pointer;font-family:inherit}
+.btn-sm.ghost{background:#eef1f6;color:#475569}
+.btn-sm.primary{background:linear-gradient(145deg,#2f76dd,#1a56be);color:#fff}
+.btn-sm.done{background:#e7f8f1;color:#0ca678}
+.btn-sm.teal{background:linear-gradient(145deg,#14b8a6,#0d9488);color:#fff}
+.btn{width:100%;height:46px;border-radius:13px;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-primary{background:linear-gradient(145deg,#2f76dd,#1a56be);color:#fff;box-shadow:0 8px 18px -8px rgba(26,86,190,.7)}
+.tl{margin-top:2px}
+.tlr{display:flex;gap:13px;position:relative;padding-bottom:4px}
+.tlr .line{position:absolute;left:9px;top:20px;bottom:-4px;width:2px;background:#e6ebf3}
+.tlr:last-child .line{display:none}
+.tlr .tld{width:20px;height:20px;border-radius:50%;flex-shrink:0;background:#fff;border:2px solid #d1d9e6;z-index:1;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.tlr.done .tld{background:#1a56be;border-color:#1a56be}
+.tlr.now .tld{background:#12b886;border-color:#12b886;box-shadow:0 0 0 4px rgba(18,184,134,.16)}
+.tlr .tlc{flex:1;padding-bottom:16px;min-width:0}
+.tlr .tlc b{font-size:13.5px;color:#0f1e3d;font-weight:600}
+.tlr.pending .tlc b{color:#94a3b8}
+.tlr .tlc p{margin:3px 0 0;font-size:11.5px;color:#94a3b8}
+.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.kpi-i{background:#f8fafc;border-radius:13px;padding:13px}
+.kpi-i b{display:block;font-size:22px;color:#0f1e3d;font-weight:800}
+.kpi-i span{font-size:11.5px;color:#94a3b8;margin-top:4px;display:block}
+.result-hd{font-size:12px;color:#94a3b8;font-weight:600;margin:14px 0 6px}
+.hin{width:100%;border:1px solid #eef1f6;background:#f8fafc;border-radius:11px;padding:10px 12px;font-size:13px;color:#0f1e3d;box-sizing:border-box;font-family:inherit}
+.hin::placeholder{color:#b3bccb}
+.field{padding:11px 0;border-bottom:1px solid #f1f4f9}
+.field:last-child{border-bottom:none}
+.flabel{font-size:12px;color:#94a3b8;font-weight:600;margin-bottom:6px;display:block}
+.opt-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.opt{padding:8px 14px;border-radius:20px;background:#f8fafc;border:1.5px solid #eef1f6;font-size:12.5px;color:#475569;cursor:pointer}
+.opt.on{background:#eff5ff;border-color:#1a56be;color:#1a56be;font-weight:600}
+.alert{display:flex;gap:9px;align-items:flex-start;background:#eef4ff;border:1px solid #dbe7ff;border-radius:12px;padding:11px 13px;margin-top:12px}
+.alert p{margin:0;font-size:12px;color:#3d5a94;line-height:1.55}
+.alert.ok{background:#e7f8f1;border-color:#cdeee0}.alert.ok p{color:#0b6b4f}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:134px;height:5px;border-radius:3px;background:#0f172a;opacity:.28;z-index:6}
+</style></helmet>
+<div class="stage">
+
+<div class="rowlb"><i></i>数字迎新 · 核心卖点</div>
+<div class="row">
+
+<div class="cap"><div class="cap-lb">学生端 · 迎新报到</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">数字迎新</span></div>
+<div class="nsub">2024 级本科新生报到</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card"><div class="row-b"><span class="ctitle">报到状态</span><span class="tag tg-green">已完成报到</span></div>
+<div class="tmeta" style="margin-top:10px"><div><span>报到码</span><b>XY-2024-0612（已失效）</b></div><div><span>宿舍分配</span><b>梅园 6 栋 412</b></div></div></div>
+<div class="card"><div class="tlhead"><span class="ctitle">报到全流程</span><span class="tag tg-slate">8 个环节</span></div>
+<div class="tl">
+<sc-for list="{{ orientSteps }}" as="o" hint-placeholder-count="8"><div class="{{ o.cls }}"><div class="line"></div><div class="tld"><sc-if value="{{ o.done }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12l5 5L20 6"></path></svg></sc-if></div><div class="tlc"><b>{{ o.title }}</b><p>{{ o.desc }} · {{ o.time }}</p></div></div></sc-for>
+</div></div>
+<div class="card"><div class="tlhead"><span class="ctitle">联系人</span></div>
+<div class="row-item"><div class="ic b3">周</div><div class="rtx"><b>周敏 · 辅导员</b><p>138 0000 0001</p></div></div>
+<div class="row-item"><div class="ic b7">招</div><div class="rtx"><b>招生办 · 招生咨询</b><p>0731-8888xxxx</p></div></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">迎新工作老师 · 迎新看板</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">迎新看板</span></div>
+<div class="nsub">2026 级新生报到 · 秋季批次</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card"><div class="kpi">
+<div class="kpi-i"><b>1,620</b><span>计划报到总人数</span></div>
+<div class="kpi-i"><b>1,487</b><span>已报到</span></div>
+<div class="kpi-i"><b>91.8%</b><span>报到率</span></div>
+<div class="kpi-i"><b>23</b><span>未报到异常</span></div>
+</div></div>
+<div class="card"><div class="row-b"><span class="ctitle">报到进度</span></div><div class="pbar"><i style="width:92%"></i></div></div>
+<div class="card"><div class="tlhead"><span class="ctitle">未报到学生</span><span class="tag tg-red">23 人</span></div>
+<div class="row-item"><div class="ic b6">刘</div><div class="rtx"><b>刘明宇 · 软件2601</b><p>已电话联系，家中有事延迟 2 天</p></div><span class="tag tg-amber">已联系</span></div>
+<div class="row-item"><div class="ic b4">谢</div><div class="rtx"><b>谢雨欣 · 机电2602</b><p>尚未联系上</p></div><span class="tag tg-red">待处理</span></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+<div class="row">
+
+<div class="cap"><div class="cap-lb">学生端 · 预报到信息采集</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">预报到信息采集</span></div>
+<div class="nsub">报到前请完善以下信息 · 第 2/4 步</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card"><span class="ctitle">基础信息</span>
+<div class="field"><span class="flabel">姓名</span><input class="hin" value="张同学"></div>
+<div class="field"><span class="flabel">身份证号</span><input class="hin" value="4301**********0018"></div>
+<div class="field"><span class="flabel">手机号</span><input class="hin" value="138****6118"></div>
+<div class="field"><span class="flabel">政治面貌</span>
+<div class="opt-row"><div class="opt on">共青团员</div><div class="opt">群众</div><div class="opt">中共党员</div></div></div>
+</div>
+<div class="card"><span class="ctitle">家庭信息</span>
+<div class="field"><span class="flabel">家庭住址</span><input class="hin" placeholder="请填写详细住址"></div>
+<div class="field"><span class="flabel">紧急联系人 / 电话</span><input class="hin" placeholder="如 父亲 138xxxx"></div>
+</div>
+</div></div>
+<div style="flex-shrink:0;padding:12px 16px calc(12px + 14px);background:rgba(255,255,255,.96)"><button class="btn btn-primary">保存并下一步</button></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">学生端 · 电子报到码</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">电子报到码</span></div>
+<div class="nsub">现场报到点出示此码核验</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card" style="text-align:center;padding:24px 15px">
+<div style="display:inline-block;padding:16px;background:#fff;border-radius:16px;box-shadow:0 6px 20px -10px rgba(15,40,90,.3)">
+<div style="width:180px;height:180px;background-image:radial-gradient(#0f1e3d 42%,transparent 43%);background-size:15px 15px;border:6px solid #0f1e3d;border-radius:10px;position:relative">
+<div style="position:absolute;top:6px;left:6px;width:40px;height:40px;border:8px solid #0f1e3d;border-radius:6px;background:#fff"></div>
+<div style="position:absolute;top:6px;right:6px;width:40px;height:40px;border:8px solid #0f1e3d;border-radius:6px;background:#fff"></div>
+<div style="position:absolute;bottom:6px;left:6px;width:40px;height:40px;border:8px solid #0f1e3d;border-radius:6px;background:#fff"></div>
+</div>
+</div>
+<div style="font-size:18px;color:#0f1e3d;font-weight:800;letter-spacing:2px;margin-top:16px">XY-2024-0612</div>
+<div style="font-size:12px;color:#94a3b8;margin-top:6px">张同学 · 软件技术 · 2024 级</div>
+</div>
+<div class="alert"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#3d5a94" stroke-width="1.8" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg><p>报到码仅本人使用，核验成功后自动失效。截图无效，请现场实时出示。</p></div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">学生端 · 绿色通道申请</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">绿色通道</span></div>
+<div class="nsub">家庭经济困难新生可先入学后办理缴费</div></div>
+<div class="scroll"><div class="wrap">
+<div class="alert ok"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0b6b4f" stroke-width="1.8" style="flex-shrink:0;margin-top:1px"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path></svg><p>绿色通道保障家庭经济困难新生顺利入学，缓缴学费并提供后续资助帮扶。</p></div>
+<div class="card"><span class="ctitle">申请信息</span>
+<div class="field"><span class="flabel">困难类型</span>
+<div class="opt-row"><div class="opt on">建档立卡</div><div class="opt">低保家庭</div><div class="opt">突发困难</div></div></div>
+<div class="field"><span class="flabel">缓缴金额</span><input class="hin" value="7200" placeholder="学费+住宿费"></div>
+<div class="field"><span class="flabel">证明材料</span>
+<div style="display:flex;align-items:center;gap:10px;padding:13px;border:1px dashed #d7e0ee;border-radius:11px;color:#94a3b8;font-size:12.5px;margin-top:2px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.6"><path d="M12 4v12M7 9l5-5 5 5"></path><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"></path></svg>上传困难证明 / 资助申请表</div></div>
+</div>
+</div></div>
+<div style="flex-shrink:0;padding:12px 16px calc(12px + 14px);background:rgba(255,255,255,.96)"><button class="btn btn-primary">提交申请</button></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">迎新工作老师 · 现场报到核验</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">现场核验</span></div>
+<div class="nsub">软件学院报到点 · 扫码核验新生</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card" style="text-align:center;padding:22px 15px">
+<div style="width:90px;height:90px;border-radius:22px;background:linear-gradient(145deg,#14b8a6,#0d9488);display:flex;align-items:center;justify-content:center;margin:0 auto"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3M20 14v.01M14 20h.01M20 20h.01M17 17h.01"></path></svg></div>
+<button class="btn btn-primary" style="margin-top:18px;background:linear-gradient(145deg,#14b8a6,#0d9488);box-shadow:0 8px 18px -8px rgba(13,148,136,.6)">扫描报到码</button>
+</div>
+<div class="card"><div class="tlhead"><span class="ctitle">今日已核验</span><span class="tag tg-teal">42 人</span></div>
+<div class="row-item"><div class="ic b3">刘</div><div class="rtx"><b>刘思成 · 软件2601</b><p>09:12 核验通过 · 宿舍 梅园6-408</p></div><span class="tag tg-green">已报到</span></div>
+<div class="row-item"><div class="ic b2">陈</div><div class="rtx"><b>陈嘉怡 · 软件2601</b><p>09:08 核验通过 · 绿色通道</p></div><span class="tag tg-green">已报到</span></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+<div class="rowlb"><i></i>"我的"tab 详情补齐</div>
+<div class="row">
+
+<div class="cap"><div class="cap-lb">学生端 · 我的培养方案</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">我的培养方案</span></div>
+<div class="nsub">软件技术专业 · 2024级人才培养方案</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card"><div class="tmeta"><div><span>学制</span><b>三年</b></div><div><span>毕业总学分</span><b>165</b></div><div><span>实践学分占比</span><b>≥ 40%</b></div></div></div>
+<div class="card"><div class="tlhead"><span class="ctitle">课程模块</span></div>
+<div class="row-item"><div class="ic b1">公</div><div class="rtx"><b>公共基础课程</b><p>思政、体育、英语等 · 40 学分</p></div></div>
+<div class="row-item"><div class="ic b2">专</div><div class="rtx"><b>专业核心课程</b><p>数据结构、数据库、软件工程等 · 60 学分</p></div></div>
+<div class="row-item"><div class="ic b5">选</div><div class="rtx"><b>专业拓展课程</b><p>移动开发、AI导论等 · 40 学分</p></div></div>
+<div class="row-item"><div class="ic b3">践</div><div class="rtx"><b>实践教学环节</b><p>岗位实习、毕业设计 · 25 学分</p></div></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 我的课程</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">我的课程</span></div>
+<div class="nsub">2025-2026 秋季学期 · 共 3 门</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card">
+<div class="row-item"><div class="ic b1">软</div><div class="rtx"><b>软件工程导论</b><p>软件2401 · 每周二 08:00 · 教学楼 B-105</p></div><span class="tag tg-blue">48 人</span></div>
+<div class="row-item"><div class="ic b6">数</div><div class="rtx"><b>数据库原理</b><p>软件2401 · 每周三 08:00 · 实训楼 A-305</p></div><span class="tag tg-blue">48 人</span></div>
+<div class="row-item"><div class="ic b5">毕</div><div class="rtx"><b>毕业设计指导</b><p>软件2401 · 不固定 · 线上/线下</p></div><span class="tag tg-blue">16 人</span></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 我的班级</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">我的班级</span></div>
+<div class="nsub">共 2 个班级 · 96 名学生</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card">
+<div class="row-item"><div class="ic b1">软</div><div class="rtx"><b>软件2401班</b><p>48 人 · 风险学生 5 人</p></div><span class="tag tg-slate">查看</span></div>
+<div class="row-item"><div class="ic b2">软</div><div class="rtx"><b>软件2402班</b><p>48 人 · 风险学生 3 人</p></div><span class="tag tg-slate">查看</span></div>
+</div>
+<div class="card"><div class="tlhead"><span class="ctitle">软件2401班概览</span></div>
+<div class="tmeta"><div><span>在校</span><b>16</b></div><div><span>实习中</span><b>18</b></div><div><span>毕设中</span><b>14</b></div></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+<div class="rowlb"><i></i>搜索结果 · 移动催办</div>
+<div class="row">
+
+<div class="cap"><div class="cap-lb">学生端 · 搜索结果</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">搜索</span></div>
+<div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>请假</div></div>
+<div class="scroll"><div class="wrap">
+<div class="chips" style="margin-bottom:4px">
+<sc-for list="{{ searchTabs }}" as="t" hint-placeholder-count="3"><div class="{{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</div></sc-for>
+</div>
+<sc-if value="{{ showSvcResults }}" hint-placeholder-val="{{ true }}">
+<div class="result-hd">服务（2）</div>
+<div class="card">
+<div class="row-item"><div class="ic b6">假</div><div class="rtx"><b>学生请假</b><p>事假/病假在线申请，辅导员审批</p></div></div>
+<div class="row-item"><div class="ic b6">销</div><div class="rtx"><b>请假销假</b><p>实习期间请假与销假</p></div></div>
+</div>
+</sc-if>
+<sc-if value="{{ showMsgResults }}" hint-placeholder-val="{{ false }}">
+<div class="result-hd">消息（1）</div>
+<div class="card"><div class="row-item"><div class="ic b1">假</div><div class="rtx"><b>请假审批通知</b><p>你的事假申请辅导员正在审核中</p></div></div></div>
+</sc-if>
+<sc-if value="{{ showAppResults }}" hint-placeholder-val="{{ false }}">
+<div class="result-hd">我的申请（1）</div>
+<div class="card"><div class="row-item"><div class="ic b4">假</div><div class="rtx"><b>学生请假（事假 1 天）</b><p>07-03 提交 · 辅导员审核中</p></div></div></div>
+</sc-if>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">学院管理员 · 移动催办</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div class="sb-r"></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">移动催办</span></div>
+<div class="nsub">全院待处理事项 · 逾期优先</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card" style="display:flex;align-items:center;justify-content:space-between">
+<div><b style="font-size:14px;color:#0f1e3d;font-weight:700">{{ urgeSelectedCount }} 项已选</b><p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8">选择需要催办的事项</p></div>
+<button class="btn-sm teal" onClick="{{ urgeSendAll }}">{{ urgeSendText }}</button>
+</div>
+<div class="card">
+<sc-for list="{{ urgeList }}" as="u" hint-placeholder-count="6">
+<div class="row-item" onClick="{{ u.onToggle }}"><div class="ic {{ u.grad }}">{{ u.mark }}</div><div class="rtx"><b>{{ u.title }}</b><p>{{ u.student }} · {{ u.module }} · 截止 {{ u.deadline }}</p></div><sc-if value="{{ u.soon }}" hint-placeholder-val="{{ false }}"><span class="tag tg-red">即将超时</span></sc-if></div>
+</sc-for>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { searchTab: 'all', urgeSelected: {}, urgeSent: false };
+
+  orientStepsData = [
+    { title: '账号激活', desc: '统一身份认证已激活', time: '2024-08-18', status: 'done' },
+    { title: '身份核验（人脸）', desc: '核验通过', time: '2024-08-19', status: 'done' },
+    { title: '预报到信息采集', desc: '基础信息、家庭信息已提交', time: '2024-08-22', status: 'done' },
+    { title: '缴费', desc: '学费/住宿费已缴清', time: '2024-08-25', status: 'done' },
+    { title: '绿色通道', desc: '未申请', time: '—', status: 'done' },
+    { title: '宿舍分配', desc: '梅园 6 栋 412', time: '2024-08-28', status: 'done' },
+    { title: '现场报到 / 物资领取', desc: '军训服、床上用品已领取', time: '2024-09-01', status: 'done' },
+    { title: '学籍注册同步', desc: '学籍已同步', time: '2024-09-06', status: 'done' }
+  ];
+
+  urgeData = [
+    { title: '批阅第 8 周周报', student: '李思远', module: '岗位实习', deadline: '07-04 20:00', level: 'high', soon: true, mark: '周', grad: 'b6' },
+    { title: '处理打卡异常（超范围）', student: '李思远', module: '岗位实习', deadline: '07-04 12:00', level: 'high', soon: true, mark: '异', grad: 'b6' },
+    { title: '请假审批（病假 1 天）', student: '孙雨桐', module: '在校服务', deadline: '07-04 12:00', level: 'normal', soon: true, mark: '假', grad: 'b4' },
+    { title: '批阅毕设中期报告', student: '王梓萱', module: '毕业设计', deadline: '07-05 18:00', level: 'high', soon: false, mark: '毕', grad: 'b5' },
+    { title: '关怀回访（连续未登录）', student: '陈子涵', module: '学工', deadline: '07-05 18:00', level: 'normal', soon: false, mark: '访', grad: 'b2' },
+    { title: '确认学生到岗信息', student: '郑一鸣', module: '岗位实习', deadline: '07-06 18:00', level: 'normal', soon: false, mark: '岗', grad: 'b7' }
+  ];
+
+  renderVals() {
+    const s = this.state;
+    const orientSteps = this.orientStepsData.map(o => ({ ...o, cls: 'tlr ' + o.status, done: true }));
+
+    const searchTabDefs = [ { k: 'all', label: '全部' }, { k: 'service', label: '服务' }, { k: 'message', label: '消息' }, { k: 'app', label: '我的申请' } ];
+    const searchTabs = searchTabDefs.map(t => ({ label: t.label, cls: 'chip' + (t.k === s.searchTab ? ' on' : ''), onClick: () => this.setState({ searchTab: t.k }) }));
+
+    const urgeList = this.urgeData.map((u, i) => {
+      const sel = !!s.urgeSelected[i];
+      return { ...u, grad: sel ? 'b3' : u.grad, onToggle: () => this.setState(p => ({ urgeSelected: { ...p.urgeSelected, [i]: !sel } })) };
+    });
+    const urgeSelectedCount = Object.values(s.urgeSelected).filter(Boolean).length;
+
+    return {
+      orientSteps,
+      searchTabs,
+      showSvcResults: s.searchTab === 'all' || s.searchTab === 'service',
+      showMsgResults: s.searchTab === 'all' || s.searchTab === 'message',
+      showAppResults: s.searchTab === 'all' || s.searchTab === 'app',
+      urgeList, urgeSelectedCount,
+      urgeSendText: s.urgeSent ? '✓ 已发送' : '一键催办',
+      urgeSendAll: () => this.setState({ urgeSent: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

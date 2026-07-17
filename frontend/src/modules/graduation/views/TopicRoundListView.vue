@@ -122,6 +122,7 @@
       :confirm-text="confirm.confirmText"
       :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel"
+      :reason-chips="confirm.reasonChips || []"
       :submitting="submitting"
       @confirm="onConfirm"
     />
@@ -154,6 +155,14 @@ import { GD_ROUND_STATUS } from '@/modules/graduation/constants/graduation-topic
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ batchId: '', status: '', dateStart: '', dateEnd: '' })
+
+const REJECT_CHOICE_REASON_CHIPS = [
+  '题目范围过大，请缩小研究范围',
+  '题目已有学生选定，请更换题目',
+  '研究方向与本专业培养目标不符',
+  '题目缺乏研究价值或创新性，请与教师协商重选',
+  '与企业合作课题相关，需先获得企业授权'
+]
 
 const PANEL_PRESETS = {
   rounds: () => EMPTY_FILTERS(),
@@ -363,7 +372,11 @@ export default {
       this.confirm = { visible: true, title: '确认志愿', message: `确认「${row.studentName}」录入「${row.topicTitle}」？将自动关闭该生本轮其余待处理志愿。`, type: 'primary', confirmText: '确认', requireReason: false, action: 'confirmChoice', row }
     },
     askRejectChoice(row) {
-      this.confirm = { visible: true, title: '驳回志愿', message: `驳回「${row.studentName}」对「${row.topicTitle}」的志愿？`, type: 'danger', confirmText: '驳回', requireReason: true, reasonLabel: '驳回理由', action: 'rejectChoice', row }
+      this.confirm = {
+        visible: true, title: '驳回志愿', message: `驳回「${row.studentName}」对「${row.topicTitle}」的志愿？`,
+        type: 'danger', confirmText: '驳回', requireReason: true, reasonLabel: '驳回理由',
+        reasonChips: REJECT_CHOICE_REASON_CHIPS, action: 'rejectChoice', row
+      }
     },
     async onConfirm({ reason } = {}) {
       const row = this.confirm.row

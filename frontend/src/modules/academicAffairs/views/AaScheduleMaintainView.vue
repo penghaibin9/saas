@@ -42,6 +42,7 @@
           :conflict="conflictCell"
           @cell-click="onCellClick"
           @item-click="onItemClick"
+          @item-move="onItemMove"
         />
       </AppSectionCard>
     </div>
@@ -123,6 +124,11 @@ export default {
     },
     onItemClick(it) {
       toast.info(`${it.courseName} · ${it.teacherName || ''} · ${it.startWeek}-${it.endWeek}周`)
+    },
+    async onItemMove({ item, weekday, slotNo }) {
+      // 拖拽调格：后端同一冲突检测器裁决，409 时提示并回原位（前端不做假校验）
+      const res = await academicAffairsApi.moveScheduleItem(item.itemId, weekday, slotNo)
+      if (res.code === 0) { toast.success(`已调整到周${weekday}第${slotNo}节`); await this.loadClass() } else toast.error(res.message)
     },
     async doAdd() {
       if (!this.add.courseName) { toast.error('请填写课程名称'); return }

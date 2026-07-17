@@ -119,20 +119,37 @@
           数据范围 · {{ scopeName }}
         </span>
         <slot name="header-right" />
-        <button
-          v-if="ctx"
-          type="button"
-          class="bpl-help"
-          title="帮助中心"
-          aria-label="帮助中心"
-          @click="goHelp"
-        >
-          <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M9.2 9.3a2.8 2.8 0 015.4 1c0 1.9-2.8 2.5-2.8 2.5" />
-            <path d="M12 17.2h.01" />
-          </svg>
-        </button>
+        <!-- 常驻帮助入口：老师卡住时的第一落点。本页帮助 / 重看本页引导 / 帮助中心。 -->
+        <div v-if="ctx" class="bpl-help" :class="{ 'is-open': helpOpen }">
+          <button
+            ref="helpBtn"
+            type="button"
+            class="bpl-help__btn"
+            title="帮助与引导"
+            aria-label="帮助与引导"
+            @click="helpOpen = !helpOpen"
+            @blur="closeHelpSoon"
+          >?</button>
+          <div v-if="helpOpen" class="bpl-help__panel" @mousedown.prevent>
+            <a class="bpl-help__opt" href="javascript:void(0)" @click="goPageHelp">
+              <span class="bpl-help__opt-lb">本页帮助</span>
+              <span class="bpl-help__opt-sub">{{ pageHelp ? pageHelp.title : '这一页暂无专属帮助，去帮助中心找' }}</span>
+            </a>
+            <a
+              class="bpl-help__opt"
+              :class="{ 'is-disabled': !pageGuideAvailable }"
+              href="javascript:void(0)"
+              @click="replayPageGuide"
+            >
+              <span class="bpl-help__opt-lb">重看本页引导</span>
+              <span class="bpl-help__opt-sub">{{ pageGuideAvailable ? '重新播放这一页的新手引导' : '这一页暂无新手引导' }}</span>
+            </a>
+            <a class="bpl-help__opt" href="javascript:void(0)" @click="goHelpHome">
+              <span class="bpl-help__opt-lb">帮助中心</span>
+              <span class="bpl-help__opt-sub">全部帮助文档、业务流程图与任务卡</span>
+            </a>
+          </div>
+        </div>
         <button
           v-if="ctx"
           type="button"
@@ -263,7 +280,8 @@
 import { AppIcon } from '@/components/ui'
 import AppUserChip from '@/components/common/AppUserChip.vue'
 import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/config/adminMenu'
-import { searchHelp } from '@/config/helpContent'
+import { searchHelp, findHelpForRoute } from '@/config/helpContent'
+import { guideCount, replayGuide } from '@/utils/guideBus'
 import { getVisibleNavPlan, findActiveInPlan, searchNavPlan, navRefMatches, navRefExactMatch } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import router from '@/router'
@@ -362,6 +380,9 @@ export default {
       fnOpen: false,
       fnActive: 0,
       fnBlurTimer: null,
+      /* ③ 常驻帮助入口（本页帮助 / 重看引导 / 帮助中心） */
+      helpOpen: false,
+      helpBlurTimer: null,
       /* 侧栏树：各二级模块的展开状态 { modKey: true/false }（未记录时默认展开当前路由所属二级） */
       expandedMods: {},
       /* 三级菜单被点击的唯一 leafKey（用于同 path 多叶子的点击反馈/高亮跟随；路由切换后失效自动回退路由匹配） */
@@ -375,6 +396,14 @@ export default {
     visibleGroupKeys() {
       if (this.isPlatformMode) return new Set(['platform'])
       return new Set(getVisibleAdminMenu(this.ctx).map((g) => g.key))
+    },
+    /** 当前路由对应的帮助任务卡（找不到为 null，此时「本页帮助」退回帮助中心首页） */
+    pageHelp() {
+      return findHelpForRoute(this.$route.fullPath)
+    },
+    /** 当前页是否登记了新手引导（未登记时把「重看本页引导」置灰，不给死按钮） */
+    pageGuideAvailable() {
+      return guideCount.value > 0
     },
     /** 功能/帮助搜索结果：旧名兼容 + 完整目录(navPlan) + 帮助文档/流程图；planned 显示「待施工」不跳转 */
     fnResults() {
@@ -553,10 +582,6 @@ export default {
     }
   },
   methods: {
-    /** 帮助中心全局入口：任意管理页一键进入 /admin/help（对齐刷新可达性，避免只能靠顶栏搜索发现） */
-    goHelp() {
-      if (this.$route.path !== '/admin/help') this.$router.push('/admin/help')
-    },
     /** 顶栏铃铛：角标为待办计数（ctx.pendingCount），点击进「我的待办」。
      *  统一消息中心落地前的过渡入口——先消灭"角标可见却不可点"的死元素。 */
     goBell() {
@@ -623,6 +648,28 @@ export default {
       this.fnBlurTimer = setTimeout(() => {
         this.fnOpen = false
       }, 150)
+    },
+    /* ── 常驻帮助入口 ── */
+    closeHelpSoon() {
+      this.helpBlurTimer = setTimeout(() => {
+        this.helpOpen = false
+      }, 150)
+    },
+    /** 本页帮助：能匹配到任务卡就直达该卡，匹配不到退回帮助中心首页（不乱跳）。 */
+    goPageHelp() {
+      this.helpOpen = false
+      const to = this.pageHelp ? `/admin/help?topic=${this.pageHelp.id}` : '/admin/help'
+      if (this.$route.fullPath !== to) router.push(to)
+    },
+    /** 重看本页引导：由页内已挂载的 AppPageGuide 响应。 */
+    replayPageGuide() {
+      if (!this.pageGuideAvailable) return
+      this.helpOpen = false
+      replayGuide()
+    },
+    goHelpHome() {
+      this.helpOpen = false
+      if (this.$route.path !== '/admin/help') router.push('/admin/help')
     },
     onGlobalKeydown(e) {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
@@ -768,6 +815,7 @@ export default {
     if (this.stuTimer) clearTimeout(this.stuTimer)
     if (this.fnBlurTimer) clearTimeout(this.fnBlurTimer)
     if (this.fnSearchTimer) clearTimeout(this.fnSearchTimer)
+    if (this.helpBlurTimer) clearTimeout(this.helpBlurTimer)
   }
 }
 </script>
@@ -1072,7 +1120,73 @@ export default {
   width: 13px;
   height: 13px;
 }
+/* 常驻帮助入口：与 bell 同尺寸同交互，视觉上并列 */
 .bpl-help {
+  position: relative;
+}
+.bpl-help__btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t3);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.bpl-help__btn:hover,
+.bpl-help.is-open .bpl-help__btn {
+  background: var(--pri-bg);
+  color: var(--pri);
+}
+.bpl-help__panel {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 60;
+  width: 268px;
+  padding: 6px;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.13);
+}
+.bpl-help__opt {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 7px;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.bpl-help__opt:hover {
+  background: var(--pri-bg);
+}
+.bpl-help__opt.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.bpl-help__opt.is-disabled:hover {
+  background: none;
+}
+.bpl-help__opt-lb {
+  display: block;
+  font-size: 13px;
+  color: var(--t1);
+}
+.bpl-help__opt-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--t3);
+  line-height: 1.4;
+}
+.bpl-bell {
+  position: relative;
   width: 32px;
   height: 32px;
   padding: 0;

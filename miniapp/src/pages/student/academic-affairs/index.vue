@@ -43,7 +43,12 @@ const ENTRIES = [
   { key: 'selection', label: '网上选课', icon: '✅', route: '/pages/student/academic-affairs/selection' },
   { key: 'exam', label: '缓考申请', icon: '🗓', route: '/pages/student/academic-affairs/exam' },
   { key: 'status', label: '学籍与异动', icon: '📋', route: '/pages/student/academic-affairs/status' },
-  { key: 'graduation', label: '毕业进度', icon: '🎓', route: '/pages/student/academic-affairs/graduation' }
+  { key: 'graduation', label: '毕业进度', icon: '🎓', route: '/pages/student/academic-affairs/graduation' },
+  { key: 'recognition', label: '成绩认定', icon: '🔄', route: '/pages/student/academic-affairs/recognition' },
+  { key: 'recheck', label: '成绩复查', icon: '🔍', route: '/pages/student/academic-affairs/recheck' },
+  { key: 'textbook', label: '我的教材', icon: '📚', route: '/pages/student/academic-affairs/textbook' },
+  { key: 'levelExam', label: '等级考试', icon: '🏅', route: '/pages/student/academic-affairs/level-exam' },
+  { key: 'majorSplit', label: '专业分流', icon: '🧭', route: '/pages/student/academic-affairs/major-split' }
 ]
 
 export default {

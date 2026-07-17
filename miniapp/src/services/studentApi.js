@@ -135,6 +135,20 @@ export const studentApi = {
   getMyDeferrals: (status) => real.acadExamDeferMy(status),
   applyDefer: (examCourseId, reasonType, reason) => real.acadExamDeferApply(examCourseId, reasonType, reason),
   resubmitDefer: (deferId) => real.acadExamDeferResubmit(deferId),
+  // 成绩认定/课程替代（学生自助，对标正方 3.16/3.27）
+  getMyRecognition: () => real.acadRecognitionMy(),
+  submitRecognition: (body) => real.acadRecognitionSubmit(body),
+  getMyRecheck: () => real.acadRecheckMy(),
+  submitRecheck: (body) => real.acadRecheckSubmit(body),
+  getMyTextbook: () => real.acadTextbookMy(),
+  signTextbook: (recordId) => real.acadTextbookSign(recordId),
+  // 等级考务报名（学生自助，对标正方 3.13）
+  getMyLevelExam: () => real.acadLevelExamMy(),
+  registerLevelExam: (examId) => real.acadLevelRegister(examId),
+  cancelLevelExam: (examId) => real.acadLevelCancel(examId),
+  // 专业分流志愿（学生自助）
+  getMyMajorSplit: () => real.acadMajorSplitMy(),
+  submitMajorSplit: (batchId, choices) => real.acadMajorSplitSubmit(batchId, choices),
   exportMyData: () => realRequest('/mobile/me/export-data')
 }
 export default studentApi

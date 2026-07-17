@@ -127,6 +127,7 @@
       :require-reason="dialog.requireReason"
       :reason-label="dialog.reasonLabel"
       :reason-placeholder="dialog.reasonPlaceholder"
+      :phrase-scene-key="dialogPhraseSceneKey"
       :submitting="acting"
       @confirm="onDialogConfirm"
     />
@@ -137,6 +138,7 @@
         <h3 class="ad-modal__title">查看完整家庭经济</h3>
         <p class="ad-modal__hint">该操作将记录敏感查看审计（谁、何时、查看谁、原因）。仅授权角色可见明文，无权限返回 403。</p>
         <label class="ad-field"><span>查看原因 <i>*</i></span>
+          <AppQuickPhrases scene-key="common.revealReason" @pick="onPickRevealReason" />
           <AppTextarea v-model="revealModal.reason" :rows="3" placeholder="如：核对家庭经济，办理助学金前置校验" />
         </label>
         <p v-if="revealModal.error" class="ad-err">{{ revealModal.error }}</p>
@@ -155,6 +157,7 @@
           <AppSelect v-model="adjustModal.targetLevel" :options="levelOptions" placeholder="" />
         </label>
         <label class="ad-field"><span>调整原因（≥5字） <i>*</i></span>
+          <AppQuickPhrases scene-key="sa.aid.adjust" @pick="onPickAdjustReason" />
           <AppTextarea v-model="adjustModal.reason" :rows="3" placeholder="说明调整原因，不少于 5 字" />
         </label>
         <p v-if="adjustModal.error" class="ad-err">{{ adjustModal.error }}</p>
@@ -198,6 +201,7 @@
           <AppSelect v-model="applyModal.applyLevel" :options="levelOptions" placeholder="" />
         </label>
         <label class="ad-field"><span>困难情况说明（10-500字） <i>*</i></span>
+          <AppQuickPhrases scene-key="sa.aid.statement" @pick="onPickStatement" />
           <AppTextarea v-model="applyModal.statement" :rows="3" placeholder="客观描述家庭困难情况，10-500 字" />
         </label>
         <div class="ad-grid2">
@@ -229,7 +233,7 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppConfirmDialog, AppNumberInput, AppPermissionButton, AppSelect, AppStatusTag,
+  AppConfirmDialog, AppNumberInput, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
   AppStudentPicker, AppTextInput, AppTextarea
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
@@ -248,7 +252,7 @@ export default {
   name: 'AidWorkbenchView',
   components: {
     ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppNumberInput,
-    AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+    AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -266,6 +270,9 @@ export default {
     }
   },
   computed: {
+    dialogPhraseSceneKey() {
+      return this.dialog.action === 'reject' ? 'sa.aid.reject' : ''
+    },
     roleName() {
       return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || ''
     },
@@ -329,6 +336,9 @@ export default {
     this.loadBatches()
   },
   methods: {
+    onPickRevealReason(text) { this.revealModal.reason = (this.revealModal.reason || '') + text },
+    onPickAdjustReason(text) { this.adjustModal.reason = (this.adjustModal.reason || '') + text },
+    onPickStatement(text) { this.applyModal.statement = (this.applyModal.statement || '') + text },
     levelLabel(l) {
       return LEVEL[l] || ''
     },

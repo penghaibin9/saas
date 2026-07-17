@@ -63,8 +63,8 @@
             <div><dt>处分类型</dt><dd>{{ discTypeLabel(selected.discType) }}</dd></div>
             <div><dt>学号</dt><dd>{{ selected.studentNo || '—' }}</dd></div>
             <div><dt>文号</dt><dd>{{ selected.docNo || '—' }}</dd></div>
-            <div><dt>生效时间</dt><dd>{{ fmt(selected.effectiveAt) || '—' }}</dd></div>
-            <div><dt>解除时间</dt><dd>{{ fmt(selected.removedAt) || '—' }}</dd></div>
+            <div><dt>生效时间</dt><dd><AppDateDisplay :value="selected.effectiveAt" mode="datetime" empty-text="—" /></dd></div>
+            <div><dt>解除时间</dt><dd><AppDateDisplay :value="selected.removedAt" mode="datetime" empty-text="—" /></dd></div>
             <div><dt>投影ID</dt><dd>{{ selected.csDisciplineId || '—' }}</dd></div>
             <div class="dp-kv--full"><dt>违纪事实</dt><dd>{{ selected.reason || '—' }}</dd></div>
           </dl>
@@ -78,7 +78,9 @@
               size="sm"
               :loading="acting"
               @click="onAction(a.key)"
-            >{{ a.label }}</AppPermissionButton>
+            >
+              {{ a.label }}
+            </AppPermissionButton>
           </div>
           <p v-else class="dp-terminal">该处分已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
         </template>
@@ -95,34 +97,35 @@
       :require-reason="dialog.requireReason"
       :reason-label="dialog.reasonLabel"
       :reason-placeholder="dialog.reasonPlaceholder"
+      :phrase-scene-key="dialogPhraseSceneKey"
       :submitting="acting"
       @confirm="onDialogConfirm"
     />
 
-    <!-- 登记处分 modal -->
-    <div v-if="registerModal.visible" class="dp-mask" @click.self="registerModal.visible = false">
-      <div class="dp-modal">
-        <h3 class="dp-modal__title">登记违纪处分</h3>
-        <div class="dp-field"><span>学生 <i>*</i></span>
+    <!-- 登记处分：抽屉承载多字段表单，替代原生弹窗 -->
+    <AppDrawer v-model:visible="registerModal.visible" title="登记违纪处分">
+      <div class="dp-form">
+        <AppFormItem label="学生" required>
           <AppStudentPicker v-model="registerModal.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
-        </div>
-        <label class="dp-field"><span>处分类型 <i>*</i></span>
-          <AppSelect v-model="registerModal.discType" :options="discTypes" placeholder="" />
-        </label>
-        <label class="dp-field"><span>违纪事实（≥5字） <i>*</i></span>
-          <AppTextarea v-model="registerModal.reason" :rows="3" placeholder="客观描述违纪事实，不少于 5 字" />
-        </label>
-        <label class="dp-field"><span>文号</span>
-          <AppTextInput v-model="registerModal.docNo" placeholder="选填，如「校学字〔2026〕12号」" />
-        </label>
+        </AppFormItem>
+        <AppFormItem label="处分类型" required>
+          <AppSelect v-model="registerModal.discType" :options="discTypes" :disabled="acting" />
+        </AppFormItem>
+        <AppFormItem label="违纪事实（≥5字）" required>
+          <AppQuickPhrases scene-key="sa.discipline.fact" @pick="onPickFact" />
+          <AppTextarea ref="factTa" v-model="registerModal.reason" :rows="3" placeholder="客观描述违纪事实，不少于 5 字" :disabled="acting" />
+        </AppFormItem>
+        <AppFormItem label="文号">
+          <AppTextInput v-model="registerModal.docNo" placeholder="选填，如「校学字〔2026〕12号」" :disabled="acting" />
+        </AppFormItem>
         <p class="dp-modal__hint">留校察看 / 开除需经校级审批；其余处分学工处复核后即生效。</p>
-        <p v-if="registerModal.error" class="dp-err">{{ registerModal.error }}</p>
-        <div class="dp-modal__foot">
-          <button type="button" class="dp-btn" @click="registerModal.visible = false">取消</button>
-          <button type="button" class="dp-btn dp-btn--primary" :disabled="acting" @click="submitRegister">登记</button>
-        </div>
+        <AppInlineAlert v-if="registerModal.error" type="danger" :description="registerModal.error" />
       </div>
-    </div>
+      <template #footer>
+        <button type="button" class="dp-btn" :disabled="acting" @click="registerModal.visible = false">取消</button>
+        <button type="button" class="dp-btn dp-btn--primary" :disabled="acting" @click="submitRegister">登记</button>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
@@ -134,11 +137,13 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppConfirmDialog, AppPermissionButton, AppSelect, AppStatusTag,
-  AppStudentPicker, AppTextInput, AppTextarea
+  AppConfirmDialog, AppDateDisplay, AppFormItem, AppInlineAlert, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
+  AppStudentPicker, AppTextarea, AppTextInput
 } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 const REVIEW_NODES = ['COLLEGE_REVIEW', 'STUDENT_AFFAIRS_REVIEW', 'SCHOOL_REVIEW']
 const STATUS_TYPE = {
@@ -153,8 +158,8 @@ const DISC_TYPE = {
 export default {
   name: 'DisciplineWorkbenchView',
   components: {
-    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppPermissionButton,
-    AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay, AppDrawer,
+    AppFormItem, AppInlineAlert, AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextarea, AppTextInput
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -174,9 +179,6 @@ export default {
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
     },
-    typeFilterOptions() {
-      return [{ value: '', label: '全部类型' }, ...this.discTypes]
-    },
     statusFilters() {
       const c = (arr) => this.list.filter((x) => arr.includes(x.status)).length
       return [
@@ -195,6 +197,9 @@ export default {
       else if (this.activeStatus !== 'ALL') arr = arr.filter((x) => x.status === this.activeStatus)
       if (this.typeFilter) arr = arr.filter((x) => x.discType === this.typeFilter)
       return arr
+    },
+    typeFilterOptions() {
+      return [{ value: '', label: '全部类型' }, ...this.discTypes]
     },
     detailActions() {
       const s = this.selected && this.selected.status
@@ -220,15 +225,15 @@ export default {
         ]
       }
       return []
+    },
+    dialogPhraseSceneKey() {
+      return this.dialog.action === 'reject' ? 'sa.discipline.reject' : ''
     }
   },
   created() {
     this.loadList()
   },
   methods: {
-    fmt(t) {
-      return t ? String(t).replace('T', ' ').slice(0, 16) : ''
-    },
     discTypeLabel(t) {
       return DISC_TYPE[t] || t || '—'
     },
@@ -298,15 +303,22 @@ export default {
     openRegister() {
       this.registerModal = { visible: true, studentId: '', discType: 'WARNING', reason: '', docNo: '', error: '' }
     },
+    onPickFact(text) {
+      const el = this.$refs.factTa?.$refs?.el
+      const { value, selStart, selEnd } = insertAtCursor(el, this.registerModal.reason, text)
+      this.registerModal.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     searchStudents(keyword) {
       return studentAffairsApi.searchStudents(keyword)
     },
     async submitRegister() {
       const m = this.registerModal
-      if (!m.studentId) { m.error = '请选择学生'; return }
       const reason = (m.reason || '').trim()
-      if (!reason || reason.length < 5) { m.error = '违纪事实不少于 5 字'; return }
-      const body = { studentId: String(m.studentId), discType: m.discType, reason, docNo: (m.docNo || '').trim() }
+      const docNo = (m.docNo || '').trim()
+      if (!m.studentId) { m.error = '请选择学生'; return }
+      if (reason.length < 5) { m.error = '违纪事实不少于 5 字'; return }
+      const body = { studentId: String(m.studentId), discType: m.discType, reason, docNo }
       const ok = await this.runAction(() => studentAffairsApi.registerDiscipline(body), '处分已登记')
       if (ok) this.registerModal.visible = false
       else this.registerModal.error = this._lastErr || '登记失败'
@@ -528,49 +540,12 @@ export default {
   font-size: var(--font-size-sm);
   color: var(--text-tertiary);
 }
-.dp-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.dp-modal {
-  width: 460px;
-  max-width: calc(100vw - 32px);
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  box-shadow: var(--shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.2));
-}
-.dp-modal__title {
-  margin: 0 0 var(--space-3);
-  font-size: var(--font-size-lg);
-  color: var(--text-primary);
-}
 .dp-modal__hint {
   margin: 0 0 var(--space-3);
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
 }
-.dp-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
-}
-.dp-field > span {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.dp-field i {
-  color: var(--danger-600, #dc2626);
-  font-style: normal;
-}
-.dp-input,
-.dp-textarea {
+.dp-input {
   border: 1px solid var(--border-base);
   border-radius: var(--radius-base);
   background: var(--bg-card);
@@ -579,18 +554,9 @@ export default {
   padding: var(--space-2);
   outline: none;
 }
-.dp-textarea {
-  resize: vertical;
-}
-.dp-err {
-  margin: 0 0 var(--space-2);
-  color: var(--danger-600, #dc2626);
-  font-size: var(--font-size-xs);
-}
-.dp-modal__foot {
+.dp-form {
   display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-4);
 }
 </style>

@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+from sqlalchemy import func
+
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -86,6 +88,8 @@ def _student(db):
 
 def _mb_dto(b):
     return {"batchId": str(b.id), "batchName": b.batch_name, "termCode": b.term_code,
+            "kind": getattr(b, "kind", "MAKEUP") or "MAKEUP",
+            "targetGrades": [x for x in (b.target_grades or "").split(",") if x] if getattr(b, "target_grades", None) else [],
             "examBatchRef": str(b.exam_batch_ref) if b.exam_batch_ref else None,
             "scoreRule": b.score_rule, "status": b.status, "publishedAt": _iso(b.published_at)}
 
@@ -132,13 +136,15 @@ def create_makeup_batch(user, body):
         return _mb_dto(b)
 
 
-def list_makeup_batches(user, status=None, page=1, page_size=20):
+def list_makeup_batches(user, status=None, page=1, page_size=20, kind=None):
     from app.models import AaMakeupBatch
     with session() as db:
         _ctx(user, db)
         q = db.query(AaMakeupBatch).filter(AaMakeupBatch.tenant_id == _tid(), AaMakeupBatch.is_deleted.is_(False))
         if status:
             q = q.filter(AaMakeupBatch.status == status)
+        if kind:
+            q = q.filter(AaMakeupBatch.kind == kind)
         rows = q.order_by(AaMakeupBatch.id.desc()).all()
         return [_mb_dto(b) for b in rows[(page - 1) * page_size: page * page_size]], len(rows)
 
@@ -178,7 +184,8 @@ def enroll_makeup(user, batch_id, acad_student_id, course_name, origin_score=Non
         if dup:
             return {"makeupId": str(dup.id), "status": dup.status}
         m = AcademicMakeup(tenant_id=_tid(), acad_student_id=int(acad_student_id), course_name=course_name,
-                           origin_score=origin_score, batch_id=b.id, status="PENDING_EXAM", record_status="ACTIVE")
+                           origin_score=origin_score, batch_id=b.id, kind=(b.kind or "MAKEUP"),
+                           status="PENDING_EXAM", record_status="ACTIVE")
         db.add(m); db.flush()
         b.status = _MB_ARRANGED
         _audit(db, "AA_MAKEUP", b.id, "MAKEUP_ENROLL", f"纳入 {course_name}")
@@ -251,26 +258,161 @@ def finish_makeup_batch(user, batch_id):
         recs = db.query(AcademicMakeup).filter(AcademicMakeup.batch_id == b.id, AcademicMakeup.tenant_id == _tid(),
                                                AcademicMakeup.status == "SCORED").all()
         cap = 60 if b.score_rule == "CAP60" else 100
+        src = "CLEARANCE" if (getattr(b, "kind", None) == "CLEARANCE") else "MAKEUP"
+        affected = set()
         for m in recs:
             fs = m.final_score or 0
             passed = fs >= 60
             recorded = min(fs, cap) if passed else fs
-            # 回写一条 MAKEUP 成绩行（幂等：同 acad_student+course+source=MAKEUP 更新）
+            # 学分从原修成绩行带出：补考/清考针对的就是原挂科课程，原行(PUBLISH等)已带真实学分。
+            # 不带则回写行 credit_value=0，通过后学分被吞成 0，毕业学分核算失真(修 P0-1)。
+            credit = db.query(func.max(AcademicGrade.credit_value)).filter(
+                AcademicGrade.tenant_id == _tid(),
+                AcademicGrade.acad_student_id == m.acad_student_id,
+                AcademicGrade.course_name == m.course_name,
+                AcademicGrade.credit_value.isnot(None)).scalar() or 0
+            # 回写一条成绩行（幂等：同 acad_student+course+source 更新；补考/清考各自独立 source）
             g = db.query(AcademicGrade).filter(AcademicGrade.tenant_id == _tid(),
                                                AcademicGrade.acad_student_id == m.acad_student_id,
                                                AcademicGrade.course_name == m.course_name,
-                                               AcademicGrade.source == "MAKEUP").first()
+                                               AcademicGrade.source == src).first()
             if g:
                 g.score = recorded
                 g.pass_status = "PASSED" if passed else "FAILED"
+                if credit and not (g.credit_value or 0):
+                    g.credit_value = credit
             else:
                 db.add(AcademicGrade(tenant_id=_tid(), acad_student_id=m.acad_student_id, course_name=m.course_name,
+                                     credit_value=credit,
                                      score=recorded, pass_status="PASSED" if passed else "FAILED",
-                                     source="MAKEUP", record_status="ACTIVE"))
+                                     source=src, record_status="ACTIVE"))
+            affected.add(int(m.acad_student_id))
+        db.flush()
+        # 回写后刷新学生学业台账(GPA/已得学分/未通过门数)，否则预警/毕业/分流读旧数据(修 P0-2)。
+        from app.models import AcademicStudent
+        from app.modules.academic_affairs.services.academic_affairs_grade_service import _refresh_aggregates
+        for aid in affected:
+            a = db.get(AcademicStudent, aid)
+            if a and not a.is_deleted:
+                _refresh_aggregates(db, a)
         b.status = _MB_FINISHED
-        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_BATCH_FINISH", f"回写 {len(recs)} 条补考成绩")
+        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_BATCH_FINISH",
+               f"回写 {len(recs)} 条{'清考' if src == 'CLEARANCE' else '补考'}成绩，刷新 {len(affected)} 生台账")
         db.commit()
         return _mb_dto(b)
+
+
+# ══════════ 毕业清考（对标商业教务 6-6：应届生未通过课程的最后一次考核机会）══════════
+
+def create_clearance_batch(user, body):
+    """建毕业清考批次：kind=CLEARANCE + 限定年级；计分固定 CAP60（清考通过按60记，不给高分投机）。"""
+    from app.models import AaMakeupBatch
+    with session() as db:
+        _require_school(_ctx(user, db))
+        name = (getattr(body, "batchName", None) or "").strip()
+        if not name:
+            raise _bad("批次名称必填")
+        grades = [str(x).strip() for x in (getattr(body, "targetGrades", None) or []) if str(x).strip()]
+        if not grades:
+            raise _bad("清考必须限定毕业年级（如 2022）")
+        b = AaMakeupBatch(tenant_id=_tid(), batch_name=name, kind="CLEARANCE",
+                          target_grades=",".join(grades), term_code=getattr(body, "termCode", None),
+                          score_rule="CAP60", status=_MB_DRAFT)
+        db.add(b); db.flush()
+        _audit(db, "AA_MAKEUP", b.id, "CLEARANCE_BATCH_CREATE", f"{name} 年级{grades}")
+        db.commit()
+        return _mb_dto(b)
+
+
+def _clearance_candidates(db, grades):
+    """自动圈定：限定年级在读学生中，同课程按最高分去重后仍 FAILED 的课程。
+
+    口径与学生台账汇总(_refresh_aggregates)一致：重修/补考已通过的课程不再进清考，
+    只捞"到今天为止最好成绩仍不及格"的课程——这是清考的法定对象。
+    """
+    from app.models import AcademicGrade, AcademicStudent, StudentProfile
+    profiles = db.query(StudentProfile).filter(
+        StudentProfile.tenant_id == _tid(), StudentProfile.grade.in_(grades),
+        StudentProfile.student_status == "NORMAL", StudentProfile.is_deleted.is_(False)).all()
+    pid_map = {p.id: p for p in profiles}
+    if not pid_map:
+        return []
+    acads = db.query(AcademicStudent).filter(
+        AcademicStudent.tenant_id == _tid(),
+        AcademicStudent.student_id.in_(list(pid_map))).all()
+    out = []
+    for a in acads:
+        rows = db.query(AcademicGrade).filter(
+            AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
+            AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False)).all()
+        best = {}
+        for g in rows:
+            key = (g.course_name or "").strip()
+            if not key:
+                continue
+            cur = best.get(key)
+            if cur is None or (g.score or -1) > (cur.score or -1):
+                best[key] = g
+        p = pid_map.get(a.student_id)
+        for course, g in best.items():
+            if g.pass_status == "FAILED":
+                out.append({"acadStudentId": str(a.id), "studentNo": a.student_no,
+                            "studentName": a.name, "grade": (p.grade if p else None),
+                            "courseName": course, "bestScore": g.score})
+    return out
+
+
+def clearance_scan(user, batch_id, dry_run=False):
+    """扫描并圈定清考名单（幂等；dry_run 只看不落）。"""
+    from app.models import AcademicMakeup
+    with session() as db:
+        _require_school(_ctx(user, db))
+        b = _get_mb(db, batch_id)
+        if (getattr(b, "kind", None) or "MAKEUP") != "CLEARANCE":
+            raise _invalid("仅清考批次可执行名单扫描")
+        if b.status not in (_MB_DRAFT, _MB_ARRANGED):
+            raise _invalid("仅 DRAFT/ARRANGED 批次可圈定名单")
+        grades = [x for x in (b.target_grades or "").split(",") if x]
+        cands = _clearance_candidates(db, grades)
+        added, skipped = 0, 0
+        if not dry_run:
+            for c in cands:
+                dup = db.query(AcademicMakeup).filter(
+                    AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id == b.id,
+                    AcademicMakeup.acad_student_id == int(c["acadStudentId"]),
+                    AcademicMakeup.course_name == c["courseName"]).first()
+                if dup:
+                    skipped += 1
+                    continue
+                db.add(AcademicMakeup(tenant_id=_tid(), acad_student_id=int(c["acadStudentId"]),
+                                      course_name=c["courseName"], origin_score=c["bestScore"],
+                                      batch_id=b.id, kind="CLEARANCE",
+                                      status="PENDING_EXAM", record_status="ACTIVE"))
+                added += 1
+            if added and b.status == _MB_DRAFT:
+                b.status = _MB_ARRANGED
+            _audit(db, "AA_MAKEUP", b.id, "CLEARANCE_SCAN", f"圈定{added}条(跳过{skipped})")
+            db.commit()
+        return {"batchId": str(b.id), "dryRun": dry_run, "candidates": len(cands),
+                "added": (0 if dry_run else added), "skipped": (0 if dry_run else skipped),
+                "items": cands}
+
+
+def clearance_records(user, batch_id, page=1, page_size=100):
+    """清考批次名单（含成绩录入状态）。收敛 TENANT_ALL,防越范围读全校清考不及格明细(修数据范围红线)。"""
+    from app.models import AcademicMakeup, AcademicStudent
+    with session() as db:
+        _require_school(_ctx(user, db))
+        b = _get_mb(db, batch_id)
+        rows = db.query(AcademicMakeup, AcademicStudent).join(
+            AcademicStudent, AcademicMakeup.acad_student_id == AcademicStudent.id).filter(
+            AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id == b.id,
+            AcademicMakeup.is_deleted.is_(False)).order_by(AcademicMakeup.id).all()
+        items = [{"makeupId": str(m.id), "acadStudentId": str(m.acad_student_id),
+                  "studentNo": s.student_no, "studentName": s.name,
+                  "courseName": m.course_name, "originScore": m.origin_score,
+                  "finalScore": m.final_score, "status": m.status} for m, s in rows]
+        return items[(page - 1) * page_size: page * page_size], len(items)
 
 
 # ══════════ 重修 ══════════

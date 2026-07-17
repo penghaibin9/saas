@@ -20,7 +20,10 @@
         </button>
       </div>
       <div class="tk-tools">
-        <AppSelect v-model="typeFilter" class="tk-typepick" :options="typeFilterOptions" placeholder="" title="按类型筛选" />
+        <select v-model="typeFilter" class="tk-input" title="按类型筛选">
+          <option value="">全部类型</option>
+          <option v-for="t in talkTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
+        </select>
         <span v-if="stats" class="tk-stat">完成率 {{ Math.round((stats.completionRate || 0) * 100) }}%（{{ stats.completed }}/{{ stats.total }}）</span>
         <AppPermissionButton code="studentAffairs.talk.create" variant="primary" size="sm" @click="openCreate">发起谈话</AppPermissionButton>
       </div>
@@ -65,16 +68,18 @@
           <dl class="tk-kv">
             <div><dt>谈话类型</dt><dd>{{ talkTypeLabel(selected.talkType) }}</dd></div>
             <div><dt>谈话主题</dt><dd>{{ selected.topic || '—' }}</dd></div>
-            <div><dt>谈话时间</dt><dd>{{ fmt(selected.talkAt) || '未记录' }}</dd></div>
+            <div><dt>谈话时间</dt><dd><AppDateDisplay :value="selected.talkAt" mode="datetime" empty-text="未记录" /></dd></div>
             <div><dt>是否需跟进</dt><dd>{{ selected.needFollow ? '是' : '否' }}</dd></div>
           </dl>
 
           <!-- 待谈：内联记录表单 -->
           <section v-if="canRecord" class="tk-record">
             <div class="tk-record__title">填写谈话记录</div>
-            <AppTextarea v-model="recordForm.content" :rows="4" placeholder="记录谈话过程与内容，不少于 20 字" />
+            <AppQuickPhrases scene-key="sa.talk.content" :group="selected.talkType" @pick="onPickContent" />
+            <textarea ref="contentTa" v-model.trim="recordForm.content" class="tk-textarea" rows="4" placeholder="记录谈话过程与内容，不少于 20 字" />
+            <AppQuickPhrases scene-key="sa.talk.result" @pick="onPickResult" />
             <div class="tk-record__row">
-              <AppTextInput v-model="recordForm.result" class="tk-input--grow" placeholder="谈话小结（选填）" />
+              <input ref="resultInput" v-model.trim="recordForm.result" class="tk-input tk-input--grow" placeholder="谈话小结（选填）" />
               <label class="tk-check"><input v-model="recordForm.needFollowUp" type="checkbox" /> 需持续跟进</label>
             </div>
             <p v-if="recordForm.error" class="tk-err">{{ recordForm.error }}</p>
@@ -99,7 +104,9 @@
                 size="sm"
                 :loading="acting"
                 @click="onAction(a.key)"
-              >{{ a.label }}</AppPermissionButton>
+              >
+                {{ a.label }}
+              </AppPermissionButton>
             </div>
             <p v-else class="tk-terminal">该谈话已办结，仅可查看。</p>
           </template>
@@ -121,29 +128,24 @@
       @confirm="onDialogConfirm"
     />
 
-    <!-- 发起谈话 modal（批量圈定学生） -->
-    <div v-if="createModal.visible" class="tk-mask" @click.self="createModal.visible = false">
-      <div class="tk-modal">
-        <h3 class="tk-modal__title">发起谈话计划</h3>
-        <label class="tk-field"><span>谈话类型 <i>*</i></span>
-          <AppSelect v-model="createModal.talkType" :options="talkTypes" placeholder="" />
-        </label>
-        <label class="tk-field"><span>谈话主题 <i>*</i></span>
-          <AppTextInput v-model="createModal.topic" placeholder="如：期中学业情况谈话" />
-        </label>
-        <div class="tk-field"><span>圈定学生（可多选） <i>*</i></span>
-          <AppStudentPicker v-model="createModal.studentIds" multiple :remote-search="searchStudents" placeholder="按姓名 / 学号搜索添加学生" />
-        </div>
-        <label class="tk-field"><span>计划时间</span>
-          <AppDateTimePicker v-model="createModal.scheduledAt" />
-        </label>
-        <p v-if="createModal.error" class="tk-err">{{ createModal.error }}</p>
-        <div class="tk-modal__foot">
-          <button type="button" class="tk-btn" @click="createModal.visible = false">取消</button>
-          <button type="button" class="tk-btn tk-btn--primary" :disabled="acting" @click="submitCreate">发起</button>
-        </div>
-      </div>
-    </div>
+    <!-- 发起谈话 drawer（批量圈定学生） -->
+    <AppDrawer v-model:visible="createModal.visible" title="发起谈话计划">
+      <AppFormItem label="谈话类型" required>
+        <AppSelect v-model="createModal.talkType" :options="talkTypes" />
+      </AppFormItem>
+      <AppFormItem label="谈话主题" required>
+        <AppTextInput v-model="createModal.topic" placeholder="如：期中学业情况谈话" />
+      </AppFormItem>
+      <AppFormItem label="圈定学生（可多选）" required>
+        <AppStudentPicker v-model="createModal.studentIds" multiple :remote-search="searchStudents" placeholder="按姓名 / 学号搜索添加学生" />
+      </AppFormItem>
+      <AppDateTimePicker v-model="createModal.scheduledAt" label="计划时间" />
+      <AppInlineAlert v-if="createModal.error" type="danger" :description="createModal.error" />
+      <template #footer>
+        <button type="button" class="tk-btn" @click="createModal.visible = false">取消</button>
+        <button type="button" class="tk-btn tk-btn--primary" :disabled="acting" @click="submitCreate">发起</button>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
@@ -155,11 +157,13 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppConfirmDialog, AppDateTimePicker, AppPermissionButton, AppSelect, AppStatusTag,
-  AppStudentPicker, AppTextInput, AppTextarea
+  AppConfirmDialog, AppDateDisplay, AppDateTimePicker, AppFormItem, AppInlineAlert, AppPermissionButton,
+  AppQuickPhrases, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 const STATUS_TYPE = {
   PLANNED: 'warning', SCHEDULED: 'processing', COMPLETED: 'success',
@@ -173,8 +177,9 @@ const TALK_TYPE = {
 export default {
   name: 'TalkWorkbenchView',
   components: {
-    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateTimePicker,
-    AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog,
+    AppDateDisplay, AppDateTimePicker, AppDrawer, AppFormItem, AppInlineAlert, AppPermissionButton,
+    AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -197,9 +202,6 @@ export default {
     },
     canRecord() {
       return this.selected && ['PLANNED', 'SCHEDULED'].includes(this.selected.status)
-    },
-    typeFilterOptions() {
-      return [{ value: '', label: '全部类型' }, ...this.talkTypes]
     },
     statusFilters() {
       const c = (arr) => this.list.filter((x) => arr.includes(x.status)).length
@@ -236,9 +238,6 @@ export default {
     this.loadStats()
   },
   methods: {
-    fmt(t) {
-      return t ? String(t).replace('T', ' ').slice(0, 16) : ''
-    },
     talkTypeLabel(t) {
       return TALK_TYPE[t] || t || '—'
     },
@@ -248,6 +247,9 @@ export default {
     async loadList() {
       this.loading = true
       this.listError = ''
+      // 分页说明：/student-affairs/talks 后端支持真分页，但本工作台是「队列选中 + 详情」交互
+      // （左侧队列点选后右侧展示详情/办结动作），非普通分页表格；接入 AppPagination 会打断选中态
+      // 与筛选 chip 的联动体验，暂维持 pageSize=200 一次性加载队列。
       const res = await studentAffairsApi.getTalks({ page: 1, pageSize: 200 })
       this.loading = false
       if (res.code === 0 && res.data) {
@@ -268,6 +270,18 @@ export default {
       this.selected = it
       this.recordForm = { content: '', result: '', needFollowUp: false, error: '' }
     },
+    onPickContent(text) {
+      const el = this.$refs.contentTa
+      const { value, selStart, selEnd } = insertAtCursor(el, this.recordForm.content, text)
+      this.recordForm.content = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
+    onPickResult(text) {
+      const el = this.$refs.resultInput
+      const { value, selStart, selEnd } = insertAtCursor(el, this.recordForm.result, text)
+      this.recordForm.result = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    },
     async reloadDetail() {
       if (!this.selected) return
       const res = await studentAffairsApi.getTalkDetail(this.selected.talkId)
@@ -275,10 +289,9 @@ export default {
       else toast.error(res.message || '刷新详情失败')
     },
     async submitRecord() {
-      const content = (this.recordForm.content || '').trim()
-      if (!content || content.length < 20) { this.recordForm.error = '谈话内容不少于 20 字'; return }
+      if (!this.recordForm.content || this.recordForm.content.length < 20) { this.recordForm.error = '谈话内容不少于 20 字'; return }
       const ok = await this.runAction(
-        () => studentAffairsApi.recordTalk(this.selected.talkId, content, (this.recordForm.result || '').trim(), this.recordForm.needFollowUp),
+        () => studentAffairsApi.recordTalk(this.selected.talkId, this.recordForm.content, this.recordForm.result, this.recordForm.needFollowUp),
         '谈话记录已提交（已进 360）'
       )
       if (!ok) this.recordForm.error = this._lastErr || '提交失败'
@@ -402,9 +415,6 @@ export default {
 .tk-stat {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
-}
-.tk-typepick {
-  width: 150px;
 }
 .tk-btn {
   height: 30px;
@@ -614,47 +624,5 @@ export default {
   margin: var(--space-1) 0;
   color: var(--danger-600, #dc2626);
   font-size: var(--font-size-xs);
-}
-.tk-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.tk-modal {
-  width: 460px;
-  max-width: calc(100vw - 32px);
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  box-shadow: var(--shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.2));
-}
-.tk-modal__title {
-  margin: 0 0 var(--space-3);
-  font-size: var(--font-size-lg);
-  color: var(--text-primary);
-}
-.tk-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
-}
-.tk-field > span {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.tk-field i {
-  color: var(--danger-600, #dc2626);
-  font-style: normal;
-}
-.tk-modal__foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
 }
 </style>

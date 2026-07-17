@@ -13,28 +13,31 @@
 
       <DualPaneWorkspace aside-title="后续处理队列" :aside-count="total">
         <template #aside>
-          <div v-if="loading" class="state">加载中…</div>
-          <div v-else-if="error" class="state is-err">{{ error }} <button type="button" class="mp-link" @click="load">重试</button></div>
-          <div v-else-if="!rows.length" class="state">当前筛选下暂无待处理请假</div>
-          <ul v-else class="lv-list">
-            <li v-for="r in rows" :key="r.id">
-              <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
-                <div class="lv-item__row">
-                  <span class="lv-item__name">{{ r.studentName }}</span>
-                  <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" />
-                </div>
-                <div class="lv-item__sub">{{ r.studentNo }} · {{ r.className }}</div>
-                <div class="lv-item__sub">{{ fmt(r.startTime) }} ~ {{ fmt(r.endTime) }} · {{ r.leaveTypeLabel }} · {{ r.days }}天</div>
-              </button>
-            </li>
-          </ul>
+          <AppGlobalState :state="asideState" :description="asideDescription" loading-text="加载中…" @retry="load">
+            <ul class="lv-list">
+              <li v-for="r in rows" :key="r.id">
+                <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
+                  <div class="lv-item__row">
+                    <span class="lv-item__name">{{ r.studentName }}</span>
+                    <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" />
+                  </div>
+                  <div class="lv-item__sub">{{ r.studentNo }} · {{ r.className }}</div>
+                  <div class="lv-item__sub">{{ fmt(r.startTime) }} ~ {{ fmt(r.endTime) }} · {{ r.leaveTypeLabel }} · {{ r.days }}天</div>
+                </button>
+              </li>
+            </ul>
+          </AppGlobalState>
         </template>
         <template #aside-foot>
-          <div class="lv-pager">
-            <button type="button" class="mp-link" :disabled="page <= 1 || loading" @click="onPageChange(page - 1)">上一页</button>
-            <span class="mp-note">第 {{ page }} / 共 {{ pageCount }} 页</span>
-            <button type="button" class="mp-link" :disabled="page >= pageCount || loading" @click="onPageChange(page + 1)">下一页</button>
-          </div>
+          <AppPagination
+            :page="page"
+            :page-size="pageSize"
+            :total="total"
+            :disabled="loading"
+            :show-total="false"
+            :show-size-changer="false"
+            @change="onPageChange"
+          />
         </template>
 
         <section class="mp-card lv-main">
@@ -44,11 +47,7 @@
             <EmptyState v-else title="从左侧选择一条请假开始处理"
               description="续假审批 / 销假确认 / 逾期处置，处理后自动跳到下一条" />
           </template>
-          <div v-else-if="detail.loading" class="state lv-main__state">详情加载中…</div>
-          <div v-else-if="detail.error" class="state is-err lv-main__state">
-            {{ detail.error }} <button type="button" class="mp-link" @click="loadDetail(selectedId)">重试</button>
-          </div>
-          <template v-else-if="detail.data">
+          <AppGlobalState v-else :state="detailState" :description="detail.error" loading-text="详情加载中…" @retry="loadDetail(selectedId)">
             <div class="lv-main__body">
               <div class="lv-head">
                 <span class="lv-head__name">{{ detail.data.studentName }}</span>
@@ -90,7 +89,7 @@
               <AppPermissionButton v-for="a in actions" :key="a.key" :code="a.code" :variant="a.variant"
                 :danger="a.danger" @click="openAction(a)">{{ a.label }}</AppPermissionButton>
             </div>
-          </template>
+          </AppGlobalState>
         </section>
       </DualPaneWorkspace>
     </div>
@@ -98,30 +97,26 @@
     <!-- 简单确认（续假通过 / 驳回 / 销假退回：仅原因） -->
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
-      reason-label="意见" :reason-placeholder="cd.reasonPlaceholder" :submitting="cd.submitting"
-      @confirm="onConfirmSimple" />
+      reason-label="意见" :reason-placeholder="cd.reasonPlaceholder" :phrase-scene-key="cd.phraseSceneKey"
+      :submitting="cd.submitting" @confirm="onConfirmSimple" />
 
     <!-- 表单动作弹窗（代登记销假 / 发起续假 / 逾期处置 / 销假确认） -->
-    <div v-if="fm.visible" class="fm-mask" @click.self="closeForm">
-      <div class="fm-dialog">
-        <div class="fm-title">{{ fm.title }}</div>
-        <div class="fm-body">
-          <template v-for="f in fm.fields" :key="f.key">
-            <div class="fm-item">
-              <label class="fm-label">{{ f.label }}<i v-if="f.required">*</i></label>
-              <AppDateTimePicker v-if="f.type === 'datetime'" v-model="fm.values[f.key]" :max="f.max || ''" />
-              <AppSelect v-else-if="f.type === 'select'" v-model="fm.values[f.key]" :options="f.options" :placeholder="f.placeholder || '请选择'" />
-              <AppTextarea v-else v-model="fm.values[f.key]" :placeholder="f.placeholder || ''" :rows="3" :maxlength="f.max || 500" show-count />
-            </div>
-          </template>
-          <p v-if="fm.err" class="fm-err">{{ fm.err }}</p>
-        </div>
-        <div class="fm-foot">
-          <AppButton variant="ghost" @click="closeForm">取消</AppButton>
-          <AppButton :variant="fm.danger ? 'danger' : 'primary'" :loading="fm.submitting" @click="submitForm">{{ fm.confirmText }}</AppButton>
-        </div>
+    <AppDrawer v-model:visible="fm.visible" :title="fm.title">
+      <div class="fm-body">
+        <template v-for="f in fm.fields" :key="f.key">
+          <AppFormItem :label="f.label" :required="f.required">
+            <AppDateTimePicker v-if="f.type === 'datetime'" v-model="fm.values[f.key]" :max="f.max || ''" />
+            <AppSelect v-else-if="f.type === 'select'" v-model="fm.values[f.key]" :options="f.options" :placeholder="f.placeholder || '请选择'" />
+            <AppTextarea v-else v-model="fm.values[f.key]" :placeholder="f.placeholder || ''" :rows="3" :maxlength="f.max || 500" show-count />
+          </AppFormItem>
+        </template>
+        <AppInlineAlert v-if="fm.err" type="danger" :description="fm.err" />
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="closeForm">取消</AppButton>
+        <AppButton :variant="fm.danger ? 'danger' : 'primary'" :loading="fm.submitting" @click="submitForm">{{ fm.confirmText }}</AppButton>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
@@ -134,9 +129,11 @@
 import { ModulePageShell, EmptyState } from '@/components/business'
 import {
   AppStatusTag, AppConfirmDialog, AppPermissionButton, AppDescriptionList, AppAuditTrail,
-  AppSearchBox, AppQuickFilterChips, AppDateTimePicker, AppSelect, AppTextarea
+  AppSearchBox, AppQuickFilterChips, AppDateTimePicker, AppSelect, AppTextarea,
+  AppGlobalState, AppPagination, AppFormItem, AppInlineAlert
 } from '@/components/common'
 import { AppButton } from '@/components/ui'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
@@ -156,7 +153,7 @@ export default {
   components: {
     ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
     AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppDateTimePicker, AppSelect,
-    AppTextarea, AppButton
+    AppTextarea, AppButton, AppGlobalState, AppPagination, AppFormItem, AppInlineAlert, AppDrawer
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -165,7 +162,7 @@ export default {
       keyword: '', statusFilter: '', statusOptions: STATUS_OPTIONS,
       selectedId: '', doneHint: false, scanning: false,
       detail: { loading: false, error: '', data: null },
-      cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, reasonPlaceholder: '', submitting: false, submit: null },
+      cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, reasonPlaceholder: '', phraseSceneKey: '', submitting: false, submit: null },
       fm: { visible: false, title: '', confirmText: '', danger: false, submitting: false, err: '', fields: [], values: {}, submit: null }
     }
   },
@@ -173,6 +170,21 @@ export default {
     roleName() { return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || '辅导员 / 学院学工 / 学工处' },
     scopeHint() { return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.name) || '按数据范围：辅导员本班 / 学院本院 / 学工处全校' },
     pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
+    asideState() {
+      if (this.loading) return 'loading'
+      if (this.error) return 'error'
+      return this.rows.length ? 'ready' : 'empty'
+    },
+    asideDescription() {
+      if (this.error) return this.error
+      if (!this.loading && !this.rows.length) return '当前筛选下暂无待处理请假'
+      return ''
+    },
+    detailState() {
+      if (this.detail.loading) return 'loading'
+      if (this.detail.error) return 'error'
+      return this.detail.data ? 'ready' : 'empty'
+    },
     leaveItems() {
       const d = this.detail.data || {}
       return [
@@ -233,7 +245,12 @@ export default {
     extLabel(v) { return EXT_LABEL[v] || v },
     cancelLabel(v) { return CANCEL_LABEL[v] || v },
     reload() { this.page = 1; this.load() },
-    onPageChange(p) { if (p < 1 || p > this.pageCount || p === this.page) return; this.page = p; this.load() },
+    onPageChange(next) {
+      const p = next && next.page
+      if (!p || p < 1 || p > this.pageCount || p === this.page) return
+      this.page = p
+      this.load()
+    },
     async load() {
       this.loading = true; this.error = ''
       const params = { followupOnly: true, page: this.page, pageSize: this.pageSize }
@@ -264,15 +281,15 @@ export default {
     openAction(a) {
       const id = this.detail.data.id
       if (a.key === 'extApprove') {
-        this.cd = { visible: true, title: '续假通过', content: '通过续假后将更新请假结束时间与到期提醒。', danger: false, confirmText: '通过续假', requireReason: false, reasonPlaceholder: '', submitting: false, submit: () => leaveApi.extensionReview(id, { action: 'APPROVE' }) }
+        this.cd = { visible: true, title: '续假通过', content: '通过续假后将更新请假结束时间与到期提醒。', danger: false, confirmText: '通过续假', requireReason: false, reasonPlaceholder: '', phraseSceneKey: '', submitting: false, submit: () => leaveApi.extensionReview(id, { action: 'APPROVE' }) }
         return
       }
       if (a.key === 'extReject') {
-        this.cd = { visible: true, title: '续假驳回', content: '驳回后维持原假期与原到期日。', danger: true, confirmText: '驳回续假', requireReason: true, reasonPlaceholder: '请填写驳回原因（不少于 5 字）', submitting: false, submit: (r) => leaveApi.extensionReview(id, { action: 'REJECT', reason: r }) }
+        this.cd = { visible: true, title: '续假驳回', content: '驳回后维持原假期与原到期日。', danger: true, confirmText: '驳回续假', requireReason: true, reasonPlaceholder: '请填写驳回原因（不少于 5 字）', phraseSceneKey: 'sa.leave.return', submitting: false, submit: (r) => leaveApi.extensionReview(id, { action: 'REJECT', reason: r }) }
         return
       }
       if (a.key === 'cancelReturn') {
-        this.cd = { visible: true, title: '销假退回', content: '退回后请假回到「已通过」，学生可重新销假。', danger: true, confirmText: '退回重办', requireReason: true, reasonPlaceholder: '请说明退回原因（如返校证明不符，不少于 5 字）', submitting: false, submit: (r) => leaveApi.cancelConfirm(id, { action: 'RETURN', reason: r }) }
+        this.cd = { visible: true, title: '销假退回', content: '退回后请假回到「已通过」，学生可重新销假。', danger: true, confirmText: '退回重办', requireReason: true, reasonPlaceholder: '请说明退回原因（如返校证明不符，不少于 5 字）', phraseSceneKey: '', submitting: false, submit: (r) => leaveApi.cancelConfirm(id, { action: 'RETURN', reason: r }) }
         return
       }
       if (a.key === 'proxyCancel') {
@@ -368,8 +385,6 @@ export default {
 @import '@/styles/module-page.css';
 
 .bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); margin: var(--space-3); }
-.state.is-err { color: var(--danger-600); }
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
 .rec-list { list-style: none; margin: 0; padding: 0; font-size: var(--font-size-sm); }
 .rec-list li { padding: var(--space-1) 0; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
@@ -381,22 +396,12 @@ export default {
 .lv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .lv-item__name { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
 .lv-item__sub { margin-top: 2px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.lv-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 
 .lv-main { display: flex; flex-direction: column; min-height: 320px; }
 .lv-main__body { flex: 1; padding: var(--space-4); min-width: 0; }
-.lv-main__state { margin: var(--space-4); }
 .lv-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .lv-head__name { font-size: var(--font-size-md, 15px); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
 .lv-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); background: var(--bg-card, #fff); }
 
-.fm-mask { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.fm-dialog { width: 440px; max-width: calc(100vw - 32px); background: var(--bg-card, #fff); border-radius: 12px; box-shadow: var(--shadow-lg, 0 12px 40px rgba(0,0,0,0.18)); overflow: hidden; }
-.fm-title { padding: 14px 18px; font-weight: 600; font-size: 15px; border-bottom: 1px solid var(--border-light); }
-.fm-body { padding: 16px 18px; display: flex; flex-direction: column; gap: var(--space-3); }
-.fm-item { display: flex; flex-direction: column; gap: 6px; }
-.fm-label { font-size: var(--font-size-sm); color: var(--text-secondary); }
-.fm-label i { color: var(--danger-600); font-style: normal; margin-left: 2px; }
-.fm-err { color: var(--danger-600); font-size: var(--font-size-sm); margin: 0; }
-.fm-foot { padding: 12px 18px; display: flex; justify-content: flex-end; gap: var(--space-2); border-top: 1px solid var(--border-light); }
+.fm-body { display: flex; flex-direction: column; }
 </style>

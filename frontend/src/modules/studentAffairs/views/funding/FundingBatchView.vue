@@ -6,37 +6,19 @@
     data-scope-name="资助范围（学工处全校）"
     watermark-purpose="资助批次管理"
   >
+    <template #actions>
+      <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" :disabled="!projects.length" @click="openForm">
+        建批次
+      </AppPermissionButton>
+    </template>
+
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载资助批次..." @retry="load"
                     @back="$router.push('/admin/student-affairs/funding')">
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
-        <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" :disabled="!projects.length" @click="openForm">
-          建批次
-        </AppPermissionButton>
+      <div class="sa-grid sa-grid--metrics">
+        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
 
       <p v-if="!projects.length" class="fb-hint">尚无资助项目，请先到「资助项目」建项目后再建批次。</p>
-
-      <AppSectionCard v-if="formVisible" title="新建资助批次">
-        <div class="fb-grid">
-          <label class="fb-field"><span>所属项目 *</span>
-            <AppSelect v-model="form.projectId" :options="projectOptions" placeholder="（选择项目）" /></label>
-          <label class="fb-field"><span>学年 *</span>
-            <AppTextInput v-model="form.schoolYear" placeholder="如：2025-2026" /></label>
-          <label class="fb-field"><span>名额</span>
-            <AppNumberInput v-model="form.quota" :min="0" placeholder="如：50" /></label>
-          <label class="fb-field"><span>公示天数</span>
-            <AppNumberInput v-model="form.publicityDays" :min="0" placeholder="默认 5，快测可填 0" /></label>
-          <label class="fb-field bf-check"><input v-model="form.publish" type="checkbox" /> <span>立即发布（开放申请）</span></label>
-        </div>
-        <p v-if="form.error" class="fb-error">{{ form.error }}</p>
-        <div class="fb-actions">
-          <button type="button" class="fb-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="save">保存</AppPermissionButton>
-        </div>
-      </AppSectionCard>
 
       <AppSectionCard title="批次列表">
         <table class="sa-table">
@@ -47,51 +29,91 @@
               <td>{{ b.schoolYear || '—' }}</td>
               <td>{{ b.quota != null ? b.quota : '—' }}</td>
               <td>{{ b.publicityDays != null ? b.publicityDays + ' 天' : '—' }}</td>
-              <td class="fb-window">{{ windowText(b) }}</td>
+              <td class="fb-window">
+                <template v-if="b.applyStart || b.applyEnd">
+                  <AppDateDisplay :value="b.applyStart" mode="date" empty-text="…" /> 至 <AppDateDisplay :value="b.applyEnd" mode="date" empty-text="…" />
+                </template>
+                <span v-else>—</span>
+              </td>
               <td><StatusTag :type="statusType(b.status)" :label="statusLabel(b.status)" dot /></td>
             </tr>
             <tr v-if="!batches.length"><td colspan="6" class="sa-empty">暂无资助批次</td></tr>
           </tbody>
         </table>
+        <AppPagination v-if="total > pageSize || page > 1" class="fb-pager" v-model:page="page" v-model:pageSize="pageSize"
+                       :total="total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <!-- 新建资助批次 -->
+    <AppDrawer v-model:visible="drawer.visible" title="新建资助批次">
+      <div class="sa-form">
+        <AppFormItem label="所属项目" required>
+          <AppSelect v-model="drawer.form.projectId" :options="projectOptions" placeholder="（选择项目）" :disabled="saving" />
+        </AppFormItem>
+        <AppFormItem label="学年" required>
+          <AppTextInput v-model="drawer.form.schoolYear" placeholder="如：2025-2026" :disabled="saving" />
+        </AppFormItem>
+        <div class="fb-grid2">
+          <AppFormItem label="名额">
+            <AppNumberInput v-model="drawer.form.quota" :min="0" placeholder="如：50" :disabled="saving" />
+          </AppFormItem>
+          <AppFormItem label="公示天数">
+            <AppNumberInput v-model="drawer.form.publicityDays" :min="0" placeholder="默认 5，快测可填 0" :disabled="saving" />
+          </AppFormItem>
+        </div>
+        <AppFormItem label="申请窗口" hint="选填，不填表示不限申请起止日期">
+          <AppDateRangePicker v-model="drawer.form.applyWindow" mode="form" empty-label="不限" :show-shortcuts="false" :disabled="saving" />
+        </AppFormItem>
+        <label class="fb-check"><input v-model="drawer.form.publish" type="checkbox" :disabled="saving" /> <span>立即发布（开放申请）</span></label>
+        <AppInlineAlert v-if="drawer.errorMessage" type="danger" :description="drawer.errorMessage" />
+      </div>
+      <template #footer>
+        <button type="button" class="fb-btn" :disabled="saving" @click="drawer.visible = false">取消</button>
+        <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="save">保存</AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
-import {
-  AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
-  AppSelect, AppStatusTag, AppTextInput
-} from '@/components/common'
+import { AppDateDisplay, AppDateRangePicker, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+        AppNumberInput, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
+        AppStatusTag, AppTextInput } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', REVIEWING: '评审中', PUBLICITY: '公示中', ANNOUNCED: '已公布', CLOSED: '已截止', ARCHIVED: '已归档' }
 
+function freshForm() {
+  return { projectId: '', schoolYear: '', quota: null, publicityDays: 5, publish: true, applyWindow: { start: '', end: '' } }
+}
+
 export default {
   name: 'FundingBatchView',
-  components: {
-    AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
-    AppSelect, StatusTag: AppStatusTag, AppTextInput
-  },
+  components: { AppDateDisplay, AppDateRangePicker, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert,
+               AppMetricCard, AppNumberInput, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+               AppSelect, AppTextInput, StatusTag: AppStatusTag },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', batches: [], projects: [],
-      formVisible: false, form: { projectId: '', schoolYear: '', quota: null, publicityDays: 5, publish: true, error: '' }
+      page: 1, pageSize: 20, total: 0,
+      drawer: { visible: false, form: freshForm(), errorMessage: '' }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
-    projectOptions() {
-      return this.projects.map((p) => ({ value: p.projectId, label: `${p.projectName}（${this.typeLabel(p.projectType)}）` }))
-    },
     metricCards() {
       const open = this.batches.filter((b) => b.status === 'OPEN').length
       return [
-        { key: 'all', label: '批次总数', value: this.batches.length, accent: 'primary' },
-        { key: 'open', label: '开放申请', value: open, accent: 'success' },
+        { key: 'all', label: '批次总数', value: this.total, accent: 'primary' },
+        { key: 'open', label: '本页开放申请', value: open, accent: 'success' },
         { key: 'proj', label: '在用项目', value: this.projects.length, accent: 'warning' }
       ]
+    },
+    projectOptions() {
+      return this.projects.map((p) => ({ label: `${p.projectName}（${this.typeLabel(p.projectType)}）`, value: p.projectId }))
     }
   },
   mounted() { this.load() },
@@ -99,11 +121,12 @@ export default {
     async load() {
       this.loading = true; this.errorMessage = ''
       const [bs, ps] = await Promise.all([
-        studentAffairsApi.getFundingBatches({ pageSize: 200 }),
+        studentAffairsApi.getFundingBatches({ page: this.page, pageSize: this.pageSize }),
         studentAffairsApi.getFundingProjects({ pageSize: 200 })
       ])
       if (bs.code === 0 && bs.data) {
         this.batches = bs.data.items || []
+        this.total = bs.data.total != null ? bs.data.total : this.batches.length
         this.projects = (ps.code === 0 && ps.data) ? (ps.data.items || []) : []
       } else {
         this.errorMessage = bs.message || '资助批次加载失败'
@@ -111,24 +134,28 @@ export default {
       this.loading = false
     },
     openForm() {
-      this.form = { projectId: this.projects[0] ? this.projects[0].projectId : '', schoolYear: '', quota: null, publicityDays: 5, publish: true, error: '' }
-      this.formVisible = true
+      this.drawer.form = freshForm()
+      if (this.projects[0]) this.drawer.form.projectId = this.projects[0].projectId
+      this.drawer.errorMessage = ''
+      this.drawer.visible = true
     },
     async save() {
-      const m = this.form
-      const schoolYear = (m.schoolYear || '').trim()
-      if (!m.projectId || !schoolYear) { m.error = '所属项目与学年必填'; return }
-      m.error = ''
+      const f = this.drawer.form
+      if (!f.projectId || !f.schoolYear) { this.drawer.errorMessage = '所属项目与学年必填'; return }
+      this.drawer.errorMessage = ''
       this.saving = true
-      const body = { projectId: m.projectId, schoolYear, publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish }
-      if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
+      const body = { projectId: f.projectId, schoolYear: f.schoolYear, publicityDays: Number(f.publicityDays) || 0, publish: !!f.publish }
+      if (f.quota != null && f.quota !== '') body.quota = Number(f.quota)
+      if (f.applyWindow.start) body.applyStart = f.applyWindow.start
+      if (f.applyWindow.end) body.applyEnd = f.applyWindow.end
       const res = await studentAffairsApi.createFundingBatch(body)
       if (res.code === 0) {
         toast.success('批次已保存')
-        this.formVisible = false
+        this.drawer.visible = false
+        this.page = 1
         await this.load()
       } else {
-        m.error = res.message || '保存失败'
+        this.drawer.errorMessage = res.message || '保存失败'
       }
       this.saving = false
     },
@@ -140,31 +167,25 @@ export default {
       if (['REVIEWING', 'PUBLICITY'].includes(s)) return 'processing'
       if (['CLOSED', 'ARCHIVED'].includes(s)) return 'default'
       return 'warning'
-    },
-    windowText(b) {
-      const a = (b.applyStart || '').slice(0, 10); const z = (b.applyEnd || '').slice(0, 10)
-      if (!a && !z) return '—'
-      return `${a || '…'} 至 ${z || '…'}`
     }
   }
 }
 </script>
 
 <style scoped>
-.sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .fb-hint { color: var(--text-tertiary); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
-.fb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-3); }
-.fb-field { display: flex; flex-direction: column; gap: 6px; font-size: var(--font-size-sm); }
-.bf-check { flex-direction: row; align-items: center; gap: var(--space-2); }
-.fb-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 8px 12px; }
-.fb-error { color: var(--danger-500, #dc2626); font-size: var(--font-size-sm); margin: 4px 0; }
-.fb-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
-.fb-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 8px 18px; cursor: pointer; }
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .fb-type { color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .fb-window { color: var(--text-secondary); font-size: var(--font-size-sm); }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .fb-grid { grid-template-columns: 1fr; } }
+.fb-pager { margin-top: var(--space-4); }
+.sa-form { display: flex; flex-direction: column; gap: var(--space-1); }
+.fb-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.fb-check { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-base); color: var(--text-secondary); cursor: pointer; margin: var(--space-1) 0 var(--space-3); }
+.fb-btn { height: 34px; padding: 0 var(--space-4); border-radius: var(--radius-base); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-base); cursor: pointer; }
+.fb-btn:hover { border-color: var(--border-dark); }
+.fb-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .fb-grid2 { grid-template-columns: 1fr; } }
 </style>

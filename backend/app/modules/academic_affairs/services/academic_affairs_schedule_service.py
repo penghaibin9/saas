@@ -48,6 +48,25 @@ _FORMULA_PREFIXES = ("=", "+", "-", "@")
 _REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
 
 
+def _resolve_classroom_id(db, text):
+    """人工/导入排课只填 classroom_text（纯文本），若不回填 classroom_id，自动排课引擎的教室占用
+    索引（按 classroom_id 建索引）就看不到这些人工课，会把已占用的教室当空闲再排给别的班——
+    这里按教室字典的显示名（room_name，或 building_name+room_code）做一次精确匹配，能匹配上就
+    回填 classroom_id，让人工课也纳入自动引擎的冲突检测范围；匹配不上则保持 None（无法感知冲突，
+    与此前行为一致，不是新增风险）。"""
+    text = (text or "").strip()
+    if not text:
+        return None
+    from app.models import AaClassroom
+    rows = db.scalars(select(AaClassroom).where(
+        AaClassroom.tenant_id == _tid(), AaClassroom.is_deleted.is_(False))).all()
+    for r in rows:
+        label = (r.room_name or "").strip() or f"{r.building_name}{r.room_code}"
+        if label == text:
+            return r.id
+    return None
+
+
 def sanitize_import_rows(rows: list[dict]) -> list[dict]:
     """Excel 导入防公式注入：文本字段以 =/+/-/@ 开头时加撇号前缀转义为纯文本；补齐单双周/周次默认值。"""
     out = []
@@ -187,7 +206,8 @@ def add_item(batch_id, user, body) -> dict:
                            teacher_key=teacher_key, teacher_name=teacher_name,
                            weekday=it["weekday"], slot_no=it["slot_no"], start_week=it["start_week"],
                            end_week=it["end_week"], week_parity=it["parity"],
-                           classroom_text=it["classroom"], status="EFFECTIVE")
+                           classroom_text=it["classroom"], classroom_id=_resolve_classroom_id(db, it["classroom"]),
+                           status="EFFECTIVE")
         db.add(x)
         db.flush()
         _audit(db, "AA_SCHEDULE", x.id, "ADD_ITEM", f"周{it['weekday']}第{it['slot_no']}节")
@@ -236,7 +256,8 @@ def import_items(batch_id, user, items) -> dict:
                                   teacher_key=teacher_key,
                                   teacher_name=teacher_name, weekday=weekday, slot_no=slot_no,
                                   start_week=sw, end_week=ew, week_parity=parity,
-                                  classroom_text=classroom, status="EFFECTIVE"))
+                                  classroom_text=classroom, classroom_id=_resolve_classroom_id(db, classroom),
+                                  status="EFFECTIVE"))
             db.flush()  # 立即可见，供同批导入后续行的冲突检测
             ok += 1
         _audit(db, "AA_SCHEDULE_BATCH", b.id, "IMPORT", f"ok={ok},conflict={len(conflicts)}")
@@ -412,6 +433,7 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
         if conflict:
             raise AppException("DATA_CONFLICT", f"排课冲突（{conflict['type']}）：{conflict['detail']}")
         it.weekday, it.slot_no, it.classroom_text, it.week_parity = weekday, slot_no, classroom, week_parity
+        it.classroom_id = _resolve_classroom_id(db, classroom)
         it.objection_status, it.objection_reason = None, None
         # 定点改排属人工决策：自动排的课被人工改排后按人工口径保护（与 move_item 同款，否则下次
         # 清空重排会把教务员刚改好的结果当成自动排课残留一并删除）
@@ -761,3 +783,33 @@ def list_schedule_adjustments(user, biz_type=None, action=None, page=1, page_siz
                   "action": a.action, "operator": a.operator or "", "roleName": a.role_name or "",
                   "detail": a.detail or "", "occurredAt": _iso(a.occurred_at)} for a in rows]
         return items, total
+def move_item(item_id, user, body) -> dict:
+    """拖拽调格（对标商业教务图形化排课）：改星期/节次，走同一三重冲突检测器，冲突 409 原位不动。
+    仅 DRAFT/PRE_PUBLISHED 批次可拖；已发布课表走调停课流程。"""
+    with session() as db:
+        from app.models import AaScheduleBatch, AaScheduleItem
+        it = db.get(AaScheduleItem, int(item_id))
+        if not it or it.is_deleted or it.tenant_id != _tid() or it.status != "EFFECTIVE":
+            raise not_found("课表项不存在")
+        b = db.get(AaScheduleBatch, int(it.batch_id))
+        if not b or b.status not in ("DRAFT", "PRE_PUBLISHED"):
+            raise AppException("DATA_CONFLICT", "已发布课表不可拖拽调整（请走调停课）", http_status=409)
+        weekday, slot_no = int(body.weekday), int(body.slotNo)
+        if weekday not in WEEKDAYS:
+            raise AppException("VALIDATION_ERROR", "星期非法")
+        if weekday == it.weekday and slot_no == it.slot_no:
+            return {"itemId": str(it.id), "weekday": it.weekday, "slotNo": it.slot_no, "moved": False}
+        conflict = _detect_conflict(db, it.batch_id, weekday, slot_no, it.start_week, it.end_week,
+                                    it.week_parity, it.teacher_key, it.class_id, it.classroom_text,
+                                    exclude_id=it.id)
+        if conflict:
+            raise AppException("DATA_CONFLICT", f"目标时段冲突：{conflict['detail']}", http_status=409)
+        old = f"周{it.weekday}第{it.slot_no}节"
+        it.weekday, it.slot_no = weekday, slot_no
+        # 拖拽属人工决策：自动排的课被人工挪动后按人工口径保护（重排不再清它）
+        if getattr(it, "source", None) == "AUTO":
+            it.source = "MANUAL"
+        _audit(db, "AA_SCHEDULE_ITEM", it.id, "ITEM_MOVE",
+               f"{it.course_name} {old}→周{weekday}第{slot_no}节")
+        db.commit()
+        return {"itemId": str(it.id), "weekday": weekday, "slotNo": slot_no, "moved": True}

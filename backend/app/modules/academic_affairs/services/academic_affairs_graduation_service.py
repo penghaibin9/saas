@@ -551,3 +551,133 @@ def rosters(batch_id, user) -> dict:
         return {"graduated": buckets["GRADUATED"], "completed": buckets["COMPLETED"],
                 "delayed": buckets["DELAYED"],
                 "counts": {k: len(v) for k, v in buckets.items()}}
+
+
+# ══════════ 毕业/结业证书管理（对标商业教务 7-7：编号规则+批量生成+台账+作废）══════════
+
+def _cert_dto(c):
+    return {"certificateId": str(c.id), "studentId": str(c.student_id), "studentNo": c.student_no,
+            "studentName": c.student_name, "certType": c.cert_type, "certNo": c.cert_no,
+            "eRegNo": c.e_reg_no, "issueYear": c.issue_year, "issueDate": c.issue_date,
+            "majorName": c.major_name, "voidReason": c.void_reason, "status": c.status,
+            "auditBatchId": str(c.audit_batch_id) if c.audit_batch_id else None}
+
+
+def generate_certificates(batch_id, user, body) -> dict:
+    """按审核批次终审结论批量生成证书编号（GRADUATED→毕业证 / COMPLETED→结业证）。
+
+    编号 = prefix(学校代码) + year + 5位流水（租户内按 prefix+year 续号，不回收空号）。
+    电子注册号 = 编号前加 eRegPrefix（未传则不生成）。幂等：同学生同类型已有未作废证书跳过。
+    """
+    _require_review_role(user)
+    from app.models import (AaGraduationAuditBatch, AaGraduationAuditResult,
+                            AaGraduationCertificate, Major, StudentProfile)
+    prefix = (getattr(body, "prefix", None) or "").strip()
+    year = (getattr(body, "year", None) or "").strip()
+    if not prefix or not year or not year.isdigit():
+        raise AppException("VALIDATION_ERROR", "编号前缀(学校代码)与年份必填")
+    ereg_prefix = (getattr(body, "eRegPrefix", None) or "").strip()
+    issue_date = (getattr(body, "issueDate", None) or "").strip() or None
+    with session() as db:
+        b = db.get(AaGraduationAuditBatch, int(batch_id))
+        if not b or b.is_deleted or b.tenant_id != _tid():
+            raise not_found("毕业审核批次不存在")
+        results = db.scalars(select(AaGraduationAuditResult).where(
+            AaGraduationAuditResult.tenant_id == _tid(),
+            AaGraduationAuditResult.batch_id == b.id,
+            AaGraduationAuditResult.conclusion.in_(("GRADUATED", "COMPLETED")),
+            AaGraduationAuditResult.is_deleted.is_(False))).all()
+        if not results:
+            raise AppException("DATA_CONFLICT", "该批次尚无毕业/结业终审结论，无可生成对象",
+                               http_status=409)
+        # 续号基数：同前缀同年份已发号数（含作废——编号不回收，防重号）
+        seq = db.query(AaGraduationCertificate).filter(
+            AaGraduationCertificate.tenant_id == _tid(),
+            AaGraduationCertificate.cert_no.like(f"{prefix}{year}%")).count()
+        created, skipped = 0, 0
+        for r in results:
+            cert_type = "GRADUATION" if r.conclusion == "GRADUATED" else "COMPLETION"
+            dup = db.query(AaGraduationCertificate).filter(
+                AaGraduationCertificate.tenant_id == _tid(),
+                AaGraduationCertificate.student_id == r.student_id,
+                AaGraduationCertificate.cert_type == cert_type,
+                AaGraduationCertificate.status != "VOIDED",
+                AaGraduationCertificate.is_deleted.is_(False)).first()
+            if dup:
+                skipped += 1
+                continue
+            seq += 1
+            cert_no = f"{prefix}{year}{seq:05d}"
+            p = db.get(StudentProfile, int(r.student_id))
+            major = db.get(Major, int(p.major_id)) if (p and p.major_id) else None
+            db.add(AaGraduationCertificate(
+                tenant_id=_tid(), student_id=r.student_id,
+                student_no=(p.student_no if p else None), student_name=(p.real_name if p else None),
+                audit_batch_id=b.id, cert_type=cert_type, cert_no=cert_no,
+                e_reg_no=(f"{ereg_prefix}{cert_no}" if ereg_prefix else None),
+                issue_year=year, issue_date=issue_date,
+                major_name=(major.major_name if major else None), status="GENERATED"))
+            created += 1
+        _audit(db, b.id, "CERT_GENERATE", f"生成{created}张(跳过已有{skipped}) 前缀{prefix}{year}")
+        db.commit()
+        return {"batchId": str(b.id), "created": created, "skipped": skipped,
+                "nextSeq": seq}
+
+
+def list_certificates(user, status=None, cert_type=None, batch_id=None, keyword=None,
+                      page=1, page_size=50):
+    # 证书台账收敛到审核角色(ACADEMIC_ADMIN/SCHOOL_ADMIN),与生成/发放/作废同守卫,
+    # 防越范围读全校学号/证书编号/电子注册号(修数据范围红线)。
+    _require_review_role(user)
+    from app.models import AaGraduationCertificate
+    with session() as db:
+        q = db.query(AaGraduationCertificate).filter(
+            AaGraduationCertificate.tenant_id == _tid(),
+            AaGraduationCertificate.is_deleted.is_(False))
+        if status:
+            q = q.filter(AaGraduationCertificate.status == status)
+        if cert_type:
+            q = q.filter(AaGraduationCertificate.cert_type == cert_type)
+        if batch_id:
+            q = q.filter(AaGraduationCertificate.audit_batch_id == int(batch_id))
+        if keyword:
+            kw = f"%{keyword.strip()}%"
+            q = q.filter((AaGraduationCertificate.student_no.like(kw))
+                         | (AaGraduationCertificate.student_name.like(kw))
+                         | (AaGraduationCertificate.cert_no.like(kw)))
+        rows = q.order_by(AaGraduationCertificate.id.desc()).all()
+        return ([_cert_dto(c) for c in rows[(page - 1) * page_size: page * page_size]], len(rows))
+
+
+def issue_certificate(cert_id, user) -> dict:
+    """发放签收：GENERATED→ISSUED。"""
+    _require_review_role(user)
+    from app.models import AaGraduationCertificate
+    with session() as db:
+        c = db.get(AaGraduationCertificate, int(cert_id))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("证书不存在")
+        if c.status != "GENERATED":
+            raise AppException("DATA_CONFLICT", "仅已生成未发放的证书可登记发放", http_status=409)
+        c.status = "ISSUED"
+        _audit(db, c.id, "CERT_ISSUE", f"{c.student_no} {c.cert_no}")
+        db.commit()
+        return _cert_dto(c)
+
+
+def void_certificate(cert_id, user, reason="") -> dict:
+    """作废（补发前置）：原因≥5字留痕；编号不回收。"""
+    _require_review_role(user)
+    from app.models import AaGraduationCertificate
+    if not reason or len(reason.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
+    with session() as db:
+        c = db.get(AaGraduationCertificate, int(cert_id))
+        if not c or c.is_deleted or c.tenant_id != _tid():
+            raise not_found("证书不存在")
+        if c.status == "VOIDED":
+            raise AppException("DATA_CONFLICT", "证书已作废", http_status=409)
+        c.status, c.void_reason = "VOIDED", reason.strip()
+        _audit(db, c.id, "CERT_VOID", f"{c.cert_no}：{reason.strip()[:100]}")
+        db.commit()
+        return _cert_dto(c)

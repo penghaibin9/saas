@@ -17,7 +17,28 @@
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无已入池课题" description="请先在「题目库」申报并审核通过，或导入 Excel" />
+      <!-- 空态分两种：筛选无果 ≠ 题目库还没入池。后者是跨页依赖，老师最容易卡在这里，
+           所以直接给去题目库的按钮，而不是只写一句「请先在题目库申报」。 -->
+      <EmptyState
+        v-else-if="!rows.length && filtered"
+        title="没有符合条件的课题"
+        description="当前筛选条件下没有课题。可以放宽条件，或清空筛选看全部。"
+      >
+        <template #actions>
+          <button class="mp-btn" @click="reset">清空筛选</button>
+        </template>
+      </EmptyState>
+      <EmptyState
+        v-else-if="!rows.length"
+        title="还没有课题入池"
+        description="学生能选的题，都来自题目库。老师申报的题目要先经管理员审核通过才会入池，入池后才会出现在这里、学生才选得到。"
+      >
+        <template #actions>
+          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/topic-lib?panel=pending')">去审核待审题目</button>
+          <button class="mp-btn" @click="$router.push('/admin/graduation/topic-lib?panel=list')">去题目库</button>
+          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-topic-review')">怎么审核题目？</button>
+        </template>
+      </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
         <template #cell-title="{ row }">
           <div class="mp-cell-main" style="font-size: var(--font-size-sm)">{{ row.title }}</div>
@@ -83,6 +104,8 @@
       :submitting="submitting"
       @confirm="onConfirm"
     />
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-topics" />
   </ModulePageShell>
 </template>
 
@@ -93,7 +116,7 @@ import {
   StatusTag, LoadingState, ErrorState, EmptyState
 } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton } from '@/components/common'
+import { AppExportButton, AppPageGuide } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { GD_TOPIC_STATUS } from '@/modules/graduation/constants/graduation-topic.constants'
@@ -105,7 +128,7 @@ import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'TopicManageView',
-  components: { GraduationBatchStrip,
+  components: { AppPageGuide, GraduationBatchStrip,
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
     LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton
   },
@@ -120,6 +143,11 @@ export default {
     }
   },
   computed: {
+    /** 是否处于筛选态：用于区分「筛选没结果」和「题目库真的还没入池」两种空态 */
+    filtered() {
+      const f = this.filters
+      return !!(f.keyword || f.status || f.dateStart || f.dateEnd)
+    },
     columns() {
       return [
         { key: 'title', title: '课题' },

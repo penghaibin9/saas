@@ -557,6 +557,9 @@ export const academicAffairsApi = {
   addScheduleItem(batchId, body) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/items`, { method: 'POST', body }))
   },
+  moveScheduleItem(itemId, weekday, slotNo) {
+    return call(() => request(`${BASE}/schedule-items/${itemId}/move`, { method: 'PUT', body: { weekday, slotNo } }))
+  },
   importSchedule(batchId, items) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/import`, { method: 'POST', body: { items } }))
   },
@@ -646,6 +649,15 @@ export const academicAffairsApi = {
   },
 
   /* ── 成绩（R1 九态：录入→提交→学院审→教务发布→[更正两级审]→归档） ── */
+  // 毕业证书管理（编号规则+批量生成+台账+发放+作废）
+  generateCertificates(batchId, body) { return call(() => request(`${BASE}/graduation-batches/${batchId}/certificates/generate`, { method: 'POST', body })) },
+  listCertificates(params = {}) { return callList(`${BASE}/graduation-certificates`, params) },
+  issueCertificate(cid) { return call(() => request(`${BASE}/graduation-certificates/${cid}/issue`, { method: 'POST' })) },
+  voidCertificate(cid, reason) { return call(() => request(`${BASE}/graduation-certificates/${cid}/void`, { method: 'POST', body: { reason } })) },
+  // 成绩认定/课程替代（转专业/转学：原修课程替代现计划课程）
+  listRecognitions(params = {}) { return callList(`${BASE}/grade-recognitions`, params) },
+  submitRecognition(body) { return call(() => request(`${BASE}/grade-recognitions`, { method: 'POST', body })) },
+  reviewRecognition(rid, action, reason = '') { return call(() => request(`${BASE}/grade-recognitions/${rid}/review`, { method: 'POST', body: { action, reason } })) },
   createGradeTask(body) {
     return call(() => request(`${BASE}/grade-tasks`, { method: 'POST', body }))
   },
@@ -740,8 +752,47 @@ export const academicAffairsApi = {
   getFailList(params = {}) {
     return callList(`${BASE}/grade-views/fail-list`, params)
   },
-  getGradeAnalysis(term) {
-    return call(() => request(`${BASE}/grade-views/analysis`, { params: term ? { term } : {} }))
+  getGradeAnalysis(term, dimension) {
+    const params = {}
+    if (term) params.term = term
+    if (dimension) params.dimension = dimension
+    return call(() => request(`${BASE}/grade-views/analysis`, { params }))
+  },
+  /** 成绩分析统计表导出 xlsx（按课程/班级）：返回 Blob；purpose 必填（≥5 字）。 */
+  async exportGradeAnalysis(body = {}) {
+    try {
+      const blob = await requestBlob(`${BASE}/grade-views/analysis/export`, { method: 'POST', body })
+      return ok(blob)
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+
+  /* ── 课堂考勤（PC 只读统计/查询；教师逐生录入在移动端） ── */
+  getAttendanceStats(params = {}) {
+    return call(() => request(`${BASE}/attendance/stats`, { params }))
+  },
+  getAttendanceSessions(params = {}) {
+    return callList(`${BASE}/attendance/sessions`, params)
+  },
+  getAttendanceSession(sessionId) {
+    return call(() => request(`${BASE}/attendance/sessions/${sessionId}`))
+  },
+
+  /* ── 成绩复查（学生发起在小程序；教务处复审在 PC：维持/调整/不予受理） ── */
+  getGradeRechecks(params = {}) {
+    return callList(`${BASE}/grade-rechecks`, params)
+  },
+  reviewGradeRecheck(recheckId, body) {
+    return call(() => request(`${BASE}/grade-rechecks/${recheckId}/review`, { method: 'POST', body }))
+  },
+
+  /* ── 教师工作量申报（教师端申报在小程序；教务处审核在 PC） ── */
+  getWorkloadDeclarations(params = {}) {
+    return callList(`${BASE}/workload-declarations`, params)
+  },
+  reviewWorkloadDeclaration(declId, body) {
+    return call(() => request(`${BASE}/workload-declarations/${declId}/review`, { method: 'POST', body }))
   },
   getExceptionList(params = {}) {
     return callList(`${BASE}/grade-views/exception-list`, params)
@@ -981,7 +1032,44 @@ export const academicAffairsSelectionApi = {
       const blob = await requestBlob(`${BASE}/selection/archive/${id}/export`, { method: 'POST', body: { purpose } })
       return ok(blob)
     } catch (e) { return toErr(e) }
-  }
+  },
+  // ── 选课轮次与抽签（多轮次：预选抽签→正选先到先得→补退选；无轮次批次=全程先到先得）──
+  listRounds(batchId) { return call(() => request(`${BASE}/selection/batches/${batchId}/rounds`)) },
+  createRound(batchId, body) { return call(() => request(`${BASE}/selection/batches/${batchId}/rounds`, { method: 'POST', body })) },
+  openRound(roundId) { return call(() => request(`${BASE}/selection/rounds/${roundId}/open`, { method: 'POST' })) },
+  closeRound(roundId) { return call(() => request(`${BASE}/selection/rounds/${roundId}/close`, { method: 'POST' })) },
+  drawRound(roundId) { return call(() => request(`${BASE}/selection/rounds/${roundId}/draw`, { method: 'POST' })) }
+}
+
+/* ═══════════ 等级考务（/academic-affairs/level-exams/*） ═══════════ */
+export const academicAffairsLevelExamApi = {
+  listExams(params = {}) { return callList(`${BASE}/level-exams`, params) },
+  createExam(body) { return call(() => request(`${BASE}/level-exams`, { method: 'POST', body })) },
+  transition(eid, action) { return call(() => request(`${BASE}/level-exams/${eid}/transition`, { method: 'POST', params: { action } })) },
+  listRegs(eid, params = {}) { return callList(`${BASE}/level-exams/${eid}/registrations`, params) },
+  confirmFee(rid) { return call(() => request(`${BASE}/level-exam-regs/${rid}/confirm-fee`, { method: 'POST' })) },
+  enterResult(rid, body) { return call(() => request(`${BASE}/level-exam-regs/${rid}/result`, { method: 'POST', body })) },
+  // 学生端
+  register(eid) { return call(() => request(`${BASE}/level-exams/${eid}/register`, { method: 'POST' })) },
+  cancel(eid) { return call(() => request(`${BASE}/level-exams/${eid}/cancel`, { method: 'POST' })) },
+  my() { return call(() => request(`${BASE}/level-exams/my`)) }
+}
+
+/* ═══════════ 专业分流（/academic-affairs/major-split/*；大类分流：志愿→绩点分配→调剂→写学籍） ═══════════ */
+export const academicAffairsMajorSplitApi = {
+  listBatches(params = {}) { return callList(`${BASE}/major-split/batches`, params) },
+  createBatch(body) { return call(() => request(`${BASE}/major-split/batches`, { method: 'POST', body })) },
+  addOption(bid, body) { return call(() => request(`${BASE}/major-split/batches/${bid}/options`, { method: 'POST', body })) },
+  listOptions(bid) { return call(() => request(`${BASE}/major-split/batches/${bid}/options`)) },
+  open(bid) { return call(() => request(`${BASE}/major-split/batches/${bid}/open`, { method: 'POST' })) },
+  close(bid) { return call(() => request(`${BASE}/major-split/batches/${bid}/close`, { method: 'POST' })) },
+  allocate(bid, dryRun = false) { return call(() => request(`${BASE}/major-split/batches/${bid}/allocate`, { method: 'POST', params: { dryRun } })) },
+  listVolunteers(bid, params = {}) { return callList(`${BASE}/major-split/batches/${bid}/volunteers`, params) },
+  reassign(vid, majorId, reason) { return call(() => request(`${BASE}/major-split/volunteers/${vid}/reassign`, { method: 'POST', body: { majorId, reason } })) },
+  confirm(bid) { return call(() => request(`${BASE}/major-split/batches/${bid}/confirm`, { method: 'POST' })) },
+  // 学生端
+  submitVolunteer(bid, choices) { return call(() => request(`${BASE}/major-split/batches/${bid}/volunteer`, { method: 'POST', body: { choices } })) },
+  myVolunteer(batchId) { return call(() => request(`${BASE}/major-split/my`, { params: batchId ? { batchId } : {} })) }
 }
 
 /* ═══════════ 考务管理（SM-10 · /academic-affairs/exam/*、/deferred-exams*） ═══════════ */
@@ -1007,6 +1095,9 @@ export const academicAffairsExamApi = {
   listInvigilators(roomId) { return call(() => request(`${BASE}/exam/rooms/${roomId}/invigilators`)) },
   addPatrol(bid, body) { return call(() => request(`${BASE}/exam/batches/${bid}/patrols`, { method: 'POST', body })) },
   listPatrols(bid) { return call(() => request(`${BASE}/exam/batches/${bid}/patrols`)) },
+  // 自动排考引擎：切考场→铺座位→配监考（dryRun 只算不落）；清除仅删 AUTO 考场，人工编排保留
+  autoArrange(bid, dryRun = false) { return call(() => request(`${BASE}/exam/batches/${bid}/auto-arrange`, { method: 'POST', params: { dryRun } })) },
+  clearAutoArrange(bid) { return call(() => request(`${BASE}/exam/batches/${bid}/auto-arrange`, { method: 'DELETE' })) },
   // 异常 / 统计
   recordIncident(body) { return call(() => request(`${BASE}/exam/incidents`, { method: 'POST', body })) },
   listIncidents(params = {}) { return callList(`${BASE}/exam/incidents`, params) },
@@ -1044,6 +1135,10 @@ export const academicAffairsMakeupApi = {
     } catch (e) { return toErr(e) }
   },
   printData(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/print-data`)) },
+  // 毕业清考（复用补考审核链；名单自动圈定，回写 source=CLEARANCE）
+  createClearanceBatch(body) { return call(() => request(`${BASE}/makeup/clearance/batches`, { method: 'POST', body })) },
+  clearanceScan(bid, dryRun = false) { return call(() => request(`${BASE}/makeup/clearance/batches/${bid}/scan`, { method: 'POST', params: { dryRun } })) },
+  clearanceRecords(bid, params = {}) { return callList(`${BASE}/makeup/clearance/batches/${bid}/records`, params) },
   // 重修
   retakeApply(body) { return call(() => request(`${BASE}/retake/apply`, { method: 'POST', body })) },
   retakeMy(params = {}) { return call(() => request(`${BASE}/retake/my`, { params })) },
@@ -1176,7 +1271,12 @@ export const academicAffairsSchedulingApi = {
   myAvailability(params = {}) { return call(() => request(`${BASE}/scheduling/teacher-availability/my`, { params })) },
   listAvailability(params = {}) { return call(() => request(`${BASE}/scheduling/teacher-availability`, { params })) },
   reviewAvailability(id, action, reason = '') { return call(() => request(`${BASE}/scheduling/teacher-availability/${id}/review`, { method: 'POST', body: { action, reason } })) },
-  conflictReport(batchId) { return call(() => request(`${BASE}/scheduling/batches/${batchId}/conflict-report`)) }
+  conflictReport(batchId) { return call(() => request(`${BASE}/scheduling/batches/${batchId}/conflict-report`)) },
+  // 自动排课引擎：参数说明书 / 漏排分析（只读试排）/ 自动编排（dryRun 只算不落）/ 清除自动排课结果
+  ruleCatalog() { return call(() => request(`${BASE}/scheduling/rule-catalog`)) },
+  missReport(batchId) { return call(() => request(`${BASE}/scheduling/batches/${batchId}/miss-report`)) },
+  autoSchedule(batchId, dryRun = false) { return call(() => request(`${BASE}/scheduling/batches/${batchId}/auto`, { method: 'POST', params: { dryRun } })) },
+  clearAuto(batchId) { return call(() => request(`${BASE}/scheduling/batches/${batchId}/auto`, { method: 'DELETE' })) }
 }
 
 /* ═══════════ 教学评价（/academic-affairs/evaluation/*） ═══════════ */
@@ -1184,7 +1284,7 @@ export const academicAffairsEvaluationApi = {
   listBatches(params = {}) { return callList(`${BASE}/evaluation/batches`, params) },
   getBatch(id) { return call(() => request(`${BASE}/evaluation/batches/${id}`)) },
   createBatch(body) { return call(() => request(`${BASE}/evaluation/batches`, { method: 'POST', body })) },
-  genTasks(id, teachingTaskIds) { return call(() => request(`${BASE}/evaluation/batches/${id}/tasks`, { method: 'POST', body: { teachingTaskIds } })) },
+  genTasks(id, teachingTaskIds, evaluatorType = 'STUDENT') { return call(() => request(`${BASE}/evaluation/batches/${id}/tasks`, { method: 'POST', body: { teachingTaskIds, evaluatorType } })) },
   listTasks(id, params = {}) { return call(() => request(`${BASE}/evaluation/batches/${id}/tasks`, { params })) },
   publish(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/publish`, { method: 'POST' })) },
   open(id) { return call(() => request(`${BASE}/evaluation/batches/${id}/open`, { method: 'POST' })) },

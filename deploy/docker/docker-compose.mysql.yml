@@ -70,6 +70,11 @@ services:
     env_file:
       - ../env/backend.mysql.env      # 先 cp backend.mysql.env.example 为 backend.mysql.env
     environment:
+      # 生产环境固定 prod：不依赖运维记得在 env 文件里设（忘设时 mock 免密登录/默认密钥/CORS 跳过全部敞开）
+      APP_ENV: "prod"
+      # Nginx 容器经 docker 网段反代到后端：信任容器私网段，才能从 X-Forwarded-For 取真实客户端 IP
+      # （登录限流按人不按代理、审计日志可溯源）。后端端口只在 docker 网络内 expose，该网段无外部直连。
+      TRUSTED_PROXY_IPS: "127.0.0.1,::1,172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
       # docker 网络内用服务名 mysql 覆盖主机名；密码/库名沿用 env_file
       DB_ENABLED: "true"
       DB_DRIVER: "mysql"

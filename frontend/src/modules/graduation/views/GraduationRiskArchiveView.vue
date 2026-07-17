@@ -18,7 +18,15 @@
       <AdvancedFilter v-model="riskFilters" :fields="riskFilterFields" @search="loadRisks" @reset="resetRiskFilters" />
       <ErrorState v-if="riskError" :description="riskError" @retry="loadRisks" />
       <LoadingState v-else-if="riskLoading" />
-      <EmptyState v-else-if="!riskRows.length" title="暂无风险记录" description="点「扫描生成风险项」按当前数据生成" />
+      <EmptyState
+        v-else-if="!riskRows.length"
+        title="还没有风险记录"
+        description="系统会自动排查 13 类毕设问题（没选题、任务书没下达、开题逾期、中期没做、论文没交、答辩没排、材料没归档、毕业资格受影响等）。点下面的按钮按当前数据扫一遍，出问题的学生会自动列出来，不用手工排查。"
+      >
+        <template #actions>
+          <button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button>
+        </template>
+      </EmptyState>
       <div v-else class="rk-split">
         <aside class="rk-list">
           <ul class="rk-rows">
@@ -54,7 +62,7 @@
               <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ selectedRisk.studentName }} · {{ selectedRisk.studentNo }}</span></div>
               <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ selectedRisk.advisorName || '未分配导师' }}</span></div>
               <div v-if="selectedRisk.detail" class="mp-kv"><span class="mp-kv__k">风险详情</span><span class="mp-kv__v">{{ selectedRisk.detail }}</span></div>
-              <div v-if="selectedRisk.createdAt" class="mp-kv"><span class="mp-kv__k">首次触发</span><span class="mp-kv__v">{{ (selectedRisk.createdAt || '').replace('T', ' ').slice(0, 16) }}</span></div>
+              <div v-if="selectedRisk.createdAt" class="mp-kv"><span class="mp-kv__k">首次触发</span><span class="mp-kv__v">{{ formatDateTime(selectedRisk.createdAt) }}</span></div>
               <div v-if="selectedRisk.handleNote" class="mp-kv"><span class="mp-kv__k">处理记录</span><span class="mp-kv__v">{{ selectedRisk.handleNote }}</span></div>
               <div class="ie-actions" style="justify-content: flex-start; margin-top: var(--space-3)">
                 <button v-if="selectedRisk.status === 'OPEN'" class="mp-btn mp-btn--primary" @click="doAccept(selectedRisk)">受理</button>
@@ -185,8 +193,10 @@
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
-      :reason-label="confirm.reasonLabel" @confirm="onConfirm"
+      :reason-label="confirm.reasonLabel" :reason-chips="confirm.reasonChips || []" @confirm="onConfirm"
     />
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-risk-archive" />
   </ModulePageShell>
 </template>
 
@@ -195,14 +205,23 @@
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton, AppPagination, AppStackedBarChart } from '@/components/common'
+import { AppExportButton, AppPagination, AppStackedBarChart, AppPageGuide } from '@/components/common'
 import { AppDateRangePicker } from '@/components/common/date'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
+
+const ARCHIVE_REJECT_REASON_CHIPS = [
+  '材料不齐全，缺相关附件/签字页',
+  '签字或日期不完整（签字应早于答辩日期）',
+  '装订顺序不符合规范',
+  '重复度超标未完成整改',
+  '电子版与纸质版内容不一致'
+]
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton, AppPagination, AppStackedBarChart },
+  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton, AppPagination, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -273,6 +292,7 @@ export default {
     }
   },
   methods: {
+    formatDateTime,
     /** 页签切换同步到 URL，保证刷新/分享/左侧菜单高亮一致 */
     switchTab(t) {
       this.tab = t
@@ -393,7 +413,11 @@ export default {
       if (res.code === 0) { toast.success('已归档'); this.loadArchives() } else toast.error(res.message)
     },
     doReject(row) {
-      this.confirm = { visible: true, title: '驳回归档', message: '', type: 'danger', confirmText: '确认驳回', requireReason: true, reasonLabel: '驳回原因', action: 'reject-archive', row }
+      this.confirm = {
+        visible: true, title: '驳回归档', message: '', type: 'danger', confirmText: '确认驳回',
+        requireReason: true, reasonLabel: '驳回原因', reasonChips: ARCHIVE_REJECT_REASON_CHIPS,
+        action: 'reject-archive', row
+      }
     },
     exportArchivesFn() {
       return graduationRiskArchiveApi.exportArchives({ ...this.archiveFilters })

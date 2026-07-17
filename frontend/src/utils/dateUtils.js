@@ -214,12 +214,6 @@ export function rangeThisSemester(now = new Date()) {
   return { start: `${y}-02-01`, end: `${y}-08-31` }
 }
 
-export function rangeLastNDays(n) {
-  const end = startOfDay(new Date())
-  const start = addDays(end, -(n - 1))
-  return { start: formatDate(start), end: formatDate(end) }
-}
-
 export function rangeToday() {
   const t = todayDate()
   return { start: t, end: t }
@@ -237,8 +231,6 @@ export const FILTER_SHORTCUTS = [
   { key: 'week', label: '本周', range: () => rangeThisWeek() },
   { key: 'month', label: '本月', range: () => rangeThisMonth() },
   { key: 'semester', label: '本学期', range: () => rangeThisSemester() },
-  { key: 'd7', label: '最近 7 天', range: () => rangeLastNDays(7) },
-  { key: 'd30', label: '最近 30 天', range: () => rangeLastNDays(30) },
   { key: 'clear', label: '清空', range: () => ({ start: '', end: '' }) }
 ]
 

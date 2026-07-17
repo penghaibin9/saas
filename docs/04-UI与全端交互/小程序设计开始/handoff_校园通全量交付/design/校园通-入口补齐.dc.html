@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{display:flex;flex-direction:column;gap:44px;padding:52px 24px 80px;align-items:center}
+.row{display:flex;gap:56px;flex-wrap:wrap;justify-content:center}
+.rowlb{font-size:15px;font-weight:800;color:#0f1e3d;letter-spacing:.02em;display:flex;align-items:center;gap:10px;align-self:flex-start;margin-left:calc(50% - 640px)}
+.rowlb i{width:9px;height:9px;border-radius:3px;background:#1a56be}
+.cap{display:flex;flex-direction:column;align-items:center;gap:14px}
+.cap-lb{font-size:13px;color:#334155;font-weight:600}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f1f4f9;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+.scroll{flex:1;overflow-y:auto;position:relative}
+.scroll::-webkit-scrollbar{display:none}
+.nav{position:relative;padding:0 16px 14px;color:#fff;overflow:hidden;flex-shrink:0}
+.nav.blue{background:linear-gradient(162deg,#0e3a80 0%,#1a56be 62%,#2f76dd 130%)}
+.nav.teal{background:linear-gradient(160deg,#0b5f57 0%,#0d9488 62%,#14b8a6 128%)}
+.nav::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 90%)}
+.sb{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 8px 6px;font-size:15px;font-weight:600;position:relative;z-index:2}
+.navrow{position:relative;z-index:2;display:flex;align-items:center;height:40px;margin-top:2px}
+.navrow .back{width:34px;height:34px;display:flex;align-items:center;justify-content:center;margin-left:-6px}
+.navrow .ntitle{font-size:17px;font-weight:700;letter-spacing:.02em}
+.wrap{padding:14px 16px 24px}
+.card{background:#fff;border-radius:16px;padding:15px;margin-top:12px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.card:first-child{margin-top:0}
+.row-b{display:flex;align-items:center;justify-content:space-between}
+.ctitle{font-size:15px;color:#0f1e3d;font-weight:700}
+.tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;flex-shrink:0}
+.tg-amber{background:#fff6e6;color:#e8890c}.tg-red{background:#fff0f0;color:#e64c4c}
+.tg-blue{background:#eef4ff;color:#1a56be}.tg-green{background:#e7f8f1;color:#0ca678}
+.tg-slate{background:#eef1f6;color:#64748b}.tg-teal{background:#e6f6f4;color:#0d9488}
+.tmeta{display:flex;gap:16px;flex-wrap:wrap}
+.tmeta div span{font-size:11px;color:#94a3b8;display:block}
+.tmeta div b{font-size:13px;color:#334155;font-weight:600;margin-top:3px;display:block}
+.tlhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.chip{flex-shrink:0;padding:8px 14px;border-radius:20px;background:#eef1f6;font-size:12.5px;color:#64748b;font-weight:600;cursor:pointer;white-space:nowrap}
+.chip.on{background:#1a56be;color:#fff}
+.chip.on.teal{background:#0d9488}
+.row-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f1f4f9;cursor:pointer}
+.row-item:last-child{border-bottom:none}
+.ic{width:38px;height:38px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:700}
+.b1{background:linear-gradient(145deg,#2f76dd,#1a56be)}.b2{background:linear-gradient(145deg,#4c9af5,#2f76dd)}
+.b3{background:linear-gradient(145deg,#12b886,#0ca678)}.b4{background:linear-gradient(145deg,#f59f00,#f08c00)}
+.b5{background:linear-gradient(145deg,#7c6bf5,#6549e8)}.b6{background:linear-gradient(145deg,#f76a6a,#e64c4c)}
+.b7{background:linear-gradient(145deg,#22b0d6,#1495bd)}.b8{background:linear-gradient(145deg,#8a94a6,#6b7688)}
+.rtx{flex:1;min-width:0}
+.rtx b{display:block;font-size:13.5px;color:#0f1e3d;font-weight:600}
+.rtx p{margin:3px 0 0;font-size:11.5px;color:#94a3b8}
+.pbar{height:7px;border-radius:4px;background:#eef1f6;overflow:hidden;margin-top:8px}
+.pbar i{display:block;height:100%;background:linear-gradient(90deg,#4c9af5,#1a56be);border-radius:4px}
+.btn-sm{height:32px;padding:0 14px;border-radius:9px;font-size:12.5px;font-weight:600;border:none;cursor:pointer;font-family:inherit}
+.btn-sm.ghost{background:#eef1f6;color:#475569}
+.btn-sm.primary{background:linear-gradient(145deg,#2f76dd,#1a56be);color:#fff}
+.btn-sm.done{background:#e7f8f1;color:#0ca678}
+.btn-sm.teal{background:linear-gradient(145deg,#14b8a6,#0d9488);color:#fff}
+.btn{width:100%;height:46px;border-radius:13px;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-primary{background:linear-gradient(145deg,#2f76dd,#1a56be);color:#fff;box-shadow:0 8px 18px -8px rgba(26,86,190,.7)}
+.card-card{position:relative;background:linear-gradient(150deg,#0e3a80,#1e5bc6);border-radius:18px;padding:20px;color:#fff;overflow:hidden}
+.card-card::after{content:'';position:absolute;right:-40px;top:-40px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(255,255,255,.16),transparent 65%)}
+.card-card .lb{font-size:12px;color:rgba(255,255,255,.75);position:relative;z-index:1}
+.card-card .amt{font-size:32px;font-weight:800;margin-top:8px;position:relative;z-index:1;letter-spacing:.02em}
+.card-card .sub{font-size:12px;color:rgba(255,255,255,.7);margin-top:10px;position:relative;z-index:1}
+.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.kpi-i{background:#f8fafc;border-radius:13px;padding:13px}
+.kpi-i b{display:block;font-size:22px;color:#0f1e3d;font-weight:800}
+.kpi-i span{font-size:11.5px;color:#94a3b8;margin-top:4px;display:block}
+.fbar{margin-top:10px}
+.fbar-row{display:flex;align-items:center;gap:10px;margin-top:9px}
+.fbar-lb{width:66px;font-size:11.5px;color:#64748b;flex-shrink:0}
+.fbar-track{flex:1;height:16px;border-radius:5px;background:#eef1f6;overflow:hidden}
+.fbar-track i{display:block;height:100%;border-radius:5px}
+.fbar-n{width:44px;text-align:right;font-size:12px;color:#334155;font-weight:600;flex-shrink:0}
+.hin{width:100%;border:1px solid #eef1f6;background:#f8fafc;border-radius:11px;padding:10px 12px;font-size:13px;color:#0f1e3d;box-sizing:border-box;font-family:inherit}
+.ta{width:100%;min-height:70px;border:1px solid #eef1f6;background:#f8fafc;border-radius:11px;padding:11px;font-size:13px;color:#0f1e3d;line-height:1.6;box-sizing:border-box;resize:none;font-family:inherit}
+.ta::placeholder,.hin::placeholder{color:#b3bccb}
+.flabel{font-size:12px;color:#94a3b8;font-weight:600;margin-bottom:6px;display:block}
+.field{padding:11px 0;border-bottom:1px solid #f1f4f9}
+.field:last-child{border-bottom:none}
+.job-card{border:1px solid #eef1f6;border-radius:13px;padding:13px;margin-top:10px}
+.job-card:first-child{margin-top:0}
+.job-top{display:flex;align-items:center;justify-content:space-between}
+.job-top b{font-size:13.5px;color:#0f1e3d;font-weight:700}
+.job-post{font-size:12.5px;color:#475569;margin-top:5px}
+.job-meta{display:flex;gap:10px;margin-top:7px}
+.job-meta span{font-size:11px;color:#94a3b8;background:#f8fafc;padding:3px 8px;border-radius:6px}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:134px;height:5px;border-radius:3px;background:#0f172a;opacity:.28;z-index:6}
+</style></helmet>
+<div class="stage">
+
+<div class="rowlb"><i></i>入口断层补齐 · 首页图标对应的落地页</div>
+<div class="row">
+
+<div class="cap"><div class="cap-lb">学生端 · 缴费中心</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">缴费中心</span></div></div>
+<div class="scroll"><div class="wrap">
+<div class="card-card"><div class="lb">本学期应缴 · 待缴金额</div><div class="amt">¥ {{ feeLeft }}</div><div class="sub">2025-2026 学年第二学期</div></div>
+<div class="card">
+<sc-for list="{{ fees }}" as="f" hint-placeholder-count="3">
+<div class="row-item"><div class="ic {{ f.grad }}">{{ f.icon }}</div><div class="rtx"><b>{{ f.name }}</b><p>¥{{ f.amount }}</p></div><button class="btn-sm {{ f.btnCls }}" onClick="{{ f.onPay }}">{{ f.btnText }}</button></div>
+</sc-for>
+</div>
+<div class="card"><div class="tlhead"><span class="ctitle">缴费记录</span></div>
+<div class="row-item"><div class="ic b3">✓</div><div class="rtx"><b>教材费 · ¥360</b><p>2026-03-02 微信支付</p></div><span class="tag tg-green">已缴清</span></div>
+<div class="row-item"><div class="ic b3">✓</div><div class="rtx"><b>2025 秋学费 · ¥6000</b><p>2025-08-20 支付宝</p></div><span class="tag tg-green">已缴清</span></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">学生端 · 校园卡</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">校园卡</span></div></div>
+<div class="scroll"><div class="wrap">
+<div class="card-card"><div class="lb">校园卡余额</div><div class="amt">¥ 128.60</div><div class="sub">卡号 {{ cardNoLabel }}</div></div>
+<div class="card" style="display:flex;gap:10px">
+<button class="btn-sm primary" style="flex:1" onClick="{{ toggleCardNo }}">{{ cardNoBtnText }}</button>
+<button class="btn-sm ghost" style="flex:1">挂失 / 解挂</button>
+</div>
+<div class="card"><div class="tlhead"><span class="ctitle">近期交易</span></div>
+<div class="row-item"><div class="ic b6">食</div><div class="rtx"><b>第一食堂 · 午餐</b><p>07-13 12:05</p></div><span class="tag tg-red">-¥12.50</span></div>
+<div class="row-item"><div class="ic b2">超</div><div class="rtx"><b>校园超市</b><p>07-12 19:20</p></div><span class="tag tg-red">-¥23.00</span></div>
+<div class="row-item"><div class="ic b3">充</div><div class="rtx"><b>在线充值</b><p>07-10 09:00</p></div><span class="tag tg-green">+¥200.00</span></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 成绩录入</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">成绩录入</span></div>
+<div style="position:relative;z-index:2;font-size:12px;color:rgba(255,255,255,.82);margin-top:2px">《软件工程导论》· 软件2401班</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card">
+<sc-for list="{{ gradeStudents }}" as="g" hint-placeholder-count="4">
+<div class="row-item"><div class="ic b1">{{ g.avatar }}</div><div class="rtx"><b>{{ g.name }}</b><p>学号 {{ g.no }}</p></div><input class="hin" style="width:64px" value="{{ g.score }}" placeholder="分数"></div>
+</sc-for>
+</div>
+</div></div>
+<div style="flex-shrink:0;padding:12px 16px calc(12px + 14px);background:rgba(255,255,255,.96)"><button class="btn btn-primary" onClick="{{ toggleGradeSubmit }}">{{ gradeSubmitText }}</button></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+<div class="rowlb"><i></i>入口断层补齐（续）</div>
+<div class="row">
+
+<div class="cap"><div class="cap-lb">教师端 · 考勤管理</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">考勤管理</span></div>
+<div style="position:relative;z-index:2;font-size:12px;color:rgba(255,255,255,.82);margin-top:2px">《数据库原理》· 07-13 第 3 节</div></div>
+<div class="scroll"><div class="wrap">
+<div class="card"><div class="tmeta"><div><span>应到</span><b>48</b></div><div><span>实到</span><b>{{ presentCount }}</b></div><div><span>迟到</span><b>{{ lateCount }}</b></div><div><span>缺勤</span><b>{{ absentCount }}</b></div></div></div>
+<div class="card">
+<sc-for list="{{ attendance }}" as="a" hint-placeholder-count="4">
+<div class="row-item" onClick="{{ a.onCycle }}"><div class="ic {{ a.grad }}">{{ a.avatar }}</div><div class="rtx"><b>{{ a.name }}</b><p>点击切换出勤状态</p></div><span class="tag {{ a.tagCls }}">{{ a.label }}</span></div>
+</sc-for>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 通知发布</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">通知发布</span></div></div>
+<div class="scroll"><div class="wrap">
+<div class="card">
+<div class="field"><span class="flabel">接收范围</span>
+<div class="chips"><sc-for list="{{ noticeScopes }}" as="sc" hint-placeholder-count="3"><div class="{{ sc.cls }}" onClick="{{ sc.onClick }}">{{ sc.label }}</div></sc-for></div>
+</div>
+<div class="field"><span class="flabel">标题</span><input class="hin" placeholder="请输入通知标题" value="{{ noticeTitle }}"></div>
+<div class="field"><span class="flabel">内容</span><textarea class="ta" placeholder="请输入通知内容">请于本周五前完成学生实习成绩录入，逾期系统将自动锁定录入入口。</textarea></div>
+</div>
+</div></div>
+<div style="flex-shrink:0;padding:12px 16px calc(12px + 14px);background:rgba(255,255,255,.96)"><button class="btn btn-primary">发布通知</button></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">教师端 · 数据看板</div>
+<div class="phone"><div class="screen">
+<div class="nav teal"><div class="sb"><span>9:41</span><div></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">数据看板</span></div></div>
+<div class="scroll"><div class="wrap">
+<div class="card"><div class="kpi">
+<div class="kpi-i"><b>4,520</b><span>在册学生总数</span></div>
+<div class="kpi-i"><b>114</b><span>风险学生总量</span></div>
+<div class="kpi-i"><b>47</b><span>待处理风险预警</span></div>
+<div class="kpi-i"><b>70.8%</b><span>就业去向落实率</span></div>
+</div></div>
+<div class="card"><div class="tlhead"><span class="ctitle">2026 届生命周期漏斗</span><span class="tag tg-slate">1620 人</span></div>
+<div class="fbar">
+<div class="fbar-row"><span class="fbar-lb">入学</span><div class="fbar-track"><i style="width:100%;background:linear-gradient(90deg,#4c9af5,#1a56be)"></i></div><span class="fbar-n">1620</span></div>
+<div class="fbar-row"><span class="fbar-lb">在读</span><div class="fbar-track"><i style="width:92%;background:linear-gradient(90deg,#4c9af5,#1a56be)"></i></div><span class="fbar-n">1492</span></div>
+<div class="fbar-row"><span class="fbar-lb">实习</span><div class="fbar-track"><i style="width:74%;background:linear-gradient(90deg,#12b886,#0ca678)"></i></div><span class="fbar-n">1198</span></div>
+<div class="fbar-row"><span class="fbar-lb">毕设</span><div class="fbar-track"><i style="width:68%;background:linear-gradient(90deg,#7c6bf5,#6549e8)"></i></div><span class="fbar-n">1102</span></div>
+<div class="fbar-row"><span class="fbar-lb">就业落实</span><div class="fbar-track"><i style="width:71%;background:linear-gradient(90deg,#f59f00,#f08c00)"></i></div><span class="fbar-n">1147</span></div>
+</div></div>
+<div class="card"><div class="tlhead"><span class="ctitle">学院风险分布</span></div>
+<div class="row-item"><div class="ic b6">软</div><div class="rtx"><b>软件学院</b><p>风险学生 38 人</p></div></div>
+<div class="row-item"><div class="ic b4">机</div><div class="rtx"><b>机电学院</b><p>风险学生 29 人</p></div></div>
+<div class="row-item"><div class="ic b2">商</div><div class="rtx"><b>商贸学院</b><p>风险学生 22 人</p></div></div>
+</div>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<div class="cap"><div class="cap-lb">学生端 · 企业岗位库</div>
+<div class="phone"><div class="screen">
+<div class="nav blue"><div class="sb"><span>9:41</span><div></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">企业岗位库</span></div></div>
+<div class="scroll"><div class="wrap">
+<div class="chips" style="margin-bottom:10px"><sc-for list="{{ jobCities }}" as="c" hint-placeholder-count="3"><div class="{{ c.cls }}" onClick="{{ c.onClick }}">{{ c.label }}</div></sc-for></div>
+<sc-for list="{{ jobs }}" as="j" hint-placeholder-count="3">
+<div class="job-card"><div class="job-top"><b>{{ j.company }}</b><span class="tag tg-blue">{{ j.headcount }} 人</span></div><div class="job-post">{{ j.post }}</div><div class="job-meta"><span>{{ j.salary }}</span><span>{{ j.city }}</span></div></div>
+</sc-for>
+</div></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    feesState: { tuition: false, dorm: false, insurance: true },
+    cardMasked: true,
+    gradeSubmitted: false,
+    attendanceState: {},
+    noticeScope: 'class',
+    jobCity: 'all'
+  };
+
+  feeDefs = [
+    { key: 'tuition', name: '2026 春学费', amount: '6000', icon: '学', grad: 'b1' },
+    { key: 'dorm', name: '住宿费', amount: '1200', icon: '宿', grad: 'b4' },
+    { key: 'insurance', name: '医疗保险', amount: '120', icon: '保', grad: 'b3' }
+  ];
+  gradeStudentsData = [
+    { avatar: '陈', name: '陈子涵', no: '2024010601', score: '' },
+    { avatar: '李', name: '李思远', no: '2024010602', score: '' },
+    { avatar: '王', name: '王梓萱', no: '2024010603', score: '92' },
+    { avatar: '赵', name: '赵启航', no: '2024010604', score: '' }
+  ];
+  attendanceData = [
+    { name: '陈子涵', avatar: '陈', grad: 'b3' }, { name: '李思远', avatar: '李', grad: 'b6' },
+    { name: '王梓萱', avatar: '王', grad: 'b3' }, { name: '赵启航', avatar: '赵', grad: 'b4' }
+  ];
+  jobPoolData = [
+    { company: '湖南智联科技', post: '前端开发工程师', salary: '7-10K', city: '长沙', headcount: 5 },
+    { company: '深圳云图信息', post: 'Web 前端', salary: '9-13K', city: '深圳', headcount: 3 },
+    { company: '长沙数联', post: '小程序开发', salary: '6-9K', city: '长沙', headcount: 2 }
+  ];
+
+  renderVals() {
+    const s = this.state;
+    const fees = this.feeDefs.map(f => {
+      const paid = !!s.feesState[f.key];
+      return { ...f, btnCls: paid ? 'done' : 'primary', btnText: paid ? '已缴' : '去缴费',
+        onPay: () => this.setState(p => ({ feesState: { ...p.feesState, [f.key]: !paid } })) };
+    });
+    const feeLeft = this.feeDefs.filter(f => !s.feesState[f.key]).reduce((sum, f) => sum + Number(f.amount), 0);
+
+    const attStMap = ['ok', 'late', 'absent'];
+    const attLabelMap = { ok: { label: '正常', cls: 'tg-green' }, late: { label: '迟到', cls: 'tg-amber' }, absent: { label: '缺勤', cls: 'tg-red' } };
+    const attendance = this.attendanceData.map((a, i) => {
+      const st = s.attendanceState[i] || 'ok';
+      return { ...a, tagCls: attLabelMap[st].cls, label: attLabelMap[st].label,
+        onCycle: () => this.setState(p => { const cur = p.attendanceState[i] || 'ok'; const next = attStMap[(attStMap.indexOf(cur) + 1) % 3]; return { attendanceState: { ...p.attendanceState, [i]: next } }; }) };
+    });
+    const presentCount = attendance.filter(a => a.label === '正常').length + 44;
+    const lateCount = attendance.filter(a => a.label === '迟到').length;
+    const absentCount = attendance.filter(a => a.label === '缺勤').length;
+
+    const scopeDefs = [ { k: 'all', label: '全体学生' }, { k: 'class', label: '本班' }, { k: 'intern', label: '实习生' } ];
+    const noticeScopes = scopeDefs.map(sc => ({ label: sc.label, cls: 'chip teal' + (sc.k === s.noticeScope ? ' on' : ''), onClick: () => this.setState({ noticeScope: sc.k }) }));
+
+    const cityDefs = [ { k: 'all', label: '全部城市' }, { k: '长沙', label: '长沙' }, { k: '深圳', label: '深圳' } ];
+    const jobCities = cityDefs.map(c => ({ label: c.label, cls: 'chip' + (c.k === s.jobCity ? ' on' : ''), onClick: () => this.setState({ jobCity: c.k }) }));
+    const jobs = this.jobPoolData.filter(j => s.jobCity === 'all' || j.city === s.jobCity);
+
+    return {
+      fees, feeLeft, cardNoLabel: s.cardMasked ? '**** **** 3021' : '2024 3021 5566 3021',
+      cardNoBtnText: s.cardMasked ? '显示卡号' : '隐藏卡号', toggleCardNo: () => this.setState(p => ({ cardMasked: !p.cardMasked })),
+      gradeStudents: this.gradeStudentsData,
+      gradeSubmitText: s.gradeSubmitted ? '✓ 已提交，教务审核中' : '提交成绩',
+      toggleGradeSubmit: () => this.setState({ gradeSubmitted: true }),
+      presentCount, lateCount, absentCount, attendance,
+      noticeScopes, noticeTitle: '关于本周实习成绩录入的通知',
+      jobCities, jobs
+    };
+  }
+}
+</script>
+</body>
+</html>

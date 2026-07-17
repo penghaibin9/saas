@@ -7,6 +7,9 @@
     watermark-purpose="学工看板查看"
   >
     <template #actions>
+      <span class="sa-updated-hint">
+        数据更新于 <AppDateDisplay :value="dashboard.updatedAt" mode="datetime" empty-text="—" />
+      </span>
       <AppPermissionButton code="studentAffairs.dashboard.refresh" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
@@ -30,7 +33,6 @@
           :accent="metricAccent(card.key)"
           drillable
           :drill-target="metricTarget(card.key)"
-          :updated-at="updatedAt"
           @drill="go"
         />
       </div>
@@ -100,6 +102,7 @@
 <script>
 import {
   AppAuditTrail,
+  AppDateDisplay,
   AppExportButton,
   AppGlobalState,
   AppMetricCard,
@@ -115,6 +118,7 @@ export default {
   name: 'StudentAffairsDashboardView',
   components: {
     AppAuditTrail,
+    AppDateDisplay,
     AppExportButton,
     AppGlobalState,
     AppMetricCard,
@@ -140,9 +144,6 @@ export default {
     },
     metricCards() {
       return this.dashboard.summaryCards || []
-    },
-    updatedAt() {
-      return (this.dashboard.updatedAt || '').replace('T', ' ').slice(0, 16)
     },
     scopeLabel() {
       const map = { ADMIN_TENANT: '全校', SCOPED: '本人负责范围', TENANT_FALLBACK: '当前租户' }
@@ -256,6 +257,13 @@ export default {
   margin: 0;
   color: var(--text-secondary);
   line-height: 1.6;
+}
+.sa-updated-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
 }
 </style>
 

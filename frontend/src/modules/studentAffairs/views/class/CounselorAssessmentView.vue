@@ -5,38 +5,42 @@
       <AppButton variant="secondary" size="sm" @click="openPeriodForm">＋ 新建考评周期</AppButton>
     </template>
 
-    <div class="mp-stack">
-      <div class="bar">
-        <label class="bar-lbl">考评周期</label>
-        <AppSelect v-model="periodId" :options="periodOptions" placeholder="选择考评周期" @change="onPeriodChange" />
-        <template v-if="curPeriod">
-          <AppStatusTag :status="curPeriod.status" :label="curPeriod.statusLabel" />
-          <AppButton variant="ghost" size="sm" :loading="collecting" :disabled="curPeriod.status === 'PUBLISHED'" @click="collect">生成/刷新指标</AppButton>
-          <AppButton variant="ghost" size="sm" :disabled="curPeriod.status === 'PUBLISHED'" @click="publish">发布考评</AppButton>
-        </template>
-      </div>
+    <AppGlobalState :state="pageState" :title="pageStateTitle" :description="pageStateDescription"
+                    loading-text="正在加载辅导员考评..." @retry="loadPeriods" @back="$router.push('/admin/campus-service')">
+      <div class="mp-stack">
+        <div class="bar">
+          <label class="bar-lbl">考评周期</label>
+          <AppSelect v-model="periodId" :options="periodOptions" placeholder="选择考评周期" @change="onPeriodChange" />
+          <template v-if="curPeriod">
+            <AppStatusTag :status="curPeriod.status" :label="curPeriod.statusLabel" />
+            <AppButton variant="ghost" size="sm" :loading="collecting" :disabled="curPeriod.status === 'PUBLISHED'" @click="collect">生成/刷新指标</AppButton>
+            <AppButton variant="ghost" size="sm" :disabled="curPeriod.status === 'PUBLISHED'" @click="publish">发布考评</AppButton>
+          </template>
+        </div>
 
-      <EmptyState v-if="!periodId" title="请选择或新建考评周期" description="新建周期后点「生成/刷新指标」自动抓取各辅导员工作量" />
-      <template v-else>
-        <LoadingState v-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="该周期暂无考评记录" description="点「生成/刷新指标」按数据范围内班级的辅导员自动生成" />
-        <DataTable v-else :columns="columns" :rows="rows" row-key="id">
-          <template #cell-rankNo="{ row }"><b>{{ row.rankNo || '—' }}</b></template>
-          <template #cell-counselor="{ row }">
-            <div class="mp-cell-main">{{ row.counselorName || ('辅导员#' + row.counselorId) }}</div>
-            <div class="mp-cell-sub">带班 {{ row.classCount }} · 学生 {{ row.studentCount }} · 办结请假 {{ metric(row, 'closedLeave') }} · 风险处置 {{ metric(row, 'riskClosed') }} · 材料 {{ metric(row, 'materialCount') }}</div>
+        <AppGlobalState :state="sectionState" :title="sectionStateTitle" :description="sectionStateDescription"
+                        loading-text="正在加载考评记录...">
+          <template #actions>
+            <AppButton v-if="sectionState === 'error'" variant="primary" size="sm" @click="loadAssessments">重试</AppButton>
           </template>
-          <template #cell-autoScore="{ row }">{{ fmtScore(row.autoScore) }}</template>
-          <template #cell-collegeScore="{ row }">{{ fmtScore(row.collegeScore) }}</template>
-          <template #cell-totalScore="{ row }"><b>{{ fmtScore(row.totalScore) }}</b></template>
-          <template #cell-status="{ row }"><AppStatusTag :status="row.status" :label="row.statusLabel" dot /></template>
-          <template #cell-actions="{ row }">
-            <AppPermissionButton code="studentAffairs.class.create" variant="secondary" size="sm" :disabled="isPublished" @click="openScore(row)">学院评分</AppPermissionButton>
-          </template>
-        </DataTable>
+          <DataTable :columns="columns" :rows="rows" row-key="id">
+            <template #cell-rankNo="{ row }"><b>{{ row.rankNo || '—' }}</b></template>
+            <template #cell-counselor="{ row }">
+              <div class="mp-cell-main">{{ row.counselorName || ('辅导员#' + row.counselorId) }}</div>
+              <div class="mp-cell-sub">带班 {{ row.classCount }} · 学生 {{ row.studentCount }} · 办结请假 {{ metric(row, 'closedLeave') }} · 风险处置 {{ metric(row, 'riskClosed') }} · 材料 {{ metric(row, 'materialCount') }}</div>
+            </template>
+            <template #cell-autoScore="{ row }">{{ fmtScore(row.autoScore) }}</template>
+            <template #cell-collegeScore="{ row }">{{ fmtScore(row.collegeScore) }}</template>
+            <template #cell-totalScore="{ row }"><b>{{ fmtScore(row.totalScore) }}</b></template>
+            <template #cell-status="{ row }"><AppStatusTag :status="row.status" :label="row.statusLabel" dot /></template>
+            <template #cell-actions="{ row }">
+              <AppPermissionButton code="studentAffairs.class.create" variant="secondary" size="sm" :disabled="isPublished" @click="openScore(row)">学院评分</AppPermissionButton>
+            </template>
+          </DataTable>
+        </AppGlobalState>
         <p class="mp-note">系统自动分=工作量折算（透明可解释：带班×5 + 办结请假×2 + 风险处置×3 + 材料×1，基线60封顶100）；综合分=自动×0.6+学院×0.4。申诉/正式归档流程见历史欠账（本轮为一步发布）。</p>
-      </template>
-    </div>
+      </div>
+    </AppGlobalState>
 
     <!-- 新建周期 / 评分 弹窗 -->
     <div v-if="fm.visible" class="fm-mask" @click.self="closeForm">
@@ -71,8 +75,8 @@
  * 辅导员考评（/admin/campus-service/counselor-assessment）。
  * 建周期 → 系统自动抓取工作量指标 → 学院评分 → 综合排名 → 发布。真实对接 /student-affairs/counselor-assessment/*。
  */
-import { ModulePageShell, DataTable, LoadingState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton } from '@/components/common'
+import { ModulePageShell, DataTable } from '@/components/business'
+import { AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { assessmentApi } from '@/modules/studentAffairs/api/class.api'
 import { toast } from '@/utils/toast'
@@ -85,11 +89,12 @@ const COLUMNS = [
 
 export default {
   name: 'CounselorAssessmentView',
-  components: { ModulePageShell, DataTable, LoadingState, EmptyState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton, AppButton },
+  components: { ModulePageShell, DataTable, AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton, AppButton },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
-      periods: [], periodId: '', loading: false, collecting: false, rows: [], columns: COLUMNS,
+      periods: [], periodId: '', periodsLoading: true, errorMessage: '',
+      loading: false, sectionError: '', collecting: false, rows: [], columns: COLUMNS,
       fm: { visible: false, kind: '', title: '', submitting: false, err: '', values: {}, row: {} }
     }
   },
@@ -98,25 +103,51 @@ export default {
     scopeHint() { return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.name) || '按数据范围裁剪' },
     periodOptions() { return this.periods.map((p) => ({ label: `${p.periodName}（${p.statusLabel}）`, value: p.id })) },
     curPeriod() { return this.periods.find((p) => String(p.id) === String(this.periodId)) || null },
-    isPublished() { return !!(this.curPeriod && this.curPeriod.status === 'PUBLISHED') }
+    isPublished() { return !!(this.curPeriod && this.curPeriod.status === 'PUBLISHED') },
+    pageState() {
+      if (this.periodsLoading) return 'loading'
+      if (this.errorMessage) return 'error'
+      if (!this.periods.length) return 'empty'
+      return 'ready'
+    },
+    pageStateTitle() { return this.pageState === 'empty' ? '请选择或新建考评周期' : '' },
+    pageStateDescription() {
+      if (this.pageState === 'error') return this.errorMessage
+      if (this.pageState === 'empty') return '新建周期后点「生成/刷新指标」自动抓取各辅导员工作量'
+      return ''
+    },
+    sectionState() {
+      if (this.loading) return 'loading'
+      if (this.sectionError) return 'error'
+      if (!this.rows.length) return 'empty'
+      return 'ready'
+    },
+    sectionStateTitle() { return this.sectionState === 'empty' ? '该周期暂无考评记录' : '' },
+    sectionStateDescription() {
+      if (this.sectionState === 'error') return this.sectionError
+      if (this.sectionState === 'empty') return '点「生成/刷新指标」按数据范围内班级的辅导员自动生成'
+      return ''
+    }
   },
   created() { this.loadPeriods() },
   methods: {
     fmtScore(v) { return v === null || v === undefined ? '—' : v },
     metric(row, key) { return (row.metrics && row.metrics[key]) || 0 },
     async loadPeriods() {
+      this.periodsLoading = true; this.errorMessage = ''
       const res = await assessmentApi.periods({ pageSize: 100 })
-      if (res.code !== 0) return toast.error(res.message || '周期加载失败')
+      this.periodsLoading = false
+      if (res.code !== 0) { this.errorMessage = res.message || '周期加载失败'; return }
       this.periods = res.data.list
       if (!this.periodId && this.periods.length) { this.periodId = this.periods[0].id; this.loadAssessments() }
     },
     onPeriodChange() { this.loadAssessments() },
     async loadAssessments() {
       if (!this.periodId) return
-      this.loading = true
+      this.loading = true; this.sectionError = ''
       const res = await assessmentApi.assessments(this.periodId)
       this.loading = false
-      if (res.code !== 0) { toast.error(res.message || '考评加载失败'); this.rows = []; return }
+      if (res.code !== 0) { this.sectionError = res.message || '考评加载失败'; this.rows = []; return }
       this.rows = (res.data && res.data.items) || []
     },
     async collect() {

@@ -8,6 +8,7 @@
           <AppSelect v-model="selBatch" class="ap-pick" :options="batchOptions" placeholder="（选择批次）" @change="loadBatch" />
         </label>
       </div>
+      <!-- 档案包清单：后端 getArchiveBatch 一次性返回该批次全部档案包，无 page/total 字段，暂不加分页控件 -->
       <AppSectionCard :title="selBatch ? '档案包清单' : '请选择批次'">
         <table v-if="selBatch" class="sa-table">
           <thead><tr><th>学生</th><th>状态</th><th>缺项</th></tr></thead>
