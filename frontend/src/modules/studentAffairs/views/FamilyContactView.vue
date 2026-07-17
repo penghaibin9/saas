@@ -11,7 +11,7 @@
       <div class="fc-picker__control">
         <AppStudentPicker v-model="studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" @change="onPick" />
       </div>
-      <button type="button" class="fc-btn fc-btn--primary" :disabled="!studentId" @click="openCreate">登记联系</button>
+      <AppPermissionButton code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记联系</AppPermissionButton>
     </div>
 
     <EmptyState v-if="!studentId" title="请选择一名学生" description="查看并登记该生的家校联系记录" />
@@ -30,37 +30,28 @@
       </li>
     </ul>
 
-    <!-- 登记联系 modal -->
-    <div v-if="createModal.visible" class="fc-mask" @click.self="createModal.visible = false">
-      <div class="fc-modal">
-        <h3 class="fc-modal__title">登记家校联系</h3>
-        <label class="fc-field"><span>联系方式 <i>*</i></span>
-          <select v-model="createModal.contactType" class="fc-input">
-            <option value="PHONE">电话</option>
-            <option value="WECHAT">微信</option>
-            <option value="VISIT">家访</option>
-            <option value="MESSAGE">短信</option>
-          </select>
-        </label>
-        <label class="fc-field"><span>联系事由</span>
-          <input v-model.trim="createModal.reason" class="fc-input" placeholder="如：反馈近期学业情况" />
-        </label>
-        <label class="fc-field"><span>联系结果</span>
-          <textarea v-model.trim="createModal.result" class="fc-textarea" rows="3" placeholder="家长反馈、约定事项等" />
-        </label>
-        <label class="fc-check">
-          <input v-model="createModal.fullPhoneView" type="checkbox" /> 本次需查看家长完整号码（将记敏感审计）
-        </label>
-        <label v-if="createModal.fullPhoneView" class="fc-field"><span>查看原因（≥5字） <i>*</i></span>
-          <input v-model.trim="createModal.viewReason" class="fc-input" placeholder="说明查看完整号码的原因，不少于 5 字" />
-        </label>
-        <p v-if="createModal.error" class="fc-err">{{ createModal.error }}</p>
-        <div class="fc-modal__foot">
-          <button type="button" class="fc-btn" @click="createModal.visible = false">取消</button>
-          <button type="button" class="fc-btn fc-btn--primary" :disabled="acting" @click="submitCreate">登记</button>
-        </div>
-      </div>
-    </div>
+    <!-- 登记联系（原为手搓 fc-mask 弹窗，对齐 FamilyReceiptView 的 AppConfirmDialog 模式） -->
+    <AppConfirmDialog
+      v-model:visible="createModal.visible" title="登记家校联系" type="primary"
+      confirm-text="登记" :submitting="acting" @confirm="submitCreate"
+    >
+      <AppFormItem label="联系方式" required>
+        <AppSelect v-model="createModal.contactType" :options="CONTACT_TYPE_OPTIONS" placeholder="" />
+      </AppFormItem>
+      <AppFormItem label="联系事由">
+        <AppTextInput v-model="createModal.reason" placeholder="如：反馈近期学业情况" />
+      </AppFormItem>
+      <AppFormItem label="联系结果">
+        <AppTextarea v-model="createModal.result" :rows="3" placeholder="家长反馈、约定事项等" />
+      </AppFormItem>
+      <label class="fc-check">
+        <input v-model="createModal.fullPhoneView" type="checkbox" /> 本次需查看家长完整号码（将记敏感审计）
+      </label>
+      <AppFormItem v-if="createModal.fullPhoneView" label="查看原因（≥5字）" required>
+        <AppTextInput v-model="createModal.viewReason" placeholder="说明查看完整号码的原因，不少于 5 字" />
+      </AppFormItem>
+      <p v-if="createModal.error" class="fc-err">{{ createModal.error }}</p>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -71,15 +62,22 @@
  * 查看完整号码需填原因(≥5字)，后端落 SENSITIVE 审计。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStudentPicker } from '@/components/common'
+import {
+  AppConfirmDialog, AppFormItem, AppPermissionButton, AppSelect, AppStudentPicker,
+  AppTextInput, AppTextarea
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const CONTACT_TYPE = { PHONE: '电话', WECHAT: '微信', VISIT: '家访', MESSAGE: '短信' }
+const CONTACT_TYPE_OPTIONS = Object.entries(CONTACT_TYPE).map(([value, label]) => ({ value, label }))
 
 export default {
   name: 'FamilyContactView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppStudentPicker },
+  components: {
+    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppFormItem,
+    AppPermissionButton, AppSelect, AppStudentPicker, AppTextInput, AppTextarea
+  },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -88,6 +86,7 @@ export default {
     }
   },
   computed: {
+    CONTACT_TYPE_OPTIONS: () => CONTACT_TYPE_OPTIONS,
     roleName() {
       return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || ''
     },
@@ -122,11 +121,12 @@ export default {
     },
     async submitCreate() {
       const m = this.createModal
-      if (m.fullPhoneView && (!m.viewReason || m.viewReason.length < 5)) { m.error = '查看完整号码原因不少于 5 字'; return }
+      const viewReason = (m.viewReason || '').trim()
+      if (m.fullPhoneView && (!viewReason || viewReason.length < 5)) { m.error = '查看完整号码原因不少于 5 字'; return }
       this.acting = true
       const res = await studentAffairsApi.createFamilyContact(this.studentId, {
-        contactType: m.contactType, reason: m.reason || '', result: m.result || '',
-        fullPhoneView: !!m.fullPhoneView, viewReason: m.viewReason || ''
+        contactType: m.contactType, reason: (m.reason || '').trim(), result: (m.result || '').trim(),
+        fullPhoneView: !!m.fullPhoneView, viewReason
       })
       this.acting = false
       if (res.code === 0) {

@@ -37,29 +37,9 @@
 
       <AppSectionCard v-else title="风险学生与处置">
         <div class="sa-toolbar">
-          <select v-model="filters.source" @change="reload">
-            <option value="">全部来源</option>
-            <option value="ACADEMIC_WARNING">学业预警</option>
-            <option value="LEAVE_OVERDUE">请假异常</option>
-            <option value="DORM">宿舍异常</option>
-            <option value="MENTAL">心理关注</option>
-          </select>
-          <select v-model="filters.riskLevel" @change="reload">
-            <option value="">全部等级</option>
-            <option value="LOW">低</option>
-            <option value="MEDIUM">中</option>
-            <option value="HIGH">高</option>
-            <option value="CRITICAL">重大</option>
-          </select>
-          <select v-model="filters.status" @change="reload">
-            <option value="">全部状态</option>
-            <option value="NEW">新建</option>
-            <option value="ASSIGNED">已分派</option>
-            <option value="PROCESSING">处置中</option>
-            <option value="FOLLOWING">持续跟进</option>
-            <option value="ESCALATED">已升级</option>
-            <option value="CLOSED">已关闭</option>
-          </select>
+          <AppSelect v-model="filters.source" class="sa-filter" :options="SOURCE_OPTIONS" placeholder="" @change="reload" />
+          <AppSelect v-model="filters.riskLevel" class="sa-filter" :options="LEVEL_FILTER_OPTIONS" placeholder="" @change="reload" />
+          <AppSelect v-model="filters.status" class="sa-filter" :options="STATUS_FILTER_OPTIONS" placeholder="" @change="reload" />
           <span v-if="scanResult" class="sa-scan">{{ scanResult }}</span>
         </div>
 
@@ -182,6 +162,29 @@ const RISK_LEVELS = [
   { value: 'HIGH', label: '高风险' },
   { value: 'CRITICAL', label: '危急' }
 ]
+const SOURCE_OPTIONS = [
+  { value: '', label: '全部来源' },
+  { value: 'ACADEMIC_WARNING', label: '学业预警' },
+  { value: 'LEAVE_OVERDUE', label: '请假异常' },
+  { value: 'DORM', label: '宿舍异常' },
+  { value: 'MENTAL', label: '心理关注' }
+]
+const LEVEL_FILTER_OPTIONS = [
+  { value: '', label: '全部等级' },
+  { value: 'LOW', label: '低' },
+  { value: 'MEDIUM', label: '中' },
+  { value: 'HIGH', label: '高' },
+  { value: 'CRITICAL', label: '重大' }
+]
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: '全部状态' },
+  { value: 'NEW', label: '新建' },
+  { value: 'ASSIGNED', label: '已分派' },
+  { value: 'PROCESSING', label: '处置中' },
+  { value: 'FOLLOWING', label: '持续跟进' },
+  { value: 'ESCALATED', label: '已升级' },
+  { value: 'CLOSED', label: '已关闭' }
+]
 
 export default {
   name: 'StudentAffairsRiskListView',
@@ -207,6 +210,9 @@ export default {
   data() {
     return {
       RISK_LEVELS,
+      SOURCE_OPTIONS,
+      LEVEL_FILTER_OPTIONS,
+      STATUS_FILTER_OPTIONS,
       loading: true,
       actioning: false,
       errorMessage: '',
@@ -389,6 +395,9 @@ export default {
   border-radius: var(--radius-base);
   background: var(--bg-surface);
   padding: var(--space-2) var(--space-3);
+}
+.sa-filter {
+  width: 150px;
 }
 .sa-scan {
   color: var(--warning-700);

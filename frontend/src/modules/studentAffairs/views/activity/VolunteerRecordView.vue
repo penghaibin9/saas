@@ -17,11 +17,11 @@
 
       <AppSectionCard v-if="formVisible" title="补录志愿时长">
         <div class="vf-grid">
-          <label class="vf-field"><span>学生主档ID *</span><input v-model.number="form.studentId" type="number" class="vf-input" placeholder="student_profile.id" /></label>
-          <label class="vf-field"><span>服务名称 *</span><input v-model.trim="form.serviceName" class="vf-input" placeholder="如：社区图书整理" /></label>
-          <label class="vf-field"><span>时长(小时) *</span><input v-model.number="form.hours" type="number" min="0" step="0.5" class="vf-input" /></label>
-          <label class="vf-field"><span>服务单位</span><input v-model.trim="form.orgName" class="vf-input" placeholder="如：社区服务中心" /></label>
-          <label class="vf-field"><span>服务日期</span><input v-model="form.serviceDate" type="date" class="vf-input" /></label>
+          <div class="vf-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <label class="vf-field"><span>服务名称 *</span><AppTextInput v-model="form.serviceName" placeholder="如：社区图书整理" /></label>
+          <label class="vf-field"><span>时长(小时) *</span><AppNumberInput v-model="form.hours" :min="0" :step="0.5" /></label>
+          <label class="vf-field"><span>服务单位</span><AppTextInput v-model="form.orgName" placeholder="如：社区服务中心" /></label>
+          <label class="vf-field"><span>服务日期</span><AppDatePicker v-model="form.serviceDate" /></label>
         </div>
         <p v-if="form.error" class="vf-error">{{ form.error }}</p>
         <div class="vf-actions">
@@ -70,7 +70,8 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+  AppConfirmDialog, AppDatePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell,
+  AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -83,8 +84,8 @@ const STATUS_FILTERS = [
 export default {
   name: 'VolunteerRecordView',
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
-    StatusTag: AppStatusTag
+    AppConfirmDialog, AppDatePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell,
+    AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   data() {
     return {
@@ -108,7 +109,8 @@ export default {
   },
   mounted() { this.load() },
   methods: {
-    blankForm() { return { studentId: null, serviceName: '', hours: null, orgName: '', serviceDate: '', error: '' } },
+    blankForm() { return { studentId: '', serviceName: '', hours: null, orgName: '', serviceDate: '', error: '' } },
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getVolunteerRecords({ pageSize: 300 })
@@ -125,10 +127,11 @@ export default {
     openForm() { this.form = this.blankForm(); this.formVisible = true },
     async save() {
       const m = this.form
-      if (!m.studentId || !m.serviceName || !m.hours) { m.error = '学生ID、服务名称、时长必填'; return }
+      const serviceName = (m.serviceName || '').trim()
+      if (!m.studentId || !serviceName || !m.hours) { m.error = '学生、服务名称、时长必填'; return }
       m.error = ''; this.saving = true
-      const body = { studentId: Number(m.studentId), serviceName: m.serviceName, hours: Number(m.hours) }
-      if (m.orgName) body.orgName = m.orgName
+      const body = { studentId: Number(m.studentId), serviceName, hours: Number(m.hours) }
+      if ((m.orgName || '').trim()) body.orgName = m.orgName.trim()
       if (m.serviceDate) body.serviceDate = m.serviceDate
       const res = await studentAffairsApi.createVolunteerRecord(body)
       this.saving = false

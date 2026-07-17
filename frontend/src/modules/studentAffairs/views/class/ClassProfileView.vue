@@ -60,7 +60,7 @@
             <span v-else class="mp-note">无附件</span>
           </template>
           <template #cell-actions="{ row }">
-            <button type="button" class="mp-link lav-danger" @click="voidMaterial(row)">作废</button>
+            <AppPermissionButton code="studentAffairs.class.create" variant="danger" size="sm" @click="voidMaterial(row)">作废</AppPermissionButton>
           </template>
         </DataTable>
       </template>
@@ -76,7 +76,7 @@
           <li v-for="c in cadre.rows" :key="c.cadreId">
             <span class="cadre-pos">{{ positionLabel(c.position) }}</span>
             <span>{{ studentName(c.studentId) }}</span>
-            <button type="button" class="mp-link lav-danger" @click="removeCadre(c)">免去</button>
+            <AppPermissionButton code="studentAffairs.class.cadre.manage" variant="danger" size="sm" @click="removeCadre(c)">免去</AppPermissionButton>
           </li>
         </ul>
       </template>
@@ -141,7 +141,7 @@
  * 聚合指标 + 学生名单(脱敏) + 班级材料(附件走文件中心) + 班干部任免。真实对接 /student-affairs/classes/*。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppConfirmDialog, AppSelect, AppTextInput, AppTextarea, AppDatePicker } from '@/components/common'
+import { AppMetricCard, AppConfirmDialog, AppPermissionButton, AppSelect, AppTextInput, AppTextarea, AppDatePicker } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { classApi } from '@/modules/studentAffairs/api/class.api'
 import { requestUpload, requestBlob } from '@/services/http/client'
@@ -172,7 +172,7 @@ export default {
   name: 'ClassProfileView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppConfirmDialog,
-    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppButton
+    AppPermissionButton, AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppButton
   },
   props: { ctx: { type: Object, default: null } },
   data() {

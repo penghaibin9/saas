@@ -11,10 +11,10 @@
       </div>
       <AppSectionCard v-if="formVisible" title="申请减免/临补">
         <div class="fr-grid">
-          <label class="fr-field"><span>学生主档ID *</span><input v-model.number="form.studentId" type="number" class="fr-input" /></label>
-          <label class="fr-field"><span>类型</span><select v-model="form.itemType" class="fr-input"><option value="REDUCTION">学费减免</option><option value="TEMP_AID">临时补助</option></select></label>
-          <label class="fr-field"><span>金额</span><input v-model.number="form.amount" type="number" class="fr-input" /></label>
-          <label class="fr-field fr-wide"><span>理由 *（≥5字）</span><input v-model.trim="form.reason" class="fr-input" /></label>
+          <div class="fr-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <label class="fr-field"><span>类型</span><AppSelect v-model="form.itemType" :options="ITEM_TYPE_OPTIONS" placeholder="" /></label>
+          <label class="fr-field"><span>金额</span><AppNumberInput v-model="form.amount" :min="0" /></label>
+          <label class="fr-field fr-wide"><span>理由 *（≥5字）</span><AppTextInput v-model="form.reason" /></label>
         </div>
         <p v-if="form.error" class="fr-error">{{ form.error }}</p>
         <div class="fr-actions"><button type="button" class="fr-btn" @click="formVisible=false">取消</button>
@@ -61,16 +61,21 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPE_FILTERS = [{ key: '', label: '全部' }, { key: 'REDUCTION', label: '学费减免' }, { key: 'TEMP_AID', label: '临时补助' }]
+const ITEM_TYPE_OPTIONS = [{ value: 'REDUCTION', label: '学费减免' }, { value: 'TEMP_AID', label: '临时补助' }]
 
 export default {
   name: 'FeeReductionView',
-  components: { AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+  },
   data() {
     return {
       loading: true, acting: '', errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS,
@@ -78,6 +83,7 @@ export default {
     }
   },
   computed: {
+    ITEM_TYPE_OPTIONS: () => ITEM_TYPE_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const s = (k) => this.items.filter((x) => x.status === k).length
@@ -90,7 +96,8 @@ export default {
   },
   mounted() { this.load() },
   methods: {
-    blank() { return { studentId: null, itemType: 'REDUCTION', amount: null, reason: '', error: '' } },
+    blank() { return { studentId: '', itemType: 'REDUCTION', amount: null, reason: '', error: '' } },
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getFeeReductions({ itemType: this.activeType })
@@ -101,9 +108,10 @@ export default {
     setType(k) { if (this.activeType === k) return; this.activeType = k; this.load() },
     async submit() {
       const f = this.form
-      if (!f.studentId || !f.reason || f.reason.length < 5) { f.error = '学生ID与理由(≥5字)必填'; return }
+      const reason = (f.reason || '').trim()
+      if (!f.studentId || !reason || reason.length < 5) { f.error = '学生与理由(≥5字)必填'; return }
       f.error = ''; this.acting = 'sub'
-      const res = await studentAffairsApi.submitFeeReduction({ studentId: Number(f.studentId), itemType: f.itemType, amount: f.amount != null ? Number(f.amount) : undefined, reason: f.reason })
+      const res = await studentAffairsApi.submitFeeReduction({ studentId: Number(f.studentId), itemType: f.itemType, amount: f.amount != null ? Number(f.amount) : undefined, reason })
       this.acting = ''
       if (res.code === 0) { toast.success('已提交'); this.formVisible = false; this.form = this.blank(); this.load() } else f.error = res.message || '提交失败'
     },

@@ -22,18 +22,13 @@
       <AppSectionCard v-if="formVisible" title="新建资助批次">
         <div class="fb-grid">
           <label class="fb-field"><span>所属项目 *</span>
-            <select v-model="form.projectId" class="fb-input">
-              <option value="">（选择项目）</option>
-              <option v-for="p in projects" :key="p.projectId" :value="p.projectId">
-                {{ p.projectName }}（{{ typeLabel(p.projectType) }}）
-              </option>
-            </select></label>
+            <AppSelect v-model="form.projectId" :options="projectOptions" placeholder="（选择项目）" /></label>
           <label class="fb-field"><span>学年 *</span>
-            <input v-model.trim="form.schoolYear" class="fb-input" placeholder="如：2025-2026" /></label>
+            <AppTextInput v-model="form.schoolYear" placeholder="如：2025-2026" /></label>
           <label class="fb-field"><span>名额</span>
-            <input v-model.number="form.quota" type="number" min="0" class="fb-input" placeholder="如：50" /></label>
+            <AppNumberInput v-model="form.quota" :min="0" placeholder="如：50" /></label>
           <label class="fb-field"><span>公示天数</span>
-            <input v-model.number="form.publicityDays" type="number" min="0" class="fb-input" placeholder="默认 5，快测可填 0" /></label>
+            <AppNumberInput v-model="form.publicityDays" :min="0" placeholder="默认 5，快测可填 0" /></label>
           <label class="fb-field bf-check"><input v-model="form.publish" type="checkbox" /> <span>立即发布（开放申请）</span></label>
         </div>
         <p v-if="form.error" class="fb-error">{{ form.error }}</p>
@@ -64,7 +59,10 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppSelect, AppStatusTag, AppTextInput
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -72,7 +70,10 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', REVIEWING: '评审中
 
 export default {
   name: 'FundingBatchView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
+    AppSelect, StatusTag: AppStatusTag, AppTextInput
+  },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', batches: [], projects: [],
@@ -81,6 +82,9 @@ export default {
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    projectOptions() {
+      return this.projects.map((p) => ({ value: p.projectId, label: `${p.projectName}（${this.typeLabel(p.projectType)}）` }))
+    },
     metricCards() {
       const open = this.batches.filter((b) => b.status === 'OPEN').length
       return [
@@ -112,10 +116,11 @@ export default {
     },
     async save() {
       const m = this.form
-      if (!m.projectId || !m.schoolYear) { m.error = '所属项目与学年必填'; return }
+      const schoolYear = (m.schoolYear || '').trim()
+      if (!m.projectId || !schoolYear) { m.error = '所属项目与学年必填'; return }
       m.error = ''
       this.saving = true
-      const body = { projectId: m.projectId, schoolYear: m.schoolYear, publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish }
+      const body = { projectId: m.projectId, schoolYear, publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish }
       if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
       const res = await studentAffairsApi.createFundingBatch(body)
       if (res.code === 0) {

@@ -31,7 +31,7 @@
           <template #cell-totalScore="{ row }"><b>{{ fmtScore(row.totalScore) }}</b></template>
           <template #cell-status="{ row }"><AppStatusTag :status="row.status" :label="row.statusLabel" dot /></template>
           <template #cell-actions="{ row }">
-            <button type="button" class="mp-link" :disabled="isPublished" :class="{ 'is-disabled': isPublished }" @click="openScore(row)">学院评分</button>
+            <AppPermissionButton code="studentAffairs.class.create" variant="secondary" size="sm" :disabled="isPublished" @click="openScore(row)">学院评分</AppPermissionButton>
           </template>
         </DataTable>
         <p class="mp-note">系统自动分=工作量折算（透明可解释：带班×5 + 办结请假×2 + 风险处置×3 + 材料×1，基线60封顶100）；综合分=自动×0.6+学院×0.4。申诉/正式归档流程见历史欠账（本轮为一步发布）。</p>
@@ -72,7 +72,7 @@
  * 建周期 → 系统自动抓取工作量指标 → 学院评分 → 综合排名 → 发布。真实对接 /student-affairs/counselor-assessment/*。
  */
 import { ModulePageShell, DataTable, LoadingState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppSelect, AppTextInput, AppNumberInput } from '@/components/common'
+import { AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { assessmentApi } from '@/modules/studentAffairs/api/class.api'
 import { toast } from '@/utils/toast'
@@ -85,7 +85,7 @@ const COLUMNS = [
 
 export default {
   name: 'CounselorAssessmentView',
-  components: { ModulePageShell, DataTable, LoadingState, EmptyState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppButton },
+  components: { ModulePageShell, DataTable, LoadingState, EmptyState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton, AppButton },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {

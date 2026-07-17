@@ -8,26 +8,16 @@
   >
     <div class="fd-ctxbar">
       <label class="fd-ctxsel"><span>资助项目</span>
-        <select v-model="projectId" class="fd-input" @change="onProjectChange">
-          <option value="">（选择项目）</option>
-          <option v-for="p in projects" :key="p.projectId" :value="p.projectId">
-            {{ projectTypeLabel(p.projectType) }} · {{ p.projectName }}
-          </option>
-        </select>
+        <AppSelect v-model="projectId" class="fd-ctxpick" :options="projectOptions" placeholder="（选择项目）" @change="onProjectChange" />
       </label>
       <label class="fd-ctxsel"><span>批次</span>
-        <select v-model="batchId" class="fd-input" :disabled="!projectId" @change="onBatchChange">
-          <option value="">（选择批次）</option>
-          <option v-for="b in filteredBatches" :key="b.batchId" :value="b.batchId">
-            {{ b.schoolYear }} · {{ batchStatusLabel(b.status) }}
-          </option>
-        </select>
+        <AppSelect v-model="batchId" class="fd-ctxpick" :options="batchOptions" placeholder="（选择批次）" :disabled="!projectId" @change="onBatchChange" />
       </label>
       <div class="fd-ctxtools">
-        <button type="button" class="fd-btn" @click="openProject">建项目</button>
-        <button type="button" class="fd-btn" :disabled="!projectId" @click="openBatch">建批次</button>
-        <button type="button" class="fd-btn" :disabled="scanning" @click="onScan">公示扫描</button>
-        <button type="button" class="fd-btn fd-btn--primary" :disabled="!currentBatchOpen" @click="openApply">受理申请</button>
+        <AppPermissionButton code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="openProject">建项目</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.funding.project.manage" variant="secondary" size="sm" :disabled="!projectId" @click="openBatch">建批次</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :loading="scanning" @click="onScan">公示扫描</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.funding.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
       </div>
     </div>
 
@@ -87,15 +77,15 @@
           <p v-if="selected.checkSnapshot" class="fd-snap">资格校验：{{ snapshotText(selected.checkSnapshot) }}</p>
 
           <div v-if="detailActions.length" class="fd-actions">
-            <button
+            <AppPermissionButton
               v-for="a in detailActions"
               :key="a.key"
-              type="button"
-              class="fd-btn"
-              :class="{ 'fd-btn--primary': a.tone === 'primary', 'fd-btn--danger': a.tone === 'danger' }"
-              :disabled="acting"
+              :code="a.code"
+              :variant="a.tone === 'primary' ? 'primary' : (a.tone === 'danger' ? 'danger' : 'secondary')"
+              size="sm"
+              :loading="acting"
               @click="onAction(a.key)"
-            >{{ a.label }}</button>
+            >{{ a.label }}</AppPermissionButton>
           </div>
           <p v-else class="fd-terminal">该申请已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
         </template>
@@ -120,17 +110,14 @@
       <div class="fd-modal">
         <h3 class="fd-modal__title">新建资助项目</h3>
         <label class="fd-field"><span>项目类型 <i>*</i></span>
-          <select v-model="projectModal.projectType" class="fd-input">
-            <option value="SCHOLARSHIP">奖学金</option>
-            <option value="GRANT">助学金</option>
-          </select>
+          <AppSelect v-model="projectModal.projectType" :options="PROJECT_TYPE_OPTIONS" placeholder="" />
         </label>
         <label class="fd-field"><span>项目名称 <i>*</i></span>
-          <input v-model.trim="projectModal.projectName" class="fd-input" placeholder="如：国家励志奖学金 / 国家助学金" />
+          <AppTextInput v-model="projectModal.projectName" placeholder="如：国家励志奖学金 / 国家助学金" />
         </label>
         <div class="fd-grid2">
-          <label class="fd-field"><span>金额（元）</span><input v-model.number="projectModal.amount" type="number" class="fd-input" /></label>
-          <label class="fd-field"><span>名额</span><input v-model.number="projectModal.quota" type="number" class="fd-input" /></label>
+          <label class="fd-field"><span>金额（元）</span><AppNumberInput v-model="projectModal.amount" /></label>
+          <label class="fd-field"><span>名额</span><AppNumberInput v-model="projectModal.quota" /></label>
         </div>
         <p class="fd-modal__hint">助学金申请将硬校验困难库在库；奖学金将硬校验学籍/处分/成绩。</p>
         <p v-if="projectModal.error" class="fd-err">{{ projectModal.error }}</p>
@@ -145,10 +132,10 @@
     <div v-if="batchModal.visible" class="fd-mask" @click.self="batchModal.visible = false">
       <div class="fd-modal">
         <h3 class="fd-modal__title">新建资助批次</h3>
-        <label class="fd-field"><span>学年 <i>*</i></span><input v-model.trim="batchModal.schoolYear" class="fd-input" placeholder="如：2025-2026" /></label>
+        <label class="fd-field"><span>学年 <i>*</i></span><AppTextInput v-model="batchModal.schoolYear" placeholder="如：2025-2026" /></label>
         <div class="fd-grid2">
-          <label class="fd-field"><span>公示天数</span><input v-model.number="batchModal.publicityDays" type="number" min="0" class="fd-input" placeholder="快测填 0" /></label>
-          <label class="fd-field"><span>名额</span><input v-model.number="batchModal.quota" type="number" class="fd-input" /></label>
+          <label class="fd-field"><span>公示天数</span><AppNumberInput v-model="batchModal.publicityDays" :min="0" placeholder="快测填 0" /></label>
+          <label class="fd-field"><span>名额</span><AppNumberInput v-model="batchModal.quota" /></label>
         </div>
         <label class="fd-check"><input v-model="batchModal.publish" type="checkbox" /> 立即发布（开放受理）</label>
         <p v-if="batchModal.error" class="fd-err">{{ batchModal.error }}</p>
@@ -167,13 +154,10 @@
           <AppStudentPicker v-model="applyModal.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
         </div>
         <label class="fd-field"><span>申请来源</span>
-          <select v-model="applyModal.applySource" class="fd-input">
-            <option value="SELF">自主申请</option>
-            <option value="RECOMMEND">推荐</option>
-          </select>
+          <AppSelect v-model="applyModal.applySource" :options="APPLY_SOURCE_OPTIONS" placeholder="" />
         </label>
-        <label class="fd-field"><span>申请金额（元）</span><input v-model.number="applyModal.amount" type="number" class="fd-input" /></label>
-        <label class="fd-field"><span>申请说明</span><textarea v-model.trim="applyModal.statement" class="fd-textarea" rows="3" placeholder="选填" /></label>
+        <label class="fd-field"><span>申请金额（元）</span><AppNumberInput v-model="applyModal.amount" /></label>
+        <label class="fd-field"><span>申请说明</span><AppTextarea v-model="applyModal.statement" :rows="3" placeholder="选填" /></label>
         <p class="fd-modal__hint">受理时将硬校验资格；不满足条件将被拒绝并提示原因。</p>
         <p v-if="applyModal.error" class="fd-err">{{ applyModal.error }}</p>
         <div class="fd-modal__foot">
@@ -192,7 +176,10 @@
  * 助学金硬校验困难库在库，奖学金硬校验学籍/处分/成绩；不满足受理即被 409 拦截并透出原因。金额按角色脱敏。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppConfirmDialog, AppStatusTag, AppStudentPicker } from '@/components/common'
+import {
+  AppConfirmDialog, AppNumberInput, AppPermissionButton, AppSelect, AppStatusTag,
+  AppStudentPicker, AppTextInput, AppTextarea
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -204,10 +191,21 @@ const STATUS_TYPE = {
 }
 const PROJECT_TYPE = { SCHOLARSHIP: '奖学金', GRANT: '助学金' }
 const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
+const PROJECT_TYPE_OPTIONS = [
+  { value: 'SCHOLARSHIP', label: '奖学金' },
+  { value: 'GRANT', label: '助学金' }
+]
+const APPLY_SOURCE_OPTIONS = [
+  { value: 'SELF', label: '自主申请' },
+  { value: 'RECOMMEND', label: '推荐' }
+]
 
 export default {
   name: 'FundingWorkbenchView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, StatusTag: AppStatusTag, AppStudentPicker },
+  components: {
+    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppNumberInput,
+    AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+  },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -221,11 +219,25 @@ export default {
     }
   },
   computed: {
+    PROJECT_TYPE_OPTIONS: () => PROJECT_TYPE_OPTIONS,
+    APPLY_SOURCE_OPTIONS: () => APPLY_SOURCE_OPTIONS,
     roleName() {
       return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || ''
     },
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
+    },
+    projectOptions() {
+      return this.projects.map((p) => ({
+        value: p.projectId,
+        label: `${this.projectTypeLabel(p.projectType)} · ${p.projectName}`
+      }))
+    },
+    batchOptions() {
+      return this.filteredBatches.map((b) => ({
+        value: b.batchId,
+        label: `${b.schoolYear} · ${this.batchStatusLabel(b.status)}`
+      }))
     },
     filteredBatches() {
       return this.batches.filter((b) => b.projectId === this.projectId)
@@ -255,12 +267,12 @@ export default {
       if (!s) return []
       if (FUND_NODES.includes(s)) {
         return [
-          { key: 'approve', label: '审批通过', tone: 'primary' },
-          { key: 'return', label: '退回', tone: 'default' },
-          { key: 'reject', label: '驳回', tone: 'danger' }
+          { key: 'approve', label: '审批通过', tone: 'primary', code: 'studentAffairs.funding.approve' },
+          { key: 'return', label: '退回', tone: 'default', code: 'studentAffairs.funding.approve' },
+          { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.funding.approve' }
         ]
       }
-      if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary' }]
+      if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary', code: 'studentAffairs.funding.publicity.manage' }]
       return []
     }
   },
@@ -374,8 +386,8 @@ export default {
     },
     async submitProject() {
       const m = this.projectModal
-      if (!m.projectName) { m.error = '请填写项目名称'; return }
-      const res = await studentAffairsApi.createFundingProject({ projectName: m.projectName, projectType: m.projectType, amount: m.amount || null, quota: m.quota || null })
+      if (!(m.projectName || '').trim()) { m.error = '请填写项目名称'; return }
+      const res = await studentAffairsApi.createFundingProject({ projectName: m.projectName.trim(), projectType: m.projectType, amount: m.amount || null, quota: m.quota || null })
       if (res.code === 0) {
         toast.success('项目已创建')
         this.projectModal.visible = false
@@ -388,8 +400,8 @@ export default {
     },
     async submitBatch() {
       const m = this.batchModal
-      if (!m.schoolYear) { m.error = '请填写学年'; return }
-      const res = await studentAffairsApi.createFundingBatch({ projectId: String(this.projectId), schoolYear: m.schoolYear, publicityDays: Number(m.publicityDays) || 0, quota: m.quota || null, publish: !!m.publish })
+      if (!(m.schoolYear || '').trim()) { m.error = '请填写学年'; return }
+      const res = await studentAffairsApi.createFundingBatch({ projectId: String(this.projectId), schoolYear: m.schoolYear.trim(), publicityDays: Number(m.publicityDays) || 0, quota: m.quota || null, publish: !!m.publish })
       if (res.code === 0) {
         toast.success('批次已保存')
         this.batchModal.visible = false
@@ -406,7 +418,7 @@ export default {
     async submitApply() {
       const m = this.applyModal
       if (!m.studentId) { m.error = '请选择学生'; return }
-      const body = { batchId: String(this.batchId), studentId: String(m.studentId), applySource: m.applySource, amount: m.amount || null, statement: m.statement || '' }
+      const body = { batchId: String(this.batchId), studentId: String(m.studentId), applySource: m.applySource, amount: m.amount || null, statement: (m.statement || '').trim() }
       const ok = await this.runAction(() => studentAffairsApi.applyFunding(body), '申请已受理')
       if (ok) this.applyModal.visible = false
       else this.applyModal.error = this._lastErr || '受理失败（可能资格校验未通过）'
@@ -457,6 +469,9 @@ export default {
   gap: var(--space-2);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+}
+.fd-ctxpick {
+  width: 240px;
 }
 .fd-ctxtools {
   display: flex;

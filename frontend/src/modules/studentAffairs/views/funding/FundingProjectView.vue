@@ -20,16 +20,13 @@
       <AppSectionCard v-if="formVisible" title="新建资助项目">
         <div class="pf-grid">
           <label class="pf-field"><span>项目名称 *</span>
-            <input v-model.trim="form.projectName" class="pf-input" placeholder="如：国家励志奖学金" /></label>
+            <AppTextInput v-model="form.projectName" placeholder="如：国家励志奖学金" /></label>
           <label class="pf-field"><span>项目类型 *</span>
-            <select v-model="form.projectType" class="pf-input">
-              <option value="SCHOLARSHIP">奖学金</option>
-              <option value="GRANT">助学金</option>
-            </select></label>
+            <AppSelect v-model="form.projectType" :options="PROJECT_TYPE_OPTIONS" placeholder="" /></label>
           <label class="pf-field"><span>金额（元）</span>
-            <input v-model.number="form.amount" type="number" min="0" class="pf-input" placeholder="如：3300" /></label>
+            <AppNumberInput v-model="form.amount" :min="0" placeholder="如：3300" /></label>
           <label class="pf-field"><span>名额</span>
-            <input v-model.number="form.quota" type="number" min="0" class="pf-input" placeholder="如：50" /></label>
+            <AppNumberInput v-model="form.quota" :min="0" placeholder="如：50" /></label>
         </div>
         <p v-if="form.error" class="pf-error">{{ form.error }}</p>
         <div class="pf-actions">
@@ -62,7 +59,10 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppSelect, AppStatusTag, AppTextInput
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -71,10 +71,14 @@ const TYPES = [
   { key: 'SCHOLARSHIP', label: '奖学金' },
   { key: 'GRANT', label: '助学金' }
 ]
+const PROJECT_TYPE_OPTIONS = [{ value: 'SCHOLARSHIP', label: '奖学金' }, { value: 'GRANT', label: '助学金' }]
 
 export default {
   name: 'FundingProjectView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
+    AppSelect, StatusTag: AppStatusTag, AppTextInput
+  },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', projects: [], activeType: '', typeFilters: TYPES,
@@ -82,6 +86,7 @@ export default {
     }
   },
   computed: {
+    PROJECT_TYPE_OPTIONS: () => PROJECT_TYPE_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     filtered() { return this.activeType ? this.projects.filter((p) => p.projectType === this.activeType) : this.projects },
     metricCards() {
@@ -112,10 +117,11 @@ export default {
     },
     async save() {
       const m = this.form
-      if (!m.projectName) { m.error = '项目名称必填'; return }
+      const projectName = (m.projectName || '').trim()
+      if (!projectName) { m.error = '项目名称必填'; return }
       m.error = ''
       this.saving = true
-      const body = { projectName: m.projectName, projectType: m.projectType }
+      const body = { projectName, projectType: m.projectType }
       if (m.amount != null && m.amount !== '') body.amount = Number(m.amount)
       if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
       const res = await studentAffairsApi.createFundingProject(body)

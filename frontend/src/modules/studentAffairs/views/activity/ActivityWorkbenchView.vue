@@ -17,26 +17,18 @@
 
       <AppSectionCard v-if="formVisible" title="新建活动">
         <div class="af-grid">
-          <label class="af-field"><span>活动名称 *</span><input v-model.trim="form.activityName" class="af-input" placeholder="如：2026 迎新晚会" /></label>
+          <label class="af-field"><span>活动名称 *</span><AppTextInput v-model="form.activityName" placeholder="如：2026 迎新晚会" /></label>
           <label class="af-field"><span>类型</span>
-            <select v-model="form.activityType" class="af-input">
-              <option value="ACTIVITY">活动</option><option value="VOLUNTEER">志愿服务</option>
-              <option value="LECTURE">讲座报告</option><option value="COMPETITION">竞赛</option><option value="PRACTICE">社会实践</option>
-            </select></label>
+            <AppSelect v-model="form.activityType" :options="TYPE_OPTIONS" placeholder="" /></label>
           <label class="af-field"><span>学分类型</span>
-            <select v-model="form.creditType" class="af-input">
-              <option value="SECOND_CLASS">第二课堂学时</option><option value="MORAL">德育积分</option><option value="VOLUNTEER_HOUR">志愿时长</option>
-            </select></label>
-          <label class="af-field"><span>学时/积分/时长</span><input v-model.number="form.creditValue" type="number" min="0" step="0.5" class="af-input" placeholder="如：2" /></label>
+            <AppSelect v-model="form.creditType" :options="CREDIT_TYPE_OPTIONS" placeholder="" /></label>
+          <label class="af-field"><span>学时/积分/时长</span><AppNumberInput v-model="form.creditValue" :min="0" :step="0.5" placeholder="如：2" /></label>
           <label class="af-field"><span>二课类目</span>
-            <select v-model="form.categoryCode" class="af-input">
-              <option value="">（不限）</option>
-              <option v-for="c in categories" :key="c.categoryCode" :value="c.categoryCode">{{ c.categoryName }}</option>
-            </select></label>
-          <label class="af-field"><span>名额</span><input v-model.number="form.quota" type="number" min="0" class="af-input" placeholder="空=不限" /></label>
-          <label class="af-field"><span>开始时间</span><input v-model="form.startAt" type="datetime-local" class="af-input" /></label>
-          <label class="af-field"><span>结束时间</span><input v-model="form.endAt" type="datetime-local" class="af-input" /></label>
-          <label class="af-field af-field--wide"><span>地点</span><input v-model.trim="form.location" class="af-input" /></label>
+            <AppSelect v-model="form.categoryCode" :options="categoryOptions" placeholder="" /></label>
+          <label class="af-field"><span>名额</span><AppNumberInput v-model="form.quota" :min="0" placeholder="空=不限" /></label>
+          <label class="af-field"><span>开始时间</span><AppDateTimePicker v-model="form.startAt" role="start" :end-value="form.endAt" /></label>
+          <label class="af-field"><span>结束时间</span><AppDateTimePicker v-model="form.endAt" role="end" :start-value="form.startAt" /></label>
+          <label class="af-field af-field--wide"><span>地点</span><AppTextInput v-model="form.location" /></label>
         </div>
         <p v-if="form.error" class="af-error">{{ form.error }}</p>
         <div class="af-actions">
@@ -93,11 +85,18 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppSectionCard, AppSelect, AppStatusTag, AppTextInput
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPE = { ACTIVITY: '活动', VOLUNTEER: '志愿服务', LECTURE: '讲座报告', COMPETITION: '竞赛', PRACTICE: '社会实践' }
+const TYPE_OPTIONS = Object.entries(TYPE).map(([value, label]) => ({ value, label }))
+const CREDIT_TYPE_OPTIONS = [
+  { value: 'SECOND_CLASS', label: '第二课堂学时' }, { value: 'MORAL', label: '德育积分' }, { value: 'VOLUNTEER_HOUR', label: '志愿时长' }
+]
 const STATUS_FILTERS = [
   { key: '', label: '全部' }, { key: 'DRAFT', label: '草稿' }, { key: 'PUBLISHED', label: '报名中' },
   { key: 'ONGOING', label: '进行中' }, { key: 'FINISHED', label: '待确认' }, { key: 'CONFIRMED', label: '已确认' }
@@ -105,7 +104,10 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'ActivityWorkbenchView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput
+  },
   data() {
     return {
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], categories: [],
@@ -115,6 +117,13 @@ export default {
     }
   },
   computed: {
+    TYPE_OPTIONS: () => TYPE_OPTIONS,
+    CREDIT_TYPE_OPTIONS: () => CREDIT_TYPE_OPTIONS,
+    categoryOptions() {
+      return [{ value: '', label: '（不限）' }].concat(
+        this.categories.map((c) => ({ value: c.categoryCode, label: c.categoryName }))
+      )
+    },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const s = (k) => this.all.filter((a) => a.status === k).length
@@ -148,15 +157,16 @@ export default {
     openForm() { this.form = this.blankForm(); this.formVisible = true },
     async save() {
       const m = this.form
-      if (!m.activityName) { m.error = '活动名称必填'; return }
+      const activityName = (m.activityName || '').trim()
+      if (!activityName) { m.error = '活动名称必填'; return }
       m.error = ''; this.saving = true
-      const body = { activityName: m.activityName, activityType: m.activityType, creditType: m.creditType }
+      const body = { activityName, activityType: m.activityType, creditType: m.creditType }
       if (m.creditValue != null && m.creditValue !== '') body.creditValue = Number(m.creditValue)
       if (m.categoryCode) body.categoryCode = m.categoryCode
       if (m.quota != null && m.quota !== '') body.quota = Number(m.quota)
       if (m.startAt) body.startAt = m.startAt
       if (m.endAt) body.endAt = m.endAt
-      if (m.location) body.location = m.location
+      if ((m.location || '').trim()) body.location = m.location.trim()
       const res = await studentAffairsApi.createActivity(body)
       this.saving = false
       if (res.code === 0) { toast.success('活动草稿已创建'); this.formVisible = false; this.load() }

@@ -11,7 +11,7 @@
       <div class="av-side">
         <div class="av-side__head">
           归档批次
-          <button type="button" class="av-btn av-btn--primary av-btn--sm" @click="openBatch">建批次</button>
+          <AppPermissionButton code="studentAffairs.archive.batch.manage" variant="primary" size="sm" @click="openBatch">建批次</AppPermissionButton>
         </div>
         <EmptyState v-if="!batches.length" title="暂无批次" description="点「建批次」新建归档批次" />
         <ul v-else class="av-blist">
@@ -52,8 +52,8 @@
           </div>
 
           <div class="av-actions">
-            <button v-if="canCollect" type="button" class="av-btn av-btn--primary" :disabled="acting" @click="openCollect">圈定学生</button>
-            <button v-if="advanceLabel" type="button" class="av-btn av-btn--primary" :disabled="acting" @click="onAdvance">{{ advanceLabel }}</button>
+            <AppPermissionButton v-if="canCollect" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="openCollect">圈定学生</AppPermissionButton>
+            <AppPermissionButton v-if="advanceLabel" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="onAdvance">{{ advanceLabel }}</AppPermissionButton>
             <span v-if="current.status === 'ARCHIVED'" class="av-archived">✓ 已归档（水印包已登记）</span>
           </div>
 
@@ -77,12 +77,12 @@
     <div v-if="batchModal.visible" class="av-mask" @click.self="batchModal.visible = false">
       <div class="av-modal">
         <h3 class="av-modal__title">新建归档批次</h3>
-        <label class="av-field"><span>批次名称 <i>*</i></span><input v-model.trim="batchModal.batchName" class="av-input" placeholder="如：2026 届毕业生学工归档" /></label>
-        <label class="av-field"><span>学年</span><input v-model.trim="batchModal.yearCode" class="av-input" placeholder="如：2025-2026" /></label>
+        <label class="av-field"><span>批次名称 <i>*</i></span><AppTextInput v-model="batchModal.batchName" placeholder="如：2026 届毕业生学工归档" /></label>
+        <label class="av-field"><span>学年</span><AppTextInput v-model="batchModal.yearCode" placeholder="如：2025-2026" /></label>
         <p v-if="batchModal.error" class="av-err">{{ batchModal.error }}</p>
         <div class="av-modal__foot">
-          <button type="button" class="av-btn" @click="batchModal.visible = false">取消</button>
-          <button type="button" class="av-btn av-btn--primary" :disabled="acting" @click="submitBatch">创建</button>
+          <AppButton variant="secondary" @click="batchModal.visible = false">取消</AppButton>
+          <AppButton variant="primary" :loading="acting" @click="submitBatch">创建</AppButton>
         </div>
       </div>
     </div>
@@ -96,8 +96,8 @@
         </div>
         <p v-if="collectModal.error" class="av-err">{{ collectModal.error }}</p>
         <div class="av-modal__foot">
-          <button type="button" class="av-btn" @click="collectModal.visible = false">取消</button>
-          <button type="button" class="av-btn av-btn--primary" :disabled="acting" @click="submitCollect">生成档案包</button>
+          <AppButton variant="secondary" @click="collectModal.visible = false">取消</AppButton>
+          <AppButton variant="primary" :loading="acting" @click="submitCollect">生成档案包</AppButton>
         </div>
       </div>
     </div>
@@ -111,7 +111,8 @@
  * 后端按批次 ID 管理，无列表端点，本页维护本会话已建批次。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppStatusTag, AppStudentPicker } from '@/components/common'
+import { AppPermissionButton, AppStatusTag, AppStudentPicker, AppTextInput } from '@/components/common'
+import { AppButton } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -127,7 +128,7 @@ const PKG_STATUS = { PENDING_GEN: '待生成', GENERATED: '已生成', ARCHIVED:
 
 export default {
   name: 'ArchiveManageView',
-  components: { ModulePageShell, EmptyState, StatusTag: AppStatusTag, AppStudentPicker },
+  components: { ModulePageShell, EmptyState, AppButton, AppPermissionButton, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -197,9 +198,10 @@ export default {
     },
     async submitBatch() {
       const m = this.batchModal
-      if (!m.batchName) { m.error = '请填写批次名称'; return }
+      const batchName = (m.batchName || '').trim()
+      if (!batchName) { m.error = '请填写批次名称'; return }
       this.acting = true
-      const res = await studentAffairsApi.createArchiveBatch({ batchName: m.batchName, yearCode: m.yearCode || '' })
+      const res = await studentAffairsApi.createArchiveBatch({ batchName, yearCode: (m.yearCode || '').trim() })
       this.acting = false
       if (res.code === 0 && res.data) {
         toast.success('批次已创建')
