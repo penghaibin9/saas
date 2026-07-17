@@ -57,21 +57,26 @@
       </section>
 
       <!-- 我的成绩 -->
-      <section v-else-if="tab === 'grades'" class="sp-card" style="padding:0;overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--line2)"><span style="font-size:15px;font-weight:600">我的成绩</span><span class="sp-muted">总学分 {{ transcript.totalCredits ?? 0 }} · GPA <b style="color:var(--pri)">{{ transcript.gpa ?? '—' }}</b></span></div>
+      <section v-else-if="tab === 'grades'">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span style="font-size:15px;font-weight:600">我的成绩</span>
+          <span class="sp-muted">已获学分 <b style="color:var(--pri)">{{ transcript.earnedCredits ?? 0 }}</b> · GPA <b style="color:var(--pri)">{{ transcript.gpa ?? '—' }}</b> · 不及格 {{ transcript.failCount ?? 0 }} 门</span>
+        </div>
         <StateBlock v-if="!(transcript.items||[]).length" type="empty" :text="transcript.note || '暂无学业记录'" />
-        <table v-else class="sp-table">
-          <thead><tr><th>课程名称</th><th>学分</th><th>成绩</th><th>绩点</th><th>性质</th></tr></thead>
-          <tbody>
-            <tr v-for="(g, i) in transcript.items" :key="i">
-              <td style="color:var(--t1)">{{ g.courseName || g.name || '—' }}</td>
-              <td>{{ g.credit ?? '—' }}</td>
-              <td :style="{ color: scoreColor(g.score), fontWeight: 600 }">{{ g.score ?? '—' }}</td>
-              <td>{{ g.gpa ?? g.gp ?? '—' }}</td>
-              <td class="sp-muted">{{ g.type || g.courseType || '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <section v-for="t in gradeTerms" :key="t.term" class="sp-card" style="padding:0;overflow:hidden;margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line2)"><span style="font-size:14px;font-weight:600">{{ t.term || '未分学期' }}</span><span class="sp-muted">{{ t.rows.length }} 门 · {{ t.credit }} 学分</span></div>
+          <table class="sp-table">
+            <thead><tr><th>课程名称</th><th>学分</th><th>成绩</th><th>结果</th></tr></thead>
+            <tbody>
+              <tr v-for="(g, i) in t.rows" :key="i">
+                <td style="color:var(--t1)">{{ g.courseName }}</td>
+                <td>{{ g.credit }}</td>
+                <td :style="{ color: scoreColor(g.score), fontWeight: 600 }">{{ g.score ?? '—' }}</td>
+                <td><StatusTag :text="g.passStatus === 'PASSED' ? '及格' : '不及格'" :tone="g.passStatus === 'PASSED' ? 'success' : 'danger'" /></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
       </section>
 
       <!-- 成绩单打印 -->
@@ -86,7 +91,7 @@
                 <div>姓名：{{ studentName }}</div><div>学号：{{ info.studentNo || '—' }}</div>
                 <div>学院：{{ info.collegeName || '—' }}</div><div>专业：{{ info.majorName || '—' }}</div>
               </div>
-              <div style="position:relative;margin-top:16px;font-size:12.5px;color:var(--t4)">已修课程 {{ (transcript.items||[]).length }} 门 · 总学分 {{ transcript.totalCredits ?? 0 }} · 平均绩点 {{ transcript.gpa ?? '—' }}</div>
+              <div style="position:relative;margin-top:16px;font-size:12.5px;color:var(--t4)">已修课程 {{ (transcript.items||[]).length }} 门 · 已获学分 {{ transcript.earnedCredits ?? 0 }} · 平均绩点 {{ transcript.gpa ?? '—' }}</div>
             </div>
           </div>
           <div class="sp-card">
@@ -238,9 +243,32 @@ const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
 const studentName = computed(() => session.user?.realName || '同学')
 const selectedCourses = computed(() => courses.value.filter((c) => c.selected || c.enrolled))
 const selectedCredit = computed(() => selectedCourses.value.reduce((a, c) => a + (Number(c.credit) || 0), 0))
+const TIME_ROWS = ['第1-2节\n08:00-09:40', '第3-4节\n10:00-11:40', '第5-6节\n14:00-15:40', '第7-8节\n16:00-17:40', '第9-10节\n19:00-20:40']
 const scheduleRows = computed(() => {
-  // 后端 items 为空时不渲染；有数据时按 5×5 网格铺（此处保留空态）
-  return []
+  const items = schedule.value.items || []
+  const rows = TIME_ROWS.map((label) => ({ label, cells: [null, null, null, null, null] }))
+  for (const it of items) {
+    const day = Number(it.dayOfWeek ?? it.day ?? it.weekday) // 1..5
+    const sec = Number(it.section ?? it.period ?? it.rowIndex) // 1..5 或节次
+    const di = (day >= 1 && day <= 5) ? day - 1 : -1
+    let ri = -1
+    if (sec >= 1 && sec <= 5) ri = sec - 1
+    else if (sec >= 1 && sec <= 10) ri = Math.floor((sec - 1) / 2)
+    if (di >= 0 && ri >= 0) {
+      rows[ri].cells[di] = { name: it.courseName || it.name, room: it.room || it.location || '', teacher: it.teacherName || it.teacher || '' }
+    }
+  }
+  return rows
+})
+const gradeTerms = computed(() => {
+  const map = {}
+  for (const g of (transcript.value.items || [])) {
+    const key = g.term || ''
+    if (!map[key]) map[key] = { term: key, rows: [], credit: 0 }
+    map[key].rows.push(g)
+    if (g.passStatus === 'PASSED') map[key].credit += Number(g.credit || 0)
+  }
+  return Object.values(map).sort((a, b) => (a.term < b.term ? 1 : -1))
 })
 const makeupRows = computed(() => [...(makeup.value.retakes || []), ...(makeup.value.exemptions || [])])
 const auditPct = computed(() => {
