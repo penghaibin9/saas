@@ -9,11 +9,28 @@ from fastapi import APIRouter, Body, Depends
 
 from app.core.response import success
 from app.core.security import get_current_user
+from app.student_portal.services import common_service as common
 from app.student_portal.services import guardian_service as guardian
 from app.student_portal.services import parent_link_service as parent
 from app.student_portal.services import profile_service as profile
 
 router = APIRouter(prefix="/portal", tags=["学生PC门户"])
+
+
+# ── PC 重活公共底座：电子签署（可插拔）+ 打印/导出留痕 ──
+@router.post("/common/sign", summary="电子签署（默认可靠留痕；法律级待采购接入）")
+def common_sign(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(common.sign(user, body))
+
+
+@router.post("/common/print-log", summary="打印留痕（本人·审计+水印）")
+def common_print_log(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(common.print_log(user, body))
+
+
+@router.post("/common/export-log", summary="导出留痕（本人·审计+水印）")
+def common_export_log(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(common.export_log(user, body))
 
 
 # ── 我的档案（学籍信息只读 + 敏感明文授权查看）──
