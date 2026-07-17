@@ -76,6 +76,24 @@ def test_status_view_and_change_guards(client, db_mode):
     assert p["code"] == 0 and p["data"]["watermark"] == "教务廿"
 
 
+def test_exam_makeup_audit_views(client, db_mode):
+    _seed("AC-030", "教务卅")
+    h = _stu_token("教务卅", "AC-030")
+    assert client.get(f"{PORTAL}/exam", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/exam/defer", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/makeup", headers=h).json()["code"] == 0
+    audit = client.get(f"{PORTAL}/graduation-audit", headers=h).json()
+    assert audit["code"] == 0
+    d = audit["data"]
+    assert "progress" in d and "credits" in d and "warnings" in d
+
+
+def test_retake_requires_course(client, db_mode):
+    _seed("AC-031", "教务卅一")
+    h = _stu_token("教务卅一", "AC-031")
+    assert client.post(f"{PORTAL}/retake/apply", headers=h, json={}).json()["code"] != 0
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/transcript", headers=admin).json()["code"] == 403001
@@ -87,3 +105,5 @@ def test_non_student_rejected(client, db_mode):
     assert client.get(f"{PORTAL}/status", headers=admin).json()["code"] == 403001
     assert client.post(f"{PORTAL}/status-change", headers=admin,
                        json={"changeType": "TRANSFER_MAJOR", "reason": "家庭原因需转专业"}).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/makeup", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/graduation-audit", headers=admin).json()["code"] == 403001

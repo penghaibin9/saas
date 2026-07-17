@@ -133,6 +133,36 @@ def academic_status_change_print(user=Depends(get_current_user), body: dict = Bo
     return success(academic.status_change_print(user, body))
 
 
+@router.get("/academic/exam", summary="我的考试（本人）")
+def academic_exam(user=Depends(get_current_user)):
+    return success(academic.exam(user))
+
+
+@router.get("/academic/exam/defer", summary="我的缓考申请（本人）")
+def academic_exam_defer(user=Depends(get_current_user), status: str | None = Query(None)):
+    return success(academic.exam_defer(user, status))
+
+
+@router.post("/academic/exam/defer/apply", summary="发起缓考申请（本人）")
+def academic_exam_defer_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.exam_defer_apply(user, body))
+
+
+@router.get("/academic/makeup", summary="我的补考重修与免修（本人）")
+def academic_makeup(user=Depends(get_current_user)):
+    return success(academic.makeup(user))
+
+
+@router.post("/academic/retake/apply", summary="发起重修报名（本人）")
+def academic_retake_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.retake_apply(user, body))
+
+
+@router.get("/academic/graduation-audit", summary="毕业资格自查（本人·进度/学分/预警）")
+def academic_graduation_audit(user=Depends(get_current_user)):
+    return success(academic.graduation_audit(user))
+
+
 # ── 首页工作台聚合 ──
 @router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
 def home_overview(user=Depends(get_current_user)):

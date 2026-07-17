@@ -76,6 +76,48 @@ def status_change_print(user: dict, body: dict) -> dict:
                                    "docName": "学籍异动申请审批表"})
 
 
+# ── 免修 / 缓考 / 补重修 + 毕业资格自查（复用教务学生自视图） ──
+
+def exam(user: dict) -> dict:
+    _require_student(user)
+    return aa.exam_my(user)
+
+
+def exam_defer(user: dict, status=None) -> dict:
+    _require_student(user)
+    return aa.exam_defer_my(user, status)
+
+
+def exam_defer_apply(user: dict, body: dict) -> dict:
+    _require_student(user)
+    return aa.exam_defer_apply_my(user, body or {})
+
+
+def makeup(user: dict) -> dict:
+    """我的补考重修 + 免修申请列表。"""
+    _require_student(user)
+    return aa.makeup_my(user)
+
+
+def retake_apply(user: dict, body: dict) -> dict:
+    """本人发起重修报名（课程名必填）。"""
+    _require_student(user)
+    body = body or {}
+    if not str(body.get("courseName") or "").strip():
+        raise AppException("VALIDATION_ERROR", "课程名必填")
+    return aa.retake_apply_my(user, body)
+
+
+def graduation_audit(user: dict) -> dict:
+    """毕业资格自查：汇总毕业进度七项 + 学分修读 + 学业预警（只读）。"""
+    _require_student(user)
+    return {
+        "progress": aa.graduation_progress_my(user),
+        "credits": aa.credits_my(user),
+        "warnings": aa.warning_my(user),
+    }
+
+
 def transcript_print(user: dict, body: dict) -> dict:
     """成绩单打印留痕（PORTAL_PRINT + 水印）。"""
     body = body or {}
