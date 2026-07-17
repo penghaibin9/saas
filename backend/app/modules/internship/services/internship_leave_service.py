@@ -268,11 +268,16 @@ def _write_leave_checkins(db, lv) -> int:
     return written
 
 
-def refresh_overdue(reference_date: date | None = None) -> dict:
+def refresh_overdue(reference_date: date | None = None, user=None, system: bool = False) -> dict:
     """Mark expired approved leave as overdue and create one unresolved risk per leave period.
 
     It is intentionally idempotent so it can be invoked by a scheduled job or an operations runbook.
+    全校级批处理：人工触发时仅 ADMIN_TENANT（校级管理员）可执行，避免受限范围角色借此
+    对全租户其他学院学生的请假批量改状态并生成风险单；系统定时任务(system=True)不受此限。
     """
+    if not system:
+        from app.modules.internship.services.internship_service import assert_admin_tenant
+        assert_admin_tenant(user, "请假超期批处理")
     today = reference_date or date.today()
     marked = risks_created = 0
     with session() as db:

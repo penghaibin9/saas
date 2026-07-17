@@ -1488,7 +1488,7 @@ def internship_intention_save(user: dict, body: dict) -> dict:
                 preferredPositionId=b.get("preferredPositionId"),
                 intentionNote=b.get("intentionNote"),
             )
-            result = match_svc.update_intention(str(it.id), upd)
+            result = match_svc.update_intention(str(it.id), upd, self_service=True)
             audit_log.record("MOBILE_INTENTION_SAVE", f"internship:intention:{it.id}",
                              {"studentNo": u.get("studentNo")})
             return result
@@ -1501,7 +1501,7 @@ def internship_intention_save(user: dict, body: dict) -> dict:
         preferredPositionId=b.get("preferredPositionId") or None,
         intentionNote=(b.get("intentionNote") or "").strip() or None,
     )
-    result = match_svc.create_intention(payload)
+    result = match_svc.create_intention(payload, self_service=True)
     audit_log.record("MOBILE_INTENTION_CREATE", f"internship:intention:{result['id']}",
                      {"studentNo": u.get("studentNo")})
     return result
@@ -1524,7 +1524,7 @@ def internship_intention_submit(user: dict) -> dict:
         if it.student_id != stu.id:
             raise no_permission("只能提交本人的实习意向")
         iid = str(it.id)
-    result = match_svc.submit_intention(iid)
+    result = match_svc.submit_intention(iid, self_service=True)
     audit_log.record("MOBILE_INTENTION_SUBMIT", f"internship:intention:{iid}",
                      {"studentNo": u.get("studentNo")})
     return result
@@ -1547,7 +1547,7 @@ def internship_intention_withdraw(user: dict) -> dict:
         if it.student_id != stu.id:
             raise no_permission("只能撤回本人的实习意向")
         iid = str(it.id)
-    result = match_svc.withdraw_intention(iid)
+    result = match_svc.withdraw_intention(iid, self_service=True)
     audit_log.record("MOBILE_INTENTION_WITHDRAW", f"internship:intention:{iid}",
                      {"studentNo": u.get("studentNo")})
     return result

@@ -284,12 +284,14 @@ def get_student(rec_id, user=None) -> dict:
 
 # ═══════════ 建档 / 编辑 ═══════════
 
-def create_student_record(body) -> dict:
+def create_student_record(body, user=None) -> dict:
     with session() as db:
         sid = int(getattr(body, "studentId"))
         stu = db.get(StudentProfile, sid)
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("学生不存在或不在当前数据范围内")
+        from app.modules.internship.services.internship_service import assert_student_in_scope
+        assert_student_in_scope(db, sid, user, "该学生不在你的数据范围内")
         batch_id = int(body.batchId) if getattr(body, "batchId", None) else None
         dup = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == sid,
@@ -582,7 +584,9 @@ def import_dry_run(rows: list[dict]) -> dict:
                 "invalidRows": len(errors), "errors": errors}
 
 
-def import_confirm(rows: list[dict]) -> dict:
+def import_confirm(rows: list[dict], user=None) -> dict:
+    from app.modules.internship.services.internship_service import assert_admin_tenant
+    assert_admin_tenant(user, "实习学生批量导入")
     pre = import_dry_run(rows)
     if pre["invalidRows"] > 0:
         raise AppException("DATA_CONFLICT", "存在未通过预校验的行，禁止确认导入")

@@ -234,9 +234,13 @@ def list_intentions(page: int, page_size: int, keyword=None, status=None,
         return items[start:start + page_size], total
 
 
-def create_intention(body) -> dict:
+def create_intention(body, user=None, self_service: bool = False) -> dict:
     with session() as db:
         rec = _get_record(db, body.recordId)
+        # self_service=True：学生小程序端已校验本人归属，跳过教师数据范围校验
+        if not self_service:
+            from app.modules.internship.services.internship_service import assert_student_in_scope
+            assert_student_in_scope(db, rec.student_id, user, "该实习学生不在你的数据范围内")
         exists = db.scalars(select(InternshipIntention).where(
             InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
             InternshipIntention.record_id == rec.id,
@@ -261,9 +265,13 @@ def create_intention(body) -> dict:
         return _intention_row(db, it)
 
 
-def update_intention(iid, body) -> dict:
+def update_intention(iid, body, user=None, self_service: bool = False) -> dict:
     with session() as db:
         it = _get_intention(db, iid)
+        # self_service=True：学生小程序端已校验本人归属，跳过教师数据范围校验
+        if not self_service:
+            from app.modules.internship.services.internship_service import assert_student_in_scope
+            assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
         if it.status == "WITHDRAWN":
             raise AppException("DATA_CONFLICT", "已撤回意向不可编辑")
         for attr, col in (("preferredCity", "preferred_city"), ("preferredIndustry", "preferred_industry"),
@@ -281,9 +289,13 @@ def update_intention(iid, body) -> dict:
         return _intention_row(db, it)
 
 
-def submit_intention(iid) -> dict:
+def submit_intention(iid, user=None, self_service: bool = False) -> dict:
     with session() as db:
         it = _get_intention(db, iid)
+        # self_service=True：学生小程序端已校验本人归属，跳过教师数据范围校验
+        if not self_service:
+            from app.modules.internship.services.internship_service import assert_student_in_scope
+            assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
         if it.status not in ("DRAFT", "WITHDRAWN"):
             raise AppException("DATA_CONFLICT", f"当前状态不可提交（{it.status}）")
         it.status = "SUBMITTED"
@@ -293,9 +305,13 @@ def submit_intention(iid) -> dict:
         return _intention_row(db, it)
 
 
-def withdraw_intention(iid) -> dict:
+def withdraw_intention(iid, user=None, self_service: bool = False) -> dict:
     with session() as db:
         it = _get_intention(db, iid)
+        # self_service=True：学生小程序端已校验本人归属，跳过教师数据范围校验
+        if not self_service:
+            from app.modules.internship.services.internship_service import assert_student_in_scope
+            assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
         if it.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅已提交意向可撤回")
         it.status = "WITHDRAWN"
@@ -330,7 +346,9 @@ def intention_import_dry_run(rows: list[dict]) -> dict:
         return {"total": len(rows or []), "validRows": valid, "invalidRows": len(errors), "errors": errors}
 
 
-def intention_import_confirm(rows: list[dict]) -> dict:
+def intention_import_confirm(rows: list[dict], user=None) -> dict:
+    from app.modules.internship.services.internship_service import assert_admin_tenant
+    assert_admin_tenant(user, "意向批量导入")
     dry = intention_import_dry_run(rows)
     if dry["invalidRows"]:
         raise AppException("VALIDATION_ERROR", "存在校验失败行，请先修正")
@@ -439,8 +457,10 @@ def _upsert_match(db, record: InternshipRecord, pos: InternshipPosition,
     return m
 
 
-def run_major_match() -> dict:
+def run_major_match(user=None) -> dict:
     """未分配学生 × 已上架岗位 · 专业规则推荐。"""
+    from app.modules.internship.services.internship_service import assert_admin_tenant
+    assert_admin_tenant(user, "专业自动匹配")
     created = 0
     with session() as db:
         records = db.scalars(select(InternshipRecord).where(
@@ -478,8 +498,10 @@ def run_major_match() -> dict:
     return {"created": created}
 
 
-def run_enterprise_match() -> dict:
+def run_enterprise_match(user=None) -> dict:
     """按意向 preferred_company_id 推荐该企业下上架岗位。"""
+    from app.modules.internship.services.internship_service import assert_admin_tenant
+    assert_admin_tenant(user, "企业自动匹配")
     created = 0
     with session() as db:
         intents = db.scalars(select(InternshipIntention).where(
@@ -507,9 +529,11 @@ def run_enterprise_match() -> dict:
     return {"created": created}
 
 
-def manual_match(record_id, position_id, remark: str = "") -> dict:
+def manual_match(record_id, position_id, remark: str = "", user=None) -> dict:
     with session() as db:
         rec = _get_record(db, record_id)
+        from app.modules.internship.services.internship_service import assert_student_in_scope
+        assert_student_in_scope(db, rec.student_id, user, "该实习学生不在你的数据范围内")
         pos = db.get(InternshipPosition, int(position_id))
         if not pos or pos.is_deleted or pos.tenant_id != _tid():
             raise not_found("岗位不存在")
@@ -530,11 +554,13 @@ def manual_match(record_id, position_id, remark: str = "") -> dict:
         return _match_row(db, m)
 
 
-def batch_match(pairs: list[dict]) -> dict:
+def batch_match(pairs: list[dict], user=None) -> dict:
+    from app.modules.internship.services.internship_service import assert_admin_tenant
+    assert_admin_tenant(user, "批量匹配")
     ok, fail = 0, []
     for i, pair in enumerate(pairs or []):
         try:
-            manual_match(pair.get("recordId"), pair.get("positionId"), pair.get("remark") or "")
+            manual_match(pair.get("recordId"), pair.get("positionId"), pair.get("remark") or "", user=user)
             # 批量覆盖 match_type
             with session() as db:
                 rec = _get_record(db, pair.get("recordId"))
@@ -614,9 +640,11 @@ def confirm_match(mid, user=None) -> dict:
         return _match_row(db, m)
 
 
-def reject_match(mid, reason: str = "") -> dict:
+def reject_match(mid, reason: str = "", user=None) -> dict:
     with session() as db:
         m = _get_match(db, mid)
+        from app.modules.internship.services.internship_service import assert_student_in_scope
+        assert_student_in_scope(db, m.student_id, user, "该实习学生不在你的数据范围内")
         if m.status not in ("RECOMMENDED", "PENDING_CONFIRM", "CONFLICT"):
             raise AppException("DATA_CONFLICT", f"当前状态不可驳回（{m.status}）")
         m.status = "REJECTED"

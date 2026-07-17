@@ -56,7 +56,7 @@ def intentions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=20
 
 @router.post("/intentions", summary="新建学生意向（草稿）")
 def create_intention(body: IntentionCreate, user=Depends(require_permission(_P_INT_MANAGE))):
-    result = svc.create_intention(body)
+    result = svc.create_intention(body, user=user)
     audit_log.record("新建实习意向", f"internship-match:intention:{result['id']}")
     return success(result, message="已创建")
 
@@ -89,7 +89,7 @@ def intention_dry_run(body: IntentionImport, user=Depends(require_permission(_P_
 
 @router.post("/intentions/import/confirm", summary="意向导入·确认")
 def intention_confirm(body: IntentionImport, user=Depends(require_permission(_P_INT_MANAGE))):
-    result = svc.intention_import_confirm(body.rows)
+    result = svc.intention_import_confirm(body.rows, user=user)
     audit_log.record("导入实习意向", "internship-match:intention:import", detail=result)
     return success(result, message="导入完成")
 
@@ -111,21 +111,21 @@ def intention_export(keyword: Optional[str] = None, status: Optional[str] = None
 
 @router.put("/intentions/{intention_id}", summary="编辑学生意向")
 def update_intention(intention_id: str, body: IntentionUpdate, user=Depends(require_permission(_P_INT_MANAGE))):
-    result = svc.update_intention(intention_id, body)
+    result = svc.update_intention(intention_id, body, user=user)
     audit_log.record("编辑实习意向", f"internship-match:intention:{intention_id}")
     return success(result, message="已保存")
 
 
 @router.post("/intentions/{intention_id}/submit", summary="提交意向")
 def submit_intention(intention_id: str, user=Depends(require_permission(_P_INT_MANAGE))):
-    result = svc.submit_intention(intention_id)
+    result = svc.submit_intention(intention_id, user=user)
     audit_log.record("提交实习意向", f"internship-match:intention:{intention_id}")
     return success(result, message="已提交")
 
 
 @router.post("/intentions/{intention_id}/withdraw", summary="撤回意向")
 def withdraw_intention(intention_id: str, user=Depends(require_permission(_P_INT_MANAGE))):
-    result = svc.withdraw_intention(intention_id)
+    result = svc.withdraw_intention(intention_id, user=user)
     audit_log.record("撤回实习意向", f"internship-match:intention:{intention_id}")
     return success(result, message="已撤回")
 
@@ -134,28 +134,28 @@ def withdraw_intention(intention_id: str, user=Depends(require_permission(_P_INT
 
 @router.post("/run/major", summary="跑专业匹配（规则推荐）")
 def run_major(user=Depends(require_permission(_P_MANUAL))):
-    result = svc.run_major_match()
+    result = svc.run_major_match(user=user)
     audit_log.record("跑专业匹配", "internship-match:run:major", detail=result)
     return success(result, message=f"已生成/更新 {result['created']} 条")
 
 
 @router.post("/run/enterprise", summary="跑企业匹配（按意向企业）")
 def run_enterprise(user=Depends(require_permission(_P_MANUAL))):
-    result = svc.run_enterprise_match()
+    result = svc.run_enterprise_match(user=user)
     audit_log.record("跑企业匹配", "internship-match:run:enterprise", detail=result)
     return success(result, message=f"已生成/更新 {result['created']} 条")
 
 
 @router.post("/manual", summary="手动匹配")
 def manual(body: ManualMatchBody, user=Depends(require_permission(_P_MANUAL))):
-    result = svc.manual_match(body.recordId, body.positionId, body.remark or "")
+    result = svc.manual_match(body.recordId, body.positionId, body.remark or "", user=user)
     audit_log.record("手动匹配", f"internship-match:{result['id']}")
     return success(result, message="已创建待确认匹配")
 
 
 @router.post("/batch", summary="批量匹配")
 def batch(body: BatchMatchBody, user=Depends(require_permission(_P_BATCH))):
-    result = svc.batch_match(body.pairs)
+    result = svc.batch_match(body.pairs, user=user)
     audit_log.record("批量匹配", "internship-match:batch", detail=result)
     return success(result)
 
@@ -198,6 +198,6 @@ def confirm(match_id: str, user=Depends(require_permission(_P_MANUAL))):
 
 @router.post("/{match_id}/reject", summary="驳回匹配")
 def reject(match_id: str, body: MatchActionBody | None = None, user=Depends(require_permission(_P_MANUAL))):
-    result = svc.reject_match(match_id, (body.reason if body else "") or "")
+    result = svc.reject_match(match_id, (body.reason if body else "") or "", user=user)
     audit_log.record("驳回岗位匹配", f"internship-match:{match_id}")
     return success(result, message="已驳回")

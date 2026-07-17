@@ -74,7 +74,7 @@ def intern_import_dry_run(body: StudentImport, user=Depends(require_permission(_
 
 @router.post("/intern-students/import/confirm", summary="按学号建档·确认（整批事务）")
 def intern_import_confirm(body: StudentImport, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.import_confirm(body.rows)
+    result = svc.import_confirm(body.rows, user=user)
     audit_log.record("导入实习学生", "internship-student:import", detail=result)
     return success(result, message="导入完成")
 
@@ -113,7 +113,7 @@ def intern_export(keyword: Optional[str] = None, status: Optional[str] = None,
 
 @router.post("/intern-students", summary="新增实习学生建档（初始准备中/资格待认定）")
 def create_intern_student(body: StudentRecordCreate, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.create_student_record(body)
+    result = svc.create_student_record(body, user=user)
     audit_log.record("新增实习学生", f"internship-student:{result['id']}", detail={"studentId": result["studentId"]})
     return success(result, message="已建档")
 
