@@ -1,6 +1,3 @@
-# MySQL 恢复脚本（Windows；与 backup-mysql.ps1 配套）。
-# 用法：.\restore-mysql.ps1 -File C:\backups\saas_lifecycle_20260705.sql.gz
-# 需要 mysql 客户端在 PATH；密码经环境变量 DB_PASSWORD 注入，不落脚本。
 param(
   [Parameter(Mandatory = $true)][string]$File,
   [string]$DbHost = $(if ($env:DB_HOST) { $env:DB_HOST } else { "127.0.0.1" }),
@@ -8,25 +5,56 @@ param(
   [string]$DbName = $(if ($env:DB_NAME) { $env:DB_NAME } else { "saas_lifecycle" }),
   [string]$DbUser = $(if ($env:DB_USER) { $env:DB_USER } else { "saas_user" })
 )
-if (-not $env:DB_PASSWORD) { Write-Error "必须设置环境变量 DB_PASSWORD"; exit 1 }
-if (-not (Test-Path $File)) { Write-Error "备份文件不存在：$File"; exit 1 }
-
-Write-Host "[restore] 目标库 $DbName@${DbHost}:$DbPort，备份文件 $File"
-$ok = Read-Host "[restore] 将覆盖现有数据，确认继续？(yes/no)"
-if ($ok -ne "yes") { Write-Host "[restore] 已取消"; exit 1 }
-
-# 恢复前快照
-$ts = Get-Date -Format "yyyyMMdd_HHmmss"
-$safe = Join-Path $env:TEMP "${DbName}_pre_restore_$ts.sql"
-mysqldump -h $DbHost -P $DbPort -u $DbUser -p"$env:DB_PASSWORD" --single-transaction --routines $DbName | Out-File -Encoding utf8 $safe
-Write-Host "[restore] 恢复前快照已存 $safe"
-
-if ($File.EndsWith(".gz")) {
-  # 需要 7z 或先手动解压
-  $sql = $File -replace "\.gz$", ""
-  if (-not (Test-Path $sql)) { & 7z x $File "-o$(Split-Path $File)" | Out-Null }
-  Get-Content $sql -Raw | mysql -h $DbHost -P $DbPort -u $DbUser -p"$env:DB_PASSWORD" $DbName
-} else {
-  Get-Content $File -Raw | mysql -h $DbHost -P $DbPort -u $DbUser -p"$env:DB_PASSWORD" $DbName
+$ErrorActionPreference = "Stop"
+if (-not $env:DB_PASSWORD) { throw "DB_PASSWORD must be set" }
+$backup = (Resolve-Path -LiteralPath $File).Path
+$hashFile = "${backup}.sha256"
+if (Test-Path -LiteralPath $hashFile) {
+  $expected = ((Get-Content -LiteralPath $hashFile -Raw).Trim() -split '\s+')[0]
+  $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $backup).Hash
+  if ($expected -ne $actual) { throw "Backup SHA256 verification failed" }
 }
-Write-Host "[restore] 恢复完成。请重启后端并验证 /health 与登录。"
+
+Write-Host "[restore] target=${DbName}@${DbHost}:$DbPort file=$backup"
+$confirmation = Read-Host "[restore] type RESTORE-$DbName to continue"
+if ($confirmation -ne "RESTORE-$DbName") { Write-Host "[restore] cancelled"; exit 1 }
+
+$workDir = Join-Path ([System.IO.Path]::GetTempPath()) "school-restore-$([guid]::NewGuid().ToString('N'))"
+New-Item -ItemType Directory -Path $workDir | Out-Null
+$oldMysqlPwd = $env:MYSQL_PWD
+try {
+  $env:MYSQL_PWD = $env:DB_PASSWORD
+  $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+  $safetyCopy = Join-Path $workDir "${DbName}_pre_restore_${timestamp}.sql"
+  & mysqldump -h $DbHost -P $DbPort -u $DbUser --single-transaction --quick `
+    --routines --events --triggers "--result-file=$safetyCopy" $DbName
+  if ($LASTEXITCODE -ne 0) { throw "pre-restore safety backup failed" }
+
+  if ($backup.EndsWith(".zip", [StringComparison]::OrdinalIgnoreCase)) {
+    Expand-Archive -LiteralPath $backup -DestinationPath $workDir -Force
+    $sqlFile = Get-ChildItem -LiteralPath $workDir -Filter "*.sql" |
+      Where-Object { $_.FullName -ne $safetyCopy } | Select-Object -First 1
+    if (-not $sqlFile) { throw "No SQL file found in backup archive" }
+    $sqlPath = $sqlFile.FullName
+  } elseif ($backup.EndsWith(".sql", [StringComparison]::OrdinalIgnoreCase)) {
+    $sqlPath = $backup
+  } else {
+    throw "Windows restore supports .sql.zip or .sql backups"
+  }
+
+  Get-Content -LiteralPath $sqlPath -Raw | & mysql -h $DbHost -P $DbPort -u $DbUser $DbName
+  if ($LASTEXITCODE -ne 0) { throw "mysql restore failed" }
+  & mysql -h $DbHost -P $DbPort -u $DbUser -Nse `
+    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DbName'"
+  Write-Host "[restore] complete; pre-restore safety copy remains at $safetyCopy"
+  $workDir = $null  # preserve safety copy for operator-controlled cleanup
+} finally {
+  $env:MYSQL_PWD = $oldMysqlPwd
+  if ($workDir -and (Test-Path -LiteralPath $workDir)) {
+    $resolvedWork = (Resolve-Path -LiteralPath $workDir).Path
+    $resolvedTemp = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    if ($resolvedWork.StartsWith($resolvedTemp, [StringComparison]::OrdinalIgnoreCase)) {
+      Remove-Item -LiteralPath $resolvedWork -Recurse -Force
+    }
+  }
+}

@@ -60,13 +60,27 @@ services:
     networks:
       - school-lifecycle
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - ./volumes/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - school-lifecycle
+
   # ── 后端：FastAPI（连 MySQL）──
   backend:
     build:
       context: ../../backend
       dockerfile: Dockerfile
-    container_name: school-lifecycle-backend
     restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
     env_file:
       - ../env/backend.mysql.env      # 先 cp backend.mysql.env.example 为 backend.mysql.env
     environment:
@@ -84,14 +98,53 @@ services:
       DB_USER: ${DB_USER:-saas_user}
       DB_PASSWORD: ${DB_PASSWORD:-change-me-in-.env}
       DATABASE_URL: ""                # 留空 → 由 DB_* 组装 mysql+pymysql（含 charset=utf8mb4）
+      REDIS_URL: "redis://redis:6379/0"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "10"
+      DB_POOL_TIMEOUT: "5"
+      SCHEDULER_MODE: "external"
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./volumes/uploads:/app/uploads    # 上传目录 → 服务器磁盘
       - ./volumes/exports:/app/exports    # 导出目录 → 服务器磁盘
     expose:
       - "8000"                            # 只在内网暴露，对外由 nginx 反代
+    networks:
+      - school-lifecycle
+    deploy:
+      replicas: 2
+
+  scheduler:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "scripts/run_scheduled_jobs.py"]
+    env_file:
+      - ../env/backend.mysql.env
+    environment:
+      APP_ENV: "prod"
+      DB_ENABLED: "true"
+      DB_DRIVER: "mysql"
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-saas_lifecycle}
+      DB_USER: ${DB_USER:-saas_user}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me-in-.env}
+      DATABASE_URL: ""
+      REDIS_URL: "redis://redis:6379/0"
+      DB_POOL_SIZE: "2"
+      DB_MAX_OVERFLOW: "2"
+      SCHEDULER_MODE: "external"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - school-lifecycle
 
@@ -104,8 +157,6 @@ services:
       - ../nginx/nginx.mysql.conf:/etc/nginx/nginx.conf:ro
       - ../../frontend/dist:/usr/share/nginx/html/pc:ro
       - ../../miniapp/dist/build/h5:/usr/share/nginx/html/miniapp:ro
-      - ./volumes/uploads:/srv/uploads:ro
-      - ./volumes/exports:/srv/exports:ro
     ports:
       - "80:80"           # 对外公网访问入口
     depends_on:

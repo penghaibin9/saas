@@ -1,41 +1,46 @@
 #!/usr/bin/env bash
-# 高校学生全生命周期管理平台 · MySQL 自动备份脚本（Linux 服务器）
-# 用法：chmod +x backup-mysql.sh && ./backup-mysql.sh
-# 定时（每天 02:00）：crontab -e 加一行：
-#   0 2 * * * /path/to/backup-mysql.sh >> /var/log/school-backup.log 2>&1
+# MySQL full backup. Credentials come only from environment variables.
 set -euo pipefail
 
-# ── 配置（按实际改）──
-DB_HOST="127.0.0.1"
-DB_PORT="3306"
-DB_USER="saas_user"
-DB_NAME="saas_lifecycle"
-# 密码从环境变量读，勿硬编码到脚本：export DB_PASSWORD=xxx
-DB_PASSWORD="${DB_PASSWORD:?请先 export DB_PASSWORD}"
-BACKUP_DIR="/var/backups/school-lifecycle"
-KEEP_DAYS=14                     # 保留最近 14 天
-UPLOAD_DIR="/var/www/school-lifecycle/uploads"   # 附件目录（可选一并备份）
+DB_HOST="${DB_HOST:-127.0.0.1}"
+DB_PORT="${DB_PORT:-3306}"
+DB_USER="${DB_USER:-saas_user}"
+DB_NAME="${DB_NAME:-saas_lifecycle}"
+: "${DB_PASSWORD:?DB_PASSWORD must be set}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/school-lifecycle}"
+KEEP_DAYS="${KEEP_DAYS:-14}"
+UPLOAD_DIR="${UPLOAD_DIR:-/var/www/school-lifecycle/uploads}"
 
-mkdir -p "$BACKUP_DIR"
-TS=$(date +%Y%m%d_%H%M%S)
-SQL_FILE="$BACKUP_DIR/db_${DB_NAME}_${TS}.sql.gz"
+mkdir -p -- "$BACKUP_DIR"
+test -d "$BACKUP_DIR"
+timestamp="$(date +%Y%m%d_%H%M%S)"
+backup_file="$BACKUP_DIR/db_${DB_NAME}_${timestamp}.sql.gz"
+temp_file="${backup_file}.partial"
+trap 'rm -f -- "$temp_file"' EXIT
 
-echo "[$(date)] 开始备份数据库 $DB_NAME ..."
-mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASSWORD" \
-  --single-transaction --quick --routines --triggers "$DB_NAME" | gzip > "$SQL_FILE"
-echo "[$(date)] 数据库备份完成：$SQL_FILE ($(du -h "$SQL_FILE" | cut -f1))"
+echo "[$(date -Is)] starting MySQL backup: ${DB_NAME}@${DB_HOST}:${DB_PORT}"
+MYSQL_PWD="$DB_PASSWORD" mysqldump \
+  -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" \
+  --single-transaction --quick --routines --events --triggers \
+  --hex-blob --default-character-set=utf8mb4 --source-data=2 \
+  "$DB_NAME" | gzip -9 > "$temp_file"
 
-# 附件备份（存在才做）
+test -s "$temp_file"
+gzip -t "$temp_file"
+mv -- "$temp_file" "$backup_file"
+sha256sum "$backup_file" > "${backup_file}.sha256"
+trap - EXIT
+
 if [ -d "$UPLOAD_DIR" ]; then
-  tar -czf "$BACKUP_DIR/uploads_${TS}.tar.gz" -C "$(dirname "$UPLOAD_DIR")" "$(basename "$UPLOAD_DIR")"
-  echo "[$(date)] 附件备份完成：uploads_${TS}.tar.gz"
+  upload_file="$BACKUP_DIR/uploads_${timestamp}.tar.gz"
+  tar -czf "$upload_file" -C "$(dirname "$UPLOAD_DIR")" "$(basename "$UPLOAD_DIR")"
+  sha256sum "$upload_file" > "${upload_file}.sha256"
 fi
 
-# 清理过期备份
-find "$BACKUP_DIR" -name "db_*.sql.gz" -mtime +$KEEP_DAYS -delete
-find "$BACKUP_DIR" -name "uploads_*.tar.gz" -mtime +$KEEP_DAYS -delete
-echo "[$(date)] 已清理 $KEEP_DAYS 天前的旧备份。"
+# BACKUP_DIR is an explicit, validated directory; only known backup patterns expire.
+find "$BACKUP_DIR" -maxdepth 1 -type f \
+  \( -name 'db_*.sql.gz' -o -name 'db_*.sql.gz.sha256' -o \
+     -name 'uploads_*.tar.gz' -o -name 'uploads_*.tar.gz.sha256' \) \
+  -mtime "+$KEEP_DAYS" -delete
 
-# ── 恢复演练（务必定期做一次，备份不验证=没有备份）──
-# gunzip < db_xxx.sql.gz | mysql -u saas_user -p saas_lifecycle_restoretest
-echo "[$(date)] 备份任务结束。建议每月做一次恢复演练验证可用性。"
+echo "[$(date -Is)] backup complete: $backup_file"

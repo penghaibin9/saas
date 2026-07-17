@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     SANDBOX_AUTO_RESET: str = "false"
     # 实习请假逾期扫描：生产环境默认开启；多实例通过数据库幂等规则保证重复扫描安全。
     INTERNSHIP_OVERDUE_AUTO_SCAN: bool = True
+    # 学工请假逾期扫描（affairs_leave_service.scan_overdue，幂等）：同款启动定时；默认开启。
+    AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN: bool = True
 
     # ── 反向代理 ──
     # 可信代理（逗号分隔，支持单 IP 或 CIDR 网段，如 172.16.0.0/12）。请求直连方 IP 命中时，

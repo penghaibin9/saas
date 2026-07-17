@@ -73,6 +73,8 @@ def create_app() -> FastAPI:
         import asyncio
 
         from app.db.session import db_enabled
+        if settings.SCHEDULER_MODE.strip().lower() != "web":
+            return
         if not (settings.sandbox_auto_reset and db_enabled()):
             return
 
@@ -102,6 +104,8 @@ def create_app() -> FastAPI:
         import asyncio
 
         from app.db.session import db_enabled
+        if settings.SCHEDULER_MODE.strip().lower() != "web":
+            return
         if not (settings.INTERNSHIP_OVERDUE_AUTO_SCAN and db_enabled()):
             return
 
@@ -167,10 +171,29 @@ def create_app() -> FastAPI:
                 with get_engine().connect() as conn:
                     conn.execute(text("SELECT 1"))
                 checks["database"] = {"ok": True}
+                engine = get_engine()
+                pool = engine.pool
+                checks["dbPool"] = {
+                    "ok": True,
+                    "size": pool.size() if hasattr(pool, "size") else None,
+                    "checkedOut": pool.checkedout() if hasattr(pool, "checkedout") else None,
+                    "overflow": pool.overflow() if hasattr(pool, "overflow") else None,
+                }
             except Exception as e:  # noqa: BLE001
                 checks["database"] = {"ok": False, "error": str(e)[:120]}
         else:
             checks["database"] = {"ok": True, "note": "DB_ENABLED=false（mock 模式）"}
+        if settings.REDIS_URL:
+            from app.core.redis_client import redis_health
+            checks["redis"] = redis_health()
+        # 审计落库（历史欠账收口：落库失败此前静默吞掉，现暴露到 /health/ready）
+        if settings.DB_ENABLED:
+            from app.services.audit_log import get_audit_db_health
+            audit_state = get_audit_db_health()
+            fails = audit_state.get("consecutiveFailures") or 0
+            checks["auditLog"] = ({"ok": True} if fails == 0 else
+                                  {"ok": False, "consecutiveFailures": fails,
+                                   "lastFailure": audit_state.get("lastFailure")})
         # 上传目录可写
         for key, path in (("uploadDir", settings.UPLOAD_DIR), ("exportDir", "./exports")):
             try:
@@ -184,6 +207,11 @@ def create_app() -> FastAPI:
                 checks[key] = {"ok": False, "path": path, "error": str(e)[:120]}
         all_ok = all(c.get("ok") for c in checks.values())
         return success({"status": "READY" if all_ok else "DEGRADED", "checks": checks})
+
+    @app.get("/health/metrics", tags=["00·基础"], summary="当前进程接口耗时指标")
+    def health_metrics():
+        from app.core.runtime_metrics import snapshot
+        return success(snapshot())
 
     @app.get("/", include_in_schema=False)
     def index():

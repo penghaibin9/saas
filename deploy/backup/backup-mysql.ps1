@@ -1,15 +1,38 @@
-# 高校学生全生命周期管理平台 · MySQL 自动备份（Windows 服务器）
-# 用法：先 setx DB_PASSWORD "你的密码"（或在任务计划里设环境变量），再用任务计划每天调用本脚本。
+param(
+  [string]$DbHost = $(if ($env:DB_HOST) { $env:DB_HOST } else { "127.0.0.1" }),
+  [int]$DbPort = $(if ($env:DB_PORT) { [int]$env:DB_PORT } else { 3306 }),
+  [string]$DbName = $(if ($env:DB_NAME) { $env:DB_NAME } else { "saas_lifecycle" }),
+  [string]$DbUser = $(if ($env:DB_USER) { $env:DB_USER } else { "saas_user" }),
+  [string]$BackupDir = $(if ($env:BACKUP_DIR) { $env:BACKUP_DIR } else { Join-Path $PSScriptRoot "data" }),
+  [int]$KeepDays = $(if ($env:KEEP_DAYS) { [int]$env:KEEP_DAYS } else { 14 })
+)
 $ErrorActionPreference = "Stop"
-$DB_HOST = "127.0.0.1"; $DB_PORT = "3306"; $DB_USER = "saas_user"; $DB_NAME = "saas_lifecycle"
-$DB_PASSWORD = $env:DB_PASSWORD
-if (-not $DB_PASSWORD) { Write-Error "请先设置环境变量 DB_PASSWORD"; exit 1 }
-$BACKUP_DIR = "D:\backups\school-lifecycle"; $KEEP_DAYS = 14
-New-Item -ItemType Directory -Force -Path $BACKUP_DIR | Out-Null
-$ts = Get-Date -Format "yyyyMMdd_HHmmss"
-$sql = Join-Path $BACKUP_DIR "db_${DB_NAME}_$ts.sql"
-& mysqldump -h $DB_HOST -P $DB_PORT -u $DB_USER "-p$DB_PASSWORD" --single-transaction --quick --routines --triggers $DB_NAME > $sql
-Compress-Archive -Path $sql -DestinationPath "$sql.zip" -Force; Remove-Item $sql
-Write-Output "备份完成：$sql.zip"
-Get-ChildItem $BACKUP_DIR -Filter "db_*.zip" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$KEEP_DAYS) } | Remove-Item
-Write-Output "已清理 $KEEP_DAYS 天前旧备份。建议每月做一次恢复演练。"
+if (-not $env:DB_PASSWORD) { throw "DB_PASSWORD must be set" }
+New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+$resolvedDir = (Resolve-Path -LiteralPath $BackupDir).Path
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$sql = Join-Path $resolvedDir "db_${DbName}_${timestamp}.sql"
+$zip = "${sql}.zip"
+
+$oldMysqlPwd = $env:MYSQL_PWD
+try {
+  $env:MYSQL_PWD = $env:DB_PASSWORD
+  & mysqldump -h $DbHost -P $DbPort -u $DbUser --single-transaction --quick `
+    --routines --events --triggers --hex-blob --default-character-set=utf8mb4 `
+    --source-data=2 "--result-file=$sql" $DbName
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sql) -or (Get-Item $sql).Length -eq 0) {
+    throw "mysqldump failed or produced an empty file"
+  }
+  Compress-Archive -LiteralPath $sql -DestinationPath $zip -Force
+  Remove-Item -LiteralPath $sql
+  (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash + "  " + (Split-Path $zip -Leaf) |
+    Set-Content -Encoding ascii -LiteralPath "${zip}.sha256"
+} finally {
+  $env:MYSQL_PWD = $oldMysqlPwd
+}
+
+$cutoff = (Get-Date).AddDays(-$KeepDays)
+Get-ChildItem -LiteralPath $resolvedDir -File |
+  Where-Object { $_.Name -like "db_*.sql.zip*" -and $_.LastWriteTime -lt $cutoff } |
+  Remove-Item -Force
+Write-Output "Backup complete: $zip"

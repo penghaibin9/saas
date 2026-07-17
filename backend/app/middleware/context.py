@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.core.context import set_current_user, set_request_meta, set_trace_id
+from app.core.config import settings
 from app.core.tenant_context import resolve_tenant
 
 logger = logging.getLogger("app.access")
@@ -52,6 +53,11 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             extra={"trace_id": trace_id, "method": request.method,
                    "path": request.url.path, "status": response.status_code, "ms": cost_ms},
         )
+        from app.core.runtime_metrics import record_request
+        record_request(request.url.path, response.status_code, cost_ms, settings.HTTP_SLOW_REQUEST_MS)
+        if cost_ms >= settings.HTTP_SLOW_REQUEST_MS:
+            logger.warning("slow_http trace_id=%s method=%s path=%s status=%s ms=%s",
+                           trace_id, request.method, request.url.path, response.status_code, cost_ms)
         return response
 
 
