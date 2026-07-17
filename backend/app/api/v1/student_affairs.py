@@ -1112,11 +1112,13 @@ class TalkRecordBody(BaseModel):
     content: str = Field(..., min_length=1, description="谈话内容≥20字")
     result: Optional[str] = Field("", max_length=50)
     needFollowUp: bool = Field(False)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class TalkFollowBody(BaseModel):
     action: str = Field(..., description="FOLLOW/CLOSE/TO_RISK/TO_HOME_SCHOOL")
     content: Optional[str] = Field("", max_length=1000)
+    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
 
 
 class ContactCreate(BaseModel):
@@ -1164,13 +1166,14 @@ def talk_detail(talkId: int = Path(...), user=Depends(require_permission("studen
 
 @router.post("/talks/{talkId}/record", summary="填写谈话记录（→COMPLETED，进360）")
 def talk_record(body: TalkRecordBody, talkId: int = Path(...), user=Depends(require_permission("studentAffairs.talk.create"))):
-    return success(talk_svc.record_talk(talkId, user, body.content, body.result or "", body.needFollowUp),
-                   message="已记录")
+    return success(talk_svc.record_talk(talkId, user, body.content, body.result or "", body.needFollowUp,
+                                        body.version), message="已记录")
 
 
 @router.post("/talks/{talkId}/follow-up", summary="跟进/办结/转风险/转家校")
 def talk_follow(body: TalkFollowBody, talkId: int = Path(...), user=Depends(require_permission("studentAffairs.talk.create"))):
-    return success(talk_svc.follow_up(talkId, user, body.action, body.content or ""), message="已处理")
+    return success(talk_svc.follow_up(talkId, user, body.action, body.content or "", body.version),
+                   message="已处理")
 
 
 @router.get("/students/{studentId}/family-contacts", summary="家校联系记录列表")

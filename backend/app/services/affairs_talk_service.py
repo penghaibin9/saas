@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, audit_insert, session
 
 TALK_TOPICS = ("DAILY", "ACADEMIC", "PSYCHOLOGY", "DISCIPLINE", "EMPLOYMENT",
@@ -130,7 +130,7 @@ def create_talk(body, user) -> dict:
         return {"planId": str(plan.id), "talkIds": talk_ids}
 
 
-def record_talk(talk_id, user, content, result="", need_follow=False) -> dict:
+def record_talk(talk_id, user, content, result="", need_follow=False, expected_version=None) -> dict:
     if not content or len(content.strip()) < 20:
         raise AppException("VALIDATION_ERROR", "谈话内容必填且不少于 20 字")
     with session() as db:
@@ -139,6 +139,7 @@ def record_talk(talk_id, user, content, result="", need_follow=False) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("PLANNED", "SCHEDULED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该谈话已记录，不可重复填写")
+        check_version(x.version, expected_version)
         x.content, x.result, x.need_follow = content.strip(), result, bool(need_follow)
         x.talk_at = x.talk_at or datetime.utcnow()
         x.status, x.version = ("FOLLOW_UP" if need_follow else "COMPLETED"), x.version + 1
@@ -152,7 +153,7 @@ def record_talk(talk_id, user, content, result="", need_follow=False) -> dict:
         return _talk_row(x, user, s)
 
 
-def follow_up(talk_id, user, action, content="") -> dict:
+def follow_up(talk_id, user, action, content="", expected_version=None) -> dict:
     """跟进/办结/转风险/转家校。"""
     action = (action or "").upper()
     with session() as db:
@@ -161,6 +162,7 @@ def follow_up(talk_id, user, action, content="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("COMPLETED", "FOLLOW_UP"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已完成/跟进中的谈话可操作")
+        check_version(x.version, expected_version)
         if action == "FOLLOW":
             x.status, x.version = "FOLLOW_UP", x.version + 1
             _audit(db, "TALK", x.id, "FOLLOW", content or "")
