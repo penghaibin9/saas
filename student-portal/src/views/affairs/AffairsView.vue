@@ -52,7 +52,8 @@
         <template v-else>
           <div class="promise">本人郑重承诺：以上所填家庭经济情况真实、准确，如有虚报将承担相应责任，并配合学校核查。</div>
           <label class="chk"><input v-model="aidForm.commit" type="checkbox" />我已阅读并同意以上承诺（电子签，将记录签署时间）</label>
-          <div style="display:flex;gap:10px;margin-top:16px"><button class="sp-btn sp-btn--ghost" @click="aidStep = 2">上一步</button><button class="sp-btn" :disabled="busy || !aidForm.commit" @click="submitAid">提交认定申请</button></div>
+          <p class="sp-muted" style="margin-top:8px">提交需学校已开放困难认定批次；若暂无开放批次，请等待学校发布后办理。</p>
+          <div style="display:flex;gap:10px;margin-top:12px"><button class="sp-btn sp-btn--ghost" @click="aidStep = 2">上一步</button><button class="sp-btn" :disabled="busy || !aidForm.commit" @click="submitAid">提交认定申请</button></div>
         </template>
         <AutoTable :rows="aid.items" empty="暂无认定记录" title="认定记录" style="margin-top:16px" />
       </section>
@@ -68,7 +69,8 @@
             <div class="sp-fieldlabel">申请理由</div>
             <textarea v-model.trim="fundForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请说明申请理由" />
             <label class="chk"><input v-model="fundForm.commit" type="checkbox" />电子签署诚信承诺书</label>
-            <button class="sp-btn" style="margin-top:12px" :disabled="busy || !fundForm.reason || !fundForm.commit" @click="applyFunding">提交申请</button>
+            <p class="sp-muted" style="margin-top:8px">提交需学校已开放对应资助批次；若暂无开放批次，请等待学校发布后办理。</p>
+            <button class="sp-btn" style="margin-top:8px" :disabled="busy || !fundForm.reason || !fundForm.commit" @click="applyFunding">提交申请</button>
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">发放台账</div>
@@ -199,7 +201,7 @@ async function reload() {
 }
 async function applyLeave() {
   busy.value = true
-  try { await portalApi.affairsServiceApply({ category: 'LEAVE', ...leaveForm }); ui.notify('请假申请已提交'); leaveForm.reason = ''; reload() }
+  try { await portalApi.affairsServiceApply({ serviceKey: 'LEAVE', reason: leaveForm.reason }); ui.notify('请假申请已提交'); leaveForm.reason = ''; reload() }
   catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function submitAid() {
@@ -219,7 +221,7 @@ async function submitAppeal() {
 }
 async function submitPsy() {
   busy.value = true
-  try { await portalApi.affairsPsySubmit({ answers: (psy.value.questions || []).map((q) => ({ key: q.key, score: psyAnswers[q.key] })) }); ui.notify('测评已提交，结果仅本人与心理中心可见'); reload() }
+  try { await portalApi.affairsPsySubmit({ answers: (psy.value.questions || []).map((q) => ({ qKey: q.key, score: psyAnswers[q.key] })) }); ui.notify('测评已提交，结果仅本人与心理中心可见'); reload() }
   catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function enroll(id) {

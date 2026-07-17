@@ -126,7 +126,7 @@ async function submitCollect() {
 }
 async function submitGreen() {
   busy.value = true
-  try { await portalApi.orientationGreenChannel({ ...greenForm }); ui.notify('绿色通道申请已提交'); tab.value = 'overview'; load() }
+  try { await portalApi.orientationGreenChannel({ applyType: greenForm.type, reason: greenForm.reason }); ui.notify('绿色通道申请已提交'); tab.value = 'overview'; load() }
   catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 onMounted(load)

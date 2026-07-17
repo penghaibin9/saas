@@ -157,9 +157,14 @@
         <div class="two">
           <section class="sp-card">
             <div class="sp-panel__head">{{ examTab }}</div>
-            <div class="sp-fieldlabel">申请理由</div>
-            <textarea v-model.trim="examForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请说明申请理由并准备佐证材料" />
-            <button class="sp-btn" :disabled="busy || !examForm.reason" @click="submitExam">提交申请</button>
+            <StateBlock v-if="examTab === '缓考申请'" type="empty" text="考试安排即将上线，缓考申请开通后可在此办理" />
+            <template v-else>
+              <div class="sp-fieldlabel">课程名称</div>
+              <input v-model.trim="examForm.courseName" class="sp-inp" style="margin-bottom:12px" placeholder="如：高等数学(下)" />
+              <div class="sp-fieldlabel">申请理由</div>
+              <textarea v-model.trim="examForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请说明申请理由并准备佐证材料" />
+              <button class="sp-btn" :disabled="busy || !examForm.reason || !examForm.courseName" @click="submitExam">提交申请</button>
+            </template>
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">申请记录</div>
@@ -231,7 +236,7 @@ const info = ref({})
 const printReason = ref('')
 const appealForm = reactive({ reason: '' })
 const statusForm = reactive({ changeType: 'SUSPEND', reason: '' })
-const examForm = reactive({ reason: '' })
+const examForm = reactive({ reason: '', courseName: '' })
 
 const days = ['周一', '周二', '周三', '周四', '周五']
 const wizSteps = [{ n: 1, t: '选择类型' }, { n: 2, t: '填写事由' }, { n: 3, t: '预览提交' }]
@@ -316,9 +321,8 @@ async function submitStatusChange() {
 async function submitExam() {
   busy.value = true
   try {
-    if (examTab.value === '缓考申请') await portalApi.academicExamDeferApply({ reason: examForm.reason })
-    else await portalApi.academicRetakeApply({ reason: examForm.reason, type: examTab.value })
-    ui.notify('申请已提交'); examForm.reason = ''; loadAll()
+    await portalApi.academicRetakeApply({ reason: examForm.reason, courseName: examForm.courseName, type: examTab.value })
+    ui.notify('申请已提交'); examForm.reason = ''; examForm.courseName = ''; loadAll()
   } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 onMounted(loadAll)

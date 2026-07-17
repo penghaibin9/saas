@@ -186,12 +186,16 @@ async function load() {
 }
 async function submitWeekly() {
   busy.value = true
-  try { await portalApi.internshipWeeklySubmit({ ...weeklyForm }); ui.notify('周报已提交'); Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '' }); load() }
+  try { await portalApi.internshipWeeklySubmit({ weekNo: weeklyForm.week, workContent: weeklyForm.workContent, harvestContent: weeklyForm.harvestContent, planContent: weeklyForm.planContent }); ui.notify('周报已提交'); Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '' }); load() }
   catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function submitReport() {
   busy.value = true
-  try { await portalApi.internshipReportSubmit({ ...reportForm, type: reportTab.value }); ui.notify(reportTab.value + '已提交'); reportForm.content = ''; load() }
+  try {
+    const RT = { 月报: 'MONTHLY', 实习总结: 'SUMMARY', 周报: 'WEEKLY' }
+    await portalApi.internshipReportSubmit({ reportType: RT[reportTab.value] || 'MONTHLY', periodKey: reportForm.title || reportTab.value, content: reportForm.content })
+    ui.notify(reportTab.value + '已提交'); reportForm.content = ''; load()
+  }
   catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function submitAppeal() {
