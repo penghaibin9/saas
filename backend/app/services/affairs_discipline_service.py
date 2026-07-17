@@ -25,6 +25,15 @@ L_DISC = {
 }
 
 
+def _students_by_ids(db, rows, attr="student_id"):
+    """批量取回 rows 涉及的学生档案 {id: StudentProfile}，替代列表循环内逐行 db.get（消 N+1）。"""
+    from app.models import StudentProfile
+    sids = {int(getattr(x, attr)) for x in rows if getattr(x, attr, None)}
+    if not sids:
+        return {}
+    return {s.id: s for s in db.scalars(select(StudentProfile).where(StudentProfile.id.in_(sids))).all()}
+
+
 def _op():
     u = get_current_user_ctx() or {}
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
@@ -409,9 +418,10 @@ def list_cases(user, status=None, disc_type=None, page=1, page_size=20):
         if disc_type:
             conds.append(DisciplineCase.disc_type == disc_type)
         rows = db.scalars(select(DisciplineCase).where(*conds).order_by(DisciplineCase.id.desc())).all()
+        students = _students_by_ids(db, rows)
         out = []
         for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append(_row(x, s))
@@ -441,11 +451,12 @@ def discipline_stats(user) -> dict:
         allowed, _ = _allowed_class_ids(db, user)
         rows = db.scalars(select(DisciplineCase).where(
             DisciplineCase.tenant_id == _tid(), DisciplineCase.is_deleted.is_(False))).all()
+        students = _students_by_ids(db, rows)
         by_type: dict[str, int] = {}
         by_status: dict[str, int] = {}
         total = 0
         for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             total += 1
@@ -529,9 +540,10 @@ def list_appeals(user, status=None, page=1, page_size=50):
             conds.append(DisciplineAppeal.status == status)
         rows = db.scalars(select(DisciplineAppeal).where(*conds).order_by(
             DisciplineAppeal.id.desc())).all()
+        students = _students_by_ids(db, rows)
         out = []
         for a in rows:
-            s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
+            s = students.get(int(a.student_id)) if a.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append(_appeal_row(a, s))

@@ -20,6 +20,15 @@ from app.services.db_service import _iso, _tid, audit_insert, session
 LEVELS = {"SPECIAL": "特别困难", "DIFFICULT": "困难", "GENERAL": "一般困难"}
 _LEVEL_RANK = {"GENERAL": 1, "DIFFICULT": 2, "SPECIAL": 3}
 
+
+def _students_by_ids(db, rows, attr="student_id"):
+    """批量取回 rows 涉及的学生档案 {id: StudentProfile}，替代列表循环内逐行 db.get（消 N+1）。"""
+    from app.models import StudentProfile
+    sids = {int(getattr(x, attr)) for x in rows if getattr(x, attr, None)}
+    if not sids:
+        return {}
+    return {s.id: s for s in db.scalars(select(StudentProfile).where(StudentProfile.id.in_(sids))).all()}
+
 AID_NODES = ["CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"]
 _TERMINAL = {"APPROVED", "REJECTED", "ARCHIVED"}
 # 拥有家庭经济 sensitiveView 权限点的角色（V1：学工处/学校管理/资助老师；学院/辅导员仅脱敏）
@@ -526,9 +535,10 @@ def list_applications(user, batch_id=None, status=None, level=None, page=1, page
         if level:
             conds.append(AidApply.final_level == level)
         rows = db.scalars(select(AidApply).where(*conds).order_by(AidApply.id.desc())).all()
+        students = _students_by_ids(db, rows)
         out = []
         for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             fe = db.scalars(select(AidFamilyEconomy).where(
@@ -573,6 +583,7 @@ def difficult_students(user, level=None, page=1, page_size=50):
         rows = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.status == "APPROVED",
             AidApply.is_deleted.is_(False)).order_by(AidApply.id.desc())).all()
+        students = _students_by_ids(db, rows)
         seen, out = set(), []
         for x in rows:
             if x.student_id in seen:
@@ -580,7 +591,7 @@ def difficult_students(user, level=None, page=1, page_size=50):
             seen.add(x.student_id)
             if level and x.final_level != level:
                 continue
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append({"studentId": str(x.student_id), "realName": s.real_name if s else "",
@@ -609,10 +620,11 @@ def aid_stats(user):
         allowed, _ = _allowed_class_ids(db, user)
         rows = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False))).all()
+        students = _students_by_ids(db, rows)
         by_status, by_level, total = {}, {}, 0
         for x in rows:
             if allowed is not None:
-                s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+                s = students.get(int(x.student_id)) if x.student_id else None
                 if not s or s.class_id not in allowed:
                     continue
             total += 1

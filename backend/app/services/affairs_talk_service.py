@@ -22,6 +22,15 @@ L_TALK = {"PLANNED": "待谈", "SCHEDULED": "已约定", "COMPLETED": "已谈话
           "FOLLOW_UP": "跟进中", "CLOSED": "已办结", "CANCELLED": "已取消"}
 
 
+def _students_by_ids(db, rows, attr="student_id"):
+    """批量取回 rows 涉及的学生档案 {id: StudentProfile}，替代列表循环内逐行 db.get（消 N+1）。"""
+    from app.models import StudentProfile
+    sids = {int(getattr(x, attr)) for x in rows if getattr(x, attr, None)}
+    if not sids:
+        return {}
+    return {s.id: s for s in db.scalars(select(StudentProfile).where(StudentProfile.id.in_(sids))).all()}
+
+
 def _op():
     u = get_current_user_ctx() or {}
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
@@ -205,9 +214,10 @@ def list_talks(user, talk_type=None, status=None, student_id=None, page=1, page_
         if student_id:
             conds.append(TalkRecord.student_id == int(student_id))
         rows = db.scalars(select(TalkRecord).where(*conds).order_by(TalkRecord.id.desc())).all()
+        students = _students_by_ids(db, rows)
         out = []
         for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append(_talk_row(x, user, s))
@@ -224,9 +234,10 @@ def talk_stats(user, group_by="TYPE"):
         allowed, _ = _allowed_class_ids(db, user)
         all_rows = db.scalars(select(TalkRecord).where(
             TalkRecord.tenant_id == _tid(), TalkRecord.is_deleted.is_(False))).all()
+        students = _students_by_ids(db, all_rows)
         rows = []
         for x in all_rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             rows.append(x)
