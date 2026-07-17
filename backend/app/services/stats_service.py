@@ -278,6 +278,111 @@ def get_risk_board() -> dict:
     }
 
 
+# current_stage → 推进度权重（口径 ai_proposal：权重供 completionRate 排名，待学校校准）
+_STAGE_WEIGHT = {
+    "ADMITTED": 0.15, "PRE_STUDENT_VERIFIED": 0.25, "REGISTERED_PENDING_ENROLLMENT": 0.35,
+    "ENROLLED": 0.55, "INTERN": 0.75, "GRADUATING": 0.85, "GRADUATED": 1.0, "ALUMNI": 1.0,
+}
+_DONE_STAGES = ("GRADUATED", "ALUMNI")
+
+
+def get_rankings(level: str = "COLLEGE", college_id=None, major_id=None) -> dict:
+    """学院/专业/班级排行——全部从 t_student_profile 按组织维度真实聚合（单表自洽、可验证）。
+    studentCount 真实；completionRate=current_stage 加权推进度（ai_proposal，待校准，排名依据）；
+    employmentRate=已毕业/校友占比（去向代理，精确就业口径待接入就业台账）；
+    riskCount=异常学籍数（student_status!=NORMAL，真实）；delta 需历史快照（P3），暂为占位。"""
+    from sqlalchemy import case, func, select
+    from app.models import StudentProfile
+    from app.models.org import College, Major, SchoolClass
+    with session() as db:
+        base = [StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
+        if level == "MAJOR":
+            gcol, name_model, name_attr, scope = StudentProfile.major_id, Major, "major_name", "专业"
+            if college_id:
+                base.append(StudentProfile.college_id == int(college_id))
+        elif level == "CLASS":
+            gcol, name_model, name_attr, scope = StudentProfile.class_id, SchoolClass, "class_name", "班级"
+            if major_id:
+                base.append(StudentProfile.major_id == int(major_id))
+        else:
+            level, gcol, name_model, name_attr, scope = "COLLEGE", StudentProfile.college_id, College, "college_name", "学院"
+        weight_case = case(*[(StudentProfile.current_stage == k, v) for k, v in _STAGE_WEIGHT.items()], else_=0.0)
+        done_case = case((StudentProfile.current_stage.in_(_DONE_STAGES), 1), else_=0)
+        abn_case = case((StudentProfile.student_status != "NORMAL", 1), else_=0)
+        rows = db.execute(
+            select(gcol, func.count().label("cnt"), func.sum(weight_case).label("wsum"),
+                   func.sum(done_case).label("done"), func.sum(abn_case).label("abn"))
+            .where(*base, gcol.isnot(None)).group_by(gcol)
+        ).all()
+        ids = [r[0] for r in rows]
+        names = {}
+        if ids:
+            names = {o.id: getattr(o, name_attr) for o in
+                     db.execute(select(name_model).where(name_model.id.in_(ids))).scalars().all()}
+        out = []
+        for gid, cnt, wsum, done, abn in rows:
+            cnt = cnt or 0
+            out.append({
+                "id": str(gid), "name": names.get(gid, f"（未命名 #{gid}）"), "studentCount": cnt,
+                "completionRate": round((float(wsum or 0) / cnt) * 1000) / 10 if cnt else 0.0,
+                "employmentRate": round((int(done or 0) / cnt) * 1000) / 10 if cnt else 0.0,
+                "riskCount": int(abn or 0), "delta": "—", "deltaQuality": "neutral",
+            })
+        out.sort(key=lambda x: x["completionRate"], reverse=True)
+        for i, r in enumerate(out, 1):
+            r["rank"] = i
+        return {
+            "level": level, "scopeName": f"全校{scope}排行", "totalCount": sum(r["studentCount"] for r in out),
+            "note": "completionRate=生命周期阶段加权推进度（口径待校准）；employmentRate=已毕业/校友占比（去向代理）；"
+                    "riskCount=异常学籍数；名次变化 delta 需历史快照（P3）", "rows": out,
+        }
+
+
+def _mask_no(no: str) -> str:
+    """学号服务端脱敏：保留前2后2，中间星号（不下发完整学号）。"""
+    if not no:
+        return "—"
+    return no if len(no) <= 4 else no[:2] + "*" * (len(no) - 4) + no[-2:]
+
+
+def get_drilldown(college_id=None, major_id=None, class_id=None, stage=None,
+                  keyword=None, page: int = 1, page_size: int = 10) -> dict:
+    """下钻学生清单——从 t_student_profile 真实查询 + 服务端脱敏（学号打码；手机号不在主档、不下发）。"""
+    from sqlalchemy import func, or_, select
+    from app.models import StudentProfile
+    from app.models.org import College
+    page = max(int(page or 1), 1)
+    page_size = min(max(int(page_size or 10), 1), 100)
+    with session() as db:
+        conds = [StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
+        if college_id:
+            conds.append(StudentProfile.college_id == int(college_id))
+        if major_id:
+            conds.append(StudentProfile.major_id == int(major_id))
+        if class_id:
+            conds.append(StudentProfile.class_id == int(class_id))
+        if stage:
+            conds.append(StudentProfile.current_stage == stage)
+        if keyword:
+            kw = f"%{keyword.strip()}%"
+            conds.append(or_(StudentProfile.real_name.like(kw), StudentProfile.student_no.like(kw)))
+        total = db.scalar(select(func.count()).select_from(StudentProfile).where(*conds)) or 0
+        rows = db.execute(
+            select(StudentProfile).where(*conds)
+            .order_by(StudentProfile.college_id, StudentProfile.student_no)
+            .offset((page - 1) * page_size).limit(page_size)
+        ).scalars().all()
+        col_names = {c.id: c.college_name for c in db.execute(select(College)).scalars().all()}
+        items = [{
+            "studentNo": _mask_no(s.student_no),           # 服务端脱敏
+            "name": s.real_name,                            # 冻结册：姓名非敏感
+            "phone": "***（脱敏未下发）",                    # 手机号在加密联系表，主档无明文，一律不下发
+            "collegeName": col_names.get(s.college_id, "—"),
+            "stage": s.current_stage, "studentStatus": s.student_status, "riskLevel": "",
+        } for s in rows]
+        return {"list": items, "total": total, "page": page, "pageSize": page_size, "masked": True}
+
+
 def get_workbench_summary() -> dict:
     """工作台首页真实汇总卡片。"""
     from app.models import (AcademicWarning, EmpStudent, OrientationStudent, StudentProfile,

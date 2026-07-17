@@ -38,3 +38,18 @@ def lifecycle_board(caliber: str = Query("REGISTERED"), user=Depends(require_sta
 @router.get("/risk-board", summary="风险驾驶舱聚合（来源/等级真实，进度/趋势待接入）")
 def risk_board(user=Depends(require_staff)):
     return success(svc.get_risk_board())
+
+
+@router.get("/rankings", summary="学院/专业/班级排行（学生主档真实聚合）")
+def rankings(level: str = Query("COLLEGE"), collegeId: str | None = Query(None),
+             majorId: str | None = Query(None), user=Depends(require_staff)):
+    return success(svc.get_rankings(level=level, college_id=collegeId, major_id=majorId))
+
+
+@router.get("/drilldown", summary="下钻学生清单（真实 + 服务端脱敏学号）")
+def drilldown(collegeId: str | None = Query(None), majorId: str | None = Query(None),
+              classId: str | None = Query(None), stage: str | None = Query(None),
+              keyword: str | None = Query(None), page: int = Query(1), pageSize: int = Query(10),
+              user=Depends(require_staff)):
+    return success(svc.get_drilldown(college_id=collegeId, major_id=majorId, class_id=classId,
+                                     stage=stage, keyword=keyword, page=page, page_size=pageSize))
