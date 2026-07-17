@@ -10,13 +10,6 @@
     <div class="mp-stack">
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
-      <div v-if="statsCards.length" class="stats">
-        <div v-for="c in statsCards" :key="c.label" class="stats__card">
-          <div class="stats__val" :class="{ 'is-warn': c.warn }">{{ c.value }}</div>
-          <div class="stats__lbl">{{ c.label }}</div>
-        </div>
-      </div>
-
       <div class="tabs">
         <button v-for="t in tabs" :key="t.key" type="button" class="tabs__btn" :class="{ 'is-active': tab === t.key }" @click="switchTab(t.key)">{{ t.label }}</button>
       </div>
@@ -50,11 +43,8 @@
           </ul>
         </template>
         <template #aside-foot>
-          <div class="gv-pager">
-            <button type="button" class="mp-link" :disabled="page <= 1 || loading" @click="onPageChange(page - 1)">上一页</button>
-            <span class="mp-note">第 {{ page }} / 共 {{ pageCount }} 页</span>
-            <button type="button" class="mp-link" :disabled="page >= pageCount || loading" @click="onPageChange(page + 1)">下一页</button>
-          </div>
+          <AppPagination v-model:page="page" :page-size="pageSize" :total="total"
+                        :show-total="false" :show-size-changer="false" :disabled="loading" @change="load" />
         </template>
 
         <!-- 右栏：当前记录详情（原详情弹窗内容 + 附件 + 审计 + 操作） -->
@@ -113,7 +103,7 @@
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
@@ -152,7 +142,7 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview },
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination },
   data() {
     return {
       tab: 'guidance',
@@ -192,7 +182,6 @@ export default {
       return this.statsCards.slice(0, 5).map((c) => ({ label: c.label, value: c.value }))
     },
     detailFields() { return DETAIL[this.tab] },
-    pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
     detailItems() { const d = this.detail.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: d[f.key] })) },
     attachmentFiles() { const a = this.detail.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
     auditRecords() {
@@ -277,10 +266,6 @@ export default {
       }
     },
     reload() { this.page = 1; this.load() },
-    onPageChange(p) {
-      if (p < 1 || p > this.pageCount || p === this.page) return
-      this.page = p; this.load()
-    },
     async load() {
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
@@ -352,11 +337,6 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 
-.stats { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.stats__card { min-width: 120px; padding: var(--space-3); background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 8px; }
-.stats__val { font-size: var(--font-size-xl); font-weight: 600; }
-.stats__val.is-warn { color: var(--danger-600); }
-.stats__lbl { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-1); }
 .tabs { display: flex; gap: var(--space-2); border-bottom: 1px solid var(--border-light); }
 .tabs__btn { border: none; background: none; padding: var(--space-2) var(--space-3); cursor: pointer; color: var(--text-secondary); font-size: var(--font-size-sm); border-bottom: 2px solid transparent; }
 .tabs__btn.is-active { color: var(--primary-700); border-bottom-color: var(--primary-600); font-weight: var(--font-weight-medium); }
@@ -373,7 +353,6 @@ export default {
 .gv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .gv-item__name { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
 .gv-item__sub { margin-top: 2px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.gv-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 
 /* 右栏详情与固定操作区 */
 .gv-main { display: flex; flex-direction: column; min-height: 320px; }

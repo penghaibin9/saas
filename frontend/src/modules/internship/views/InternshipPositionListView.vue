@@ -11,12 +11,12 @@
     </template>
 
     <div v-if="activePanel === 'stats' && posStats" class="mp-stats">
-      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.total }}</div><div class="mp-stat__lbl">岗位总数</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.riskCount }}</div><div class="mp-stat__lbl">风险岗位</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.publishedCapacity }}</div><div class="mp-stat__lbl">已上架容量</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.publishedAllocated }}</div><div class="mp-stat__lbl">已分配</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.capacityUtilization }}%</div><div class="mp-stat__lbl">容量利用率</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ posStats.unlimitedMajorCount }}</div><div class="mp-stat__lbl">不限专业(上架)</div></div>
+      <AppMetricCard title="岗位总数" :value="posStats.total" />
+      <AppMetricCard title="风险岗位" :value="posStats.riskCount" :accent="posStats.riskCount ? 'risk' : 'primary'" />
+      <AppMetricCard title="已上架容量" :value="posStats.publishedCapacity" />
+      <AppMetricCard title="已分配" :value="posStats.publishedAllocated" />
+      <AppMetricCard title="容量利用率" :value="posStats.capacityUtilization" unit="%" />
+      <AppMetricCard title="不限专业(上架)" :value="posStats.unlimitedMajorCount" />
     </div>
 
     <div class="mp-stack">
@@ -86,7 +86,7 @@
 <script>
 /** 岗位库列表（/admin/internship/positions）：筛选 + 状态机 + 风险标记 + 真导入导出；新增/编辑走独立表单页 PositionFormView。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppExportButton, AppStatusTag } from '@/components/common'
+import { AppExportButton, AppStatusTag, AppMetricCard } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { positionApi } from '@/modules/internship/api/position.api'
@@ -119,7 +119,7 @@ const POSITION_PANEL_HINTS = {
 
 export default {
   name: 'InternshipPositionListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppMetricCard, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -250,9 +250,7 @@ export default {
 .ip-risk { margin-left: var(--space-2); font-size: 11px; color: var(--danger, #dc2626); }
 .mp-link--danger { color: var(--danger, #dc2626); }
 .mp-stats { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
-.mp-stat { min-width: 120px; padding: var(--space-3) var(--space-4); background: #fff; border: 1px solid var(--line, #d9dee8); border-radius: 8px; }
-.mp-stat__val { font-size: 20px; font-weight: 600; }
-.mp-stat__lbl { color: var(--t2, #475569); font-size: 12px; margin-top: 4px; }
+.mp-stats > * { flex: 1 1 160px; }
 .ip-block { margin-bottom: var(--space-4); }
 .ip-h { margin: 0 0 var(--space-2); font-size: 14px; }
 </style>

@@ -17,11 +17,11 @@
         <span v-if="detail.blacklist" class="ed-bl">黑名单 · {{ detail.blacklistReason }}</span>
         <AppStatusTag :type="detail.qualificationStatus === 'PASSED' ? 'success' : (detail.qualificationStatus === 'FAILED' ? 'danger' : 'default')">{{ detail.qualificationLabel }}</AppStatusTag>
         <div class="ed-head__spacer" />
-        <button v-if="detail.coopStatus === 'PENDING'" class="mp-btn mp-btn--primary" :disabled="!can('reviewEnterprise')" :title="reason('reviewEnterprise')" @click="askReview">审核</button>
-        <button v-else-if="detail.coopStatus === 'ACTIVE'" class="mp-btn" @click="askCoop('SUSPEND')">暂停合作</button>
-        <button v-else-if="detail.coopStatus === 'SUSPENDED'" class="mp-btn" @click="askCoop('RESUME')">恢复合作</button>
-        <button v-if="!detail.blacklist && detail.coopStatus !== 'ARCHIVED'" class="mp-btn mp-btn--danger" :disabled="!can('blacklistEnterprise')" :title="reason('blacklistEnterprise')" @click="askBlacklist(true)">拉黑</button>
-        <button v-if="detail.blacklist" class="mp-btn" :disabled="!can('blacklistEnterprise')" :title="reason('blacklistEnterprise')" @click="askBlacklist(false)">移出黑名单</button>
+        <AppPermissionButton v-if="detail.coopStatus === 'PENDING'" code="reviewEnterprise" variant="primary" :allowed="can('reviewEnterprise')" :reason="reason('reviewEnterprise')" @click="askReview">审核</AppPermissionButton>
+        <AppButton v-else-if="detail.coopStatus === 'ACTIVE'" variant="secondary" @click="askCoop('SUSPEND')">暂停合作</AppButton>
+        <AppButton v-else-if="detail.coopStatus === 'SUSPENDED'" variant="secondary" @click="askCoop('RESUME')">恢复合作</AppButton>
+        <AppPermissionButton v-if="!detail.blacklist && detail.coopStatus !== 'ARCHIVED'" code="blacklistEnterprise" variant="danger" :allowed="can('blacklistEnterprise')" :reason="reason('blacklistEnterprise')" @click="askBlacklist(true)">拉黑</AppPermissionButton>
+        <AppPermissionButton v-if="detail.blacklist" code="blacklistEnterprise" variant="secondary" :allowed="can('blacklistEnterprise')" :reason="reason('blacklistEnterprise')" @click="askBlacklist(false)">移出黑名单</AppPermissionButton>
       </div>
 
       <nav class="ed-tabs">
@@ -30,8 +30,8 @@
 
       <!-- 主档 -->
       <section v-show="tab === 'basic'" class="mp-card">
-        <div class="mp-card__body ed-grid">
-          <div v-for="f in basicFields" :key="f.label" class="ed-kv"><span class="ed-k">{{ f.label }}</span><span class="ed-v">{{ f.value || '—' }}</span></div>
+        <div class="mp-card__body">
+          <AppDescriptionList :items="basicFields" />
         </div>
       </section>
 
@@ -39,7 +39,7 @@
       <section v-show="tab === 'contacts'" class="mp-card">
         <div class="mp-card__head">
           <span class="mp-card__title">联系人 / 企业导师（{{ contacts.length }}）</span>
-          <button class="mp-btn mp-btn--primary mp-btn--sm" :disabled="!can('manageEnterpriseContact')" @click="openContact(null)">＋ 新增</button>
+          <AppPermissionButton code="manageEnterpriseContact" variant="primary" size="sm" :allowed="can('manageEnterpriseContact')" :reason="reason('manageEnterpriseContact')" @click="openContact(null)">＋ 新增</AppPermissionButton>
         </div>
         <div class="mp-card__body">
           <EmptyState v-if="!contacts.length" title="暂无联系人" description="添加企业 HR / 企业导师，便于实习对接" />
@@ -51,8 +51,8 @@
                 <td>{{ c.phoneMasked || '—' }}</td><td>{{ c.email || '—' }}</td>
                 <td>{{ c.isPrimary ? '★' : '' }}</td>
                 <td>
-                  <button class="mp-link" :class="{ 'is-disabled': !can('manageEnterpriseContact') }" @click="openContact(c)">编辑</button>
-                  <button class="mp-link mp-link--danger" :class="{ 'is-disabled': !can('manageEnterpriseContact') }" style="margin-left: var(--space-2)" @click="askDeleteContact(c)">删除</button>
+                  <AppPermissionButton code="manageEnterpriseContact" variant="ghost" size="sm" :allowed="can('manageEnterpriseContact')" :reason="reason('manageEnterpriseContact')" @click="openContact(c)">编辑</AppPermissionButton>
+                  <AppPermissionButton code="manageEnterpriseContact" variant="danger" size="sm" :allowed="can('manageEnterpriseContact')" :reason="reason('manageEnterpriseContact')" @click="askDeleteContact(c)">删除</AppPermissionButton>
                 </td>
               </tr>
             </tbody>
@@ -62,15 +62,10 @@
 
       <!-- 合作与资质 -->
       <section v-show="tab === 'coop'" class="mp-card">
-        <div class="mp-card__body ed-grid">
-          <div class="ed-kv"><span class="ed-k">合作状态</span><span class="ed-v">{{ detail.coopStatusLabel }}</span></div>
-          <div class="ed-kv"><span class="ed-k">资质核验</span><span class="ed-v">{{ detail.qualificationLabel }}</span></div>
-          <div class="ed-kv"><span class="ed-k">合作级别</span><span class="ed-v">{{ detail.cooperationLevel || '—' }}</span></div>
-          <div class="ed-kv"><span class="ed-k">累计实习生</span><span class="ed-v">{{ detail.internCount }}</span></div>
-          <div class="ed-kv"><span class="ed-k">审核人</span><span class="ed-v">{{ detail.reviewBy || '—' }}</span></div>
-          <div class="ed-kv"><span class="ed-k">审核时间</span><span class="ed-v">{{ detail.reviewAt || '—' }}</span></div>
-          <div class="ed-kv ed-kv--full"><span class="ed-k">审核意见</span><span class="ed-v">{{ detail.reviewComment || '—' }}</span></div>
-          <div v-if="detail.blacklist" class="ed-kv ed-kv--full"><span class="ed-k">黑名单原因</span><span class="ed-v ed-danger">{{ detail.blacklistReason }}</span></div>
+        <div class="mp-card__body">
+          <AppDescriptionList :items="coopFields">
+            <template #blacklistReason="{ item }"><span class="ed-danger">{{ item.value }}</span></template>
+          </AppDescriptionList>
         </div>
       </section>
 
@@ -99,34 +94,36 @@
       <!-- 审计 -->
       <section v-show="tab === 'audit'" class="mp-card">
         <div class="mp-card__body">
-          <EmptyState v-if="!detail.auditTrail.length" title="暂无操作记录" />
-          <ul v-else class="ed-trail">
-            <li v-for="(a, i) in detail.auditTrail" :key="i" class="ed-trail__item">
-              <span class="ed-trail__act">{{ a.action }}</span>
-              <span class="ed-trail__meta">{{ a.operator }} · {{ fmtTime(a.occurredAt) }}</span>
-            </li>
-          </ul>
+          <AppAuditTrail :records="auditRecords" :show-ip="false" />
         </div>
       </section>
     </template>
 
     <!-- 联系人 新增/编辑 -->
     <AppDrawer v-model:visible="contactDrawer" :title="editingContact ? '编辑联系人' : '新增联系人 / 企业导师'">
-      <form class="ie-form" @submit.prevent="submitContact">
-        <label class="ie-fld"><span class="ie-lbl">类型</span>
-          <select v-model="cform.contactType" class="ie-in"><option value="CONTACT">联系人</option><option value="MENTOR">企业导师</option></select>
-        </label>
-        <label class="ie-fld"><span class="ie-lbl">姓名 <i>*</i></span><input v-model.trim="cform.name" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">职务</span><input v-model.trim="cform.title" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">电话</span><input v-model.trim="cform.phone" class="ie-in" placeholder="敏感字段，展示脱敏" /></label>
-        <label class="ie-fld"><span class="ie-lbl">邮箱</span><input v-model.trim="cform.email" class="ie-in" /></label>
+      <AppForm layout="vertical" :model="cform" @submit="submitContact">
+        <AppFormItem label="类型">
+          <AppSelect v-model="cform.contactType" :options="contactTypeOptions" />
+        </AppFormItem>
+        <AppFormItem label="姓名" required>
+          <AppTextInput v-model.trim="cform.name" />
+        </AppFormItem>
+        <AppFormItem label="职务">
+          <AppTextInput v-model.trim="cform.title" />
+        </AppFormItem>
+        <AppFormItem label="电话" hint="敏感字段，展示脱敏">
+          <AppTextInput v-model.trim="cform.phone" placeholder="敏感字段，展示脱敏" />
+        </AppFormItem>
+        <AppFormItem label="邮箱">
+          <AppTextInput v-model.trim="cform.email" />
+        </AppFormItem>
         <label class="ie-fld ie-chk"><input v-model="cform.isPrimary" type="checkbox" /> 设为该类型主联系人</label>
-        <p v-if="cformError" class="ie-err">{{ cformError }}</p>
+        <AppInlineAlert v-if="cformError" type="danger" :description="cformError" />
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="contactDrawer = false">取消</button>
           <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">保存</button>
         </div>
-      </form>
+      </AppForm>
     </AppDrawer>
 
     <AppConfirmDialog
@@ -146,19 +143,25 @@
 <script>
 /** 企业详情（/admin/internship/enterprises/:id）：主档 + 联系人/导师 CRUD + 合作资质 + 审计 + 状态机动作。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag } from '@/components/common'
-import { AppDrawer } from '@/components/ui'
+import {
+  AppStatusTag, AppPermissionButton, AppAuditTrail, AppInlineAlert,
+  AppDescriptionList, AppForm, AppFormItem, AppTextInput, AppSelect
+} from '@/components/common'
+import { AppDrawer, AppButton } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { positionApi } from '@/modules/internship/api/position.api'
 import { toast } from '@/utils/toast'
-import { formatDateTime } from '@/utils/dateUtils'
 
 const EMPTY_CFORM = () => ({ contactType: 'CONTACT', name: '', title: '', phone: '', email: '', isPrimary: false })
+const CONTACT_TYPE_OPTIONS = [{ label: '联系人', value: 'CONTACT' }, { label: '企业导师', value: 'MENTOR' }]
 
 export default {
   name: 'InternshipEnterpriseDetailView',
-  components: { ModulePageShell, AppStatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog },
+  components: {
+    ModulePageShell, AppStatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppButton, AppConfirmDialog,
+    AppPermissionButton, AppAuditTrail, AppInlineAlert, AppDescriptionList, AppForm, AppFormItem, AppTextInput, AppSelect
+  },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -188,14 +191,31 @@ export default {
         { label: '联系人', value: d.contactPerson }, { label: '联系电话(脱敏)', value: d.contactPhoneMasked },
         { label: '累计实习生', value: String(d.internCount) }, { label: '备注', value: d.remark }
       ]
-    }
+    },
+    coopFields() {
+      const d = this.detail
+      const items = [
+        { label: '合作状态', value: d.coopStatusLabel },
+        { label: '资质核验', value: d.qualificationLabel },
+        { label: '合作级别', value: d.cooperationLevel },
+        { label: '累计实习生', value: String(d.internCount) },
+        { label: '审核人', value: d.reviewBy },
+        { label: '审核时间', value: d.reviewAt },
+        { key: 'reviewComment', label: '审核意见', value: d.reviewComment, span: 2 }
+      ]
+      if (d.blacklist) items.push({ key: 'blacklistReason', label: '黑名单原因', value: d.blacklistReason, span: 2 })
+      return items
+    },
+    auditRecords() {
+      const trail = (this.detail && this.detail.auditTrail) || []
+      return trail.map((a) => ({ action: a.action, actor: a.operator, at: a.occurredAt }))
+    },
+    contactTypeOptions() { return CONTACT_TYPE_OPTIONS }
   },
   created() { this.load() },
   methods: {
     can(key) { const p = this.perms[key]; return !!(p && p.allowed) },
     reason(key) { const p = this.perms[key]; return p && !p.allowed ? p.reason : '' },
-    /* 审计时间统一格式化（后端原始 ISO「2026-07-07T13:52:01」→ YYYY-MM-DD HH:mm）；解析不了则原样保留 */
-    fmtTime(v) { if (!v) return ''; const s = formatDateTime(v, ''); return s || String(v) },
     async load() {
       this.loading = true; this.error = ''
       const res = await internshipApi.getEnterpriseDetail(this.$route.params.id)
@@ -268,28 +288,16 @@ export default {
 .ed-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }
 .ed-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
 .ed-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
-.ed-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
-.ed-kv { display: flex; flex-direction: column; gap: 2px; }
-.ed-kv--full { grid-column: 1 / -1; }
-.ed-k { font-size: 12px; color: var(--t3, #64748b); }
-.ed-v { font-size: 13px; color: var(--t1, #0f1e3d); }
 .ed-danger { color: var(--danger, #dc2626); }
 .ed-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ed-tbl th, .ed-tbl td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line, #eef1f6); }
 .ed-tbl th { color: var(--t3, #64748b); font-weight: 500; font-size: 12px; }
-.ed-trail__item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--line, #eef1f6); font-size: 13px; }
-.ed-trail__meta { color: var(--t3, #64748b); font-size: 12px; }
 .mp-btn { padding: 7px 14px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn--danger { color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); }
 .mp-btn--sm { padding: 4px 10px; font-size: 12px; }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ie-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
-.ie-fld { display: flex; flex-direction: column; gap: 4px; }
-.ie-chk { flex-direction: row; align-items: center; gap: 6px; grid-column: 1 / -1; font-size: 13px; }
-.ie-lbl { font-size: 12px; color: var(--t2, #475569); }
-.ie-lbl i { color: var(--danger, #dc2626); font-style: normal; }
-.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
-.ie-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
-.ie-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-2); }
+.ie-fld { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-4); }
+.ie-chk { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; }
+.ie-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 </style>
