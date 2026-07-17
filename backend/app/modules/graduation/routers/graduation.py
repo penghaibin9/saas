@@ -7,13 +7,40 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.core.permissions import require_permission
+from app.core.permissions import has_permission, require_permission
 from app.modules.graduation.schemas.graduation import (AssignStudentsBody, DefenseGroupBody,  # noqa: F401
                                     ProposalSubmitBody, RemindBody, ReviewBody)
 from app.services import audit_log
 from app.modules.graduation.services import graduation_service as svc
+from app.modules.graduation.services.graduation_scope_service import has_full_scope
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计"])
+
+# 前端按钮动作 → 后端真实 permissionCode（与 graduation_permissions.graduation_permission_for
+# 的路径推导口径保持一致）。/context 把这份判定结果下发给前端，替代此前写死的静态权限矩阵。
+_ACTION_PERMISSION_MAP = {
+    "createBatch": "graduationDesign.manage", "importStudents": "graduationDesign.manage",
+    "exportStats": "graduationDesign.export", "viewAuditLog": "graduationDesign.manage",
+    "createProject": "graduationDesign.manage", "batchAssignAdvisor": "graduationDesign.manage",
+    "batchRemind": "graduationDesign.manage", "batchArchive": "graduationDesign.manage",
+    "editProject": "graduationDesign.manage", "voidProject": "graduationDesign.manage",
+    "createTopic": "graduationDesign.manage", "importTopics": "graduationDesign.manage",
+    "exportTopics": "graduationDesign.export", "disableTopic": "graduationDesign.manage",
+    "reviewProposal": "graduationDesign.proposal.review", "reviewFinal": "graduationDesign.final.review",
+    "exportProposals": "graduationDesign.export", "manageDefense": "graduationDesign.manage",
+    "publishDefense": "graduationDesign.defense.publish", "exportDefense": "graduationDesign.export",
+}
+
+
+@router.get("/context", summary="毕设中心真实权限/范围上下文（供前端按钮门禁，替代静态假数据）")
+def get_context(user=Depends(get_current_user)):
+    role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
+    return success({
+        "roleCode": role,
+        "fullScope": has_full_scope(),
+        "permissionActions": {key: has_permission(user, code)
+                              for key, code in _ACTION_PERMISSION_MAP.items()},
+    })
 
 
 @router.get("/materials/{file_id}/download", summary="下载毕业设计材料（业务关系鉴权）")

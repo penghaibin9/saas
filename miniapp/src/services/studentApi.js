@@ -1,5 +1,5 @@
 /** 学生端数据服务：真实后端优先（主链：首页/档案/消息），其余仍 mock；失败自动回退。 */
-import { mockRequest, realFirst, realFirstStrict } from './request'
+import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
 import * as real from './realApi'
 import * as M from '@/mock'
 
@@ -148,6 +148,7 @@ export const studentApi = {
   cancelLevelExam: (examId) => real.acadLevelCancel(examId),
   // 专业分流志愿（学生自助）
   getMyMajorSplit: () => real.acadMajorSplitMy(),
-  submitMajorSplit: (batchId, choices) => real.acadMajorSplitSubmit(batchId, choices)
+  submitMajorSplit: (batchId, choices) => real.acadMajorSplitSubmit(batchId, choices),
+  exportMyData: () => realRequest('/mobile/me/export-data')
 }
 export default studentApi

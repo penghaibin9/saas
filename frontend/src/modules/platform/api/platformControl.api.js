@@ -57,6 +57,8 @@ export const platformControlApi = {
   updateTenant: (id, body) => real('tenant-update', `/platform/tenants/${id}`, { method: 'PUT', body }),
   tenantAction: (id, action, body = {}) =>
     real(`tenant-${action}`, `/platform/tenants/${id}/${action}`, { method: 'POST', body }),
+  resetSandboxData: (id) =>
+    real('tenant-reset-sandbox', `/platform/tenants/${id}/reset-sandbox-data`, { method: 'POST', body: {} }),
   getTenantUsage: (id) => real('tenant-usage', `/platform/tenants/${id}/usage`, {}),
 
   /* §四 套餐 */

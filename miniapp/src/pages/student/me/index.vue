@@ -57,6 +57,7 @@
 import { useSessionStore } from '@/stores/session'
 import { ENV } from '@/config/env'
 import { go, relaunch, toast } from '@/utils/nav'
+import { studentApi } from '@/services/studentApi'
 export default {
   computed: {
     // 仅演示（mock）模式标注"演示环境"；真实后端/生产构建只显示版本号，避免误导真实用户
@@ -97,7 +98,35 @@ export default {
     rowTone(i) { return ['tone-blue', 'tone-green', 'tone-amber', 'tone-cyan'][i % 4] },
     onListMenu(row) {
       if (row.key === 'privacy') return go('/pages/common/account-security/index')
+      if (row.key === 'export') return this.exportData()
       toast(row.label + '：即将开放')
+    },
+    exportData() {
+      uni.showLoading({ title: '正在生成…', mask: true })
+      studentApi.exportMyData().then((res) => {
+        uni.hideLoading()
+        const b64 = res && res.base64
+        const name = (res && res.fileName) || 'export.xlsx'
+        if (!b64) return toast('导出失败，请重试')
+        // #ifdef MP-WEIXIN
+        const fs = uni.getFileSystemManager()
+        const fp = `${wx.env.USER_DATA_PATH}/${name}`
+        fs.writeFile({ filePath: fp, data: b64, encoding: 'base64',
+          success: () => uni.openDocument({ filePath: fp, fileType: 'xlsx', showMenu: true,
+            fail: () => toast('已生成，请在聊天文件或文件管理中查看') }),
+          fail: () => toast('导出失败，请重试') })
+        // #endif
+        // #ifdef H5
+        const bin = atob(b64)
+        const arr = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+        const blob = new Blob([arr], { type: (res && res.mime) || 'application/octet-stream' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url; link.download = name; link.click()
+        URL.revokeObjectURL(url)
+        // #endif
+      }).catch((e) => { uni.hideLoading(); toast((e && e.message) || '导出失败，请重试') })
     },
     logout() {
       uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: (r) => {

@@ -38,6 +38,7 @@
             <AppButton v-if="row.status === 'trial'" variant="ghost" @click="act(row, 'extend-trial', { days: 7 })">延试用7天</AppButton>
             <AppButton v-if="row.status !== 'active'" variant="ghost" @click="convert(row)">转正式</AppButton>
             <AppButton v-if="row.tenantCode === 'demo-school'" variant="warning" @click="act(row, 'reset-demo-data')">重置演示</AppButton>
+            <AppButton v-if="row.tenantCode === 'sandbox-school'" variant="warning" @click="resetSandbox(row)">恢复演示数据</AppButton>
           </div>
         </template>
       </DataTable>
@@ -223,6 +224,17 @@ export default {
       const res = await platformControlApi.tenantAction(row.tenantId, action, body)
       if (res.code === 0) {
         toast.success(res.message === 'ok' ? '操作成功' : res.message)
+        this.load()
+      } else {
+        toast.error(res.message)
+      }
+    },
+    async resetSandbox(row) {
+      const confirmed = window.confirm(`确认恢复「${row.tenantName}」的演示数据？\n\n现场新增数据会被清理，预置流程数据、账号和权限会恢复。其他学校不受影响。`)
+      if (!confirmed) return
+      const res = await platformControlApi.resetSandboxData(row.tenantId)
+      if (res.code === 0) {
+        toast.success(res.message || '演示数据已恢复')
         this.load()
       } else {
         toast.error(res.message)

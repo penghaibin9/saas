@@ -224,6 +224,31 @@ def _scope_or_403(db, x, user):
         raise AppException("NO_DATA_SCOPE", "该请假不在您的数据范围内")
 
 
+def _node_visible(ctx, node: str) -> bool:
+    """按管理层级判断某审批节点是否对当前身份可见/可操作：
+    TENANT_ALL（学工处/校级管理员）→ 任意节点；COLLEGE（学院管理员）→ 除学工处终审外任意节点
+    （本院范围已由 _scope_or_403 的班级收敛保证）；其余（含辅导员）仅 COUNSELOR_REVIEW。"""
+    if ctx.scope_type == "TENANT_ALL":
+        return True
+    if node == "STUDENT_AFFAIRS_REVIEW":
+        return False
+    if ctx.scope_type == "COLLEGE":
+        return True
+    return node == "COUNSELOR_REVIEW"
+
+
+def _check_review_node(db, x, user):
+    """审批节点身份校验（修复越权缺口）：既有 _scope_or_403 只校验学生是否在调用者的数据范围内，
+    不校验当前 affairs_status 对应的审批节点是否轮到调用者审批。COUNSELOR 角色被授予
+    studentAffairs.leave.* 通配权限，若无此校验，只要学生在其班级范围内，辅导员即可越级审批
+    COLLEGE_REVIEW/STUDENT_AFFAIRS_REVIEW 环节，跳过学院/学工处审批。"""
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    if not _node_visible(ctx, x.affairs_status):
+        raise AppException("NO_PERMISSION",
+                           f"无权审批当前节点（{L_AFF.get(x.affairs_status, x.affairs_status)}）")
+
+
 # ═══════════ 申请 ═══════════
 
 def apply_leave(body, user) -> dict:
@@ -284,6 +309,7 @@ def approve(leave_id, user, comment="") -> dict:
         aff = x.affairs_status
         if aff not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可审批，请刷新")
+        _check_review_node(db, x, user)
         inst = _act_task(db, x, "APPROVED", comment)
         wf = inst.workflow_code if inst else _wf_code(float(x.days or 1))
         seq = NODE_SEQ.get(wf, ["COUNSELOR_REVIEW"])
@@ -321,6 +347,7 @@ def reject(leave_id, user, reason) -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可驳回，请刷新")
+        _check_review_node(db, x, user)
         inst = _act_task(db, x, "REJECTED", reason.strip())
         x.affairs_status, x.status, x.return_reason = "REJECTED", "RETURNED", reason.strip()
         x.version += 1
@@ -343,6 +370,7 @@ def return_leave(leave_id, user, reason) -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可退回，请刷新")
+        _check_review_node(db, x, user)
         inst = _act_task(db, x, "TRANSFERRED", reason.strip())
         x.affairs_status, x.status, x.return_reason = "RETURNED", "RETURNED", reason.strip()
         x.version += 1
@@ -849,19 +877,26 @@ def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=Non
 
 
 def list_pending(user, page=1, page_size=20):
+    """待审批队列：仅返回调用者数据范围内、且当前节点确实轮到其身份审批的请假
+    （修复越权配套：避免辅导员在列表里看到无权处理的学院/学工处环节数据）。"""
     from app.models import CsLeave, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.core.affairs_security import build_affairs_context
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
+        ctx = build_affairs_context(user, db)
         rows = db.scalars(select(CsLeave).where(
             CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
             CsLeave.affairs_status.in_(list(_REVIEW_NODES))).order_by(CsLeave.id.desc())).all()
         out = []
         for x in rows:
+            if not _node_visible(ctx, x.affairs_status):
+                continue
             s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append(_row(x, s))
+        _resolve_class_names(db, out)  # list_leaves 已有此转换，list_pending 此前遗漏（className 一直回数字 class_id）
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total

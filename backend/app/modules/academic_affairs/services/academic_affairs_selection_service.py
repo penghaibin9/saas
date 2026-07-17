@@ -652,8 +652,15 @@ def student_drop(user, body) -> dict:
         rnd = _active_round(db, b.id)
         if rnd and not rnd.allow_drop:
             raise _invalid("本轮次仅可选课，不可退课")
-        rec.status = _REC_DROPPED
-        rec.dropped_at = datetime.utcnow()
+        # 条件更新（仅当仍为 SELECTED 才转 DROPPED）：防并发重复退课导致 selected_count 被多扣一次
+        upd = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.id == rec.id, AaSelectionRecord.tenant_id == _tid(),
+            AaSelectionRecord.status == _REC_SELECTED).update(
+            {AaSelectionRecord.status: _REC_DROPPED, AaSelectionRecord.dropped_at: datetime.utcnow()},
+            synchronize_session=False)
+        if not upd:
+            db.rollback()
+            raise _invalid("无可退课的选课记录")
         db.query(AaSelectionCourse).filter(
             AaSelectionCourse.id == c.id, AaSelectionCourse.tenant_id == _tid(),
             AaSelectionCourse.selected_count > 0).update(
@@ -661,7 +668,7 @@ def student_drop(user, body) -> dict:
             synchronize_session=False)
         _audit(db, rec.id, "SELECTION_DROP", f"退课 {c.course_name}")
         db.commit()
-        return {"recordId": str(rec.id), "status": rec.status}
+        return {"recordId": str(rec.id), "status": _REC_DROPPED}
 
 
 def my_selections(user, batch_id=None):
@@ -694,9 +701,15 @@ def adjust_record(user, record_id, reason) -> dict:
             raise not_found("选课记录不存在")
         if rec.status != _REC_LOCKED:
             raise _invalid("仅 LOCKED 记录可人工调整")
-        rec.status = _REC_DROPPED
-        rec.dropped_at = datetime.utcnow()
-        rec.adjust_reason = reason
+        # 条件更新（仅当仍为 LOCKED 才转 DROPPED）：防并发重复调整导致 selected_count 被多扣一次
+        upd = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.id == rec.id, AaSelectionRecord.tenant_id == _tid(),
+            AaSelectionRecord.status == _REC_LOCKED).update(
+            {AaSelectionRecord.status: _REC_DROPPED, AaSelectionRecord.dropped_at: datetime.utcnow(),
+             AaSelectionRecord.adjust_reason: reason}, synchronize_session=False)
+        if not upd:
+            db.rollback()
+            raise _invalid("仅 LOCKED 记录可人工调整")
         db.query(AaSelectionCourse).filter(
             AaSelectionCourse.id == rec.selection_course_id, AaSelectionCourse.tenant_id == _tid(),
             AaSelectionCourse.selected_count > 0).update(
@@ -704,7 +717,7 @@ def adjust_record(user, record_id, reason) -> dict:
             synchronize_session=False)
         _audit(db, rec.id, "SELECTION_RECORD_ADJUST", f"人工调整退课：{reason}")
         db.commit()
-        return {"recordId": str(rec.id), "status": rec.status}
+        return {"recordId": str(rec.id), "status": _REC_DROPPED}
 
 
 def _record_dto(r) -> dict:

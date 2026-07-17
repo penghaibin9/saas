@@ -10,13 +10,6 @@
     <div class="mp-stack">
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
-      <div v-if="statsCards.length" class="stats">
-        <div v-for="c in statsCards" :key="c.label" class="stats__card">
-          <div class="stats__val" :class="{ 'is-warn': c.warn }">{{ c.value }}</div>
-          <div class="stats__lbl">{{ c.label }}</div>
-        </div>
-      </div>
-
       <div class="tabs">
         <button v-for="t in tabs" :key="t.key" type="button" class="tabs__btn" :class="{ 'is-active': tab === t.key }" @click="switchTab(t.key)">{{ t.label }}</button>
       </div>
@@ -344,11 +337,6 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 
-.stats { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.stats__card { min-width: 120px; padding: var(--space-3); background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 8px; }
-.stats__val { font-size: var(--font-size-xl); font-weight: 600; }
-.stats__val.is-warn { color: var(--danger-600); }
-.stats__lbl { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-1); }
 .tabs { display: flex; gap: var(--space-2); border-bottom: 1px solid var(--border-light); }
 .tabs__btn { border: none; background: none; padding: var(--space-2) var(--space-3); cursor: pointer; color: var(--text-secondary); font-size: var(--font-size-sm); border-bottom: 2px solid transparent; }
 .tabs__btn.is-active { color: var(--primary-700); border-bottom-color: var(--primary-600); font-weight: var(--font-weight-medium); }

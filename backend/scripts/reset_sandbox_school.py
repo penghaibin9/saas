@@ -6,7 +6,7 @@
   python scripts/reset_sandbox_school.py --dry-run --sqlite-dev  # 本地 dev.db 调试用
 
 安全设计：
-  1. 只按 tenant_id == sandbox-school（1000000000000000004）逐表条件删除；
+  1. 只按 tenant_id == sandbox-school（1000000000000000007）逐表条件删除；
   2. 执行前校验库内该租户的 tenant_code 必须等于 sandbox-school，不符即拒绝；
   3. 禁止无租户条件删除 / 禁止 truncate / 不触碰 demo-school 与正式租户；
   4. 无 --confirm 一律不落库；删除前打印每张表将影响的行数。

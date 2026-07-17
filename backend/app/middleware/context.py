@@ -175,7 +175,7 @@ def _demo_tenant_readonly_deny(request: Request):
         return JSONResponse(status_code=403, content=fail(
             "NO_PERMISSION",
             "正式演示环境为只读，数据不可修改。想动手体验请用沙箱账号登录"
-            "（学生 student2 / 教师 teacher2 / 管理员 admin2，密码 123456，每晚 0 点自动重置）"))
+            "（学生 student2 / 教师 teacher2 / 管理员 admin2，密码 123456，可由运营平台恢复）"))
     except Exception:  # noqa: BLE001 — 只读锁自身故障不阻断业务
         return None
 

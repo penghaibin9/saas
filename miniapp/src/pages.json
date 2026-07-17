@@ -292,6 +292,10 @@
       "style": { "navigationBarTitleText": "迎新看板", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/orientation/green-channel/index",
+      "style": { "navigationBarTitleText": "绿色通道审核", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/todos/index",
       "style": { "navigationBarTitleText": "今日待办", "navigationStyle": "custom" }
     },
@@ -322,6 +326,102 @@
     {
       "path": "pages/teacher/graduation-guide/index",
       "style": { "navigationBarTitleText": "毕设指导" }
+    },
+    {
+      "path": "pages/teacher/graduation-topics/index",
+      "style": { "navigationBarTitleText": "毕设选题审核", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/academic-warning/index",
+      "style": { "navigationBarTitleText": "学业预警待处理", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/affairs/stats/index",
+      "style": { "navigationBarTitleText": "学工统计", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/campus-service/index",
+      "style": { "navigationBarTitleText": "在校服务待处理", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-approval/index",
+      "style": { "navigationBarTitleText": "实习审批", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-guidance/index",
+      "style": { "navigationBarTitleText": "新增指导记录", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/student-eval/index",
+      "style": { "navigationBarTitleText": "学生实习鉴定", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/enterprise-eval/index",
+      "style": { "navigationBarTitleText": "企业评价", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/insurance-verify/index",
+      "style": { "navigationBarTitleText": "实习保险核验", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-change/index",
+      "style": { "navigationBarTitleText": "调岗退岗初审", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-score/index",
+      "style": { "navigationBarTitleText": "实习成绩", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/agreement-confirm/index",
+      "style": { "navigationBarTitleText": "三方协议学校确认", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/process-report-review/index",
+      "style": { "navigationBarTitleText": "过程报告批阅", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/plan-task-review/index",
+      "style": { "navigationBarTitleText": "实习计划任务确认", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-application/index",
+      "style": { "navigationBarTitleText": "实习申请审核", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/graduation-taskbook/index",
+      "style": { "navigationBarTitleText": "毕设任务书", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/defense-score/index",
+      "style": { "navigationBarTitleText": "答辩评分", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/family-contact/index",
+      "style": { "navigationBarTitleText": "家校联系", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/affairs-leave/index",
+      "style": { "navigationBarTitleText": "学生请假管理", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/class-cadre/index",
+      "style": { "navigationBarTitleText": "班干部管理", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/academic-task/index",
+      "style": { "navigationBarTitleText": "教学任务确认", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/schedule-change/index",
+      "style": { "navigationBarTitleText": "调停课管理", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/exam-defer/index",
+      "style": { "navigationBarTitleText": "缓考审批", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/evaluation/index",
+      "style": { "navigationBarTitleText": "教学评价", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/employment-follow/index",

@@ -545,6 +545,195 @@ def teacher_my_students(classId: str = None, user=Depends(get_current_user)):
     return success(tea.my_students(user, classId))
 
 
+@router.get("/teacher/affairs/family-contacts/students", summary="辅导员·可登记家校联系学生名单（范围校验）")
+def teacher_family_contact_students(user=Depends(get_current_user)):
+    return success(tea.affairs_family_contact_students(user))
+
+
+@router.get("/teacher/affairs/family-contacts", summary="辅导员·家校联系记录列表（范围校验，可按回执状态筛）")
+def teacher_family_contact_list(receiptStatus: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_family_contact_list(user, receiptStatus))
+
+
+@router.post("/teacher/affairs/family-contacts/{student_id}", summary="辅导员·登记家校联系（owner 校验+审计）")
+def teacher_family_contact_create(student_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_family_contact_create(user, student_id, body), message="已登记")
+
+
+@router.post("/teacher/affairs/family-contacts/{contact_id}/receipt", summary="辅导员·登记家长回执（owner 校验）")
+def teacher_family_contact_receipt(contact_id: str, body: dict = Body(default={}),
+                                   user=Depends(get_current_user)):
+    return success(tea.affairs_family_contact_receipt(user, contact_id, (body or {}).get("note")),
+                   message="回执已登记")
+
+
+@router.get("/teacher/affairs/leaves/pending", summary="辅导员·请假待审批队列（数据范围+审批节点双重收敛）")
+def teacher_affairs_leave_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_leave_pending(user))
+
+
+@router.get("/teacher/affairs/leaves/followup", summary="辅导员·请假后续处理台账（已通过/续假中/待销假/逾期）")
+def teacher_affairs_leave_followup(user=Depends(get_current_user)):
+    return success(tea.affairs_leave_followup(user))
+
+
+@router.get("/teacher/affairs/leaves/{leave_id}", summary="辅导员·请假详情（含销假/续假/审计留痕，范围校验）")
+def teacher_affairs_leave_detail(leave_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_leave_detail(user, leave_id))
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/approve", summary="辅导员·请假审批通过（owner+节点校验）")
+def teacher_affairs_leave_approve(leave_id: str, body: dict = Body(default={}),
+                                  user=Depends(get_current_user)):
+    return success(tea.affairs_leave_approve(user, leave_id, (body or {}).get("comment")), message="已通过")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/reject", summary="辅导员·请假驳回（原因≥5字，owner+节点校验）")
+def teacher_affairs_leave_reject(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_leave_reject(user, leave_id, body.get("reason") or ""), message="已驳回")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/return", summary="辅导员·请假退回重提（原因≥5字，owner+节点校验）")
+def teacher_affairs_leave_return(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_leave_return(user, leave_id, body.get("reason") or ""), message="已退回")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/cancel-confirm",
+             summary="辅导员·销假确认(CONFIRM)/退回(RETURN)（owner 校验）")
+def teacher_affairs_leave_cancel_confirm(leave_id: str, body: dict = Body(...),
+                                         user=Depends(get_current_user)):
+    return success(tea.affairs_leave_cancel_confirm(
+        user, leave_id, str(body.get("action") or "CONFIRM").upper(),
+        body.get("actualReturnAt"), body.get("reason"), body.get("note")), message="已处理")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/proxy-cancel", summary="辅导员·代登记销假（owner 校验）")
+def teacher_affairs_leave_proxy_cancel(leave_id: str, body: dict = Body(...),
+                                       user=Depends(get_current_user)):
+    return success(tea.affairs_leave_proxy_cancel(
+        user, leave_id, body.get("actualReturnAt") or "", body.get("note")), message="已登记")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/overdue-handle",
+             summary="辅导员·逾期处置登记（CONTACT/TO_HOME_SCHOOL/CLOSE，说明≥5字，owner 校验）")
+def teacher_affairs_leave_overdue_handle(leave_id: str, body: dict = Body(...),
+                                         user=Depends(get_current_user)):
+    return success(tea.affairs_leave_overdue_handle(
+        user, leave_id, str(body.get("handleType") or "").upper(), body.get("note") or ""), message="已登记")
+
+
+@router.post("/teacher/affairs/leaves/{leave_id}/extension-approve",
+             summary="辅导员·续假审批(APPROVE/REJECT)（owner 校验）")
+def teacher_affairs_leave_extension_approve(leave_id: str, body: dict = Body(default={}),
+                                            user=Depends(get_current_user)):
+    return success(tea.affairs_leave_extension_approve(
+        user, leave_id, str(body.get("action") or "APPROVE").upper(), body.get("reason")), message="已处理")
+
+
+@router.get("/teacher/affairs/classes", summary="辅导员·我的班级（本人数据范围，供任命班干部先选班级）")
+def teacher_affairs_my_classes(user=Depends(get_current_user)):
+    return success(tea.affairs_my_classes(user))
+
+
+@router.get("/teacher/affairs/classes/{class_id}/students", summary="辅导员·班级学生名单（范围校验，供选人）")
+def teacher_affairs_class_students(class_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_class_students(user, class_id))
+
+
+@router.get("/teacher/affairs/classes/{class_id}/cadres", summary="辅导员·班干部名单（范围校验）")
+def teacher_affairs_cadre_list(class_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_cadre_list(user, class_id))
+
+
+@router.post("/teacher/affairs/classes/{class_id}/cadres", summary="辅导员·任命班干部（同班同职务在任重复409，owner 校验）")
+def teacher_affairs_cadre_appoint(class_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_cadre_appoint(user, class_id, body), message="已任命")
+
+
+@router.post("/teacher/affairs/classes/cadres/{cadre_id}/remove", summary="辅导员·免去班干部（owner 校验）")
+def teacher_affairs_cadre_remove(cadre_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(tea.affairs_cadre_remove(user, cadre_id, (body or {}).get("reason")), message="已免去")
+
+
+@router.get("/teacher/academic/tasks", summary="教务老师·我的教学任务（按本人 teacherKey 收敛）")
+def teacher_academic_my_tasks(status: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_my_tasks(user, status))
+
+
+@router.post("/teacher/academic/tasks/{task_id}/act", summary="教务老师·确认/退回教学任务（归属校验在服务层完成）")
+def teacher_academic_task_act(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_task_act(
+        user, task_id, str(body.get("action") or "").upper(), body.get("reason")), message="已处理")
+
+
+@router.get("/teacher/academic/schedule/mine", summary="教务老师·我的课表（供选择原课位发起调停课）")
+def teacher_academic_my_schedule(termId: str = None, week: int = None, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_my_schedule(user, termId, week))
+
+
+@router.post("/teacher/academic/schedule-changes/conflict-check", summary="教务老师·调停课目标课位冲突预检")
+def teacher_academic_schedule_conflict_check(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_conflict_check(user, body))
+
+
+@router.post("/teacher/academic/schedule-changes", summary="教务老师·发起调停课（调课/停课/补课）")
+def teacher_academic_schedule_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_submit(user, body), message="已提交")
+
+
+@router.get("/teacher/academic/schedule-changes", summary="教务老师·我的调停课申请列表")
+def teacher_academic_schedule_changes(status: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_changes(user, status))
+
+
+@router.get("/teacher/academic/schedule-changes/{change_id}", summary="教务老师·调停课单详情（移动端补归属校验）")
+def teacher_academic_schedule_change_detail(change_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_change_detail(user, change_id))
+
+
+@router.post("/teacher/academic/schedule-changes/{change_id}/cancel", summary="教务老师·撤销调停课申请（终审前）")
+def teacher_academic_schedule_cancel(change_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_cancel(user, change_id, (body or {}).get("reason")), message="已撤销")
+
+
+@router.get("/teacher/academic/defer/pending", summary="辅导员/任课教师·缓考待我审批（按当前身份节点自动收敛）")
+def teacher_academic_defer_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_academic_defer_pending(user))
+
+
+@router.post("/teacher/academic/defer/{defer_id}/review", summary="辅导员/任课教师·缓考审批（APPROVE/RETURN/REJECT）")
+def teacher_academic_defer_review(defer_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_defer_review(
+        user, defer_id, str(body.get("action") or "").upper(), body.get("reason")), message="已处理")
+
+
+@router.get("/teacher/academic/evaluation/batches", summary="教务老师·评教窗口列表")
+def teacher_academic_evaluation_batches(user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_open_batches(user))
+
+
+@router.get("/teacher/academic/evaluation/tasks", summary="教务老师·我的评价任务（自评/同行/督导）")
+def teacher_academic_evaluation_my_tasks(evaluatorType: str, batchId: str = None, user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_my_tasks(user, evaluatorType, batchId))
+
+
+@router.post("/teacher/academic/evaluation/tasks/{task_id}/submit", summary="教务老师·提交评价")
+def teacher_academic_evaluation_submit(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_submit(
+        user, task_id, body.get("answers"), body.get("objectiveScore"), body.get("comment")), message="已提交")
+
+
+@router.get("/teacher/academic/evaluation/results", summary="教务老师·我的评价结果（跨批次聚合）")
+def teacher_academic_evaluation_results(user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_my_results(user))
+
+
+@router.post("/teacher/academic/evaluation/results/{result_id}/appeal", summary="教务老师·结果申诉（移动端补归属校验）")
+def teacher_academic_evaluation_appeal(result_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_academic_evaluation_submit_appeal(
+        user, result_id, body.get("reason")), message="申诉已提交")
+
+
 @router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
 def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.notify_publish(user, body), message="通知已发布")
@@ -683,6 +872,182 @@ def teacher_exception_handle(exception_id: str, body: dict = Body(...),
                                         body.get("comment") or ""), message="处理完成")
 
 
+@router.get("/teacher/internship/makeups/pending", summary="教师·补卡审批待处理队列（范围校验）")
+def teacher_makeup_pending(user=Depends(get_current_user)):
+    return success(tea.makeup_pending(user))
+
+
+@router.post("/teacher/internship/makeups/{makeup_id}/review",
+             summary="教师·补卡审批（APPROVE/REJECT，owner+范围校验，通过真实补写打卡）")
+def teacher_makeup_review(makeup_id: str, body: dict = Body(...),
+                          user=Depends(get_current_user)):
+    return success(tea.makeup_review(user, makeup_id, str(body.get("action") or "").upper(),
+                                     body.get("comment") or ""), message="处理完成")
+
+
+@router.get("/teacher/internship/leaves/pending", summary="教师·实习请假审批待处理队列（范围校验）")
+def teacher_leave_pending(user=Depends(get_current_user)):
+    return success(tea.leave_pending(user))
+
+
+@router.post("/teacher/internship/leaves/{leave_id}/review",
+             summary="教师·实习请假审批（APPROVE/REJECT，owner+范围校验）")
+def teacher_leave_review(leave_id: str, body: dict = Body(...),
+                         user=Depends(get_current_user)):
+    return success(tea.leave_review(user, leave_id, str(body.get("action") or "").upper(),
+                                    body.get("comment") or ""), message="处理完成")
+
+
+@router.get("/teacher/internship/my-students", summary="指导教师·本人指导实习学生名单（范围校验，供选择记指导记录）")
+def teacher_internship_my_students(user=Depends(get_current_user)):
+    return success(tea.internship_my_students(user))
+
+
+@router.post("/teacher/internship/guidance", summary="指导教师·新增指导记录（owner 校验，可联动转风险/通知辅导员）")
+def teacher_internship_guidance_create(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.internship_guidance_create(user, body), message="指导记录已保存")
+
+
+@router.get("/teacher/internship/student-evals", summary="指导教师·学生实习鉴定队列（范围校验）")
+def teacher_student_eval_pending(user=Depends(get_current_user)):
+    return success(tea.student_eval_pending(user))
+
+
+@router.get("/teacher/internship/student-evals/{eval_id}", summary="指导教师·学生实习鉴定详情（自评/意见/审核留痕，范围校验）")
+def teacher_student_eval_detail(eval_id: str, user=Depends(get_current_user)):
+    return success(tea.student_eval_detail(user, eval_id))
+
+
+@router.post("/teacher/internship/student-evals/{eval_id}/advisor-comment",
+             summary="指导教师·填写学生鉴定意见（owner 校验）")
+def teacher_student_eval_advisor_comment(eval_id: str, body: dict = Body(...),
+                                         user=Depends(get_current_user)):
+    return success(tea.student_eval_advisor_comment(user, eval_id, body), message="已保存意见")
+
+
+@router.post("/teacher/internship/student-evals/{eval_id}/review",
+             summary="指导教师·审核学生实习鉴定（APPROVE/RETURN，owner 校验）")
+def teacher_student_eval_review(eval_id: str, body: dict = Body(...),
+                                user=Depends(get_current_user)):
+    return success(tea.student_eval_review(user, eval_id, str(body.get("action") or "").upper(),
+                                           body.get("comment") or ""), message="审核完成")
+
+
+@router.get("/teacher/internship/enterprise-evals", summary="指导教师·企业评价列表（范围校验）")
+def teacher_enterprise_eval_pending(user=Depends(get_current_user)):
+    return success(tea.enterprise_eval_pending(user))
+
+
+@router.post("/teacher/internship/enterprise-evals", summary="指导教师·录入企业评价（学校录入企业纸质评价，五维评分，owner 校验）")
+def teacher_enterprise_eval_create(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.enterprise_eval_create(user, body), message="已录入企业评价")
+
+
+@router.post("/teacher/internship/enterprise-evals/{eval_id}/review",
+             summary="指导教师·审核企业评价（APPROVE/RETURN，owner 校验）")
+def teacher_enterprise_eval_review(eval_id: str, body: dict = Body(...),
+                                   user=Depends(get_current_user)):
+    return success(tea.enterprise_eval_review(user, eval_id, str(body.get("action") or "").upper(),
+                                              body.get("comment") or ""), message="审核完成")
+
+
+@router.get("/teacher/internship/insurances/pending", summary="指导教师·实习保险待核验队列（范围校验）")
+def teacher_insurance_pending(user=Depends(get_current_user)):
+    return success(tea.insurance_pending(user))
+
+
+@router.post("/teacher/internship/insurances/{insurance_id}/verify",
+             summary="指导教师·实习保险核验（APPROVE/REJECT，owner 校验）")
+def teacher_insurance_verify(insurance_id: str, body: dict = Body(...),
+                             user=Depends(get_current_user)):
+    return success(tea.insurance_verify(user, insurance_id, str(body.get("action") or "").upper(),
+                                        body.get("comment") or ""), message="核验完成")
+
+
+@router.get("/teacher/internship/change-requests/pending", summary="指导教师·调岗退岗初审待处理队列（范围校验）")
+def teacher_internship_change_pending(user=Depends(get_current_user)):
+    return success(tea.internship_change_pending(user))
+
+
+@router.post("/teacher/internship/change-requests/{change_id}/review",
+             summary="指导教师·调岗退岗初审（APPROVE/REJECT，owner 校验）")
+def teacher_internship_change_review(change_id: str, body: dict = Body(...),
+                                     user=Depends(get_current_user)):
+    return success(tea.internship_change_review(user, change_id, str(body.get("action") or "").upper(),
+                                                body.get("comment") or ""), message="审核完成")
+
+
+@router.get("/teacher/internship/scores", summary="指导教师·实习成绩列表（范围校验）")
+def teacher_internship_score_list(user=Depends(get_current_user)):
+    return success(tea.internship_score_list(user))
+
+
+@router.post("/teacher/internship/scores/compute", summary="指导教师·实习成绩核算（五项加权，owner 校验）")
+def teacher_internship_score_compute(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.internship_score_compute(user, body), message="核算完成")
+
+
+@router.post("/teacher/internship/scores/{score_id}/publish", summary="指导教师·实习成绩发布（owner 校验，缺项不可发布）")
+def teacher_internship_score_publish(score_id: str, user=Depends(get_current_user)):
+    return success(tea.internship_score_publish(user, score_id), message="已发布")
+
+
+@router.get("/teacher/internship/agreements/pending-school", summary="指导教师·三方协议待学校确认队列（范围校验）")
+def teacher_agreement_pending_school(user=Depends(get_current_user)):
+    return success(tea.agreement_pending_school(user))
+
+
+@router.post("/teacher/internship/agreements/{agreement_id}/school-confirm",
+             summary="指导教师·三方协议学校确认生效（owner 校验）")
+def teacher_agreement_school_confirm(agreement_id: str, user=Depends(get_current_user)):
+    return success(tea.agreement_school_confirm(user, agreement_id), message="已确认生效")
+
+
+@router.get("/teacher/internship/process-reports", summary="指导教师·过程报告(日报/月报/总结)待批阅队列（范围校验）")
+def teacher_process_report_pending(user=Depends(get_current_user)):
+    return success(tea.process_report_pending(user))
+
+
+@router.get("/teacher/internship/process-reports/{report_id}", summary="指导教师·过程报告详情（含正文，范围校验）")
+def teacher_process_report_detail(report_id: str, user=Depends(get_current_user)):
+    return success(tea.process_report_detail(user, report_id))
+
+
+@router.post("/teacher/internship/process-reports/{report_id}/review",
+             summary="指导教师·过程报告批阅（APPROVE/RETURN，owner 校验）")
+def teacher_process_report_review(report_id: str, body: dict = Body(...),
+                                  user=Depends(get_current_user)):
+    return success(tea.process_report_review(user, report_id, str(body.get("action") or "").upper(),
+                                             body.get("comment") or ""), message="批阅完成")
+
+
+@router.get("/teacher/internship/plan-tasks/pending", summary="指导教师·实习计划任务完成度待确认队列（范围校验）")
+def teacher_plan_task_pending(user=Depends(get_current_user)):
+    return success(tea.plan_task_pending(user))
+
+
+@router.post("/teacher/internship/plan-tasks/{progress_id}/review",
+             summary="指导教师·实习计划任务完成度确认（APPROVE/REJECT，owner 校验）")
+def teacher_plan_task_review(progress_id: str, body: dict = Body(...),
+                             user=Depends(get_current_user)):
+    return success(tea.plan_task_review(user, progress_id, str(body.get("action") or "").upper(),
+                                        body.get("comment") or ""), message="处理完成")
+
+
+@router.get("/teacher/internship/applications/pending", summary="指导教师·实习申请待审核队列（范围校验）")
+def teacher_internship_application_pending(user=Depends(get_current_user)):
+    return success(tea.internship_application_pending(user))
+
+
+@router.post("/teacher/internship/applications/{application_id}/review",
+             summary="指导教师·实习申请审核（APPROVE/REJECT，owner 校验，通过后落岗）")
+def teacher_internship_application_review(application_id: str, body: dict = Body(...),
+                                          user=Depends(get_current_user)):
+    return success(tea.internship_application_review(
+        user, application_id, str(body.get("action") or "").upper(), body.get("comment") or ""),
+        message="审核完成")
+
+
 @router.get("/teacher/graduation/proposal/{proposal_id}",
             summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
 def teacher_proposal_detail(proposal_id: str, user=Depends(get_current_user)):
@@ -809,6 +1174,37 @@ def teacher_graduation_my_students(user=Depends(get_current_user)):
 @router.post("/teacher/graduation/{gd_student_id}/guidance", summary="过程指导·快速新增指导记录（仅本人指导学生）")
 def teacher_graduation_guidance_create(gd_student_id: str, body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.graduation_guidance_create(user, gd_student_id, body), message="已记录")
+
+
+@router.get("/teacher/graduation/taskbooks", summary="指导教师·任务书列表（范围校验）")
+def teacher_graduation_taskbook_list(user=Depends(get_current_user)):
+    return success(tea.graduation_taskbook_list(user))
+
+
+@router.post("/teacher/graduation/taskbooks/{gd_student_id}/issue",
+             summary="指导教师·下达任务书（须已分配导师且尚无任务书，owner 校验）")
+def teacher_graduation_taskbook_issue(gd_student_id: str, body: dict = Body(...),
+                                      user=Depends(get_current_user)):
+    return success(tea.graduation_taskbook_issue(user, gd_student_id, body), message="任务书已下达")
+
+
+@router.post("/teacher/graduation/taskbooks/{gd_student_id}/change",
+             summary="指导教师·变更任务书（原因≥5字，仅已确认可变更，owner 校验）")
+def teacher_graduation_taskbook_change(gd_student_id: str, body: dict = Body(...),
+                                       user=Depends(get_current_user)):
+    return success(tea.graduation_taskbook_change(user, gd_student_id, body), message="已提交变更")
+
+
+@router.get("/teacher/graduation/defense/pending", summary="答辩评委·本人待评分学生名单（范围校验）")
+def teacher_graduation_defense_score_pending(user=Depends(get_current_user)):
+    return success(tea.graduation_defense_score_pending(user))
+
+
+@router.post("/teacher/graduation/defense/{gd_student_id}/score",
+             summary="答辩评委·录入/更新本人评分（judgeName 服务端强制取当前登录人，范围校验）")
+def teacher_graduation_defense_score_entry(gd_student_id: str, body: dict = Body(...),
+                                           user=Depends(get_current_user)):
+    return success(tea.graduation_defense_score_entry(user, gd_student_id, body), message="已保存")
 
 
 @router.post("/teacher/academic/warning/{warning_id}/handle",

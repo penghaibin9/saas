@@ -64,11 +64,7 @@
             </div>
           </div>
           <div class="idb-flow">
-            <div v-for="(f, index) in hero.flow" :key="f.label" class="idb-flow__item" :class="{ 'is-active': f.active }">
-              <span class="idb-flow__index">0{{ index + 1 }}</span>
-              <span class="idb-flow__val">{{ f.value }}</span>
-              <span class="idb-flow__lbl">{{ f.label }}</span>
-            </div>
+            <AppMetricCard v-for="f in hero.flow" :key="f.label" :title="f.label" :value="f.value" :accent="f.active ? 'primary' : ''" />
           </div>
         </div>
       </section>
@@ -121,7 +117,7 @@
 <script>
 /** 岗位实习中心 · 管理看板（/admin/internship）。数据全部来自 internshipApi。 */
 import { ModulePageShell, ModuleHero, ModuleToolbar, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppRiskTag } from '@/components/common'
+import { AppStatusTag, AppRiskTag, AppMetricCard } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 
 const PANEL_ANCHORS = {
@@ -132,7 +128,7 @@ const PANEL_ANCHORS = {
 
 export default {
   name: 'InternshipDashboardView',
-  components: { ModulePageShell, ModuleHero, ModuleToolbar, AppStatusTag, AppRiskTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, ModuleHero, ModuleToolbar, AppStatusTag, AppRiskTag, AppMetricCard, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', hero: { stats: [], flow: [], todos: [], riskAlerts: [], batchName: '', batchRange: '', batchStatus: '', batchProgress: 0 } }
@@ -244,12 +240,7 @@ export default {
 .idb-progress__rate strong { color: var(--pri, #2563eb); font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
 .idb-progress__rate small { font-size: 13px; }
 .idb-progress__rate span { margin-top: 4px; color: var(--t3, #6b7280); font-size: 11px; }
-.idb-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
-.idb-flow__item { position: relative; min-width: 72px; padding: 10px 8px; border: 1px solid var(--border-subtle, #e5e7eb); border-radius: 10px; background: var(--card-bg, #fff); text-align: center; }
-.idb-flow__item.is-active { border-color: var(--pri, #2563eb); background: var(--pri-bg, #eff6ff); box-shadow: 0 6px 14px rgba(37, 99, 235, .1); }
-.idb-flow__index { position: absolute; top: 6px; left: 7px; color: var(--t3, #9ca3af); font-size: 9px; font-weight: 700; }
-.idb-flow__val { display: block; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }
-.idb-flow__lbl { font-size: var(--font-size-xs); color: var(--text-secondary); }
+.idb-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .idb-todo { padding: 8px 0; border-bottom: 1px solid var(--card-b, #eef0f3); }
 .idb-todo:last-child { border-bottom: 0; }
 .idb-todo.is-danger { margin: 0 -8px; padding: 8px; border-radius: 8px; border-bottom-color: transparent; background: rgba(254, 242, 242, .7); }

@@ -33,9 +33,8 @@
               <text class="msg__title">{{ m.title }}</text>
               <view v-if="m.deadline" class="msg__sub">截止 {{ deadlineText(m.deadline) }}</view>
               <view v-if="m.status" class="msg__sub"><MobileStatusTag :status="m.status" /></view>
-              <view v-if="m.actionable || m.receipt" class="msg__actions">
+              <view v-if="m.actionable" class="msg__actions">
                 <text v-if="m.actionable" class="msg__btn is-primary" @click.stop="handle(m)">去处理</text>
-                <text v-if="m.receipt" class="msg__btn" @click.stop="toast('回执确认功能即将开放')">确认回执</text>
               </view>
             </view>
             <view v-if="pagedFooter(list) === 'more'" class="msg__paging" @click="pagedLoadMore">上拉加载更多</view>

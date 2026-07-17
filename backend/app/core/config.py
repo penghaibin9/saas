@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     MOCK_LOGIN_ENABLED: str = ""
     # 正式演示租户只读锁：写操作一律 403（参观者改不动演示数据）。置 false 可临时放开。
     DEMO_TENANT_READONLY: str = ""
-    # 体验沙箱每晚 0 点自动重置（进程内定时任务；置 false 关闭，改用 cron 跑脚本）。
-    SANDBOX_AUTO_RESET: str = ""
+    # 体验沙箱自动重置开关；默认关闭，运营平台可随时手动恢复。
+    SANDBOX_AUTO_RESET: str = "false"
     # 实习请假逾期扫描：生产环境默认开启；多实例通过数据库幂等规则保证重复扫描安全。
     INTERNSHIP_OVERDUE_AUTO_SCAN: bool = True
 
@@ -143,7 +143,7 @@ class Settings(BaseSettings):
 
     @property
     def sandbox_auto_reset(self) -> bool:
-        """沙箱是否每晚 0 点自动重置（默认开；需 DB_ENABLED）。"""
+        """沙箱是否启用每晚自动重置（默认关闭；需 DB_ENABLED）。"""
         return (self.SANDBOX_AUTO_RESET or "").strip().lower() not in ("false", "0", "no", "off")
 
     @property

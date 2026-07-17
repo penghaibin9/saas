@@ -74,7 +74,9 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         return (profile_id is not None and student.student_id is not None
                 and int(student.student_id) == profile_id)
 
-    if role == "GD_MENTOR":
+    if role in {"GD_MENTOR", "COUNSELOR"}:
+        # 移动教师端沿用辅导员主身份；仅凭学生台账中与本人姓名完全一致的真实指导关系放行，
+        # 不扩大到同班其他导师学生。
         if (student.advisor_name or "").strip() == real_name:
             return True
         # 教师移动端单令牌承载多重业务身份：被指派为评阅人时，凭真实评阅指派关系访问

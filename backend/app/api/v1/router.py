@@ -12,6 +12,8 @@ from app.api.v1 import import_export
 from app.api.v1 import message as message_simple
 from app.api.v1 import todo as todo_simple
 from app.api.v1 import mobile
+from app.api.v1 import mobile_export
+from app.api.v1 import mobile_orientation_teacher
 from app.api.v1 import notification
 from app.api.v1 import onboarding
 from app.api.v1 import user_preference  # 通用用户偏好（/me/preferences，新手引导「已看过」等）
@@ -142,6 +144,8 @@ api_router.include_router(platform.router)                                    # 
 
 # 系统
 api_router.include_router(stats.router)                                       # /api/v1/stats/*
+api_router.include_router(mobile_export.router)
+api_router.include_router(mobile_orientation_teacher.router)
 api_router.include_router(mobile.router)                                      # /api/v1/mobile/*（含 /me/portal-config）
 from app.api.v1 import student_portal_admin                                    # noqa: E402
 api_router.include_router(student_portal_admin.router)                        # /api/v1/admin/tenants/{id}/student-portal-config

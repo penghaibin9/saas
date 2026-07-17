@@ -39,6 +39,17 @@ def _h(data):
     return {"Authorization": "Bearer " + data["data"]["accessToken"]}
 
 
+def _platform_h():
+    from app.core.security import create_access_token
+    token = create_access_token({
+        "userId": "platform-demo-operator", "realName": "平台运营",
+        "userType": "PLATFORM_SUPER_ADMIN", "currentRoleCode": "PLATFORM_SUPER_ADMIN",
+        "tenantId": "1000000000000000000", "tenantName": "平台运营中心",
+        "activeContextId": "ctx_platform_demo_operator", "clientType": "PC",
+    })
+    return {"Authorization": "Bearer " + token}
+
+
 # ═══ 1-6：六个账号真实登录 ═══
 
 def test_all_six_accounts_login(client, two_tenants):
@@ -220,9 +231,51 @@ def test_sandbox_reset_confirm_only_affects_sandbox(client, two_tenants):
                     json={"serviceKey": "证明开具", "reason": "重置前的脏数据一条"})
         report = reset_sandbox(db, dry_run=False)
         assert report["removed"] and report["reseeded"]
-        assert _count_students(db, SBX_TID) == 6      # 重建后回到基线
+        assert _count_students(db, SBX_TID) == 100    # 重建后回到完整演示学校基线
         assert _count_students(db, DEMO_TID) == demo_before  # demo 不受影响
         # 重置后账号仍可登录
         assert _login(client, "student2")["code"] == 0
     finally:
         db.close()
+
+
+def test_sandbox_baseline_is_protected_but_new_rows_are_deletable(client, two_tenants):
+    """预制行不可删；现场新增行未进入基线索引，仍可正常软删。"""
+    from sqlalchemy import func, select
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import SandboxBaseline, StudentProfile
+
+    db = get_sessionmaker()()
+    try:
+        protected_count = db.scalar(select(func.count()).select_from(SandboxBaseline).where(
+            SandboxBaseline.tenant_id == SBX_TID)) or 0
+        assert protected_count > 100
+
+        baseline_student = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == SBX_TID,
+            StudentProfile.is_deleted.is_(False)).order_by(StudentProfile.id)).first()
+        baseline_student.is_deleted = True
+        with pytest.raises(AppException, match="演示基线"):
+            db.commit()
+        db.rollback()
+
+        live = StudentProfile(tenant_id=SBX_TID, student_no="LIVE-DEMO-0001",
+                              real_name="现场新增学生", status="ENROLLED")
+        db.add(live)
+        db.commit()
+        live.is_deleted = True
+        db.commit()
+        assert live.is_deleted is True
+    finally:
+        db.close()
+
+
+def test_platform_can_restore_only_the_fixed_sandbox(client, two_tenants):
+    denied = client.post(f"/api/v1/platform/tenants/{DEMO_TID}/reset-sandbox-data",
+                         headers=_platform_h()).json()
+    assert denied["code"] == 403001
+    restored = client.post(f"/api/v1/platform/tenants/{SBX_TID}/reset-sandbox-data",
+                           headers=_platform_h()).json()
+    assert restored["code"] == 0
+    assert restored["data"]["reseeded"]["students"] == 100
