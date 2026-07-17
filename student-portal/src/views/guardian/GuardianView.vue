@@ -55,7 +55,7 @@
               <span style="font-size:15px;font-weight:600;color:#1D2129">{{ c.title }}</span>
               <span :class="c.on ? 'gd-tag gd-tag--on' : 'gd-tag'">{{ c.on ? '已授权' : '未授权' }}</span>
             </div>
-            <div v-if="c.on" class="gd-scope__body">{{ c.desc }}</div>
+            <div v-if="c.on" class="gd-scope__body" :class="{ 'gd-scope__body--alert': c.alert }">{{ c.desc }}</div>
             <div v-else class="gd-scope__off">该范围未授权，如需查看请联系学生在门户「我的档案 · 家长授权」中开通。</div>
           </section>
         </div>
@@ -84,22 +84,32 @@ const sending = ref(false)
 const cooldown = ref(0)
 const token = ref(localStorage.getItem(TOKEN_KEY) || '')
 const students = ref([])
+const overview = ref({})
 
 const loggedIn = computed(() => !!token.value)
 const school = computed(() => '学生服务门户')
 const stu = computed(() => students.value[0] || {})
 const SCOPE_CARDS = [
-  { scope: 'ACADEMIC_GRADE', title: '① 学业成绩与课表', desc: '已授权查看学业成绩与课表；具体分数、绩点与课表以学校教务发布为准。' },
-  { scope: 'FEE_AID_STATUS', title: '② 缴费与资助办理状态', desc: '已授权查看缴费与奖助办理状态；金额明细以学校财务/学工发布为准。' },
-  { scope: 'CAMPUS_ALERT', title: '③ 在校异常与安全提醒', desc: '已授权查看在校异常与安全提醒；如无提醒表示在校状态正常。' },
-  { scope: 'CAREER_PROGRESS', title: '④ 毕业 / 实习 / 就业进度', desc: '已授权查看毕业、实习与就业进度；当前阶段：' }
+  { scope: 'ACADEMIC_GRADE', title: '① 学业成绩与课表' },
+  { scope: 'FEE_AID_STATUS', title: '② 缴费与资助办理状态' },
+  { scope: 'CAMPUS_ALERT', title: '③ 在校异常与安全提醒' },
+  { scope: 'CAREER_PROGRESS', title: '④ 毕业 / 实习 / 就业进度' }
 ]
+function renderScope(scope, d) {
+  d = d || {}
+  if (scope === 'ACADEMIC_GRADE') return `平均绩点 GPA ${d.gpa ?? '—'} · 已获学分 ${d.earnedCredits ?? 0} / ${d.requiredCredits ?? '—'} · 已修 ${d.courseCount ?? 0} 门 · 平均分 ${d.avgScore ?? '—'}`
+  if (scope === 'FEE_AID_STATUS') return d.note || '缴费与资助状态正常'
+  if (scope === 'CAMPUS_ALERT') return d.safe ? '近期无异常提醒，在校状态正常。' : `${d.warningCount || 0} 项提醒：${d.latest || '请关注'}`
+  if (scope === 'CAREER_PROGRESS') return `当前阶段：${d.stage || '在校'}\n实习：${d.internshipEnterprise || '—'}${d.internshipStatus ? '（' + d.internshipStatus + '）' : ''}\n就业：${d.employmentDestination || '待登记'}${d.employmentCompany ? '（' + d.employmentCompany + '）' : ''}`
+  return ''
+}
 const cards = computed(() => {
   const scopes = stu.value.visibleScopes || []
-  return SCOPE_CARDS.map((c) => ({
-    ...c, on: scopes.includes(c.scope),
-    desc: c.scope === 'CAREER_PROGRESS' ? (c.desc + (stu.value.stage || '在校')) : c.desc
-  }))
+  const s = overview.value.scopes || {}
+  return SCOPE_CARDS.map((c) => {
+    const on = scopes.includes(c.scope)
+    return { ...c, on, alert: c.scope === 'CAMPUS_ALERT' && !(s[c.scope] || {}).safe && on, desc: on ? renderScope(c.scope, s[c.scope]) : '' }
+  })
 })
 
 async function api(path, { method = 'GET', body, auth = false } = {}) {
@@ -132,10 +142,14 @@ async function doLogin() {
   } catch (e) { error.value = e?.message || '登录失败' } finally { loading.value = false }
 }
 async function loadStudents() {
-  try { const d = await api('/portal/guardian/students', { auth: true }); students.value = d?.items || [] }
-  catch (e) { logout() }
+  try {
+    const d = await api('/portal/guardian/students', { auth: true })
+    students.value = d?.items || []
+    const lid = students.value[0]?.linkId
+    if (lid) overview.value = await api(`/portal/guardian/students/${lid}/overview`, { auth: true }).catch(() => ({}))
+  } catch (e) { logout() }
 }
-function logout() { token.value = ''; localStorage.removeItem(TOKEN_KEY); students.value = [] }
+function logout() { token.value = ''; localStorage.removeItem(TOKEN_KEY); students.value = []; overview.value = {} }
 
 onMounted(() => { if (token.value) loadStudents() })
 </script>
@@ -164,7 +178,8 @@ onMounted(() => { if (token.value) loadStudents() })
 .gd-stu__av { width: 54px; height: 54px; flex: none; border-radius: 14px; background: linear-gradient(135deg, var(--g2), var(--g1)); color: #fff; font-size: 22px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
 .gd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .gd-scope { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
-.gd-scope__body { font-size: 13px; color: var(--t2); line-height: 1.7; }
+.gd-scope__body { font-size: 13px; color: var(--t2); line-height: 1.7; white-space: pre-line; }
+.gd-scope__body--alert { color: var(--danger-fg); }
 .gd-scope__off { font-size: 13px; color: var(--t4); line-height: 1.7; }
 .gd-tag { display: inline-flex; height: 22px; align-items: center; padding: 0 9px; border-radius: 6px; font-size: 11.5px; background: var(--draft-bg); color: var(--draft-fg); }
 .gd-tag--on { background: var(--ok-bg); color: var(--ok-fg); }

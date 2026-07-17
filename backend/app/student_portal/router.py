@@ -409,3 +409,8 @@ def guardian_login(body: dict = Body(...)):
 @router.get("/guardian/students", summary="家长查看被授权学生（只读·授权范围）")
 def guardian_students(user=Depends(get_current_user)):
     return success(guardian.list_students(user))
+
+
+@router.get("/guardian/students/{link_id}/overview", summary="家长查看被授权学生四范围只读概览（本人授权范围内）")
+def guardian_student_overview(link_id: str, user=Depends(get_current_user)):
+    return success(guardian.student_overview(user, link_id))

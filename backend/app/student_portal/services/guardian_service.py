@@ -168,3 +168,92 @@ def list_students(user: dict) -> dict:
                 "visibleScopes": x.visible_scopes or [],
             })
     return {"hasData": bool(items), "items": items}
+
+
+_INTERN_STATUS = {"ONBOARD": "实习中", "PENDING": "待入职", "ENDED": "已结束", "PAUSED": "暂停"}
+_DEST = {"SIGNED": "已签约", "FLEXIBLE": "灵活就业", "FURTHER": "升学", "MILITARY": "参军",
+         "UNEMPLOYED": "暂未就业"}
+
+
+def student_overview(user: dict, link_id) -> dict:
+    """家长查看某个被授权学生的四范围只读概览。
+
+    严格边界：仅家长本人被授权（guardian_phone_hash 匹配 + ACTIVE）+ 仅返回该链接授权的范围
+    （visible_scopes）+ 全程只读汇总，不含证件号/手机明文/心理关注/家庭隐私材料明细。
+    """
+    from sqlalchemy import func
+    u = _require_guardian(user)
+    ph = u.get("guardianPhoneHash")
+    if not ph or not db_enabled():
+        raise AppException("NO_PERMISSION", "无权访问")
+    try:
+        lid = int(link_id)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "无效的授权 ID")
+    with _session() as db:
+        from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, EmpStudent,
+                                InternshipRecord, StudentParentLink, StudentProfile)
+        link = db.scalars(select(StudentParentLink).where(
+            StudentParentLink.tenant_id == _tid(), StudentParentLink.id == lid,
+            StudentParentLink.guardian_phone_hash == ph,
+            StudentParentLink.link_status == "ACTIVE",
+            StudentParentLink.is_deleted.is_(False))).first()
+        if not link:
+            raise AppException("NO_PERMISSION", "未找到你被授权查看的该学生")
+        scopes = set(link.visible_scopes or [])
+        sid = int(link.student_id)
+        p = db.get(StudentProfile, sid)
+        acad = db.scalars(select(AcademicStudent).where(
+            AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == sid,
+            AcademicStudent.is_deleted.is_(False))).first()
+        out: dict = {"studentName": p.real_name if p else "", "studentNo": link.student_no, "scopes": {}}
+
+        if "ACADEMIC_GRADE" in scopes:
+            gcount = 0
+            if acad:
+                gcount = db.scalar(select(func.count()).select_from(AcademicGrade).where(
+                    AcademicGrade.acad_student_id == acad.id,
+                    AcademicGrade.record_status == "ACTIVE",
+                    AcademicGrade.is_deleted.is_(False))) or 0
+            out["scopes"]["ACADEMIC_GRADE"] = {
+                "gpa": float(acad.gpa) if acad and acad.gpa is not None else None,
+                "earnedCredits": float(acad.obtained_credits or 0) if acad else 0,
+                "requiredCredits": float(acad.required_credits or 0) if acad else 0,
+                "avgScore": float(acad.avg_score) if acad and acad.avg_score is not None else None,
+                "courseCount": int(gcount),
+            }
+
+        if "CAMPUS_ALERT" in scopes:
+            warns = []
+            if acad:
+                warns = db.scalars(select(AcademicWarning).where(
+                    AcademicWarning.tenant_id == _tid(), AcademicWarning.acad_student_id == acad.id,
+                    AcademicWarning.is_deleted.is_(False)).order_by(AcademicWarning.id.desc())).all()
+            active = [w for w in warns if (w.status or "") not in ("CLOSED", "RESOLVED")]
+            out["scopes"]["CAMPUS_ALERT"] = {
+                "safe": len(active) == 0, "warningCount": len(active),
+                "latest": active[0].reason if active else "",
+            }
+
+        if "CAREER_PROGRESS" in scopes:
+            intern = db.scalars(select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == sid,
+                InternshipRecord.is_deleted.is_(False)).order_by(InternshipRecord.id.desc())).first()
+            emp = db.scalars(select(EmpStudent).where(
+                EmpStudent.tenant_id == _tid(), EmpStudent.student_id == sid,
+                EmpStudent.is_deleted.is_(False)).order_by(EmpStudent.id.desc())).first()
+            out["scopes"]["CAREER_PROGRESS"] = {
+                "stage": student_stage_label(p.current_stage) if p else "",
+                "internshipEnterprise": intern.enterprise_name if intern else "",
+                "internshipStatus": _INTERN_STATUS.get(intern.status, intern.status) if intern else "未开始",
+                "employmentCompany": emp.company_name if emp else "",
+                "employmentDestination": _DEST.get(emp.destination_type, emp.destination_type) if emp else "待登记",
+            }
+
+        if "FEE_AID_STATUS" in scopes:
+            # 缴费/资助明细归财务/学工，家长侧只做「有无待办」提示，不下发金额明细。
+            out["scopes"]["FEE_AID_STATUS"] = {
+                "hasPending": False,
+                "note": "暂无待缴费用与资助待办；缴费与资助明细以学校财务 / 学工发布为准。",
+            }
+    return out
