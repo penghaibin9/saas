@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.response import success
 from app.core.security import get_current_user
+from app.student_portal.services import academic_service as academic
 from app.student_portal.services import common_service as common
 from app.student_portal.services import graduation_service as graduation
 from app.student_portal.services import guardian_service as guardian
@@ -79,6 +80,17 @@ def graduation_grade(user=Depends(get_current_user)):
 @router.post("/graduation/grade/appeal", summary="毕设成绩申诉（本人）")
 def graduation_grade_appeal(user=Depends(get_current_user), body: dict = Body(...)):
     return success(graduation.grade_appeal(user, body))
+
+
+# ── 教务学业（第3期）：我的成绩单 + 打印 ──
+@router.get("/academic/transcript", summary="我的成绩单（本人·含GPA）")
+def academic_transcript(user=Depends(get_current_user)):
+    return success(academic.transcript(user))
+
+
+@router.post("/academic/transcript/print", summary="成绩单打印留痕（本人）")
+def academic_transcript_print(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.transcript_print(user, body))
 
 
 # ── 首页工作台聚合 ──
