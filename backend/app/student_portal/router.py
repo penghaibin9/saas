@@ -229,9 +229,19 @@ def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(
     return success(affairs.discipline_appeal(user, body))
 
 
+@router.get("/affairs/funding/batches", summary="当前开放的奖助勤贷补批次（本人可申请）")
+def affairs_funding_batches(user=Depends(get_current_user)):
+    return success(affairs.funding_batches_open(user))
+
+
 @router.post("/affairs/funding/apply", summary="奖助勤贷补申请（本人·承诺书签署）")
 def affairs_funding_apply(user=Depends(get_current_user), body: dict = Body(...)):
     return success(affairs.funding_apply(user, body))
+
+
+@router.get("/affairs/aid/batches", summary="当前开放的困难认定批次（本人可申请）")
+def affairs_aid_batches(user=Depends(get_current_user)):
+    return success(affairs.aid_batches_open(user))
 
 
 @router.post("/affairs/aid/apply", summary="困难认定申请（本人·长表+承诺书签署）")

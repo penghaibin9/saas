@@ -71,6 +71,7 @@ const TYPE_MAP = {
   奖助学金申请: ['国家励志奖学金', '国家助学金', '校级奖学金', '临时困难补助'],
   default: ['常规办理', '加急办理']
 }
+const LEAVE_TYPE_CODE = { 事假: 'PERSONAL', 病假: 'SICK', 公假: 'OTHER', 其他: 'OTHER' }
 
 export default {
   data() {
@@ -126,7 +127,8 @@ export default {
       // 真实提交（提交锁防连点）；业务错误（403/409/422）绝不假装成功
       submitLock.run(() => studentApi.submitServiceApply({
         serviceKey: isLeave ? 'LEAVE' : this.svcName,
-        reason: content, startTime: this.startDate, endTime: this.endDate
+        reason: content, startTime: this.startDate, endTime: this.endDate,
+        ...(isLeave ? { leaveType: LEAVE_TYPE_CODE[this.typeOptions[this.typeIndex]] || 'OTHER' } : {})
       })).then(() => {
         localAdd()
         uni.showToast({ title: '提交成功', icon: 'success' })

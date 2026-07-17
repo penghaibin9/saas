@@ -31,7 +31,11 @@ export const campusServiceRoutes = {
     {
       path: 'leave',
       name: 'campus-service-leave',
-      component: () => import('@/views/admin/campusService/LeaveApprovalView.vue'),
+      // 分角色浏览器测试发现：旧版 LeaveApprovalView 调用 /campus-service/leaves/*，
+      // 对走新版 13A 工作流提交的请假（affairs_status 非空）返回 student:null 且后端拒绝写操作
+      // （DATA_CONFLICT "该请假已接入新版多级审批流程"），导致老师在此页面无法处理任何新提交的
+      // 请假。新版初审工作台见 LeaveApprovalWorkbenchView，真实对接 /student-affairs/leave/*。
+      component: () => import('@/modules/studentAffairs/views/leave/LeaveApprovalWorkbenchView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假审批' }
     },
     {

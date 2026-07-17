@@ -26,10 +26,18 @@ const B = '/student-affairs'
 export const leaveApi = {
   /** 请假台账 / 后续处理列表（全状态；followupOnly=只取延期销假可处理活动态） */
   ledger(params = {}) { return callList(`${B}/leave`, params) },
+  /** 初审待办队列（仅本人身份轮到审批的节点：COUNSELOR_REVIEW/COLLEGE_REVIEW/STUDENT_AFFAIRS_REVIEW） */
+  pending(params = {}) { return callList(`${B}/leave/pending`, params) },
   /** 请假详情（含销假/续假记录 + 审批留痕） */
   detail(id) { return call(() => request(`${B}/leave/${id}`)) },
   /** 请假统计（groupBy=CLASS/TYPE/STATUS） */
   stats(params = {}) { return call(() => request(`${B}/leave/stats`, { params })) },
+  /** 初审通过（多级逐节点推进，comment 可选） */
+  approve(id, body) { return call(() => request(`${B}/leave/${id}/approve`, { method: 'POST', body })) },
+  /** 初审驳回（终态，reason≥5字） */
+  reject(id, body) { return call(() => request(`${B}/leave/${id}/reject`, { method: 'POST', body })) },
+  /** 初审退回重提（reason≥5字，学生可修改后重新提交） */
+  returnForResubmit(id, body) { return call(() => request(`${B}/leave/${id}/return`, { method: 'POST', body })) },
 
   /** 辅导员代登记销假 → WAIT_CANCEL_LEAVE */
   proxyCancel(id, body) { return call(() => request(`${B}/leave/${id}/proxy-cancel`, { method: 'POST', body })) },

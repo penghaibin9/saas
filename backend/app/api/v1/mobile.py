@@ -229,6 +229,12 @@ def internship_process_report(body: dict = Body(...), user=Depends(get_current_u
     return success(stu.internship_process_report_submit(user, body or {}))
 
 
+@router.get("/internship/process-reports", summary="本人日报/月报/实习总结列表（含批阅意见）")
+def internship_my_process_reports(user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_process_report_service as pr
+    return success(pr.my_reports(user))
+
+
 @router.get("/internship/change-requests", summary="本人实习变更申请列表")
 def internship_my_change_requests(user=Depends(get_current_user)):
     return success(stu.internship_change_list(user))

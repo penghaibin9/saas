@@ -92,14 +92,31 @@
             </template>
           </section>
           <section class="sp-card">
-            <div class="sp-panel__head">周报记录</div>
-            <StateBlock v-if="!(my.weeklyReports||[]).length" type="empty" text="暂无周报" />
-            <div v-else style="display:flex;flex-direction:column;gap:10px">
-              <div v-for="w in my.weeklyReports" :key="w.week" class="repitem">
-                <div style="flex:1"><div style="font-size:13.5px;color:var(--t1)">第 {{ w.week }} 周周报</div><div style="font-size:12px;color:var(--t4);margin-top:2px">{{ fmt(w.submittedAt) }}</div></div>
-                <StatusTag :text="reviewText(w.status)" :tone="w.status==='APPROVED'?'success':w.status==='REJECTED'?'danger':'warn'" />
+            <div class="sp-panel__head">{{ reportTab === '周报' ? '周报记录' : '月报/总结记录' }}</div>
+            <template v-if="reportTab === '周报'">
+              <StateBlock v-if="!(my.weeklyReports||[]).length" type="empty" text="暂无周报" />
+              <div v-else style="display:flex;flex-direction:column;gap:10px">
+                <div v-for="w in my.weeklyReports" :key="w.week" class="repitem" style="flex-direction:column;align-items:stretch;gap:4px">
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div style="flex:1"><div style="font-size:13.5px;color:var(--t1)">第 {{ w.week }} 周周报</div><div style="font-size:12px;color:var(--t4);margin-top:2px">{{ fmt(w.submittedAt) }}</div></div>
+                    <StatusTag :text="reviewText(w.status)" :tone="w.status==='APPROVED'?'success':w.status==='REJECTED'?'danger':'warn'" />
+                  </div>
+                  <div v-if="w.reviewComment" class="sp-muted" style="font-size:12px">老师意见：{{ w.reviewComment }}</div>
+                </div>
               </div>
-            </div>
+            </template>
+            <template v-else>
+              <StateBlock v-if="!(my.processReports||[]).length" type="empty" text="暂无月报/总结记录" />
+              <div v-else style="display:flex;flex-direction:column;gap:10px">
+                <div v-for="p in my.processReports" :key="p.id" class="repitem" style="flex-direction:column;align-items:stretch;gap:4px">
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div style="flex:1"><div style="font-size:13.5px;color:var(--t1)">{{ p.periodKey }}（{{ p.reportType === 'MONTHLY' ? '月报' : '实习总结' }}）</div><div style="font-size:12px;color:var(--t4);margin-top:2px">{{ fmt(p.submittedAt) }}</div></div>
+                    <StatusTag :text="reviewText(p.status)" :tone="p.status==='APPROVED'?'success':p.status==='RETURNED'?'danger':'warn'" />
+                  </div>
+                  <div v-if="p.reviewComment" class="sp-muted" style="font-size:12px">老师意见：{{ p.reviewComment }}</div>
+                </div>
+              </div>
+            </template>
           </section>
         </div>
       </template>
@@ -115,7 +132,21 @@
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">成绩与申诉</div>
-            <p class="sp-muted">综合成绩由企业导师、指导教师、周月报打卡按权重生成，发布后可在此查看。</p>
+            <template v-if="my.score">
+              <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+                <div style="font-size:32px;font-weight:700;color:var(--pri)">{{ my.score.totalScore ?? '—' }}</div>
+                <StatusTag :text="my.score.isPass ? '合格' : '不合格'" :tone="my.score.isPass ? 'success' : 'danger'" />
+              </div>
+              <dl class="score-grid">
+                <div><dt>打卡</dt><dd>{{ my.score.checkinScore ?? '—' }}</dd></div>
+                <div><dt>周报</dt><dd>{{ my.score.weeklyScore ?? '—' }}</dd></div>
+                <div><dt>月报/总结</dt><dd>{{ my.score.monthlyScore ?? '—' }}</dd></div>
+                <div><dt>企业评价</dt><dd>{{ my.score.enterpriseScore ?? '—' }}</dd></div>
+                <div><dt>指导教师</dt><dd>{{ my.score.schoolScore ?? '—' }}</dd></div>
+              </dl>
+              <p class="sp-muted" style="margin-top:8px">发布时间：{{ fmt(my.score.publishedAt) }}</p>
+            </template>
+            <p v-else class="sp-muted">综合成绩由企业导师、指导教师、周月报打卡按权重生成，发布后可在此查看。</p>
             <div class="sp-fieldlabel" style="margin-top:14px">成绩申诉理由</div>
             <textarea v-model.trim="appealReason" class="sp-inp" style="margin-bottom:12px" placeholder="对成绩有异议？请说明理由" />
             <button class="sp-btn sp-btn--ghost" :disabled="busy || !appealReason" @click="submitAppeal">提交成绩申诉</button>
@@ -161,7 +192,7 @@ const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
 const studentName = computed(() => session.user?.realName || '同学')
 const STATUS_MAP = { ONBOARD: '实习中', PENDING: '待入职', ENDED: '已结束', PAUSED: '暂停' }
 const RISK_MAP = { LOW: '低', MID: '中', HIGH: '高' }
-const REVIEW_MAP = { PENDING_REVIEW: '待审阅', APPROVED: '已通过', REJECTED: '已退回' }
+const REVIEW_MAP = { PENDING_REVIEW: '待审阅', APPROVED: '已通过', REJECTED: '已退回', RETURNED: '已退回' }
 function statusText(s) { return STATUS_MAP[s] || s || '—' }
 function riskText(s) { return RISK_MAP[s] || s || '—' }
 function reviewText(s) { return REVIEW_MAP[s] || s || '—' }
@@ -221,5 +252,9 @@ onMounted(load)
 .agreement { border: 1px solid var(--line); border-radius: 11px; padding: 18px; font-size: 13.5px; color: var(--t2); line-height: 2; }
 .notebox { margin-top: 14px; padding: 12px 14px; background: #F2F7FF; border-radius: 10px; font-size: 12.5px; color: var(--t2); line-height: 1.6; }
 .repitem { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; }
+.score-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.score-grid dt { font-size: 12px; color: var(--t3); margin-bottom: 4px; }
+.score-grid dd { margin: 0; font-size: 15px; font-weight: 600; color: var(--t1); }
+@media (max-width: 900px) { .score-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 900px) { .m4 { grid-template-columns: repeat(2,1fr); } .two, .two2 { grid-template-columns: 1fr; } }
 </style>

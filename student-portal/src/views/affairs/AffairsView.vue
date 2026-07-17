@@ -37,13 +37,18 @@
         <div class="sp-panel__head">家庭经济困难认定申请 <StatusTag :text="aid.currentLevel || '未认定'" :tone="aid.currentLevel ? 'success' : 'default'" /></div>
         <Wizard :steps="['填写信息', '上传材料', '签署承诺书']" :current="aidStep" style="margin-bottom:20px" />
         <template v-if="aidStep === 1">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:640px">
+          <StateBlock v-if="!aidBatches.length" type="empty" text="当前暂无开放的困难认定批次，请等待学校发布后再来申请" />
+          <div v-else style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:640px">
+            <div style="grid-column:1/3"><div class="sp-fieldlabel">认定批次</div>
+              <select v-model="aidForm.batchId" class="sp-inp">
+                <option v-for="b in aidBatches" :key="b.batchId" :value="b.batchId">{{ b.batchName || b.schoolYear }}（截止 {{ (b.applyEnd || '').slice(0, 10) || '不限' }}）</option>
+              </select></div>
             <div><div class="sp-fieldlabel">困难类型</div>
               <select v-model="aidForm.level" class="sp-inp"><option value="GENERAL">一般困难</option><option value="DIFFICULT">困难</option><option value="SPECIAL">特别困难</option></select></div>
             <div><div class="sp-fieldlabel">家庭年收入(元)</div><input v-model.number="aidForm.income" type="number" class="sp-inp" placeholder="家庭年收入" /></div>
-            <div style="grid-column:1/3"><div class="sp-fieldlabel">困难情况说明</div><textarea v-model.trim="aidForm.reason" class="sp-inp" placeholder="请说明家庭经济困难的具体情况" /></div>
+            <div style="grid-column:1/3"><div class="sp-fieldlabel">困难情况说明（10-500字）</div><textarea v-model.trim="aidForm.reason" class="sp-inp" placeholder="请说明家庭经济困难的具体情况" /></div>
           </div>
-          <button class="sp-btn" style="margin-top:18px" :disabled="!aidForm.reason" @click="aidStep = 2">下一步：上传材料</button>
+          <button v-if="aidBatches.length" class="sp-btn" style="margin-top:18px" :disabled="!aidForm.batchId || aidForm.reason.length < 10" @click="aidStep = 2">下一步：上传材料</button>
         </template>
         <template v-else-if="aidStep === 2">
           <p class="sp-muted">佐证材料（低保证明 / 村委证明等）请在提交后按学校要求补交，或在学生小程序上传。</p>
@@ -52,7 +57,6 @@
         <template v-else>
           <div class="promise">本人郑重承诺：以上所填家庭经济情况真实、准确，如有虚报将承担相应责任，并配合学校核查。</div>
           <label class="chk"><input v-model="aidForm.commit" type="checkbox" />我已阅读并同意以上承诺（电子签，将记录签署时间）</label>
-          <p class="sp-muted" style="margin-top:8px">提交需学校已开放困难认定批次；若暂无开放批次，请等待学校发布后办理。</p>
           <div style="display:flex;gap:10px;margin-top:12px"><button class="sp-btn sp-btn--ghost" @click="aidStep = 2">上一步</button><button class="sp-btn" :disabled="busy || !aidForm.commit" @click="submitAid">提交认定申请</button></div>
         </template>
         <AutoTable :rows="aid.items" empty="暂无认定记录" title="认定记录" style="margin-top:16px" />
@@ -66,11 +70,17 @@
         <div class="two">
           <section class="sp-card">
             <div class="sp-panel__head">{{ fundLabel }}申请</div>
-            <div class="sp-fieldlabel">申请理由</div>
-            <textarea v-model.trim="fundForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请说明申请理由" />
-            <label class="chk"><input v-model="fundForm.commit" type="checkbox" />电子签署诚信承诺书</label>
-            <p class="sp-muted" style="margin-top:8px">提交需学校已开放对应资助批次；若暂无开放批次，请等待学校发布后办理。</p>
-            <button class="sp-btn" style="margin-top:8px" :disabled="busy || !fundForm.reason || !fundForm.commit" @click="applyFunding">提交申请</button>
+            <StateBlock v-if="!fundBatchesForType.length" type="empty" :text="`当前暂无开放的${fundLabel}批次，请等待学校发布后再来申请`" />
+            <template v-else>
+              <div class="sp-fieldlabel">申请批次</div>
+              <select v-model="fundForm.batchId" class="sp-inp" style="margin-bottom:12px">
+                <option v-for="b in fundBatchesForType" :key="b.batchId" :value="b.batchId">{{ b.schoolYear }}（截止 {{ (b.applyEnd || '').slice(0, 10) || '不限' }}）</option>
+              </select>
+              <div class="sp-fieldlabel">申请理由</div>
+              <textarea v-model.trim="fundForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请说明申请理由" />
+              <label class="chk"><input v-model="fundForm.commit" type="checkbox" />电子签署诚信承诺书</label>
+              <button class="sp-btn" style="margin-top:8px" :disabled="busy || !fundForm.batchId || !fundForm.reason || !fundForm.commit" @click="applyFunding">提交申请</button>
+            </template>
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">发放台账</div>
@@ -80,17 +90,25 @@
       </section>
 
       <!-- 违纪申诉 -->
-      <section v-else-if="tab === 'discipline'" class="sp-card" style="max-width:640px;text-align:center;padding:30px">
-        <template v-if="!discipline.activeCount">
+      <section v-else-if="tab === 'discipline'">
+        <section v-if="!discipline.activeCount" class="sp-card" style="max-width:640px;text-align:center;padding:30px">
           <span class="ok-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="9" /></svg></span>
           <div style="font-size:15px;font-weight:600;margin-top:14px">暂无违纪处分记录</div>
           <div class="sp-muted" style="margin-top:6px">如对处分决定有异议，可在收到处分决定书后 15 日内提交书面申辩。</div>
-        </template>
+        </section>
         <template v-else>
-          <div style="font-size:15px;font-weight:600">当前有效处分：{{ discipline.activeCount }} 项</div>
-          <div class="sp-muted" style="margin-top:6px">{{ discipline.detailNote }}</div>
-          <textarea v-model.trim="appealReason" class="sp-inp" style="margin-top:14px;text-align:left" placeholder="申辩 / 申诉理由" />
-          <button class="sp-btn" style="margin-top:12px" :disabled="busy || !appealReason" @click="submitAppeal">提交申辩</button>
+          <section v-for="c in discipline.items" :key="c.caseId" class="sp-card" style="max-width:640px;margin-bottom:14px">
+            <div class="sp-panel__head">{{ c.discTypeLabel || c.discType }} <StatusTag :text="(c.effectiveAt || '').slice(0, 10) + ' 生效'" tone="warn" /></div>
+            <div v-if="c.appealStatus" style="margin-top:8px">
+              <StatusTag :text="appealStatusText(c.appealStatus)" :tone="c.appealStatus === 'UPHELD' ? 'default' : 'success'" />
+              <div v-if="c.appealReviewOpinion" class="sp-muted" style="margin-top:8px">复核意见：{{ c.appealReviewOpinion }}</div>
+            </div>
+            <template v-if="c.canAppeal">
+              <textarea v-model.trim="appealForms[c.caseId]" class="sp-inp" style="margin-top:12px;text-align:left" placeholder="申辩 / 申诉理由（至少5字）" />
+              <button class="sp-btn" style="margin-top:10px" :disabled="busy || !(appealForms[c.caseId] || '').trim()" @click="submitAppeal(c.caseId)">提交申辩</button>
+            </template>
+            <div v-else class="sp-muted" style="margin-top:8px">申诉处理中，请耐心等待复核结果</div>
+          </section>
         </template>
       </section>
 
@@ -166,6 +184,8 @@ const error = ref('')
 const leave = ref({})
 const aid = ref({})
 const funding = ref({})
+const aidBatches = ref([])
+const fundBatches = ref([])
 const discipline = ref({})
 const psy = ref({})
 const psyHistory = ref({})
@@ -178,46 +198,70 @@ const fundTypes = [
 ]
 const leaveForm = reactive({ leaveType: 'PERSONAL', startDate: '', endDate: '', reason: '' })
 const aidStep = ref(1)
-const aidForm = reactive({ level: 'GENERAL', income: null, reason: '', commit: false })
-const fundForm = reactive({ type: 'SCHOLARSHIP', reason: '', commit: false })
-const appealReason = ref('')
+const aidForm = reactive({ batchId: '', level: 'GENERAL', income: null, reason: '', commit: false })
+const fundForm = reactive({ type: 'SCHOLARSHIP', batchId: '', reason: '', commit: false })
+const appealForms = reactive({})
 const psyAnswers = reactive({})
+const APPEAL_L = { SUBMITTED: '申诉已提交，等待复核', REVIEWING: '复核中',
+  UPHELD: '复核结果：维持原处分', REVISED: '复核结果：处分已变更', REVOKED: '复核结果：处分已撤销' }
+function appealStatusText(s) { return APPEAL_L[s] || s }
 
 const fundLabel = computed(() => (fundTypes.find((f) => f.k === fundForm.type) || {}).t || '')
+const fundBatchesForType = computed(() => (fundBatches.value || []).filter((b) => b.projectType === fundForm.type))
 const psyComplete = computed(() => (psy.value.questions || []).every((q) => psyAnswers[q.key] != null))
 const activityCredit = computed(() => (activities.value.mine || []).reduce((a, x) => a + (Number(x.credit) || 0), 0))
+
+watch(() => fundForm.type, () => { fundForm.batchId = '' })
+watch(fundBatchesForType, (list) => { if (!list.some((b) => b.batchId === fundForm.batchId)) fundForm.batchId = list[0]?.batchId || '' })
+watch(aidBatches, (list) => { if (!list.some((b) => b.batchId === aidForm.batchId)) aidForm.batchId = list[0]?.batchId || '' })
 
 async function reload() {
   loading.value = true; error.value = ''
   try {
-    const [lv, ad, fd, dc, pq, ph, ac] = await Promise.allSettled([
+    const [lv, ad, fd, dc, pq, ph, ac, ab, fb] = await Promise.allSettled([
       portalApi.affairsLeave(), portalApi.affairsAid(), portalApi.affairsFunding(), portalApi.affairsDiscipline(),
-      portalApi.affairsPsyQuestions(), portalApi.affairsPsyHistory(), portalApi.affairsActivitiesMy()
+      portalApi.affairsPsyQuestions(), portalApi.affairsPsyHistory(), portalApi.affairsActivitiesMy(),
+      portalApi.affairsAidBatches(), portalApi.affairsFundingBatches()
     ])
     const val = (r, d) => (r.status === 'fulfilled' ? (r.value ?? d) : d)
     leave.value = val(lv, {}); aid.value = val(ad, {}); funding.value = val(fd, {}); discipline.value = val(dc, {})
     psy.value = val(pq, {}); psyHistory.value = val(ph, {}); activities.value = val(ac, {})
+    aidBatches.value = val(ab, {}).items || []; fundBatches.value = val(fb, {}).items || []
   } catch (e) { error.value = e?.message || '学工数据加载失败' } finally { loading.value = false }
 }
 async function applyLeave() {
   busy.value = true
-  try { await portalApi.affairsServiceApply({ serviceKey: 'LEAVE', reason: leaveForm.reason }); ui.notify('请假申请已提交'); leaveForm.reason = ''; reload() }
-  catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+  try {
+    await portalApi.affairsServiceApply({
+      serviceKey: 'LEAVE', reason: leaveForm.reason, leaveType: leaveForm.leaveType,
+      startTime: leaveForm.startDate, endTime: leaveForm.endDate
+    })
+    ui.notify('请假申请已提交，等待辅导员审批'); leaveForm.reason = ''; leaveForm.startDate = ''; leaveForm.endDate = ''; reload()
+  } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function submitAid() {
   busy.value = true
-  try { await portalApi.affairsAidApply({ level: aidForm.level, income: aidForm.income, reason: aidForm.reason, committed: true }); ui.notify('困难认定申请已提交'); aidStep.value = 1; aidForm.reason = ''; aidForm.commit = false; reload() }
-  catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+  try {
+    await portalApi.affairsAidApply({
+      batchId: aidForm.batchId, applyLevel: aidForm.level, annualIncome: aidForm.income,
+      statement: aidForm.reason, confirm: true
+    })
+    ui.notify('困难认定申请已提交，等待审核'); aidStep.value = 1; aidForm.reason = ''; aidForm.commit = false; reload()
+  } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function applyFunding() {
   busy.value = true
-  try { await portalApi.affairsFundingApply({ type: fundForm.type, reason: fundForm.reason, committed: true }); ui.notify('奖助申请已提交'); fundForm.reason = ''; fundForm.commit = false; reload() }
-  catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+  try {
+    await portalApi.affairsFundingApply({ batchId: fundForm.batchId, statement: fundForm.reason, confirm: true })
+    ui.notify('奖助申请已提交，等待审核'); fundForm.reason = ''; fundForm.commit = false; reload()
+  } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
-async function submitAppeal() {
+async function submitAppeal(caseId) {
   busy.value = true
-  try { await portalApi.affairsDisciplineAppeal({ reason: appealReason.value }); ui.notify('申辩已提交'); appealReason.value = '' }
-  catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+  try {
+    await portalApi.affairsDisciplineAppeal({ caseId, reason: appealForms[caseId] })
+    ui.notify('申辩已提交，等待复核'); appealForms[caseId] = ''; reload()
+  } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function submitPsy() {
   busy.value = true
