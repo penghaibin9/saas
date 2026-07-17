@@ -11,8 +11,20 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.student_portal.services import guardian_service as guardian
 from app.student_portal.services import parent_link_service as parent
+from app.student_portal.services import profile_service as profile
 
 router = APIRouter(prefix="/portal", tags=["学生PC门户"])
+
+
+# ── 我的档案（学籍信息只读 + 敏感明文授权查看）──
+@router.get("/profile/enrollment", summary="我的学籍信息（本人·只读·默认脱敏）")
+def profile_enrollment(user=Depends(get_current_user)):
+    return success(profile.enrollment(user))
+
+
+@router.post("/profile/sensitive", summary="授权查看敏感字段明文（本人·填原因·留痕）")
+def profile_sensitive(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(profile.sensitive_view(user, body))
 
 
 # ── 家长授权代理（学生本人侧管理）──
