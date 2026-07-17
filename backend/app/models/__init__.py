@@ -138,3 +138,4 @@ from app.models.notification import NotificationLog, NotificationTask, Notificat
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401
 from app.models.sandbox import SandboxBaseline  # noqa: F401
+from app.models.feedback import Feedback  # noqa: F401  (帮助与反馈·独立新文件)
