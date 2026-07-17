@@ -170,8 +170,12 @@ def create_students_export(purpose: str) -> dict:
         raise AppException("VALIDATION_ERROR", f"导出用途必填且不少于 {min_len} 字（平台规则中心配置）")
     user = get_current_user_ctx() or {}
     from openpyxl import Workbook
+    from app.core.affairs_security import student_directory_scope
     from app.services import db_service
-    items, total = (db_service.list_students(1, 10000) if db_enabled() else ([], 0))
+    # 与 /students 目录同口径收敛：辅导员/学院管理员/心理教师不得导出全校台账
+    class_ids, student_ids = student_directory_scope(user)
+    items, total = (db_service.list_students(1, 10000, class_ids=class_ids, student_ids=student_ids)
+                    if db_enabled() else ([], 0))
     wb = Workbook()
     ws = wb.active
     ws.title = "学生主档"

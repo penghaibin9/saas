@@ -85,10 +85,20 @@ def _primary_phone(db, student_id: int) -> str | None:
 
 
 def list_students(page: int, page_size: int, keyword=None, college=None, major=None,
-                  class_name=None, status=None, risk_level=None) -> tuple[list[dict], int]:
+                  class_name=None, status=None, risk_level=None,
+                  class_ids=None, student_ids=None) -> tuple[list[dict], int]:
+    # 数据范围收敛（SEC 口径）：class_ids/student_ids 由 API 层按角色解析；空集合 = fail-closed
+    if class_ids is not None and not class_ids:
+        return [], 0
+    if student_ids is not None and not student_ids:
+        return [], 0
     with session() as db:
         q = select(StudentProfile).where(StudentProfile.tenant_id == _tid(),
                                          StudentProfile.is_deleted.is_(False))
+        if class_ids is not None:
+            q = q.where(StudentProfile.class_id.in_(list(class_ids)))
+        if student_ids is not None:
+            q = q.where(StudentProfile.id.in_(list(student_ids)))
         if keyword:
             like = f"%{keyword}%"
             q = q.where((StudentProfile.real_name.like(like)) | (StudentProfile.student_no.like(like)))
