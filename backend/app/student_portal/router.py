@@ -18,8 +18,10 @@ from app.student_portal.services import guardian_service as guardian
 from app.student_portal.services import internship_service as internship
 from app.student_portal.services import home_service as home
 from app.student_portal.services import messages_service as messages
+from app.student_portal.services import orientation_service as orientation
 from app.student_portal.services import parent_link_service as parent
 from app.student_portal.services import profile_service as profile
+from app.student_portal.services import service_hall_service as service_hall
 
 router = APIRouter(prefix="/portal", tags=["学生PC门户"])
 
@@ -293,6 +295,33 @@ def employment_destination(user=Depends(get_current_user), body: dict = Body(...
 @router.post("/employment/destination/print", summary="打印就业协议/回执（本人）")
 def employment_destination_print(user=Depends(get_current_user), body: dict = Body(...)):
     return success(employment.destination_print(user, body))
+
+
+# ── 迎新报到（第5期）──
+@router.get("/orientation/my", summary="我的迎新报到（本人）")
+def orientation_my(user=Depends(get_current_user)):
+    return success(orientation.my(user))
+
+
+@router.post("/orientation/collect", summary="预报到信息采集（本人）")
+def orientation_collect(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(orientation.collect(user, body))
+
+
+@router.post("/orientation/green-channel", summary="绿色通道申请（本人）")
+def orientation_green_channel(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(orientation.green_channel(user, body))
+
+
+@router.post("/orientation/print", summary="打印迎新报到回执（本人）")
+def orientation_print(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(orientation.print_receipt(user, body))
+
+
+# ── 办事大厅（第5期收口）──
+@router.get("/service-hall/catalog", summary="办事大厅目录（本人·已开通模块）")
+def service_hall_catalog(user=Depends(get_current_user)):
+    return success(service_hall.catalog(user))
 
 
 # ── 首页工作台聚合 ──
