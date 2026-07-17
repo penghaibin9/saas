@@ -190,6 +190,12 @@ export const teacherApi = {
   proxyCancelAffairsLeave: (leaveId, actualReturnAt, note) => real.teacherAffairsLeaveProxyCancel(leaveId, actualReturnAt, note),
   overdueHandleAffairsLeave: (leaveId, handleType, note) => real.teacherAffairsLeaveOverdueHandle(leaveId, handleType, note),
   extensionApproveAffairsLeave: (leaveId, action, reason) => real.teacherAffairsLeaveExtensionApprove(leaveId, action, reason),
+  // 班干部任命/免去：我的班级 + 班级学生名单 + 班干部名单 + 任命 + 免去（owner+范围校验，真实接口，无 mock 兜底）
+  getAffairsMyClasses: () => real.teacherAffairsMyClasses(),
+  getAffairsClassStudents: (classId) => real.teacherAffairsClassStudents(classId),
+  getAffairsCadreList: (classId) => real.teacherAffairsCadreList(classId),
+  appointAffairsCadre: (classId, body) => real.teacherAffairsCadreAppoint(classId, body),
+  removeAffairsCadre: (cadreId, reason) => real.teacherAffairsCadreRemove(cadreId, reason),
   // 教务·成绩录入（真实接口，仅本人授课任务）
   getGradeTasks: (status) => real.teacherGradeTasks(status),
   getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),

@@ -52,6 +52,7 @@ export const roleConfigs = {
       { key: 'care', label: '创建关怀', icon: '♥' },
       { key: 'affairs', label: '学工待办', icon: '📋' },
       { key: 'affairsLeave', label: '请假管理', icon: '🗓' },
+      { key: 'classCadre', label: '班干部管理', icon: '🎖' },
       { key: 'familyContact', label: '家校联系', icon: '👨‍👩‍👧' },
       { key: 'campus-service', label: '在校服务', icon: '📄' },
       { key: 'affairs-stats', label: '学工统计', icon: '📈' },

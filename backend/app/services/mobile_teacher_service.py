@@ -630,6 +630,86 @@ def affairs_leave_extension_approve(user: dict, leave_id: str, action: str = "AP
     return result
 
 
+# ══════════ 班干部任命/免去（移动端包装：复用 affairs_dashboard_service 全套，owner+范围校验
+# 在服务层 _class_in_scope_or_403 完成。学生选择器刻意"先选班级再查该班学生"而不是借用
+# /teacher/my-students —— 后者走 resolve_teacher_scope+counselor_id 数字外键，与本模块
+# _allowed_class_ids/build_affairs_context 是不同的范围体系，混用会出现"选得到、任命却403"
+# 的错位（同此前家校联系模块踩过的坑）。══════════
+
+def affairs_my_classes(user: dict) -> dict:
+    """我的班级（本人数据范围内），供任命班干部时先选班级。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_dashboard_service as dash
+    items = dash.list_classes(u)
+    return {"list": items, "total": len(items)}
+
+
+def affairs_class_students(user: dict, class_id: str) -> dict:
+    """班级学生名单（先校验班级在调用者范围内，再查询该班学生，供任命班干部选人）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from sqlalchemy import select as _select
+
+    from app.models import StudentProfile
+    from app.services import affairs_dashboard_service as dash
+    with _session() as db:
+        dash._class_in_scope_or_403(db, class_id, u)
+        rows = db.scalars(_select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(class_id),
+            StudentProfile.is_deleted.is_(False)).order_by(StudentProfile.id)).all()
+        items = [{"studentId": str(r.id), "studentNo": r.student_no or "", "name": r.real_name}
+                 for r in rows]
+        return {"list": items, "total": len(items)}
+
+
+def affairs_cadre_list(user: dict, class_id: str) -> dict:
+    """在任班干部名单（owner+范围校验在服务层完成，附学生姓名/学号补全展示）。
+    PC 端 list_cadres 不按 status 过滤（历史已免去记录 status=REMOVED 但不做软删除，
+    PC 前端也原样渲染），移动端主动收紧只展示在任(ACTIVE)成员，不改 PC 行为。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.models import StudentProfile
+    from app.services import affairs_dashboard_service as dash
+    items = [it for it in dash.list_cadres(class_id, u) if it.get("status") == "ACTIVE"]
+    with _session() as db:
+        for it in items:
+            s = db.get(StudentProfile, int(it["studentId"])) if it.get("studentId") else None
+            it["studentName"] = s.real_name if s else ""
+            it["studentNo"] = s.student_no if s else ""
+    return {"list": items, "total": len(items)}
+
+
+def affairs_cadre_appoint(user: dict, class_id: str, body: dict) -> dict:
+    """任命班干部（同班级同职务在任重复→409，owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.api.v1.student_affairs import CadreCreate
+    from app.services import affairs_dashboard_service as dash
+    b = body or {}
+    payload = CadreCreate(studentId=str(b.get("studentId") or ""), position=b.get("position") or "",
+                          termCode=b.get("termCode"))
+    result = dash.add_cadre(class_id, payload, u)
+    _audit_write("MOBILE_CADRE_APPOINT", f"class-cadre:{result.get('cadreId')}",
+                 {"operator": u.get("realName"), "classId": str(class_id), "position": payload.position})
+    return result
+
+
+def affairs_cadre_remove(user: dict, cadre_id: str, reason: str | None = None) -> dict:
+    """免去班干部（owner+范围校验在服务层完成）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_dashboard_service as dash
+    result = dash.remove_cadre(cadre_id, u, reason or "")
+    _audit_write("MOBILE_CADRE_REMOVE", f"class-cadre:{cadre_id}", {"operator": u.get("realName")})
+    return result
+
+
 # ══════════ 数据看板（移动端包装，直接复用既有 affairs_dashboard_service.get_dashboard，
 # 该函数已按数据范围收敛且指标全部真实聚合，零改造） ══════════
 

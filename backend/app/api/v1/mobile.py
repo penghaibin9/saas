@@ -630,6 +630,31 @@ def teacher_affairs_leave_extension_approve(leave_id: str, body: dict = Body(def
         user, leave_id, str(body.get("action") or "APPROVE").upper(), body.get("reason")), message="已处理")
 
 
+@router.get("/teacher/affairs/classes", summary="辅导员·我的班级（本人数据范围，供任命班干部先选班级）")
+def teacher_affairs_my_classes(user=Depends(get_current_user)):
+    return success(tea.affairs_my_classes(user))
+
+
+@router.get("/teacher/affairs/classes/{class_id}/students", summary="辅导员·班级学生名单（范围校验，供选人）")
+def teacher_affairs_class_students(class_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_class_students(user, class_id))
+
+
+@router.get("/teacher/affairs/classes/{class_id}/cadres", summary="辅导员·班干部名单（范围校验）")
+def teacher_affairs_cadre_list(class_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_cadre_list(user, class_id))
+
+
+@router.post("/teacher/affairs/classes/{class_id}/cadres", summary="辅导员·任命班干部（同班同职务在任重复409，owner 校验）")
+def teacher_affairs_cadre_appoint(class_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.affairs_cadre_appoint(user, class_id, body), message="已任命")
+
+
+@router.post("/teacher/affairs/classes/cadres/{cadre_id}/remove", summary="辅导员·免去班干部（owner 校验）")
+def teacher_affairs_cadre_remove(cadre_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(tea.affairs_cadre_remove(user, cadre_id, (body or {}).get("reason")), message="已免去")
+
+
 @router.post("/teacher/notify/publish", summary="教师·发布通知（按班级/学院/全校，写入学生消息中心）")
 def teacher_notify_publish(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.notify_publish(user, body), message="通知已发布")

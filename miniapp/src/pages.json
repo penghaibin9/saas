@@ -268,6 +268,10 @@
       "style": { "navigationBarTitleText": "迎新看板", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/orientation/green-channel/index",
+      "style": { "navigationBarTitleText": "绿色通道审核", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/todos/index",
       "style": { "navigationBarTitleText": "今日待办", "navigationStyle": "custom" }
     },
@@ -374,6 +378,10 @@
     {
       "path": "pages/teacher/affairs-leave/index",
       "style": { "navigationBarTitleText": "学生请假管理", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/class-cadre/index",
+      "style": { "navigationBarTitleText": "班干部管理", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher/employment-follow/index",

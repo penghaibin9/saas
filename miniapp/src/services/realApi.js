@@ -271,6 +271,16 @@ export const teacherAffairsLeaveExtensionApprove = (leaveId, action, reason) =>
   realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/extension-approve`,
     { method: 'POST', data: { action, reason: reason || '' } })
 
+/** 班干部任命/免去：我的班级 / 班级学生名单 / 班干部名单 / 任命 / 免去
+ * （owner+范围校验，真实接口，无 mock 兜底） */
+export const teacherAffairsMyClasses = () => realRequest('/mobile/teacher/affairs/classes')
+export const teacherAffairsClassStudents = (classId) => realRequest(`/mobile/teacher/affairs/classes/${classId}/students`)
+export const teacherAffairsCadreList = (classId) => realRequest(`/mobile/teacher/affairs/classes/${classId}/cadres`)
+export const teacherAffairsCadreAppoint = (classId, body) =>
+  realRequest(`/mobile/teacher/affairs/classes/${classId}/cadres`, { method: 'POST', data: body })
+export const teacherAffairsCadreRemove = (cadreId, reason) =>
+  realRequest(`/mobile/teacher/affairs/classes/cadres/${cadreId}/remove`, { method: 'POST', data: { reason: reason || '' } })
+
 export async function enrichAcademic(mock) {
   const r = await realRequest('/mobile/academic/my')
   if (!r || !r.hasData) return { ...mock, _real: false }
