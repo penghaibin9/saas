@@ -93,6 +93,31 @@ def academic_transcript_print(user=Depends(get_current_user), body: dict = Body(
     return success(academic.transcript_print(user, body))
 
 
+@router.get("/academic/schedule", summary="我的课表（本人·最新已发布）")
+def academic_schedule(user=Depends(get_current_user)):
+    return success(academic.schedule(user))
+
+
+@router.get("/academic/course-selection", summary="可选课程（本人·OPEN批次）")
+def academic_course_selection(user=Depends(get_current_user), batchId: str | None = Query(None)):
+    return success(academic.selection_courses(user, batchId))
+
+
+@router.post("/academic/course-selection/enroll", summary="选课（本人）")
+def academic_course_enroll(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.selection_enroll(user, body))
+
+
+@router.post("/academic/course-selection/drop", summary="退课（本人）")
+def academic_course_drop(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.selection_drop(user, body))
+
+
+@router.get("/academic/course-selection/records", summary="我的选课记录（本人）")
+def academic_course_records(user=Depends(get_current_user), batchId: str | None = Query(None)):
+    return success(academic.selection_records(user, batchId))
+
+
 # ── 首页工作台聚合 ──
 @router.get("/home/overview", summary="首页工作台聚合（本人·待办/消息/预警/各域/快捷入口）")
 def home_overview(user=Depends(get_current_user)):

@@ -7,12 +7,44 @@
 from __future__ import annotations
 
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
+from app.services.mobile_student_service import _require_student
 from app.student_portal.services import common_service as common
 
 
 def transcript(user: dict) -> dict:
     """我的成绩单（本人已发布成绩 + GPA）。未发布不露分由教务成绩服务口径保证。"""
     return aa.transcript_my(user)
+
+
+# ── 我的课表 + 选课（复用教务学生自视图） ──
+
+def schedule(user: dict) -> dict:
+    """我的课表（最新已发布，按行政班推导）。"""
+    return aa.schedule_my(user)  # aa._me 收口本人+非学生403
+
+
+def selection_courses(user: dict, batch_id=None) -> dict:
+    """选课·可选课程（OPEN 批次 + 实时余量）。"""
+    _require_student(user)
+    return aa.selection_courses_my(user, batch_id)
+
+
+def selection_enroll(user: dict, body: dict) -> dict:
+    """选课·选课（selectionCourseId 必填，容量/冲突由教务选课服务校验）。"""
+    _require_student(user)
+    return aa.selection_enroll_my(user, body or {})
+
+
+def selection_drop(user: dict, body: dict) -> dict:
+    """选课·退课（selectionCourseId 必填）。"""
+    _require_student(user)
+    return aa.selection_drop_my(user, body or {})
+
+
+def selection_records(user: dict, batch_id=None) -> dict:
+    """选课·本人选课记录。"""
+    _require_student(user)
+    return aa.selection_records_my(user, batch_id)
 
 
 def transcript_print(user: dict, body: dict) -> dict:

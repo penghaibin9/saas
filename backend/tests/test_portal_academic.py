@@ -46,7 +46,27 @@ def test_transcript_print(client, db_mode):
     assert r["code"] == 0 and r["data"]["watermark"] == "教务二"
 
 
+def test_schedule_and_selection_views(client, db_mode):
+    _seed("AC-010", "教务十")
+    h = _stu_token("教务十", "AC-010")
+    assert client.get(f"{PORTAL}/schedule", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/course-selection", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/course-selection/records", headers=h).json()["code"] == 0
+
+
+def test_enroll_requires_course_id(client, db_mode):
+    _seed("AC-011", "教务十一")
+    h = _stu_token("教务十一", "AC-011")
+    # 缺 selectionCourseId → 校验失败
+    assert client.post(f"{PORTAL}/course-selection/enroll", headers=h, json={}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/course-selection/drop", headers=h, json={}).json()["code"] != 0
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/transcript", headers=admin).json()["code"] == 403001
     assert client.post(f"{PORTAL}/transcript/print", headers=admin, json={}).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/schedule", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/course-selection", headers=admin).json()["code"] == 403001
+    assert client.post(f"{PORTAL}/course-selection/enroll", headers=admin,
+                       json={"selectionCourseId": "1"}).json()["code"] == 403001
