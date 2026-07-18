@@ -106,6 +106,7 @@
               v-for="a in detailActions"
               :key="a.key"
               :code="a.code"
+              :allowed="a.allowed"
               :variant="a.tone === 'primary' ? 'primary' : (a.tone === 'danger' ? 'danger' : 'secondary')"
               size="sm"
               :loading="acting"
@@ -237,6 +238,7 @@ import {
   AppStudentPicker, AppTextInput, AppTextarea
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
 
 const AID_NODES = ['CLASS_REVIEW', 'COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'SCHOOL_REVIEW']
@@ -314,19 +316,35 @@ export default {
       if (!s) return []
       if (AID_NODES.includes(s)) {
         const label = { CLASS_REVIEW: '评议通过', COUNSELOR_REVIEW: '初审通过', COLLEGE_REVIEW: '复审通过', SCHOOL_REVIEW: '终审通过' }[s]
+        // 辅导员初审节点（2026-07-18 甲方拍板扩权）：学工处/资助老师/校管等 aid.approve 持有者仍可操作
+        // 全部节点；辅导员额外凭节点范围权限 aid.counselorReview 操作本班学生的「辅导员初审」一个节点
+        // （班级评议/学院复审/学校终审不放开，节点授权由后端 _check_node_authority 二次收敛）。
+        const allowed = s === 'COUNSELOR_REVIEW'
+          ? (this.canBtn('studentAffairs.aid.approve') || this.canBtn('studentAffairs.aid.counselorReview'))
+          : this.canBtn('studentAffairs.aid.approve')
         return [
-          { key: 'approve', label, tone: 'primary', code: 'studentAffairs.aid.approve' },
-          { key: 'return', label: '退回', tone: 'default', code: 'studentAffairs.aid.approve' },
-          { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.aid.approve' }
+          { key: 'approve', label, tone: 'primary', code: 'studentAffairs.aid.approve', allowed },
+          { key: 'return', label: '退回', tone: 'default', code: 'studentAffairs.aid.approve', allowed },
+          { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.aid.approve', allowed }
         ]
       }
-      if (s === 'DRAFT') return [{ key: 'resubmit', label: '重新提交', tone: 'primary', code: 'studentAffairs.aid.create' }]
-      if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary', code: 'studentAffairs.aid.approve' }]
-      if (s === 'APPROVED') return [{ key: 'adjust', label: '动态调整', tone: 'default', code: 'studentAffairs.aid.adjust' }]
+      if (s === 'DRAFT') {
+        return [{ key: 'resubmit', label: '重新提交', tone: 'primary', code: 'studentAffairs.aid.create',
+                 allowed: this.canBtn('studentAffairs.aid.create') }]
+      }
+      if (s === 'PUBLICITY') {
+        return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary', code: 'studentAffairs.aid.approve',
+                 allowed: this.canBtn('studentAffairs.aid.approve') }]
+      }
+      if (s === 'APPROVED') {
+        return [{ key: 'adjust', label: '动态调整', tone: 'default', code: 'studentAffairs.aid.adjust',
+                 allowed: this.canBtn('studentAffairs.aid.adjust') }]
+      }
       if (s === 'ADJUST_REVIEW') {
+        const allowed = this.canBtn('studentAffairs.aid.adjust')
         return [
-          { key: 'adjustApprove', label: '调整通过', tone: 'primary', code: 'studentAffairs.aid.adjust' },
-          { key: 'adjustReject', label: '调整驳回', tone: 'danger', code: 'studentAffairs.aid.adjust' }
+          { key: 'adjustApprove', label: '调整通过', tone: 'primary', code: 'studentAffairs.aid.adjust', allowed },
+          { key: 'adjustReject', label: '调整驳回', tone: 'danger', code: 'studentAffairs.aid.adjust', allowed }
         ]
       }
       return []
@@ -336,6 +354,7 @@ export default {
     this.loadBatches()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     onPickRevealReason(text) { this.revealModal.reason = (this.revealModal.reason || '') + text },
     onPickAdjustReason(text) { this.adjustModal.reason = (this.adjustModal.reason || '') + text },
     onPickStatement(text) { this.applyModal.statement = (this.applyModal.statement || '') + text },

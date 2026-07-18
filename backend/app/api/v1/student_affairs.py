@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
 from app.core.response import success, paginate
-from app.core.permissions import require_permission
+from app.core.permissions import require_any_permission, require_permission
 from app.core.security import get_current_user, require_staff  # 仅敏感 reveal 等「服务层自鉴权+落 DENY 审计」端点用粗粒度门禁，避免网关短路吞掉越权审计
 from app.services import affairs_activity_service as activity_svc
 from app.services import affairs_attachment_service as attach_svc
@@ -422,7 +422,11 @@ def aid_application(applyId: int = Path(...), user=Depends(require_permission("s
 
 
 @router.post("/aid/applications/{applyId}/review", summary="各级评审（评议/初审/复审/终审）")
-def aid_review(body: AidReviewBody, applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.approve"))):
+def aid_review(body: AidReviewBody, applyId: int = Path(...),
+               # 网关只放行"持有任一评审类权限"；具体节点是否真的授权本次操作，由服务层
+               # review() -> _check_node_authority() 按当前申请所在节点二次收敛（辅导员仅
+               # COUNSELOR_REVIEW 节点+本班范围，2026-07-18 甲方拍板扩权见历史欠账）。
+               user=Depends(require_any_permission("studentAffairs.aid.approve", "studentAffairs.aid.counselorReview"))):
     return success(aid_svc.review(applyId, user, body.action, body.level, body.reason or ""),
                    message="已处理")
 

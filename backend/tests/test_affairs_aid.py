@@ -172,6 +172,43 @@ def test_a7_cross_class_403(client, db_mode):
     assert r.json()["bizCode"] == "NO_DATA_SCOPE"
 
 
+def test_a8_counselor_review_scoped_to_counselor_review_node(client, db_mode):
+    """2026-07-18 甲方拍板扩权：辅导员仅能在申请处于「辅导员初审」节点时评审+查看完整家庭经济，
+    班级评议/学院复审/学校终审节点仍 403（_check_node_authority 节点收敛）。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    counselor = _hdr(client, "counselor01")
+    bid = _open_batch(client, admin)
+    aid_id = _apply(client, admin, bid, ids["sa"]).json()["data"]["applyId"]  # A 班，counselor01 本班学生
+    assert client.get(f"{BASE}/aid/applications/{aid_id}", headers=admin).json()["data"]["status"] == "CLASS_REVIEW"
+
+    # ① CLASS_REVIEW 节点：不是辅导员的节点 → 403
+    r1 = client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=counselor, json={"action": "APPROVE"})
+    assert r1.status_code == 403
+
+    # 学工处推进到 COUNSELOR_REVIEW
+    adv = client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=admin, json={"action": "APPROVE"}).json()
+    assert adv["data"]["status"] == "COUNSELOR_REVIEW"
+
+    # ② COUNSELOR_REVIEW 节点：辅导员可查看完整家庭经济（本班范围内）
+    reveal = client.post(f"{BASE}/aid/applications/{aid_id}/reveal", headers=counselor,
+                         json={"reason": "初审核实家庭情况"})
+    assert reveal.status_code == 200
+    assert reveal.json()["data"]["familyEconomy"]["annualIncome"] == "25000"
+
+    # ③ COUNSELOR_REVIEW 节点：辅导员可评审通过（带出建议等级），推进到 COLLEGE_REVIEW
+    r2 = client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=counselor,
+                     json={"action": "APPROVE", "level": "DIFFICULT"}).json()
+    assert r2["data"]["status"] == "COLLEGE_REVIEW"
+    assert r2["data"]["suggestLevel"] == "DIFFICULT"
+
+    # ④ 节点已流转到 COLLEGE_REVIEW：辅导员评审与 reveal 均恢复 403
+    r3 = client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=counselor, json={"action": "APPROVE"})
+    assert r3.status_code == 403
+    r4 = client.post(f"{BASE}/aid/applications/{aid_id}/reveal", headers=counselor, json={"reason": "复核"})
+    assert r4.status_code == 403
+
+
 def test_a_apply_non_digit_ids_400_not_500(client, db_mode):
     """历史欠账收口：studentId/batchId 非数字此前 int() 抛 500，现应 400 VALIDATION_ERROR。"""
     ids = _seed(db_mode)

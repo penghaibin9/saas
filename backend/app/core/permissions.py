@@ -94,6 +94,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.homeSchool.*",
         "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.discipline.view",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
+        # 困难认定·辅导员初审节点（2026-07-18 甲方拍板扩权，见历史欠账"辅导员初审"矛盾记录）：
+        # 仅授予 COUNSELOR_REVIEW 节点的通过/退回/驳回 + 该节点下本班学生家庭经济查看，
+        # 不授予班级评议/学院复审/学校终审——节点授权由 affairs_aid_service._check_node_authority 收敛。
+        "studentAffairs.aid.counselorReview",
         # 辅导员对「本人」考评的自助权：查看本人考评结果 + 对本人考评提起申诉（不含考评/复核 manage）
         "studentAffairs.counselorEval.view", "studentAffairs.counselorEval.appeal.create",
         # 旧「在校服务」面：本班范围广读 + 请假审批；资助/违纪/工单/学生台账写操作归学工处/院

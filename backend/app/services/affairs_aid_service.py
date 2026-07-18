@@ -146,8 +146,28 @@ def _scope_or_403(db, student_id, user):
         raise AppException("NO_DATA_SCOPE", "该申请不在您的数据范围内")
 
 
-def _can_sensitive_view(user) -> bool:
-    return (user or {}).get("currentRoleCode") in _SENSITIVE_ROLES
+def _can_sensitive_view(user, x=None) -> bool:
+    role = (user or {}).get("currentRoleCode")
+    if role in _SENSITIVE_ROLES:
+        return True
+    # 辅导员（2026-07-18 甲方拍板扩权）：仅在申请处于「辅导员初审」节点时可查看完整家庭经济，
+    # 用于本班学生初审带出建议等级；范围已由调用方 _scope_or_403 收敛到本班，节点一旦流转到
+    # 学院复审/学校终审即恢复脱敏，不给辅导员长期持有明文查看权。
+    if role == "COUNSELOR" and x is not None and getattr(x, "status", None) == "COUNSELOR_REVIEW":
+        return True
+    return False
+
+
+def _check_node_authority(user, x) -> None:
+    """审批节点授权（对齐 academic_affairs_change_service._NODE_PERM 范式）：
+    .approve 持有者（学工处/资助老师/校管等）可操作全部 4 个节点；辅导员仅凭
+    .counselorReview 可操作 COUNSELOR_REVIEW 节点（本班范围已由调用方 _scope_or_403 收敛）。"""
+    from app.core.permissions import has_permission
+    if has_permission(user, "studentAffairs.aid.approve"):
+        return
+    if x.status == "COUNSELOR_REVIEW" and has_permission(user, "studentAffairs.aid.counselorReview"):
+        return
+    raise no_permission(f"无权审批当前节点（{L_AID.get(x.status, x.status)}）")
 
 
 # ── 序列化 ──
@@ -346,6 +366,7 @@ def review(apply_id, user, action, level=None, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in AID_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
+        _check_node_authority(user, x)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
             # 辅导员初审带出建议等级
@@ -563,7 +584,7 @@ def reveal_family_economy(apply_id, user, reason="") -> dict:
         x, s = _load(db, apply_id)
         _scope_or_403(db, x.student_id, user)
         fe = _family_of(db, x.id)
-    if not _can_sensitive_view(user):
+    if not _can_sensitive_view(user, x):
         audit_insert("SENSITIVE_VIEW", "aid_family_economy",
                      {"applyId": str(apply_id), "reason": reason, "granted": False}, "DENY")
         raise no_permission("无家庭经济完整信息查看权限")
