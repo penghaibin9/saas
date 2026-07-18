@@ -18,7 +18,18 @@
         <div class="aa-credit-cell"><span>毕业总学分</span><b>{{ program.totalCredits ?? '未设置' }}</b></div>
         <div class="aa-credit-cell"><span>已排学分</span><b>{{ program.creditSum }}</b></div>
         <div class="aa-credit-cell" :class="gapClass"><span>学分差额</span><b>{{ gapText }}</b></div>
+        <button v-if="editable && !showEdit" class="mp-link aa-edit-entry" @click="openEdit">编辑方案信息</button>
       </div>
+
+      <!-- 方案基本信息编辑（草稿/退回态可改：名称、毕业总学分） -->
+      <AppSectionCard v-if="editable && showEdit" title="编辑方案信息">
+        <div class="aa-add-panel">
+          <input v-model.trim="editForm.programName" class="aa-input" placeholder="方案名称" />
+          <input v-model.number="editForm.totalCredits" type="number" min="0" class="aa-input aa-input--sm" placeholder="毕业总学分" />
+          <button class="mp-btn mp-btn--primary" :disabled="savingEdit || !editForm.programName" @click="saveEdit">{{ savingEdit ? '保存中…' : '保存' }}</button>
+          <button class="mp-btn" @click="showEdit = false">取消</button>
+        </div>
+      </AppSectionCard>
 
       <!-- 课程明细 -->
       <AppSectionCard title="课程明细">
@@ -100,6 +111,7 @@ export default {
       showAdd: false, adding: false, enabledCourses: [],
       addForm: { courseId: '', courseName: '', credit: null, openTermNo: null, module: '' },
       bindForm: { gradeYear: '' },
+      showEdit: false, savingEdit: false, editForm: { programName: '', totalCredits: null },
       dlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, action: '' }
     }
   },
@@ -152,6 +164,21 @@ export default {
         toast.error(res.message || '添加失败')
       }
     },
+    openEdit() {
+      this.editForm = { programName: this.program.programName, totalCredits: this.program.totalCredits }
+      this.showEdit = true
+    },
+    async saveEdit() {
+      if (this.savingEdit || !this.editForm.programName) return
+      this.savingEdit = true
+      const res = await academicAffairsApi.updateProgram(this.programId, {
+        programName: this.editForm.programName,
+        totalCredits: this.editForm.totalCredits != null && this.editForm.totalCredits !== '' ? this.editForm.totalCredits : undefined
+      })
+      this.savingEdit = false
+      if (res.code === 0) { toast.success('已保存'); this.showEdit = false; this.load() }
+      else { toast.error(res.message || '保存失败') }
+    },
     async doSubmit() {
       if (this.acting) return
       this.acting = true
@@ -199,7 +226,8 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.aa-credit-bar { display: flex; gap: 32px; padding: 16px 20px; background: var(--fill-50, #f7f8fa); border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; }
+.aa-credit-bar { display: flex; align-items: center; gap: 32px; padding: 16px 20px; background: var(--fill-50, #f7f8fa); border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; }
+.aa-edit-entry { margin-left: auto; }
 .aa-credit-cell { display: flex; flex-direction: column; gap: 4px; }
 .aa-credit-cell span { font-size: 12px; color: var(--text-500, #646a73); }
 .aa-credit-cell b { font-size: 18px; color: var(--text-900, #1f2329); }

@@ -7,7 +7,7 @@
     watermark-purpose="资助项目管理"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="openForm">
+      <AppPermissionButton code="studentAffairs.funding.project.manage" :allowed="canBtn('studentAffairs.funding.project.manage')" :loading="saving" @click="openForm">
         建项目
       </AppPermissionButton>
     </template>
@@ -62,7 +62,7 @@
       </div>
       <template #footer>
         <button type="button" class="pf-btn" :disabled="saving" @click="drawer.visible = false">取消</button>
-        <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="save">保存</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.funding.project.manage" :allowed="canBtn('studentAffairs.funding.project.manage')" :loading="saving" @click="save">保存</AppPermissionButton>
       </template>
     </AppDrawer>
   </AppPageShell>
@@ -73,6 +73,7 @@ import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberIn
         AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextInput } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
 
 const TYPES = [
@@ -90,6 +91,7 @@ export default {
   name: 'FundingProjectView',
   components: { AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput,
                AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag },
+  props: { ctx: { type: Object, default: null } },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', projects: [], activeType: '', typeFilters: TYPES,
@@ -112,6 +114,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getFundingProjects({ pageSize: 200 })

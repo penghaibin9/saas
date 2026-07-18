@@ -96,35 +96,47 @@ def generate_batch(body, user) -> dict:
         for p in db.scalars(select(AaProgram).where(*prog_conds)).all():
             bindings = db.scalars(select(AaProgramBinding).where(
                 AaProgramBinding.tenant_id == _tid(), AaProgramBinding.program_id == p.id,
-                AaProgramBinding.status == "ACTIVE", AaProgramBinding.class_id.is_not(None),
+                AaProgramBinding.status == "ACTIVE",
                 AaProgramBinding.is_deleted.is_(False))).all()
             courses = db.scalars(select(AaProgramCourse).where(
                 AaProgramCourse.tenant_id == _tid(), AaProgramCourse.program_id == p.id,
                 AaProgramCourse.is_deleted.is_(False))).all()
             for bd in bindings:
-                cls = db.get(SchoolClass, int(bd.class_id))
-                for pc in courses:
-                    if not pc.course_id:
+                if bd.class_id:
+                    target_classes = [db.get(SchoolClass, int(bd.class_id))]
+                else:
+                    # 绑定未指定行政班（前端"绑定年级"表单"行政班ID"字段明确标注"选填，留空=全专业该年级"）：
+                    # 按 major_id+grade 展开该年级全部在读行政班。此前直接跳过 class_id 为空的绑定，
+                    # 导致按文案承诺的"全专业该年级"绑定一律生成 0 条教学任务、且前端无任何报错提示。
+                    target_classes = db.scalars(select(SchoolClass).where(
+                        SchoolClass.tenant_id == _tid(), SchoolClass.major_id == bd.major_id,
+                        SchoolClass.grade == bd.grade_year, SchoolClass.class_status == "NORMAL",
+                        SchoolClass.is_deleted.is_(False))).all()
+                for cls in target_classes:
+                    if not cls:
                         continue
-                    # 幂等去重
-                    exist = db.scalars(select(AaTeachingTask).where(
-                        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.batch_id == batch.id,
-                        AaTeachingTask.course_id == pc.course_id, AaTeachingTask.class_id == bd.class_id,
-                        AaTeachingTask.is_deleted.is_(False))).first()
-                    if exist:
-                        continue
-                    course = db.get(AaCourse, int(pc.course_id))
-                    hours = (course.hours_total if course and course.hours_total else 0)
-                    ccode = course.course_code if course else ""
-                    db.add(AaTeachingTask(
-                        tenant_id=_tid(), batch_id=batch.id, course_id=pc.course_id,
-                        course_code=ccode, course_name=course.course_name if course else "",
-                        class_id=bd.class_id,
-                        teaching_class_code=_teaching_class_code(term_id, ccode, bd.class_id),
-                        teaching_class_name=f"{course.course_name if course else ''}({cls.class_name if cls else ''})",
-                        total_hours=hours, weekly_hours=(round(hours / _TEACH_WEEKS) if hours else None),
-                        start_week=1, end_week=_TEACH_WEEKS, status="PENDING_ASSIGN"))
-                    made += 1
+                    for pc in courses:
+                        if not pc.course_id:
+                            continue
+                        # 幂等去重
+                        exist = db.scalars(select(AaTeachingTask).where(
+                            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.batch_id == batch.id,
+                            AaTeachingTask.course_id == pc.course_id, AaTeachingTask.class_id == cls.id,
+                            AaTeachingTask.is_deleted.is_(False))).first()
+                        if exist:
+                            continue
+                        course = db.get(AaCourse, int(pc.course_id))
+                        hours = (course.hours_total if course and course.hours_total else 0)
+                        ccode = course.course_code if course else ""
+                        db.add(AaTeachingTask(
+                            tenant_id=_tid(), batch_id=batch.id, course_id=pc.course_id,
+                            course_code=ccode, course_name=course.course_name if course else "",
+                            class_id=cls.id,
+                            teaching_class_code=_teaching_class_code(term_id, ccode, cls.id),
+                            teaching_class_name=f"{course.course_name if course else ''}({cls.class_name})",
+                            total_hours=hours, weekly_hours=(round(hours / _TEACH_WEEKS) if hours else None),
+                            start_week=1, end_week=_TEACH_WEEKS, status="PENDING_ASSIGN"))
+                        made += 1
         _audit(db, "AA_TASK_BATCH", batch.id, "GENERATE", f"+{made}")
         db.commit()
         db.refresh(batch)

@@ -153,7 +153,12 @@ def submit_program(program_id, user) -> dict:
         if p.status not in ("DRAFT", "RETURNED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅编制/退回态方案可提交")
         csum = _credit_sum(db, p.id)
-        if p.total_credits and csum < float(p.total_credits):
+        # 此前 `if p.total_credits and ...` 在毕业总学分未设置时整段校验被短路跳过，
+        # 空方案(0 门课程、总学分未设置)也能一路提交到学院审→发布，成为真实约束学生毕业的
+        # 生效方案。总学分未设置或课程学分未达标都必须挡在提交之前。
+        if not p.total_credits:
+            raise AppException("VALIDATION_ERROR", "毕业总学分尚未设置，不可提交")
+        if csum < float(p.total_credits):
             raise AppException("VALIDATION_ERROR",
                                f"课程学分合计 {csum} 未达毕业总学分 {p.total_credits}，不可提交")
         p.status = "COLLEGE_REVIEW"

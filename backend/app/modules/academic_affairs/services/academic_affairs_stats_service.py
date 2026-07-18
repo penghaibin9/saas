@@ -233,7 +233,9 @@ def _i_program(db, scope, college_id, major_id) -> dict:
         q = q.where(AaProgram.major_id.in_(majors))
     statuses = db.scalars(q).all()
     den = len(statuses)
-    num = sum(1 for s in statuses if s == "PUBLISHED")
+    # 方案绑定年级后状态会从 PUBLISHED 流转为 ENABLED（正常业务进度），只认 PUBLISHED 会导致
+    # 学校一旦开始真实使用（绑年级）该发布率就跌回 0，与「教学质量」页同名指标口径不一致。
+    num = sum(1 for s in statuses if s in ("PUBLISHED", "ENABLED"))
     return _ind("program", "方案发布率", numerator=num, denominator=den, rate=_rate(num, den),
                 unit="%", drill="program")
 
@@ -814,6 +816,129 @@ def schedule_conflicts(user, college_id=None, term_id=None, page=1, page_size=20
                          "weekParity": parity, "conflictCount": int(c),
                          "courses": [{"courseName": d.course_name, "teacherName": d.teacher_name,
                                      "classroomText": d.classroom_text} for d in detail_rows]})
+        return items, total
+
+
+def course_selection_stats(user, term_id=None, college_id=None) -> dict:
+    """选课统计聚合（08 卡）：批次数 + 容量利用率，复用 `_i_selection`。
+    2026-07-18 补建：路由早已注册 /stats/course-selection 但本函数此前不存在，真实点击触发
+    AttributeError→500（见施工记录 CC-真实交互业务巡检，教务统计-选课统计条目）。"""
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        ind = _i_selection(db, scope, term_id)
+        return {"batchCount": ind["value"], "selected": ind["numerator"], "capacity": ind["denominator"],
+                "fillRate": ind["rate"], "byStatus": ind["groups"], "message": ind.get("message"),
+                "scope": {"blocked": scope.blocked}}
+
+
+def course_selection_detail(user, term_id=None, college_id=None, page=1, page_size=20) -> tuple[list[dict], int]:
+    """选课统计下钻（08 卡）：低填充率课程清单（按填充率升序），全校口径同 `_i_selection`
+    （受限角色 fail-closed，不展示全校数冒充本院数）。"""
+    from app.models import AaSelectionBatch, AaSelectionCourse
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        if not scope.all:
+            return [], 0
+        bq = select(AaSelectionBatch.id).where(
+            AaSelectionBatch.tenant_id == _tid(), AaSelectionBatch.is_deleted.is_(False))
+        if term_id:
+            bq = bq.where(AaSelectionBatch.term_id == int(term_id))
+        batch_ids = db.scalars(bq).all() or [-1]
+        rows = db.scalars(select(AaSelectionCourse).where(
+            AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.batch_id.in_(batch_ids),
+            AaSelectionCourse.is_deleted.is_(False))).all()
+
+        def _fill(c):
+            return (c.selected_count or 0) / c.capacity if c.capacity else 0.0
+
+        rows_sorted = sorted(rows, key=_fill)
+        total = len(rows_sorted)
+        page_rows = rows_sorted[(page - 1) * page_size: (page - 1) * page_size + page_size]
+        items = [{"courseId": str(c.id), "courseName": c.course_name or "", "capacity": c.capacity,
+                 "selectedCount": c.selected_count,
+                 "fillRate": (round(_fill(c) * 100, 2) if c.capacity else None), "status": c.status}
+                for c in page_rows]
+        _audit(db, "STATS_DRILL_COURSE_SELECTION", f"选课明细 total={total} term={term_id or '-'}")
+        db.commit()
+        return items, total
+
+
+def exam_stats(user, term_id=None, college_id=None) -> dict:
+    """考务统计聚合（09 卡）：确认课程数 + 考场编排完成率，复用 `_i_exam`。
+    2026-07-18 补建：同 course_selection_stats，路由早注册但函数缺失导致真实 500。"""
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        ind = _i_exam(db, scope, college_id, term_id)
+        return {"confirmedCourses": ind["denominator"], "arranged": ind["numerator"],
+                "rate": ind["rate"], "scope": {"blocked": scope.blocked}}
+
+
+def exam_detail(user, term_id=None, college_id=None, incidentType=None, page=1, page_size=20) -> tuple[list[dict], int]:
+    """考务统计下钻（09 卡）：缺考/违纪明细（脱敏 + 审计），按学院范围收敛同 `_i_exam`。"""
+    from app.models import AaExamBatch, AaExamCourse, AaExamIncident
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        colleges = _college_ids_scope(db, scope, college_id)
+        if colleges is not None and not colleges:
+            return [], 0
+        cq = select(AaExamCourse.id).where(
+            AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False))
+        if term_id:
+            bids = db.scalars(select(AaExamBatch.id).where(
+                AaExamBatch.tenant_id == _tid(), AaExamBatch.term_id == int(term_id),
+                AaExamBatch.is_deleted.is_(False))).all()
+            cq = cq.where(AaExamCourse.batch_id.in_(bids or [-1]))
+        if colleges is not None:
+            cq = cq.where(AaExamCourse.college_id.in_(list(colleges)))
+        course_ids = db.scalars(cq).all() or [-1]
+        q = select(AaExamIncident).where(
+            AaExamIncident.tenant_id == _tid(), AaExamIncident.is_deleted.is_(False),
+            AaExamIncident.status == "ACTIVE", AaExamIncident.exam_course_id.in_(course_ids))
+        if incidentType:
+            q = q.where(AaExamIncident.incident_type == incidentType)
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.scalars(q.order_by(AaExamIncident.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        items = [{"incidentId": str(r.id), "studentName": r.student_name or "",
+                 "studentNo": _mask_id_card(r.student_no) if r.student_no else "",
+                 "incidentType": r.incident_type,
+                 "description": r.description or "", "recordedAt": (r.recorded_at.isoformat() if r.recorded_at else None)}
+                for r in rows]
+        _audit(db, "STATS_DRILL_EXAM", f"考务异常明细 total={total} type={incidentType or '-'}")
+        db.commit()
+        return items, total
+
+
+def resource_stats(user) -> dict:
+    """教学资源统计聚合（14 卡）：可用教室数 + 待审预约数，复用 `_i_resource`（全校共享口径）。
+    2026-07-18 补建：同上，函数缺失导致真实 500。"""
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        ind = _i_resource(db, scope)
+        return {"availableRooms": ind["value"], "pendingBookings": ind["numerator"],
+                "byRoomType": ind["groups"], "message": ind.get("message")}
+
+
+def resource_detail(user, page=1, page_size=20) -> tuple[list[dict], int]:
+    """教学资源统计下钻（14 卡）：待审核教室预约清单（全校共享资源，不做范围收敛）。"""
+    from app.models import AaClassroomBooking
+    with session() as db:
+        q = select(AaClassroomBooking).where(
+            AaClassroomBooking.tenant_id == _tid(), AaClassroomBooking.is_deleted.is_(False),
+            AaClassroomBooking.status == "PENDING")
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.scalars(q.order_by(AaClassroomBooking.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        items = [{"bookingId": str(r.id), "classroomText": r.classroom_text or "",
+                 "bookingDate": r.booking_date, "slotNo": r.slot_no, "purpose": r.purpose or "",
+                 "applicantName": r.applicant_name or ""}
+                for r in rows]
+        _audit(db, "STATS_DRILL_RESOURCE", f"教室预约待审明细 total={total}")
+        db.commit()
         return items, total
 
 

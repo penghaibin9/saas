@@ -21,8 +21,8 @@
       </div>
       <div class="dp-tools">
         <AppSelect v-model="typeFilter" class="dp-typepick" :options="typeFilterOptions" placeholder="" title="按处分类型筛选" />
-        <AppPermissionButton code="studentAffairs.discipline.view" variant="secondary" size="sm" :loading="reconciling" @click="onReconcile">投影对账</AppPermissionButton>
-        <AppPermissionButton code="studentAffairs.discipline.create" variant="primary" size="sm" @click="openRegister">登记处分</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.discipline.view" :allowed="canBtn('studentAffairs.discipline.view')" variant="secondary" size="sm" :loading="reconciling" @click="onReconcile">投影对账</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.discipline.create" :allowed="canBtn('studentAffairs.discipline.create')" variant="primary" size="sm" @click="openRegister">登记处分</AppPermissionButton>
       </div>
     </div>
 
@@ -74,6 +74,7 @@
               v-for="a in detailActions"
               :key="a.key"
               :code="a.code"
+              :allowed="canBtn(a.code)"
               :variant="a.tone === 'primary' ? 'primary' : (a.tone === 'danger' ? 'danger' : 'secondary')"
               size="sm"
               :loading="acting"
@@ -142,6 +143,7 @@ import {
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
@@ -234,6 +236,7 @@ export default {
     this.loadList()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     discTypeLabel(t) {
       return DISC_TYPE[t] || t || '—'
     },

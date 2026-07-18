@@ -82,7 +82,13 @@ def _new_program(client, hdr, name):
 
 
 def _publish(client, hdr, pid):
-    """DRAFT -> COLLEGE_REVIEW -> ACADEMIC_REVIEW -> PUBLISHED（不设 totalCredits，跳过学分达标校验）。"""
+    """DRAFT -> COLLEGE_REVIEW -> ACADEMIC_REVIEW -> PUBLISHED。
+    先设总学分 + 补一门等额学分课程使课程学分合计达标（submit_program 校验总学分已设置且课程学分达标，
+    历史版本靠"不设 totalCredits 短路跳过校验"的 bug 通过本用例，该 bug 已修复，见 CC-真实交互业务巡检）。"""
+    r = client.put(f"{BASE}/programs/{pid}", headers=hdr, json={"totalCredits": 1})
+    assert r.status_code == 200, r.text
+    r = client.post(f"{BASE}/programs/{pid}/courses", headers=hdr, json={"courseName": "占位课程", "credit": 1})
+    assert r.status_code == 200, r.text
     r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert r.status_code == 200, r.text
     r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
@@ -206,6 +212,23 @@ def test_tr3_archive_lists_disabled_and_superseded_not_plain_draft(client, db_mo
     assert pid2 in by_id and "SUPERSEDED" in by_id[pid2]["archiveReasons"]
     assert by_id[pid2]["supersededByProgramId"] == new_pid
     assert pid3 not in by_id
+
+
+def test_submit_rejects_when_total_credits_unset_or_course_sum_short(client, db_mode_programs):
+    """回归：CC-真实交互业务巡检发现 submit_program 曾用 `if p.total_credits and ...` 短路校验，
+    毕业总学分未设置时空方案(0 门课程)也能一路提交到学院审→发布，成为约束学生毕业的生效方案。"""
+    hdr = _hdr(client, "school_admin01")
+    pid = _new_program(client, hdr, "总学分未设置不可提交")
+    r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
+    assert r.status_code == 400, r.text
+    assert "毕业总学分尚未设置" in r.text
+
+    # 设置总学分但课程学分合计未达标，仍应拒绝
+    r = client.put(f"{BASE}/programs/{pid}", headers=hdr, json={"totalCredits": 10})
+    assert r.status_code == 200, r.text
+    r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
+    assert r.status_code == 400, r.text
+    assert "未达毕业总学分" in r.text
 
 
 def test_tr4_student_403_on_new_endpoints(client, db_mode_programs):

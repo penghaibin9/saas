@@ -9,7 +9,13 @@
       <button v-for="t in tabs" :key="t.key" :class="['aaev-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
-    <div v-if="tab === 'batches'" class="mp-stack">
+    <div v-if="unbuiltLabel" class="mp-stack">
+      <EmptyState
+        :title="'「' + unbuiltLabel + '」暂未独立建设'"
+        description="当前可在「评教批次」的「生成应评任务」里按来源（学生/教师自评/同行/督导）生成任务，并在同一批次页查看提交与结果；独立的分类视图/统计/归档页面尚未建设，敬请期待。"
+      />
+    </div>
+    <div v-else-if="tab === 'batches'" class="mp-stack">
       <div class="aaev-bar"><AppButton variant="primary" size="small" @click="openCreate">新建评教批次</AppButton></div>
       <div class="aaev-layout">
         <ul class="aaev-list">
@@ -108,6 +114,15 @@ export default {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
       tab: 'batches', tabs: [{ key: 'batches', label: '评教批次' }, { key: 'appeals', label: '申诉审核' }],
+      // navPlan.js 菜单里还登记了 studentEval/selfEval/peerEval/supervisorEval/evalStats/archive
+      // 六个"已实现"叶子，但本页从未真正做过对应的独立分类视图——此前 created() 对不认识的
+      // tab query 直接忽略、静默落回默认的"评教批次"内容，等于点这六个菜单看到的是另一个
+      // 功能的数据，误导用户以为已完成（CLAUDE.md §6.1 禁止假页面冒充完成）。这里改为如实显示
+      // "暂未独立建设"，不悄悄展示不相关内容；哪天真的建了对应分类页，删掉这个 key 即可。
+      _unbuiltEvalTabs: {
+        studentEval: '学生评教(小程序)', selfEval: '教师自评', peerEval: '同行评价',
+        supervisorEval: '督导评价', evalStats: '评价统计', archive: '评价归档'
+      },
       rows: [], current: null, tasks: [], results: [], appeals: [],
       taskColumns: [{ key: 'courseName', title: '课程' }, { key: 'teacherName', title: '教师' }, { key: 'submittedCount', title: '已评' }, { key: 'status', title: '状态' }],
       resultColumns: [{ key: 'teacherName', title: '教师' }, { key: 'courseName', title: '课程' }, { key: 'studentAvg', title: '学生均分' }, { key: 'supervisorAvg', title: '督导' }, { key: 'peerAvg', title: '同行' }, { key: 'selfScore', title: '自评' }, { key: 'compositeScore', title: '综合分' }, { key: 'level', title: '等级' }],
@@ -119,13 +134,17 @@ export default {
         { label: '同行评价', value: 'PEER' }, { label: '督导评价', value: 'SUPERVISOR' }
       ],
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
-      confirmRequireReason: false, confirmReasonLabel: ''
+      confirmRequireReason: false, confirmReasonLabel: '', queryTab: ''
     }
+  },
+  computed: {
+    unbuiltLabel() { return this._unbuiltEvalTabs[this.queryTab] || '' }
   },
   async created() {
     const c = await academicAffairsApi.getContext()
     if (c.code === 0) this.ctx = c.data
     const q = this.$route && this.$route.query && this.$route.query.tab
+    this.queryTab = q || ''
     if (q && this.tabs.some((t) => t.key === q)) this.tab = q
     this.loadBatches()
     if (this.tab === 'appeals') this.loadAppeals()

@@ -50,8 +50,19 @@
 import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
-const TYPE_LABELS = { ACADEMIC: '学业', PSYCHOLOGY: '心理', LIFE: '生活', CAREER: '就业', DISCIPLINE: '违纪', ECONOMIC: '经济', IDEOLOGY: '思想', SAFETY: '安全', ROUTINE: '常规', OTHER: '其他' }
-const TYPE_FILTERS = [{ key: '', label: '全部类型' }, { key: 'ACADEMIC', label: '学业' }, { key: 'PSYCHOLOGY', label: '心理' }, { key: 'LIFE', label: '生活' }, { key: 'DISCIPLINE', label: '违纪' }]
+// 与真实发起入口 TalkWorkbenchView.vue 的 talkType 枚举保持一致（此前这里是一套完全不同的
+// 旧枚举 LIFE/CAREER/ECONOMIC/IDEOLOGY/SAFETY/ROUTINE/OTHER，一个都不匹配真实数据，
+// 导致台账列表"类型"列对新记录原样显示英文枚举码，见 CC-真实交互业务巡检）。
+const TYPE_LABELS = {
+  DAILY: '日常谈话', ACADEMIC: '学业帮扶', PSYCHOLOGY: '心理疏导', DISCIPLINE: '违纪教育',
+  EMPLOYMENT: '就业指导', INTERNSHIP: '实习指导', AID: '资助谈话', DORM: '宿舍问题'
+}
+const TYPE_FILTERS = [
+  { key: '', label: '全部类型' }, { key: 'DAILY', label: '日常谈话' }, { key: 'ACADEMIC', label: '学业帮扶' },
+  { key: 'PSYCHOLOGY', label: '心理疏导' }, { key: 'DISCIPLINE', label: '违纪教育' },
+  { key: 'EMPLOYMENT', label: '就业指导' }, { key: 'INTERNSHIP', label: '实习指导' },
+  { key: 'AID', label: '资助谈话' }, { key: 'DORM', label: '宿舍问题' }
+]
 const STATUS_FILTERS = [
   { key: '', label: '全部状态' },
   { key: 'PLANNED', label: '计划中' },

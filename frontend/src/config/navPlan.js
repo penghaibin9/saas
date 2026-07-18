@@ -108,26 +108,31 @@ export const NAV_PLAN = [
       I('辅导员考评', '/admin/campus-service/counselor-assessment')
     ]),
     // 数字迎新：学工中心独立二级（甲方明确）·19 三级已实现
+    // 2026-07-18 真实点击巡检发现：以下 19 个叶子此前 I() 全部漏传第三参 permissionKey，
+    // 导致菜单对任何角色都不过滤显示——辅导员(COUNSELOR)在菜单里能看到并点进全部页面，
+    // 但后端 studentAffairs.orientation.view 从未授予该角色，进页面即 403，"看得见点不进"。
+    // 补上 permissionKey 只是让菜单如实反映后端真实权限（SCHOOL_ADMIN 等 "*" 通配角色不受影响，
+    // 仍可见全部）；"辅导员该不该有迎新权限"本身是业务决策，不在本次修复范围内，见历史欠账记录。
     mod('sa-orientation', '数字迎新', '/admin/orientation', [
-      I('迎新看板', '/admin/orientation'),
-      I('迎新批次', '/admin/orientation/batches'),
-      I('新生数据', '/admin/orientation/data'),
-      I('新生信息核验', '/admin/orientation/verify'),
-      I('报到资格', '/admin/orientation/qualification'),
-      I('报到流程配置', '/admin/orientation/flow-config'),
-      I('新生报到', '/admin/orientation/students'),
-      I('报到进度', '/admin/orientation/progress'),
-      I('缴费状态', '/admin/orientation/payment'),
-      I('绿色通道', '/admin/orientation/green-channels'),
-      I('材料审核', '/admin/orientation/materials'),
-      I('宿舍预分配', '/admin/orientation/dorm-preassign'),
-      I('宿舍入住', '/admin/orientation/dorm'),
-      I('现场报到点', '/admin/orientation/checkin-points'),
-      I('异常学生', '/admin/orientation/exceptions'),
-      I('未报到学生', '/admin/orientation/no-show'),
-      I('迎新通知', '/admin/orientation/notices'),
-      I('迎新统计', '/admin/orientation/statistics'),
-      I('迎新归档', '/admin/orientation/archive')
+      I('迎新看板', '/admin/orientation', 'studentAffairs.orientation.view'),
+      I('迎新批次', '/admin/orientation/batches', 'studentAffairs.orientation.view'),
+      I('新生数据', '/admin/orientation/data', 'studentAffairs.orientation.view'),
+      I('新生信息核验', '/admin/orientation/verify', 'studentAffairs.orientation.view'),
+      I('报到资格', '/admin/orientation/qualification', 'studentAffairs.orientation.view'),
+      I('报到流程配置', '/admin/orientation/flow-config', 'studentAffairs.orientation.view'),
+      I('新生报到', '/admin/orientation/students', 'studentAffairs.orientation.view'),
+      I('报到进度', '/admin/orientation/progress', 'studentAffairs.orientation.view'),
+      I('缴费状态', '/admin/orientation/payment', 'studentAffairs.orientation.view'),
+      I('绿色通道', '/admin/orientation/green-channels', 'studentAffairs.orientation.view'),
+      I('材料审核', '/admin/orientation/materials', 'studentAffairs.orientation.view'),
+      I('宿舍预分配', '/admin/orientation/dorm-preassign', 'studentAffairs.orientation.view'),
+      I('宿舍入住', '/admin/orientation/dorm', 'studentAffairs.orientation.view'),
+      I('现场报到点', '/admin/orientation/checkin-points', 'studentAffairs.orientation.view'),
+      I('异常学生', '/admin/orientation/exceptions', 'studentAffairs.orientation.view'),
+      I('未报到学生', '/admin/orientation/no-show', 'studentAffairs.orientation.view'),
+      I('迎新通知', '/admin/orientation/notices', 'studentAffairs.orientation.view'),
+      I('迎新统计', '/admin/orientation/statistics', 'studentAffairs.orientation.view'),
+      I('迎新归档', '/admin/orientation/archive', 'studentAffairs.orientation.view')
     ]),
     // 施工图卡·请假销假（B包第1步·代码已建 4/4，施工图标注偏旧）
     mod('sa-leave', '请假销假', null, [
@@ -137,13 +142,15 @@ export const NAV_PLAN = [
       I('请假统计', '/admin/campus-service/leave-stats')
     ]),
     // 施工图卡·宿舍与公寓（2026-07-12 前端6页接通 /student-affairs/dorm/*；宿管 DORM_BUILDING 范围）
+    // 2026-07-18 真实点击巡检发现：同数字迎新，以下 6 个叶子漏传 permissionKey，
+    // 辅导员在菜单可见可点但后端 studentAffairs.dorm.view 未授予该角色，进页面即 403。
     mod('sa-dorm', '宿舍与公寓', null, [
-      I('房源管理', '/admin/student-affairs/dorm/resource'),
-      I('入住管理', '/admin/student-affairs/dorm/checkin'),
-      I('调宿与退宿', '/admin/student-affairs/dorm/transfer'),
-      I('宿舍检查', '/admin/student-affairs/dorm/check'),
-      I('宿舍异常（含夜不归宿）', '/admin/student-affairs/dorm/exception'),
-      I('宿舍统计', '/admin/student-affairs/dorm/stats')
+      I('房源管理', '/admin/student-affairs/dorm/resource', 'studentAffairs.dorm.view'),
+      I('入住管理', '/admin/student-affairs/dorm/checkin', 'studentAffairs.dorm.view'),
+      I('调宿与退宿', '/admin/student-affairs/dorm/transfer', 'studentAffairs.dorm.view'),
+      I('宿舍检查', '/admin/student-affairs/dorm/check', 'studentAffairs.dorm.view'),
+      I('宿舍异常（含夜不归宿）', '/admin/student-affairs/dorm/exception', 'studentAffairs.dorm.view'),
+      I('宿舍统计', '/admin/student-affairs/dorm/stats', 'studentAffairs.dorm.view')
     ]),
     // 施工图卡·风险预警与处置（B包第4步·待施工）
     mod('sa-risk', '风险预警与处置', null, [

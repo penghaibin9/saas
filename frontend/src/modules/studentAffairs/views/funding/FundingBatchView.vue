@@ -7,7 +7,7 @@
     watermark-purpose="资助批次管理"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" :disabled="!projects.length" @click="openForm">
+      <AppPermissionButton code="studentAffairs.funding.project.manage" :allowed="canBtn('studentAffairs.funding.project.manage')" :loading="saving" :disabled="!projects.length" @click="openForm">
         建批次
       </AppPermissionButton>
     </template>
@@ -70,7 +70,7 @@
       </div>
       <template #footer>
         <button type="button" class="fb-btn" :disabled="saving" @click="drawer.visible = false">取消</button>
-        <AppPermissionButton code="studentAffairs.funding.project.manage" :loading="saving" @click="save">保存</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.funding.project.manage" :allowed="canBtn('studentAffairs.funding.project.manage')" :loading="saving" @click="save">保存</AppPermissionButton>
       </template>
     </AppDrawer>
   </AppPageShell>
@@ -82,6 +82,7 @@ import { AppDateDisplay, AppDateRangePicker, AppFormItem, AppGlobalState, AppInl
         AppStatusTag, AppTextInput } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
 
 const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', REVIEWING: '评审中', PUBLICITY: '公示中', ANNOUNCED: '已公布', CLOSED: '已截止', ARCHIVED: '已归档' }
@@ -95,6 +96,7 @@ export default {
   components: { AppDateDisplay, AppDateRangePicker, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert,
                AppMetricCard, AppNumberInput, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
                AppSelect, AppTextInput, StatusTag: AppStatusTag },
+  props: { ctx: { type: Object, default: null } },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', batches: [], projects: [],
@@ -118,6 +120,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [bs, ps] = await Promise.all([

@@ -41,6 +41,8 @@ SOURCE_LABELS = {
     "LOW_GPA": "绩点预警",
     "RETAKE_EXCESS": "补考重修预警",
     "GRAD_ABNORMAL": "毕业风险预警",
+    "OTHER": "其他预警",  # group_counts() 对 source_code 为空的记录归入字面量 "OTHER" 桶，此前该
+                          # key 缺失导致"按来源分布"直接显示未翻译的英文 "OTHER"（见真实交互巡检）。
 }
 LEVEL_LABELS = {"HIGH": "高风险", "MEDIUM": "中风险", "LOW": "低风险"}
 STATUS_LABELS = {"PENDING_HANDLE": "待处理", "PROCESSING": "跟进中", "ESCALATED": "已升级", "CLOSED": "已关闭"}
