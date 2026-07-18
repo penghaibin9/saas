@@ -12,6 +12,8 @@
 
 当前 Compose 基线的最大理论业务连接数为：`2 个容器 × 4 worker × (pool_size 5 + overflow 10) = 120`。再给调度器、迁移、备份和运维连接预留至少 30 个连接。不要在没有核算 MySQL 上限时盲目增加 worker。
 
+Compose 必须使用 `docker compose --env-file ../env/backend.mysql.env -f docker-compose.mysql.yml ...` 启动。`env_file` 只负责把变量注入容器，不会自动参与 Compose 文件中的 `${DB_PASSWORD}` 替换；漏掉 `--env-file` 可能导致 MySQL 与后端拿到不同密码。
+
 ## 二、上线参数
 
 生产环境至少明确配置：
@@ -32,7 +34,13 @@ SLOW_QUERY_MS=500
 HTTP_SLOW_REQUEST_MS=1000
 SCHEDULER_MODE=external
 JWT_EXPIRES_IN=7200
+MYSQL_MAX_CONNECTIONS=200
+MYSQL_INNODB_BUFFER_POOL_SIZE=2G
+MYSQL_LONG_QUERY_TIME=0.5
+REDIS_MAXMEMORY=512mb
 ```
+
+`MYSQL_INNODB_BUFFER_POOL_SIZE=2G` 是 10 校基线起点，不是所有机器的固定值。数据库独占主机通常配置为物理内存的 50%～70%，并为操作系统、连接缓冲、备份和临时表预留空间。上线前必须读取 `Max_used_connections`、`Created_tmp_disk_tables`、缓冲池命中率和慢 SQL 后再调参。
 
 Access Token 保持 2 小时，Refresh Token 保持 7 天。小程序只在 Access Token 临近过期或收到 401 时单飞刷新；刷新失败才清理会话并重新微信登录，禁止每次 `onShow` 都调用 `wx.login`。
 

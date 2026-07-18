@@ -16,11 +16,11 @@
 #        powershell -File ../../scripts/deploy/build-pc.ps1
 #        powershell -File ../../scripts/deploy/build-miniapp.ps1
 #      注意：miniapp 若走 /miniapp/ 子路径，H5 需以 base=/miniapp/ 构建。
-#   3) 起服务：
-#        docker compose -f docker-compose.mysql.yml up -d --build
+#   3) 起服务（--env-file 同时供 Compose 变量替换和容器 env_file 使用）：
+#        docker compose --env-file ../env/backend.mysql.env -f docker-compose.mysql.yml up -d --build
 #   4) 建表 + 灌演示数据（首次）：
-#        docker compose -f docker-compose.mysql.yml exec backend python scripts/init_mysql_db.py
-#        docker compose -f docker-compose.mysql.yml exec backend python scripts/seed_mysql_demo_data.py
+#        docker compose --env-file ../env/backend.mysql.env -f docker-compose.mysql.yml exec backend python scripts/init_mysql_db.py
+#        docker compose --env-file ../env/backend.mysql.env -f docker-compose.mysql.yml exec backend python scripts/seed_mysql_demo_data.py
 #   5) 访问： http://服务器IP/           （PC 管理端）
 #            http://服务器IP/miniapp/    （H5）
 #            http://服务器IP/api/v1/docs （后端 Swagger）
@@ -41,6 +41,16 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
+      - --max-connections=${MYSQL_MAX_CONNECTIONS:-200}
+      - --innodb-buffer-pool-size=${MYSQL_INNODB_BUFFER_POOL_SIZE:-2G}
+      - --slow-query-log=ON
+      - --long-query-time=${MYSQL_LONG_QUERY_TIME:-0.5}
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-expire-logs-seconds=604800
+      - --sync-binlog=1
+      - --innodb-flush-log-at-trx-commit=1
     environment:
       MYSQL_DATABASE: ${DB_NAME:-saas_lifecycle}
       MYSQL_USER: ${DB_USER:-saas_user}
@@ -63,7 +73,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec",
+              "--maxmemory", "${REDIS_MAXMEMORY:-512mb}", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - ./volumes/redis:/data
     healthcheck:
