@@ -60,6 +60,8 @@ export const platformControlApi = {
   resetSandboxData: (id) =>
     real('tenant-reset-sandbox', `/platform/tenants/${id}/reset-sandbox-data`, { method: 'POST', body: {} }),
   getTenantUsage: (id) => real('tenant-usage', `/platform/tenants/${id}/usage`, {}),
+  /* 租户数据迁移进度（老系统数据迁移·跨租户只读聚合；无演示兜底，后端不可达时给空列表） */
+  getTenantMigrationProgress: () => real('tenant-migration', '/platform/migration/overview', {}, []),
 
   /* §四 套餐 */
   listPackages: () => real('packages', '/platform/packages', {}, {

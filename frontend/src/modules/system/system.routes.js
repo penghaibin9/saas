@@ -70,6 +70,13 @@ const systemRoutes = {
       component: () => import('@/modules/system/views/SystemLogView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '日志中心', requiresAuth: true, permissionKey: 'systemAdmin.audit.view' }
     },
+    {
+      path: 'migration',
+      name: 'system-migration',
+      component: () => import('@/modules/system/views/SystemMigrationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '老系统数据迁移', requiresAuth: true,
+        permissionKey: 'systemAdmin.migration.view' }
+    },
     /* 8 组 26 项学校级系统管理中尚未有独立业务页的治理能力。
        统一进入 SystemCapabilityView，不伪造写接口；真实服务按 meta.systemCapabilityKey 接入。 */
     {

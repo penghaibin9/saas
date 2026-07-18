@@ -9,6 +9,7 @@ from app.core.graduation_permissions import require_graduation_request_permissio
 from app.api.v1 import academic, approval, audit, auth, authz, campus_service, dashboard, files, orientation, platform, rbac, student, system, tenant, transfer
 from app.api.v1 import file as file_simple
 from app.api.v1 import import_export
+from app.api.v1 import migration  # 老系统数据迁移（系统管理·6 域 P1 + 平台租户迁移进度）
 from app.api.v1 import message as message_simple
 from app.api.v1 import todo as todo_simple
 from app.api.v1 import mobile
@@ -136,6 +137,8 @@ api_router.include_router(make_todos_router("teacher-mobile"))
 api_router.include_router(import_export.import_router, prefix="/import", tags=["import-export"])
 api_router.include_router(import_export.export_router, prefix="/export", tags=["import-export"])
 api_router.include_router(transfer.router)                                   # /api/v1/admin/students/import|export（正式契约占位）
+api_router.include_router(migration.router)                                   # /api/v1/system/migration/*（老系统数据迁移）
+api_router.include_router(migration.platform_router)                          # /api/v1/platform/migration/*（租户迁移进度）
 
 # 审计
 api_router.include_router(audit.router)                                       # /api/v1/admin/audit-logs（PC 管理端）
