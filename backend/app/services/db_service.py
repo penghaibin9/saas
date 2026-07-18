@@ -165,8 +165,10 @@ def list_students(page: int, page_size: int, keyword=None, college=None, major=N
 
 
 def _get_profile(db, student_id) -> StudentProfile:
-    row = db.get(StudentProfile, int(student_id))
-    if not row or row.is_deleted or row.tenant_id != _tid():
+    row = db.scalars(select(StudentProfile).where(
+        StudentProfile.id == int(student_id), StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False))).first()
+    if not row:
         raise not_found("学生不存在或不在当前数据范围内")
     return row
 
@@ -291,7 +293,9 @@ def _task_row(t: WorkflowTask, inst: WorkflowInstance | None) -> dict:
 def _insts(db, ids) -> dict:
     if not ids:
         return {}
-    rows = db.scalars(select(WorkflowInstance).where(WorkflowInstance.id.in_(ids))).all()
+    rows = db.scalars(select(WorkflowInstance).where(
+        WorkflowInstance.id.in_(ids), WorkflowInstance.tenant_id == _tid(),
+        WorkflowInstance.is_deleted.is_(False))).all()
     return {r.id: r for r in rows}
 
 
@@ -323,10 +327,14 @@ def tasks_by_biz_type() -> list[dict]:
 
 def get_task(task_id) -> dict:
     with session() as db:
-        t = db.get(WorkflowTask, int(task_id))
-        if not t or t.is_deleted or t.tenant_id != _tid():
+        t = db.scalars(select(WorkflowTask).where(
+            WorkflowTask.id == int(task_id), WorkflowTask.tenant_id == _tid(),
+            WorkflowTask.is_deleted.is_(False))).first()
+        if not t:
             raise not_found("审批任务不存在")
-        inst = db.get(WorkflowInstance, t.instance_id)
+        inst = db.scalars(select(WorkflowInstance).where(
+            WorkflowInstance.id == t.instance_id, WorkflowInstance.tenant_id == _tid(),
+            WorkflowInstance.is_deleted.is_(False))).first()
         return {**_task_row(t, inst),
                 "history": [{"action": "SUBMIT", "by": (inst.remark if inst else "") or "-",
                              "at": _iso(t.created_at)}]}
@@ -334,8 +342,10 @@ def get_task(task_id) -> dict:
 
 def act_task(task_id, action: str, reason: str | None = None, target: str | None = None) -> dict:
     with session() as db:
-        t = db.get(WorkflowTask, int(task_id))
-        if not t or t.is_deleted or t.tenant_id != _tid():
+        t = db.scalars(select(WorkflowTask).where(
+            WorkflowTask.id == int(task_id), WorkflowTask.tenant_id == _tid(),
+            WorkflowTask.is_deleted.is_(False))).first()
+        if not t:
             raise not_found("审批任务不存在")
         if t.status != "PENDING":
             raise AppException("APPROVAL_VERSION_CONFLICT", "任务已被处理，请刷新")
@@ -346,7 +356,9 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
         if target:
             t.remark = f"TRANSFER_TO:{target}"
         t.version += 1
-        inst = db.get(WorkflowInstance, t.instance_id)
+        inst = db.scalars(select(WorkflowInstance).where(
+            WorkflowInstance.id == t.instance_id, WorkflowInstance.tenant_id == _tid(),
+            WorkflowInstance.is_deleted.is_(False))).first()
         if inst and action in ("APPROVED", "REJECTED"):
             inst.status = action
         db.commit()
@@ -402,8 +414,10 @@ def todo_summary() -> dict:
 
 def todo_done(todo_id) -> dict:
     with session() as db:
-        r = db.get(UnifiedTodo, int(todo_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
+        r = db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.id == int(todo_id), UnifiedTodo.tenant_id == _tid(),
+            UnifiedTodo.is_deleted.is_(False))).first()
+        if not r:
             raise not_found("待办不存在")
         r.status = "DONE"
         r.version += 1
@@ -431,8 +445,10 @@ def list_messages(read_status=None, message_type=None, page=1, page_size=20) -> 
 
 def message_read(message_id) -> dict:
     with session() as db:
-        r = db.get(UnifiedMessage, int(message_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
+        r = db.scalars(select(UnifiedMessage).where(
+            UnifiedMessage.id == int(message_id), UnifiedMessage.tenant_id == _tid(),
+            UnifiedMessage.is_deleted.is_(False))).first()
+        if not r:
             raise not_found("消息不存在")
         r.status = "READ"
         r.read_at = datetime.utcnow()

@@ -29,13 +29,16 @@ def _check_target_scope(student_id: str, user) -> None:
         return
     from app.services.db_service import _tid, session
     from app.models import StudentProfile
+    from sqlalchemy import select
     try:
         sid = int(student_id)
     except (TypeError, ValueError):
         return  # 非法 id 交给 service 报 not_found
     with session() as db:
-        s = db.get(StudentProfile, sid)
-        if s is None or getattr(s, "is_deleted", False) or s.tenant_id != _tid():
+        s = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == sid, StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False))).first()
+        if s is None:
             return  # 不存在/越租户 → service 统一 not_found
         if student_ids is not None:
             if s.id in student_ids:

@@ -227,11 +227,14 @@ def create_students_export(purpose: str) -> dict:
 
 def export_file_path(task_id: str) -> Path:
     if db_enabled() and task_id.isdigit():
+        from sqlalchemy import select
         from app.models import ExportTask
         db = get_sessionmaker()()
         try:
-            row = db.get(ExportTask, int(task_id))
-            if row and row.tenant_id == _tid() and row.remark:
+            row = db.scalars(select(ExportTask).where(
+                ExportTask.id == int(task_id), ExportTask.tenant_id == _tid(),
+                ExportTask.is_deleted.is_(False))).first()
+            if row and row.remark:
                 p = upload_dir() / row.remark
                 if p.exists():
                     return p
