@@ -46,7 +46,8 @@ export const searchUnassignedInternStudents = latestOnly(async (keyword) => {
   const res = await matchApi.getStudentOptions(keyword, PAGE_SIZE)
   return unwrap(res, (s) => ({
     label: s.name || s.studentName,
-    desc: [s.studentNo, s.className].filter(Boolean).join(' · '),
+    // BUG-009：带上批次名，跨批次的同名同学号记录才可区分
+    desc: [s.studentNo, s.className, s.batchName].filter(Boolean).join(' · '),
     value: s.id
   }))
 })

@@ -12,6 +12,19 @@ function fail(message, code = 1) {
   return Promise.resolve({ code, data: null, message })
 }
 
+/** 同一学生同一批次只保留一条实习记录选项（列表按 id 倒序，保留最新一条）。 */
+function dedupeByStudentBatch(items) {
+  const seen = new Set()
+  const out = []
+  for (const s of items) {
+    const key = `${s.studentId || s.id}|${s.batchId || ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(s)
+  }
+  return out
+}
+
 function toErr(e) {
   if (e?.biz) return fail(e.message, e.code || 1)
   return fail(e?.message || '真实接口不可用', 503001)
@@ -122,11 +135,14 @@ export const matchApi = {
   getStudentOptions(keyword, pageSize = 200) {
     return call(() =>
       request('/internship/intern-students', { params: { page: 1, pageSize, hasPosition: false, keyword: keyword || '' } }).then((d) =>
-        (d.items || []).map((s) => ({
+        // BUG-009：一名学生跨批次有多条实习记录，原来 4 条选项显示完全一致无法区分。
+        // 这里按「学生 + 批次」去重（同一批次内不可能有两条待分配记录），并把批次名带进选项。
+        dedupeByStudentBatch(d.items || []).map((s) => ({
           id: s.id,
           name: s.name,
           studentNo: s.studentNo,
           className: s.className,
+          batchName: s.batchName || '',
           label: `${s.name}（${s.studentNo}）`,
           studentId: s.studentId,
           positionId: s.positionId

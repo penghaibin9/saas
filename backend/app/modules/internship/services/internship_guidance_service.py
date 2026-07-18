@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipBatch, InternshipGuidance,
                         InternshipRecord, StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 METHOD_LABEL = {"ONLINE": "线上", "PHONE": "电话", "ONSITE": "现场",
                 "ENTERPRISE_FEEDBACK": "企业导师反馈", "VIDEO": "视频"}
@@ -26,7 +26,7 @@ def _trail(db, gid, action, detail=None, operator="系统"):
 
 
 def _get(db, gid) -> InternshipGuidance:
-    g = db.get(InternshipGuidance, int(gid))
+    g = db.get(InternshipGuidance, _as_id(gid))
     if not g or g.is_deleted or g.tenant_id != _tid():
         raise not_found("指导记录不存在")
     return g
@@ -106,7 +106,7 @@ def create(user, body) -> dict:
     file_id = _validate_file(b.get("fileId"))
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        rec = db.get(InternshipRecord, int(iid))
+        rec = db.get(InternshipRecord, _as_id(iid))
         if not rec or rec.is_deleted or rec.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, rec.student_id)

@@ -54,6 +54,10 @@ export const internStudentApi = {
   setStatus(id, { action, reason }) {
     return call(() => request(`${BASE}/${id}/status`, { method: 'POST', body: { action, reason } }))
   },
+  /** 上岗前置检查清单（BUG-010）：岗位/三方协议/保险/指导教师，按批次规则裁定。 */
+  getOnboardChecklist(id) {
+    return call(() => request(`${BASE}/${id}/onboard-checklist`))
+  },
   setEligibility(id, { status, reason }) {
     return call(() => request(`${BASE}/${id}/eligibility`, { method: 'POST', body: { status, reason } }))
   },

@@ -236,7 +236,8 @@ export default {
         { key: 'edit', label: '编辑', disabled: !this.can('editEnterprise'), disabledReason: this.reason('editEnterprise') }
       ]
       if (row.coopStatus === 'PENDING') {
-        actions.push({ key: 'review', label: '审核', disabled: !this.can('reviewEnterprise'), disabledReason: this.reason('reviewEnterprise') })
+        actions.push({ key: 'review', label: '审核通过', disabled: !this.can('reviewEnterprise'), disabledReason: this.reason('reviewEnterprise') })
+        actions.push({ key: 'reviewReject', label: '审核驳回', danger: true, disabled: !this.can('reviewEnterprise'), disabledReason: this.reason('reviewEnterprise') })
       } else if (row.coopStatus === 'ACTIVE') {
         actions.push({ key: 'coopSuspend', label: '暂停' })
       } else if (row.coopStatus === 'SUSPENDED') {
@@ -253,7 +254,8 @@ export default {
     onRowAction(key, row) {
       if (key === 'detail') return this.$router.push('/admin/internship/enterprises/' + row.id)
       if (key === 'edit') return this.goEdit(row)
-      if (key === 'review') return this.askReview(row)
+      if (key === 'review') return this.askReview(row, 'APPROVE')
+      if (key === 'reviewReject') return this.askReview(row, 'REJECT')
       if (key === 'coopSuspend') return this.askCoop(row, 'SUSPEND')
       if (key === 'coopResume') return this.askCoop(row, 'RESUME')
       if (key === 'blacklistOn') return this.askBlacklist(row, true)
@@ -266,9 +268,25 @@ export default {
       toast.success(`已导入 ${data.created || 0} 家（初始待审核）`)
       this.load()
     },
-    askReview(row) {
+    askReview(row, decision = 'APPROVE') {
+      // BUG-002：驳回分支原来在 PC 端无入口（弹窗文案写了驳回，实际只能通过）。
+      // 驳回强制填审核意见——企业要凭这条意见整改后重新提交。
       if (!this.can('reviewEnterprise')) return toast.error(this.reason('reviewEnterprise'))
-      this.confirm = { visible: true, title: '企业资质审核', message: `确认「${row.name}」资质核验结果？通过→合作中，驳回→已驳回。`, type: 'primary', confirmText: '通过（资质合格）', requireReason: false, reasonLabel: '审核意见', action: 'REVIEW_APPROVE', row, extra: null }
+      const reject = decision === 'REJECT'
+      this.confirm = {
+        visible: true,
+        title: reject ? '企业资质驳回' : '企业资质审核通过',
+        message: reject
+          ? `确认驳回「${row.name}」的资质核验？驳回后状态转为「已驳回」，企业需整改后重新提交。`
+          : `确认「${row.name}」资质合格？通过后状态转为「合作中」，可发布岗位。`,
+        type: reject ? 'danger' : 'primary',
+        confirmText: reject ? '确认驳回' : '通过（资质合格）',
+        requireReason: reject,
+        reasonLabel: reject ? '驳回原因（必填）' : '审核意见（选填）',
+        action: reject ? 'REVIEW_REJECT' : 'REVIEW_APPROVE',
+        row,
+        extra: null
+      }
     },
     askCoop(row, action) {
       const map = { SUSPEND: { t: '暂停合作', c: '确认暂停', type: 'warning' }, RESUME: { t: '恢复合作', c: '确认恢复', type: 'primary' } }
@@ -285,6 +303,7 @@ export default {
       try {
         let res
         if (action === 'REVIEW_APPROVE') res = await internshipApi.reviewEnterprise(row.id, { action: 'APPROVE', comment: reason || '' })
+        else if (action === 'REVIEW_REJECT') res = await internshipApi.reviewEnterprise(row.id, { action: 'REJECT', comment: reason || '' })
         else if (action.startsWith('COOP_')) res = await internshipApi.setEnterpriseCooperation(row.id, { action: action.slice(5), reason: reason || '' })
         else if (action === 'BLACKLIST_ON') res = await internshipApi.setEnterpriseBlacklist(row.id, { on: true, reason: reason || '' })
         else if (action === 'BLACKLIST_OFF') res = await internshipApi.setEnterpriseBlacklist(row.id, { on: false })

@@ -18,7 +18,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact,
                         InternshipPosition)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"DRAFT": "草稿", "PENDING": "待审核", "PUBLISHED": "已上架", "OFFLINE": "已下架",
                 "SUSPENDED": "已暂停", "FULL": "已满员", "RISK": "风险岗位", "ARCHIVED": "已归档"}
@@ -61,7 +61,7 @@ def _company(db, company_id) -> EmpCompany:
 
 
 def _get(db, pos_id) -> InternshipPosition:
-    p = db.get(InternshipPosition, int(pos_id))
+    p = db.get(InternshipPosition, _as_id(pos_id))
     if not p or p.is_deleted or p.tenant_id != _tid():
         raise not_found("岗位不存在或不在当前数据范围内")
     return p
@@ -158,7 +158,7 @@ def get_position(pos_id) -> dict:
 def _resolve_mentor(db, company_id: int, mentor_contact_id) -> tuple[int | None, str | None]:
     if not mentor_contact_id:
         return None, None
-    t = db.get(InternshipEnterpriseContact, int(mentor_contact_id))
+    t = db.get(InternshipEnterpriseContact, _as_id(mentor_contact_id))
     if not t or t.is_deleted or t.tenant_id != _tid() or t.company_id != company_id:
         raise AppException("VALIDATION_ERROR", "企业导师不存在或不属于该企业")
     return t.id, t.name

@@ -17,7 +17,8 @@
         <span v-if="detail.blacklist" class="ed-bl">黑名单 · {{ detail.blacklistReason }}</span>
         <AppStatusTag :type="detail.qualificationStatus === 'PASSED' ? 'success' : (detail.qualificationStatus === 'FAILED' ? 'danger' : 'default')">{{ detail.qualificationLabel }}</AppStatusTag>
         <div class="ed-head__spacer" />
-        <AppPermissionButton v-if="detail.coopStatus === 'PENDING'" code="reviewEnterprise" variant="primary" :allowed="can('reviewEnterprise')" :reason="reason('reviewEnterprise')" @click="askReview">审核</AppPermissionButton>
+        <AppPermissionButton v-if="detail.coopStatus === 'PENDING'" code="reviewEnterprise" variant="primary" :allowed="can('reviewEnterprise')" :reason="reason('reviewEnterprise')" @click="askReview('APPROVE')">审核通过</AppPermissionButton>
+        <AppPermissionButton v-if="detail.coopStatus === 'PENDING'" code="reviewEnterprise" variant="danger" :allowed="can('reviewEnterprise')" :reason="reason('reviewEnterprise')" @click="askReview('REJECT')">审核驳回</AppPermissionButton>
         <AppButton v-else-if="detail.coopStatus === 'ACTIVE'" variant="secondary" @click="askCoop('SUSPEND')">暂停合作</AppButton>
         <AppButton v-else-if="detail.coopStatus === 'SUSPENDED'" variant="secondary" @click="askCoop('RESUME')">恢复合作</AppButton>
         <AppPermissionButton v-if="!detail.blacklist && detail.coopStatus !== 'ARCHIVED'" code="blacklistEnterprise" variant="danger" :allowed="can('blacklistEnterprise')" :reason="reason('blacklistEnterprise')" @click="askBlacklist(true)">拉黑</AppPermissionButton>
@@ -249,9 +250,22 @@ export default {
       if (!this.can('manageEnterpriseContact')) return toast.error(this.reason('manageEnterpriseContact'))
       this.confirm = { visible: true, title: '删除联系人', message: `确认删除「${c.name}」？`, type: 'danger', confirmText: '确认删除', requireReason: false, action: 'DELETE_CONTACT', extra: c.id }
     },
-    askReview() {
+    askReview(decision = 'APPROVE') {
+      // BUG-002：补齐驳回分支，驳回原因必填（企业凭此整改后重新提交）
       if (!this.can('reviewEnterprise')) return toast.error(this.reason('reviewEnterprise'))
-      this.confirm = { visible: true, title: '企业资质审核', message: '确认该企业资质核验通过？通过→合作中。', type: 'primary', confirmText: '通过（资质合格）', requireReason: false, reasonLabel: '审核意见', action: 'REVIEW_APPROVE', extra: null }
+      const reject = decision === 'REJECT'
+      this.confirm = {
+        visible: true,
+        title: reject ? '企业资质驳回' : '企业资质审核通过',
+        message: reject ? '确认驳回该企业资质核验？驳回后状态转为「已驳回」，企业需整改后重新提交。'
+          : '确认该企业资质核验通过？通过→合作中。',
+        type: reject ? 'danger' : 'primary',
+        confirmText: reject ? '确认驳回' : '通过（资质合格）',
+        requireReason: reject,
+        reasonLabel: reject ? '驳回原因（必填）' : '审核意见（选填）',
+        action: reject ? 'REVIEW_REJECT' : 'REVIEW_APPROVE',
+        extra: null
+      }
     },
     askCoop(action) {
       const m = { SUSPEND: { t: '暂停合作', c: '确认暂停', type: 'warning' }, RESUME: { t: '恢复合作', c: '确认恢复', type: 'primary' } }[action]
@@ -268,6 +282,7 @@ export default {
         let res
         if (action === 'DELETE_CONTACT') res = await internshipApi.deleteEnterpriseContact(this.detail.id, extra)
         else if (action === 'REVIEW_APPROVE') res = await internshipApi.reviewEnterprise(this.detail.id, { action: 'APPROVE', comment: reason || '' })
+        else if (action === 'REVIEW_REJECT') res = await internshipApi.reviewEnterprise(this.detail.id, { action: 'REJECT', comment: reason || '' })
         else if (action.startsWith('COOP_')) res = await internshipApi.setEnterpriseCooperation(this.detail.id, { action: action.slice(5), reason: reason || '' })
         else if (action === 'BLACKLIST_ON') res = await internshipApi.setEnterpriseBlacklist(this.detail.id, { on: true, reason: reason || '' })
         else if (action === 'BLACKLIST_OFF') res = await internshipApi.setEnterpriseBlacklist(this.detail.id, { on: false })

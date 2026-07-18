@@ -16,7 +16,7 @@ from app.models import (EmpCompany, InternshipAuditTrail, InternshipIntention, I
                         InternshipPosition, InternshipRecord, Major, StudentProfile)
 from app.modules.internship.services import internship_student_service as student_svc
 from app.services import xlsx_util
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 INTENTION_LABEL = {"DRAFT": "草稿", "SUBMITTED": "已提交", "WITHDRAWN": "已撤回"}
 MATCH_STATUS_LABEL = {
@@ -47,21 +47,21 @@ def _trail(db, target_id: int, action: str, detail: dict | None = None):
 
 
 def _get_intention(db, iid) -> InternshipIntention:
-    row = db.get(InternshipIntention, int(iid))
+    row = db.get(InternshipIntention, _as_id(iid))
     if not row or row.is_deleted or row.tenant_id != _tid():
         raise not_found("意向不存在或不在当前数据范围内")
     return row
 
 
 def _get_match(db, mid) -> InternshipMatch:
-    row = db.get(InternshipMatch, int(mid))
+    row = db.get(InternshipMatch, _as_id(mid))
     if not row or row.is_deleted or row.tenant_id != _tid():
         raise not_found("匹配记录不存在或不在当前数据范围内")
     return row
 
 
 def _get_record(db, rid) -> InternshipRecord:
-    r = db.get(InternshipRecord, int(rid))
+    r = db.get(InternshipRecord, _as_id(rid))
     if not r or r.is_deleted or r.tenant_id != _tid():
         raise not_found("实习学生记录不存在或不在当前数据范围内")
     return r
@@ -534,7 +534,7 @@ def manual_match(record_id, position_id, remark: str = "", user=None) -> dict:
         rec = _get_record(db, record_id)
         from app.modules.internship.services.internship_service import assert_student_in_scope
         assert_student_in_scope(db, rec.student_id, user, "该实习学生不在你的数据范围内")
-        pos = db.get(InternshipPosition, int(position_id))
+        pos = db.get(InternshipPosition, _as_id(position_id))
         if not pos or pos.is_deleted or pos.tenant_id != _tid():
             raise not_found("岗位不存在")
         stu = db.get(StudentProfile, rec.student_id)

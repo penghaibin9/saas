@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipBatchPlan, InternshipPlanAck,
                         InternshipPlanTaskProgress, InternshipRecord, StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 PROG_LABEL = {
     "NOT_STARTED": "未开始",
@@ -208,7 +208,7 @@ def review_progress(prog_id, action: str, comment: str = "", user=None) -> dict:
         raise AppException("VALIDATION_ERROR", "退回原因至少 5 字")
     scope, in_scope = _current_scope(user), _rec_in_scope
     with session() as db:
-        prog = db.get(InternshipPlanTaskProgress, int(prog_id))
+        prog = db.get(InternshipPlanTaskProgress, _as_id(prog_id))
         if not prog or prog.is_deleted or prog.tenant_id != _tid():
             raise not_found("任务进度不存在")
         rec = db.get(InternshipRecord, prog.internship_id)

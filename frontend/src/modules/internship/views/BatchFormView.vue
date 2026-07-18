@@ -67,14 +67,32 @@
           </div>
         </section>
 
-        <!-- 阶段配置（stagesJson） -->
+        <!-- 阶段配置：表单化（BUG-007），高级模式保留原 JSON 通道 -->
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">阶段配置</span>
-            <span class="bf-aside">stagesJson · 留空使用默认三阶段：岗前准备 / 在岗实习 / 总结考核</span>
+            <span class="bf-aside">不填任何阶段时使用默认三阶段：岗前准备 / 在岗实习 / 总结考核</span>
+            <button type="button" class="bf-mode" @click="advancedJson = !advancedJson">
+              {{ advancedJson ? '← 返回表单配置' : '高级模式（JSON）' }}
+            </button>
           </div>
           <div class="mp-card__body bf-json">
+            <template v-if="!advancedJson">
+              <div class="bf-rows">
+                <div v-for="(s, i) in stageRows" :key="i" class="bf-row">
+                  <AppTextInput v-model="s.name" :disabled="readonly" placeholder="阶段名称，如 岗前准备" />
+                  <AppTextInput v-model="s.code" :disabled="readonly" placeholder="标识，如 PREP" />
+                  <AppDatePicker v-model="s.startDate" :disabled="readonly" placeholder="开始日期" />
+                  <AppDatePicker v-model="s.endDate" :disabled="readonly" placeholder="结束日期" />
+                  <AppButton variant="text" :disabled="readonly" @click="removeStage(i)">删除</AppButton>
+                </div>
+                <p v-if="!stageRows.length" class="bf-preview__note">未配置阶段，提交后使用默认三阶段。</p>
+                <AppButton variant="secondary" size="sm" :disabled="readonly" @click="addStage">＋ 添加阶段</AppButton>
+                <p v-if="stageFormError" class="bf-preview__err">{{ stageFormError }}</p>
+              </div>
+            </template>
             <AppFormItem
+              v-else
               label="阶段时间轴"
               prop="stagesJson"
               :error="stagesError"
@@ -91,21 +109,103 @@
             </AppFormItem>
             <div class="bf-preview">
               <div class="bf-preview__title">解析预览</div>
-              <p v-if="stagesParsed.empty" class="bf-preview__note">留空提交时将使用默认三阶段：岗前准备 / 在岗实习 / 总结考核</p>
-              <p v-else-if="stagesError" class="bf-preview__err">{{ stagesError }}</p>
+              <p v-if="advancedJson && stagesParsed.empty" class="bf-preview__note">留空提交时将使用默认三阶段：岗前准备 / 在岗实习 / 总结考核</p>
+              <p v-else-if="advancedJson && stagesError" class="bf-preview__err">{{ stagesError }}</p>
               <AppTimeline v-else :items="stagePreviewItems" />
             </div>
           </div>
         </section>
 
-        <!-- 规则配置（rulesJson：打卡 / 周报 / 指导 / 评价 / 成绩） -->
+        <!-- 规则配置：表单化（BUG-007），6 个规则菜单在此有真正可用的配置界面 -->
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">规则配置</span>
-            <span class="bf-aside">rulesJson · 打卡 / 周报 / 指导 / 评价 / 成绩 · 仅填需覆盖的字段即可局部提交</span>
+            <span class="bf-aside">打卡 / 周报 / 指导 / 评价 / 成绩 / 上岗前置</span>
           </div>
           <div class="mp-card__body bf-json">
+            <div v-if="!advancedJson" class="bf-rules">
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">打卡规则</div>
+                <AppFormItem label="每日必打卡">
+                  <AppRadioGroup v-model="rulesForm.checkin.requireDaily" :options="boolOptions" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="电子围栏半径（米）">
+                  <AppNumberInput v-model="rulesForm.checkin.geofenceRadiusM" :min="50" :max="5000" :step="50" :disabled="readonly" />
+                </AppFormItem>
+              </div>
+
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">周报规则</div>
+                <AppFormItem label="提交频率">
+                  <AppSelect v-model="rulesForm.weeklyReport.frequency" :options="frequencyOptions" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="正文最少字数">
+                  <AppNumberInput v-model="rulesForm.weeklyReport.minWordCount" :min="0" :max="5000" :step="100" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="截止（周几前）">
+                  <AppSelect v-model="rulesForm.weeklyReport.deadlineWeekday" :options="weekdayOptions" :disabled="readonly" />
+                </AppFormItem>
+              </div>
+
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">指导规则</div>
+                <AppFormItem label="每学期最少巡访次数">
+                  <AppNumberInput v-model="rulesForm.guidance.minVisitsPerTerm" :min="0" :max="50" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="每月最少沟通次数">
+                  <AppNumberInput v-model="rulesForm.guidance.minCommunicationsPerMonth" :min="0" :max="50" :disabled="readonly" />
+                </AppFormItem>
+              </div>
+
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">评价权重（合计须为 100%）</div>
+                <AppFormItem label="企业评价 %">
+                  <AppNumberInput v-model="rulesForm.evaluation.enterpriseWeight" :min="0" :max="100" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="教师评价 %">
+                  <AppNumberInput v-model="rulesForm.evaluation.teacherWeight" :min="0" :max="100" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="学生自评 %">
+                  <AppNumberInput v-model="rulesForm.evaluation.selfWeight" :min="0" :max="100" :disabled="readonly" />
+                </AppFormItem>
+                <p :class="evalWeightSum === 100 ? 'bf-preview__note' : 'bf-preview__err'">
+                  当前合计 {{ evalWeightSum }}%
+                </p>
+              </div>
+
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">成绩规则</div>
+                <AppFormItem label="及格线">
+                  <AppNumberInput v-model="rulesForm.score.passThreshold" :min="0" :max="100" :disabled="readonly" />
+                </AppFormItem>
+                <div class="bf-rows">
+                  <div v-for="(c, i) in rulesForm.score.components" :key="i" class="bf-row bf-row--score">
+                    <AppTextInput v-model="c.name" :disabled="readonly" placeholder="构成项名称" />
+                    <AppNumberInput v-model="c.weight" :min="0" :max="100" :disabled="readonly" placeholder="权重 %" />
+                    <AppButton variant="text" :disabled="readonly" @click="removeComponent(i)">删除</AppButton>
+                  </div>
+                  <AppButton variant="secondary" size="sm" :disabled="readonly" @click="addComponent">＋ 添加成绩构成项</AppButton>
+                  <p :class="componentWeightSum === 100 ? 'bf-preview__note' : 'bf-preview__err'">
+                    成绩构成合计 {{ componentWeightSum }}%（须为 100%）
+                  </p>
+                </div>
+              </div>
+
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">上岗前置（未满足则不允许「上岗」）</div>
+                <AppFormItem label="须三方协议生效">
+                  <AppRadioGroup v-model="rulesForm.onboard.requireAgreement" :options="boolOptions" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="须实习保险核验">
+                  <AppRadioGroup v-model="rulesForm.onboard.requireInsurance" :options="boolOptions" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="须分配校内指导教师">
+                  <AppRadioGroup v-model="rulesForm.onboard.requireAdvisor" :options="boolOptions" :disabled="readonly" />
+                </AppFormItem>
+              </div>
+            </div>
             <AppFormItem
+              v-else
               label="规则 JSON"
               prop="rulesJson"
               :error="rulesError"
@@ -120,7 +220,7 @@
                 placeholder='{"checkin":{"requireDaily":true,"geofenceRadiusM":500}}'
               />
             </AppFormItem>
-            <div class="bf-preview">
+            <div v-if="advancedJson" class="bf-preview">
               <div class="bf-preview__title">解析预览</div>
               <p v-if="rulesParsed.empty" class="bf-preview__note">留空提交时将沿用原有/默认规则（打卡、周报、指导、评价、成绩）</p>
               <p v-else-if="rulesError" class="bf-preview__err">{{ rulesError }}</p>
@@ -155,7 +255,7 @@ import { ModulePageShell, LoadingState, ErrorState } from '@/components/business
 import { AppButton } from '@/components/ui'
 import {
   AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-  AppSubmitBar, AppDatePicker, AppTimeline, AppDescriptionList
+  AppSubmitBar, AppDatePicker, AppTimeline, AppDescriptionList, AppSelect, AppRadioGroup
 } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
@@ -177,12 +277,45 @@ const blankForm = () => ({
   plannedCount: 0, remark: '', stagesJson: '', rulesJson: ''
 })
 
+/** 规则表单默认值（与后端 internship_service.DEFAULT_RULES 对齐；权重以百分数呈现）。 */
+const blankRulesForm = () => ({
+  checkin: { requireDaily: true, geofenceRadiusM: 500 },
+  weeklyReport: { frequency: 'WEEKLY', minWordCount: 800, deadlineWeekday: 7 },
+  guidance: { minVisitsPerTerm: 2, minCommunicationsPerMonth: 2 },
+  evaluation: { enterpriseWeight: 40, teacherWeight: 40, selfWeight: 20 },
+  score: {
+    passThreshold: 60,
+    components: [
+      { name: '企业评价', weight: 40 },
+      { name: '教师评价', weight: 40 },
+      { name: '考核成绩', weight: 20 }
+    ]
+  },
+  onboard: { requireAgreement: true, requireInsurance: true, requireAdvisor: true }
+})
+
+const BOOL_OPTIONS = [{ label: '是', value: true }, { label: '否', value: false }]
+const FREQUENCY_OPTIONS = [
+  { label: '每周 1 次', value: 'WEEKLY' },
+  { label: '每两周 1 次', value: 'BIWEEKLY' }
+]
+const WEEKDAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7].map((d) => ({
+  label: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][d - 1], value: d
+}))
+
+/** 0~1 的小数权重转百分数；已是百分数（>1）则原样保留。 */
+function toPercent(v, fallback) {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return fallback
+  return n <= 1 ? Math.round(n * 100) : Math.round(n)
+}
+
 export default {
   name: 'BatchFormView',
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
     AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-    AppSubmitBar, AppDatePicker, AppTimeline, AppDescriptionList
+    AppSubmitBar, AppDatePicker, AppTimeline, AppDescriptionList, AppSelect, AppRadioGroup
   },
   data() {
     return {
@@ -191,10 +324,32 @@ export default {
       error: '',
       submitting: false,
       detail: null,
-      form: blankForm()
+      form: blankForm(),
+      // BUG-007：阶段/规则改为真实表单，advancedJson 保留原 JSON 通道（不删能力）
+      advancedJson: false,
+      stageRows: [],
+      rulesForm: blankRulesForm(),
+      boolOptions: BOOL_OPTIONS,
+      frequencyOptions: FREQUENCY_OPTIONS,
+      weekdayOptions: WEEKDAY_OPTIONS
     }
   },
   computed: {
+    evalWeightSum() {
+      const e = this.rulesForm.evaluation
+      return Number(e.enterpriseWeight || 0) + Number(e.teacherWeight || 0) + Number(e.selfWeight || 0)
+    },
+    componentWeightSum() {
+      return (this.rulesForm.score.components || []).reduce((s, c) => s + Number(c.weight || 0), 0)
+    },
+    stageFormError() {
+      const rows = this.stageRows.filter((s) => (s.name || '').trim() || (s.code || '').trim())
+      if (rows.some((s) => !(s.name || '').trim())) return '每个阶段都必须填写阶段名称'
+      if (rows.some((s) => s.startDate && s.endDate && s.startDate > s.endDate)) {
+        return '阶段的开始日期不能晚于结束日期'
+      }
+      return ''
+    },
     isEdit() {
       return !!this.$route.params.id
     },
@@ -245,7 +400,9 @@ export default {
       return this.stagesParsed.error
     },
     stagePreviewItems() {
-      const stages = this.stagesParsed.data || []
+      const stages = this.advancedJson
+        ? (this.stagesParsed.data || [])
+        : this.stageRows.filter((s) => (s.name || '').trim())
       return stages.map((s, i) => ({
         id: s.code || `stage-${i}`,
         title: s.name || s.code || `阶段 ${i + 1}`,
@@ -294,6 +451,81 @@ export default {
     dateShort(v) {
       return formatDate(v, '')
     },
+    addStage() {
+      this.stageRows.push({ code: '', name: '', startDate: '', endDate: '' })
+    },
+    removeStage(i) {
+      this.stageRows.splice(i, 1)
+    },
+    addComponent() {
+      this.rulesForm.score.components.push({ name: '', weight: 0 })
+    },
+    removeComponent(i) {
+      this.rulesForm.score.components.splice(i, 1)
+    },
+    /** 把后端返回的 stages / rules 回填到结构化表单（权重统一转百分数）。 */
+    fillStructured(d) {
+      this.stageRows = Array.isArray(d.stages)
+        ? d.stages.map((s) => ({
+          code: s.code || '', name: s.name || '',
+          startDate: this.dateShort(s.startDate), endDate: this.dateShort(s.endDate)
+        }))
+        : []
+      const base = blankRulesForm()
+      const r = d.rules || {}
+      this.rulesForm = {
+        checkin: { ...base.checkin, ...(r.checkin || {}) },
+        weeklyReport: { ...base.weeklyReport, ...(r.weeklyReport || {}) },
+        guidance: { ...base.guidance, ...(r.guidance || {}) },
+        evaluation: {
+          enterpriseWeight: toPercent(r.evaluation?.enterpriseWeight, base.evaluation.enterpriseWeight),
+          teacherWeight: toPercent(r.evaluation?.teacherWeight, base.evaluation.teacherWeight),
+          selfWeight: toPercent(r.evaluation?.selfWeight, base.evaluation.selfWeight)
+        },
+        score: {
+          passThreshold: Number(r.score?.passThreshold ?? base.score.passThreshold),
+          components: Array.isArray(r.score?.components) && r.score.components.length
+            ? r.score.components.map((c) => ({ name: c.name || '', weight: toPercent(c.weight, 0) }))
+            : base.score.components
+        },
+        onboard: { ...base.onboard, ...(r.onboard || {}) }
+      }
+    },
+    /** 结构化表单 → 后端 rules 结构（百分数还原为 0~1 小数）。 */
+    buildRulesFromForm() {
+      const f = this.rulesForm
+      return {
+        checkin: {
+          requireDaily: !!f.checkin.requireDaily,
+          geofenceRadiusM: Number(f.checkin.geofenceRadiusM || 0)
+        },
+        weeklyReport: {
+          frequency: f.weeklyReport.frequency,
+          minWordCount: Number(f.weeklyReport.minWordCount || 0),
+          deadlineWeekday: Number(f.weeklyReport.deadlineWeekday || 7)
+        },
+        guidance: {
+          minVisitsPerTerm: Number(f.guidance.minVisitsPerTerm || 0),
+          minCommunicationsPerMonth: Number(f.guidance.minCommunicationsPerMonth || 0)
+        },
+        evaluation: {
+          enterpriseWeight: Number(f.evaluation.enterpriseWeight || 0) / 100,
+          teacherWeight: Number(f.evaluation.teacherWeight || 0) / 100,
+          selfWeight: Number(f.evaluation.selfWeight || 0) / 100
+        },
+        score: {
+          passThreshold: Number(f.score.passThreshold || 0),
+          components: (f.score.components || [])
+            .filter((c) => (c.name || '').trim())
+            .map((c) => ({ name: c.name.trim(), weight: Number(c.weight || 0) / 100 }))
+        },
+        onboard: {
+          requireAgreement: !!f.onboard.requireAgreement,
+          requireInsurance: !!f.onboard.requireInsurance,
+          requireAdvisor: !!f.onboard.requireAdvisor
+        }
+      }
+    },
     pct(v) {
       return `${Math.round((v || 0) * 100)}%`
     },
@@ -307,6 +539,9 @@ export default {
       if (!this.isEdit) {
         this.detail = null
         this.form = blankForm()
+        this.stageRows = []
+        this.rulesForm = blankRulesForm()
+        this.advancedJson = false
         this.loading = false
         return
       }
@@ -335,6 +570,7 @@ export default {
         stagesJson: Array.isArray(d.stages) && d.stages.length ? JSON.stringify(d.stages, null, 2) : '',
         rulesJson: d.rules ? JSON.stringify(d.rules, null, 2) : ''
       }
+      this.fillStructured(d)
     },
     flattenRules(obj, path = []) {
       const rows = []
@@ -370,8 +606,14 @@ export default {
       if (this.readonly || this.submitting) return
       const { valid } = await this.$refs.batchForm.validate()
       if (!valid) return
-      if (this.stagesError) return toast.error('阶段时间轴 JSON 配置有误，请先修正')
-      if (this.rulesError) return toast.error('规则配置 JSON 配置有误，请先修正')
+      if (this.advancedJson) {
+        if (this.stagesError) return toast.error('阶段时间轴 JSON 配置有误，请先修正')
+        if (this.rulesError) return toast.error('规则配置 JSON 配置有误，请先修正')
+      } else {
+        if (this.stageFormError) return toast.error(this.stageFormError)
+        if (this.evalWeightSum !== 100) return toast.error(`评价权重合计须为 100%，当前 ${this.evalWeightSum}%`)
+        if (this.componentWeightSum !== 100) return toast.error(`成绩构成权重合计须为 100%，当前 ${this.componentWeightSum}%`)
+      }
       const f = this.form
       const body = {
         batchName: (f.batchName || '').trim(),
@@ -385,8 +627,21 @@ export default {
         remark: f.remark || ''
       }
       if (!this.isEdit) body.batchNo = (f.batchNo || '').trim()
-      if (!this.stagesParsed.empty) body.stages = this.stagesParsed.data
-      if (!this.rulesParsed.empty) body.rules = this.rulesParsed.data
+      if (this.advancedJson) {
+        if (!this.stagesParsed.empty) body.stages = this.stagesParsed.data
+        if (!this.rulesParsed.empty) body.rules = this.rulesParsed.data
+      } else {
+        const stages = this.stageRows
+          .filter((s) => (s.name || '').trim())
+          .map((s, i) => ({
+            code: (s.code || '').trim() || `STAGE${i + 1}`,
+            name: s.name.trim(),
+            startDate: s.startDate || '',
+            endDate: s.endDate || ''
+          }))
+        if (stages.length) body.stages = stages
+        body.rules = this.buildRulesFromForm()
+      }
       this.submitting = true
       try {
         const res = this.isEdit
@@ -454,9 +709,56 @@ export default {
   color: var(--danger-600);
   word-break: break-all;
 }
+/* 阶段/规则表单化（BUG-007） */
+.bf-mode {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--primary-600);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+}
+.bf-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.bf-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 1fr 1fr auto;
+  gap: var(--space-2);
+  width: 100%;
+  align-items: center;
+}
+.bf-row--score {
+  grid-template-columns: 1.4fr 0.8fr auto;
+}
+.bf-rules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.bf-rules__grp {
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: var(--space-3) var(--space-4);
+}
+.bf-rules__t {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
 @media (max-width: 960px) {
   .bf-grid,
-  .bf-json {
+  .bf-json,
+  .bf-rules {
+    grid-template-columns: 1fr;
+  }
+  .bf-row,
+  .bf-row--score {
     grid-template-columns: 1fr;
   }
 }

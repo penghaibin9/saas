@@ -62,7 +62,7 @@ export default {
     size: { type: String, default: 'normal', validator: (v) => ['normal', 'compact'].includes(v) },
     status: { type: String, default: 'default' }
   },
-  emits: ['update:modelValue', 'change'],
+  emits: ['update:modelValue', 'change', 'clamp'],
   data() {
     return { focused: false, raw: '' }
   },
@@ -104,8 +104,15 @@ export default {
     onBlur() {
       this.focused = false
       if (this.numValue === null) { this.$emit('change', null); return }
-      const clamped = this.clamp(this.numValue)
-      if (clamped !== this.numValue) this.$emit('update:modelValue', clamped)
+      const before = this.numValue
+      const clamped = this.clamp(before)
+      if (clamped !== before) {
+        // BUG-003：越界原来被静默夹回，用户以为自己填的值生效了。
+        // 组件本身是单根 inline-flex 输入框（overflow:hidden），不适合内嵌提示条，
+        // 故抛 clamp 事件，由表单页决定如何告知（toast / 表单错误）。
+        this.$emit('update:modelValue', clamped)
+        this.$emit('clamp', { from: before, to: clamped, min: this.min, max: this.max })
+      }
       this.$emit('change', clamped)
     },
     stepBy(dir) {

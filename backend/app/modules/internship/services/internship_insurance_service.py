@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipInsurance, InternshipRecord, StudentProfile
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {
     "NOT_SUBMITTED": "未提交", "PENDING_VERIFY": "待核验", "VERIFIED": "已核验", "REJECTED": "已驳回",
@@ -108,7 +108,7 @@ def verify_insurance(iid, action: str, comment: str = "", user=None) -> dict:
     if action == "REJECT" and len((comment or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     with session() as db:
-        ins = db.get(InternshipInsurance, int(iid))
+        ins = db.get(InternshipInsurance, _as_id(iid))
         if not ins or ins.is_deleted or ins.tenant_id != _tid():
             raise not_found("保险记录不存在")
         if ins.status != "PENDING_VERIFY":

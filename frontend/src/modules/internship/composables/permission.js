@@ -40,7 +40,22 @@ export function allowByPatterns(patterns, code) {
  * @param {string} code 后端权限码
  */
 export function canCode(ctx, code) {
+  // BUG-001：只读演示租户下，后端对一切写请求直接 403。此前前端照常渲染写按钮，
+  // 用户点了才失败。这里统一把写操作判为不可用（.view/.stat/.export 等读操作不受影响）。
+  if (ctx && ctx.readonlyTenant && isWriteCode(code)) return false
   return allowByPatterns(ctx && ctx.permissionPatterns, code)
 }
 
-export default { allowByPatterns, canCode }
+/** 写操作权限码判定：非只读后缀即视为写（保守口径，宁可多禁一个假可用按钮）。 */
+export function isWriteCode(code) {
+  if (!code) return false
+  const readSuffixes = ['.view', '.stat', '.export', '.detail', '.list', '.download']
+  return !readSuffixes.some((s) => code.endsWith(s))
+}
+
+/** 只读租户下给按钮的统一禁用理由，供 :reason 使用。 */
+export function readonlyReason(ctx) {
+  return (ctx && ctx.readonlyReason) || '正式演示环境为只读，数据不可修改'
+}
+
+export default { allowByPatterns, canCode, isWriteCode, readonlyReason }

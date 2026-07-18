@@ -51,12 +51,20 @@ class ScoreRuleCfg(BaseModel):
         ScoreComponent(name="考核成绩", weight=0.2)])
 
 
+class OnboardRuleCfg(BaseModel):
+    """上岗前置（BUG-010）：学校可按批次关闭其中某项，默认全部要求。"""
+    requireAgreement: bool = Field(True, description="须三方协议生效")
+    requireInsurance: bool = Field(True, description="须实习保险核验通过")
+    requireAdvisor: bool = Field(True, description="须分配校内指导教师")
+
+
 class RulesConfig(BaseModel):
     checkin: CheckinRule = Field(default_factory=CheckinRule)
     weeklyReport: WeeklyReportRuleCfg = Field(default_factory=WeeklyReportRuleCfg)
     guidance: GuidanceRuleCfg = Field(default_factory=GuidanceRuleCfg)
     evaluation: EvaluationRuleCfg = Field(default_factory=EvaluationRuleCfg)
     score: ScoreRuleCfg = Field(default_factory=ScoreRuleCfg)
+    onboard: OnboardRuleCfg = Field(default_factory=OnboardRuleCfg)
 
 
 class BatchCreate(BaseModel):

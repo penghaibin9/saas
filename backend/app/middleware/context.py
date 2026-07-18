@@ -157,6 +157,21 @@ _READONLY_EXEMPT_PREFIXES = (
 _DEMO_READONLY_TENANT_ID = "1000000000000000003"
 
 
+def is_readonly_tenant(tenant: dict | None = None) -> bool:
+    """当前（或指定）租户是否处于演示只读态。供 /rbac/current-context 下发给前端，
+    使按钮层与中间件的 403 判定同源，避免「能点但必然失败」的假可用按钮（BUG-001）。"""
+    try:
+        from app.core.config import settings
+        if not settings.demo_tenant_readonly:
+            return False
+        if tenant is None:
+            from app.core.context import get_tenant
+            tenant = get_tenant() or {}
+        return str((tenant or {}).get("tenantId") or "") == _DEMO_READONLY_TENANT_ID
+    except Exception:  # noqa: BLE001 — 判定失败按「非只读」处理，后端仍是最终边界
+        return False
+
+
 def _demo_tenant_readonly_deny(request: Request):
     """正式演示租户数据不许改动：登录后的所有写操作（POST/PUT/PATCH/DELETE）返回 403，
     引导参观者去体验沙箱（sandbox-school）随意操作。auth/登录/登出/刷新不受限。"""

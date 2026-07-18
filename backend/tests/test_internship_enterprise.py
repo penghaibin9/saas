@@ -52,9 +52,15 @@ def test_review_state_machine(client, auth_headers, db_mode):
 
 
 def test_review_reject(client, auth_headers, db_mode):
+    """驳回必须写明原因（≥5 字，与请假驳回/周报退回/批次作废同一口径）——
+    企业要凭这条意见整改后重新提交，空泛的「不符」无法指导整改。"""
     cid = _create(client, auth_headers, creditCode="91310000REJ00001XA")["data"]["id"]
+    # 原因不足 5 字被拒
+    bad = client.post(f"{BASE}/{cid}/review", headers=auth_headers,
+                      json={"action": "REJECT", "comment": "资质不符"}).json()
+    assert bad["code"] == 422001
     rj = client.post(f"{BASE}/{cid}/review", headers=auth_headers,
-                     json={"action": "REJECT", "comment": "资质不符"}).json()
+                     json={"action": "REJECT", "comment": "营业执照经营范围与实习岗位不符"}).json()
     assert rj["code"] == 0 and rj["data"]["coopStatus"] == "REJECTED"
 
 

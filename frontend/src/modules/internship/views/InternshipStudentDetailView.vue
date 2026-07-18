@@ -176,8 +176,16 @@ export default {
     askUnassign() {
       this.confirm = { visible: true, title: '退岗', message: '确认退岗？将释放该岗位名额。', type: 'warning', confirmText: '确认退岗', requireReason: true, reasonLabel: '退岗原因', action: 'UNASSIGN', extra: null }
     },
-    askStatus(action) {
+    async askStatus(action) {
       const m = STATUS_NEXT[this.detail.status]
+      // BUG-010：上岗前先取前置清单，缺项直接列出来，别让教师点完才吃 409
+      if (action === 'ONBOARD') {
+        const res = await internStudentApi.getOnboardChecklist(this.detail.id)
+        if (res.code === 0 && res.data && !res.data.canOnboard) {
+          const miss = (res.data.blockers || []).join('；')
+          return toast.error(miss ? `不能上岗，前置未完成：${miss}` : '不能上岗，前置条件未满足')
+        }
+      }
       this.confirm = { visible: true, title: m.label, message: `确认执行「${m.label}」？`, type: 'primary', confirmText: '确认', requireReason: false, action: 'STATUS', extra: action }
     },
     askDestination(dest) {

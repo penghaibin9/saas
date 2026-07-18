@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, not_found
 from app.models import InternshipAuditTrail, InternshipProcessReport, InternshipRecord, StudentProfile
 from app.services import xlsx_util
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 TYPE_LABEL = {"DAILY": "日报", "MONTHLY": "月报", "SUMMARY": "实习总结"}
 STATUS_LABEL = {"PENDING_REVIEW": "待批阅", "APPROVED": "已通过", "RETURNED": "已退回"}
@@ -108,7 +108,7 @@ def list_reports(page, page_size, report_type=None, status=None, keyword=None, u
 
 def get_report(rid, user=None):
     with session() as db:
-        r = db.get(InternshipProcessReport, int(rid))
+        r = db.get(InternshipProcessReport, _as_id(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("过程报告不存在")
         rec = db.get(InternshipRecord, r.internship_id)
@@ -175,7 +175,7 @@ def review_report(rid, action: str, comment: str = "", user=None) -> dict:
     if action == "RETURN" and len((comment or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
-        r = db.get(InternshipProcessReport, int(rid))
+        r = db.get(InternshipProcessReport, _as_id(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("过程报告不存在")
         rec = db.get(InternshipRecord, r.internship_id)

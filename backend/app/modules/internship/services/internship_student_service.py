@@ -14,9 +14,10 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import (EmpCompany, InternshipAuditTrail, InternshipPosition, InternshipRecord,
+from app.models import (EmpCompany, InternshipAgreement, InternshipAuditTrail, InternshipBatch,
+                        InternshipInsurance, InternshipPosition, InternshipRecord,
                         Role, StudentContact, StudentProfile, User, UserRole)
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.services.db_service import _as_id, _iso, _mask_phone, _tid, session
 
 STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在岗中",
                 "ASSESSING": "考核中", "ARCHIVED": "已归档"}
@@ -40,7 +41,7 @@ def _trail(db, rec_id: int, action: str, detail: dict | None = None):
 
 
 def _get(db, rec_id) -> InternshipRecord:
-    r = db.get(InternshipRecord, int(rec_id))
+    r = db.get(InternshipRecord, _as_id(rec_id))
     if not r or r.is_deleted or r.tenant_id != _tid():
         raise not_found("实习学生记录不存在或不在当前数据范围内")
     return r
@@ -75,7 +76,7 @@ def _advisor_role_user_ids(db) -> set[int]:
 def _advisor(db, advisor_user_id=None, advisor_name=None) -> User | None:
     """Resolve a new advisor to one active staff account; names remain display-only compatibility input."""
     if advisor_user_id:
-        row = db.get(User, int(advisor_user_id))
+        row = db.get(User, _as_id(advisor_user_id))
         if not row or row.is_deleted or row.tenant_id != _tid() or row.status != "ACTIVE":
             raise not_found("指导教师账号不存在、已停用或不在当前租户")
         if row.user_type not in ("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN"):
@@ -172,13 +173,15 @@ def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
                            college_name=college_name, advisor_user_id=r.advisor_user_id)
 
 
-def _row(r: InternshipRecord, stu: StudentProfile | None) -> dict:
+def _row(r: InternshipRecord, stu: StudentProfile | None, batch_name: str = "") -> dict:
     return {
         "id": str(r.id), "studentId": str(r.student_id),
         "name": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
         "className": (stu.grade + "级") if stu and stu.grade else "-",
         "classId": str(stu.class_id) if stu and stu.class_id else "",
         "batchId": str(r.batch_id) if r.batch_id else "",
+        # BUG-009：同一学生跨批次会有多条实习记录，下拉必须能靠批次名区分
+        "batchName": batch_name or "",
         "enterpriseId": str(r.enterprise_id) if r.enterprise_id else "",
         "enterpriseName": r.enterprise_name or "",
         "positionId": str(r.position_id) if r.position_id else "",
@@ -199,8 +202,21 @@ def _row(r: InternshipRecord, stu: StudentProfile | None) -> dict:
     }
 
 
+def _batch_names(db, batch_ids) -> dict:
+    """批量取批次名（消 N+1），用于列表/下拉区分同一学生的跨批次记录。"""
+    ids = {b for b in batch_ids if b}
+    if not ids:
+        return {}
+    rows = db.scalars(select(InternshipBatch).where(InternshipBatch.id.in_(ids))).all()
+    return {b.id: b.batch_name or "" for b in rows}
+
+
 def _row_of(db, r: InternshipRecord) -> dict:
-    return _row(r, db.get(StudentProfile, r.student_id))
+    batch_name = ""
+    if r.batch_id:
+        b = db.get(InternshipBatch, r.batch_id)
+        batch_name = (b.batch_name or "") if b else ""
+    return _row(r, db.get(StudentProfile, r.student_id), batch_name)
 
 
 # ═══════════ 列表 / 详情 ═══════════
@@ -225,6 +241,7 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
             q = q.where(InternshipRecord.position_id.is_(None))
         rows = db.scalars(q.order_by(InternshipRecord.id.desc())).all()
         smap = _students_map(db, [r.student_id for r in rows])
+        bmap = _batch_names(db, [r.batch_id for r in rows])
         scope = _current_scope(user)
         items = []
         for r in rows:
@@ -237,7 +254,7 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
                 continue
             if not _rec_in_scope(scope, db, r, stu):  # P0-D：教师只见本人指导/本院范围
                 continue
-            items.append(_row(r, stu))
+            items.append(_row(r, stu, bmap.get(r.batch_id, "")))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -362,7 +379,7 @@ def assign_position(rec_id, position_id, user=None) -> dict:
         _assert_write_scope(db, r, user)
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可分配岗位")
-        p = db.get(InternshipPosition, int(position_id))
+        p = db.get(InternshipPosition, _as_id(position_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("岗位不存在或不在当前数据范围内")
         if r.position_id == p.id:
@@ -424,6 +441,54 @@ def unassign_position(rec_id, reason: str = "", user=None) -> dict:
 
 # ═══════════ 状态机 / 资格 / 去向 ═══════════
 
+def _onboard_rules(db, r: InternshipRecord) -> dict:
+    """取该记录所属批次的上岗前置规则；批次未配置时用系统默认（全部要求）。"""
+    default = {"requireAgreement": True, "requireInsurance": True, "requireAdvisor": True}
+    if not r.batch_id:
+        return default
+    b = db.get(InternshipBatch, r.batch_id)
+    cfg = ((b.rules_config or {}).get("onboard") or {}) if b else {}
+    return {k: bool(cfg.get(k, v)) for k, v in default.items()}
+
+
+def _onboard_blockers(db, r: InternshipRecord) -> list[str]:
+    """上岗前置校验清单（BUG-010）：岗位 + 三方协议生效 + 保险核验 + 校内指导教师。
+    岗位为硬前置（无岗即无实习关系）；其余三项按批次规则可关，默认要求。"""
+    rules = _onboard_rules(db, r)
+    missing: list[str] = []
+    if not r.position_id:
+        missing.append("未分配岗位")
+    if rules["requireAgreement"]:
+        ag = db.scalars(select(InternshipAgreement).where(
+            InternshipAgreement.tenant_id == _tid(),
+            InternshipAgreement.internship_id == r.id,
+            InternshipAgreement.is_deleted.is_(False),
+            InternshipAgreement.status == "EFFECTIVE")).first()
+        if not ag:
+            missing.append("三方协议未生效")
+    if rules["requireInsurance"]:
+        ins = db.scalars(select(InternshipInsurance).where(
+            InternshipInsurance.tenant_id == _tid(),
+            InternshipInsurance.internship_id == r.id,
+            InternshipInsurance.is_deleted.is_(False),
+            InternshipInsurance.status == "VERIFIED")).first()
+        if not ins:
+            missing.append("实习保险未核验")
+    if rules["requireAdvisor"] and not (r.advisor_user_id or (r.advisor_name or "").strip()):
+        missing.append("未分配校内指导教师")
+    return missing
+
+
+def get_onboard_checklist(rec_id, user=None) -> dict:
+    """上岗前置检查清单（供前端在点「上岗」前展示，不做写操作）。"""
+    with session() as db:
+        r = _get(db, rec_id)
+        _assert_write_scope(db, r, user)
+        blockers = _onboard_blockers(db, r)
+        return {"internshipId": str(r.id), "canOnboard": not blockers and r.status == "READY",
+                "statusReady": r.status == "READY", "blockers": blockers}
+
+
 def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
     """READY / ONBOARD / ASSESS / ARCHIVE。上岗需已合格 + 已分配岗位。"""
     with session() as db:
@@ -438,8 +503,9 @@ def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
         elif action == "ONBOARD":
             if r.status != "READY":
                 raise AppException("DATA_CONFLICT", "仅「待上岗」可上岗")
-            if not r.position_id:
-                raise AppException("DATA_CONFLICT", "未分配岗位，不能上岗")
+            missing = _onboard_blockers(db, r)
+            if missing:
+                raise AppException("DATA_CONFLICT", "上岗前置未完成：" + "；".join(missing))
             r.status = "ONBOARD"
             if not r.intern_start_date:
                 r.intern_start_date = datetime.utcnow()

@@ -60,7 +60,7 @@
                 <AppTextInput v-model="form.title" :disabled="readonly" placeholder="如：Java开发实习生 / 市场营销实习生 / 化工工艺实习生" />
               </AppFormItem>
               <AppFormItem label="容量" prop="headcount" required :hint="isEdit && detail ? `已分配 ${detail.allocatedCount} 人，容量不能低于已分配数` : ''">
-                <AppNumberInput v-model="form.headcount" :min="1" :disabled="readonly" />
+                <AppNumberInput v-model="form.headcount" :min="1" :disabled="readonly" @clamp="onHeadcountClamp" />
               </AppFormItem>
             </div>
           </div>
@@ -258,6 +258,10 @@ export default {
   methods: {
     // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
     searchEnterprises,
+    onHeadcountClamp({ from, to }) {
+      // BUG-003：容量填 -5 原来被静默改成 1，用户毫无感知
+      toast.warning(`容量最少 ${to} 人，已把输入的 ${from} 修正为 ${to}`)
+    },
     onPickWelfare(text) {
       if (!text) return
       const cur = (this.form.subsidy || '').split(/[、,，]/).map((s) => s.trim()).filter(Boolean)

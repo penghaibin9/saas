@@ -64,7 +64,7 @@
             <div class="ops">
               <AppButton variant="ghost" size="sm" @click="openDetail(row)">核对</AppButton>
               <AppPermissionButton v-if="canRecalc(row)" code="internship.score.manage" :allowed="canBtn('internship.score.manage')" variant="ghost" size="sm" @click="openCompute(row)">核算/重算</AppPermissionButton>
-              <AppPermissionButton v-if="row.status === 'PENDING_REVIEW'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="secondary" size="sm" :disabled="row.incomplete" @click="confirmAct(row, 'publish')">发布</AppPermissionButton>
+              <AppPermissionButton v-if="row.status === 'PENDING_REVIEW'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="secondary" size="sm" :disabled="row.incomplete" :native-title="row.incomplete ? (row.incompleteReason || '成绩缺项，补齐后方可发布') : ''" @click="confirmAct(row, 'publish')">发布</AppPermissionButton>
               <AppPermissionButton v-if="row.status === 'PENDING_REVIEW'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="ghost" size="sm" @click="confirmAct(row, 'return')">退回</AppPermissionButton>
               <AppPermissionButton v-if="row.status === 'PUBLISHED'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="ghost" size="sm" :danger="true" @click="confirmAct(row, 'withdraw')">撤回</AppPermissionButton>
               <AppPermissionButton v-if="row.status === 'PUBLISHED'" code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="ghost" size="sm" @click="confirmAct(row, 'archive')">归档</AppPermissionButton>

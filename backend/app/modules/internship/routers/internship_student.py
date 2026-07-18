@@ -152,6 +152,12 @@ def unassign_position(record_id: str, body: UnassignRequest, user=Depends(requir
     return success(result, message="已退岗")
 
 
+@router.get("/intern-students/{record_id}/onboard-checklist",
+            summary="上岗前置检查清单（岗位/三方协议/保险/指导教师，按批次规则）")
+def student_onboard_checklist(record_id: str, user=Depends(require_permission(_P_MANAGE))):
+    return success(svc.get_onboard_checklist(record_id, user=user))
+
+
 @router.post("/intern-students/{record_id}/status", summary="实习状态机（待上岗/上岗/考核/归档）")
 def student_status(record_id: str, body: StudentStatusRequest, user=Depends(require_permission(_P_MANAGE))):
     result = svc.set_status(record_id, body.action, body.reason or "", user=user)

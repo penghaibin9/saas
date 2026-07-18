@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipRecord, InternshipStudentEval,
                         StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 SUBMIT_LABEL = {"DRAFT": "草稿", "SUBMITTED": "已提交"}
 REVIEW_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "RETURNED": "已退回"}
@@ -29,7 +29,7 @@ def _trail(db, eid, action, detail=None, operator="系统"):
 
 
 def _get(db, eid) -> InternshipStudentEval:
-    e = db.get(InternshipStudentEval, int(eid))
+    e = db.get(InternshipStudentEval, _as_id(eid))
     if not e or e.is_deleted or e.tenant_id != _tid():
         raise not_found("学生鉴定不存在")
     return e

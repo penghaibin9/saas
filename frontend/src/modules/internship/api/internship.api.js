@@ -14,7 +14,7 @@ import {
   ACTION_DENY_REASONS,
   statusOptions
 } from '@/modules/internship/constants/context.constants'
-import { allowByPatterns } from '@/modules/internship/composables/permission'
+import { allowByPatterns, isWriteCode } from '@/modules/internship/composables/permission'
 import { setPermissionPatterns } from '@/security/permissionGate'
 
 function ok(data) {
@@ -66,6 +66,9 @@ export const internshipApi = {
     let permissionPatterns = null
     let roleCtx = { ...currentRole, roleName }
     let ctxKey = ''
+    // BUG-001：只读演示租户由后端下发，前端据此禁用全部写按钮（不再「点了才 403」）
+    let readonlyTenant = false
+    let readonlyReason = ''
     try {
       if (shouldTryReal()) {
         const me = await request('/auth/me')
@@ -76,6 +79,8 @@ export const internshipApi = {
           const rc = await request('/rbac/current-context')
           if (rc && Array.isArray(rc.permissionPatterns)) {
             permissionPatterns = rc.permissionPatterns
+            readonlyTenant = !!rc.readonlyTenant
+            readonlyReason = rc.readonlyReason || ''
             const cr = rc.currentRole || {}
             // 优先用后端返回的真实角色名，退回 userType 猜测名仅作离线兜底。
             if (cr.roleName) roleName = cr.roleName
@@ -97,9 +102,17 @@ export const internshipApi = {
     // 细粒度按钮态：拿到真实 permissionPatterns 时逐项由后端权限码判定；取不到时走 allowByPatterns 降级
     //（开发构建放开便于联调 / 正式构建禁用，不 all-allow，符合 §8.4.3）。
     const pa = clone(permissionActions)
+    const roText = readonlyReason || '正式演示环境为只读，数据不可修改。需要动手体验请用沙箱账号登录'
     Object.keys(pa).forEach((k) => {
-      const allowed = allowByPatterns(permissionPatterns, ACTION_PERMISSION_CODES[k])
-      pa[k] = { visible: true, allowed, reason: allowed ? '' : (ACTION_DENY_REASONS[k] || '无操作权限，请联系管理员') }
+      const code = ACTION_PERMISSION_CODES[k]
+      let allowed = allowByPatterns(permissionPatterns, code)
+      let reason = allowed ? '' : (ACTION_DENY_REASONS[k] || '无操作权限，请联系管理员')
+      // BUG-001：只读租户下写按钮直接禁用并说明原因，与后端 403 判定同源
+      if (allowed && readonlyTenant && isWriteCode(code)) {
+        allowed = false
+        reason = roText
+      }
+      pa[k] = { visible: true, allowed, reason }
     })
     return ok({
       tenantBrandConfig: brand,
@@ -107,6 +120,8 @@ export const internshipApi = {
       dataScope: { ...dataScope, scopeName, name: scopeName },
       permissionActions: pa,
       permissionPatterns,
+      readonlyTenant,
+      readonlyReason: readonlyTenant ? roText : '',
       ctxKey,
       statusOptions: clone(statusOptions)
     })

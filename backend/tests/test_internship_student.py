@@ -31,6 +31,26 @@ def _record(client, h, sid):
     return client.post(IST, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 
+def _satisfy_onboard_prereqs(rid):
+    """补齐上岗前置（BUG-010）：三方协议生效 + 保险核验通过 + 校内指导教师。
+
+    这三项在真实业务里分别由协议、保险、指导教师分配三个模块产生；本用例只验状态机，
+    故直接写库造前置，不绕过 set_status 本身的校验。"""
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipAgreement, InternshipInsurance, InternshipRecord
+    db = get_sessionmaker()()
+    try:
+        rec = db.get(InternshipRecord, int(rid))
+        rec.advisor_name = "张指导"
+        db.add(InternshipAgreement(tenant_id=rec.tenant_id, internship_id=rec.id,
+                                   student_id=rec.student_id, status="EFFECTIVE"))
+        db.add(InternshipInsurance(tenant_id=rec.tenant_id, internship_id=rec.id,
+                                   student_id=rec.student_id, status="VERIFIED"))
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_create_and_list(client, auth_headers, db_mode):
     sid = _student(client, auth_headers, "S-IST-001")
     r = client.post(IST, headers=auth_headers, json={"studentId": sid}).json()
@@ -156,6 +176,15 @@ def test_status_machine(client, auth_headers, db_mode):
     # 未分配岗位不能上岗
     assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD"}).json()["code"] != 0
     client.post(f"{IST}/{rid}/assign", headers=auth_headers, json={"positionId": pid})
+    # BUG-010：仅「有岗位」不足以上岗——三方协议/保险/指导教师任一缺失都必须拦住
+    blocked = client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD"}).json()
+    assert blocked["code"] != 0 and "上岗前置未完成" in blocked["message"]
+    # 前置清单接口应如实列出缺什么（供前端在点「上岗」前提示）
+    chk = client.get(f"{IST}/{rid}/onboard-checklist", headers=auth_headers).json()["data"]
+    assert chk["canOnboard"] is False and "三方协议未生效" in chk["blockers"]
+    _satisfy_onboard_prereqs(rid)
+    chk2 = client.get(f"{IST}/{rid}/onboard-checklist", headers=auth_headers).json()["data"]
+    assert chk2["canOnboard"] is True and chk2["blockers"] == []
     assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD"}).json()["data"]["status"] == "ONBOARD"
     assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ASSESS"}).json()["data"]["status"] == "ASSESSING"
     assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ARCHIVE"}).json()["data"]["status"] == "ARCHIVED"

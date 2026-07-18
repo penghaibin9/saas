@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipRecord, InternshipVisit, StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 METHOD_LABEL = {"ONSITE": "现场", "ONLINE": "线上", "PHONE": "电话"}
 RECTIFY_LABEL = {"NONE": "无需整改", "PENDING": "整改中", "DONE": "已整改"}
@@ -25,7 +25,7 @@ def _trail(db, vid, action, detail=None, operator="系统"):
 
 
 def _get(db, vid) -> InternshipVisit:
-    v = db.get(InternshipVisit, int(vid))
+    v = db.get(InternshipVisit, _as_id(vid))
     if not v or v.is_deleted or v.tenant_id != _tid():
         raise not_found("巡访记录不存在")
     return v
@@ -75,7 +75,7 @@ def create(user, body) -> dict:
     file_id = _validate_file(b.get("fileId"))
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        rec = db.get(InternshipRecord, int(iid))
+        rec = db.get(InternshipRecord, _as_id(iid))
         if not rec or rec.is_deleted or rec.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, rec.student_id)

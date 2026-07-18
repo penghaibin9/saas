@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from math import asin, cos, radians, sin, sqrt
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.exceptions import AppException
 from app.core.student_lifecycle import student_stage_label
@@ -1080,23 +1080,30 @@ def my_applications(user: dict) -> dict:
         from app.models import CsGrant, CsLeave, CsServiceStudent, CsWorkOrder
         cs = _resolve_domain_student(db, CsServiceStudent, stu)
         apps = []
+        _done = {"APPROVED", "COMPLETED", "CLOSED", "PASSED", "GRANTED"}
+        _rej = {"REJECTED", "RETURNED", "VOIDED"}
+
+        def _grp(s):
+            s = (s or "").upper()
+            return "done" if s in _done else "rejected" if s in _rej else "processing"
+
+        # t_cs_leave 双状态列并行(P0 §4.2 集成①)：13A 新提交只挂 student_id(cs_student_id=0)，
+        # 老 campus-service 提交只挂 cs_student_id。按 cs.id 单一条件查会漏掉新提交的请假，
+        # 这里补上 student_id 分支，两条线都要查，不能只认其中一条。
+        leave_conds = [CsLeave.student_id == stu.id]
         if cs:
-            _done = {"APPROVED", "COMPLETED", "CLOSED", "PASSED", "GRANTED"}
-            _rej = {"REJECTED", "RETURNED", "VOIDED"}
-
-            def _grp(s):
-                s = (s or "").upper()
-                return "done" if s in _done else "rejected" if s in _rej else "processing"
-
-            for lv in db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
-                                 CsLeave.cs_student_id == cs.id, CsLeave.is_deleted.is_(False)
-                                 ).order_by(CsLeave.id.desc())).all():
-                apps.append({"id": "leave-" + str(lv.id), "no": lv.code or ("SV" + str(lv.id)),
-                             "name": f"学生请假（{lv.leave_type}）", "group": _grp(lv.status),
-                             "status": lv.status, "statusText": lv.status, "applyTime": _iso(lv.apply_time),
-                             "dept": "学工处", "handler": lv.reviewer or "待分配",
-                             "lastOpinion": lv.return_reason or "", "hasResult": _grp(lv.status) != "processing",
-                             "sourceType": "LEAVE"})
+            leave_conds.append(CsLeave.cs_student_id == cs.id)
+        for lv in db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
+                             or_(*leave_conds), CsLeave.is_deleted.is_(False)
+                             ).order_by(CsLeave.id.desc())).all():
+            lv_status = lv.affairs_status or lv.status
+            apps.append({"id": "leave-" + str(lv.id), "no": lv.code or ("SV" + str(lv.id)),
+                         "name": f"学生请假（{lv.leave_type}）", "group": _grp(lv_status),
+                         "status": lv_status, "statusText": lv_status, "applyTime": _iso(lv.apply_time),
+                         "dept": "学工处", "handler": lv.reviewer or "待分配",
+                         "lastOpinion": lv.return_reason or "", "hasResult": _grp(lv_status) != "processing",
+                         "sourceType": "LEAVE"})
+        if cs:
             for gr in db.scalars(select(CsGrant).where(CsGrant.tenant_id == _tid(),
                                  CsGrant.cs_student_id == cs.id, CsGrant.is_deleted.is_(False)
                                  ).order_by(CsGrant.id.desc())).all():
@@ -1401,8 +1408,28 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
         dup = db.scalars(select(WeeklyReport).where(
             WeeklyReport.tenant_id == _tid(), WeeklyReport.internship_id == rec.id,
             WeeklyReport.week_number == week_no, WeeklyReport.is_deleted.is_(False))).first()
-        if dup:
+        if dup and dup.status != "RETURNED":
             raise AppException("DATA_CONFLICT", f"第 {week_no} 周周报已提交，请勿重复提交")
+        if dup:
+            # BUG-014：已退回的周报允许重交 → 版本号 +1，旧版正文已在退回时快照留痕，教师可逐版对比
+            dup.work_content = work_content
+            dup.harvest_content = harvest_content
+            dup.plan_content = plan_content
+            dup.word_count = len(work_content) + len(harvest_content) + len(plan_content)
+            dup.report_version = int(dup.report_version or 1) + 1
+            dup.status = "PENDING_REVIEW"
+            dup.submitted_at = _dt.utcnow()
+            dup.review_action = None
+            dup.review_comment = None
+            dup.reviewed_by_name = None
+            dup.reviewed_at = None
+            wid, status = dup.id, dup.status
+            db.commit()
+            audit_log.record("MOBILE_WEEKLY_RESUBMIT", f"internship:week{week_no}",
+                             {"studentNo": u.get("studentNo"), "weekNo": week_no,
+                              "version": dup.report_version})
+            return {"id": str(wid), "status": status,
+                    "message": f"周报已重新提交（第 {dup.report_version} 版）"}
         w = WeeklyReport(tenant_id=_tid(), internship_id=rec.id, week_number=week_no,
                          work_content=work_content, harvest_content=harvest_content,
                          plan_content=plan_content,

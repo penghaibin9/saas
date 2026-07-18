@@ -47,6 +47,16 @@
                 <div class="mp-timeline__title">{{ v.title }}</div>
                 <div v-if="v.desc" class="mp-timeline__desc">{{ v.desc }}</div>
                 <div class="mp-timeline__time">{{ v.time }}</div>
+                <template v-if="v.content && (v.content.work || v.content.harvest || v.content.plan)">
+                  <button type="button" class="wr-ver__toggle" @click="toggleVersion(i)">
+                    {{ openVersions.includes(i) ? '收起该版正文' : '查看该版正文' }}
+                  </button>
+                  <div v-if="openVersions.includes(i)" class="wr-ver__body">
+                    <p v-if="v.content.work"><b>本周工作：</b>{{ v.content.work }}</p>
+                    <p v-if="v.content.harvest"><b>学习收获：</b>{{ v.content.harvest }}</p>
+                    <p v-if="v.content.plan"><b>下周计划：</b>{{ v.content.plan }}</p>
+                  </div>
+                </template>
               </li>
             </ul>
             <p v-else class="mp-note" style="margin: 0">暂无历史版本，本篇为首次提交。</p>
@@ -119,7 +129,7 @@ export default {
   components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, openVersions: [] }
   },
   computed: {
     canReview() { return canCode(this.ctx, 'internship.report.review') },
@@ -142,6 +152,7 @@ export default {
       this.action = 'APPROVE'
       this.comment = ''
       this.formError = ''
+      this.openVersions = []
       this.load()
     }
   },
@@ -149,6 +160,11 @@ export default {
     this.load()
   },
   methods: {
+    toggleVersion(i) {
+      const at = this.openVersions.indexOf(i)
+      if (at >= 0) this.openVersions.splice(at, 1)
+      else this.openVersions.push(i)
+    },
     onPickChip(text) {
       if (!text) return
       const cur = (this.comment || '').trim()
@@ -169,7 +185,9 @@ export default {
       this.action = action
       this.formError = ''
       if (action === 'RETURN' && (!this.comment || this.comment.trim().length < 5)) {
+        // BUG-015：原来只写 formError，输入区在页面下方时用户看不到「点了没反应」→ 同步弹 toast
         this.formError = '退回原因必填且不少于 5 个字'
+        toast.error('退回原因必填且不少于 5 个字')
         return
       }
       this.submitting = true
@@ -192,4 +210,7 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .wr-chips { margin-bottom: var(--space-2); }
+.wr-ver__toggle { margin-top: var(--space-1); padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
+.wr-ver__body { margin-top: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-bg-subtle, #f6f7f9); }
+.wr-ver__body p { margin: 0 0 var(--space-1); font-size: var(--font-size-sm); line-height: 1.7; white-space: pre-wrap; }
 </style>

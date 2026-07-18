@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, InternshipFinalScore,
                         InternshipRecord, InternshipScoreConfig, StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PENDING_CALC": "待核算", "PENDING_REVIEW": "待复核", "PUBLISHED": "已发布",
                 "WITHDRAWN": "已撤回", "ARCHIVED": "已归档"}
@@ -38,7 +38,7 @@ def _trail(db, sid, action, detail=None, operator="系统"):
 
 
 def _get(db, sid) -> InternshipFinalScore:
-    s = db.get(InternshipFinalScore, int(sid))
+    s = db.get(InternshipFinalScore, _as_id(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("成绩不存在")
     return s
@@ -112,7 +112,7 @@ def save_config(user, body) -> dict:
         batch_id = b.get("batchId") or None
         if batch_id:
             from app.models import InternshipBatch
-            batch = db.get(InternshipBatch, int(batch_id))
+            batch = db.get(InternshipBatch, _as_id(batch_id))
             if not batch or batch.is_deleted or batch.tenant_id != _tid():
                 raise not_found("实习批次不存在")
             if batch.status != "DRAFT":
@@ -167,7 +167,7 @@ def compute(user, body) -> dict:
              "school_score": _score_or_none(b.get("schoolScore"))}
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        rec = db.get(InternshipRecord, int(iid))
+        rec = db.get(InternshipRecord, _as_id(iid))
         if not rec or rec.is_deleted or rec.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, rec.student_id)

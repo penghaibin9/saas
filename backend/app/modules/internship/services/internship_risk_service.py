@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipRecord, RiskRecord, StudentProfile
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PENDING_HANDLE": "待处理", "PROCESSING": "处理中",
                 "RESOLVED": "已化解", "CLOSED": "已关闭"}
@@ -32,7 +32,7 @@ def _trail(db, rid, action, detail=None, operator="系统"):
 
 
 def _get(db, rid) -> RiskRecord:
-    r = db.get(RiskRecord, int(rid))
+    r = db.get(RiskRecord, _as_id(rid))
     if not r or r.is_deleted or r.tenant_id != _tid():
         raise not_found("风险单不存在")
     return r

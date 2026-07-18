@@ -15,7 +15,7 @@ from app.models import (InternshipAgreement, InternshipArchive, InternshipAuditT
                         InternshipCheckin, InternshipEnterpriseEval, InternshipFinalScore,
                         InternshipGuidance, InternshipRecord, InternshipStudentEval,
                         StudentProfile, WeeklyReport)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 MATERIALS = [
     ("agreement", "三方协议"), ("checkin", "打卡记录"), ("weekly", "周报"),
@@ -125,7 +125,7 @@ def list_by_student(page, page_size, keyword=None, batch_id=None, only_incomplet
 def get_archive(internship_id, user=None) -> dict:
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        r = db.get(InternshipRecord, int(internship_id))
+        r = db.get(InternshipRecord, _as_id(internship_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, r.student_id)
@@ -147,7 +147,7 @@ def archive_student(user, internship_id, force=False) -> dict:
     """归档：快照材料完整性并锁定。默认要求 100% 完整；force=True 允许带缺失归档（记 missing）。"""
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        r = db.get(InternshipRecord, int(internship_id))
+        r = db.get(InternshipRecord, _as_id(internship_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, r.student_id)
@@ -190,7 +190,7 @@ def build_package(user, internship_id) -> dict:
 
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        r = db.get(InternshipRecord, int(internship_id))
+        r = db.get(InternshipRecord, _as_id(internship_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, r.student_id)
@@ -252,7 +252,7 @@ def revoke_archive(user, internship_id, reason="") -> dict:
         raise AppException("VALIDATION_ERROR", "撤销归档原因必填且不少于 5 字")
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        r = db.get(InternshipRecord, int(internship_id))
+        r = db.get(InternshipRecord, _as_id(internship_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, r.student_id)

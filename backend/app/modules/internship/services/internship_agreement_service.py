@@ -8,6 +8,7 @@ owner：学生本人确认（mobile）；教师/管理员生成/下发/推进/�
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from sqlalchemy import select
@@ -15,7 +16,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
                         InternshipRecord, StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"DRAFT": "草稿", "PENDING_STUDENT": "待学生确认", "PENDING_ENTERPRISE": "待企业确认",
                 "PENDING_SCHOOL": "待学校确认", "EFFECTIVE": "已生效", "REJECTED": "已驳回",
@@ -34,10 +35,32 @@ def _trail(db, aid, action, detail=None, operator="系统"):
 
 
 def _get(db, aid) -> InternshipAgreement:
-    a = db.get(InternshipAgreement, int(aid))
+    a = db.get(InternshipAgreement, _as_id(aid))
     if not a or a.is_deleted or a.tenant_id != _tid():
         raise not_found("协议不存在")
     return a
+
+
+def _cn_date(v) -> str:
+    """正式文书日期格式（BUG-011）：2026-03-02T00:00:00 → 2026年3月2日。空值返回空串。"""
+    s = _iso(v) or ""
+    if len(s) < 10:
+        return ""
+    try:
+        y, m, d = int(s[0:4]), int(s[5:7]), int(s[8:10])
+    except ValueError:
+        return s[:10]
+    return f"{y}年{m}月{d}日"
+
+
+_ISO_DT_IN_TEXT = re.compile(r"(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}(?::\d{2})?")
+
+
+def _normalize_body_dates(text: str | None) -> str:
+    """把正文里的 ISO 时间戳规范成中文日期（只影响展示/打印，不改写库中快照）。"""
+    if not text:
+        return ""
+    return _ISO_DT_IN_TEXT.sub(lambda m: f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日", text)
 
 
 def _render_body(tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> str:
@@ -49,7 +72,10 @@ def _render_body(tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> str:
         "companyName": a.enterprise_name or (rec.enterprise_name if rec else "") or "",
         "enterpriseName": a.enterprise_name or (rec.enterprise_name if rec else "") or "",
         "positionName": a.position_name or (rec.position_name if rec else "") or "",
-        "internPeriod": f"{_iso(rec.intern_start_date) or ''} 至 {_iso(rec.intern_end_date) or ''}" if rec else "",
+        "internPeriod": (f"{_cn_date(rec.intern_start_date)} 至 {_cn_date(rec.intern_end_date)}"
+                         if rec and (rec.intern_start_date or rec.intern_end_date) else ""),
+        "internStartDate": _cn_date(rec.intern_start_date) if rec else "",
+        "internEndDate": _cn_date(rec.intern_end_date) if rec else "",
         "advisorName": (rec.advisor_name if rec else "") or "",
     }
     if tpl and (tpl.body or "").strip():
@@ -114,7 +140,8 @@ def _row(a, rec, stu):
         "esignStatus": a.esign_status, "hasFile": bool(a.file_id),
         "createdAt": _iso(a.created_at) or "",
         # 历史协议（本次修复前生成）rendered_body 为空时按结构化字段兜底渲染，不写库、只读时补齐
-        "renderedBody": a.rendered_body or _render_body(None, rec, stu, a),
+        # BUG-011：历史快照里遗留的 ISO 时间戳（2026-03-02T00:00:00）在展示/打印时规范为中文日期
+        "renderedBody": _normalize_body_dates(a.rendered_body or _render_body(None, rec, stu, a)),
     }
 
 
@@ -140,7 +167,7 @@ def generate(user, body) -> dict:
     tpl_id = b.get("templateId")
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        rec = db.get(InternshipRecord, int(iid))
+        rec = db.get(InternshipRecord, _as_id(iid))
         if not rec or rec.is_deleted or rec.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, rec.student_id)
@@ -148,7 +175,7 @@ def generate(user, body) -> dict:
             raise no_permission("只能为本人指导学生生成协议")
         tpl = None
         if tpl_id:
-            tpl = db.get(InternshipAgreementTemplate, int(tpl_id))
+            tpl = db.get(InternshipAgreementTemplate, _as_id(tpl_id))
             if not tpl or tpl.is_deleted or tpl.tenant_id != _tid():
                 raise not_found("协议模板不存在")
         exist = db.scalars(select(InternshipAgreement).where(

@@ -162,7 +162,13 @@ export default {
     summaryItems() { const d = this.detail.data || {}; return SUMMARY_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     leaveItems() { const d = this.detail.data || {}; return LEAVE_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     reviewItems() { const d = this.detail.data || {}; return REVIEW_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
-    hasReview() { const d = this.detail.data || {}; return !!(d.reviewBy || d.reviewAt || d.reviewComment) },
+    // BUG-013：待审批单据不得展示审批人/时间——脏数据里 PENDING 也带审批人时会误导教师
+    // 以为已经有人批过。只有终态（已通过/已驳回）才渲染审批结论区。
+    hasReview() {
+      const d = this.detail.data || {}
+      if (!['APPROVED', 'REJECTED'].includes(d.status)) return false
+      return !!(d.reviewBy || d.reviewAt || d.reviewComment)
+    },
     attachmentFiles() { const a = this.detail.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
     auditRecords() {
       return (this.detail.data?.auditTrail || []).map((t, i) => ({

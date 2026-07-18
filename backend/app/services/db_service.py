@@ -28,6 +28,16 @@ def _tid() -> int:
         return DEFAULT_TENANT
 
 
+def _as_id(v):
+    """路径/入参主键安全转换（BUG-017）：非数字不再抛 ValueError → 500，而是 404 资源不存在。
+    用于 db.get(Model, _as_id(x))，避免 /students/abc 之类脏 URL 打成服务端错误。"""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        from app.core.exceptions import not_found
+        raise not_found("资源不存在或标识不合法") from None
+
+
 def _iso(v) -> str | None:
     return v.isoformat(timespec="seconds") if isinstance(v, datetime) else (str(v) if v else None)
 

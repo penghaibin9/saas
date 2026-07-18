@@ -14,7 +14,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (EmpCompany, InternshipAuditTrail, InternshipCommunicationLog,
                         InternshipRecord, StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 TYPE_LABEL = {"PHONE": "电话", "WECHAT": "微信", "EMAIL": "邮件", "ONSITE": "现场",
               "MEETING": "会议", "ENTERPRISE_FEEDBACK": "企业反馈"}
@@ -31,7 +31,7 @@ def _trail(db, cid, action, detail=None, user=None):
 
 
 def _get(db, cid):
-    c = db.get(InternshipCommunicationLog, int(cid))
+    c = db.get(InternshipCommunicationLog, _as_id(cid))
     if not c or c.is_deleted or c.tenant_id != _tid():
         raise not_found("沟通记录不存在或不在当前数据范围内")
     return c
@@ -128,7 +128,7 @@ def create_communication(body, user=None):
         raise AppException("VALIDATION_ERROR", "沟通方式不合法")
     direction = (body.get("direction") or "SCHOOL").upper()
     with session() as db:
-        company = db.get(EmpCompany, int(enterprise_id))
+        company = db.get(EmpCompany, _as_id(enterprise_id))
         if not company or company.is_deleted or company.tenant_id != _tid():
             raise not_found("关联企业不存在或不在当前数据范围内")
         internship_id = int(body["internshipId"]) if body.get("internshipId") else None

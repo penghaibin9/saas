@@ -74,7 +74,7 @@ def test_admin_metrics_correct(client, db_mode):
     data = client.get(f"{INT}/stats/overview", headers=_admin(client)).json()["data"]
     assert _c(data, "totalStudents")["value"] == 2
     assert _c(data, "onboardStudents")["value"] == 2
-    # 落实率：两条 ONBOARD → 100
+    # 落实率口径（BUG-018）：按去向 destination_type != NONE 计，两条均为 ASSIGNED → 100
     assert _m(data, "placementRate")["rate"] == 100.0
     # 协议签署率：1 生效 / 2 → 50
     assert _m(data, "agreementSignRate")["numerator"] == 1 and _m(data, "agreementSignRate")["rate"] == 50.0
@@ -143,3 +143,30 @@ def test_export(client, db_mode):
     assert res.status_code == 200
     d = res.json()["data"]
     assert d["filename"].endswith(".xlsx") and d["contentBase64"] and d["rowCount"] > 0
+
+
+def test_placement_rate_follows_destination_not_status(client, db_mode):
+    """BUG-018 回归：状态推进到 ONBOARD 但去向仍为 NONE 的记录不得计入实习落实率。
+
+    修复前口径把「status in (READY/ONBOARD/ASSESSING/ARCHIVED)」也算作已落实，
+    于是出现落实率 100% 而岗位匹配率仅 16.7% 的自相矛盾；现在与学生台账「去向」同源。
+    """
+    ids = _seed(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentProfile
+    db = get_sessionmaker()()
+    try:
+        s = StudentProfile(tenant_id=TID, student_no="ST-C", real_name="丙",
+                           current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
+        db.add(s); db.flush()
+        # 在岗中 + 未分配岗位 + 去向未落实（沙箱里真实存在的非法组合）
+        db.add(InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name="刘强",
+                                status="ONBOARD", risk_level="NONE", destination_type="NONE"))
+        db.commit()
+    finally:
+        db.close()
+    data = client.get(f"{INT}/stats/overview", headers=_admin(client)).json()["data"]
+    placement = _m(data, "placementRate")
+    assert placement["denominator"] == 3
+    assert placement["numerator"] == 2, "去向未落实的记录不得计入落实率分子"
+    assert ids  # 保持与 _seed 返回值的关联，便于失败时定位种子数据

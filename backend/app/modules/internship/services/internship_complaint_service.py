@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipComplaint, InternshipRecord, RiskRecord
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"RECEIVED": "已登记", "ACCEPTED": "已受理", "INVESTIGATING": "调查中",
                 "RESOLVED": "已办结", "REJECTED": "不成立", "WITHDRAWN": "已撤回", "CLOSED": "已关闭"}
@@ -39,7 +39,7 @@ def _trail(db, cid, action, detail=None, user=None):
 
 
 def _get(db, cid):
-    c = db.get(InternshipComplaint, int(cid))
+    c = db.get(InternshipComplaint, _as_id(cid))
     if not c or c.is_deleted or c.tenant_id != _tid():
         raise not_found("投诉不存在或不在当前数据范围内")
     return c

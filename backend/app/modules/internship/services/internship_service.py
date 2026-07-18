@@ -12,7 +12,7 @@ from app.models import (AttendanceException, InternshipAuditTrail, InternshipBat
                         InternshipCheckin, InternshipRecord, RiskRecord, StudentContact,
                         StudentProfile, WeeklyReport)
 from app.modules.internship.schemas.internship import RulesConfig, StageItem
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.services.db_service import _as_id, _iso, _mask_phone, _tid, session
 
 STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在岗中",
                 "ASSESSING": "考核中", "ARCHIVED": "已归档"}
@@ -40,6 +40,8 @@ DEFAULT_RULES = {
     "score": {"passThreshold": 60.0, "components": [
         {"name": "企业评价", "weight": 0.4}, {"name": "教师评价", "weight": 0.4},
         {"name": "考核成绩", "weight": 0.2}]},
+    # 上岗前置（BUG-010）：学校可按批次关闭其中某项，默认全部要求。
+    "onboard": {"requireAgreement": True, "requireInsurance": True, "requireAdvisor": True},
 }
 
 
@@ -154,7 +156,7 @@ def assert_student_in_scope(db, student_id, user, msg: str = "该学生不在你
         return
     from app.models import StudentProfile
     from app.services.mobile_teacher_service import can_teacher_view_student
-    stu = db.get(StudentProfile, int(student_id))
+    stu = db.get(StudentProfile, _as_id(student_id))
     if stu is None or not can_teacher_view_student(user, stu, scope=scope, db=db):
         from app.core.exceptions import no_permission
         raise no_permission(msg)
@@ -255,7 +257,7 @@ def list_internship_students(page, page_size, keyword=None, class_id=None,
 
 def get_internship_student_detail(record_id, user=None) -> dict:
     with session() as db:
-        r = db.get(InternshipRecord, int(record_id))
+        r = db.get(InternshipRecord, _as_id(record_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("实习记录不存在或不在当前数据范围内")
         stu = db.get(StudentProfile, r.student_id)
@@ -360,6 +362,10 @@ def list_checkins(page, page_size, result=None, keyword=None, internship_id=None
             stu = stu_map.get(rec.student_id) if rec else None
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
                 continue
+            # BUG-012：关联不到实习记录/学生的孤儿打卡不进台账——整行学号姓名都是「-」，
+            # 教师无法据此核对，展示出来只会污染台账与导出。
+            if rec is None or rec.is_deleted or stu is None:
+                continue
             if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map):  # P0-D 数据范围
                 continue
             items.append(_checkin_row(c, rec, stu))
@@ -426,7 +432,7 @@ def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=
 
 def get_exception_detail(exception_id, user=None) -> dict:
     with session() as db:
-        c = db.get(AttendanceException, int(exception_id))
+        c = db.get(AttendanceException, _as_id(exception_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("打卡异常不存在")
         rec, stu = _exc_ctx(db, c)
@@ -455,7 +461,7 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
     if not comment or len(comment.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "处理意见必填且不少于 5 字")
     with session() as db:
-        c = db.get(AttendanceException, int(exception_id))
+        c = db.get(AttendanceException, _as_id(exception_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("打卡异常不存在")
         rec, stu = _exc_ctx(db, c)
@@ -490,6 +496,45 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
 
 
 # ═══ 周报 ═══
+
+def _report_snapshot(w: WeeklyReport) -> dict:
+    """周报某一版的正文快照（写入留痕 detail_json，作为版本记录的真实数据源）。"""
+    return {"version": int(w.report_version or 1), "wordCount": int(w.word_count or 0),
+            "submittedAt": _iso(w.submitted_at) or "",
+            "work": w.work_content or "", "harvest": w.harvest_content or "",
+            "plan": w.plan_content or ""}
+
+
+def _report_versions(trail, w: WeeklyReport) -> list[dict]:
+    """版本记录（BUG-014）：从留痕中还原历史版本正文 + 当前版本，按版本号升序。
+    历史退回快照来自 REVIEW_RETURN 留痕；无快照的老数据只呈现事件、不伪造正文。"""
+    items = []
+    for t in trail:
+        snap = (t.detail_json or {}).get("snapshot")
+        if not snap:
+            continue
+        cmt = (t.detail_json or {}).get("comment") or ""
+        items.append({"version": f"v{snap.get('version', 1)}", "tone": "warning",
+                      "title": f"v{snap.get('version', 1)} 已退回",
+                      "desc": f"{snap.get('wordCount', 0)} 字 · 退回人 {t.operator_name or '系统'}"
+                              + (f" · 意见：{cmt}" if cmt else ""),
+                      "time": snap.get("submittedAt") or _iso(t.occurred_at) or "",
+                      "operator": t.operator_name or "系统",
+                      "comment": cmt,
+                      "wordCount": snap.get("wordCount", 0),
+                      "content": {"work": snap.get("work", ""), "harvest": snap.get("harvest", ""),
+                                  "plan": snap.get("plan", "")}})
+    cur = _report_snapshot(w)
+    items.append({"version": f"v{cur['version']}", "tone": "processing" if w.status == "PENDING_REVIEW" else "success",
+                  "title": f"v{cur['version']} {REPORT_STATUS_LABEL.get(w.status, w.status)}（当前版本）",
+                  "desc": f"{cur['wordCount']} 字"
+                          + (f" · 批阅人 {w.reviewed_by_name}" if w.reviewed_by_name else "")
+                          + (f" · 意见：{w.review_comment}" if w.review_comment else ""),
+                  "time": cur["submittedAt"], "operator": w.reviewed_by_name or "",
+                  "comment": w.review_comment or "", "wordCount": cur["wordCount"],
+                  "content": {"work": cur["work"], "harvest": cur["harvest"], "plan": cur["plan"]}})
+    return items
+
 
 def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfile | None) -> dict:
     return {
@@ -531,7 +576,7 @@ def list_weekly_reports(page, page_size, status=None, keyword=None, user=None):
 
 def get_weekly_report_detail(report_id, user=None) -> dict:
     with session() as db:
-        w = db.get(WeeklyReport, int(report_id))
+        w = db.get(WeeklyReport, _as_id(report_id))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("周报不存在")
         rec = db.get(InternshipRecord, w.internship_id)
@@ -548,6 +593,7 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
             "content": {"work": w.work_content or "", "harvest": w.harvest_content or "",
                         "plan": w.plan_content or ""},
             "reviewComment": w.review_comment or "",
+            "versions": _report_versions(trail, w),
             "trail": [{"who": t.operator_name or "系统", "time": _iso(t.occurred_at),
                        "action": t.action,
                        "affected": json.dumps(t.detail_json or {}, ensure_ascii=False)} for t in trail],
@@ -561,7 +607,7 @@ def review_weekly_report(report_id, action: str, comment: str, user=None) -> dic
     if action == "RETURN" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
-        w = db.get(WeeklyReport, int(report_id))
+        w = db.get(WeeklyReport, _as_id(report_id))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("周报不存在")
         rec = db.get(InternshipRecord, w.internship_id)
@@ -577,7 +623,11 @@ def review_weekly_report(report_id, action: str, comment: str, user=None) -> dic
         w.reviewed_by_name = _op_name()
         w.reviewed_at = datetime.utcnow()
         w.version += 1
-        _trail(db, w.id, "REPORT", f"REVIEW_{action}", {"comment": (comment or "").strip()})
+        detail = {"comment": (comment or "").strip()}
+        if action == "RETURN":
+            # BUG-014：退回即冻结本版正文快照，学生重交后教师仍可逐版对比（版本记录数据源）
+            detail["snapshot"] = _report_snapshot(w)
+        _trail(db, w.id, "REPORT", f"REVIEW_{action}", detail)
         db.commit()
         return {"id": str(w.id), "status": w.status,
                 "statusLabel": REPORT_STATUS_LABEL.get(w.status, w.status)}
@@ -587,7 +637,7 @@ def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
     """向周报所属学生发送真实站内提醒；无账号映射时明确失败，不伪造成功。"""
     from app.models import UnifiedMessage, User
     with session() as db:
-        w = db.get(WeeklyReport, int(report_id))
+        w = db.get(WeeklyReport, _as_id(report_id))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("周报不存在")
         rec = db.get(InternshipRecord, w.internship_id)
@@ -708,8 +758,26 @@ def _batch_detail_row(db, b: InternshipBatch) -> dict:
     return row
 
 
+def _pick_current_batch(db):
+    """全模块页头「当前批次」口径（BUG-006）：
+    ① 进行中且今天落在起止区间内 → ② 任一进行中 → ③ 未作废/未归档的最新一条。
+    绝不返回已作废（VOIDED）/已归档（ARCHIVED）批次作为业务上下文。"""
+    rows = db.scalars(select(InternshipBatch).where(
+        InternshipBatch.tenant_id == _tid(),
+        InternshipBatch.is_deleted.is_(False),
+        InternshipBatch.status.notin_(["VOIDED", "ARCHIVED"]),
+    ).order_by(InternshipBatch.id.desc())).all()
+    if not rows:
+        return None
+    now = datetime.utcnow()
+    running = [b for b in rows if b.status == "RUNNING"]
+    in_window = [b for b in running
+                 if b.start_date and b.end_date and b.start_date <= now <= b.end_date]
+    return (in_window or running or rows)[0]
+
+
 def _get_batch(db, bid) -> InternshipBatch:
-    b = db.get(InternshipBatch, int(bid))
+    b = db.get(InternshipBatch, _as_id(bid))
     if not b or b.is_deleted or b.tenant_id != _tid():
         raise not_found("实习批次不存在或不在当前数据范围内")
     return b
@@ -763,11 +831,25 @@ def get_batch(bid) -> dict:
         return _batch_detail_row(db, _get_batch(db, bid))
 
 
+def _assert_batch_dates(start, end, signup_start, signup_end) -> None:
+    """批次日期区间校验（BUG-008）：起止不得颠倒，报名期不得晚于实习结束。"""
+    if start and end and start > end:
+        raise AppException("VALIDATION_ERROR",
+                           f"实习开始日期不能晚于结束日期（{_iso(start)[:10]} > {_iso(end)[:10]}）")
+    if signup_start and signup_end and signup_start > signup_end:
+        raise AppException("VALIDATION_ERROR",
+                           f"报名开始日期不能晚于报名截止日期（{_iso(signup_start)[:10]} > {_iso(signup_end)[:10]}）")
+    if signup_end and end and signup_end > end:
+        raise AppException("VALIDATION_ERROR", "报名截止日期不能晚于实习结束日期")
+
+
 def create_batch(body: dict) -> dict:
     name = str(body.get("batchName") or "").strip()
     no = str(body.get("batchNo") or "").strip()
     if not name or not no:
         raise AppException("VALIDATION_ERROR", "批次名称与批次编号必填")
+    _assert_batch_dates(_parse_dt(body.get("startDate")), _parse_dt(body.get("endDate")),
+                        _parse_dt(body.get("signupStartDate")), _parse_dt(body.get("signupEndDate")))
     with session() as db:
         dup = db.scalars(select(InternshipBatch).where(
             InternshipBatch.tenant_id == _tid(), InternshipBatch.batch_no == no,
@@ -805,6 +887,8 @@ def update_batch(bid, body: dict) -> dict:
                        "signupEndDate": "signup_end_date"}.items():
             if body.get(k) is not None:
                 setattr(b, col, _parse_dt(body[k]))
+        # BUG-008：改期同样校验（用改后的最终值，而非仅本次传入字段）
+        _assert_batch_dates(b.start_date, b.end_date, b.signup_start_date, b.signup_end_date)
         if body.get("plannedCount") is not None:
             b.planned_count = int(body["plannedCount"] or 0)
         if body.get("stages") is not None:
@@ -934,9 +1018,7 @@ def get_dashboard_summary(user=None) -> dict:
         pending_exc = _cnt(AttendanceException, AttendanceException.status == "PENDING_HANDLE")
         pending_rep = _cnt(WeeklyReport, WeeklyReport.status == "PENDING_REVIEW")
         risk_cnt = _cnt(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]))
-        batch = db.scalars(select(InternshipBatch).where(
-            InternshipBatch.tenant_id == _tid(),
-            InternshipBatch.is_deleted.is_(False)).order_by(InternshipBatch.id.desc())).first()
+        batch = _pick_current_batch(db)
         return {
             "batchName": batch.batch_name if batch else "实习批次",
             "batchRange": (f"{_iso(batch.start_date)[:10]} ~ {_iso(batch.end_date)[:10]}"

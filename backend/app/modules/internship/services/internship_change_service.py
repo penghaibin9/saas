@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipChangeRequest, InternshipRecord, StudentProfile
 from app.modules.internship.services import internship_student_service as stu_svc
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 TYPE_LABEL = {"CHANGE_POSITION": "换岗", "CHANGE_ENTERPRISE": "换实习单位", "SELF_ARRANGED": "自主实习变更"}
 STATUS_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
@@ -74,7 +74,7 @@ def list_changes(page, page_size, status=None, keyword=None, user=None):
 
 def get_change(cid, user=None):
     with session() as db:
-        c = db.get(InternshipChangeRequest, int(cid))
+        c = db.get(InternshipChangeRequest, _as_id(cid))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("变更申请不存在")
         rec = db.get(InternshipRecord, c.internship_id)
@@ -133,7 +133,7 @@ def student_apply(rec, stu, body) -> dict:
 
 def withdraw_change(cid, rec, stu) -> dict:
     with session() as db:
-        c = db.get(InternshipChangeRequest, int(cid))
+        c = db.get(InternshipChangeRequest, _as_id(cid))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("变更申请不存在")
         if c.internship_id != rec.id or c.student_id != stu.id:
@@ -152,7 +152,7 @@ def review_change(cid, action: str, comment: str = "", user=None) -> dict:
     if action == "REJECT" and len((comment or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     with session() as db:
-        c = db.get(InternshipChangeRequest, int(cid))
+        c = db.get(InternshipChangeRequest, _as_id(cid))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("变更申请不存在")
         if c.status != "PENDING":
@@ -184,7 +184,7 @@ def review_change(cid, action: str, comment: str = "", user=None) -> dict:
             if ctype == "SELF_ARRANGED":
                 stu_svc.set_destination(rid, "SELF_ARRANGED", reason, user=user)
             with session() as db:
-                r = db.get(InternshipRecord, int(rid))
+                r = db.get(InternshipRecord, _as_id(rid))
                 if r:
                     if ten:
                         r.enterprise_name = ten

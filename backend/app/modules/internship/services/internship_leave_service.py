@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipLeave,
                         InternshipRecord, RiskRecord, StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PENDING": "待审批", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
 STATUS_LABEL.update({"RETURNED": "已销假", "OVERDUE": "超期未销假"})
@@ -32,7 +32,7 @@ def _trail(db, lid, action, detail=None, operator="系统"):
 
 
 def _get(db, lid) -> InternshipLeave:
-    lv = db.get(InternshipLeave, int(lid))
+    lv = db.get(InternshipLeave, _as_id(lid))
     if not lv or lv.is_deleted or lv.tenant_id != _tid():
         raise not_found("请假申请不存在")
     return lv

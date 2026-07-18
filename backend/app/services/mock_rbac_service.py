@@ -167,7 +167,16 @@ def get_current_context(user_ctx: dict) -> dict:
     from app.core.permissions import _granted, _role_of, is_super_admin
     role = _role_of(user_ctx) or active["contextType"]
     patterns = ["*"] if is_super_admin(user_ctx) else sorted(_granted(role))
+    # BUG-001：正式演示租户是只读的（中间件对所有写请求返回 403），但前端此前无从得知，
+    # 仍渲染全部写按钮，用户点了才吃 403。把只读态显式下发，前端按钮层同步收敛。
+    from app.core.context import get_tenant
+    from app.middleware.context import is_readonly_tenant
+    tenant = get_tenant() or {}
+    readonly_tenant = is_readonly_tenant(tenant)
     return {
+        "readonlyTenant": readonly_tenant,
+        "readonlyReason": ("正式演示环境为只读，数据不可修改。需要动手体验请用沙箱账号登录"
+                           if readonly_tenant else ""),
         "currentRole": {"roleCode": role, "roleName": active["contextName"],
                         "userName": user_ctx.get("realName", ""),
                         "contextId": active.get("contextId", ""),

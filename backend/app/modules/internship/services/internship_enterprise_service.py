@@ -18,7 +18,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact
 from app.services import excel  # 公共 Excel 导入导出底座（V1.1）
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.services.db_service import _as_id, _iso, _mask_phone, _tid, session
 
 # 统一社会信用代码：宽松校验——纯字母数字、8~20 位（拦截含空格/冒号/标签/纯符号的脏值）。
 # 注：真实标准为 18 位固定字符集，待演示数据统一为真实码后可收紧为 ^[0-9A-HJ-NPQRTUWXY]{18}$。
@@ -76,7 +76,7 @@ def _trail(db, company_id: int, action: str, detail: dict | None = None):
 
 
 def _get(db, company_id) -> EmpCompany:
-    row = db.get(EmpCompany, int(company_id))
+    row = db.get(EmpCompany, _as_id(company_id))
     if not row or row.is_deleted or row.tenant_id != _tid():
         raise not_found("企业不存在或不在当前数据范围内")
     return row
@@ -236,6 +236,8 @@ def review_enterprise(company_id, action: str, comment: str = "") -> dict:
     """资质审核：仅 PENDING 可审。APPROVE→ACTIVE+资质通过；REJECT→REJECTED+资质不通过。"""
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "非法审核动作")
+    if action == "REJECT" and len((comment or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 个字")
     with session() as db:
         c = _get(db, company_id)
         if c.coop_status != "PENDING":
@@ -350,7 +352,7 @@ def _unset_primary(db, company_id: int, ctype: str) -> None:
 
 
 def _get_contact(db, company_id: int, contact_id) -> InternshipEnterpriseContact:
-    t = db.get(InternshipEnterpriseContact, int(contact_id))
+    t = db.get(InternshipEnterpriseContact, _as_id(contact_id))
     if not t or t.is_deleted or t.tenant_id != _tid() or t.company_id != company_id:
         raise not_found("联系人不存在")
     return t

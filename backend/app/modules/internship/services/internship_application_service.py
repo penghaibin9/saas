@@ -11,7 +11,7 @@ from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (EmpCompany, InternshipApplication, InternshipAuditTrail, InternshipPosition,
                         InternshipRecord, StudentProfile)
 from app.modules.internship.services import internship_student_service as student_svc
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 TYPE_LABEL = {"POSITION": "校内岗位志愿", "SELF_ARRANGED": "自主实习"}
 STATUS_LABEL = {
@@ -33,7 +33,7 @@ def _trail(db, app_id: int, action: str, detail: dict | None = None, user: dict 
 
 
 def _get(db, app_id) -> InternshipApplication:
-    app = db.get(InternshipApplication, int(app_id))
+    app = db.get(InternshipApplication, _as_id(app_id))
     if not app or app.is_deleted or app.tenant_id != _tid():
         raise not_found("实习申请不存在或不在当前数据范围内")
     return app
@@ -58,7 +58,7 @@ def _record_for_student(db, student_no: str | None):
 def _position(db, position_id) -> tuple[InternshipPosition, EmpCompany]:
     if not position_id:
         raise AppException("VALIDATION_ERROR", "请选择实习岗位")
-    pos = db.get(InternshipPosition, int(position_id))
+    pos = db.get(InternshipPosition, _as_id(position_id))
     if not pos or pos.is_deleted or pos.tenant_id != _tid():
         raise not_found("岗位不存在或不在当前数据范围内")
     company = db.get(EmpCompany, pos.company_id)

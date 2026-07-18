@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipBatch, InternshipBatchPlan,
                         InternshipPlanAck, InternshipRecord, StudentProfile)
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"DRAFT": "草稿", "PUBLISHED": "已发布"}
 ACK_LABEL = {"PENDING": "待确认", "ACKNOWLEDGED": "已确认"}
@@ -79,7 +79,7 @@ def _plan_row(p, batch=None):
 
 def get_plan_by_batch(batch_id, user=None):
     with session() as db:
-        b = db.get(InternshipBatch, int(batch_id))
+        b = db.get(InternshipBatch, _as_id(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("批次不存在")
         p = db.scalars(select(InternshipBatchPlan).where(
@@ -99,7 +99,7 @@ def save_plan(batch_id, body, user=None) -> dict:
     if len(content) < 20:
         raise AppException("VALIDATION_ERROR", "计划正文至少 20 字")
     with session() as db:
-        batch = db.get(InternshipBatch, int(batch_id))
+        batch = db.get(InternshipBatch, _as_id(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("批次不存在")
         p = db.scalars(select(InternshipBatchPlan).where(
@@ -122,7 +122,7 @@ def save_plan(batch_id, body, user=None) -> dict:
 
 def publish_plan(batch_id, user=None) -> dict:
     with session() as db:
-        batch = db.get(InternshipBatch, int(batch_id))
+        batch = db.get(InternshipBatch, _as_id(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("批次不存在")
         p = db.scalars(select(InternshipBatchPlan).where(

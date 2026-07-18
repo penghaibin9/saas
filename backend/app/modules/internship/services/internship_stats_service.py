@@ -96,8 +96,10 @@ def overview(user, college=None, major=None, class_name=None) -> dict:
                 model.internship_id.in_(rec_ids), *conds)) or 0
 
         # ── 落实 / 匹配 / 协议 ──
-        placed = sum(1 for r in kept if r.status in ("READY", "ONBOARD", "ASSESSING", "ARCHIVED")
-                     or r.destination_type != "NONE")
+        # BUG-018：落实率原来把「状态已推进」也算作已落实，导致「在岗中 + 去向未落实」
+        # 的记录计入分子，出现落实率 100% 而匹配率仅 16.7% 的自相矛盾。
+        # 口径统一到学生台账「去向」字段：destination_type != NONE 才算落实。
+        placed = sum(1 for r in kept if r.destination_type != "NONE")
         matched = sum(1 for r in kept if r.position_id or r.destination_type == "ASSIGNED")
         agr_signed = _distinct(InternshipAgreement, InternshipAgreement.status.in_(["EFFECTIVE", "ARCHIVED"]))
         # ── 打卡 / 请假 ──
@@ -150,8 +152,10 @@ def overview(user, college=None, major=None, class_name=None) -> dict:
         archive_base = sum(1 for r in kept if r.status in ("ASSESSING", "ARCHIVED")) or total
 
         metrics = [
-            _metric("placementRate", "实习落实率", placed, total, 95),
-            _metric("matchRate", "岗位匹配率", matched, total, 90),
+            _metric("placementRate", "实习落实率", placed, total, 95,
+                    "去向已落实（分配岗位/自主实习/免实习）学生 / 全部实习学生，与学生台账「去向」同口径"),
+            _metric("matchRate", "岗位匹配率", matched, total, 90,
+                    "已分配岗位学生 / 全部实习学生"),
             _metric("agreementSignRate", "协议签署率", agr_signed, total, 95),
             _metric("arrivalRate", "到岗率", arrived, onboard, 90, "有打卡学生/在岗学生"),
             _metric("checkinComplyRate", "打卡合规率", checkin_ok, checkin_total, 85),
