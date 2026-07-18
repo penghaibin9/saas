@@ -255,7 +255,7 @@ def _login_result(db, user, context: dict, contexts: list[dict], client_type: st
         "accessToken": access_token,
         "refreshToken": refresh_token,
         "tokenType": "Bearer",
-        "expiresIn": 7200,
+        "expiresIn": settings.JWT_EXPIRES_IN,
         "userId": f"db-{user.id}",
         "username": user.login_name,
         "displayName": user.real_name,

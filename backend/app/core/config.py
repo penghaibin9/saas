@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "school-lifecycle-dev-secret-change-me-please-32"
     JWT_ALG: str = "HS256"
     JWT_EXPIRES_IN: int = 7200           # 秒
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     # 演示登录（/auth/mock-login）开关。生产环境默认强制关闭，关闭后端点返回 403，
     # 不再免密签发任意角色令牌。留空/未设时按 is_prod 推断（prod 关、非 prod 开）。
     MOCK_LOGIN_ENABLED: str = ""
@@ -103,7 +104,7 @@ class Settings(BaseSettings):
     TEST_DATABASE_URL: str = "mysql+pymysql://saas_user:@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4"
     JWT_SECRET_KEY: str = ""            # 优先级高于 JWT_SECRET；生产必须改
     JWT_ALGORITHM: str = ""             # 优先级高于 JWT_ALG
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 120  # legacy 配置名；正式令牌统一读取 JWT_EXPIRES_IN
     UPLOAD_DIR: str = "./uploads"       # 文件落点：local 后端的存储根 / cos 后端的临时·缓存根
     AUDIT_ENABLED: bool = True          # 审计开关（DB_ENABLED=False 时写内存列表）
 

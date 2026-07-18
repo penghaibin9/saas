@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from app.core.config import settings
 from app.core.exceptions import AppException, not_found
 from app.core.security import create_access_token
 
@@ -147,7 +148,7 @@ def login(tenant_code: str, login_name: str, user_type: str, client_type: str) -
         "accessToken": token,
         "tokenType": "Bearer",
         "refreshToken": refresh_token,
-        "expiresIn": 7200,
+        "expiresIn": settings.JWT_EXPIRES_IN,
         # ── BACKEND-OVERNIGHT 任务要求的扁平字段（与 user/contexts 并存）──
         "userId": user["userId"],
         "username": user["loginName"],

@@ -15,7 +15,9 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
-REFRESH_TTL = 7 * 24 * 3600
+from app.core.config import settings
+
+REFRESH_TTL = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
 LOCK_THRESHOLD = 5
 LOCK_SECONDS = 15 * 60
 

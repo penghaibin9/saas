@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from app.core.config import settings
 from app.core.response import success
 from app.core.security import get_current_user
 from pydantic import BaseModel, Field
@@ -140,7 +141,7 @@ def refresh(body: RefreshRequest):
     new_refresh = issue_refresh(claims)
     audit.record("TOKEN_REFRESH", target_type="auth", target_id=str(claims.get("userId", "-")))
     return success({"accessToken": token, "refreshToken": new_refresh,
-                    "tokenType": "Bearer", "expiresIn": 7200}, message="已刷新")
+                    "tokenType": "Bearer", "expiresIn": settings.JWT_EXPIRES_IN}, message="已刷新")
 
 
 from typing import Optional as _Optional  # noqa: E402
