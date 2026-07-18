@@ -25,7 +25,7 @@ DB_POOL_SIZE=5
 DB_MAX_OVERFLOW=10
 DB_POOL_TIMEOUT=5
 DB_POOL_RECYCLE=1800
-REDIS_URL=redis://redis:6379/0
+REDIS_URL=redis://default:<REDIS_PASSWORD>@redis:6379/0
 AUTH_SUBJECT_CACHE_TTL=30
 HOME_CACHE_TTL=20
 TENANT_API_RATE_LIMIT_PER_SECOND=500
@@ -38,7 +38,10 @@ MYSQL_MAX_CONNECTIONS=200
 MYSQL_INNODB_BUFFER_POOL_SIZE=2G
 MYSQL_LONG_QUERY_TIME=0.5
 REDIS_MAXMEMORY=512mb
+REDIS_PASSWORD=<32位以上URL-safe随机串>
 ```
+
+内置 Redis 必须启用密码且只加入应用私网，不映射公网端口。`REDIS_PASSWORD` 同时用于 Redis、健康检查、Backend 和 Scheduler；密码使用 URL-safe 随机串，避免直接拼入 `REDIS_URL` 时被 `@`、`:`、`/` 破坏。托管 Redis 应改用其 TLS/ACL 地址，并限制来源安全组。
 
 `MYSQL_INNODB_BUFFER_POOL_SIZE=2G` 是 10 校基线起点，不是所有机器的固定值。数据库独占主机通常配置为物理内存的 50%～70%，并为操作系统、连接缓冲、备份和临时表预留空间。上线前必须读取 `Max_used_connections`、`Created_tmp_disk_tables`、缓冲池命中率和慢 SQL 后再调参。
 

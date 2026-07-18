@@ -10,8 +10,8 @@
 # ── 使用（服务器上，一次性）─────────────────────────────────────────────
 #   1) 准备环境变量（不提交 git）：
 #        cp ../env/backend.mysql.env.example ../env/backend.mysql.env
-#        # 编辑 backend.mysql.env，填 DB_PASSWORD / JWT_SECRET_KEY / 你的服务器 IP 到 CORS
-#      同时把下面 x-db-* 的 MYSQL_PASSWORD 改成同一个密码。
+#        # 编辑 backend.mysql.env，填 DB_PASSWORD / MYSQL_ROOT_PASSWORD / REDIS_PASSWORD /
+#        # JWT_SECRET_KEY / 你的服务器 IP 到 CORS；缺少必填密码时 Compose 会拒绝启动。
 #   2) 构建前端 / H5 静态产物（在开发机或 CI 上）：
 #        powershell -File ../../scripts/deploy/build-pc.ps1
 #        powershell -File ../../scripts/deploy/build-miniapp.ps1
@@ -54,15 +54,15 @@ services:
     environment:
       MYSQL_DATABASE: ${DB_NAME:-saas_lifecycle}
       MYSQL_USER: ${DB_USER:-saas_user}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-change-me-in-.env}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
     volumes:
       - ./volumes/mysql:/var/lib/mysql          # 数据落服务器磁盘，持久化
     # 仅本机调试才放开端口；对公网演示建议不暴露 3306（见 docs/ops 安全加固）
     # ports:
     #   - "3306:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${DB_PASSWORD:-change-me-in-.env}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${DB_PASSWORD:?DB_PASSWORD must be set}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -73,8 +73,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec",
-              "--maxmemory", "${REDIS_MAXMEMORY:-512mb}", "--maxmemory-policy", "allkeys-lru"]
+              "--maxmemory", "${REDIS_MAXMEMORY:-512mb}", "--maxmemory-policy", "allkeys-lru",
+              "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
     volumes:
       - ./volumes/redis:/data
     healthcheck:
@@ -107,9 +110,9 @@ services:
       DB_PORT: "3306"
       DB_NAME: ${DB_NAME:-saas_lifecycle}
       DB_USER: ${DB_USER:-saas_user}
-      DB_PASSWORD: ${DB_PASSWORD:-change-me-in-.env}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       DATABASE_URL: ""                # 留空 → 由 DB_* 组装 mysql+pymysql（含 charset=utf8mb4）
-      REDIS_URL: "redis://redis:6379/0"
+      REDIS_URL: "redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0"
       DB_POOL_SIZE: "5"
       DB_MAX_OVERFLOW: "10"
       DB_POOL_TIMEOUT: "5"
@@ -145,9 +148,9 @@ services:
       DB_PORT: "3306"
       DB_NAME: ${DB_NAME:-saas_lifecycle}
       DB_USER: ${DB_USER:-saas_user}
-      DB_PASSWORD: ${DB_PASSWORD:-change-me-in-.env}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       DATABASE_URL: ""
-      REDIS_URL: "redis://redis:6379/0"
+      REDIS_URL: "redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0"
       DB_POOL_SIZE: "2"
       DB_MAX_OVERFLOW: "2"
       SCHEDULER_MODE: "external"
