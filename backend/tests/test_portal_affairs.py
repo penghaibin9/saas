@@ -68,13 +68,45 @@ def test_psy_and_applications(client, db_mode):
     assert client.post(f"{PORTAL}/psy/submit", headers=h, json={"answers": []}).json()["code"] != 0
 
 
+def _seed_effective_case(no):
+    """为学生（按学号）建一条已生效处分，返回 (caseId, studentId)，供本人申诉入口测试。"""
+    from app.db.session import get_sessionmaker
+    from app.models import DisciplineCase, StudentProfile
+    from sqlalchemy import select
+    db = get_sessionmaker()()
+    sid = db.scalars(select(StudentProfile.id).where(
+        StudentProfile.tenant_id == TID, StudentProfile.student_no == no)).first()
+    c = DisciplineCase(tenant_id=TID, student_id=sid, disc_type="WARNING",
+                       reason="旷课", status="EFFECTIVE")
+    db.add(c); db.flush()
+    cid = c.id
+    db.commit(); db.close()
+    return cid, sid
+
+
 def test_discipline_appeal(client, db_mode):
+    """修复后契约：申诉必须带本人生效处分的 caseId，且写入真实 DisciplineAppeal 表（老师端可见）。"""
     _seed("SA-011", "学工十一")
+    case_id, sid = _seed_effective_case("SA-011")
     h = _stu_token("学工十一", "SA-011")
     ok = client.post(f"{PORTAL}/discipline/appeal", headers=h,
-                     json={"reason": "对处分认定的事实有异议，特此书面申辩说明。"}).json()
-    assert ok["code"] == 0
-    assert client.post(f"{PORTAL}/discipline/appeal", headers=h, json={"reason": "短"}).json()["code"] != 0
+                     json={"caseId": str(case_id),
+                           "reason": "对处分认定的事实有异议，特此书面申辩说明。"}).json()
+    assert ok["code"] == 0, ok
+    # 申诉真的落到老师端审核队列所读的 DisciplineAppeal 表（闭环验证）
+    from app.db.session import get_sessionmaker
+    from app.models import DisciplineAppeal
+    from sqlalchemy import select
+    db = get_sessionmaker()()
+    appeal = db.scalars(select(DisciplineAppeal).where(
+        DisciplineAppeal.tenant_id == TID, DisciplineAppeal.case_id == case_id)).first()
+    db.close()
+    assert appeal is not None and appeal.student_id == sid and appeal.status == "SUBMITTED"
+    # 负例：缺 caseId → 校验失败；理由过短 → 校验失败
+    assert client.post(f"{PORTAL}/discipline/appeal", headers=h,
+                       json={"reason": "对处分有异议需要申辩"}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/discipline/appeal", headers=h,
+                       json={"caseId": str(case_id), "reason": "短"}).json()["code"] != 0
 
 
 def test_funding_aid_apply_guards_and_self(client, db_mode):
