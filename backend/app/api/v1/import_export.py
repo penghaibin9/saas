@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Header
 
+from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
+from app.core.idempotency import begin as idempotency_begin, finish as idempotency_finish
 from app.core.response import success
 from app.core.security import require_staff
 from app.schemas.placeholder import ExportCreateRequest, ImportValidateRequest
@@ -87,6 +89,16 @@ class ExportStudentsRequest(BaseModel):
     purpose: str = Field(..., min_length=1, description="导出用途（必填；最小长度由平台规则决定，默认 5）")
 
 
+def _limit_operation(user: dict, operation: str, *, user_limit: int, tenant_limit: int) -> None:
+    from app.core.token_store import rate_limit
+    tenant_id = str(current_tenant_id() or user.get("tenantId") or "-")
+    user_id = str(user.get("userId") or "-")
+    if not rate_limit(f"{operation}:tenant:{tenant_id}", tenant_limit, 60):
+        raise AppException("RATE_LIMITED", f"当前学校{operation}任务过多，请稍后再试")
+    if not rate_limit(f"{operation}:tenant:{tenant_id}:user:{user_id}", user_limit, 60):
+        raise AppException("RATE_LIMITED", f"操作过于频繁（每分钟最多 {user_limit} 次），请稍后再试")
+
+
 @import_router.post("/students/validate", summary="学生导入 · Dry-Run 校验（JSON 行）")
 def import_students_validate(body: ImportRowsRequest, user=Depends(require_staff)):
     result = ie.dry_run(body.rows)
@@ -114,10 +126,17 @@ async def import_students_validate_file(file: UploadFile = File(...), user=Depen
 
 
 @import_router.post("/students/confirm", summary="学生导入 · 确认写入（整批一个事务，失败回滚）")
-def import_students_confirm(body: ImportConfirmRequest, user=Depends(require_staff)):
+def import_students_confirm(body: ImportConfirmRequest, user=Depends(require_staff),
+                            idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
+    cached, handle = idempotency_begin(user, "student-import-confirm", idempotency_key,
+                                       {"batchNo": body.batchNo})
+    if cached is not None:
+        return success(cached, message="导入完成（幂等重放）")
+    _limit_operation(user, "import-confirm", user_limit=10, tenant_limit=30)
     result = ie.confirm(body.batchNo)
     audit_log.record("IMPORT", "student-confirm",
                      detail={"batchNo": body.batchNo, "inserted": result["insertedRows"]})
+    idempotency_finish(handle, result)
     return success(result, message="导入完成")
 
 
@@ -130,33 +149,49 @@ def import_domain_validate(domain: str, body: dict = Body(...), user=Depends(req
 
 
 @import_router.post("/domain/confirm", summary="6 域通用导入确认写入")
-def import_domain_confirm(body: dict = Body(...), user=Depends(require_staff)):
+def import_domain_confirm(body: dict = Body(...), user=Depends(require_staff),
+                          idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
     from app.services import domain_import_service
-    result = domain_import_service.confirm(str(body.get("batchNo") or ""))
+    batch_no = str(body.get("batchNo") or "")
+    cached, handle = idempotency_begin(user, "domain-import-confirm", idempotency_key,
+                                       {"batchNo": batch_no})
+    if cached is not None:
+        return success(cached, message="导入完成（幂等重放）")
+    _limit_operation(user, "import-confirm", user_limit=10, tenant_limit=30)
+    result = domain_import_service.confirm(batch_no)
     audit_log.record("IMPORT", "domain-confirm", detail={"batchNo": body.get("batchNo"), "inserted": result["insertedRows"]})
+    idempotency_finish(handle, result)
     return success(result, message="导入完成")
 
 
 @export_router.post("/domain/{domain}", summary="6 域通用导出（xlsx 脱敏+水印+审计+限流）")
-def export_domain(domain: str, body: dict = Body(default={}), user=Depends(require_staff)):
-    from app.core.token_store import rate_limit
+def export_domain(domain: str, body: dict = Body(default={}), user=Depends(require_staff),
+                  idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
     from app.services import domain_export_service
-    if not rate_limit(f"export:{user.get('userId', '-')}", 5, 60):
-        raise AppException("RATE_LIMITED", "导出过于频繁（每分钟最多 5 次），请稍后再试")
     purpose = str(body.get("purpose") or "")
+    cached, handle = idempotency_begin(user, "domain-export", idempotency_key,
+                                       {"domain": domain, "purpose": purpose})
+    if cached is not None:
+        return success(cached, message="导出完成（幂等重放）")
+    _limit_operation(user, "export", user_limit=5, tenant_limit=20)
     task = domain_export_service.export_domain(domain, purpose)
     audit_log.record("EXPORT", f"{domain}-xlsx", detail={"taskId": task["taskId"], "rows": task["rowCount"]})
+    idempotency_finish(handle, task)
     return success(task, message="导出完成")
 
 
 @export_router.post("/students", summary="学生主档导出（真实 xlsx：脱敏 + 水印 + 审计 + 限流）")
-def export_students(body: ExportStudentsRequest, user=Depends(require_staff)):
-    from app.core.token_store import rate_limit
-    if not rate_limit(f"export:{user.get('userId', '-')}", 5, 60):
-        raise AppException("RATE_LIMITED", "导出过于频繁（每分钟最多 5 次），请稍后再试")
+def export_students(body: ExportStudentsRequest, user=Depends(require_staff),
+                    idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
+    cached, handle = idempotency_begin(user, "student-export", idempotency_key,
+                                       {"purpose": body.purpose})
+    if cached is not None:
+        return success(cached, message="导出完成（幂等重放）")
+    _limit_operation(user, "export", user_limit=5, tenant_limit=20)
     task = ie.create_students_export(body.purpose)
     audit_log.record("EXPORT", "students-xlsx",
                      detail={"taskId": task["taskId"], "rows": task["rowCount"], "purpose": task["purpose"]})
+    idempotency_finish(handle, task)
     return success(task, message="导出完成")
 
 
