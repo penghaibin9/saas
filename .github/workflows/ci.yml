@@ -159,7 +159,8 @@ jobs:
             '(^|/)\.env$|\.db$|(^|/)dist/|(^|/)node_modules/|(^|/)unpackage/|\.pem$|\.key$|(^|/)\.ai-backup/|(^|/)_local-backup/|backend/_pfull3\.txt|backend/scripts/_sec_verify\.py|一键构建\.bat|docs/ui/.*\.(zip|pdf)$' \
             || true)
           # 运行时上传/导出目录（可能含 PII/敏感数据）；排除设计稿与老参考系统里的同名目录
-          RUNTIME=$(echo "$FILES" | grep -E '(^|/)(uploads|exports)/' | grep -vE 'docs/ui/|/internship-backend/uploads/' || true)
+          # 排除：设计稿资源目录（docs/<章节>/ui/…/uploads）、老参考系统同名目录、源码包名恰为 exports 的 Python 包（backend/app/**/exports/）
+          RUNTIME=$(echo "$FILES" | grep -E '(^|/)(uploads|exports)/' | grep -vE 'docs/ui/|docs/[^/]*/ui/|/internship-backend/uploads/|backend/app/.*/exports/' || true)
           BAD=$(printf '%s\n%s' "$BAD" "$RUNTIME" | grep -vE '^$' || true)
           if [ -n "$BAD" ]; then
             echo "❌ 发现不应入库的文件："
