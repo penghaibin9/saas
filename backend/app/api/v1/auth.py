@@ -61,18 +61,38 @@ def login(body: PasswordLoginRequest):
 
 class WxLoginRequest(BaseModel):
     code: str = Field(..., min_length=1, description="wx.login 返回的临时登录凭证 code")
+    bindAnother: bool = Field(False, description="已绑定微信继续绑定另一所学校")
 
 
 @router.post("/wx-login", summary="微信一键登录（code→openid；已绑定则登录，未绑定返回 needBind+wxToken）")
 def wx_login(body: WxLoginRequest):
     _login_rate_guard()
     from app.services import wx_auth_service
-    result = wx_auth_service.wx_login(body.code)
+    result = wx_auth_service.wx_login(body.code, bind_another=body.bindAnother)
     if result.get("needBind"):
         audit.record("微信登录-待绑定", method="POST", path="/api/v1/auth/wx-login",
                      status_code=200, target_type="auth", target_id="-")
         return success(result, message="请绑定校园账号")
+    if result.get("needSelectTenant"):
+        audit.record("微信登录-待选择学校", method="POST", path="/api/v1/auth/wx-login",
+                     status_code=200, target_type="auth", target_id="-")
+        return success(result, message="请选择本次登录学校")
     audit.record("微信登录", method="POST", path="/api/v1/auth/wx-login",
+                 status_code=200, target_type="auth", target_id=result.get("userId", "-"))
+    return success(result, message="登录成功")
+
+
+class WxSelectRequest(BaseModel):
+    wxToken: str = Field(..., min_length=10)
+    tenantCode: str = Field(..., min_length=1)
+
+
+@router.post("/wx-select", summary="微信绑定多所学校时选择本次登录学校")
+def wx_select(body: WxSelectRequest):
+    _login_rate_guard()
+    from app.services import wx_auth_service
+    result = wx_auth_service.wx_select(body.wxToken, body.tenantCode)
+    audit.record("微信登录-选择学校", method="POST", path="/api/v1/auth/wx-select",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="登录成功")
 

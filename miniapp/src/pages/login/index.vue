@@ -79,6 +79,7 @@
       <view class="login__bind card">
         <text class="login__bind-tt">首次使用请绑定校园账号</text>
         <text class="login__bind-sub">用学号/工号 + 密码绑定一次，之后微信一键登录免密</text>
+        <input v-model="bindForm.tenantCode" class="login__input" placeholder="学校编码（多校同账号时必填）" placeholder-class="login__ph" />
         <input v-model="bindForm.loginName" class="login__input" placeholder="学号 / 工号" placeholder-class="login__ph" />
         <input v-model="bindForm.password" class="login__input" type="password" password placeholder="密码" placeholder-class="login__ph" />
         <button class="btn btn-block login__btn--acc" :disabled="bindLoading" @click="submitBind">
@@ -108,7 +109,7 @@ export default {
       wxLoading: false,
       binding: false,
       wxToken: '',
-      bindForm: { loginName: '', password: '' },
+      bindForm: { tenantCode: '', loginName: '', password: '' },
       bindLoading: false,
       // 迎新批次限时入口（公开接口，登录前查询；查询失败按未开放处理，不阻断正常登录）
       orientationBatch: { open: false, batchName: '', daysLeft: 0 },
@@ -182,6 +183,8 @@ export default {
               if (d && d.needBind) {
                 this.wxToken = d.wxToken
                 this.binding = true
+              } else if (d && d.needSelectTenant) {
+                this.selectWxTenant(d)
               } else {
                 this.completeLogin(d)
               }
@@ -190,6 +193,23 @@ export default {
             .finally(() => { this.wxLoading = false })
         },
         fail: () => { toast('微信授权失败，请重试'); this.wxLoading = false }
+      })
+    },
+    /** 同一微信绑定多所学校时，选择本次进入的学校，不重复调用 wx.login。 */
+    selectWxTenant(data) {
+      const accounts = (data && data.accounts) || []
+      if (!accounts.length) { toast('未找到可登录的学校账号'); return }
+      uni.showActionSheet({
+        itemList: accounts.map((item) => `${item.tenantName} · ${item.displayName}`),
+        success: ({ tapIndex }) => {
+          const selected = accounts[tapIndex]
+          if (!selected) return
+          realRequest('/auth/wx-select', {
+            method: 'POST', auth: false,
+            data: { wxToken: data.wxToken, tenantCode: selected.tenantCode }
+          }).then((result) => this.completeLogin(result))
+            .catch((e) => { toast((e && e.message) || '学校账号登录失败，请重试') })
+        }
       })
     },
     /** 首次绑定：学号/工号 + 密码 → /auth/wx-bind，绑定 openid 后免密登录 */
@@ -202,7 +222,8 @@ export default {
       this.bindLoading = true
       realRequest('/auth/wx-bind', {
         method: 'POST', auth: false,
-        data: { wxToken: this.wxToken, loginName: this.bindForm.loginName.trim(), password: this.bindForm.password }
+        data: { wxToken: this.wxToken, tenantCode: this.bindForm.tenantCode.trim() || null,
+          loginName: this.bindForm.loginName.trim(), password: this.bindForm.password }
       }).then((d) => { this.binding = false; this.completeLogin(d) })
         .catch((e) => { toast((e && e.message) || '绑定失败，请检查账号密码') })
         .finally(() => { this.bindLoading = false })
@@ -210,7 +231,7 @@ export default {
     cancelBind() {
       this.binding = false
       this.wxToken = ''
-      this.bindForm = { loginName: '', password: '' }
+      this.bindForm = { tenantCode: '', loginName: '', password: '' }
     },
     /** 迎新入口卡：新生尚未有正式账号前不支持独立通道登录（需学校预建学号账号），
      * 引导其使用下方账号密码登录，账号即录取通知书上的学号。 */

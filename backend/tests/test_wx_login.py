@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 DEMO_TID = 1000000000000000003
+SANDBOX_TID = 1000000000000000007
 
 
 @pytest.fixture()
@@ -62,6 +63,33 @@ def test_wx_bind_then_openid_login(client, two_tenants, monkeypatch):
     assert r3["data"]["accessToken"]
     assert r3["data"]["currentRole"]["roleCode"] == "STUDENT"
     assert r3["data"]["tenantId"] == str(DEMO_TID)
+
+
+def test_one_wechat_can_select_between_two_schools(client, two_tenants, monkeypatch):
+    _fake_openid(monkeypatch, "openid_multi_school")
+    first_token = client.post("/api/v1/auth/wx-login", json={"code": "first"}).json()["data"]["wxToken"]
+    first = client.post("/api/v1/auth/wx-bind", json={
+        "wxToken": first_token, "tenantCode": "demo-school",
+        "loginName": "student", "password": "123456",
+    }).json()
+    assert first["code"] == 0 and first["data"]["tenantId"] == str(DEMO_TID)
+
+    another = client.post("/api/v1/auth/wx-login",
+                          json={"code": "another", "bindAnother": True}).json()["data"]
+    assert another["needBind"] is True
+    second = client.post("/api/v1/auth/wx-bind", json={
+        "wxToken": another["wxToken"], "tenantCode": "sandbox-school",
+        "loginName": "student2", "password": "123456",
+    }).json()
+    assert second["code"] == 0 and second["data"]["tenantId"] == str(SANDBOX_TID)
+
+    choices = client.post("/api/v1/auth/wx-login", json={"code": "choose"}).json()["data"]
+    assert choices["needSelectTenant"] is True
+    assert {item["tenantCode"] for item in choices["accounts"]} == {"demo-school", "sandbox-school"}
+    selected = client.post("/api/v1/auth/wx-select", json={
+        "wxToken": choices["wxToken"], "tenantCode": "demo-school",
+    }).json()
+    assert selected["code"] == 0 and selected["data"]["tenantId"] == str(DEMO_TID)
 
 
 def test_wx_bind_wrong_password(client, two_tenants, monkeypatch):

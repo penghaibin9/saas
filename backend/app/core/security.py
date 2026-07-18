@@ -47,10 +47,11 @@ def assert_cors_safe() -> None:
             raise RuntimeError("生产环境必须显式配置 CORS_ORIGINS 白名单，禁止使用通配符")
 
 
-def create_access_token(payload: dict) -> str:
+def create_access_token(payload: dict, *, expires_in: int | None = None) -> str:
     now = int(time.time())
     import uuid as _uuid
-    body = {**payload, "jti": _uuid.uuid4().hex, "iat": now, "exp": now + settings.JWT_EXPIRES_IN}
+    ttl = settings.JWT_EXPIRES_IN if expires_in is None else max(60, int(expires_in))
+    body = {**payload, "jti": _uuid.uuid4().hex, "iat": now, "exp": now + ttl}
     return jwt.encode(body, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

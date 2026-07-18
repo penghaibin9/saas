@@ -44,6 +44,8 @@ REDIS_MAXMEMORY=512mb
 
 Access Token 保持 2 小时，Refresh Token 保持 7 天。小程序只在 Access Token 临近过期或收到 401 时单飞刷新；刷新失败才清理会话并重新微信登录，禁止每次 `onShow` 都调用 `wx.login`。
 
+同一个微信可能对应多所学校的教师或学生账号。绑定关系必须落 `t_wx_account_binding`，以 `tenant_id + wx_openid` 保证每校一个绑定；只有一个学校时直接登录，存在多个学校时使用 10 分钟 `wxToken` 调用 `/auth/wx-select` 选择本次学校，禁止把跨校身份合并到同一个租户令牌。
+
 ## 三、数据库与历史数据
 
 上线按顺序执行：

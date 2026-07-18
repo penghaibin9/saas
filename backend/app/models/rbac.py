@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -26,7 +26,21 @@ class User(PKMixin, TenantMixin, CommonMixin, Base):
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
     wx_openid: Mapped[str | None] = mapped_column(String(64), unique=True, index=True,
-                                                  comment="微信小程序 openid（一键登录绑定；全局唯一，一个 openid 绑一个账号）")
+                                                  comment="微信 openid（legacy 单账号绑定；新绑定以 t_wx_account_binding 为准）")
+
+
+class WxAccountBinding(PKMixin, TenantMixin, CommonMixin, Base):
+    """一个微信可在不同学校各绑定一个校园账号。"""
+    __tablename__ = "t_wx_account_binding"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "wx_openid", name="uk_wx_openid_tenant"),
+        Index("ix_wx_binding_tenant_user_active", "tenant_id", "user_id", "is_deleted", "status"),
+    )
+
+    wx_openid: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class Role(PKMixin, TenantMixin, CommonMixin, Base):
