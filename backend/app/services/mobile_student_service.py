@@ -1439,24 +1439,34 @@ def internship_enterprises(user: dict, city: str = "") -> dict:
     _require_student(user)
     if not db_enabled():
         return {"hasData": False, "cities": [], "items": []}
+    from sqlalchemy import distinct
+
     from app.models import EmpCompany, InternshipPosition
+    _PUBLISHED = (InternshipPosition.tenant_id == _tid(),
+                  InternshipPosition.is_deleted.is_(False),
+                  InternshipPosition.status == "PUBLISHED")
     with _session() as db:
-        rows = db.scalars(select(InternshipPosition).where(
-            InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False),
-            InternshipPosition.status == "PUBLISHED").order_by(InternshipPosition.id.desc())).all()
-        items = []
-        cities = []
-        for p in rows:
-            company = db.get(EmpCompany, p.company_id) if p.company_id else None
-            head, alloc = p.headcount or 0, p.allocated_count or 0
-            loc = p.work_location or ""
-            if loc and loc not in cities:
-                cities.append(loc)
-            items.append({"id": str(p.id), "title": p.title or "",
-                          "companyName": company.name if company else "", "workLocation": loc,
-                          "salaryRange": p.salary_range or "", "remaining": max(0, head - alloc)})
+        # 城市下拉：单独取 distinct（轻量，不受列表上限影响，保证筛选项完整）
+        cities = [c for c in db.scalars(select(distinct(InternshipPosition.work_location)).where(
+            *_PUBLISHED)).all() if c]
+        # 岗位列表：城市筛选下推到 SQL + 上限，避免无界全表读；企业名批量取，消 per-row N+1
+        q = select(InternshipPosition).where(*_PUBLISHED)
         if city:
-            items = [x for x in items if x["workLocation"] == city]
+            q = q.where(InternshipPosition.work_location == city)
+        rows = db.scalars(q.order_by(InternshipPosition.id.desc()).limit(200)).all()
+        company_ids = {p.company_id for p in rows if p.company_id}
+        comp = {}
+        if company_ids:
+            for c in db.scalars(select(EmpCompany).where(EmpCompany.id.in_(company_ids))):
+                comp[c.id] = c
+        items = []
+        for p in rows:
+            company = comp.get(p.company_id)
+            head, alloc = p.headcount or 0, p.allocated_count or 0
+            items.append({"id": str(p.id), "title": p.title or "",
+                          "companyName": company.name if company else "",
+                          "workLocation": p.work_location or "",
+                          "salaryRange": p.salary_range or "", "remaining": max(0, head - alloc)})
         return {"hasData": len(items) > 0, "cities": cities, "items": items}
 
 
