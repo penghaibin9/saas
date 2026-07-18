@@ -1502,26 +1502,39 @@ def internship_visit_plans(user: dict) -> dict:
     items, _total = plan_svc.list_visit_plans(1, 50, user=user)
     plans = [p for p in items if p.get("status") in ("PUBLISHED", "IN_PROGRESS")]
     with _session() as db:
+        # 批量消嵌套 N+1：先把所有计划的学生姓名一次解析，再批量取实习记录与本月巡访。
+        plan_names = [[n.strip() for n in _re.split(r"[,，、;；\n]", p.get("studentScope") or "")
+                       if n.strip()] for p in plans]
+        all_names = {n for ns in plan_names for n in ns}
+        by_name: dict[str, object] = {}
+        if all_names:
+            for s in db.scalars(select(StudentProfile).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                    StudentProfile.real_name.in_(all_names)).order_by(StudentProfile.id)):
+                by_name.setdefault(s.real_name, s)
+        sids = [s.id for s in by_name.values()]
+        rec_by_sid: dict[int, object] = {}
+        if sids:
+            for rec in db.scalars(select(InternshipRecord).where(
+                    InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id.in_(sids),
+                    InternshipRecord.is_deleted.is_(False)).order_by(InternshipRecord.id)):
+                rec_by_sid.setdefault(rec.student_id, rec)
+        rec_ids = [rec.id for rec in rec_by_sid.values()]
+        visited_ids: set = set()
+        if rec_ids:
+            for v in db.scalars(select(InternshipVisit).where(
+                    InternshipVisit.tenant_id == _tid(), InternshipVisit.internship_id.in_(rec_ids),
+                    InternshipVisit.visit_at >= month_start, InternshipVisit.is_deleted.is_(False))):
+                visited_ids.add(v.internship_id)
         out = []
-        for p in plans:
-            names = [n.strip() for n in _re.split(r"[,，、;；\n]", p.get("studentScope") or "") if n.strip()]
+        for p, names in zip(plans, plan_names):
             students = []
             for name in names:
-                stu = db.scalars(select(StudentProfile).where(
-                    StudentProfile.tenant_id == _tid(), StudentProfile.real_name == name,
-                    StudentProfile.is_deleted.is_(False))).first()
-                visited, rec_id = False, None
-                if stu:
-                    rec = db.scalars(select(InternshipRecord).where(
-                        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-                        InternshipRecord.is_deleted.is_(False))).first()
-                    if rec:
-                        rec_id = str(rec.id)
-                        visited = db.scalars(select(InternshipVisit).where(
-                            InternshipVisit.tenant_id == _tid(), InternshipVisit.internship_id == rec.id,
-                            InternshipVisit.visit_at >= month_start,
-                            InternshipVisit.is_deleted.is_(False))).first() is not None
-                students.append({"name": name, "internshipId": rec_id, "visited": visited,
+                stu = by_name.get(name)
+                rec = rec_by_sid.get(stu.id) if stu is not None else None
+                rec_id = str(rec.id) if rec else None
+                students.append({"name": name, "internshipId": rec_id,
+                                 "visited": bool(rec and rec.id in visited_ids),
                                  "resolvable": rec_id is not None})
             out.append({"id": p["id"], "enterpriseName": p.get("enterpriseName") or "",
                        "planDate": p.get("planDate") or "", "location": p.get("location") or "",
@@ -1608,13 +1621,18 @@ def _filter_approvals_by_scope(scope: dict, rows: list) -> list:
     try:
         with _session() as db:
             from app.models import StudentProfile
+            # 批量解析全部申请人姓名 → 学生主档（一次 IN 查询替代逐行全表扫描，消 N+1）。
+            # 同名取 id 最小者，与原 .first() 默认顺序一致；可见性判定仍逐个走 can_teacher_view_student。
+            names = {(r.get("applicantName") or "").strip() for r in rows
+                     if (r.get("applicantName") or "").strip()}
+            by_name: dict[str, object] = {}
+            if names:
+                for s in db.scalars(select(StudentProfile).where(
+                        StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                        StudentProfile.real_name.in_(names)).order_by(StudentProfile.id)):
+                    by_name.setdefault(s.real_name, s)
             for r in rows:
-                nm = (r.get("applicantName") or "").strip()
-                if not nm:
-                    continue
-                stu = db.scalars(select(StudentProfile).where(
-                    StudentProfile.tenant_id == _tid(), StudentProfile.real_name == nm,
-                    StudentProfile.is_deleted.is_(False))).first()
+                stu = by_name.get((r.get("applicantName") or "").strip())
                 if stu is not None and can_teacher_view_student({}, stu, scope=scope, db=db):
                     out.append(r)
     except Exception:  # noqa: BLE001 — 收敛异常时宁可少展示，不越权
