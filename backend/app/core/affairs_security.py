@@ -116,8 +116,12 @@ class StudentAffairsSecurityContext:
     def require_student(self, db, student_id):
         """写/详情目标学生范围校验：越租户→not_found；越范围→403002。返回 StudentProfile。"""
         from app.models import StudentProfile
-        s = db.get(StudentProfile, int(student_id)) if student_id else None
-        if not s or getattr(s, "is_deleted", False) or s.tenant_id != self.tenant_id:
+        s = db.scalar(select(StudentProfile).where(
+            StudentProfile.id == int(student_id),
+            StudentProfile.tenant_id == self.tenant_id,
+            StudentProfile.is_deleted.is_(False),
+        )) if student_id else None
+        if not s:
             raise not_found("学生不存在")
         allowed = self.allowed_class_ids(db)
         if allowed is None:
