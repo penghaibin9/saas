@@ -1067,12 +1067,14 @@ def talk_create(user: dict, body: dict) -> dict:
 
 
 def talk_record(user: dict, talk_id, body: dict) -> dict:
+    _require_teacher(user)  # 纵深防御：与同族 talk_* 一致显式收口非教师（底层 _scope_or_403 仍在）
     from app.services import affairs_talk_service as talk
     b = body or {}
     return talk.record_talk(talk_id, user, b.get("content"), b.get("result", ""), bool(b.get("needFollow")))
 
 
 def talk_follow_up(user: dict, talk_id, body: dict) -> dict:
+    _require_teacher(user)  # 纵深防御：与同族 talk_* 一致显式收口非教师（底层 _scope_or_403 仍在）
     from app.services import affairs_talk_service as talk
     b = body or {}
     return talk.follow_up(talk_id, user, b.get("action"), b.get("content", ""))
