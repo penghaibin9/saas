@@ -143,6 +143,28 @@ def cache_set_json(key: str, value: Any, ttl: int) -> bool:
     return cache_set(key, json.dumps(value, ensure_ascii=False, separators=(",", ":")), ttl)
 
 
+def cache_set_json_if_absent(key: str, value: Any, ttl: int) -> bool | None:
+    """Atomically store JSON only when the namespaced key does not exist.
+
+    True means this caller acquired the key, False means another caller already
+    owns it, and None means Redis is unavailable so the caller may fail soft.
+    """
+    client = get_redis()
+    if client is None:
+        return None
+    try:
+        stored = client.set(
+            _prefix(key),
+            json.dumps(value, ensure_ascii=False, separators=(",", ":")),
+            ex=max(1, int(ttl)),
+            nx=True,
+        )
+        return bool(stored)
+    except Exception as exc:  # noqa: BLE001
+        _mark_failed(exc)
+        return None
+
+
 def fixed_window_allow(bucket: str, limit: int, window: int) -> bool | None:
     """Distributed fixed-window limiter. None means Redis unavailable."""
     client = get_redis()

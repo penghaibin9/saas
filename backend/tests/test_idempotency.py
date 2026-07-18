@@ -11,6 +11,11 @@ def test_idempotency_replays_and_rejects_payload_reuse(monkeypatch):
 
     records = {}
     monkeypatch.setattr(idempotency, "cache_get_json", lambda key: records.get(key))
+    monkeypatch.setattr(
+        idempotency,
+        "cache_set_json_if_absent",
+        lambda key, value, ttl: False if key in records else records.setdefault(key, value) is value,
+    )
     monkeypatch.setattr(idempotency, "cache_set_json",
                         lambda key, value, ttl: records.__setitem__(key, value) is None)
     user = {"tenantId": "101", "userId": "u-1"}
@@ -18,6 +23,11 @@ def test_idempotency_replays_and_rejects_payload_reuse(monkeypatch):
     try:
         cached, handle = idempotency.begin(user, "student-export", "request-0001", {"purpose": "核对名单"})
         assert cached is None and handle is not None
+
+        with pytest.raises(AppException) as in_flight:
+            idempotency.begin(user, "student-export", "request-0001", {"purpose": "核对名单"})
+        assert in_flight.value.code == "DATA_CONFLICT"
+
         idempotency.finish(handle, {"taskId": "55", "status": "SUCCESS"})
 
         cached, second_handle = idempotency.begin(
