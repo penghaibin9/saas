@@ -6,15 +6,22 @@
  *   1) 构建期环境变量 VITE_API_BASE_URL（H5/服务器/真机联调用，只填源，勿带 /api）
  *   2) 默认 http://localhost:8000（本地开发）
  * 说明：小程序（mp-weixin）无同源概念，必须是可达的绝对地址；服务器演示请设
- *       VITE_API_BASE_URL=http://服务器IP（H5 经 Nginx /api/ 反代亦可）。
+ *       VITE_API_BASE_URL=https://你的域名（微信小程序正式环境强制 HTTPS；H5 经 Nginx /api/ 反代亦可）。
+ *       生产构建若误填 http:// 非本机地址，将自动升级为 https://（后端须挂 TLS 证书）。
  */
 function resolveApiBaseUrl() {
   try {
-    const v = import.meta && import.meta.env && import.meta.env.VITE_API_BASE_URL
+    const env = (import.meta && import.meta.env) || {}
+    const v = env.VITE_API_BASE_URL
     if (v) {
       let url = String(v).replace(/\/+$/, '')
       // 兼容误配：VITE 只填源，勿带 /api；若运维误填 .../api/v1 则剥离避免双前缀
       url = url.replace(/\/api\/v1$/i, '')
+      // 生产构建强制 HTTPS：微信小程序正式环境禁止 http 明文请求，且明文会暴露 Bearer 令牌与
+      // 全部 PII。非本机地址若误配为 http:// 一律升级为 https://（后端须挂 TLS/反代）。
+      if (env.PROD && /^http:\/\//i.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url)) {
+        url = url.replace(/^http:\/\//i, 'https://')
+      }
       return url
     }
   } catch (e) { /* 某些编译目标无 import.meta，忽略 */ }
