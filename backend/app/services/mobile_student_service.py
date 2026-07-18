@@ -27,7 +27,11 @@ def _session():
 
 
 def resolve_student(db, u: dict):
-    """在当前租户内解析当前登录学生的主档：优先 studentNo，其次 realName。找不到返回 None。"""
+    """在当前租户内解析当前登录学生的主档：优先 studentNo（租户内唯一约束），其次 realName。
+
+    姓名兜底仅在唯一命中时采用：同租户存在多个同名时返回 None，绝不 .first() 撞到他人档案
+    （同名横向越权）。找不到返回 None。
+    """
     from app.models import StudentProfile
     tid = _tid()
     sn = u.get("studentNo")
@@ -39,49 +43,42 @@ def resolve_student(db, u: dict):
             return row
     name = u.get("realName")
     if name:
-        return db.scalars(q.where(StudentProfile.real_name == name)).first()
+        rows = db.scalars(q.where(StudentProfile.real_name == name)).all()
+        if len(rows) == 1:
+            return rows[0]
+    return None
+
+
+def _resolve_domain_student(db, model, stu):
+    """为已解析的学生本人在某业务域表（迎新/学业/就业/在校/毕设）中定位其档案行。
+
+    安全与性能一并收口：优先用带索引的稳定外键 student_id(=t_student_profile.id) 直连，
+    其次学号（租户内唯一、带索引）；仅当既无 id 直连行、且姓名在“尚未回填 student_id 的
+    历史行”中唯一命中时才回退姓名。杜绝同名串号（同租户两个同名学生互看档案的横向越权），
+    同时避免对姓名列的全表扫描。返回 None 表示无法确定 → 上层出空态，绝不返回他人数据。
+    """
+    tid = _tid()
+    base = [model.tenant_id == tid, model.is_deleted.is_(False)]
+    if getattr(stu, "id", None) is not None:
+        row = db.scalars(select(model).where(*base, model.student_id == stu.id)).first()
+        if row:
+            return row
+    sn = getattr(stu, "student_no", None)
+    if sn and hasattr(model, "student_no"):
+        row = db.scalars(select(model).where(*base, model.student_no == sn)).first()
+        if row:
+            return row
+    nm = getattr(stu, "real_name", None)
+    if nm:
+        rows = db.scalars(select(model).where(
+            *base, model.student_id.is_(None), model.name == nm)).all()
+        if len(rows) == 1:
+            return rows[0]
     return None
 
 
 def _empty(reason="尚未建立你的学生档案或暂无数据"):
     return {"hasData": False, "note": reason}
-
-
-def _find_orientation_student(db, stu):
-    """Resolve by immutable student_id; name fallback is legacy-only until backfill completes."""
-    from app.models import OrientationStudent
-    base = select(OrientationStudent).where(
-        OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False))
-    row = db.scalars(base.where(OrientationStudent.student_id == stu.id)).first()
-    if row is not None:
-        return row
-    return db.scalars(base.where(
-        OrientationStudent.student_id.is_(None),
-        OrientationStudent.name == stu.real_name)).first()
-
-
-def _find_academic_student(db, stu):
-    from app.models import AcademicStudent
-    base = select(AcademicStudent).where(
-        AcademicStudent.tenant_id == _tid(), AcademicStudent.is_deleted.is_(False))
-    row = db.scalars(base.where(AcademicStudent.student_id == stu.id)).first()
-    if row is not None:
-        return row
-    return db.scalars(base.where(
-        AcademicStudent.student_id.is_(None),
-        AcademicStudent.student_no == stu.student_no)).first()
-
-
-def _find_employment_student(db, stu):
-    from app.models import EmpStudent
-    base = select(EmpStudent).where(
-        EmpStudent.tenant_id == _tid(), EmpStudent.is_deleted.is_(False))
-    row = db.scalars(base.where(EmpStudent.student_id == stu.id)).first()
-    if row is not None:
-        return row
-    return db.scalars(base.where(
-        EmpStudent.student_id.is_(None),
-        EmpStudent.student_no == stu.student_no)).first()
 
 
 def _orientation_payload(o) -> dict:
@@ -135,15 +132,15 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
         intern = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == sid,
             InternshipRecord.is_deleted.is_(False))).first()
-        ori = _find_orientation_student(db, stu)
-        acad = _find_academic_student(db, stu)
+        ori = _resolve_domain_student(db, OrientationStudent, stu)
+        acad = _resolve_domain_student(db, AcademicStudent, stu)
         warn = 0
         if acad:
             warn = db.scalar(select(func.count()).select_from(AcademicWarning).where(
                 AcademicWarning.tenant_id == _tid(), AcademicWarning.acad_student_id == acad.id,
                 AcademicWarning.is_deleted.is_(False),
                 AcademicWarning.status.in_(["PENDING_HANDLE", "PROCESSING", "ESCALATED"]))) or 0
-        emp = _find_employment_student(db, stu)
+        emp = _resolve_domain_student(db, EmpStudent, stu)
         unread_count = (db.scalar(select(func.count()).select_from(UnifiedMessage).where(
             UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
             UnifiedMessage.receiver_id.in_(personal_ids), UnifiedMessage.status == "UNREAD")) or 0)
@@ -275,9 +272,7 @@ def my_messages(user: dict) -> dict:
                                     "read": (m.status or "") == "READ",
                                     "status": m.status, "link": m.source_module or ""})
         # 服务进度 → 本人请假/工单状态流转
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
-            (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == name))).first()
+        cs = _resolve_domain_student(db, CsServiceStudent, stu)
         if cs:
             for lv in db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
                                  CsLeave.cs_student_id == cs.id, CsLeave.is_deleted.is_(False)
@@ -362,15 +357,17 @@ def orientation_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        return _orientation_payload(_find_orientation_student(db, stu))
+        from app.models import OrientationStudent
+        return _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu))
 
 
 def _resolve_orientation_student(db, u: dict):
     """按当前登录学生姓名解析其新生报到台账（找不到返回 None，供采集/绿色通道提交前置校验）。"""
+    from app.models import OrientationStudent
     stu = resolve_student(db, u)
     if not stu:
         return None
-    return _find_orientation_student(db, stu)
+    return _resolve_domain_student(db, OrientationStudent, stu)
 
 
 def orientation_collect_submit(user: dict, body: dict) -> dict:
@@ -444,13 +441,7 @@ def campus_service_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import CsDiscipline, CsLeave, CsServiceStudent, CsWorkOrder
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.student_no == stu.student_no,
-            CsServiceStudent.is_deleted.is_(False))).first()
-        if not cs:
-            cs = db.scalars(select(CsServiceStudent).where(
-                CsServiceStudent.tenant_id == _tid(), CsServiceStudent.name == stu.real_name,
-                CsServiceStudent.is_deleted.is_(False))).first()
+        cs = _resolve_domain_student(db, CsServiceStudent, stu)
         if not cs:
             return _empty("你暂无在校服务记录")
         leaves = db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
@@ -481,8 +472,8 @@ def academic_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        from app.models import AcademicGrade, AcademicWarning
-        a = _find_academic_student(db, stu)
+        from app.models import AcademicGrade, AcademicStudent, AcademicWarning
+        a = _resolve_domain_student(db, AcademicStudent, stu)
         if not a:
             return _empty("你暂无学业记录")
         grades = db.scalars(select(AcademicGrade).where(AcademicGrade.tenant_id == _tid(),
@@ -604,13 +595,7 @@ def graduation_my(user: dict) -> dict:
             return _empty()
         from app.models import (GraduationBatch, GraduationFinal, GraduationGuidance,
                                 GraduationProposal, GraduationStudent)
-        g = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.student_no == stu.student_no,
-            GraduationStudent.is_deleted.is_(False))).first()
-        if not g:
-            g = db.scalars(select(GraduationStudent).where(
-                GraduationStudent.tenant_id == _tid(), GraduationStudent.name == stu.real_name,
-                GraduationStudent.is_deleted.is_(False))).first()
+        g = _resolve_domain_student(db, GraduationStudent, stu)
         if not g:
             return _empty("你暂无毕设记录")
         props = db.scalars(select(GraduationProposal).where(GraduationProposal.tenant_id == _tid(),
@@ -649,14 +634,7 @@ def _resolve_gd_student(db, u: dict):
     stu = resolve_student(db, u)
     if not stu:
         return None
-    g = db.scalars(select(GraduationStudent).where(
-        GraduationStudent.tenant_id == _tid(), GraduationStudent.student_no == stu.student_no,
-        GraduationStudent.is_deleted.is_(False))).first()
-    if not g:
-        g = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.name == stu.real_name,
-            GraduationStudent.is_deleted.is_(False))).first()
-    return g
+    return _resolve_domain_student(db, GraduationStudent, stu)
 
 
 def graduation_topics(user: dict, batch_id: str | None = None) -> list:
@@ -1006,8 +984,8 @@ def employment_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        from app.models import EmpFollowup, EmpMaterial
-        e = _find_employment_student(db, stu)
+        from app.models import EmpFollowup, EmpMaterial, EmpStudent
+        e = _resolve_domain_student(db, EmpStudent, stu)
         if not e:
             return _empty("你暂无就业记录")
         mats = db.scalars(select(EmpMaterial).where(EmpMaterial.tenant_id == _tid(),
@@ -1100,9 +1078,7 @@ def my_applications(user: dict) -> dict:
         if not stu:
             return {"hasData": False, "tabs": tabs, "applications": []}
         from app.models import CsGrant, CsLeave, CsServiceStudent, CsWorkOrder
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
-            (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == stu.real_name))).first()
+        cs = _resolve_domain_student(db, CsServiceStudent, stu)
         apps = []
         if cs:
             _done = {"APPROVED", "COMPLETED", "CLOSED", "PASSED", "GRANTED"}
@@ -1182,9 +1158,7 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         if not stu:
             raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法提交")
         from app.models import CsServiceStudent, CsWorkOrder
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
-            (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == stu.real_name))).first()
+        cs = _resolve_domain_student(db, CsServiceStudent, stu)
         if not cs:
             cs = CsServiceStudent(tenant_id=_tid(), student_no=stu.student_no, student_id=stu.id,
                                   name=stu.real_name, grade=stu.grade, record_status="ACTIVE")
@@ -1502,24 +1476,34 @@ def internship_enterprises(user: dict, city: str = "") -> dict:
     _require_student(user)
     if not db_enabled():
         return {"hasData": False, "cities": [], "items": []}
+    from sqlalchemy import distinct
+
     from app.models import EmpCompany, InternshipPosition
+    _PUBLISHED = (InternshipPosition.tenant_id == _tid(),
+                  InternshipPosition.is_deleted.is_(False),
+                  InternshipPosition.status == "PUBLISHED")
     with _session() as db:
-        rows = db.scalars(select(InternshipPosition).where(
-            InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False),
-            InternshipPosition.status == "PUBLISHED").order_by(InternshipPosition.id.desc())).all()
-        items = []
-        cities = []
-        for p in rows:
-            company = db.get(EmpCompany, p.company_id) if p.company_id else None
-            head, alloc = p.headcount or 0, p.allocated_count or 0
-            loc = p.work_location or ""
-            if loc and loc not in cities:
-                cities.append(loc)
-            items.append({"id": str(p.id), "title": p.title or "",
-                          "companyName": company.name if company else "", "workLocation": loc,
-                          "salaryRange": p.salary_range or "", "remaining": max(0, head - alloc)})
+        # 城市下拉：单独取 distinct（轻量，不受列表上限影响，保证筛选项完整）
+        cities = [c for c in db.scalars(select(distinct(InternshipPosition.work_location)).where(
+            *_PUBLISHED)).all() if c]
+        # 岗位列表：城市筛选下推到 SQL + 上限，避免无界全表读；企业名批量取，消 per-row N+1
+        q = select(InternshipPosition).where(*_PUBLISHED)
         if city:
-            items = [x for x in items if x["workLocation"] == city]
+            q = q.where(InternshipPosition.work_location == city)
+        rows = db.scalars(q.order_by(InternshipPosition.id.desc()).limit(200)).all()
+        company_ids = {p.company_id for p in rows if p.company_id}
+        comp = {}
+        if company_ids:
+            for c in db.scalars(select(EmpCompany).where(EmpCompany.id.in_(company_ids))):
+                comp[c.id] = c
+        items = []
+        for p in rows:
+            company = comp.get(p.company_id)
+            head, alloc = p.headcount or 0, p.allocated_count or 0
+            items.append({"id": str(p.id), "title": p.title or "",
+                          "companyName": company.name if company else "",
+                          "workLocation": p.work_location or "",
+                          "salaryRange": p.salary_range or "", "remaining": max(0, head - alloc)})
         return {"hasData": len(items) > 0, "cities": cities, "items": items}
 
 

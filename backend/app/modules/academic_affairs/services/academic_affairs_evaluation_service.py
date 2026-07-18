@@ -73,7 +73,6 @@ def _level(avg):
 
 
 # 多来源评价（正方教师端5.x：学生评教/教师自评/同行评价/督导评价）
-_EVALUATOR_TYPES = ("STUDENT", "SELF", "PEER", "SUPERVISOR")
 # 综合分权重（designSource=ai_proposal，学校可后续按教学质量管理制度调整；缺失来源按现有来源归一化，不拉低）
 _WEIGHTS = {"STUDENT": 0.6, "SUPERVISOR": 0.2, "PEER": 0.15, "SELF": 0.05}
 
@@ -145,12 +144,16 @@ def get_batch(user, bid):
 
 
 def generate_tasks(user, bid, teaching_task_ids, evaluator_type="STUDENT"):
-    """按教学任务生成某来源的应评任务（每教学任务一条）。
-    evaluator_type ∈ STUDENT/SELF/PEER/SUPERVISOR（正方教师端5.x 多角色评价）。"""
+    """按教学任务生成学生评教应评任务（每教学任务一条，全体学生共用同一「班级评教槽位」）。
+
+    仅限 STUDENT：SELF/PEER/SUPERVISOR 三类必须走 `generate_role_tasks`（/role-tasks），
+    因为 submit_evaluation() 对非 STUDENT 类型强制校验 evaluator_key 命中提交人身份
+    （Tier1 R2 越权修复）——本函数不接收/不落 evaluator_key，若在此放行非 STUDENT 类型，
+    生成出的任务将没有任何人能通过身份校验提交，形成永久无法核销的死任务。"""
     from app.models import AaEvaluationTask, AaTeachingTask
     et = (evaluator_type or "STUDENT").upper()
-    if et not in _EVALUATOR_TYPES:
-        raise _bad("评价来源非法（STUDENT/SELF/PEER/SUPERVISOR）")
+    if et != "STUDENT":
+        raise _bad("本入口仅支持 STUDENT 评教；SELF/PEER/SUPERVISOR 请使用 /role-tasks 并指定 evaluatorKey")
     with session() as db:
         _require_school(_ctx(user, db))
         b = _get_batch(db, bid)

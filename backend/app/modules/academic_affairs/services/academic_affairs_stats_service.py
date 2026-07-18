@@ -387,20 +387,23 @@ def _i_graduation(db, scope, sids) -> dict:
 
 
 def _i_schedule_change(db, scope, term_id) -> dict:
-    """调停课统计：总单数 + 批准生效率（按班级范围收敛；受限角色只见本范围班级的单）。"""
+    """调停课统计：总单数 + 批准生效率（按班级范围收敛；受限角色只见本范围班级的单）。
+    分组按 change_type（ADJUST/STOP 等调课类型）而非 status，供总览卡按类型分布展示；
+    生效率统计仍按 status 计（APPROVED/APPLIED 视为生效）。"""
     from app.models import AaScheduleChange
-    q = select(AaScheduleChange.status).where(
+    q = select(AaScheduleChange.status, AaScheduleChange.change_type).where(
         AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False))
     if term_id:
         q = q.where(AaScheduleChange.term_id == int(term_id))
     if not scope.all:
         q = q.where(AaScheduleChange.class_id.in_(list(scope.class_ids) or [-1]))
-    statuses = [s for (s,) in db.execute(q).all()]
-    den = len(statuses)
-    num = sum(1 for s in statuses if s in ("APPROVED", "APPLIED"))
+    rows = db.execute(q).all()
+    den = len(rows)
+    num = sum(1 for s, _ in rows if s in ("APPROVED", "APPLIED"))
     by = {}
-    for s in statuses:
-        by[s] = by.get(s, 0) + 1
+    for _s, ct in rows:
+        key = ct or "OTHER"
+        by[key] = by.get(key, 0) + 1
     return _ind("scheduleChange", "调停课统计", value=den, numerator=num, denominator=den,
                 rate=(round(num / den * 100, 2) if den else None), unit="%", drill="schedule-change",
                 groups=[{"key": k, "count": v} for k, v in sorted(by.items())])
@@ -433,12 +436,14 @@ def _i_selection(db, scope, term_id) -> dict:
 
 
 def _i_exam(db, scope, college_id, term_id) -> dict:
-    """考务统计：确认课程数 + 考场编排完成率（有 ACTIVE 考场的课程占比；按学院范围收敛）。"""
-    from app.models import AaExamBatch, AaExamCourse, AaExamRoom
+    """考务统计：课程确认率（已确认/应考课程总数；按学院范围收敛）。
+    口径与 09 号卡专用端点 `exam_stats()` 对齐（分母=批次内全部课程，分子=已确认数），
+    不再用「有 ACTIVE 考场的课程占比」（考场编排是排考子环节，不等价于课程确认，
+    此前口径与 09 号卡专卡分口径不一致已收敛）。"""
+    from app.models import AaExamBatch, AaExamCourse
     colleges = _college_ids_scope(db, scope, college_id)
-    cq = select(AaExamCourse.id).where(
-        AaExamCourse.tenant_id == _tid(), AaExamCourse.status == "CONFIRMED",
-        AaExamCourse.is_deleted.is_(False))
+    cq = select(AaExamCourse.status).where(
+        AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False))
     if term_id:
         bids = [b for (b,) in db.execute(select(AaExamBatch.id).where(
             AaExamBatch.tenant_id == _tid(), AaExamBatch.term_id == int(term_id),
@@ -446,23 +451,20 @@ def _i_exam(db, scope, college_id, term_id) -> dict:
         cq = cq.where(AaExamCourse.batch_id.in_(bids or [-1]))
     if colleges is not None:
         cq = cq.where(AaExamCourse.college_id.in_(list(colleges) or [-1]))
-    cids = [c for (c,) in db.execute(cq).all()]
-    den = len(cids)
-    arranged = {r for (r,) in db.execute(select(AaExamRoom.exam_course_id).where(
-        AaExamRoom.tenant_id == _tid(), AaExamRoom.status == "ACTIVE",
-        AaExamRoom.exam_course_id.in_(cids or [-1]),
-        AaExamRoom.is_deleted.is_(False))).all()}
-    num = len(arranged)
+    statuses = [s for (s,) in db.execute(cq).all()]
+    den = len(statuses)
+    num = sum(1 for s in statuses if s == "CONFIRMED")
     return _ind("exam", "考务统计", value=den, numerator=num, denominator=den,
                 rate=(round(num / den * 100, 2) if den else None), unit="%", drill="exam")
 
 
 def _i_resource(db, scope) -> dict:
-    """教学资源统计：可用教室数 + 待审预约数（教室为全校共享设施，全角色同口径）。"""
+    """教学资源统计：教室总数（按类型分组，含各状态）+ 待审预约数（教室为全校共享设施，全角色同口径）。
+    value 口径与 14 号卡专用端点 `resource_stats()` 对齐（教室总数，不只 AVAILABLE），
+    分组仍按 room_type，供总览卡展示教室类型分布。"""
     from app.models import AaClassroom, AaClassroomBooking
     rooms = db.execute(select(AaClassroom.room_type).where(
-        AaClassroom.tenant_id == _tid(), AaClassroom.status == "AVAILABLE",
-        AaClassroom.is_deleted.is_(False))).all()
+        AaClassroom.tenant_id == _tid(), AaClassroom.is_deleted.is_(False))).all()
     pending = db.execute(select(func.count()).where(
         AaClassroomBooking.tenant_id == _tid(), AaClassroomBooking.status == "PENDING",
         AaClassroomBooking.is_deleted.is_(False))).scalar() or 0
@@ -730,6 +732,190 @@ def course_detail(user, category=None, college_id=None, page=1, page_size=20) ->
                  "category": c.category, "credit": float(c.credit) if c.credit is not None else None,
                  "hoursTotal": c.hours_total, "ownerCollegeId": str(c.owner_college_id or "")}
                 for c in rows]
+        return items, total
+
+
+def course_selection_stats(user, term_id=None, college_id=None) -> dict:
+    """选课统计聚合（08 号卡）：跨批次容量/已选/低人数(选课数<下限)/满额(选课数>=容量)。
+    选课批次学院口径借道 AaCourse.owner_college_id（供给行无直接学院列）。"""
+    from app.models import AaCourse, AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        colleges = _college_ids_scope(db, scope, college_id)
+        bq = select(AaSelectionBatch.id, AaSelectionBatch.status).where(
+            AaSelectionBatch.tenant_id == _tid(), AaSelectionBatch.is_deleted.is_(False))
+        if term_id:
+            bq = bq.where(AaSelectionBatch.term_id == int(term_id))
+        batches = db.execute(bq).all()
+        bids = [b for b, _s in batches] or [-1]
+        cq = select(AaSelectionCourse).where(
+            AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.batch_id.in_(bids),
+            AaSelectionCourse.is_deleted.is_(False))
+        if colleges is not None:
+            if not colleges:
+                return {"totalCapacity": 0, "totalSelected": 0, "lowEnrollCount": 0, "fullCount": 0,
+                        "recordCount": 0, "byBatchStatus": [], "scope": {"blocked": scope.blocked}}
+            course_ids = set(db.scalars(select(AaCourse.id).where(
+                AaCourse.tenant_id == _tid(), AaCourse.owner_college_id.in_(colleges))).all())
+            cq = cq.where(AaSelectionCourse.course_id.in_(course_ids or [-1]))
+        rows = db.scalars(cq).all()
+        total_capacity = sum(r.capacity or 0 for r in rows)
+        total_selected = sum(r.selected_count or 0 for r in rows)
+        low_enroll = sum(1 for r in rows if (r.selected_count or 0) < (r.min_capacity or 0))
+        full = sum(1 for r in rows if (r.capacity or 0) > 0 and (r.selected_count or 0) >= r.capacity)
+        sc_ids = [r.id for r in rows] or [-1]
+        record_count = int(db.scalar(select(func.count()).where(
+            AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.selection_course_id.in_(sc_ids),
+            AaSelectionRecord.is_deleted.is_(False))) or 0)
+        by: dict = {}
+        for _bid, s in batches:
+            by[s] = by.get(s, 0) + 1
+        return {"totalCapacity": int(total_capacity), "totalSelected": int(total_selected),
+                "lowEnrollCount": low_enroll, "fullCount": full, "recordCount": record_count,
+                "byBatchStatus": [{"key": k, "count": v} for k, v in sorted(by.items())],
+                "scope": {"blocked": scope.blocked}}
+
+
+def course_selection_detail(user, term_id=None, college_id=None, page=1, page_size=20) -> tuple[list[dict], int]:
+    """选课统计下钻（08 号卡）：低人数（已选<开课下限）供给行清单。"""
+    from app.models import AaCourse, AaSelectionBatch, AaSelectionCourse
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        colleges = _college_ids_scope(db, scope, college_id)
+        bq = select(AaSelectionBatch.id).where(
+            AaSelectionBatch.tenant_id == _tid(), AaSelectionBatch.is_deleted.is_(False))
+        if term_id:
+            bq = bq.where(AaSelectionBatch.term_id == int(term_id))
+        bids = db.scalars(bq).all() or [-1]
+        q = select(AaSelectionCourse).where(
+            AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.batch_id.in_(bids),
+            AaSelectionCourse.is_deleted.is_(False),
+            AaSelectionCourse.selected_count < AaSelectionCourse.min_capacity)
+        if colleges is not None:
+            if not colleges:
+                return [], 0
+            course_ids = set(db.scalars(select(AaCourse.id).where(
+                AaCourse.tenant_id == _tid(), AaCourse.owner_college_id.in_(colleges))).all())
+            q = q.where(AaSelectionCourse.course_id.in_(course_ids or [-1]))
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.scalars(q.order_by(AaSelectionCourse.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        items = [{"selectionCourseId": str(c.id), "courseName": c.course_name or "",
+                 "capacity": c.capacity, "minCapacity": c.min_capacity,
+                 "selectedCount": c.selected_count, "status": c.status}
+                for c in rows]
+        _audit(db, "STATS_DRILL_SELECTION", f"低人数课程明细 total={total} college={college_id or '-'}")
+        db.commit()
+        return items, total
+
+
+def exam_stats(user, term_id=None, college_id=None) -> dict:
+    """考务统计聚合（09 号卡）：课程确认率 + 缺考/违纪计数（按学院范围收敛）。"""
+    from app.models import AaExamBatch, AaExamCourse, AaExamIncident
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        colleges = _college_ids_scope(db, scope, college_id)
+        cq = select(AaExamCourse).where(
+            AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False))
+        if term_id:
+            bids = db.scalars(select(AaExamBatch.id).where(
+                AaExamBatch.tenant_id == _tid(), AaExamBatch.term_id == int(term_id),
+                AaExamBatch.is_deleted.is_(False))).all()
+            cq = cq.where(AaExamCourse.batch_id.in_(bids or [-1]))
+        if colleges is not None:
+            if not colleges:
+                return {"courseTotal": 0, "confirmedCount": 0, "confirmRate": None,
+                        "absentCount": 0, "violationCount": 0, "scope": {"blocked": scope.blocked}}
+            cq = cq.where(AaExamCourse.college_id.in_(colleges))
+        courses = db.scalars(cq).all()
+        course_ids = [c.id for c in courses] or [-1]
+        course_total = len(courses)
+        confirmed_count = sum(1 for c in courses if c.status == "CONFIRMED")
+        confirm_rate = round(confirmed_count / course_total * 100, 2) if course_total else None
+        incidents = db.scalars(select(AaExamIncident).where(
+            AaExamIncident.tenant_id == _tid(), AaExamIncident.status == "ACTIVE",
+            AaExamIncident.exam_course_id.in_(course_ids),
+            AaExamIncident.is_deleted.is_(False))).all()
+        absent_count = sum(1 for i in incidents if i.incident_type == "ABSENT")
+        violation_count = sum(1 for i in incidents if i.incident_type == "DISCIPLINE_VIOLATION")
+        return {"courseTotal": course_total, "confirmedCount": confirmed_count,
+                "confirmRate": confirm_rate, "absentCount": absent_count,
+                "violationCount": violation_count, "scope": {"blocked": scope.blocked}}
+
+
+def exam_detail(user, term_id=None, college_id=None, incident_type=None,
+                page=1, page_size=20) -> tuple[list[dict], int]:
+    """考务统计下钻（09 号卡）：缺考/违纪明细（学号脱敏 + 审计）。"""
+    from app.models import AaExamBatch, AaExamCourse, AaExamIncident
+    with session() as db:
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        colleges = _college_ids_scope(db, scope, college_id)
+        cq = select(AaExamCourse.id).where(
+            AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False))
+        if term_id:
+            bids = db.scalars(select(AaExamBatch.id).where(
+                AaExamBatch.tenant_id == _tid(), AaExamBatch.term_id == int(term_id),
+                AaExamBatch.is_deleted.is_(False))).all()
+            cq = cq.where(AaExamCourse.batch_id.in_(bids or [-1]))
+        if colleges is not None:
+            if not colleges:
+                return [], 0
+            cq = cq.where(AaExamCourse.college_id.in_(colleges))
+        course_ids = db.scalars(cq).all() or [-1]
+        q = select(AaExamIncident).where(
+            AaExamIncident.tenant_id == _tid(), AaExamIncident.status == "ACTIVE",
+            AaExamIncident.exam_course_id.in_(course_ids), AaExamIncident.is_deleted.is_(False))
+        if incident_type:
+            q = q.where(AaExamIncident.incident_type == incident_type)
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.scalars(q.order_by(AaExamIncident.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        items = [{"incidentId": str(i.id), "studentName": i.student_name or "",
+                 "studentNo": _mask_id_card(i.student_no) if i.student_no else "",
+                 "incidentType": i.incident_type,
+                 "recordedAt": (i.recorded_at.isoformat() if i.recorded_at else None)}
+                for i in rows]
+        _audit(db, "STATS_DRILL_EXAM", f"考务异常明细 total={total} type={incident_type or '-'}")
+        db.commit()
+        return items, total
+
+
+def resource_stats(user) -> dict:
+    """教学资源统计聚合（14 号卡）：教室总数/状态分布 + 待审预约数（全校共享设施，全角色同口径）。"""
+    from app.models import AaClassroom, AaClassroomBooking
+    with session() as db:
+        rooms = db.scalars(select(AaClassroom).where(
+            AaClassroom.tenant_id == _tid(), AaClassroom.is_deleted.is_(False))).all()
+        by_status: dict = {}
+        for r in rooms:
+            by_status[r.status] = by_status.get(r.status, 0) + 1
+        booking_total = int(db.scalar(select(func.count()).where(
+            AaClassroomBooking.tenant_id == _tid(), AaClassroomBooking.status == "PENDING",
+            AaClassroomBooking.is_deleted.is_(False))) or 0)
+        return {"classroomTotal": len(rooms), "bookingTotal": booking_total,
+                "byStatus": [{"key": k, "count": v} for k, v in sorted(by_status.items())]}
+
+
+def resource_detail(user, page=1, page_size=20) -> tuple[list[dict], int]:
+    """教学资源统计下钻（14 号卡）：待审核教室预约清单（全校共享设施，全角色同口径）。"""
+    from app.models import AaClassroomBooking
+    with session() as db:
+        q = select(AaClassroomBooking).where(
+            AaClassroomBooking.tenant_id == _tid(), AaClassroomBooking.status == "PENDING",
+            AaClassroomBooking.is_deleted.is_(False))
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.scalars(q.order_by(AaClassroomBooking.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        items = [{"bookingId": str(b.id), "classroomText": b.classroom_text or "",
+                 "bookingDate": b.booking_date, "slotNo": b.slot_no, "purpose": b.purpose or "",
+                 "applicantName": b.applicant_name or "", "status": b.status}
+                for b in rows]
+        _audit(db, "STATS_DRILL_RESOURCE", f"待审预约明细 total={total}")
+        db.commit()
         return items, total
 
 
@@ -1171,7 +1357,8 @@ _EXPORT_DOMAINS = {
     "overview": "教务统计总览", "statusChange": "学籍统计", "registration": "注册统计",
     "course": "课程统计", "teachingTask": "教学任务统计", "schedule": "课表统计",
     "grade": "成绩统计", "warning": "学业预警统计", "graduation": "毕业资格统计",
-    "workload": "教师工作量统计",
+    "workload": "教师工作量统计", "courseSelection": "选课统计", "exam": "考务统计",
+    "resource": "教学资源统计",
 }
 
 
@@ -1230,6 +1417,19 @@ def export_stats_xlsx(user, domain="overview", term_id=None, college_id=None, ma
         d = graduation_stats(user, None, college_id)
         headers = ["通过率(%)", "通过人数", "应审人数"]
         rows = [[d["passRate"], d["passed"], d["expected"]]]
+    elif domain == "courseSelection":
+        d = course_selection_stats(user, term_id, college_id)
+        headers = ["批次状态", "批次数"]
+        rows = [[g["key"], g["count"]] for g in d["byBatchStatus"]]
+    elif domain == "exam":
+        d = exam_stats(user, term_id, college_id)
+        headers = ["课程总数", "已确认数", "确认率(%)", "缺考人次", "违纪人次"]
+        rows = [[d["courseTotal"], d["confirmedCount"], d["confirmRate"],
+                 d["absentCount"], d["violationCount"]]]
+    elif domain == "resource":
+        d = resource_stats(user)
+        headers = ["教室状态", "数量"]
+        rows = [[g["key"], g["count"]] for g in d["byStatus"]]
     else:  # workload
         d = workload_stats(user, term_id, college_id)
         headers = ["教师", "学时合计", "任务数", "说明"]

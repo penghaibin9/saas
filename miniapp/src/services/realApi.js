@@ -527,29 +527,29 @@ export const mobileTeacherDomain = (domain) => realRequest('/mobile/teacher/' + 
 /* 教师工作台：真实待办计数 + 即将超时 + 风险学生覆盖到 mock 骨架，不再展示假名单。
  * 「最近学生动态」暂无对应真实数据源，保留 mock 骨架（P13 夜间补强已知欠账，见施工记录）。 */
 export async function enrichTeacherWorkbench(mock) {
-  const r = await realRequest('/mobile/teacher/overview')
+  // 三个只读接口互不依赖，并发拉取（校园弱网下由 3 次串行往返降为 1 次并发）。
+  // overview 决定主体，失败则由外层 realFirst 兜底；todos/风险学生为增量展示，静默降级。
+  const [r, td, rs] = await Promise.all([
+    realRequest('/mobile/teacher/overview'),
+    realRequest('/mobile/teacher/todos').catch(() => null),
+    realRequest('/mobile/teacher/risk-students').catch(() => null)
+  ])
   if (!r || !r.hasData) return { ...mock, _real: false }
   const realMetrics = (r.metrics || []).slice(0, 4).map((m) => ({ key: m.key, label: m.label, value: m.value }))
   const out = { ...mock, metrics: realMetrics.length ? realMetrics : mock.metrics,
     pendingTotal: r.pendingTotal, _real: true }
-  try {
-    const td = await realRequest('/mobile/teacher/todos')
-    if (td && Array.isArray(td.list)) {
-      out.dueSoon = td.list.slice(0, 5).map((t) => ({
-        id: t.id, title: t.title, module: t.module, student: t.student,
-        deadline: t.deadline, status: t.status
-      }))
-    }
-  } catch (e) { /* 待办为增量展示，静默降级不影响工作台主体 */ }
-  try {
-    const rs = await realRequest('/mobile/teacher/risk-students')
-    if (rs && Array.isArray(rs.list)) {
-      out.riskStudents = rs.list.slice(0, 5).map((s) => ({
-        id: s.studentId || s.studentNo || s.id, name: s.name, className: s.className || '—',
-        type: s.riskType + (s.reason ? '·' + s.reason : ''), level: s.riskLevel
-      }))
-    }
-  } catch (e) { /* 风险学生为增量展示，静默降级不影响工作台主体 */ }
+  if (td && Array.isArray(td.list)) {
+    out.dueSoon = td.list.slice(0, 5).map((t) => ({
+      id: t.id, title: t.title, module: t.module, student: t.student,
+      deadline: t.deadline, status: t.status
+    }))
+  }
+  if (rs && Array.isArray(rs.list)) {
+    out.riskStudents = rs.list.slice(0, 5).map((s) => ({
+      id: s.studentId || s.studentNo || s.id, name: s.name, className: s.className || '—',
+      type: s.riskType + (s.reason ? '·' + s.reason : ''), level: s.riskLevel
+    }))
+  }
   return out
 }
 
@@ -632,7 +632,16 @@ export const markMessageRead = (id) =>
 /** 学生档案：真实脱敏字段覆盖 mock 骨架（手机/身份证仅脱敏串，住址不返回）。 */
 export async function enrichProfileReal(mockProfile) {
   const d = await realRequest('/mobile/me/profile')
-  if (!d || !d.hasData) return { ...mockProfile, _real: false }
+  if (!d || !d.hasData) {
+    // 真实档案无数据时，绝不回落 mock 假档案（假姓名/手机 13612345678/身份证）冒充真人资料。
+    // 保留结构、清空敏感字段，标记空态，由页面渲染“暂无档案”而非虚假 PII。
+    const empty = JSON.parse(JSON.stringify(mockProfile))
+    empty.base = { ...empty.base, name: '', studentNo: '', idCard: '' }
+    empty.contact = { ...empty.contact, phone: '', address: '' }
+    empty._real = false
+    empty._empty = true
+    return empty
+  }
   const p = JSON.parse(JSON.stringify(mockProfile))
   p.base = { ...p.base, name: d.name, studentNo: d.studentNo,
     gender: d.gender || p.base.gender, idCard: d.idCardMasked || '' }

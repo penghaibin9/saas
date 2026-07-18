@@ -297,7 +297,7 @@ def apply_leave(body, user, *, skip_scope_check: bool = False) -> dict:
         _audit(db, x.id, "APPLY", f"days={days},wf={wf}")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 审批（多级） ═══════════
@@ -349,7 +349,7 @@ def approve(leave_id, user, comment="") -> dict:
             _audit(db, x.id, "APPROVED", comment)
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def reject(leave_id, user, reason) -> dict:
@@ -371,7 +371,7 @@ def reject(leave_id, user, reason) -> dict:
         _audit(db, x.id, "REJECTED", reason.strip())
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def return_leave(leave_id, user, reason) -> dict:
@@ -394,7 +394,7 @@ def return_leave(leave_id, user, reason) -> dict:
         _audit(db, x.id, "RETURNED", reason.strip())
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def resubmit(leave_id, user) -> dict:
@@ -418,7 +418,7 @@ def resubmit(leave_id, user) -> dict:
         _audit(db, x.id, "RESUBMIT")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 销假 ═══════════
@@ -443,7 +443,7 @@ def submit_cancel(leave_id, user, proof_note="") -> dict:
         _audit(db, x.id, "CANCEL_SUBMIT")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reason="", note="") -> dict:
@@ -480,7 +480,7 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
             _audit(db, x.id, "CANCEL_RETURN", reason.strip())
             db.commit()
             db.refresh(x)
-            return _row(x, s)
+            return _resolve_class_names(db, [_row(x, s)])[0]
         # CONFIRM：辅导员可校对/更正实际返校时间
         ret = _parse_dt(actual_return_at) if actual_return_at else None
         if ret:
@@ -508,7 +508,7 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
         _audit(db, x.id, "CLOSED", note)
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 续假 ═══════════
@@ -536,7 +536,7 @@ def apply_extension(leave_id, user, new_end, reason="") -> dict:
         _audit(db, x.id, "EXTENSION_SUBMIT", f"+{ext_days}天")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
@@ -569,7 +569,7 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
             _audit(db, x.id, "EXTENSION_REJECTED", reason.strip())
             db.commit()
             db.refresh(x)
-            return _row(x, s)
+            return _resolve_class_names(db, [_row(x, s)])[0]
         if ext:
             ext.status = "APPROVED"
             ext.version += 1
@@ -583,7 +583,7 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
         _audit(db, x.id, "EXTENSION_APPROVED")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 代登记销假 + 逾期处置 ═══════════
@@ -621,7 +621,7 @@ def proxy_cancel(leave_id, user, actual_return_at, note="") -> dict:
         _audit(db, x.id, "CANCEL_PROXY", f"actual_return={_iso(ret)}")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def handle_overdue(leave_id, user, handle_type, note="") -> dict:
@@ -651,7 +651,7 @@ def handle_overdue(leave_id, user, handle_type, note="") -> dict:
             _audit(db, x.id, f"OVERDUE_{handle_type}", note.strip())
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 逾期扫描（幂等） ═══════════

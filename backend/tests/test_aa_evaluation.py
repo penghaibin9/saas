@@ -94,11 +94,14 @@ def test_ev_multisource_composite(client, db_mode):
     bid = client.post(f"{BASE}/evaluation/batches", headers=admin,
                       json={"batchName": "多来源评教", "termId": str(ids["term"])}).json()["data"]["batchId"]
     # 生成 学生 + 督导 两类应评任务
+    # 督导类必须走 /role-tasks 并指定 evaluatorKey（/tasks 仅限 STUDENT：非 STUDENT 类型若从
+    # /tasks 生成将没有 evaluator_key，submit_evaluation 的越权校验会导致永远无法提交，见服务层注释）。
     g1 = client.post(f"{BASE}/evaluation/batches/{bid}/tasks", headers=admin,
                      json={"teachingTaskIds": [str(ids["task"])], "evaluatorType": "STUDENT"}).json()
     assert g1["data"]["taskCount"] == 1 and g1["data"]["evaluatorType"] == "STUDENT"
-    g2 = client.post(f"{BASE}/evaluation/batches/{bid}/tasks", headers=admin,
-                     json={"teachingTaskIds": [str(ids["task"])], "evaluatorType": "SUPERVISOR"}).json()
+    g2 = client.post(f"{BASE}/evaluation/batches/{bid}/role-tasks", headers=admin,
+                     json={"evaluatorType": "SUPERVISOR",
+                           "assignments": [{"teachingTaskId": str(ids["task"]), "evaluatorKey": "school_admin01"}]}).json()
     assert g2["data"]["taskCount"] == 1
     client.post(f"{BASE}/evaluation/batches/{bid}/publish", headers=admin)
     client.post(f"{BASE}/evaluation/batches/{bid}/open", headers=admin)
@@ -109,8 +112,10 @@ def test_ev_multisource_composite(client, db_mode):
     for sn, sc in (("EVM1", 90), ("EVM2", 80)):  # 学生均分 85
         client.post(f"{BASE}/evaluation/submit", headers=_stu_token("学生", sn),
                     json={"taskId": stu_task, "objectiveScore": sc, "answers": {"x": 5}})
-    client.post(f"{BASE}/evaluation/submit", headers=admin,  # 督导 95（admin 代督导提交）
-                json={"taskId": sup_task, "objectiveScore": 95, "answers": {"x": 5}})
+    # 督导 95：evaluatorKey="school_admin01" 命中 admin 登录身份的 _derive_keys，本人可提交
+    sup_resp = client.post(f"{BASE}/evaluation/submit", headers=admin,
+                           json={"taskId": sup_task, "objectiveScore": 95, "answers": {"x": 5}}).json()
+    assert sup_resp["code"] == 0, sup_resp
     client.post(f"{BASE}/evaluation/batches/{bid}/close-score", headers=admin)
     r = client.get(f"{BASE}/evaluation/batches/{bid}/results", headers=admin).json()["data"]["items"][0]
     assert r["studentAvg"] == 85.0 and r["supervisorAvg"] == 95.0 and r["studentCount"] == 2

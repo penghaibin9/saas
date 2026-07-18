@@ -81,6 +81,13 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-integration-connections', label: '接口、凭证与 Webhook', path: '/admin/system/integrations', permissionKey: 'system.integration.manage', view: 'capability', actions: [action('integration:connection:manage', '维护接口连接', 'HIGH'), action('integration:credential:rotate', '轮换接口凭证', 'HIGH')] },
       { key: 'sys-sync-jobs', label: '同步任务与失败中心', path: '/admin/system/sync-jobs', permissionKey: 'system.integration.sync.view', view: 'capability', actions: [action('integration:sync:retry', '重试同步任务', 'HIGH'), action('integration:sync:cancel', '取消同步任务', 'HIGH')] }
     ]
+  },
+  {
+    key: 'sys-migration', label: '数据迁移', icon: '⇅',
+    description: '老系统（教务/学工）历史数据经模板导入：dry-run 行级校验 → 错误清零 → 整批事务确认，全程留痕可对账。',
+    items: [
+      { key: 'sys-migration-workbench', label: '老系统数据迁移', path: '/admin/system/migration', permissionKey: 'system.migration.view', view: 'migration', actions: [action('migration:template:download', '下载迁移模板'), action('migration:validate', '上传并校验'), action('migration:confirm', '确认导入', 'HIGH')] }
+    ]
   }
 ]
 

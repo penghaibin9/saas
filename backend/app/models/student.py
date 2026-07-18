@@ -23,7 +23,8 @@ class StudentProfile(PKMixin, TenantMixin, CommonMixin, Base):
     )
 
     student_no: Mapped[str] = mapped_column(String(50), nullable=False, comment="学号")
-    real_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="姓名（冻结册：非敏感）")
+    real_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True,
+                                            comment="姓名（冻结册：非敏感）；建索引:审批/巡访/迁移期姓名兜底查询消全表扫描")
     gender: Mapped[str | None] = mapped_column(String(10))
     id_card_encrypted: Mapped[str | None] = mapped_column(String(500), comment="敏感：身份证密文（id_card）")
     id_card_hash: Mapped[str | None] = mapped_column(String(128), index=True, comment="身份证 hash（查重）")
