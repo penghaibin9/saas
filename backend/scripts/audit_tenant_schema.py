@@ -25,6 +25,8 @@ GLOBAL_UNIQUES = {
     ("t_tenant", ("tenant_code",)),
     ("t_permission", ("permission_code",)),
     ("t_user", ("wx_openid",)),
+    # 平台订单由超级管理员跨租户按 order_no 定位，编号属于平台级标识。
+    ("t_order", ("order_no",)),
     ("t_auth_refresh_token", ("token_hash",)),
     ("t_auth_blocked_jti", ("jti",)),
 }
