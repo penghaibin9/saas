@@ -43,8 +43,10 @@ def _audit(db, biz_id, action, detail=""):
 
 def _load(db, club_id):
     from app.models import AffairsClub
-    c = db.get(AffairsClub, int(club_id))
-    if not c or c.is_deleted or c.tenant_id != _tid():
+    c = db.scalars(select(AffairsClub).where(
+        AffairsClub.id == int(club_id), AffairsClub.tenant_id == _tid(),
+        AffairsClub.is_deleted.is_(False))).first()
+    if not c:
         raise not_found("社团不存在")
     return c
 
@@ -66,11 +68,14 @@ def list_clubs(user, status=None, club_type=None, page=1, page_size=50):
             conds.append(AffairsClub.status == status)
         if club_type:
             conds.append(AffairsClub.club_type == club_type)
-        rows = db.scalars(select(AffairsClub).where(*conds).order_by(AffairsClub.id.desc())).all()
+        page = max(1, int(page or 1))
+        page_size = max(1, min(200, int(page_size or 50)))
+        total = int(db.scalar(select(func.count()).select_from(AffairsClub).where(*conds)) or 0)
+        rows = db.scalars(select(AffairsClub).where(*conds)
+                          .order_by(AffairsClub.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
         out = [_row(c) for c in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total
 
 
 def create_club(body, user) -> dict:
@@ -146,11 +151,12 @@ def list_members(club_id, user):
             AffairsClubMember.tenant_id == _tid(), AffairsClubMember.club_id == int(club_id),
             AffairsClubMember.status == "ACTIVE", AffairsClubMember.is_deleted.is_(False))
             .order_by(AffairsClubMember.id.desc())).all()
-        out = []
-        for m in rows:
-            s = db.get(StudentProfile, int(m.student_id)) if m.student_id else None
-            out.append(_member_row(m, s))
-        return out
+        student_ids = {int(m.student_id) for m in rows if m.student_id}
+        students = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(student_ids),
+            StudentProfile.is_deleted.is_(False))).all() if student_ids else []
+        student_by_id = {int(s.id): s for s in students}
+        return [_member_row(m, student_by_id.get(int(m.student_id))) for m in rows]
 
 
 def _sync_count(db, club_id):
@@ -158,7 +164,9 @@ def _sync_count(db, club_id):
     n = db.scalar(select(func.count()).select_from(AffairsClubMember).where(
         AffairsClubMember.tenant_id == _tid(), AffairsClubMember.club_id == int(club_id),
         AffairsClubMember.status == "ACTIVE", AffairsClubMember.is_deleted.is_(False))) or 0
-    c = db.get(AffairsClub, int(club_id))
+    c = db.scalars(select(AffairsClub).where(
+        AffairsClub.id == int(club_id), AffairsClub.tenant_id == _tid(),
+        AffairsClub.is_deleted.is_(False))).first()
     if c:
         c.member_count = int(n)
 
@@ -173,8 +181,10 @@ def add_member(club_id, body, user) -> dict:
         c = _load(db, club_id)
         if c.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "仅运营中社团可增补成员")
-        s = db.get(StudentProfile, sid) if sid else None
-        if not s or s.is_deleted or s.tenant_id != _tid():
+        s = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == sid, StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False))).first() if sid else None
+        if not s:
             raise not_found("学生不存在")
         dup = db.scalars(select(AffairsClubMember).where(
             AffairsClubMember.tenant_id == _tid(), AffairsClubMember.club_id == int(club_id),
@@ -194,8 +204,10 @@ def add_member(club_id, body, user) -> dict:
 def remove_member(member_id, user) -> dict:
     from app.models import AffairsClubMember
     with session() as db:
-        m = db.get(AffairsClubMember, int(member_id))
-        if not m or m.is_deleted or m.tenant_id != _tid():
+        m = db.scalars(select(AffairsClubMember).where(
+            AffairsClubMember.id == int(member_id), AffairsClubMember.tenant_id == _tid(),
+            AffairsClubMember.is_deleted.is_(False))).first()
+        if not m:
             raise not_found("成员记录不存在")
         if m.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "该成员已退社")
