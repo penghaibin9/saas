@@ -7,7 +7,7 @@
   >
     <div class="mp-stack">
       <ModuleHero
-        title="迁移地图（P1 · 6 域）"
+        title="迁移地图（21 域 · 学工 + 教务全量历史）"
         subtitle="老系统只要能导出 Excel 即可迁移；金智(XH/XM/ZCJ)、正方(xh/kcmc/cj)、强智(中文列名)常见字段名可自动识别，仍以学校真实导出样例为准。"
         :stats="heroStats"
       />
@@ -27,6 +27,7 @@
             <div class="smv-domain__head">
               <span class="smv-domain__order">{{ d.order }}</span>
               <span class="smv-domain__label">{{ d.label }}</span>
+              <span class="smv-domain__group">{{ d.domain.startsWith('affairs-') ? '学工' : '教务' }}</span>
               <StatusTag
                 :type="d.dupPolicy === 'ERROR' ? 'warning' : (d.dupPolicy === 'SKIP' ? 'info' : 'success')"
                 :label="dupPolicyLabel(d.dupPolicy)"
@@ -171,7 +172,7 @@ export default {
       const done = this.domains.filter((d) => d.recordCount > 0).length
       return [
         { label: '学生主档', value: String(this.studentCount), tone: 'info' },
-        { label: '已有数据域', value: `${done}/${this.domains.length || 6}`, tone: 'primary' },
+        { label: '已有数据域', value: `${done}/${this.domains.length || 21}`, tone: 'primary' },
         { label: '迁移批次', value: String(this.batches.length), tone: 'success' }
       ]
     },
@@ -272,6 +273,11 @@ export default {
   display: inline-flex; align-items: center; justify-content: center;
 }
 .smv-domain__label { font-weight: var(--font-weight-semibold); flex: 1; }
+.smv-domain__group {
+  font-size: var(--font-size-xs); color: var(--text-tertiary);
+  border: 1px solid var(--border-light); border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
 .smv-domain__meta { font-size: var(--font-size-xs); color: var(--text-secondary); display: grid; gap: 4px; }
 .smv-domain__meta code { font-size: var(--font-size-xs); }
 .smv-domain__actions { display: flex; gap: var(--space-2); justify-content: flex-end; }

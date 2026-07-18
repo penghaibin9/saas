@@ -23,7 +23,8 @@ def test_migration_overview_orders_and_deps(client, auth_headers, db_mode):
     ov = client.get("/api/v1/system/migration/overview", headers=auth_headers).json()
     assert ov["code"] == 0
     domains = ov["data"]["domains"]
-    assert [d["domain"] for d in domains] == [
+    assert len(domains) == 21  # P1 6 域 + P2 15 域
+    assert [d["domain"] for d in domains[:6]] == [
         "aa-term", "aa-calendar", "aa-time-slot",
         "aa-student-status", "aa-status-change-history", "aa-grade-history"]
     by = {d["domain"]: d for d in domains}

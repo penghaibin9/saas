@@ -1,7 +1,8 @@
-"""老系统数据迁移（P1 · 6 域）——竞品替换历史数据导入。
+"""老系统数据迁移（21 域全量）——竞品替换历史数据导入。
 
-设计依据：docs/03-业务模块设计/跨模块融合/13A-13B-历史数据导入与迁移设计.md（21 域清单之
-B1 学年学期 / B2 校历 / B3 作息 / B4 学籍名册 / B5 学籍异动历史 / B10 历史成绩）。
+设计依据：docs/03-业务模块设计/跨模块融合/13A-13B-历史数据导入与迁移设计.md 21 域清单。
+本文件：管线 + P1 6 域（B1 学年学期 / B2 校历 / B3 作息 / B4 学籍名册 / B5 学籍异动历史 /
+B10 历史成绩）；其余 15 域（学工 A1-A10 + 教务 B6-B9/B11）见 migration_domains_p2.py。
 
 口径（与现有管线一致，禁止绕开）：
 - 两步导入：dry_run（行级错误，行号从 2 起）→ confirm（整批一个事务，失败回滚）；
@@ -668,6 +669,14 @@ _PERSISTERS = {"aa-term": _persist_term, "aa-calendar": _persist_calendar,
                "aa-time-slot": _persist_time_slot, "aa-student-status": _persist_student_status,
                "aa-status-change-history": _persist_status_history, "aa-grade-history": _persist_grade}
 
+# ── P2 · 15 域注册（学工 A1-A10 + 教务 B6-B9/B11；配置与实现见 migration_domains_p2） ──
+from app.services import migration_domains_p2 as _p2  # noqa: E402
+
+_DOMAINS.update(_p2.P2_DOMAINS)
+_VALIDATORS.update(_p2.P2_VALIDATORS)
+_PERSISTERS.update(_p2.P2_PERSISTERS)
+_PREVIEW_MASKS = dict(_p2.P2_PREVIEW_MASKS)
+
 
 # ═══════════ 两步管线 ═══════════
 
@@ -698,11 +707,13 @@ def dry_run(domain: str, rows: list[dict]) -> dict:
         db2.commit()
     finally:
         db2.close()
+    mask = _PREVIEW_MASKS.get(domain)
+    preview = [mask(r) for r in ok_rows[:200]] if mask else ok_rows[:200]
     return {"batchNo": batch_no, "domain": domain, "status": status,
             "totalRows": len(rows), "okRows": len(ok_rows), "errorRows": len(errors),
             "skippedRows": skipped, "errors": errors[:50],
-            # 预览行（前端预校验表格用；确认写入以服务端批次内容为准，不回传超 200 行）
-            "rows": ok_rows[:200]}
+            # 预览行（前端预校验表格用；敏感域已脱敏；确认写入以服务端批次内容为准，不回传超 200 行）
+            "rows": preview}
 
 
 def confirm(batch_no: str) -> dict:
@@ -751,8 +762,11 @@ def confirm(batch_no: str) -> dict:
 
 def _counts(db) -> dict:
     from sqlalchemy import func, select
-    from app.models import (AaCalendarEvent, AaStatusChange, AaTerm, AaTimeSlot,
-                            AcademicGrade, StudentProfile)
+    from app.models import (AaCalendarEvent, AaCourse, AaGraduationAuditResult, AaProgram,
+                            AaScheduleItem, AaStatusChange, AaTeachingTask, AaTerm, AaTimeSlot,
+                            AcademicGrade, AffairsClassCadre, AffairsRiskRecord, AidLevelHistory,
+                            CsLeave, DisciplineCase, DormBed, DormRoom, FundingApplication,
+                            StudentContact, StudentProfile)
 
     def _cnt(model, *conds):
         return db.scalar(select(func.count()).select_from(model).where(
@@ -766,7 +780,31 @@ def _counts(db) -> dict:
         "aa-student-status": _cnt(AaStatusChange, AaStatusChange.status == "EFFECTIVE"),
         "aa-status-change-history": _cnt(AaStatusChange, AaStatusChange.status == "EFFECTIVE"),
         "aa-grade-history": _cnt(AcademicGrade, AcademicGrade.source == "LEGACY"),
+        # P2 学工域
+        "affairs-family-contact": _cnt(StudentContact, StudentContact.contact_type.in_(
+            ("GUARDIAN_PHONE", "EMERGENCY_PHONE"))),
+        "affairs-class-cadre": _cnt(AffairsClassCadre),
+        "affairs-dorm-building": _cnt(DormRoom),
+        "affairs-dorm-assign": _cnt(DormBed, DormBed.status == "OCCUPIED"),
+        "affairs-leave-history": _cnt(CsLeave, CsLeave.student_id.isnot(None)),
+        "affairs-aid-history": db.scalar(select(func.count()).select_from(AidLevelHistory).where(
+            AidLevelHistory.tenant_id == _tid())) or 0,  # append-only 表无 is_deleted
+        "affairs-funding-history": _cnt(FundingApplication, FundingApplication.status == "GRANTED"),
+        "affairs-discipline-history": _cnt(DisciplineCase),
+        "affairs-talk-history": _cnt(_p2_model("TalkRecord")),
+        "affairs-risk-manual": _cnt(AffairsRiskRecord, AffairsRiskRecord.source == "MANUAL"),
+        # P2 教务域
+        "aa-course": _cnt(AaCourse),
+        "aa-program": _cnt(AaProgram),
+        "aa-teaching-task": _cnt(AaTeachingTask),
+        "aa-schedule": _cnt(AaScheduleItem, AaScheduleItem.source == "IMPORT"),
+        "aa-graduation-history": _cnt(AaGraduationAuditResult),
     }
+
+
+def _p2_model(name):
+    import app.models as _m
+    return getattr(_m, name)
 
 
 def overview() -> dict:
