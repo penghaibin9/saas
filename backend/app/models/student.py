@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.student_lifecycle import ENROLLED
@@ -14,7 +14,13 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 class StudentProfile(PKMixin, TenantMixin, CommonMixin, Base):
     """t_student_profile 学生主档——全平台唯一学生身份，id 即 student_id。"""
     __tablename__ = "t_student_profile"
-    __table_args__ = (UniqueConstraint("tenant_id", "student_no", name="uk_tenant_student_no"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "student_no", name="uk_tenant_student_no"),
+        Index("ix_student_tenant_active_id", "tenant_id", "is_deleted", "id"),
+        Index("ix_student_tenant_class_active_id", "tenant_id", "class_id", "is_deleted", "id"),
+        Index("ix_student_tenant_college_active_id", "tenant_id", "college_id", "is_deleted", "id"),
+        Index("ix_student_tenant_major_active_id", "tenant_id", "major_id", "is_deleted", "id"),
+    )
 
     student_no: Mapped[str] = mapped_column(String(50), nullable=False, comment="学号")
     real_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="姓名（冻结册：非敏感）")
@@ -39,6 +45,10 @@ class StudentProfile(PKMixin, TenantMixin, CommonMixin, Base):
 class StudentContact(PKMixin, TenantMixin, CommonMixin, Base):
     """t_student_contact 联系方式（手机/邮箱/地址/紧急联系人，加密存储）。"""
     __tablename__ = "t_student_contact"
+    __table_args__ = (
+        Index("ix_contact_tenant_student_type_active",
+              "tenant_id", "student_id", "contact_type", "is_deleted"),
+    )
 
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="= t_student_profile.id")
     contact_type: Mapped[str] = mapped_column(String(50), nullable=False,
