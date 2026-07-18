@@ -1,6 +1,10 @@
 """6 域通用导入：Dry-Run 校验（必填/批内重复/库内重复）+ 确认写入 + 未过校验禁确认。"""
 from __future__ import annotations
 
+import pytest
+
+from app.core.exceptions import AppException
+
 MAIN_TID = 1000000000000000001
 
 
@@ -45,3 +49,11 @@ def test_import_unknown_domain(client, auth_headers, db_mode):
 
 def test_import_requires_login(client):
     assert client.post("/api/v1/import/domain/academic/validate", json={"rows": []}).json()["code"] == 401001
+
+
+def test_import_rejects_unbounded_batches():
+    from app.services import domain_import_service as service
+
+    with pytest.raises(AppException) as exc:
+        service.dry_run("academic", [{}] * (service.MAX_IMPORT_ROWS + 1))
+    assert exc.value.code == "VALIDATION_ERROR"

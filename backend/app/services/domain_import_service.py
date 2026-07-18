@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import select
+
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException, not_found
+from app.db.session import db_enabled, get_sessionmaker
 
 
 def _tid() -> int:
@@ -27,6 +30,7 @@ DOMAINS = {
 }
 
 _MEM: dict[str, dict] = {}
+MAX_IMPORT_ROWS = 5000
 
 
 def _import_service(mod_name):
@@ -54,11 +58,33 @@ def _svc(path):
     return getattr(_import_service(mod_name), fn)
 
 
+def _existing_keys(domain: str, list_path: str, key_field: str) -> set[str]:
+    """只读取当前租户的查重键，避免为 Dry-Run 构造十万条完整列表字典。"""
+    if not db_enabled():
+        return {str(r.get(key_field) or "") for r in _svc(list_path)(1, MAX_IMPORT_ROWS)[0]}
+    from app.models import AcademicStudent, CsServiceStudent, EmpStudent, OrientationStudent
+    model, column = {
+        "orientation": (OrientationStudent, OrientationStudent.admission_no),
+        "campus-service": (CsServiceStudent, CsServiceStudent.student_no),
+        "academic": (AcademicStudent, AcademicStudent.student_no),
+        "employment": (EmpStudent, EmpStudent.student_no),
+    }[domain]
+    db = get_sessionmaker()()
+    try:
+        return {str(value) for value in db.scalars(select(column).where(
+            model.tenant_id == _tid(), model.is_deleted.is_(False), column.is_not(None))).all()}
+    finally:
+        db.close()
+
+
 def dry_run(domain: str, rows: list[dict]) -> dict:
     if domain not in DOMAINS:
         raise AppException("VALIDATION_ERROR", f"未知导入域：{domain}（支持 {'/'.join(DOMAINS)}）")
+    if len(rows) > MAX_IMPORT_ROWS:
+        raise AppException("VALIDATION_ERROR",
+                           f"单次导入不能超过 {MAX_IMPORT_ROWS} 行，当前 {len(rows)} 行，请拆分后重试")
     key_field, _, list_path, key_label = DOMAINS[domain]
-    existing = {str(r.get(key_field) or "") for r in _svc(list_path)(1, 100000)[0]}
+    existing = _existing_keys(domain, list_path, key_field)
     ok_rows, errors, seen = [], [], set()
     for i, row in enumerate(rows, start=2):
         name = str(row.get("name") or row.get("姓名") or "").strip()
