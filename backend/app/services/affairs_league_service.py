@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -44,8 +44,10 @@ def _audit(db, biz_id, action, detail=""):
 
 def _load(db, dev_id):
     from app.models import AffairsLeagueDev
-    d = db.get(AffairsLeagueDev, int(dev_id))
-    if not d or d.is_deleted or d.tenant_id != _tid():
+    d = db.scalars(select(AffairsLeagueDev).where(
+        AffairsLeagueDev.id == int(dev_id), AffairsLeagueDev.tenant_id == _tid(),
+        AffairsLeagueDev.is_deleted.is_(False))).first()
+    if not d:
         raise not_found("发展台账不存在")
     return d
 
@@ -73,17 +75,22 @@ def list_dev(user, dev_type=None, stage=None, status=None, page=1, page_size=50)
             conds.append(AffairsLeagueDev.current_stage == stage)
         if status:
             conds.append(AffairsLeagueDev.status == status)
-        rows = db.scalars(select(AffairsLeagueDev).where(*conds).order_by(
-            AffairsLeagueDev.id.desc())).all()
-        out = []
-        for d in rows:
-            s = db.get(StudentProfile, int(d.student_id)) if d.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_dev_row(d, s))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        student_join = and_(
+            StudentProfile.id == AffairsLeagueDev.student_id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed))
+        page = max(1, int(page or 1))
+        page_size = max(1, min(200, int(page_size or 50)))
+        total = int(db.scalar(select(func.count()).select_from(AffairsLeagueDev)
+                              .outerjoin(StudentProfile, student_join).where(*conds)) or 0)
+        rows = db.execute(select(AffairsLeagueDev, StudentProfile)
+                          .outerjoin(StudentProfile, student_join).where(*conds)
+                          .order_by(AffairsLeagueDev.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        return [_dev_row(d, s) for d, s in rows], total
 
 
 def create_dev(body, user) -> dict:
@@ -93,8 +100,10 @@ def create_dev(body, user) -> dict:
     if dev_type not in DEV_TYPES:
         raise AppException("VALIDATION_ERROR", "发展类型非法")
     with session() as db:
-        s = db.get(StudentProfile, sid) if sid else None
-        if not s or s.is_deleted or s.tenant_id != _tid():
+        s = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == sid, StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False))).first() if sid else None
+        if not s:
             raise not_found("学生不存在")
         dup = db.scalars(select(AffairsLeagueDev).where(
             AffairsLeagueDev.tenant_id == _tid(), AffairsLeagueDev.student_id == sid,
@@ -138,7 +147,9 @@ def advance_stage(dev_id, body, user) -> dict:
                                      occurred_at=datetime.utcnow(), created_by=_uid_int(user)))
         _audit(db, d.id, "LEAGUE_DEV_ADVANCE", f"{from_stage}->{to_stage}")
         db.commit(); db.refresh(d)
-        s = db.get(StudentProfile, int(d.student_id))
+        s = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == int(d.student_id), StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False))).first()
         return _dev_row(d, s)
 
 
@@ -157,7 +168,9 @@ def terminate_dev(dev_id, user, reason="") -> dict:
                                      created_by=_uid_int(user)))
         _audit(db, d.id, "LEAGUE_DEV_TERMINATE", reason.strip())
         db.commit(); db.refresh(d)
-        s = db.get(StudentProfile, int(d.student_id))
+        s = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == int(d.student_id), StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False))).first()
         return _dev_row(d, s)
 
 
