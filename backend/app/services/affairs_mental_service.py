@@ -21,7 +21,7 @@ from app.services.db_service import _iso, _tid, session
 
 # 明细可见角色（按角色）：心理老师 + 校/平台超管（超管查看仍须原因+审计）。
 # STUDENT_AFFAIRS_ADMIN 不在此列（SEC-2）；辅导员/班主任须经 PSY_STUDENT 逐生授权。
-_PSY_DETAIL_ROLES = {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "ADMIN"}
+_PSY_DETAIL_ROLES = {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"}
 _PSY_SCOPE_ROLES = {"COUNSELOR", "CLASS_ADVISOR", "PSYCHOLOGY_TEACHER"}
 L_REF = {"REFERRED": "已转介", "FOLLOWING": "回访中", "ESCALATED": "已升级危机", "CLOSED": "已关闭"}
 L_LEVEL = {"GENERAL": "一般关注", "FOCUS": "重点关注", "CRISIS": "危机"}
@@ -60,7 +60,7 @@ def psy_scope_ids(db, user):
     from app.models import StudentProfile, TeacherStudentScope
     u = user or {}
     role = (u.get("currentRoleCode") or "")
-    if is_super_admin(user) or role in ("SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "ADMIN"):
+    if is_super_admin(user) or role in ("SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"):
         return None
     uid = str(u.get("userId") or "")
     ctx = str(u.get("activeContextId") or "")
@@ -86,7 +86,7 @@ def psy_scope_ids(db, user):
 def _can_view_detail(user, student_id, scope_ids) -> bool:
     """能否查看该生心理明细：校/平台超管 + 心理老师(限授权) + PSY_STUDENT 授权者。SEC-2：学工处管理员不在此列。"""
     role = (user or {}).get("currentRoleCode") or ""
-    if role in ("SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "ADMIN"):
+    if role in ("SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"):
         return True
     if scope_ids is None:
         return role in _PSY_DETAIL_ROLES

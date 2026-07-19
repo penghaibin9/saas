@@ -11,8 +11,8 @@ from sqlalchemy import func, select
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid, session
 
-_DISC_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "COLLEGE_ADMIN", "COUNSELOR", "ADMIN"}
-_PSY_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "PSYCHOLOGY_TEACHER", "ADMIN"}
+_DISC_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "COLLEGE_ADMIN", "COUNSELOR"}
+_PSY_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "PSYCHOLOGY_TEACHER"}
 
 # 360 时间线事件 → 中文标题
 _STAGE_LABEL = {

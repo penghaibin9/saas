@@ -691,7 +691,7 @@ def list_mental(page, page_size, keyword=None, user=None, reason=None):
     from app.core.context import get_current_user_ctx
     u = user or (get_current_user_ctx() or {})
     role = (u or {}).get("currentRoleCode") or ""
-    can = role in {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "ADMIN"}
+    can = role in {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"}
     reveal = bool(can and reason and len(str(reason).strip()) >= 5)
     with session() as db:
         rows = db.scalars(select(CsMentalRecord).where(CsMentalRecord.tenant_id == _tid(),

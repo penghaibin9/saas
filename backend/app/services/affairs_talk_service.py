@@ -16,7 +16,7 @@ from app.services.db_service import _iso, _tid, audit_insert, session
 
 TALK_TOPICS = ("DAILY", "ACADEMIC", "PSYCHOLOGY", "DISCIPLINE", "EMPLOYMENT",
                "INTERNSHIP", "AID", "DORM")
-_PSY_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "PSYCHOLOGY_TEACHER", "ADMIN"}
+_PSY_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "PSYCHOLOGY_TEACHER"}
 
 L_TALK = {"PLANNED": "待谈", "SCHEDULED": "已约定", "COMPLETED": "已谈话",
           "FOLLOW_UP": "跟进中", "CLOSED": "已办结", "CANCELLED": "已取消"}

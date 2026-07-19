@@ -72,6 +72,13 @@ _GD_DEP = [
 # 学生的合法入口是 /mobile/internship/*（打卡/周报/我的实习），不受此门禁影响。
 _INTERN_DEP = [Depends(require_staff), Depends(require_module("internship"))]
 
+# 学工中心 / 在校服务 PC 管理端统一角色门禁：学生令牌一律 403（学生合法入口是 /mobile/*）。
+# 此前两条路由未挂 require_module，未采购学工/在校服务模块的租户仍可凭权限点访问（安全审计
+# 2026-07-17 P1）；campusService 键已在 platform_defaults.FEATURE_KEYS 注册，studentAffairs
+# 键随本次修复同步注册，避免重蹈 module.graduationDesign.enabled 未注册键、门禁恒放行的覆辙。
+_SA_DEP = [Depends(require_staff), Depends(require_module("studentAffairs"))]
+_CS_DEP = [Depends(require_staff), Depends(require_module("campusService"))]
+
 # 全端共用底座
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])       # /api/v1/auth/*
 api_router.include_router(authz.router)                                      # /api/v1/authz/*（冻结契约）
@@ -98,7 +105,7 @@ api_router.include_router(internship_communication.router, dependencies=_INTERN_
 api_router.include_router(internship_visit_plan.router, dependencies=_INTERN_DEP)                      # /api/v1/internship/visit-plans/*（巡访计划，P4 §5.2）
 api_router.include_router(internship_complaint.router, dependencies=_INTERN_DEP)                       # /api/v1/internship/complaints/*（企业投诉，P4 §5.3）
 api_router.include_router(orientation.router)                                # /api/v1/orientation/*
-api_router.include_router(campus_service.router)                             # /api/v1/campus-service/*
+api_router.include_router(campus_service.router, dependencies=_CS_DEP)       # /api/v1/campus-service/*
 api_router.include_router(academic.router)                                   # /api/v1/academic/*
 api_router.include_router(graduation.router, dependencies=_GD_DEP)                                 # /api/v1/graduation/*
 api_router.include_router(graduation_batch.router, dependencies=_GD_DEP)                           # /api/v1/graduation/batches/*（毕设批次）
@@ -120,7 +127,7 @@ api_router.include_router(graduation_template.router, dependencies=_GD_DEP)     
 api_router.include_router(graduation_more.router, dependencies=_GD_DEP)                           # /api/v1/graduation/gd-peer-reviews/*、gd-defense-experts/*、gd-grade-appeals/*
 api_router.include_router(excel.router)                                       # /api/v1/excel/*（公共 Excel 底座·导入记录）
 api_router.include_router(employment.router, dependencies=_INTERN_DEP)                                 # /api/v1/employment/*（PC 管理端·学生 403）
-api_router.include_router(student_affairs.router)                            # /api/v1/student-affairs/*（13A 学工中心）
+api_router.include_router(student_affairs.router, dependencies=_SA_DEP)      # /api/v1/student-affairs/*（13A 学工中心）
 api_router.include_router(academic_affairs.router)                           # /api/v1/academic-affairs/*（13B 教务中心）
 
 # 看板 / 待办 / 消息（扁平简化端点）

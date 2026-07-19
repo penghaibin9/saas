@@ -32,7 +32,7 @@ def _students_by_ids(db, rows, attr="student_id"):
 AID_NODES = ["CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"]
 _TERMINAL = {"APPROVED", "REJECTED", "ARCHIVED"}
 # 拥有家庭经济 sensitiveView 权限点的角色（V1：学工处/学校管理/资助老师；学院/辅导员仅脱敏）
-_SENSITIVE_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "FUNDING_TEACHER", "ADMIN"}
+_SENSITIVE_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "FUNDING_TEACHER"}
 
 L_AID = {
     "DRAFT": "草稿", "SUBMITTED": "已提交", "CLASS_REVIEW": "班级评议", "COUNSELOR_REVIEW": "辅导员初审",

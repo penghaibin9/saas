@@ -20,7 +20,7 @@ LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
 # SEC-2 修复：学工处管理员(STUDENT_AFFAIRS_ADMIN)默认不得查看心理原始明细（权限总控 §7.3 /
 # 13A §13 心理行）；需专项授权(PSY_STUDENT，见心理关注模块)方可。此处仅按角色保留心理老师与
 # 校/平台超管（超管查看心理明细仍强制填写原因 + 写 SENSITIVE_VIEW 审计，见 get_risk）。
-_MENTAL_ROLES = {"SCHOOL_ADMIN", "PSYCHOLOGY_TEACHER", "PLATFORM_SUPER_ADMIN", "ADMIN"}
+_MENTAL_ROLES = {"SCHOOL_ADMIN", "PSYCHOLOGY_TEACHER", "PLATFORM_SUPER_ADMIN"}
 
 # 风险责任人候选角色：分派后会给 owner 建待办(_todo_upsert)+发站内信(_msg)，owner 打开待办必须
 # 能真正处置，即必须持有 studentAffairs.risk.*（见 app/core/permissions.py ROLE_PERMISSIONS）。
