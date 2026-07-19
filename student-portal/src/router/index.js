@@ -25,7 +25,7 @@ const routes = [
       // 办事大厅：一站式聚合入口，始终可见（不含独立后端模块开关）。
       { path: 'service-hall', name: 'service-hall', component: () => import('../views/hall/ServiceHallView.vue') },
       // 毕设是学生端的重流程模块，使用专用工作台而非通用数据模板页。
-      { path: 'graduation', name: 'graduation-workbench', component: () => import('../views/graduation/GraduationWorkbenchView.vue') },
+      { path: 'graduation', name: 'graduation-workbench', meta: { modulePath: 'graduation' }, component: () => import('../views/graduation/GraduationWorkbenchView.vue') },
       { path: ':module', name: 'module', component: () => import('../views/template/ModuleTemplateView.vue') }
     ]
   },
