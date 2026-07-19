@@ -67,7 +67,16 @@ export async function getStudentDetail(studentId) {
     identityRecords: [],
     corrections: [],
     riskTags: [],
-    auditTrail: []
+    auditTrail: [],
+    // BUG-002 修复：学生360页模板对以下字段做无判空的直接取值（如 orientation.steps.length），
+    // 真实接口尚未聚合迎新/学业/实习/毕设/就业跨模块数据时必须给安全空值，否则渲染期抛错，
+    // 页面卡死在 loading 骨架（详情见学工系统测试报告 BUG-002）。跨模块聚合上线前如实留空，不造假数据。
+    orientation: { steps: [] },
+    serviceRecords: [],
+    academic: { gpa: '—', earnedCredits: 0, requiredCredits: 0, courses: [], warningLevel: '' },
+    internship: null,
+    graduationDesign: null,
+    employment: null
   })
 }
 

@@ -19,7 +19,8 @@ export const ROLE_TYPE = {
   SCHOOL_ADMIN: 'SCHOOL_ADMIN', // 校级 / 学院管理员
   ACADEMIC_STAFF: 'ACADEMIC_STAFF', // 教务老师
   COUNSELOR: 'COUNSELOR', // 辅导员
-  AUDITOR: 'AUDITOR' // 审计人员
+  AUDITOR: 'AUDITOR', // 审计人员
+  STUDENT: 'STUDENT' // 学生（后端 permissions.py 授权为空集，本走移动端本人端点，PC 管理端一律不可见）
 }
 
 /**
@@ -139,7 +140,10 @@ const ROLE_MODULE_ALLOW = {
   [ROLE_TYPE.SCHOOL_ADMIN]: ['WORKBENCH', 'WORKFLOW', 'STUDENT', 'ORIENTATION', 'CAMPUS_SERVICE', 'ACADEMIC', 'INTERNSHIP', 'GRADUATION', 'EMPLOYMENT', 'DATA_CENTER', 'APPROVAL', 'SYSTEM'],
   [ROLE_TYPE.ACADEMIC_STAFF]: ['WORKBENCH', 'STUDENT', 'ACADEMIC', 'DATA_CENTER', 'APPROVAL', 'INTERNSHIP', 'GRADUATION', 'EMPLOYMENT'],
   [ROLE_TYPE.COUNSELOR]: ['WORKBENCH', 'STUDENT', 'ORIENTATION', 'CAMPUS_SERVICE', 'ACADEMIC', 'INTERNSHIP'],
-  [ROLE_TYPE.AUDITOR]: ['WORKBENCH', 'SYSTEM', 'DATA_CENTER', 'APPROVAL']
+  [ROLE_TYPE.AUDITOR]: ['WORKBENCH', 'SYSTEM', 'DATA_CENTER', 'APPROVAL'],
+  // 学生本不该进入本 PC 管理端（应走 student-portal/小程序本人端点），一旦误登录仅给虚拟工作台占位，
+  // 其余业务/系统/教师侧模块一律不进白名单——避免下方回退分支对未登记角色"失败开放"。
+  [ROLE_TYPE.STUDENT]: ['WORKBENCH']
 }
 
 function roleType(ctx) {
@@ -161,8 +165,9 @@ function canSeeLeaf(leaf, ctx) {
   if (Array.isArray(patterns) && leaf.permissionKey) {
     return matchPermission(patterns, leaf.permissionKey)
   }
-  // 角色白名单（若已知角色类型）
-  if (rt && ROLE_MODULE_ALLOW[rt] && !ROLE_MODULE_ALLOW[rt].includes(leaf.moduleCode)) return false
+  // 角色白名单：已知角色类型必须命中白名单模块；未登记的角色类型（含未来新增/异常角色）默认仅
+  // 保留虚拟工作台，其余一律隐藏——失败关闭，不因白名单漏登记某角色而对其展示全部菜单。
+  if (rt) return (ROLE_MODULE_ALLOW[rt] || ['WORKBENCH']).includes(leaf.moduleCode)
   return true
 }
 

@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition name="drawer-fade">
+    <Transition name="drawer-fade" :duration="200">
       <div v-if="visible" class="app-drawer-mask" @click.self="close">
         <aside class="app-drawer" role="dialog" aria-modal="true" :aria-label="title">
           <header v-if="title || $slots.header" class="app-drawer__header">

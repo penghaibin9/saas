@@ -103,15 +103,30 @@ function studentLabel(s) {
 const kw = (text, k) => !k || String(text || '').includes(String(k).trim())
 
 /* P2 · 真实后端桥（失败自动回退本文件 mock 实现，页面不白屏） */
-import { withFallback, shouldTryReal } from '@/services/http/client'
+import { withFallback, shouldTryReal, request } from '@/services/http/client'
 import * as realApi from '@/services/http/adapters'
+
+/** 真实班级字典（BUG-004 修复）：filterOptions.classes 此前恒为 mock 假 ID（如 'c-2301'），
+ * 后端在线时「新增学生」选择这些假 ID 提交会在 int(classId) 处 500。真实班级列表按当前身份
+ * 数据范围返回（辅导员=本班/学院管理员=本院等），无权限访问该接口时静默回退 mock 字典
+ * （维持既有兜底行为，不因此新增页面崩溃）。 */
+function fetchRealClassOptions() {
+  return request('/student-affairs/classes', { params: { pageSize: 200 } })
+    .then((data) => (data.items || []).map((c) => ({ value: c.classId, label: c.className })))
+    .catch(() => null)
+}
 
 export const studentApi = {
   /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典（模块布局初始化统一获取）；后端在线时合入真实品牌/角色/范围 */
   getContext() {
     return this._mockGetContext().then((res) => {
       if (!shouldTryReal()) return res
-      return realApi.enrichContext(res).catch(() => res)
+      return realApi.enrichContext(res).catch(() => res).then((r) =>
+        fetchRealClassOptions().then((classes) => {
+          if (classes && classes.length) r.data.filterOptions = { ...r.data.filterOptions, classes }
+          return r
+        })
+      )
     })
   },
 

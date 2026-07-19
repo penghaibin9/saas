@@ -210,6 +210,16 @@ def get_student(student_id) -> dict:
         }
 
 
+def _as_optional_id(v, field_label: str):
+    """建档可选外键（学院/专业/班级 ID）安全转换：非数字入参返回 400 校验错误，不再让 int() 打成 500。"""
+    if not v:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", f"{field_label}格式非法：{v}") from None
+
+
 def create_student(body) -> dict:
     with session() as db:
         dup = db.scalars(select(StudentProfile).where(
@@ -219,9 +229,9 @@ def create_student(body) -> dict:
             raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）")
         s = StudentProfile(tenant_id=_tid(), student_no=body.studentNo, real_name=body.realName,
                            gender=body.gender, grade=body.grade,
-                           college_id=int(body.collegeId) if body.collegeId else None,
-                           major_id=int(body.majorId) if body.majorId else None,
-                           class_id=int(body.classId) if body.classId else None,
+                           college_id=_as_optional_id(body.collegeId, "学院ID"),
+                           major_id=_as_optional_id(body.majorId, "专业ID"),
+                           class_id=_as_optional_id(body.classId, "班级ID"),
                            current_stage=ADMITTED, student_status="NORMAL", status="ACTIVE")
         db.add(s)
         db.flush()
