@@ -20,11 +20,7 @@
       </div>
 
       <div class="gp-main">
-        <template v-if="!current">
-          <EmptyState title="请先从左侧选择一名毕设学生" />
-        </template>
-        <template v-else>
-          <section class="gp-context" aria-label="当前处理学生">
+          <section v-if="current" class="gp-context" aria-label="当前处理学生">
             <div class="gp-context__avatar">{{ (current.name || '学').slice(0, 1) }}</div>
             <div class="gp-context__identity">
               <strong>{{ current.name }}</strong>
@@ -41,8 +37,11 @@
 
           <ErrorState v-if="loadError" :description="loadError" @retry="loadAll" />
 
+          <!-- 规范流程是静态参考内容，不依赖选中学生；其余页签须先选学生 -->
+          <EmptyState v-if="!current && tab !== 'workflow'" title="请先从左侧选择一名毕设学生" />
+
           <!-- 任务书 -->
-          <div v-if="tab === 'taskbook'" class="gp-panel">
+          <div v-if="current && tab === 'taskbook'" class="gp-panel">
             <LoadingState v-if="tbLoading" />
             <template v-else-if="taskbook && taskbook.exists">
               <div class="gp-kv"><span>状态</span><StatusTag :type="taskbook.statusTone" :label="taskbook.statusLabel" dot /></div>
@@ -69,7 +68,7 @@
           </div>
 
           <!-- 指导记录 -->
-          <div v-if="tab === 'guidance'" class="gp-panel">
+          <div v-if="current && tab === 'guidance'" class="gp-panel">
             <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><button class="mp-btn mp-btn--primary" @click="openGuidanceCreate">＋ 新增指导记录</button></div>
             <LoadingState v-if="guidanceLoading" />
             <EmptyState v-else-if="!guidanceList.length" title="暂无指导记录" />
@@ -83,7 +82,7 @@
           </div>
 
           <!-- 中期检查 -->
-          <div v-if="tab === 'midterm'" class="gp-panel">
+          <div v-if="current && tab === 'midterm'" class="gp-panel">
             <LoadingState v-if="mtLoading" />
             <template v-else-if="midterm">
               <div class="gp-kv"><span>状态</span><StatusTag :type="midterm.statusTone" :label="midterm.statusLabel" dot /></div>
@@ -131,7 +130,6 @@
               </ul>
             </div>
           </div>
-        </template>
       </div>
     </div>
 

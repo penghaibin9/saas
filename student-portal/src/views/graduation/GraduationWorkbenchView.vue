@@ -45,7 +45,7 @@
             </div>
             <ul v-if="step.checklist?.length" class="gd-checklist">
               <li v-for="item in step.checklist" :key="item.item" :class="{ 'is-missing': !item.present }">
-                {{ item.present ? '✓' : '○' }} {{ item.item }}
+                {{ item.present ? '✓' : '○' }} {{ item.label || item.item }}
               </li>
             </ul>
             <div v-if="step.action" class="gd-step__actions">
@@ -161,7 +161,7 @@ const steps = computed(() => [
     key: 'final', order: '06', title: '成果检查', description: '按初稿、定稿顺序提交论文材料，等待评阅和查重。',
     status: final.value.finalApproved ? '定稿已通过' : final.value.hint || '等待提交', tone: final.value.finalApproved ? 'success' : 'warn',
     detail: final.value.items?.[0] ? `${final.value.items[0].type} ${final.value.items[0].version} · ${final.value.items[0].statusLabel}` : '提交前请确认开题、中期等前置环节已按学校要求完成。', reviewComment: final.value.items?.[0]?.reviewComment,
-    files: (final.value.items || []).filter((item) => item.type === '定稿' || final.value.finalApproved).flatMap((item) => item.attachmentsList || []),
+    files: (final.value.items || []).filter((item) => item.type === '定稿').flatMap((item) => item.attachmentsList || []),
     action: final.value.canSubmitDraft || final.value.canSubmitFinal ? '上传并提交论文' : ''
   },
   {
@@ -182,26 +182,52 @@ function attachmentText(kind) {
   return list.length ? `已上传 ${list.length} 个附件：${list.map((item) => item.fileName || item.name).join('、')}` : '尚未上传附件'
 }
 
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const results = await Promise.all([portalApi.domainMy('graduation'), portalApi.graduationTaskbook(), portalApi.graduationProposal(), portalApi.graduationMidterm(), portalApi.graduationFinal(), portalApi.graduationDefense(), portalApi.graduationGrade(), portalApi.graduationArchive(), portalApi.graduationActiveRound()])
-    ;[my.value, taskbook.value, proposal.value, midterm.value, final.value, defense.value, grade.value, archive.value, round.value] = results
-    if (round.value) {
-      topics.value = await portalApi.graduationTopics(round.value.batchId)
-      selectedTopicIds.value = (round.value.myChoices || []).sort((a, b) => a.choiceOrder - b.choiceOrder).map((item) => String(item.topicId))
-    }
-  } catch (e) {
-    error.value = e?.message || '毕业设计数据加载失败'
-  } finally {
-    loading.value = false
+// 每个板块一个命名加载器：动作后只刷新受影响板块，也避免长数组位置解构错位。
+const sections = {
+  my: async () => { my.value = await portalApi.domainMy('graduation') },
+  taskbook: async () => { taskbook.value = await portalApi.graduationTaskbook() },
+  proposal: async () => { proposal.value = await portalApi.graduationProposal() },
+  midterm: async () => { midterm.value = await portalApi.graduationMidterm() },
+  final: async () => { final.value = await portalApi.graduationFinal() },
+  defense: async () => { defense.value = await portalApi.graduationDefense() },
+  grade: async () => { grade.value = await portalApi.graduationGrade() },
+  archive: async () => { archive.value = await portalApi.graduationArchive() },
+  round: async () => {
+    round.value = await portalApi.graduationActiveRound()
+    selectedTopicIds.value = (round.value?.myChoices || []).sort((a, b) => a.choiceOrder - b.choiceOrder).map((item) => String(item.topicId))
   }
 }
 
-function handleAction(key) {
+async function refresh(keys) {
+  const results = await Promise.allSettled(keys.map((key) => sections[key]()))
+  return results.filter((r) => r.status === 'rejected')
+}
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  const keys = Object.keys(sections)
+  const failed = await refresh(keys)
+  // 单个接口故障只降级对应板块；全部失败才整页报错。
+  if (failed.length === keys.length) {
+    error.value = failed[0].reason?.message || '毕业设计数据加载失败'
+  } else if (failed.length) {
+    ui.notify(`有 ${failed.length} 个板块加载失败，可点「刷新进度」重试`)
+  }
+  loading.value = false
+}
+
+async function afterAction(keys) {
+  if (await refresh(keys).then((f) => f.length)) ui.notify('状态刷新失败，可点「刷新进度」重试')
+}
+
+async function handleAction(key) {
   if (key === 'taskbook') return confirmTaskbook()
   expanded.value = expanded.value === key ? '' : key
+  // 题目库最多数百条且选定课题后用不到，展开选题面板时才拉取。
+  if (key === 'topic' && expanded.value === 'topic' && round.value && !topics.value.length) {
+    try { topics.value = await portalApi.graduationTopics(round.value.batchId) } catch (e) { ui.notify(e?.message || '题目库加载失败') }
+  }
 }
 
 function toggleTopic(id) {
@@ -214,14 +240,14 @@ function toggleTopic(id) {
 
 async function confirmTaskbook() {
   busy.value = true
-  try { await portalApi.confirmGraduationTaskbook(); ui.notify('任务书已确认'); await load() } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
+  try { await portalApi.confirmGraduationTaskbook(); ui.notify('任务书已确认'); await afterAction(['taskbook', 'my']) } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
 }
 
 async function submitChoices() {
   busy.value = true
   try {
     await portalApi.submitGraduationChoices(round.value.id, selectedTopicIds.value.map((topicId, index) => ({ topicId, choiceOrder: index + 1 })))
-    ui.notify('选题志愿已提交，等待学校处理'); expanded.value = ''; await load()
+    ui.notify('选题志愿已提交，等待学校处理'); expanded.value = ''; await afterAction(['round', 'my'])
   } catch (e) { ui.notify(e?.message || '提交志愿失败') } finally { busy.value = false }
 }
 
@@ -240,20 +266,20 @@ async function submitProposal() {
   busy.value = true
   try {
     await portalApi.submitGraduationProposal({ ...proposalForm, attachments: attachments.proposal.map((item) => item.fileId) })
-    ui.notify('开题报告已提交，等待指导教师审阅'); expanded.value = ''; await load()
+    ui.notify('开题报告已提交，等待指导教师审阅'); expanded.value = ''; await afterAction(['proposal', 'my'])
   } catch (e) { ui.notify(e?.message || '开题报告提交失败') } finally { busy.value = false }
 }
 
 async function submitRectify() {
   busy.value = true
-  try { await portalApi.rectifyGraduationMidterm(rectifyContent.value); ui.notify('整改说明已提交，等待复核'); expanded.value = ''; await load() } catch (e) { ui.notify(e?.message || '整改提交失败') } finally { busy.value = false }
+  try { await portalApi.rectifyGraduationMidterm(rectifyContent.value); ui.notify('整改说明已提交，等待复核'); expanded.value = ''; await afterAction(['midterm', 'my']) } catch (e) { ui.notify(e?.message || '整改提交失败') } finally { busy.value = false }
 }
 
 async function submitFinal() {
   busy.value = true
   try {
     await portalApi.submitGraduationFinal({ finalType: final.value.canSubmitFinal ? '定稿' : '初稿', attachments: attachments.final.map((item) => item.fileId) })
-    ui.notify('论文成果已提交，等待审阅'); expanded.value = ''; await load()
+    ui.notify('论文成果已提交，等待审阅'); expanded.value = ''; await afterAction(['final', 'my'])
   } catch (e) { ui.notify(e?.message || '论文提交失败') } finally { busy.value = false }
 }
 

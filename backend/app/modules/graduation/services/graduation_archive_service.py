@@ -168,11 +168,22 @@ def list_archives(page: int, page_size: int, keyword=None, status=None) -> tuple
 
 
 def get_archive(gd_student_id) -> dict:
+    """只读查询：无归档记录时返回虚拟 NOT_GENERATED 行，不落库。
+    真实记录仍由 generate/submit 等写路径的 _get_or_create 创建，
+    避免学生端轮询在 GET 上产生写入（污染管理端列表、绕过到期/演示租户只读锁）。"""
     with session() as db:
         stu = _stu(db, gd_student_id)
-        a = _get_or_create(db, stu)
-        db.commit()
-        return _row(a, stu)
+        a = db.scalars(select(GraduationArchiveRecord).where(
+            GraduationArchiveRecord.tenant_id == _tid(),
+            GraduationArchiveRecord.gd_student_id == stu.id,
+            GraduationArchiveRecord.is_deleted.is_(False))).first()
+        if not a:
+            a = GraduationArchiveRecord(tenant_id=_tid(), gd_student_id=stu.id,
+                                        status="NOT_GENERATED", version=0)
+        row = _row(a, stu)
+        if not a.id:
+            row["id"] = ""
+        return row
 
 
 def generate_archive(gd_student_id) -> dict:

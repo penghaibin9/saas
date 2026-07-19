@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Path
 
-from app.core.permissions import require_permission
+from app.core.permissions import require_module, require_permission
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_makeup_service as mk
@@ -18,6 +18,10 @@ from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
 
 router = APIRouter(prefix="/mobile", tags=["移动端聚合"])
+
+# 毕设学生端子路由：与 PC 管理端同一模块授权开关，未授权租户即使绕过前端隐藏直调接口也 403。
+gd = APIRouter(prefix="/graduation", tags=["移动端聚合"],
+               dependencies=[Depends(require_module("module.graduationDesign.enabled"))])
 
 
 # ── 学生端·我的 ──
@@ -337,130 +341,132 @@ def internship_my(user=Depends(get_current_user)):
     return success(stu.internship_my(user))
 
 
-@router.get("/graduation/my", summary="我的毕业设计")
+@gd.get("/my", summary="我的毕业设计")
 def graduation_my(user=Depends(get_current_user)):
     return success(stu.graduation_my(user))
 
 
-@router.get("/graduation/materials/{file_id}/download", summary="下载本人毕业设计材料")
+@gd.get("/materials/{file_id}/download", summary="下载本人毕业设计材料")
 def graduation_material_download(file_id: str, user=Depends(get_current_user)):
     """学生下载入口：不走 PC 管理端 staff 门禁，仍由材料绑定关系做本人鉴权。"""
     from fastapi.responses import FileResponse
     from app.core.exceptions import not_found
     from app.modules.graduation.services import graduation_service as gd_svc
+    from app.services import audit_log
 
     stu._require_student(user)
     resolved = gd_svc.resolve_material_download(file_id)
     if not resolved:
         raise not_found("毕业设计材料不存在或无权访问")
     path, filename = resolved
+    audit_log.record("GRADUATION_MATERIAL_DOWNLOAD", f"graduation-file:{file_id}")
     return FileResponse(str(path), filename=filename)
 
 
-@router.get("/graduation/topics", summary="选题·浏览可选题目库（已入池未满员）")
+@gd.get("/topics", summary="选题·浏览可选题目库（已入池未满员）")
 def graduation_topics(batchId: str = None, user=Depends(get_current_user)):
     return success(stu.graduation_topics(user, batch_id=batchId))
 
 
-@router.get("/graduation/active-round", summary="选题·当前进行中轮次 + 我的志愿")
+@gd.get("/active-round", summary="选题·当前进行中轮次 + 我的志愿")
 def graduation_active_round(user=Depends(get_current_user)):
     return success(stu.graduation_active_round(user))
 
 
-@router.post("/graduation/choices", summary="选题·本人提交/调整志愿（对齐提交=进入待处理语义）")
+@gd.post("/choices", summary="选题·本人提交/调整志愿（对齐提交=进入待处理语义）")
 def graduation_submit_choices(body: dict = Body(...), user=Depends(get_current_user)):
     round_id = body.get("roundId")
     choices = body.get("choices") or []
     return success(stu.graduation_submit_choices(user, round_id, choices), message="志愿已提交")
 
 
-@router.post("/graduation/withdraw-choices", summary="选题·本人退选（撤回本轮全部待处理志愿）")
+@gd.post("/withdraw-choices", summary="选题·本人退选（撤回本轮全部待处理志愿）")
 def graduation_withdraw_choices(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.graduation_withdraw_choices(user, body.get("roundId")), message="已退选")
 
 
-@router.post("/graduation/change-request", summary="选题·发起课题变更申请（已有选题换题的唯一途径）")
+@gd.post("/change-request", summary="选题·发起课题变更申请（已有选题换题的唯一途径）")
 def graduation_request_change(body: dict = Body(...), user=Depends(get_current_user)):
     result = stu.graduation_request_change(user, body.get("newTopicId"), body.get("reason") or "")
     return success(result, message="已提交，等待审核")
 
 
-@router.get("/graduation/change-requests/my", summary="选题·我的历史变更申请")
+@gd.get("/change-requests/my", summary="选题·我的历史变更申请")
 def graduation_my_change_requests(user=Depends(get_current_user)):
     return success(stu.graduation_my_change_requests(user))
 
 
-@router.get("/graduation/proposal", summary="开题·查看本人开题报告状态")
+@gd.get("/proposal", summary="开题·查看本人开题报告状态")
 def graduation_proposal(user=Depends(get_current_user)):
     return success(stu.graduation_proposal(user))
 
 
-@router.post("/graduation/proposal", summary="开题·本人提交/重交开题报告")
+@gd.post("/proposal", summary="开题·本人提交/重交开题报告")
 def graduation_submit_proposal(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.graduation_submit_proposal(user, body), message="开题报告已提交")
 
 
-@router.get("/graduation/final", summary="成果·查看本人论文提交状态")
+@gd.get("/final", summary="成果·查看本人论文提交状态")
 def graduation_final(user=Depends(get_current_user)):
     return success(stu.graduation_final(user))
 
 
-@router.post("/graduation/final", summary="成果·本人提交/重交论文（初稿/定稿）")
+@gd.post("/final", summary="成果·本人提交/重交论文（初稿/定稿）")
 def graduation_submit_final(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.graduation_submit_final(user, body), message="论文成果已提交")
 
 
-@router.get("/graduation/taskbook", summary="任务书·查看本人任务书")
+@gd.get("/taskbook", summary="任务书·查看本人任务书")
 def graduation_taskbook(user=Depends(get_current_user)):
     return success(stu.graduation_taskbook(user))
 
 
-@router.post("/graduation/taskbook/confirm", summary="任务书·本人确认（含变更后重新确认）")
+@gd.post("/taskbook/confirm", summary="任务书·本人确认（含变更后重新确认）")
 def graduation_taskbook_confirm(user=Depends(get_current_user)):
     return success(stu.graduation_taskbook_confirm(user), message="已确认")
 
 
-@router.get("/graduation/midterm", summary="中期检查·查看本人状态")
+@gd.get("/midterm", summary="中期检查·查看本人状态")
 def graduation_midterm(user=Depends(get_current_user)):
     return success(stu.graduation_midterm(user))
 
 
-@router.post("/graduation/midterm/rectify", summary="中期检查·本人提交整改")
+@gd.post("/midterm/rectify", summary="中期检查·本人提交整改")
 def graduation_midterm_rectify(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.graduation_midterm_rectify(user, body.get("content") or ""), message="已提交整改")
 
 
-@router.get("/graduation/defense", summary="答辩·查看本人答辩安排")
+@gd.get("/defense", summary="答辩·查看本人答辩安排")
 def graduation_defense(user=Depends(get_current_user)):
     return success(stu.graduation_defense(user))
 
 
-@router.get("/graduation/grade", summary="成绩·查看本人已发布成绩")
+@gd.get("/grade", summary="成绩·查看本人已发布成绩")
 def graduation_grade(user=Depends(get_current_user)):
     return success(stu.graduation_grade(user))
 
 
-@router.get("/graduation/archive", summary="归档·查看本人毕业设计材料清单与归档状态")
+@gd.get("/archive", summary="归档·查看本人毕业设计材料清单与归档状态")
 def graduation_archive(user=Depends(get_current_user)):
     return success(stu.graduation_archive(user))
 
 
-@router.post("/graduation/grade/appeal", summary="成绩·发起更正申诉（须已发布）")
+@gd.post("/grade/appeal", summary="成绩·发起更正申诉（须已发布）")
 def graduation_grade_appeal(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.graduation_grade_appeal(user, body.get("reason") or ""), message="申诉已提交")
 
 
-@router.get("/graduation/peer-tasks", summary="互查·本人待互查+待整改任务")
+@gd.get("/peer-tasks", summary="互查·本人待互查+待整改任务")
 def graduation_peer_tasks(user=Depends(get_current_user)):
     return success(stu.graduation_peer_tasks(user))
 
 
-@router.post("/graduation/peer/{pid}/submit", summary="互查·提交互查意见")
+@gd.post("/peer/{pid}/submit", summary="互查·提交互查意见")
 def graduation_peer_submit(pid: str, body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.graduation_peer_submit(user, pid, body.get("opinion") or ""), message="已提交")
 
 
-@router.post("/graduation/peer/{pid}/rectify", summary="互查·提交整改")
+@gd.post("/peer/{pid}/rectify", summary="互查·提交整改")
 def graduation_peer_rectify(pid: str, body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.graduation_peer_rectify(user, pid, body.get("note") or ""), message="已提交整改")
 
@@ -1574,3 +1580,6 @@ def teacher_workload_my(user=Depends(get_current_user)):
 @router.post("/teacher/academic/workload/submit", summary="教师·工作量申报（教学/监考/阅卷/出卷）")
 def teacher_workload_submit(body: dict = Body(...), user=Depends(get_current_user)):
     return success(aa.workload_submit_my(user, body), message="工作量申报已提交")
+
+
+router.include_router(gd)
