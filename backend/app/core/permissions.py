@@ -168,6 +168,20 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "STUDENT": set(),    # 学生走移动端本人端点，不进 PC 管理端
 }
 
+# 角色 → 从其通配符授权中额外剔除的 permissionCode（精确匹配，不支持通配）。
+# 只用于"通配符覆盖过宽、已有真实越权证据"的最小收窄，不是完整权限矩阵重新设计——
+# 后者需要逐条审计 academicAffairs.* 下全部 152 个 permissionCode，属独立任务，未在此处处理。
+# 2026-07-19 教务中心测试报告 Bug#3：普通任课教师（ACADEMIC_TEACHER 持 academicAffairs.* 通配）
+# 越权提交了教学任务批次审核（该动作应仅限教务处/学院管理员）。这里只剔除批次级管理动作，
+# 其余 academicAffairs.* 权限（成绩录入/调停课申请/查看课表等教师真实需要的部分）维持不变。
+ROLE_PERMISSION_DENY: dict[str, set[str]] = {
+    "ACADEMIC_TEACHER": {
+        "academicAffairs.teachingTask.confirm",   # 批次提交/学院核对确认/教务终审
+        "academicAffairs.teachingTask.merge",     # 合班/拆班
+        "academicAffairs.teachingTask.adjust",    # 管理员更正教师/学时/周次/人数
+    },
+}
+
 
 def _role_of(user: dict) -> str:
     return (user.get("currentRoleCode") or user.get("userType") or "").strip()
@@ -228,8 +242,11 @@ def has_permission(user: dict, code: str) -> bool:
     """纯判定：当前身份是否拥有指定 permissionCode。默认拒绝。"""
     if is_super_admin(user):
         return True
+    role = _role_of(user)
     database_patterns = _db_granted(user)
-    return _match(code, database_patterns if database_patterns is not None else _granted(_role_of(user)))
+    if database_patterns is None and code in ROLE_PERMISSION_DENY.get(role, ()):
+        return False
+    return _match(code, database_patterns if database_patterns is not None else _granted(role))
 
 
 def _audit_denied(user: dict, code: str) -> None:
