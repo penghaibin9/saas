@@ -27,6 +27,24 @@ _D_APPROVED, _D_RETURNED, _D_REJECTED = "APPROVED", "RETURNED", "REJECTED"
 _DEFER_CHAIN = {_D_COUNSELOR: _D_TEACHER, _D_TEACHER: _D_COLLEGE, _D_COLLEGE: _D_FINAL, _D_FINAL: _D_APPROVED}
 
 
+def _resolve_classroom_id(db, text):
+    """人工建考场只填 classroom_text（纯文本），若不回填 classroom_id，自动排考引擎按
+    classroom_id.isnot(None) 建占用索引时会把人工考场整体过滤掉，导致同一间教室被再排给另一场
+    考试——这里按教室字典显示名（room_name，或 building_name+room_code）精确匹配回填，匹配不上
+    则保持 None（无法感知冲突，与此前行为一致，不是新增风险）。"""
+    text = (text or "").strip()
+    if not text:
+        return None
+    from app.models import AaClassroom
+    rows = db.query(AaClassroom).filter(AaClassroom.tenant_id == _tid(),
+                                        AaClassroom.is_deleted.is_(False)).all()
+    for r in rows:
+        label = (r.room_name or "").strip() or f"{r.building_name}{r.room_code}"
+        if label == text:
+            return r.id
+    return None
+
+
 def _conflict(msg):
     return AppException("DATA_CONFLICT", msg, http_status=409)
 
@@ -286,8 +304,9 @@ def add_room(user, cid, body):
             raise _invalid("仅 COURSE_CONFIRMED 阶段可编排考场")
         seq = (db.query(AaExamRoom).filter(AaExamRoom.exam_course_id == c.id, AaExamRoom.tenant_id == _tid(),
                                            AaExamRoom.is_deleted.is_(False)).count()) + 1
+        classroom_text = getattr(body, "classroomText", None)
         r = AaExamRoom(tenant_id=_tid(), exam_course_id=c.id, room_seq=seq,
-                       classroom_text=getattr(body, "classroomText", None),
+                       classroom_text=classroom_text, classroom_id=_resolve_classroom_id(db, classroom_text),
                        capacity=int(getattr(body, "capacity", 0) or 0),
                        seat_mode=getattr(body, "seatMode", None) or "SEQUENTIAL", status="ACTIVE")
         db.add(r); db.flush()
@@ -756,6 +775,31 @@ def _check_defer_scope(user, db, ctx, d):
     raise no_data_scope("仅教务处可执行终审")
 
 
+def _visible_defer_record(user, db, ctx, d) -> bool:
+    """列表可见性判断——与 _check_defer_scope「当前节点是否轮到我审批」是不同维度：
+    辅导员/任课教师/学院教务应能看到与本人有真实业务关系的缓考记录（本班学生/本人授课/
+    本学院），不局限于记录恰好卡在自己审批节点的那一条，否则历史记录（已终审/已驳回/
+    还没到自己节点）会对本该看到的人完全不可见。TENANT_ALL 由调用方另行放行，此处不重复判断。"""
+    role = _role()
+    if role == "COUNSELOR":
+        from app.models import StudentProfile
+        stu = db.query(StudentProfile).filter(StudentProfile.id == d.student_id,
+                                              StudentProfile.tenant_id == _tid()).first()
+        allowed = getattr(ctx, "class_ids", None) or set()
+        return bool(stu and stu.class_id and int(stu.class_id) in allowed)
+    if role == "ACADEMIC_TEACHER":
+        c = _get_course(db, d.exam_course_id)
+        return bool(c.teacher_key and c.teacher_key in _derive_keys(user))
+    if role == "COLLEGE_ADMIN":
+        c = _get_course(db, d.exam_course_id)
+        try:
+            _check_college_scope(ctx, c.college_id)
+            return True
+        except AppException:
+            return False
+    return False
+
+
 def defer_review(user, defer_id, action, reason=""):
     """四级审批任一节点：APPROVE 推进/最终 APPROVED；RETURN 退回学生补材料；REJECT 驳回终态。"""
     from app.models import AaDeferredExam
@@ -805,16 +849,22 @@ def defer_resubmit(user, defer_id):
 
 
 def defer_list(user, status=None, student_only=False, page=1, page_size=50):
+    """缓考列表。修复：非 student_only 模式下此前对 TENANT_ALL 以外角色完全不做范围收敛，
+    任意持权限的辅导员/任课教师/学院教务都能看到全校缓考记录（含学生申请理由等敏感信息）。
+    现按 _visible_defer_record 的真实业务关系逐条过滤（按班级/授课/学院，与记录当前处于
+    哪个审批节点无关，历史/终态记录同样可见），TENANT_ALL 角色不受影响，仍返回全量。"""
     from app.models import AaDeferredExam
-    ctx = get_current_user_ctx() or {}
+    raw_ctx = get_current_user_ctx() or {}
     with session() as db:
-        _ctx(user, db)
+        affairs_ctx = _ctx(user, db)
         q = db.query(AaDeferredExam).filter(AaDeferredExam.tenant_id == _tid(), AaDeferredExam.is_deleted.is_(False))
         if student_only:
-            q = q.filter(AaDeferredExam.student_no == ctx.get("studentNo"))
+            q = q.filter(AaDeferredExam.student_no == raw_ctx.get("studentNo"))
         if status:
             q = q.filter(AaDeferredExam.status == status)
         rows = q.order_by(AaDeferredExam.id.desc()).all()
+        if not student_only and not _is_school(affairs_ctx):
+            rows = [d for d in rows if _visible_defer_record(user, db, affairs_ctx, d)]
         total = len(rows)
         return [_defer_dto(d) for d in rows[(page - 1) * page_size: page * page_size]], total
 

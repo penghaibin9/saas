@@ -6,10 +6,7 @@
     </template>
 
     <div v-if="summaryCards.length" class="stats">
-      <div v-for="c in summaryCards" :key="c.label" class="stats__card">
-        <div class="stats__val" :class="{ 'is-warn': c.warn }">{{ c.value }}</div>
-        <div class="stats__lbl">{{ c.label }}</div>
-      </div>
+      <AppMetricCard v-for="c in summaryCards" :key="c.label" :title="c.label" :value="c.value" :accent="c.warn ? 'warning' : 'primary'" />
     </div>
 
     <div class="bar">
@@ -33,7 +30,7 @@
 <script>
 import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppExportButton, AppSearchBox, AppQuickFilterChips } from '@/components/common'
+import { AppStatusTag, AppExportButton, AppSearchBox, AppQuickFilterChips, AppMetricCard } from '@/components/common'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import { toast } from '@/utils/toast'
 
@@ -53,7 +50,7 @@ const COLUMNS = [
 
 export default {
   name: 'GuidancePlanView',
-  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppExportButton, AppSearchBox, AppQuickFilterChips },
+  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppExportButton, AppSearchBox, AppQuickFilterChips, AppMetricCard },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -146,10 +143,7 @@ export default {
 
 <style scoped>
 .stats { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.stats__card { flex: 1; min-width: 120px; background: var(--bg-card, #fff); border: 1px solid var(--border-subtle, #e8e8e8); border-radius: 8px; padding: 12px 16px; }
-.stats__val { font-size: 22px; font-weight: 600; color: var(--text-primary, #1a1a1a); }
-.stats__val.is-warn { color: var(--warning-600, #d97706); }
-.stats__lbl { font-size: 12px; color: var(--text-secondary, #666); margin-top: 4px; }
+.stats > * { flex: 1 1 160px; }
 .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .state.is-err { color: var(--danger-600, #dc2626); margin: 12px 0; }
 </style>

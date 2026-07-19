@@ -6,28 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <div class="aa-filter">
-        <label class="aa-filter__item">
-          异动类型
-          <select v-model="filters.changeType" class="aa-select">
-            <option value="">全部</option>
-            <option v-for="(label, val) in CHANGE_TYPE_LABEL" :key="val" :value="val">{{ label }}</option>
-          </select>
-        </label>
-        <label class="aa-filter__item">
-          状态
-          <select v-model="filters.status" class="aa-select">
-            <option value="">全部</option>
-            <option v-for="(label, val) in STATUS_LABEL" :key="val" :value="val">{{ label }}</option>
-          </select>
-        </label>
-        <label class="aa-filter__item">
-          学生 ID
-          <input v-model.trim="filters.studentId" class="aa-input" placeholder="按学生 ID 过滤（可选）" @keyup.enter="search" />
-        </label>
-        <button class="mp-btn" @click="search">查询</button>
-        <button class="mp-btn" @click="reset">重置</button>
-      </div>
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <div v-if="stats" class="aa-metric-row">
         <AppMetricCard title="累计异动" :value="stats.total" unit="条" accent-tone="primary" />
@@ -65,7 +44,7 @@
 /** 学籍异动记录（/admin/academic-affairs/roster/changes）：只读展示，复用「学籍异动」二级模块 Round1 已建的
  * GET /academic-affairs/status-changes + /status-changes/stats（AaStatusChange 表），不重复实现审批链/发起逻辑。
  * 与「学籍异动」模块「异动台账」页共用同一后端数据源，仅去除发起/审批操作，专供「学籍管理」域内查阅。 */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { AppStatusTag, AppMetricCard } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
@@ -80,7 +59,7 @@ const STATUS_LABEL = {
 
 export default {
   name: 'AaRosterChangeRecordsView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppMetricCard },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppMetricCard, AdvancedFilter },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -98,6 +77,17 @@ export default {
         { key: 'status', title: '当前状态' },
         { key: 'effectiveDate', title: '生效时间' },
         { key: 'actions', title: '操作', width: '80px' }
+      ]
+    }
+  },
+  computed: {
+    filterFields() {
+      return [
+        { key: 'changeType', label: '异动类型', type: 'select', placeholder: '全部',
+          options: Object.entries(CHANGE_TYPE_LABEL).map(([value, label]) => ({ value, label })) },
+        { key: 'status', label: '状态', type: 'select', placeholder: '全部',
+          options: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })) },
+        { key: 'studentId', label: '学生 ID', type: 'text', placeholder: '按学生 ID 过滤（可选）' }
       ]
     }
   },

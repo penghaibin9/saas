@@ -27,7 +27,11 @@ def _session():
 
 
 def resolve_student(db, u: dict):
-    """在当前租户内解析当前登录学生的主档：优先 studentNo，其次 realName。找不到返回 None。"""
+    """在当前租户内解析当前登录学生的主档：优先 studentNo（租户内唯一约束），其次 realName。
+
+    姓名兜底仅在唯一命中时采用：同租户存在多个同名时返回 None，绝不 .first() 撞到他人档案
+    （同名横向越权）。找不到返回 None。
+    """
     from app.models import StudentProfile
     tid = _tid()
     sn = u.get("studentNo")
@@ -39,7 +43,37 @@ def resolve_student(db, u: dict):
             return row
     name = u.get("realName")
     if name:
-        return db.scalars(q.where(StudentProfile.real_name == name)).first()
+        rows = db.scalars(q.where(StudentProfile.real_name == name)).all()
+        if len(rows) == 1:
+            return rows[0]
+    return None
+
+
+def _resolve_domain_student(db, model, stu):
+    """为已解析的学生本人在某业务域表（迎新/学业/就业/在校/毕设）中定位其档案行。
+
+    安全与性能一并收口：优先用带索引的稳定外键 student_id(=t_student_profile.id) 直连，
+    其次学号（租户内唯一、带索引）；仅当既无 id 直连行、且姓名在“尚未回填 student_id 的
+    历史行”中唯一命中时才回退姓名。杜绝同名串号（同租户两个同名学生互看档案的横向越权），
+    同时避免对姓名列的全表扫描。返回 None 表示无法确定 → 上层出空态，绝不返回他人数据。
+    """
+    tid = _tid()
+    base = [model.tenant_id == tid, model.is_deleted.is_(False)]
+    if getattr(stu, "id", None) is not None:
+        row = db.scalars(select(model).where(*base, model.student_id == stu.id)).first()
+        if row:
+            return row
+    sn = getattr(stu, "student_no", None)
+    if sn and hasattr(model, "student_no"):
+        row = db.scalars(select(model).where(*base, model.student_no == sn)).first()
+        if row:
+            return row
+    nm = getattr(stu, "real_name", None)
+    if nm:
+        rows = db.scalars(select(model).where(
+            *base, model.student_id.is_(None), model.name == nm)).all()
+        if len(rows) == 1:
+            return rows[0]
     return None
 
 
@@ -66,36 +100,34 @@ def me_overview(user: dict) -> dict:
             UnifiedTodo.tenant_id == _tid(), UnifiedTodo.is_deleted.is_(False),
             UnifiedTodo.student_id == sid, UnifiedTodo.status == "PENDING").limit(10)).all()
         # P0 修复：原查询未按 receiver_id 过滤，会把租户内其他人（含处分/资助/请假等敏感通知）
-        # 的最新消息展示给本学生。receiver_id 存的是 user_id，不是学生档案 id，
-        # 与 my_messages() 保持一致：解析不到本人 uid 时宁可不展示，也不放开 receiver 过滤。
+        # 的最新消息展示给本学生。
+        # 分角色测试进一步发现：全仓库所有业务写入点（请假/资助/困难认定/学业预警/
+        # 教师发通知等 _msg()/UnifiedMessage(...) 调用，见 affairs_leave_service.py 等）
+        # 一律写 receiver_id=StudentProfile.id，从未写 user_id；这里却只按 _resolve_uid()
+        # 解出的 user_id 过滤，导致真实登录学生的 receiver_id 永远对不上、消息永久不可见
+        # （比"未过滤"更隐蔽：不报错、不泄露，只是安静地什么都不显示）。改为 sid/uid 双兼容。
         uid = _resolve_uid(u)
+        personal_ids = [x for x in (sid, uid) if x is not None]
         notices = db.scalars(select(UnifiedMessage).where(
             UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-            UnifiedMessage.receiver_id.in_([uid, 0]) if uid is not None else UnifiedMessage.receiver_id == 0
+            UnifiedMessage.receiver_id.in_(personal_ids + [0])
         ).order_by(UnifiedMessage.id.desc()).limit(5)).all()
         # 各域是否有我的记录 + 关键状态
         intern = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == sid,
             InternshipRecord.is_deleted.is_(False))).first()
-        ori = db.scalars(select(OrientationStudent).where(
-            OrientationStudent.tenant_id == _tid(), OrientationStudent.name == name,
-            OrientationStudent.is_deleted.is_(False))).first()
-        acad = db.scalars(select(AcademicStudent).where(
-            AcademicStudent.tenant_id == _tid(), AcademicStudent.name == name,
-            AcademicStudent.is_deleted.is_(False))).first()
+        ori = _resolve_domain_student(db, OrientationStudent, stu)
+        acad = _resolve_domain_student(db, AcademicStudent, stu)
         warn = 0
         if acad:
             warn = db.scalar(select(func.count()).select_from(AcademicWarning).where(
                 AcademicWarning.tenant_id == _tid(), AcademicWarning.acad_student_id == acad.id,
                 AcademicWarning.is_deleted.is_(False),
                 AcademicWarning.status.in_(["PENDING_HANDLE", "PROCESSING", "ESCALATED"]))) or 0
-        emp = db.scalars(select(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(), EmpStudent.name == name,
-            EmpStudent.is_deleted.is_(False))).first()
+        emp = _resolve_domain_student(db, EmpStudent, stu)
         unread_count = (db.scalar(select(func.count()).select_from(UnifiedMessage).where(
             UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-            UnifiedMessage.receiver_id == uid, UnifiedMessage.status == "UNREAD"))
-            if uid is not None else 0) or 0
+            UnifiedMessage.receiver_id.in_(personal_ids), UnifiedMessage.status == "UNREAD")) or 0)
         alerts = []
         if warn:
             alerts.append({"level": "HIGH", "title": "你有学业预警待跟进", "domain": "academic"})
@@ -179,15 +211,15 @@ def my_messages(user: dict) -> dict:
                               "deadline": _iso(getattr(t, "due_at", None)),
                               "read": (t.status or "") != "PENDING",
                               "status": t.status, "link": t.source_module or ""})
-        # 通知 → 本人接收的统一消息（receiver_id 精准匹配本人 user_id；
-        # mock 演示令牌无数字 uid 时，以学生主档 id 兜底匹配演示种子消息）
+        # 通知 → 本人接收的统一消息。全仓库业务写入点一律 receiver_id=StudentProfile.id
+        # （sid），非 user_id；sid/uid 双兼容，避免真实登录学生因 user_id 对不上而永久
+        # 看不到请假/资助/预警等审批结果通知（分角色测试发现，详见 me_overview 同款注释）。
         uid = _resolve_uid(u)
-        if uid is None:
-            uid = sid
-        if uid is not None:
+        personal_ids = [x for x in (sid, uid) if x is not None]
+        if personal_ids:
             notices = db.scalars(select(UnifiedMessage).where(
                 UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-                UnifiedMessage.receiver_id == uid).order_by(UnifiedMessage.id.desc()).limit(30)).all()
+                UnifiedMessage.receiver_id.in_(personal_ids)).order_by(UnifiedMessage.id.desc()).limit(30)).all()
             for m in notices:
                 notice_msgs.append({"id": "msg-" + str(m.id), "title": m.title,
                                     "content": m.content or "", "module": m.source_module or "通知",
@@ -195,9 +227,7 @@ def my_messages(user: dict) -> dict:
                                     "read": (m.status or "") == "READ",
                                     "status": m.status, "link": m.source_module or ""})
         # 服务进度 → 本人请假/工单状态流转
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
-            (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == name))).first()
+        cs = _resolve_domain_student(db, CsServiceStudent, stu)
         if cs:
             for lv in db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
                                  CsLeave.cs_student_id == cs.id, CsLeave.is_deleted.is_(False)
@@ -256,13 +286,12 @@ def message_mark_read(user: dict, message_id) -> dict:
         if not stu:
             raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
         uid = _resolve_uid(u)
-        if uid is None:
-            uid = stu.id
+        personal_ids = {x for x in (stu.id, uid) if x is not None}
         from datetime import datetime as _dt
 
         from app.models import UnifiedMessage
         m = db.get(UnifiedMessage, mid)
-        if m is None or m.is_deleted or m.tenant_id != _tid() or m.receiver_id != uid:
+        if m is None or m.is_deleted or m.tenant_id != _tid() or m.receiver_id not in personal_ids:
             raise AppException("DATA_NOT_FOUND", "消息不存在")
         if (m.status or "") != "READ":
             m.status = "READ"
@@ -283,9 +312,7 @@ def orientation_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import OrientationStudent
-        o = db.scalars(select(OrientationStudent).where(
-            OrientationStudent.tenant_id == _tid(), OrientationStudent.name == stu.real_name,
-            OrientationStudent.is_deleted.is_(False))).first()
+        o = _resolve_domain_student(db, OrientationStudent, stu)
         if not o:
             return _empty("你暂无迎新报到记录")
         return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": o.payment_status,
@@ -309,9 +336,7 @@ def _resolve_orientation_student(db, u: dict):
     stu = resolve_student(db, u)
     if not stu:
         return None
-    return db.scalars(select(OrientationStudent).where(
-        OrientationStudent.tenant_id == _tid(), OrientationStudent.name == stu.real_name,
-        OrientationStudent.is_deleted.is_(False))).first()
+    return _resolve_domain_student(db, OrientationStudent, stu)
 
 
 def orientation_collect_submit(user: dict, body: dict) -> dict:
@@ -379,13 +404,7 @@ def campus_service_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import CsDiscipline, CsLeave, CsServiceStudent, CsWorkOrder
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.student_no == stu.student_no,
-            CsServiceStudent.is_deleted.is_(False))).first()
-        if not cs:
-            cs = db.scalars(select(CsServiceStudent).where(
-                CsServiceStudent.tenant_id == _tid(), CsServiceStudent.name == stu.real_name,
-                CsServiceStudent.is_deleted.is_(False))).first()
+        cs = _resolve_domain_student(db, CsServiceStudent, stu)
         if not cs:
             return _empty("你暂无在校服务记录")
         leaves = db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
@@ -417,13 +436,7 @@ def academic_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import AcademicGrade, AcademicStudent, AcademicWarning
-        a = db.scalars(select(AcademicStudent).where(
-            AcademicStudent.tenant_id == _tid(), AcademicStudent.student_no == stu.student_no,
-            AcademicStudent.is_deleted.is_(False))).first()
-        if not a:
-            a = db.scalars(select(AcademicStudent).where(
-                AcademicStudent.tenant_id == _tid(), AcademicStudent.name == stu.real_name,
-                AcademicStudent.is_deleted.is_(False))).first()
+        a = _resolve_domain_student(db, AcademicStudent, stu)
         if not a:
             return _empty("你暂无学业记录")
         grades = db.scalars(select(AcademicGrade).where(AcademicGrade.tenant_id == _tid(),
@@ -454,7 +467,8 @@ def internship_my(user: dict) -> dict:
             return _empty()
         from datetime import datetime as _dt
 
-        from app.models import AttendanceException, InternshipCheckin, InternshipRecord, WeeklyReport
+        from app.models import (AttendanceException, InternshipCheckin, InternshipFinalScore,
+                                InternshipProcessReport, InternshipRecord, WeeklyReport)
         rec = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
             InternshipRecord.is_deleted.is_(False))).first()
@@ -467,6 +481,14 @@ def internship_my(user: dict) -> dict:
                           AttendanceException.internship_id == rec.id,
                           AttendanceException.is_deleted.is_(False)).order_by(
                           AttendanceException.id.desc())).all()
+        proc_reports = db.scalars(select(InternshipProcessReport).where(
+            InternshipProcessReport.tenant_id == _tid(), InternshipProcessReport.internship_id == rec.id,
+            InternshipProcessReport.is_deleted.is_(False)).order_by(
+            InternshipProcessReport.submitted_at.desc(), InternshipProcessReport.id.desc())).all()
+        score = db.scalars(select(InternshipFinalScore).where(
+            InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == rec.id,
+            InternshipFinalScore.status == "PUBLISHED", InternshipFinalScore.is_deleted.is_(False)
+            )).first()
         today = f"{_dt.now():%Y-%m-%d}"
         today_ck = db.scalars(select(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
@@ -486,8 +508,20 @@ def internship_my(user: dict) -> dict:
                                    "workContent": r.work_content or "", "harvestContent": r.harvest_content or "",
                                    "planContent": r.plan_content or "", "submittedAt": _iso(r.submitted_at)}
                                   for r in reports],
+                "processReports": [{"id": str(pr.id), "reportType": pr.report_type,
+                                    "periodKey": pr.period_key, "status": pr.status,
+                                    "reviewComment": pr.review_comment or "",
+                                    "submittedAt": _iso(pr.submitted_at)} for pr in proc_reports],
                 "attendanceExceptions": [{"type": e.exception_type, "status": e.status,
-                                          "date": _iso(e.exception_date)} for e in excs]}
+                                          "date": _iso(e.exception_date),
+                                          "handleComment": e.handle_comment or "",
+                                          "appealStatus": e.appeal_status,
+                                          "appealNote": e.appeal_note or ""} for e in excs],
+                "score": ({"totalScore": score.total_score, "isPass": score.is_pass,
+                          "checkinScore": score.checkin_score, "weeklyScore": score.weekly_score,
+                          "monthlyScore": score.monthly_score, "enterpriseScore": score.enterprise_score,
+                          "schoolScore": score.school_score, "publishedAt": _iso(score.published_at)}
+                         if score else None)}
 
 
 # 毕设阶段流水线（选题→任务书→开题指导→中期→成果→答辩→归档），用于移动端真实节点进度条。
@@ -524,13 +558,7 @@ def graduation_my(user: dict) -> dict:
             return _empty()
         from app.models import (GraduationBatch, GraduationFinal, GraduationGuidance,
                                 GraduationProposal, GraduationStudent)
-        g = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.student_no == stu.student_no,
-            GraduationStudent.is_deleted.is_(False))).first()
-        if not g:
-            g = db.scalars(select(GraduationStudent).where(
-                GraduationStudent.tenant_id == _tid(), GraduationStudent.name == stu.real_name,
-                GraduationStudent.is_deleted.is_(False))).first()
+        g = _resolve_domain_student(db, GraduationStudent, stu)
         if not g:
             return _empty("你暂无毕设记录")
         props = db.scalars(select(GraduationProposal).where(GraduationProposal.tenant_id == _tid(),
@@ -569,14 +597,7 @@ def _resolve_gd_student(db, u: dict):
     stu = resolve_student(db, u)
     if not stu:
         return None
-    g = db.scalars(select(GraduationStudent).where(
-        GraduationStudent.tenant_id == _tid(), GraduationStudent.student_no == stu.student_no,
-        GraduationStudent.is_deleted.is_(False))).first()
-    if not g:
-        g = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.name == stu.real_name,
-            GraduationStudent.is_deleted.is_(False))).first()
-    return g
+    return _resolve_domain_student(db, GraduationStudent, stu)
 
 
 def graduation_topics(user: dict, batch_id: str | None = None) -> list:
@@ -927,13 +948,7 @@ def employment_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import EmpFollowup, EmpMaterial, EmpStudent
-        e = db.scalars(select(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(), EmpStudent.student_no == stu.student_no,
-            EmpStudent.is_deleted.is_(False))).first()
-        if not e:
-            e = db.scalars(select(EmpStudent).where(
-                EmpStudent.tenant_id == _tid(), EmpStudent.name == stu.real_name,
-                EmpStudent.is_deleted.is_(False))).first()
+        e = _resolve_domain_student(db, EmpStudent, stu)
         if not e:
             return _empty("你暂无就业记录")
         mats = db.scalars(select(EmpMaterial).where(EmpMaterial.tenant_id == _tid(),
@@ -1026,9 +1041,7 @@ def my_applications(user: dict) -> dict:
         if not stu:
             return {"hasData": False, "tabs": tabs, "applications": []}
         from app.models import CsGrant, CsLeave, CsServiceStudent, CsWorkOrder
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
-            (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == stu.real_name))).first()
+        cs = _resolve_domain_student(db, CsServiceStudent, stu)
         apps = []
         if cs:
             _done = {"APPROVED", "COMPLETED", "CLOSED", "PASSED", "GRANTED"}
@@ -1079,42 +1092,54 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "申请事由至少 5 个字")
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
+    is_leave = service_key.upper() in ("LEAVE", "SV1", "请假")
+    if is_leave:
+        # 请假必须走正式审批工作流（辅导员/学院/学工处多级节点），不能只落一条脱离
+        # WorkflowInstance/affairs_status 的简化记录——否则学生自己的"我的请假"列表
+        # 和老师端"待审批"队列都读不到这条申请（两条真相数据断层，分角色测试发现）。
+        from types import SimpleNamespace
+        from datetime import datetime as _dt
+        from app.services import affairs_leave_service as leave_svc
+        with _session() as db:
+            stu = resolve_student(db, u)
+            if not stu:
+                raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法提交")
+            sid = stu.id
+        today = _dt.utcnow().strftime("%Y-%m-%d")
+        start_raw = str(body.get("startTime") or body.get("startDate") or "").strip() or today
+        end_raw = str(body.get("endTime") or body.get("endDate") or "").strip() or today
+        leave_type = str(body.get("leaveType") or "PERSONAL").strip().upper()
+        ns = SimpleNamespace(studentId=str(sid), startTime=start_raw, endTime=end_raw,
+                             leaveType=leave_type, reason=content)
+        result = leave_svc.apply_leave(ns, user, skip_scope_check=True)
+        audit_log.record("MOBILE_SERVICE_APPLY", "campus-service:LEAVE",
+                         {"studentNo": u.get("studentNo"), "serviceKey": service_key})
+        return {"id": result.get("id"), "status": result.get("affairsStatus"),
+               "message": "提交成功，等待辅导员审批"}
     with _session() as db:
         stu = resolve_student(db, u)
         if not stu:
             raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法提交")
-        from app.models import CsLeave, CsServiceStudent, CsWorkOrder
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
-            (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == stu.real_name))).first()
+        from app.models import CsServiceStudent, CsWorkOrder
+        cs = _resolve_domain_student(db, CsServiceStudent, stu)
         if not cs:
             cs = CsServiceStudent(tenant_id=_tid(), student_no=stu.student_no, student_id=stu.id,
                                   name=stu.real_name, grade=stu.grade, record_status="ACTIVE")
             db.add(cs)
             db.flush()
         # 防重复提交：同一学生同一服务、相同事由且仍在待处理，视为重复（409）
-        pending_leave = db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), CsLeave.cs_student_id == cs.id,
-            CsLeave.is_deleted.is_(False), CsLeave.status == "PENDING_REVIEW",
-            CsLeave.reason == content)).first()
+        from datetime import datetime as _dt
         pending_wo = db.scalars(select(CsWorkOrder).where(
             CsWorkOrder.tenant_id == _tid(), CsWorkOrder.cs_student_id == cs.id,
             CsWorkOrder.is_deleted.is_(False), CsWorkOrder.status == "PENDING_HANDLE",
             CsWorkOrder.title == service_key, CsWorkOrder.detail == content)).first()
-        if pending_leave or pending_wo:
+        if pending_wo:
             raise AppException("DATA_CONFLICT", "相同申请已提交且仍在处理中，请勿重复提交")
-        is_leave = service_key.upper() in ("LEAVE", "SV1", "请假")
-        from datetime import datetime as _dt
-        if is_leave:
-            row = CsLeave(tenant_id=_tid(), cs_student_id=cs.id, leave_type="PERSONAL",
-                          reason=content, status="PENDING_REVIEW", apply_time=_dt.utcnow(),
-                          code=f"SV-{_dt.now():%Y%m%d}-{cs.id}")
-        else:
-            row = CsWorkOrder(tenant_id=_tid(), cs_student_id=cs.id, title=service_key,
-                              wo_type="CONSULT", priority="MEDIUM", detail=content,
-                              status="PENDING_HANDLE", code=f"WO-{_dt.now():%Y%m%d}-{cs.id}",
-                              trail_json=[{"title": "学生提交", "desc": content,
-                                           "time": _iso(_dt.utcnow()), "tone": "processing"}])
+        row = CsWorkOrder(tenant_id=_tid(), cs_student_id=cs.id, title=service_key,
+                          wo_type="CONSULT", priority="MEDIUM", detail=content,
+                          status="PENDING_HANDLE", code=f"WO-{_dt.now():%Y%m%d}-{cs.id}",
+                          trail_json=[{"title": "学生提交", "desc": content,
+                                       "time": _iso(_dt.utcnow()), "tone": "processing"}])
         db.add(row)
         db.flush()
         rid, status = row.id, row.status
@@ -1414,24 +1439,34 @@ def internship_enterprises(user: dict, city: str = "") -> dict:
     _require_student(user)
     if not db_enabled():
         return {"hasData": False, "cities": [], "items": []}
+    from sqlalchemy import distinct
+
     from app.models import EmpCompany, InternshipPosition
+    _PUBLISHED = (InternshipPosition.tenant_id == _tid(),
+                  InternshipPosition.is_deleted.is_(False),
+                  InternshipPosition.status == "PUBLISHED")
     with _session() as db:
-        rows = db.scalars(select(InternshipPosition).where(
-            InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False),
-            InternshipPosition.status == "PUBLISHED").order_by(InternshipPosition.id.desc())).all()
-        items = []
-        cities = []
-        for p in rows:
-            company = db.get(EmpCompany, p.company_id) if p.company_id else None
-            head, alloc = p.headcount or 0, p.allocated_count or 0
-            loc = p.work_location or ""
-            if loc and loc not in cities:
-                cities.append(loc)
-            items.append({"id": str(p.id), "title": p.title or "",
-                          "companyName": company.name if company else "", "workLocation": loc,
-                          "salaryRange": p.salary_range or "", "remaining": max(0, head - alloc)})
+        # 城市下拉：单独取 distinct（轻量，不受列表上限影响，保证筛选项完整）
+        cities = [c for c in db.scalars(select(distinct(InternshipPosition.work_location)).where(
+            *_PUBLISHED)).all() if c]
+        # 岗位列表：城市筛选下推到 SQL + 上限，避免无界全表读；企业名批量取，消 per-row N+1
+        q = select(InternshipPosition).where(*_PUBLISHED)
         if city:
-            items = [x for x in items if x["workLocation"] == city]
+            q = q.where(InternshipPosition.work_location == city)
+        rows = db.scalars(q.order_by(InternshipPosition.id.desc()).limit(200)).all()
+        company_ids = {p.company_id for p in rows if p.company_id}
+        comp = {}
+        if company_ids:
+            for c in db.scalars(select(EmpCompany).where(EmpCompany.id.in_(company_ids))):
+                comp[c.id] = c
+        items = []
+        for p in rows:
+            company = comp.get(p.company_id)
+            head, alloc = p.headcount or 0, p.allocated_count or 0
+            items.append({"id": str(p.id), "title": p.title or "",
+                          "companyName": company.name if company else "",
+                          "workLocation": p.work_location or "",
+                          "salaryRange": p.salary_range or "", "remaining": max(0, head - alloc)})
         return {"hasData": len(items) > 0, "cities": cities, "items": items}
 
 
@@ -1488,7 +1523,7 @@ def internship_intention_save(user: dict, body: dict) -> dict:
                 preferredPositionId=b.get("preferredPositionId"),
                 intentionNote=b.get("intentionNote"),
             )
-            result = match_svc.update_intention(str(it.id), upd)
+            result = match_svc.update_intention(str(it.id), upd, self_service=True)
             audit_log.record("MOBILE_INTENTION_SAVE", f"internship:intention:{it.id}",
                              {"studentNo": u.get("studentNo")})
             return result
@@ -1501,7 +1536,7 @@ def internship_intention_save(user: dict, body: dict) -> dict:
         preferredPositionId=b.get("preferredPositionId") or None,
         intentionNote=(b.get("intentionNote") or "").strip() or None,
     )
-    result = match_svc.create_intention(payload)
+    result = match_svc.create_intention(payload, self_service=True)
     audit_log.record("MOBILE_INTENTION_CREATE", f"internship:intention:{result['id']}",
                      {"studentNo": u.get("studentNo")})
     return result
@@ -1524,7 +1559,7 @@ def internship_intention_submit(user: dict) -> dict:
         if it.student_id != stu.id:
             raise no_permission("只能提交本人的实习意向")
         iid = str(it.id)
-    result = match_svc.submit_intention(iid)
+    result = match_svc.submit_intention(iid, self_service=True)
     audit_log.record("MOBILE_INTENTION_SUBMIT", f"internship:intention:{iid}",
                      {"studentNo": u.get("studentNo")})
     return result
@@ -1547,7 +1582,7 @@ def internship_intention_withdraw(user: dict) -> dict:
         if it.student_id != stu.id:
             raise no_permission("只能撤回本人的实习意向")
         iid = str(it.id)
-    result = match_svc.withdraw_intention(iid)
+    result = match_svc.withdraw_intention(iid, self_service=True)
     audit_log.record("MOBILE_INTENTION_WITHDRAW", f"internship:intention:{iid}",
                      {"studentNo": u.get("studentNo")})
     return result

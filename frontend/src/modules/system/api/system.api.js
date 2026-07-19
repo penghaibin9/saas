@@ -370,6 +370,64 @@ export const systemApi = {
     }
   },
 
+  /** ── 老系统数据迁移（P1 · 6 域）：真实后端，不允许写操作回退 mock ── */
+  async getMigrationOverview() {
+    try {
+      const data = await request('/system/migration/overview')
+      return { code: 0, data }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async getMigrationBatches(domain) {
+    try {
+      const data = await request(`/system/migration/batches${domain ? `?domain=${encodeURIComponent(domain)}` : ''}`)
+      return { code: 0, data }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async downloadMigrationTemplate(domain, label) {
+    try {
+      const blob = await requestBlob(`/system/migration/domains/${encodeURIComponent(domain)}/template`)
+      saveBlob(blob, `数据迁移-${label || domain}模板.xlsx`)
+      return { code: 0, data: {}, message: '模板已下载' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async validateMigrationFile(domain, file) {
+    try {
+      const data = await requestUpload(`/system/migration/domains/${encodeURIComponent(domain)}/validate-file`, file)
+      return { code: 0, data, message: '文件解析并校验完成' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async downloadMigrationErrors(domain, rows, errors) {
+    try {
+      const data = await request(`/system/migration/domains/${encodeURIComponent(domain)}/errors-xlsx`, {
+        method: 'POST', body: { rows, errors }
+      })
+      return { code: 0, data }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async confirmMigrationBatch(batchNo) {
+    try {
+      const data = await request('/system/migration/confirm', { method: 'POST', body: { batchNo } })
+      return { code: 0, data: { ...data, created: data.insertedRows }, message: '导入完成' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
   /** 导出：受数据范围限制，敏感字段按选择脱敏，文件带水印，动作留痕 */
   exportUsers({ scope, fields, count }) {
     const sensitive = (fields || []).filter((f) => f.sensitive)

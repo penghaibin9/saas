@@ -31,9 +31,11 @@
         </div>
 
         <AppSectionCard title="批次状态分布">
+          <AppG2Chart v-if="batchStatusChart.length" :spec="batchStatusSpec" :height="240" />
           <DataTable :columns="statusCols" :rows="batchStatusRows" row-key="status" />
         </AppSectionCard>
         <AppSectionCard title="任务状态分布">
+          <AppG2Chart v-if="taskStatusChart.length" :spec="taskStatusSpec" :height="240" />
           <DataTable :columns="statusCols" :rows="taskStatusRows" row-key="status" />
         </AppSectionCard>
         <AppSectionCard title="按学期拆分">
@@ -51,13 +53,13 @@
  * GET /academic-affairs/teaching-task-batches/stats。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppMetricCard } from '@/components/common'
+import { AppSectionCard, AppMetricCard, AppG2Chart } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, TASK_STATUS } from '@/modules/academicAffairs/constants/teaching'
 
 export default {
   name: 'AaTaskStatsView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppMetricCard },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppMetricCard, AppG2Chart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -82,6 +84,30 @@ export default {
       return Object.entries(this.stats.taskByStatus).map(([status, count]) => ({
         status, count, label: TASK_STATUS[status] || status
       }))
+    },
+    batchStatusChart() {
+      return this.batchStatusRows.map(r => ({ name: r.label, value: r.count }))
+    },
+    taskStatusChart() {
+      return this.taskStatusRows.map(r => ({ name: r.label, value: r.count }))
+    },
+    batchStatusSpec() {
+      return {
+        type: 'interval',
+        data: this.batchStatusChart,
+        encode: { x: 'name', y: 'value' },
+        axis: { y: { title: null } },
+        style: { radiusTopLeft: 4, radiusTopRight: 4 }
+      }
+    },
+    taskStatusSpec() {
+      return {
+        type: 'interval',
+        data: this.taskStatusChart,
+        encode: { x: 'name', y: 'value' },
+        axis: { y: { title: null } },
+        style: { radiusTopLeft: 4, radiusTopRight: 4 }
+      }
     }
   },
   created() {

@@ -224,10 +224,40 @@ def _scope_or_403(db, x, user):
         raise AppException("NO_DATA_SCOPE", "该请假不在您的数据范围内")
 
 
+def _node_visible(ctx, node: str) -> bool:
+    """按管理层级判断某审批节点是否对当前身份可见/可操作：
+    TENANT_ALL（学工处/校级管理员）→ 任意节点；COLLEGE（学院管理员）→ 除学工处终审外任意节点
+    （本院范围已由 _scope_or_403 的班级收敛保证）；其余（含辅导员）仅 COUNSELOR_REVIEW。"""
+    if ctx.scope_type == "TENANT_ALL":
+        return True
+    if node == "STUDENT_AFFAIRS_REVIEW":
+        return False
+    if ctx.scope_type == "COLLEGE":
+        return True
+    return node == "COUNSELOR_REVIEW"
+
+
+def _check_review_node(db, x, user):
+    """审批节点身份校验（修复越权缺口）：既有 _scope_or_403 只校验学生是否在调用者的数据范围内，
+    不校验当前 affairs_status 对应的审批节点是否轮到调用者审批。COUNSELOR 角色被授予
+    studentAffairs.leave.* 通配权限，若无此校验，只要学生在其班级范围内，辅导员即可越级审批
+    COLLEGE_REVIEW/STUDENT_AFFAIRS_REVIEW 环节，跳过学院/学工处审批。"""
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    if not _node_visible(ctx, x.affairs_status):
+        raise AppException("NO_PERMISSION",
+                           f"无权审批当前节点（{L_AFF.get(x.affairs_status, x.affairs_status)}）")
+
+
 # ═══════════ 申请 ═══════════
 
-def apply_leave(body, user) -> dict:
-    student_id = int(body.studentId)
+def apply_leave(body, user, *, skip_scope_check: bool = False) -> dict:
+    # studentId 为字符串且无数字校验（campus_service schema），非数字直接 int() → 未捕获
+    # ValueError → HTTP 500；改为显式校验返回 400 VALIDATION_ERROR（历史欠账收口）。
+    raw_sid = str(getattr(body, "studentId", "") or "").strip()
+    if not raw_sid.isdigit():
+        raise AppException("VALIDATION_ERROR", "请选择有效学生")
+    student_id = int(raw_sid)
     start = _parse_dt(body.startTime)
     end = _parse_dt(body.endTime)
     days = _days(start, end)
@@ -236,6 +266,14 @@ def apply_leave(body, user) -> dict:
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
+        # 数据范围：非全域角色只能为本范围学生代发起请假（与 approve/reject 等一致）。
+        # skip_scope_check=True 仅供学生本人自助请假入口使用（studentId 已由服务端按登录身份解析，
+        # 不接受客户端指定），不适用于辅导员等"代发起"场景。
+        if not skip_scope_check:
+            from app.services.affairs_dashboard_service import _allowed_class_ids
+            _allowed, _ = _allowed_class_ids(db, user)
+            if _allowed is not None and s.class_id not in _allowed:
+                raise AppException("NO_DATA_SCOPE", "该学生不在您的数据范围内")
         # 重复提交：同学生在途请假且时间重叠 → 409
         for a in db.scalars(select(CsLeave).where(
                 CsLeave.tenant_id == _tid(), CsLeave.student_id == student_id,
@@ -259,7 +297,7 @@ def apply_leave(body, user) -> dict:
         _audit(db, x.id, "APPLY", f"days={days},wf={wf}")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 审批（多级） ═══════════
@@ -284,6 +322,7 @@ def approve(leave_id, user, comment="") -> dict:
         aff = x.affairs_status
         if aff not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可审批，请刷新")
+        _check_review_node(db, x, user)
         inst = _act_task(db, x, "APPROVED", comment)
         wf = inst.workflow_code if inst else _wf_code(float(x.days or 1))
         seq = NODE_SEQ.get(wf, ["COUNSELOR_REVIEW"])
@@ -310,7 +349,7 @@ def approve(leave_id, user, comment="") -> dict:
             _audit(db, x.id, "APPROVED", comment)
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def reject(leave_id, user, reason) -> dict:
@@ -321,6 +360,7 @@ def reject(leave_id, user, reason) -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可驳回，请刷新")
+        _check_review_node(db, x, user)
         inst = _act_task(db, x, "REJECTED", reason.strip())
         x.affairs_status, x.status, x.return_reason = "REJECTED", "RETURNED", reason.strip()
         x.version += 1
@@ -331,7 +371,7 @@ def reject(leave_id, user, reason) -> dict:
         _audit(db, x.id, "REJECTED", reason.strip())
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def return_leave(leave_id, user, reason) -> dict:
@@ -343,6 +383,7 @@ def return_leave(leave_id, user, reason) -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status not in _REVIEW_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假当前状态不可退回，请刷新")
+        _check_review_node(db, x, user)
         inst = _act_task(db, x, "TRANSFERRED", reason.strip())
         x.affairs_status, x.status, x.return_reason = "RETURNED", "RETURNED", reason.strip()
         x.version += 1
@@ -353,7 +394,7 @@ def return_leave(leave_id, user, reason) -> dict:
         _audit(db, x.id, "RETURNED", reason.strip())
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def resubmit(leave_id, user) -> dict:
@@ -377,7 +418,7 @@ def resubmit(leave_id, user) -> dict:
         _audit(db, x.id, "RESUBMIT")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 销假 ═══════════
@@ -402,7 +443,7 @@ def submit_cancel(leave_id, user, proof_note="") -> dict:
         _audit(db, x.id, "CANCEL_SUBMIT")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reason="", note="") -> dict:
@@ -439,7 +480,7 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
             _audit(db, x.id, "CANCEL_RETURN", reason.strip())
             db.commit()
             db.refresh(x)
-            return _row(x, s)
+            return _resolve_class_names(db, [_row(x, s)])[0]
         # CONFIRM：辅导员可校对/更正实际返校时间
         ret = _parse_dt(actual_return_at) if actual_return_at else None
         if ret:
@@ -467,7 +508,7 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
         _audit(db, x.id, "CLOSED", note)
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 续假 ═══════════
@@ -495,7 +536,7 @@ def apply_extension(leave_id, user, new_end, reason="") -> dict:
         _audit(db, x.id, "EXTENSION_SUBMIT", f"+{ext_days}天")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
@@ -528,7 +569,7 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
             _audit(db, x.id, "EXTENSION_REJECTED", reason.strip())
             db.commit()
             db.refresh(x)
-            return _row(x, s)
+            return _resolve_class_names(db, [_row(x, s)])[0]
         if ext:
             ext.status = "APPROVED"
             ext.version += 1
@@ -542,7 +583,7 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
         _audit(db, x.id, "EXTENSION_APPROVED")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 代登记销假 + 逾期处置 ═══════════
@@ -580,7 +621,7 @@ def proxy_cancel(leave_id, user, actual_return_at, note="") -> dict:
         _audit(db, x.id, "CANCEL_PROXY", f"actual_return={_iso(ret)}")
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 def handle_overdue(leave_id, user, handle_type, note="") -> dict:
@@ -610,7 +651,7 @@ def handle_overdue(leave_id, user, handle_type, note="") -> dict:
             _audit(db, x.id, f"OVERDUE_{handle_type}", note.strip())
         db.commit()
         db.refresh(x)
-        return _row(x, s)
+        return _resolve_class_names(db, [_row(x, s)])[0]
 
 
 # ═══════════ 逾期扫描（幂等） ═══════════
@@ -849,19 +890,26 @@ def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=Non
 
 
 def list_pending(user, page=1, page_size=20):
+    """待审批队列：仅返回调用者数据范围内、且当前节点确实轮到其身份审批的请假
+    （修复越权配套：避免辅导员在列表里看到无权处理的学院/学工处环节数据）。"""
     from app.models import CsLeave, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.core.affairs_security import build_affairs_context
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
+        ctx = build_affairs_context(user, db)
         rows = db.scalars(select(CsLeave).where(
             CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
             CsLeave.affairs_status.in_(list(_REVIEW_NODES))).order_by(CsLeave.id.desc())).all()
         out = []
         for x in rows:
+            if not _node_visible(ctx, x.affairs_status):
+                continue
             s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append(_row(x, s))
+        _resolve_class_names(db, out)  # list_leaves 已有此转换，list_pending 此前遗漏（className 一直回数字 class_id）
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total

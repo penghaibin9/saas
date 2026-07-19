@@ -84,3 +84,16 @@ def test_graduation_admin_passes_permission_gate_for_same_actions(client, db_mod
     h = _role_token("GRADUATION_ADMIN")
     r = client.post("/api/v1/graduation/gd-grades/999999/publish", headers=h)
     assert r.status_code != 403, f"GRADUATION_ADMIN 应放行到业务层，实际卡在权限层 {r.status_code}"
+
+
+# GET /graduation/context 审计整改：此前前端 permissionActions 是静态常量，所有角色一律
+# allowed:true。现按真实 permissionCode 逐项判定，回归证明「无权限角色拿到 false，全权角色拿到 true」。
+def test_context_reflects_real_permission_per_role(client, db_mode):
+    mentor = client.get("/api/v1/graduation/context", headers=_role_token("GD_MENTOR")).json()["data"]
+    assert mentor["permissionActions"]["createBatch"] is False, "GD_MENTOR 无 manage 权限，createBatch 应为 false"
+    assert mentor["fullScope"] is False
+
+    admin = client.get("/api/v1/graduation/context", headers=_role_token("GRADUATION_ADMIN")).json()["data"]
+    assert admin["permissionActions"]["createBatch"] is True, "GRADUATION_ADMIN 拥有 manage 权限，createBatch 应为 true"
+    assert admin["permissionActions"]["publishDefense"] is True
+    assert admin["fullScope"] is True

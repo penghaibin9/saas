@@ -94,10 +94,11 @@
 
         <!-- ══ 学籍统计（02）══ -->
         <template v-else-if="tab === 'statusChange'">
-          <div class="aa-cards">
-            <div class="aa-card aa-card--static"><span class="aa-card__label">学籍异动人数（本学期 EFFECTIVE）</span><span class="aa-card__value">{{ sSummary.total ?? 0 }}</span></div>
+          <div class="aa-metric-grid">
+            <AppMetricCard title="学籍异动人数（本学期 EFFECTIVE）" :value="sSummary.total ?? 0" />
           </div>
           <div v-if="sSummary.byType && sSummary.byType.length" class="aa-groups">
+            <AppG2Chart :spec="distSpec(sSummary.byType)" :height="200" />
             <div v-for="g in sSummary.byType" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <button class="mp-link" @click="openDetail">查看异动明细 →</button>
@@ -117,15 +118,17 @@
 
         <!-- ══ 课程统计（04）══ -->
         <template v-else-if="tab === 'course'">
-          <div class="aa-cards">
-            <div class="aa-card aa-card--static"><span class="aa-card__label">启用课程总数</span><span class="aa-card__value">{{ sSummary.total ?? 0 }}<em>门</em></span></div>
+          <div class="aa-metric-grid">
+            <AppMetricCard title="启用课程总数" :value="sSummary.total ?? 0" unit="门" />
           </div>
           <div v-if="sSummary.byCategory && sSummary.byCategory.length" class="aa-groups">
             <div class="aa-groups__title">按类别</div>
+            <AppG2Chart :spec="distSpec(sSummary.byCategory)" :height="200" />
             <div v-for="g in sSummary.byCategory" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <div v-if="sSummary.byCollege && sSummary.byCollege.length" class="aa-groups">
             <div class="aa-groups__title">按学院</div>
+            <AppG2Chart :spec="distSpec(sSummary.byCollege, '学院#')" :height="200" />
             <div v-for="g in sSummary.byCollege" :key="g.key" class="aa-group-row"><span>学院#{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <button class="mp-link" @click="openDetail">查看课程明细 →</button>
@@ -170,6 +173,7 @@
           </div>
           <div v-if="sSummary.byBatchStatus && sSummary.byBatchStatus.length" class="aa-groups">
             <div class="aa-groups__title">批次状态分布</div>
+            <AppG2Chart :spec="distSpec(sSummary.byBatchStatus)" :height="200" />
             <div v-for="g in sSummary.byBatchStatus" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <button class="mp-link" @click="openDetail">查看低人数课程清单 →</button>
@@ -188,6 +192,7 @@
           </div>
           <div v-if="sSummary.byBatchStatus && sSummary.byBatchStatus.length" class="aa-groups">
             <div class="aa-groups__title">批次状态分布</div>
+            <AppG2Chart :spec="distSpec(sSummary.byBatchStatus)" :height="200" />
             <div v-for="g in sSummary.byBatchStatus" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <button class="mp-link" @click="openDetail">查看缺考/违纪明细 →</button>
@@ -213,15 +218,17 @@
 
         <!-- ══ 学业预警统计（11）══ -->
         <template v-else-if="tab === 'warning'">
-          <div class="aa-cards">
-            <div class="aa-card aa-card--static"><span class="aa-card__label">未关闭预警数</span><span class="aa-card__value">{{ sSummary.total ?? 0 }}</span></div>
+          <div class="aa-metric-grid">
+            <AppMetricCard title="未关闭预警数" :value="sSummary.total ?? 0" accent="warning" />
           </div>
           <div v-if="sSummary.byLevel && sSummary.byLevel.length" class="aa-groups">
             <div class="aa-groups__title">按等级</div>
+            <AppG2Chart :spec="distSpec(sSummary.byLevel)" :height="200" />
             <div v-for="g in sSummary.byLevel" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <div v-if="sSummary.bySource && sSummary.bySource.length" class="aa-groups">
             <div class="aa-groups__title">按来源</div>
+            <AppG2Chart :spec="distSpec(sSummary.bySource)" :height="200" />
             <div v-for="g in sSummary.bySource" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <button class="mp-link" @click="openDetail">查看预警明细 →</button>
@@ -238,6 +245,7 @@
           </div>
           <div v-if="sSummary.byAbnormalItem && sSummary.byAbnormalItem.length" class="aa-groups">
             <div class="aa-groups__title">异常项分布</div>
+            <AppG2Chart :spec="distSpec(sSummary.byAbnormalItem)" :height="200" />
             <div v-for="g in sSummary.byAbnormalItem" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <button class="mp-link" @click="openDetail">查看异常学生名单 →</button>
@@ -254,20 +262,23 @@
 
         <!-- ══ 教学资源统计（14）══ -->
         <template v-else-if="tab === 'resource'">
-          <div class="aa-cards">
-            <div class="aa-card aa-card--static"><span class="aa-card__label">教室总数</span><span class="aa-card__value">{{ sSummary.classroomTotal ?? 0 }}<em>间</em></span></div>
-            <div class="aa-card aa-card--static"><span class="aa-card__label">预约总数</span><span class="aa-card__value">{{ sSummary.bookingTotal ?? 0 }}</span></div>
+          <div class="aa-metric-grid">
+            <AppMetricCard title="教室总数" :value="sSummary.classroomTotal ?? 0" unit="间" />
+            <AppMetricCard title="预约总数" :value="sSummary.bookingTotal ?? 0" />
           </div>
           <div v-if="sSummary.byStatus && sSummary.byStatus.length" class="aa-groups">
             <div class="aa-groups__title">教室状态分布</div>
+            <AppG2Chart :spec="distSpec(sSummary.byStatus)" :height="200" />
             <div v-for="g in sSummary.byStatus" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <div v-if="sSummary.byType && sSummary.byType.length" class="aa-groups">
             <div class="aa-groups__title">教室类型分布</div>
+            <AppG2Chart :spec="distSpec(sSummary.byType)" :height="200" />
             <div v-for="g in sSummary.byType" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <div v-if="sSummary.byBookingStatus && sSummary.byBookingStatus.length" class="aa-groups">
             <div class="aa-groups__title">预约状态分布</div>
+            <AppG2Chart :spec="distSpec(sSummary.byBookingStatus)" :height="200" />
             <div v-for="g in sSummary.byBookingStatus" :key="g.key" class="aa-group-row"><span>{{ g.key }}</span><b>{{ g.count }}</b></div>
           </div>
           <button class="mp-link" @click="openDetail">查看待审核预约 →</button>
@@ -323,7 +334,7 @@
  * /admin/academic-affairs/schedule-change/stats（navPlan 直接指向该页），本页总览 Tab 的
  * 「调停课统计」卡片是学校/学院口径的全局计数，两者互不冲突（见后端 stats_service 模块头注释）。
  */
-import { AppInlineAlert } from '@/components/common'
+import { AppInlineAlert, AppMetricCard, AppG2Chart } from '@/components/common'
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -493,7 +504,7 @@ const EXPORT_DOMAINS = [
 
 export default {
   name: 'AaStatsOverviewView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppInlineAlert },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppInlineAlert, AppMetricCard, AppG2Chart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -542,6 +553,16 @@ export default {
   methods: {
     drillable(ind) {
       return !!DRILL_META[ind.key] && ind.status !== 'MODULE_NOT_ENABLED'
+    },
+    // 仅用于展示：把既有分布数组 [{key,count}] 映射为柱状图 spec，不改动任何数据来源
+    distSpec(arr, prefix = '') {
+      return {
+        type: 'interval',
+        data: (arr || []).map((g) => ({ name: `${prefix}${g.key}`, value: g.count })),
+        encode: { x: 'name', y: 'value' },
+        axis: { y: { title: null } },
+        style: { radiusTopLeft: 4, radiusTopRight: 4 }
+      }
     },
     groupSummary(ind) {
       return (ind.groups || []).map((g) => `${g.key}:${g.count}`).join('  ')
@@ -751,6 +772,8 @@ export default {
 .mp-btn--ghost { background: transparent; border: 1px solid var(--border-300, #d0d3d9); color: var(--text-700, #4e5969); }
 .aa-scope-note { margin: 4px 0; padding: 10px 12px; background: var(--warning-50, #fff7e8); border: 1px solid var(--warning-200, #ffcf8b); border-radius: 6px; color: var(--warning-700, #a86400); font-size: 13px; }
 .aa-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.aa-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.aa-groups .app-g2-chart { margin-bottom: 8px; }
 .aa-card { display: flex; flex-direction: column; gap: 6px; padding: 16px; text-align: left; border: 1px solid var(--border-200, #e5e6eb); border-radius: 10px; background: var(--bg-white, #fff); cursor: default; transition: box-shadow .15s, border-color .15s; }
 .aa-card--drill { cursor: pointer; }
 .aa-card--drill:hover { border-color: var(--primary-400, #6aa1ff); box-shadow: 0 2px 10px rgba(22, 93, 255, .08); }

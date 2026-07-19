@@ -179,10 +179,10 @@ def review_change(cid, action: str, comment: str = "", user=None) -> dict:
         rid = str(rec.id)
     if action == "APPROVE":
         if ctype == "CHANGE_POSITION" and tpid:
-            stu_svc.assign_position(rid, str(tpid))
+            stu_svc.assign_position(rid, str(tpid), user=user)
         elif ctype in ("CHANGE_ENTERPRISE", "SELF_ARRANGED"):
             if ctype == "SELF_ARRANGED":
-                stu_svc.set_destination(rid, "SELF_ARRANGED", reason)
+                stu_svc.set_destination(rid, "SELF_ARRANGED", reason, user=user)
             with session() as db:
                 r = db.get(InternshipRecord, int(rid))
                 if r:

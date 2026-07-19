@@ -29,7 +29,7 @@
       <AppSelect v-model="statusFilter" :options="statusSelectOptions" placeholder="全部状态" @change="reload" />
     </div>
 
-    <div v-if="error" class="state is-err">{{ error }} <button @click="load">重试</button></div>
+    <ErrorState v-if="error" :description="error" @retry="load" />
     <DataTable v-else :columns="columns" :rows="rows" row-key="id" :loading="loading"
       :pagination="pagination" @page-change="onPageChange">
       <template #cell-studentConfirm="{ row }"><AppStatusTag :type="confirmTone(row.studentConfirm)">{{ row.studentConfirmLabel }}</AppStatusTag></template>
@@ -80,7 +80,7 @@
 </template>
 
 <script>
-import { ModulePageShell, DataTable } from '@/components/business'
+import { ModulePageShell, DataTable, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppExportButton, AppPermissionButton, AppSearchBox, AppSelect, AppFormItem,
   AppStudentPicker } from '@/components/common'
@@ -118,7 +118,7 @@ const PANEL_PRESETS = {
 export default {
   name: 'AgreementView',
   props: { ctx: { type: Object, default: () => ({}) } },
-  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppExportButton,
+  components: { ModulePageShell, DataTable, ErrorState, AppButton, AppStatusTag, AppExportButton,
     AppPermissionButton, AppSearchBox, AppSelect, AppFormItem, AppStudentPicker, ModuleSummaryStrip },
   data() {
     return {
@@ -238,8 +238,6 @@ export default {
 .ag-flow__index { color: var(--t3); font-size: 10px; font-weight: 800; }
 .ag-flow__step.is-active .ag-flow__index { color: var(--pri); }
 .bar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); flex-wrap: wrap; }
-.state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--r); background: rgba(255, 255, 255, .45); }
-.state.is-err { color: var(--danger-600); }
 .ops { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-2); }
 .hint { margin: var(--space-2) 0 0; font-size: var(--font-size-xs); color: var(--text-tertiary); }

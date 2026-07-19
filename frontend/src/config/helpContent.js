@@ -12,6 +12,10 @@
  */
 import { INTERNSHIP_HELP_CARDS } from '@/config/help/internshipHelpCards'
 import { GRADUATION_HELP_CARDS } from '@/config/help/graduationHelpCards'
+import { STUDENT_AFFAIRS_HELP_CARDS } from '@/config/help/studentAffairsHelpCards'
+import { ACADEMIC_AFFAIRS_HELP_CARDS } from '@/config/help/academicAffairsHelpCards'
+import { STUDENT_AFFAIRS_HELP_DOCS } from '@/config/help/studentAffairsHelpDocs'
+import { ACADEMIC_AFFAIRS_HELP_DOCS } from '@/config/help/academicAffairsHelpDocs'
 
 /** 功能帮助文档：对现有模块/高频操作的使用说明 */
 export const HELP_DOCS = [
@@ -134,7 +138,10 @@ export const HELP_DOCS = [
       '辅导员只见本人管理学生；学院老师只见本学院；系统管理员见全校。',
       '菜单也随角色变化：无权限的模块不会出现在左侧导航与搜索结果中。'
     ]
-  }
+  },
+  // 模块页面级功能帮助（把学工/教务拆到每个二级模块，说明各页面干什么）
+  ...STUDENT_AFFAIRS_HELP_DOCS,
+  ...ACADEMIC_AFFAIRS_HELP_DOCS
 ]
 
 /** 业务流程图：核心业务的分步流程（依据 13A/13B 流程设计） */
@@ -164,6 +171,144 @@ export const HELP_FLOWS = [
       { name: '学院审批', who: '学院', detail: '超过约定天数时上报学院复核' },
       { name: '生效', who: '系统', detail: '通过后请假生效，记录在案' },
       { name: '销假', who: '学生 / 辅导员', detail: '返校后销假，闭环归档' }
+    ]
+  },
+  {
+    id: 'flow-sa-discipline',
+    title: '违纪处分办理流程',
+    keywords: ['违纪', '处分', '违纪处分', '处分流程', '申诉', '处分解除', '送达', '学工'],
+    summary: '违纪从登记、逐级审核、生效送达到申诉、解除的完整办理链路。入口：学工中心 › 违纪处分。',
+    steps: [
+      { name: '登记违纪', who: '辅导员', detail: '在「违纪处分」登记违纪事实（不少于5字）与拟处分类型，先暂存为「已登记」' },
+      { name: '提交审核', who: '辅导员', detail: '提交后自动进入学院初审并生成审批流；被退回可补充后再提交' },
+      { name: '逐级审核', who: '学院 → 学工处 →（校级）', detail: '各级「通过/退回」；警告类到学工处复核即可，留校察看/开除等严重处分再加校级审核' },
+      { name: '处分生效', who: '系统', detail: '终审通过后自动生效，同步学生360画像，并站内信告知学生' },
+      { name: '登记送达', who: '辅导员', detail: '生效后登记送达方式（当面/邮寄/公告/留置），完成告知留痕' },
+      { name: '学生申诉（可选）', who: '学生 → 学工处', detail: '生效后学生可申诉，复核结论：维持 / 变更 / 撤销；撤销即处分解除' },
+      { name: '处分解除（可选）', who: '辅导员 → 学院 → 学工处', detail: '到期或表现良好可申请解除，三级审核通过后标记为「已解除」' }
+    ]
+  },
+  {
+    id: 'flow-sa-aid',
+    title: '家庭经济困难认定流程',
+    keywords: ['困难认定', '家庭经济困难', '困难生', '贫困认定', '公示', '异议', '学工', '资助'],
+    summary: '家庭经济困难学生的申请、逐级审核、公示到入库的流程。入口：学工中心 › 困难认定。',
+    steps: [
+      { name: '受理申请', who: '辅导员', detail: '在「困难认定」按批次受理学生申请；家庭经济敏感信息加密独立存储、不进列表' },
+      { name: '班级评议', who: '班级', detail: '班级民主评议后进入辅导员初审' },
+      { name: '逐级审核', who: '辅导员 → 学院 → 学校', detail: '辅导员初审给出建议档次，学院复审、学校终审逐级「通过/退回」' },
+      { name: '结果公示', who: '系统', detail: '终审通过进入公示（默认5天），公示期内可提异议' },
+      { name: '异议复核（可选）', who: '学工处', detail: '有异议时复核：成立则驳回申请，不成立则维持' },
+      { name: '认定通过', who: '系统', detail: '公示期满自动或人工确认通过，学生进入「困难学生库」并记档次历史' },
+      { name: '档次调整（可选）', who: '辅导员', detail: '情况变化可发起档次调整，复核通过后更新档次' }
+    ]
+  },
+  {
+    id: 'flow-sa-funding',
+    title: '奖助学金评定与发放流程',
+    keywords: ['奖学金', '助学金', '奖助', '资助', '评定', '发放', '公示', '学工'],
+    summary: '奖学金/助学金从资格校验、逐级评审、公示到发放台账的流程。入口：学工中心 › 奖助勤贷补。',
+    steps: [
+      { name: '受理申请', who: '辅导员', detail: '按资助项目批次受理学生申请' },
+      { name: '资格校验', who: '系统', detail: '受理即硬校验：奖学金需在籍+无未解除处分+无挂科；助学金需已在困难库。不符当场拦截' },
+      { name: '逐级评审', who: '辅导员 → 学院 → 学校', detail: '三级「通过/退回」评审' },
+      { name: '结果公示', who: '系统', detail: '通过进入公示，期满自动或人工确认，进入发放台账' },
+      { name: '生成发放单', who: '资助老师', detail: '按批次为获资助学生生成待发放记录（金额脱敏，仅授权角色见真实值）' },
+      { name: '银行发放', who: '资助老师', detail: '登记发放成功（记批次号+卡后4位）或失败（记原因）' }
+    ]
+  },
+  {
+    id: 'flow-sa-risk',
+    title: '学生风险预警与处置流程',
+    keywords: ['风险', '风险预警', '风险处置', '预警', '销号', '升级', '重点学生', '学工'],
+    summary: '学生风险从多来源建单、分派到处置销号的闭环。入口：学工中心 › 风险预警与处置。',
+    steps: [
+      { name: '生成风险单', who: '系统 / 辅导员', detail: '请假超期、学业预警、宿舍、心理、违纪等多来源自动建单，也可人工建单' },
+      { name: '分派责任人', who: '学工处 / 辅导员', detail: '指派处置责任人，系统给责任人建待办并站内信提醒' },
+      { name: '处置跟进', who: '责任人', detail: '记录处置措施（不少于5字），持续跟进（谈话/帮扶）' },
+      { name: '转办 / 升级（可选）', who: '责任人', detail: '可转给新责任人；重大风险升级，等级自动升一级交上级接管' },
+      { name: '超时自动升级', who: '系统', detail: '分派后72小时未处置自动升级，防止漏管' },
+      { name: '关闭销号', who: '责任人', detail: '至少1条处置记录后填结论关闭，闭环并同步360画像；心理类明细仅授权角色可见' }
+    ]
+  },
+  {
+    id: 'flow-sa-talk',
+    title: '谈心谈话流程',
+    keywords: ['谈心', '谈话', '谈心谈话', '约谈', '重点跟进', '心理', '学工'],
+    summary: '辅导员谈心谈话的计划、记录与跟进分流。入口：学工中心 › 谈心谈话。',
+    steps: [
+      { name: '建谈话计划', who: '辅导员', detail: '圈定学生建计划：约定时间则「已约定」，否则「待谈」' },
+      { name: '开展并记录', who: '辅导员', detail: '谈话后填记录（内容不少于20字），并标记是否需要跟进' },
+      { name: '跟进处理', who: '辅导员', detail: '需跟进的持续跟进；无需跟进可直接办结' },
+      { name: '分流处置（可选）', who: '辅导员', detail: '可一键转「风险中枢」（心理类自动归心理来源）或转「家校联系」' },
+      { name: '办结归档', who: '辅导员', detail: '完成后办结，同步学生360画像；心理类谈话内容仅授权角色可见全文' }
+    ]
+  },
+  {
+    id: 'flow-sa-family',
+    title: '家校联系流程',
+    keywords: ['家校', '家校联系', '家访', '家长', '回执', '联系记录', '学工'],
+    summary: '家校沟通的登记与家长回执（据实为「登记+回执」轻流程，无多级审批）。入口：学工中心 › 谈心家校 › 家校联系。',
+    steps: [
+      { name: '登记联系', who: '辅导员', detail: '登记与家长的沟通（电话/家访等）、事由与结果' },
+      { name: '查看联系方式', who: '辅导员', detail: '查看家长完整号码需填原因，系统留敏感查看审计' },
+      { name: '等待回执', who: '系统', detail: '记录默认「待回执」' },
+      { name: '登记回执', who: '辅导员', detail: '收到家长反馈后标记「已回执」，闭环（谈心谈话也可一键转生成一条家校联系记录）' }
+    ]
+  },
+  {
+    id: 'flow-sa-dorm',
+    title: '宿舍管理与调宿流程',
+    keywords: ['宿舍', '公寓', '入住', '调宿', '退宿', '宿舍检查', '床位', '学工'],
+    summary: '宿舍从房源、入住到调宿、检查异常的管理。入口：学工中心 › 宿舍与公寓。',
+    steps: [
+      { name: '建房源', who: '宿管', detail: '楼→房→床一键铺满，床位默认「空闲」' },
+      { name: '办理入住', who: '宿管', detail: '为学生分配床位（校验性别），床位转「已住」，回写入住记录' },
+      { name: '申请调宿', who: '学生 / 辅导员', detail: '选定空闲目标床发起调宿' },
+      { name: '两级审批', who: '辅导员 → 宿管', detail: '辅导员、宿管两级通过后系统自动执行换床' },
+      { name: '宿舍检查', who: '宿管', detail: '卫生/安全/违禁/夜不归宿检查，登记结果' },
+      { name: '异常处置', who: '宿管 / 辅导员', detail: '检查异常自动挂「待处理」，涉事学生联动生成风险单；处置说明后办结' },
+      { name: '退宿', who: '宿管', detail: '退宿释放床位，床位回「空闲」' }
+    ]
+  },
+  {
+    id: 'flow-sa-activity',
+    title: '第二课堂与活动学分流程',
+    keywords: ['第二课堂', '活动', '活动学分', '志愿', '积分', '社团', '综合素质', '学工'],
+    summary: '学生活动从发布、报名签到到学分入账的流程。入口：学工中心 › 活动二课与社团。',
+    steps: [
+      { name: '创建活动', who: '辅导员 / 组织者', detail: '建活动草稿，设名额与学分类型（第二课堂/德育/志愿时长）' },
+      { name: '发布报名', who: '组织者', detail: '发布后学生移动端报名，名额满或截止自动拦截' },
+      { name: '开展签到', who: '学生', detail: '活动进行中学生签到（仅已报名可签）' },
+      { name: '确认入账', who: '组织者', detail: '活动结束后确认，为已签到学生生成学分（防重复），同步360' },
+      { name: '志愿时长补录（可选）', who: '辅导员', detail: '补录志愿服务时长，确认后计入志愿学分' },
+      { name: '积分申诉（可选）', who: '学生 → 辅导员', detail: '漏记/记错可申诉，通过则补记学分' }
+    ]
+  },
+  {
+    id: 'flow-sa-archive',
+    title: '学工档案归档流程',
+    keywords: ['归档', '档案', '学工档案', '档案包', '封存', '批次', '学工'],
+    summary: '学工档案的批次收集、复核与封存（据实为逐级向前流转，无驳回分支）。入口：学工中心 › 统计与档案 › 学工归档。',
+    steps: [
+      { name: '建归档批次', who: '学工处', detail: '新建归档批次（草稿）' },
+      { name: '收集档案', who: '学工处', detail: '圈定学生生成档案包（每生一份，标注缺项清单）' },
+      { name: '学院复核', who: '学院', detail: '复核档案完整性' },
+      { name: '学工处确认', who: '学工处', detail: '终确认归档' },
+      { name: '封存导出', who: '系统', detail: '生成加密水印档案包，所有档案包封存' }
+    ]
+  },
+  {
+    id: 'flow-sa-counselor-eval',
+    title: '辅导员考评流程',
+    keywords: ['辅导员考评', '考评', '指标', '评分', '申诉', '学工'],
+    summary: '辅导员考评的指标配置、评分发布与申诉复核。入口：学工中心 › 辅导员考评。',
+    steps: [
+      { name: '配置指标', who: '学工处 / 学院', detail: '建考评指标（权重、满分）' },
+      { name: '录入评分', who: '学工处 / 学院', detail: '按指标给辅导员打分，草稿可改，系统自动算加权总分' },
+      { name: '发布考评', who: '学工处 / 学院', detail: '发布后不可再改' },
+      { name: '辅导员申诉（可选）', who: '辅导员', detail: '对本人已发布考评可申诉（理由不少于5字）' },
+      { name: '复核结论', who: '学工处', detail: '维持或调整（调整可改分并重算总分）' }
     ]
   },
   {
@@ -207,6 +352,156 @@ export const HELP_FLOWS = [
       { name: '风险处理', who: '指导教师', detail: '识别并跟进实习风险学生' },
       { name: '就业跟进', who: '就业老师', detail: '就业去向登记、未就业帮扶' }
     ]
+  },
+  {
+    id: 'flow-in-agreement',
+    title: '实习岗位匹配与三方协议签订流程',
+    keywords: ['实习岗位', '三方协议', '岗位匹配', '实习申请', '协议签订', '电子签', '实习'],
+    summary: '企业岗位上架、学生申请或系统匹配后，三方协议依次由学生、企业、学校确认并电子签。入口：岗位实习中心。',
+    steps: [
+      { name: '岗位上架', who: '实习管理员 / 企业', detail: '岗位从草稿→待审核→上架，学生端可见' },
+      { name: '学生申请 / 匹配', who: '学生 / 管理员', detail: '学生投递申请，或管理员批量匹配分配岗位' },
+      { name: '生成协议', who: '实习管理员', detail: '匹配确定后生成三方实习协议（草稿）' },
+      { name: '学生确认', who: '学生', detail: '协议转「待学生确认」，学生确认信息' },
+      { name: '企业确认', who: '企业导师', detail: '转「待企业确认」，企业确认' },
+      { name: '学校确认', who: '实习管理员', detail: '转「待学校确认」，学校终确认' },
+      { name: '电子签生效', who: '三方', detail: '电子签署完成，协议生效' }
+    ]
+  },
+  {
+    id: 'flow-in-attendance',
+    title: '实习打卡与考勤异常处理流程',
+    keywords: ['实习打卡', '考勤', '缺卡', '考勤异常', '实习请假', '实习'],
+    summary: '学生按批次规则打卡，缺卡/异常自动挂「待核实」，指导教师逐条处理。入口：岗位实习中心 → 考勤打卡。',
+    steps: [
+      { name: '打卡', who: '学生', detail: '小程序按批次规则打卡（定位 / 拍照）' },
+      { name: '生成异常', who: '系统', detail: '缺卡、迟到、位置异常自动生成考勤异常（待核实）' },
+      { name: '实习请假', who: '学生', detail: '需要时提交实习请假' },
+      { name: '处理异常', who: '指导教师', detail: '逐条核实处理，异常置「已处理」' }
+    ]
+  },
+  {
+    id: 'flow-in-report',
+    title: '实习周报批阅流程',
+    keywords: ['周报', '日报', '实习周报', '周报批阅', '过程报告', '实习'],
+    summary: '学生按周期提交周报/日报，指导教师批阅，通过或退回重写。入口：岗位实习中心 → 周报批阅。',
+    steps: [
+      { name: '提交周报', who: '学生', detail: '按规则周期提交周报/日报，状态「待批阅」' },
+      { name: '批阅', who: '指导教师', detail: '审阅内容，通过或退回（退回则学生重写）' },
+      { name: '通过', who: '指导教师', detail: '批阅通过，计入过程材料' }
+    ]
+  },
+  {
+    id: 'flow-in-guidance',
+    title: '实习指导与巡访流程',
+    keywords: ['巡访', '指导记录', '实习指导', '巡访计划', '实习'],
+    summary: '指导教师按计划开展巡访/指导，登记记录，发现异常可转风险处置。入口：岗位实习中心 → 指导巡访。',
+    steps: [
+      { name: '制定指导计划', who: '指导教师', detail: '安排指导 / 巡访计划与周期' },
+      { name: '开展巡访', who: '指导教师', detail: '线上 / 线下巡访学生实习情况' },
+      { name: '登记记录', who: '指导教师', detail: '填写指导 / 巡访记录（可含企业反馈）' },
+      { name: '发现问题', who: '指导教师', detail: '异常可转「实习风险处置」' }
+    ]
+  },
+  {
+    id: 'flow-in-change-risk',
+    title: '实习变更与风险处置流程',
+    keywords: ['实习变更', '换岗', '中止实习', '实习风险', '风险处置', '实习'],
+    summary: '学生实习信息变更需审批；实习风险由责任人跟进到关闭。入口：岗位实习中心 → 变更 / 风险处置。',
+    steps: [
+      { name: '发起变更', who: '学生 / 管理员', detail: '提交换岗 / 中止等变更申请（待审核）' },
+      { name: '审批变更', who: '实习管理员', detail: '通过或驳回，通过后更新实习信息' },
+      { name: '识别风险', who: '系统 / 指导教师', detail: '打卡异常、投诉等触发实习风险（待处理）' },
+      { name: '跟进处置', who: '指导教师', detail: '跟进处理，风险处理中' },
+      { name: '关闭', who: '指导教师', detail: '化解后关闭归档，留痕结果' }
+    ]
+  },
+  {
+    id: 'flow-in-score',
+    title: '实习成绩评定流程',
+    keywords: ['实习成绩', '企业评价', '学生自评', '实习评价', '成绩评定', '实习'],
+    summary: '企业评价、学生自评、指导教师评价按权重合成实习成绩，学校审核后发布。入口：岗位实习中心 → 评价 / 成绩。',
+    steps: [
+      { name: '企业评价', who: '企业导师', detail: '企业对学生实习表现评价（提交后学校审核）' },
+      { name: '学生自评', who: '学生', detail: '学生提交实习自评' },
+      { name: '教师评价', who: '指导教师', detail: '指导教师评价与过程分' },
+      { name: '学校审核', who: '实习管理员', detail: '审核企业评价（通过 / 退回）' },
+      { name: '成绩合成', who: '系统', detail: '按权重（企业 + 自评 + 教师 + 过程）合成实习成绩' },
+      { name: '发布归档', who: '实习管理员', detail: '发布成绩，进入实习归档' }
+    ]
+  },
+  {
+    id: 'flow-gd-topic',
+    title: '毕设选题与任务书流程',
+    keywords: ['毕设选题', '选题', '题目库', '双选', '任务书', '毕业设计'],
+    summary: '教师题目入库审核后开放选题轮次，学生选题/双选确认，导师下发任务书由学生确认。入口：毕业设计中心。',
+    steps: [
+      { name: '题目入库', who: '导师', detail: '教师出题进题目库（待确认 → 审核 → 入池）' },
+      { name: '开放选题轮次', who: '教务 / 管理员', detail: '建选题轮次，开放学生选题' },
+      { name: '学生选题', who: '学生', detail: '学生在轮次内选题（双选 / 志愿）' },
+      { name: '确认师生关系', who: '导师 / 管理员', detail: '确认选题，建立师生指导关系' },
+      { name: '下发任务书', who: '导师', detail: '下发毕设任务书（待学生确认）' },
+      { name: '学生确认任务书', who: '学生', detail: '学生确认任务书，进入开题' }
+    ]
+  },
+  {
+    id: 'flow-gd-proposal',
+    title: '毕设开题流程',
+    keywords: ['开题', '开题报告', '毕设开题', '毕业设计'],
+    summary: '学生提交开题报告，导师/评审批阅，通过后进入过程阶段。入口：毕业设计中心 → 开题。',
+    steps: [
+      { name: '提交开题', who: '学生', detail: '提交开题报告（待评审）' },
+      { name: '评审开题', who: '导师 / 评审组', detail: '批阅开题报告，通过或退回修改' },
+      { name: '通过', who: '导师', detail: '开题通过，进入中期阶段' }
+    ]
+  },
+  {
+    id: 'flow-gd-midterm',
+    title: '毕设中期检查流程',
+    keywords: ['中期检查', '中期', '毕设中期', '限期整改', '毕业设计'],
+    summary: '学生提交中期材料，检查通过或列入限期整改。入口：毕业设计中心 → 中期检查。',
+    steps: [
+      { name: '提交中期', who: '学生', detail: '提交中期进展材料（待检查）' },
+      { name: '中期检查', who: '导师 / 检查组', detail: '检查进展：通过 或 限期整改' },
+      { name: '整改复查', who: '学生 / 导师', detail: '限期整改后复查' }
+    ]
+  },
+  {
+    id: 'flow-gd-review',
+    title: '毕设成果提交、查重与评阅流程',
+    keywords: ['成果提交', '查重', '评阅', '送评', '毕设评阅', '毕业设计'],
+    summary: '学生提交成果，记录查重，送评阅老师评阅给出意见。入口：毕业设计中心 → 成果 / 评阅。',
+    steps: [
+      { name: '提交成果', who: '学生', detail: '提交论文 / 作品成果（待批阅）' },
+      { name: '查重', who: '教务 / 系统', detail: '记录查重结果' },
+      { name: '送评', who: '管理员', detail: '分配评阅老师（待评阅）' },
+      { name: '评阅', who: '评阅老师', detail: '评阅中 → 完成，给出评阅意见（或退回）' }
+    ]
+  },
+  {
+    id: 'flow-gd-defense',
+    title: '毕设答辩与成绩评定流程',
+    keywords: ['答辩', '答辩分组', '答辩成绩', '毕设成绩', '成绩发布', '毕业设计'],
+    summary: '编答辩分组，答辩评分确认后核算成绩、发布，学生可申诉。入口：毕业设计中心 → 答辩 / 成绩。',
+    steps: [
+      { name: '答辩分组', who: '管理员', detail: '编排答辩组与安排' },
+      { name: '答辩评分', who: '答辩组', detail: '待评分 → 已评分 → 确认' },
+      { name: '核算成绩', who: '系统 / 教务', detail: '待核算 → 已核算（按各环节权重）' },
+      { name: '发布成绩', who: '教务', detail: '发布毕设成绩' },
+      { name: '成绩申诉', who: '学生', detail: '有异议可申诉（待审核 → 通过 / 驳回）' }
+    ]
+  },
+  {
+    id: 'flow-gd-archive',
+    title: '毕设风险与归档流程',
+    keywords: ['毕设风险', '毕设归档', '归档', '风险处置', '毕业设计'],
+    summary: '毕设风险按待受理→处理→关闭跟进；成绩确认后档案待生成→待提交→已提交归档。入口：毕业设计中心 → 风险 / 归档。',
+    steps: [
+      { name: '识别风险', who: '系统 / 导师', detail: '进度滞后等触发毕设风险（待受理）' },
+      { name: '跟进处置', who: '导师 / 管理员', detail: '处理中 → 关闭' },
+      { name: '生成档案', who: '系统', detail: '成绩确认后生成毕设档案（待生成 → 待提交）' },
+      { name: '提交归档', who: '管理员', detail: '提交档案完成归档（已提交）' }
+    ]
   }
 ]
 
@@ -215,12 +510,14 @@ export const HELP_FLOWS = [
  * 数据源拆分在 config/help/*.js，本文件仅聚合与索引。
  * 每张卡：id / module / title / roles / route / entry / keywords / summary / steps / fields / faq / related。
  */
-export const HELP_CARDS = [...INTERNSHIP_HELP_CARDS, ...GRADUATION_HELP_CARDS]
+export const HELP_CARDS = [...STUDENT_AFFAIRS_HELP_CARDS, ...ACADEMIC_AFFAIRS_HELP_CARDS, ...INTERNSHIP_HELP_CARDS, ...GRADUATION_HELP_CARDS]
 
 /** 分类聚合，供帮助中心页面侧栏渲染 */
 export const HELP_SECTIONS = [
   { key: 'docs', label: '功能帮助', items: HELP_DOCS },
   { key: 'flows', label: '业务流程图', items: HELP_FLOWS },
+  { key: 'sa-cards', label: '学工中心 · 任务卡', items: STUDENT_AFFAIRS_HELP_CARDS },
+  { key: 'aa-cards', label: '教务中心 · 任务卡', items: ACADEMIC_AFFAIRS_HELP_CARDS },
   { key: 'in-cards', label: '岗位实习 · 任务卡', items: INTERNSHIP_HELP_CARDS },
   { key: 'gd-cards', label: '毕业设计 · 任务卡', items: GRADUATION_HELP_CARDS }
 ]
@@ -253,6 +550,33 @@ export function searchHelp(query) {
     sub: [c.module, (c.roles || []).join('、'), c.entry].filter(Boolean).join(' · ')
   }))
   return [...cards, ...docs, ...flows]
+}
+
+/** 拆 '/a/b?panel=x' → { path:'/a/b', panel:'x' }；无 query 时 panel 为 ''。 */
+function splitRoute(route) {
+  const [path, qs = ''] = String(route || '').split('?')
+  const panel = new URLSearchParams(qs).get('panel') || ''
+  return { path, panel }
+}
+
+/**
+ * 按当前路由找最贴切的帮助任务卡，供顶栏「?」按钮做「本页帮助」跳转。
+ * 匹配优先级：同路径且同 panel > 同路径（无 panel 或 panel 不同） > 同路径前缀（详情页回落到列表页的卡）。
+ * 找不到返回 null，此时顶栏应退回帮助中心首页而不是乱跳。
+ * @param {string} fullPath 当前 $route.fullPath
+ * @returns {{id:string,title:string}|null}
+ */
+export function findHelpForRoute(fullPath) {
+  const cur = splitRoute(fullPath)
+  if (!cur.path) return null
+  const cards = HELP_CARDS.map((c) => ({ card: c, r: splitRoute(c.route) }))
+  const exact = cards.find((x) => x.r.path === cur.path && x.r.panel === cur.panel)
+  const samePath = exact || cards.find((x) => x.r.path === cur.path)
+  // 详情页（/topic-lib/12/edit）回落到最长的同前缀列表页卡（/topic-lib）
+  const prefix = samePath || cards
+    .filter((x) => x.r.path && cur.path.startsWith(x.r.path + '/'))
+    .sort((a, b) => b.r.path.length - a.r.path.length)[0]
+  return prefix ? { id: prefix.card.id, title: prefix.card.title } : null
 }
 
 /** 按 id 取帮助条目（含类型），供帮助中心页面按 ?topic= 定位 */

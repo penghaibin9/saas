@@ -11,7 +11,7 @@
       <div class="av-side">
         <div class="av-side__head">
           归档批次
-          <button type="button" class="av-btn av-btn--primary av-btn--sm" @click="openBatch">建批次</button>
+          <AppPermissionButton code="studentAffairs.archive.batch.manage" variant="primary" size="sm" @click="openBatch">建批次</AppPermissionButton>
         </div>
         <EmptyState v-if="!batches.length" title="暂无批次" description="点「建批次」新建归档批次" />
         <ul v-else class="av-blist">
@@ -26,7 +26,16 @@
             <StatusTag :type="statusType(b.status)" :label="statusLabel(b.status)" dot />
           </li>
         </ul>
-        <p class="av-side__note">说明：进入自动加载全部归档批次（按数据范围）；点批次查看流转与档案包。</p>
+        <AppPagination
+          v-if="batchPagination.total > batchPagination.pageSize"
+          class="av-side__pager"
+          :page="batchPagination.page"
+          :page-size="batchPagination.pageSize"
+          :total="batchPagination.total"
+          :show-size-changer="false"
+          @change="onBatchPageChange"
+        />
+        <p class="av-side__note">说明：进入自动加载归档批次（按数据范围，分页展示）；点批次查看流转与档案包。</p>
       </div>
 
       <!-- 批次详情 -->
@@ -52,12 +61,12 @@
           </div>
 
           <div class="av-actions">
-            <button v-if="canCollect" type="button" class="av-btn av-btn--primary" :disabled="acting" @click="openCollect">圈定学生</button>
-            <button v-if="advanceLabel" type="button" class="av-btn av-btn--primary" :disabled="acting" @click="onAdvance">{{ advanceLabel }}</button>
+            <AppPermissionButton v-if="canCollect" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="openCollect">圈定学生</AppPermissionButton>
+            <AppPermissionButton v-if="advanceLabel" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="onAdvance">{{ advanceLabel }}</AppPermissionButton>
             <span v-if="current.status === 'ARCHIVED'" class="av-archived">✓ 已归档（水印包已登记）</span>
           </div>
 
-          <!-- 档案包 -->
+          <!-- 档案包：后端 getBatch 一次性返回该批次全部档案包，无 page/total 字段，暂不加分页控件 -->
           <div class="av-pkgs">
             <div class="av-pkgs__head">档案包<span v-if="packages.length">{{ packages.length }}</span></div>
             <EmptyState v-if="!packages.length" title="暂无档案包" description="「圈定学生」后每生生成一个档案包" />
@@ -73,34 +82,36 @@
       </div>
     </div>
 
-    <!-- 建批次 modal -->
-    <div v-if="batchModal.visible" class="av-mask" @click.self="batchModal.visible = false">
-      <div class="av-modal">
-        <h3 class="av-modal__title">新建归档批次</h3>
-        <label class="av-field"><span>批次名称 <i>*</i></span><input v-model.trim="batchModal.batchName" class="av-input" placeholder="如：2026 届毕业生学工归档" /></label>
-        <label class="av-field"><span>学年</span><input v-model.trim="batchModal.yearCode" class="av-input" placeholder="如：2025-2026" /></label>
-        <p v-if="batchModal.error" class="av-err">{{ batchModal.error }}</p>
-        <div class="av-modal__foot">
-          <button type="button" class="av-btn" @click="batchModal.visible = false">取消</button>
-          <button type="button" class="av-btn av-btn--primary" :disabled="acting" @click="submitBatch">创建</button>
-        </div>
+    <!-- 建批次 -->
+    <AppDrawer v-model:visible="batchModal.visible" title="新建归档批次">
+      <div class="av-form">
+        <AppFormItem label="批次名称" required>
+          <AppTextInput v-model="batchModal.batchName" placeholder="如：2026 届毕业生学工归档" :disabled="acting" />
+        </AppFormItem>
+        <AppFormItem label="学年">
+          <AppTextInput v-model="batchModal.yearCode" placeholder="如：2025-2026（选填）" :disabled="acting" />
+        </AppFormItem>
+        <AppInlineAlert v-if="batchModal.error" type="danger" :description="batchModal.error" />
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="acting" @click="batchModal.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="acting" @click="submitBatch">创建</AppButton>
+      </template>
+    </AppDrawer>
 
-    <!-- 圈定学生 modal -->
-    <div v-if="collectModal.visible" class="av-mask" @click.self="collectModal.visible = false">
-      <div class="av-modal">
-        <h3 class="av-modal__title">圈定学生生成档案包</h3>
-        <div class="av-field"><span>学生（可多选） <i>*</i></span>
+    <!-- 圈定学生 -->
+    <AppDrawer v-model:visible="collectModal.visible" title="圈定学生生成档案包">
+      <div class="av-form">
+        <AppFormItem label="学生（可多选）" required>
           <AppStudentPicker v-model="collectModal.studentIds" multiple :remote-search="searchStudents" placeholder="按姓名 / 学号搜索添加学生" />
-        </div>
-        <p v-if="collectModal.error" class="av-err">{{ collectModal.error }}</p>
-        <div class="av-modal__foot">
-          <button type="button" class="av-btn" @click="collectModal.visible = false">取消</button>
-          <button type="button" class="av-btn av-btn--primary" :disabled="acting" @click="submitCollect">生成档案包</button>
-        </div>
+        </AppFormItem>
+        <AppInlineAlert v-if="collectModal.error" type="danger" :description="collectModal.error" />
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="acting" @click="collectModal.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="acting" @click="submitCollect">生成档案包</AppButton>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
@@ -111,7 +122,11 @@
  * 后端按批次 ID 管理，无列表端点，本页维护本会话已建批次。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppStatusTag, AppStudentPicker } from '@/components/common'
+import {
+  AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppStatusTag, AppStudentPicker, AppTextInput
+} from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
+import { AppButton } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -127,11 +142,15 @@ const PKG_STATUS = { PENDING_GEN: '待生成', GENERATED: '已生成', ARCHIVED:
 
 export default {
   name: 'ArchiveManageView',
-  components: { ModulePageShell, EmptyState, StatusTag: AppStatusTag, AppStudentPicker },
+  components: {
+    ModulePageShell, EmptyState, StatusTag: AppStatusTag, AppStudentPicker,
+    AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppTextInput, AppButton
+  },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
       FLOW, batches: [], current: null, packages: [], acting: false,
+      batchPagination: { page: 1, pageSize: 20, total: 0 },
       batchModal: { visible: false, batchName: '', yearCode: '', error: '' },
       collectModal: { visible: false, studentIds: [], error: '' }
     }
@@ -160,8 +179,18 @@ export default {
   },
   methods: {
     async loadBatches() {
-      const res = await studentAffairsApi.getArchiveBatches({ pageSize: 200 })
-      if (res.code === 0 && res.data) this.batches = res.data.items || []
+      const res = await studentAffairsApi.getArchiveBatches({
+        page: this.batchPagination.page,
+        pageSize: this.batchPagination.pageSize
+      })
+      if (res.code === 0 && res.data) {
+        this.batches = res.data.items || []
+        this.batchPagination.total = res.data.total || 0
+      }
+    },
+    onBatchPageChange(next) {
+      this.batchPagination.page = (next && next.page) || 1
+      this.loadBatches()
     },
     statusType(s) {
       return STATUS_TYPE[s] || 'default'
@@ -197,14 +226,17 @@ export default {
     },
     async submitBatch() {
       const m = this.batchModal
-      if (!m.batchName) { m.error = '请填写批次名称'; return }
+      const batchName = (m.batchName || '').trim()
+      const yearCode = (m.yearCode || '').trim()
+      if (!batchName) { m.error = '请填写批次名称'; return }
       this.acting = true
-      const res = await studentAffairsApi.createArchiveBatch({ batchName: m.batchName, yearCode: m.yearCode || '' })
+      const res = await studentAffairsApi.createArchiveBatch({ batchName, yearCode })
       this.acting = false
       if (res.code === 0 && res.data) {
         toast.success('批次已创建')
         this.batchModal.visible = false
-        this.batches.unshift(res.data)
+        this.batchPagination.page = 1
+        await this.loadBatches()
         this.selectBatch(res.data)
       } else { m.error = res.message || '创建失败' }
     },
@@ -443,60 +475,12 @@ export default {
   border-color: var(--primary-600);
   color: #fff;
 }
-.av-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.av-modal {
-  width: 440px;
-  max-width: calc(100vw - 32px);
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  box-shadow: var(--shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.2));
-}
-.av-modal__title {
-  margin: 0 0 var(--space-3);
-  font-size: var(--font-size-lg);
-  color: var(--text-primary);
-}
-.av-field {
+.av-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
+  gap: var(--space-4);
 }
-.av-field > span {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.av-field i {
-  color: var(--danger-600, #dc2626);
-  font-style: normal;
-}
-.av-input {
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  padding: var(--space-2);
-  outline: none;
-}
-.av-err {
-  margin: 0 0 var(--space-2);
-  color: var(--danger-600, #dc2626);
-  font-size: var(--font-size-xs);
-}
-.av-modal__foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+.av-side__pager {
+  margin-top: var(--space-3);
 }
 </style>

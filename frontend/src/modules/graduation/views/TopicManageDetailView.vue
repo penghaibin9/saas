@@ -8,16 +8,25 @@
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else-if="detail">
-      <div class="gb-kv"><span>指导教师</span><span>{{ detail.advisorName || '—' }}</span></div>
-      <div class="gb-kv"><span>容量</span><span>{{ detail.selected }}/{{ detail.capacity }}</span></div>
-      <div class="gb-sec">
-        <p class="ie-hint">已选学生</p>
-        <EmptyState v-if="!assigned.length" title="暂无" />
-        <ul v-else class="gb-trail">
-          <li v-for="s in assigned" :key="s.id" class="gb-trail__item">
-            <span>{{ s.name }}（{{ s.studentNo }}）</span>
-          </li>
-        </ul>
+      <div class="mp-stack">
+        <section class="mp-card">
+          <header class="mp-card__head"><span class="mp-card__title">课题信息</span></header>
+          <div class="mp-card__body">
+            <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ detail.advisorName || '—' }}</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">容量</span><span class="mp-kv__v">{{ detail.selected }}/{{ detail.capacity }}</span></div>
+          </div>
+        </section>
+        <section class="mp-card">
+          <header class="mp-card__head"><span class="mp-card__title">已选学生</span></header>
+          <div class="mp-card__body">
+            <EmptyState v-if="!assigned.length" title="暂无" />
+            <ul v-else class="assigned-list">
+              <li v-for="s in assigned" :key="s.id" class="assigned-list__item">
+                <span>{{ s.name }}（{{ s.studentNo }}）</span>
+              </li>
+            </ul>
+          </div>
+        </section>
       </div>
     </template>
     <template v-if="detail && canEdit" #footer>
@@ -41,26 +50,29 @@ export default {
   },
   computed: {
     canEdit() {
-      if (!this.detail) return false
-      const row = this.detail
-      return row.status !== 'ARCHIVED' && row.reviewStatus !== 'PENDING_REVIEW' && !(row.selected > 0 && row.reviewStatus === 'APPROVED')
+      return this.ctx?.permissions?.includes('graduation:topic:write')
     }
   },
-  created() { this.load() },
   methods: {
     async load() {
       this.loading = true
       this.error = ''
-      const id = this.$route.params.id
-      const d = await gdTopicApi.getTopicDetail(id)
-      if (d.code !== 0) { this.error = d.message; this.loading = false; return }
-      this.detail = d.data
-      const a = await gdTopicApi.getAssignedStudents(id)
-      this.assigned = a.code === 0 ? (a.data || []) : []
-      this.loading = false
+      try {
+        const res = await gdTopicApi.getTopicDetail(this.$route.params.id)
+        if (res.code === 0) {
+          this.detail = res.data
+          this.assigned = res.data.assignedStudents || []
+        } else {
+          this.error = res.message
+        }
+      } catch (e) {
+        this.error = e.message
+      } finally {
+        this.loading = false
+      }
     },
-    goEdit() {
-      this.$router.push(`/admin/graduation/topics/${this.detail.id}/edit`)
+    mounted() {
+      this.load()
     }
   }
 }
@@ -68,10 +80,6 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gb-kv { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
-.gb-sec { margin-top: var(--space-4); }
-.gb-trail { list-style: none; padding: 0; margin: 0; }
-.gb-trail__item { padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; margin-left: var(--space-2); }
-.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
+.assigned-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.assigned-list__item { padding: 8px 10px; background: var(--bg-subtle, #f8fafc); border-radius: 6px; font-size: 13px; }
 </style>

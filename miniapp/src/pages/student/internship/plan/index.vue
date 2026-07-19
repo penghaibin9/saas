@@ -76,6 +76,7 @@ export default {
       return st === 'NOT_STARTED' || st === 'REJECTED'
     },
     ack() {
+      if (this.submitting !== false) return
       this.submitting = true
       studentApi.ackInternshipPlan().then(() => {
         toast('已确认实习计划')
@@ -83,6 +84,7 @@ export default {
       }).catch((e) => toast((e && e.message) || '确认失败')).finally(() => { this.submitting = false })
     },
     submitTask(t) {
+      if (this.submitting !== false) return
       const note = (t._note || '').trim()
       if (note.length < 5) return toast('完成说明至少5字')
       this.submitting = t.sortOrder

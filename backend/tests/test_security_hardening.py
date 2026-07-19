@@ -67,3 +67,26 @@ def test_export_rate_limit_5_per_minute(client, auth_headers, db_mode):
     r = client.post("/api/v1/export/students", headers=auth_headers,
                     json={"purpose": "限流验证批量导出"}).json()
     assert r["code"] == 429001
+
+
+# ── P0-1：真实客户端 IP 解析（可信代理才吃 X-Forwarded-For，防全校共享限流桶/审计串源） ──
+
+def test_client_ip_trusts_xff_only_from_trusted_proxy():
+    from types import SimpleNamespace
+    from app.middleware.context import _resolve_client_ip
+
+    def fake_request(direct_ip, headers):
+        return SimpleNamespace(client=SimpleNamespace(host=direct_ip), headers=headers)
+
+    # 直连方是可信代理（默认 127.0.0.1）→ 取 X-Forwarded-For 第一跳
+    r = fake_request("127.0.0.1", {"x-forwarded-for": "203.0.113.7, 10.0.0.2"})
+    assert _resolve_client_ip(r) == "203.0.113.7"
+    # 可信代理 + 只有 X-Real-IP → 取 X-Real-IP
+    r = fake_request("127.0.0.1", {"x-real-ip": "198.51.100.9"})
+    assert _resolve_client_ip(r) == "198.51.100.9"
+    # 直连方不可信 → 头部一律忽略，防伪造
+    r = fake_request("192.0.2.50", {"x-forwarded-for": "1.2.3.4"})
+    assert _resolve_client_ip(r) == "192.0.2.50"
+    # 可信代理但没带头 → 回落直连 IP
+    r = fake_request("127.0.0.1", {})
+    assert _resolve_client_ip(r) == "127.0.0.1"

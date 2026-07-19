@@ -6,10 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <div class="aa-filter">
-        <label class="aa-filter__item">学期<input v-model.trim="term" class="aa-input aa-input--sm" placeholder="学期码（空=全部）" @keyup.enter="search" /></label>
-        <button class="mp-btn" @click="search">查询</button>
-      </div>
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -26,16 +23,16 @@
 
 <script>
 /** 挂科清单（/admin/academic-affairs/grade-fail）：GET /grade-views/fail-list。 */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 export default {
   name: 'AaGradeFailListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', rows: [], term: '',
+      loading: true, error: '', rows: [], filters: { term: '' },
       pagination: { page: 1, pageSize: 50, total: 0 },
       columns: [
         { key: 'studentName', title: '学生' },
@@ -46,6 +43,13 @@ export default {
       ]
     }
   },
+  computed: {
+    filterFields() {
+      return [
+        { key: 'term', label: '学期', type: 'text', placeholder: '学期码（空=全部）' }
+      ]
+    }
+  },
   created() { this.load() },
   methods: {
     goTranscript(row) {
@@ -53,10 +57,11 @@ export default {
     },
     onPageChange(p) { this.pagination.page = p; this.load() },
     search() { this.pagination.page = 1; this.load() },
+    reset() { this.filters.term = ''; this.search() },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getFailList({ term: this.term || undefined, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const res = await academicAffairsApi.getFailList({ term: this.filters.term || undefined, page: this.pagination.page, pageSize: this.pagination.pageSize })
       if (res.code === 0) {
         this.rows = res.data.list.map((r, i) => ({ ...r, rowKey: `${r.studentId}-${r.courseName}-${i}` }))
         this.pagination.total = res.data.total

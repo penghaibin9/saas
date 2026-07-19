@@ -50,7 +50,15 @@
       <template v-else>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
+      <!-- 只有「申报类」页签的空态才给出路。requirements/attachments/pending 的空态是好消息
+           （要求已补全 / 附件已挂接 / 没有待审），给按钮等于把「做完了」说成「出问题了」。 -->
+      <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
+        <template v-if="showCreateEmptyActions" #actions>
+          <button class="mp-btn mp-btn--primary" @click="onToolbar('create')">{{ createLabel }}</button>
+          <button class="mp-btn" @click="onToolbar('import')">导入 Excel</button>
+          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-topic-declare')">怎么申报题目？</button>
+        </template>
+      </EmptyState>
       <DataTable
         v-else
         :columns="columns"
@@ -188,6 +196,7 @@
       :confirm-text="confirm.confirmText"
       :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel"
+      :reason-chips="confirm.reasonChips || []"
       :submitting="submitting"
       @confirm="onConfirm"
     />
@@ -204,6 +213,8 @@
       :download-errors-fn="({ rows, errors }) => gdTopicApi.downloadImportErrors(rows, errors)"
       @imported="onImported"
     />
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-topic-lib" />
   </ModulePageShell>
 </template>
 
@@ -211,7 +222,7 @@
 /** 题目库（/admin/graduation/topic-lib）：申报/审核/分类/容量/要求/附件/历史/归档 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton } from '@/components/common'
+import { AppExportButton, AppPageGuide } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import {
@@ -270,7 +281,21 @@ const PANEL_HINTS = {
   archive: '已归档题目'
 }
 
+/** 申报类页签：工具栏出新建按钮、空态出「怎么开始」的出路。两处共用，避免文案漂移。 */
+const CREATE_PANELS = ['list', 'teacher-apply', 'enterprise', 'student-proposed']
+const CREATE_LABELS = {
+  list: '＋ 申报题目', 'teacher-apply': '＋ 教师申报',
+  enterprise: '＋ 企业题目', 'student-proposed': '＋ 学生自拟'
+}
+
 const SOURCE_TONE = { TEACHER: 'info', ENTERPRISE: 'processing', STUDENT: 'warning', ADMIN: 'default' }
+
+const TOPIC_REVIEW_REJECT_REASON_CHIPS = [
+  '选题不符合专业培养目标或应用领域要求',
+  '工作量不足，难以支撑毕业设计要求',
+  '实施方案不清晰，可行性不足',
+  '选题与已入库课题重复'
+]
 
 const BASE_COLUMNS = [
   { key: 'title', title: '题目' },
@@ -317,7 +342,7 @@ import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'TopicLibListView',
-  components: { GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -430,12 +455,18 @@ export default {
       }
       return base
     },
+    /** 申报类页签的新建按钮文案（空态与工具栏共用同一份，避免两处文案漂移） */
+    createLabel() {
+      return CREATE_LABELS[this.activePanel] || '＋ 申报题目'
+    },
+    /** 只有申报类页签的空态才给「怎么开始」的出路 */
+    showCreateEmptyActions() {
+      return CREATE_PANELS.includes(this.activePanel)
+    },
     toolbarActions() {
-      const createPanels = ['list', 'teacher-apply', 'enterprise', 'student-proposed']
       const base = []
-      if (createPanels.includes(this.activePanel)) {
-        const labels = { list: '＋ 申报题目', 'teacher-apply': '＋ 教师申报', enterprise: '＋ 企业题目', 'student-proposed': '＋ 学生自拟' }
-        base.push({ key: 'create', label: labels[this.activePanel], variant: 'primary' })
+      if (CREATE_PANELS.includes(this.activePanel)) {
+        base.push({ key: 'create', label: this.createLabel, variant: 'primary' })
       }
       if (['list', 'teacher-apply', 'enterprise', 'student-proposed', 'pending', 'archive', 'category', 'capacity', 'requirements', 'attachments', 'history'].includes(this.activePanel)) {
         if (this.activePanel !== 'history') {
@@ -657,7 +688,9 @@ export default {
         visible: true, title: action === 'APPROVE' ? '审核通过' : '驳回题目',
         message: action === 'APPROVE' ? `通过后题目入池，可分配给学生。` : `驳回须填写原因（≥5字）。`,
         type: action === 'APPROVE' ? 'primary' : 'danger', confirmText: action === 'APPROVE' ? '通过' : '驳回',
-        requireReason: action === 'REJECT', reasonLabel: '驳回原因', action: 'review', row, payload: { action }
+        requireReason: action === 'REJECT', reasonLabel: '驳回原因',
+        reasonChips: action === 'REJECT' ? TOPIC_REVIEW_REJECT_REASON_CHIPS : [],
+        action: 'review', row, payload: { action }
       }
     },
     askDisable(row) {

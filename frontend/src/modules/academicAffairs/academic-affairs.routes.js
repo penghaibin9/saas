@@ -48,6 +48,10 @@ const layoutRoute = {
     { path: 'registration', name: 'aa-registration', component: () => import('@/modules/academicAffairs/views/AaRegistrationBatchListView.vue'), meta: meta('academicAffairs.registration.view', '注册管理') },
     { path: 'registration/workbench', name: 'aa-registration-workbench', component: () => import('@/modules/academicAffairs/views/AaRegistrationWorkbenchView.vue'), meta: meta('academicAffairs.registration.eligibility.view', '注册工作台') },
     { path: 'registration/:batchId', name: 'aa-registration-detail', component: () => import('@/modules/academicAffairs/views/AaRegistrationDetailView.vue'), meta: meta('academicAffairs.registration.view', '注册名单') },
+    { path: 'major-split', name: 'aa-major-split', component: () => import('@/modules/academicAffairs/views/AaMajorSplitView.vue'), meta: meta('academicAffairs.majorSplit.view', '专业分流') },
+    { path: 'level-exams', name: 'aa-level-exams', component: () => import('@/modules/academicAffairs/views/AaLevelExamView.vue'), meta: meta('academicAffairs.levelExam.view', '等级考务') },
+    { path: 'certificates', name: 'aa-certificates', component: () => import('@/modules/academicAffairs/views/AaCertificateView.vue'), meta: meta('academicAffairs.graduationCert.view', '毕业证书管理') },
+    { path: 'grade-recognition', name: 'aa-grade-recognition', component: () => import('@/modules/academicAffairs/views/AaGradeRecognitionView.vue'), meta: meta('academicAffairs.gradeRecognition.view', '成绩认定') },
     { path: 'status-changes', name: 'aa-status-changes', component: () => import('@/modules/academicAffairs/views/AaStatusChangeListView.vue'), meta: meta('academicAffairs.statusChange.view', '学籍异动') },
     { path: 'status-changes/new', name: 'aa-status-change-new', component: () => import('@/modules/academicAffairs/views/AaStatusChangeFormView.vue'), meta: meta('academicAffairs.statusChange.manage', '发起异动') },
     // ── Tier1 R1：分类申请入口（休学/复学/退学/转专业，共用 AaStatusChangeTypedListView + changeType meta） ──
@@ -111,9 +115,10 @@ const layoutRoute = {
     { path: 'grade-college-review', name: 'aa-grade-college-review', component: () => import('@/modules/academicAffairs/views/AaGradeCollegeReviewView.vue'), meta: meta('academicAffairs.grade.collegeReview', '学院审核') },
     { path: 'grade-publish', name: 'aa-grade-publish', component: () => import('@/modules/academicAffairs/views/AaGradePublishView.vue'), meta: meta('academicAffairs.grade.publish', '教务发布') },
     { path: 'grade-change', name: 'aa-grade-change', component: () => import('@/modules/academicAffairs/views/AaGradeChangeView.vue'), meta: meta('academicAffairs.gradeChange.apply', '成绩更正') },
-    // ── 07/08 三级补建：成绩复核（任务+明细只读核对）/ 成绩操作审计（读 AA_GRADE_* 审计流水） ──
-    { path: 'grade-recheck', name: 'aa-grade-recheck', component: () => import('@/modules/academicAffairs/views/AaGradeRecheckView.vue'), meta: meta('academicAffairs.grade.view', '成绩复核') },
+    // ── 成绩复查复审（aa-qz 新版）/ 成绩操作审计（读 AA_GRADE_* 审计流水，master）/ 课堂考勤统计（aa-qz）──
+    { path: 'grade-recheck', name: 'aa-grade-recheck', component: () => import('@/modules/academicAffairs/views/AaGradeRecheckView.vue'), meta: meta('academicAffairs.grade.view', '成绩复查复审') },
     { path: 'grade-audit', name: 'aa-grade-audit', component: () => import('@/modules/academicAffairs/views/AaGradeAuditView.vue'), meta: meta('academicAffairs.grade.view', '成绩操作审计') },
+    { path: 'attendance-stats', name: 'aa-attendance-stats', component: () => import('@/modules/academicAffairs/views/AaAttendanceStatsView.vue'), meta: meta('academicAffairs.warning.view', '课堂考勤统计') },
     { path: 'warnings', name: 'aa-warnings', component: () => import('@/modules/academicAffairs/views/AaWarningView.vue'), meta: meta('academicAffairs.warning.view', '学业预警') },
     // ── 学业预警二级模块 Tier1：看板/多维分类(学分·挂科·绩点·补考重修·毕业风险)/规则/跟进/统计，单控制台按 ?tab= 切换 ──
     { path: 'warnings/console', name: 'aa-warnings-console', component: () => import('@/modules/academicAffairs/views/AaWarningConsoleView.vue'), meta: meta('academicAffairs.warning.view', '学业预警控制台') },
@@ -123,6 +128,7 @@ const layoutRoute = {
     { path: 'graduation/audit-console', name: 'aa-graduation-audit-console', component: () => import('@/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue'), meta: meta('academicAffairs.graduation.view', '毕业资格审核工作台') },
     // ── 教务统计（只读聚合，11 项指标 + 下钻 + 导出） ──
     { path: 'stats', name: 'aa-stats', component: () => import('@/modules/academicAffairs/views/AaStatsOverviewView.vue'), meta: meta('academicAffairs.stats.view', '教务统计') },
+    { path: 'workload-review', name: 'aa-workload-review', component: () => import('@/modules/academicAffairs/views/AaWorkloadReviewView.vue'), meta: meta('academicAffairs.stats.view', '工作量申报审核') },
     // ── R3 学院专业班级（组织架构，单控制台按 ?tab= 切换 学院/专业/年级/行政班/教学班/组织树/统计） ──
     { path: 'orgs', name: 'aa-orgs', component: () => import('@/modules/academicAffairs/views/AaOrgConsole.vue'), meta: meta('academicAffairs.org.view', '学院专业班级') },
     // ── R4 教学资源 · 教室字典 ──

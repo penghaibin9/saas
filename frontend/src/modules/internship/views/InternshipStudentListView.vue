@@ -47,10 +47,7 @@
           <AppStatusTag :type="row.statusTone" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/internship/students/' + row.id)">详情</button>
-          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" :disabled="!canStudentManage" :title="canStudentManage ? '' : '无学生管理权限'" @click="openAssign(row)">{{ row.positionId ? '调岗' : '分配岗位' }}</button>
-          <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" :disabled="!canStudentManage" :title="canStudentManage ? '' : '无学生管理权限'" @click="openAssignAdvisor(row)">{{ row.advisorName ? '变更指导老师' : '分配指导老师' }}</button>
-          <button v-if="row.eligibilityStatus !== 'QUALIFIED' && row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" :disabled="!canEligibility" :title="canEligibility ? '' : '无资格认定权限'" @click="askEligibility(row)">认定资格</button>
+          <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
         </template>
       </DataTable>
     </div>
@@ -150,6 +147,7 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppSensitiveText, AppStatusTag, AppExportButton, AppStudentPicker, AppPositionPicker } from '@/components/common'
 import { searchMasterStudents, searchPublishedPositions } from './components/entityPickerAdapters'
 import { AppExcelImportDrawer } from '@/components/common/excel'
+import { TableActionColumn } from '@/modules/internship/components'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { STUDENT_STATUS, ELIGIBILITY_STATUS, DESTINATION_TYPE } from '@/modules/internship/constants/internship-student.constants'
@@ -181,7 +179,7 @@ const PANEL_HINTS = {
 export default {
   name: 'InternshipStudentListView',
   components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState,
-    AppDrawer, AppConfirmDialog, AppSensitiveText, AppStatusTag, AppExportButton, AppExcelImportDrawer, ModuleSummaryStrip,
+    AppDrawer, AppConfirmDialog, AppSensitiveText, AppStatusTag, AppExportButton, AppExcelImportDrawer, TableActionColumn, ModuleSummaryStrip,
     AppStudentPicker, AppPositionPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -352,6 +350,23 @@ export default {
     askEligibility(row) {
       if (!this.canEligibility) return toast.error('无资格认定权限')
       this.confirm = { visible: true, title: '实习资格认定', message: `确认「${row.name}」实习资格合格？（合格后方可待上岗）`, type: 'primary', confirmText: '认定合格', requireReason: false, reasonLabel: '认定意见', action: 'ELIG_QUALIFIED', row }
+    },
+    rowActions(row) {
+      const actions = [{ key: 'detail', label: '详情' }]
+      if (row.status !== 'ARCHIVED') {
+        actions.push({ key: 'assign', label: row.positionId ? '调岗' : '分配岗位', disabled: !this.canStudentManage, disabledReason: this.canStudentManage ? '' : '无学生管理权限' })
+        actions.push({ key: 'assignAdvisor', label: row.advisorName ? '变更指导老师' : '分配指导老师', disabled: !this.canStudentManage, disabledReason: this.canStudentManage ? '' : '无学生管理权限' })
+      }
+      if (row.eligibilityStatus !== 'QUALIFIED' && row.status !== 'ARCHIVED') {
+        actions.push({ key: 'eligibility', label: '认定资格', disabled: !this.canEligibility, disabledReason: this.canEligibility ? '' : '无资格认定权限' })
+      }
+      return actions
+    },
+    onRowAction(key, row) {
+      if (key === 'detail') return this.$router.push('/admin/internship/students/' + row.id)
+      if (key === 'assign') return this.openAssign(row)
+      if (key === 'assignAdvisor') return this.openAssignAdvisor(row)
+      if (key === 'eligibility') return this.askEligibility(row)
     },
     async onConfirm({ reason } = {}) {
       const { action, row } = this.confirm

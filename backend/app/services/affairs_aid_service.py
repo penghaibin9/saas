@@ -20,6 +20,15 @@ from app.services.db_service import _iso, _tid, audit_insert, session
 LEVELS = {"SPECIAL": "特别困难", "DIFFICULT": "困难", "GENERAL": "一般困难"}
 _LEVEL_RANK = {"GENERAL": 1, "DIFFICULT": 2, "SPECIAL": 3}
 
+
+def _students_by_ids(db, rows, attr="student_id"):
+    """批量取回 rows 涉及的学生档案 {id: StudentProfile}，替代列表循环内逐行 db.get（消 N+1）。"""
+    from app.models import StudentProfile
+    sids = {int(getattr(x, attr)) for x in rows if getattr(x, attr, None)}
+    if not sids:
+        return {}
+    return {s.id: s for s in db.scalars(select(StudentProfile).where(StudentProfile.id.in_(sids))).all()}
+
 AID_NODES = ["CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"]
 _TERMINAL = {"APPROVED", "REJECTED", "ARCHIVED"}
 # 拥有家庭经济 sensitiveView 权限点的角色（V1：学工处/学校管理/资助老师；学院/辅导员仅脱敏）
@@ -241,8 +250,16 @@ def list_batches(user, school_year=None, status=None, page=1, page_size=20):
 
 # ═══════════ 申请（管理端受理直达班级评议）═══════════
 
-def apply(body, user) -> dict:
-    student_id = int(body.studentId)
+def _req_int(v, field):
+    """必填数字字段安全转 int：非数字→400（原裸 int() 抛 ValueError→500）。"""
+    raw = str(v or "").strip()
+    if not raw.isdigit():
+        raise AppException("VALIDATION_ERROR", f"请选择有效{field}")
+    return int(raw)
+
+
+def apply(body, user, *, skip_scope_check: bool = False) -> dict:
+    student_id = _req_int(getattr(body, "studentId", None), "学生")
     if (body.applyLevel or "") not in LEVELS:
         raise AppException("VALIDATION_ERROR", "申请等级非法")
     st = (body.statement or "").strip()
@@ -253,7 +270,11 @@ def apply(body, user) -> dict:
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
-        b = db.get(AidBatch, int(body.batchId))
+        # skip_scope_check=True 仅供学生本人自助申请入口使用（studentId 已由服务端按登录身份
+        # 解析，不接受客户端指定）；越范围禁止为他院学生建困难认定的校验只对代发起场景生效。
+        if not skip_scope_check:
+            _scope_or_403(db, student_id, user)
+        b = db.get(AidBatch, _req_int(getattr(body, "batchId", None), "批次"))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("认定批次不存在")
         if b.status != "OPEN":
@@ -514,9 +535,10 @@ def list_applications(user, batch_id=None, status=None, level=None, page=1, page
         if level:
             conds.append(AidApply.final_level == level)
         rows = db.scalars(select(AidApply).where(*conds).order_by(AidApply.id.desc())).all()
+        students = _students_by_ids(db, rows)
         out = []
         for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             fe = db.scalars(select(AidFamilyEconomy).where(
@@ -561,6 +583,7 @@ def difficult_students(user, level=None, page=1, page_size=50):
         rows = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.status == "APPROVED",
             AidApply.is_deleted.is_(False)).order_by(AidApply.id.desc())).all()
+        students = _students_by_ids(db, rows)
         seen, out = set(), []
         for x in rows:
             if x.student_id in seen:
@@ -568,7 +591,7 @@ def difficult_students(user, level=None, page=1, page_size=50):
             seen.add(x.student_id)
             if level and x.final_level != level:
                 continue
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append({"studentId": str(x.student_id), "realName": s.real_name if s else "",
@@ -597,10 +620,11 @@ def aid_stats(user):
         allowed, _ = _allowed_class_ids(db, user)
         rows = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False))).all()
+        students = _students_by_ids(db, rows)
         by_status, by_level, total = {}, {}, 0
         for x in rows:
             if allowed is not None:
-                s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+                s = students.get(int(x.student_id)) if x.student_id else None
                 if not s or s.class_id not in allowed:
                     continue
             total += 1

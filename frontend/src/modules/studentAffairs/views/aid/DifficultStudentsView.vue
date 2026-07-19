@@ -29,19 +29,21 @@
             <tr v-for="s in items" :key="s.studentId">
               <td><strong>{{ s.realName || ('学生#' + s.studentId) }}</strong></td>
               <td><StatusTag :type="levelType(s.level)" :label="s.levelLabel || s.level || '—'" dot /></td>
-              <td>{{ (s.identifiedAt || '').slice(0, 10) || '—' }}</td>
+              <td><AppDateDisplay :value="s.identifiedAt" mode="date" empty-text="—" /></td>
               <td class="dl-batch">{{ s.batchId || '—' }}</td>
             </tr>
             <tr v-if="!items.length"><td colspan="4" class="sa-empty">当前范围与筛选下暂无困难学生</td></tr>
           </tbody>
         </table>
+        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                       :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const LEVELS = [
@@ -53,9 +55,12 @@ const LEVELS = [
 
 export default {
   name: 'DifficultStudentsView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag },
   data() {
-    return { loading: true, errorMessage: '', items: [], total: 0, byLevel: {}, activeLevel: '', levelFilters: LEVELS }
+    return {
+      loading: true, errorMessage: '', items: [], total: 0, byLevel: {}, activeLevel: '', levelFilters: LEVELS,
+      pagination: { page: 1, pageSize: 20, total: 0 }
+    }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -72,24 +77,32 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      // 指标始终基于全量聚合；名单按当前筛选取
+      // 指标始终基于全量聚合（不分页）；名单按当前筛选 + 真实分页取
       const [all, filtered] = await Promise.all([
         studentAffairsApi.getDifficultStudents({ pageSize: 500 }),
-        this.activeLevel
-          ? studentAffairsApi.getDifficultStudents({ level: this.activeLevel, pageSize: 500 })
-          : null
+        studentAffairsApi.getDifficultStudents({ level: this.activeLevel, page: this.pagination.page, pageSize: this.pagination.pageSize })
       ])
       if (all.code === 0 && all.data) {
         const allItems = all.data.items || []
         this.total = all.data.total != null ? all.data.total : allItems.length
         this.byLevel = allItems.reduce((m, x) => { m[x.level] = (m[x.level] || 0) + 1; return m }, {})
-        this.items = (filtered && filtered.code === 0 && filtered.data) ? (filtered.data.items || []) : allItems
       } else {
         this.errorMessage = all.message || '困难学生库加载失败'
       }
+      if (filtered.code === 0 && filtered.data) {
+        this.items = filtered.data.items || []
+        this.pagination.total = filtered.data.total != null ? filtered.data.total : this.items.length
+      } else if (!this.errorMessage) {
+        this.errorMessage = filtered.message || '困难学生库加载失败'
+      }
       this.loading = false
     },
-    setLevel(k) { if (this.activeLevel === k) return; this.activeLevel = k; this.load() },
+    setLevel(k) {
+      if (this.activeLevel === k) return
+      this.activeLevel = k
+      this.pagination.page = 1
+      this.load()
+    },
     levelType(l) { return ({ SPECIAL: 'danger', DIFFICULT: 'warning', GENERAL: 'info' })[l] || 'default' }
   }
 }

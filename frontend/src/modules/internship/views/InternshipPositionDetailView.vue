@@ -36,17 +36,14 @@
       </nav>
 
       <section v-show="tab === 'basic'" class="mp-card">
-        <div class="mp-card__body ed-grid">
-          <div v-for="f in basicFields" :key="f.label" class="ed-kv"><span class="ed-k">{{ f.label }}</span><span class="ed-v">{{ f.value || '—' }}</span></div>
+        <div class="mp-card__body">
+          <AppDescriptionList :items="basicFields" />
         </div>
       </section>
 
       <section v-show="tab === 'company'" class="mp-card">
-        <div class="mp-card__body ed-grid">
-          <div class="ed-kv"><span class="ed-k">所属企业</span><span class="ed-v">{{ detail.companyName }}</span></div>
-          <div class="ed-kv"><span class="ed-k">企业合作状态</span><span class="ed-v">{{ detail.company ? detail.company.coopStatusLabel : '—' }}</span></div>
-          <div class="ed-kv"><span class="ed-k">企业导师</span><span class="ed-v">{{ detail.mentorName || '未指定' }}</span></div>
-          <div class="ed-kv"><span class="ed-k">实习批次</span><span class="ed-v">{{ detail.batchId || '未关联批次' }}</span></div>
+        <div class="mp-card__body">
+          <AppDescriptionList :items="companyFields" />
         </div>
       </section>
 
@@ -85,7 +82,7 @@
 <script>
 /** 岗位详情（/admin/internship/positions/:id）：主档 + 企业导师 + 审计 + 状态机 + 编辑（已归档不可编辑）。 */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
-import { AppStatusTag, AppAuditTrail } from '@/components/common'
+import { AppStatusTag, AppAuditTrail, AppDescriptionList } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { positionApi } from '@/modules/internship/api/position.api'
@@ -93,7 +90,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'InternshipPositionDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppDescriptionList, LoadingState, ErrorState, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -112,6 +109,15 @@ export default {
         { label: '薪资', value: d.salaryRange }, { label: '补贴', value: d.subsidy },
         { label: '容量', value: String(d.headcount) }, { label: '已分配', value: String(d.allocatedCount) },
         { label: '备注', value: d.remark }
+      ]
+    },
+    companyFields() {
+      const d = this.detail
+      return [
+        { label: '所属企业', value: d.companyName },
+        { label: '企业合作状态', value: d.company ? d.company.coopStatusLabel : '' },
+        { label: '企业导师', value: d.mentorName || '未指定' },
+        { label: '实习批次', value: d.batchId || '未关联批次' }
       ]
     },
     auditRecords() {
@@ -178,12 +184,6 @@ export default {
 .ed-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }
 .ed-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
 .ed-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
-.ed-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
-.ed-kv { display: flex; flex-direction: column; gap: 2px; }
-.ed-k { font-size: 12px; color: var(--t3, #64748b); }
-.ed-v { font-size: 13px; color: var(--t1, #0f1e3d); }
-.ed-trail__item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--line, #eef1f6); font-size: 13px; }
-.ed-trail__meta { color: var(--t3, #64748b); font-size: 12px; }
 .mp-btn { padding: 7px 14px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn--danger { color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); }

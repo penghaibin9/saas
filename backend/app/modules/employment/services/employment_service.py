@@ -54,6 +54,14 @@ def _stu_of(db, sid):
     return db.get(EmpStudent, sid)
 
 
+def _emp_students_by_ids(db, rows, attr="emp_student_id"):
+    """批量取回 rows 涉及的就业档案 {id: EmpStudent}，替代列表循环内逐行 _stu_of（消 N+1）。"""
+    sids = {int(getattr(x, attr)) for x in rows if getattr(x, attr, None)}
+    if not sids:
+        return {}
+    return {s.id: s for s in db.scalars(select(EmpStudent).where(EmpStudent.id.in_(sids))).all()}
+
+
 def _salary_mask(v):
     return v or "—"
 
@@ -198,9 +206,10 @@ def list_materials(page, ps, keyword=None, status=None, material_type=None):
         if material_type:
             q = q.where(EmpMaterial.material_type == material_type)
         rows = db.scalars(q.order_by(EmpMaterial.id.desc())).all()
+        students = _emp_students_by_ids(db, rows)
         items = []
         for m in rows:
-            stu = _stu_of(db, m.emp_student_id)
+            stu = students.get(int(m.emp_student_id)) if m.emp_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_mat_row(m, stu))
@@ -321,9 +330,10 @@ def list_followups(page, ps, keyword=None, status=None):
         if status:
             q = q.where(EmpFollowup.status == status)
         rows = db.scalars(q.order_by(EmpFollowup.id.desc())).all()
+        students = _emp_students_by_ids(db, rows)
         items = []
         for f in rows:
-            stu = _stu_of(db, f.emp_student_id)
+            stu = students.get(int(f.emp_student_id)) if f.emp_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_fu_row(f, stu))

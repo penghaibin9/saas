@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from functools import lru_cache
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -28,7 +29,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         resolve_tenant(request)  # 多租户：解析并写入上下文（single 模式恒为默认租户）
         _bind_token_tenant(request)  # 令牌带 tenantId 时覆盖（demo 账号只见 demo-school 数据）
         set_request_meta({
-            "ip": (request.client.host if request.client else "") or request.headers.get("x-forwarded-for", ""),
+            "ip": _resolve_client_ip(request),
             "userAgent": request.headers.get("user-agent", "")[:400],
             "method": request.method,
             "path": request.url.path,
@@ -52,6 +53,53 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                    "path": request.url.path, "status": response.status_code, "ms": cost_ms},
         )
         return response
+
+
+@lru_cache(maxsize=8)
+def _trusted_networks(spec: str) -> tuple:
+    """把 TRUSTED_PROXY_IPS 解析为网段列表（单 IP 视作 /32、/128；非法项忽略）。"""
+    import ipaddress
+    nets = []
+    for part in (spec or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            continue
+    return tuple(nets)
+
+
+def _is_trusted_proxy(direct: str, spec: str) -> bool:
+    import ipaddress
+    try:
+        addr = ipaddress.ip_address(direct)
+    except ValueError:
+        return False
+    return any(addr in net for net in _trusted_networks(spec))
+
+
+def _resolve_client_ip(request: Request) -> str:
+    """真实客户端 IP：仅当直连方是可信代理（TRUSTED_PROXY_IPS，默认本机回环，支持 CIDR）
+    时才信任 X-Forwarded-For 第一跳 / X-Real-IP，否则一律用直连 IP，防头部伪造。
+    生产拓扑为 Nginx 反代（deploy/nginx 已注入两个头）——不解析的话登录限流与
+    审计日志看到的全是代理内网 IP，全校共享同一个限流桶。"""
+    direct = request.client.host if request.client else ""
+    try:
+        from app.core.config import settings
+        if direct and _is_trusted_proxy(direct, settings.TRUSTED_PROXY_IPS):
+            fwd = request.headers.get("x-forwarded-for", "")
+            if fwd:
+                first = fwd.split(",")[0].strip()
+                if first:
+                    return first[:64]
+            real = request.headers.get("x-real-ip", "").strip()
+            if real:
+                return real[:64]
+    except Exception:  # noqa: BLE001 — IP 解析故障不阻断请求
+        pass
+    return direct
 
 
 def _bind_token_tenant(request: Request) -> None:
@@ -127,7 +175,7 @@ def _demo_tenant_readonly_deny(request: Request):
         return JSONResponse(status_code=403, content=fail(
             "NO_PERMISSION",
             "正式演示环境为只读，数据不可修改。想动手体验请用沙箱账号登录"
-            "（学生 student2 / 教师 teacher2 / 管理员 admin2，密码 123456，每晚 0 点自动重置）"))
+            "（学生 student2 / 教师 teacher2 / 管理员 admin2，密码 123456，可由运营平台恢复）"))
     except Exception:  # noqa: BLE001 — 只读锁自身故障不阻断业务
         return None
 

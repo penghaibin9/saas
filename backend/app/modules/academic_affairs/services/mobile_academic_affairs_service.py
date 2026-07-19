@@ -103,7 +103,7 @@ def submit_status_change_my(user, body) -> dict:
 
 
 def graduation_progress_my(user) -> dict:
-    """我的毕业进度（最新预审结果七项）。"""
+    """我的毕业进度（最新预审结果，供数维度以 precheck `_run_items` 为准，现 11 项）。"""
     import json
 
     from app.models import AaGraduationAuditResult
@@ -217,6 +217,15 @@ def retake_apply_my(user, body) -> dict:
     return makeup.retake_apply(user, _ns(body))
 
 
+def exemption_apply_my(user, body) -> dict:
+    """学生本人发起免修申请。此前学生门户"免修申请"页误接了重修接口（examTab 未参与实际
+    分支，两个入口提交的全是 AaRetakeApply 记录），修复为真正调用免修服务。"""
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
+    if not (body or {}).get("courseName"):
+        raise AppException("VALIDATION_ERROR", "课程名必填")
+    return makeup.exemption_apply(user, _ns(body))
+
+
 def selection_courses_my(user, batch_id=None):
     """我的选课·可选课程（OPEN 批次 + 实时余量）。"""
     from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
@@ -241,6 +250,101 @@ def selection_records_my(user, batch_id=None):
     """我的选课·本人选课记录。"""
     from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
     return sel.my_selections(user, batch_id)
+
+
+# ═══════════ 成绩认定/课程替代（学生自助，对标正方 3.16/3.27）═══════════
+
+def recognition_my(user):
+    """我的成绩认定/课程替代申请记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_recognition_service as recog
+    return {"items": recog.my(user)}
+
+
+def recognition_submit_my(user, body) -> dict:
+    """学生本人提交成绩认定申请（校外课程→校内计划课程）。"""
+    from app.modules.academic_affairs.services import academic_affairs_recognition_service as recog
+    b = body or {}
+    if not (b.get("sourceCourseName") and b.get("targetCourseName")):
+        raise AppException("VALIDATION_ERROR", "原课程与目标课程必填")
+    return recog.submit(user, _ns(b))
+
+
+def grade_recheck_my(user):
+    """我的成绩复查申请记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_grade_recheck_service as rc
+    return {"items": rc.my(user)}
+
+
+def grade_recheck_submit_my(user, body) -> dict:
+    """学生本人对已发布成绩(t_acad_grade)发起复查。"""
+    from app.modules.academic_affairs.services import academic_affairs_grade_recheck_service as rc
+    return rc.submit(user, body or {})
+
+
+def workload_my(user):
+    """教师本人工作量申报记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_workload_service as wl
+    return {"items": wl.my(user)}
+
+
+def workload_submit_my(user, body) -> dict:
+    """教师本人工作量申报(教学/监考/阅卷/出卷/其他)。"""
+    from app.modules.academic_affairs.services import academic_affairs_workload_service as wl
+    return wl.submit(user, body or {})
+
+
+def textbook_my(user):
+    """学生本人教材领用记录 + 费用汇总（正方学生端6.13/6.14 对标）。"""
+    from app.modules.academic_affairs.services import academic_affairs_textbook_service as tb
+    with session() as db:
+        sid = _me(db, user).id
+    return {"distributions": tb.my_distributions(user, sid), "fees": tb.my_fees(user, sid)}
+
+
+def textbook_sign_my(user, record_id):
+    """学生本人签收自己的教材发放记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_textbook_service as tb
+    with session() as db:
+        sid = _me(db, user).id
+    return tb.sign_receipt_my(user, sid, record_id)
+
+
+# ═══════════ 等级考务报名（学生自助，对标正方 3.13 考级项目报名）═══════════
+
+def level_exam_my(user):
+    """考级:可报名的开放考试 + 我的报名记录。"""
+    from app.modules.academic_affairs.services import academic_affairs_level_exam_service as lv
+    opens, _ = lv.list_exams(user, status="OPEN", page=1, page_size=50)
+    return {"openExams": opens, "myRegs": lv.my_regs(user)}
+
+
+def level_register_my(user, exam_id) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_level_exam_service as lv
+    return lv.student_register(user, exam_id)
+
+
+def level_cancel_my(user, exam_id) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_level_exam_service as lv
+    return lv.student_cancel(user, exam_id)
+
+
+# ═══════════ 专业分流志愿(学生自助,对标正方转专业/分流) ═══════════
+
+def major_split_my(user):
+    """分流:开放中的分流批次(含可选专业) + 我的志愿与录取结果。"""
+    from app.modules.academic_affairs.services import academic_affairs_major_split_service as ms
+    return {"openBatches": ms.student_open_batches(user), "myVolunteers": ms.my_volunteer(user)}
+
+
+def major_split_submit_my(user, body) -> dict:
+    """学生提交/修改分流志愿。"""
+    from app.modules.academic_affairs.services import academic_affairs_major_split_service as ms
+    b = body or {}
+    batch_id = b.get("batchId")
+    choices = b.get("choices") or []
+    if not batch_id or not choices:
+        raise AppException("VALIDATION_ERROR", "批次与志愿必填")
+    return ms.submit_volunteer(user, batch_id, choices)
 
 
 # ═══════════ 教师端·成绩录入（移动端简版：仅本人授课任务） ═══════════

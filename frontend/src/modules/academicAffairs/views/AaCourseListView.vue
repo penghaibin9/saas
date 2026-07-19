@@ -10,22 +10,7 @@
     </template>
 
     <div class="mp-stack">
-      <div class="aa-filter">
-        <input v-model.trim="filters.keyword" class="aa-input" placeholder="课程名/编码" @keyup.enter="search" />
-        <select v-model="filters.category" class="aa-select" @change="search">
-          <option value="">全部类别</option>
-          <option v-for="(l, v) in COURSE_CATEGORY" :key="v" :value="v">{{ l }}</option>
-        </select>
-        <select v-model="filters.nature" class="aa-select" @change="search">
-          <option value="">全部性质</option>
-          <option v-for="(l, v) in COURSE_NATURE" :key="v" :value="v">{{ l }}</option>
-        </select>
-        <select v-model="filters.status" class="aa-select" @change="search">
-          <option value="">全部状态</option>
-          <option v-for="(l, v) in REVIEW_STATUS" :key="v" :value="v">{{ l }}</option>
-        </select>
-        <button class="mp-btn" @click="search">查询</button>
-      </div>
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -51,14 +36,14 @@
 
 <script>
 /** 课程库列表（/admin/academic-affairs/courses）：GET /academic-affairs/courses。 */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { COURSE_CATEGORY, COURSE_NATURE, REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
 
 export default {
   name: 'AaCourseListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AdvancedFilter },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -74,12 +59,24 @@ export default {
       ]
     }
   },
+  computed: {
+    filterFields() {
+      const toOptions = (dict) => Object.entries(dict).map(([value, label]) => ({ value, label }))
+      return [
+        { key: 'keyword', label: '关键词', type: 'text', placeholder: '课程名/编码' },
+        { key: 'category', label: '类别', type: 'select', options: toOptions(COURSE_CATEGORY) },
+        { key: 'nature', label: '性质', type: 'select', options: toOptions(COURSE_NATURE) },
+        { key: 'status', label: '状态', type: 'select', options: toOptions(REVIEW_STATUS) }
+      ]
+    }
+  },
   created() { this.load() },
   methods: {
     reviewStatusColor,
     statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
     onPageChange(p) { this.pagination.page = p; this.load() },
     search() { this.pagination.page = 1; this.load() },
+    reset() { this.filters = { keyword: '', category: '', nature: '', status: '' }; this.search() },
     async load() {
       this.loading = true
       this.error = ''

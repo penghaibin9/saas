@@ -27,7 +27,8 @@ const GRAD_CLASSES = ['g1', 'g4', 'g3']
 const ENTRIES = [
   { key: 'schedule', label: '我的课表', icon: '📅', route: '/pages/teacher/my-schedule/index' },
   { key: 'grade-entry', label: '成绩录入', icon: '📊', route: '/pages/teacher/academic-affairs/grade-entry' },
-  { key: 'attendance', label: '课堂考勤', icon: '✅', route: '/pages/teacher/academic-affairs/attendance' }
+  { key: 'attendance', label: '课堂考勤', icon: '✅', route: '/pages/teacher/academic-affairs/attendance' },
+  { key: 'workload', label: '工作量申报', icon: '🧾', route: '/pages/teacher/academic-affairs/workload' }
 ]
 
 export default {

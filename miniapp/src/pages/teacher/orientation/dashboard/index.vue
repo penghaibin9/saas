@@ -16,6 +16,14 @@
           </view>
         </view>
 
+        <view class="card od__entry" @click="goGc">
+          <view class="flex-1">
+            <text class="t-md t-bold">绿色通道审核</text>
+            <text class="od__entry-sub">审核学生缓缴 / 减免申请，通过后自动解除缴费卡点</text>
+          </view>
+          <text class="od__entry-arrow">›</text>
+        </view>
+
         <view class="section-head">
           <text class="section-head__title">未报到新生</text>
           <text class="section-head__more">{{ d.notReportedTotal }} 人</text>
@@ -42,6 +50,7 @@ export default {
   data() { return { d: null, state: 'loading' } },
   onLoad() { this.load() },
   methods: {
+    goGc() { uni.navigateTo({ url: '/pages/teacher/orientation/green-channel/index' }) },
     load() {
       this.state = 'loading'
       teacherApi.getOrientationDashboard().then((data) => {
@@ -69,4 +78,7 @@ export default {
 .od__row-avatar { width: 36px; height: 36px; border-radius: var(--radius-full); background: var(--teacher-50); color: var(--teacher-700); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .od__row-sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .od__row-blocked { font-size: var(--font-size-xs); color: var(--danger-600); background: var(--danger-50); padding: 3px 8px; border-radius: var(--radius-base); }
+.od__entry { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--card-gap-mobile); }
+.od__entry-sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
+.od__entry-arrow { font-size: 20px; color: var(--text-tertiary); }
 </style>

@@ -322,7 +322,7 @@ export default {
       this.exporting = false
       if (res.code === 0) {
         this.exportVisible = false
-        toast.success('导出任务 ' + res.data.taskId + ' 已创建：数据已脱敏、附追踪水印，并已写入本报表审计记录')
+        toast.success('导出任务 ' + res.data.taskId + ' 已登记并写入本报表审计记录（演示态，暂未生成实际文件）')
         this.loadAudits()
       } else {
         toast.error(res.message)

@@ -19,10 +19,11 @@
           <label class="aa-field"><span>学分</span><input v-model.number="form.credit" type="number" min="0" step="0.5" class="aa-input" /></label>
           <label class="aa-field"><span>班级ID</span><input v-model.trim="form.classId" class="aa-input" placeholder="选填，填了可自动圈定名单" /></label>
           <label class="aa-field"><span>平时占比%</span><input v-model.number="form.usualRatio" type="number" min="0" max="100" class="aa-input" /></label>
+          <label class="aa-field"><span>期中占比%</span><input v-model.number="form.midtermRatio" type="number" min="0" max="100" class="aa-input" placeholder="0=不启用期中" /></label>
           <label class="aa-field"><span>期末占比%</span><input v-model.number="form.finalRatio" type="number" min="0" max="100" class="aa-input" /></label>
           <label class="aa-field"><span>及格线</span><input v-model.number="form.passLine" type="number" min="0" max="100" class="aa-input" /></label>
         </div>
-        <p class="mp-note">平时占比 + 期末占比必须 = 100。</p>
+        <p class="mp-note">平时 + 期中 + 期末占比之和必须 = 100（期中占比填 0 即不启用期中，等同「平时 + 期末」）。</p>
         <div class="aa-actions"><button class="mp-btn mp-btn--primary" :disabled="creating" @click="createTask">{{ creating ? '创建中…' : '创建任务' }}</button></div>
 
         <div v-if="myTasks.length" class="aa-my-tasks">
@@ -42,7 +43,7 @@
         <AppSectionCard :title="`录入任务：${task.courseName}`">
           <template #header-extra><button class="mp-link" @click="task = null">返回</button></template>
           <div class="aa-task-head">
-            <span>平时 {{ task.usualRatio }}% · 期末 {{ task.finalRatio }}% · 及格线 {{ task.passLine }}</span>
+            <span>平时 {{ task.usualRatio }}%<template v-if="hasMidterm"> · 期中 {{ task.midtermRatio }}%</template> · 期末 {{ task.finalRatio }}% · 及格线 {{ task.passLine }}</span>
             <AppStatusTag :type="statusColor(task.status)" dot>{{ statusLabel(task.status) }}</AppStatusTag>
           </div>
           <AppInlineAlert v-if="task.status === 'RETURNED' && task.returnReason" type="warning"
@@ -81,19 +82,15 @@
         <AppSectionCard title="成绩录入表">
           <EmptyState v-if="!rows.length" title="录入表为空" description="从上方检索学生加入，或用「按班级自动圈定名单」" />
           <table v-else class="aa-course-table">
-            <thead><tr><th>学生</th><th>异常标记</th><th>平时分</th><th>期末分</th><th>总评</th><th>结果</th><th></th></tr></thead>
+            <thead><tr><th>学生</th><th>异常标记</th><th>平时分</th><th v-if="hasMidterm">期中分</th><th>期末分</th><th>总评</th><th>结果</th><th></th></tr></thead>
             <tbody>
               <tr v-for="r in rows" :key="r.studentId">
                 <td>{{ r.realName }}</td>
                 <td>
-                  <select v-model="r.exceptionFlag" class="aa-input aa-input--xs" :disabled="!editable">
-                    <option value="NORMAL">正常</option>
-                    <option value="ABSENT">缺考</option>
-                    <option value="DEFERRED">缓考</option>
-                    <option value="EXEMPT">免修</option>
-                  </select>
+                  <AppSelect v-model="r.exceptionFlag" :options="exceptionOptions" :disabled="!editable" placeholder="" size="compact" />
                 </td>
                 <td><input v-model.number="r.usual" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
+                <td v-if="hasMidterm"><input v-model.number="r.midterm" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
                 <td><input v-model.number="r.final" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
                 <td>{{ r.total ?? '—' }}</td>
                 <td><AppStatusTag v-if="r.passStatus" :type="r.passStatus === 'PASSED' ? 'success' : 'danger'">{{ r.passStatus === 'PASSED' ? '及格' : '不及格' }}</AppStatusTag></td>
@@ -114,7 +111,7 @@
 <script>
 /** 成绩录入（/admin/academic-affairs/grade-entry）：POST /grade-tasks + /scores + /submit。 */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -128,18 +125,27 @@ const EDITABLE_STATUS = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
 
 export default {
   name: 'AaGradeEntryView',
-  components: { ModulePageShell, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert, AppExcelImportDrawer },
+  components: { ModulePageShell, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      form: { courseName: '', termCode: '', credit: null, classId: '', usualRatio: 30, finalRatio: 70, passLine: 60 },
+      form: { courseName: '', termCode: '', credit: null, classId: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70, passLine: 60 },
       creating: false, task: null, myTasks: [],
       kw: '', searching: false, loadingRoster: false, candidates: [], rows: [], submitting: false,
       importVisible: false
     }
   },
   computed: {
-    editable() { return this.task && EDITABLE_STATUS.has(this.task.status) }
+    editable() { return this.task && EDITABLE_STATUS.has(this.task.status) },
+    hasMidterm() { return this.task && Number(this.task.midtermRatio) > 0 },
+    exceptionOptions() {
+      return [
+        { value: 'NORMAL', label: '正常' },
+        { value: 'ABSENT', label: '缺考' },
+        { value: 'DEFERRED', label: '缓考' },
+        { value: 'EXEMPT', label: '免修' }
+      ]
+    }
   },
   created() {
     this.loadTasks()
@@ -183,12 +189,13 @@ export default {
     async createTask() {
       if (this.creating) return
       if (!this.form.courseName) { toast.error('请填写课程名称'); return }
-      if (Number(this.form.usualRatio) + Number(this.form.finalRatio) !== 100) { toast.error('平时+期末占比须=100'); return }
+      if (Number(this.form.usualRatio) + Number(this.form.midtermRatio) + Number(this.form.finalRatio) !== 100) { toast.error('平时+期中+期末占比之和须=100'); return }
       this.creating = true
       const res = await academicAffairsApi.createGradeTask({
         courseName: this.form.courseName, termCode: this.form.termCode || undefined,
         credit: this.form.credit || undefined, classId: this.form.classId || undefined,
-        usualRatio: this.form.usualRatio, finalRatio: this.form.finalRatio, passLine: this.form.passLine
+        usualRatio: this.form.usualRatio, midtermRatio: this.form.midtermRatio,
+        finalRatio: this.form.finalRatio, passLine: this.form.passLine
       })
       this.creating = false
       if (res.code === 0) { this.task = res.data; toast.success('任务已创建，开始录入'); this.loadTasks() }
@@ -217,13 +224,14 @@ export default {
     },
     addRow(s) {
       if (this.rows.some((r) => r.studentId === s.studentId)) return
-      this.rows.push({ studentId: s.studentId, realName: s.realName, usual: null, final: null, total: null, passStatus: null, exceptionFlag: 'NORMAL' })
+      this.rows.push({ studentId: s.studentId, realName: s.realName, usual: null, midterm: null, final: null, total: null, passStatus: null, exceptionFlag: 'NORMAL' })
       this.candidates = this.candidates.filter((c) => c.studentId !== s.studentId)
     },
     async saveRow(r) {
       const res = await academicAffairsApi.enterScore(this.task.gradeTaskId, {
         studentId: r.studentId,
         usualScore: r.exceptionFlag === 'NORMAL' && r.usual != null ? r.usual : undefined,
+        midtermScore: r.exceptionFlag === 'NORMAL' && r.midterm != null ? r.midterm : undefined,
         finalScore: r.exceptionFlag === 'NORMAL' && r.final != null ? r.final : undefined,
         exceptionFlag: r.exceptionFlag
       })

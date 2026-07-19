@@ -41,7 +41,7 @@
                 <div><div class="mp-radio__title">退回修改</div><div class="mp-radio__desc">退回原因必填（≥5 字）</div></div>
               </div>
               <AppTemplateChips class="pr-chips" :options="activeChips" size="compact" @pick="onPickChip" />
-              <textarea v-model="comment" class="mp-textarea" :placeholder="action === 'RETURN' ? '请写明退回原因…' : '评语（选填）'"></textarea>
+              <AppTextarea v-model="comment" :rows="4" :placeholder="action === 'RETURN' ? '请写明退回原因…' : '评语（选填）'" />
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
                 <AppButton variant="primary" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">通过</AppButton>
@@ -64,7 +64,7 @@
 
 <script>
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppAuditTrail, AppTemplateChips } from '@/components/common'
+import { AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -73,7 +73,7 @@ import { APPROVE_REPORT_SHORT, REJECT_PROCESS_REPORT } from '@/modules/internshi
 
 export default {
   name: 'ProcessReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }

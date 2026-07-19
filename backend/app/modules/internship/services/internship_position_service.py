@@ -39,8 +39,22 @@ def _trail(db, pos_id: int, action: str, detail: dict | None = None):
                                 occurred_at=datetime.utcnow()))
 
 
+def _opt_int(v, field="参数"):
+    """body 里可选的数字字段（schema 为 str/Optional[str]）安全转 int：
+    空→None；非数字→400 VALIDATION_ERROR（此前裸 int() 对非数字抛 ValueError→500，历史欠账收口）。"""
+    raw = str(v or "").strip()
+    if not raw:
+        return None
+    if not raw.isdigit():
+        raise AppException("VALIDATION_ERROR", f"{field}格式不正确")
+    return int(raw)
+
+
 def _company(db, company_id) -> EmpCompany:
-    c = db.get(EmpCompany, int(company_id))
+    cid = _opt_int(company_id, "企业")
+    if cid is None:
+        raise AppException("VALIDATION_ERROR", "请选择关联企业")
+    c = db.get(EmpCompany, cid)
     if not c or c.is_deleted or c.tenant_id != _tid():
         raise not_found("企业不存在或不在当前数据范围内")
     return c
@@ -78,7 +92,7 @@ def _row(p: InternshipPosition) -> dict:
 # ═══════════ 列表 / 详情 ═══════════
 
 def list_positions(page: int, page_size: int, keyword=None, status=None,
-                   company_id=None, risk=None) -> tuple[list[dict], int]:
+                   company_id=None, batch_id=None, risk=None) -> tuple[list[dict], int]:
     with session() as db:
         q = select(InternshipPosition).where(InternshipPosition.tenant_id == _tid(),
                                              InternshipPosition.is_deleted.is_(False))
@@ -89,8 +103,12 @@ def list_positions(page: int, page_size: int, keyword=None, status=None,
                             InternshipPosition.major_requirement.like(like)))
         if status:
             q = q.where(InternshipPosition.status == status)
-        if company_id:
-            q = q.where(InternshipPosition.company_id == int(company_id))
+        cid = _opt_int(company_id, "企业")
+        if cid is not None:
+            q = q.where(InternshipPosition.company_id == cid)
+        bid = _opt_int(batch_id, "批次")  # 岗位按实习批次筛选（batch_id 联调收口）
+        if bid is not None:
+            q = q.where(InternshipPosition.batch_id == bid)
         if risk is not None:
             q = q.where(InternshipPosition.risk_flag.is_(bool(risk)))
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
@@ -164,7 +182,7 @@ def create_position(body) -> dict:
                            getattr(body, "geofenceRadiusM", None))
         p = InternshipPosition(
             tenant_id=_tid(), company_id=c.id, company_name=c.name,
-            batch_id=int(body.batchId) if getattr(body, "batchId", None) else None,
+            batch_id=_opt_int(getattr(body, "batchId", None), "批次"),
             title=title, category=getattr(body, "category", None),
             major_requirement=getattr(body, "majorRequirement", None),
             grade_requirement=getattr(body, "gradeRequirement", None),
@@ -212,7 +230,7 @@ def update_position(pos_id, body) -> dict:
             p.headcount = hc
         bid = getattr(body, "batchId", None)
         if bid is not None:
-            p.batch_id = int(bid) if bid else None
+            p.batch_id = _opt_int(bid, "批次")
         mc = getattr(body, "mentorContactId", None)
         if mc is not None:
             p.mentor_contact_id, p.mentor_name = _resolve_mentor(db, p.company_id, mc) if mc else (None, None)

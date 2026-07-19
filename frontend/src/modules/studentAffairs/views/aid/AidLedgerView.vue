@@ -84,6 +84,9 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
+      // 注：后端 /aid/applications 支持真实 page/pageSize 分页，但本页状态/等级筛选是对
+      // 已拉取全量数据做前端过滤（applyFilter），若改为真分页需把筛选参数一并发给后端、
+      // 重新设计翻页与筛选联动逻辑，超出本次仅替换交互展示层的范围，故暂保留一次性拉取。
       const res = await studentAffairsApi.getAidApplications({ pageSize: 500 })
       if (res.code === 0 && res.data) {
         this.all = res.data.items || []

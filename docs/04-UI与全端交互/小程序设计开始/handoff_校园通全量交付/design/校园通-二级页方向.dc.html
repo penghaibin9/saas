@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><style>
+body{margin:0;background:#e7ebf2;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.stage{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:52px 24px;gap:56px;flex-wrap:wrap}
+.cap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.cap-lb{font-size:13px;color:#334155;font-weight:600;display:flex;align-items:center;gap:8px}
+.cap-lb i{width:8px;height:8px;border-radius:50%}
+.phone{width:390px;height:844px;background:#0b1220;border-radius:52px;padding:12px;box-shadow:0 40px 90px -30px rgba(15,30,60,.5),0 0 0 2px rgba(255,255,255,.04) inset}
+.screen{position:relative;width:100%;height:100%;background:#f1f4f9;border-radius:42px;overflow:hidden;display:flex;flex-direction:column}
+.scroll{flex:1;overflow-y:auto;position:relative}
+.scroll::-webkit-scrollbar{display:none}
+/* nav */
+.nav{position:relative;padding:0 16px 14px;color:#fff;overflow:hidden;flex-shrink:0}
+.nav.blue{background:linear-gradient(162deg,#0e3a80 0%,#1a56be 62%,#2f76dd 130%)}
+.nav.teal{background:linear-gradient(160deg,#0b5f57 0%,#0d9488 62%,#14b8a6 128%)}
+.nav::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;mask:linear-gradient(#000,transparent 90%)}
+.sb{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 8px 6px;font-size:15px;font-weight:600;position:relative;z-index:2}
+.sb-r{display:flex;align-items:center;gap:6px}
+.navrow{position:relative;z-index:2;display:flex;align-items:center;height:40px;margin-top:2px}
+.navrow .back{width:34px;height:34px;display:flex;align-items:center;justify-content:center;margin-left:-6px}
+.navrow .ntitle{font-size:17px;font-weight:700;letter-spacing:.02em}
+.navrow .nright{margin-left:auto;font-size:13px;color:rgba(255,255,255,.9);display:flex;align-items:center;gap:6px}
+.nbadge{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600}
+.nsub{position:relative;z-index:2;font-size:12px;color:rgba(255,255,255,.82);margin:2px 0 2px 34px}
+/* generic */
+.wrap{padding:14px 16px 24px}
+.card{background:#fff;border-radius:16px;padding:15px;margin-top:12px;box-shadow:0 3px 14px -8px rgba(15,40,90,.14)}
+.card:first-child{margin-top:0}
+.row-b{display:flex;align-items:center;justify-content:space-between}
+.ctitle{font-size:15px;color:#0f1e3d;font-weight:700}
+.tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;flex-shrink:0}
+.tg-amber{background:#fff6e6;color:#e8890c}.tg-red{background:#fff0f0;color:#e64c4c}
+.tg-blue{background:#eef4ff;color:#1a56be}.tg-green{background:#e7f8f1;color:#0ca678}
+.tg-slate{background:#eef1f6;color:#64748b}.tg-teal{background:#e6f6f4;color:#0d9488}
+/* weekly */
+.metatx{font-size:12.5px;color:#64748b;margin-top:6px}
+.wks{display:flex;gap:9px;margin-top:14px}
+.wk{flex:1;border:1.5px solid #e6ebf3;border-radius:12px;padding:9px 4px;text-align:center;cursor:pointer;background:#fff;transition:.15s}
+.wk b{display:block;font-size:13.5px;color:#334155;font-weight:700}
+.wk span{font-size:10.5px;color:#94a3b8}
+.wk.on{border-color:#1a56be;background:#eff5ff}
+.wk.on b{color:#1a56be}.wk.on span{color:#1a56be}
+.field{padding:13px 0;border-bottom:1px solid #f1f4f9}
+.field:last-child{border-bottom:none}
+.flabel{font-size:13px;color:#475569;font-weight:600;margin-bottom:9px;display:block}
+.flabel i{color:#e64c4c;font-style:normal}
+.ta{width:100%;min-height:66px;border:1px solid #eef1f6;background:#f8fafc;border-radius:11px;padding:11px;font-size:13px;color:#0f1e3d;line-height:1.6;box-sizing:border-box;resize:none;font-family:inherit}
+.ta::placeholder{color:#b3bccb}
+.frow{display:flex;align-items:center;gap:10px;padding:13px 0}
+.frow .flabel{margin:0;width:70px;flex-shrink:0}
+.hin{flex:1;border:1px solid #eef1f6;background:#f8fafc;border-radius:11px;padding:10px 12px;font-size:13px;color:#0f1e3d;box-sizing:border-box;font-family:inherit}
+.hin::placeholder{color:#b3bccb}
+.unit{font-size:12px;color:#94a3b8}
+.fb{display:flex;gap:11px;margin-top:12px}
+.fb-ic{width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,#4c9af5,#2f76dd);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff}
+.fb-tx b{font-size:12.5px;color:#0f1e3d}
+.fb-tx p{margin:5px 0 0;font-size:12.5px;color:#64748b;line-height:1.55}
+.alert{display:flex;gap:9px;align-items:flex-start;background:#eef4ff;border:1px solid #dbe7ff;border-radius:12px;padding:11px 13px;margin-top:12px}
+.alert p{margin:0;font-size:12px;color:#3d5a94;line-height:1.55}
+.ro{background:#f8fafc;border:1px solid #eef1f6;border-radius:11px;padding:11px 12px;margin-top:10px}
+.ro b{font-size:12px;color:#94a3b8;font-weight:600}
+.ro p{margin:5px 0 0;font-size:13px;color:#334155;line-height:1.6}
+.actionbar{flex-shrink:0;display:flex;gap:11px;padding:12px 16px calc(12px + 14px);background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-top:1px solid #eef1f6}
+.btn{flex:1;height:46px;border-radius:13px;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-ghost{background:#eef1f6;color:#475569}
+.btn-primary{background:linear-gradient(145deg,#2f76dd,#1a56be);color:#fff;box-shadow:0 8px 18px -8px rgba(26,86,190,.7)}
+.btn-teal{background:linear-gradient(145deg,#14b8a6,#0d9488);color:#fff;box-shadow:0 8px 18px -8px rgba(13,148,136,.6)}
+/* approval */
+.seg{display:flex;background:#eef1f6;border-radius:12px;padding:4px;margin-bottom:12px}
+.segi{flex:1;text-align:center;padding:8px 4px;font-size:13px;color:#64748b;font-weight:600;border-radius:9px;cursor:pointer;transition:.15s}
+.segi.on{background:#fff;color:#0d9488;box-shadow:0 2px 8px -3px rgba(15,40,90,.2)}
+.ap-h{display:flex;align-items:flex-start;gap:8px}
+.ap-h .apt{font-size:14.5px;color:#0f1e3d;font-weight:700}
+.urgent{font-size:10px;color:#fff;background:#e64c4c;padding:2px 6px;border-radius:5px;font-weight:600}
+.ap-type{font-size:12px;color:#64748b;margin-top:4px}
+.stu{display:flex;align-items:center;gap:8px;margin:12px 0}
+.stu-av{width:26px;height:26px;border-radius:50%;background:#e6f6f4;color:#0d9488;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.stu-nm{font-size:12.5px;color:#334155}
+.stu-tm{margin-left:auto;font-size:11px;color:#94a3b8}
+.fields{background:#f8fafc;border-radius:11px;padding:6px 12px}
+.frw{display:flex;gap:12px;padding:6px 0}
+.frw .k{font-size:12px;color:#94a3b8;width:72px;flex-shrink:0}
+.frw .v{font-size:12.5px;color:#334155;flex:1}
+.flow{display:flex;margin:14px 0 4px}
+.fn{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;position:relative}
+.fn::before{content:'';position:absolute;top:5px;left:-50%;width:100%;height:2px;background:#e6ebf3;z-index:0}
+.fn:first-child::before{display:none}
+.fn.done::before{background:#12b886}
+.fn .fdot{width:12px;height:12px;border-radius:50%;background:#d1d9e6;z-index:1}
+.fn.done .fdot{background:#12b886}
+.fn.current .fdot{background:#0d9488;box-shadow:0 0 0 4px rgba(13,148,136,.16)}
+.fn .fname{font-size:11px;color:#64748b;text-align:center;line-height:1.3}
+.fn .ftime{font-size:9.5px;color:#94a3b8}
+.acts{display:flex;gap:9px;margin-top:14px}
+.ab{flex:1;height:40px;border-radius:11px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;border:none}
+.ab.ghost{background:#eef1f6;color:#475569}
+.ab.reject{background:#fff;border:1px solid #f2b8b8;color:#e64c4c}
+.ab.approve{background:linear-gradient(145deg,#14b8a6,#0d9488);color:#fff}
+.donebar{margin-top:12px;padding:9px;border-radius:11px;text-align:center;font-size:13px;font-weight:600}
+.db-green{background:#e7f8f1;color:#0ca678}.db-red{background:#fff0f0;color:#e64c4c}.db-slate{background:#eef1f6;color:#64748b}
+/* graduation */
+.topic{font-size:16px;color:#0f1e3d;font-weight:700;line-height:1.5;margin-top:8px}
+.tmeta{display:flex;gap:16px;margin-top:12px}
+.tmeta div span{font-size:11px;color:#94a3b8;display:block}
+.tmeta div b{font-size:13px;color:#334155;font-weight:600;margin-top:3px;display:block}
+.primary{background:linear-gradient(150deg,#0e3a80,#1e5bc6);border-radius:16px;padding:16px;margin-top:12px;color:#fff;position:relative;overflow:hidden}
+.primary::after{content:'';position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(255,255,255,.16),transparent 65%)}
+.primary b{font-size:15.5px;font-weight:700;position:relative;z-index:1}
+.primary p{margin:7px 0 0;font-size:12.5px;color:rgba(255,255,255,.85);line-height:1.55;position:relative;z-index:1}
+.primary button{margin-top:13px;background:#fff;color:#1a56be;border:none;border-radius:11px;height:40px;padding:0 20px;font-size:14px;font-weight:700;cursor:pointer;position:relative;z-index:1;font-family:inherit}
+.tl{margin-top:6px}
+.tlr{display:flex;gap:13px;position:relative;padding-bottom:4px}
+.tlr .line{position:absolute;left:9px;top:20px;bottom:-4px;width:2px;background:#e6ebf3}
+.tlr:last-child .line{display:none}
+.tlr .tld{width:20px;height:20px;border-radius:50%;flex-shrink:0;background:#fff;border:2px solid #d1d9e6;z-index:1;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.tlr.done .tld{background:#1a56be;border-color:#1a56be}
+.tlr.now .tld{background:#12b886;border-color:#12b886;box-shadow:0 0 0 4px rgba(18,184,134,.16)}
+.tlr .tlc{flex:1;padding-bottom:16px;min-width:0}
+.tlr .tlc b{font-size:13.5px;color:#0f1e3d;font-weight:600}
+.tlr.pending .tlc b{color:#94a3b8}
+.tlr .tlc p{margin:3px 0 0;font-size:11.5px;color:#94a3b8}
+.tlhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.log{display:flex;gap:10px;padding:11px 0;border-bottom:1px solid #f1f4f9}
+.log:last-child{border-bottom:none}
+.log-av{width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#7c6bf5,#6549e8);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.log-tx b{font-size:12.5px;color:#0f1e3d}
+.log-tx .lt{font-size:11px;color:#b3bccb;margin-left:7px;font-weight:400}
+.log-tx p{margin:5px 0 0;font-size:12.5px;color:#475569;line-height:1.55}
+.home-ind{position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:134px;height:5px;border-radius:3px;background:#0f172a;opacity:.28;z-index:6}
+/* leave */
+.lv-types{display:flex;gap:9px;margin-top:12px}
+.lvt{flex:1;text-align:center;padding:10px 4px;border-radius:11px;border:1.5px solid #e6ebf3;font-size:13px;font-weight:600;color:#475569;cursor:pointer}
+.lvt.on{border-color:#1a56be;background:#eff5ff;color:#1a56be}
+.upload{display:flex;align-items:center;gap:10px;padding:13px;border:1px dashed #d7e0ee;border-radius:11px;color:#94a3b8;font-size:12.5px;margin-top:4px}
+.hist-item{padding:12px 0;border-bottom:1px solid #f1f4f9}
+.hist-item:last-child{border-bottom:none}
+.hist-meta{font-size:12px;color:#64748b;margin-top:5px}
+.hist-reason{font-size:12px;color:#94a3b8;margin-top:4px}
+/* service hall */
+.svc-cats{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;margin-bottom:4px}
+.svc-cat{flex-shrink:0;padding:8px 14px;border-radius:20px;background:#eef1f6;font-size:12.5px;color:#64748b;font-weight:600;cursor:pointer;white-space:nowrap}
+.svc-cat.on{background:#1a56be;color:#fff}
+.svc-item{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #f1f4f9}
+.svc-item:last-child{border-bottom:none}
+.svc-ic{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:19px;flex-shrink:0;font-weight:700}
+.svc-tx{flex:1;min-width:0}
+.svc-tx b{font-size:13.5px;color:#0f1e3d;font-weight:600;display:block}
+.svc-tx p{margin:3px 0 0;font-size:11.5px;color:#94a3b8}
+.svc-item.off .svc-ic{filter:grayscale(1);opacity:.5}
+.svc-item.off .svc-tx b{color:#b3bccb}
+.svc-arrow{color:#c7cfdd;flex-shrink:0}
+/* employment */
+.job-card{border:1px solid #eef1f6;border-radius:13px;padding:13px;margin-top:10px}
+.job-card:first-child{margin-top:0}
+.job-top{display:flex;align-items:center;justify-content:space-between}
+.job-top b{font-size:13.5px;color:#0f1e3d;font-weight:700}
+.match{font-size:11px;font-weight:700;color:#0ca678;background:#e7f8f1;padding:2px 8px;border-radius:6px;flex-shrink:0}
+.job-post{font-size:12.5px;color:#475569;margin-top:5px}
+.job-meta{display:flex;gap:10px;margin-top:7px}
+.job-meta span{font-size:11px;color:#94a3b8;background:#f8fafc;padding:3px 8px;border-radius:6px}
+/* teacher student detail */
+.profile-hd{display:flex;align-items:center;gap:14px}
+.avatar-lg{width:56px;height:56px;border-radius:16px;background:linear-gradient(145deg,#2dd4c4,#0d9488);color:#fff;font-size:22px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.profile-tx b{font-size:16px;color:#0f1e3d;font-weight:700;display:block}
+.profile-tx p{margin:4px 0 0;font-size:12px;color:#64748b}
+.risk-banner{display:flex;align-items:flex-start;gap:10px;background:#fff0f0;border:1px solid #ffd9d9;border-radius:13px;padding:12px 13px;margin-top:12px}
+.risk-banner b{font-size:13px;color:#c0392b;display:block}
+.risk-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.risk-chip{font-size:11px;color:#c0392b;background:#fff;border:1px solid #ffd9d9;padding:2px 8px;border-radius:6px}
+.risk-since{font-size:11px;color:#c0392b;opacity:.7;margin-top:6px;display:block}
+.tl-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f1f4f9}
+.tl-item:last-child{border-bottom:none}
+.tl-dot2{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0}
+.tl-item.risk .tl-dot2{background:#e64c4c}.tl-item.warn .tl-dot2{background:#f0a020}.tl-item.ok .tl-dot2{background:#12b886}
+.tl-item p{margin:0;font-size:12.5px;color:#334155;line-height:1.5}
+.tl-item span{font-size:11px;color:#b3bccb;display:block;margin-top:3px}
+.pend-item{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid #f1f4f9}
+.pend-item:last-child{border-bottom:none}
+.pend-item p{flex:1;margin:0;font-size:13px;color:#334155}
+.pend-btn{font-size:12px;font-weight:600;color:#0d9488;background:#e6f6f4;padding:6px 12px;border-radius:8px;flex-shrink:0;border:none;cursor:pointer;font-family:inherit}
+/* checkin */
+.ci-map{height:120px;border-radius:13px;background:linear-gradient(135deg,#eef4ff,#e4edfd);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.ci-map::before{content:'';position:absolute;inset:0;background:linear-gradient(rgba(26,86,190,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(26,86,190,.08) 1px,transparent 1px);background-size:22px 22px}
+.ci-pin{width:34px;height:34px;border-radius:50%;background:#1a56be;display:flex;align-items:center;justify-content:center;position:relative;z-index:1;box-shadow:0 0 0 8px rgba(26,86,190,.14)}
+.ci-loc{font-size:11.5px;color:#64748b;margin-top:10px;text-align:center}
+.ci-circle{width:132px;height:132px;border-radius:50%;margin:18px auto 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:none;font-family:inherit}
+.ci-circle.todo{background:linear-gradient(145deg,#2f76dd,#1a56be);box-shadow:0 14px 30px -12px rgba(26,86,190,.6)}
+.ci-circle.todo b{color:#fff;font-size:17px;font-weight:700}
+.ci-circle.todo span{color:rgba(255,255,255,.8);font-size:11px;margin-top:3px}
+.ci-circle.done{background:#e7f8f1;border:3px solid #12b886}
+.ci-circle.done b{color:#0ca678;font-size:15px;font-weight:700}
+.ci-circle.done span{color:#0ca678;font-size:11px;margin-top:3px}
+.ci-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f1f4f9}
+.ci-row:last-child{border-bottom:none}
+.ci-day{width:34px;font-size:12.5px;color:#334155;font-weight:600}
+.ci-time{flex:1;font-size:12px;color:#94a3b8}
+</style></helmet>
+<div class="stage">
+
+<!-- ============ PHONE 1 · 学生实习周报 ============ -->
+<div class="cap">
+<div class="cap-lb"><i style="background:#1a56be"></i>学生端 · 实习周报填写</div>
+<div class="phone"><div class="screen">
+<div class="nav blue">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">实习周报</span></div>
+<div class="nsub">湖南智联科技有限公司 · 前端开发实习生</div>
+</div>
+<div class="scroll">
+<div class="wrap">
+<div class="card">
+<div class="wks">
+<sc-for list="{{ weeks }}" as="w" hint-placeholder-count="3"><div class="{{ w.cls }}" onClick="{{ w.onClick }}"><b>{{ w.label }}</b><span>{{ w.sub }}</span></div></sc-for>
+</div>
+</div>
+
+<sc-if value="{{ isCurrent }}" hint-placeholder-val="{{ true }}">
+<div class="card">
+<div class="row-b"><span class="ctitle">第 8 周 · 填写中</span><span class="tag tg-amber">截止 07-06 22:00</span></div>
+<div class="field"><span class="flabel">本周工作内容 <i>*</i></span><textarea class="ta" placeholder="描述本周完成的主要任务">完成用户中心页面重构；联调登录、资料、消息 3 个接口；参与两次需求评审。</textarea></div>
+<div class="field"><span class="flabel">本周收获 <i>*</i></span><textarea class="ta" placeholder="学到的技能、经验与体会">熟悉了 Vue3 组合式 API 与真实接口联调流程，能独立处理常见异常状态。</textarea></div>
+<div class="field"><span class="flabel">存在问题 / 下周计划</span><textarea class="ta" placeholder="遇到的问题及下周安排（可选）">部分接口字段与文档不一致；下周计划完成消息模块并补充单元测试。</textarea></div>
+<div class="frow"><span class="flabel">本周工时</span><input class="hin" value="42" placeholder="如 40"><span class="unit">小时</span></div>
+</div>
+<div class="card">
+<span class="ctitle">上周指导反馈</span>
+<div class="fb"><div class="fb-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg></div><div class="fb-tx"><b>张明远（校内导师）</b><p>第 7 周：任务描述再具体些，附上产出截图。</p></div></div>
+</div>
+<div class="alert"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#3d5a94" stroke-width="1.8" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg><p>周报提交后由校内指导教师批阅；逾期未交会计入实习考核。</p></div>
+</sc-if>
+
+<sc-if value="{{ isPast }}" hint-placeholder-val="{{ false }}">
+<div class="card">
+<div class="row-b"><span class="ctitle">{{ submitted.week }} · 已提交</span><span class="tag tg-green">已批阅</span></div>
+<div class="ro"><b>本周工作内容</b><p>{{ submitted.tasks }}</p></div>
+<div class="ro"><b>本周收获</b><p>{{ submitted.gain }}</p></div>
+<div class="ro"><b>本周工时</b><p>{{ submitted.hours }} 小时</p></div>
+</div>
+<div class="card">
+<span class="ctitle">导师批阅</span>
+<div class="fb"><div class="fb-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 5h16v12H7l-3 3z"></path></svg></div><div class="fb-tx"><b>张明远（校内导师）</b><p>{{ submitted.feedback }}</p></div></div>
+</div>
+</sc-if>
+</div>
+</div>
+<sc-if value="{{ isCurrent }}" hint-placeholder-val="{{ true }}">
+<div class="actionbar"><button class="btn btn-ghost">存草稿</button><button class="btn btn-primary">提交周报</button></div>
+</sc-if>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<!-- ============ PHONE 2 · 教师待审批 ============ -->
+<div class="cap">
+<div class="cap-lb"><i style="background:#0d9488"></i>教师端 · 待审批（轻审批流）</div>
+<div class="phone"><div class="screen">
+<div class="nav teal">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">待审批</span><span class="nright"><span class="nbadge">{{ pendingCount }} 项待处理</span></span></div>
+</div>
+<div class="scroll">
+<div class="wrap">
+<div class="seg">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3"><div class="{{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</div></sc-for>
+</div>
+<sc-for list="{{ apList }}" as="a" hint-placeholder-count="3">
+<div class="card">
+<div class="row-b"><div class="ap-h"><span class="apt">{{ a.title }}</span><sc-if value="{{ a.urgent }}" hint-placeholder-val="{{ false }}"><span class="urgent">加急</span></sc-if></div><span class="tag {{ a.statusTagCls }}">{{ a.statusLabel }}</span></div>
+<div class="ap-type">{{ a.type }}</div>
+<div class="stu"><span class="stu-av">{{ a.avatar }}</span><span class="stu-nm">{{ a.student }} · {{ a.className }}</span><span class="stu-tm">提交 {{ a.submitTimeShort }}</span></div>
+<div class="fields"><sc-for list="{{ a.fields }}" as="f" hint-placeholder-count="3"><div class="frw"><span class="k">{{ f.label }}</span><span class="v">{{ f.value }}</span></div></sc-for></div>
+<div class="flow"><sc-for list="{{ a.flow }}" as="n" hint-placeholder-count="3"><div class="{{ n.cls }}"><div class="fdot"></div><span class="fname">{{ n.node }}</span><span class="ftime">{{ n.time }}</span></div></sc-for></div>
+<sc-if value="{{ a.pending }}" hint-placeholder-val="{{ true }}"><div class="acts"><button class="ab ghost" onClick="{{ a.onReturn }}">退回</button><button class="ab reject" onClick="{{ a.onReject }}">驳回</button><button class="ab approve" onClick="{{ a.onApprove }}">通过</button></div></sc-if>
+<sc-if value="{{ a.doneShow }}" hint-placeholder-val="{{ false }}"><div class="donebar {{ a.doneCls }}">{{ a.doneText }}</div></sc-if>
+</div>
+</sc-for>
+</div>
+<div class="home-ind"></div>
+</div>
+</div></div>
+</div>
+
+<!-- ============ PHONE 3 · 学生毕业设计中心 ============ -->
+<div class="cap">
+<div class="cap-lb"><i style="background:#1a56be"></i>学生端 · 毕业设计中心</div>
+<div class="phone"><div class="screen">
+<div class="nav blue">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">毕业设计</span></div>
+<div class="nsub">2026 届毕业设计 · 中期检查阶段</div>
+</div>
+<div class="scroll">
+<div class="wrap">
+<div class="card">
+<span class="tag tg-blue">我的课题</span>
+<div class="topic">基于 Vue3 的高校学生服务小程序设计与实现</div>
+<div class="tmeta"><div><span>指导教师</span><b>张明远</b></div><div><span>当前节点</span><b>中期检查</b></div><div><span>课题类型</span><b>设计实现</b></div></div>
+</div>
+<div class="primary"><b>提交中期检查报告</b><p>距截止 4 天（07-08），请上传中期进展与遗留问题。</p><button>提交中期 ›</button></div>
+<div class="card">
+<div class="tlhead"><span class="ctitle">毕设全周期</span><span class="tag tg-slate">9 个节点</span></div>
+<div class="tl">
+<sc-for list="{{ nodes }}" as="g" hint-placeholder-count="6"><div class="{{ g.cls }}"><div class="line"></div><div class="tld"><sc-if value="{{ g.done }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12l5 5L20 6"></path></svg></sc-if></div><div class="tlc"><b>{{ g.title }}</b><p>{{ g.meta }}</p></div><span class="tag {{ g.tagCls }}">{{ g.tagLabel }}</span></div></sc-for>
+</div>
+</div>
+<div class="card">
+<div class="tlhead"><span class="ctitle">指导记录</span><span class="tag tg-slate">2 条</span></div>
+<div class="log"><span class="log-av">张</span><div class="log-tx"><b>张明远<span class="lt">2026-06-20</span></b><p>开题通过。中期请重点说明已完成模块与测试情况。</p></div></div>
+<div class="log"><span class="log-av">张</span><div class="log-tx"><b>张明远<span class="lt">2026-06-05</span></b><p>任务书已确认，按里程碑推进。</p></div></div>
+</div>
+</div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<!-- ============ PHONE 4 · 学生请假销假 ============ -->
+<div class="cap">
+<div class="cap-lb"><i style="background:#1a56be"></i>学生端 · 请假销假</div>
+<div class="phone"><div class="screen">
+<div class="nav blue">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">请假销假</span></div>
+</div>
+<div class="scroll">
+<div class="wrap">
+<div class="card">
+<span class="ctitle">发起请假</span>
+<div class="lv-types">
+<sc-for list="{{ leaveTypes }}" as="t" hint-placeholder-count="3"><div class="{{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</div></sc-for>
+</div>
+<div class="frow"><span class="flabel">起止时间</span><input class="hin" value="2026-07-08 全天" placeholder="选择日期"></div>
+<div class="field"><span class="flabel">请假事由 <i>*</i></span><textarea class="ta" placeholder="请填写请假事由">家中有事，需返乡处理，已与企业导师沟通。</textarea></div>
+<div class="upload"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.6"><path d="M12 4v12M7 9l5-5 5 5"></path><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"></path></svg><span>点击上传证明材料（选填）</span></div>
+</div>
+<div class="card">
+<div class="tlhead"><span class="ctitle">我的请假记录</span><span class="tag tg-slate">3 条</span></div>
+<sc-for list="{{ leaveHistory }}" as="h" hint-placeholder-count="3">
+<div class="hist-item"><div class="row-b"><span style="font-size:13.5px;color:#0f1e3d;font-weight:600">{{ h.type }}</span><span class="tag {{ h.tagCls }}">{{ h.statusLabel }}</span></div><div class="hist-meta">{{ h.range }} · {{ h.days }} 天</div><div class="hist-reason">{{ h.reason }}</div></div>
+</sc-for>
+</div>
+</div>
+</div>
+<div class="actionbar"><button class="btn btn-ghost">存草稿</button><button class="btn btn-primary">提交申请</button></div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<!-- ============ PHONE 5 · 学生校园服务办理 ============ -->
+<div class="cap">
+<div class="cap-lb"><i style="background:#1a56be"></i>学生端 · 校园服务办理</div>
+<div class="phone"><div class="screen">
+<div class="nav blue">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">校园服务</span></div>
+</div>
+<div class="scroll">
+<div class="wrap">
+<div class="svc-cats">
+<sc-for list="{{ svcCats }}" as="c" hint-placeholder-count="5"><div class="{{ c.cls }}" onClick="{{ c.onClick }}">{{ c.label }}</div></sc-for>
+</div>
+<div class="card">
+<sc-for list="{{ svcItems }}" as="s" hint-placeholder-count="8">
+<div class="{{ s.rowCls }}"><div class="svc-ic" style="{{ s.icStyle }}">{{ s.icon }}</div><div class="svc-tx"><b>{{ s.name }}</b><p>{{ s.dept }} · {{ s.desc }}</p></div><span class="svc-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"></path></svg></span></div>
+</sc-for>
+</div>
+</div>
+</div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<!-- ============ PHONE 6 · 学生就业管理 ============ -->
+<div class="cap">
+<div class="cap-lb"><i style="background:#1a56be"></i>学生端 · 毕业与就业中心</div>
+<div class="phone"><div class="screen">
+<div class="nav blue">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">毕业与就业</span></div>
+<div class="nsub">就业意向填报中</div>
+</div>
+<div class="scroll">
+<div class="wrap">
+<div class="card">
+<div class="row-b"><span class="ctitle">我的就业意向</span><span class="tag tg-amber">填报中</span></div>
+<div class="tmeta" style="margin-top:12px;flex-wrap:wrap;gap:14px 16px"><div><span>意向类型</span><b>就业</b></div><div><span>意向行业</span><b>互联网/软件</b></div><div><span>意向城市</span><b>长沙 / 深圳</b></div><div><span>期望薪资</span><b>6-9K</b></div></div>
+</div>
+<div class="card">
+<div class="tlhead"><span class="ctitle">就业全流程</span><span class="tag tg-slate">5 步</span></div>
+<div class="tl">
+<sc-for list="{{ empSteps }}" as="e" hint-placeholder-count="5"><div class="{{ e.cls }}"><div class="line"></div><div class="tld"><sc-if value="{{ e.done }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12l5 5L20 6"></path></svg></sc-if></div><div class="tlc"><b>{{ e.title }}</b></div><span class="tag {{ e.tagCls }}">{{ e.tagLabel }}</span></div></sc-for>
+</div>
+</div>
+<div class="card">
+<div class="tlhead"><span class="ctitle">智能岗位推荐</span><span class="tag tg-blue">3 个匹配</span></div>
+<sc-for list="{{ jobs }}" as="j" hint-placeholder-count="3">
+<div class="job-card"><div class="job-top"><b>{{ j.company }}</b><span class="match">匹配 {{ j.match }}%</span></div><div class="job-post">{{ j.post }}</div><div class="job-meta"><span>{{ j.salary }}</span><span>{{ j.city }}</span></div></div>
+</sc-for>
+</div>
+</div>
+</div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<!-- ============ PHONE 7 · 教师学生详情（风险学生） ============ -->
+<div class="cap">
+<div class="cap-lb"><i style="background:#0d9488"></i>教师端 · 学生详情（风险画像）</div>
+<div class="phone"><div class="screen">
+<div class="nav teal">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">学生详情</span></div>
+</div>
+<div class="scroll">
+<div class="wrap">
+<div class="card">
+<div class="profile-hd"><div class="avatar-lg">李</div><div class="profile-tx"><b>李思远 · 2024010602</b><p>软件2401 · 软件工程 · 实习阶段</p></div></div>
+<div class="risk-banner"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c0392b" stroke-width="1.9" style="flex-shrink:0;margin-top:1px"><path d="M12 2L2 20h20z"></path><path d="M12 9v5M12 17h.01"></path></svg><div><b>高风险学生</b><div class="risk-chips"><span class="risk-chip">实习打卡异常</span><span class="risk-chip">周报逾期</span></div><span class="risk-since">风险标记时间：2026-07-01</span></div></div>
+</div>
+<div class="card">
+<span class="ctitle">实习信息</span>
+<div class="tmeta" style="margin-top:12px"><div><span>实习企业</span><b>广州极简网络</b></div><div><span>岗位</span><b>后端实习生</b></div><div><span>企业导师</span><b>钱工</b></div></div>
+</div>
+<div class="card">
+<span class="ctitle">动态时间线</span>
+<div class="tl-item risk"><div class="tl-dot2"></div><div><p>打卡异常：定位超出企业范围</p><span>2026-07-03 09:10</span></div></div>
+<div class="tl-item warn"><div class="tl-dot2"></div><div><p>第 8 周周报逾期未提交</p><span>2026-07-02 22:00</span></div></div>
+<div class="tl-item ok"><div class="tl-dot2"></div><div><p>第 7 周周报已通过</p><span>2026-06-28 18:20</span></div></div>
+</div>
+<div class="card">
+<div class="tlhead"><span class="ctitle">待处理事项</span><span class="tag tg-red">3 项</span></div>
+<div class="pend-item"><p>第 8 周周报（逾期）</p><button class="pend-btn">催交/批阅</button></div>
+<div class="pend-item"><p>打卡异常复核</p><button class="pend-btn">处理异常</button></div>
+<div class="pend-item"><p>风险跟进记录</p><button class="pend-btn">记录联系</button></div>
+</div>
+</div>
+</div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+<!-- ============ PHONE 8 · 学生实习打卡 ============ -->
+<div class="cap">
+<div class="cap-lb"><i style="background:#1a56be"></i>学生端 · 实习每日打卡</div>
+<div class="phone"><div class="screen">
+<div class="nav blue">
+<div class="sb"><span>9:41</span><div class="sb-r"><svg width="17" height="11" viewBox="0 0 17 11" fill="#fff"><rect x="0" y="7" width="3" height="4" rx="1"></rect><rect x="4" y="5" width="3" height="6" rx="1"></rect><rect x="8" y="3" width="3" height="8" rx="1"></rect><rect x="12" y="1" width="3" height="10" rx="1"></rect></svg><svg width="16" height="11" viewBox="0 0 16 11" fill="#fff"><path d="M8 2.5C10.3 2.5 12.4 3.4 14 4.9L15.2 3.6C13.3 1.8 10.8.8 8 .8S2.7 1.8.8 3.6L2 4.9C3.6 3.4 5.7 2.5 8 2.5z"></path><circle cx="8" cy="9" r="1.6"></circle></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="1" y="1" width="21" height="10" rx="2.5" stroke="#fff" stroke-opacity=".55"></rect><rect x="2.5" y="2.5" width="17" height="7" rx="1.5" fill="#fff"></rect><rect x="23.5" y="4" width="1.6" height="4" rx=".8" fill="#fff" fill-opacity=".5"></rect></svg></div></div>
+<div class="navrow"><div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M15 5l-7 7 7 7"></path></svg></div><span class="ntitle">实习打卡</span></div>
+<div class="nsub">湖南智联科技有限公司 · 前端开发实习生</div>
+</div>
+<div class="scroll">
+<div class="wrap">
+<div class="card">
+<div class="ci-map"><div class="ci-pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="12" r="9"></circle></svg></div></div>
+<div class="ci-loc">{{ ciLocLabel }}</div>
+<button class="{{ ciCircleCls }}" onClick="{{ ciTap }}"><b>{{ ciBtnMain }}</b><span>{{ ciBtnSub }}</span></button>
+</div>
+<div class="alert"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#3d5a94" stroke-width="1.8" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg><p>仅在点击打卡时采集一次定位，不进行后台持续定位。</p></div>
+<div class="card">
+<div class="tlhead"><span class="ctitle">本周打卡</span><span class="tag tg-slate">5 个工作日</span></div>
+<sc-for list="{{ ciWeek }}" as="d" hint-placeholder-count="5">
+<div class="ci-row"><span class="ci-day">{{ d.day }}</span><span class="ci-time">{{ d.time }}</span><span class="tag {{ d.cls }}">{{ d.label }}</span></div>
+</sc-for>
+</div>
+</div>
+</div>
+<div class="home-ind"></div>
+</div></div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { wrWeek: 8, apTab: 'all', apStatus: {}, lvType: 'PERSONAL', svcCat: 'all', ciDone: false, ciTime: '' };
+
+  ciWeekData = [
+    { day: '周一', time: '09:02 打卡', status: 'ok' },
+    { day: '周二', time: '09:15 打卡', status: 'late' },
+    { day: '周三', time: '09:00 打卡', status: 'ok' },
+    { day: '周四', time: '未打卡', status: 'miss' },
+    { day: '周五', time: '今日', status: 'future' }
+  ];
+
+  leaveHistoryData = [
+    { type: '事假', status: 'approve', range: '2026-06-20 至 06-20', days: 1, reason: '回家处理证件' },
+    { type: '病假', status: 'pending', range: '2026-07-05 至 07-05', days: 1, reason: '感冒发热，需就医休息' },
+    { type: '外出', status: 'wait', range: '2026-06-15 至 06-16', days: 2, reason: '参加校外竞赛' }
+  ];
+
+  svcCatDefs = [
+    { key: 'all', label: '全部' },
+    { key: 'academic', label: '教务服务' },
+    { key: 'affairs', label: '学工服务' },
+    { key: 'life', label: '生活服务' },
+    { key: 'finance', label: '财务服务' }
+  ];
+  svcItemsData = [
+    { id: 'sv1', name: '学生请假', cat: 'affairs', dept: '学工处', desc: '事假/病假在线申请，辅导员审批', icon: '假', available: true, grad: 'linear-gradient(145deg,#f76a6a,#e64c4c)' },
+    { id: 'sv2', name: '在校证明开具', cat: 'academic', dept: '教务处', desc: '在校证明、成绩证明等电子开具', icon: '证', available: true, grad: 'linear-gradient(145deg,#4c9af5,#2f76dd)' },
+    { id: 'sv3', name: '心理健康问卷', cat: 'affairs', dept: '心理中心', desc: '本周必做，约 5 分钟', icon: '心', available: true, grad: 'linear-gradient(145deg,#7c6bf5,#6549e8)' },
+    { id: 'sv4', name: '实训室安全承诺书', cat: 'academic', dept: '实训中心', desc: '进入实训室前须签署', icon: '训', available: true, grad: 'linear-gradient(145deg,#22b0d6,#1495bd)' },
+    { id: 'sv5', name: '宿舍报修', cat: 'life', dept: '后勤中心', desc: '水电、家具报修', icon: '修', available: true, grad: 'linear-gradient(145deg,#f59f00,#f08c00)' },
+    { id: 'sv6', name: '学费缴纳', cat: 'finance', dept: '财务处', desc: '本学期已缴清', icon: '¥', available: true, grad: 'linear-gradient(145deg,#12b886,#0ca678)' },
+    { id: 'sv7', name: '奖助学金申请', cat: 'finance', dept: '资助中心', desc: '国家/学校奖助学金', icon: '助', available: true, grad: 'linear-gradient(145deg,#12b886,#0ca678)' },
+    { id: 'sv8', name: '第二课堂学分认定', cat: 'academic', dept: '校团委', desc: '志愿/竞赛/社会实践学分', icon: '分', available: true, grad: 'linear-gradient(145deg,#4c9af5,#2f76dd)' }
+  ];
+  empStepsData = [
+    { title: '填报就业意向', status: 'now' },
+    { title: '签约 / 去向登记', status: 'pending' },
+    { title: '材料上传（三方/劳动合同）', status: 'pending' },
+    { title: '去向核验', status: 'pending' },
+    { title: '就业质量回访', status: 'pending' }
+  ];
+  jobsData = [
+    { company: '湖南智联科技', post: '前端开发工程师', salary: '7-10K', city: '长沙', match: 92 },
+    { company: '深圳云图信息', post: 'Web 前端', salary: '9-13K', city: '深圳', match: 86 },
+    { company: '长沙数联', post: '小程序开发', salary: '6-9K', city: '长沙', match: 81 }
+  ];
+
+  submittedWeeks = {
+    6: { week: '第 6 周', tasks: '完成实习环境搭建，熟悉项目代码结构与分支规范，参与每日晨会。', gain: '掌握了公司 Git 协作流程与前端代码规范。', hours: '40', feedback: '第 6 周：入门很快，注意提交信息规范。' },
+    7: { week: '第 7 周', tasks: '负责用户中心页面重构，联调 3 个接口并修复 5 个页面缺陷。', gain: '熟悉了 Vue3 组合式 API 与接口联调方法。', hours: '42', feedback: '第 7 周：任务描述再具体些，附上产出截图。' }
+  };
+
+  approvals = [
+    { id: 'AP1', cat: 'leave', title: '学生请假申请', type: '请假 · 病假', student: '孙雨桐', className: '软件2401', submitTimeShort: '07-03 08:30', urgent: false,
+      fields: [ { label: '请假类型', value: '病假' }, { label: '起止时间', value: '2026-07-05 全天' }, { label: '事由', value: '感冒发热，需就医休息' }, { label: '附件', value: '就诊记录.jpg' } ],
+      flow: [ { node: '学生提交', time: '07-03 08:30', done: true }, { node: '辅导员审批', time: '待处理', done: false, current: true }, { node: '学院备案', time: '—', done: false } ] },
+    { id: 'AP2', cat: 'leave', title: '实习请假申请', type: '请假 · 事假', student: '李思远', className: '软件2401', submitTimeShort: '07-02 19:10', urgent: true,
+      fields: [ { label: '请假类型', value: '事假' }, { label: '起止时间', value: '2026-07-07 半天' }, { label: '事由', value: '办理银行卡（发薪需要）' }, { label: '企业导师意见', value: '同意' } ],
+      flow: [ { node: '学生提交', time: '07-02 19:10', done: true }, { node: '企业导师确认', time: '07-02 20:00', done: true }, { node: '校内导师审批', time: '待处理', done: false, current: true } ] },
+    { id: 'AP3', cat: 'proof', title: '在校证明开具', type: '证明 · 在校证明', student: '陈子涵', className: '软件2401', submitTimeShort: '07-01 14:00', urgent: false,
+      fields: [ { label: '证明类型', value: '在校证明' }, { label: '用途', value: '办理助学贷款' }, { label: '接收单位', value: '某银行支行' } ],
+      flow: [ { node: '学生提交', time: '07-01 14:00', done: true }, { node: '辅导员审批', time: '待处理', done: false, current: true }, { node: '教务盖章', time: '—', done: false } ] }
+  ];
+
+  gradNodes = [
+    { title: '选题', meta: '2025-11-10', status: 'done' },
+    { title: '导师确认', meta: '2025-11-15', status: 'done' },
+    { title: '任务书', meta: '2025-11-25', status: 'done' },
+    { title: '开题报告', meta: '2025-12-20 · 已通过', status: 'done' },
+    { title: '中期检查', meta: '截止 2026-07-08', status: 'now' },
+    { title: '成果提交', meta: '2026-05-10', status: 'pending' },
+    { title: '查重', meta: '2026-05-15', status: 'pending' },
+    { title: '答辩', meta: '2026-05-28', status: 'pending' },
+    { title: '成绩与归档', meta: '2026-06-10', status: 'pending' }
+  ];
+
+  renderVals() {
+    const s = this.state;
+    const weeks = [6, 7, 8].map(n => ({
+      no: n, label: '第' + n + '周', sub: n === 8 ? '本周' : '已交',
+      cls: 'wk' + (n === s.wrWeek ? ' on' : ''),
+      onClick: () => this.setState({ wrWeek: n })
+    }));
+
+    const tabDefs = [ { k: 'all', label: '全部' }, { k: 'leave', label: '请假' }, { k: 'proof', label: '证明' } ];
+    const counts = { all: this.approvals.length, leave: this.approvals.filter(a => a.cat === 'leave').length, proof: this.approvals.filter(a => a.cat === 'proof').length };
+    const tabs = tabDefs.map(t => ({ label: t.label + '（' + counts[t.k] + '）', cls: 'segi' + (t.k === s.apTab ? ' on' : ''), onClick: () => this.setState({ apTab: t.k }) }));
+
+    const stMap = { pending: { label: '待审批', cls: 'tg-amber' }, approve: { label: '已通过', cls: 'tg-green' }, reject: { label: '已驳回', cls: 'tg-red' }, return: { label: '已退回', cls: 'tg-slate' } };
+    const doneMap = { approve: { text: '✓ 已通过', cls: 'db-green' }, reject: { text: '✕ 已驳回', cls: 'db-red' }, return: { text: '↩ 已退回', cls: 'db-slate' } };
+    const setAp = (id, t) => this.setState(p => ({ apStatus: { ...p.apStatus, [id]: t } }));
+
+    const apList = this.approvals.filter(a => s.apTab === 'all' || a.cat === s.apTab).map(a => {
+      const st = s.apStatus[a.id] || 'pending';
+      return {
+        ...a, avatar: a.student.slice(0, 1),
+        statusLabel: stMap[st].label, statusTagCls: stMap[st].cls,
+        pending: st === 'pending', doneShow: st !== 'pending',
+        doneText: st !== 'pending' ? doneMap[st].text : '', doneCls: st !== 'pending' ? doneMap[st].cls : '',
+        flow: a.flow.map(n => ({ ...n, cls: 'fn' + (n.done ? ' done' : '') + (n.current ? ' current' : '') })),
+        onApprove: () => setAp(a.id, 'approve'), onReject: () => setAp(a.id, 'reject'), onReturn: () => setAp(a.id, 'return')
+      };
+    });
+    const pendingCount = this.approvals.filter(a => (s.apStatus[a.id] || 'pending') === 'pending').length;
+
+    const tagByStatus = { done: { label: '已完成', cls: 'tg-blue' }, now: { label: '进行中', cls: 'tg-teal' }, pending: { label: '未开始', cls: 'tg-slate' } };
+    const nodes = this.gradNodes.map(g => ({ ...g, cls: 'tlr ' + g.status, done: g.status === 'done', tagLabel: tagByStatus[g.status].label, tagCls: tagByStatus[g.status].cls }));
+
+    const lvTypeDefs = [ { k: 'SICK', label: '病假' }, { k: 'PERSONAL', label: '事假' }, { k: 'GOOUT', label: '外出' } ];
+    const leaveTypes = lvTypeDefs.map(t => ({ label: t.label, cls: 'lvt' + (t.k === s.lvType ? ' on' : ''), onClick: () => this.setState({ lvType: t.k }) }));
+    const lvStMap = { approve: { label: '已通过', cls: 'tg-green' }, pending: { label: '辅导员审批', cls: 'tg-amber' }, wait: { label: '待销假', cls: 'tg-blue' } };
+    const leaveHistory = this.leaveHistoryData.map(h => ({ ...h, statusLabel: lvStMap[h.status].label, tagCls: lvStMap[h.status].cls }));
+
+    const svcCats = this.svcCatDefs.map(c => ({ label: c.label, cls: 'svc-cat' + (c.key === s.svcCat ? ' on' : ''), onClick: () => this.setState({ svcCat: c.key }) }));
+    const svcItems = this.svcItemsData.filter(x => s.svcCat === 'all' || x.cat === s.svcCat).map(x => ({
+      ...x, rowCls: 'svc-item' + (x.available ? '' : ' off'), icStyle: 'background:' + x.grad,
+      dept: x.dept, desc: x.available ? x.desc : x.desc + '（暂不可办理）'
+    }));
+
+    const empTagMap = { done: { label: '已完成', cls: 'tg-blue' }, now: { label: '进行中', cls: 'tg-teal' }, pending: { label: '未开始', cls: 'tg-slate' } };
+    const empSteps = this.empStepsData.map(e => ({ ...e, cls: 'tlr ' + e.status, done: e.status === 'done', tagLabel: empTagMap[e.status].label, tagCls: empTagMap[e.status].cls }));
+    const jobs = this.jobsData;
+
+    const ciStMap = { ok: { label: '正常', cls: 'tg-green' }, late: { label: '迟到', cls: 'tg-amber' }, miss: { label: '缺卡', cls: 'tg-red' }, future: { label: '未到', cls: 'tg-slate' } };
+    const ciWeek = this.ciWeekData.map((d, i) => {
+      if (i === 4 && s.ciDone) return { day: d.day, time: s.ciTime + ' 打卡', cls: 'tg-green', label: '正常' };
+      return { day: d.day, time: d.time, cls: ciStMap[d.status].cls, label: ciStMap[d.status].label };
+    });
+
+    return {
+      weeks, isCurrent: s.wrWeek === 8, isPast: s.wrWeek !== 8, submitted: this.submittedWeeks[s.wrWeek] || this.submittedWeeks[7],
+      tabs, apList, pendingCount, nodes,
+      leaveTypes, leaveHistory, svcCats, svcItems, empSteps, jobs,
+      ciLocLabel: s.ciDone ? '已在企业范围内完成定位打卡' : '公司未定位 · 有效范围 500m',
+      ciCircleCls: 'ci-circle ' + (s.ciDone ? 'done' : 'todo'),
+      ciBtnMain: s.ciDone ? ('已打卡 ' + s.ciTime) : '打卡',
+      ciBtnSub: s.ciDone ? '今日签到成功' : '点击签到',
+      ciTap: () => {
+        if (s.ciDone) return;
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0'), mm = String(now.getMinutes()).padStart(2, '0');
+        this.setState({ ciDone: true, ciTime: hh + ':' + mm });
+      },
+      ciWeek
+    };
+  }
+}
+</script>
+</body>
+</html>

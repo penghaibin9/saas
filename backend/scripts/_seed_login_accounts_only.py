@@ -13,7 +13,7 @@ from app.models import Tenant, TenantBrandConfig, User
 DEMO_TID = 1000000000000000003
 DEMO_CODE = "demo-school"
 DEMO_NAME = "演示职业技术学校"
-SANDBOX_TID = 1000000000000000004
+SANDBOX_TID = 1000000000000000007
 SANDBOX_CODE = "sandbox-school"
 SANDBOX_NAME = "体验沙箱学校"
 

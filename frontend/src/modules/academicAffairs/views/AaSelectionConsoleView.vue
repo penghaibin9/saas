@@ -55,83 +55,47 @@
             <span :class="{ 'is-warn': stats.lowEnrollCount }">低人数 {{ stats.lowEnrollCount }}</span>
           </div>
 
-          <div class="aasel-tabs">
-            <button v-for="t in detailTabs" :key="t.key" class="aasel-tab" :class="{ 'is-active': detailTab === t.key }" @click="detailTab = t.key; onTabChange()">{{ t.label }}</button>
+          <div class="aasel-courses-head">
+            <span>选课轮次（不建轮次 = 全程先到先得）</span>
+            <AppButton v-if="!['LOCKED','ARCHIVED'].includes(current.status)" size="small" variant="ghost" @click="openAddRound">+ 添加轮次</AppButton>
           </div>
-
-          <!-- 课程供给 -->
-          <template v-if="detailTab === 'courses'">
-            <div class="aasel-courses-head">
-              <span>可选课程供给</span>
-              <AppButton v-if="['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openAddCourse">+ 添加课程</AppButton>
-            </div>
-            <EmptyState v-if="!courses.length" title="未配置课程" description="添加至少一门课程后方可发布" />
-            <DataTable v-else :columns="courseColumns" :rows="courses" row-key="selectionCourseId">
-              <template #cell-course="{ row }">
-                <div class="mp-cell-main">{{ row.courseName }}</div>
-                <div class="mp-cell-sub">{{ row.teacherName || '未派课' }} · {{ row.credit }} 学分</div>
-              </template>
-              <template #cell-fill="{ row }">{{ row.selectedCount }} / {{ row.capacity }}（余 {{ row.remain }}）</template>
-              <template #cell-status="{ row }">
-                <StatusTag :type="row.status === 'OPEN' ? 'success' : 'default'" :label="row.status === 'OPEN' ? '开放' : '已取消'" dot />
-              </template>
-              <template #cell-ops="{ row }">
-                <button class="mp-link" @click="openRoster(row)">名单</button>
-                <button v-if="current.status === 'CLOSED' && row.status === 'OPEN'" class="mp-link is-danger" @click="cancelCourse(row)">取消开课</button>
-              </template>
-            </DataTable>
-          </template>
-
-          <!-- 选课规则（03号卡） -->
-          <template v-else-if="detailTab === 'rule'">
-            <div class="aasel-rule">
-              <AppFormItem label="选课学分上限（0 = 不限）">
-                <AppNumberInput v-model="ruleForm.maxCredits" :min="0" :max="80" :disabled="ruleSaving || !['DRAFT','PUBLISHED'].includes(current.status)" />
-              </AppFormItem>
-              <AppButton v-if="['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="primary" :loading="ruleSaving" @click="saveRule">保存规则</AppButton>
-              <AppInlineAlert v-else type="warning" description="选课已开始，规则不可修改（批次OPEN后规则冻结）" />
-              <div class="aasel-rule-fixed">
-                <div class="aasel-rule-fixed-title">以下校验始终启用，不可关闭（选课八条中的强制项）：</div>
-                <ul>
-                  <li>批次开选窗口内</li>
-                  <li>学生所属年级/专业/班级在适用范围内</li>
-                  <li>未修过该课程（同批次不可重复选）</li>
-                  <li>满足先修课程要求</li>
-                  <li>课表不冲突</li>
-                  <li>不超课程容量</li>
-                  <li>符合重修规则</li>
-                </ul>
-              </div>
-            </div>
-          </template>
-
-          <!-- 补选指引（06号卡·教务处视角） -->
-          <template v-else-if="detailTab === 'reselect'">
-            <EmptyState v-if="current.status !== 'CLOSED'" title="仅 CLOSED 批次有补选指引" description="批次截止后可在此查看因人数不足取消开课的课程与可补选课程" />
-            <template v-else>
-              <div class="aasel-section-title">已取消开课（受影响学生需补选）</div>
-              <EmptyState v-if="!reselectData.cancelledCourses.length" title="暂无取消开课的课程" description="" />
-              <DataTable v-else :columns="miniCourseColumns" :rows="reselectData.cancelledCourses" row-key="selectionCourseId" />
-              <div class="aasel-section-title">仍有余量课程（可供补选）</div>
-              <EmptyState v-if="!reselectData.availableCourses.length" title="暂无有余量课程" description="" />
-              <DataTable v-else :columns="miniCourseColumns" :rows="reselectData.availableCourses" row-key="selectionCourseId" />
+          <DataTable v-if="rounds.length" :columns="roundColumns" :rows="rounds" row-key="roundId">
+            <template #cell-round="{ row }">第{{ row.roundNo }}轮 · {{ row.roundName }}</template>
+            <template #cell-mode="{ row }">
+              <StatusTag :type="row.mode === 'LOTTERY' ? 'warning' : 'primary'" :label="row.mode === 'LOTTERY' ? '抽签' : '先到先得'" dot />
             </template>
-          </template>
-
-          <!-- 冲突检测（09号卡） -->
-          <template v-else-if="detailTab === 'conflict'">
-            <div class="aasel-conflict-toolbar">
-              <AppTextInput v-model="conflictStudentNo" placeholder="按学号查询冲突明细（选填）" />
-              <AppButton size="small" variant="ghost" @click="loadConflictReport">查询</AppButton>
-              <AppTextInput v-model="conflictExportPurpose" placeholder="导出用途（≥5字，导出前必填）" />
-              <AppButton size="small" variant="ghost" :loading="conflictExporting" @click="exportConflict">导出Excel</AppButton>
-            </div>
-            <EmptyState v-if="!conflictReport.summary.length && !conflictReport.items.length" title="暂无冲突拒选记录" description="学生因课表冲突被拒选选课时会在此汇总" />
-            <template v-else>
-              <DataTable v-if="!conflictStudentNo" :columns="conflictSummaryColumns" :rows="conflictReport.summary" row-key="courseName" />
-              <DataTable v-else :columns="conflictItemColumns" :rows="conflictReport.items" row-key="occurredAt" />
+            <template #cell-ctrl="{ row }">{{ row.allowEnroll ? '可选' : '禁选' }} / {{ row.allowDrop ? '可退' : '禁退' }}</template>
+            <template #cell-status="{ row }">
+              <StatusTag :type="roundStatusType(row.status)" :label="roundStatusLabel(row.status)" dot />
             </template>
-          </template>
+            <template #cell-ops="{ row }">
+              <button v-if="['DRAFT','CLOSED'].includes(row.status)" class="mp-link" @click="roundAction(row, 'openRound', '开启轮次')">开启</button>
+              <button v-if="row.status === 'OPEN'" class="mp-link" @click="roundAction(row, 'closeRound', '关闭轮次')">关闭</button>
+              <button v-if="row.status === 'CLOSED' && row.mode === 'LOTTERY'" class="mp-link is-danger" @click="roundAction(row, 'drawRound', '抽签摇号（一次性，不可重摇）')">摇号</button>
+            </template>
+          </DataTable>
+          <AppInlineAlert v-if="drawResult" type="success"
+                          :description="'摇号完成：中签 ' + drawResult.totalWinners + ' 人，未中签 ' + drawResult.totalLosers + ' 人（' + drawResult.courses.map(c => `${c.courseName} ${c.winners}/${c.applicants}`).join('；') + '）'" />
+
+          <div class="aasel-courses-head">
+            <span>可选课程供给</span>
+            <AppButton v-if="['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openAddCourse">+ 添加课程</AppButton>
+          </div>
+          <EmptyState v-if="!courses.length" title="未配置课程" description="添加至少一门课程后方可发布" />
+          <DataTable v-else :columns="courseColumns" :rows="courses" row-key="selectionCourseId">
+            <template #cell-course="{ row }">
+              <div class="mp-cell-main">{{ row.courseName }}</div>
+              <div class="mp-cell-sub">{{ row.teacherName || '未派课' }} · {{ row.credit }} 学分</div>
+            </template>
+            <template #cell-fill="{ row }">{{ row.selectedCount }} / {{ row.capacity }}（余 {{ row.remain }}）</template>
+            <template #cell-status="{ row }">
+              <StatusTag :type="row.status === 'OPEN' ? 'success' : 'default'" :label="row.status === 'OPEN' ? '开放' : '已取消'" dot />
+            </template>
+            <template #cell-ops="{ row }">
+              <button class="mp-link" @click="openRoster(row)">名单</button>
+              <button v-if="current.status === 'CLOSED' && row.status === 'OPEN'" class="mp-link is-danger" @click="cancelCourse(row)">取消开课</button>
+            </template>
+          </DataTable>
         </template>
       </div>
     </div>
@@ -145,8 +109,6 @@
         <AppFormItem label="选课学分上限">
           <AppNumberInput v-model="form.maxCredits" :min="0" :max="50" :disabled="saving" />
         </AppFormItem>
-        <!-- 未挂快捷用语：aa.remark 两条分别讲教室设备与合班授课，与选课批次备注无关；
-             配置方案未给选课批次备注词条，不硬套 -->
         <AppFormItem label="备注">
           <AppTextarea v-model="form.remark" placeholder="选填" :disabled="saving" />
         </AppFormItem>
@@ -181,6 +143,26 @@
       </template>
     </AppDrawer>
 
+    <!-- 建轮次 -->
+    <AppDrawer :visible="roundVisible" title="添加选课轮次" @close="roundVisible = false">
+      <div class="aasel-form">
+        <AppFormItem label="轮次名称" required>
+          <AppTextInput v-model="roundForm.roundName" placeholder="如 第一轮预选 / 正选 / 补退选" :disabled="saving" />
+        </AppFormItem>
+        <AppFormItem label="模式" required>
+          <AppSelect v-model="roundForm.mode" :options="[{ label: '先到先得（实时占容量）', value: 'FCFS' }, { label: '抽签（志愿登记，关轮后摇号）', value: 'LOTTERY' }]" :disabled="saving" />
+        </AppFormItem>
+        <AppFormItem label="选课控制">
+          <AppSelect v-model="roundForm.ctrl" :options="[{ label: '可选可退', value: 'BOTH' }, { label: '只可选（禁退）', value: 'ENROLL_ONLY' }, { label: '只可退（补退选禁新增）', value: 'DROP_ONLY' }]" :disabled="saving" />
+        </AppFormItem>
+        <AppInlineAlert v-if="roundError" type="danger" :description="roundError" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="roundVisible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="saving" @click="submitRound">创建</AppButton>
+      </template>
+    </AppDrawer>
+
     <!-- 名单抽屉 -->
     <AppDrawer :visible="rosterVisible" :title="'选课名单 · ' + (rosterCourse ? rosterCourse.courseName : '')" @close="rosterVisible = false">
       <EmptyState v-if="!rosterRows.length" title="暂无学生" description="该课程尚无有效选课记录" />
@@ -197,7 +179,7 @@
 /** 选课管理 · 教务处控制台（/admin/academic-affairs/selection）：批次生命周期 + 课程供给 + 名单 + 统计。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
 import { academicAffairsApi, academicAffairsSelectionApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -207,8 +189,7 @@ export default {
   name: 'AaSelectionConsoleView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert
-  },
+    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -220,34 +201,22 @@ export default {
       rosterVisible: false, rosterCourse: null, rosterRows: [],
       saving: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      rounds: [], drawResult: null,
+      roundVisible: false, roundForm: { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }, roundError: '',
+      roundColumns: [
+        { key: 'round', title: '轮次' }, { key: 'mode', title: '模式' },
+        { key: 'ctrl', title: '选退控制' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
+      ],
       courseColumns: [
         { key: 'course', title: '课程' }, { key: 'fill', title: '选课情况' },
         { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
       ],
-      rosterColumns: [{ key: 'student', title: '学生' }, { key: 'status', title: '状态' }],
-      // ── 选课规则 / 补选指引 / 冲突检测（03/06/09号卡） ──
-      detailTab: 'courses',
-      detailTabs: [
-        { key: 'courses', label: '课程供给' }, { key: 'rule', label: '选课规则' },
-        { key: 'reselect', label: '补选指引' }, { key: 'conflict', label: '冲突检测' }
-      ],
-      ruleForm: { maxCredits: 0 }, ruleSaving: false,
-      reselectData: { cancelledCourses: [], availableCourses: [] },
-      miniCourseColumns: [
-        { key: 'courseName', title: '课程' }, { key: 'credit', title: '学分' },
-        { key: 'selectedCount', title: '已选' }, { key: 'capacity', title: '容量' }
-      ],
-      conflictStudentNo: '', conflictReport: { summary: [], items: [] },
-      conflictExportPurpose: '', conflictExporting: false,
-      conflictSummaryColumns: [{ key: 'courseName', title: '课程' }, { key: 'conflictRejectCount', title: '冲突拒选次数' }],
-      conflictItemColumns: [{ key: 'occurredAt', title: '时间' }, { key: 'courseName', title: '课程' }, { key: 'detail', title: '详情' }]
+      rosterColumns: [{ key: 'student', title: '学生' }, { key: 'status', title: '状态' }]
     }
   },
   async created() {
     const c = await academicAffairsApi.getContext()
     if (c.code === 0) this.ctx = c.data
-    const q = this.$route && this.$route.query && this.$route.query.tab
-    if (q && this.detailTabs.some((t) => t.key === q)) this.detailTab = q
     this.load()
   },
   methods: {
@@ -276,58 +245,51 @@ export default {
     },
     async select(b) {
       this.current = b
-      this.detailTab = 'courses'
-      this.ruleForm = { maxCredits: (b.rule && b.rule.maxCredits) || 0 }
-      this.reselectData = { cancelledCourses: [], availableCourses: [] }
-      this.conflictReport = { summary: [], items: [] }
-      this.conflictStudentNo = ''
       await this.refreshDetail()
-    },
-    async onTabChange() {
-      if (!this.current) return
-      if (this.detailTab === 'reselect' && this.current.status === 'CLOSED') await this.loadReselectGuide()
-      else if (this.detailTab === 'conflict') await this.loadConflictReport()
-    },
-    async saveRule() {
-      this.ruleSaving = true
-      const rule = { ...(this.current.rule || {}), maxCredits: Number(this.ruleForm.maxCredits) || 0 }
-      const res = await api.saveRule(this.current.batchId, rule)
-      this.ruleSaving = false
-      if (res.code === 0) { toast.success('规则已保存'); this.current = res.data; await this.load() }
-      else toast.error(res.message)
-    },
-    async loadReselectGuide() {
-      const res = await api.reselectGuide(this.current.batchId)
-      if (res.code === 0) this.reselectData = res.data
-      else toast.error(res.message)
-    },
-    async loadConflictReport() {
-      const res = await api.conflictReport(this.current.batchId, this.conflictStudentNo || undefined)
-      if (res.code === 0) this.conflictReport = res.data
-      else toast.error(res.message)
-    },
-    async exportConflict() {
-      if (!this.conflictExportPurpose || this.conflictExportPurpose.trim().length < 5) {
-        toast.error('导出用途必填且不少于 5 个字'); return
-      }
-      this.conflictExporting = true
-      const res = await api.exportConflictReport(this.current.batchId, this.conflictExportPurpose.trim())
-      this.conflictExporting = false
-      if (res.code !== 0) { toast.error(res.message || '导出失败'); return }
-      const href = URL.createObjectURL(res.data)
-      const a = document.createElement('a')
-      a.href = href; a.download = `选课冲突报表-${Date.now()}.xlsx`
-      document.body.appendChild(a); a.click(); document.body.removeChild(a)
-      URL.revokeObjectURL(href)
     },
     async refreshDetail() {
       if (!this.current) return
-      const [cs, st] = await Promise.all([
+      const [cs, st, rd] = await Promise.all([
         api.listCourses(this.current.batchId, { pageSize: 200 }),
-        api.batchStats(this.current.batchId)
+        api.batchStats(this.current.batchId),
+        api.listRounds(this.current.batchId)
       ])
       this.courses = cs.code === 0 ? cs.data.list : []
       this.stats = st.code === 0 ? st.data : null
+      this.rounds = rd.code === 0 ? (rd.data.items || []) : []
+    },
+    roundStatusLabel(s) { return { DRAFT: '草稿', OPEN: '进行中', CLOSED: '已关闭', DRAWN: '已摇号' }[s] || s },
+    roundStatusType(s) {
+      if (s === 'OPEN') return 'success'
+      if (s === 'DRAWN') return 'default'
+      if (s === 'CLOSED') return 'warning'
+      return 'primary'
+    },
+    openAddRound() { this.roundForm = { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }; this.roundError = ''; this.roundVisible = true },
+    async submitRound() {
+      if (!this.roundForm.roundName) { this.roundError = '轮次名称必填'; return }
+      this.saving = true
+      const res = await api.createRound(this.current.batchId, {
+        roundName: this.roundForm.roundName, mode: this.roundForm.mode,
+        allowEnroll: this.roundForm.ctrl !== 'DROP_ONLY',
+        allowDrop: this.roundForm.ctrl !== 'ENROLL_ONLY'
+      })
+      this.saving = false
+      if (res.code === 0) { toast.success('轮次已创建'); this.roundVisible = false; await this.refreshDetail() }
+      else this.roundError = res.message
+    },
+    roundAction(row, fn, label) {
+      this.confirmTitle = label
+      this.confirmMessage = `确认对「第${row.roundNo}轮 ${row.roundName}」执行「${label}」？`
+      this.pendingAction = async () => {
+        const res = await api[fn](row.roundId)
+        if (res.code === 0) {
+          toast.success(res.message || label + '成功')
+          if (fn === 'drawRound') this.drawResult = res.data
+          await this.refreshDetail()
+        } else toast.error(res.message)
+      }
+      this.confirmVisible = true
     },
     openCreate() { this.form = { batchName: '', maxCredits: 0, remark: '' }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
@@ -397,13 +359,4 @@ export default {
 .aasel-stats .is-warn { color: var(--warning-color, #d97706); font-weight: 600; }
 .aasel-courses-head { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; font-weight: 500; }
 .aasel-form { display: flex; flex-direction: column; gap: 12px; }
-.aasel-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); margin-bottom: 12px; }
-.aasel-tab { padding: 6px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-500, #646a73); border-bottom: 2px solid transparent; }
-.aasel-tab.is-active { color: var(--primary-600, #2563eb); border-bottom-color: var(--primary-500, #3b82f6); font-weight: 500; }
-.aasel-rule { display: flex; flex-direction: column; gap: 12px; max-width: 420px; }
-.aasel-rule-fixed { background: var(--fill-light, #f8fafc); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--text-600, #566073); }
-.aasel-rule-fixed-title { font-weight: 500; margin-bottom: 6px; }
-.aasel-rule-fixed ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
-.aasel-section-title { font-weight: 500; margin: 12px 0 8px; }
-.aasel-conflict-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 </style>

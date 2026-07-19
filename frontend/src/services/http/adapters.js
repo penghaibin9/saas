@@ -138,7 +138,15 @@ const BIZ_LABEL = {
   PROFILE_CORRECTION: '信息更正',
   COMPANY_CHANGE: '实习变更',
   MATERIAL_VERIFY: '材料核验',
-  LEAVE: '请假审批'
+  LEAVE: '请假审批',
+  AID: '困难认定',
+  FUNDING: '奖助评定',
+  DISCIPLINE: '违纪认定',
+  DISCIPLINE_REMOVE: '违纪解除',
+  AA_STATUS_CHANGE: '学籍异动',
+  AA_GRADE_TASK: '成绩审核',
+  AA_GRADE_CHANGE: '成绩更正',
+  AA_SCHEDULE_CHANGE: '调停课审批'
 }
 
 function approvalItem(t) {
@@ -193,9 +201,10 @@ export async function returnTask(taskId, reason) {
 }
 
 export async function getTodoSummary() {
-  const [s, tasks] = await Promise.all([
+  const [s, tasks, groups] = await Promise.all([
     request('/todos/summary'),
-    request('/approvals/tasks', { params: { page: 1, pageSize: 1 } })
+    request('/approvals/tasks', { params: { page: 1, pageSize: 1 } }),
+    request('/approvals/tasks/summary/by-biz-type').catch(() => [])
   ])
   return envelope({
     todayTag: '',
@@ -203,7 +212,13 @@ export async function getTodoSummary() {
     todayNew: 0,
     nearDeadline: s.nearDeadline || 0,
     overdue: s.overdue || 0,
-    byBizType: [],
+    byBizType: (groups || []).map((g) => ({
+      bizType: g.bizType,
+      label: BIZ_LABEL[g.bizType] || g.bizType || '其他',
+      count: g.count,
+      overdue: 0,
+      earliest: (g.earliest || '').replace('T', ' ').slice(0, 16)
+    })),
     overdueList: []
   })
 }

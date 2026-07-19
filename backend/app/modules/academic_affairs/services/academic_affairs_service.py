@@ -740,9 +740,13 @@ def roster(user, keyword=None, status=None, page=1, page_size=20):
     from app.models import StudentProfile
     from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
     with session() as db:
+        ctx = build_affairs_context(user, db)
         conds = [StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
         if status:
             conds.append(StudentProfile.student_status == status)
+        allowed = ctx.allowed_class_ids(db)
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(list(allowed)) if allowed else (StudentProfile.id == -1))
         rows = db.scalars(select(StudentProfile).where(*conds).order_by(StudentProfile.id.desc())).all()
         out = []
         for s in rows:

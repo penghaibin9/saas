@@ -14,10 +14,7 @@
       <AppInlineAlert v-if="scanResult" type="success" :message="`扫描完成：阈值 ${scanResult.threshold ?? '-'} · 新增 ${scanResult.created} · 更新 ${scanResult.updated} · 通知 ${scanResult.notified}`" />
 
       <div class="aa-filter">
-        <select v-model="filters.level" class="aa-select" @change="search">
-          <option value="">全部级别</option>
-          <option v-for="(l, v) in WARNING_LEVEL" :key="v" :value="v">{{ l }}</option>
-        </select>
+        <AppSelect v-model="filters.level" :options="levelOptions" @change="search" />
         <button class="mp-btn" @click="search">查询</button>
       </div>
 
@@ -37,14 +34,14 @@
 <script>
 /** 学业预警（/admin/academic-affairs/warnings）：POST /warnings/scan + GET /warnings。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppInlineAlert } from '@/components/common'
+import { AppStatusTag, AppInlineAlert, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { WARNING_LEVEL, warningColor } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaWarningView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppInlineAlert },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppInlineAlert, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -58,6 +55,11 @@ export default {
         { key: 'reason', title: '预警原因' },
         { key: 'sourceCode', title: '来源' }
       ]
+    }
+  },
+  computed: {
+    levelOptions() {
+      return [{ value: '', label: '全部级别' }, ...Object.entries(WARNING_LEVEL).map(([value, label]) => ({ value, label }))]
     }
   },
   created() { this.load() },

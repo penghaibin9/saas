@@ -13,10 +13,7 @@
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
         <div class="fd-gen">
-          <select v-model="genBatchId" class="fd-input">
-            <option value="">选择批次生成…</option>
-            <option v-for="b in batches" :key="b.batchId" :value="b.batchId">{{ b.schoolYear }} · {{ typeLabel(b.projectType) }}（{{ b.status }}）</option>
-          </select>
+          <AppSelect v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次生成…" />
           <AppPermissionButton code="studentAffairs.funding.disburse.manage" :loading="acting==='gen'" :disabled="!genBatchId" @click="generate">生成发放台账</AppPermissionButton>
         </div>
       </div>
@@ -79,7 +76,7 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
-  AppPermissionButton, AppSectionCard, AppStatusTag, AppTextInput
+  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -93,7 +90,7 @@ export default {
   name: 'FundingDisbursementView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppTextInput, StatusTag: AppStatusTag
+    AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag
   },
   data() {
     return {
@@ -105,6 +102,9 @@ export default {
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    batchOptions() {
+      return this.batches.map((b) => ({ value: b.batchId, label: `${b.schoolYear} · ${this.typeLabel(b.projectType)}（${b.status}）` }))
+    },
     metricCards() {
       const s = (k) => (this.stats.byStatus || []).find((x) => x.key === k)
       const cnt = (k) => { const r = s(k); return r ? r.count : 0 }
@@ -181,6 +181,7 @@ export default {
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
 .fd-gen { display: flex; gap: var(--space-2); align-items: center; }
+.fd-genpick { width: 260px; }
 .fd-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
 .fd-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .fd-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }

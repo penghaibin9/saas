@@ -85,10 +85,20 @@ def _primary_phone(db, student_id: int) -> str | None:
 
 
 def list_students(page: int, page_size: int, keyword=None, college=None, major=None,
-                  class_name=None, status=None, risk_level=None) -> tuple[list[dict], int]:
+                  class_name=None, status=None, risk_level=None,
+                  class_ids=None, student_ids=None) -> tuple[list[dict], int]:
+    # 数据范围收敛（SEC 口径）：class_ids/student_ids 由 API 层按角色解析；空集合 = fail-closed
+    if class_ids is not None and not class_ids:
+        return [], 0
+    if student_ids is not None and not student_ids:
+        return [], 0
     with session() as db:
         q = select(StudentProfile).where(StudentProfile.tenant_id == _tid(),
                                          StudentProfile.is_deleted.is_(False))
+        if class_ids is not None:
+            q = q.where(StudentProfile.class_id.in_(list(class_ids)))
+        if student_ids is not None:
+            q = q.where(StudentProfile.id.in_(list(student_ids)))
         if keyword:
             like = f"%{keyword}%"
             q = q.where((StudentProfile.real_name.like(like)) | (StudentProfile.student_no.like(like)))
@@ -252,6 +262,21 @@ def list_tasks(page: int, page_size: int, status: Optional[str] = None) -> tuple
         return [_task_row(t, insts.get(t.instance_id)) for t in rows], total
 
 
+def tasks_by_biz_type() -> list[dict]:
+    with session() as db:
+        rows = db.execute(
+            select(WorkflowInstance.source_biz_type, func.count(WorkflowTask.id),
+                   func.min(WorkflowTask.created_at))
+            .select_from(WorkflowTask)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
+            .where(WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
+                   WorkflowTask.status == "PENDING", WorkflowInstance.tenant_id == _tid(),
+                   WorkflowInstance.is_deleted.is_(False))
+            .group_by(WorkflowInstance.source_biz_type)
+        ).all()
+        return [{"bizType": r[0] or "GENERAL", "count": r[1], "earliest": _iso(r[2])} for r in rows]
+
+
 def get_task(task_id) -> dict:
     with session() as db:
         t = db.get(WorkflowTask, int(task_id))
@@ -374,13 +399,22 @@ def message_read(message_id) -> dict:
 
 # ═══════════ 审计 ═══════════
 
-def audit_insert(action: str, resource: str, detail: dict | None, result: str) -> None:
+def audit_insert(action: str, resource: str, detail: dict | None, result: str,
+                 *, tenant_id: int | None = None, resource_id: str | None = None) -> None:
+    """写一条安全审计。
+    tenant_id：显式指定审计归属租户（平台超管跨租户操作时传"被操作学校"，
+               使该校自身审计可见平台侧动作；默认沿用请求上下文租户）。
+    operator_id：从上下文 userId（db-<id>）解析真实操作人主键，不再恒为 None。"""
     user = get_current_user_ctx() or {}
     meta = get_request_meta()
+    raw_uid = str(user.get("userId") or "")
+    operator_id = int(raw_uid[3:]) if raw_uid.startswith("db-") and raw_uid[3:].isdigit() else None
     with session() as db:
         db.add(SecurityAuditLog(
-            tenant_id=_tid(), operator_id=None, operator_name=user.get("realName"),
+            tenant_id=tenant_id if tenant_id is not None else _tid(),
+            operator_id=operator_id, operator_name=user.get("realName"),
             current_role=user.get("currentRoleCode"), action=action, resource=resource,
+            resource_id=resource_id,
             ip=meta.get("ip"), user_agent=meta.get("userAgent"),
             request_method=meta.get("method"), request_path=meta.get("path"),
             trace_id=get_trace_id(), result=result, detail_json=detail or {},

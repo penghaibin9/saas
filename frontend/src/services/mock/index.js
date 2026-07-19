@@ -4,7 +4,6 @@
  * - 所有指标经 utils/aggregate 由 mocks/db 底层数据计算，本层禁止硬编码指标
  * - 后续接真实 API 时，仅替换本层实现，store 与页面不变
  */
-import * as db from '../../mocks'
 import {
   aggregatePracticeTeachingMetrics,
   aggregateGraduationDesignMetrics,
@@ -12,9 +11,13 @@ import {
   aggregateEmploymentMetrics
 } from '../../utils/aggregate'
 
+// P2-5：mock 数据动态引入——不再随主包/本模块同步出包，只有真正调到这些
+// 演示函数时才加载对应 chunk（生产运行时有 allowMockFallback 闸门，不会调到）。
+const loadDb = () => import('../../mocks')
+
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 
-const baseCtx = () => ({
+const baseCtx = (db) => ({
   students: db.students,
   gdTasks: db.gdTasks,
   internships: db.internships,
@@ -28,6 +31,7 @@ const baseCtx = () => ({
 
 /** 学生 PC 首页数据（默认：高风险实习学生剧本） */
 export async function getStudentDashboard(studentDbId = 'stu-001') {
+  const db = await loadDb()
   await delay()
   const student = db.findStudent(studentDbId)
   if (!student) throw new Error('STUDENT_NOT_FOUND')
@@ -44,6 +48,7 @@ export async function getStudentDashboard(studentDbId = 'stu-001') {
 
 /** 教师工作台数据（默认：实习指导教师剧本） */
 export async function getTeacherWorkbench(teacherId = 't-002') {
+  const db = await loadDb()
   await delay()
   const teacher = db.findTeacher(teacherId)
   if (!teacher) throw new Error('TEACHER_NOT_FOUND')
@@ -67,6 +72,7 @@ export async function getTeacherWorkbench(teacherId = 't-002') {
 
 /** 毕业设计看板指标 + 学生进度行（行数据由底层数据关联组装，供列表展示） */
 export async function getGraduationDesignMetrics() {
+  const db = await loadDb()
   await delay()
   const rows = db.gdTasks.map((t) => {
     const student = db.findStudent(t.studentId)
@@ -86,7 +92,7 @@ export async function getGraduationDesignMetrics() {
     }
   })
   return {
-    metrics: aggregateGraduationDesignMetrics(baseCtx()),
+    metrics: aggregateGraduationDesignMetrics(baseCtx(db)),
     rows,
     overdueRows: rows.filter((r) => r.openingOverdue),
     excellentRows: rows.filter((r) => r.excellent),
@@ -96,6 +102,7 @@ export async function getGraduationDesignMetrics() {
 
 /** 岗位实习看板指标 + 实习明细行 + 企业侧待办（行数据由底层数据关联组装） */
 export async function getInternshipMetrics() {
+  const db = await loadDb()
   await delay()
   const abnormalStreakOf = (sid) => {
     const recs = db.checkins
@@ -133,7 +140,7 @@ export async function getInternshipMetrics() {
       }
     })
   return {
-    metrics: aggregateInternshipMetrics(baseCtx()),
+    metrics: aggregateInternshipMetrics(baseCtx(db)),
     rows,
     riskRows: rows.filter(
       (r) => ['HIGH', 'CRITICAL'].includes(r.riskLevel) || r.abnormalStreak >= 3
@@ -145,8 +152,9 @@ export async function getInternshipMetrics() {
 
 /** 实践教学总览（驾驶舱） */
 export async function getPracticeTeachingOverview() {
+  const db = await loadDb()
   await delay()
-  const ctx = baseCtx()
+  const ctx = baseCtx(db)
   return {
     overview: aggregatePracticeTeachingMetrics(ctx),
     graduationDesign: aggregateGraduationDesignMetrics(ctx),
@@ -167,6 +175,7 @@ export async function getPracticeTeachingOverview() {
 
 /** 企业导师首页数据（默认：正常企业剧本） */
 export async function getEnterpriseDashboard(enterpriseId = 'ent-001') {
+  const db = await loadDb()
   await delay()
   const enterprise = db.findEnterprise(enterpriseId)
   if (!enterprise) throw new Error('ENTERPRISE_NOT_FOUND')

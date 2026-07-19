@@ -68,10 +68,8 @@
               {{ directionToggle.enabled ? '停用总开关' : '启用总开关' }}
             </button>
             <template v-if="directionToggle.enabled">
-              <select v-model="directionMajorId" @change="reloadDirections">
-                <option value="">请选择专业</option>
-                <option v-for="m in majorOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
-              </select>
+              <AppSelect v-model="directionMajorId" :placeholder="''" @change="reloadDirections"
+                         :options="[{ value: '', label: '请选择专业' }, ...majorOptions]" />
               <button v-if="directionMajorId && canManage" class="mp-btn mp-btn--primary" @click="openDirectionCreate">＋ 新建方向</button>
             </template>
           </div>
@@ -105,10 +103,8 @@
       <section v-else-if="tab === 'students'" class="mp-card">
         <div class="mp-card__body">
           <div class="aa-filter">
-            <select v-model="studentsFilterClassId" @change="reloadStudentsList">
-              <option value="">请选择行政班</option>
-              <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-            </select>
+            <AppSelect v-model="studentsFilterClassId" :placeholder="''" @change="reloadStudentsList"
+                       :options="[{ value: '', label: '请选择行政班' }, ...classOptions]" />
             <input v-model="studentsKeyword" class="aa-input" placeholder="学号/姓名关键字" @keyup.enter="reloadStudentsList" />
             <button class="mp-btn" :disabled="!studentsFilterClassId" @click="reloadStudentsList">查询</button>
           </div>
@@ -135,16 +131,10 @@
       <section v-else-if="tab === 'adjust'" class="mp-card">
         <div class="mp-card__body">
           <div class="aa-filter">
-            <select v-model="adjustments.filters.status" @change="reloadAdjustments">
-              <option value="">全部状态</option>
-              <option value="DRAFT">草稿</option><option value="CHECKED">已核对</option>
-              <option value="EXECUTED">已执行</option><option value="CANCELLED">已撤销</option>
-            </select>
-            <select v-model="adjustments.filters.adjustType" @change="reloadAdjustments">
-              <option value="">全部类型</option>
-              <option value="MERGE">合班登记</option><option value="SPLIT">拆班登记</option>
-              <option value="DISBAND">停用撤销</option><option value="GRADUATE_CLEAR">毕业清班</option>
-            </select>
+            <AppSelect v-model="adjustments.filters.status" :placeholder="''" @change="reloadAdjustments"
+                       :options="[{ value: '', label: '全部状态' }, { value: 'DRAFT', label: '草稿' }, { value: 'CHECKED', label: '已核对' }, { value: 'EXECUTED', label: '已执行' }, { value: 'CANCELLED', label: '已撤销' }]" />
+            <AppSelect v-model="adjustments.filters.adjustType" :placeholder="''" @change="reloadAdjustments"
+                       :options="[{ value: '', label: '全部类型' }, { value: 'MERGE', label: '合班登记' }, { value: 'SPLIT', label: '拆班登记' }, { value: 'DISBAND', label: '停用撤销' }, { value: 'GRADUATE_CLEAR', label: '毕业清班' }]" />
             <button class="mp-btn" @click="reloadAdjustments">查询</button>
             <button v-if="canManage" class="mp-btn mp-btn--primary" @click="openAdjustCreate">＋ 发起调整</button>
           </div>
@@ -182,14 +172,10 @@
       <!-- 列表类页签（学院/专业/行政班/年级/教学班/审计/班级学生）-->
       <template v-else>
         <div v-if="tab === 'major' || tab === 'class'" class="aa-filter">
-          <select v-if="tab === 'major'" v-model="filters.collegeId" @change="reload">
-            <option value="">全部学院</option>
-            <option v-for="c in collegeOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-          </select>
-          <select v-if="tab === 'class'" v-model="filters.majorId" @change="reload">
-            <option value="">全部专业</option>
-            <option v-for="m in majorOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
-          </select>
+          <AppSelect v-if="tab === 'major'" v-model="filters.collegeId" :placeholder="''" @change="reload"
+                     :options="[{ value: '', label: '全部学院' }, ...collegeOptions]" />
+          <AppSelect v-if="tab === 'class'" v-model="filters.majorId" :placeholder="''" @change="reload"
+                     :options="[{ value: '', label: '全部专业' }, ...majorOptions]" />
           <input v-model="filters.keyword" class="aa-input" placeholder="关键词" @keyup.enter="reload" />
           <button class="mp-btn" @click="reload">查询</button>
         </div>
@@ -427,6 +413,7 @@
  */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppSelect } from '@/components/common'
 import { academicAffairsOrgApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
@@ -436,7 +423,7 @@ const MANAGE_ROLES = ['SCHOOL_ADMIN', 'PLATFORM_SUPER_ADMIN', 'ACADEMIC_TEACHER'
 
 export default {
   name: 'AaOrgConsole',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppSelect },
   data() {
     return {
       tab: 'college',

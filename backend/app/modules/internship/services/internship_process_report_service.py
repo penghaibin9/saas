@@ -47,7 +47,37 @@ def _row(r, rec, stu):
         "enterpriseName": rec.enterprise_name if rec else "",
         "wordCount": r.word_count, "submitAt": _iso(r.submitted_at) or "",
         "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, r.status),
+        "reviewComment": r.review_comment or "", "reviewedByName": r.reviewed_by_name or "",
+        "reviewedAt": _iso(r.reviewed_at) or "",
     }
+
+
+def _student_record(db, user):
+    sno = (user or {}).get("studentNo")
+    if not sno:
+        return None, None
+    stu = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == _tid(), StudentProfile.student_no == sno,
+        StudentProfile.is_deleted.is_(False))).first()
+    if not stu:
+        return None, None
+    rec = db.scalars(select(InternshipRecord).where(
+        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
+        InternshipRecord.is_deleted.is_(False))).first()
+    return rec, stu
+
+
+def my_reports(user) -> dict:
+    """本人过程报告列表（含批阅意见）——补齐此前只能提交、读不到老师批阅结果的缺口。"""
+    with session() as db:
+        rec, stu = _student_record(db, user)
+        if not rec:
+            return {"items": []}
+        rows = db.scalars(select(InternshipProcessReport).where(
+            InternshipProcessReport.tenant_id == _tid(), InternshipProcessReport.internship_id == rec.id,
+            InternshipProcessReport.is_deleted.is_(False)).order_by(
+            InternshipProcessReport.submitted_at.desc(), InternshipProcessReport.id.desc())).all()
+        return {"items": [_row(r, rec, stu) for r in rows]}
 
 
 def list_reports(page, page_size, report_type=None, status=None, keyword=None, user=None):

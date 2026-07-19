@@ -46,7 +46,8 @@
         <textarea v-model.trim="form.outcome" class="ie-in" rows="2" />
       </label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">技能要求</span>
-        <textarea v-model.trim="form.skills" class="ie-in" rows="2" />
+        <textarea v-model.trim="form.skills" class="ie-in" rows="2" placeholder="专业基础、技能要求…" />
+        <AppTemplateChips :options="SKILL_CHIPS" @pick="(t) => (form.skills = form.skills ? form.skills + '\n' + t : t)" />
       </label>
       <label v-if="!editing" class="ie-fld ie-fld--full">
         <input v-model="form.submitReview" type="checkbox" /> 保存后直接提交审核
@@ -64,9 +65,15 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
-import { AppMentorPicker } from '@/components/common'
+import { AppMentorPicker, AppTemplateChips } from '@/components/common'
 import { GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY } from '@/modules/graduation/constants/graduation-topic.constants'
 import { toast } from '@/utils/toast'
+
+const SKILL_CHIPS = [
+  '要求有一定编程基础，掌握Java/Python/JavaScript之一',
+  '要求熟悉数据库原理，有Web开发基础',
+  '无特殊要求，有学习热情即可'
+]
 
 const EMPTY_FORM = (sourceType = 'TEACHER') => ({
   title: '', batchId: '', topicNo: '', sourceType, advisorName: '', majorName: '',
@@ -82,11 +89,11 @@ const APPLY_TITLES = {
 
 export default {
   name: 'TopicLibFormView',
-  components: { GraduationFormPageShell, AppMentorPicker },
+  components: { GraduationFormPageShell, AppMentorPicker, AppTemplateChips },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY,
+      GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY, SKILL_CHIPS,
       submitting: false, editing: null, form: EMPTY_FORM(), formError: '',
       batchOpts: []
     }
@@ -147,8 +154,5 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gb-kv { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
-.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

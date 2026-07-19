@@ -84,9 +84,13 @@ def test_cadre_appoint_and_list(client, db_mode):
     body = {"studentId": "1", "position": "MONITOR", "termCode": "2026-1"}
     r = client.post(f"/api/v1/student-affairs/classes/{ids['A']}/cadres", json=body, headers=hdr).json()
     assert r["code"] == 0 and r["data"]["position"] == "MONITOR"
-    # 列表可见
+    # 历史欠账：任命/列表须带学生姓名+学号（此前只回 studentId 内部主键）。id=1 为基础种子学生赵一凡。
+    assert r["data"]["studentName"] == "赵一凡" and r["data"]["studentNo"] == "2023115001"
+    # 列表可见 + 带姓名学号
     r2 = client.get(f"/api/v1/student-affairs/classes/{ids['A']}/cadres", headers=hdr).json()
     assert len(r2["data"]["items"]) == 1
+    assert r2["data"]["items"][0]["studentName"] == "赵一凡"
+    assert r2["data"]["items"][0]["studentNo"] == "2023115001"
     # 同班同职务重复任命 → 409
     r3 = client.post(f"/api/v1/student-affairs/classes/{ids['A']}/cadres", json=body, headers=hdr)
     assert r3.status_code == 409

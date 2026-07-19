@@ -101,6 +101,15 @@ def _stu_of(db, csid):
     return db.get(CsServiceStudent, csid)
 
 
+def _cs_students_by_ids(db, rows, attr="cs_student_id"):
+    """批量取回 rows 涉及的在校服务学生台账 {id: CsServiceStudent}，替代列表循环内逐行
+    _stu_of（消 N+1）。哨兵行 cs_student_id=0 不入集合，循环内 .get(0) 自然落 None。"""
+    ids = {int(getattr(x, attr)) for x in rows if getattr(x, attr, None)}
+    if not ids:
+        return {}
+    return {s.id: s for s in db.scalars(select(CsServiceStudent).where(CsServiceStudent.id.in_(ids))).all()}
+
+
 # ═══ 学生台账 ═══
 
 def _stu_row(s: CsServiceStudent) -> dict:
@@ -227,6 +236,7 @@ def list_leaves(page, page_size, keyword=None, type=None, status=None):
         rows = db.scalars(q.order_by(CsLeave.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
         allowed_classes, _ = _allowed_class_ids(db, get_current_user_ctx() or {})
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if x.cs_student_id:
@@ -237,7 +247,7 @@ def list_leaves(page, page_size, keyword=None, type=None, status=None):
                 s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
                 if not s or s.class_id not in allowed_classes:
                     continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_leave_row(x, stu))
@@ -330,11 +340,12 @@ def list_grants(page, page_size, keyword=None, type=None, status=None):
             q = q.where(CsGrant.status == status)
         rows = db.scalars(q.order_by(CsGrant.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if scope_ids is not None and x.cs_student_id not in scope_ids:
                 continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_grant_row(x, stu, mask=True))
@@ -412,9 +423,13 @@ def list_dorm_records(page, page_size, keyword=None, status=None):
         if status:
             q = q.where(CsDormRecord.status == status)
         rows = db.scalars(q.order_by(CsDormRecord.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
-            stu = _stu_of(db, x.cs_student_id)
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_dorm_row(x, stu))
@@ -440,9 +455,13 @@ def list_dorm_exceptions(page, page_size, keyword=None, type=None, status=None):
         if status:
             q = q.where(CsDormException.status == status)
         rows = db.scalars(q.order_by(CsDormException.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
-            stu = _stu_of(db, x.cs_student_id)
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_de_row(x, stu))
@@ -474,6 +493,7 @@ def handle_dorm_exception(eid, note, complete=False) -> dict:
         e = db.get(CsDormException, int(eid))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("宿舍异常不存在")
+        _require_cs_scope(db, e.cs_student_id)
         before = e.status
         e.status = "COMPLETED" if complete else "PROCESSING"
         e.handle_note = note.strip()
@@ -507,68 +527,35 @@ def list_disciplines(page, page_size, keyword=None, type=None, status=None):
             q = q.where(CsDiscipline.status == status)
         rows = db.scalars(q.order_by(CsDiscipline.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
             if scope_ids is not None and x.cs_student_id not in scope_ids:
                 continue
-            stu = _stu_of(db, x.cs_student_id)
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_disc_row(x, stu))
         return _page(items, page, page_size)
 
 
+# 旧版违纪直接编辑入口已废弃（甲方拍板保留新版流程、下线旧版）：新旧两套写入路径共用同一张
+# t_cs_discipline 表、权限体系分裂，且旧版 update_discipline 的 REVOKED 分支不同步新版对账用的
+# record_status 字段，导致奖助/毕业资格判定会把旧版"已撤销"的处分继续当生效处分——已坐实的真实
+# 缺陷（见 review_appeal 修复同期复核）。三个写操作全部拒绝，只保留 list/get 只读查询与既有数据兼容。
+_DISCIPLINE_RETIRED_MSG = "违纪登记（现有）写操作已下线，请到「学工中心 → 违纪处分」新版工作台处理"
+
+
 def create_discipline(body: dict) -> dict:
-    reason = str(body.get("reason") or "").strip()
-    if not body.get("studentId") or not body.get("type") or len(reason) < 5:
-        raise AppException("VALIDATION_ERROR", "学生、处分类型必填，事由不少于 5 字")
-    with session() as db:
-        s = _get_stu(db, body.get("studentId"))
-        code = f"DIS-{datetime.now():%Y}-{db.scalar(select(func.count()).select_from(CsDiscipline).where(CsDiscipline.tenant_id == _tid())) + 1:04d}"
-        d = CsDiscipline(tenant_id=_tid(), cs_student_id=s.id, disc_type=body["type"], reason=reason,
-                         decide_date=datetime.utcnow(), doc_no=body.get("docNo"), code=code,
-                         status="EFFECTIVE", record_status="ACTIVE")
-        db.add(d)
-        db.flush()
-        _audit(db, "DISCIPLINE", d.id, "新增处分", reason)
-        db.commit()
-        return {"id": str(d.id)}
+    raise AppException("DATA_CONFLICT", _DISCIPLINE_RETIRED_MSG)
 
 
 def update_discipline(did, body: dict) -> dict:
-    with session() as db:
-        d = db.get(CsDiscipline, int(did))
-        if not d or d.is_deleted or d.tenant_id != _tid():
-            raise not_found("处分记录不存在")
-        _require_cs_scope(db, d.cs_student_id)
-        if body.get("status") == "REVOKED":
-            d.status = "REVOKED"
-            d.revoke_date = datetime.utcnow()
-            d.revoke_reason = body.get("revokeReason") or ""
-        for k, col in {"type": "disc_type", "reason": "reason"}.items():
-            if body.get(k) is not None:
-                setattr(d, col, body[k])
-        d.version += 1
-        _audit(db, "DISCIPLINE", d.id, "更新处分")
-        db.commit()
-        return {"id": str(d.id)}
+    raise AppException("DATA_CONFLICT", _DISCIPLINE_RETIRED_MSG)
 
 
 def void_discipline(did, reason) -> dict:
-    if not reason or len(reason.strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
-    with session() as db:
-        d = db.get(CsDiscipline, int(did))
-        if not d or d.is_deleted or d.tenant_id != _tid():
-            raise not_found("处分记录不存在")
-        _require_cs_scope(db, d.cs_student_id)
-        d.record_status = "VOIDED"
-        d.void_reason = reason.strip()
-        d.is_deleted = True
-        d.version += 1
-        _audit(db, "DISCIPLINE", d.id, "作废处分", reason.strip())
-        db.commit()
-        return {"id": str(d.id)}
+    raise AppException("DATA_CONFLICT", _DISCIPLINE_RETIRED_MSG)
 
 
 # ═══ 工单 ═══
@@ -593,9 +580,13 @@ def list_work_orders(page, page_size, keyword=None, type=None, status=None, prio
         if priority:
             q = q.where(CsWorkOrder.priority == priority)
         rows = db.scalars(q.order_by(CsWorkOrder.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
-            stu = _stu_of(db, x.cs_student_id)
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or (keyword.strip() not in (stu.name or "") and keyword.strip() not in x.title)):
                 continue
             items.append(_wo_row(x, stu))
@@ -607,6 +598,7 @@ def get_work_order_detail(wid) -> dict:
         x = db.get(CsWorkOrder, int(wid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("工单不存在")
+        _require_cs_scope(db, x.cs_student_id)
         stu = _stu_of(db, x.cs_student_id)
         row = _wo_row(x, stu)
         row["trail"] = x.trail_json or []
@@ -635,10 +627,13 @@ def create_work_order(body: dict) -> dict:
 def assign_work_orders(ids, handler) -> dict:
     cnt = 0
     with session() as db:
+        scope_ids = _cs_scope_student_ids(db)
         for wid in ids:
             w = db.get(CsWorkOrder, int(wid))
             if not w or w.tenant_id != _tid() or w.is_deleted:
                 continue
+            if scope_ids is not None and int(w.cs_student_id or 0) not in scope_ids:
+                continue  # 越数据范围工单跳过，不整批 403
             w.handler = handler or _op()[0]
             if w.status == "PENDING_HANDLE":
                 w.status = "PROCESSING"
@@ -658,6 +653,7 @@ def handle_work_order(wid, note, close=False) -> dict:
         w = db.get(CsWorkOrder, int(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
+        _require_cs_scope(db, w.cs_student_id)
         before = w.status
         w.status = "COMPLETED" if close else "PROCESSING"
         if close:
@@ -678,6 +674,7 @@ def close_work_order(wid, reason) -> dict:
         w = db.get(CsWorkOrder, int(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
+        _require_cs_scope(db, w.cs_student_id)
         w.status = "CLOSED"
         w.close_time = datetime.utcnow()
         w.version += 1
@@ -699,9 +696,13 @@ def list_mental(page, page_size, keyword=None, user=None, reason=None):
     with session() as db:
         rows = db.scalars(select(CsMentalRecord).where(CsMentalRecord.tenant_id == _tid(),
                           CsMentalRecord.is_deleted.is_(False)).order_by(CsMentalRecord.id.desc())).all()
+        scope_ids = _cs_scope_student_ids(db)
+        cs_map = _cs_students_by_ids(db, rows)
         items = []
         for x in rows:
-            stu = _stu_of(db, x.cs_student_id)
+            if scope_ids is not None and x.cs_student_id not in scope_ids:
+                continue
+            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append({"id": str(x.id), "studentId": str(x.cs_student_id),

@@ -49,13 +49,15 @@ def _check_owner(t, user):
 def _row(t) -> dict:
     return {"sessionId": str(t.id), "classId": str(t.class_id or ""), "courseName": t.course_name or "",
             "termCode": t.term_code or "", "sessionDate": t.session_date, "slotNo": t.slot_no,
+            "sessionType": t.session_type or "常规",
             "totalCount": t.total_count, "presentCount": t.present_count, "absentCount": t.absent_count,
             "status": t.status, "createdAt": _iso(t.created_at)}
 
 
 def create_session(user, body) -> dict:
-    """教师新建一次考勤：按行政班圈定名单快照为 roster_json，初值全 PRESENT。body 为原始 dict（移动端 JSON 直传）。"""
-    from app.models import AaAttendanceSession, StudentProfile
+    """教师新建一次考勤：按行政班圈定名单快照为 roster_json，初值全 PRESENT。body 为原始 dict（移动端 JSON 直传）。
+    仅对本人确有教学任务（AaTeachingTask.teacher_key 命中该班）的行政班开放，教务处/校管不限。"""
+    from app.models import AaAttendanceSession, AaTeachingTask, StudentProfile
     body = body or {}
     class_id = body.get("classId")
     if not class_id:
@@ -64,7 +66,16 @@ def create_session(user, body) -> dict:
     if not session_date:
         raise AppException("VALIDATION_ERROR", "考勤日期必填")
     slot_no = body.get("slotNo")
+    role = ((user or {}).get("currentRoleCode") or "").upper()
     with session() as db:
+        if role not in ("ACADEMIC_ADMIN", "SCHOOL_ADMIN"):
+            keys = _user_keys(user)
+            owns = keys and db.scalars(select(AaTeachingTask.id).where(
+                AaTeachingTask.tenant_id == _tid(), AaTeachingTask.class_id == int(class_id),
+                AaTeachingTask.teacher_key.in_(keys), AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTask.status != "MERGED")).first()
+            if not owns:
+                raise AppException("NO_DATA_SCOPE", "该行政班不在您的授课范围内")
         rows = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(class_id),
             StudentProfile.is_deleted.is_(False))).all()
@@ -77,6 +88,7 @@ def create_session(user, body) -> dict:
             tenant_id=_tid(), class_id=int(class_id), course_name=body.get("courseName"),
             term_code=body.get("termCode"), teacher_key=teacher_key, session_date=session_date,
             slot_no=(int(slot_no) if slot_no else None),
+            session_type=(str(body.get("sessionType")).strip() or None) if body.get("sessionType") else None,
             roster_json=json.dumps(roster, ensure_ascii=False), total_count=len(roster),
             present_count=len(roster), absent_count=0, status="DRAFT")
         db.add(t)
@@ -87,8 +99,8 @@ def create_session(user, body) -> dict:
         return _row(t)
 
 
-def list_sessions(user, page=1, page_size=20):
-    """教师本人考勤场次列表（按 teacher_key 归属；教务处/学校管理员可见全部）。"""
+def list_sessions(user, page=1, page_size=20, class_id=None, term_code=None, session_type=None):
+    """考勤场次列表（教师按 teacher_key 归属；教务处/学校管理员可见全部）。可按行政班/学期/点名类别筛选。"""
     from app.models import AaAttendanceSession
     role = ((user or {}).get("currentRoleCode") or "").upper()
     with session() as db:
@@ -98,11 +110,59 @@ def list_sessions(user, page=1, page_size=20):
             if not keys:
                 return [], 0
             conds.append(AaAttendanceSession.teacher_key.in_(keys))
+        if class_id:
+            conds.append(AaAttendanceSession.class_id == int(class_id))
+        if term_code:
+            conds.append(AaAttendanceSession.term_code == term_code)
+        if session_type:
+            conds.append(AaAttendanceSession.session_type == session_type)
         rows = db.scalars(select(AaAttendanceSession).where(*conds)
                           .order_by(AaAttendanceSession.id.desc())).all()
         total = len(rows)
         start = (max(1, page) - 1) * page_size
         return [_row(t) for t in rows[start:start + page_size]], total
+
+
+def attendance_stats(user, class_id=None, term_code=None, session_type=None):
+    """跨堂次考勤统计（正方 教学点名查询 4.19 对标）：按学生汇总 出勤/迟到/旷课/请假 次数 + 缺勤率。
+    仅统计 SUBMITTED（已定稿）场次；数据范围同 list_sessions（教师本人 / 教务处全部）。"""
+    from app.models import AaAttendanceSession
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    with session() as db:
+        conds = [AaAttendanceSession.tenant_id == _tid(), AaAttendanceSession.is_deleted.is_(False),
+                 AaAttendanceSession.status == "SUBMITTED"]
+        if role not in ("ACADEMIC_ADMIN", "SCHOOL_ADMIN"):
+            keys = _user_keys(user)
+            if not keys:
+                return {"sessionCount": 0, "students": []}
+            conds.append(AaAttendanceSession.teacher_key.in_(keys))
+        if class_id:
+            conds.append(AaAttendanceSession.class_id == int(class_id))
+        if term_code:
+            conds.append(AaAttendanceSession.term_code == term_code)
+        if session_type:
+            conds.append(AaAttendanceSession.session_type == session_type)
+        rows = db.scalars(select(AaAttendanceSession).where(*conds)).all()
+        agg: dict[str, dict] = {}
+        for t in rows:
+            for it in (json.loads(t.roster_json) if t.roster_json else []):
+                sid = it.get("studentId")
+                if not sid:
+                    continue
+                a = agg.setdefault(sid, {"studentId": sid, "studentNo": it.get("studentNo") or "",
+                                         "realName": it.get("realName") or "", "present": 0,
+                                         "late": 0, "absent": 0, "leave": 0, "sessions": 0})
+                st = (it.get("status") or "PRESENT").upper()
+                key = {"PRESENT": "present", "LATE": "late", "ABSENT": "absent", "LEAVE": "leave"}.get(st)
+                if key:
+                    a[key] += 1
+                    a["sessions"] += 1
+        students = []
+        for a in agg.values():
+            a["absentRate"] = round(a["absent"] / a["sessions"], 3) if a["sessions"] else 0.0
+            students.append(a)
+        students.sort(key=lambda x: (-x["absent"], -x["late"], x["studentNo"]))
+        return {"sessionCount": len(rows), "students": students}
 
 
 def get_session(session_id, user) -> dict:

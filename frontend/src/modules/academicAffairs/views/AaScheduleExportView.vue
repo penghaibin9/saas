@@ -14,11 +14,7 @@
         <div class="aa-form">
           <label class="aa-form__item">
             导出范围
-            <select v-model="scope" class="aa-select" @change="identifier = ''">
-              <option value="CLASS">班级课表</option>
-              <option value="TEACHER">教师课表</option>
-              <option value="ROOM">教室课表</option>
-            </select>
+            <AppSelect v-model="scope" :options="scopeOptions" placeholder="" @change="identifier = ''" />
           </label>
 
           <label v-if="scope === 'CLASS'" class="aa-form__item aa-form__item--grow">
@@ -36,10 +32,7 @@
 
           <label class="aa-form__item">
             学期（可选）
-            <select v-model="termId" class="aa-select">
-              <option value="">当前已发布批次</option>
-              <option v-for="t in terms" :key="t.termId" :value="t.termId">{{ t.yearCode }} 第 {{ t.termNo }} 学期</option>
-            </select>
+            <AppSelect v-model="termId" :options="termOptions" placeholder="" />
           </label>
           <label class="aa-form__item">
             起始周（可选）
@@ -72,13 +65,13 @@
  * 后端 xlsx 二进制流下载（水印+AffairsAuditTrail 审计），对齐 quality/reports/export 同款 requestBlob 约定。
  */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard, AppClassPicker, AppRemoteSelect } from '@/components/common'
+import { AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect } from '@/components/common'
 import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaScheduleExportView',
-  components: { ModulePageShell, AppSectionCard, AppClassPicker, AppRemoteSelect },
+  components: { ModulePageShell, AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -87,7 +80,20 @@ export default {
     }
   },
   computed: {
-    canExport() { return !!this.identifier && this.purpose.trim().length >= 5 }
+    canExport() { return !!this.identifier && this.purpose.trim().length >= 5 },
+    scopeOptions() {
+      return [
+        { value: 'CLASS', label: '班级课表' },
+        { value: 'TEACHER', label: '教师课表' },
+        { value: 'ROOM', label: '教室课表' }
+      ]
+    },
+    termOptions() {
+      return [
+        { value: '', label: '当前已发布批次' },
+        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
+      ]
+    }
   },
   created() { this.loadTerms() },
   methods: {

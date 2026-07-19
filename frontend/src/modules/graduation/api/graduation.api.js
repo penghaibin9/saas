@@ -78,10 +78,9 @@ async function listStrict(path, params = {}) {
 
 export const graduationApi = {
   /**
-   * 上下文：角色/数据范围/权限动作按「真实登录用户」（JWT payload）派生，不再对所有人写死管理员视角。
-   * - TEACHER（指导教师）：可批阅开题/成果；批次/导入/答辩发布等管理动作置灰并说明原因；
-   * - ADMIN：保持管理员口径（批阅置灰，仅指导教师可批）。
-   * 品牌与细粒度 permissionCode 仍待后端上下文接口（历史欠账），前端不伪造具体人数等数据。
+   * 上下文：权限动作以后端 GET /graduation/context 的真实 permissionCode 判定为准
+   * （每个按钮键映射到后端 graduation_permissions.py 同款 permissionCode，逐项 has_permission 计算）。
+   * 下面的 isTeacher 粗粒度推断仅作真实接口不可达时（离线/mock）的静态兜底，不再是生产口径。
    */
   async getContext() {
     const u = currentUserFromToken()
@@ -94,6 +93,7 @@ export const graduationApi = {
         if (pa[k]) pa[k] = { ...pa[k], allowed: false, reason: '需毕设管理员角色，教师身份仅查看' }
       })
     }
+    let scopeName = isTeacher ? '本人指导学生' : '本校毕设数据（按后端数据范围）'
     // 品牌与姓名优先取真实 /auth/me（含 tenantName），后端不可达时回退 token/静态兜底，不阻塞页面
     const brand = { ...tenantBrandConfig }
     let roleName = isTeacher ? '指导教师' : currentRole.roleName
@@ -108,10 +108,29 @@ export const graduationApi = {
     } catch {
       /* 离线/未登录场景静默回退 */
     }
+    // 真实权限上下文：后端按当前角色逐项判定每个按钮的 permissionCode，覆盖上面的粗粒度静态兜底
+    try {
+      if (shouldTryReal()) {
+        const ctx = await request('/graduation/context')
+        if (ctx && ctx.permissionActions) {
+          Object.keys(pa).forEach((key) => {
+            if (key in ctx.permissionActions) {
+              const allowed = !!ctx.permissionActions[key]
+              pa[key] = { ...pa[key], allowed, reason: allowed ? '' : (pa[key].reason || '当前角色无该操作权限') }
+            }
+          })
+        }
+        if (typeof ctx?.fullScope === 'boolean') {
+          scopeName = ctx.fullScope ? '本校毕设数据（按后端数据范围）' : '本人业务范围内数据（按角色收敛）'
+        }
+      }
+    } catch {
+      /* 后端不可达时静默保留上面的粗粒度静态兜底，不阻塞页面 */
+    }
     return ok({
       tenantBrandConfig: brand,
       currentRole: { ...currentRole, roleName },
-      dataScope: { ...dataScope, scopeName: isTeacher ? '本人指导学生' : '本校毕设数据（按后端数据范围）' },
+      dataScope: { ...dataScope, scopeName },
       permissionActions: pa,
       statusOptions: JSON.parse(JSON.stringify(statusOptions))
     })

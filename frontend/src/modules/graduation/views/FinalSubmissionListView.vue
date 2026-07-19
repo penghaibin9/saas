@@ -119,6 +119,7 @@
                 </div>
                 <label class="mp-note" style="display: block; margin-bottom: var(--space-1)">批阅意见（退回时必填，≥5 字）</label>
                 <textarea v-model="comment" class="mp-textarea" :disabled="!canReview" rows="3" placeholder="批阅意见将同步学生端…"></textarea>
+                <AppTemplateChips v-if="canReview" :options="REJECT_REASON_CHIPS" @pick="(t) => (comment = comment ? comment + '\n' + t : t)" />
                 <p v-if="formError" class="mp-form-err">{{ formError }}</p>
                 <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
                   <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submitReview('APPROVE')">✓ 通过</AppPermissionButton>
@@ -144,6 +145,8 @@
 
       <p class="mp-note">初稿 / 定稿顺序、查重超标拦截均由后端真实状态机校验；筛选默认「全部时间」。</p>
     </div>
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-final-review" />
   </ModulePageShell>
 </template>
 
@@ -156,23 +159,26 @@
  */
 import { ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppExportButton, AppSearchBox, AppPagination, AppPermissionButton } from '@/components/common'
+import { AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppTemplateChips, AppPageGuide } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
+const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达标，需修改', '格式不符合学校规范', '与选题方向不符']
+
 export default {
   name: 'FinalSubmissionListView',
-  components: {
+  components: { AppPageGuide,
     ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppDateDisplay,
-    GraduationBatchStrip
+    GraduationBatchStrip, AppTemplateChips
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      REJECT_REASON_CHIPS,
       loading: true,
       error: '',
       rows: [],

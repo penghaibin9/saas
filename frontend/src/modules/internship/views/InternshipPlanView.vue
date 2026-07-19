@@ -84,10 +84,10 @@
           <span class="card__sub">学生提交 → 指导教师确认 · 支持任务节点完成度跟踪</span>
         </div>
         <div v-if="taskSummary" class="stats">
-          <div class="stats__item"><b>{{ taskSummary.avgRate }}%</b><span>平均完成率</span></div>
-          <div class="stats__item"><b>{{ taskSummary.pendingReview }}</b><span>待确认</span></div>
-          <div class="stats__item"><b>{{ taskSummary.studentCount }}</b><span>参与学生</span></div>
-          <div class="stats__item"><b>{{ taskSummary.totalTasks }}</b><span>任务项</span></div>
+          <AppMetricCard title="平均完成率" :value="taskSummary.avgRate" unit="%" />
+          <AppMetricCard title="待确认" :value="taskSummary.pendingReview" />
+          <AppMetricCard title="参与学生" :value="taskSummary.studentCount" />
+          <AppMetricCard title="任务项" :value="taskSummary.totalTasks" />
         </div>
         <div class="bar bar--inner">
           <AppSearchBox v-model="progKeyword" placeholder="按姓名/学号搜索" @search="reloadProgress" />
@@ -127,7 +127,7 @@ import { AppButton } from '@/components/ui'
 import {
   AppFormItem, AppTextInput, AppTextarea, AppSelect, AppQuickFilterChips,
   AppDeadlinePicker, AppDateDisplay, AppConfirmDialog, AppInlineAlert,
-  AppStatusTag, AppSearchBox
+  AppStatusTag, AppSearchBox, AppMetricCard
 } from '@/components/common'
 import { planApi } from '@/modules/internship/api/plan-insurance.api'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -149,7 +149,7 @@ export default {
   components: {
     ModulePageShell, DataTable, AppButton, AppFormItem, AppTextInput, AppTextarea,
     AppSelect, AppQuickFilterChips, AppDeadlinePicker, AppDateDisplay, AppConfirmDialog,
-    AppInlineAlert, AppStatusTag, AppSearchBox
+    AppInlineAlert, AppStatusTag, AppSearchBox, AppMetricCard
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -401,9 +401,7 @@ export default {
 .card--tasks.is-focus { outline: 2px solid var(--primary-500); outline-offset: 2px; }
 .card--progress.is-focus { outline: 2px solid var(--primary-500); outline-offset: 2px; }
 .stats { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); }
-.stats__item { min-width: 88px; padding: var(--space-2) var(--space-3); background: var(--bg-subtle, #f8fafc); border-radius: var(--radius-md); }
-.stats__item b { display: block; font-size: var(--font-size-lg); }
-.stats__item span { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.stats > * { flex: 1 1 160px; }
 .bar--inner { margin-bottom: var(--space-3); }
 .muted { color: var(--text-tertiary); font-size: var(--font-size-sm); }
 .card__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-3); }

@@ -27,7 +27,7 @@
             v-for="row in rows"
             :key="row[rowKey]"
             class="dt__tr"
-            :class="{ 'is-clickable': rowClickable }"
+            :class="[{ 'is-clickable': rowClickable }, rowClassOf(row)]"
             @click="rowClickable && $emit('row-click', row)"
           >
             <td v-if="selectable" class="dt__td dt__td--check" @click.stop>
@@ -72,6 +72,8 @@
  *  - selectable: 是否显示勾选列（配合 #batch-actions 插槽形成批量条）
  *  - selected: 受控选中 key 数组（v-model:selected）
  *  - rowClickable: 行是否可点击（emits row-click）
+ *  - rowClass: 逐行 class（String 或 (row)=>String）——供业务页按行状态上色等，组件不含业务假设；
+ *              业务页用 :deep(.你的类名) 定义样式。默认空，向后兼容。
  *  - pagination: { page, pageSize, total } | null
  * Slots: cell-<key>（作用域 { row }）、batch-actions（作用域 { keys }）
  * Emits: update:selected / row-click / page-change
@@ -88,6 +90,7 @@ export default {
     selectable: { type: Boolean, default: false },
     selected: { type: Array, default: () => [] },
     rowClickable: { type: Boolean, default: false },
+    rowClass: { type: [Function, String], default: '' },
     pagination: { type: Object, default: null }
   },
   emits: ['update:selected', 'row-click', 'page-change'],
@@ -113,6 +116,9 @@ export default {
     },
     clearSelection() {
       this.$emit('update:selected', [])
+    },
+    rowClassOf(row) {
+      return typeof this.rowClass === 'function' ? (this.rowClass(row) || '') : this.rowClass
     }
   }
 }

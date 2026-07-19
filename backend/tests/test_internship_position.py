@@ -38,6 +38,18 @@ def test_create_and_list(client, auth_headers, db_mode):
     assert lst["code"] == 0 and lst["data"]["total"] >= 1
 
 
+def test_list_filter_by_batch(client, auth_headers, db_mode):
+    """batch_id 联调收口：岗位列表按 batchId 筛选（只返回该批次岗位）。"""
+    cid = _company(client, auth_headers, cc="91310000POSBAT1XA")
+    _mk(client, auth_headers, cid, title="批次A岗位", batchId="101")
+    _mk(client, auth_headers, cid, title="批次B岗位", batchId="202")
+    _mk(client, auth_headers, cid, title="无批次岗位")
+    only_a = client.get(f"{POS}?batchId=101", headers=auth_headers).json()["data"]
+    assert only_a["total"] == 1 and only_a["items"][0]["title"] == "批次A岗位"
+    # 非数字 batchId → 400（不再 int() 500）
+    assert client.get(f"{POS}?batchId=abc", headers=auth_headers).status_code == 400
+
+
 def test_status_machine_publish(client, auth_headers, db_mode):
     cid = _company(client, auth_headers)  # 已审核 → 合作中
     pid = _mk(client, auth_headers, cid)["data"]["id"]
@@ -132,6 +144,15 @@ def test_detail_and_not_found(client, auth_headers, db_mode):
     d = client.get(f"{POS}/{pid}", headers=auth_headers).json()
     assert d["code"] == 0 and d["data"]["company"]["coopStatus"] == "ACTIVE" and "auditTrail" in d["data"]
     assert client.get(f"{POS}/99999999", headers=auth_headers).json()["code"] != 0
+
+
+def test_create_non_numeric_ids_400_not_500(client, auth_headers, db_mode):
+    """历史欠账收口：companyId/batchId 非数字此前 int() 抛 ValueError→500，现应 400 VALIDATION_ERROR。"""
+    r1 = client.post(POS, headers=auth_headers, json={"companyId": "abc", "title": "X"})
+    assert r1.status_code == 400 and r1.json()["bizCode"] == "VALIDATION_ERROR"
+    cid = _company(client, auth_headers, cc="91310000POSNUM1XA")
+    r2 = client.post(POS, headers=auth_headers, json={"companyId": cid, "title": "岗位", "batchId": "notnum"})
+    assert r2.status_code == 400 and r2.json()["bizCode"] == "VALIDATION_ERROR"
 
 
 def test_position_xlsx_import_template_and_upload(client, auth_headers, db_mode):

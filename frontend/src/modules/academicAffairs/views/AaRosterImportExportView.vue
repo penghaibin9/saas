@@ -23,10 +23,7 @@
           </label>
           <label class="aa-filter__item">
             学籍状态
-            <select v-model="exportFilters.status" class="aa-select">
-              <option value="">全部</option>
-              <option v-for="(label, val) in STATUS_LABEL" :key="val" :value="val">{{ label }}</option>
-            </select>
+            <AppSelect v-model="exportFilters.status" :options="statusOptions" placeholder="全部" />
           </label>
           <button class="mp-btn" :disabled="exporting" @click="doExport">{{ exporting ? '导出中…' : '导出 Excel' }}</button>
         </div>
@@ -63,7 +60,7 @@
  * 待注册/正常/在籍注册三态，休学/退学等仍须导入建档后走学籍异动办理）。
  * 导出：与本模块既有 export_unregistered_xlsx 同款 xlsx_util 直出 + 用途必填≥5字口径一致。 */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard, AppConfirmDialog } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppSelect } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -76,8 +73,13 @@ const STATUS_LABEL = {
 
 export default {
   name: 'AaRosterImportExportView',
-  components: { ModulePageShell, AppSectionCard, AppExcelImportDrawer, AppConfirmDialog },
+  components: { ModulePageShell, AppSectionCard, AppExcelImportDrawer, AppConfirmDialog, AppSelect },
   props: { ctx: { type: Object, required: true } },
+  computed: {
+    statusOptions() {
+      return Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))
+    }
+  },
   data() {
     return {
       academicAffairsApi,

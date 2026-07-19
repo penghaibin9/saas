@@ -127,6 +127,39 @@ def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
                            college_name=college_name, advisor_user_id=r.advisor_user_id)
 
 
+def assert_admin_tenant(user, action: str = "该操作") -> None:
+    """批量/全校级写操作守卫：仅 ADMIN_TENANT（校级管理员）可执行；SCOPED（学院负责人/
+    指导教师）一律拒绝。用于自动匹配、批量导入、逾期批处理等会横跨全校数据的作业——
+    避免受限范围角色借这些入口触发全租户批量改写。"""
+    if _current_scope(user).get("mode") != "ADMIN_TENANT":
+        from app.core.exceptions import no_permission
+        raise no_permission(f"{action}为全校级操作，仅校级管理员可执行")
+
+
+def assert_record_in_scope(db, rec, stu, user, msg: str = "该实习学生不在你的数据范围内") -> None:
+    """单条写操作数据范围守卫（记录型实体）：越出教师数据范围 → 403。ADMIN_TENANT 恒放行。"""
+    if not _rec_in_scope(_current_scope(user), db, rec, stu):
+        from app.core.exceptions import no_permission
+        raise no_permission(msg)
+
+
+def assert_student_in_scope(db, student_id, user, msg: str = "该学生不在你的数据范围内") -> None:
+    """按学生的写操作数据范围守卫（用于可能没有实习记录、但绑定学生的实体，如投诉）：
+    ADMIN_TENANT 恒放行；SCOPED 按 学号/班级/学院 收敛（复用 can_teacher_view_student）。
+    student_id 为空（纯企业/无学生实体）时不在本守卫收敛范围，由调用方决定是否放行。"""
+    scope = _current_scope(user)
+    if scope.get("mode") != "SCOPED":
+        return
+    if not student_id:
+        return
+    from app.models import StudentProfile
+    from app.services.mobile_teacher_service import can_teacher_view_student
+    stu = db.get(StudentProfile, int(student_id))
+    if stu is None or not can_teacher_view_student(user, stu, scope=scope, db=db):
+        from app.core.exceptions import no_permission
+        raise no_permission(msg)
+
+
 def _bulk_context(db, rows, id_attr: str = "internship_id"):
     """批量加载列表 rows 关联的 InternshipRecord / StudentProfile / SchoolClass 名 / College 名，
     返回 (rec_map, stu_map, class_name_map, college_name_map)，用于消除逐行 db.get 的 N+1。
@@ -909,6 +942,8 @@ def get_dashboard_summary(user=None) -> dict:
             "batchRange": (f"{_iso(batch.start_date)[:10]} ~ {_iso(batch.end_date)[:10]}"
                            if batch and batch.start_date and batch.end_date else ""),
             "batchStatus": "进行中" if batch and batch.status == "RUNNING" else "—",
+            # 口径与 stats_service.get_overview 的「实习在岗率」一致：ONBOARD / 全部未删记录。
+            "batchProgress": round(flow_map["ONBOARD"] / len(recs) * 100, 1) if recs else 0,
             "stats": [
                 {"label": "在岗学生", "value": str(flow_map["ONBOARD"]), "trend": "", "trendQuality": "neutral"},
                 {"label": "待处理打卡异常", "value": str(pending_exc),

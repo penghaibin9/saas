@@ -139,6 +139,27 @@ class StudentAffairsSecurityContext:
         return code in self.sensitive_permissions
 
 
+# ── 学生主档目录数据范围（/students 公共选择器 + 学生主档导出共用，2026-07-17 收敛）──
+# 仅收敛具有明确范围语义的学工侧角色；管理类 TENANT_ALL 不收敛；毕设/实习/就业/宿管等
+# 其他域角色沿用全租户目录语义（各域业务端点已有本域范围校验）。
+STUDENT_DIRECTORY_SCOPED_ROLES = {"COUNSELOR", "COLLEGE_ADMIN", "COLLEGE_SA", "PSYCHOLOGY_TEACHER"}
+
+
+def student_directory_scope(user) -> tuple[set[int] | None, set[int] | None]:
+    """返回 (class_ids, student_ids)：均为 None = 不收敛；空集合 = fail-closed。"""
+    from app.db.session import db_enabled
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    if role not in STUDENT_DIRECTORY_SCOPED_ROLES or not db_enabled():
+        return None, None
+    from app.services.db_service import session
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        if ctx.scope_type == "STUDENT":  # 心理教师：限授权学生集合
+            return None, {int(i) for i in (ctx.psychology_student_ids | ctx.student_ids)}
+        ids = ctx.allowed_class_ids(db)  # CLASS/COLLEGE → 班级集合；NONE → 空集合 fail-closed
+        return (ids if ids is not None else set()), None
+
+
 def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
     """解析当前登录用户的学工安全上下文。db 可复用调用方会话（省一次开库）。"""
     u = user or {}

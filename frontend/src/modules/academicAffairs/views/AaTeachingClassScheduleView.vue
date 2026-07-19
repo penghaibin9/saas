@@ -32,10 +32,7 @@
           <button class="mp-link" @click="teachingClassCode = ''">‹ 重新选择教学班</button>
           <label class="aa-filter__item">
             学期
-            <select v-model="termId" class="aa-select" @change="load">
-              <option value="">当前已发布批次</option>
-              <option v-for="t in terms" :key="t.termId" :value="t.termId">{{ t.yearCode }} 第 {{ t.termNo }} 学期</option>
-            </select>
+            <AppSelect v-model="termId" :options="termOptions" placeholder="" @change="load" />
           </label>
           <label class="aa-filter__item">
             周次
@@ -66,14 +63,14 @@
  * 越范围 → 403002；未知教学班代码 → 404。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard } from '@/components/common'
+import { AppSectionCard, AppSelect } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeachingClassScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppSelect, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -91,6 +88,12 @@ export default {
         (c.teachingClassName || '').toLowerCase().includes(kw) ||
         (c.teachingClassCode || '').toLowerCase().includes(kw) ||
         (c.courses || []).some((n) => (n || '').toLowerCase().includes(kw)))
+    },
+    termOptions() {
+      return [
+        { value: '', label: '当前已发布批次' },
+        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
+      ]
     }
   },
   created() {

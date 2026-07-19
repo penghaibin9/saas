@@ -104,6 +104,68 @@ def test_g5_analysis(client, db_mode):
     assert a["total"] == 1 and a["passRate"] == 1.0
 
 
+def test_g8_analysis_enhanced_and_group(client, db_mode):
+    """正方对标：总体新增优秀率/平均分/最高最低；dimension=course/class 出分组统计表。"""
+    sids = _seed(db_mode, 1)
+    hdr = _hdr(client, "school_admin01")
+    tid = _task(client, hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+                json={"studentId": str(sids[0]), "usualScore": 90, "finalScore": 90})  # 合成 90，优秀
+    _submit_and_approve(client, hdr, tid)
+    client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
+    a = client.get(f"{BASE}/grade-views/analysis", headers=hdr).json()["data"]
+    assert a["excellentRate"] == 1.0 and a["avgScore"] == 90.0
+    assert a["maxScore"] == 90 and a["minScore"] == 90
+    byc = client.get(f"{BASE}/grade-views/analysis", headers=hdr, params={"dimension": "course"}).json()["data"]
+    assert byc["dimension"] == "course"
+    assert any(r["name"] == "高等数学" and r["total"] == 1 for r in byc["rows"])
+    byk = client.get(f"{BASE}/grade-views/analysis", headers=hdr, params={"dimension": "class"}).json()["data"]
+    assert byk["dimension"] == "class" and len(byk["rows"]) >= 1
+
+
+def test_g9_analysis_export_xlsx(client, db_mode):
+    """成绩分析统计表导出 xlsx：用途<5 字被拒；合规请求返回真实 xlsx 二进制。"""
+    sids = _seed(db_mode, 1)
+    hdr = _hdr(client, "school_admin01")
+    tid = _task(client, hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+                json={"studentId": str(sids[0]), "usualScore": 88, "finalScore": 88})
+    _submit_and_approve(client, hdr, tid)
+    client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
+    bad = client.post(f"{BASE}/grade-views/analysis/export", headers=hdr,
+                      json={"dimension": "course", "purpose": "x"})
+    assert bad.status_code in (400, 422)
+    ok = client.post(f"{BASE}/grade-views/analysis/export", headers=hdr,
+                     json={"dimension": "course", "purpose": "学期成绩分析统计导出"})
+    assert ok.status_code == 200
+    assert "spreadsheetml" in ok.headers.get("content-type", "")
+    assert ok.content[:2] == b"PK"
+
+
+def test_g10_midterm_three_component(client, db_mode):
+    """成绩分项扩展(正方对标)：平时30+期中30+期末40 三分项按比例合成总评；期中未录则未录全。"""
+    sids = _seed(db_mode, 1)
+    hdr = _hdr(client, "school_admin01")
+    tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "钳工实训", "termCode": "2026-1", "credit": 3,
+        "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40}).json()["data"]["gradeTaskId"]
+    r = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
+        "studentId": str(sids[0]), "usualScore": 80, "midtermScore": 90, "finalScore": 100}).json()
+    assert r["data"]["totalScore"] == 91  # 80*.3 + 90*.3 + 100*.4 = 24+27+40
+    assert r["data"]["passStatus"] == "PASSED"
+    r2 = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
+        "studentId": str(sids[0]), "usualScore": 80, "finalScore": 100}).json()  # 缺期中→未录全
+    assert r2["data"]["totalScore"] is None
+
+
+def test_g11_midterm_ratio_sum_must_100(client, db_mode):
+    hdr = _hdr(client, "school_admin01")
+    assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "X", "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30}).status_code == 400
+    assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "Y", "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40}).status_code == 200
+
+
 def test_g6_fail_list_no_n_plus_one(client, db_mode):
     """挂科清单读侧：命中 t_acad_student 次数与挂科行数无关（JOIN 批量，非逐行 db.get）。"""
     from sqlalchemy import event
@@ -173,3 +235,22 @@ def test_g9_exception_list_filter_flag_and_student_403(client, db_mode):
     assert only_deferred["items"][0]["exceptionFlag"] == "DEFERRED"
     stu_hdr = _hdr(client, "student01")
     assert client.get(f"{BASE}/grade-views/exception-list", headers=stu_hdr).status_code == 403
+
+
+def test_g10_cross_tenant_teaching_task_rejected(client, db_mode):
+    """租户隔离收口：新建成绩任务引用他租户 teachingTaskId 须拒绝（此前 db.get 不校验
+    tenant_id，会把他租户 teacher_key 带进本租户新任务）。"""
+    _seed(db_mode, 1)
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask
+    db = get_sessionmaker()()
+    other = AaTeachingTask(tenant_id=TID + 1, batch_id=1, course_id=1, course_name="他租户课",
+                           teacher_key="other_teacher", status="READY")
+    db.add(other); db.commit()
+    other_tt_id = other.id
+    db.close()
+    hdr = _hdr(client, "school_admin01")
+    r = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "高数", "termCode": "2026-2027-1", "credit": 4,
+        "usualRatio": 30, "finalRatio": 70, "teachingTaskId": str(other_tt_id)})
+    assert r.status_code == 404 and r.json()["bizCode"] == "DATA_NOT_FOUND"

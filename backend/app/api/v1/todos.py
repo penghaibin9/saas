@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from app.core.exceptions import AppException, not_found
 from app.core.response import paginate, success
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_staff
 from app.services.mock_data import MOCK_MESSAGES, MOCK_TODOS
 
 
@@ -25,6 +25,9 @@ class CompleteBody(BaseModel):
 def make_router(client: str) -> APIRouter:
     """client: admin / student-mini / teacher-mobile"""
     router = APIRouter(prefix=f"/{client}", tags=[f"04·待办与消息（{client}）"])
+    # 管理端/教师端待办仅教职工可访问，学生令牌一律 403（此前用 get_current_user，学生可越权拉 /admin/todos）；
+    # student-mini 是学生本人端，保持 get_current_user 不拦。
+    guard = get_current_user if client == "student-mini" else require_staff
 
     # ── 4.x 待办列表 ──
     @router.get("/todos", summary="待办列表", name=f"{client}_todos_list")
@@ -32,7 +35,7 @@ def make_router(client: str) -> APIRouter:
                    todoType: Optional[str] = Query(default=None, description="APPROVAL/REVIEW/RISK/SUBMIT/CONFIRM"),
                    page: int = Query(default=1, ge=1),
                    pageSize: int = Query(default=20, ge=1, le=100),
-                   user=Depends(get_current_user)):
+                   user=Depends(guard)):
         items = [t for t in MOCK_TODOS
                  if (not status or t["status"] == status)
                  and (not todoType or t["todoType"] == todoType)]
@@ -42,7 +45,7 @@ def make_router(client: str) -> APIRouter:
 
     # ── 待办角标 ──
     @router.get("/todos/count", summary="待办计数（红点角标）", name=f"{client}_todos_count")
-    def todos_count(user=Depends(get_current_user)):
+    def todos_count(user=Depends(guard)):
         pending = [t for t in MOCK_TODOS if t["status"] == "PENDING"]
         by_type: dict[str, int] = {}
         for t in pending:
@@ -51,7 +54,7 @@ def make_router(client: str) -> APIRouter:
 
     # ── 待办详情 ──
     @router.get("/todos/{todo_id}", summary="待办详情", name=f"{client}_todo_detail")
-    def todo_detail(todo_id: str, user=Depends(get_current_user)):
+    def todo_detail(todo_id: str, user=Depends(guard)):
         todo = next((t for t in MOCK_TODOS if t["todoId"] == todo_id), None)
         if not todo:
             raise not_found("待办不存在")
@@ -59,7 +62,7 @@ def make_router(client: str) -> APIRouter:
 
     # ── 确认类待办完成 ──
     @router.post("/todos/{todo_id}/complete", summary="待办完成", name=f"{client}_todo_complete")
-    def complete_todo(todo_id: str, body: CompleteBody, user=Depends(get_current_user)):
+    def complete_todo(todo_id: str, body: CompleteBody, user=Depends(guard)):
         todo = next((t for t in MOCK_TODOS if t["todoId"] == todo_id), None)
         if not todo:
             raise not_found("待办不存在")
@@ -74,7 +77,7 @@ def make_router(client: str) -> APIRouter:
     def list_messages(readStatus: Optional[str] = Query(default=None, description="UNREAD / READ"),
                       page: int = Query(default=1, ge=1),
                       pageSize: int = Query(default=20, ge=1, le=100),
-                      user=Depends(get_current_user)):
+                      user=Depends(guard)):
         items = [m for m in MOCK_MESSAGES if not readStatus or m["readStatus"] == readStatus]
         total = len(items)
         start = (page - 1) * pageSize
@@ -82,12 +85,12 @@ def make_router(client: str) -> APIRouter:
 
     # ── 未读计数 ──
     @router.get("/messages/count", summary="未读消息数", name=f"{client}_messages_count")
-    def messages_count(user=Depends(get_current_user)):
+    def messages_count(user=Depends(guard)):
         return success({"unread": sum(1 for m in MOCK_MESSAGES if m["readStatus"] == "UNREAD")})
 
     # ── 标记已读 ──
     @router.post("/messages/{message_id}/read", summary="消息标记已读", name=f"{client}_message_read")
-    def read_message(message_id: str, user=Depends(get_current_user)):
+    def read_message(message_id: str, user=Depends(guard)):
         msg = next((m for m in MOCK_MESSAGES if m["messageId"] == message_id), None)
         if not msg:
             raise not_found("消息不存在")

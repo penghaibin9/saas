@@ -23,8 +23,8 @@
       <span class="bar__hint">数据范围内可见 · 生成于 {{ generatedAt || '—' }}</span>
     </div>
 
-    <div v-if="loading" class="state">加载中…</div>
-    <div v-else-if="error" class="state is-err">{{ error }} <button @click="load">重试</button></div>
+    <LoadingState v-if="loading" />
+    <ErrorState v-else-if="error" :description="error" @retry="load" />
 
     <template v-else>
       <!-- 计数概览 -->
@@ -77,14 +77,14 @@
 </template>
 
 <script>
-import { ModulePageShell } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppChartCard, AppG2Chart, AppMetricCard, AppExportButton, buildBarChartSpec } from '@/components/common'
 import { statsApi } from '@/modules/internship/api/stats.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'StatsView',
-  components: { ModulePageShell, AppExportButton, AppMetricCard, AppChartCard, AppG2Chart },
+  components: { ModulePageShell, LoadingState, ErrorState, AppExportButton, AppMetricCard, AppChartCard, AppG2Chart },
   data() {
     return {
       loading: false, error: '',
@@ -168,8 +168,6 @@ export default {
 .bar__go { height: 32px; padding: 0 var(--space-3); border: 1px solid var(--primary-600); background: var(--primary-600); color: #fff; border-radius: var(--radius-base); cursor: pointer; font-size: var(--font-size-sm); }
 .bar__clr { height: 32px; padding: 0 var(--space-2); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); border-radius: var(--radius-base); cursor: pointer; font-size: var(--font-size-sm); }
 .bar__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); margin-left: auto; }
-.state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); }
-.state.is-err { color: var(--danger-600); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin-bottom: var(--space-2); }
 .chart-note { font-size: var(--font-size-xs); color: var(--text-tertiary); }

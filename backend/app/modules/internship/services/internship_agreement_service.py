@@ -40,6 +40,31 @@ def _get(db, aid) -> InternshipAgreement:
     return a
 
 
+def _render_body(tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> str:
+    """协议正文渲染：有模板按 {{变量}} 简单替换；无模板/变量缺失时用结构化字段兜底，
+    保证 rendered_body 永不为空——学生小程序确认按钮以 renderedBody 是否存在作为可点击前提。"""
+    ctx = {
+        "studentName": (stu.real_name if stu else "") or "",
+        "studentNo": (stu.student_no if stu else "") or "",
+        "companyName": a.enterprise_name or (rec.enterprise_name if rec else "") or "",
+        "enterpriseName": a.enterprise_name or (rec.enterprise_name if rec else "") or "",
+        "positionName": a.position_name or (rec.position_name if rec else "") or "",
+        "internPeriod": f"{_iso(rec.intern_start_date) or ''} 至 {_iso(rec.intern_end_date) or ''}" if rec else "",
+        "advisorName": (rec.advisor_name if rec else "") or "",
+    }
+    if tpl and (tpl.body or "").strip():
+        text = tpl.body
+        for k, v in ctx.items():
+            text = text.replace("{{" + k + "}}", v).replace("{{ " + k + " }}", v)
+        return text
+    return (
+        f"三方实习协议\n\n学生：{ctx['studentName']}（学号 {ctx['studentNo']}）\n"
+        f"实习企业：{ctx['companyName']}\n岗位：{ctx['positionName']}\n"
+        f"实习期间：{ctx['internPeriod']}\n指导教师：{ctx['advisorName']}\n\n"
+        f"本协议由学生、实习企业、学校三方确认后生效，各方权利义务以学校实习管理规定为准。"
+    )
+
+
 def _ctx(db, a):
     rec = db.get(InternshipRecord, a.internship_id)
     stu = db.get(StudentProfile, a.student_id)
@@ -88,6 +113,8 @@ def _row(a, rec, stu):
         "status": a.status, "statusLabel": STATUS_LABEL.get(a.status, a.status),
         "esignStatus": a.esign_status, "hasFile": bool(a.file_id),
         "createdAt": _iso(a.created_at) or "",
+        # 历史协议（本次修复前生成）rendered_body 为空时按结构化字段兜底渲染，不写库、只读时补齐
+        "renderedBody": a.rendered_body or _render_body(None, rec, stu, a),
     }
 
 
@@ -119,6 +146,7 @@ def generate(user, body) -> dict:
         stu = db.get(StudentProfile, rec.student_id)
         if not in_scope(scope, db, rec, stu):
             raise no_permission("只能为本人指导学生生成协议")
+        tpl = None
         if tpl_id:
             tpl = db.get(InternshipAgreementTemplate, int(tpl_id))
             if not tpl or tpl.is_deleted or tpl.tenant_id != _tid():
@@ -133,6 +161,7 @@ def generate(user, body) -> dict:
             tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
             template_id=int(tpl_id) if tpl_id else None, batch_id=rec.batch_id,
             enterprise_name=rec.enterprise_name, position_name=rec.position_name, status="DRAFT")
+        a.rendered_body = _render_body(tpl, rec, stu, a)
         db.add(a); db.flush()
         _trail(db, a.id, "GENERATE", {"templateId": str(tpl_id) if tpl_id else ""}, operator=_op_name(user))
         db.commit()
@@ -322,6 +351,26 @@ def get_agreement(aid, user=None) -> dict:
         rec, stu = _ctx(db, a)
         if not in_scope(scope, db, rec, stu):
             raise no_permission("该协议不在你的数据范围内")
+        trail = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",
+            InternshipAuditTrail.target_id == a.id).order_by(InternshipAuditTrail.id)).all()
+        return {**_row(a, rec, stu), "rejectReason": a.reject_reason or "",
+                "attachment": file_service.attachment_view(a.file_id),
+                "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
+                                "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
+                               for t in trail]}
+
+
+def get_student_agreement(user, aid) -> dict:
+    """学生本人查看协议详情（含渲染正文）。此前路由调用的同名函数不存在（必现500），
+    且误用教师端 get_agreement() 的教师数据范围校验对学生本人也不适用——改为按
+    my_agreements() 同款的本人实习记录关联校验。"""
+    from app.services import file_service
+    with session() as db:
+        a = _get(db, aid)
+        rec, stu = _student_record(db, user)
+        if not rec or a.internship_id != rec.id:
+            raise no_permission("只能查看本人的协议")
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",
             InternshipAuditTrail.target_id == a.id).order_by(InternshipAuditTrail.id)).all()

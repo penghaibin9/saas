@@ -44,18 +44,27 @@
               <td>{{ b.schoolYear || '—' }}</td>
               <td><StatusTag :type="statusType(b.status)" :label="statusLabel(b.status)" dot /></td>
               <td>{{ b.publicityDays != null ? b.publicityDays + ' 天' : '—' }}</td>
-              <td class="bf-window">{{ windowText(b) }}</td>
+              <td class="bf-window">
+                <template v-if="b.applyStart || b.applyEnd">
+                  <AppDateDisplay :value="b.applyStart" mode="date" empty-text="…" />
+                  至
+                  <AppDateDisplay :value="b.applyEnd" mode="date" empty-text="…" />
+                </template>
+                <span v-else>—</span>
+              </td>
             </tr>
             <tr v-if="!batches.length"><td colspan="5" class="sa-empty">暂无认定批次，点右上「建批次」</td></tr>
           </tbody>
         </table>
+        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                       :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -63,20 +72,21 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', REVIEWING: '评审中
 
 export default {
   name: 'AidBatchView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
   data() {
     return {
-      loading: true, saving: false, errorMessage: '', batches: [],
+      loading: true, saving: false, errorMessage: '', batches: [], statsBatches: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: { batchName: '', schoolYear: '', publicityDays: 5, publish: true, error: '' }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const open = this.batches.filter((b) => b.status === 'OPEN').length
-      const closed = this.batches.filter((b) => ['CLOSED', 'ARCHIVED'].includes(b.status)).length
+      const open = this.statsBatches.filter((b) => b.status === 'OPEN').length
+      const closed = this.statsBatches.filter((b) => ['CLOSED', 'ARCHIVED'].includes(b.status)).length
       return [
-        { key: 'all', label: '批次总数', value: this.batches.length, accent: 'primary' },
+        { key: 'all', label: '批次总数', value: this.pagination.total, accent: 'primary' },
         { key: 'open', label: '开放受理', value: open, accent: 'success' },
         { key: 'closed', label: '已截止/归档', value: closed, accent: 'warning' }
       ]
@@ -86,12 +96,18 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getAidBatches({ pageSize: 200 })
-      if (res.code === 0 && res.data) {
-        this.batches = res.data.items || []
+      const [pageRes, statsRes] = await Promise.all([
+        studentAffairsApi.getAidBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize }),
+        // 独立于当前分页的全量口径（上限 200），仅用于统计卡；不影响列表本身的真实分页
+        studentAffairsApi.getAidBatches({ pageSize: 200 })
+      ])
+      if (pageRes.code === 0 && pageRes.data) {
+        this.batches = pageRes.data.items || []
+        this.pagination.total = pageRes.data.total != null ? pageRes.data.total : this.batches.length
       } else {
-        this.errorMessage = res.message || '认定批次加载失败'
+        this.errorMessage = pageRes.message || '认定批次加载失败'
       }
+      this.statsBatches = (statsRes.code === 0 && statsRes.data) ? (statsRes.data.items || []) : []
       this.loading = false
     },
     openForm() {
@@ -110,6 +126,7 @@ export default {
       if (res.code === 0) {
         toast.success('批次已保存')
         this.formVisible = false
+        this.pagination.page = 1
         await this.load()
       } else {
         m.error = res.message || '保存失败'
@@ -122,12 +139,6 @@ export default {
       if (['REVIEWING', 'PUBLICITY'].includes(s)) return 'processing'
       if (['CLOSED', 'ARCHIVED'].includes(s)) return 'default'
       return 'warning'
-    },
-    windowText(b) {
-      const a = (b.applyStart || '').slice(0, 10)
-      const z = (b.applyEnd || '').slice(0, 10)
-      if (!a && !z) return '—'
-      return `${a || '…'} 至 ${z || '…'}`
     }
   }
 }

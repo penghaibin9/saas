@@ -42,6 +42,12 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '订单续费授权', requiresAuth: true, permissionKey: 'platform.order.view' }
     },
     {
+      path: 'tenant-migration',
+      name: 'platform-tenant-migration',
+      component: () => import('@/modules/platform/views/PlatformTenantMigrationView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '租户数据迁移进度', requiresAuth: true, permissionKey: 'platform.tenant.migration.view' }
+    },
+    {
       path: 'integrations',
       name: 'platform-integrations',
       component: () => import('@/modules/platform/views/PlatformIntegrationView.vue'),

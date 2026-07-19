@@ -37,7 +37,13 @@ def create_app() -> FastAPI:
     # 生产环境 DEBUG 必须关闭；mock-login 不得显式开启。
     assert_prod_flags_safe()
     # 生产环境关闭 /docs、/redoc、/openapi.json，不把接口蓝图暴露公网。
-    _is_prod = settings.APP_ENV.strip().lower() in ("prod", "production")
+    _is_prod = settings.is_prod
+    # 启动即打印当前环境——APP_ENV 忘设时所有生产守卫按 dev 放行，必须在日志里一眼可查
+    logging.getLogger("app.startup").info(
+        "environment=%s (is_prod=%s, mock_login=%s, db_enabled=%s)",
+        settings.APP_ENV or "dev", settings.is_prod,
+        settings.mock_login_enabled, settings.DB_ENABLED,
+    )
     app = FastAPI(
         title=settings.APP_NAME,
         version=APP_VERSION,
@@ -62,7 +68,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _sandbox_midnight_reset():
-        """体验沙箱每晚 0 点自动重置（单实例进程内定时；多实例部署请改用 cron 跑
+        """可选的体验沙箱每晚 0 点自动重置（默认关闭；单实例进程内定时；多实例部署请改用 cron 跑
         scripts/reset_sandbox_school.py --confirm 并置 SANDBOX_AUTO_RESET=false）。"""
         import asyncio
 
@@ -114,7 +120,7 @@ def create_app() -> FastAPI:
             for tenant_id in tenant_ids:
                 try:
                     set_tenant({"tenantId": str(tenant_id)})
-                    leave_service.refresh_overdue()
+                    leave_service.refresh_overdue(system=True)  # 系统定时扫描：绕过人工触发的校级守卫
                 except Exception:  # noqa: BLE001
                     logging.getLogger("app.internship").exception("internship overdue scan failed tenant=%s", tenant_id)
                 finally:

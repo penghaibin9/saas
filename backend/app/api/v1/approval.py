@@ -19,6 +19,11 @@ def list_tasks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=20
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/tasks/summary/by-biz-type", summary="待办按业务类型分组统计")
+def tasks_by_biz_type(user=Depends(require_staff)):
+    return success(svc.biz_type_summary())
+
+
 @router.get("/tasks/{task_id}", summary="审批任务详情（含原值/新值 diff 与留痕）")
 def get_task(task_id: str, user=Depends(require_staff)):
     return success(svc.get_task(task_id))

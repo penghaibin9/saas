@@ -17,14 +17,12 @@
 
       <AppSectionCard v-if="formVisible" title="新建学生组织">
         <div class="og-grid">
-          <label class="og-field"><span>组织名称 *</span><input v-model.trim="form.orgName" class="og-input" /></label>
+          <label class="og-field"><span>组织名称 *</span><AppTextInput v-model="form.orgName" /></label>
           <label class="og-field"><span>类型</span>
-            <select v-model="form.orgType" class="og-input">
-              <option v-for="(l,k) in TYPES" :key="k" :value="k">{{ l }}</option>
-            </select></label>
+            <AppSelect v-model="form.orgType" :options="TYPE_OPTIONS" placeholder="" /></label>
           <label class="og-field"><span>级别</span>
-            <select v-model="form.level" class="og-input"><option value="SCHOOL">校级</option><option value="COLLEGE">院级</option></select></label>
-          <label class="og-field"><span>指导老师</span><input v-model.trim="form.advisorName" class="og-input" /></label>
+            <AppSelect v-model="form.level" :options="LEVEL_OPTIONS" placeholder="" /></label>
+          <label class="og-field"><span>指导老师</span><AppTextInput v-model="form.advisorName" /></label>
         </div>
         <p v-if="form.error" class="og-error">{{ form.error }}</p>
         <div class="og-actions">
@@ -53,10 +51,10 @@
               <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.org.manage" size="sm" @click="openAppoint">任命</AppPermissionButton>
             </div>
             <div v-if="apForm.visible" class="og-inline">
-              <input v-model.number="apForm.studentId" type="number" class="og-input" placeholder="学生主档ID" />
-              <input v-model.trim="apForm.position" class="og-input" placeholder="职务 如 主席/部长" />
-              <input v-model.trim="apForm.termCode" class="og-input" placeholder="任期 如 2025-2026" />
-              <button type="button" class="og-btn" @click="appoint">任命</button>
+              <AppStudentPicker v-model="apForm.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
+              <AppTextInput v-model="apForm.position" placeholder="职务 如 主席/部长" />
+              <AppTextInput v-model="apForm.termCode" placeholder="任期 如 2025-2026" />
+              <AppPermissionButton code="studentAffairs.org.manage" size="sm" @click="appoint">任命</AppPermissionButton>
             </div>
             <table class="sa-table">
               <thead><tr><th>学生</th><th>职务</th><th>任期</th><th>操作</th></tr></thead>
@@ -76,15 +74,23 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import {
+  AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect,
+  AppStatusTag, AppStudentPicker, AppTextInput
+} from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPES = { STUDENT_UNION: '学生会', SOCIETY_FEDERATION: '社团联合会', SELF_GOV: '自律委员会', OTHER: '其他组织' }
+const TYPE_OPTIONS = Object.entries(TYPES).map(([value, label]) => ({ value, label }))
+const LEVEL_OPTIONS = [{ value: 'SCHOOL', label: '校级' }, { value: 'COLLEGE', label: '院级' }]
 
 export default {
   name: 'StudentOrgView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: {
+    AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect,
+    StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+  },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', items: [], TYPES,
@@ -93,6 +99,8 @@ export default {
     }
   },
   computed: {
+    TYPE_OPTIONS: () => TYPE_OPTIONS,
+    LEVEL_OPTIONS: () => LEVEL_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const school = this.items.filter((o) => o.level === 'SCHOOL').length
@@ -114,11 +122,13 @@ export default {
       this.loading = false
     },
     openForm() { this.form = { orgName: '', orgType: 'STUDENT_UNION', level: 'SCHOOL', advisorName: '', error: '' }; this.formVisible = true },
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async save() {
       const m = this.form
-      if (!m.orgName) { m.error = '组织名称必填'; return }
+      const orgName = (m.orgName || '').trim()
+      if (!orgName) { m.error = '组织名称必填'; return }
       m.error = ''; this.saving = true
-      const res = await studentAffairsApi.createOrganization({ orgName: m.orgName, orgType: m.orgType, level: m.level, advisorName: m.advisorName || undefined })
+      const res = await studentAffairsApi.createOrganization({ orgName, orgType: m.orgType, level: m.level, advisorName: (m.advisorName || '').trim() || undefined })
       this.saving = false
       if (res.code === 0) { toast.success('已创建'); this.formVisible = false; this.load() } else m.error = res.message || '创建失败'
     },
@@ -127,11 +137,12 @@ export default {
       const res = await studentAffairsApi.getOrgPositions(o.orgId)
       if (res.code === 0 && res.data) this.positions = res.data.items || []
     },
-    openAppoint() { this.apForm = { visible: true, studentId: null, position: '', termCode: '' } },
+    openAppoint() { this.apForm = { visible: true, studentId: '', position: '', termCode: '' } },
     async appoint() {
       const f = this.apForm
-      if (!f.studentId || !f.position) { toast.error('学生ID与职务必填'); return }
-      const res = await studentAffairsApi.appointOrgPosition(this.sel.orgId, { studentId: Number(f.studentId), position: f.position, termCode: f.termCode || undefined })
+      const position = (f.position || '').trim()
+      if (!f.studentId || !position) { toast.error('学生与职务必填'); return }
+      const res = await studentAffairsApi.appointOrgPosition(this.sel.orgId, { studentId: Number(f.studentId), position, termCode: (f.termCode || '').trim() || undefined })
       if (res.code === 0) { toast.success('已任命'); this.apForm.visible = false; this.select(this.sel) } else toast.error(res.message || '任命失败')
     },
     async dismiss(p) {
@@ -162,6 +173,8 @@ export default {
 .og-subhead { display: flex; justify-content: space-between; align-items: center; margin: 0 0 var(--space-2); }
 .og-subhead h4 { margin: 0; font-size: var(--font-size-md); }
 .og-inline { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
+.og-inline > * { flex: 1 1 180px; min-width: 180px; }
+.og-inline > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }

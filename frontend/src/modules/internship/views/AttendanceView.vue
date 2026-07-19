@@ -17,47 +17,38 @@
     </div>
 
     <div class="bar">
-      <input v-model="keyword" class="bar__kw" placeholder="按姓名搜索" @keyup.enter="load" />
-      <select v-if="tab !== 'checkins'" v-model="statusFilter" class="bar__sel" @change="load">
-        <option value="">全部状态</option>
-        <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-      </select>
-      <button class="bar__go" @click="load">查询</button>
+      <AppSearchBox v-model="keyword" placeholder="按姓名搜索" :debounce="0" button @search="search" />
+      <AppQuickFilterChips v-if="tab !== 'checkins'" v-model="statusFilter" :options="chipOptions" @change="search" />
       <span class="bar__hint">共 {{ total }} 条 · 数据范围内可见</span>
     </div>
 
-    <div v-if="loading" class="state">加载中…</div>
-    <div v-else-if="error" class="state is-err">{{ error }} <button @click="load">重试</button></div>
-    <div v-else-if="!rows.length" class="state">暂无数据</div>
+    <LoadingState v-if="loading" />
+    <ErrorState v-else-if="error" :description="error" @retry="load" />
+    <EmptyState v-else-if="!rows.length" title="暂无数据" />
 
-    <div v-else class="tbl-wrap">
-      <table class="tbl">
-        <thead>
-          <tr><th v-for="c in columns" :key="c.key">{{ c.label }}</th><th>操作</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="r in rows" :key="r.id">
-            <td v-for="c in columns" :key="c.key">
-              <template v-if="c.key === 'status'"><AppStatusTag :status="r.status" /></template>
-              <template v-else-if="c.key === 'result'"><AppStatusTag :type="r.tone === 'danger' ? 'danger' : 'success'">{{ r.resultLabel }}</AppStatusTag></template>
-              <template v-else>{{ r[c.key] }}</template>
-            </td>
-            <td class="tbl__ops">
-              <template v-if="tab === 'exceptions' && r.status === 'PENDING_HANDLE'">
-                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" @click="openHandle(r, 'REASONABLE')">合理</AppPermissionButton>
-                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" @click="openHandle(r, 'ABNORMAL')">异常</AppPermissionButton>
-                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" :danger="true" @click="openHandle(r, 'TO_RISK')">转风险</AppPermissionButton>
-              </template>
-              <template v-else-if="tab === 'makeups' && r.status === 'PENDING'">
-                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="secondary" size="sm" @click="openApprove(r)">通过</AppPermissionButton>
-                <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" :danger="true" @click="openReject(r)">驳回</AppPermissionButton>
-              </template>
-              <span v-else class="tbl__muted">—</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <DataTable v-else :columns="tableColumns" :rows="rows" row-key="id"
+      :pagination="{ page, pageSize, total }" @page-change="onPageChange">
+      <template #cell-status="{ row }">
+        <AppStatusTag :status="row.status" />
+      </template>
+      <template #cell-result="{ row }">
+        <AppStatusTag :type="row.tone === 'danger' ? 'danger' : 'success'">{{ row.resultLabel }}</AppStatusTag>
+      </template>
+      <template #cell-actions="{ row }">
+        <div class="tbl__ops">
+          <template v-if="tab === 'exceptions' && row.status === 'PENDING_HANDLE'">
+            <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" @click="openHandle(row, 'REASONABLE')">合理</AppPermissionButton>
+            <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" @click="openHandle(row, 'ABNORMAL')">异常</AppPermissionButton>
+            <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" :danger="true" @click="openHandle(row, 'TO_RISK')">转风险</AppPermissionButton>
+          </template>
+          <template v-else-if="tab === 'makeups' && row.status === 'PENDING'">
+            <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="secondary" size="sm" @click="openApprove(row)">通过</AppPermissionButton>
+            <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="ghost" size="sm" :danger="true" @click="openReject(row)">驳回</AppPermissionButton>
+          </template>
+          <span v-else class="tbl__muted">—</span>
+        </div>
+      </template>
+    </DataTable>
 
     <AppConfirmDialog v-model:visible="dlg.visible" :title="dlg.title" :content="dlg.content"
       :danger="dlg.danger" :confirm-text="dlg.confirmText" :require-reason="dlg.requireReason"
@@ -66,9 +57,9 @@
 </template>
 
 <script>
-import { ModulePageShell } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppSearchBox, AppQuickFilterChips } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
 import { canCode } from '@/modules/internship/composables/permission'
@@ -107,12 +98,12 @@ const TAB_PANEL = { checkins: 'checkins', exceptions: 'exceptions', makeups: 'ma
 export default {
   name: 'AttendanceView',
   props: { ctx: { type: Object, default: () => ({}) } },
-  components: { ModulePageShell, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, ModuleSummaryStrip },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppSearchBox, AppQuickFilterChips, ModuleSummaryStrip },
   data() {
     return {
       tab: 'checkins',
       tabs: [{ key: 'checkins', label: '打卡台账' }, { key: 'exceptions', label: '打卡异常' }, { key: 'makeups', label: '补卡审批' }],
-      rows: [], total: 0, loading: false, error: '',
+      rows: [], total: 0, page: 1, pageSize: 50, loading: false, error: '',
       tabTotals: { checkins: null, exceptions: null, makeupsAll: null, makeupsPending: null },
       keyword: '', statusFilter: '',
       dlg: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: true, submitting: false },
@@ -123,6 +114,8 @@ export default {
   computed: {
     columns() { return COLS[this.tab] },
     statusOptions() { return STATUS_OPTS[this.tab] || [] },
+    chipOptions() { return [{ label: '全部状态', value: '' }, ...this.statusOptions] },
+    tableColumns() { return [...this.columns.map((c) => ({ key: c.key, title: c.label })), { key: 'actions', title: '操作' }] },
     summaryMetrics() {
       // 只展示已真实加载过的 Tab 的服务端 total，不触发额外请求，不用分页行数冒充
       const t = this.tabTotals
@@ -150,8 +143,11 @@ export default {
       this.tab = tab
       this.keyword = ''
       this.statusFilter = statusFilter
+      this.page = 1
       this.load()
     },
+    search() { this.page = 1; this.load() },
+    onPageChange(p) { this.page = p; this.load() },
     switchTab(k) {
       const panel = TAB_PANEL[k] || k
       if (this.$route.query.panel !== panel) {
@@ -162,7 +158,7 @@ export default {
     },
     async load() {
       this.loading = true; this.error = ''
-      const params = { page: 1, pageSize: 50, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
       if (this.statusFilter) params.status = this.statusFilter
       const api = { checkins: 'getCheckins', exceptions: 'getExceptions', makeups: 'getMakeups' }[this.tab]
       const res = await attendanceApi[api](params)
@@ -223,20 +219,7 @@ export default {
 .tabs__btn:hover { color: var(--pri); background: var(--pri-bg); }
 .tabs__btn.is-active { color: var(--pri); border-color: var(--pri-100); background: var(--card); font-weight: var(--font-weight-semibold); box-shadow: 0 2px 5px rgba(15, 40, 90, .08); }
 .bar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); flex-wrap: wrap; }
-.bar__kw, .bar__sel { height: 34px; border: 1px solid var(--border-base); border-radius: 8px; background: rgba(255, 255, 255, .9); padding: 0 var(--space-3); font-size: var(--font-size-sm); outline: none; transition: .14s ease; }
-.bar__kw { min-width: 220px; }
-.bar__kw:focus, .bar__sel:focus { border-color: var(--pri); box-shadow: 0 0 0 3px var(--pri-bg); }
-.bar__go { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--primary-600); background: var(--btn-p-bg, var(--primary-600)); color: #fff; border-radius: 8px; box-shadow: var(--btn-p-shadow); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); }
 .bar__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); margin-left: auto; }
-.state { padding: var(--space-8); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--r); background: rgba(255, 255, 255, .45); }
-.state.is-err { color: var(--danger-600); }
-.tbl-wrap { overflow: auto; border: 1px solid var(--card-b); border-radius: var(--r); background: var(--card); box-shadow: var(--s1); }
-.tbl { width: 100%; min-width: 780px; border-collapse: separate; border-spacing: 0; font-size: var(--font-size-sm); }
-.tbl th, .tbl td { text-align: left; padding: 12px var(--space-3); border-bottom: 1px solid var(--border-light); white-space: nowrap; }
-.tbl th { color: var(--text-tertiary); font-weight: var(--font-weight-semibold); background: var(--bg-subtle); font-size: 12px; letter-spacing: .01em; }
-.tbl tbody tr { transition: background .14s ease; }
-.tbl tbody tr:hover { background: var(--bg-hover); }
-.tbl tbody tr:last-child td { border-bottom: 0; }
 .tbl__muted { color: var(--text-disabled); }
 .tbl__ops { display: flex; gap: var(--space-1); align-items: center; }
 .op { border: 1px solid var(--border-base); background: var(--bg-card); border-radius: var(--radius-sm);
@@ -244,5 +227,5 @@ export default {
 .op:hover { border-color: var(--primary-500); color: var(--primary-600); }
 .op--ok { border-color: var(--success-100); color: var(--success-700); }
 .op--danger { border-color: var(--danger-100); color: var(--danger-600); }
-@media (max-width: 760px) { .tabs { align-items: flex-start; flex-direction: column; } .tabs__list { width: 100%; overflow-x: auto; } .tabs__btn { flex: 0 0 auto; } .bar__kw { width: 100%; min-width: 0; } .bar__hint { width: 100%; margin-left: 0; } }
+@media (max-width: 760px) { .tabs { align-items: flex-start; flex-direction: column; } .tabs__list { width: 100%; overflow-x: auto; } .tabs__btn { flex: 0 0 auto; } .bar__hint { width: 100%; margin-left: 0; } }
 </style>

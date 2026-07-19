@@ -72,6 +72,23 @@ def _level(avg):
     return "NEED_IMPROVE"
 
 
+# 多来源评价（正方教师端5.x：学生评教/教师自评/同行评价/督导评价）
+# 综合分权重（designSource=ai_proposal，学校可后续按教学质量管理制度调整；缺失来源按现有来源归一化，不拉低）
+_WEIGHTS = {"STUDENT": 0.6, "SUPERVISOR": 0.2, "PEER": 0.15, "SELF": 0.05}
+
+
+def _composite(stu, self_s, peer, sup):
+    """多来源加权综合分：仅对实际有分的来源按其权重归一化合成（无督导/同行时退化为学生均分）。"""
+    parts = [("STUDENT", stu), ("SELF", self_s), ("PEER", peer), ("SUPERVISOR", sup)]
+    active = [(k, v) for (k, v) in parts if v is not None]
+    if not active:
+        return None
+    tw = sum(_WEIGHTS[k] for k, _ in active)
+    if tw <= 0:
+        return None
+    return round(sum(_WEIGHTS[k] * v for k, v in active) / tw, 2)
+
+
 # ══════════ 批次 ══════════
 
 def _batch_dto(b):
@@ -126,9 +143,17 @@ def get_batch(user, bid):
         return _batch_dto(_get_batch(db, bid))
 
 
-def generate_tasks(user, bid, teaching_task_ids):
-    """按教学任务生成学生评教应评任务（每教学任务一条 STUDENT 任务）。"""
+def generate_tasks(user, bid, teaching_task_ids, evaluator_type="STUDENT"):
+    """按教学任务生成学生评教应评任务（每教学任务一条，全体学生共用同一「班级评教槽位」）。
+
+    仅限 STUDENT：SELF/PEER/SUPERVISOR 三类必须走 `generate_role_tasks`（/role-tasks），
+    因为 submit_evaluation() 对非 STUDENT 类型强制校验 evaluator_key 命中提交人身份
+    （Tier1 R2 越权修复）——本函数不接收/不落 evaluator_key，若在此放行非 STUDENT 类型，
+    生成出的任务将没有任何人能通过身份校验提交，形成永久无法核销的死任务。"""
     from app.models import AaEvaluationTask, AaTeachingTask
+    et = (evaluator_type or "STUDENT").upper()
+    if et != "STUDENT":
+        raise _bad("本入口仅支持 STUDENT 评教；SELF/PEER/SUPERVISOR 请使用 /role-tasks 并指定 evaluatorKey")
     with session() as db:
         _require_school(_ctx(user, db))
         b = _get_batch(db, bid)
@@ -142,18 +167,18 @@ def generate_tasks(user, bid, teaching_task_ids):
             dup = db.query(AaEvaluationTask).filter(AaEvaluationTask.tenant_id == _tid(),
                                                     AaEvaluationTask.batch_id == b.id,
                                                     AaEvaluationTask.teaching_task_id == tt_id,
-                                                    AaEvaluationTask.evaluator_type == "STUDENT").first()
+                                                    AaEvaluationTask.evaluator_type == et).first()
             if dup:
                 continue
             db.add(AaEvaluationTask(tenant_id=_tid(), batch_id=b.id, teaching_task_id=tt_id,
                                     course_id=getattr(tt, "course_id", None), course_name=getattr(tt, "course_name", None),
                                     class_id=getattr(tt, "class_id", None), teacher_key=getattr(tt, "teacher_key", None),
-                                    teacher_name=getattr(tt, "teacher_name", None), evaluator_type="STUDENT",
+                                    teacher_name=getattr(tt, "teacher_name", None), evaluator_type=et,
                                     status="PENDING"))
             cnt += 1
-        _audit(db, b.id, "EVAL_TASK_GENERATE", f"{cnt} 条应评任务")
+        _audit(db, b.id, "EVAL_TASK_GENERATE", f"{et} {cnt} 条应评任务")
         db.commit()
-        return {"batchId": str(b.id), "taskCount": cnt}
+        return {"batchId": str(b.id), "taskCount": cnt, "evaluatorType": et}
 
 
 def generate_role_tasks(user, bid, evaluator_type, assignments):
@@ -280,36 +305,50 @@ def archive_batch(user, bid):
 
 
 def close_and_score(user, bid):
-    """OPEN→CLOSED→核算结果→RESULT_READY：按学生评教均分分级（D-06 不加权其它评价）。"""
+    """OPEN→核算→RESULT_READY：多来源(学生/自评/同行/督导)分别求均分，按权重合成综合分。
+    level 取综合分（无其它来源时综合分==学生均分，与旧口径一致）。"""
     from app.models import AaEvaluationRecord, AaEvaluationResult, AaEvaluationTask
     with session() as db:
         _require_school(_ctx(user, db))
         b = _get_batch(db, bid)
         if b.status != _B_OPEN:
             raise _invalid("仅 OPEN 批次可关闭核算")
-        tasks = db.query(AaEvaluationTask).filter(AaEvaluationTask.batch_id == b.id, AaEvaluationTask.tenant_id == _tid(),
-                                                  AaEvaluationTask.evaluator_type == "STUDENT").all()
+        tasks = db.query(AaEvaluationTask).filter(AaEvaluationTask.batch_id == b.id,
+                                                  AaEvaluationTask.tenant_id == _tid()).all()
+        agg: dict = {}   # teaching_task_id -> {evaluator_type: [scores]}
+        meta: dict = {}  # teaching_task_id -> (teacher_key, teacher_name, course_name)
         for t in tasks:
             recs = db.query(AaEvaluationRecord).filter(AaEvaluationRecord.task_id == t.id,
-                                                       AaEvaluationRecord.tenant_id == _tid(),
-                                                       AaEvaluationRecord.evaluator_type == "STUDENT").all()
+                                                       AaEvaluationRecord.tenant_id == _tid()).all()
             scores = [float(r.objective_score) for r in recs if r.objective_score is not None]
-            avg = round(sum(scores) / len(scores), 2) if scores else None
+            agg.setdefault(t.teaching_task_id, {}).setdefault(t.evaluator_type, []).extend(scores)
+            meta[t.teaching_task_id] = (t.teacher_key, t.teacher_name, t.course_name)
+        for ttid, by_type in agg.items():
+            def _avg(tp, _bt=by_type):
+                s = _bt.get(tp, [])
+                return (round(sum(s) / len(s), 2) if s else None), len(s)
+            stu_avg, stu_n = _avg("STUDENT")
+            self_avg, _self_n = _avg("SELF")
+            peer_avg, peer_n = _avg("PEER")
+            sup_avg, sup_n = _avg("SUPERVISOR")
+            comp = _composite(stu_avg, self_avg, peer_avg, sup_avg)
+            tk, tn, cn = meta[ttid]
             existing = db.query(AaEvaluationResult).filter(AaEvaluationResult.tenant_id == _tid(),
                                                            AaEvaluationResult.batch_id == b.id,
-                                                           AaEvaluationResult.teaching_task_id == t.teaching_task_id).first()
-            if existing:
-                existing.student_avg = avg
-                existing.student_count = len(scores)
-                existing.level = _level(avg)
-            else:
-                db.add(AaEvaluationResult(tenant_id=_tid(), batch_id=b.id, teaching_task_id=t.teaching_task_id,
-                                          teacher_key=t.teacher_key, teacher_name=t.teacher_name,
-                                          course_name=t.course_name, student_avg=avg, student_count=len(scores),
-                                          level=_level(avg), published=False))
+                                                           AaEvaluationResult.teaching_task_id == ttid).first()
+            if not existing:
+                existing = AaEvaluationResult(tenant_id=_tid(), batch_id=b.id, teaching_task_id=ttid,
+                                              teacher_key=tk, teacher_name=tn, course_name=cn, published=False)
+                db.add(existing)
+            existing.student_avg, existing.student_count = stu_avg, stu_n
+            existing.self_score = self_avg
+            existing.peer_avg, existing.peer_count = peer_avg, peer_n
+            existing.supervisor_avg, existing.supervisor_count = sup_avg, sup_n
+            existing.composite_score = comp
+            existing.level = _level(comp if comp is not None else stu_avg)
         b.status = _B_RESULT
         b.result_published_at = datetime.utcnow()
-        _audit(db, b.id, "EVAL_BATCH_SCORE", f"核算 {len(tasks)} 门结果")
+        _audit(db, b.id, "EVAL_BATCH_SCORE", f"多来源核算 {len(agg)} 门结果")
         db.commit()
         return _batch_dto(b)
 
@@ -397,22 +436,34 @@ def list_results(user, bid, mine=False, page=1, page_size=50):
             q = q.filter(AaEvaluationResult.teacher_key.in_(list(keys) or [""]), AaEvaluationResult.published.is_(True))
         rows = q.order_by(AaEvaluationResult.id).all()
         total = len(rows)
+
+        def _f(v):
+            return float(v) if v is not None else None
         return [{"resultId": str(r.id), "teacherName": r.teacher_name, "courseName": r.course_name,
-                 "studentAvg": float(r.student_avg) if r.student_avg is not None else None,
-                 "studentCount": r.student_count, "level": r.level, "published": r.published}
+                 "studentAvg": _f(r.student_avg), "studentCount": r.student_count,
+                 "selfScore": _f(r.self_score), "peerAvg": _f(r.peer_avg), "peerCount": r.peer_count,
+                 "supervisorAvg": _f(r.supervisor_avg), "supervisorCount": r.supervisor_count,
+                 "compositeScore": _f(r.composite_score),
+                 "level": r.level, "published": r.published}
                 for r in rows[(page - 1) * page_size: page * page_size]], total
 
 
 def submit_appeal(user, result_id, reason):
+    """教师对结果申诉。修复：此前未校验 result 是否属于当前登录教师本人——任何持
+    require_staff 权限者传任意 resultId 即可代任意教师发起申诉，属越权。现补齐：非
+    TENANT_ALL（教务处/学校管理员，允许代管）角色必须 result.teacher_key 命中 _derive_keys。"""
     from app.models import AaEvaluationAppeal, AaEvaluationResult
     with session() as db:
-        _ctx(user, db)
+        ctx = _ctx(user, db)
         reason = (reason or "").strip()
         if len(reason) < 5:
             raise _bad("申诉理由必填且不少于5字")
         r = db.query(AaEvaluationResult).filter(AaEvaluationResult.id == result_id, AaEvaluationResult.tenant_id == _tid()).first()
         if not r:
             raise not_found("评价结果不存在")
+        if ctx.scope_type != "TENANT_ALL":
+            if not r.teacher_key or r.teacher_key not in _derive_keys(user):
+                raise no_data_scope("仅可对本人的评价结果发起申诉")
         a = AaEvaluationAppeal(tenant_id=_tid(), result_id=result_id, teacher_key=_tkey(), reason=reason,
                                current_node="COLLEGE", status="COLLEGE_REVIEW")
         db.add(a); db.flush()

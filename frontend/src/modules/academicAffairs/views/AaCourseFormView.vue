@@ -80,7 +80,7 @@ import {
   AppSectionCard, AppFormItem, AppTextInput, AppNumberInput, AppSelect, AppTextarea,
   AppTeacherPicker, AppCollegePicker, AppMajorPicker, AppInlineAlert
 } from '@/components/common'
-import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { COURSE_CATEGORY, COURSE_NATURE, EXAM_MODE } from '@/modules/academicAffairs/constants/course-program'
 import { toast } from '@/utils/toast'
 
@@ -125,8 +125,8 @@ export default {
     },
     async loadOrgOptions() {
       const [colRes, majRes] = await Promise.all([
-        academicAffairsApi.listColleges({ page: 1, pageSize: 200 }),
-        academicAffairsApi.listMajors({ page: 1, pageSize: 500 })
+        academicAffairsOrgApi.listColleges({ page: 1, pageSize: 200 }),
+        academicAffairsOrgApi.listMajors({ page: 1, pageSize: 500 })
       ])
       if (colRes.code === 0) {
         this.collegeOptions = (colRes.data.list || [])

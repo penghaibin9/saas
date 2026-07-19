@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <div class="gd-actions">
+      <div class="mp-actions">
         <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
         <AppExportButton :export-fn="exportBatchesFn">导出台账</AppExportButton>
       </div>
@@ -17,7 +17,26 @@
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无毕设批次" description="点「＋ 新建批次」创建一届毕业设计批次" />
+      <!-- 空态分两种：筛选无果 ≠ 真的还没建。前者给「清空筛选」，后者给「怎么开始」。 -->
+      <EmptyState
+        v-else-if="!rows.length && filtered"
+        title="没有符合条件的批次"
+        description="当前筛选条件下没有批次。可以放宽条件，或清空筛选看全部。"
+      >
+        <template #actions>
+          <button class="mp-btn" @click="reset">清空筛选</button>
+        </template>
+      </EmptyState>
+      <EmptyState
+        v-else-if="!rows.length"
+        title="还没有毕设批次"
+        description="批次是一届毕业设计的容器——学生、题目、导师、答辩、成绩都挂在批次下。建好批次并配好阶段时间轴，才能开始选题。"
+      >
+        <template #actions>
+          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/batches/create')">＋ 新建批次</button>
+          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-batch-create')">怎么建批次？</button>
+        </template>
+      </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-batch="{ row }">
           <div class="mp-cell-main">{{ row.batchName }}</div>
@@ -43,6 +62,8 @@
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
     />
+    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
+    <AppPageGuide guide-key="graduation.gd-batches" />
   </ModulePageShell>
 </template>
 
@@ -50,7 +71,7 @@
 /** 毕设批次列表（/admin/graduation/batches）：生产级只走真实后端；建/改/阶段+规则配置/状态机/作废/Excel台账导出。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppExportButton } from '@/components/common'
+import { AppExportButton, AppPageGuide } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationBatchApi } from '@/modules/graduation/api/graduation-batch.api'
 import { BATCH_STATUS } from '@/modules/graduation/constants/graduation-batch.constants'
@@ -62,7 +83,7 @@ import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'GraduationBatchListView',
-  components: { GraduationBatchStrip,
+  components: { AppPageGuide, GraduationBatchStrip,
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppConfirmDialog, AppDateDisplay, AppExportButton
   },
@@ -177,31 +198,5 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.mp-link--danger { color: var(--danger, #dc2626); }
-.ie-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: var(--space-1) 0; }
-.ie-fld { display: flex; flex-direction: column; gap: 4px; }
-.ie-fld--full { grid-column: 1 / -1; }
-.ie-lbl { font-size: 12px; color: var(--t2, #475569); }
-.ie-lbl i { color: var(--danger, #dc2626); font-style: normal; }
-.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
-.ie-in--sm { padding: 5px 8px; }
-.ie-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
-.ie-hint { font-size: 12px; color: var(--t3, #64748b); margin: 0 0 8px; }
-.ie-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
-.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
-.mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.gb-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }
-.gb-tabs__item { padding: 8px 12px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
-.gb-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
-.gb-sec { font-size: 13px; }
-.gb-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-.gb-tbl th, .gb-tbl td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line, #eef1f6); }
-.gb-tbl th { color: var(--t3, #64748b); font-weight: 500; font-size: 12px; }
-.gb-kv { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 6px 0; border-bottom: 1px dashed var(--line, #eef1f6); }
-.gb-kv > span { color: var(--t2, #475569); }
-.gb-kv .ie-in--sm { width: 120px; flex: none; }
-.gb-trail__item { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed var(--line, #eef1f6); }
-.gb-trail__meta { color: var(--t3, #64748b); font-size: 12px; }
+.mp-actions { flex-wrap: wrap; }
 </style>

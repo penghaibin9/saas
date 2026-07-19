@@ -68,11 +68,12 @@ def _visible(rows: list[dict]) -> list[dict]:
 
 def list_students(page: int, page_size: int, keyword: Optional[str] = None, college: Optional[str] = None,
                   major: Optional[str] = None, class_name: Optional[str] = None, status: Optional[str] = None,
-                  risk_level: Optional[str] = None) -> tuple[list[dict], int]:
+                  risk_level: Optional[str] = None, class_ids=None, student_ids=None) -> tuple[list[dict], int]:
     if db_enabled():
         from app.services import db_service
         return db_service.list_students(page, page_size, keyword, college, major,
-                                        class_name, status, risk_level)
+                                        class_name, status, risk_level,
+                                        class_ids=class_ids, student_ids=student_ids)
     rows = _visible(_MOCK_STUDENTS)
     if keyword:
         rows = [r for r in rows if keyword in r["realName"] or keyword in r["studentNo"] or keyword in r["className"]]

@@ -28,9 +28,9 @@ export async function guard(to, from, next) {
     return next({ name: 'not-enabled' })
   }
 
-  // 模块门禁：通用模块页取 :module 参数；专用工作台路由在自己的 meta.module 上声明所属模块，
+  // 模块门禁：专用工作台路由在自己的 meta.modulePath 上声明所属模块，通用模块页取 :module 参数；
   // 新增专用页面时只需在路由上写 meta，无须再改本守卫。
-  const modulePath = to.meta?.module || (to.name === 'module' ? to.params.module : '')
+  const modulePath = to.meta?.modulePath || (to.name === 'module' ? to.params.module : '')
   if (modulePath) {
     const m = moduleByPath(modulePath)
     if (!m || !cfg.isModuleEnabled(m.key)) {

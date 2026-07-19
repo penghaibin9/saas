@@ -44,13 +44,13 @@ _P_PUBLISH = "internship.position.publish"
 _P_EXPORT = "internship.position.export"
 
 
-@router.get("/positions", summary="岗位库列表（分页+筛选）")
+@router.get("/positions", summary="岗位库列表（分页+筛选，含按批次）")
 def positions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
               keyword: Optional[str] = None, status: Optional[str] = None,
-              companyId: Optional[str] = None, risk: Optional[bool] = None,
-              user=Depends(require_permission(_P_VIEW))):
+              companyId: Optional[str] = None, batchId: Optional[str] = None,
+              risk: Optional[bool] = None, user=Depends(require_permission(_P_VIEW))):
     items, total = pos.list_positions(page, pageSize, keyword=keyword, status=status,
-                                      company_id=companyId, risk=risk)
+                                      company_id=companyId, batch_id=batchId, risk=risk)
     return success(paginate(items, total, page, pageSize))
 
 

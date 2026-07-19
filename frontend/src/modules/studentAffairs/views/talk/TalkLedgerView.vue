@@ -34,7 +34,7 @@
                 <span v-if="t.psyMasked" class="tl-psy" title="心理谈话原文受限">🔒</span>
               </td>
               <td class="tl-topic">{{ t.topic || '—' }}</td>
-              <td>{{ (t.talkAt || '').slice(0, 16).replace('T', ' ') || '—' }}</td>
+              <td><AppDateDisplay :value="t.talkAt" mode="datetime" empty-text="—" /></td>
               <td>{{ t.needFollow ? '是' : '—' }}</td>
               <td><StatusTag :type="statusType(t.status)" :label="t.statusLabel || t.status" dot /></td>
             </tr>
@@ -47,7 +47,7 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const TYPE_LABELS = { ACADEMIC: '学业', PSYCHOLOGY: '心理', LIFE: '生活', CAREER: '就业', DISCIPLINE: '违纪', ECONOMIC: '经济', IDEOLOGY: '思想', SAFETY: '安全', ROUTINE: '常规', OTHER: '其他' }
@@ -62,7 +62,7 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'TalkLedgerView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
   data() {
     return { loading: true, errorMessage: '', items: [], counts: { total: 0 }, activeType: '', activeStatus: '', typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS }
   },
@@ -82,6 +82,10 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
+      // 分页说明：/student-affairs/talks 后端已支持 page/pageSize/total 真分页，
+      // 但本页顶部统计卡（当前列表数/计划中/需跟进）按已加载全部过滤结果实时计算；
+      // 若接入逐页 AppPagination，卡片语义会变成“本页”而非“当前筛选下全部”，需产品确认展示口径后再引入。
+      // 暂维持 pageSize=500 上限一次性加载（超过 500 条时会截断，暂无提示）。
       const params = { pageSize: 500 }
       if (this.activeType) params.talkType = this.activeType
       if (this.activeStatus) params.status = this.activeStatus

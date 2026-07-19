@@ -343,7 +343,7 @@ def leaves_export(status: Optional[str] = None, keyword: Optional[str] = None,
 
 @router.post("/leaves/overdue/refresh", summary="刷新请假超期并生成风险单（可由定时任务幂等调用）")
 def leave_overdue_refresh(user=Depends(require_permission("internship.leave.review"))):
-    result = lv.refresh_overdue()
+    result = lv.refresh_overdue(user=user)
     audit_log.record("刷新实习请假超期", "internship-leave:overdue-refresh", detail=result)
     return success(result, message="超期状态已刷新")
 

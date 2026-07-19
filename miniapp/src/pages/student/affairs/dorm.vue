@@ -91,11 +91,10 @@ export default {
       studentApi.getDormBeds(r.roomId).then((d) => { this.beds = d.items || [] }).catch(toastError)
     },
     confirm() {
-      if (!this._lock.acquire()) return
       this.submitting = true
-      studentApi.selfSelectBed(this.sel.bed)
+      this._lock.run(() => studentApi.selfSelectBed(this.sel.bed))
         .then(() => { safeToast('入住成功', 'success'); this.load() })
-        .catch(toastError)
+        .catch((e) => { if (e && e.code === 'LOCKED') return; toastError(e) })
         .finally(() => { this.submitting = false })
     }
   }

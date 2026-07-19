@@ -6,17 +6,24 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="学工统计查阅"
   >
-    <LoadingState v-if="loading" text="正在汇总学工统计…" />
-    <ErrorState v-else-if="error" :description="error" @retry="load" />
-    <template v-else>
+    <AppGlobalState
+      :state="pageState"
+      :description="error"
+      loading-text="正在汇总学工统计…"
+      @retry="load"
+      @back="$router.push('/admin/student-affairs/dashboard')"
+    >
       <!-- 关键指标 -->
       <section class="st-block">
         <h3 class="st-block__title">关键指标</h3>
         <div class="st-cards">
-          <div v-for="c in summaryCards" :key="c.key" class="st-card">
-            <span class="st-card__value">{{ c.value }}<i>{{ c.unit }}</i></span>
-            <span class="st-card__label">{{ c.label }}</span>
-          </div>
+          <AppMetricCard
+            v-for="c in summaryCards"
+            :key="c.key"
+            :title="c.label"
+            :value="c.value"
+            :unit="c.unit || ''"
+          />
         </div>
       </section>
 
@@ -27,7 +34,7 @@
           <div class="st-big">完成率 <b>{{ talkRate }}%</b><span>（{{ talkStats.completed || 0 }}/{{ talkStats.total || 0 }}）</span></div>
           <div v-for="b in talkBreakdown" :key="b.key" class="st-bar">
             <div class="st-bar__head"><span>{{ talkTypeLabel(b.key) }}</span><span>{{ b.completed }}/{{ b.total }}</span></div>
-            <div class="st-bar__track"><div class="st-bar__fill" :style="{ width: pct(b.completed, b.total) + '%' }" /></div>
+            <AppProgressBar :value="pct(b.completed, b.total)" :show-text="false" />
           </div>
           <EmptyState v-if="!talkBreakdown.length" title="暂无谈话数据" />
         </section>
@@ -37,7 +44,7 @@
           <h3 class="st-panel__title">宿舍入住</h3>
           <div class="st-big">入住率 <b>{{ occRate }}%</b><span>（{{ occupancy.occupiedBeds || 0 }}/{{ occupancy.totalBeds || 0 }} 床）</span></div>
           <div class="st-bar">
-            <div class="st-bar__track"><div class="st-bar__fill st-bar__fill--green" :style="{ width: occRate + '%' }" /></div>
+            <AppProgressBar :value="occRate" status="success" :show-text="false" />
           </div>
           <div class="st-kv"><span>已住</span><b>{{ occupancy.occupiedBeds || 0 }}</b></div>
           <div class="st-kv"><span>空床</span><b>{{ occupancy.vacantBeds || 0 }}</b></div>
@@ -61,12 +68,12 @@
           <h3 class="st-panel__title">风险来源分布（在办）</h3>
           <div v-for="s in riskBySource" :key="s.key" class="st-bar">
             <div class="st-bar__head"><span>{{ sourceLabel(s.key) }}</span><span>{{ s.count }}</span></div>
-            <div class="st-bar__track"><div class="st-bar__fill st-bar__fill--red" :style="{ width: pct(s.count, riskMax) + '%' }" /></div>
+            <AppProgressBar :value="pct(s.count, riskMax)" status="danger" :show-text="false" />
           </div>
           <EmptyState v-if="!riskBySource.length" title="暂无在办风险" />
         </section>
       </div>
-    </template>
+    </AppGlobalState>
   </ModulePageShell>
 </template>
 
@@ -76,7 +83,8 @@
  * 真实聚合：dashboard 关键指标 + talks/stats 谈话完成率 + dorm/occupancy 入住率 +
  * discipline/reconcile 投影对账 + aid/difficult-students 困难库 + 风险按来源分组（客户端）。
  */
-import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, EmptyState } from '@/components/business'
+import { AppMetricCard, AppProgressBar, AppGlobalState } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const TALK_TYPE = { DAILY: '日常', ACADEMIC: '学业', PSYCHOLOGY: '心理', DISCIPLINE: '违纪', EMPLOYMENT: '就业', INTERNSHIP: '实习', AID: '资助', DORM: '宿舍' }
@@ -84,7 +92,7 @@ const SOURCE_LABEL = { LEAVE_OVERDUE: '请假逾期', ACADEMIC_WARNING: '学业�
 
 export default {
   name: 'StudentAffairsStatsView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, EmptyState, AppMetricCard, AppProgressBar, AppGlobalState },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -93,6 +101,9 @@ export default {
     }
   },
   computed: {
+    pageState() {
+      return this.loading ? 'loading' : (this.error ? 'error' : 'ready')
+    },
     roleName() {
       return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || ''
     },

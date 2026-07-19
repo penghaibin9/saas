@@ -15,8 +15,50 @@ from app.modules.graduation.services.graduation_scope_service import (
 )
 from app.services.db_service import _iso, _mask_phone, _tid, session
 
+# 学生阶段中文名。COMPLETED 由 graduation_grade_service.publish() 真实写入（该文件 L276），
+# 此前本表漏登记，导致：① 学生列表 stageLabel 回落显示英文 "COMPLETED"；② 看板流程条按 L_STAGE
+# 的键迭代，已完成的学生整段不显示。补齐后两处同时修复。顺序即流程条展示顺序，勿随意调整。
 L_STAGE = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
-           "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩中", "ARCHIVED": "已归档"}
+           "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩中",
+           "COMPLETED": "已完成", "ARCHIVED": "已归档"}
+
+# 批次阶段（学校日程，graduation_batch_service.DEFAULT_STAGES 的 8 个 code）
+# → 学生阶段（个人进度，L_STAGE 的键）。两套词汇不是一一对应：
+# 成果提交/查重/评阅三个批次阶段，学生都停在「成果检查」。
+_BATCH_STAGE_TO_STUDENT_STAGE = {
+    "TOPIC": "TOPIC_SELECTING", "PROPOSAL": "TASKBOOK_CONFIRM", "MIDTERM": "MIDTERM",
+    "SUBMISSION": "FINAL_CHECK", "PLAGIARISM": "FINAL_CHECK", "REVIEW": "FINAL_CHECK",
+    "DEFENSE": "DEFENSE", "GRADE": "COMPLETED",
+}
+
+
+def _active_student_stage(batch):
+    """按批次阶段时间轴推「今天该走哪一步」，供看板流程条高亮当前节点。
+
+    返回 L_STAGE 的键；批次不存在、未配阶段日期、或今天不落在任何阶段区间内时返回 None
+    —— 此时流程条不高亮任何节点。新建批次的 stage_config 日期默认全为 None，
+    不能因为「总得亮一个」就假高亮一个阶段。
+    """
+    if not batch:
+        return None
+    from datetime import date, datetime
+
+    def _d(v):
+        if not v:
+            return None
+        if isinstance(v, date) and not isinstance(v, datetime):
+            return v
+        try:
+            return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return None
+
+    today = date.today()
+    for st in (batch.stage_config or []):
+        start, end = _d(st.get("startDate")), _d(st.get("endDate"))
+        if start and end and start <= today <= end:
+            return _BATCH_STAGE_TO_STUDENT_STAGE.get(st.get("code"))
+    return None
 L_RISK = {"NONE": "无风险", "LOW": "低风险", "MEDIUM": "中风险", "HIGH": "高风险"}
 L_MAT = {"PENDING_REVIEW": "待审阅", "APPROVED": "已通过", "REJECTED": "已驳回", "NOT_SUBMITTED": "未提交"}
 L_TOPIC = {"CONFIRMED": "已确认", "PENDING_CONFIRM": "待确认", "DISABLED": "已停用"}
@@ -1044,6 +1086,7 @@ def get_dashboard() -> dict:
             batch_status = _BATCH_LABEL.get(cur_batch.status, cur_batch.status)
         else:
             batch_name, batch_range, batch_status = "暂无毕设批次", "", "未开始"
+        _active_stage = _active_student_stage(cur_batch)
         return {"batchName": batch_name, "batchRange": batch_range,
                 "moduleStats": module_stats,
                 "batchStatus": batch_status,
@@ -1058,7 +1101,9 @@ def get_dashboard() -> dict:
                     {"label": "高风险学生", "value": str(high_risk),
                      "trend": "", "trendQuality": "bad" if high_risk else "good"},
                 ],
-                "flow": [{"label": L_STAGE[k], "value": flow.get(k, 0), "active": k == "FINAL_CHECK"}
+                # active 按当前批次阶段时间轴真实推算（此前写死 FINAL_CHECK，无论毕设走到哪
+                # 都恒亮「成果检查」）。未配阶段日期时 _active_student_stage 返回 None，不高亮。
+                "flow": [{"label": L_STAGE[k], "value": flow.get(k, 0), "active": k == _active_stage}
                          for k in L_STAGE],
                 "todos": [
                     {"id": "t1", "label": "开题材料待审阅", "count": pend_prop, "tone": "danger",

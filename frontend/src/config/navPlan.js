@@ -74,7 +74,10 @@ export const NAV_PLAN = [
       I('风险预警', '/admin/data-center/risk'),
       I('专题报表', '/admin/data-center/reports')
     ]),
-    mod('wb-recent', '最近访问', null, P('最近访问'))
+    mod('wb-recent', '最近访问', null, P('最近访问')),
+    // 帮助中心：此前只能靠顶栏搜索进入，等于藏起来了。三级目录由帮助中心页自带左侧栏承载，
+    // 这里不重复列举条目（AdminHelpView 仅支持 ?topic=<id> 深链，无分段路由，列了就是假入口）。
+    mod('wb-help', '帮助中心', '/admin/help', [])
   ]),
 
   /* ═══════════ 一级②：学工中心 ═══════════ */
@@ -303,6 +306,10 @@ export const NAV_PLAN = [
       I('注册统计', '/admin/academic-affairs/stats?tab=registration', 'academicAffairs.stats.view'),
       I('注册归档', '/admin/academic-affairs/registration/workbench?tab=archive', 'academicAffairs.registration.archive.view')
     ]),
+    mod('aa-major-split', '专业分流', '/admin/academic-affairs/major-split', [
+      I('分流批次与分配', '/admin/academic-affairs/major-split', 'academicAffairs.majorSplit.view'),
+      ...P('学生志愿填报（移动端）', '分流统计')
+    ]),
     mod('aa-status-change', '学籍异动', '/admin/academic-affairs/status-changes', [
       I('异动台账', '/admin/academic-affairs/status-changes'),
       I('发起异动', '/admin/academic-affairs/status-changes/new'),
@@ -413,6 +420,7 @@ export const NAV_PLAN = [
     mod('aa-scheduling', '排课管理', '/admin/academic-affairs/scheduling', [
       I('排课规则', '/admin/academic-affairs/scheduling?tab=rules', 'academicAffairs.schedule.view'),
       I('教师可用时间', '/admin/academic-affairs/scheduling?tab=availability', 'academicAffairs.schedule.view'),
+      I('自动排课', '/admin/academic-affairs/scheduling?tab=auto', 'academicAffairs.schedule.view'),
       I('冲突报告', '/admin/academic-affairs/scheduling?tab=conflict', 'academicAffairs.schedule.view'),
       I('人工排课工作台（课表维护）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
       I('排课约束', '/admin/academic-affairs/scheduling?tab=constraint', 'academicAffairs.schedule.view'),
@@ -448,6 +456,10 @@ export const NAV_PLAN = [
       I('调停课统计', '/admin/academic-affairs/schedule-change/stats', 'academicAffairs.scheduleChange.view'),
       I('调停课归档', '/admin/academic-affairs/schedule-change/archive', 'academicAffairs.scheduleChange.view')
     ]),
+    mod('aa-attendance', '课堂考勤', '/admin/academic-affairs/attendance-stats', [
+      I('课堂考勤统计（出勤/迟到/旷课/请假汇总）', '/admin/academic-affairs/attendance-stats', 'academicAffairs.warning.view'),
+      ...P('考勤场次查询', '按点名类别统计', '旷课预警联动')
+    ]),
     mod('aa-course-selection', '选课管理', '/admin/academic-affairs/selection', [
       I('选课批次控制台（批次/课程/名单/统计）', '/admin/academic-affairs/selection', 'academicAffairs.selection.view'),
       I('我的选课（学生自助）', '/admin/academic-affairs/my-selection', 'academicAffairs.selection.enroll'),
@@ -461,12 +473,14 @@ export const NAV_PLAN = [
       I('考务控制台（批次/课程/考场/座位/监考/巡考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view'),
       I('座位表/准考证/门贴打印', '/admin/academic-affairs/exam/print/seating', 'academicAffairs.exam.view'),
       I('缓考审批（并入控制台/学生小程序申请）', '/admin/academic-affairs/exam?tab=defer', 'academicAffairs.deferredExam.review'),
-      I('考务归档', '/admin/academic-affairs/exam?tab=archive', 'academicAffairs.exam.view')
+      I('考务归档', '/admin/academic-affairs/exam?tab=archive', 'academicAffairs.exam.view'),
+      I('等级考务（四六级/普通话/技能证书）', '/admin/academic-affairs/level-exams', 'academicAffairs.levelExam.view')
     ]),
     mod('aa-makeup', '补考重修缓考免修', '/admin/academic-affairs/makeup', [
       I('补考批次', '/admin/academic-affairs/makeup?tab=makeup', 'academicAffairs.makeup.view'),
       I('重修审批', '/admin/academic-affairs/makeup?tab=retake', 'academicAffairs.makeup.view'),
       I('免修审批', '/admin/academic-affairs/makeup?tab=exemption', 'academicAffairs.makeup.view'),
+      I('毕业清考', '/admin/academic-affairs/makeup?tab=clearance', 'academicAffairs.makeup.view'),
       I('缓考合流', '/admin/academic-affairs/makeup?tab=deferred', 'academicAffairs.makeup.view'),
       I('重修免修申请（学生自助）', '/admin/academic-affairs/my-makeup', 'academicAffairs.retake.apply'),
       I('统计分析', '/admin/academic-affairs/makeup/stats', 'academicAffairs.makeup.view', 'ANALYTICS_VIEW'),
@@ -480,13 +494,14 @@ export const NAV_PLAN = [
       I('成绩导入', '/admin/academic-affairs/grade-entry?action=import', 'academicAffairs.grade.input'),
       I('成绩导出', '/admin/academic-affairs/transcript?action=export', 'academicAffairs.grade.export'),
       I('成绩统计', '/admin/academic-affairs/stats?tab=grade', 'academicAffairs.stats.view'),
-      I('成绩异常', '/admin/academic-affairs/grade-exception', 'academicAffairs.grade.view')
+      I('成绩异常', '/admin/academic-affairs/grade-exception', 'academicAffairs.grade.view'),
+      I('成绩认定/课程替代', '/admin/academic-affairs/grade-recognition', 'academicAffairs.gradeRecognition.view')
     ]),
     mod('aa-grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', [
       I('学院审核（待审核/通过/退回）', '/admin/academic-affairs/grade-college-review'),
       I('教务发布（发布/退回/归档）', '/admin/academic-affairs/grade-publish'),
       I('成绩更正申请与审核', '/admin/academic-affairs/grade-change'),
-      I('成绩复核', '/admin/academic-affairs/grade-recheck', 'academicAffairs.grade.view'),
+      I('成绩复查复审（学生发起）', '/admin/academic-affairs/grade-recheck', 'academicAffairs.grade.view'),
       I('成绩操作审计', '/admin/academic-affairs/grade-audit', 'academicAffairs.grade.view')
     ]),
     mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
@@ -523,6 +538,7 @@ export const NAV_PLAN = [
       I('毕业资格终审', '/admin/academic-affairs/graduation/audit-console?tab=final', 'academicAffairs.graduation.final'),
       I('不通过原因', '/admin/academic-affairs/graduation/audit-console?tab=reason', 'academicAffairs.graduation.view'),
       I('审核结果', '/admin/academic-affairs/graduation/audit-console?tab=results', 'academicAffairs.graduation.view'),
+      I('毕业证书管理', '/admin/academic-affairs/certificates', 'academicAffairs.graduationCert.view'),
       I('审核归档', '/admin/academic-affairs/graduation/audit-console?tab=archive', 'academicAffairs.graduation.manage')
     ]),
     mod('aa-textbooks', '教材管理', '/admin/academic-affairs/textbooks', [
@@ -596,6 +612,7 @@ export const NAV_PLAN = [
       I('毕业资格统计', '/admin/academic-affairs/stats?tab=graduation', 'academicAffairs.stats.view'),
       I('教师工作量统计', '/admin/academic-affairs/stats?tab=workload', 'academicAffairs.stats.view'),
       I('教学资源统计', '/admin/academic-affairs/stats?tab=resource', 'academicAffairs.stats.view'),
+      I('工作量申报审核（教师申报）', '/admin/academic-affairs/workload-review', 'academicAffairs.stats.view'),
       I('导出报表', '/admin/academic-affairs/stats?tab=export', 'academicAffairs.stats.export')
     ])
   ]),

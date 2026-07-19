@@ -14,16 +14,11 @@
     <LoadingState v-else-if="loading" />
     <div v-else-if="change" class="mp-stack">
       <AppSectionCard title="基本信息">
-        <div class="aa-kv-grid">
-          <div class="aa-kv"><span>学生</span><b>{{ change.realName }}（ID {{ change.studentId }}）</b></div>
-          <div class="aa-kv"><span>异动类型</span><b>{{ change.changeTypeLabel }}</b></div>
-          <div class="aa-kv"><span>状态变化</span><b>{{ change.fromStatus }} → {{ change.toStatus }}</b></div>
-          <div class="aa-kv"><span>当前状态</span><b><AppStatusTag :type="statusColor(change.status)" dot>{{ statusLabel(change.status) }}</AppStatusTag></b></div>
-          <div class="aa-kv"><span>当前节点</span><b>{{ nodeLabel(change.currentNode) }}</b></div>
-          <div v-if="change.expireDate" class="aa-kv"><span>休学到期</span><b>{{ change.expireDate }}</b></div>
-          <div v-if="change.effectiveDate" class="aa-kv"><span>生效日期</span><b>{{ change.effectiveDate }}</b></div>
-          <div class="aa-kv aa-kv--full"><span>申请原因</span><b>{{ change.reason || '（无）' }}</b></div>
-        </div>
+        <AppDescriptionList :items="descItems" :columns="2">
+          <template #status>
+            <AppStatusTag :type="statusColor(change.status)" dot>{{ statusLabel(change.status) }}</AppStatusTag>
+          </template>
+        </AppDescriptionList>
       </AppSectionCard>
 
       <AppSectionCard title="审批流程">
@@ -64,14 +59,14 @@
 <script>
 /** 学籍异动详情 + 审批（/admin/academic-affairs/status-changes/:id）：GET + POST review。 */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TYPE_LABEL, STATUS_LABEL, NODE_LABEL, CHANGE_FLOW_NODES, statusColor, isActive } from '@/modules/academicAffairs/constants/status-change'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaStatusChangeDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert },
+  components: { ModulePageShell, LoadingState, ErrorState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -90,6 +85,21 @@ export default {
     },
     canReview() {
       return this.change && isActive(this.change.status) && this.currentIndex >= 0
+    },
+    descItems() {
+      const c = this.change
+      if (!c) return []
+      const items = [
+        { label: '学生', value: `${c.realName}（ID ${c.studentId}）` },
+        { label: '异动类型', value: c.changeTypeLabel },
+        { label: '状态变化', value: `${c.fromStatus} → ${c.toStatus}` },
+        { key: 'status', label: '当前状态', value: c.status },
+        { label: '当前节点', value: this.nodeLabel(c.currentNode) }
+      ]
+      if (c.expireDate) items.push({ label: '休学到期', value: c.expireDate })
+      if (c.effectiveDate) items.push({ label: '生效日期', value: c.effectiveDate })
+      items.push({ label: '申请原因', value: c.reason || '（无）', span: 2 })
+      return items
     }
   },
   created() {

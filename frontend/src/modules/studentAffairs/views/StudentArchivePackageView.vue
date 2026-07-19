@@ -4,13 +4,11 @@
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载中..." @retry="load"
                     @back="$router.push('/admin/student-affairs/archive')">
       <div class="ap-bar">
-        <label>归档批次
-          <select v-model="selBatch" class="ap-input" @change="loadBatch">
-            <option value="">（选择批次）</option>
-            <option v-for="b in batches" :key="b.batchId" :value="b.batchId">{{ b.batchName || ('批次#'+b.batchId) }}（{{ b.status }} · {{ b.packageCount != null ? b.packageCount+'包' : '' }}）</option>
-          </select>
+        <label class="ap-label">归档批次
+          <AppSelect v-model="selBatch" class="ap-pick" :options="batchOptions" placeholder="（选择批次）" @change="loadBatch" />
         </label>
       </div>
+      <!-- 档案包清单：后端 getArchiveBatch 一次性返回该批次全部档案包，无 page/total 字段，暂不加分页控件 -->
       <AppSectionCard :title="selBatch ? '档案包清单' : '请选择批次'">
         <table v-if="selBatch" class="sa-table">
           <thead><tr><th>学生</th><th>状态</th><th>缺项</th></tr></thead>
@@ -30,16 +28,24 @@
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppPageShell, AppSectionCard, AppSelect, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const PKG = { PENDING: '待收集', READY: '完整', MISSING: '有缺项', ARCHIVED: '已归档', COLLECTING: '收集中' }
 
 export default {
   name: 'StudentArchivePackageView',
-  components: { AppGlobalState, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppPageShell, AppSectionCard, AppSelect, StatusTag: AppStatusTag },
   data() { return { loading: true, errorMessage: '', batches: [], selBatch: '', packages: [] } },
-  computed: { pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') } },
+  computed: {
+    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    batchOptions() {
+      return this.batches.map((b) => ({
+        value: b.batchId,
+        label: `${b.batchName || ('批次#' + b.batchId)}（${b.status} · ${b.packageCount != null ? b.packageCount + '包' : ''}）`
+      }))
+    }
+  },
   mounted() { this.load() },
   methods: {
     async load() {
@@ -68,7 +74,8 @@ export default {
 
 <style scoped>
 .ap-bar { margin-bottom: var(--space-4); }
-.ap-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; margin-left: var(--space-2); }
+.ap-label { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); }
+.ap-pick { width: 320px; }
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty, .ap-hint { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }

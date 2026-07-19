@@ -56,26 +56,18 @@ def list_owner_candidates(keyword: str | None = None) -> list[dict]:
                  "userType": u.user_type} for u in rows]
 
 
-# ⚠️ 已知欠账（本轮未修，见 docs 历史欠账）：assign()/transfer() 对 owner_id 是
-# int(owner_id or 0) 零校验——不校验账号是否存在/同租户/是否持处置角色。填不存在的 id 会把
-# 待办与站内信发给虚空账号，填非数字直接 ValueError→500。
-# 未在本轮修复的原因：现有 tests/test_affairs_risk.py 的 r1/r2/r3 等用例直接断言
-# ownerId="486"（conftest 不建 User，该 id 不对应任何账号）能分派成功，即测试固化了这个
-# 缺陷；补校验必然改红这批用例，而本轮无法在共享 MySQL 测试库上复跑验证（并行会话正在
-# 对该库做 DDL）。修复方案：_seed() 播种一个持 OWNER_ROLE_CODES 角色的在职 User，
-# 用例改用该 id，再启用下面的校验。
-#
-# def _validate_owner(db, owner_id) -> int:
-#     from app.models import User
-#     raw = str(owner_id or "").strip()
-#     if not raw or not raw.isdigit():
-#         raise AppException("VALIDATION_ERROR", "请选择有效责任人")
-#     u = db.get(User, int(raw))
-#     if not u or u.is_deleted or u.tenant_id != _tid() or u.status != "ACTIVE":
-#         raise AppException("VALIDATION_ERROR", "责任人不存在或已停用")
-#     if u.id not in _owner_role_user_ids(db):
-#         raise AppException("VALIDATION_ERROR", "该账号无学工风险处置角色，不能作为责任人")
-#     return int(u.id)
+def _validate_owner(db, owner_id) -> int:
+    """责任人校验：必须是存在、同租户、在职、且持处置角色的真实账号（历史欠账收口，见 docs）。"""
+    from app.models import User
+    raw = str(owner_id or "").strip()
+    if not raw or not raw.isdigit():
+        raise AppException("VALIDATION_ERROR", "请选择有效责任人")
+    u = db.get(User, int(raw))
+    if not u or u.is_deleted or u.tenant_id != _tid() or u.status != "ACTIVE":
+        raise AppException("VALIDATION_ERROR", "责任人不存在或已停用")
+    if u.id not in _owner_role_user_ids(db):
+        raise AppException("VALIDATION_ERROR", "该账号无学工风险处置角色，不能作为责任人")
+    return int(u.id)
 
 L_RISK = {
     "NEW": "新建", "ASSIGNED": "已分派", "PROCESSING": "处置中", "FOLLOWING": "持续跟进",
@@ -199,9 +191,12 @@ def create_risk(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "风险来源非法")
     if (body.riskLevel or "MEDIUM") not in LEVELS:
         raise AppException("VALIDATION_ERROR", "风险等级非法")
+    raw_sid = str(getattr(body, "studentId", None) or "").strip()
+    if not raw_sid.isdigit():
+        raise AppException("VALIDATION_ERROR", "请选择有效学生")
     with session() as db:
         from app.models import AffairsRiskRecord, StudentProfile
-        s = db.get(StudentProfile, int(body.studentId))
+        s = db.get(StudentProfile, int(raw_sid))
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
         _scope_or_403(db, s.id, user)
@@ -240,13 +235,14 @@ def assign(risk_id, user, owner_id) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("NEW", "REOPENED", "TRANSFERRED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可分派")
+        valid_owner_id = _validate_owner(db, owner_id)
         frm = x.status
         x.owner_id, x.status, x.assigned_at, x.escalated_at, x.version = \
-            int(owner_id or 0), "ASSIGNED", datetime.utcnow(), None, x.version + 1
-        _handle(db, x.id, "ASSIGN", f"分派责任人 {owner_id}", frm, "ASSIGNED")
-        _todo_upsert(db, x.id, owner_id, x.student_id, f"风险待处置：{s.real_name if s else ''}")
-        _msg(db, owner_id, "风险待处置", f"有一条{x.risk_level}风险待你处置", "RISK_ALERT", x.id)
-        _audit(db, x.id, "ASSIGN", str(owner_id))
+            valid_owner_id, "ASSIGNED", datetime.utcnow(), None, x.version + 1
+        _handle(db, x.id, "ASSIGN", f"分派责任人 {valid_owner_id}", frm, "ASSIGNED")
+        _todo_upsert(db, x.id, valid_owner_id, x.student_id, f"风险待处置：{s.real_name if s else ''}")
+        _msg(db, valid_owner_id, "风险待处置", f"有一条{x.risk_level}风险待你处置", "RISK_ALERT", x.id)
+        _audit(db, x.id, "ASSIGN", str(valid_owner_id))
         db.commit()
         db.refresh(x)
         return _row(x, user, s)
@@ -292,13 +288,14 @@ def transfer(risk_id, user, new_owner_id, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("PROCESSING", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可转办")
+        valid_owner_id = _validate_owner(db, new_owner_id)
         frm = x.status
         _handle(db, x.id, "TRANSFER", f"转办：{reason}", frm, "ASSIGNED")
         x.owner_id, x.status, x.assigned_at, x.version = \
-            int(new_owner_id or 0), "ASSIGNED", datetime.utcnow(), x.version + 1
-        _todo_upsert(db, x.id, new_owner_id, x.student_id, f"风险转办待处置：{s.real_name if s else ''}")
-        _msg(db, new_owner_id, "风险转办", reason or "有风险转办给你", "RISK_ALERT", x.id)
-        _audit(db, x.id, "TRANSFER", str(new_owner_id))
+            valid_owner_id, "ASSIGNED", datetime.utcnow(), x.version + 1
+        _todo_upsert(db, x.id, valid_owner_id, x.student_id, f"风险转办待处置：{s.real_name if s else ''}")
+        _msg(db, valid_owner_id, "风险转办", reason or "有风险转办给你", "RISK_ALERT", x.id)
+        _audit(db, x.id, "TRANSFER", str(valid_owner_id))
         db.commit()
         db.refresh(x)
         return _row(x, user, s)
@@ -434,9 +431,14 @@ def list_risks(user, source=None, status=None, risk_level=None, page=1, page_siz
             conds.append(AffairsRiskRecord.risk_level == risk_level)
         rows = db.scalars(select(AffairsRiskRecord).where(*conds).order_by(
             AffairsRiskRecord.id.desc())).all()
+        # 消 N+1：一次批量取回本页涉及的学生档案，替代循环内逐行 db.get（历史欠账收口，
+        # 行为等价——同样的行、同样的数据范围过滤、同样的顺序与内存分页，仅省掉 per-row 往返）。
+        sids = {int(x.student_id) for x in rows if x.student_id}
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_(sids))).all()} if sids else {}
         out = []
         for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
             out.append(_row(x, user, s))

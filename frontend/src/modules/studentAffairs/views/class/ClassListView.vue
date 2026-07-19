@@ -4,7 +4,7 @@
     <div class="mp-stack">
       <div class="flt">
         <AppSearchBox v-model="filters.keyword" placeholder="按班级名称搜索" @search="search" />
-        <input class="flt-input" v-model="filters.grade" placeholder="年级，如 2024" @keyup.enter="search" />
+        <AppTextInput class="flt-input" v-model="filters.grade" placeholder="年级，如 2024" @keyup.enter="search" />
         <button type="button" class="mp-link" @click="search">查询</button>
         <button type="button" class="mp-link" @click="reset">重置</button>
       </div>
@@ -39,7 +39,7 @@
  * 数据范围裁剪；点击进入班级画像独立页。真实对接 /student-affairs/classes。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSearchBox } from '@/components/common'
+import { AppSearchBox, AppTextInput } from '@/components/common'
 import { classApi } from '@/modules/studentAffairs/api/class.api'
 
 const COLUMNS = [
@@ -52,7 +52,7 @@ const EMPTY_FILTERS = () => ({ keyword: '', grade: '' })
 
 export default {
   name: 'ClassListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSearchBox },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSearchBox, AppTextInput },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -93,6 +93,6 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .flt { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.flt-input { height: 34px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-card); color: var(--text-primary); font-size: var(--font-size-sm); }
+.flt-input { width: 160px; }
 .is-warn { color: var(--danger-600); font-weight: var(--font-weight-semibold); }
 </style>

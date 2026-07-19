@@ -413,8 +413,22 @@ def cancel(cid, user, reason="") -> dict:
 # ═══════════ 查询（范围过滤）═══════════
 
 def get_change(cid, user) -> dict:
+    """详情查询。修复：此前只按 id+租户加载，未做归属校验——任何持 view 权限者传任意 cid
+    即可查看他人调停课单详情（含目标课位、事由等），与 list_changes/cancel 的范围收敛口径
+    不一致。此处补齐同一套范围判断（TENANT_ALL 全放行；COLLEGE 按所辖班级；其余教师仅本人）。"""
     with session() as db:
-        return _row(_load(db, cid))
+        x = _load(db, cid)
+        ctx = build_affairs_context(user, db)
+        if not _can_manage_all(ctx):
+            if ctx.scope_type == "COLLEGE":
+                allowed = ctx.allowed_class_ids(db)
+                if not x.class_id or int(x.class_id) not in (allowed or set()):
+                    raise no_data_scope("该调停课单不在您的数据范围内")
+            else:
+                keys = _derive_keys(user)
+                if not x.teacher_key or x.teacher_key not in keys:
+                    raise no_data_scope("仅可查看本人发起的调停课单")
+        return _row(x)
 
 
 def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=None,

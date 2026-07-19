@@ -17,7 +17,7 @@ def _hdr(client, login_name):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile, TeacherStudentScope
+    from app.models import (Role, SchoolClass, StudentProfile, TeacherStudentScope, User, UserRole)
     db = get_sessionmaker()()
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
     b = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE")
@@ -30,8 +30,20 @@ def _seed(db_mode):
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
                                role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101",
                                status="ACTIVE"))
+    # 风险责任人校验回归：一个持处置角色(COUNSELOR)的在职账号，一个无处置角色的账号（用于负向用例）。
+    role = Role(tenant_id=TID, role_code="COUNSELOR", role_name="辅导员", status="ACTIVE")
+    other_role = Role(tenant_id=TID, role_code="EMPLOYMENT_TEACHER", role_name="就业老师", status="ACTIVE")
+    db.add(role); db.add(other_role); db.flush()
+    owner = User(tenant_id=TID, login_name="risk_owner01", real_name="风险责任人",
+                password_hash="x", user_type="TEACHER", status="ACTIVE")
+    no_role_user = User(tenant_id=TID, login_name="risk_norole01", real_name="无处置角色账号",
+                        password_hash="x", user_type="TEACHER", status="ACTIVE")
+    db.add(owner); db.add(no_role_user); db.flush()
+    db.add(UserRole(tenant_id=TID, user_id=owner.id, role_id=role.id, status="ACTIVE"))
+    db.add(UserRole(tenant_id=TID, user_id=no_role_user.id, role_id=other_role.id, status="ACTIVE"))
     db.commit()
-    ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
+    ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id,
+           "owner": owner.id, "noRole": no_role_user.id}
     db.close()
     return ids
 
@@ -46,15 +58,16 @@ def test_r1_create_assign(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    r = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "486"}).json()
-    assert r["data"]["status"] == "ASSIGNED" and r["data"]["ownerId"] == "486"
+    owner_id = str(ids["owner"])
+    r = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": owner_id}).json()
+    assert r["data"]["status"] == "ASSIGNED" and r["data"]["ownerId"] == owner_id
 
 
 def test_r2_process_close_360(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "486"})
+    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
     client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr, json={"content": "已约谈学生了解情况"})
     r = client.post(f"{BASE}/risk/records/{rid}/close", headers=hdr,
                     json={"conclusion": "学生情绪稳定，风险解除"}).json()
@@ -70,7 +83,7 @@ def test_r3_close_without_handle_409(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "486"})
+    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
     # ASSIGNED 无处置记录直接关闭 → 状态校验 409（close 要求 PROCESSING/FOLLOWING/ESCALATED）
     assert client.post(f"{BASE}/risk/records/{rid}/close", headers=hdr,
                        json={"conclusion": "无处置直接关闭"}).status_code == 409
@@ -87,7 +100,7 @@ def test_r5_escalate_and_scan_idempotent(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"], level="LOW").json()["data"]["riskId"]
-    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "486"})
+    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
     client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr, json={"content": "首次处置记录"})
     r = client.post(f"{BASE}/risk/records/{rid}/escalate", headers=hdr, json={"reason": "情况恶化"}).json()
     assert r["data"]["status"] == "ESCALATED" and r["data"]["riskLevel"] == "MEDIUM"  # LOW→MEDIUM
@@ -186,3 +199,46 @@ def test_r12_cross_tenant_isolation_404(client, db_mode):
     # 列表也不含他租户记录
     items = client.get(f"{BASE}/risk/records", headers=admin).json()["data"]["items"]
     assert all(str(it["riskId"]) != str(other_id) for it in items)
+
+
+def test_r13_assign_owner_not_exist_400(client, db_mode):
+    """责任人校验（历史欠账收口）：不存在的账号 id → 400 VALIDATION_ERROR，不再"分派成功"给虚空账号。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
+    r = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "999999999"})
+    assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"
+
+
+def test_r14_assign_owner_non_digit_400_not_500(client, db_mode):
+    """非数字 id（如旧前端误传空串/文本）→ 400 VALIDATION_ERROR，不再 int() 抛 500。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
+    r = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "abc"})
+    assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"
+
+
+def test_r15_assign_owner_without_disposal_role_400(client, db_mode):
+    """账号存在但不持处置角色（如就业老师）→ 400 VALIDATION_ERROR，不再变成点开即 403 的死信待办。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
+    r = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+                    json={"ownerId": str(ids["noRole"])})
+    assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"
+
+
+def test_r16_transfer_owner_validated(client, db_mode):
+    """转办同样受责任人校验约束：合法账号转办成功，非法账号 400。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
+    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
+    client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr, json={"content": "首次处置记录"})
+    bad = client.post(f"{BASE}/risk/records/{rid}/transfer", headers=hdr,
+                      json={"newOwnerId": "999999999", "reason": "转给不存在账号"})
+    assert bad.status_code == 400 and bad.json()["bizCode"] == "VALIDATION_ERROR"
+    ok = client.post(f"{BASE}/risk/records/{rid}/transfer", headers=hdr,
+                     json={"newOwnerId": str(ids["owner"]), "reason": "工作交接"}).json()
+    assert ok["data"]["status"] == "ASSIGNED" and ok["data"]["ownerId"] == str(ids["owner"])

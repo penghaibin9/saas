@@ -16,7 +16,8 @@
               <text class="ma__no">单号 {{ a.no }}</text>
               <view class="ma__meta">
                 <text class="ma__meta-item">{{ a.dept }}</text>
-                <text class="ma__meta-item">申请 {{ a.applyTime.slice(5, 16) }}</text>
+                <text class="ma__meta-item">经办 {{ a.handler }}</text>
+                <text class="ma__meta-item">申请 {{ (a.applyTime || '').slice(5, 16) }}</text>
                 <text class="ma__meta-item">预计 {{ a.eta }}</text>
               </view>
               <view class="ma__opinion" :class="{ 'is-return': a.status === 'RETURNED', 'is-reject': a.status === 'REJECTED' }">
@@ -25,7 +26,6 @@
               </view>
               <view class="ma__actions">
                 <text v-if="a.status === 'RETURNED'" class="ma__btn is-primary" @click.stop="resubmit(a)">重新提交</text>
-                <text v-if="a.hasResult" class="ma__btn" @click.stop="toast('结果凭证下载即将开放')">结果凭证</text>
                 <text class="ma__btn" @click.stop="detail(a)">办理详情</text>
               </view>
             </view>

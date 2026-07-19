@@ -6,19 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <div class="aamk-filter">
-        <label class="aamk-filter__item">学期
-          <input v-model="filters.term" class="aa-input aa-input--sm" placeholder="如 2024-2，可空=全部" />
-        </label>
-        <label class="aamk-filter__item">归档状态
-          <select v-model="filters.status" class="aa-input aa-input--sm">
-            <option value="">全部</option>
-            <option value="NOT_ARCHIVED">未归档</option>
-            <option value="ARCHIVED">已归档</option>
-          </select>
-        </label>
-        <button class="mp-btn" :disabled="loading" @click="reload">查询</button>
-      </div>
+      <AdvancedFilter v-model="filters" :fields="filterFields" @search="reload" @reset="resetFilters" />
 
       <ErrorState v-if="error" :description="error" @retry="reload" />
       <LoadingState v-else-if="loading" />
@@ -52,7 +40,7 @@
 
 <script>
 /** 免修材料归档（三级施工卡 11-材料归档）：/admin/academic-affairs/exemption/archive。 */
-import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import { AppFileList } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -62,7 +50,7 @@ const _TERMINAL = ['APPROVED', 'REJECTED', 'CANCELLED']
 
 export default {
   name: 'AaExemptionArchiveView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppFileList },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppDrawer, AppFileList },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -75,12 +63,24 @@ export default {
       materialsVisible: false, materialFiles: []
     }
   },
+  computed: {
+    filterFields() {
+      return [
+        { key: 'term', label: '学期', type: 'text', placeholder: '如 2024-2，可空=全部' },
+        { key: 'status', label: '归档状态', type: 'select', options: [
+          { value: 'NOT_ARCHIVED', label: '未归档' },
+          { value: 'ARCHIVED', label: '已归档' }
+        ] }
+      ]
+    }
+  },
   async created() {
     const c = await academicAffairsApi.getContext()
     if (c.code === 0) this.ctx = c.data
     this.reload()
   },
   methods: {
+    resetFilters() { this.filters.term = ''; this.filters.status = ''; this.reload() },
     exType(s) { return s === 'APPROVED' ? 'success' : s === 'REJECTED' ? 'danger' : 'primary' },
     canArchive(row) { return _TERMINAL.includes(row.status) && row.archiveStatus !== 'ARCHIVED' },
     async reload() {

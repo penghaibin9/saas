@@ -18,10 +18,7 @@
         <button v-if="selfKey" class="mp-btn" @click="teacherKey = selfKey; load()">查看本人课表</button>
         <label class="aa-filter__item">
           学期
-          <select v-model="termId" class="aa-select">
-            <option value="">当前已发布批次</option>
-            <option v-for="t in terms" :key="t.termId" :value="t.termId">{{ t.yearCode }} 第 {{ t.termNo }} 学期</option>
-          </select>
+          <AppSelect v-model="termId" :options="termOptions" placeholder="" />
         </label>
         <label class="aa-filter__item">
           周次
@@ -54,7 +51,7 @@
  * 工号输入约定，不新造教师选择器接口。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard } from '@/components/common'
+import { AppSectionCard, AppSelect } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
@@ -62,7 +59,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeacherScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppSelect, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     const u = currentUserFromToken() || {}
@@ -71,6 +68,14 @@ export default {
       selfKey: String(u.userId || u.loginName || ''),
       termId: '', week: null,
       terms: [], slots: [], items: [], weeklyHours: 0, note: '', loading: false, error: ''
+    }
+  },
+  computed: {
+    termOptions() {
+      return [
+        { value: '', label: '当前已发布批次' },
+        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
+      ]
     }
   },
   created() {

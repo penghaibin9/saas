@@ -36,13 +36,15 @@
             <tr v-if="!items.length"><td colspan="4" class="sa-empty">当前无公示中的认定申请</td></tr>
           </tbody>
         </table>
+        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                       :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -50,14 +52,19 @@ const LEVELS = { SPECIAL: '特别困难', DIFFICULT: '困难', GENERAL: '一般�
 
 export default {
   name: 'AidPublicityView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
-  data() { return { loading: true, scanning: false, actingId: '', errorMessage: '', items: [] } },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  data() {
+    return {
+      loading: true, scanning: false, actingId: '', errorMessage: '', items: [], statsItems: [],
+      pagination: { page: 1, pageSize: 20, total: 0 }
+    }
+  },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const byLevel = this.items.reduce((m, x) => { const k = x.finalLevel || x.applyLevel; m[k] = (m[k] || 0) + 1; return m }, {})
+      const byLevel = this.statsItems.reduce((m, x) => { const k = x.finalLevel || x.applyLevel; m[k] = (m[k] || 0) + 1; return m }, {})
       return [
-        { key: 'all', label: '公示中', value: this.items.length, accent: 'primary' },
+        { key: 'all', label: '公示中', value: this.pagination.total, accent: 'primary' },
         { key: 'sp', label: '特别困难', value: byLevel.SPECIAL || 0, accent: 'risk' },
         { key: 'df', label: '困难', value: byLevel.DIFFICULT || 0, accent: 'warning' }
       ]
@@ -67,12 +74,18 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getAidApplications({ status: 'PUBLICITY', pageSize: 200 })
-      if (res.code === 0 && res.data) {
-        this.items = res.data.items || []
+      const [pageRes, statsRes] = await Promise.all([
+        studentAffairsApi.getAidApplications({ status: 'PUBLICITY', page: this.pagination.page, pageSize: this.pagination.pageSize }),
+        // 独立于当前分页的全量口径（上限 200），仅用于按等级统计卡
+        studentAffairsApi.getAidApplications({ status: 'PUBLICITY', pageSize: 200 })
+      ])
+      if (pageRes.code === 0 && pageRes.data) {
+        this.items = pageRes.data.items || []
+        this.pagination.total = pageRes.data.total != null ? pageRes.data.total : this.items.length
       } else {
-        this.errorMessage = res.message || '公示名单加载失败'
+        this.errorMessage = pageRes.message || '公示名单加载失败'
       }
+      this.statsItems = (statsRes.code === 0 && statsRes.data) ? (statsRes.data.items || []) : []
       this.loading = false
     },
     async scan() {
@@ -81,6 +94,7 @@ export default {
       if (res.code === 0) {
         const n = (res.data && res.data.count) || 0
         toast.success(n ? `公示期满 ${n} 条已转通过` : '暂无到期公示')
+        this.pagination.page = 1
         await this.load()
       } else {
         toast.error(res.message || '扫描失败')
@@ -92,6 +106,7 @@ export default {
       const res = await studentAffairsApi.confirmAidPublicity(it.applyId)
       if (res.code === 0) {
         toast.success('已确认通过，进入困难库')
+        this.pagination.page = 1
         await this.load()
       } else {
         toast.error(res.message || '确认失败')

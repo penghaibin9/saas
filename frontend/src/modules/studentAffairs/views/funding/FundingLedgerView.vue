@@ -37,13 +37,15 @@
             <tr v-if="!items.length"><td colspan="6" class="sa-empty">当前范围与筛选下暂无资助申请</td></tr>
           </tbody>
         </table>
+        <AppPagination v-if="total > pageSize || page > 1" class="fl-pager" v-model:page="page" v-model:pageSize="pageSize"
+                       :total="total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, AppStatusTag } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const TYPE_FILTERS = [
@@ -62,19 +64,26 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'FundingLedgerView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag },
   data() {
-    return { loading: true, errorMessage: '', all: [], items: [], activeType: '', activeStatus: '', typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS }
+    return {
+      loading: true, errorMessage: '', items: [], activeType: '', activeStatus: '',
+      typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS,
+      page: 1, pageSize: 20, total: 0
+    }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    // 后端 /funding/applications 支持 projectType/status/page/pageSize 真分页，此处按当前筛选服务端分页；
+    // 「申请总数」随筛选变化以匹配下方台账（此前版本一次性拉取 500 条做全局统计，历史数据超过 500 条时会静默截断，
+    // 改为服务端分页后不再有该上限）。「已获资助/公示中/已驳回」为当前筛选+分页下的即时状态分布提示，仅供参考。
     metricCards() {
-      const s = (k) => this.all.filter((x) => x.status === k).length
+      const s = (k) => this.items.filter((x) => x.status === k).length
       return [
-        { key: 'all', label: '申请总数', value: this.all.length, accent: 'primary' },
-        { key: 'gr', label: '已获资助', value: s('GRANTED'), accent: 'success' },
-        { key: 'pub', label: '公示中', value: s('PUBLICITY'), accent: 'warning' },
-        { key: 'rj', label: '已驳回', value: s('REJECTED'), accent: 'risk' }
+        { key: 'all', label: '申请总数', value: this.total, accent: 'primary' },
+        { key: 'gr', label: '本页已获资助', value: s('GRANTED'), accent: 'success' },
+        { key: 'pub', label: '本页公示中', value: s('PUBLICITY'), accent: 'warning' },
+        { key: 'rj', label: '本页已驳回', value: s('REJECTED'), accent: 'risk' }
       ]
     }
   },
@@ -82,22 +91,19 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getFundingApplications({ pageSize: 500 })
+      const res = await studentAffairsApi.getFundingApplications({
+        projectType: this.activeType, status: this.activeStatus, page: this.page, pageSize: this.pageSize
+      })
       if (res.code === 0 && res.data) {
-        this.all = res.data.items || []
-        this.applyFilter()
+        this.items = res.data.items || []
+        this.total = res.data.total != null ? res.data.total : this.items.length
       } else {
         this.errorMessage = res.message || '资助台账加载失败'
       }
       this.loading = false
     },
-    applyFilter() {
-      this.items = this.all.filter((x) =>
-        (!this.activeType || x.projectType === this.activeType) &&
-        (!this.activeStatus || x.status === this.activeStatus))
-    },
-    setType(k) { this.activeType = k; this.applyFilter() },
-    setStatus(k) { this.activeStatus = k; this.applyFilter() },
+    setType(k) { if (this.activeType === k) return; this.activeType = k; this.page = 1; this.load() },
+    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.page = 1; this.load() },
     typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || t || '—' },
     sourceLabel(s) { return ({ SELF: '自主申请', RECOMMEND: '推荐' })[s] || s || '—' },
     amountText(a) { return (a == null || a === '') ? '—' : (typeof a === 'number' ? ('¥' + a) : a) },
@@ -121,5 +127,6 @@ export default {
 .sa-table { width: 100%; border-collapse: collapse; }
 .sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
+.fl-pager { margin-top: var(--space-4); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
 </style>

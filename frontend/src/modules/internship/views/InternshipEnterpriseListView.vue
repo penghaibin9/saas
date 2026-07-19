@@ -16,11 +16,9 @@
         <div class="mp-card__head"><span class="mp-card__title">企业库统计</span></div>
         <div class="mp-card__body">
           <div class="ie-stats__grid">
-            <div class="ie-stats__item"><span class="ie-stats__val">{{ entStats.total }}</span><span class="ie-stats__lbl">企业总数</span></div>
-            <div class="ie-stats__item"><span class="ie-stats__val">{{ entStats.blacklistCount }}</span><span class="ie-stats__lbl">黑名单</span></div>
-            <div v-for="s in entStats.byCoopStatus" :key="s.status" class="ie-stats__item">
-              <span class="ie-stats__val">{{ s.count }}</span><span class="ie-stats__lbl">{{ s.label }}</span>
-            </div>
+            <AppMetricCard title="企业总数" :value="entStats.total" />
+            <AppMetricCard title="黑名单" :value="entStats.blacklistCount" :accent="entStats.blacklistCount ? 'risk' : 'primary'" />
+            <AppMetricCard v-for="s in entStats.byCoopStatus" :key="s.status" :title="s.label" :value="s.count" />
           </div>
           <div v-if="entStats.byIndustry?.length" class="ie-stats__ind">
             <span class="mp-note">行业分布：</span>
@@ -54,13 +52,7 @@
           <AppStatusTag :type="row.qualificationStatus === 'PASSED' ? 'success' : (row.qualificationStatus === 'FAILED' ? 'danger' : 'default')">{{ row.qualificationLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/internship/enterprises/' + row.id)">详情</button>
-          <button class="mp-link" :class="{ 'is-disabled': !can('editEnterprise') }" :title="reason('editEnterprise')" style="margin-left: var(--space-2)" @click="goEdit(row)">编辑</button>
-          <button v-if="row.coopStatus === 'PENDING'" class="mp-link" :class="{ 'is-disabled': !can('reviewEnterprise') }" :title="reason('reviewEnterprise')" style="margin-left: var(--space-2)" @click="askReview(row)">审核</button>
-          <button v-else-if="row.coopStatus === 'ACTIVE'" class="mp-link" style="margin-left: var(--space-2)" @click="askCoop(row, 'SUSPEND')">暂停</button>
-          <button v-else-if="row.coopStatus === 'SUSPENDED'" class="mp-link" style="margin-left: var(--space-2)" @click="askCoop(row, 'RESUME')">恢复</button>
-          <button v-if="!row.blacklist && row.coopStatus !== 'ARCHIVED'" class="mp-link mp-link--danger" :class="{ 'is-disabled': !can('blacklistEnterprise') }" :title="reason('blacklistEnterprise')" style="margin-left: var(--space-2)" @click="askBlacklist(row, true)">拉黑</button>
-          <button v-if="row.blacklist" class="mp-link" :class="{ 'is-disabled': !can('blacklistEnterprise') }" :title="reason('blacklistEnterprise')" style="margin-left: var(--space-2)" @click="askBlacklist(row, false)">移出黑名单</button>
+          <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
         </template>
       </DataTable>
     </div>
@@ -98,9 +90,10 @@
 <script>
 /** 企业库列表（/admin/internship/enterprises）：筛选 + 审核/暂停/黑名单状态机 + 真导入导出 + 脱敏；新增/编辑走独立表单页 EnterpriseFormView。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppExportButton, AppStatusTag } from '@/components/common'
+import { AppExportButton, AppStatusTag, AppMetricCard } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { TableActionColumn } from '@/modules/internship/components'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
@@ -133,7 +126,7 @@ const ENTERPRISE_PANEL_HINTS = {
 
 export default {
   name: 'InternshipEnterpriseListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppConfirmDialog, ModuleSummaryStrip },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppMetricCard, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppConfirmDialog, TableActionColumn, ModuleSummaryStrip },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -237,6 +230,35 @@ export default {
       if (!this.can('editEnterprise')) return toast.error(this.reason('editEnterprise'))
       this.$router.push(`/admin/internship/enterprises/${row.id}/edit`)
     },
+    rowActions(row) {
+      const actions = [
+        { key: 'detail', label: '详情' },
+        { key: 'edit', label: '编辑', disabled: !this.can('editEnterprise'), disabledReason: this.reason('editEnterprise') }
+      ]
+      if (row.coopStatus === 'PENDING') {
+        actions.push({ key: 'review', label: '审核', disabled: !this.can('reviewEnterprise'), disabledReason: this.reason('reviewEnterprise') })
+      } else if (row.coopStatus === 'ACTIVE') {
+        actions.push({ key: 'coopSuspend', label: '暂停' })
+      } else if (row.coopStatus === 'SUSPENDED') {
+        actions.push({ key: 'coopResume', label: '恢复' })
+      }
+      if (!row.blacklist && row.coopStatus !== 'ARCHIVED') {
+        actions.push({ key: 'blacklistOn', label: '拉黑', danger: true, disabled: !this.can('blacklistEnterprise'), disabledReason: this.reason('blacklistEnterprise') })
+      }
+      if (row.blacklist) {
+        actions.push({ key: 'blacklistOff', label: '移出黑名单', disabled: !this.can('blacklistEnterprise'), disabledReason: this.reason('blacklistEnterprise') })
+      }
+      return actions
+    },
+    onRowAction(key, row) {
+      if (key === 'detail') return this.$router.push('/admin/internship/enterprises/' + row.id)
+      if (key === 'edit') return this.goEdit(row)
+      if (key === 'review') return this.askReview(row)
+      if (key === 'coopSuspend') return this.askCoop(row, 'SUSPEND')
+      if (key === 'coopResume') return this.askCoop(row, 'RESUME')
+      if (key === 'blacklistOn') return this.askBlacklist(row, true)
+      if (key === 'blacklistOff') return this.askBlacklist(row, false)
+    },
     exportFn() {
       return internshipApi.exportEnterprises({ ...this.filters })
     },
@@ -278,10 +300,7 @@ export default {
 @import '@/styles/module-page.css';
 
 .ie-bl { margin-left: var(--space-2); font-size: 11px; color: var(--danger, #dc2626); }
-.mp-link--danger { color: var(--danger, #dc2626); }
 .ie-stats__grid { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.ie-stats__item { min-width: 88px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line, #e2e8f0); border-radius: 8px; text-align: center; }
-.ie-stats__val { display: block; font-size: 20px; font-weight: 600; color: var(--text-primary); }
-.ie-stats__lbl { font-size: 12px; color: var(--text-secondary); }
+.ie-stats__grid > * { flex: 1 1 160px; }
 .ie-stats__ind { margin-top: var(--space-3); font-size: 13px; }
 </style>

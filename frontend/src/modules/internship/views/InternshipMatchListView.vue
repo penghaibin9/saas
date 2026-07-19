@@ -27,13 +27,6 @@
       </button>
     </nav>
 
-    <div v-if="activePanel === 'stats' && matchStats" class="mp-stats">
-      <div class="mp-stat"><div class="mp-stat__val">{{ matchStats.total }}</div><div class="mp-stat__lbl">匹配总数</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ matchStats.confirmedCount }}</div><div class="mp-stat__lbl">已确认落岗</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ matchStats.conflictCount }}</div><div class="mp-stat__lbl">冲突</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ matchStats.intentionSubmitted }}</div><div class="mp-stat__lbl">已提交意向</div></div>
-    </div>
-
     <div class="mp-stack">
       <AdvancedFilter v-if="!isStatsPanel" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -82,27 +75,7 @@
           <AppStatusTag :type="row.statusTone || 'default'" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <template v-if="isIntentionPanel">
-            <button v-if="row.status === 'DRAFT' || row.status === 'WITHDRAWN'" class="mp-link" :disabled="!canIntentionManage" @click="doSubmitIntention(row)">提交</button>
-            <button v-if="row.status === 'SUBMITTED'" class="mp-link" style="margin-left: var(--space-2)" :disabled="!canIntentionManage" @click="doWithdrawIntention(row)">撤回</button>
-          </template>
-          <template v-else>
-            <button
-              v-if="['RECOMMENDED', 'PENDING_CONFIRM', 'CONFLICT'].includes(row.status)"
-              class="mp-link"
-              :disabled="!canMatchManual"
-              :title="canMatchManual ? '' : '无匹配落岗权限'"
-              @click="askConfirm(row)"
-            >确认落岗</button>
-            <button
-              v-if="['RECOMMENDED', 'PENDING_CONFIRM', 'CONFLICT'].includes(row.status)"
-              class="mp-link mp-link--danger"
-              style="margin-left: var(--space-2)"
-              :disabled="!canMatchManual"
-              :title="canMatchManual ? '' : '无匹配落岗权限'"
-              @click="askReject(row)"
-            >驳回</button>
-          </template>
+          <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
         </template>
       </DataTable>
     </div>
@@ -213,6 +186,7 @@ import { AppExportButton, AppStatusTag, AppStudentPicker, AppPositionPicker, App
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { TableActionColumn } from '@/modules/internship/components'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { searchUnassignedInternStudents, searchPublishedPositions, searchEnterprises } from './components/entityPickerAdapters'
 import { matchApi } from '@/modules/internship/api/match.api'
@@ -236,7 +210,7 @@ const PANEL_HINTS = {
 
 export default {
   name: 'InternshipMatchListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, ModuleSummaryStrip, AppStudentPicker, AppPositionPicker, AppCompanyPicker },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, TableActionColumn, ModuleSummaryStrip, AppStudentPicker, AppPositionPicker, AppCompanyPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -556,6 +530,30 @@ export default {
           else toast.error(res.message)
         }
       } finally { this.submitting = false }
+    },
+    rowActions(row) {
+      if (this.isIntentionPanel) {
+        const actions = []
+        if (row.status === 'DRAFT' || row.status === 'WITHDRAWN') {
+          actions.push({ key: 'submitIntention', label: '提交', disabled: !this.canIntentionManage })
+        }
+        if (row.status === 'SUBMITTED') {
+          actions.push({ key: 'withdrawIntention', label: '撤回', disabled: !this.canIntentionManage })
+        }
+        return actions
+      }
+      const actions = []
+      if (['RECOMMENDED', 'PENDING_CONFIRM', 'CONFLICT'].includes(row.status)) {
+        actions.push({ key: 'confirm', label: '确认落岗', disabled: !this.canMatchManual, disabledReason: this.canMatchManual ? '' : '无匹配落岗权限' })
+        actions.push({ key: 'reject', label: '驳回', danger: true, disabled: !this.canMatchManual, disabledReason: this.canMatchManual ? '' : '无匹配落岗权限' })
+      }
+      return actions
+    },
+    onRowAction(key, row) {
+      if (key === 'submitIntention') return this.doSubmitIntention(row)
+      if (key === 'withdrawIntention') return this.doWithdrawIntention(row)
+      if (key === 'confirm') return this.askConfirm(row)
+      if (key === 'reject') return this.askReject(row)
     }
   }
 }
@@ -569,10 +567,6 @@ export default {
 .im-stages__item.is-active { border-color: var(--pri-100, #dbeafe); background: var(--pri-bg, #eff6ff); color: var(--pri, #2563eb); font-weight: var(--font-weight-semibold); }
 .im-stages__index { color: var(--t3, #94a3b8); font-size: 10px; font-weight: 800; }
 .im-stages__item.is-active .im-stages__index { color: var(--pri, #2563eb); }
-.mp-stats { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
-.mp-stat { min-width: 0; padding: 14px var(--space-4); background: linear-gradient(145deg, var(--card, #fff), var(--pri-bg, #f8fbff)); border: 1px solid var(--card-b, #eee); border-radius: 12px; box-shadow: var(--s1); cursor: default; }
-.mp-stat__val { color: var(--t1, #111827); font-size: 24px; line-height: 1; font-weight: var(--font-weight-bold); font-variant-numeric: tabular-nums; }
-.mp-stat__lbl { color: var(--t3, #64748b); font-size: 12px; margin-top: 7px; }
 .im-block { margin-bottom: var(--space-4); }
 .im-h { margin: 0 0 var(--space-2); font-size: var(--font-size-md); }
 .im-tag { display: inline-block; margin-left: 4px; padding: 0 6px; font-size: 12px; background: #e8f5e9; color: #2e7d32; border-radius: 4px; }
@@ -591,5 +585,4 @@ export default {
 .ie-ok { color: #2e7d32; }
 .ie-bad { color: #c62828; }
 .ie-imp__errs { margin: 8px 0; padding-left: 18px; color: #c62828; font-size: 13px; }
-@media (max-width: 760px) { .mp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

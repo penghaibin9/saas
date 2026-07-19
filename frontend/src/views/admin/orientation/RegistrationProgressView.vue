@@ -108,6 +108,7 @@ import { AppDrawer, AppButton } from '@/components/ui'
 import { TableActionColumn, BatchActionBar, ExportDialog, AuditTrailPanel, ColumnSettings, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
 import { REPORT_TAG_TYPE, toLabelMap } from '@/modules/orientation/constants/orientation.constants'
+import { setOrientationWorklist } from '@/modules/orientation/constants/orientation.worklist'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', blockedOnly: '' })
@@ -288,11 +289,15 @@ export default {
     rowActions(row) {
       return [
         { key: 'issue', label: row.blockedStep ? '查看卡点' : '登记卡点' },
-        { key: 'detail', label: '学生详情' }
+        { key: 'detail', label: '进工作台处理' }
       ]
     },
     onRowAction(key, row) {
-      if (key === 'detail') this.$router.push(`/admin/orientation/students/${row.id}`)
+      if (key === 'detail') {
+        // 带入当前列表顺序作为工作台的「上一个/下一个待办」队列
+        setOrientationWorklist(this.rows.map((r) => r.id), '报到进度')
+        this.$router.push(`/admin/orientation/students/${row.id}`)
+      }
       if (key === 'issue') {
         this.issueTarget = row
         this.issueForm = { blockedStep: row.blockedStep || '', blockedReason: row.blockedReason || '' }

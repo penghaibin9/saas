@@ -28,10 +28,7 @@
         <div class="aa-form__row">
           <label class="aa-form__label required">学期</label>
           <div class="aa-form__field">
-            <select v-model.number="form.termNo" class="aa-input">
-              <option :value="1">第 1 学期（秋季）</option>
-              <option :value="2">第 2 学期（春季）</option>
-            </select>
+            <AppSelect v-model="form.termNo" :options="termOptions" placeholder="请选择学期" />
           </div>
         </div>
 
@@ -83,7 +80,7 @@
 /** 新建学年学期（/admin/academic-affairs/terms/new）：POST /academic-affairs/terms。
  *  以代码为准：后端无学期更新端点，本页仅「新建」，编辑功能后续波次补。 */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard } from '@/components/common'
+import { AppSectionCard, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -91,11 +88,15 @@ const YEAR_RE = /^(\d{4})-(\d{4})$/
 
 export default {
   name: 'AaTermFormView',
-  components: { ModulePageShell, AppSectionCard },
+  components: { ModulePageShell, AppSectionCard, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       submitting: false,
+      termOptions: [
+        { value: 1, label: '第 1 学期（秋季）' },
+        { value: 2, label: '第 2 学期（春季）' }
+      ],
       form: {
         yearCode: '',
         termNo: 1,

@@ -17,13 +17,13 @@
 
       <AppSectionCard v-if="formVisible" title="提交积分申诉">
         <div class="ca-grid">
-          <label class="ca-field"><span>学生主档ID *</span><input v-model.number="form.studentId" type="number" class="ca-input" /></label>
+          <div class="ca-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="ca-field"><span>类型</span>
-            <select v-model="form.appealType" class="ca-input"><option value="MISSING">缺记</option><option value="WRONG">记错</option></select></label>
+            <AppSelect v-model="form.appealType" :options="APPEAL_TYPE_OPTIONS" placeholder="" /></label>
           <label class="ca-field"><span>学分类型</span>
-            <select v-model="form.claimCreditType" class="ca-input"><option value="SECOND_CLASS">二课学时</option><option value="MORAL">德育积分</option><option value="VOLUNTEER_HOUR">志愿时长</option></select></label>
-          <label class="ca-field"><span>主张数值 *</span><input v-model.number="form.claimValue" type="number" min="0" step="0.5" class="ca-input" /></label>
-          <label class="ca-field ca-field--wide"><span>申诉理由 *（≥5字）</span><input v-model.trim="form.reason" class="ca-input" /></label>
+            <AppSelect v-model="form.claimCreditType" :options="CTYPE_OPTIONS" placeholder="" /></label>
+          <label class="ca-field"><span>主张数值 *</span><AppNumberInput v-model="form.claimValue" :min="0" :step="0.5" /></label>
+          <label class="ca-field ca-field--wide"><span>申诉理由 *（≥5字）</span><AppTextInput v-model="form.reason" /></label>
         </div>
         <p v-if="form.error" class="ca-error">{{ form.error }}</p>
         <div class="ca-actions">
@@ -73,12 +73,15 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const CTYPE = { SECOND_CLASS: '二课学时', MORAL: '德育积分', VOLUNTEER_HOUR: '志愿时长' }
+const CTYPE_OPTIONS = Object.entries(CTYPE).map(([value, label]) => ({ value, label }))
+const APPEAL_TYPE_OPTIONS = [{ value: 'MISSING', label: '缺记' }, { value: 'WRONG', label: '记错' }]
 const STATUS_FILTERS = [
   { key: '', label: '全部' }, { key: 'SUBMITTED', label: '待审核' },
   { key: 'APPROVED', label: '已通过' }, { key: 'REJECTED', label: '已驳回' }
@@ -87,8 +90,8 @@ const STATUS_FILTERS = [
 export default {
   name: 'CreditAppealView',
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
-    StatusTag: AppStatusTag
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   data() {
     return {
@@ -99,6 +102,8 @@ export default {
     }
   },
   computed: {
+    CTYPE_OPTIONS: () => CTYPE_OPTIONS,
+    APPEAL_TYPE_OPTIONS: () => APPEAL_TYPE_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const s = (k) => this.all.filter((a) => a.status === k).length
@@ -111,7 +116,8 @@ export default {
   },
   mounted() { this.load() },
   methods: {
-    blankForm() { return { studentId: null, appealType: 'MISSING', claimCreditType: 'SECOND_CLASS', claimValue: null, reason: '', error: '' } },
+    blankForm() { return { studentId: '', appealType: 'MISSING', claimCreditType: 'SECOND_CLASS', claimValue: null, reason: '', error: '' } },
+    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getCreditAppeals({ pageSize: 300 })
@@ -124,11 +130,12 @@ export default {
     openForm() { this.form = this.blankForm(); this.formVisible = true },
     async save() {
       const m = this.form
-      if (!m.studentId || !m.reason || m.reason.length < 5 || !m.claimValue) { m.error = '学生ID、主张数值、理由(≥5字)必填'; return }
+      const reason = (m.reason || '').trim()
+      if (!m.studentId || !reason || reason.length < 5 || !m.claimValue) { m.error = '学生、主张数值、理由(≥5字)必填'; return }
       m.error = ''; this.saving = true
       const res = await studentAffairsApi.submitCreditAppeal({
         studentId: Number(m.studentId), appealType: m.appealType, claimCreditType: m.claimCreditType,
-        claimValue: Number(m.claimValue), reason: m.reason
+        claimValue: Number(m.claimValue), reason
       })
       this.saving = false
       if (res.code === 0) { toast.success('申诉已提交'); this.formVisible = false; this.load() } else m.error = res.message || '提交失败'
