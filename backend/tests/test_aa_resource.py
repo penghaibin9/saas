@@ -41,7 +41,8 @@ def test_t2_duplicate_409(client, db_mode):
 
 
 def test_t3_update_and_unique_recheck(client, db_mode):
-    hdr = _hdr(client, "academic01")  # ACADEMIC_TEACHER 有 academicAffairs.*
+    # 2026-07-19 权限清单化：ACADEMIC_TEACHER 不再持通配符，教室增改是管理动作，改用校管理员
+    hdr = _hdr(client, "school_admin01")
     c1 = _mk(client, hdr, "C", "301").json()["data"]["classroomId"]
     c2 = _mk(client, hdr, "C", "302").json()["data"]["classroomId"]
     # 正常改容量/类型

@@ -47,7 +47,44 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱（含 campusService.*.view）
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
                       "internship.*", "audit.view"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
-    "ACADEMIC_TEACHER": {"academicAffairs.*"},
+    # 任课教师：2026-07-19 起从 academicAffairs.* 通配收窄为显式清单（教务中心测试报告
+    # Bug#3 越权整改的完整版）。原则：教学职责所需的查看/录入/发起/流程节点动作显式授予，
+    # 数据范围仍由 service 层收敛（本人课程/COURSE/仅本人课表等）；一切管理/审批/发布/
+    # 资产维护/敏感导出动作不在清单即默认拒绝。教师参与的审批节点（缓考/免修/监考异常/
+    # 课表异议/教材选用）逐条核对过端点 summary 与既有测试后保留。
+    "ACADEMIC_TEACHER": {
+        # 基础只读：学期/校历/作息/课程库/培养方案/名册（敏感字段另由 roster.viewSensitive 控制，不授予）
+        "academicAffairs.term.view", "academicAffairs.calendar.view",
+        "academicAffairs.timeslot.view", "academicAffairs.classTimeBand.view",
+        "academicAffairs.course.view", "academicAffairs.program.view",
+        "academicAffairs.roster.view",
+        # 教学任务：查看本人任务（教师确认走 require_staff 端点+service 归属校验）；
+        # confirm/merge/adjust/stats 批次管理动作不授予
+        "academicAffairs.teachingTask.view",
+        # 课表：查看（service 限"教师仅本人"）+ 对本人课表提出异议
+        "academicAffairs.schedule.view", "academicAffairs.schedule.teacherConfirm",
+        # 调停课：发起与查看（COURSE 范围），学院/教务审核不授予
+        "academicAffairs.scheduleChange.apply", "academicAffairs.scheduleChange.view",
+        # 成绩：查看/录入/提交/发起更正（COURSE 范围+操作人自查审计）；
+        # 学院审/发布/退回/归档/导出/更正审核不授予
+        "academicAffairs.grade.view", "academicAffairs.grade.input",
+        "academicAffairs.grade.submit", "academicAffairs.gradeChange.apply",
+        # 考务：查看考试安排/考场/座位 + 监考登记考场异常；排考/管理/发布不授予
+        "academicAffairs.exam.view", "academicAffairs.exam.recordAbnormal",
+        # 教师作为审批节点的流程：缓考（教师/学院/教务三级）、免修三级审批
+        # （service 层 _check_node_authority 收敛到本人节点）
+        "academicAffairs.deferredExam.review", "academicAffairs.exemption.review",
+        # 选课：查看轮次 + 本人授课课程选课名单（service 按授课关系收敛）
+        "academicAffairs.selection.view", "academicAffairs.selection.rosterView",
+        # 教材：查目录 + 按教学任务申报选用/提交/撤回（正方教师端对标能力）
+        "academicAffairs.textbook.view", "academicAffairs.textbook.selection.manage",
+        # 资源：教室/实训室只读与占用查询（预约提交走 require_staff 端点）；
+        # 增删改/设备台账/维修管理/冲突台账不授予
+        "academicAffairs.classroom.view", "academicAffairs.lab.view",
+        "academicAffairs.resourceOccupancy.view",
+        # 学业过程域（/api/v1/academic/*，域级裁决 view/export/manage）：只读
+        "academicAffairs.process.view",
+    },
     "ACADEMIC_ADMIN": {"academicAffairs.*", "audit.view"},  # 教务处管理员：本校教务全权（TENANT_ALL），
                                                              # 与 COLLEGE_ADMIN 区分——成绩发布/退回/归档等
                                                              # 超高危动作端点内额外校验角色=ACADEMIC_ADMIN/SCHOOL_ADMIN
@@ -169,18 +206,11 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 }
 
 # 角色 → 从其通配符授权中额外剔除的 permissionCode（精确匹配，不支持通配）。
-# 只用于"通配符覆盖过宽、已有真实越权证据"的最小收窄，不是完整权限矩阵重新设计——
-# 后者需要逐条审计 academicAffairs.* 下全部 152 个 permissionCode，属独立任务，未在此处处理。
-# 2026-07-19 教务中心测试报告 Bug#3：普通任课教师（ACADEMIC_TEACHER 持 academicAffairs.* 通配）
-# 越权提交了教学任务批次审核（该动作应仅限教务处/学院管理员）。这里只剔除批次级管理动作，
-# 其余 academicAffairs.* 权限（成绩录入/调停课申请/查看课表等教师真实需要的部分）维持不变。
-ROLE_PERMISSION_DENY: dict[str, set[str]] = {
-    "ACADEMIC_TEACHER": {
-        "academicAffairs.teachingTask.confirm",   # 批次提交/学院核对确认/教务终审
-        "academicAffairs.teachingTask.merge",     # 合班/拆班
-        "academicAffairs.teachingTask.adjust",    # 管理员更正教师/学时/周次/人数
-    },
-}
+# 应急最小收窄机制：仅当某通配角色出现真实越权证据、且来不及做完整清单化时临时使用。
+# 2026-07-19：ACADEMIC_TEACHER 已完成 156 个权限点全量审计并改为上方显式清单
+# （审计范围=主 router 152 + 学业过程域 process.view/export/manage + roster.viewSensitive），
+# 本表随之清空。回归锁见 tests/test_permissions_deny_unit.py。
+ROLE_PERMISSION_DENY: dict[str, set[str]] = {}
 
 
 def _role_of(user: dict) -> str:
