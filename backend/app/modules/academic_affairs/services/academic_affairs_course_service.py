@@ -21,6 +21,7 @@ import re
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import object_session
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -58,7 +59,19 @@ def _audit(db, biz_id, action, detail=""):
                              occurred_at=datetime.utcnow()))
 
 
-def _row(c) -> dict:
+def _resolve_teacher_names(db, teacher_ids) -> dict:
+    """批量把 owner_teacher_id 转换成真实姓名，供 _row() 拼装可读字段（同 _resolve_class_names 口径）。"""
+    ids = {int(i) for i in teacher_ids if i}
+    if not ids:
+        return {}
+    from app.models import User
+    rows = db.scalars(select(User).where(User.id.in_(ids))).all()
+    return {r.id: r.real_name for r in rows}
+
+
+def _row(c, teacher_names: dict | None = None) -> dict:
+    if teacher_names is None:
+        teacher_names = _resolve_teacher_names(object_session(c), [c.owner_teacher_id]) if c.owner_teacher_id else {}
     return {
         "courseId": str(c.id), "courseCode": c.course_code, "courseName": c.course_name,
         "courseNameEn": c.course_name_en or "", "category": c.category,
@@ -68,6 +81,7 @@ def _row(c) -> dict:
         "hoursExperiment": c.hours_experiment, "hoursComputer": c.hours_computer,
         "examMode": c.exam_mode, "ownerCollegeId": str(c.owner_college_id or ""),
         "ownerTeacherId": str(c.owner_teacher_id or ""),
+        "ownerTeacherName": teacher_names.get(c.owner_teacher_id, "") if c.owner_teacher_id else "",
         "isCore": bool(c.is_core), "version": c.version, "status": c.status,
         "prevVersionId": str(c.prev_version_id) if c.prev_version_id else "",
         "description": c.description or "",
@@ -326,11 +340,12 @@ def list_courses(user, keyword=None, category=None, nature=None, status=None, pa
         if owner_college_id:
             conds.append(AaCourse.owner_college_id == int(owner_college_id))
         rows = db.scalars(select(AaCourse).where(*conds).order_by(AaCourse.id.desc())).all()
+        teacher_names = _resolve_teacher_names(db, [r.owner_teacher_id for r in rows])
         out = []
         for c in rows:
             if keyword and keyword not in (c.course_name or "") and keyword not in (c.course_code or ""):
                 continue
-            out.append(_row(c))
+            out.append(_row(c, teacher_names))
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total

@@ -33,7 +33,7 @@
 
       <!-- 课程明细 -->
       <AppSectionCard title="课程明细">
-        <template v-if="editable" #actions>
+        <template v-if="editable" #header-extra>
           <button class="mp-link" @click="toggleAdd">{{ showAdd ? '收起' : '＋ 从课程库添加' }}</button>
         </template>
 

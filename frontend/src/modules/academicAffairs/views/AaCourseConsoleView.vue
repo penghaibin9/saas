@@ -57,7 +57,7 @@
           <div class="mp-cell-main">{{ row.credit }} 学分</div>
           <div class="mp-cell-sub">总{{ row.hoursTotal ?? '—' }}（理{{ row.hoursTheory ?? 0 }}/实{{ row.hoursPractice ?? 0 }}）</div>
         </template>
-        <template #cell-owner="{ row }">{{ row.ownerTeacherId ? ('教师 #' + row.ownerTeacherId) : '未指定' }}</template>
+        <template #cell-owner="{ row }">{{ row.ownerTeacherId ? (row.ownerTeacherName || '教师 #' + row.ownerTeacherId) : '未指定' }}</template>
         <template #cell-archiveReason="{ row }"><span class="mp-note">{{ row.archiveReason }}</span></template>
         <template #cell-ops="{ row }">
           <template v-if="tab === 'category'"><button class="mp-link" @click="openDimForm(row, 'category')">调整类别</button></template>

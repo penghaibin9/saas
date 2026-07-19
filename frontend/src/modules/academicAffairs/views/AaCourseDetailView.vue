@@ -103,7 +103,7 @@ export default {
         { label: '总学时', value: `${c.hoursTotal ?? '—'}（理论${c.hoursTheory ?? 0}/实践${c.hoursPractice ?? 0}）` },
         { label: '考核方式', value: this.examLabel(c.examMode) },
         { label: '核心课程', value: c.isCore ? '是' : '否' },
-        { label: '课程负责人', value: c.ownerTeacherId ? ('教师 #' + c.ownerTeacherId) : '未指定' },
+        { label: '课程负责人', value: c.ownerTeacherId ? (c.ownerTeacherName || '教师 #' + c.ownerTeacherId) : '未指定' },
         { label: '适用专业', value: this.applicableMajorText },
         { label: '版本', value: 'v' + c.version },
         { label: '先修课程', value: (c.prerequisiteCodes || []).join('、') || '无', span: 2 },

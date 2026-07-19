@@ -28,7 +28,7 @@
       <EmptyState v-else-if="!rows.length" title="暂无预审结果" description="到批次页执行「圈定应届生 + 七项预审」后再来复核" />
       <div v-else class="aa-result-list">
         <AppSectionCard v-for="r in rows" :key="r.resultId" :title="r.realName || ('学生 ' + r.studentId)">
-          <template #actions>
+          <template #header-extra>
             <AppStatusTag :type="overallColor(r.overall)">{{ overallLabel(r.overall) }}</AppStatusTag>
             <AppStatusTag :type="r.conclusion ? 'success' : 'default'" dot>{{ statusLabel(r.status) }}</AppStatusTag>
           </template>

@@ -1114,7 +1114,8 @@ def task_batches(termId: Optional[str] = None, status: Optional[str] = None,
 
 
 @router.post("/teaching-task-batches/{batchId}/submit", summary="提交批次审核（要求全部已分配）")
-def task_batch_submit(batchId: int = Path(...), user=Depends(require_staff)):
+def task_batch_submit(batchId: int = Path(...),
+                      user=Depends(require_permission("academicAffairs.teachingTask.confirm"))):
     return success(task_svc.submit_batch(batchId, user), message="已提交")
 
 
