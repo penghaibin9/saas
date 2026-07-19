@@ -49,7 +49,7 @@ def gd_archives(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=2
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/gd-archives/{gd_student_id}", summary="按学生查归档记录（不存在则创建待生成态）")
+@router.get("/gd-archives/{gd_student_id}", summary="按学生查归档记录（不存在时返回待生成态，不落库）")
 def gd_archive_detail(gd_student_id: str, user=Depends(get_current_user)):
     return success(svc.get_archive(gd_student_id))
 

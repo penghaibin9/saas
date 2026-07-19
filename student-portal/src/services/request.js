@@ -91,6 +91,7 @@ export async function downloadFile(path, fallbackName = '毕业设计材料') {
   } catch (netErr) {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
+  if (res.status === 401) { clearSession(); const e = new Error('登录已失效，请重新登录'); e.status = 401; throw e }
   if (!res.ok) {
     const e = new Error('材料下载失败或你已无权访问'); e.status = res.status; throw e
   }

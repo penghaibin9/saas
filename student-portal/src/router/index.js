@@ -13,7 +13,7 @@ const routes = [
       { path: 'not-enabled', name: 'not-enabled', component: () => import('../components/NotEnabledView.vue') },
       { path: 'module-disabled/:module', name: 'module-disabled', component: () => import('../components/ModuleDisabledView.vue') },
       // 毕设是学生端的重流程模块，使用专用工作台而非通用数据模板页。
-      { path: 'graduation', name: 'graduation-workbench', component: () => import('../views/graduation/GraduationWorkbenchView.vue') },
+      { path: 'graduation', name: 'graduation-workbench', meta: { module: 'graduation' }, component: () => import('../views/graduation/GraduationWorkbenchView.vue') },
       { path: ':module', name: 'module', component: () => import('../views/template/ModuleTemplateView.vue') }
     ]
   },
