@@ -43,8 +43,12 @@ mv "$backup_file.partial" "$backup_file"
 sha256sum "$backup_file" > "$backup_file.sha256"
 
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$RELEASE_DIR"
+# 注意：tmp/ 不排除——backend/scripts/sync_moe_*.py 三个国标库同步脚本的
+# --input/--manifest/--manifest-input 参数直接读取 ../tmp/moe-*.json|.docx，
+# 见 docs/03-业务模块设计/系统管理中心/10-国家标准全文库实施记录与运维手册.md §4；
+# 排除后首次部署跑同步命令会因文件不存在而失败。
 rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'node_modules' --exclude '.env*' \
-  --exclude 'dist' --exclude 'tmp' "$SOURCE_ROOT/" "$RELEASE_DIR/"
+  --exclude 'dist' "$SOURCE_ROOT/" "$RELEASE_DIR/"
 python3 -m venv "$RELEASE_DIR/backend/.venv"
 "$RELEASE_DIR/backend/.venv/bin/pip" install --disable-pip-version-check -r "$RELEASE_DIR/backend/requirements.txt"
 
