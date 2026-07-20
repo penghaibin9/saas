@@ -38,7 +38,7 @@ import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, Er
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TYPE_LABEL } from '@/modules/academicAffairs/constants/status-change'
 
-const EMPTY = () => ({ changeType: '', studentId: '' })
+const EMPTY = () => ({ changeType: '', studentId: '', dateStart: '', dateEnd: '' })
 
 export default {
   name: 'AaStatusChangeEffectiveView',
@@ -60,7 +60,10 @@ export default {
     filterFields() {
       return [
         { key: 'changeType', label: '类型', type: 'select', options: Object.keys(TYPE_LABEL).map((v) => ({ value: v, label: TYPE_LABEL[v] })) },
-        { key: 'studentId', label: '学生ID', type: 'text', placeholder: '按学生主键过滤' }
+        { key: 'studentId', label: '学生ID', type: 'text', placeholder: '按学生主键过滤' },
+        { key: 'date', label: '生效时间', type: 'daterange',
+          startKey: 'dateStart', endKey: 'dateEnd',
+          memoryKey: 'academicAffairs.statusChangeEffective.dateRange', emptyLabel: '全部时间' }
       ]
     }
   },
@@ -76,6 +79,8 @@ export default {
       const res = await academicAffairsApi.getStatusChanges({
         changeType: this.filters.changeType || undefined,
         studentId: this.filters.studentId || undefined,
+        dateFrom: this.filters.dateStart || undefined,
+        dateTo: this.filters.dateEnd || undefined,
         status: 'EFFECTIVE', page: this.page, pageSize: this.pageSize
       })
       if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message

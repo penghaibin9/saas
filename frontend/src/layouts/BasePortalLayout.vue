@@ -515,9 +515,12 @@ export default {
     },
     railActiveKey() {
       // 依路径定位一级模块；根路径 / 命中「工作台」首叶，未知路径兜底高亮工作台。
+      // adminMenu.js 的 ADMIN_MENU 只登记「正式二级」路径（如 /admin/campus-service 已退出正式二级不在册），
+      // 命不中时先退回 navPlan 全量索引（sa-classes 等叶子仍以 /admin/campus-service/* 为真实落点）再兜底工作台，
+      // 否则点「班级列表/班级画像/辅导员考评」这类叶子会把侧栏错误地整组切到工作台（内容页是对的，只是目录栏跳走）。
       const path = this.$route ? this.$route.path : ''
       if (this.isPlatformMode) return 'platform'
-      return findActiveMenu(path).groupKey || 'workbench'
+      return findActiveMenu(path).groupKey || this.planActive.groupKey || 'workbench'
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
     isPlannerView() {

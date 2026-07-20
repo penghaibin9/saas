@@ -58,7 +58,7 @@ const PAGE_META = {
 }
 const APPLY_PATH = { RESUME: '/admin/academic-affairs/status-changes/resume',
                      TRANSFER_MAJOR: '/admin/academic-affairs/status-changes/transfer-major' }
-const EMPTY = () => ({ status: 'EFFECTIVE' })
+const EMPTY = () => ({ status: 'EFFECTIVE', dateStart: '', dateEnd: '' })
 
 export default {
   name: 'AaRosterChangeResultListView',
@@ -81,7 +81,10 @@ export default {
     pageMeta() { return PAGE_META[this.changeType] || { title: '学籍异动结果', subtitle: '' } },
     filterFields() {
       return [
-        { key: 'status', label: '异动状态', type: 'select', options: Object.keys(STATUS_LABEL).map((v) => ({ value: v, label: STATUS_LABEL[v] })) }
+        { key: 'status', label: '异动状态', type: 'select', options: Object.keys(STATUS_LABEL).map((v) => ({ value: v, label: STATUS_LABEL[v] })) },
+        { key: 'date', label: '生效时间', type: 'daterange',
+          startKey: 'dateStart', endKey: 'dateEnd',
+          memoryKey: 'academicAffairs.rosterChangeResults.dateRange', emptyLabel: '全部时间' }
       ]
     }
   },
@@ -112,6 +115,8 @@ export default {
       const res = await academicAffairsApi.getStatusChanges({
         changeType: this.changeType,
         status: this.filters.status || undefined,
+        dateFrom: this.filters.dateStart || undefined,
+        dateTo: this.filters.dateEnd || undefined,
         page: this.page,
         pageSize: this.pageSize
       })

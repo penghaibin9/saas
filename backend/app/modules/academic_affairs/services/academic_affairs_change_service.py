@@ -409,7 +409,8 @@ def get_change(sc_id, user) -> dict:
         return _row(x, s)
 
 
-def list_changes(user, change_type=None, status=None, student_id=None, page=1, page_size=20):
+def list_changes(user, change_type=None, status=None, student_id=None, date_from=None, date_to=None,
+                 page=1, page_size=20):
     from app.models import AaStatusChange, StudentProfile
     from app.modules.academic_affairs.services.academic_affairs_service import REGISTRATION_CHANGE_TYPES
     with session() as db:
@@ -423,6 +424,10 @@ def list_changes(user, change_type=None, status=None, student_id=None, page=1, p
             conds.append(AaStatusChange.status == status)
         if student_id:
             conds.append(AaStatusChange.student_id == int(student_id))
+        if date_from:
+            conds.append(AaStatusChange.effective_date >= date_from)
+        if date_to:
+            conds.append(AaStatusChange.effective_date <= date_to + " 23:59:59")
         join = and_(StudentProfile.id == AaStatusChange.student_id,
                     StudentProfile.tenant_id == AaStatusChange.tenant_id)
         total = db.scalar(select(func.count()).select_from(AaStatusChange)

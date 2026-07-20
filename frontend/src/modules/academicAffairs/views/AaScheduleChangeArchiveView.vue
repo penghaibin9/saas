@@ -39,7 +39,7 @@ const TERMINAL_STATUS = [
   { value: 'CANCELLED', label: '已撤销', tone: 'default' }
 ]
 
-const EMPTY = () => ({ changeType: '', status: '', termId: '' })
+const EMPTY = () => ({ changeType: '', status: '', termId: '', dateFrom: '', dateTo: '' })
 
 export default {
   name: 'AaScheduleChangeArchiveView',
@@ -65,7 +65,10 @@ export default {
       return [
         { key: 'changeType', label: '类型', type: 'select', options: CHANGE_TYPES.map((t) => ({ value: t.value, label: t.label })) },
         { key: 'status', label: '终态', type: 'select', options: TERMINAL_STATUS.map((s) => ({ value: s.value, label: s.label })) },
-        { key: 'termId', label: '学期ID', type: 'text', placeholder: '学期主键' }
+        { key: 'termId', label: '学期ID', type: 'text', placeholder: '学期主键' },
+        { key: 'date', label: '发起时间', type: 'daterange',
+          startKey: 'dateFrom', endKey: 'dateTo',
+          memoryKey: 'academicAffairs.scheduleChangeArchive.dateRange', emptyLabel: '全部时间' }
       ]
     }
   },

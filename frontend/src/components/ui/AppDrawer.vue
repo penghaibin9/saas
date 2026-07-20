@@ -28,10 +28,11 @@ export default {
     visible: { type: Boolean, default: false },
     title: { type: String, default: '' }
   },
-  emits: ['update:visible'],
+  emits: ['update:visible', 'close'],
   methods: {
     close() {
       this.$emit('update:visible', false)
+      this.$emit('close')
     }
   }
 }

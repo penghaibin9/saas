@@ -452,9 +452,9 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
         if term_id:
             conds.append(AaScheduleChange.term_id == int(term_id))
         if date_from:
-            conds.append(AaScheduleChange.updated_at >= date_from)
+            conds.append(AaScheduleChange.created_at >= date_from)
         if date_to:
-            conds.append(AaScheduleChange.updated_at <= date_to + " 23:59:59")
+            conds.append(AaScheduleChange.created_at <= date_to + " 23:59:59")
         # 范围收敛：TENANT_ALL 全量；COLLEGE 按所辖班级；其余(教师) 仅本人课位
         if not _can_manage_all(ctx):
             if ctx.scope_type == "COLLEGE":
