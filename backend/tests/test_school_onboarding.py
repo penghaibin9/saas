@@ -41,6 +41,14 @@ _GOOD_BODY = {
     ],
 }
 
+# 开局向导只负责组织与学校基础资料；师生账号必须走系统管理的身份导入唯一入口。
+_STRUCTURE_BODY = {
+    "tenantId": str(MAIN),
+    "colleges": [{"name": "软件学院", "code": "RJ"}],
+    "majors": [{"collegeName": "软件学院", "name": "软件工程"}],
+    "classes": [{"majorName": "软件工程", "name": "软工2401班", "grade": "2024"}],
+}
+
 
 def _count(model_name):
     from app.db.session import get_sessionmaker
@@ -56,58 +64,55 @@ def _count(model_name):
 
 def test_dry_run_not_persisted(client, db_mode):
     before = _count("College")
-    r = client.post("/api/v1/onboarding/validate", headers=_admin(), json=_GOOD_BODY).json()
+    r = client.post("/api/v1/onboarding/validate", headers=_admin(), json=_STRUCTURE_BODY).json()
     assert r["code"] == 0 and r["data"]["dryRun"] is True
     assert r["data"]["entities"]["colleges"]["created"] == 1
-    assert r["data"]["entities"]["students"]["created"] == 2
+    assert r["data"]["entities"]["students"]["created"] == 0
     assert _count("College") == before  # 未落库
 
 
 def test_confirm_persists(client, db_mode):
-    r = client.post("/api/v1/onboarding/confirm", headers=_admin(), json=_GOOD_BODY).json()
+    r = client.post("/api/v1/onboarding/confirm", headers=_admin(), json=_STRUCTURE_BODY).json()
     assert r["code"] == 0 and r["data"]["dryRun"] is False
     assert r["data"]["entities"]["colleges"]["created"] == 1
     assert r["data"]["entities"]["majors"]["created"] == 1
     assert r["data"]["entities"]["classes"]["created"] == 1
-    assert r["data"]["entities"]["students"]["created"] == 2
-    assert r["data"]["entities"]["teachers"]["created"] == 1
-    assert _count("College") >= 1 and _count("StudentProfile") >= 2
-    # 教师初始密码只随响应返回
-    assert len(r["data"]["teacherCredentials"]) == 1
-    assert r["data"]["teacherCredentials"][0]["loginName"] == "onb_t1"
-    assert r["data"]["teacherCredentials"][0]["initialPassword"]
+    assert r["data"]["entities"]["students"]["created"] == 0
+    assert r["data"]["entities"]["teachers"]["created"] == 0
+    assert _count("College") >= 1 and _count("StudentProfile") == 1  # 仅夹具种子学生
+    assert r["data"]["teacherCredentials"] == []
 
 
 def test_row_level_errors_with_lineno(client, db_mode):
     bad = {"tenantId": str(MAIN), "colleges": [{"name": ""}, {"name": "有效学院"}],
-           "students": [{"studentNo": "", "name": "无学号"}]}
+           "majors": [{"collegeName": "回滚学院", "name": ""}]}
     r = client.post("/api/v1/onboarding/validate", headers=_admin(), json=bad).json()
     assert r["code"] == 0
     errs = r["data"]["errors"]
     assert any(e.get("row") == 1 and e.get("entity") == "college" for e in errs)
-    assert any(e.get("entity") == "student" and e.get("field") == "studentNo" for e in errs)
+    assert any(e.get("entity") == "major" and e.get("field") == "name" for e in errs)
 
 
 def test_cross_tenant_denied(client, db_mode):
-    body = dict(_GOOD_BODY)
+    body = dict(_STRUCTURE_BODY)
     body["tenantId"] = str(DEMO)  # 学校管理员在 MAIN，却想写 DEMO
     r = client.post("/api/v1/onboarding/confirm", headers=_admin(tenant_id=MAIN), json=body).json()
     assert r["code"] == 403001
 
 
 def test_duplicate_import_skipped(client, db_mode):
-    client.post("/api/v1/onboarding/confirm", headers=_admin(), json=_GOOD_BODY)
-    again = client.post("/api/v1/onboarding/confirm", headers=_admin(), json=_GOOD_BODY).json()
+    client.post("/api/v1/onboarding/confirm", headers=_admin(), json=_STRUCTURE_BODY)
+    again = client.post("/api/v1/onboarding/confirm", headers=_admin(), json=_STRUCTURE_BODY).json()
     assert again["code"] == 0
     e = again["data"]["entities"]
-    assert e["colleges"]["skipped"] == 1 and e["students"]["skipped"] == 2 and e["teachers"]["skipped"] == 1
+    assert e["colleges"]["skipped"] == 1 and e["majors"]["skipped"] == 1 and e["classes"]["skipped"] == 1
 
 
 def test_atomic_rollback_on_error(client, db_mode):
     before_stu = _count("StudentProfile")
     bad = {"tenantId": str(MAIN), "atomic": True,
            "colleges": [{"name": "回滚学院"}],
-           "students": [{"studentNo": "RB1", "name": "有效"}, {"studentNo": "", "name": "缺学号"}]}
+           "majors": [{"collegeName": "回滚学院", "name": ""}]}
     r = client.post("/api/v1/onboarding/confirm", headers=_admin(), json=bad).json()
     assert r["code"] == 422001  # 有错整批回滚
     assert _count("StudentProfile") == before_stu  # 一行都没写
@@ -128,7 +133,7 @@ def test_student_and_teacher_forbidden(client, db_mode):
 
 
 def test_report_has_success_fail_skip(client, db_mode):
-    r = client.post("/api/v1/onboarding/validate", headers=_admin(), json=_GOOD_BODY).json()
+    r = client.post("/api/v1/onboarding/validate", headers=_admin(), json=_STRUCTURE_BODY).json()
     for ent in ("colleges", "majors", "classes", "students", "teachers"):
         keys = r["data"]["entities"][ent]
         assert set(keys.keys()) == {"created", "skipped", "failed"}

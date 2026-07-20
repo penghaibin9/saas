@@ -134,6 +134,28 @@ def test_activities_view(client, db_mode):
     assert client.get(f"{PORTAL}/activities/my", headers=h).json()["code"] == 0
 
 
+def test_leave_visible_via_old_cs_student_id_link(client, db_mode):
+    """t_cs_leave 双状态列并行(P0 §4.2 集成①)回归：老 campus-service 提交只挂
+    cs_student_id(student_id/affairs_status 均为空)，此前 /portal/affairs/leave 和
+    /portal/affairs/applications 都只认 student_id/cs.id 单一条件，看不到这类记录——
+    学生自己提交的请假在「我的档案·我的申请」能看到，切到「学工事务·请假销假」却是空的。"""
+    from app.db.session import get_sessionmaker
+    from app.models import CsLeave, CsServiceStudent
+    _seed("SA-030", "学工卅")
+    db = get_sessionmaker()()
+    cs = CsServiceStudent(tenant_id=TID, student_no="SA-030", name="学工卅")
+    db.add(cs); db.flush()
+    db.add(CsLeave(tenant_id=TID, cs_student_id=cs.id, leave_type="SICK",
+                   status="PENDING_REVIEW", reason="老链路请假记录"))
+    db.commit(); db.close()
+    h = _stu_token("学工卅", "SA-030")
+    leave = client.get(f"{PORTAL}/leave", headers=h).json()
+    assert leave["code"] == 0 and len(leave["data"]["items"]) == 1
+    assert leave["data"]["items"][0]["status"] == "PENDING_REVIEW"
+    apps = client.get(f"{PORTAL}/applications", headers=h).json()["data"]["applications"]
+    assert any(a["sourceType"] == "LEAVE" and a["status"] == "PENDING_REVIEW" for a in apps)
+
+
 def test_non_student_rejected(client, db_mode):
     admin = _admin(client)
     assert client.get(f"{PORTAL}/leave", headers=admin).json()["code"] == 403001

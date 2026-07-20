@@ -58,6 +58,24 @@ def test_mb1_leave_my_sees_own(client, db_mode):
     assert r["code"] == 0 and len(r["data"]["items"]) == 1
 
 
+def test_mb1b_leave_my_sees_old_cs_student_id_link(client, db_mode):
+    """t_cs_leave 双状态列并行回归：老 campus-service 提交只挂 cs_student_id，
+    student_id/affairs_status 均为空，/mobile/affairs/leave/my 此前按 student_id
+    单一条件查询会漏掉这类记录（同一学生在「我的申请」能看到，这里却看不到）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import CsLeave, CsServiceStudent
+    ids = _seed(db_mode)
+    db = get_sessionmaker()()
+    cs = CsServiceStudent(tenant_id=TID, student_no="MB13A01", name="张三")
+    db.add(cs); db.flush()
+    db.add(CsLeave(tenant_id=TID, cs_student_id=cs.id, leave_type="PERSONAL",
+                   status="APPROVED", reason="老链路请假记录"))
+    db.commit(); db.close()
+    r = client.get(f"{MB}/affairs/leave/my", headers=_stu_token("张三", "MB13A01")).json()
+    assert r["code"] == 0 and len(r["data"]["items"]) == 1
+    assert r["data"]["items"][0]["status"] == "APPROVED"
+
+
 def test_mb2_student_isolation(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")

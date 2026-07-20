@@ -420,7 +420,7 @@ def _identity_xlsx(rows: list[list]) -> bytes:
 def test_identity_template_is_empty_xlsx_with_roles_and_no_csv_path():
     content = identity_files.build_template()
     wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-    assert wb.sheetnames == ["导入模板", "填写说明", "填写示例（不要导入）", "教师预设角色"]
+    assert wb.sheetnames == ["导入模板", "填写说明", "填写示例（不要导入）", "教师预设角色", "业务关系", "业务关系说明"]
     assert wb["导入模板"].max_row == 1
     role_codes = {row[0] for row in wb["教师预设角色"].iter_rows(min_row=2, values_only=True)}
     assert "ACADEMIC_TEACHER" in role_codes
@@ -440,6 +440,7 @@ def test_identity_xlsx_parses_student_and_teacher_with_original_excel_rows():
     assert parsed["totalRows"] == 2
     assert parsed["students"][0] == {
         "_rowNo": 2, "studentNo": "001234", "name": "张同学",
+        "collegeName": "", "majorName": "",
         "className": "软件2601", "grade": "2026", "gender": "男",
     }
     assert parsed["teachers"][0]["_rowNo"] == 3
@@ -483,7 +484,7 @@ def test_identity_xlsx_rejects_macro_payload_even_when_renamed_xlsx():
     assert "宏" in exc.value.message
 
 
-def test_identity_xlsx_preview_batch_is_bound_to_user_and_tenant(monkeypatch):
+def test_identity_xlsx_preview_batch_is_bound_to_user_and_tenant(monkeypatch, db_mode):
     monkeypatch.setattr(onboarding, "db_enabled", lambda: False)
     parsed = identity_files.parse_xlsx(_identity_xlsx([
         ["STUDENT", "S001", "学生", "", "", "2026", "", "", ""],
@@ -501,8 +502,21 @@ def test_identity_xlsx_preview_batch_is_bound_to_user_and_tenant(monkeypatch):
     with pytest.raises(AppException):
         identity_files.get_batch(user, "2002", preview["batchNo"])
 
+    # 模拟请求被负载均衡到另一实例（模块内状态全部重新加载），批次仍可读取和抢占。
+    import importlib
+    reloaded = importlib.reload(identity_files)
+    restored = reloaded.get_batch(user, "1001", preview["batchNo"], require_valid=True)
+    assert restored["fileSha256"] == parsed["fileSha256"]
+    claimed, token, already_confirmed = reloaded.claim_batch(user, "1001", preview["batchNo"])
+    assert claimed["status"] == "CONFIRMING" and token and not already_confirmed
+    with pytest.raises(AppException) as exc:
+        reloaded.claim_batch(user, "1001", preview["batchNo"])
+    assert exc.value.code == "DATA_CONFLICT"
+    reloaded.release_claim(user, "1001", preview["batchNo"], token, "模拟实例退出")
+    assert reloaded.get_batch(user, "1001", preview["batchNo"])["status"] == "VALIDATED"
 
-def test_global_preview_error_still_blocks_batch_confirmation():
+
+def test_global_preview_error_still_blocks_batch_confirmation(db_mode):
     parsed = {
         "students": [], "teachers": [], "rawRows": [{
             "row": 2, "accountType": "STUDENT", "accountNo": "S001", "name": "学生"}],
