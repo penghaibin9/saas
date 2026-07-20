@@ -61,7 +61,7 @@
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { TYPE_LABEL, STATUS_LABEL, NODE_LABEL, CHANGE_FLOW_NODES, statusColor, isActive } from '@/modules/academicAffairs/constants/status-change'
+import { STATUS_LABEL, NODE_LABEL, CHANGE_FLOW_NODES, statusColor, isActive } from '@/modules/academicAffairs/constants/status-change'
 import { toast } from '@/utils/toast'
 
 export default {

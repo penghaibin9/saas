@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.exceptions import AppException, no_permission
 from app.services.db_service import _iso, _tid, session
@@ -23,16 +23,25 @@ def _me(db, user):
 # ═══════════ 学生自视图 ═══════════
 
 def leave_my(user) -> dict:
-    from app.models import CsLeave
+    """本人请假记录：t_cs_leave 双状态列并行(P0 §4.2 集成①)——13A 新提交走
+    student_id+affairs_status；老 campus-service 提交只有 cs_student_id+status。
+    只按 student_id 查会漏掉老记录（学生自己在「我的申请」能看到、在本页却看不到），
+    这里同 my_applications 一样再按 CsServiceStudent 解析补上 cs_student_id 分支。"""
+    from app.models import CsLeave, CsServiceStudent
     with session() as db:
         stu = _me(db, user)
+        cs = db.scalars(select(CsServiceStudent).where(
+            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
+            (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == stu.real_name))).first()
+        conds = [CsLeave.student_id == stu.id]
+        if cs:
+            conds.append(CsLeave.cs_student_id == cs.id)
         rows = db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), CsLeave.student_id == stu.id,
-            CsLeave.affairs_status.is_not(None), CsLeave.is_deleted.is_(False))
+            CsLeave.tenant_id == _tid(), or_(*conds), CsLeave.is_deleted.is_(False))
             .order_by(CsLeave.id.desc())).all()
         return {"items": [{"leaveId": str(x.id), "leaveType": x.leave_type, "days": float(x.days or 0),
                            "startTime": _iso(x.start_time), "endTime": _iso(x.end_time),
-                           "status": x.affairs_status, "reason": x.reason or ""} for x in rows]}
+                           "status": x.affairs_status or x.status, "reason": x.reason or ""} for x in rows]}
 
 
 def aid_my(user) -> dict:

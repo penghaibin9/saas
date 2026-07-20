@@ -161,22 +161,32 @@ function _redirectToLogin() {
   } catch { /* 非浏览器环境忽略 */ }
 }
 
-/** 401 时用 refreshToken 换新 access（一次性轮换）；失败则清空登录态 */
+/** 401 时用 refreshToken 换新 access（一次性轮换）；失败则清空登录态。
+ *  单飞去重：refreshToken 后端一次性即失效，多个请求同时 401 若各自发起 refresh，
+ *  只有第一个能换到新 token，其余会收到「已使用」401 并清空本已刷新成功的登录态，
+ *  导致用户被误踢回登录页。这里让并发调用共享同一个 in-flight Promise，只真正请求一次。 */
+let refreshPromise = null
 async function tryRefresh() {
   if (!state.refreshToken) return false
-  try {
-    const d = await rawRequest('/auth/refresh', {
-      method: 'POST',
-      auth: false,
-      forceProbe: true,
-      body: { refreshToken: state.refreshToken }
-    })
-    _holdTokens(d.accessToken, d.refreshToken || '')
-    return true
-  } catch {
-    _holdTokens('', '')
-    return false
-  }
+  if (refreshPromise) return refreshPromise
+  refreshPromise = (async () => {
+    try {
+      const d = await rawRequest('/auth/refresh', {
+        method: 'POST',
+        auth: false,
+        forceProbe: true,
+        body: { refreshToken: state.refreshToken }
+      })
+      _holdTokens(d.accessToken, d.refreshToken || '')
+      return true
+    } catch {
+      _holdTokens('', '')
+      return false
+    } finally {
+      refreshPromise = null
+    }
+  })()
+  return refreshPromise
 }
 
 /** 外部注入 token（如账号密码登录成功后） */
@@ -215,10 +225,12 @@ export function currentUserFromToken() {
     const p = JSON.parse(json)
     return {
       userId: p.userId,
+      loginName: p.loginName,
       realName: p.realName,
       userType: p.userType,
       currentRoleCode: p.currentRoleCode,
-      tenantId: p.tenantId
+      tenantId: p.tenantId,
+      tenantName: p.tenantName
     }
   } catch {
     return null

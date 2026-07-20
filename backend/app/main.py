@@ -15,7 +15,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -145,6 +145,56 @@ def create_app() -> FastAPI:
 
         asyncio.create_task(_loop())
 
+    @app.on_event("startup")
+    async def _affairs_leave_overdue_scan():
+        """学工请假逾期定时扫描（历史欠账 L-5 收口）：逐 ACTIVE 租户跑幂等
+        `affairs_leave_service.scan_overdue()`（APPROVED 且超预计返校时间→置 OVERDUE+建待办+提醒），
+        与上方实习请假循环同款模式；手动端点 POST /student-affairs/leave/scan-overdue 仍保留。"""
+        import asyncio
+
+        from app.db.session import db_enabled
+        if settings.SCHEDULER_MODE.strip().lower() != "web":
+            return
+        if not (settings.AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN and db_enabled()):
+            return
+
+        def _run_once():
+            from sqlalchemy import select
+
+            from app.core.context import set_tenant
+            from app.db.session import get_sessionmaker
+            from app.models import Tenant
+            from app.services import affairs_leave_service
+            db = get_sessionmaker()()
+            try:
+                tenant_ids = list(db.scalars(select(Tenant.id).where(Tenant.status == "ACTIVE")))
+            finally:
+                db.close()
+            for tenant_id in tenant_ids:
+                try:
+                    set_tenant({"tenantId": str(tenant_id)})
+                    affairs_leave_service.scan_overdue()
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.affairs").exception(
+                        "affairs leave overdue scan failed tenant=%s", tenant_id)
+                finally:
+                    set_tenant(None)
+
+        async def _loop():
+            from anyio import to_thread
+
+            while True:
+                try:
+                    await to_thread.run_sync(_run_once)
+                    await asyncio.sleep(6 * 60 * 60)
+                except asyncio.CancelledError:
+                    return
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.affairs").exception("affairs leave overdue scheduler failed")
+                    await asyncio.sleep(5 * 60)
+
+        asyncio.create_task(_loop())
+
     @app.get("/health", tags=["00·基础"], summary="健康检查")
     def health():
         if _is_prod:
@@ -179,6 +229,18 @@ def create_app() -> FastAPI:
                     "checkedOut": pool.checkedout() if hasattr(pool, "checkedout") else None,
                     "overflow": pool.overflow() if hasattr(pool, "overflow") else None,
                 }
+                from alembic.config import Config
+                from alembic.runtime.migration import MigrationContext
+                from alembic.script import ScriptDirectory
+                config = Config("alembic.ini")
+                expected_heads = set(ScriptDirectory.from_config(config).get_heads())
+                with engine.connect() as migration_conn:
+                    current_heads = set(MigrationContext.configure(migration_conn).get_current_heads())
+                checks["schemaMigration"] = {
+                    "ok": current_heads == expected_heads,
+                    "current": sorted(current_heads),
+                    "expected": sorted(expected_heads),
+                }
             except Exception as e:  # noqa: BLE001
                 checks["database"] = {"ok": False, "error": str(e)[:120]}
         else:
@@ -195,7 +257,7 @@ def create_app() -> FastAPI:
                                   {"ok": False, "consecutiveFailures": fails,
                                    "lastFailure": audit_state.get("lastFailure")})
         # 上传目录可写
-        for key, path in (("uploadDir", settings.UPLOAD_DIR), ("exportDir", "./exports")):
+        for key, path in (("uploadDir", settings.UPLOAD_DIR), ("exportDir", settings.EXPORT_DIR)):
             try:
                 os.makedirs(path, exist_ok=True)
                 probe = os.path.join(path, ".write_probe")
@@ -206,7 +268,8 @@ def create_app() -> FastAPI:
             except Exception as e:  # noqa: BLE001
                 checks[key] = {"ok": False, "path": path, "error": str(e)[:120]}
         all_ok = all(c.get("ok") for c in checks.values())
-        return success({"status": "READY" if all_ok else "DEGRADED", "checks": checks})
+        payload = success({"status": "READY" if all_ok else "DEGRADED", "checks": checks})
+        return payload if all_ok else JSONResponse(status_code=503, content=payload)
 
     @app.get("/health/metrics", tags=["00·基础"], summary="当前进程接口耗时指标")
     def health_metrics():

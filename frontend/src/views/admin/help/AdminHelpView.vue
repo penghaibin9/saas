@@ -12,7 +12,7 @@
             class="help-nav__item"
             :class="{ 'is-active': it.id === currentId }"
             href="javascript:void(0)"
-            @click="currentId = it.id"
+            @click="selectTopic(it.id)"
           >{{ it.title }}</a>
         </template>
       </nav>
@@ -158,6 +158,13 @@ export default {
   methods: {
     onMenu(item) {
       if (item && item.path && item.path !== this.$route.path) this.$router.push(item.path)
+    },
+    /** 选中左侧帮助条目：同步 ?topic=<id> 到地址栏，使当前条目可被深链分享/刷新保留。 */
+    selectTopic(id) {
+      this.currentId = id
+      if (this.$route.query.topic !== id) {
+        this.$router.replace({ query: { ...this.$route.query, topic: id } }).catch(() => {})
+      }
     },
     /** 跳到任务卡指向的真实功能页（含 ?panel= 深链） */
     goRoute(route) {

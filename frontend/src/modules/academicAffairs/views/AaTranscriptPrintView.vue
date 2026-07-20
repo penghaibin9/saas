@@ -27,7 +27,7 @@
           </tr>
         </tbody>
       </table>
-      <div class="aa-print__seal">教务处（盖章）：____________　　日期：__________</div>
+      <div class="aa-print__seal">教务处（盖章）：____________  日期：__________</div>
     </div>
   </div>
 </template>

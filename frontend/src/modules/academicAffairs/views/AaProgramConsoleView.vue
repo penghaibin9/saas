@@ -311,7 +311,7 @@ import {
 } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import {
-  REVIEW_STATUS, reviewStatusColor, canSubmit, canNewVersion, canPublishBind,
+  REVIEW_STATUS, reviewStatusColor, canSubmit, canNewVersion,
   GRADUATION_REQUIREMENT_CATEGORY, PRACTICE_SEGMENT_TYPE, PRACTICE_ORG_MODE, EXAM_MODE,
   PROGRAM_CHANGE_ACTION, availableChangeActions, ARCHIVE_REASON_LABEL, isPracticeModule
 } from '@/modules/academicAffairs/constants/course-program'

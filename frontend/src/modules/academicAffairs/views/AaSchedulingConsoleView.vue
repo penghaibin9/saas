@@ -179,7 +179,7 @@ export default {
       if (!this.ruleForm.ruleKey) { this.formError = '规则键必填'; return }
       let ruleValue = null
       if (this.ruleForm.ruleValueRaw) {
-        try { ruleValue = JSON.parse(this.ruleForm.ruleValueRaw) } catch (e) { this.formError = '规则值不是合法 JSON'; return }
+        try { ruleValue = JSON.parse(this.ruleForm.ruleValueRaw) } catch { this.formError = '规则值不是合法 JSON'; return }
       }
       this.saving = true
       const res = await api.saveRule({ ruleKey: this.ruleForm.ruleKey, termId: this.ruleForm.termId || undefined, ruleValue })

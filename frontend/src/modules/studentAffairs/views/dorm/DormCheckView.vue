@@ -168,12 +168,12 @@ export default {
     async loadBuildings() {
       // 楼栋列表只用于填下拉；失败不阻断主流程，退化为「不限楼栋」。
       try { this.buildings = (await studentAffairsApi.listDormBuildings({ pageSize: 200 })).data.items || [] }
-      catch (e) { this.buildings = [] }
+      catch { this.buildings = [] }
     },
     async loadRooms(buildingId) {
       if (!buildingId) { this.rooms = []; return }
       try { this.rooms = (await studentAffairsApi.listDormRooms(buildingId, { pageSize: 500 })).data.items || [] }
-      catch (e) { this.rooms = [] }
+      catch { this.rooms = [] }
     },
     async openTask(t) {
       this.curTask = t.taskId; this.curTaskName = t.taskName; this.curTaskType = t.checkType

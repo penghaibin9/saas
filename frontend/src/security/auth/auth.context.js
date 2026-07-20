@@ -13,6 +13,7 @@
  */
 import { reactive, readonly } from 'vue'
 import { SESSION_POLICY } from '../constants/security.constants'
+import { currentUserFromToken, getToken } from '@/services/http/client'
 
 function nowIso() {
   return new Date().toISOString()
@@ -40,12 +41,42 @@ const MOCK_AUTH = {
 
 const state = reactive({ auth: { ...MOCK_AUTH } })
 
-/** 获取当前认证上下文（只读引用） */
+/**
+ * 用真实登录 token 覆盖身份类字段（userId/username/displayName/roles/tenantId/schoolName）。
+ * 此前这些字段固定为 MOCK_AUTH 常量，不随真实登录变化——不同账号登录后工作台问候语、
+ * 顶栏水印(SecurityWatermark)、前端审计事件里的操作人始终显示同一个硬编码"学校管理员"，
+ * 只有真实调用 loginWithPassword 后再切到别的账号才会发现（同一账号登录时刚好对不上）。
+ * MFA/强制改密/会话超时时间等真实后端尚未提供的字段维持 mock 占位，不在此处伪造。
+ * 挂在 getAuthContext() 里逐次同步，而不是要求 client.js 反向 import 本模块去主动通知——
+ * 避免与 client.js 之间出现循环依赖，任何调用方读取时都能拿到当下 token 对应的身份。
+ */
+function syncAuthFromRealToken() {
+  const token = getToken()
+  const u = token ? currentUserFromToken() : null
+  if (!u) {
+    if (state.auth.userId) clearAuthContext()
+    return
+  }
+  if (state.auth.userId === u.userId && state.auth.roles[0] === u.currentRoleCode) return
+  state.auth.userId = u.userId || ''
+  state.auth.username = u.loginName || ''
+  state.auth.displayName = u.realName || u.loginName || ''
+  state.auth.roles = u.currentRoleCode ? [u.currentRoleCode] : []
+  state.auth.tenantId = u.tenantId || ''
+  state.auth.schoolId = u.tenantId || ''
+  state.auth.schoolName = u.tenantName || ''
+  state.auth.loginAt = nowIso()
+  state.auth.lastActiveAt = nowIso()
+}
+
+/** 获取当前认证上下文（只读引用，读取前先与真实 token 同步身份字段） */
 export function getAuthContext() {
+  syncAuthFromRealToken()
   return readonly(state.auth)
 }
 
 export function isAuthenticated() {
+  syncAuthFromRealToken()
   return !!state.auth.userId && !isSessionExpired()
 }
 

@@ -17,7 +17,8 @@ function leafLabel(navRef) {
 test('学籍管理：休学/退学/保留学籍按 roster?status= 深链命中各自叶子，不与「学籍名册」混淆', () => {
   assert.equal(leafLabel('/admin/academic-affairs/roster?status=SUSPENDED'), '休学学生')
   assert.equal(leafLabel('/admin/academic-affairs/roster?status=WITHDRAWN'), '退学学生')
-  assert.equal(leafLabel('/admin/academic-affairs/roster?status=RETAINED'), '保留学籍')
+  // PRESERVED=保留学籍；RETAINED=留级，两者是不同的学籍语义。
+  assert.equal(leafLabel('/admin/academic-affairs/roster?status=PRESERVED'), '保留学籍')
   // 裸路径 /admin/academic-affairs/roster：该二级模块自身注册 path 与「学籍名册」叶子 path 相同，
   // FLAT_NAV_INDEX 中模块行先于叶子行插入、同分时旧逻辑保留模块行 → leafKey 为空（不高亮具体叶子，
   // 仅二级模块本身高亮）。这是 mod()/I() 复用同一 path 时的既有平台行为（aa-stats 等多个模块同样如此），

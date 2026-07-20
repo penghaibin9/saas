@@ -39,7 +39,9 @@
           class="app-g2-chart__tick app-g2-chart__tick--category"
         >{{ t.label }}</text>
 
-        <path v-if="!isLine" v-for="bar in bars" :key="bar.key" :d="bar.path" :fill="bar.color" :fill-opacity="barOpacity" />
+        <template v-if="!isLine">
+          <path v-for="bar in bars" :key="bar.key" :d="bar.path" :fill="bar.color" :fill-opacity="barOpacity" />
+        </template>
 
         <g v-for="s in lineSeries" :key="s.key">
           <path :d="s.path" fill="none" :stroke="s.color" :stroke-width="lineWidth" stroke-linejoin="round" stroke-linecap="round" />
@@ -163,7 +165,7 @@ export default {
     mergedSpec() {
       try {
         return baseChartSpec(this.spec || {})
-      } catch (e) {
+      } catch {
         return { data: [] }
       }
     },

@@ -108,7 +108,6 @@ export function tomorrowDate() {
 export function thisFridayDeadline() {
   const now = startOfDay(new Date())
   const day = now.getDay() // 0 Sun … 5 Fri
-  const delta = day <= 5 ? 5 - day : 6 // 周日 → 下周五也可：这里取本周五=当天若已过则仍返回本周已过的周五供展示；快捷选「本周五」时若过了则取「下周五」
   const target = day === 0 ? addDays(now, 5) : day <= 5 ? addDays(now, 5 - day) : addDays(now, 6)
   return toDeadlineValue(target)
 }

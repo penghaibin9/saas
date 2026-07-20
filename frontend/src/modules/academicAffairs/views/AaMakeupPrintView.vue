@@ -9,7 +9,7 @@
     <div v-else class="aa-print__sheet">
       <h1 class="aa-print__title">{{ schoolName }}</h1>
       <h2 class="aa-print__subtitle">补考安排表{{ data.termCode ? '（' + data.termCode + '）' : '' }}</h2>
-      <p class="aa-print__meta">批次：{{ data.batchName }}　打印时间：{{ printTime }}</p>
+      <p class="aa-print__meta">批次：{{ data.batchName }} 打印时间：{{ printTime }}</p>
       <table class="aa-print__table">
         <thead>
           <tr>

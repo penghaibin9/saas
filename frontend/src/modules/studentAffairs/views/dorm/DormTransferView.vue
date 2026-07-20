@@ -146,7 +146,7 @@ export default {
     },
     async loadBuildings() {
       try { this.buildings = (await studentAffairsApi.listDormBuildings({ pageSize: 200 })).data.items || [] }
-      catch (e) { this.buildings = [] }
+      catch { this.buildings = [] }
     },
     searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     /* ── 发起调宿：学生选择器 + 楼栋/房间/床位三级联动 ── */
