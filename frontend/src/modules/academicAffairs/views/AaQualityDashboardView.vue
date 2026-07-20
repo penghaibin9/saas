@@ -143,7 +143,7 @@
     <!-- 问题记录：详情 -->
     <AppDrawer :visible="recDetailVisible" title="记录详情" @close="recDetailVisible = false">
       <AppDescriptionList v-if="recCurrent" :items="recDescItems" :columns="2">
-        <template #status="{ item }"><StatusTag :type="recStatusType(recCurrent.status)" :label="recStatusLabel(recCurrent.status)" dot /></template>
+        <template #status><StatusTag :type="recStatusType(recCurrent.status)" :label="recStatusLabel(recCurrent.status)" dot /></template>
       </AppDescriptionList>
     </AppDrawer>
 
@@ -166,8 +166,8 @@
     <AppDrawer :visible="rectDetailVisible" title="整改任务详情" @close="rectDetailVisible = false">
       <div v-if="rectCurrent" class="aaql-detail">
         <AppDescriptionList :items="rectDescItems" :columns="2">
-          <template #status="{ item }"><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" dot /></template>
-          <template #deadline="{ item }"><b :class="{ 'aaql-danger': rectCurrent.overdue }">{{ fmt(rectCurrent.deadline) || '—' }}<span v-if="rectCurrent.overdue">（已逾期）</span></b></template>
+          <template #status><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" dot /></template>
+          <template #deadline><b :class="{ 'aaql-danger': rectCurrent.overdue }">{{ fmt(rectCurrent.deadline) || '—' }}<span v-if="rectCurrent.overdue">（已逾期）</span></b></template>
         </AppDescriptionList>
         <div class="aaql-section-title">跟进时间线</div>
         <AppTimeline :items="rectTimelineItems" />

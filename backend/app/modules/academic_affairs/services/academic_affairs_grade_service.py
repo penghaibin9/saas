@@ -464,6 +464,8 @@ def submit_task(task_id, user) -> dict:
         n, r, uid = _op()
         first_node = "COLLEGE_REVIEW"
         from app.models import WorkflowInstance, WorkflowTask
+        from app.services.runtime_preset_install_service import ensure_workflow_enabled
+        ensure_workflow_enabled(db, _tid(), _WF_SUBMIT)
         inst = WorkflowInstance(tenant_id=_tid(), workflow_code=_WF_SUBMIT, source_module="academic-affairs",
                                 source_biz_type="AA_GRADE_TASK", source_biz_id=t.id,
                                 applicant_id=int(uid) if uid.isdigit() else 0,
@@ -713,6 +715,8 @@ def change_request(task_id, record_id, user, body) -> dict:
             rec.final_score = new_final
         rec.change_reason = reason
         first_node = "COLLEGE_REVIEW"
+        from app.services.runtime_preset_install_service import ensure_workflow_enabled
+        ensure_workflow_enabled(db, _tid(), _WF_CHANGE)
         inst = WorkflowInstance(tenant_id=_tid(), workflow_code=_WF_CHANGE, source_module="academic-affairs",
                                 source_biz_type="AA_GRADE_CHANGE", source_biz_id=rec.id,
                                 applicant_id=int(uid) if uid.isdigit() else 0,

@@ -119,7 +119,7 @@ export default {
       // tab query 直接忽略、静默落回默认的"评教批次"内容，等于点这六个菜单看到的是另一个
       // 功能的数据，误导用户以为已完成（CLAUDE.md §6.1 禁止假页面冒充完成）。这里改为如实显示
       // "暂未独立建设"，不悄悄展示不相关内容；哪天真的建了对应分类页，删掉这个 key 即可。
-      _unbuiltEvalTabs: {
+      unbuiltEvalTabs: {
         studentEval: '学生评教(小程序)', selfEval: '教师自评', peerEval: '同行评价',
         supervisorEval: '督导评价', evalStats: '评价统计', archive: '评价归档'
       },
@@ -138,7 +138,7 @@ export default {
     }
   },
   computed: {
-    unbuiltLabel() { return this._unbuiltEvalTabs[this.queryTab] || '' }
+    unbuiltLabel() { return this.unbuiltEvalTabs[this.queryTab] || '' }
   },
   async created() {
     const c = await academicAffairsApi.getContext()

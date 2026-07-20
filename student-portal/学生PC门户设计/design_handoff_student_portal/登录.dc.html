@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics="">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:#fff;color:#1D2129;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:var(--pri)}
+a:hover{color:var(--pri-h)}
+input{outline:none;font-family:inherit}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes floatCard{0%,100%{transform:rotate(-3deg) translateY(0)}50%{transform:rotate(-3deg) translateY(-8px)}}
+@keyframes spinBorder{to{transform:rotate(360deg)}}
+@keyframes scanline{0%,100%{top:0%;opacity:0}8%{opacity:1}50%{top:98%;opacity:1}92%{opacity:0}}
+@keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.3}}
+:root{--pri:#2f6bff;--pri-h:#1f58e7;--pri-50:#eff6ff;--pri-100:#dbeafe;--pri-500:#3b82f6;--bg:#f4f8ff;--g1:#60a5fa;--g2:#2f6bff}
+</style>
+</helmet>
+<div style="min-height:100vh;width:100%;display:flex;{{ themeVars }}">
+
+  <!-- ============ LEFT: CAMPUS VISUAL ============ -->
+  <div style="flex:1.25;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--g2),var(--g1));min-width:0">
+    <div style="position:absolute;top:0;left:0;right:0;height:58%;overflow:hidden">
+      <x-import component-from-global-scope="image-slot" from="./image-slot.js" id="campusPhoto" shape="rect" placeholder="拖入校园实景图" style="width:100%;height:100%" hint-size="100%,100%"></x-import>
+      <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px);background-size:32px 32px;pointer-events:none"></div>
+      <div style="position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent);box-shadow:0 0 14px 2px rgba(255,255,255,.7);animation:scanline 4s ease-in-out infinite;pointer-events:none"></div>
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,20,50,.12) 0%,rgba(8,16,42,.05) 55%,var(--g2) 100%);pointer-events:none"></div>
+    </div>
+
+    <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:11px;padding:34px 40px 0;z-index:1">
+      <div style="display:flex;align-items:center;gap:11px">
+        <span style="width:38px;height:38px;flex:none;border-radius:11px;background:rgba(255,255,255,.16);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.28)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5 12 4.5l9.5 4-9.5 4z"></path><path d="M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13"></path></svg>
+        </span>
+        <span style="color:#fff;font-size:15px;font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.2);white-space:nowrap">{{ brand.school }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(255,255,255,.14);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.25);border-radius:20px;flex:none">
+        <span style="width:7px;height:7px;border-radius:50%;background:#4ADE80;box-shadow:0 0 6px 1px #4ADE80;animation:pulseDot 2s ease-in-out infinite;flex:none"></span>
+        <span style="font-size:11px;color:#fff;letter-spacing:.3px;white-space:nowrap">系统运行正常</span>
+      </div>
+    </div>
+
+    <div style="position:absolute;left:40px;top:calc(58% - 40px);display:flex;gap:8px;z-index:1">
+      <span style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:rgba(255,255,255,.14);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.25);border-radius:20px;font-size:11px;color:#fff;white-space:nowrap">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2.5"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+        数据加密传输
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:rgba(255,255,255,.14);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.25);border-radius:20px;font-size:11px;color:#fff;white-space:nowrap">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        仅本人可见
+      </span>
+    </div>
+
+    <div style="position:absolute;top:58%;left:0;right:0;bottom:0;display:flex;flex-direction:column;justify-content:flex-end;padding:0 44px 46px">
+      <div style="color:#fff;font-size:32px;font-weight:700;line-height:1.35;max-width:460px;text-shadow:0 2px 12px rgba(0,0,0,.18)">你好呀,欢迎回来<br>继续你的校园时光</div>
+      <div style="color:rgba(255,255,255,.82);font-size:14px;margin-top:12px;max-width:420px;line-height:1.7">重任务、传材料、下证明、填长表单——学生 PC 门户陪你办完在校的每一件事。</div>
+
+      <div style="position:relative;margin-top:34px;width:250px">
+        <div style="position:relative;background:rgba(255,255,255,.14);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.32);border-radius:16px;padding:18px 20px;box-shadow:0 20px 46px -14px rgba(0,0,0,.45);animation:floatCard 5s ease-in-out infinite;transform-origin:center" style-before="content:'';position:absolute;inset:-3px;border-radius:19px;background:conic-gradient(from 0deg,var(--g1),#fff,var(--pri-100),var(--g2),var(--g1));opacity:.55;filter:blur(7px);z-index:-1;animation:spinBorder 5s linear infinite">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <span style="font-size:10.5px;letter-spacing:1.5px;color:rgba(255,255,255,.75);font-weight:600">STUDENT ID</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:5px;background:rgba(255,255,255,.22);color:#fff">在校学生</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="width:42px;height:42px;flex:none;border-radius:11px;background:rgba(255,255,255,.9);color:var(--pri);font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ demoStudent.initial }}</span>
+            <div>
+              <div style="color:#fff;font-size:15px;font-weight:600">{{ demoStudent.name }}</div>
+              <div style="color:rgba(255,255,255,.75);font-size:11.5px;margin-top:2px;font-variant-numeric:tabular-nums">{{ demoStudent.major }} · {{ demoStudent.no }}</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;height:14px;border-radius:3px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.9) 0 2px,transparent 2px 4px,rgba(255,255,255,.5) 4px 5px,transparent 5px 8px)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT: LOGIN FORM ============ -->
+  <div style="width:452px;flex:none;display:flex;align-items:center;justify-content:center;padding:40px;background:#fff">
+    <div style="width:100%;max-width:320px;animation:fadeUp .4s ease">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.6px;color:#8A94A6">STUDENT PORTAL</div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:9px">
+        <span style="font-size:27px;font-weight:700;color:#11151A;letter-spacing:-.3px">登录</span>
+        <div style="display:flex;align-items:center;gap:9px">
+          <a onClick="{{ setModeAccount }}" style="cursor:pointer;font-size:12.5px;font-weight:700;color:{{ accountTabColor }}">账号密码</a>
+          <span style="color:#DFE3E8;font-size:12px">/</span>
+          <a onClick="{{ setModeQr }}" style="cursor:pointer;font-size:12.5px;font-weight:700;color:{{ qrTabColor }}">微信扫码</a>
+        </div>
+      </div>
+      <div style="margin-top:7px;font-size:13.5px;color:#8A94A6;line-height:1.6">{{ subtitleText }}</div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;margin-top:26px">
+        <sc-if value="{{ isAccountMode }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="font-size:12.5px;font-weight:600;color:#384250;margin-bottom:7px">账号</div>
+          <input value="{{ loginName }}" onChange="{{ onNameChange }}" onKeyDown="{{ onEnter }}" placeholder="学号 / 账号" style="width:100%;height:44px;border:1.5px solid #DFE3E8;border-radius:8px;padding:0 13px;font-size:14.5px;box-sizing:border-box;color:#11151A;transition:border-color .12s,box-shadow .12s" style-focus="border-color:var(--pri);box-shadow:0 0 0 3.5px var(--pri-50)">
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+            <span style="font-size:12.5px;font-weight:600;color:#384250">密码</span>
+            <button onClick="{{ togglePwd }}" style="all:unset;cursor:pointer;font-size:12px;font-weight:600;color:var(--pri)">{{ pwdToggleText }}</button>
+          </div>
+          <input value="{{ password }}" onChange="{{ onPwdChange }}" onKeyDown="{{ onEnter }}" type="{{ pwdInputType }}" placeholder="密码" style="width:100%;height:44px;border:1.5px solid #DFE3E8;border-radius:8px;padding:0 13px;font-size:14.5px;box-sizing:border-box;color:#11151A;transition:border-color .12s,box-shadow .12s" style-focus="border-color:var(--pri);box-shadow:0 0 0 3.5px var(--pri-50)">
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:-4px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#4E5969;cursor:pointer"><input type="checkbox" checked="" style="accent-color:var(--pri)">记住我</label>
+          <a style="font-size:12.5px;cursor:pointer">忘记密码?</a>
+        </div>
+
+        <sc-if value="{{ error }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:8px;padding:10px 12px;background:#FDECEC;border:1px solid #F7C9C1;border-radius:9px;color:#B42318;font-size:12.5px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D92D20" stroke-width="2" stroke-linecap="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+            {{ error }}
+          </div>
+        </sc-if>
+
+        <button onClick="{{ doLogin }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;height:44px;border-radius:8px;background:var(--pri);color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 1px 2px rgba(16,24,40,.06);margin-top:2px" style-hover="background:var(--pri-h)">
+          <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}"><span style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:spin .7s linear infinite"></span></sc-if>
+          {{ loginBtnText }}
+        </button>
+
+        <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+          <span style="flex:1;height:1px;background:#EAECF0"></span>
+          <span style="font-size:12px;color:#98A2B3">或</span>
+          <span style="flex:1;height:1px;background:#EAECF0"></span>
+        </div>
+
+        <button style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;height:44px;border:1.5px solid #DFE3E8;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13.5px;font-weight:600;color:#384250" style-hover="background:#F9FAFB;border-color:#C9CED6">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#384250" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6z"></path><path d="m9 12 2 2 4-4"></path></svg>
+          统一身份认证登录
+        </button>
+        </sc-if>
+
+        <sc-if value="{{ isQrMode }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;align-items:center">
+          <div style="position:relative;width:168px;height:168px;border:1.5px solid #E5E8EE;border-radius:14px;background:#fff;overflow:hidden">
+            <div style="position:absolute;left:8px;top:8px;width:30px;height:30px;background:#11151A;border-radius:3px"><div style="position:absolute;left:5px;top:5px;width:20px;height:20px;background:#fff;border-radius:2px"><div style="position:absolute;left:6px;top:6px;width:8px;height:8px;background:#11151A;border-radius:1px"></div></div></div>
+            <div style="position:absolute;right:8px;top:8px;width:30px;height:30px;background:#11151A;border-radius:3px"><div style="position:absolute;left:5px;top:5px;width:20px;height:20px;background:#fff;border-radius:2px"><div style="position:absolute;left:6px;top:6px;width:8px;height:8px;background:#11151A;border-radius:1px"></div></div></div>
+            <div style="position:absolute;left:8px;bottom:8px;width:30px;height:30px;background:#11151A;border-radius:3px"><div style="position:absolute;left:5px;top:5px;width:20px;height:20px;background:#fff;border-radius:2px"><div style="position:absolute;left:6px;top:6px;width:8px;height:8px;background:#11151A;border-radius:1px"></div></div></div>
+            <div style="position:absolute;left:50px;top:12px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:64px;top:12px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:92px;top:16px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:114px;top:12px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:130px;top:20px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:12px;top:52px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:12px;top:70px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:12px;top:98px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:12px;top:114px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:148px;top:52px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:148px;top:70px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:148px;top:94px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:148px;top:118px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:56px;top:148px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:74px;top:150px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:96px;top:148px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:118px;top:150px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:56px;top:56px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:72px;top:60px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:90px;top:56px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:106px;top:64px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:60px;top:76px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:80px;top:80px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:100px;top:84px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:116px;top:78px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:64px;top:98px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:86px;top:104px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:106px;top:100px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:122px;top:108px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:70px;top:120px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:94px;top:124px;width:7px;height:7px;background:#11151A"></div>
+            <div style="position:absolute;left:112px;top:130px;width:7px;height:7px;background:#11151A"></div>
+          </div>
+          <div style="margin-top:16px;font-size:13.5px;color:#384250;font-weight:600">请使用微信扫一扫</div>
+          <div style="margin-top:4px;font-size:12px;color:#98A2B3">扫码后在手机上确认,即可登录</div>
+          <button onClick="{{ refreshQr }}" style="all:unset;cursor:pointer;margin-top:10px;font-size:12px;color:var(--pri);font-weight:500">刷新二维码</button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="flex:1;height:1px;background:#EAECF0"></span>
+          <span style="font-size:12px;color:#98A2B3">或</span>
+          <span style="flex:1;height:1px;background:#EAECF0"></span>
+        </div>
+        <button onClick="{{ setModeAccount }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;height:44px;border:1.5px solid #DFE3E8;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13.5px;font-weight:600;color:#384250" style-hover="background:#F9FAFB;border-color:#C9CED6">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#384250" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>
+          使用账号密码登录
+        </button>
+        </sc-if>
+      </div>
+
+      <div style="margin-top:22px;padding-top:16px;border-top:1px dashed #E5E6EB">
+        
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <sc-for list="{{ demoAccounts }}" as="d" hint-placeholder-count="2">
+            
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;text-align:center;font-size:11.5px;color:#C6CCD6">连接已加密 · 与学生小程序为同一套账号 · 数据范围仅本人</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;清透学院蓝&quot;,&quot;options&quot;:[&quot;清透学院蓝&quot;,&quot;沉稳商务蓝&quot;,&quot;云岚雅灰&quot;,&quot;豆沙绿护眼&quot;,&quot;皓白极简&quot;,&quot;墨白极简&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;schoolName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;示范职业技术学院&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;studentName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;张明&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;}}">
+class Component extends DCLogic {
+  state = { loginName:'', password:'', error:'', loading:false, showPwd:false, loginMode:'account' };
+
+  THEMES = {
+    '清透学院蓝':{'--pri':'#2f6bff','--pri-h':'#1f58e7','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f4f8ff','--g1':'#60a5fa','--g2':'#2f6bff'},
+    '沉稳商务蓝':{'--pri':'#1868c0','--pri-h':'#12559f','--pri-50':'#eaf2fb','--pri-100':'#d0e4f7','--pri-500':'#3b82f6','--bg':'#eef2f7','--g1':'#3e86de','--g2':'#1868c0'},
+    '云岚雅灰':{'--pri':'#5b6c9e','--pri-h':'#4b5c8d','--pri-50':'#f0f3fa','--pri-100':'#e1e6f0','--pri-500':'#8a9ac8','--bg':'#f6f8fc','--g1':'#8a9ac8','--g2':'#5b6c9e'},
+    '豆沙绿护眼':{'--pri':'#3e8e7e','--pri-h':'#327264','--pri-50':'#eaf2ee','--pri-100':'#d3e7df','--pri-500':'#5ca894','--bg':'#e6eee3','--g1':'#5ca894','--g2':'#3e8e7e'},
+    '皓白极简':{'--pri':'#2563eb','--pri-h':'#1d4ed8','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f8fafc','--g1':'#3b82f6','--g2':'#2563eb'},
+    '墨白极简':{'--pri':'#111827','--pri-h':'#000000','--pri-50':'#f3f4f6','--pri-100':'#e5e7eb','--pri-500':'#374151','--bg':'#f7f7f8','--g1':'#374151','--g2':'#111827'},
+  };
+  DEMO = [
+    {label:'演示职业技术学院',loginName:'student',password:'123456'},
+    {label:'试用职业技术学院',loginName:'student2',password:'123456'},
+  ];
+
+  fill(a){ this.setState({loginName:a.loginName, password:a.password, error:''}); }
+  setMode(m){ this.setState({loginMode:m, error:''}); }
+  refreshQr(){ this.notify && this.notify('二维码已刷新'); }
+  togglePwd(){ this.setState(s=>({showPwd:!s.showPwd})); }
+  doLogin(){
+    if(!this.state.loginName || !this.state.password){ this.setState({error:'请输入账号与密码'}); return; }
+    this.setState({loading:true, error:''});
+    setTimeout(()=>{
+      window.location.href = '学生PC门户.dc.html';
+    }, 700);
+  }
+
+  renderVals(){
+    const s=this.state;
+    const themeName = this.props.theme || '清透学院蓝';
+    const tv = this.THEMES[themeName] || this.THEMES['清透学院蓝'];
+    const themeVars = Object.keys(tv).map(k=>k+':'+tv[k]).join(';');
+    const now = new Date();
+    const hr = now.getHours();
+    const greetWord = hr<11?'上午好':hr<13?'中午好':hr<18?'下午好':'晚上好';
+    const sName = this.props.studentName || '张明';
+    const wd = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'][now.getDay()];
+    const todayStr = now.getFullYear()+'年'+String(now.getMonth()+1).padStart(2,'0')+'月'+String(now.getDate()).padStart(2,'0')+'日 · '+wd;
+    return {
+      brand:{school:this.props.schoolName||'示范职业技术学院'},
+      themeVars, todayStr,
+      greeting: greetWord + ',欢迎回来',
+      demoStudent:{name:sName, initial:sName.slice(0,1), major:'软件技术', no:'2023010145'},
+      loginName:s.loginName, password:s.password, error:s.error, loading:s.loading,
+      showPwd:s.showPwd, pwdInputType: s.showPwd? 'text':'password',
+      loginBtnText: s.loading? '登录中…' : '登 录',
+      pwdToggleText: s.showPwd? '隐藏':'显示',
+      isAccountMode: s.loginMode==='account', isQrMode: s.loginMode==='qr',
+      accountTabBg: s.loginMode==='account'?'#fff':'transparent', accountTabColor: s.loginMode==='account'?'#11151A':'#8A94A6',
+      qrTabBg: s.loginMode==='qr'?'#fff':'transparent', qrTabColor: s.loginMode==='qr'?'#11151A':'#8A94A6',
+      accountTabShadow: s.loginMode==='account'?'0 1px 2px rgba(16,24,40,.1)':'none',
+      qrTabShadow: s.loginMode==='qr'?'0 1px 2px rgba(16,24,40,.1)':'none',
+      subtitleText: s.loginMode==='qr' ? '打开微信扫一扫,快速登录学生服务门户' : ('使用学号和密码访问'+(this.props.schoolName||'示范职业技术学院')+'学生服务门户'),
+      setModeAccount:()=>this.setMode('account'), setModeQr:()=>this.setMode('qr'),
+      refreshQr:()=>this.setState({}),
+      onNameChange:(e)=>this.setState({loginName:e.target.value}),
+      onPwdChange:(e)=>this.setState({password:e.target.value}),
+      onEnter:(e)=>{ if(e.key==='Enter') this.doLogin(); },
+      doLogin:()=>this.doLogin(),
+      togglePwd:()=>this.togglePwd(),
+      demoAccounts:this.DEMO.map(a=>({...a,onClick:()=>this.fill(a)})),
+    };
+  }
+}
+</script>
+</body>
+</html>

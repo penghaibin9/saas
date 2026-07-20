@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+:root{--pri:#2f6bff;--pri-h:#1f58e7;--pri-50:#eff6ff;--pri-100:#dbeafe;--pri-500:#3b82f6;--bg:#f4f8ff;--g1:#60a5fa;--g2:#2f6bff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:#1D2129;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:var(--pri)}
+a:hover{color:var(--pri-h)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#DCE0E8;border-radius:8px;border:2px solid #F5F7FA}
+::-webkit-scrollbar-thumb:hover{background:#C6CCD6}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;width:100%;overflow:hidden;background:var(--bg);{{ themeVars }}">
+
+  <aside style="width:248px;flex:none;background:#fff;border-right:1px solid #EEF0F3;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:11px;padding:18px 18px 16px">
+      <span style="width:38px;height:38px;flex:none;border-radius:11px;background:linear-gradient(135deg,var(--g2),var(--g1));display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(37,99,235,.28)">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5 12 4.5l9.5 4-9.5 4z"></path><path d="M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13"></path></svg>
+      </span>
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:600;color:#1D2129;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ brand.school }}</div>
+        <div style="font-size:11.5px;color:#86909C;margin-top:1px">{{ brand.portal }}</div>
+      </div>
+    </div>
+
+    <nav style="flex:1;overflow-y:auto;padding:6px 12px 12px">
+      <sc-for list="{{ nav }}" as="m" hint-placeholder-count="10">
+        <a href="{{ m.href }}" onClick="{{ m.onClick }}" style="position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;margin:2px 0;border-radius:10px;font-size:14px;cursor:pointer;transition:background .15s,color .15s;background:{{ m.bg }};color:{{ m.color }};font-weight:{{ m.fw }}" style-hover="background:#F3F5F8">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{ m.d1 }}"></path><path d="{{ m.d2 }}"></path></svg>
+          <span style="flex:1">{{ m.title }}</span>
+          <sc-if value="{{ m.showBadge }}" hint-placeholder-val="{{ false }}"><span style="min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:{{ m.badgeBg }};color:#fff;font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center">{{ m.badge }}</span></sc-if>
+          <sc-if value="{{ m.locked }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C6CCD6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></sc-if>
+        </a>
+      </sc-for>
+    </nav>
+
+    <div style="padding:12px 16px;border-top:1px solid #F1F2F5;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:11.5px;color:#A9B0BD">门户 v1.0</span>
+      <a onClick="{{ logout }}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#86909C;cursor:pointer" style-hover="color:#D92D20">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3M16 17l5-5-5-5M21 12H9"></path></svg>
+        退出
+      </a>
+    </div>
+  </aside>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <header style="height:62px;flex:none;background:#fff;border-bottom:1px solid #EEF0F3;display:flex;align-items:center;justify-content:space-between;padding:0 26px;gap:20px">
+      <div style="display:flex;align-items:baseline;gap:12px;min-width:0">
+        <span style="font-size:20px;font-weight:600;color:#1D2129;white-space:nowrap">{{ pageTitle }}</span>
+        <span style="font-size:12.5px;color:#A9B0BD;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ brand.platform }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex:none">
+        <div style="display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;background:#F5F7FA;border:1px solid #EDEFF3;border-radius:9px;width:230px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#98A0AE" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+          <input placeholder="搜索办事项、通知…" style="border:none;background:transparent;outline:none;font-size:13px;color:#4E5969;width:100%"/>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;background:var(--pri-50);border-radius:15px;color:var(--pri);font-size:12.5px;font-weight:500;flex:none;white-space:nowrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6z"></path><path d="m9 12 2 2 4-4"></path></svg>
+          数据范围 · {{ dataScope }}
+        </div>
+        <button onClick="{{ goMsg }}" style="all:unset;position:relative;cursor:pointer;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#4E5969" style-hover="background:#F3F5F8">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"></path><path d="M10 20a2 2 0 0 0 4 0"></path></svg>
+          <sc-if value="{{ hasUnread }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;top:6px;right:6px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#D92D20;color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff">{{ unread }}</span></sc-if>
+        </button>
+        <div style="display:flex;align-items:center;gap:10px;padding-left:6px;border-left:1px solid #EDEFF3;cursor:pointer">
+          <span style="width:36px;height:36px;flex:none;border-radius:10px;background:var(--pri-50);color:var(--pri);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ user.initial }}</span>
+          <div style="line-height:1.25">
+            <div style="font-size:13.5px;font-weight:600;color:#1D2129">{{ user.name }}</div>
+            <div style="font-size:11.5px;color:#86909C">{{ user.role }}</div>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#A9B0BD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+        </div>
+      </div>
+    </header>
+
+    <main style="flex:1;overflow-y:auto;position:relative">
+      <sc-if value="{{ showWm }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;pointer-events:none;background-repeat:repeat;background-image:{{ wmUri }};z-index:0"></div></sc-if>
+      <div style="position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:26px 32px 40px">
+
+        <!-- ============ HOME ============ -->
+        <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+        <div style="animation:viewIn .25s ease">
+          <section style="position:relative;overflow:hidden;background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:24px 26px;margin-bottom:18px">
+            <div style="position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,.10),transparent 68%);pointer-events:none"></div>
+            <div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap">
+              <div style="min-width:0;flex:1">
+                <div style="font-size:22px;font-weight:600;color:#1D2129">{{ greeting }},{{ user.name }}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+                  <sc-for list="{{ identity }}" as="c" hint-placeholder-count="4">
+                    <span style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;background:#F5F7FA;border:1px solid #EDEFF3;border-radius:7px;font-size:12.5px;color:#4E5969;white-space:nowrap"><span style="color:#A9B0BD">{{ c.label }}</span>{{ c.value }}</span>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:16px;padding:12px 14px;background:#FEF3F1;border:1px solid #F7D2CB;border-radius:11px;max-width:640px">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D92D20" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 9v4M12 17h.01M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L14 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+                  <div style="font-size:13.5px;color:#7A2016;line-height:1.5"><b style="color:#B42318">下一步 · </b>毕业论文正文被退回,请于 <b>05-16</b> 前按导师意见整改重交。</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;flex:none">
+                <div style="font-size:12.5px;color:#86909C;text-align:right">当前阶段</div>
+                <div style="display:inline-flex;align-items:center;gap:8px;padding:9px 14px;background:var(--pri-50);border-radius:10px;color:var(--pri);font-weight:600;font-size:14px"><span style="width:8px;height:8px;border-radius:50%;background:var(--pri)"></span>毕业设计 · 成果提交</div>
+                <button onClick="{{ goGrad }}" style="all:unset;cursor:pointer;text-align:center;padding:10px 16px;border-radius:10px;background:var(--pri);color:#fff;font-size:13.5px;font-weight:600;box-shadow:0 4px 12px rgba(37,99,235,.24)" style-hover="background:var(--pri-h)">去整改论文 →</button>
+              </div>
+            </div>
+          </section>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px">
+            <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+              <div style="background:#fff;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:18px 18px 15px">
+                <div style="font-size:13px;color:#86909C">{{ m.title }}</div>
+                <div style="margin-top:9px;display:flex;align-items:baseline;gap:3px">
+                  <span style="font-size:28px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums;color:{{ m.valColor }}">{{ m.value }}</span>
+                  <span style="font-size:14px;color:#86909C;font-weight:500">{{ m.unit }}</span>
+                </div>
+                <div style="margin-top:6px;font-size:12px;color:#98A0AE">{{ m.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1.55fr 1fr;gap:18px;align-items:start">
+            <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div style="display:flex;align-items:center;gap:9px"><span style="font-size:16px;font-weight:600;color:#1D2129">待办中心</span><span style="min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#FEE4E2;color:#D92D20;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center">{{ todos.length }}</span></div>
+                <span style="font-size:12.5px;color:#98A0AE">等我提交 / 确认 / 整改的事项</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ todos }}" as="t" hint-placeholder-count="5">
+                  <button onClick="{{ t.onClick }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:14px;padding:13px 15px;border:1px solid #EEF0F3;border-radius:12px;background:#fff;box-shadow:inset 3px 0 0 {{ t.accent }}" style-hover="border-color:#C9D8FF;background:#FBFCFE">
+                    <span style="flex:none;display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:{{ t.mt.bg }};color:{{ t.mt.color }}">{{ t.mt.name }}</span>
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:14px;color:#1D2129;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.title }}</div>
+                      <div style="margin-top:3px;font-size:12px;color:#98A0AE">{{ t.meta }}</div>
+                    </div>
+                    <span style="flex:none;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:{{ t.tt.bg }};color:{{ t.tt.color }}">{{ t.status }}</span>
+                    <span style="flex:none;display:inline-flex;align-items:center;gap:3px;font-size:13px;font-weight:600;color:var(--pri)">{{ t.action }}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"></path></svg></span>
+                  </button>
+                </sc-for>
+              </div>
+            </section>
+
+            <div style="display:flex;flex-direction:column;gap:18px">
+              <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:18px 20px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:16px;font-weight:600;color:#1D2129">消息速览</span><a onClick="{{ goMsg }}" style="font-size:12.5px;color:var(--pri);cursor:pointer">全部</a></div>
+                <sc-for list="{{ homeMsgs }}" as="m" hint-placeholder-count="4">
+                  <button onClick="{{ m.onClick }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid #F4F5F7" style-hover="opacity:.72">
+                    <span style="margin-top:6px;width:7px;height:7px;border-radius:50%;flex:none;background:{{ m.dotColor }}"></span>
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:13.5px;color:#1D2129;font-weight:{{ m.fw }};line-height:1.45">{{ m.title }}</div>
+                      <div style="margin-top:3px;font-size:12px;color:#98A0AE">{{ m.from }} · {{ m.time }}</div>
+                    </div>
+                  </button>
+                </sc-for>
+              </section>
+
+              <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:18px 20px">
+                <div style="font-size:16px;font-weight:600;color:#1D2129;margin-bottom:6px">我的日程</div>
+                <sc-for list="{{ schedule }}" as="x" hint-placeholder-count="5">
+                  <div style="display:flex;gap:11px;padding:10px 0;border-bottom:1px solid #F4F5F7">
+                    <span style="margin-top:6px;width:8px;height:8px;border-radius:50%;background:{{ x.dot }};flex:none"></span>
+                    <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:#1D2129">{{ x.title }}</div><div style="margin-top:2px;font-size:12px;color:#98A0AE">{{ x.tag }}</div></div>
+                    <span style="font-size:12px;color:#86909C;font-variant-numeric:tabular-nums;white-space:nowrap">{{ x.time }}</span>
+                  </div>
+                </sc-for>
+              </section>
+            </div>
+          </div>
+
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:18px 22px;margin-top:18px">
+            <div style="font-size:16px;font-weight:600;color:#1D2129;margin-bottom:14px">快捷入口</div>
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px">
+              <sc-for list="{{ quick }}" as="q" hint-placeholder-count="6">
+                <button onClick="{{ q.onClick }}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:9px;padding:15px 8px;border:1px solid #EEF0F3;border-radius:12px;background:#fff" style-hover="border-color:#C9D8FF;background:#F6F9FF">
+                  <span style="width:38px;height:38px;border-radius:11px;background:var(--pri-50);color:var(--pri);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{ q.d }}"></path></svg></span>
+                  <span style="font-size:12.5px;color:#4E5969">{{ q.label }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- ============ GRADUATION ============ -->
+        <sc-if value="{{ isGrad }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .25s ease">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:22px 24px;margin-bottom:18px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+              <div>
+                <div style="font-size:18px;font-weight:600;color:#1D2129">我的毕业设计工作台</div>
+                <div style="margin-top:6px;font-size:13px;color:#86909C">课题:基于深度学习的高职学业预警系统设计与实现</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+                  <span style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;background:#F5F7FA;border:1px solid #EDEFF3;border-radius:7px;font-size:12.5px;color:#4E5969"><span style="color:#A9B0BD">指导老师</span>李国强 副教授</span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;background:#F5F7FA;border:1px solid #EDEFF3;border-radius:7px;font-size:12.5px;color:#4E5969"><span style="color:#A9B0BD">批次</span>2024 届毕业设计</span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;background:#F5F7FA;border:1px solid #EDEFF3;border-radius:7px;font-size:12.5px;color:#4E5969"><span style="color:#A9B0BD">答辩(预)</span>05-20 14:00</span>
+                </div>
+              </div>
+              <span style="display:inline-flex;align-items:center;gap:7px;padding:8px 13px;background:var(--pri-50);border-radius:9px;color:var(--pri);font-weight:600;font-size:13.5px"><span style="width:8px;height:8px;border-radius:50%;background:var(--pri)"></span>当前阶段 · 成果提交</span>
+            </div>
+            <div style="display:flex;align-items:center;margin-top:22px;padding-top:4px">
+              <sc-for list="{{ gstages }}" as="s" hint-placeholder-count="7">
+                <div style="display:flex;align-items:center;flex:1;min-width:0">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:none">
+                    <span style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:{{ s.circleBg }};border:2px solid {{ s.circleBorder }};color:{{ s.circleColor }}">
+                      <sc-if value="{{ s.done }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"></path></svg></sc-if>
+                      <sc-if value="{{ s.notDone }}" hint-placeholder-val="{{ false }}">{{ s.n }}</sc-if>
+                    </span>
+                    <span style="font-size:12.5px;white-space:nowrap;color:{{ s.nameColor }};font-weight:{{ s.nameFw }}">{{ s.name }}</span>
+                  </div>
+                  <sc-if value="{{ s.hasLine }}" hint-placeholder-val="{{ true }}"><span style="flex:1;height:2px;margin:0 6px;margin-bottom:26px;border-radius:2px;background:{{ s.lineBg }}"></span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <div style="display:flex;gap:14px;padding:16px 18px;border:1px solid #F7D2CB;background:#FEF3F1;border-radius:14px;margin-bottom:18px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D92D20" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14.5px;font-weight:600;color:#B42318">论文正文已退回,请整改后重新提交</div>
+              <div style="margin-top:5px;font-size:12.5px;color:#9A5049">退回人:李国强(指导老师) · 05-12 10:24 · 整改截止 05-16</div>
+              <div style="margin-top:9px;font-size:13px;color:#7A2016;line-height:1.6;background:#fff;border:1px solid #F7DAD3;border-radius:9px;padding:10px 12px">格式不符《毕业论文撰写规范》:①参考文献著录需按 GB/T 7714 补全;②图表编号与正文引用不一致,请重排;③摘要缩短至 300 字以内。</div>
+            </div>
+            <button onClick="{{ reReturn }}" style="all:unset;cursor:pointer;flex:none;align-self:center;padding:10px 16px;border-radius:10px;background:var(--pri);color:#fff;font-size:13.5px;font-weight:600" style-hover="background:var(--pri-h)">重新提交</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:18px">
+              <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:16px;font-weight:600;color:#1D2129">材料清单</span><span style="font-size:12.5px;color:#98A0AE">共 {{ gmats.length }} 份 · 仅本人</span></div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ gmats }}" as="f" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:1px solid #EEF0F3;border-radius:11px">
+                      <span style="width:38px;height:38px;flex:none;border-radius:9px;background:#F5F7FA;display:flex;align-items:center;justify-content:center;color:#86909C"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg></span>
+                      <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:#1D2129;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</div><div style="margin-top:2px;font-size:12px;color:#98A0AE">{{ f.stage }}阶段 · {{ f.size }}</div></div>
+                      <span style="flex:none;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:{{ f.tt.bg }};color:{{ f.tt.color }}">{{ f.status }}</span>
+                      <a style="flex:none;font-size:13px;color:var(--pri);cursor:pointer">查看</a>
+                    </div>
+                  </sc-for>
+                </div>
+                <button onClick="{{ upload }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;margin-top:12px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px;border:1.5px dashed #C9D2E0;border-radius:12px;color:#86909C;background:#FafBfd" style-hover="border-color:var(--pri);color:var(--pri);background:#F6F9FF">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M8 8l4-4 4 4M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
+                  <span style="font-size:13.5px;font-weight:500">上传论文正文(整改稿)</span>
+                  <span style="font-size:12px">支持 doc / docx / pdf / zip,单文件 ≤ 50MB</span>
+                </button>
+              </section>
+
+              <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+                <div style="font-size:16px;font-weight:600;color:#1D2129;margin-bottom:16px">过程时间线</div>
+                <div style="position:relative;padding-left:6px">
+                  <sc-for list="{{ gtl }}" as="e" hint-placeholder-count="4">
+                    <div style="display:flex;gap:14px;padding-bottom:16px">
+                      <div style="display:flex;flex-direction:column;align-items:center;flex:none">
+                        <span style="width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid {{ e.dot }}"></span>
+                        <sc-if value="{{ e.hasLine }}" hint-placeholder-val="{{ true }}"><span style="flex:1;width:2px;margin-top:3px;background:#EDEFF3"></span></sc-if>
+                      </div>
+                      <div style="flex:1;min-width:0;padding-bottom:2px">
+                        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:600;color:#1D2129">{{ e.title }}</span><span style="font-size:12px;color:#98A0AE;font-variant-numeric:tabular-nums;white-space:nowrap">{{ e.time }}</span></div>
+                        <div style="margin-top:4px;font-size:12.5px;color:#86909C">操作人:{{ e.by }}</div>
+                        <div style="margin-top:6px;font-size:13px;color:#4E5969;line-height:1.55">{{ e.opinion }}</div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </section>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:18px">
+              <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:18px 20px">
+                <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:14px">指导老师</div>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span style="width:44px;height:44px;flex:none;border-radius:12px;background:var(--pri-50);color:var(--pri);font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center">李</span>
+                  <div><div style="font-size:14px;font-weight:600;color:#1D2129">李国强</div><div style="margin-top:2px;font-size:12.5px;color:#86909C">软件学院 · 副教授</div></div>
+                </div>
+                <div style="margin-top:14px;display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:#86909C">联系电话</span><span style="color:#4E5969;font-variant-numeric:tabular-nums">138****3082</span></div>
+                  <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:#86909C">办公室</span><span style="color:#4E5969">软件楼 A-506</span></div>
+                </div>
+                <button onClick="{{ confirmTask }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;margin-top:14px;text-align:center;padding:9px;border:1px solid var(--pri);border-radius:9px;color:var(--pri);font-size:13px;font-weight:600" style-hover="background:var(--pri-50)">确认任务书(电子签)</button>
+              </section>
+
+              <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:18px 20px">
+                <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:12px">查重报告</div>
+                <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:30px;font-weight:700;color:#0C8A3E;font-variant-numeric:tabular-nums">18.6</span><span style="color:#86909C;font-size:14px">%</span></div>
+                <div style="margin-top:4px;font-size:12.5px;color:#98A0AE">阈值 ≤ 25% · 结果合格</div>
+                <div style="margin-top:12px;height:8px;border-radius:4px;background:#F0F1F3;overflow:hidden"><span style="display:block;height:100%;width:74%;border-radius:4px;background:#00B42A"></span></div>
+                <a style="display:inline-block;margin-top:14px;font-size:13px;color:var(--pri);cursor:pointer">下载查重报告 PDF</a>
+              </section>
+
+              <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:18px 20px">
+                <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:12px">关键节点</div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;gap:10px"><span style="margin-top:6px;width:7px;height:7px;border-radius:50%;background:#D92D20;flex:none"></span><div style="flex:1"><div style="font-size:13px;color:#1D2129">论文整改重交</div><div style="font-size:12px;color:#98A0AE">05-16 截止 · 剩 3 天</div></div></div>
+                  <div style="display:flex;gap:10px"><span style="margin-top:6px;width:7px;height:7px;border-radius:50%;background:#C9CED6;flex:none"></span><div style="flex:1"><div style="font-size:13px;color:#1D2129">毕业答辩</div><div style="font-size:12px;color:#98A0AE">05-20 14:00</div></div></div>
+                  <div style="display:flex;gap:10px"><span style="margin-top:6px;width:7px;height:7px;border-radius:50%;background:#C9CED6;flex:none"></span><div style="flex:1"><div style="font-size:13px;color:#1D2129">材料归档</div><div style="font-size:12px;color:#98A0AE">答辩后 5 个工作日内</div></div></div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isGradLocked }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:520px;margin:60px auto;text-align:center;background:#fff;border:1px solid #EEF0F3;border-radius:16px;padding:40px 32px">
+          <span style="display:inline-flex;width:52px;height:52px;border-radius:50%;background:#F2F3F5;color:#98A0AE;align-items:center;justify-content:center;margin-bottom:16px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></span>
+          <div style="font-size:16px;font-weight:600;color:#1D2129">该模块未开通</div>
+          <div style="margin-top:8px;font-size:13.5px;color:#98A0AE;line-height:1.6">当前租户套餐未包含「毕业设计」模块,请联系学校管理员开通。</div>
+          <button onClick="{{ goHome }}" style="all:unset;cursor:pointer;display:inline-block;margin-top:18px;padding:9px 18px;border:1px solid #DDE1E8;color:#4E5969;border-radius:9px;font-size:13px">返回首页</button>
+        </div>
+        </sc-if>
+
+        <!-- ============ PROFILE ============ -->
+        <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .25s ease;display:grid;grid-template-columns:1.3fr 1fr;gap:18px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:22px 24px">
+              <div style="display:flex;align-items:center;gap:16px;padding-bottom:18px;border-bottom:1px solid #F1F2F5">
+                <span style="width:60px;height:60px;flex:none;border-radius:16px;background:linear-gradient(135deg,var(--g2),var(--g1));color:#fff;font-size:24px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ user.initial }}</span>
+                <div><div style="font-size:18px;font-weight:600;color:#1D2129">{{ user.name }}</div><div style="margin-top:4px;font-size:13px;color:#86909C">{{ user.no }} · {{ user.college }} · {{ user.role }}</div></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin:18px 0 14px"><span style="font-size:15px;font-weight:600;color:#1D2129">基本信息</span>
+                <sc-if value="{{ !correcting }}" hint-placeholder-val="{{ true }}"><button onClick="{{ startCorrection }}" style="all:unset;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--pri)">申请更正联系方式</button></sc-if>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 24px">
+                <sc-for list="{{ basic }}" as="b" hint-placeholder-count="8">
+                  <div style="display:flex;justify-content:space-between;gap:12px;padding-bottom:11px;border-bottom:1px solid #F5F6F8"><span style="font-size:13px;color:#98A0AE;flex:none">{{ b.label }}</span><span style="font-size:13.5px;color:#1D2129;text-align:right">{{ b.value }}</span></div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ correcting }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:16px;padding:16px;background:#F9FAFB;border:1px solid #F0F1F3;border-radius:11px">
+                <div style="font-size:13.5px;font-weight:600;color:#1D2129;margin-bottom:10px">信息更正申请</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                  <select style="height:36px;border:1px solid #DDE1E8;border-radius:8px;padding:0 10px;font-size:13px;color:#4E5969"><option>联系电话</option><option>紧急联系人</option><option>通讯地址</option></select>
+                  <input placeholder="新值" style="height:36px;border:1px solid #DDE1E8;border-radius:8px;padding:0 12px;font-size:13px;box-sizing:border-box"/>
+                </div>
+                <textarea placeholder="更正原因" style="width:100%;height:56px;border:1px solid #DDE1E8;border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;box-sizing:border-box"></textarea>
+                <div style="display:flex;gap:10px;margin-top:10px">
+                  <button onClick="{{ submitCorrection }}" style="all:unset;cursor:pointer;padding:8px 16px;border-radius:8px;background:var(--pri);color:#fff;font-size:12.5px;font-weight:600">提交审核</button>
+                  <button onClick="{{ cancelCorrection }}" style="all:unset;cursor:pointer;padding:8px 16px;border-radius:8px;border:1px solid #DDE1E8;color:#4E5969;font-size:12.5px">取消</button>
+                </div>
+              </div>
+              </sc-if>
+            </section>
+
+            <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 24px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:15px;font-weight:600;color:#1D2129">敏感信息</span><span style="display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:6px;background:#FFF4E5;color:#B25E00;font-size:11.5px;font-weight:500"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>脱敏展示 · 查看留痕</span></div>
+              <div style="font-size:12.5px;color:#98A0AE;margin-bottom:14px">默认脱敏,授权查看明文将写入审计日志。</div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <sc-for list="{{ sens }}" as="f" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:#F9FAFB;border:1px solid #F0F1F3;border-radius:10px">
+                    <span style="font-size:13px;color:#86909C;flex:none">{{ f.label }}</span>
+                    <span style="flex:1;text-align:right;font-size:14px;color:#1D2129;font-variant-numeric:tabular-nums;letter-spacing:.5px">{{ f.display }}</span>
+                    <button onClick="{{ f.onClick }}" style="all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--pri)" style-hover="color:var(--pri-h)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>{{ f.btn }}
+                    </button>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+              <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:14px">学籍卡片</div>
+              <div style="padding:16px;border-radius:12px;background:linear-gradient(135deg,var(--pri-50),#ffffff);border:1px solid var(--pri-100)">
+                <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px;color:#86909C">学号</span><span style="font-size:12.5px;color:#0C8A3E;font-weight:500">● 在读</span></div>
+                <div style="font-size:22px;font-weight:700;color:#1D2129;font-variant-numeric:tabular-nums;letter-spacing:1px;margin-top:4px">{{ user.no }}</div>
+                <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <div><div style="font-size:11.5px;color:#98A0AE">院系</div><div style="font-size:13px;color:#1D2129;margin-top:2px">软件学院</div></div>
+                  <div><div style="font-size:11.5px;color:#98A0AE">专业</div><div style="font-size:13px;color:#1D2129;margin-top:2px">软件技术</div></div>
+                  <div><div style="font-size:11.5px;color:#98A0AE">班级</div><div style="font-size:13px;color:#1D2129;margin-top:2px">软件2301</div></div>
+                  <div><div style="font-size:11.5px;color:#98A0AE">学制</div><div style="font-size:13px;color:#1D2129;margin-top:2px">三年制 · 2023 级</div></div>
+                </div>
+              </div>
+            </section>
+
+            <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:15px;font-weight:600;color:#1D2129">我的申请</span><span style="font-size:12.5px;color:#98A0AE">在办 / 历史</span></div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ apps }}" as="a" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid #F4F5F7">
+                    <span style="flex:none;display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:500;background:{{ a.mt.bg }};color:{{ a.mt.color }}">{{ a.mt.name }}</span>
+                    <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:#1D2129;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.title }}</div><div style="font-size:12px;color:#98A0AE;margin-top:2px;font-variant-numeric:tabular-nums">{{ a.time }}</div></div>
+                    <span style="flex:none;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:{{ a.tt.bg }};color:{{ a.tt.color }}">{{ a.status }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+
+            <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-size:15px;font-weight:600;color:#1D2129">家长授权管理</span><button onClick="{{ toggleAddParent }}" style="all:unset;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--pri)">+ 添加绑定</button></div>
+              <div style="font-size:12.5px;color:#98A0AE;margin-bottom:12px">家长凭手机号验证码登录只读家长端,仅见授权范围,可随时撤销</div>
+              <sc-if value="{{ addingParent }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-bottom:12px;padding:14px;background:#F9FAFB;border:1px solid #F0F1F3;border-radius:11px">
+                <input placeholder="家长手机号" style="width:100%;height:36px;border:1px solid #DDE1E8;border-radius:8px;padding:0 12px;font-size:13px;box-sizing:border-box;margin-bottom:8px"/>
+                <div style="font-size:12px;color:#98A0AE;margin-bottom:8px">可见范围(固定):学业成绩与课表、缴费与资助办理状态、在校异常与安全提醒、毕业/实习/就业进度</div>
+                <div style="display:flex;gap:10px">
+                  <button onClick="{{ confirmAddParent }}" style="all:unset;cursor:pointer;padding:8px 16px;border-radius:8px;background:var(--pri);color:#fff;font-size:12.5px;font-weight:600">发送验证码并绑定</button>
+                  <button onClick="{{ toggleAddParent }}" style="all:unset;cursor:pointer;padding:8px 16px;border-radius:8px;border:1px solid #DDE1E8;color:#4E5969;font-size:12.5px">取消</button>
+                </div>
+              </div>
+              </sc-if>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ parents }}" as="p" hint-placeholder-count="1">
+                  <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #EEF0F3;border-radius:11px">
+                    <span style="width:36px;height:36px;flex:none;border-radius:10px;background:var(--pri-50);color:var(--pri);font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ p.name }}</span>
+                    <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:#1D2129">{{ p.name }} · {{ p.rel }} · {{ p.phone }}</div><div style="margin-top:2px;font-size:11.5px;color:#98A0AE">{{ p.scope }}</div></div>
+                    <span style="flex:none;font-size:12px;color:#0C8A3E">{{ p.status }}</span>
+                    <button onClick="{{ p.onRevoke }}" style="all:unset;cursor:pointer;flex:none;font-size:12.5px;color:#D92D20">撤销</button>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ============ MESSAGES ============ -->
+        <sc-if value="{{ isMsg }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .25s ease">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:8px 10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #F1F2F5">
+              <div style="display:flex;gap:8px">
+                <sc-for list="{{ msgTabs }}" as="mt" hint-placeholder-count="5">
+                  <button onClick="{{ mt.onClick }}" style="all:unset;cursor:pointer;box-sizing:border-box;display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:8px;background:{{ mt.bg }};color:{{ mt.color }};font-size:13px;font-weight:{{ mt.fw }}">{{ mt.t }}</button>
+                </sc-for>
+              </div>
+              <sc-if value="{{ !isMsgSettings }}" hint-placeholder-val="{{ true }}"><a onClick="{{ markAll }}" style="font-size:13px;color:var(--pri);cursor:pointer">全部标为已读</a></sc-if>
+            </div>
+            <sc-if value="{{ !isMsgSettings }}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="6">
+              <button onClick="{{ m.onClick }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:flex-start;gap:13px;padding:15px 14px;border-radius:10px" style-hover="background:#FAFBFC">
+                <span style="flex:none;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:{{ m.tt.bg }};color:{{ m.tt.color }}">{{ m.typeText }}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14px;color:#1D2129;font-weight:{{ m.fw }};line-height:1.5">{{ m.title }}</div>
+                  <div style="margin-top:4px;font-size:12.5px;color:#98A0AE">{{ m.from }} · {{ m.time }}</div>
+                </div>
+                <sc-if value="{{ m.unread }}" hint-placeholder-val="{{ true }}"><span style="flex:none;margin-top:6px;width:8px;height:8px;border-radius:50%;background:var(--pri)"></span></sc-if>
+              </button>
+            </sc-for>
+            </sc-if>
+            <sc-if value="{{ isMsgSettings }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:16px 14px">
+              <div style="font-size:12.5px;color:#98A0AE;margin-bottom:14px">设置各类消息的接收开关,退回/驳回等高优先级提醒建议保持开启</div>
+              <sc-for list="{{ prefs }}" as="p" hint-placeholder-count="5">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 4px;border-bottom:1px solid #F4F5F7">
+                  <div><div style="font-size:13.5px;color:#1D2129">{{ p.label }}</div><div style="margin-top:2px;font-size:12px;color:#98A0AE">{{ p.desc }}</div></div>
+                  <button onClick="{{ p.onClick }}" style="all:unset;cursor:pointer;width:40px;height:22px;border-radius:11px;background:{{ p.onBg }};position:relative;flex:none">
+                    <span style="position:absolute;top:2px;left:{{ p.knobLeft }};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .15s"></span>
+                  </button>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+          </section>
+        </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:38px;transform:translateX(-50%);background:#1D2129;color:#fff;padding:11px 22px;border-radius:11px;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.22);animation:toastIn .22s ease;z-index:90">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;清透学院蓝&quot;,&quot;options&quot;:[&quot;清透学院蓝&quot;,&quot;沉稳商务蓝&quot;,&quot;云岚雅灰&quot;,&quot;豆沙绿护眼&quot;,&quot;皓白极简&quot;,&quot;墨白极简&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;servicePackage&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;全生命周期版&quot;,&quot;options&quot;:[&quot;全生命周期版&quot;,&quot;学业+实习包&quot;,&quot;毕设+就业包&quot;,&quot;只读门户版&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;套餐与权限&quot;},&quot;schoolName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;示范职业技术学院&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;studentName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;张明&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;showWatermark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;品牌与演示&quot;}}">
+class Component extends DCLogic {
+  state = { view:'home', revealed:{}, read:{ m2:true, m4:true }, toast:'', msgTab:'all', prefs:{ sms:true, inbox:true, todo:true, returned:true, notice:false }, correcting:false, parents:[{id:'p1',name:'张建国',rel:'父亲',phone:'139****2201',scope:'学业成绩/缴费状态/在校提醒/毕业就业进度',status:'已绑定'}], addingParent:false };
+
+  tone = {
+    success:{bg:'#E8F7EC',color:'#0C8A3E'},
+    primary:{bg:'var(--pri-50)',color:'var(--pri)'},
+    warning:{bg:'#FFF4E5',color:'#B25E00'},
+    danger:{bg:'#FDECEC',color:'#D92D20'},
+    gray:{bg:'#F2F3F5',color:'#4E5969'},
+  };
+  modTone = {
+    graduation:{bg:'var(--pri-50)',color:'var(--pri)',name:'毕业设计'},
+    internship:{bg:'#E9F7EF',color:'#0C8A3E',name:'岗位实习'},
+    employment:{bg:'#FFF4E5',color:'#B25E00',name:'就业服务'},
+    academic:{bg:'#F0ECFF',color:'#6D53E0',name:'教务学业'},
+    affairs:{bg:'#FDEEF3',color:'#C2416B',name:'学工事务'},
+    system:{bg:'#F2F3F5',color:'#4E5969',name:'系统'},
+  };
+  THEMES = {
+    '清透学院蓝':{'--pri':'#2f6bff','--pri-h':'#1f58e7','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f4f8ff','--g1':'#60a5fa','--g2':'#2f6bff'},
+    '沉稳商务蓝':{'--pri':'#1868c0','--pri-h':'#12559f','--pri-50':'#eaf2fb','--pri-100':'#d0e4f7','--pri-500':'#3b82f6','--bg':'#eef2f7','--g1':'#3e86de','--g2':'#1868c0'},
+    '云岚雅灰':{'--pri':'#5b6c9e','--pri-h':'#4b5c8d','--pri-50':'#f0f3fa','--pri-100':'#e1e6f0','--pri-500':'#8a9ac8','--bg':'#f6f8fc','--g1':'#8a9ac8','--g2':'#5b6c9e'},
+    '豆沙绿护眼':{'--pri':'#3e8e7e','--pri-h':'#327264','--pri-50':'#eaf2ee','--pri-100':'#d3e7df','--pri-500':'#5ca894','--bg':'#e6eee3','--g1':'#5ca894','--g2':'#3e8e7e'},
+    '皓白极简':{'--pri':'#2563eb','--pri-h':'#1d4ed8','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f8fafc','--g1':'#3b82f6','--g2':'#2563eb'},
+    '墨白极简':{'--pri':'#111827','--pri-h':'#000000','--pri-50':'#f3f4f6','--pri-100':'#e5e7eb','--pri-500':'#374151','--bg':'#f7f7f8','--g1':'#374151','--g2':'#111827'},
+  };
+  NAV = [
+    {key:'home',title:'首页工作台',d1:'M4 11.5 12 4l8 7.5',d2:'M6 10.5V20h12v-9.5'},
+    {key:'profile',title:'我的档案',d1:'M5 4h14v16H5z',d2:'M12 11a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4M8 17c.4-2 2-3 4-3s3.6 1 4 3'},
+    {key:'academic',title:'教务学业',d1:'M6 4h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2z',d2:'M6 18a2 2 0 0 1 2-2h10'},
+    {key:'graduation',title:'毕业设计',d1:'M2.5 8.5 12 4.5l9.5 4-9.5 4z',d2:'M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13'},
+    {key:'internship',title:'岗位实习',d1:'M4 8h16v11H4z',d2:'M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 13h16'},
+    {key:'employment',title:'就业服务',d1:'M5 20V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15',d2:'M15 9h3a1 1 0 0 1 1 1v10M8 8h3M8 12h3M8 16h3'},
+    {key:'affairs',title:'学工事务',d1:'M8 5h8v2H8z',d2:'M7 6H5v14h14V6h-2M9.3 13l1.8 1.8L15 11'},
+    {key:'orientation',title:'迎新报到',d1:'M6 3v18',d2:'M6 4h11l-2 3 2 3H6'},
+    {key:'messages',title:'消息通知',d1:'M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6',d2:'M10 20a2 2 0 0 0 4 0'},
+    {key:'hall',title:'办事大厅',d1:'M4 4h7v7H4zM13 4h7v7h-7z',d2:'M4 13h7v7H4zM13 13h7v7h-7z'},
+  ];
+  TITLES = {home:'首页工作台',profile:'我的档案',academic:'教务学业',graduation:'毕业设计',internship:'岗位实习',employment:'就业服务',affairs:'学工事务',orientation:'迎新报到',messages:'消息通知',hall:'办事大厅'};
+  MSGS = [
+    {id:'m1',mod:'graduation',type:'danger',typeText:'已退回',title:'论文正文被退回,请按意见整改后重新提交',time:'今天 10:24',from:'指导老师 李国强',cat:'progress'},
+    {id:'m2',mod:'graduation',type:'success',typeText:'已通过',title:'中期检查已通过,进入成果提交阶段',time:'昨天 16:08',from:'毕业设计中心',cat:'progress'},
+    {id:'m3',mod:'academic',type:'warning',typeText:'截止提醒',title:'2024 春季学期选课将于 3 天后截止',time:'昨天 09:00',from:'教务处',cat:'todo'},
+    {id:'m4',mod:'system',type:'primary',typeText:'通知',title:'关于做好 2024 届毕业答辩安排的通知',time:'05-10',from:'教务处',cat:'notice'},
+    {id:'m5',mod:'internship',type:'primary',typeText:'通知',title:'第 16 周实习周报填写已开放',time:'05-09',from:'岗位实习中心',cat:'notice'},
+    {id:'m6',mod:'affairs',type:'success',typeText:'已通过',title:'家庭经济困难认定材料审核通过',time:'05-06',from:'学工处',cat:'progress'},
+    {id:'m7',mod:'system',type:'gray',typeText:'公告',title:'关于 2024 年暑期校园卡离校前圈存的通知',time:'05-07',from:'学校办公室',cat:'notice'},
+    {id:'m8',mod:'system',type:'gray',typeText:'公告',title:'软件学院关于毕业年级教材归还的通知',time:'05-04',from:'软件学院',cat:'notice'},
+  ];
+  TODOS = [
+    {mod:'graduation',title:'论文正文已退回,需整改重交',meta:'截止 05-16 · 剩 3 天',tone:'danger',status:'已退回',action:'去整改',to:'graduation'},
+    {mod:'graduation',title:'毕业设计任务书待确认签字',meta:'导师 李国强 已下发',tone:'warning',status:'待确认',action:'去确认',to:'graduation'},
+    {mod:'internship',title:'第 16 周实习周报待提交',meta:'截止 05-15 20:00',tone:'warning',status:'待提交',action:'去填写',to:'internship'},
+    {mod:'employment',title:'生源信息待核对确认',meta:'就业办要求 05-20 前',tone:'primary',status:'待核对',action:'去核对',to:'employment'},
+    {mod:'academic',title:'2024 春季学期选课进行中',meta:'剩 3 天 · 已选 5/8 门',tone:'primary',status:'进行中',action:'去选课',to:'academic'},
+  ];
+  METRICS = [
+    {title:'已修学分',value:'152',unit:'/168',sub:'还差 16 学分',tone:'ink'},
+    {title:'平均绩点 GPA',value:'3.62',unit:'',sub:'专业前 15%',tone:'ink'},
+    {title:'待办事项',value:'5',unit:'项',sub:'2 项即将截止',tone:'warning'},
+    {title:'预警提醒',value:'1',unit:'项',sub:'论文正文被退回',tone:'danger'},
+  ];
+  SCHEDULE = [
+    {time:'今天 18:00',title:'实习打卡截止',tag:'岗位实习',state:'danger'},
+    {time:'05-15 20:00',title:'第 16 周周报截止',tag:'岗位实习',state:'warning'},
+    {time:'05-16',title:'论文整改重交截止',tag:'毕业设计',state:'danger'},
+    {time:'05-18',title:'春季选课截止',tag:'教务学业',state:'warning'},
+    {time:'05-20 14:00',title:'毕业答辩(预定)',tag:'毕业设计',state:'gray'},
+  ];
+  QUICK = [
+    {label:'成绩单打印',to:'academic',d:'M6 9V4h12v5M6 15a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2M6 14h12v6H6z'},
+    {label:'上传成果',to:'graduation',d:'M12 15V4M8 8l4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3'},
+    {label:'请假申请',to:'affairs',d:'M8 3v4M16 3v4M4 8h16M4 8v11h16V8'},
+    {label:'我的课表',to:'academic',d:'M4 5h16v15H4zM4 9h16M9 9v11M15 9v11'},
+    {label:'开具证明',to:'hall',d:'M7 3h7l4 4v14H7zM14 3v4h4M9 13h6M9 16h5'},
+    {label:'我要选课',to:'academic',d:'M8 6h11M8 12h11M8 18h11M3.5 6h.01M3.5 12h.01M3.5 18h.01'},
+  ];
+  GSTAGES = [
+    {name:'选题',state:'done'},{name:'任务书',state:'done'},{name:'开题报告',state:'done'},
+    {name:'中期检查',state:'done'},{name:'成果提交',state:'current'},{name:'答辩',state:'todo'},{name:'归档',state:'todo'}
+  ];
+  GMATS = [
+    {name:'开题报告.pdf',size:'2.1 MB',tone:'success',status:'已通过',stage:'开题'},
+    {name:'中期检查表.pdf',size:'1.6 MB',tone:'success',status:'已通过',stage:'中期'},
+    {name:'毕业论文正文_v2.docx',size:'8.7 MB',tone:'danger',status:'已退回',stage:'成果'},
+    {name:'查重报告.pdf',size:'1.2 MB',tone:'primary',status:'待复核',stage:'成果'},
+  ];
+  GTIMELINE = [
+    {title:'成果提交被退回',time:'05-12 10:24',by:'李国强',opinion:'格式不符《撰写规范》,参考文献著录需补充,图表编号重排。',state:'danger'},
+    {title:'提交毕业论文正文',time:'05-11 22:10',by:'张明',opinion:'提交论文正文 v1 及查重报告。',state:'gray'},
+    {title:'中期检查通过',time:'04-20 15:30',by:'李国强',opinion:'进度正常,同意进入成果阶段。',state:'success'},
+    {title:'开题报告通过',time:'03-15 11:00',by:'评审组',opinion:'选题合理,研究方案可行。',state:'success'},
+  ];
+  BASIC = [
+    {label:'姓名',value:'张明'},{label:'学号',value:'2023010145'},
+    {label:'学院',value:'软件学院'},{label:'专业',value:'软件技术'},
+    {label:'班级',value:'软件2301'},{label:'年级',value:'2023 级'},
+    {label:'学籍状态',value:'在读'},{label:'政治面貌',value:'共青团员'},
+  ];
+  SENS = [
+    {key:'id',label:'身份证号',masked:'4301 **** **** 1234',full:'430124 2004 0101 1234'},
+    {key:'phone',label:'手机号码',masked:'138****6621',full:'138 5678 6621'},
+    {key:'bank',label:'资助银行卡',masked:'6217 **** **** 3390',full:'6217 0012 3456 3390'},
+  ];
+  APPS = [
+    {title:'家庭经济困难认定',mod:'affairs',tone:'success',status:'已通过',time:'05-06'},
+    {title:'毕业论文正文提交',mod:'graduation',tone:'danger',status:'已退回',time:'05-12'},
+    {title:'2024 春季选课',mod:'academic',tone:'primary',status:'进行中',time:'05-08'},
+    {title:'实习三方协议确认',mod:'internship',tone:'success',status:'已确认',time:'03-28'},
+  ];
+  notify(msg){ this.setState({toast:msg}); clearTimeout(this._t); this._t=setTimeout(()=>this.setState({toast:''}),2200); }
+  setView(v){ this.setState({view:v}); this._scrollTop(); try{ history.replaceState(null,'',location.pathname+'#'+v); }catch(e){} }
+  _scrollTop(){ try{ const m=this.el&&this.el.querySelector('main'); if(m) m.scrollTop=0; }catch(e){} }
+  toggleReveal(k,label){ const on=!this.state.revealed[k]; this.setState(s=>({revealed:{...s.revealed,[k]:on}})); if(on) this.notify('已授权查看「'+label+'」明文(已写入审计留痕)'); }
+  startCorrection(){ this.setState({correcting:true}); }
+  cancelCorrection(){ this.setState({correcting:false}); }
+  submitCorrection(){ this.setState({correcting:false}); this.APPS.unshift({title:'联系方式信息更正',mod:'affairs',tone:'primary',status:'待审核',time:'今天'}); this.notify('更正申请已提交,进入辅导员审核'); }
+  revokeParent(id){ this.setState(s=>({parents:s.parents.filter(p=>p.id!==id)})); this.notify('已撤销该家长的查看授权'); }
+  toggleAddParent(){ this.setState(s=>({addingParent:!s.addingParent})); }
+  confirmAddParent(){ this.setState(s=>({addingParent:false, parents:[...s.parents,{id:'p'+Date.now(),name:'新绑定家长',rel:'监护人',phone:'手机号已加密',scope:'学业成绩/缴费状态/在校提醒/毕业就业进度',status:'待验证'}]})); this.notify('已发送验证码,家长验证后完成绑定'); }
+  markRead(id){ this.setState(s=>({read:{...s.read,[id]:true}})); }
+  markAllRead(){ const r={}; this.MSGS.forEach(m=>r[m.id]=true); this.setState({read:r}); this.notify('已全部标记为已读'); }
+  unread(){ return this.MSGS.filter(m=>!this.state.read[m.id]).length; }
+  FILES = {academic:'教务学业.dc.html',internship:'岗位实习.dc.html',employment:'就业服务.dc.html',affairs:'学工事务.dc.html',orientation:'迎新报到.dc.html',hall:'办事大厅.dc.html'};
+  PACKAGES = {
+    '全生命周期版':['academic','graduation','internship','employment','affairs','orientation'],
+    '学业+实习包':['academic','internship'],
+    '毕设+就业包':['graduation','internship','employment'],
+    '只读门户版':['academic','graduation','internship','employment','affairs','orientation'],
+  };
+  isEnabled(key){ if(['home','profile','messages','hall'].includes(key)) return true; const pkg=this.props.servicePackage||'全生命周期版'; return (this.PACKAGES[pkg]||[]).includes(key); }
+  goTo(key){ if(!this.isEnabled(key)){ this.notify('该模块未开通,请联系学校管理员'); return; } if(this.FILES[key]){ window.location.href=this.FILES[key]; return; } this.setView(key); }
+  componentDidMount(){ const h=(window.location.hash||'').replace('#',''); if(h && this.TITLES[h]) this.setState({view:h}); }
+
+  renderVals(){
+    const s=this.state;
+    const _themeName = this.props.theme || '清透学院蓝';
+    const _tv = this.THEMES[_themeName] || this.THEMES['清透学院蓝'];
+    const themeVars = Object.keys(_tv).map(k=>k+':'+_tv[k]).join(';');
+    const sName = this.props.studentName || '张明';
+    const school = this.props.schoolName || '示范职业技术学院';
+    const showWm = this.props.showWatermark !== false;
+    const hr = new Date().getHours();
+    const greeting = hr<11?'上午好':hr<13?'中午好':hr<18?'下午好':'晚上好';
+    const wmSvg = "<svg xmlns='http://www.w3.org/2000/svg' width='260' height='170'><text x='0' y='95' fill='%231D2129' fill-opacity='0.028' font-size='15' font-family='sans-serif' transform='rotate(-24 0 95)'>"+sName+" · 数据范围:本人</text></svg>";
+    const wmUri = "url(\"data:image/svg+xml,"+encodeURIComponent(wmSvg).replace(/%2523/g,'%23')+"\")";
+
+    const nav = this.NAV.map(n=>{
+      const active = s.view===n.key;
+      const isMsg = n.key==='messages';
+      const u = this.unread();
+      const ext = this.FILES[n.key];
+      const enabled = this.isEnabled(n.key);
+      if(!enabled){
+        return {...n, active:false, locked:true, bg:'transparent', color:'#C6CCD6', fw:'500', showBadge:false, badge:'', badgeBg:'',
+          href:'#', onClick:(e)=>{ if(e&&e.preventDefault) e.preventDefault(); this.notify('该模块未开通,请联系学校管理员'); } };
+      }
+      return {...n, active, locked:false,
+        bg: active?'var(--pri-50)':'transparent',
+        color: active?'var(--pri)':'#4E5969',
+        fw: active?'600':'500',
+        showBadge: isMsg && u>0,
+        badge: String(u),
+        badgeBg:'#D92D20',
+        href: ext || '#',
+        onClick: ext ? undefined : (e)=>{ if(e&&e.preventDefault) e.preventDefault(); this.setView(n.key); }
+      };
+    });
+    const todos = this.TODOS.map(t=>({...t, mt:this.modTone[t.mod], tt:this.tone[t.tone], accent:this.tone[t.tone].color, onClick:()=>this.goTo(t.to)}));
+    const metrics = this.METRICS.map(m=>({...m, valColor: m.tone==='danger'?'#D92D20': m.tone==='warning'?'#B25E00':'#1D2129'}));
+    const mkMsg = m=>({...m, mt:this.modTone[m.mod], tt:this.tone[m.type], unread:!s.read[m.id], fw:!s.read[m.id]?'600':'500', dotColor:!s.read[m.id]?'var(--pri)':'#D0D5DD', onClick:()=>this.markRead(m.id)});
+    const allMsgs = this.MSGS.map(mkMsg);
+    const homeMsgs = this.MSGS.slice(0,4).map(mkMsg);
+    const MSG_TABS = [{key:'all',t:'全部'},{key:'todo',t:'待办'},{key:'notice',t:'通知公告'},{key:'progress',t:'服务进度'},{key:'settings',t:'消息设置'}];
+    const msgTabs = MSG_TABS.map(t=>({...t, bg:s.msgTab===t.key?'var(--pri-50)':'transparent', color:s.msgTab===t.key?'var(--pri)':'#4E5969', fw:s.msgTab===t.key?'600':'500', onClick:()=>this.setState({msgTab:t.key})}));
+    const msgs = s.msgTab==='all'||s.msgTab==='settings'? allMsgs : allMsgs.filter(m=>m.cat===s.msgTab);
+    const PREF_ITEMS = [
+      {key:'sms',label:'短信通知',desc:'重要审批结果、截止提醒发送短信'},
+      {key:'inbox',label:'站内信',desc:'所有消息保留站内可查'},
+      {key:'todo',label:'待办提醒',desc:'首页与顶栏待办角标提醒'},
+      {key:'returned',label:'退回/驳回提醒',desc:'材料被退回时优先提醒'},
+      {key:'notice',label:'学校公告推送',desc:'非必要公告(活动/讲座类)'},
+    ];
+    const prefs = PREF_ITEMS.map(p=>{ const on=!!s.prefs[p.key]; return {...p, on, onBg:on?'var(--pri)':'#DDE1E8', knobLeft:on?'20px':'2px', onClick:()=>this.setState(st=>({prefs:{...st.prefs,[p.key]:!st.prefs[p.key]}}))}; });
+    const parents = s.parents.map(p=>({...p, onRevoke:()=>this.revokeParent(p.id)}));
+    const schedule = this.SCHEDULE.map(x=>({...x, dot:this.tone[x.state].color}));
+    const sens = this.SENS.map(f=>({...f, revealed:!!s.revealed[f.key], display:s.revealed[f.key]?f.full:f.masked, btn:s.revealed[f.key]?'隐藏':'授权查看', onClick:()=>this.toggleReveal(f.key,f.label)}));
+    const apps = this.APPS.map(a=>({...a, mt:this.modTone[a.mod], tt:this.tone[a.tone]}));
+    const gmats = this.GMATS.map(m=>({...m, tt:this.tone[m.tone]}));
+    const gtl = this.GTIMELINE.map((t,i,arr)=>({...t, dot:this.tone[t.state].color, hasLine:i<arr.length-1}));
+    const gstages = this.GSTAGES.map((st,i,arr)=>({...st, n:i+1,
+      done: st.state==='done', notDone: st.state!=='done', hasLine:i<arr.length-1,
+      circleBg: st.state==='done'?'var(--pri)':'#fff',
+      circleBorder: st.state==='todo'?'#DDE1E8':'var(--pri)',
+      circleColor: st.state==='done'?'#fff': st.state==='current'?'var(--pri)':'#A9B0BD',
+      nameColor: st.state==='todo'?'#A9B0BD':'#1D2129',
+      nameFw: st.state==='current'?'600':'500',
+      lineBg: st.state==='done'?'var(--pri)':'#E5E8EE',
+    }));
+    const basic = this.BASIC.map(b=> b.label==='姓名'?{...b,value:sName}:b);
+
+    return {
+      brand:{school, platform:'学生全生命周期服务平台', portal:'学生服务门户'},
+      user:{name:sName, initial:sName.slice(0,1), role:'在校生 · 毕设批次', college:'软件学院', major:'软件技术', cls:'软件2301', no:'2023010145'},
+      pageTitle:this.TITLES[s.view], dataScope:'本人',
+      unread:this.unread(), hasUnread:this.unread()>0,
+      showWm, wmUri, greeting, themeVars,
+      nav, todos, metrics, msgs, msgTabs, prefs, isMsgSettings:s.msgTab==='settings', homeMsgs, schedule, sens, apps, gmats, gtl, gstages, basic, parents, addingParent:s.addingParent, correcting:s.correcting,
+      identity:[{label:'学院',value:'软件学院'},{label:'专业',value:'软件技术'},{label:'班级',value:'软件2301'},{label:'学号',value:'2023010145'}],
+      quick:this.QUICK.map(q=>({...q,onClick:()=>this.goTo(q.to)})),
+      isHome:s.view==='home', isGrad:s.view==='graduation'&&this.isEnabled('graduation'), isGradLocked:s.view==='graduation'&&!this.isEnabled('graduation'), isProfile:s.view==='profile', isMsg:s.view==='messages',
+      toast:s.toast,
+      goGrad:()=>this.setView('graduation'), goMsg:()=>this.setView('messages'), goHome:()=>this.setView('home'),
+      startCorrection:()=>this.startCorrection(), cancelCorrection:()=>this.cancelCorrection(), submitCorrection:()=>this.submitCorrection(),
+      toggleAddParent:()=>this.toggleAddParent(), confirmAddParent:()=>this.confirmAddParent(),
+      reReturn:()=>this.notify('论文正文(整改稿)已重新提交,进入待审'),
+      confirmTask:()=>this.notify('任务书已电子确认签字(内容快照+时间已留痕)'),
+      upload:()=>this.notify('已选择文件,开始上传…'),
+      markAll:()=>this.markAllRead(),
+      logout:()=>{ window.location.href='登录.dc.html'; },
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:#1D2129;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:var(--pri)}
+a:hover{color:var(--pri-h)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#DCE0E8;border-radius:8px;border:2px solid var(--bg)}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+:root{--pri:#2f6bff;--pri-h:#1f58e7;--pri-50:#eff6ff;--pri-100:#dbeafe;--pri-500:#3b82f6;--bg:#f4f8ff;--g1:#60a5fa;--g2:#2f6bff}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;width:100%;overflow:hidden;background:var(--bg);{{ themeVars }}">
+
+  <aside style="width:248px;flex:none;background:#fff;border-right:1px solid #EEF0F3;display:flex;flex-direction:column">
+    <a href="{{ homeHref }}" style="display:flex;align-items:center;gap:11px;padding:18px 18px 16px">
+      <span style="width:38px;height:38px;flex:none;border-radius:11px;background:linear-gradient(135deg,var(--g2),var(--g1));display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(37,99,235,.28)">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5 12 4.5l9.5 4-9.5 4z"></path><path d="M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13"></path></svg>
+      </span>
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:600;color:#1D2129;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ brand.school }}</div>
+        <div style="font-size:11.5px;color:#86909C;margin-top:1px">{{ brand.portal }}</div>
+      </div>
+    </a>
+    <nav style="flex:1;overflow-y:auto;padding:6px 12px 12px">
+      <sc-for list="{{ nav }}" as="m" hint-placeholder-count="10">
+        <a href="{{ m.href }}" onClick="{{ m.onClick }}" style="position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;margin:2px 0;border-radius:10px;font-size:14px;cursor:pointer;transition:background .15s,color .15s;background:{{ m.bg }};color:{{ m.color }};font-weight:{{ m.fw }}" style-hover="background:#F3F5F8">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{ m.d1 }}"></path><path d="{{ m.d2 }}"></path></svg>
+          <span style="flex:1">{{ m.title }}</span>
+        </a>
+      </sc-for>
+    </nav>
+    <div style="padding:12px 16px;border-top:1px solid #F1F2F5;font-size:11.5px;color:#A9B0BD">门户 v1.0 · 办事大厅</div>
+  </aside>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <header style="height:62px;flex:none;background:#fff;border-bottom:1px solid #EEF0F3;display:flex;align-items:center;justify-content:space-between;padding:0 26px;gap:20px">
+      <div style="display:flex;align-items:baseline;gap:12px;min-width:0">
+        <span style="font-size:20px;font-weight:600;color:#1D2129;white-space:nowrap">办事大厅</span>
+        <span style="font-size:12.5px;color:#A9B0BD;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">一站式检索所有可办事项</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex:none">
+        <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;background:var(--pri-50);border-radius:15px;color:var(--pri);font-size:12.5px;font-weight:500;white-space:nowrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6z"></path><path d="m9 12 2 2 4-4"></path></svg>
+          数据范围 · 本人
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding-left:6px;border-left:1px solid #EDEFF3">
+          <span style="width:36px;height:36px;flex:none;border-radius:10px;background:var(--pri-50);color:var(--pri);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ user.initial }}</span>
+          <div style="line-height:1.25"><div style="font-size:13.5px;font-weight:600;color:#1D2129">{{ user.name }}</div><div style="font-size:11.5px;color:#86909C">{{ user.role }}</div></div>
+        </div>
+      </div>
+    </header>
+
+    <main style="flex:1;overflow-y:auto;position:relative">
+      <sc-if value="{{ showWm }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;pointer-events:none;background-repeat:repeat;background-image:{{ wmUri }};z-index:0"></div></sc-if>
+      <div style="position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:20px 32px 40px">
+
+        <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 16px;background:#fff;border:1px solid #EEF0F3;border-radius:12px;margin-bottom:18px;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#98A0AE" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+          <input placeholder="搜索办事项,如:选课、请假、成绩单、去向登记…" style="border:none;outline:none;font-size:14px;color:#4E5969;width:100%"/>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">
+          <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="4">
+            <button onClick="{{ tb.onClick }}" style="all:unset;cursor:pointer;box-sizing:border-box;padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:{{ tb.fw }};background:{{ tb.bg }};color:{{ tb.color }}" style-hover="background:#F3F5F8">{{ tb.t }}</button>
+          </sc-for>
+        </div>
+
+        <!-- 全部事项 -->
+        <sc-if value="{{ isAll }}" hint-placeholder-val="{{ true }}">
+        <div style="animation:viewIn .2s ease">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px">
+            <sc-for list="{{ categories }}" as="c" hint-placeholder-count="6">
+              <a href="{{ c.href }}" style="display:flex;align-items:center;gap:13px;padding:17px 18px;background:#fff;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+                <span style="width:42px;height:42px;flex:none;border-radius:11px;background:var(--pri-50);color:var(--pri);display:flex;align-items:center;justify-content:center"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{ c.d1 }}"></path><path d="{{ c.d2 }}"></path></svg></span>
+                <div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:600;color:#1D2129">{{ c.name }}</div><div style="margin-top:3px;font-size:12px;color:#98A0AE">{{ c.count }} 项可办</div></div>
+              </a>
+            </sc-for>
+          </div>
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+            <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:14px">热门事项</div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+              <sc-for list="{{ hot }}" as="h" hint-placeholder-count="8">
+                <a href="{{ h.href }}" style="display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid #EEF0F3;border-radius:10px">
+                  <span style="width:6px;height:6px;border-radius:50%;background:var(--pri);flex:none"></span>
+                  <span style="font-size:13.5px;color:#1D2129;flex:1">{{ h.name }}</span>
+                  <span style="font-size:11.5px;color:#98A0AE">{{ h.cat }}</span>
+                </a>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- 分类列表(教务学业类/学工事务类/毕业就业类 共用同一渲染结构) -->
+        <sc-if value="{{ isCatList }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease;display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+          <sc-for list="{{ curCatItems }}" as="it" hint-placeholder-count="6">
+            <a href="{{ it.href }}" style="display:flex;align-items:center;gap:13px;padding:16px 18px;background:#fff;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+              <span style="width:38px;height:38px;flex:none;border-radius:10px;background:var(--pri-50);color:var(--pri);display:flex;align-items:center;justify-content:center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M9 9h6M9 13h6M9 17h3"></path></svg></span>
+              <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:#1D2129">{{ it.t }}</div><div style="margin-top:3px;font-size:12px;color:#98A0AE">{{ it.f }}</div></div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4CAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="m9 6 6 6-6 6"></path></svg>
+            </a>
+          </sc-for>
+        </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;清透学院蓝&quot;,&quot;options&quot;:[&quot;清透学院蓝&quot;,&quot;沉稳商务蓝&quot;,&quot;云岚雅灰&quot;,&quot;豆沙绿护眼&quot;,&quot;皓白极简&quot;,&quot;墨白极简&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;schoolName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;示范职业技术学院&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;studentName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;张明&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;showWatermark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;品牌与演示&quot;}}">
+class Component extends DCLogic {
+  state = { tab:'all' };
+
+  THEMES = {
+    '清透学院蓝':{'--pri':'#2f6bff','--pri-h':'#1f58e7','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f4f8ff','--g1':'#60a5fa','--g2':'#2f6bff'},
+    '沉稳商务蓝':{'--pri':'#1868c0','--pri-h':'#12559f','--pri-50':'#eaf2fb','--pri-100':'#d0e4f7','--pri-500':'#3b82f6','--bg':'#eef2f7','--g1':'#3e86de','--g2':'#1868c0'},
+    '云岚雅灰':{'--pri':'#5b6c9e','--pri-h':'#4b5c8d','--pri-50':'#f0f3fa','--pri-100':'#e1e6f0','--pri-500':'#8a9ac8','--bg':'#f6f8fc','--g1':'#8a9ac8','--g2':'#5b6c9e'},
+    '豆沙绿护眼':{'--pri':'#3e8e7e','--pri-h':'#327264','--pri-50':'#eaf2ee','--pri-100':'#d3e7df','--pri-500':'#5ca894','--bg':'#e6eee3','--g1':'#5ca894','--g2':'#3e8e7e'},
+    '皓白极简':{'--pri':'#2563eb','--pri-h':'#1d4ed8','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f8fafc','--g1':'#3b82f6','--g2':'#2563eb'},
+    '墨白极简':{'--pri':'#111827','--pri-h':'#000000','--pri-50':'#f3f4f6','--pri-100':'#e5e7eb','--pri-500':'#374151','--bg':'#f7f7f8','--g1':'#374151','--g2':'#111827'},
+  };
+  NAV = [
+    {key:'home',title:'首页工作台',d1:'M4 11.5 12 4l8 7.5',d2:'M6 10.5V20h12v-9.5'},
+    {key:'profile',title:'我的档案',d1:'M5 4h14v16H5z',d2:'M12 11a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4M8 17c.4-2 2-3 4-3s3.6 1 4 3'},
+    {key:'academic',title:'教务学业',d1:'M6 4h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2z',d2:'M6 18a2 2 0 0 1 2-2h10'},
+    {key:'graduation',title:'毕业设计',d1:'M2.5 8.5 12 4.5l9.5 4-9.5 4z',d2:'M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13'},
+    {key:'internship',title:'岗位实习',d1:'M4 8h16v11H4z',d2:'M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 13h16'},
+    {key:'employment',title:'就业服务',d1:'M5 20V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15',d2:'M15 9h3a1 1 0 0 1 1 1v10M8 8h3M8 12h3M8 16h3'},
+    {key:'affairs',title:'学工事务',d1:'M8 5h8v2H8z',d2:'M7 6H5v14h14V6h-2M9.3 13l1.8 1.8L15 11'},
+    {key:'orientation',title:'迎新报到',d1:'M6 3v18',d2:'M6 4h11l-2 3 2 3H6'},
+    {key:'messages',title:'消息通知',d1:'M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6',d2:'M10 20a2 2 0 0 0 4 0'},
+    {key:'hall',title:'办事大厅',d1:'M4 4h7v7H4zM13 4h7v7h-7z',d2:'M4 13h7v7H4zM13 13h7v7h-7z'},
+  ];
+  FILES = {home:'学生PC门户.dc.html#home',profile:'学生PC门户.dc.html#profile',graduation:'学生PC门户.dc.html#graduation',messages:'学生PC门户.dc.html#messages',academic:'教务学业.dc.html',internship:'岗位实习.dc.html',employment:'就业服务.dc.html',affairs:'学工事务.dc.html',orientation:'迎新报到.dc.html'};
+  TABS = [{key:'all',t:'全部事项'},{key:'academic',t:'教务学业类'},{key:'affairs',t:'学工事务类'},{key:'gradEmp',t:'毕业就业类'}];
+  CATEGORIES = [
+    {key:'academic',name:'教务学业',count:8,href:'教务学业.dc.html',d1:'M6 4h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2z',d2:'M6 18a2 2 0 0 1 2-2h10'},
+    {key:'graduation',name:'毕业设计',count:10,href:'学生PC门户.dc.html#graduation',d1:'M2.5 8.5 12 4.5l9.5 4-9.5 4z',d2:'M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13'},
+    {key:'internship',name:'岗位实习',count:6,href:'岗位实习.dc.html',d1:'M4 8h16v11H4z',d2:'M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 13h16'},
+    {key:'employment',name:'就业服务',count:4,href:'就业服务.dc.html',d1:'M5 20V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15',d2:'M15 9h3a1 1 0 0 1 1 1v10M8 8h3M8 12h3M8 16h3'},
+    {key:'affairs',name:'学工事务',count:7,href:'学工事务.dc.html',d1:'M8 5h8v2H8z',d2:'M7 6H5v14h14V6h-2M9.3 13l1.8 1.8L15 11'},
+    {key:'orientation',name:'迎新报到/离校',count:4,href:'迎新报到.dc.html',d1:'M6 3v18',d2:'M6 4h11l-2 3 2 3H6'},
+  ];
+  HOT = [
+    {name:'选课中心',cat:'教务学业',href:'教务学业.dc.html'},{name:'成绩单打印',cat:'教务学业',href:'教务学业.dc.html'},
+    {name:'实习周报提交',cat:'岗位实习',href:'岗位实习.dc.html'},{name:'每日打卡',cat:'岗位实习',href:'岗位实习.dc.html'},
+    {name:'去向登记',cat:'就业服务',href:'就业服务.dc.html'},{name:'请假销假',cat:'学工事务',href:'学工事务.dc.html'},
+    {name:'困难认定',cat:'学工事务',href:'学工事务.dc.html'},{name:'成果提交(整改)',cat:'毕业设计',href:'学生PC门户.dc.html#graduation'},
+  ];
+  ACADEMIC_ITEMS = [
+    {t:'我的课表',f:'课表网格 · 导出/打印'},{t:'选课中心',f:'大表勾选 + 冲突校验'},{t:'我的成绩',f:'成绩单表'},{t:'成绩单打印',f:'打印 / PDF · 水印'},
+    {t:'成绩申诉',f:'表单 + 附件'},{t:'学籍异动申请',f:'多步向导 + 材料 + 打印'},{t:'免修/缓考/补考重修',f:'表单 + 附件'},{t:'毕业资格自查',f:'差距看板'},
+  ].map(x=>({...x, href:'教务学业.dc.html'}));
+  AFFAIRS_ITEMS = [
+    {t:'请假销假',f:'表单 + 附件 + 打印'},{t:'困难认定',f:'多步向导 + 批量材料 + 承诺书'},{t:'奖助勤贷补',f:'表单 + 材料 + 电子签'},
+    {t:'违纪申诉',f:'长文本 + 附件'},{t:'心理自评',f:'问卷'},{t:'活动 / 社团报名',f:'报名 + 作品提交'},{t:'我的谈话记录',f:'只读 / 回执'},
+  ].map(x=>({...x, href:'学工事务.dc.html'}));
+  GRADEMP_ITEMS = [
+    {t:'毕业设计工作台',f:'流程时间线 · 退回整改'},{t:'我的实习',f:'时间线 · 打卡/周报'},{t:'三方协议',f:'预览 + 确认 + 打印'},
+    {t:'去向登记',f:'表单 + 材料 + 打印'},{t:'签约材料',f:'三方/合同上传 + 打印'},{t:'实习成绩/自评',f:'详情 + 申诉'},
+  ].map((x,i)=>({...x, href:i<1?'学生PC门户.dc.html#graduation':(i<3?'岗位实习.dc.html':'就业服务.dc.html')}));
+  tone = {};
+
+  setTab(k){ this.setState({tab:k}); }
+  componentDidMount(){ const h=(window.location.hash||'').replace('#',''); if(h && this.TABS.some(t=>t.key===h)) this.setState({tab:h}); }
+
+  renderVals(){
+    const s=this.state;
+    const themeName = this.props.theme || '清透学院蓝';
+    const tv = this.THEMES[themeName] || this.THEMES['清透学院蓝'];
+    const themeVars = Object.keys(tv).map(k=>k+':'+tv[k]).join(';');
+    const sName = this.props.studentName || '张明';
+    const showWm = this.props.showWatermark !== false;
+    const wmSvg = "<svg xmlns='http://www.w3.org/2000/svg' width='260' height='170'><text x='0' y='95' fill='%231D2129' fill-opacity='0.028' font-size='15' font-family='sans-serif' transform='rotate(-24 0 95)'>"+sName+" · 数据范围:本人</text></svg>";
+    const wmUri = "url(\"data:image/svg+xml,"+encodeURIComponent(wmSvg)+"\")";
+
+    const nav = this.NAV.map(n=>{
+      const active = n.key==='hall';
+      const ext = this.FILES[n.key];
+      return {...n, bg:active?'var(--pri-50)':'transparent', color:active?'var(--pri)':'#4E5969', fw:active?'600':'500',
+        href: active? '#' : ext,
+        onClick: active? (e)=>{ if(e&&e.preventDefault)e.preventDefault(); this.setTab('all'); } : undefined };
+    });
+    const tabs = this.TABS.map(t=>({...t, bg:s.tab===t.key?'var(--pri-50)':'#F5F7FA', color:s.tab===t.key?'var(--pri)':'#4E5969', fw:s.tab===t.key?'600':'500', onClick:()=>this.setTab(t.key)}));
+    const catMap = {academic:this.ACADEMIC_ITEMS, affairs:this.AFFAIRS_ITEMS, gradEmp:this.GRADEMP_ITEMS};
+
+    return {
+      brand:{school:this.props.schoolName||'示范职业技术学院', portal:'学生服务门户'},
+      user:{name:sName, initial:sName.slice(0,1), role:'在校生 · 毕设批次', no:'2023010145'},
+      homeHref: this.FILES.home,
+      showWm, wmUri, themeVars,
+      nav, tabs,
+      isAll:s.tab==='all', isCatList:s.tab!=='all',
+      categories:this.CATEGORIES, hot:this.HOT,
+      curCatItems: catMap[s.tab] || [],
+    };
+  }
+}
+</script>
+</body>
+</html>

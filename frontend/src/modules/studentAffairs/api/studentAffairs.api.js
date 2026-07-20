@@ -45,6 +45,7 @@ export const studentAffairsApi = {
     let brand = { ...FALLBACK_BRAND }
     let currentRole = { roleCode: '', roleName: '', userName: '' }
     let dataScope = { scopeName: '' }
+    let permissionPatterns = null
     try {
       const b = await request('/tenant/brand')
       brand = {
@@ -66,10 +67,14 @@ export const studentAffairsApi = {
           scopeName: ctx.dataScope.scopeName || ctx.dataScope.scopeLabel || ''
         }
       }
+      // 此前只取 currentRole/dataScope，permissionPatterns 被静默丢弃，导致各页面
+      // AppPermissionButton 只传展示用的 code、拿不到 allowed，按钮对无权限角色也一直可点
+      // （后端会 403，但用户要走完整个确认弹窗才知道）。这里把它一并透传给子路由。
+      if (Array.isArray(ctx.permissionPatterns)) permissionPatterns = ctx.permissionPatterns
     } catch {
       /* 静默回退，dashboard 仍会返回真实 viewLabel/scopeMode */
     }
-    return ok({ tenantBrandConfig: brand, currentRole, dataScope })
+    return ok({ tenantBrandConfig: brand, currentRole, dataScope, permissionPatterns })
   },
 
   /**

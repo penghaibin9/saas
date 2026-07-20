@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:#1D2129;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:var(--pri)}
+a:hover{color:var(--pri-h)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#DCE0E8;border-radius:8px;border:2px solid var(--bg)}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+:root{--pri:#2f6bff;--pri-h:#1f58e7;--pri-50:#eff6ff;--pri-100:#dbeafe;--pri-500:#3b82f6;--bg:#f4f8ff;--g1:#60a5fa;--g2:#2f6bff}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;width:100%;overflow:hidden;background:var(--bg);{{ themeVars }}">
+
+  <aside style="width:248px;flex:none;background:#fff;border-right:1px solid #EEF0F3;display:flex;flex-direction:column">
+    <a href="{{ homeHref }}" style="display:flex;align-items:center;gap:11px;padding:18px 18px 16px">
+      <span style="width:38px;height:38px;flex:none;border-radius:11px;background:linear-gradient(135deg,var(--g2),var(--g1));display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(37,99,235,.28)">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5 12 4.5l9.5 4-9.5 4z"></path><path d="M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13"></path></svg>
+      </span>
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:600;color:#1D2129;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ brand.school }}</div>
+        <div style="font-size:11.5px;color:#86909C;margin-top:1px">{{ brand.portal }}</div>
+      </div>
+    </a>
+    <nav style="flex:1;overflow-y:auto;padding:6px 12px 12px">
+      <sc-for list="{{ nav }}" as="m" hint-placeholder-count="10">
+        <a href="{{ m.href }}" onClick="{{ m.onClick }}" style="position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;margin:2px 0;border-radius:10px;font-size:14px;cursor:pointer;transition:background .15s,color .15s;background:{{ m.bg }};color:{{ m.color }};font-weight:{{ m.fw }}" style-hover="background:#F3F5F8">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{ m.d1 }}"></path><path d="{{ m.d2 }}"></path></svg>
+          <span style="flex:1">{{ m.title }}</span>
+        </a>
+      </sc-for>
+    </nav>
+    <div style="padding:12px 16px;border-top:1px solid #F1F2F5;font-size:11.5px;color:#A9B0BD">门户 v1.0 · 学工事务</div>
+  </aside>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <header style="height:62px;flex:none;background:#fff;border-bottom:1px solid #EEF0F3;display:flex;align-items:center;justify-content:space-between;padding:0 26px;gap:20px">
+      <div style="display:flex;align-items:baseline;gap:12px;min-width:0">
+        <span style="font-size:20px;font-weight:600;color:#1D2129;white-space:nowrap">学工事务</span>
+        <span style="font-size:12.5px;color:#A9B0BD;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ curTab.t }} · 对接 {{ curTab.dock }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex:none">
+        <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;background:var(--pri-50);border-radius:15px;color:var(--pri);font-size:12.5px;font-weight:500;white-space:nowrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6z"></path><path d="m9 12 2 2 4-4"></path></svg>
+          数据范围 · 本人
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding-left:6px;border-left:1px solid #EDEFF3">
+          <span style="width:36px;height:36px;flex:none;border-radius:10px;background:var(--pri-50);color:var(--pri);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ user.initial }}</span>
+          <div style="line-height:1.25"><div style="font-size:13.5px;font-weight:600;color:#1D2129">{{ user.name }}</div><div style="font-size:11.5px;color:#86909C">{{ user.role }}</div></div>
+        </div>
+      </div>
+    </header>
+
+    <main style="flex:1;overflow-y:auto;position:relative">
+      <sc-if value="{{ showWm }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;pointer-events:none;background-repeat:repeat;background-image:{{ wmUri }};z-index:0"></div></sc-if>
+      <div style="position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:20px 32px 40px">
+
+        <sc-if value="{{ !isLocked }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">
+          <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="7">
+            <button onClick="{{ tb.onClick }}" style="all:unset;cursor:pointer;box-sizing:border-box;padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:{{ tb.fw }};background:{{ tb.bg }};color:{{ tb.color }}" style-hover="background:#F3F5F8">{{ tb.t }}</button>
+          </sc-for>
+        </div></sc-if>
+
+        <sc-if value="{{ isLocked }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:520px;margin:40px auto;text-align:center;background:#fff;border:1px solid #EEF0F3;border-radius:16px;padding:40px 32px">
+          <span style="display:inline-flex;width:52px;height:52px;border-radius:50%;background:#F2F3F5;color:#98A0AE;align-items:center;justify-content:center;margin-bottom:16px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></span>
+          <div style="font-size:16px;font-weight:600;color:#1D2129">该模块未开通</div>
+          <div style="margin-top:8px;font-size:13.5px;color:#98A0AE;line-height:1.6">当前租户套餐未包含此模块,请联系学校管理员开通后再使用。</div>
+          <a href="{{ homeHref }}" style="display:inline-block;margin-top:18px;padding:9px 18px;border:1px solid #DDE1E8;color:#4E5969;border-radius:9px;font-size:13px">返回首页</a>
+        </div>
+        </sc-if>
+
+        <!-- 请假销假 -->
+        <sc-if value="{{ isLeave }}" hint-placeholder-val="{{ true }}">
+        <div style="animation:viewIn .2s ease;display:grid;grid-template-columns:1fr 1.15fr;gap:18px;align-items:start">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+            <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:14px">请假申请</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div><div style="font-size:12.5px;color:#86909C;margin-bottom:6px">请假类型</div>
+                <div style="display:flex;gap:8px">
+                  <span style="flex:1;text-align:center;padding:8px;border-radius:8px;background:var(--pri-50);color:var(--pri);font-size:13px;font-weight:600;border:1px solid var(--pri-100)">事假</span>
+                  <span style="flex:1;text-align:center;padding:8px;border-radius:8px;background:#F5F7FA;color:#86909C;font-size:13px">病假</span>
+                  <span style="flex:1;text-align:center;padding:8px;border-radius:8px;background:#F5F7FA;color:#86909C;font-size:13px">事由外出</span>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div><div style="font-size:12.5px;color:#86909C;margin-bottom:6px">开始时间</div><input value="2024-05-20" style="width:100%;height:36px;border:1px solid #DDE1E8;border-radius:8px;padding:0 10px;font-size:13px;box-sizing:border-box"/></div>
+                <div><div style="font-size:12.5px;color:#86909C;margin-bottom:6px">结束时间</div><input value="2024-05-21" style="width:100%;height:36px;border:1px solid #DDE1E8;border-radius:8px;padding:0 10px;font-size:13px;box-sizing:border-box"/></div>
+              </div>
+              <div><div style="font-size:12.5px;color:#86909C;margin-bottom:6px">请假事由</div><textarea placeholder="请说明请假原因" style="width:100%;height:74px;border:1px solid #DDE1E8;border-radius:8px;padding:10px 12px;font-size:13.5px;font-family:inherit;box-sizing:border-box"></textarea></div>
+              <button onClick="{{ notifyUpload }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;text-align:center;padding:9px;border:1.5px dashed #C9D2E0;border-radius:9px;color:#86909C;font-size:12.5px">上传证明材料(可选)</button>
+              <div style="display:flex;gap:10px">
+                <button onClick="{{ notifyPrint }}" style="all:unset;cursor:pointer;flex:1;text-align:center;padding:10px;border-radius:9px;border:1px solid var(--pri);color:var(--pri);font-size:13.5px;font-weight:500">打印请假条</button>
+                <button onClick="{{ notifyLeave }}" style="all:unset;cursor:pointer;flex:1;text-align:center;padding:10px;border-radius:9px;background:var(--pri);color:#fff;font-size:13.5px;font-weight:600">提交请假</button>
+              </div>
+            </div>
+          </section>
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+            <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:14px">请假 / 销假记录</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ leaves }}" as="l" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #EEF0F3;border-radius:11px">
+                  <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:#1D2129">{{ l.type }} · {{ l.range }}</div><div style="margin-top:3px;font-size:12px;color:#98A0AE">{{ l.reason }}</div></div>
+                  <span style="flex:none;display:inline-flex;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:{{ l.tt.bg }};color:{{ l.tt.color }}">{{ l.status }}</span>
+                  <sc-if value="{{ l.canReturn }}" hint-placeholder-val="{{ false }}"><button onClick="{{ notifyReturn }}" style="all:unset;cursor:pointer;flex:none;font-size:12.5px;font-weight:600;color:var(--pri)">销假</button></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- 困难认定 -->
+        <sc-if value="{{ isDifficulty }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:22px 24px">
+            <div style="font-size:16px;font-weight:600;color:#1D2129;margin-bottom:16px">家庭经济困难认定申请</div>
+            <div style="display:flex;align-items:center;margin-bottom:22px">
+              <sc-for list="{{ wizSteps }}" as="ws" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;flex:1">
+                  <div style="display:flex;align-items:center;gap:8px;flex:none">
+                    <span style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;background:{{ ws.bg }};color:{{ ws.color }};border:2px solid {{ ws.border }}">{{ ws.n }}</span>
+                    <span style="font-size:13px;color:{{ ws.color }};font-weight:{{ ws.fw }};white-space:nowrap">{{ ws.t }}</span>
+                  </div>
+                  <sc-if value="{{ ws.hasLine }}" hint-placeholder-val="{{ true }}"><span style="flex:1;height:2px;margin:0 10px;background:{{ ws.lineBg }}"></span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ dStep1 }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:640px">
+                <div><div style="font-size:12.5px;color:#86909C;margin-bottom:6px">家庭人口数</div><input value="4" style="width:100%;height:38px;border:1px solid #DDE1E8;border-radius:8px;padding:0 12px;font-size:13.5px;box-sizing:border-box"/></div>
+                <div><div style="font-size:12.5px;color:#86909C;margin-bottom:6px">家庭年收入(元)</div><input value="32,000" style="width:100%;height:38px;border:1px solid #DDE1E8;border-radius:8px;padding:0 12px;font-size:13.5px;box-sizing:border-box"/></div>
+                <div style="grid-column:1/3"><div style="font-size:12.5px;color:#86909C;margin-bottom:6px">困难情况说明</div><textarea placeholder="请说明家庭经济困难的具体情况" style="width:100%;height:84px;border:1px solid #DDE1E8;border-radius:8px;padding:10px 12px;font-size:13.5px;font-family:inherit;box-sizing:border-box"></textarea></div>
+              </div>
+              <button onClick="{{ nextWiz }}" style="all:unset;cursor:pointer;margin-top:18px;display:inline-block;padding:10px 20px;border-radius:9px;background:var(--pri);color:#fff;font-size:13.5px;font-weight:600">下一步:上传材料</button>
+            </sc-if>
+            <sc-if value="{{ dStep2 }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:10px;max-width:520px">
+                <sc-for list="{{ diffMaterials }}" as="dm" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid #EEF0F3;border-radius:10px">
+                    <span style="flex:1;font-size:13px;color:#1D2129">{{ dm.name }}</span>
+                    <span style="font-size:12px;color:{{ dm.color }}">{{ dm.status }}</span>
+                  </div>
+                </sc-for>
+                <button onClick="{{ notifyUpload }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;text-align:center;padding:9px;border:1.5px dashed #C9D2E0;border-radius:9px;color:#86909C;font-size:12.5px">+ 继续上传材料</button>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:18px">
+                <button onClick="{{ prevWiz }}" style="all:unset;cursor:pointer;padding:10px 20px;border-radius:9px;border:1px solid #DDE1E8;color:#4E5969;font-size:13.5px">上一步</button>
+                <button onClick="{{ nextWiz }}" style="all:unset;cursor:pointer;padding:10px 20px;border-radius:9px;background:var(--pri);color:#fff;font-size:13.5px;font-weight:600">下一步:签署承诺书</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ dStep3 }}" hint-placeholder-val="{{ false }}">
+              <div style="max-width:560px;padding:16px;border:1px solid #EEF0F3;border-radius:10px;font-size:13px;color:#4E5969;line-height:1.8">
+                本人郑重承诺:以上所填家庭经济情况真实、准确,如有虚报将承担相应责任,并配合学校核查。
+              </div>
+              <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:#1D2129;cursor:pointer"><input type="checkbox" checked/>我已阅读并同意以上承诺(电子签,将记录签署时间)</label>
+              <div style="display:flex;gap:10px;margin-top:18px">
+                <button onClick="{{ prevWiz }}" style="all:unset;cursor:pointer;padding:10px 20px;border-radius:9px;border:1px solid #DDE1E8;color:#4E5969;font-size:13.5px">上一步</button>
+                <button onClick="{{ submitDiff }}" style="all:unset;cursor:pointer;padding:10px 20px;border-radius:9px;background:var(--pri);color:#fff;font-size:13.5px;font-weight:600">提交认定申请</button>
+              </div>
+            </sc-if>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- 奖助勤贷补 -->
+        <sc-if value="{{ isFunding }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease">
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <sc-for list="{{ fundTabs }}" as="ft" hint-placeholder-count="5">
+              <button onClick="{{ ft.onClick }}" style="all:unset;cursor:pointer;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:{{ ft.fw }};background:{{ ft.bg }};color:{{ ft.color }}">{{ ft.t }}</button>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1.15fr;gap:18px;align-items:start">
+            <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+              <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:14px">{{ curFundTab }}申请</div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div><div style="font-size:12.5px;color:#86909C;margin-bottom:6px">申请理由</div><textarea placeholder="请说明申请理由" style="width:100%;height:78px;border:1px solid #DDE1E8;border-radius:8px;padding:10px 12px;font-size:13.5px;font-family:inherit;box-sizing:border-box"></textarea></div>
+                <button onClick="{{ notifyUpload }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;text-align:center;padding:9px;border:1.5px dashed #C9D2E0;border-radius:9px;color:#86909C;font-size:12.5px">上传佐证材料</button>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#4E5969"><input type="checkbox" checked/>电子签署诚信承诺书</label>
+                <button onClick="{{ notifyFund }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;text-align:center;padding:10px;border-radius:9px;background:var(--pri);color:#fff;font-size:13.5px;font-weight:600">提交申请</button>
+              </div>
+            </section>
+            <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+              <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:14px">发放台账</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ fundHistory }}" as="f" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #EEF0F3;border-radius:11px">
+                    <div style="flex:1"><div style="font-size:13.5px;color:#1D2129">{{ f.t }}</div><div style="margin-top:3px;font-size:12px;color:#98A0AE">{{ f.time }}</div></div>
+                    <span style="flex:none;display:inline-flex;height:24px;padding:0 9px;border-radius:6px;font-size:12px;background:{{ f.tt.bg }};color:{{ f.tt.color }}">{{ f.status }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- 违纪申诉 -->
+        <sc-if value="{{ isDiscipline }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease;max-width:640px">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:30px;text-align:center">
+            <span style="display:inline-flex;width:48px;height:48px;border-radius:50%;background:#E8F7EC;color:#0C8A3E;align-items:center;justify-content:center;margin-bottom:14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"></path><circle cx="12" cy="12" r="9"></circle></svg></span>
+            <div style="font-size:15px;font-weight:600;color:#1D2129">暂无违纪处分记录</div>
+            <div style="margin-top:6px;font-size:13px;color:#98A0AE">如对处分决定有异议,可在收到处分决定书后 15 日内在此提交书面申辩。</div>
+            <button onClick="{{ notifyAppeal }}" style="all:unset;cursor:pointer;margin-top:16px;display:inline-block;padding:9px 18px;border:1px solid #DDE1E8;color:#4E5969;border-radius:9px;font-size:13px">了解申诉流程</button>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- 心理自评 -->
+        <sc-if value="{{ isMental }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease;display:grid;grid-template-columns:1.1fr 1fr;gap:18px;align-items:start">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+            <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:6px">大学生心理健康自评量表(示例)</div>
+            <div style="font-size:12.5px;color:#98A0AE;margin-bottom:14px">结果仅本人与心理中心可见,不影响学业评定</div>
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <sc-for list="{{ mentalQs }}" as="q" hint-placeholder-count="3">
+                <div>
+                  <div style="font-size:13.5px;color:#1D2129;margin-bottom:8px">{{ q.n }}. {{ q.t }}</div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <sc-for list="{{ q.opts }}" as="o" hint-placeholder-count="4"><span style="padding:7px 13px;border-radius:8px;background:#F5F7FA;color:#4E5969;font-size:12.5px">{{ o }}</span></sc-for>
+                  </div>
+                </div>
+              </sc-for>
+              <button onClick="{{ notifyMental }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;text-align:center;padding:10px;border-radius:9px;background:var(--pri);color:#fff;font-size:13.5px;font-weight:600">提交测评</button>
+            </div>
+          </section>
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+            <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:14px">历史测评</div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #EEF0F3;border-radius:11px">
+              <div style="flex:1"><div style="font-size:13.5px;color:#1D2129">入学适应性测评</div><div style="margin-top:3px;font-size:12px;color:#98A0AE">2023-09-05</div></div>
+              <span style="display:inline-flex;height:24px;padding:0 9px;border-radius:6px;font-size:12px;background:#E8F7EC;color:#0C8A3E">状态良好</span>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- 活动二课 -->
+        <sc-if value="{{ isActivity }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+            <div><div style="font-size:15px;font-weight:600;color:#1D2129">我的第二课堂学分</div><div style="margin-top:4px;font-size:12.5px;color:#98A0AE">毕业要求 8 学分</div></div>
+            <div style="font-size:26px;font-weight:700;color:var(--pri);font-variant-numeric:tabular-nums">6<span style="font-size:13px;color:#98A0AE;font-weight:500"> / 8 学分</span></div>
+          </section>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+            <sc-for list="{{ activities }}" as="a" hint-placeholder-count="4">
+              <div style="background:#fff;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:16px">
+                <div style="font-size:14px;font-weight:600;color:#1D2129">{{ a.t }}</div>
+                <div style="margin-top:5px;font-size:12px;color:#98A0AE">{{ a.time }} · {{ a.credit }} 学分</div>
+                <button onClick="{{ a.onClick }}" style="all:unset;cursor:pointer;display:block;box-sizing:border-box;width:100%;margin-top:12px;text-align:center;padding:8px;border-radius:8px;background:{{ a.btnBg }};color:{{ a.btnColor }};font-size:12.5px;font-weight:600">{{ a.btnText }}</button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- 谈心谈话记录 -->
+        <sc-if value="{{ isTalk }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease;max-width:720px">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:20px 22px">
+            <div style="font-size:15px;font-weight:600;color:#1D2129;margin-bottom:4px">我的谈话记录</div>
+            <div style="font-size:12.5px;color:#98A0AE;margin-bottom:16px">仅展示辅导员/导师与你的谈话摘要,只读</div>
+            <div style="position:relative;padding-left:6px">
+              <sc-for list="{{ talks }}" as="tk" hint-placeholder-count="3">
+                <div style="display:flex;gap:14px;padding-bottom:16px">
+                  <div style="display:flex;flex-direction:column;align-items:center;flex:none">
+                    <span style="width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--pri)"></span>
+                    <sc-if value="{{ tk.hasLine }}" hint-placeholder-val="{{ true }}"><span style="flex:1;width:2px;margin-top:3px;background:#EDEFF3"></span></sc-if>
+                  </div>
+                  <div style="flex:1;min-width:0;padding-bottom:2px">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:600;color:#1D2129">{{ tk.title }}</span><span style="font-size:12px;color:#98A0AE">{{ tk.time }}</span></div>
+                    <div style="margin-top:4px;font-size:12.5px;color:#86909C">谈话人:{{ tk.by }}</div>
+                    <div style="margin-top:6px;font-size:13px;color:#4E5969;line-height:1.6">{{ tk.summary }}</div>
+                    <sc-if value="{{ tk.needAck }}" hint-placeholder-val="{{ false }}"><button onClick="{{ notifyAck }}" style="all:unset;cursor:pointer;margin-top:8px;display:inline-block;padding:6px 13px;border-radius:7px;background:var(--pri-50);color:var(--pri);font-size:12.5px;font-weight:600">确认回执</button></sc-if>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:38px;transform:translateX(-50%);background:#1D2129;color:#fff;padding:11px 22px;border-radius:11px;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.22);animation:toastIn .22s ease;z-index:90">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;清透学院蓝&quot;,&quot;options&quot;:[&quot;清透学院蓝&quot;,&quot;沉稳商务蓝&quot;,&quot;云岚雅灰&quot;,&quot;豆沙绿护眼&quot;,&quot;皓白极简&quot;,&quot;墨白极简&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;servicePackage&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;全生命周期版&quot;,&quot;options&quot;:[&quot;全生命周期版&quot;,&quot;学业+实习包&quot;,&quot;毕设+就业包&quot;,&quot;只读门户版&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;套餐与权限&quot;},&quot;schoolName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;示范职业技术学院&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;studentName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;张明&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;showWatermark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;品牌与演示&quot;}}">
+class Component extends DCLogic {
+  state = { tab:'leave', dStep:1, fundTab:'奖学金' };
+
+  THEMES = {
+    '清透学院蓝':{'--pri':'#2f6bff','--pri-h':'#1f58e7','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f4f8ff','--g1':'#60a5fa','--g2':'#2f6bff'},
+    '沉稳商务蓝':{'--pri':'#1868c0','--pri-h':'#12559f','--pri-50':'#eaf2fb','--pri-100':'#d0e4f7','--pri-500':'#3b82f6','--bg':'#eef2f7','--g1':'#3e86de','--g2':'#1868c0'},
+    '云岚雅灰':{'--pri':'#5b6c9e','--pri-h':'#4b5c8d','--pri-50':'#f0f3fa','--pri-100':'#e1e6f0','--pri-500':'#8a9ac8','--bg':'#f6f8fc','--g1':'#8a9ac8','--g2':'#5b6c9e'},
+    '豆沙绿护眼':{'--pri':'#3e8e7e','--pri-h':'#327264','--pri-50':'#eaf2ee','--pri-100':'#d3e7df','--pri-500':'#5ca894','--bg':'#e6eee3','--g1':'#5ca894','--g2':'#3e8e7e'},
+    '皓白极简':{'--pri':'#2563eb','--pri-h':'#1d4ed8','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f8fafc','--g1':'#3b82f6','--g2':'#2563eb'},
+    '墨白极简':{'--pri':'#111827','--pri-h':'#000000','--pri-50':'#f3f4f6','--pri-100':'#e5e7eb','--pri-500':'#374151','--bg':'#f7f7f8','--g1':'#374151','--g2':'#111827'},
+  };
+  NAV = [
+    {key:'home',title:'首页工作台',d1:'M4 11.5 12 4l8 7.5',d2:'M6 10.5V20h12v-9.5'},
+    {key:'profile',title:'我的档案',d1:'M5 4h14v16H5z',d2:'M12 11a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4M8 17c.4-2 2-3 4-3s3.6 1 4 3'},
+    {key:'academic',title:'教务学业',d1:'M6 4h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2z',d2:'M6 18a2 2 0 0 1 2-2h10'},
+    {key:'graduation',title:'毕业设计',d1:'M2.5 8.5 12 4.5l9.5 4-9.5 4z',d2:'M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13'},
+    {key:'internship',title:'岗位实习',d1:'M4 8h16v11H4z',d2:'M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 13h16'},
+    {key:'employment',title:'就业服务',d1:'M5 20V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15',d2:'M15 9h3a1 1 0 0 1 1 1v10M8 8h3M8 12h3M8 16h3'},
+    {key:'affairs',title:'学工事务',d1:'M8 5h8v2H8z',d2:'M7 6H5v14h14V6h-2M9.3 13l1.8 1.8L15 11'},
+    {key:'orientation',title:'迎新报到',d1:'M6 3v18',d2:'M6 4h11l-2 3 2 3H6'},
+    {key:'messages',title:'消息通知',d1:'M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6',d2:'M10 20a2 2 0 0 0 4 0'},
+    {key:'hall',title:'办事大厅',d1:'M4 4h7v7H4zM13 4h7v7h-7z',d2:'M4 13h7v7H4zM13 13h7v7h-7z'},
+  ];
+  FILES = {home:'学生PC门户.dc.html#home',profile:'学生PC门户.dc.html#profile',graduation:'学生PC门户.dc.html#graduation',messages:'学生PC门户.dc.html#messages',academic:'教务学业.dc.html',internship:'岗位实习.dc.html',employment:'就业服务.dc.html',orientation:'迎新报到.dc.html',hall:'办事大厅.dc.html'};
+  TABS = [
+    {key:'leave',t:'请假销假',dock:'学工中心·请假销假'},
+    {key:'difficulty',t:'困难认定',dock:'学工中心·困难认定'},
+    {key:'funding',t:'奖助勤贷补',dock:'学工中心·奖助勤贷补'},
+    {key:'discipline',t:'违纪申诉',dock:'学工中心·违纪处分'},
+    {key:'mental',t:'心理自评',dock:'学工中心·心理关注'},
+    {key:'activity',t:'活动二课',dock:'学工中心·活动二课与社团'},
+    {key:'talk',t:'谈心谈话记录',dock:'学工中心·谈心家校'},
+  ];
+  LEAVES = [
+    {type:'事假',range:'03-05 ~ 03-05',reason:'回家处理证件',status:'已销假',tone:'gray',canReturn:false},
+    {type:'病假',range:'04-11 ~ 04-12',reason:'发烧就医',status:'已通过',tone:'success',canReturn:true},
+  ];
+  DIFF_MATERIALS = [{name:'家庭经济情况调查表.pdf',status:'已上传',color:'#0C8A3E'},{name:'低保证明.jpg',status:'已上传',color:'#0C8A3E'},{name:'村委会证明.pdf',status:'待上传',color:'#B25E00'}];
+  FUND_TABS = ['奖学金','助学金','勤工助学','助学贷款','困难补助'];
+  FUND_HISTORY = [{t:'2023-2024学年国家励志奖学金',time:'2023-11 公示通过',status:'已发放',tone:'success'},{t:'2023 秋季勤工助学岗位',time:'2023-09 申请',status:'已通过',tone:'success'}];
+  MENTAL_QS = [
+    {n:1,t:'最近两周,你的睡眠质量如何?',opts:['很好','一般','较差','很差']},
+    {n:2,t:'面对学业和实习压力,你感觉:',opts:['轻松应对','偶尔有压力','经常感到压力','难以承受']},
+    {n:3,t:'是否愿意与辅导员/心理老师聊聊近况?',opts:['愿意','暂时不需要']},
+  ];
+  ACTIVITIES = [
+    {t:'职业生涯规划讲座',time:'05-18 14:00',credit:0.5,status:'open'},
+    {t:'志愿服务·社区义诊',time:'05-25 全天',credit:1,status:'open'},
+    {t:'软件学院程序设计大赛',time:'已报名',credit:1,status:'joined'},
+    {t:'第二课堂学分认定材料提交',time:'05-30 前',credit:0,status:'action'},
+  ];
+  TALKS = [
+    {title:'实习中期例行谈心',by:'辅导员 刘老师',time:'2024-04-20',summary:'了解实习适应情况,提醒按时提交周报,状态良好。',needAck:false},
+    {title:'毕业设计进度关注谈话',by:'辅导员 刘老师',time:'2024-05-13',summary:'因论文正文被退回,谈心了解情况并给予时间管理建议,已确认整改计划。',needAck:true},
+  ];
+  tone = {success:{bg:'#E8F7EC',color:'#0C8A3E'},warning:{bg:'#FFF4E5',color:'#B25E00'},danger:{bg:'#FDECEC',color:'#D92D20'},gray:{bg:'#F2F3F5',color:'#4E5969'}};
+
+  notify(msg){ this.setState({toast:msg}); clearTimeout(this._t); this._t=setTimeout(()=>this.setState({toast:''}),2200); }
+  PACKAGES = {
+    '全生命周期版':['academic','graduation','internship','employment','affairs','orientation'],
+    '学业+实习包':['academic','internship'],
+    '毕设+就业包':['graduation','internship','employment'],
+    '只读门户版':['academic','graduation','internship','employment','affairs','orientation'],
+  };
+  setTab(k){ if(this._locked) return; this.setState({tab:k}); }
+  componentDidMount(){
+    const pkg = this.props.servicePackage || '全生命周期版';
+    this._locked = !(this.PACKAGES[pkg]||[]).includes('affairs');
+    if(this._locked){ this.setState({tab:'__locked__'}); return; }
+    const h=(window.location.hash||'').replace('#',''); if(h && this.TABS.some(t=>t.key===h)) this.setState({tab:h});
+  }
+  setDStep(n){ this.setState({dStep:n}); }
+  setFundTab(t){ this.setState({fundTab:t}); }
+
+  renderVals(){
+    const s=this.state;
+    const themeName = this.props.theme || '清透学院蓝';
+    const tv = this.THEMES[themeName] || this.THEMES['清透学院蓝'];
+    const themeVars = Object.keys(tv).map(k=>k+':'+tv[k]).join(';');
+    const sName = this.props.studentName || '张明';
+    const showWm = this.props.showWatermark !== false;
+    const wmSvg = "<svg xmlns='http://www.w3.org/2000/svg' width='260' height='170'><text x='0' y='95' fill='%231D2129' fill-opacity='0.028' font-size='15' font-family='sans-serif' transform='rotate(-24 0 95)'>"+sName+" · 数据范围:本人</text></svg>";
+    const wmUri = "url(\"data:image/svg+xml,"+encodeURIComponent(wmSvg)+"\")";
+
+    const nav = this.NAV.map(n=>{
+      const active = n.key==='affairs';
+      const ext = this.FILES[n.key];
+      return {...n, bg:active?'var(--pri-50)':'transparent', color:active?'var(--pri)':'#4E5969', fw:active?'600':'500',
+        href: active? '#' : ext,
+        onClick: active? (e)=>{ if(e&&e.preventDefault)e.preventDefault(); this.setTab('leave'); } : undefined };
+    });
+    const tabs = this.TABS.map(t=>({...t, bg:s.tab===t.key?'var(--pri-50)':'#F5F7FA', color:s.tab===t.key?'var(--pri)':'#4E5969', fw:s.tab===t.key?'600':'500', onClick:()=>this.setTab(t.key)}));
+    const curTab = this.TABS.find(t=>t.key===s.tab)||this.TABS[0];
+    const leaves = this.LEAVES.map(l=>({...l, tt:this.tone[l.tone]}));
+    const wizSteps = [{n:1,t:'填写信息'},{n:2,t:'上传材料'},{n:3,t:'电子签承诺书'}].map((w,i,arr)=>({...w,
+      bg:s.dStep>w.n?'var(--pri)':'#fff', border:s.dStep>=w.n?'var(--pri)':'#DDE1E8', color:s.dStep>w.n?'#fff':s.dStep===w.n?'var(--pri)':'#A9B0BD',
+      fw:s.dStep===w.n?'600':'500', lineBg:s.dStep>w.n?'var(--pri)':'#E5E8EE', hasLine:i<arr.length-1 }));
+    const fundTabs = this.FUND_TABS.map(t=>({t, bg:s.fundTab===t?'var(--pri-50)':'#F5F7FA', color:s.fundTab===t?'var(--pri)':'#4E5969', fw:s.fundTab===t?'600':'500', onClick:()=>this.setFundTab(t)}));
+    const fundHistory = this.FUND_HISTORY.map(f=>({...f, tt:this.tone[f.tone]}));
+    const activities = this.ACTIVITIES.map(a=>({...a,
+      btnText: a.status==='joined'?'已报名':a.status==='action'?'去提交':'报名',
+      btnBg: a.status==='joined'?'#F2F3F5':'var(--pri)', btnColor: a.status==='joined'?'#86909C':'#fff',
+      onClick:()=>this.notify(a.status==='joined'?'已报名,无需重复操作':'操作成功:'+a.t) }));
+    const talks = this.TALKS.map((t,i,arr)=>({...t, hasLine:i<arr.length-1}));
+
+    return {
+      brand:{school:this.props.schoolName||'示范职业技术学院', portal:'学生服务门户'},
+      user:{name:sName, initial:sName.slice(0,1), role:'在校生 · 毕设批次', no:'2023010145'},
+      homeHref: this.FILES.home,
+      showWm, wmUri, themeVars, isLocked: s.tab==='__locked__',
+      nav, tabs, curTab,
+      isLeave:s.tab==='leave', isDifficulty:s.tab==='difficulty', isFunding:s.tab==='funding', isDiscipline:s.tab==='discipline', isMental:s.tab==='mental', isActivity:s.tab==='activity', isTalk:s.tab==='talk',
+      leaves, wizSteps, dStep1:s.dStep===1, dStep2:s.dStep===2, dStep3:s.dStep===3, diffMaterials:this.DIFF_MATERIALS,
+      fundTabs, curFundTab:s.fundTab, fundHistory,
+      mentalQs:this.MENTAL_QS, activities, talks,
+      toast:s.toast,
+      notifyPrint:()=>this.notify('已生成 PDF(演示)'),
+      notifyUpload:()=>this.notify('已选择文件,开始上传…'),
+      notifyLeave:()=>this.notify('请假申请已提交,等待辅导员审批'),
+      notifyReturn:()=>this.notify('销假成功'),
+      nextWiz:()=>this.setDStep(Math.min(3,s.dStep+1)),
+      prevWiz:()=>this.setDStep(Math.max(1,s.dStep-1)),
+      submitDiff:()=>{ this.notify('困难认定申请已提交,进入辅导员审核'); this.setDStep(1); },
+      notifyFund:()=>this.notify('申请已提交,等待审核'),
+      notifyAppeal:()=>this.notify('若收到处分决定,可在此发起申辩(演示)'),
+      notifyMental:()=>this.notify('测评已提交,结果仅本人与心理中心可见'),
+      notifyAck:()=>this.notify('已确认回执'),
+    };
+  }
+}
+</script>
+</body>
+</html>

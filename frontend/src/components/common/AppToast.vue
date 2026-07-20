@@ -36,7 +36,9 @@ export default {
 <style scoped>
 .app-toast {
   position: fixed;
-  top: var(--space-5);
+  /* 避让顶部导航栏(.bpl-topbar 固定 56px)：toast 曾与视角切换/待办/退出登录等按钮同区域重叠，
+     pointer-events:auto 的 toast 条会在淡出前吞掉这些按钮的点击。*/
+  top: calc(56px + var(--space-3));
   right: var(--space-5);
   z-index: var(--z-toast);
   display: flex;

@@ -7,7 +7,8 @@ from app.models.student import StudentContact, StudentImportBatch, StudentProfil
 from app.models.student_parent import StudentParentLink  # noqa: F401  (学生PC门户·家长授权代理)
 from app.models.portal_otp import PortalLoginOtp  # noqa: F401  (学生PC门户·登录验证码)
 from app.models.portal_sign import PortalSignRecord  # noqa: F401  (学生PC门户·电子签署留痕)
-from app.models.approval import UnifiedTodo, WorkflowInstance, WorkflowTask  # noqa: F401
+from app.models.approval import (UnifiedTodo, WorkflowDefinition, WorkflowInstance,  # noqa: F401
+                                 WorkflowNodeDefinition, WorkflowTask)
 from app.models.message import UnifiedMessage  # noqa: F401
 from app.models.notification_preference import NotificationPreference  # noqa: F401
 from app.models.user_preference import UserPreference  # noqa: F401
@@ -28,6 +29,8 @@ from app.models.internship import (AttendanceException, InternshipAgreement,  # 
 from app.models.internship_position import InternshipPosition  # noqa: F401  (岗位库·独立文件)
 from app.models.internship_match import InternshipApplication, InternshipIntention, InternshipMatch  # noqa: F401  (岗位匹配/申请)
 from app.models.excel_import_job import ExcelImportJob  # noqa: F401  (公共 Excel 底座·通用导入记录)
+from app.models.identity_import_batch import IdentityImportBatch  # noqa: F401
+from app.models.shared_import_batch import SharedImportBatch  # noqa: F401
 from app.models.internship_agreement_template import InternshipAgreementTemplate  # noqa: F401  (实习协议模板库·独立文件)
 from app.models.orientation import (GreenChannelApplication, OrientationArchive,  # noqa: F401
                                      OrientationAuditTrail, OrientationBatch,
@@ -142,7 +145,19 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaTextbookReviewBatchItem,
                                          AaTextbookSelection, AaTimeSlot)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
+from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401
 from app.models.sandbox import SandboxBaseline  # noqa: F401
 from app.models.feedback import Feedback  # noqa: F401  (帮助与反馈·独立新文件)
+from app.models.system_implementation import (SystemImplementationCheck,  # noqa: F401
+                                               SystemBusinessRelationBatch,
+                                               SystemBusinessRelationInstallItem,
+                                               SystemImplementationProject,
+                                               SystemImplementationSection,
+                                               SystemPresetInstallation)
+from app.models.national_standard import (NationalMajorCatalog,  # noqa: F401
+                                          NationalStandardDocument,
+                                          NationalStandardSection,
+                                          NationalStandardSource,
+                                          SchoolMajorStandardBinding)

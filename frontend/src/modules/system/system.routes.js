@@ -77,6 +77,46 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '老系统数据迁移', requiresAuth: true,
         permissionKey: 'systemAdmin.migration.view' }
     },
+    {
+      path: 'implementation/overview', name: 'system-implementation-overview',
+      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '实施总览', requiresAuth: true, permissionKey: 'systemAdmin.implementation.view', implementationPageKey: 'overview' }
+    },
+    {
+      path: 'implementation/wizard', name: 'system-implementation-wizard',
+      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '首次开局向导', requiresAuth: true, permissionKey: 'systemAdmin.implementation.configure', implementationPageKey: 'wizard' }
+    },
+    {
+      path: 'implementation/presets', name: 'system-implementation-presets',
+      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '预设方案', requiresAuth: true, permissionKey: 'systemAdmin.implementation.preset.view', implementationPageKey: 'presets' }
+    },
+    {
+      path: 'implementation/standards', name: 'system-implementation-standards',
+      component: () => import('@/modules/system/views/NationalStandardsView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '职业教育国家标准库', requiresAuth: true, permissionKey: 'systemAdmin.implementation.preset.view' }
+    },
+    {
+      path: 'implementation/data-mapping', name: 'system-implementation-mapping',
+      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '数据导入与智能匹配', requiresAuth: true, permissionKey: 'systemAdmin.implementation.mapping.manage', implementationPageKey: 'mapping' }
+    },
+    {
+      path: 'implementation/installed', name: 'system-implementation-installed',
+      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '已安装配置', requiresAuth: true, permissionKey: 'systemAdmin.implementation.installed.view', implementationPageKey: 'installed' }
+    },
+    {
+      path: 'implementation/changes', name: 'system-implementation-changes',
+      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '变更与升级', requiresAuth: true, permissionKey: 'systemAdmin.implementation.change.manage', implementationPageKey: 'changes' }
+    },
+    {
+      path: 'implementation/acceptance', name: 'system-implementation-acceptance',
+      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '上线检查与验收', requiresAuth: true, permissionKey: 'systemAdmin.implementation.check.run', implementationPageKey: 'acceptance' }
+    },
     /* 8 组 26 项学校级系统管理中尚未有独立业务页的治理能力。
        统一进入 SystemCapabilityView，不伪造写接口；真实服务按 meta.systemCapabilityKey 接入。 */
     {

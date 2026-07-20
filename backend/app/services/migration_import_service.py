@@ -28,7 +28,6 @@ from app.core.exceptions import AppException, not_found
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import xlsx_util
 
-_MEM_BATCHES: dict[str, dict] = {}
 _REMARK_PREFIX = "migration:"
 
 
@@ -695,9 +694,7 @@ def dry_run(domain: str, rows: list[dict]) -> dict:
         db.close()
     batch_no = f"MIG{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}"
     status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
-    _MEM_BATCHES[batch_no] = {"domain": domain, "rows": ok_rows, "status": status,
-                              "tenantId": _tid(),
-                              "createdBy": (get_current_user_ctx() or {}).get("userId")}
+    actor_key = (get_current_user_ctx() or {}).get("userId")
     db2 = get_sessionmaker()()
     try:
         from app.models import StudentImportBatch
@@ -707,6 +704,10 @@ def dry_run(domain: str, rows: list[dict]) -> dict:
         db2.commit()
     finally:
         db2.close()
+    from app.services import shared_import_batch_service as shared_batches
+    shared_batches.create(_tid(), f"MIGRATION:{domain}", batch_no, status,
+                          {"domain": domain, "rows": ok_rows}, errors=errors,
+                          operator_key=actor_key)
     mask = _PREVIEW_MASKS.get(domain)
     preview = [mask(r) for r in ok_rows[:200]] if mask else ok_rows[:200]
     return {"batchNo": batch_no, "domain": domain, "status": status,
@@ -718,25 +719,35 @@ def dry_run(domain: str, rows: list[dict]) -> dict:
 
 def confirm(batch_no: str) -> dict:
     _require_db()
-    batch = _MEM_BATCHES.get(batch_no)
-    if not batch or batch.get("tenantId") != _tid():
-        raise not_found("导入批次不存在或已过期，请重新校验")
-    if batch["status"] != "DRY_RUN_PASSED":
-        raise AppException("VALIDATION_ERROR", "该批次未通过 Dry-Run 校验，禁止确认导入")
-    domain = batch["domain"]
+    from sqlalchemy import select
+    from app.models import StudentImportBatch
+    lookup = get_sessionmaker()()
+    try:
+        ledger = lookup.scalars(select(StudentImportBatch).where(
+            StudentImportBatch.tenant_id == _tid(),
+            StudentImportBatch.batch_no == batch_no,
+            StudentImportBatch.remark.like(f"{_REMARK_PREFIX}%"))).first()
+        if not ledger:
+            raise not_found("导入批次不存在或已过期，请重新校验")
+        domain = (ledger.remark or "").removeprefix(_REMARK_PREFIX).split(" ")[0]
+    finally:
+        lookup.close()
+    from app.services import shared_import_batch_service as shared_batches
+    payload, claim_token, already_done = shared_batches.claim(
+        _tid(), f"MIGRATION:{domain}", batch_no, required_status="DRY_RUN_PASSED")
+    if already_done:
+        return payload
     db = get_sessionmaker()()
     try:
-        result = _PERSISTERS[domain](db, batch["rows"])
-        from sqlalchemy import select
-        from app.models import StudentImportBatch
+        result = _PERSISTERS[domain](db, payload["rows"])
         b = db.scalars(select(StudentImportBatch).where(
             StudentImportBatch.tenant_id == _tid(),
             StudentImportBatch.batch_no == batch_no)).first()
         if b:
             b.status = "SUCCESS"
-            b.success_rows = len(batch["rows"])
+            b.success_rows = len(payload["rows"])
         db.commit()  # 整批一个事务：任一行失败自动回滚
-    except Exception:
+    except Exception as exc:
         db.rollback()
         from sqlalchemy import select as _sel
         db_fail = get_sessionmaker()()
@@ -750,12 +761,15 @@ def confirm(batch_no: str) -> dict:
                 db_fail.commit()
         finally:
             db_fail.close()
+        shared_batches.fail(_tid(), f"MIGRATION:{domain}", batch_no,
+                            claim_token, str(exc), retryable=True)
         raise
     finally:
         db.close()
-    batch["status"] = "SUCCESS"
-    return {"batchNo": batch_no, "domain": domain, "status": "SUCCESS",
-            "insertedRows": len(batch["rows"]), **result}
+    public_result = {"batchNo": batch_no, "domain": domain, "status": "SUCCESS",
+                     "insertedRows": len(payload["rows"]), **result}
+    shared_batches.finish(_tid(), f"MIGRATION:{domain}", batch_no, claim_token, public_result)
+    return public_result
 
 
 # ═══════════ 总览 / 对账 / 批次 ═══════════

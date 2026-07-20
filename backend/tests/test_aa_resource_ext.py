@@ -63,7 +63,8 @@ def test_l2_duplicate_409(client, db_mode):
 
 
 def test_l3_update_status_delete(client, db_mode):
-    hdr = _hdr(client, "academic01")  # ACADEMIC_TEACHER 有 academicAffairs.*
+    # 2026-07-19 权限清单化：ACADEMIC_TEACHER 不再持通配符，实训室增改是管理动作，改用校管理员
+    hdr = _hdr(client, "school_admin01")
     lid = _mk_lab(client, hdr, "L301", responsibleName="张管理员").json()["data"]["labId"]
     r = client.put(f"{BASE}/labs/{lid}", headers=hdr, json={"capacity": 40, "responsibleName": "李管理员"}).json()["data"]
     assert r["capacity"] == 40 and r["responsibleName"] == "李管理员"

@@ -42,7 +42,7 @@ services:
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
       - --max-connections=${MYSQL_MAX_CONNECTIONS:-200}
-      - --innodb-buffer-pool-size=${MYSQL_INNODB_BUFFER_POOL_SIZE:-2G}
+      - --innodb-buffer-pool-size=${MYSQL_INNODB_BUFFER_POOL_SIZE:-1G}
       - --slow-query-log=ON
       - --long-query-time=${MYSQL_LONG_QUERY_TIME:-0.5}
       - --server-id=1
@@ -76,7 +76,7 @@ services:
     environment:
       REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec",
-              "--maxmemory", "${REDIS_MAXMEMORY:-512mb}", "--maxmemory-policy", "allkeys-lru",
+              "--maxmemory", "${REDIS_MAXMEMORY:-256mb}", "--maxmemory-policy", "allkeys-lru",
               "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
     volumes:
       - ./volumes/redis:/data
@@ -88,13 +88,37 @@ services:
     networks:
       - school-lifecycle
 
+  migrate:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - ../env/backend.mysql.env
+    environment:
+      APP_ENV: "prod"
+      DB_ENABLED: "true"
+      DB_DRIVER: "mysql"
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-saas_lifecycle}
+      DB_USER: ${DB_USER:-saas_user}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      DATABASE_URL: ""
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - school-lifecycle
+    restart: "no"
+
   # ── 后端：FastAPI（连 MySQL）──
   backend:
     build:
       context: ../../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     env_file:
       - ../env/backend.mysql.env      # 先 cp backend.mysql.env.example 为 backend.mysql.env
     environment:
@@ -117,11 +141,14 @@ services:
       DB_MAX_OVERFLOW: "10"
       DB_POOL_TIMEOUT: "5"
       SCHEDULER_MODE: "external"
+      EXPORT_DIR: "./exports"
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./volumes/uploads:/app/uploads    # 上传目录 → 服务器磁盘
       - ./volumes/exports:/app/exports    # 导出目录 → 服务器磁盘
@@ -130,14 +157,14 @@ services:
     networks:
       - school-lifecycle
     deploy:
-      replicas: 2
+      replicas: 1
 
   scheduler:
     build:
       context: ../../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["python", "scripts/run_scheduled_jobs.py"]
+    command: ["python", "-m", "scripts.run_scheduled_jobs"]
     env_file:
       - ../env/backend.mysql.env
     environment:
@@ -154,11 +181,14 @@ services:
       DB_POOL_SIZE: "2"
       DB_MAX_OVERFLOW: "2"
       SCHEDULER_MODE: "external"
+      EXPORT_DIR: "./exports"
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - school-lifecycle
 

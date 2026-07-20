@@ -75,7 +75,7 @@
         <ul v-else class="cadre-list">
           <li v-for="c in cadre.rows" :key="c.cadreId">
             <span class="cadre-pos">{{ positionLabel(c.position) }}</span>
-            <span>{{ studentName(c.studentId) }}</span>
+            <span>{{ cadreName(c) }}</span>
             <AppPermissionButton code="studentAffairs.class.cadre.manage" variant="danger" size="sm" @click="removeCadre(c)">免去</AppPermissionButton>
           </li>
         </ul>
@@ -212,6 +212,12 @@ export default {
       const s = this.stu.rows.find((x) => String(x.studentId) === String(sid))
       return s ? `${s.realName}（${s.studentNo}）` : `学生#${sid}`
     },
+    /** 班干部显示名：优先用后端直接返回的 studentName/studentNo（不依赖是否已加载学生名单 tab），
+     *  缺失时回退到本地学生表查找，再回退到 学生#id。 */
+    cadreName(c) {
+      if (c.studentName) return c.studentNo ? `${c.studentName}（${c.studentNo}）` : c.studentName
+      return this.studentName(c.studentId)
+    },
     async loadProfile() {
       this.loadErr = ''
       const res = await classApi.profile(this.classId)
@@ -322,7 +328,7 @@ export default {
         } }
     },
     removeCadre(c) {
-      this.confirm = { visible: true, title: '免去班干部', content: `确认免去「${this.studentName(c.studentId)}」的${this.positionLabel(c.position)}职务？`,
+      this.confirm = { visible: true, title: '免去班干部', content: `确认免去「${this.cadreName(c)}」的${this.positionLabel(c.position)}职务？`,
         danger: true, confirmText: '确认免去', submitting: false,
         submit: async () => {
           const res = await classApi.removeCadre(c.cadreId)

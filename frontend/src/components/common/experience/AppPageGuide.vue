@@ -51,7 +51,7 @@ export default {
         const d = await request('/me/preferences', { params: { keys: key } })
         const seenVersion = (d.items || {})[key]
         if (seenVersion !== String(this.guide.version)) this.open = true
-      } catch (e) {
+      } catch {
         // 读不到偏好就不弹，避免后端异常时反复骚扰；用户仍可从顶栏「?」手动重看。
       }
     },
@@ -67,7 +67,7 @@ export default {
           method: 'POST',
           body: { key, value: String(this.guide.version) }
         })
-      } catch (e) {
+      } catch {
         // 存不上只影响「下次还会弹」，不打断当前操作，不给老师报错。
       }
     }

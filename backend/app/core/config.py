@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = ""             # 优先级高于 JWT_ALG
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120  # legacy 配置名；正式令牌统一读取 JWT_EXPIRES_IN
     UPLOAD_DIR: str = "./uploads"       # 文件落点：local 后端的存储根 / cos 后端的临时·缓存根
+    EXPORT_DIR: str = "./exports"       # 就绪探针与异步导出工作目录；生产应挂持久化目录
     AUDIT_ENABLED: bool = True          # 审计开关（DB_ENABLED=False 时写内存列表）
 
     # ── 文件存储后端（附件/论文/材料字节存哪）──

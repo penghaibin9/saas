@@ -21,9 +21,13 @@ export const me = () => realRequest('/auth/me')
 export const changePassword = (oldPassword, newPassword) =>
   realRequest('/auth/change-password', { method: 'POST', data: { oldPassword, newPassword } })
 
+/* 真实 t_student_profile.current_stage 枚举（backend/app/services/stats_service.py
+ * _STAGE_WEIGHT 同一套口径），此前这里写的是 ORIENTATION/ON_CAMPUS/INTERNSHIP/
+ * GRADUATION_DESIGN/EMPLOYMENT——和真实枚举完全对不上，STAGE_TEXT[d.stage] 永远
+ * undefined，页面「学籍阶段」一直静默兜底显示 mock 的默认值「在校」，从未真正生效过。 */
 const STAGE_TEXT = {
-  ORIENTATION: '迎新', ON_CAMPUS: '在校', INTERNSHIP: '实习',
-  GRADUATION_DESIGN: '毕设', EMPLOYMENT: '就业'
+  ADMITTED: '录取', PRE_STUDENT_VERIFIED: '预备生', REGISTERED_PENDING_ENROLLMENT: '待注册',
+  ENROLLED: '在校', INTERN: '实习', GRADUATING: '毕业年级', GRADUATED: '已毕业', ALUMNI: '校友'
 }
 
 /* P10：已彻底移除对 PC 管理端全量接口（/students、/students/{id}、/approvals/tasks 列表、
@@ -630,6 +634,18 @@ export const markMessageRead = (id) =>
   realRequest('/mobile/me/messages/' + id + '/read', { method: 'POST' })
 
 /** 学生档案：真实脱敏字段覆盖 mock 骨架（手机/身份证仅脱敏串，住址不返回）。 */
+/**
+ * ⚠️ 已知未修复缺口（见 2026-07-18 真实交互巡检报告）：p.summaries.{internship,graduation,
+ * employment} 完全沿用 mock 的「暂未进入 xx 阶段」文案，从未与真实数据合并——某学生即使已有
+ * 真实在岗实习记录（岗位实习页可查真实企业/导师/周报）或真实毕设指导关系（毕业设计页可查真实
+ * 指导教师/指导记录），本页仍会显示「暂未进入」。
+ * 不能简单用 current_stage 顺序推断是否「已进入」某域：本系统 current_stage 是粗粒度全局阶段
+ * （ADMITTED→...→ENROLLED→INTERN→GRADUATING→GRADUATED→ALUMNI），与各业务域（岗位实习/毕业
+ * 设计）的真实启动时间并不同步——例如 stage=INTERN 的学生可能已经有真实的毕业设计指导记录
+ * （毕设不等 stage 推进到 GRADUATING 才能选题/开题），按 stage 顺序纠正会把这类情况错判为
+ * 「未进入」，反而制造新的假结论。正确修法需要后端 my_profile 分别下钻查询
+ * InternshipRecord/GraduationStudent/EmpStudent 是否存在真实记录，本次未做（超出前端改动范围）。
+ */
 export async function enrichProfileReal(mockProfile) {
   const d = await realRequest('/mobile/me/profile')
   if (!d || !d.hasData) {

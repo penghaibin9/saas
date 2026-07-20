@@ -1,0 +1,28 @@
+[Unit]
+Description=School Lifecycle single scheduler
+After=network-online.target mysql.service redis-server.service school-lifecycle-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=schoolapp
+Group=schoolapp
+WorkingDirectory=/opt/school-lifecycle/current/backend
+EnvironmentFile=/etc/school-lifecycle/backend.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/opt/school-lifecycle/current/backend
+ExecStart=/opt/school-lifecycle/current/backend/.venv/bin/python -m scripts.run_scheduled_jobs
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/opt/school-lifecycle/shared/uploads /opt/school-lifecycle/shared/exports
+
+[Install]
+WantedBy=multi-user.target

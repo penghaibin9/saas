@@ -10,7 +10,7 @@
  * AppStatusTag 统一状态标签
  * Props:
  *  - status: 业务状态码（见 STATUS_MAP），传入后自动匹配语义色与中文文案
- *  - type:   直接指定语义色 success | processing | warning | danger | info | default
+ *  - type:   直接指定语义色 success | processing | primary | warning | danger | info | default
  *  - label:  自定义文案（优先于 status 映射）
  *  - dot:    是否显示状态圆点
  * 依据 V2.1 §3.2：状态语义色只表达业务状态。
@@ -67,7 +67,7 @@ export default {
       type: String,
       default: '',
       validator: (v) =>
-        !v || ['success', 'processing', 'warning', 'danger', 'info', 'default'].includes(v)
+        !v || ['success', 'processing', 'primary', 'warning', 'danger', 'info', 'default'].includes(v)
     },
     label: { type: String, default: '' },
     dot: { type: Boolean, default: false },
@@ -121,7 +121,8 @@ export default {
   background: var(--success-50);
   border-color: var(--success-100);
 }
-.is-processing {
+.is-processing,
+.is-primary {
   color: var(--primary-700);
   background: var(--primary-50);
   border-color: var(--primary-100);

@@ -74,6 +74,30 @@ def _blank_report(dry_run: bool, tenant_id: int) -> dict:
     }
 
 
+def _student_class_matches(db, tenant_id: int, row: dict, SchoolClass, Major, College):
+    """按学校真实组织路径定位班级；只填班级且同名时返回多条，由调用方阻断。"""
+    class_name = str((row or {}).get("className") or "").strip()
+    if not class_name:
+        return []
+    stmt = (select(SchoolClass)
+            .join(Major, Major.id == SchoolClass.major_id)
+            .where(SchoolClass.tenant_id == tenant_id,
+                   SchoolClass.class_name == class_name,
+                   SchoolClass.is_deleted.is_(False),
+                   Major.tenant_id == tenant_id,
+                   Major.is_deleted.is_(False)))
+    major_name = str((row or {}).get("majorName") or "").strip()
+    college_name = str((row or {}).get("collegeName") or "").strip()
+    if major_name:
+        stmt = stmt.where(Major.major_name == major_name)
+    if college_name:
+        stmt = (stmt.join(College, College.id == Major.college_id)
+                .where(College.tenant_id == tenant_id,
+                       College.college_name == college_name,
+                       College.is_deleted.is_(False)))
+    return db.scalars(stmt).all()
+
+
 # ─────────── 租户创建（平台运营，复用 platform_service） ───────────
 
 def create_tenant_step(user: dict, body: dict) -> dict:
@@ -286,12 +310,14 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
         for s in (body.get("students") or []):
             no = str(s.get("studentNo")).strip()
             class_name = str(s.get("className") or "").strip()
-            k = cls(class_name) if class_name else None
-            if class_name and not k:
+            class_matches = _student_class_matches(db, tenant_id, s, SchoolClass, Major, College)
+            k = class_matches[0] if len(class_matches) == 1 else None
+            if class_name and len(class_matches) != 1:
                 report["entities"]["students"]["failed"] += 1
                 report["errors"].append({"row": int(s.get("_rowNo") or 0),
                                          "entity": "student", "field": "className",
-                                         "error": f"班级不存在：{class_name}"})
+                                         "error": (f"班级不存在：{class_name}" if not class_matches else
+                                                   f"班级名称不唯一，请同时填写学院和专业：{class_name}")})
                 continue
             account = db.scalars(select(User).where(
                 User.tenant_id == tenant_id, User.login_name == no)).first()
@@ -478,10 +504,12 @@ def _count_preview(tenant_id: int, body: dict, report: dict) -> None:
             elif no:
                 report["entities"]["studentAccounts"]["created"] += 1
             class_name = str((s or {}).get("className") or "").strip()
-            if class_name and not exists(SchoolClass, SchoolClass.class_name, class_name):
+            class_matches = _student_class_matches(db, tenant_id, s, SchoolClass, Major, College)
+            if class_name and len(class_matches) != 1:
                 report["errors"].append({"row": row_no, "entity": "student",
                                          "field": "className",
-                                         "error": f"班级不存在：{class_name}"})
+                                         "error": (f"班级不存在：{class_name}" if not class_matches else
+                                                   f"班级名称不唯一，请同时填写学院和专业：{class_name}")})
         for index, t in enumerate(body.get("teachers") or [], 1):
             ln = str((t or {}).get("loginName") or "").strip()
             row_no = int((t or {}).get("_rowNo") or index)

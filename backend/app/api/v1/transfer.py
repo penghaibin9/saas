@@ -12,17 +12,19 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.core.exceptions import AppException, not_found
+from app.core.context import current_tenant_id
 from app.core.response import success
 from app.core.security import require_staff
 from app.services import audit_log
 
 router = APIRouter(prefix="/admin/students", tags=["02·导入导出（占位）"])
 
-# 内存批次表：batchId → 状态（接库后为 t_student_import_batch）
-_BATCHES: dict[str, dict] = {}
-# 幂等：requestId → batchId
-_REQUESTS: dict[str, str] = {}
+
+def _tid() -> int:
+    try:
+        return int(current_tenant_id() or 1000000000000000001)
+    except (TypeError, ValueError):
+        return 1000000000000000001
 
 
 class DryRunBody(BaseModel):
@@ -53,31 +55,26 @@ def import_dry_run(body: DryRunBody, user=Depends(require_staff)):
         ],
         "status": "DRY_RUN_DONE",
     }
-    _BATCHES[batch_id] = {**result, "confirmed": False}
+    from app.services import shared_import_batch_service as shared_batches
+    shared_batches.create(_tid(), "TRANSFER_PLACEHOLDER", batch_id, "DRY_RUN_PASSED",
+                          result, errors=result["errors"],
+                          operator_key=str(user.get("userId") or ""))
     audit_log.record("IMPORT_DRY_RUN", f"import:{batch_id}", {"importType": body.importType})
     return success(result)
 
 
 @router.post("/import/confirm", summary="2.13 导入确认（占位，requestId 幂等）")
 def import_confirm(body: ConfirmBody, user=Depends(require_staff)):
-    # 幂等：同 requestId 直接返回原结果
-    if body.requestId in _REQUESTS:
-        prior = _REQUESTS[body.requestId]
-        if prior != body.batchId:
-            raise AppException("IDEMPOTENCY_CONFLICT", "相同 requestId 提交了不同批次")
-        batch = _BATCHES[prior]
-        return success({"batchId": prior, "imported": batch["validRows"], "status": "SUCCESS"})
-
-    batch = _BATCHES.get(body.batchId)
-    if not batch:
-        raise not_found("导入批次不存在，请先执行 dry-run")
-    if batch["confirmed"]:
-        raise AppException("DATA_CONFLICT", "该批次已确认导入，请勿重复操作")
-
-    batch["confirmed"] = True
-    _REQUESTS[body.requestId] = body.batchId
+    from app.services import shared_import_batch_service as shared_batches
+    batch, token, already_done = shared_batches.claim(
+        _tid(), "TRANSFER_PLACEHOLDER", body.batchId,
+        required_status="DRY_RUN_PASSED", request_id=body.requestId)
+    if already_done:
+        return success(batch)
+    result = {"batchId": body.batchId, "imported": batch["validRows"], "status": "SUCCESS"}
+    shared_batches.finish(_tid(), "TRANSFER_PLACEHOLDER", body.batchId, token, result)
     audit_log.record("IMPORT", f"import:{body.batchId}", {"imported": batch["validRows"]})
-    return success({"batchId": body.batchId, "imported": batch["validRows"], "status": "SUCCESS"})
+    return success(result)
 
 
 @router.post("/export", summary="2.14 导出（占位：返回异步任务）")

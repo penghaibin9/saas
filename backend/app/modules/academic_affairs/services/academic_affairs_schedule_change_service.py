@@ -65,6 +65,8 @@ def _msg(db, receiver_id, title, content, mtype, biz_id):
 
 def _open_wf(db, cid, applicant_id, title, first_node):
     from app.models import WorkflowInstance, WorkflowTask
+    from app.services.runtime_preset_install_service import ensure_workflow_enabled
+    ensure_workflow_enabled(db, _tid(), WORKFLOW_CODE)
     inst = WorkflowInstance(tenant_id=_tid(), workflow_code=WORKFLOW_CODE, source_module="academic-affairs",
                             source_biz_type="AA_SCHEDULE_CHANGE", source_biz_id=int(cid),
                             applicant_id=int(applicant_id or 0), title=title, status="RUNNING",

@@ -1,8 +1,6 @@
 /**
- * 岗位实习中心模块路由（自包含，未接入全局 router）。
- * 接入方式（由负责全局 router 的任务/人执行）：
- *   import internshipRoutes from '@/modules/internship/routes'
- *   routes: [...existing, internshipRoutes]
+ * 岗位实习中心模块路由（自包含）。已接入全局 router：见 `@/router/index.js`
+ * （`import internshipRoutes` + `routes: [...internshipRoutes]`）。
  *
  * meta.title：页面标题（与 12 个冻结二级目录对齐）
  * meta.navModule：所属二级目录（面包屑 / 文档口径）

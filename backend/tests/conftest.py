@@ -76,8 +76,31 @@ def _ddl_with_retry(fn, attempts=20, base_delay=2.0):
             time.sleep(base_delay)
 
 
+@pytest.fixture(scope="session")
+def _session_mysql_schema():
+    """FAST_TEST_SCHEMA 模式：会话只建一次 schema，单用例只清空数据。"""
+    from app.core.config import settings
+    from app.db.session import reset_state, get_engine
+    from app.db.base import metadata
+    test_url = os.environ.get("TEST_DATABASE_URL") or settings.TEST_DATABASE_URL
+    if test_url.startswith("sqlite"):
+        yield None
+        return
+    old_enabled, old_url = settings.DB_ENABLED, settings.DATABASE_URL
+    settings.DB_ENABLED, settings.DATABASE_URL = True, test_url
+    reset_state()
+    engine = get_engine()
+    _ddl_with_retry(lambda: metadata.drop_all(bind=engine))
+    _ddl_with_retry(lambda: metadata.create_all(bind=engine))
+    try:
+        yield engine
+    finally:
+        settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
+        reset_state()
+
+
 @pytest.fixture()
-def db_mode(tmp_path):
+def db_mode(tmp_path, request):
     """真库模式夹具。数据库来自 TEST_DATABASE_URL（MySQL-only 收口后默认 MySQL）。
     - MySQL：在专用 student_lifecycle_test 库上 drop+create 重建干净表结构（每测试隔离）。
     - sqlite（含 :memory:）：legacy 临时演示，改用每测试独立 tmp 文件；不得当 MySQL 验收。
@@ -92,13 +115,41 @@ def db_mode(tmp_path):
     settings.DB_ENABLED, settings.DATABASE_URL = True, test_url
     reset_state()
     from app.db.base import metadata
+    from sqlalchemy import text
+    # 共享测试库可能同时被其他本地工作树使用；把 MySQL 元数据锁等待
+    # 限制在短窗口内，交给下面的 DDL 重试逻辑处理，避免 pytest 无限挂起。
+    from sqlalchemy import event
     from app.db.session import get_engine, get_sessionmaker
-    engine = get_engine()
-    if not is_sqlite:
-        _ddl_with_retry(lambda: metadata.drop_all(bind=engine))   # MySQL 测试库：每测试重建干净结构
-        _ddl_with_retry(lambda: metadata.create_all(bind=engine))
+    fast_schema = os.environ.get("FAST_TEST_SCHEMA") == "1" and not is_sqlite
+    if fast_schema:
+        request.getfixturevalue("_session_mysql_schema")
+        reset_state()
+        settings.DB_ENABLED, settings.DATABASE_URL = True, test_url
+        engine = get_engine()
+        with engine.begin() as conn:
+            conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+            # FAST 模式只用于本地回归：用 DELETE 清理数据而不是逐表 TRUNCATE。
+            # MySQL 在 Windows 本地实例上对大量 TRUNCATE 会频繁进入
+            # “waiting for handler commit”，即使没有外部事务也会拖慢甚至触发
+            # 原生客户端崩溃；关闭外键后 DELETE 足以清理每个测试产生的少量数据，
+            # 且不拿元数据 DDL 锁。
+            for table in reversed(metadata.sorted_tables):
+                conn.execute(text(f"DELETE FROM `{table.name}`"))
+            conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     else:
-        metadata.create_all(bind=engine)
+        engine = get_engine()
+        def _set_ddl_lock_timeout(dbapi_connection, _connection_record):
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("SET SESSION lock_wait_timeout=15")
+            finally:
+                cursor.close()
+        event.listen(engine, "connect", _set_ddl_lock_timeout)
+        if not is_sqlite:
+            _ddl_with_retry(lambda: metadata.drop_all(bind=engine))
+            _ddl_with_retry(lambda: metadata.create_all(bind=engine))
+        else:
+            metadata.create_all(bind=engine)
     # 最小种子
     from datetime import datetime, timedelta
     from app.models import (StudentContact, StudentProfile, UnifiedMessage, UnifiedTodo,
@@ -127,6 +178,7 @@ def db_mode(tmp_path):
     ids = {"student": s.id, "task": task.id}
     db.close()
     yield ids
-    settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
-    reset_state()
+    if not fast_schema:
+        settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
+        reset_state()
 
