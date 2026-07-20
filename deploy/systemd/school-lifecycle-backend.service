@@ -1,0 +1,32 @@
+[Unit]
+Description=School Lifecycle FastAPI backend
+After=network-online.target mysql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=schoolapp
+Group=schoolapp
+WorkingDirectory=/opt/school-lifecycle/current/backend
+EnvironmentFile=/etc/school-lifecycle/backend.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/opt/school-lifecycle/current/backend
+ExecStart=/opt/school-lifecycle/current/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=5
+TimeoutStartSec=90
+TimeoutStopSec=30
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/opt/school-lifecycle/shared/uploads /opt/school-lifecycle/shared/exports
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

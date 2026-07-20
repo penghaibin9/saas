@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:#1D2129;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:var(--pri)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#DCE0E8;border-radius:8px;border:2px solid var(--bg)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+:root{--pri:#2f6bff;--pri-h:#1f58e7;--pri-50:#eff6ff;--pri-100:#dbeafe;--pri-500:#3b82f6;--bg:#f4f8ff;--g1:#60a5fa;--g2:#2f6bff}
+</style>
+</helmet>
+<div style="min-height:100vh;width:100%;background:var(--bg);{{ themeVars }}">
+
+  <!-- ============ LOGIN GATE ============ -->
+  <sc-if value="{{ !loggedIn }}" hint-placeholder-val="{{ true }}">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center">
+    <div style="width:380px;max-width:92vw;background:#fff;border:1px solid #EEF0F3;border-radius:20px;box-shadow:0 20px 60px -20px rgba(16,24,40,.18);padding:34px 30px;animation:fadeUp .3s ease">
+      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:22px">
+        <span style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,var(--g2),var(--g1));display:flex;align-items:center;justify-content:center;margin-bottom:12px">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4-3-8-6.5-8-11a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 4.5-4 8-8 11z"></path></svg>
+        </span>
+        <div style="width:100%;text-align:center;font-size:16.5px;font-weight:600;color:#1D2129;white-space:nowrap">{{ brand.school }} · 家长端</div>
+        <div style="width:100%;text-align:center;margin-top:5px;font-size:12.5px;color:#98A0AE;white-space:nowrap">手机号验证码登录 · 仅查看已授权学生信息</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <input value="{{ phone }}" onChange="{{ onPhoneChange }}" placeholder="家长手机号" style="width:100%;height:42px;border:1px solid #DDE1E8;border-radius:10px;padding:0 14px;font-size:14px;box-sizing:border-box"/>
+        <div style="display:flex;gap:8px">
+          <input value="{{ code }}" onChange="{{ onCodeChange }}" placeholder="验证码" style="flex:1;height:42px;border:1px solid #DDE1E8;border-radius:10px;padding:0 14px;font-size:14px;box-sizing:border-box"/>
+          <button onClick="{{ sendCode }}" style="all:unset;cursor:pointer;flex:none;padding:0 14px;border:1px solid var(--pri-100);color:var(--pri);border-radius:10px;font-size:12.5px;display:flex;align-items:center">{{ codeBtnText }}</button>
+        </div>
+        <sc-if value="{{ error }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:#D92D20">{{ error }}</div></sc-if>
+        <button onClick="{{ doLogin }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;height:42px;border-radius:10px;background:var(--pri);color:#fff;font-size:14px;font-weight:600;text-align:center">登 录</button>
+      </div>
+      <div style="margin-top:16px;font-size:11.5px;color:#C6CCD6;text-align:center">此端仅供已授权家长只读查看,无法进行任何提交操作</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ============ DASHBOARD ============ -->
+  <sc-if value="{{ loggedIn }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <header style="height:60px;background:#fff;border-bottom:1px solid #EEF0F3;display:flex;align-items:center;justify-content:space-between;padding:0 28px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--g2),var(--g1));display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4-3-8-6.5-8-11a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 4.5-4 8-8 11z"></path></svg></span>
+        <div><div style="font-size:14.5px;font-weight:600;color:#1D2129">{{ brand.school }} · 家长端</div><div style="font-size:11.5px;color:#98A0AE">查看学生:{{ student.name }}({{ student.no }})</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;background:#F2F3F5;color:#4E5969;border-radius:14px;font-size:12px;font-weight:500"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>仅查看 · 只读</span>
+        <a onClick="{{ logout }}" style="font-size:12.5px;color:#86909C;cursor:pointer">退出</a>
+      </div>
+    </header>
+
+    <main style="max-width:1080px;margin:0 auto;padding:26px 32px 48px">
+      <div style="display:flex;gap:10px;padding:12px 16px;background:#EFF6FF;border:1px solid #DBEAFE;border-radius:11px;margin-bottom:20px;font-size:13px;color:#1D4ED8">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2" stroke-linecap="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+        本页仅展示学生本人授权的四项范围;心理关注、家庭隐私材料明细、证件号等敏感信息不对家长开放。
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+        <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;padding:20px 22px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:15px;font-weight:600;color:#1D2129">① 学业成绩与课表</span><span style="font-size:11px;color:#98A0AE">只读</span></div>
+          <div style="display:flex;gap:20px;margin-bottom:14px">
+            <div><div style="font-size:22px;font-weight:700;color:var(--pri);font-variant-numeric:tabular-nums">152/168</div><div style="font-size:11.5px;color:#98A0AE;margin-top:2px">已修/总学分</div></div>
+            <div><div style="font-size:22px;font-weight:700;color:#1D2129;font-variant-numeric:tabular-nums">3.62</div><div style="font-size:11.5px;color:#98A0AE;margin-top:2px">平均绩点</div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ grades }}" as="g" hint-placeholder-count="3">
+              <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid #F4F5F7"><span style="color:#4E5969">{{ g.name }}</span><span style="color:#1D2129;font-weight:600">{{ g.score }}</span></div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;padding:20px 22px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:15px;font-weight:600;color:#1D2129">② 缴费与资助办理状态</span><span style="font-size:11px;color:#98A0AE">只读</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ finance }}" as="f" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#F9FAFB;border-radius:9px">
+                <span style="font-size:13px;color:#1D2129">{{ f.name }}</span>
+                <span style="font-size:12px;font-weight:500;padding:3px 9px;border-radius:6px;background:{{ f.tt.bg }};color:{{ f.tt.color }}">{{ f.status }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;padding:20px 22px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:15px;font-weight:600;color:#1D2129">③ 在校异常与安全提醒</span><span style="font-size:11px;color:#98A0AE">只读</span></div>
+          <sc-if value="{{ noAlerts }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;align-items:center;padding:20px 0;color:#0C8A3E">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"></path><circle cx="12" cy="12" r="9"></circle></svg>
+            <div style="margin-top:8px;font-size:13.5px;font-weight:500">近期无异常提醒,在校状态正常</div>
+          </div>
+          </sc-if>
+        </section>
+
+        <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;padding:20px 22px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:15px;font-weight:600;color:#1D2129">④ 毕业 / 实习 / 就业进度</span><span style="font-size:11px;color:#98A0AE">只读</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ progress }}" as="p" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#F9FAFB;border-radius:9px">
+                <span style="font-size:13px;color:#1D2129">{{ p.name }}</span>
+                <span style="font-size:12px;font-weight:500;padding:3px 9px;border-radius:6px;background:{{ p.tt.bg }};color:{{ p.tt.color }}">{{ p.status }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;清透学院蓝&quot;,&quot;options&quot;:[&quot;清透学院蓝&quot;,&quot;沉稳商务蓝&quot;,&quot;云岚雅灰&quot;,&quot;豆沙绿护眼&quot;,&quot;皓白极简&quot;,&quot;墨白极简&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;schoolName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;示范职业技术学院&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;studentName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;张明&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;}}">
+class Component extends DCLogic {
+  state = { loggedIn:false, phone:'', code:'', error:'', codeSent:false };
+
+  THEMES = {
+    '清透学院蓝':{'--pri':'#2f6bff','--pri-h':'#1f58e7','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f4f8ff','--g1':'#60a5fa','--g2':'#2f6bff'},
+    '沉稳商务蓝':{'--pri':'#1868c0','--pri-h':'#12559f','--pri-50':'#eaf2fb','--pri-100':'#d0e4f7','--pri-500':'#3b82f6','--bg':'#eef2f7','--g1':'#3e86de','--g2':'#1868c0'},
+    '云岚雅灰':{'--pri':'#5b6c9e','--pri-h':'#4b5c8d','--pri-50':'#f0f3fa','--pri-100':'#e1e6f0','--pri-500':'#8a9ac8','--bg':'#f6f8fc','--g1':'#8a9ac8','--g2':'#5b6c9e'},
+    '豆沙绿护眼':{'--pri':'#3e8e7e','--pri-h':'#327264','--pri-50':'#eaf2ee','--pri-100':'#d3e7df','--pri-500':'#5ca894','--bg':'#e6eee3','--g1':'#5ca894','--g2':'#3e8e7e'},
+    '皓白极简':{'--pri':'#2563eb','--pri-h':'#1d4ed8','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f8fafc','--g1':'#3b82f6','--g2':'#2563eb'},
+    '墨白极简':{'--pri':'#111827','--pri-h':'#000000','--pri-50':'#f3f4f6','--pri-100':'#e5e7eb','--pri-500':'#374151','--bg':'#f7f7f8','--g1':'#374151','--g2':'#111827'},
+  };
+  tone = { success:{bg:'#E8F7EC',color:'#0C8A3E'}, primary:{bg:'var(--pri-50)',color:'var(--pri)'}, warning:{bg:'#FFF4E5',color:'#B25E00'} };
+  GRADES = [{name:'2023-2024-1 学期',score:'均分 88.5'},{name:'2023-2024-2 学期(在读)',score:'均分 85.7'},{name:'累计已修课程',score:'26 门'}];
+  FINANCE = [{name:'学费缴纳',status:'已缴清',tone:'success'},{name:'国家励志奖学金',status:'已发放',tone:'success'},{name:'家庭经济困难认定',status:'已通过',tone:'success'}];
+  PROGRESS = [{name:'毕业设计',status:'成果提交阶段',tone:'primary'},{name:'岗位实习',status:'在岗 · 第16周',tone:'primary'},{name:'就业去向',status:'待登记',tone:'warning'}];
+
+  sendCode(){ this.setState({codeSent:true, error:''}); this._t=setTimeout(()=>this.setState({codeSent:false}),30000); }
+  doLogin(){
+    if(!this.state.phone || !this.state.code){ this.setState({error:'请输入手机号与验证码'}); return; }
+    this.setState({loggedIn:true, error:''});
+  }
+  logout(){ this.setState({loggedIn:false, phone:'', code:''}); }
+
+  renderVals(){
+    const s=this.state;
+    const themeName = this.props.theme || '清透学院蓝';
+    const tv = this.THEMES[themeName] || this.THEMES['清透学院蓝'];
+    const themeVars = Object.keys(tv).map(k=>k+':'+tv[k]).join(';');
+    return {
+      brand:{school:this.props.schoolName||'示范职业技术学院'},
+      themeVars,
+      loggedIn:s.loggedIn, phone:s.phone, code:s.code, error:s.error,
+      codeBtnText: s.codeSent? '已发送(30s)' : '获取验证码',
+      onPhoneChange:(e)=>this.setState({phone:e.target.value}),
+      onCodeChange:(e)=>this.setState({code:e.target.value}),
+      sendCode:()=>this.sendCode(), doLogin:()=>this.doLogin(), logout:()=>this.logout(),
+      student:{name:this.props.studentName||'张明', no:'2023010145'},
+      grades:this.GRADES,
+      finance:this.FINANCE.map(f=>({...f, tt:this.tone[f.tone]})),
+      progress:this.PROGRESS.map(p=>({...p, tt:this.tone[p.tone]})),
+      noAlerts:true,
+    };
+  }
+}
+</script>
+</body>
+</html>

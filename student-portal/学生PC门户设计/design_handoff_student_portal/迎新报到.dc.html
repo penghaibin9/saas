@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:#1D2129;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:var(--pri)}
+a:hover{color:var(--pri-h)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#DCE0E8;border-radius:8px;border:2px solid var(--bg)}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+:root{--pri:#2f6bff;--pri-h:#1f58e7;--pri-50:#eff6ff;--pri-100:#dbeafe;--pri-500:#3b82f6;--bg:#f4f8ff;--g1:#60a5fa;--g2:#2f6bff}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;width:100%;overflow:hidden;background:var(--bg);{{ themeVars }}">
+
+  <aside style="width:248px;flex:none;background:#fff;border-right:1px solid #EEF0F3;display:flex;flex-direction:column">
+    <a href="{{ homeHref }}" style="display:flex;align-items:center;gap:11px;padding:18px 18px 16px">
+      <span style="width:38px;height:38px;flex:none;border-radius:11px;background:linear-gradient(135deg,var(--g2),var(--g1));display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(37,99,235,.28)">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5 12 4.5l9.5 4-9.5 4z"></path><path d="M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13"></path></svg>
+      </span>
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:600;color:#1D2129;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ brand.school }}</div>
+        <div style="font-size:11.5px;color:#86909C;margin-top:1px">{{ brand.portal }}</div>
+      </div>
+    </a>
+    <nav style="flex:1;overflow-y:auto;padding:6px 12px 12px">
+      <sc-for list="{{ nav }}" as="m" hint-placeholder-count="10">
+        <a href="{{ m.href }}" onClick="{{ m.onClick }}" style="position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;margin:2px 0;border-radius:10px;font-size:14px;cursor:pointer;transition:background .15s,color .15s;background:{{ m.bg }};color:{{ m.color }};font-weight:{{ m.fw }}" style-hover="background:#F3F5F8">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{ m.d1 }}"></path><path d="{{ m.d2 }}"></path></svg>
+          <span style="flex:1">{{ m.title }}</span>
+        </a>
+      </sc-for>
+    </nav>
+    <div style="padding:12px 16px;border-top:1px solid #F1F2F5;font-size:11.5px;color:#A9B0BD">门户 v1.0 · 迎新报到</div>
+  </aside>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <header style="height:62px;flex:none;background:#fff;border-bottom:1px solid #EEF0F3;display:flex;align-items:center;justify-content:space-between;padding:0 26px;gap:20px">
+      <div style="display:flex;align-items:baseline;gap:12px;min-width:0">
+        <span style="font-size:20px;font-weight:600;color:#1D2129;white-space:nowrap">迎新报到 / 离校</span>
+        <span style="font-size:12.5px;color:#A9B0BD;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ curTab.t }} · 对接 {{ curTab.dock }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex:none">
+        <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;background:var(--pri-50);border-radius:15px;color:var(--pri);font-size:12.5px;font-weight:500;white-space:nowrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6z"></path><path d="m9 12 2 2 4-4"></path></svg>
+          数据范围 · 本人
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding-left:6px;border-left:1px solid #EDEFF3">
+          <span style="width:36px;height:36px;flex:none;border-radius:10px;background:var(--pri-50);color:var(--pri);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ user.initial }}</span>
+          <div style="line-height:1.25"><div style="font-size:13.5px;font-weight:600;color:#1D2129">{{ user.name }}</div><div style="font-size:11.5px;color:#86909C">{{ user.role }}</div></div>
+        </div>
+      </div>
+    </header>
+
+    <main style="flex:1;overflow-y:auto;position:relative">
+      <sc-if value="{{ showWm }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;pointer-events:none;background-repeat:repeat;background-image:{{ wmUri }};z-index:0"></div></sc-if>
+      <div style="position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:20px 32px 40px">
+
+        <sc-if value="{{ !isLocked }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">
+          <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="4">
+            <button onClick="{{ tb.onClick }}" style="all:unset;cursor:pointer;box-sizing:border-box;padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:{{ tb.fw }};background:{{ tb.bg }};color:{{ tb.color }}" style-hover="background:#F3F5F8">{{ tb.t }}</button>
+          </sc-for>
+        </div></sc-if>
+
+        <sc-if value="{{ isLocked }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:520px;margin:40px auto;text-align:center;background:#fff;border:1px solid #EEF0F3;border-radius:16px;padding:40px 32px">
+          <span style="display:inline-flex;width:52px;height:52px;border-radius:50%;background:#F2F3F5;color:#98A0AE;align-items:center;justify-content:center;margin-bottom:16px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></span>
+          <div style="font-size:16px;font-weight:600;color:#1D2129">该模块未开通</div>
+          <div style="margin-top:8px;font-size:13.5px;color:#98A0AE;line-height:1.6">当前租户套餐未包含此模块,请联系学校管理员开通后再使用。</div>
+          <a href="{{ homeHref }}" style="display:inline-block;margin-top:18px;padding:9px 18px;border:1px solid #DDE1E8;color:#4E5969;border-radius:9px;font-size:13px">返回首页</a>
+        </div>
+        </sc-if>
+
+        <!-- 我的迎新 -->
+        <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+        <div style="animation:viewIn .2s ease">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:22px 24px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span style="font-size:16px;font-weight:600;color:#1D2129">2023 级入学迎新回顾</span>
+              <span style="display:inline-flex;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:#E8F7EC;color:#0C8A3E">已完成</span>
+            </div>
+            <div style="font-size:12.5px;color:#98A0AE;margin-bottom:18px">你已不在迎新期,以下为报到当年记录,仅供查看</div>
+            <div style="display:flex;align-items:center">
+              <sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;flex:1;min-width:0">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:none">
+                    <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--pri);color:#fff"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"></path></svg></span>
+                    <span style="font-size:12px;white-space:nowrap;color:#1D2129">{{ st.name }}</span>
+                    <span style="font-size:10.5px;color:#98A0AE">{{ st.date }}</span>
+                  </div>
+                  <sc-if value="{{ st.hasLine }}" hint-placeholder-val="{{ true }}"><span style="flex:1;height:2px;margin:0 6px;margin-bottom:34px;background:var(--pri)"></span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- 信息采集 -->
+        <sc-if value="{{ isCollect }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease;max-width:640px">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:22px 24px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <span style="font-size:16px;font-weight:600;color:#1D2129">新生信息采集表</span>
+              <span style="display:inline-flex;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:#F2F3F5;color:#4E5969">历史记录 · 只读</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 20px">
+              <sc-for list="{{ collectFields }}" as="f" hint-placeholder-count="6">
+                <div style="display:flex;justify-content:space-between;gap:12px;padding-bottom:11px;border-bottom:1px solid #F5F6F8"><span style="font-size:13px;color:#98A0AE;flex:none">{{ f.label }}</span><span style="font-size:13.5px;color:#1D2129;text-align:right">{{ f.value }}</span></div>
+              </sc-for>
+            </div>
+            <div style="margin-top:14px;font-size:12.5px;color:#98A0AE">提交时间:2023-08-20 · 材料:录取通知书、一寸照片 已归档</div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- 绿色通道 -->
+        <sc-if value="{{ isGreen }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease;max-width:640px">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:22px 24px">
+            <div style="font-size:16px;font-weight:600;color:#1D2129;margin-bottom:6px">绿色通道申请记录</div>
+            <div style="font-size:12.5px;color:#98A0AE;margin-bottom:16px">入学时家庭经济困难可暂缓缴纳学费,凭材料先行报到</div>
+            <div style="display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #EEF0F3;border-radius:11px">
+              <div style="flex:1"><div style="font-size:13.5px;color:#1D2129">2023 级绿色通道申请</div><div style="margin-top:3px;font-size:12px;color:#98A0AE">2023-08-22 提交 · 缓缴学费 8,500 元</div></div>
+              <span style="display:inline-flex;height:24px;padding:0 9px;border-radius:6px;font-size:12px;background:#E8F7EC;color:#0C8A3E">已通过</span>
+            </div>
+            <div style="margin-top:14px;font-size:12.5px;color:#98A0AE">缓缴学费已于 2023-12 通过奖助学金抵扣结清,详见「学工事务·奖助勤贷补」</div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- 离校 -->
+        <sc-if value="{{ isDeparture }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:viewIn .2s ease">
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:22px 24px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+              <div>
+                <div style="font-size:16px;font-weight:600;color:#1D2129">2024 届毕业离校手续</div>
+                <div style="margin-top:6px;font-size:12.5px;color:#86909C">全部环节办理完成后,可打印《离校证明》</div>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:26px;font-weight:700;color:var(--pri)">{{ doneCount }}</span><span style="font-size:13px;color:#98A0AE">/ {{ departure.length }} 项已完成</span></div>
+            </div>
+          </section>
+          <section style="background:#fff;border:1px solid #EEF0F3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);overflow:hidden">
+            <sc-for list="{{ departure }}" as="d" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid #F4F5F7">
+                <span style="width:34px;height:34px;flex:none;border-radius:9px;background:{{ d.iconBg }};color:{{ d.iconColor }};display:flex;align-items:center;justify-content:center">
+                  <sc-if value="{{ d.done }}" hint-placeholder-val="{{ false }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 6"></path></svg></sc-if>
+                  <sc-if value="{{ d.notDone }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle></svg></sc-if>
+                </span>
+                <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:#1D2129;font-weight:500">{{ d.name }}</div><div style="margin-top:2px;font-size:12px;color:#98A0AE">{{ d.desc }}</div></div>
+                <span style="flex:none;display:inline-flex;height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;background:{{ d.tt.bg }};color:{{ d.tt.color }}">{{ d.status }}</span>
+              </div>
+            </sc-for>
+          </section>
+          <div style="margin-top:16px;padding:12px 16px;background:#FFF4E5;border:1px solid #FBE3B8;border-radius:10px;font-size:12.5px;color:#8A5300">离校打印功能待学校启用后开放,当前可查看各环节办理状态。</div>
+        </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:38px;transform:translateX(-50%);background:#1D2129;color:#fff;padding:11px 22px;border-radius:11px;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.22);animation:toastIn .22s ease;z-index:90">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;清透学院蓝&quot;,&quot;options&quot;:[&quot;清透学院蓝&quot;,&quot;沉稳商务蓝&quot;,&quot;云岚雅灰&quot;,&quot;豆沙绿护眼&quot;,&quot;皓白极简&quot;,&quot;墨白极简&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;servicePackage&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;全生命周期版&quot;,&quot;options&quot;:[&quot;全生命周期版&quot;,&quot;学业+实习包&quot;,&quot;毕设+就业包&quot;,&quot;只读门户版&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;套餐与权限&quot;},&quot;schoolName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;示范职业技术学院&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;studentName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;张明&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;品牌与演示&quot;},&quot;showWatermark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;品牌与演示&quot;}}">
+class Component extends DCLogic {
+  state = { tab:'overview' };
+
+  THEMES = {
+    '清透学院蓝':{'--pri':'#2f6bff','--pri-h':'#1f58e7','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f4f8ff','--g1':'#60a5fa','--g2':'#2f6bff'},
+    '沉稳商务蓝':{'--pri':'#1868c0','--pri-h':'#12559f','--pri-50':'#eaf2fb','--pri-100':'#d0e4f7','--pri-500':'#3b82f6','--bg':'#eef2f7','--g1':'#3e86de','--g2':'#1868c0'},
+    '云岚雅灰':{'--pri':'#5b6c9e','--pri-h':'#4b5c8d','--pri-50':'#f0f3fa','--pri-100':'#e1e6f0','--pri-500':'#8a9ac8','--bg':'#f6f8fc','--g1':'#8a9ac8','--g2':'#5b6c9e'},
+    '豆沙绿护眼':{'--pri':'#3e8e7e','--pri-h':'#327264','--pri-50':'#eaf2ee','--pri-100':'#d3e7df','--pri-500':'#5ca894','--bg':'#e6eee3','--g1':'#5ca894','--g2':'#3e8e7e'},
+    '皓白极简':{'--pri':'#2563eb','--pri-h':'#1d4ed8','--pri-50':'#eff6ff','--pri-100':'#dbeafe','--pri-500':'#3b82f6','--bg':'#f8fafc','--g1':'#3b82f6','--g2':'#2563eb'},
+    '墨白极简':{'--pri':'#111827','--pri-h':'#000000','--pri-50':'#f3f4f6','--pri-100':'#e5e7eb','--pri-500':'#374151','--bg':'#f7f7f8','--g1':'#374151','--g2':'#111827'},
+  };
+  NAV = [
+    {key:'home',title:'首页工作台',d1:'M4 11.5 12 4l8 7.5',d2:'M6 10.5V20h12v-9.5'},
+    {key:'profile',title:'我的档案',d1:'M5 4h14v16H5z',d2:'M12 11a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4M8 17c.4-2 2-3 4-3s3.6 1 4 3'},
+    {key:'academic',title:'教务学业',d1:'M6 4h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2z',d2:'M6 18a2 2 0 0 1 2-2h10'},
+    {key:'graduation',title:'毕业设计',d1:'M2.5 8.5 12 4.5l9.5 4-9.5 4z',d2:'M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13'},
+    {key:'internship',title:'岗位实习',d1:'M4 8h16v11H4z',d2:'M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 13h16'},
+    {key:'employment',title:'就业服务',d1:'M5 20V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15',d2:'M15 9h3a1 1 0 0 1 1 1v10M8 8h3M8 12h3M8 16h3'},
+    {key:'affairs',title:'学工事务',d1:'M8 5h8v2H8z',d2:'M7 6H5v14h14V6h-2M9.3 13l1.8 1.8L15 11'},
+    {key:'orientation',title:'迎新报到',d1:'M6 3v18',d2:'M6 4h11l-2 3 2 3H6'},
+    {key:'messages',title:'消息通知',d1:'M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6',d2:'M10 20a2 2 0 0 0 4 0'},
+    {key:'hall',title:'办事大厅',d1:'M4 4h7v7H4zM13 4h7v7h-7z',d2:'M4 13h7v7H4zM13 13h7v7h-7z'},
+  ];
+  FILES = {home:'学生PC门户.dc.html#home',profile:'学生PC门户.dc.html#profile',graduation:'学生PC门户.dc.html#graduation',messages:'学生PC门户.dc.html#messages',academic:'教务学业.dc.html',internship:'岗位实习.dc.html',employment:'就业服务.dc.html',affairs:'学工事务.dc.html',hall:'办事大厅.dc.html'};
+  TABS = [
+    {key:'overview',t:'我的迎新',dock:'数字迎新中心'},
+    {key:'collect',t:'信息采集',dock:'数字迎新·信息采集'},
+    {key:'green',t:'绿色通道',dock:'数字迎新·绿色通道'},
+    {key:'departure',t:'离校',dock:'学工中心·离校'},
+  ];
+  STAGES = [{name:'信息采集',date:'08-20'},{name:'绿色通道',date:'08-22'},{name:'线上预报到',date:'08-28'},{name:'现场报到',date:'09-01'},{name:'宿舍分配',date:'09-01'}];
+  COLLECT_FIELDS = [
+    {label:'姓名',value:'张明'},{label:'性别',value:'男'},{label:'身份证号',value:'4301**********1234'},
+    {label:'录取专业',value:'软件技术'},{label:'联系电话',value:'138****6621'},{label:'紧急联系人',value:'张建国(父亲)'},
+  ];
+  DEPARTURE = [
+    {name:'图书馆清还',desc:'借阅图书 / 逾期核查',done:true},
+    {name:'宿舍退宿',desc:'宿舍钥匙 / 设施验收',done:true},
+    {name:'财务结清',desc:'学费 / 欠费核查',done:true},
+    {name:'教务离校',desc:'成绩单归档 / 学籍核销',done:false},
+    {name:'团组织关系转出',desc:'团员证明 / 关系转接',done:false},
+    {name:'就业信息核验',desc:'去向登记确认',done:false},
+  ];
+  tone = {success:{bg:'#E8F7EC',color:'#0C8A3E'},warning:{bg:'#FFF4E5',color:'#B25E00'}};
+
+  notify(msg){ this.setState({toast:msg}); clearTimeout(this._t); this._t=setTimeout(()=>this.setState({toast:''}),2200); }
+  PACKAGES = {
+    '全生命周期版':['academic','graduation','internship','employment','affairs','orientation'],
+    '学业+实习包':['academic','internship'],
+    '毕设+就业包':['graduation','internship','employment'],
+    '只读门户版':['academic','graduation','internship','employment','affairs','orientation'],
+  };
+  setTab(k){ if(this._locked) return; this.setState({tab:k}); }
+  componentDidMount(){
+    const pkg = this.props.servicePackage || '全生命周期版';
+    this._locked = !(this.PACKAGES[pkg]||[]).includes('orientation');
+    if(this._locked){ this.setState({tab:'__locked__'}); return; }
+    const h=(window.location.hash||'').replace('#',''); if(h && this.TABS.some(t=>t.key===h)) this.setState({tab:h});
+  }
+
+  renderVals(){
+    const s=this.state;
+    const themeName = this.props.theme || '清透学院蓝';
+    const tv = this.THEMES[themeName] || this.THEMES['清透学院蓝'];
+    const themeVars = Object.keys(tv).map(k=>k+':'+tv[k]).join(';');
+    const sName = this.props.studentName || '张明';
+    const showWm = this.props.showWatermark !== false;
+    const wmSvg = "<svg xmlns='http://www.w3.org/2000/svg' width='260' height='170'><text x='0' y='95' fill='%231D2129' fill-opacity='0.028' font-size='15' font-family='sans-serif' transform='rotate(-24 0 95)'>"+sName+" · 数据范围:本人</text></svg>";
+    const wmUri = "url(\"data:image/svg+xml,"+encodeURIComponent(wmSvg)+"\")";
+
+    const nav = this.NAV.map(n=>{
+      const active = n.key==='orientation';
+      const ext = this.FILES[n.key];
+      return {...n, bg:active?'var(--pri-50)':'transparent', color:active?'var(--pri)':'#4E5969', fw:active?'600':'500',
+        href: active? '#' : ext,
+        onClick: active? (e)=>{ if(e&&e.preventDefault)e.preventDefault(); this.setTab('overview'); } : undefined };
+    });
+    const tabs = this.TABS.map(t=>({...t, bg:s.tab===t.key?'var(--pri-50)':'#F5F7FA', color:s.tab===t.key?'var(--pri)':'#4E5969', fw:s.tab===t.key?'600':'500', onClick:()=>this.setTab(t.key)}));
+    const curTab = this.TABS.find(t=>t.key===s.tab)||this.TABS[0];
+    const stages = this.STAGES.map((st,i,arr)=>({...st, hasLine:i<arr.length-1}));
+    const departure = this.DEPARTURE.map(d=>({...d, notDone:!d.done,
+      iconBg: d.done?'#E8F7EC':'#F2F3F5', iconColor: d.done?'#0C8A3E':'#98A0AE',
+      status: d.done?'已完成':'待办理', tt: d.done?this.tone.success:this.tone.warning }));
+    const doneCount = this.DEPARTURE.filter(d=>d.done).length;
+
+    return {
+      brand:{school:this.props.schoolName||'示范职业技术学院', portal:'学生服务门户'},
+      user:{name:sName, initial:sName.slice(0,1), role:'在校生 · 毕设批次', no:'2023010145'},
+      homeHref: this.FILES.home,
+      showWm, wmUri, themeVars, isLocked: s.tab==='__locked__',
+      nav, tabs, curTab,
+      isOverview:s.tab==='overview', isCollect:s.tab==='collect', isGreen:s.tab==='green', isDeparture:s.tab==='departure',
+      stages, collectFields:this.COLLECT_FIELDS, departure, doneCount,
+      toast:s.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>
