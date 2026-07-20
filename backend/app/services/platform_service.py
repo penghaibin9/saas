@@ -110,6 +110,33 @@ def effective_workflows(tenant_id: int) -> dict:
     for k, v in override.items():
         if k in flows and isinstance(v, dict):
             flows[k].update(v)
+    if db_enabled():
+        from app.models import WorkflowDefinition, WorkflowNodeDefinition
+        with session() as db:
+            definitions = db.scalars(select(WorkflowDefinition).where(
+                WorkflowDefinition.tenant_id == tenant_id,
+                WorkflowDefinition.is_deleted.is_(False))).all()
+            for definition in definitions:
+                nodes = db.scalars(select(WorkflowNodeDefinition).where(
+                    WorkflowNodeDefinition.tenant_id == tenant_id,
+                    WorkflowNodeDefinition.workflow_definition_id == definition.id,
+                    WorkflowNodeDefinition.is_deleted.is_(False),
+                    WorkflowNodeDefinition.status == "ACTIVE").order_by(
+                        WorkflowNodeDefinition.sequence_no)).all()
+                flows[definition.workflow_code] = {
+                    "workflowCode": definition.workflow_code,
+                    "workflowName": definition.workflow_name,
+                    "enabled": definition.status == "ENABLED",
+                    "needApproval": bool(nodes),
+                    "approverRoleCodes": [x.approver_role_code for x in nodes],
+                    "ccRoleCodes": definition.cc_role_codes_json or [],
+                    "timeoutHours": definition.timeout_hours,
+                    "allowTransfer": definition.allow_transfer,
+                    "allowReject": definition.allow_reject,
+                    "allowWithdraw": definition.allow_withdraw,
+                    "policyConfirmed": definition.policy_confirmed,
+                    "definitionVersion": definition.definition_version,
+                }
     return flows
 
 
@@ -171,6 +198,22 @@ def _tenant_row(db, t, meta: dict) -> dict:
         StudentProfile.tenant_id == t.id, StudentProfile.is_deleted.is_(False))) or 0
     users = db.scalar(select(func.count()).select_from(User).where(
         User.tenant_id == t.id, User.is_deleted.is_(False))) or 0
+    school_admins = db.scalar(select(func.count()).select_from(User).where(
+        User.tenant_id == t.id, User.user_type == "SCHOOL_ADMIN",
+        User.is_deleted.is_(False), User.status == "ACTIVE")) or 0
+    teachers = db.scalar(select(func.count()).select_from(User).where(
+        User.tenant_id == t.id, User.user_type.in_(("TEACHER", "STAFF")),
+        User.is_deleted.is_(False), User.status == "ACTIVE")) or 0
+    # 首次开户状态只用于平台交付看板。平台只读观察学校的开户进度，
+    # 不得借此入口替学校创建师生账号或绕过学校侧的身份导入与预检。
+    if school_admins == 0:
+        onboarding_phase, onboarding_label = "WAITING_ADMIN", "待交付学校管理员"
+    elif users <= school_admins:
+        onboarding_phase, onboarding_label = "WAITING_IDENTITY_IMPORT", "待学校导入师生账号"
+    elif students == 0:
+        onboarding_phase, onboarding_label = "TEACHER_IMPORTED", "已导入教师，待导入学生"
+    else:
+        onboarding_phase, onboarding_label = "READY_FOR_ACCEPTANCE", "师生账号已导入，可上线验收"
     pkg = get_package(meta.get("packageCode", "professional"))
     feats = effective_features(t.id)
     return {
@@ -189,6 +232,12 @@ def _tenant_row(db, t, meta: dict) -> dict:
         "storageLimitMb": meta.get("storageLimitMb", pkg["storageLimitMb"]),
         "usedStorageMb": meta.get("usedStorageMb", 0),
         "studentCount": students, "userCount": users,
+        "onboarding": {
+            "phase": onboarding_phase, "label": onboarding_label,
+            "schoolAdminCount": school_admins, "teacherAccountCount": teachers,
+            "studentAccountCount": students,
+            "readyForAcceptance": onboarding_phase == "READY_FOR_ACCEPTANCE",
+        },
         **{f"allow{k[0].upper()}{k[1:]}" if not k.startswith("allow") else k: v
            for k, v in {
                "allowImport": feats["studentImport"], "allowExport": feats["studentExport"],

@@ -1167,7 +1167,11 @@ def persist_program(db, rows):
     tid = b._tid()
     groups: dict = {}
     for r in rows:
-        groups.setdefault(r["programKey"], []).append(r)
+        # Validation results are serialized into the shared import-batch JSON
+        # before confirmation, so tuple keys come back as JSON arrays. Normalize
+        # them before grouping instead of attempting to use a list as a dict key.
+        key = tuple(r["programKey"]) if isinstance(r.get("programKey"), list) else r["programKey"]
+        groups.setdefault(key, []).append(r)
     for pkey, items in groups.items():
         head = items[0]
         program = AaProgram(tenant_id=tid, program_name=head["programName"], major_id=head["majorId"],

@@ -14,7 +14,6 @@ from app.core.student_lifecycle import ADMITTED
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.file_service import upload_dir
 
-_MEM_BATCHES: dict[str, dict] = {}
 EXPORT_PAGE_SIZE = 2000
 
 
@@ -100,35 +99,38 @@ def dry_run(rows: list[dict]) -> dict:
              "rows": ok_rows,
              # 绑定租户与创建人：确认阶段据此做租户隔离校验，防跨租户凭 batchNo 确认他人批次
              "tenantId": _tid(), "createdBy": (get_current_user_ctx() or {}).get("userId")}
-    if db_enabled():
-        from app.models import StudentImportBatch
-        db = get_sessionmaker()()
-        try:
-            db.add(StudentImportBatch(tenant_id=_tid(), batch_no=batch_no, total_rows=len(rows),
-                                      success_rows=0, error_rows=len(errors), status=status,
-                                      remark=f"dryRun ok={len(ok_rows)}"))
-            db.commit()
-        finally:
-            db.close()
-    _MEM_BATCHES[batch_no] = batch
+    if not db_enabled():
+        raise AppException("SERVER_ERROR", "共享学生导入批次需要启用数据库")
+    from app.models import StudentImportBatch
+    from app.services import shared_import_batch_service as shared_batches
+    db = get_sessionmaker()()
+    try:
+        db.add(StudentImportBatch(tenant_id=_tid(), batch_no=batch_no, total_rows=len(rows),
+                                  success_rows=0, error_rows=len(errors), status=status,
+                                  remark=f"dryRun ok={len(ok_rows)}"))
+        db.commit()
+    finally:
+        db.close()
+    shared_batches.create(_tid(), "STUDENT_PROFILE", batch_no, status,
+                          {"rows": ok_rows}, errors=errors,
+                          operator_key=batch.get("createdBy"))
     _internal = {"rows", "tenantId", "createdBy"}   # 内部字段不返回给客户端
     return {k: v for k, v in batch.items() if k not in _internal} | {"batchNo": batch_no}
 
 
 def confirm(batch_no: str) -> dict:
-    batch = _MEM_BATCHES.get(batch_no)
-    # 租户隔离：批次不存在，或不属于当前租户，一律按「不存在」处理（不泄露存在性），防跨租户确认
-    if not batch or batch.get("tenantId") != _tid():
-        raise not_found("导入批次不存在或已过期，请重新校验")
-    if batch["status"] != "DRY_RUN_PASSED":
-        raise AppException("VALIDATION_ERROR", "该批次未通过 Dry-Run 校验，禁止确认导入")
+    from app.services import shared_import_batch_service as shared_batches
+    payload, claim_token, already_done = shared_batches.claim(
+        _tid(), "STUDENT_PROFILE", batch_no, required_status="DRY_RUN_PASSED")
+    if already_done:
+        return payload
     inserted = 0
-    if db_enabled():
-        from sqlalchemy import select
-        from app.models import StudentContact, StudentImportBatch, StudentProfile
-        db = get_sessionmaker()()
+    from sqlalchemy import select
+    from app.models import StudentContact, StudentImportBatch, StudentProfile
+    db = get_sessionmaker()()
+    try:
         try:
-            for r in batch["rows"]:
+            for r in payload["rows"]:
                 s = StudentProfile(tenant_id=_tid(), student_no=r["studentNo"], real_name=r["realName"],
                                    gender=r.get("gender") or None, grade=r.get("grade") or None,
                                    current_stage=ADMITTED, student_status="NORMAL", status="ACTIVE")
@@ -146,15 +148,15 @@ def confirm(batch_no: str) -> dict:
                 b.status = "SUCCESS"
                 b.success_rows = inserted
             db.commit()  # 整批一个事务：任一行失败自动回滚
-        except Exception:
+        except Exception as exc:
             db.rollback()
+            shared_batches.fail(_tid(), "STUDENT_PROFILE", batch_no, claim_token, str(exc))
             raise
-        finally:
-            db.close()
-    else:
-        inserted = len(batch["rows"])
-    batch["status"] = "SUCCESS"
-    return {"batchNo": batch_no, "status": "SUCCESS", "insertedRows": inserted}
+    finally:
+        db.close()
+    result = {"batchNo": batch_no, "status": "SUCCESS", "insertedRows": inserted}
+    shared_batches.finish(_tid(), "STUDENT_PROFILE", batch_no, claim_token, result)
+    return result
 
 
 def _mask_phone(v: str | None) -> str:

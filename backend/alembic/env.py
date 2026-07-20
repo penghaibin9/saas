@@ -34,7 +34,7 @@ target_metadata = metadata
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     context.configure(url=url, target_metadata=target_metadata, literal_binds=True,
-                      dialect_opts={"paramstyle": "named"})
+                      dialect_opts={"paramstyle": "named"}, compare_comments=False)
     with context.begin_transaction():
         context.run_migrations()
 
@@ -68,7 +68,8 @@ def run_migrations_online() -> None:
                                      prefix="sqlalchemy.", poolclass=pool.NullPool)
     _ensure_wide_version_table(connectable)
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(connection=connection, target_metadata=target_metadata,
+                          compare_comments=False)
         with context.begin_transaction():
             context.run_migrations()
 

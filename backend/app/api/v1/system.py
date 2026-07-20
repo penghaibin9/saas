@@ -493,17 +493,26 @@ def identity_import_confirm_batch(
         body: dict = Body(...),
         user=Depends(require_permission("systemAdmin.user.import"))):
     from app.services import audit_log
-    from app.services.identity_import_file_service import (build_credential_receipt,
-                                                            get_batch, mark_confirmed)
+    from app.services.identity_import_file_service import (build_credential_receipt, claim_batch,
+                                                            mark_confirmed, release_claim)
     from app.services.identity_import_service import run_identity_import
     batch_no = str(body.get("batchNo") or "").strip()
-    entry = get_batch(user, current_tenant_id(), batch_no, require_valid=True)
-    report = run_identity_import(user, entry["payload"], dry_run=False)
-    credential_receipt = build_credential_receipt(entry, report)
-    public_report = {key: value for key, value in report.items()
-                     if key not in ("studentCredentials", "teacherCredentials")}
+    tenant_id = current_tenant_id()
+    entry, claim_token, already_confirmed = claim_batch(user, tenant_id, batch_no)
+    if already_confirmed:
+        return success({**entry.get("publicResult", {}), "batchNo": batch_no,
+                        "alreadyConfirmed": True, "credentialReceipt": None},
+                       message="该批次已完成确认；初始密码回执不会重复显示")
+    try:
+        report = run_identity_import(user, entry["payload"], dry_run=False)
+        credential_receipt = build_credential_receipt(entry, report)
+        public_report = {key: value for key, value in report.items()
+                         if key not in ("studentCredentials", "teacherCredentials")}
+        mark_confirmed(user, tenant_id, batch_no, claim_token, public_report)
+    except Exception as exc:
+        release_claim(user, tenant_id, batch_no, claim_token, str(exc))
+        raise
     public_report["credentialReceipt"] = credential_receipt
-    mark_confirmed(batch_no)
     audit_log.record("IDENTITY_IMPORT", f"batch:{batch_no}", detail={
         "fileName": entry["fileName"], "fileSha256": entry["fileSha256"],
         "tenantId": entry["tenantId"], "entities": report.get("entities")})

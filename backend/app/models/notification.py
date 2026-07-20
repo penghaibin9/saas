@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Integer, String
+from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -15,6 +15,8 @@ from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMi
 class NotificationTemplate(Base, PKMixin, TenantMixin, CommonMixin):
     """通知模板：template_code + 渠道 + 内容（含 {var} 变量）。"""
     __tablename__ = "t_notification_template"
+    __table_args__ = (UniqueConstraint("tenant_id", "template_code", "channel",
+                                      name="uk_notification_template_channel"),)
 
     template_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True,
                                                comment="业务模板键：TODO/REJECTED/WARNING...")
@@ -24,6 +26,15 @@ class NotificationTemplate(Base, PKMixin, TenantMixin, CommonMixin):
                                          comment="模板正文，变量占位如 {name}{title}")
     provider_template_id: Mapped[str | None] = mapped_column(String(100), comment="第三方模板ID（阿里/腾讯）")
     enabled: Mapped[bool] = mapped_column(default=True)
+    event_code: Mapped[str | None] = mapped_column(String(80), index=True)
+    template_version: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="2026.1", server_default="2026.1")
+    receiver_rule_json: Mapped[dict | None] = mapped_column(JSON)
+    variables_json: Mapped[list | None] = mapped_column(JSON)
+    deep_link: Mapped[str | None] = mapped_column(String(500))
+    locked_fields_json: Mapped[list | None] = mapped_column(JSON)
+    source_profile: Mapped[str | None] = mapped_column(String(50))
+    installed_project_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
 
 
 class NotificationTask(Base, PKMixin, TenantMixin, CommonMixin):

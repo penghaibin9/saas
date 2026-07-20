@@ -118,6 +118,8 @@ def _assignee_for(db, node: str, student_id) -> int:
 
 def _open_wf(db, wf_code, leave_id, applicant_id, title, first_node, assignee_id):
     from app.models import WorkflowInstance, WorkflowTask
+    from app.services.runtime_preset_install_service import ensure_workflow_enabled
+    ensure_workflow_enabled(db, _tid(), wf_code)
     inst = WorkflowInstance(tenant_id=_tid(), workflow_code=wf_code, source_module="student-affairs",
                             source_biz_type="LEAVE", source_biz_id=int(leave_id),
                             applicant_id=int(applicant_id or 0), title=title, status="RUNNING",
