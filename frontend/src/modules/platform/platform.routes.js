@@ -179,8 +179,8 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '自动开通任务', requiresAuth: true, permissionKey: 'platform.provision.run.view', platformCapabilityKey: 'plt-provisioning' }
     },
     {
-      path: 'onboarding-check', name: 'platform-onboarding-check', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '学校上线检查与验收', requiresAuth: true, permissionKey: 'platform.onboarding.view', platformCapabilityKey: 'plt-onboarding-check' }
+      path: 'onboarding-check', name: 'platform-onboarding-check', component: () => import('@/modules/platform/views/PlatformOnboardingCheckView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '学校开通与首次开户', requiresAuth: true, permissionKey: 'platform.onboarding.view', platformCapabilityKey: 'plt-onboarding-check' }
     },
     {
       path: 'role-templates', name: 'platform-role-templates', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),

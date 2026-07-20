@@ -2,7 +2,7 @@
  * 学校级系统管理能力目录（唯一业务口径）。
  *
  * 平台运营的租户、套餐、全局权限点维护不在这里；本目录只描述学校管理员可见的
- * 8 组 26 个三级能力。导航、路由、角色授权树和能力说明页均应消费本目录，
+ * 基础 8 组 26 个三级能力，以及甲方新增的「实施与预设中心」统一消费本目录。
  * 避免再出现「侧边栏、权限树、路由」三份菜单各自维护的情况。
  */
 const action = (key, label, risk = 'NORMAL') => ({ key, label, risk })
@@ -13,6 +13,20 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     description: '学校初始化检查、账号与组织完整性、模块开通状态及异常提醒。',
     items: [
       { key: 'sys-overview-readiness', label: '系统概览与初始化检查', path: '/admin/system/overview', permissionKey: 'system.dashboard.view', view: 'dashboard', actions: [action('system:overview:view', '查看概览')] }
+    ]
+  },
+  {
+    key: 'sys-implementation', label: '实施与预设中心', icon: '⌘',
+    description: '用问答、预设、真实数据盘点和上线检查完成学校首次实施，并保留版本化变更链。',
+    items: [
+      { key: 'sys-implementation-overview', label: '实施总览', path: '/admin/system/implementation/overview', permissionKey: 'systemAdmin.implementation.view', view: 'implementation', actions: [action('systemAdmin.implementation.create', '创建实施项目'), action('systemAdmin.implementation.view', '查看实施进度')] },
+      { key: 'sys-implementation-wizard', label: '首次开局向导', path: '/admin/system/implementation/wizard', permissionKey: 'systemAdmin.implementation.configure', view: 'implementation', actions: [action('systemAdmin.implementation.configure', '保存问答配置'), action('systemAdmin.implementation.preview', '生成安装预览', 'HIGH')] },
+      { key: 'sys-implementation-presets', label: '预设方案', path: '/admin/system/implementation/presets', permissionKey: 'systemAdmin.implementation.preset.view', view: 'implementation', actions: [action('systemAdmin.implementation.preset.view', '选择预设方案', 'HIGH')] },
+      { key: 'sys-implementation-standards', label: '职业教育国家标准库', path: '/admin/system/implementation/standards', permissionKey: 'systemAdmin.implementation.preset.view', view: 'national-standards', actions: [action('systemAdmin.implementation.preset.view', '检索国家标准'), action('systemAdmin.implementation.configure', '绑定学校专业', 'HIGH')] },
+      { key: 'sys-implementation-mapping', label: '数据导入与智能匹配', path: '/admin/system/implementation/data-mapping', permissionKey: 'systemAdmin.implementation.mapping.manage', view: 'implementation', actions: [action('systemAdmin.implementation.mapping.manage', '盘点与确认匹配', 'HIGH'), action('systemAdmin.implementation.mapping.apply', '安装组织与角色', 'HIGH')] },
+      { key: 'sys-implementation-installed', label: '已安装配置', path: '/admin/system/implementation/installed', permissionKey: 'systemAdmin.implementation.installed.view', view: 'implementation', actions: [action('systemAdmin.implementation.installed.view', '查看安装版本')] },
+      { key: 'sys-implementation-changes', label: '变更与升级', path: '/admin/system/implementation/changes', permissionKey: 'systemAdmin.implementation.change.manage', view: 'implementation', actions: [action('systemAdmin.implementation.change.manage', '创建变更项目', 'HIGH')] },
+      { key: 'sys-implementation-acceptance', label: '上线检查与验收', path: '/admin/system/implementation/acceptance', permissionKey: 'systemAdmin.implementation.check.run', view: 'implementation', actions: [action('systemAdmin.implementation.check.run', '运行上线检查'), action('systemAdmin.implementation.accept', '验收封板', 'HIGH')] }
     ]
   },
   {

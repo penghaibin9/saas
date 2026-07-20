@@ -275,14 +275,6 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '角色分配失败')
     }
-    /* c8 ignore next */
-    const row = userList.find((u) => u.id === id)
-    if (!row) return fail('账号不存在')
-    const before = row.roleNames.join('、') || '无'
-    row.roles = [...roleCodes]
-    row.roleNames = roleCodes.map((c) => (filterOptions.roles.find((r) => r.value === c) || { label: c }).label)
-    audit({ action: 'GRANT', actionLabel: '授权变更', target: `账号 ${row.userNo}（${row.name}）`, summary: '调整角色分配', before, after: row.roleNames.join('、') || '无' })
-    return ok(clone(row))
   },
 
   batchDisableUsers(ids, { reason }) {
@@ -493,26 +485,6 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '创建角色失败')
     }
-    /* mock fallback 仅用于未启用真实后端的本地演示 */
-    /* c8 ignore next */
-    if (!payload.name) return fail('角色名称为必填项')
-    const row = {
-      id: 'role-n' + ++seed,
-      code: payload.code || 'CUSTOM_' + seed,
-      name: payload.name,
-      type: 'CUSTOM',
-      typeLabel: '自定义角色',
-      memberCount: 0,
-      scopeCode: payload.scopeCode || 'COLLEGE',
-      scopeName: (statusOptions.scopeTypes.find((s) => s.value === (payload.scopeCode || 'COLLEGE')) || {}).label || '本学院',
-      status: 'ENABLED',
-      statusLabel: '启用中',
-      description: payload.description || '',
-      updatedAt: now().slice(0, 10)
-    }
-    roleList.push(row)
-    audit({ action: 'CREATE', actionLabel: '新增', target: `角色「${row.name}」`, summary: '创建自定义角色，默认无菜单权限，需单独配置' })
-    return ok(clone(row))
   },
 
   updateRole(id, payload) {
@@ -531,13 +503,6 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '复制角色失败')
     }
-    /* c8 ignore next */
-    const src = roleList.find((r) => r.id === id)
-    if (!src) return fail('角色不存在')
-    const row = { ...clone(src), id: 'role-n' + ++seed, code: src.code + '_COPY', name: src.name + '（副本）', type: 'CUSTOM', typeLabel: '自定义角色', memberCount: 0, updatedAt: now().slice(0, 10) }
-    roleList.push(row)
-    audit({ action: 'CREATE', actionLabel: '复制角色', target: `角色「${row.name}」`, summary: `由「${src.name}」复制，权限与数据范围一并复制，成员不复制` })
-    return ok(clone(row))
   },
 
   /** 作废角色（逻辑删除）：内置角色禁止作废；有成员需先移除；原因必填留痕 */
@@ -563,22 +528,6 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '保存权限配置失败')
     }
-    /* c8 ignore next */
-    const row = roleList.find((r) => r.id === id)
-    if (!row) return fail('角色不存在')
-    const detail = roleDetailMap[id]
-    const before = `菜单 ${(detail?.menuKeys || []).length} · 按钮 ${(detail?.buttonKeys || []).length} · 范围 ${row.scopeName}`
-    const nextDetail = detail || { id: row.id, code: row.code, name: row.name, type: row.type, typeLabel: row.typeLabel, status: row.status, statusLabel: row.statusLabel, description: row.description, members: [], auditTrail: [] }
-    nextDetail.menuKeys = [...menuKeys]
-    nextDetail.buttonKeys = [...buttonKeys]
-    nextDetail.scopeCode = scopeCode
-    nextDetail.scopeName = (statusOptions.scopeTypes.find((s) => s.value === scopeCode) || {}).label || scopeCode
-    if (!detail) roleDetailMap[id] = nextDetail
-    row.scopeCode = scopeCode
-    row.scopeName = (statusOptions.scopeTypes.find((s) => s.value === scopeCode) || {}).label || scopeCode
-    row.updatedAt = now().slice(0, 10)
-    audit({ action: 'GRANT', actionLabel: '授权变更', target: `角色「${row.name}」`, summary: '配置菜单/按钮权限与数据范围', before, after: `菜单 ${menuKeys.length} · 按钮 ${buttonKeys.length} · 范围 ${row.scopeName}` })
-    return ok({ id })
   },
 
   exportRoleConfig(id) {
@@ -695,9 +644,6 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '保存组织节点失败')
     }
-    /* c8 ignore next */
-    audit({ action: payload.id ? 'UPDATE' : 'CREATE', actionLabel: payload.id ? '编辑' : '新增', target: `组织「${payload.name}」`, summary: (payload.id ? '编辑' : '新增') + '组织节点（' + (payload.typeLabel || payload.type) + '）' })
-    return ok({ ...payload, id: payload.id || 'org-n' + ++seed })
   },
 
   deprecateOrgNode(id, { name, reason }) {
