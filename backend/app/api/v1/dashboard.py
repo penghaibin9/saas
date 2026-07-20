@@ -19,22 +19,50 @@ from app.services import stats_service
 router = APIRouter()
 
 
-def _real_summary() -> dict:
+def _real_summary(user: dict) -> dict:
     """DB 启用时的真实工作台概览（stats_service.get_workbench_summary 已实时聚合各域表）。"""
     s = stats_service.get_workbench_summary()
+    cards_by_key = {
+        "students": {"key": "students", "label": "在册学生", "value": s["studentTotal"], "unit": "人", "trend": ""},
+        "todos": {"key": "todos", "label": "待办任务", "value": s["pendingTodo"], "unit": "项", "trend": ""},
+        "approvals": {"key": "approvals", "label": "待审批", "value": s["pendingApproval"], "unit": "件", "trend": ""},
+        "messages": {"key": "messages", "label": "未读消息", "value": s["unreadMessage"], "unit": "条", "trend": ""},
+        "warning": {"key": "warning", "label": "学业预警在办", "value": s["academicWarning"], "unit": "人", "trend": ""},
+    }
+    quick_entries = [
+        {"key": "todo", "label": "待办中心", "path": "/admin/approval"},
+        {"key": "students", "label": "我的学生", "path": "/admin/students"},
+    ]
+    card_keys = list(cards_by_key); workbench = None
+    try:
+        from sqlalchemy import select
+        from app.core.context import current_tenant_id
+        from app.core.permissions import has_permission
+        from app.db.session import get_sessionmaker
+        from app.models import RoleWorkbenchConfig
+        role_code = str(user.get("currentRoleCode") or "").upper()
+        db = get_sessionmaker()()
+        try:
+            workbench = db.scalars(select(RoleWorkbenchConfig).where(
+                RoleWorkbenchConfig.tenant_id == current_tenant_id(),
+                RoleWorkbenchConfig.role_code == role_code,
+                RoleWorkbenchConfig.status == "ENABLED",
+                RoleWorkbenchConfig.is_deleted.is_(False))).first()
+            if workbench:
+                card_keys = workbench.card_keys_json or card_keys
+                quick_entries = [{"key": x.get("key"), "label": x.get("label"), "path": x.get("path")}
+                                 for x in workbench.quick_entries_json or []
+                                 if not x.get("permissionCode") or has_permission(user, x["permissionCode"])]
+        finally:
+            db.close()
+    except Exception:  # 配置读取失败不影响真实统计主链路
+        workbench = None
     return {
-        "cards": [
-            {"key": "students", "label": "在册学生", "value": s["studentTotal"], "unit": "人", "trend": ""},
-            {"key": "todos", "label": "待办任务", "value": s["pendingTodo"], "unit": "项", "trend": ""},
-            {"key": "approvals", "label": "待审批", "value": s["pendingApproval"], "unit": "件", "trend": ""},
-            {"key": "messages", "label": "未读消息", "value": s["unreadMessage"], "unit": "条", "trend": ""},
-            {"key": "warning", "label": "学业预警在办", "value": s["academicWarning"], "unit": "人", "trend": ""},
-        ],
-        "quickEntries": [
-            {"key": "todo", "label": "待办中心", "path": "/todos"},
-            {"key": "approval", "label": "审批处理", "path": "/approvals"},
-            {"key": "students", "label": "我的学生", "path": "/students"},
-        ],
+        "cards": [cards_by_key[key] for key in card_keys if key in cards_by_key],
+        "quickEntries": quick_entries,
+        "workbench": {"title": workbench.title, "subtitle": workbench.subtitle,
+                      "roleCode": workbench.role_code, "alerts": workbench.alert_keys_json}
+                     if workbench else None,
         "updatedAt": s["updatedAt"],
         "notice": "数据来自各业务域实时聚合（tenant 过滤）。",
     }
@@ -43,7 +71,7 @@ def _real_summary() -> dict:
 @router.get("/summary", summary="工作台概览（DB 启用走真实聚合，未启用走演示）")
 def summary(user=Depends(require_staff)):
     if db_enabled():
-        return success(_real_summary())
+        return success(_real_summary(user))
     return success(dash_svc.get_summary(user))
 
 

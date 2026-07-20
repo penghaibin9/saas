@@ -1388,7 +1388,7 @@ def academic_status_change(body: dict = Body(...), user=Depends(get_current_user
     return success(aa.submit_status_change_my(user, body), message="异动已提交")
 
 
-@router.get("/academic/graduation/my", summary="教务·我的毕业进度（七项）")
+@router.get("/academic/graduation/my", summary="教务·我的毕业进度（十一项供数维度）")
 def academic_graduation_my(user=Depends(get_current_user)):
     return success(aa.graduation_progress_my(user))
 
