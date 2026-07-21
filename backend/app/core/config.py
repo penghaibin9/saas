@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     DB_ENABLED: bool = False             # 关闭时走 mock；开启后按 effective_database_url 连库
     DATABASE_URL: str = ""               # 显式连接串（最高优先级）：sqlite/mysql/postgresql 均可；留空则按 DB_DRIVER 组装
     REDIS_URL: str = ""                  # 多实例共享鉴权、限流与短时业务缓存；空值时安全降级
+    MULTI_INSTANCE: bool = False         # 多台服务器/多 uvicorn worker 部署置 true：生产环境将强制要求 REDIS_URL
+                                         # （否则限流/登录锁定/令牌黑名单退回进程内，跨进程不共享 → 形同虚设）
     REDIS_KEY_PREFIX: str = "school-lifecycle"
     REDIS_CONNECT_TIMEOUT: float = 0.3
     REDIS_SOCKET_TIMEOUT: float = 0.5

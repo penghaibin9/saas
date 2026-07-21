@@ -62,9 +62,11 @@ from app.api.v1.todos import make_router as make_todos_router
 api_router = APIRouter()
 
 # 毕设中心 PC 管理端统一角色门禁：学生令牌一律 403（学生合法入口是 /mobile/graduation/*）。
+# 模块授权键用已注册的 "graduation"（platform_defaults.FEATURE_KEYS）；此前误用未注册键
+# module.graduationDesign.enabled，effective_features 只回 FEATURE_KEYS 内键，导致门禁恒放行（已修）。
 _GD_DEP = [
     Depends(require_staff),
-    Depends(require_module("module.graduationDesign.enabled")),
+    Depends(require_module("graduation")),
     Depends(require_graduation_request_permission),
 ]
 

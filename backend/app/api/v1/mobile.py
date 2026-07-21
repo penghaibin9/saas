@@ -20,8 +20,10 @@ from app.services import mobile_teacher_service as tea
 router = APIRouter(prefix="/mobile", tags=["移动端聚合"])
 
 # 毕设学生端子路由：与 PC 管理端同一模块授权开关，未授权租户即使绕过前端隐藏直调接口也 403。
+# 键用已注册的 "graduation"（见 platform_defaults.FEATURE_KEYS）；旧键 module.graduationDesign.enabled
+# 未注册 → effective_features 只回 FEATURE_KEYS 内的键 → feature_enabled .get(key,True) 恒放行（已修）。
 gd = APIRouter(prefix="/graduation", tags=["移动端聚合"],
-               dependencies=[Depends(require_module("module.graduationDesign.enabled"))])
+               dependencies=[Depends(require_module("graduation"))])
 
 
 # ── 学生端·我的 ──

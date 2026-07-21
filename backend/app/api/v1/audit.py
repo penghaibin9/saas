@@ -10,7 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from app.core.exceptions import no_permission
+from app.core.permissions import enforce_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.services import audit_log
@@ -18,11 +18,12 @@ from app.services import audit_log
 router = APIRouter(prefix="/admin/audit-logs", tags=["09·审计日志（占位）"])
 
 
-def _ensure_staff(user: dict) -> dict:
-    """教职工/管理员专用（等同 require_staff，但不嵌套 Depends，避免 DB 模式下 TestClient 挂起）。"""
-    if (user.get("userType") or "").strip().upper() == "STUDENT":
-        raise no_permission("该接口仅教职工可用，请使用移动端个人页")
-    return user
+def _ensure_audit_viewer(user: dict) -> dict:
+    """审计日志读写受 systemAdmin.audit.view 管控（P1-8 收口）：
+    此前仅排除学生、任意教职工均可读全校安全审计；现要求 systemAdmin.audit.view，
+    只有安全审计岗/学校管理员/超管放行（辅导员等无该权限的教职工一律 403+拒绝审计）。
+    用 enforce_permission 函数内联（不嵌套 Depends），沿用避免 DB 模式 TestClient 挂起的写法。"""
+    return enforce_permission(user, "systemAdmin.audit.view")
 
 
 @router.get("", summary="审计日志列表（占位：内存队列）")
@@ -31,7 +32,7 @@ def list_audit_logs(action: Optional[str] = Query(default=None,
                     page: int = Query(default=1, ge=1),
                     pageSize: int = Query(default=20, ge=1, le=100),
                     user=Depends(get_current_user)):
-    _ensure_staff(user)
+    _ensure_audit_viewer(user)
     items, total = audit_log.query(page, pageSize, action)
     return success(paginate(items, total, page, pageSize))
 
@@ -48,13 +49,13 @@ def audit_logs(action: Optional[str] = Query(default=None),
                page: int = Query(default=1, ge=1),
                pageSize: int = Query(default=20, ge=1, le=100),
                user=Depends(get_current_user)):
-    _ensure_staff(user)
+    _ensure_audit_viewer(user)
     items, total = audit_log.query(page, pageSize, action, operator, dateFrom, dateTo)
     return success(paginate(items, total, page, pageSize))
 
 
 @alias_router.post("/mock-record", summary="写入一条演示审计记录（联调用）")
 def mock_record(user=Depends(get_current_user)):
-    _ensure_staff(user)
+    _ensure_audit_viewer(user)
     audit_log.record("MOCK", "demo", detail={"path": "/api/v1/audit/mock-record", "method": "POST"})
     return success({"recorded": True}, message="已写入内存审计队列（DB_ENABLED=true 后写 t_security_audit_log）")
