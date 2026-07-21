@@ -61,21 +61,22 @@
           </div>
         </section>
 
-        <!-- 模板正文（核心内容，占满宽度） -->
+        <!-- 模板正文（核心内容，占满宽度）：条款/变量都是点击插入，不用手打双花括号 -->
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">模板正文</span>
-            <span class="atf-aside">正文可用双花括号 + 变量 key 占位，如 <code v-text="braced('studentName')"></code></span>
+            <span class="atf-aside">点下方按钮把条款或变量插入正文，光标停在哪就插在哪</span>
           </div>
           <div class="mp-card__body">
             <AppFormItem class="atf-body-item" label="正文内容" prop="body">
-              <AppTemplateChips
-                v-if="!readonly"
-                class="atf-body-chips"
-                :options="AGREEMENT_CLAUSE"
-                size="compact"
-                @pick="onPickClause"
-              />
+              <div v-if="!readonly" class="atf-chip-row">
+                <span class="atf-chip-row__label">常用条款</span>
+                <AppTemplateChips class="atf-body-chips" :options="AGREEMENT_CLAUSE" size="compact" @pick="onPickClause" />
+              </div>
+              <div v-if="!readonly && variableChipOptions.length" class="atf-chip-row">
+                <span class="atf-chip-row__label">插入变量</span>
+                <AppTemplateChips class="atf-body-chips" :options="variableChipOptions" size="compact" @pick="onPickVariable" />
+              </div>
               <AppTextarea
                 v-model="form.body"
                 class="atf-body"
@@ -84,23 +85,6 @@
                 :placeholder="bodyPlaceholder"
               />
             </AppFormItem>
-          </div>
-        </section>
-
-        <!-- 变量占位（沿用原勾选控件：勾选后写入模板变量清单） -->
-        <section class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">变量占位</span>
-            <span class="atf-aside">勾选后可在正文用双花括号 + key 占位，如 <code v-text="braced('schoolName')"></code></span>
-          </div>
-          <div class="mp-card__body">
-            <div v-if="variablePresets.length" class="atf-vars">
-              <label v-for="v in variablePresets" :key="v.key" class="atf-var" :class="{ 'is-disabled': readonly }">
-                <input type="checkbox" :value="v.key" v-model="form.variableKeys" :disabled="readonly" />
-                <span>{{ v.label }} <code v-text="v.key"></code></span>
-              </label>
-            </div>
-            <p v-else class="mp-note" style="margin: 0">暂无可用变量预设。</p>
           </div>
         </section>
 
@@ -123,7 +107,8 @@
  * 路由（由主流程挂载，本文件不改 routes.js）：
  *   /admin/internship/agreement-templates/new       → 新建
  *   /admin/internship/agreement-templates/:id/edit  → 编辑（已归档 ARCHIVED 只读预览，后端最终拦截）
- * 字段与原抽屉一致（名称/类型/版本/适用范围×4/正文/备注/变量勾选，不增不减）；
+ * 字段与原抽屉一致（名称/类型/版本/适用范围×4/正文/备注，不增不减）；
+ * 变量占位改点击插入（不再靠手动勾选记账），提交时从正文实际内容反推 variables 清单。
  * 编辑态 getTemplateDetail(:id) 回填，提交走真实 createTemplate / updateTemplate。
  */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
@@ -139,7 +124,7 @@ import { AGREEMENT_CLAUSE } from '@/modules/internship/constants/presetPrompts'
 const CATEGORY_OPTS = ['三方协议', '顶岗实习协议', '安全责任书', '实习承诺书', '保密协议']
 const blankForm = () => ({
   name: '', category: '', version: 'v1.0', scopeCollegeIds: '', scopeMajorIds: '',
-  scopeGrades: '', scopeBatchIds: '', body: '', remark: '', variableKeys: []
+  scopeGrades: '', scopeBatchIds: '', body: '', remark: ''
 })
 const toArr = (s) => (s || '').split(/[,，]/).map((x) => x.trim()).filter(Boolean)
 
@@ -198,6 +183,10 @@ export default {
     bodyPlaceholder() {
       // 用 braced() 拼占位符，避免在模板里直接写双花括号（Vue 会当插值解析）
       return `甲方：${this.braced('schoolName')}  乙方：${this.braced('companyName')}  实习学生：${this.braced('studentName')} ……`
+    },
+    // 变量清单点击即插入正文（不再靠勾选记账）；label 直接标好人话名字，点哪个插哪个
+    variableChipOptions() {
+      return this.variablePresets.map((v) => ({ label: v.label, value: this.braced(v.key) }))
     }
   },
   watch: {
@@ -225,6 +214,12 @@ export default {
       if (!text) return
       const cur = (this.form.body || '').replace(/\n+$/, '')
       this.form.body = cur ? cur + '\n' + text : text
+    },
+    onPickVariable(text) {
+      if (!text) return
+      // 变量占位符直接接在末尾，中间留个空格，方便连续点插多个变量拼一行（如 甲方：{{schoolName}} 乙方：{{companyName}}）
+      const cur = this.form.body || ''
+      this.form.body = cur && !/\s$/.test(cur) ? cur + ' ' + text : cur + text
     },
     goBack() {
       // 从列表/详情进入时走历史返回（保留筛选/页码）；深链直入时兜底到模板库列表
@@ -260,16 +255,15 @@ export default {
         scopeGrades: (d.scopeGrades || []).join(','),
         scopeBatchIds: (d.scopeBatchIds || []).join(','),
         body: d.body || '',
-        remark: d.remark || '',
-        variableKeys: (d.variables || []).map((v) => v.key)
+        remark: d.remark || ''
       }
     },
     _buildBody() {
-      const preset = new Map(this.variablePresets.map((v) => [v.key, v]))
-      const variables = (this.form.variableKeys || []).map((k) => {
-        const p = preset.get(k)
-        return p ? { key: p.key, label: p.label, example: p.example } : { key: k, label: k, example: '' }
-      })
+      // 变量清单不再靠人工勾选：直接扫正文里实际用到了哪些 {{key}}，保证清单与正文永远一致
+      const body = this.form.body || ''
+      const variables = this.variablePresets
+        .filter((v) => body.includes(this.braced(v.key)))
+        .map((v) => ({ key: v.key, label: v.label, example: v.example }))
       return {
         name: this.form.name, category: this.form.category || null, version: this.form.version || 'v1.0',
         scopeCollegeIds: toArr(this.form.scopeCollegeIds), scopeMajorIds: toArr(this.form.scopeMajorIds),
@@ -323,36 +317,24 @@ export default {
 .atf-body-item {
   width: 100%;
 }
-.atf-body-chips {
-  margin-bottom: var(--space-2);
-}
 .atf-body :deep(textarea) {
   font-size: 13px;
   line-height: 1.8;
 }
-.atf-vars {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.atf-var {
+.atf-chip-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  padding: 4px 8px;
-  border: 1px solid var(--line, #d9dee8);
-  border-radius: 8px;
-  cursor: pointer;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
-.atf-var.is-disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.atf-chip-row__label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
 }
-.atf-var code {
-  background: var(--bg-subtle, #f1f5f9);
-  padding: 0 4px;
-  border-radius: 4px;
+.atf-chip-row .atf-body-chips {
+  margin-bottom: 0;
 }
 @media (max-width: 960px) {
   .atf-grid {

@@ -14,8 +14,8 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import (InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
-                        InternshipRecord, StudentProfile)
+from app.models import (College, InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
+                        InternshipRecord, Major, SchoolClass, StudentProfile, Tenant)
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"DRAFT": "草稿", "PENDING_STUDENT": "待学生确认", "PENDING_ENTERPRISE": "待企业确认",
@@ -63,20 +63,47 @@ def _normalize_body_dates(text: str | None) -> str:
     return _ISO_DT_IN_TEXT.sub(lambda m: f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日", text)
 
 
-def _render_body(tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> str:
-    """协议正文渲染：有模板按 {{变量}} 简单替换；无模板/变量缺失时用结构化字段兜底，
-    保证 rendered_body 永不为空——学生小程序确认按钮以 renderedBody 是否存在作为可点击前提。"""
+def _render_body(db, tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> str:
+    """协议正文渲染：有模板按 {{变量}} 替换（支持模板变量预设全集，见
+    internship_agreement_template_service.VARIABLE_PRESETS）；无模板/变量缺失时用
+    结构化字段兜底，保证 rendered_body 永不为空——学生小程序确认按钮以 renderedBody
+    是否存在作为可点击前提。db 为 None（历史协议只读兜底）时班级/学院/专业/学校名留空，
+    不影响兜底文案（兜底文案不用这几个变量）。"""
+    class_name = college_name = major_name = school_name = ""
+    if db is not None:
+        if stu is not None:
+            if getattr(stu, "class_id", None):
+                c = db.get(SchoolClass, stu.class_id)
+                class_name = (c.class_name if c else "") or ""
+            if getattr(stu, "college_id", None):
+                col = db.get(College, stu.college_id)
+                college_name = (col.college_name if col else "") or ""
+            if getattr(stu, "major_id", None):
+                maj = db.get(Major, stu.major_id)
+                major_name = (maj.major_name if maj else "") or ""
+        t = db.get(Tenant, _tid())
+        school_name = (t.school_name if t else "") or ""
+    advisor_name = (rec.advisor_name if rec else "") or ""
     ctx = {
         "studentName": (stu.real_name if stu else "") or "",
         "studentNo": (stu.student_no if stu else "") or "",
+        "className": class_name,
+        "collegeName": college_name,
+        "majorName": major_name,
         "companyName": a.enterprise_name or (rec.enterprise_name if rec else "") or "",
         "enterpriseName": a.enterprise_name or (rec.enterprise_name if rec else "") or "",
         "positionName": a.position_name or (rec.position_name if rec else "") or "",
+        "mentorName": (rec.enterprise_mentor_name if rec else "") or "",
+        # teacherName 是模板变量预设里的对外命名，advisorName 是历史 key，两者同值同存，
+        # 正文里写哪个都能替换，避免前端变量清单 key 与渲染 key 对不上。
+        "teacherName": advisor_name,
+        "advisorName": advisor_name,
         "internPeriod": (f"{_cn_date(rec.intern_start_date)} 至 {_cn_date(rec.intern_end_date)}"
                          if rec and (rec.intern_start_date or rec.intern_end_date) else ""),
         "internStartDate": _cn_date(rec.intern_start_date) if rec else "",
         "internEndDate": _cn_date(rec.intern_end_date) if rec else "",
-        "advisorName": (rec.advisor_name if rec else "") or "",
+        "schoolName": school_name,
+        "signDate": _cn_date(datetime.utcnow()),
     }
     if tpl and (tpl.body or "").strip():
         text = tpl.body
@@ -125,7 +152,7 @@ def _student_record(db, user):
     return rec, stu
 
 
-def _row(a, rec, stu):
+def _row(db, a, rec, stu):
     return {
         "id": str(a.id), "internId": str(a.internship_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
@@ -141,7 +168,7 @@ def _row(a, rec, stu):
         "createdAt": _iso(a.created_at) or "",
         # 历史协议（本次修复前生成）rendered_body 为空时按结构化字段兜底渲染，不写库、只读时补齐
         # BUG-011：历史快照里遗留的 ISO 时间戳（2026-03-02T00:00:00）在展示/打印时规范为中文日期
-        "renderedBody": _normalize_body_dates(a.rendered_body or _render_body(None, rec, stu, a)),
+        "renderedBody": _normalize_body_dates(a.rendered_body or _render_body(db, None, rec, stu, a)),
     }
 
 
@@ -188,7 +215,7 @@ def generate(user, body) -> dict:
             tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
             template_id=int(tpl_id) if tpl_id else None, batch_id=rec.batch_id,
             enterprise_name=rec.enterprise_name, position_name=rec.position_name, status="DRAFT")
-        a.rendered_body = _render_body(tpl, rec, stu, a)
+        a.rendered_body = _render_body(db, tpl, rec, stu, a)
         db.add(a); db.flush()
         _trail(db, a.id, "GENERATE", {"templateId": str(tpl_id) if tpl_id else ""}, operator=_op_name(user))
         db.commit()
@@ -364,7 +391,7 @@ def list_agreements(page, page_size, status=None, keyword=None, user=None):
                 continue
             if not in_scope(scope, db, rec, stu):
                 continue
-            items.append(_row(a, rec, stu))
+            items.append(_row(db, a, rec, stu))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -381,7 +408,7 @@ def get_agreement(aid, user=None) -> dict:
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",
             InternshipAuditTrail.target_id == a.id).order_by(InternshipAuditTrail.id)).all()
-        return {**_row(a, rec, stu), "rejectReason": a.reject_reason or "",
+        return {**_row(db, a, rec, stu), "rejectReason": a.reject_reason or "",
                 "attachment": file_service.attachment_view(a.file_id),
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
@@ -401,7 +428,7 @@ def get_student_agreement(user, aid) -> dict:
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",
             InternshipAuditTrail.target_id == a.id).order_by(InternshipAuditTrail.id)).all()
-        return {**_row(a, rec, stu), "rejectReason": a.reject_reason or "",
+        return {**_row(db, a, rec, stu), "rejectReason": a.reject_reason or "",
                 "attachment": file_service.attachment_view(a.file_id),
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
@@ -430,7 +457,7 @@ def my_agreements(user) -> list[dict]:
         rows = db.scalars(select(InternshipAgreement).where(
             InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == rec.id,
             InternshipAgreement.is_deleted.is_(False)).order_by(InternshipAgreement.id.desc())).all()
-        return [_row(a, rec, stu) for a in rows]
+        return [_row(db, a, rec, stu) for a in rows]
 
 
 def student_confirm(user, aid, action: str, reason="") -> dict:
