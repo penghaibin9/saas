@@ -178,10 +178,19 @@
       v-model:visible="confirm.reset"
       type="warning"
       title="重置该账号密码？"
-      :message="'临时密码将发送至 ' + (confirm.row ? confirm.row.name : '') + ' 绑定手机号，页面不展示明文；首次登录强制修改。'"
+      :message="'将为 ' + (confirm.row ? confirm.row.name : '') + ' 生成一次性临时密码，本账号首次登录须强制改密。临时密码仅本次在本页显示一次，请立即转交本人。'"
       confirm-text="确认重置密码"
       :submitting="confirm.submitting"
       @confirm="doResetPassword"
+    />
+    <AppConfirmDialog
+      v-model:visible="resetResult.visible"
+      type="primary"
+      title="临时密码已生成（仅本次显示）"
+      :message="resetResult.name + ' 的一次性临时密码为：' + resetResult.password + '。请立即转交本人，关闭后不再显示；该账号首次登录须强制改密。'"
+      confirm-text="我已记录并转交"
+      cancel-text="关闭"
+      @confirm="resetResult.visible = false"
     />
     <AppConfirmDialog
       v-model:visible="confirm.enable"
@@ -259,6 +268,7 @@ export default {
       detail: { open: false, loading: false, data: null },
       assign: { open: false, batch: false, id: '', name: '', roles: [], submitting: false },
       confirm: { disable: false, batchDisable: false, reset: false, enable: false, row: null, submitting: false },
+      resetResult: { visible: false, name: '', password: '' },
       importOpen: false,
       exportOpen: false
     }
@@ -479,12 +489,14 @@ export default {
       }
     },
     async doResetPassword() {
+      const name = this.confirm.row ? this.confirm.row.name : ''
       this.confirm.submitting = true
       const res = await systemApi.resetUserPassword(this.confirm.row.id)
       this.confirm.submitting = false
       if (res.code === 0) {
-        toast.success(res.data.notice)
         this.confirm.reset = false
+        // 临时密码仅本次随响应返回，用持久弹窗展示给管理员转交（不用一闪而过的 toast，也不谎称短信下发）
+        this.resetResult = { visible: true, name, password: res.data.tempPassword || '' }
       } else {
         toast.error(res.message)
       }

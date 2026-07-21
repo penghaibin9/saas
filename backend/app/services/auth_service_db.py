@@ -325,12 +325,15 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
         user = _find_login_user(db, login_name, tenant_code)
         if not user or not verify_password(password, user.password_hash):
             from app.services import audit_log
-            count, locked = record_login_failure(lock_key)
+            from app.services.system_config_service import get_int
+            lock_minutes = get_int("SEC_LOCK_MINUTES", 15)
+            count, locked = record_login_failure(lock_key, threshold=get_int("SEC_LOCK_MAX_FAIL", 5),
+                                                 lock_seconds=lock_minutes * 60)
             audit_log.record("LOGIN_FAIL", login_name,
                              detail={"failCount": count, "locked": bool(locked),
                                      "tenantCode": tenant_code}, result="FAIL")
             if locked:
-                raise AppException("UNAUTHORIZED", "失败次数过多，账号已锁定 15 分钟")
+                raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定 {lock_minutes} 分钟")
             raise AppException("UNAUTHORIZED", "账号、学校编码或密码不正确")
 
         contexts = _role_contexts(db, user)
@@ -476,8 +479,10 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
     raw_id = str((user_ctx or {}).get("userId") or "")
     if not raw_id.startswith("db-") or not raw_id[3:].isdigit():
         raise AppException("VALIDATION_ERROR", "演示账号不支持修改密码，请使用正式账号登录后再试")
-    if len(new_password or "") < 8:
-        raise AppException("VALIDATION_ERROR", "新密码长度至少 8 位")
+    from app.services.system_config_service import get_int
+    min_len = get_int("SEC_PASSWORD_MIN_LEN", 8)
+    if len(new_password or "") < min_len:
+        raise AppException("VALIDATION_ERROR", f"新密码长度至少 {min_len} 位")
     if old_password == new_password:
         raise AppException("VALIDATION_ERROR", "新密码不能与原密码相同")
     lock_key = f"pwchange:{raw_id[3:]}"

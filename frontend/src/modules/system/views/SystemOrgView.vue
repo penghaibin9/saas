@@ -231,11 +231,12 @@ export default {
     },
     async doDeprecate({ reason }) {
       this.deprecateSubmitting = true
-      const res = await systemApi.deprecateOrgNode(this.deprecateRow.id, { name: this.deprecateRow.name, reason })
+      const res = await systemApi.deprecateOrgNode(this.deprecateRow.id, { type: this.deprecateRow.type, reason })
       this.deprecateSubmitting = false
       if (res.code === 0) {
-        toast.success('组织节点已作废（逻辑删除），原因已留痕')
+        toast.success('组织节点已停用（逻辑操作，可恢复），原因已留痕')
         this.confirmDeprecate = false
+        this.load()
       } else {
         toast.error(res.message)
       }

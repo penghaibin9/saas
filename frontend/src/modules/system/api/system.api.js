@@ -241,30 +241,26 @@ export const systemApi = {
     return ok(clone(row))
   },
 
-  /** 停用/启用（逻辑操作，不物理删除；停用原因必填 ≥5 字） */
-  setUserStatus(id, { action, reason }) {
-    const row = userList.find((u) => u.id === id)
-    if (!row) return fail('账号不存在')
-    if (action === 'DISABLE' && (!reason || reason.trim().length < 5)) return fail('停用原因必填且不少于 5 个字')
-    const map = { DISABLE: ['DISABLED', '已停用'], ENABLE: ['ACTIVE', '启用中'], UNLOCK: ['ACTIVE', '启用中'] }
-    if (!map[action]) return fail('非法操作')
-    const before = row.statusLabel
-    row.status = map[action][0]
-    row.statusLabel = map[action][1]
-    audit({
-      action: 'DISABLE', actionLabel: action === 'DISABLE' ? '停用/作废' : '启用',
-      target: `账号 ${row.userNo}（${row.name}）`,
-      summary: action === 'DISABLE' ? '停用账号（逻辑删除，可恢复，历史留痕保留）' : action === 'UNLOCK' ? '解锁账号' : '启用账号',
-      before, after: row.statusLabel, reason: reason || ''
-    })
-    return ok({ id, status: row.status, statusLabel: row.statusLabel })
+  /** 停用/启用（真实库：更新 t_user.status，写审计。停用原因必填 ≥5 字，后端最终校验） */
+  async setUserStatus(id, { action, reason }) {
+    try {
+      return ok(await request(`/system/users/${encodeURIComponent(id)}/status`, {
+        method: 'PUT', body: { action, reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '账号状态更新失败')
+    }
   },
 
-  resetUserPassword(id) {
-    const row = userList.find((u) => u.id === id)
-    if (!row) return fail('账号不存在')
-    audit({ action: 'UPDATE', actionLabel: '重置密码', target: `账号 ${row.userNo}（${row.name}）`, summary: '临时密码已通过短信下发（页面不展示明文），首登强制改密' })
-    return ok({ id, notice: '临时密码已发送至账号绑定手机号（' + maskPhone(row.phone) + '），本页不展示明文' })
+  /** 重置密码（真实库：生成一次性临时密码，password_hash 更新 + 强制首登改密。临时密码仅本次随响应返回） */
+  async resetUserPassword(id) {
+    try {
+      return ok(await request(`/system/users/${encodeURIComponent(id)}/reset-password`, {
+        method: 'POST'
+      }))
+    } catch (error) {
+      return fail(error.message || '重置密码失败')
+    }
   },
 
   async assignUserRoles(id, roleCodes) {
@@ -487,13 +483,15 @@ export const systemApi = {
     }
   },
 
-  updateRole(id, payload) {
-    const row = roleList.find((r) => r.id === id)
-    if (!row) return fail('角色不存在')
-    const before = `${row.name} · ${row.description}`
-    Object.assign(row, { name: payload.name ?? row.name, description: payload.description ?? row.description, updatedAt: now().slice(0, 10) })
-    audit({ action: 'UPDATE', actionLabel: '编辑', target: `角色「${row.name}」`, summary: '编辑角色基础信息', before, after: `${row.name} · ${row.description}` })
-    return ok(clone(row))
+  /** 编辑角色名称（真实库：仅自定义角色，预设角色平台维护。权限/范围走 saveRolePermissions） */
+  async updateRole(id, payload) {
+    try {
+      return ok(await request(`/system/roles/${encodeURIComponent(id)}`, {
+        method: 'PUT', body: { name: payload.name }
+      }))
+    } catch (error) {
+      return fail(error.message || '角色更新失败')
+    }
   },
 
   async copyRole(id) {
@@ -506,17 +504,15 @@ export const systemApi = {
   },
 
   /** 作废角色（逻辑删除）：内置角色禁止作废；有成员需先移除；原因必填留痕 */
-  deprecateRole(id, { reason }) {
-    const row = roleList.find((r) => r.id === id)
-    if (!row) return fail('角色不存在')
-    if (row.type === 'BUILTIN') return fail('内置角色不允许作废（平台冻结规则）')
-    if (row.memberCount > 0) return fail(`该角色仍有 ${row.memberCount} 个成员，请先移除成员再作废`)
-    if (!reason || reason.trim().length < 5) return fail('作废原因必填且不少于 5 个字')
-    row.status = 'DEPRECATED'
-    row.statusLabel = '已作废'
-    row.updatedAt = now().slice(0, 10)
-    audit({ action: 'DISABLE', actionLabel: '停用/作废', target: `角色「${row.name}」`, summary: '作废角色（逻辑删除，历史授权记录保留）', reason })
-    return ok({ id, status: row.status })
+  /** 停用自定义角色（真实库：预设角色不可停、有成员先改派，后端最终校验） */
+  async deprecateRole(id, { reason }) {
+    try {
+      return ok(await request(`/system/roles/${encodeURIComponent(id)}/status`, {
+        method: 'PUT', body: { action: 'DISABLE', reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '角色停用失败')
+    }
   },
 
   async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode }) {
@@ -572,49 +568,33 @@ export const systemApi = {
 
   /* ==================== 数据范围 ==================== */
 
-  getScopeRules(params = {}) {
-    let list = [...dataScopeRules]
-    if (params.status) list = list.filter((r) => r.status === params.status)
-    if (params.keyword) list = list.filter((r) => r.name.includes(params.keyword.trim()))
-    return ok(paginate(list, { page: 1, pageSize: 50, ...params }))
+  /** 数据范围规则目录（真实库 t_data_scope_rule；引用角色/影响用户由后端按角色 scopeCode 真实计算） */
+  async getScopeRules(params = {}) {
+    try {
+      return ok(await request('/system/scope-rules', {
+        params: { keyword: params.keyword || undefined, status: params.status || undefined }
+      }))
+    } catch (error) {
+      return fail(error.message || '数据范围规则加载失败')
+    }
   },
 
-  saveScopeRule(payload) {
-    if (payload.id) {
-      const row = dataScopeRules.find((r) => r.id === payload.id)
-      if (!row) return fail('规则不存在')
-      const before = row.remark
-      Object.assign(row, { name: payload.name ?? row.name, remark: payload.remark ?? row.remark, updatedAt: now().slice(0, 10) })
-      audit({ action: 'CONFIG', actionLabel: '配置变更', target: `数据范围规则「${row.name}」`, summary: '编辑规则', before, after: row.remark })
-      return ok(clone(row))
+  async saveScopeRule(payload) {
+    try {
+      return ok(await request('/system/scope-rules', { method: 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '规则保存失败')
     }
-    const row = {
-      id: 'scope-n' + ++seed,
-      name: payload.name,
-      scopeCode: payload.scopeCode || 'CUSTOM',
-      scopeLabel: (statusOptions.scopeTypes.find((s) => s.value === payload.scopeCode) || { label: '自定义' }).label,
-      appliedRoles: payload.appliedRoles || [],
-      affectedUsers: 0,
-      remark: payload.remark || '',
-      status: 'ENABLED',
-      statusLabel: '启用中',
-      updatedAt: now().slice(0, 10)
-    }
-    dataScopeRules.push(row)
-    audit({ action: 'CREATE', actionLabel: '新增', target: `数据范围规则「${row.name}」`, summary: '创建规则，生效前需在角色配置中引用' })
-    return ok(clone(row))
   },
 
-  deprecateScopeRule(id, { reason }) {
-    const row = dataScopeRules.find((r) => r.id === id)
-    if (!row) return fail('规则不存在')
-    if (!reason || reason.trim().length < 5) return fail('作废原因必填且不少于 5 个字')
-    if (row.affectedUsers > 0) return fail(`该规则仍影响 ${row.affectedUsers} 个用户，请先在角色配置中解除引用`)
-    row.status = 'DEPRECATED'
-    row.statusLabel = '已作废'
-    row.updatedAt = now().slice(0, 10)
-    audit({ action: 'DISABLE', actionLabel: '停用/作废', target: `数据范围规则「${row.name}」`, summary: '作废规则（逻辑删除，历史引用记录保留）', reason })
-    return ok({ id })
+  async deprecateScopeRule(id, { reason }) {
+    try {
+      return ok(await request(`/system/scope-rules/${encodeURIComponent(id)}/status`, {
+        method: 'PUT', body: { action: 'DISABLE', reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '规则作废失败')
+    }
   },
 
   getScopeAffectedUsers(id) {
@@ -646,10 +626,15 @@ export const systemApi = {
     }
   },
 
-  deprecateOrgNode(id, { name, reason }) {
-    if (!reason || reason.trim().length < 5) return fail('作废原因必填且不少于 5 个字')
-    audit({ action: 'DISABLE', actionLabel: '停用/作废', target: `组织「${name}」`, summary: '作废组织节点（逻辑删除，历史归属关系保留；如有在册成员需先转移）', reason })
-    return ok({ id })
+  /** 停用组织节点（真实库：班级有在籍学生先转出，后端最终校验） */
+  async deprecateOrgNode(id, { type, reason }) {
+    try {
+      return ok(await request(`/system/org-nodes/${encodeURIComponent(id)}/status`, {
+        method: 'PUT', body: { type, action: 'DISABLE', reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '组织节点停用失败')
+    }
   },
 
   importOrg({ confirm = false } = {}) {
@@ -666,40 +651,42 @@ export const systemApi = {
 
   /* ==================== 系统 / 品牌配置 ==================== */
 
-  getBrandConfig() {
-    return ok(clone(brandConfig))
+  /** 学校侧品牌配置（真实库 t_tenant_brand_config，编辑后经 /tenant/brand 真实生效于顶栏/登录页） */
+  async getBrandConfig() {
+    try {
+      return ok(await request('/system/brand'))
+    } catch (error) {
+      return fail(error.message || '品牌配置加载失败')
+    }
   },
 
-  saveBrandConfig(payload, { reason } = {}) {
-    const editable = ['schoolShortName', 'brandColor', 'loginSlogan', 'watermarkText', 'watermarkDensity', 'footerText']
-    const changed = []
-    editable.forEach((k) => {
-      if (payload[k] !== undefined && payload[k] !== brandConfig[k]) {
-        changed.push(`${k}: ${brandConfig[k] || '（空）'} → ${payload[k]}`)
-        brandConfig[k] = payload[k]
-      }
-    })
-    if (!changed.length) return fail('没有可保存的变更（学校名称/校徽为平台核定项，学校侧不可修改）')
-    tenantBrandConfig.brandColor = brandConfig.brandColor
-    tenantBrandConfig.watermarkText = brandConfig.watermarkText
-    audit({ action: 'CONFIG', actionLabel: '配置变更', target: '租户品牌配置', summary: `变更 ${changed.length} 项`, before: '', after: changed.join('；'), reason: reason || '' })
-    return ok(clone(brandConfig))
+  async saveBrandConfig(payload, { reason } = {}) {
+    try {
+      return ok(await request('/system/brand', { method: 'PUT', body: { ...payload, reason } }))
+    } catch (error) {
+      return fail(error.message || '品牌保存失败')
+    }
   },
 
-  getSystemConfigs() {
-    return ok(clone(systemConfigList))
+  /** 系统配置列表（真实库 t_sys_config，返回真实生效值） */
+  async getSystemConfigs() {
+    try {
+      const data = await request('/system/configs')
+      return ok(data.list)
+    } catch (error) {
+      return fail(error.message || '系统配置加载失败')
+    }
   },
 
-  saveSystemConfig(key, valueText, { reason } = {}) {
-    const row = systemConfigList.find((c) => c.key === key)
-    if (!row) return fail('配置项不存在')
-    if (!reason || reason.trim().length < 5) return fail('配置变更原因必填且不少于 5 个字（写入审计）')
-    const before = row.valueText
-    row.valueText = valueText
-    row.updatedAt = now().slice(0, 10)
-    row.updatedBy = currentRole.userName
-    audit({ action: 'CONFIG', actionLabel: '配置变更', target: `系统配置「${row.name}」`, summary: '修改配置值', before, after: valueText, reason })
-    return ok(clone(row))
+  /** 保存系统配置（真实生效：登录锁定阈值/时长、密码最小长度被强制层真实读取） */
+  async saveSystemConfig(key, valueText, { reason } = {}) {
+    try {
+      return ok(await request(`/system/configs/${encodeURIComponent(key)}`, {
+        method: 'PUT', body: { valueText, reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '配置保存失败')
+    }
   },
 
   exportConfigs() {
@@ -709,20 +696,29 @@ export const systemApi = {
 
   /* ==================== 日志（只读 + 导出，禁止删除） ==================== */
 
-  getLoginLogs(params = {}) {
-    let list = [...loginLogList]
-    if (params.keyword) list = list.filter((l) => l.userName.includes(params.keyword.trim()) || l.userNo.includes(params.keyword.trim()))
-    if (params.result) list = list.filter((l) => l.result === params.result)
-    return ok(paginate(list, params))
+  /** 登录与安全审计（真实库 t_security_audit_log）。安全敏感：不做 mock 回落，后端失败即报错，绝不展示编造日志。 */
+  async getLoginLogs(params = {}) {
+    try {
+      return ok(await request('/system/login-logs', {
+        params: { keyword: params.keyword || undefined, result: params.result || undefined,
+          page: params.page || 1, page_size: params.pageSize || 20 }
+      }))
+    } catch (error) {
+      return fail(error.message || '登录日志加载失败')
+    }
   },
 
-  getOperationLogs(params = {}) {
-    let list = [...operationLogList]
-    if (params.keyword) list = list.filter((l) => l.who.includes(params.keyword.trim()) || l.target.includes(params.keyword.trim()))
-    if (params.module) list = list.filter((l) => l.module === params.module)
-    if (params.action) list = list.filter((l) => l.action === params.action)
-    if (params.result) list = list.filter((l) => l.result === params.result)
-    return ok(paginate(list, params))
+  /** 操作与权限审计（真实库 t_security_audit_log）。同样不做 mock 回落。 */
+  async getOperationLogs(params = {}) {
+    try {
+      return ok(await request('/system/operation-logs', {
+        params: { keyword: params.keyword || undefined, result: params.result || undefined,
+          action: params.action || undefined, module: params.module || undefined,
+          page: params.page || 1, page_size: params.pageSize || 20 }
+      }))
+    } catch (error) {
+      return fail(error.message || '操作日志加载失败')
+    }
   },
 
   getAuditLogs() {

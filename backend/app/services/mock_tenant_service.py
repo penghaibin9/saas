@@ -40,10 +40,45 @@ _BRANDS = {
 }
 
 
+def _db_brand_overlay(tenant_id: str) -> dict:
+    """读 t_tenant_brand_config 覆盖层：学校侧编辑的品牌真实生效于顶栏/登录页。
+    任何异常（未接库/无行/字段空）都返回空覆盖，回落 mock 基线，绝不阻断页面渲染。"""
+    try:
+        from app.db.session import db_enabled, get_sessionmaker
+        if not db_enabled() or not str(tenant_id).isdigit():
+            return {}
+        from sqlalchemy import select
+        from app.models import TenantBrandConfig
+        db = get_sessionmaker()()
+        try:
+            row = db.scalars(select(TenantBrandConfig).where(
+                TenantBrandConfig.tenant_id == int(tenant_id))).first()
+            if row is None:
+                return {}
+            overlay = {}
+            if row.platform_name: overlay["platformName"] = row.platform_name
+            if row.platform_subtitle: overlay["platformSubtitle"] = row.platform_subtitle
+            if row.primary_color: overlay["primaryColor"] = row.primary_color
+            if row.secondary_color: overlay["secondaryColor"] = row.secondary_color
+            if row.default_theme: overlay["defaultTheme"] = row.default_theme
+            if row.motto: overlay["motto"] = row.motto
+            if row.watermark_text: overlay["watermarkText"] = row.watermark_text
+            extra = row.config_json if isinstance(row.config_json, dict) else {}
+            for k in ("loginSlogan", "footerText", "watermarkDensity", "schoolShortName"):
+                if extra.get(k) is not None:
+                    overlay[k] = extra[k]
+            return overlay
+        finally:
+            db.close()
+    except Exception:
+        return {}
+
+
 def get_brand() -> dict:
     tenant = get_tenant() or {}
     tenant_id = tenant.get("tenantId", "1000000000000000001")
-    brand = _BRANDS.get(tenant_id, _BRANDS["1000000000000000001"])
+    base = _BRANDS.get(tenant_id, _BRANDS["1000000000000000001"])
+    brand = {**base, **_db_brand_overlay(tenant_id)}  # DB 覆盖层优先（学校编辑真实生效）
     return {
         "tenantId": tenant_id,
         "tenantCode": tenant.get("tenantCode"),
