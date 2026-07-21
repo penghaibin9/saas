@@ -225,74 +225,64 @@
     </div>
 
     <!-- 新建 / 编辑 表单 -->
-    <div v-if="form.visible" class="aa-modal" @click.self="form.visible = false">
-      <div class="aa-modal__panel">
-        <h3 class="aa-modal__title">{{ form.mode === 'create' ? '新建' : '编辑' }}{{ tabLabel }}</h3>
-        <div class="aa-form">
-          <AppFormItem v-for="f in formFields" :key="f.key" :label="f.label" :required="!!f.required">
-            <AppSelect v-if="f.type === 'select'" v-model="form.model[f.key]" :options="f.options || []" />
-            <AppNumberInput v-else-if="f.type === 'number'" v-model="form.model[f.key]" />
-            <AppTextInput v-else v-model="form.model[f.key]" :placeholder="f.placeholder || ''" />
-          </AppFormItem>
-        </div>
-        <div class="aa-modal__foot">
-          <AppButton @click="form.visible = false">取消</AppButton>
-          <AppButton variant="primary" :loading="form.submitting" @click="submitForm">保存</AppButton>
-        </div>
+    <AppDrawer :visible="form.visible" :title="(form.mode === 'create' ? '新建' : '编辑') + tabLabel" @update:visible="form.visible = $event">
+      <div class="aa-form">
+        <AppFormItem v-for="f in formFields" :key="f.key" :label="f.label" :required="!!f.required">
+          <AppSelect v-if="f.type === 'select'" v-model="form.model[f.key]" :options="f.options || []" />
+          <AppNumberInput v-else-if="f.type === 'number'" v-model="form.model[f.key]" />
+          <AppTextInput v-else v-model="form.model[f.key]" :placeholder="f.placeholder || ''" />
+        </AppFormItem>
       </div>
-    </div>
+      <template #footer>
+        <AppButton @click="form.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="form.submitting" @click="submitForm">保存</AppButton>
+      </template>
+    </AppDrawer>
 
     <!-- 教学秘书绑定 -->
-    <div v-if="secretary.visible" class="aa-modal" @click.self="secretary.visible = false">
-      <div class="aa-modal__panel">
-        <h3 class="aa-modal__title">教学秘书绑定 · {{ secretary.row && secretary.row.collegeName }}</h3>
-        <div class="aa-form">
-          <AppFormItem label="教学秘书 user_id">
-            <AppTextInput v-model="secretary.secretaryId" placeholder="留空为解绑" />
-          </AppFormItem>
-        </div>
-        <div class="aa-modal__foot">
-          <AppButton @click="secretary.visible = false">取消</AppButton>
-          <AppButton variant="primary" :loading="secretary.submitting" @click="submitSecretary">保存</AppButton>
-        </div>
+    <AppDrawer :visible="secretary.visible" :title="'教学秘书绑定 · ' + (secretary.row && secretary.row.collegeName)" @update:visible="secretary.visible = $event">
+      <div class="aa-form">
+        <AppFormItem label="教学秘书 user_id">
+          <AppTextInput v-model="secretary.secretaryId" placeholder="留空为解绑" />
+        </AppFormItem>
       </div>
-    </div>
+      <template #footer>
+        <AppButton @click="secretary.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="secretary.submitting" @click="submitSecretary">保存</AppButton>
+      </template>
+    </AppDrawer>
 
     <!-- 班级学生抽屉 -->
-    <div v-if="students.visible" class="aa-modal" @click.self="students.visible = false">
-      <div class="aa-modal__panel aa-modal__panel--wide">
-        <h3 class="aa-modal__title">班级学生 · {{ students.className }}</h3>
-        <LoadingState v-if="students.loading" />
-        <EmptyState v-else-if="!students.rows.length" title="该班暂无在册学生" />
-        <table v-else class="mp-audit">
-          <thead><tr><th>学号</th><th>姓名</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="s in students.rows" :key="s.id">
-              <td>{{ s.studentNo }}</td><td>{{ s.realName }}</td>
-              <td><button class="mp-link" :disabled="!canManage" @click="openAdjust(s)">调整班级</button></td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="aa-modal__foot"><AppButton @click="students.visible = false">关闭</AppButton></div>
-      </div>
-    </div>
+    <AppDrawer :visible="students.visible" :title="'班级学生 · ' + students.className" @update:visible="students.visible = $event">
+      <LoadingState v-if="students.loading" />
+      <EmptyState v-else-if="!students.rows.length" title="该班暂无在册学生" />
+      <table v-else class="mp-audit">
+        <thead><tr><th>学号</th><th>姓名</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr v-for="s in students.rows" :key="s.id">
+            <td>{{ s.studentNo }}</td><td>{{ s.realName }}</td>
+            <td><button class="mp-link" :disabled="!canManage" @click="openAdjust(s)">调整班级</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <template #footer>
+        <AppButton @click="students.visible = false">关闭</AppButton>
+      </template>
+    </AppDrawer>
 
     <!-- 班级调整 -->
-    <div v-if="adjust.visible" class="aa-modal" @click.self="adjust.visible = false">
-      <div class="aa-modal__panel">
-        <h3 class="aa-modal__title">班级调整 · {{ adjust.student && adjust.student.realName }}</h3>
-        <div class="aa-form">
-          <AppFormItem label="目标班级" required>
-            <AppSelect v-model="adjust.targetClassId" placeholder="请选择目标班级" :options="classOptions" />
-          </AppFormItem>
-        </div>
-        <div class="aa-modal__foot">
-          <AppButton @click="adjust.visible = false">取消</AppButton>
-          <AppButton variant="primary" :disabled="!adjust.targetClassId" :loading="adjust.submitting"
-                  @click="submitAdjust">确认调整</AppButton>
-        </div>
+    <AppDrawer :visible="adjust.visible" :title="'班级调整 · ' + (adjust.student && adjust.student.realName)" @update:visible="adjust.visible = $event">
+      <div class="aa-form">
+        <AppFormItem label="目标班级" required>
+          <AppSelect v-model="adjust.targetClassId" placeholder="请选择目标班级" :options="classOptions" />
+        </AppFormItem>
       </div>
-    </div>
+      <template #footer>
+        <AppButton @click="adjust.visible = false">取消</AppButton>
+        <AppButton variant="primary" :disabled="!adjust.targetClassId" :loading="adjust.submitting"
+                @click="submitAdjust">确认调整</AppButton>
+      </template>
+    </AppDrawer>
 
     <AppConfirmDialog
       v-model:visible="del.visible"
@@ -305,76 +295,69 @@
     />
 
     <!-- 专业方向 · 新建/编辑 -->
-    <div v-if="directionForm.visible" class="aa-modal" @click.self="directionForm.visible = false">
-      <div class="aa-modal__panel">
-        <h3 class="aa-modal__title">{{ directionForm.mode === 'create' ? '新建' : '编辑' }}专业方向</h3>
-        <div class="aa-form">
-          <AppFormItem label="方向名称" required>
-            <AppTextInput v-model="directionForm.model.directionName" placeholder="如 Web开发方向" />
-          </AppFormItem>
-          <AppFormItem label="编码">
-            <AppTextInput v-model="directionForm.model.code" placeholder="选填，专业内唯一" />
-          </AppFormItem>
-        </div>
-        <div class="aa-modal__foot">
-          <AppButton @click="directionForm.visible = false">取消</AppButton>
-          <AppButton variant="primary" :loading="directionForm.submitting" @click="submitDirectionForm">保存</AppButton>
-        </div>
+    <AppDrawer :visible="directionForm.visible" :title="(directionForm.mode === 'create' ? '新建' : '编辑') + '专业方向'" @update:visible="directionForm.visible = $event">
+      <div class="aa-form">
+        <AppFormItem label="方向名称" required>
+          <AppTextInput v-model="directionForm.model.directionName" placeholder="如 Web开发方向" />
+        </AppFormItem>
+        <AppFormItem label="编码">
+          <AppTextInput v-model="directionForm.model.code" placeholder="选填，专业内唯一" />
+        </AppFormItem>
       </div>
-    </div>
+      <template #footer>
+        <AppButton @click="directionForm.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="directionForm.submitting" @click="submitDirectionForm">保存</AppButton>
+      </template>
+    </AppDrawer>
 
     <!-- 班级调整申请单 · 发起 -->
-    <div v-if="adjustCreateForm.visible" class="aa-modal" @click.self="adjustCreateForm.visible = false">
-      <div class="aa-modal__panel">
-        <h3 class="aa-modal__title">发起班级调整</h3>
-        <div class="aa-form">
-          <AppFormItem label="调整类型" required>
-            <AppSelect v-model="adjustCreateForm.model.adjustType" :options="[
-              { value: 'MERGE', label: '合班登记' }, { value: 'SPLIT', label: '拆班登记' },
-              { value: 'DISBAND', label: '停用撤销' }, { value: 'GRADUATE_CLEAR', label: '毕业清班' }]" />
-          </AppFormItem>
-          <AppFormItem label="来源班级" required hint="按住 Ctrl/Cmd 可多选">
-            <!-- 原生多选列表框：AppSelect 只支持单选，多选保留原生控件，不强行套壳 -->
-            <select v-model="adjustCreateForm.model.fromClassIds" multiple size="5" class="aa-native-multiselect">
-              <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-            </select>
-          </AppFormItem>
-          <AppFormItem v-if="adjustCreateForm.model.adjustType === 'MERGE'" label="目标班级" required>
-            <AppSelect v-model="adjustCreateForm.model.toClassId" placeholder="请选择目标班级" :options="classOptions" />
-          </AppFormItem>
-          <AppFormItem label="调整理由" required>
-            <AppTextInput v-model="adjustCreateForm.model.reason" placeholder="至少5个字符" />
-          </AppFormItem>
-        </div>
-        <div class="aa-modal__foot">
-          <AppButton @click="adjustCreateForm.visible = false">取消</AppButton>
-          <AppButton variant="primary" :loading="adjustCreateForm.submitting" @click="submitAdjustCreate">发起</AppButton>
-        </div>
+    <AppDrawer :visible="adjustCreateForm.visible" title="发起班级调整" @update:visible="adjustCreateForm.visible = $event">
+      <div class="aa-form">
+        <AppFormItem label="调整类型" required>
+          <AppSelect v-model="adjustCreateForm.model.adjustType" :options="[
+            { value: 'MERGE', label: '合班登记' }, { value: 'SPLIT', label: '拆班登记' },
+            { value: 'DISBAND', label: '停用撤销' }, { value: 'GRADUATE_CLEAR', label: '毕业清班' }]" />
+        </AppFormItem>
+        <AppFormItem label="来源班级" required hint="按住 Ctrl/Cmd 可多选">
+          <!-- 原生多选列表框：AppSelect 只支持单选，多选保留原生控件，不强行套壳 -->
+          <select v-model="adjustCreateForm.model.fromClassIds" multiple size="5" class="aa-native-multiselect">
+            <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+          </select>
+        </AppFormItem>
+        <AppFormItem v-if="adjustCreateForm.model.adjustType === 'MERGE'" label="目标班级" required>
+          <AppSelect v-model="adjustCreateForm.model.toClassId" placeholder="请选择目标班级" :options="classOptions" />
+        </AppFormItem>
+        <AppFormItem label="调整理由" required>
+          <AppTextInput v-model="adjustCreateForm.model.reason" placeholder="至少5个字符" />
+        </AppFormItem>
       </div>
-    </div>
+      <template #footer>
+        <AppButton @click="adjustCreateForm.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="adjustCreateForm.submitting" @click="submitAdjustCreate">发起</AppButton>
+      </template>
+    </AppDrawer>
 
     <!-- 班级调整申请单 · 核对结果 -->
-    <div v-if="adjustCheckResult.visible" class="aa-modal" @click.self="adjustCheckResult.visible = false">
-      <div class="aa-modal__panel">
-        <h3 class="aa-modal__title">核对结果</h3>
-        <template v-if="adjustCheckResult.row && adjustCheckResult.row.checkResult">
-          <p>
-            阻断状态：
-            <StatusTag :type="adjustCheckResult.row.checkResult.blocked ? 'danger' : 'success'"
-                       :label="adjustCheckResult.row.checkResult.blocked ? '存在阻断项' : '无阻断'" dot />
-          </p>
-          <table class="mp-audit">
-            <thead><tr><th>班级</th><th>在读学生数</th></tr></thead>
-            <tbody>
-              <tr v-for="ref in adjustCheckResult.row.checkResult.refs" :key="ref.classId">
-                <td>{{ ref.className }}</td><td>{{ ref.activeStudentCount }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </template>
-        <div class="aa-modal__foot"><AppButton @click="adjustCheckResult.visible = false">关闭</AppButton></div>
-      </div>
-    </div>
+    <AppDrawer :visible="adjustCheckResult.visible" title="核对结果" @update:visible="adjustCheckResult.visible = $event">
+      <template v-if="adjustCheckResult.row && adjustCheckResult.row.checkResult">
+        <p>
+          阻断状态：
+          <StatusTag :type="adjustCheckResult.row.checkResult.blocked ? 'danger' : 'success'"
+                     :label="adjustCheckResult.row.checkResult.blocked ? '存在阻断项' : '无阻断'" dot />
+        </p>
+        <table class="mp-audit">
+          <thead><tr><th>班级</th><th>在读学生数</th></tr></thead>
+          <tbody>
+            <tr v-for="ref in adjustCheckResult.row.checkResult.refs" :key="ref.classId">
+              <td>{{ ref.className }}</td><td>{{ ref.activeStudentCount }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+      <template #footer>
+        <AppButton @click="adjustCheckResult.visible = false">关闭</AppButton>
+      </template>
+    </AppDrawer>
 
     <AppConfirmDialog
       v-model:visible="adjustActionConfirm.visible"
@@ -394,7 +377,7 @@
  * 生产级：数据全部来自真实后端 /academic-affairs/orgs/*，无 mock；页面三态 + 二次确认 + 越权由后端裁决。
  */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppButton } from '@/components/ui'
+import { AppButton, AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppSelect, AppFormItem, AppTextInput, AppNumberInput } from '@/components/common'
 import { academicAffairsOrgApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -406,7 +389,7 @@ const MANAGE_ROLES = ['SCHOOL_ADMIN', 'PLATFORM_SUPER_ADMIN', 'ACADEMIC_TEACHER'
 
 export default {
   name: 'AaOrgConsole',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppConfirmDialog, AppSelect, AppFormItem, AppTextInput, AppNumberInput },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppSelect, AppFormItem, AppTextInput, AppNumberInput },
   data() {
     return {
       tab: 'college',
@@ -805,11 +788,6 @@ export default {
 .aa-stat__label { color: var(--text-500); font-size: var(--font-size-sm); }
 .aa-tree { list-style: none; padding-left: var(--space-2); }
 .aa-tree ul { list-style: none; padding-left: var(--space-4); }
-.aa-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.aa-modal__panel { background: var(--surface-100, #fff); border-radius: var(--radius-lg); padding: var(--space-4); width: 420px; max-width: 92vw; max-height: 88vh; overflow: auto; }
-.aa-modal__panel--wide { width: 640px; }
-.aa-modal__title { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
 .aa-native-multiselect { width: 100%; box-sizing: border-box; padding: var(--space-2); border: 1px solid var(--border-300); border-radius: var(--radius-sm); font-family: inherit; }
-.aa-modal__foot { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
 .mp-link + .mp-link { margin-left: var(--space-2); }
 </style>

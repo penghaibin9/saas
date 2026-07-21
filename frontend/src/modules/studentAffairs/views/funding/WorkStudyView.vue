@@ -39,26 +39,25 @@
         </AppSectionCard>
       </div>
 
-      <div v-if="mm.visible" class="ws-mask" @click.self="mm.visible=false">
-        <div class="ws-modal">
-          <h3 class="ws-modal__title">{{ mm.name }} · 月度考核（累计补贴 {{ amountText(mm.subsidyTotal) }}）</h3>
-          <div class="ws-madd">
-            <AppTextInput v-model="mm.form.monthCode" placeholder="考核月 2025-10" />
-            <AppSelect v-model="mm.form.rating" :options="RATING_OPTIONS" placeholder="" />
-            <AppNumberInput v-model="mm.form.workHours" class="ws-sm" :min="0" placeholder="工时" />
-            <AppNumberInput v-model="mm.form.subsidyAmount" class="ws-sm" :min="0" placeholder="补贴" />
-            <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
-          </div>
-          <DataTable v-if="mm.list.length" :columns="monthlyColumns" :rows="mm.list" row-key="monthlyId">
-            <template #cell-month="{ row }">{{ row.monthCode }}</template>
-            <template #cell-rating="{ row }">{{ row.ratingLabel || row.rating }}</template>
-            <template #cell-workHours="{ row }">{{ row.workHours != null ? row.workHours : '—' }}</template>
-            <template #cell-subsidy="{ row }">{{ amountText(row.subsidyAmount) }}</template>
-          </DataTable>
-          <p v-else class="sa-empty">暂无月度考核</p>
-          <div class="ws-mfoot"><button type="button" class="ws-btn" @click="mm.visible=false">关闭</button></div>
+      <AppDrawer :visible="mm.visible" :title="mm.name + ' · 月度考核（累计补贴 ' + amountText(mm.subsidyTotal) + '）'" @update:visible="mm.visible = $event">
+        <div class="ws-madd">
+          <AppTextInput v-model="mm.form.monthCode" placeholder="考核月 2025-10" />
+          <AppSelect v-model="mm.form.rating" :options="RATING_OPTIONS" placeholder="" />
+          <AppNumberInput v-model="mm.form.workHours" class="ws-sm" :min="0" placeholder="工时" />
+          <AppNumberInput v-model="mm.form.subsidyAmount" class="ws-sm" :min="0" placeholder="补贴" />
+          <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
         </div>
-      </div>
+        <DataTable v-if="mm.list.length" :columns="monthlyColumns" :rows="mm.list" row-key="monthlyId">
+          <template #cell-month="{ row }">{{ row.monthCode }}</template>
+          <template #cell-rating="{ row }">{{ row.ratingLabel || row.rating }}</template>
+          <template #cell-workHours="{ row }">{{ row.workHours != null ? row.workHours : '—' }}</template>
+          <template #cell-subsidy="{ row }">{{ amountText(row.subsidyAmount) }}</template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无月度考核</p>
+        <template #footer>
+          <AppButton @click="mm.visible = false">关闭</AppButton>
+        </template>
+      </AppDrawer>
     </AppGlobalState>
 
     <!-- 岗位申请：原为「学生主档ID」原生弹窗，要老师手打内部 ID -->
@@ -87,6 +86,7 @@ import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
   AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -109,7 +109,8 @@ export default {
   name: 'WorkStudyView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppSelect, AppStudentPicker, StatusTag: AppStatusTag, AppTextInput, DataTable
+    AppPermissionButton, AppSectionCard, AppSelect, AppStudentPicker, StatusTag: AppStatusTag, AppTextInput, DataTable,
+    AppButton, AppDrawer
   },
   data() {
     return { recordColumns: RECORD_COLUMNS, monthlyColumns: MONTHLY_COLUMNS, loading: true, acting: '', errorMessage: '', posts: [], records: [], selPost: '', postForm: { deptName: '', postName: '', salary: null },
@@ -210,12 +211,7 @@ export default {
 .ws-post span { font-size: var(--font-size-sm); color: var(--text-secondary); }
 .ws-empty, .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
 .ws-ops { display: flex; gap: 6px; flex-wrap: wrap; }
-.ws-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.ws-modal { width: 560px; max-width: calc(100vw - 32px); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-5); max-height: 80vh; overflow: auto; }
-.ws-modal__title { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
 .ws-madd { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
-.ws-mfoot { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
-.ws-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 18px; cursor: pointer; }
 @media (max-width: 960px) { .ws-cols { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';
 </style>

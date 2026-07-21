@@ -43,30 +43,27 @@
     </AppGlobalState>
 
     <!-- 新建周期 / 评分 弹窗 -->
-    <div v-if="fm.visible" class="fm-mask" @click.self="closeForm">
-      <div class="fm-dialog">
-        <div class="fm-title">{{ fm.title }}</div>
-        <div class="fm-body">
-          <template v-if="fm.kind === 'period'">
-            <div class="fm-item"><label class="fm-label">周期名称<i>*</i></label>
-              <AppTextInput v-model="fm.values.periodName" placeholder="如：2025-2026学年上 辅导员考评" :maxlength="100" /></div>
-            <div class="fm-item"><label class="fm-label">学期</label>
-              <AppTextInput v-model="fm.values.semester" placeholder="如：2025-1" :maxlength="50" /></div>
-          </template>
-          <template v-else>
-            <div class="fm-item"><label class="fm-label">被考评辅导员</label>
-              <div class="mp-cell-main">{{ fm.row.counselorName || ('辅导员#' + fm.row.counselorId) }}（自动分 {{ fmtScore(fm.row.autoScore) }}）</div></div>
-            <div class="fm-item"><label class="fm-label">学院评分（0-100）<i>*</i></label>
-              <AppNumberInput v-model="fm.values.collegeScore" :min="0" :max="100" placeholder="0-100" /></div>
-          </template>
-          <p v-if="fm.err" class="fm-err">{{ fm.err }}</p>
-        </div>
-        <div class="fm-foot">
-          <AppButton variant="ghost" @click="closeForm">取消</AppButton>
-          <AppButton variant="primary" :loading="fm.submitting" @click="submitForm">确定</AppButton>
-        </div>
+    <AppDrawer :visible="fm.visible" :title="fm.title" @update:visible="closeForm">
+      <div class="fm-body">
+        <template v-if="fm.kind === 'period'">
+          <div class="fm-item"><label class="fm-label">周期名称<i>*</i></label>
+            <AppTextInput v-model="fm.values.periodName" placeholder="如：2025-2026学年上 辅导员考评" :maxlength="100" /></div>
+          <div class="fm-item"><label class="fm-label">学期</label>
+            <AppTextInput v-model="fm.values.semester" placeholder="如：2025-1" :maxlength="50" /></div>
+        </template>
+        <template v-else>
+          <div class="fm-item"><label class="fm-label">被考评辅导员</label>
+            <div class="mp-cell-main">{{ fm.row.counselorName || ('辅导员#' + fm.row.counselorId) }}（自动分 {{ fmtScore(fm.row.autoScore) }}）</div></div>
+          <div class="fm-item"><label class="fm-label">学院评分（0-100）<i>*</i></label>
+            <AppNumberInput v-model="fm.values.collegeScore" :min="0" :max="100" placeholder="0-100" /></div>
+        </template>
+        <p v-if="fm.err" class="fm-err">{{ fm.err }}</p>
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="closeForm">取消</AppButton>
+        <AppButton variant="primary" :loading="fm.submitting" @click="submitForm">确定</AppButton>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
@@ -77,7 +74,7 @@
  */
 import { ModulePageShell, DataTable } from '@/components/business'
 import { AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton } from '@/components/common'
-import { AppButton } from '@/components/ui'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { assessmentApi } from '@/modules/studentAffairs/api/class.api'
 import { toast } from '@/utils/toast'
 
@@ -89,7 +86,7 @@ const COLUMNS = [
 
 export default {
   name: 'CounselorAssessmentView',
-  components: { ModulePageShell, DataTable, AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton, AppButton },
+  components: { ModulePageShell, DataTable, AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton, AppButton, AppDrawer },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -203,13 +200,9 @@ export default {
 .bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .bar-lbl { font-size: var(--font-size-sm); color: var(--text-secondary); }
 .is-disabled { opacity: 0.5; cursor: not-allowed; }
-.fm-mask { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.fm-dialog { width: 420px; max-width: calc(100vw - 32px); background: var(--bg-card, #fff); border-radius: 12px; box-shadow: var(--shadow-lg, 0 12px 40px rgba(0,0,0,0.18)); overflow: hidden; }
-.fm-title { padding: 14px 18px; font-weight: 600; font-size: 15px; border-bottom: 1px solid var(--border-light); }
-.fm-body { padding: 16px 18px; display: flex; flex-direction: column; gap: var(--space-3); }
+.fm-body { display: flex; flex-direction: column; gap: var(--space-3); }
 .fm-item { display: flex; flex-direction: column; gap: 6px; }
 .fm-label { font-size: var(--font-size-sm); color: var(--text-secondary); }
 .fm-label i { color: var(--danger-600); font-style: normal; margin-left: 2px; }
 .fm-err { color: var(--danger-600); font-size: var(--font-size-sm); margin: 0; }
-.fm-foot { padding: 12px 18px; display: flex; justify-content: flex-end; gap: var(--space-2); border-top: 1px solid var(--border-light); }
 </style>

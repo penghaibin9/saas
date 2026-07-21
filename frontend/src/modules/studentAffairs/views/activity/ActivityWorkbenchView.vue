@@ -66,19 +66,18 @@
         <p v-else class="sa-empty">暂无活动，点右上「建活动」</p>
       </AppSectionCard>
 
-      <div v-if="pv.visible" class="af-mask" @click.self="pv.visible=false">
-        <div class="af-modal">
-          <h3 class="af-modal__title">{{ pv.name }} · 名单（{{ pv.list.length }}）</h3>
-          <DataTable v-if="pv.list.length" :columns="participantColumns" :rows="pv.list" row-key="signupId">
-            <template #cell-student="{ row }">{{ row.realName || ('#'+row.studentId) }}</template>
-            <template #cell-studentNo="{ row }">{{ row.studentNo||'—' }}</template>
-            <template #cell-status="{ row }">{{ signupLabel(row.signupStatus) }}</template>
-            <template #cell-checkin="{ row }">{{ (row.checkinAt||'').slice(0,16).replace('T',' ')||'—' }}</template>
-          </DataTable>
-          <p v-else class="sa-empty">暂无报名</p>
-          <div class="af-actions"><button type="button" class="af-btn" @click="pv.visible=false">关闭</button></div>
-        </div>
-      </div>
+      <AppDrawer :visible="pv.visible" :title="pv.name + ' · 名单（' + pv.list.length + '）'" @update:visible="pv.visible = $event">
+        <DataTable v-if="pv.list.length" :columns="participantColumns" :rows="pv.list" row-key="signupId">
+          <template #cell-student="{ row }">{{ row.realName || ('#'+row.studentId) }}</template>
+          <template #cell-studentNo="{ row }">{{ row.studentNo||'—' }}</template>
+          <template #cell-status="{ row }">{{ signupLabel(row.signupStatus) }}</template>
+          <template #cell-checkin="{ row }">{{ (row.checkinAt||'').slice(0,16).replace('T',' ')||'—' }}</template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无报名</p>
+        <template #footer>
+          <AppButton @click="pv.visible = false">关闭</AppButton>
+        </template>
+      </AppDrawer>
     </AppGlobalState>
   </AppPageShell>
 </template>
@@ -88,6 +87,7 @@ import {
   AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -120,7 +120,7 @@ export default {
   name: 'ActivityWorkbenchView',
   components: {
     AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput, DataTable
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput, DataTable, AppButton, AppDrawer
   },
   data() {
     return {
@@ -239,9 +239,6 @@ export default {
 .af-time { color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; margin-left: 8px; }
 .af-ops { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .af-link { border: none; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
-.af-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.af-modal { width: 560px; max-width: calc(100vw - 32px); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-5); max-height: 80vh; overflow: auto; }
-.af-modal__title { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .af-grid { grid-template-columns: 1fr; } .af-field--wide { grid-column: span 1; } }
 @import '@/styles/module-page.css';
 </style>
