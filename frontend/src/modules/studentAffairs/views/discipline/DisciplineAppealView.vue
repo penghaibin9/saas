@@ -13,21 +13,18 @@
       </div>
 
       <AppSectionCard title="已生效处分 · 送达 / 发起申诉">
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>处分类型</th><th>送达</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="c in effectiveCases" :key="c.caseId">
-              <td><strong>{{ c.realName || ('学生#' + c.studentId) }}</strong></td>
-              <td>{{ discLabel(c.discType) }}</td>
-              <td>{{ c.deliveredAt ? (deliveryLabel(c.deliveryMethod) + ' · ' + c.deliveredAt.slice(0,10)) : '未送达' }}</td>
-              <td class="ap-ops">
-                <AppPermissionButton v-if="!c.deliveredAt" code="studentAffairs.discipline.deliver" size="sm" :loading="acting===c.caseId" @click="deliver(c)">登记送达</AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.discipline.appeal.create" size="sm" variant="secondary" :loading="acting===c.caseId" @click="appeal(c)">发起申诉</AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!effectiveCases.length"><td colspan="4" class="sa-empty">暂无已生效处分</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="effectiveCases.length" :columns="caseColumns" :rows="effectiveCases" row-key="caseId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-discType="{ row }">{{ discLabel(row.discType) }}</template>
+          <template #cell-delivered="{ row }">{{ row.deliveredAt ? (deliveryLabel(row.deliveryMethod) + ' · ' + row.deliveredAt.slice(0,10)) : '未送达' }}</template>
+          <template #cell-actions="{ row }">
+            <div class="ap-ops">
+              <AppPermissionButton v-if="!row.deliveredAt" code="studentAffairs.discipline.deliver" size="sm" :loading="acting===row.caseId" @click="deliver(row)">登记送达</AppPermissionButton>
+              <AppPermissionButton code="studentAffairs.discipline.appeal.create" size="sm" variant="secondary" :loading="acting===row.caseId" @click="appeal(row)">发起申诉</AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无已生效处分</p>
       </AppSectionCard>
 
       <AppSectionCard title="申诉复核">
@@ -35,22 +32,17 @@
           <button v-for="f in appealFilters" :key="f.key" type="button" class="ap-chip"
                   :class="{ 'is-on': appealStatus === f.key }" @click="setAppealStatus(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>申诉理由</th><th>状态</th><th>复核意见</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="a in appeals" :key="a.appealId">
-              <td>{{ a.realName || ('学生#' + a.studentId) }}</td>
-              <td class="ap-reason">{{ a.reason }}</td>
-              <td><StatusTag :type="appealType(a.status)" :label="a.statusLabel || a.status" dot /></td>
-              <td class="ap-opinion">{{ a.reviewOpinion || '—' }}</td>
-              <td>
-                <AppPermissionButton v-if="['SUBMITTED','REVIEWING'].includes(a.status)" code="studentAffairs.discipline.appeal.review" size="sm" :loading="acting===a.appealId" @click="review(a)">复核</AppPermissionButton>
-                <span v-else class="ap-dash">—</span>
-              </td>
-            </tr>
-            <tr v-if="!appeals.length"><td colspan="5" class="sa-empty">暂无申诉</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="appeals.length" :columns="appealColumns" :rows="appeals" row-key="appealId">
+          <template #cell-student="{ row }">{{ row.realName || ('学生#' + row.studentId) }}</template>
+          <template #cell-reason="{ row }"><span class="ap-reason">{{ row.reason }}</span></template>
+          <template #cell-status="{ row }"><StatusTag :type="appealType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-opinion="{ row }"><span class="ap-opinion">{{ row.reviewOpinion || '—' }}</span></template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton v-if="['SUBMITTED','REVIEWING'].includes(row.status)" code="studentAffairs.discipline.appeal.review" size="sm" :loading="acting===row.appealId" @click="review(row)">复核</AppPermissionButton>
+            <span v-else class="ap-dash">—</span>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无申诉</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -92,6 +84,7 @@ import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -105,15 +98,30 @@ const APPEAL_FILTERS = [
   { key: '', label: '全部' }, { key: 'SUBMITTED', label: '待复核' },
   { key: 'UPHELD', label: '已维持' }, { key: 'REVISED', label: '已变更' }, { key: 'REVOKED', label: '已撤销' }
 ]
+const CASE_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'discType', title: '处分类型' },
+  { key: 'delivered', title: '送达' },
+  { key: 'actions', title: '操作', align: 'right', width: '200px' }
+]
+const APPEAL_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'reason', title: '申诉理由' },
+  { key: 'status', title: '状态' },
+  { key: 'opinion', title: '复核意见' },
+  { key: 'actions', title: '操作', align: 'right', width: '100px' }
+]
 
 export default {
   name: 'DisciplineAppealView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, StatusTag: AppStatusTag
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, DataTable
   },
   data() {
     return {
+      caseColumns: CASE_COLUMNS,
+      appealColumns: APPEAL_COLUMNS,
       loading: true, acting: '', errorMessage: '', effectiveCases: [], appeals: [], appealStatus: '', appealFilters: APPEAL_FILTERS,
       delDlg: { visible: false, caseId: '', method: 'DIRECT' },
       apDlg: { visible: false, caseId: '' },
@@ -184,11 +192,10 @@ export default {
 .ap-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .ap-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .ap-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ap-reason, .ap-opinion { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 260px; }
 .ap-ops { display: flex; gap: 6px; }
 .ap-dash { color: var(--text-tertiary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

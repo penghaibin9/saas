@@ -23,18 +23,21 @@
             @click="setLevel(f.key)"
           >{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>困难等级</th><th>认定时间</th><th>来源批次</th></tr></thead>
-          <tbody>
-            <tr v-for="s in items" :key="s.studentId">
-              <td><strong>{{ s.realName || ('学生#' + s.studentId) }}</strong></td>
-              <td><StatusTag :type="levelType(s.level)" :label="s.levelLabel || s.level || '—'" dot /></td>
-              <td><AppDateDisplay :value="s.identifiedAt" mode="date" empty-text="—" /></td>
-              <td class="dl-batch">{{ s.batchId || '—' }}</td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="4" class="sa-empty">当前范围与筛选下暂无困难学生</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="difficultColumns" :rows="items" row-key="studentId">
+          <template #cell-student="{ row }">
+            <div class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</div>
+          </template>
+          <template #cell-level="{ row }">
+            <StatusTag :type="levelType(row.level)" :label="row.levelLabel || row.level || '—'" dot />
+          </template>
+          <template #cell-identifiedAt="{ row }">
+            <AppDateDisplay :value="row.identifiedAt" mode="date" empty-text="—" />
+          </template>
+          <template #cell-batchId="{ row }">
+            <span class="dl-batch">{{ row.batchId || '—' }}</span>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围与筛选下暂无困难学生</p>
         <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
                        :total="pagination.total" @change="load" />
       </AppSectionCard>
@@ -44,6 +47,7 @@
 
 <script>
 import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const LEVELS = [
@@ -53,11 +57,19 @@ const LEVELS = [
   { key: 'GENERAL', label: '一般困难' }
 ]
 
+const DIFFICULT_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'level', title: '困难等级' },
+  { key: 'identifiedAt', title: '认定时间' },
+  { key: 'batchId', title: '来源批次' }
+]
+
 export default {
   name: 'DifficultStudentsView',
-  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
     return {
+      difficultColumns: DIFFICULT_COLUMNS,
       loading: true, errorMessage: '', items: [], total: 0, byLevel: {}, activeLevel: '', levelFilters: LEVELS,
       pagination: { page: 1, pageSize: 20, total: 0 }
     }
@@ -113,9 +125,8 @@ export default {
 .dl-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .dl-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .dl-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .dl-batch { color: var(--text-tertiary); font-size: var(--font-size-sm); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

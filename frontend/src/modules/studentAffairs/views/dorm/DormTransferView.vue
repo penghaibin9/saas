@@ -18,26 +18,23 @@
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
       <AppSectionCard title="调宿申请">
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>目标床</th><th>事由</th><th>当前节点</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="t in items" :key="t.transferId">
-              <td><strong>{{ t.realName || t.studentId }}</strong><small>{{ t.studentNo }}</small></td>
-              <td>床 #{{ t.toBedId }}</td>
-              <td>{{ t.reason || '—' }}</td>
-              <td>{{ nodeLabel(t.currentNode) }}</td>
-              <td><AppStatusTag :type="statusKind(t.status)" :label="statusLabel(t.status)" /></td>
-              <td class="sa-actions">
-                <template v-if="isPending(t.status)">
-                  <AppPermissionButton code="studentAffairs.dorm.transfer.approve" size="sm" :loading="actioning" @click="review(t, 'APPROVE')">通过</AppPermissionButton>
-                  <AppPermissionButton code="studentAffairs.dorm.transfer.approve" size="sm" variant="secondary" :loading="actioning" @click="review(t, 'REJECT')">驳回</AppPermissionButton>
-                </template>
-                <span v-else class="sa-muted">—</span>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无调宿申请</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="transferColumns" :rows="items" row-key="transferId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || row.studentId }}</span><div class="mp-cell-sub">{{ row.studentNo }}</div></template>
+          <template #cell-toBed="{ row }">床 #{{ row.toBedId }}</template>
+          <template #cell-reason="{ row }">{{ row.reason || '—' }}</template>
+          <template #cell-node="{ row }">{{ nodeLabel(row.currentNode) }}</template>
+          <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="statusLabel(row.status)" /></template>
+          <template #cell-actions="{ row }">
+            <div class="sa-actions">
+              <template v-if="isPending(row.status)">
+                <AppPermissionButton code="studentAffairs.dorm.transfer.approve" size="sm" :loading="actioning" @click="review(row, 'APPROVE')">通过</AppPermissionButton>
+                <AppPermissionButton code="studentAffairs.dorm.transfer.approve" size="sm" variant="secondary" :loading="actioning" @click="review(row, 'REJECT')">驳回</AppPermissionButton>
+              </template>
+              <span v-else class="sa-muted">—</span>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无调宿申请</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -89,16 +86,27 @@ import {
   AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+const TRANSFER_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'toBed', title: '目标床' },
+  { key: 'reason', title: '事由' },
+  { key: 'node', title: '当前节点' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '180px' }
+]
 
 export default {
   name: 'DormTransferView',
   components: {
     AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-    AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextarea
+    AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextarea, DataTable
   },
   data() {
     return {
+      transferColumns: TRANSFER_COLUMNS,
       loading: true, actioning: false, errorMessage: '', items: [],
       buildings: [], rooms: [], beds: [],
       dlg: { visible: false, studentId: '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' },
@@ -203,13 +211,11 @@ export default {
 
 <style scoped>
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; vertical-align: top; }
-.sa-table small { display: block; color: var(--text-tertiary); }
 .sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sa-muted { color: var(--text-tertiary); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .dr-form { display: flex; flex-direction: column; gap: var(--space-4); }
 .dr-hint { margin: 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

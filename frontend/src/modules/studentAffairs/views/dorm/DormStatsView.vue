@@ -12,19 +12,14 @@
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
       <AppSectionCard title="按楼栋入住">
-        <table class="sa-table">
-          <thead><tr><th>楼栋</th><th>性别</th><th>空床</th><th>总床</th><th>入住率</th></tr></thead>
-          <tbody>
-            <tr v-for="b in buildings" :key="b.buildingId">
-              <td><strong>{{ b.buildingName }}</strong></td>
-              <td>{{ genderLabel(b.genderLimit) }}</td>
-              <td>{{ b.vacantBeds }}</td>
-              <td>{{ b.totalBeds }}</td>
-              <td>{{ rate(b) }}</td>
-            </tr>
-            <tr v-if="!buildings.length"><td colspan="5" class="sa-empty">暂无楼栋数据</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="buildings.length" :columns="buildingColumns" :rows="buildings" row-key="buildingId">
+          <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.buildingName }}</span></template>
+          <template #cell-gender="{ row }">{{ genderLabel(row.genderLimit) }}</template>
+          <template #cell-vacant="{ row }">{{ row.vacantBeds }}</template>
+          <template #cell-total="{ row }">{{ row.totalBeds }}</template>
+          <template #cell-rate="{ row }">{{ rate(row) }}</template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无楼栋数据</p>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -32,12 +27,21 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+const BUILDING_COLUMNS = [
+  { key: 'name', title: '楼栋' },
+  { key: 'gender', title: '性别' },
+  { key: 'vacant', title: '空床' },
+  { key: 'total', title: '总床' },
+  { key: 'rate', title: '入住率' }
+]
 
 export default {
   name: 'DormStatsView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard },
-  data() { return { loading: true, errorMessage: '', occ: {}, buildings: [] } },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, DataTable },
+  data() { return { buildingColumns: BUILDING_COLUMNS, loading: true, errorMessage: '', occ: {}, buildings: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
@@ -67,8 +71,7 @@ export default {
 
 <style scoped>
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

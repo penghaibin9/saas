@@ -14,28 +14,28 @@
 
       <div class="as-cols">
         <AppSectionCard title="按活动类型">
-          <table class="sa-table"><thead><tr><th>类型</th><th>活动数</th></tr></thead>
-            <tbody>
-              <tr v-for="r in byType" :key="r.key"><td>{{ typeLabel(r.key) }}</td><td>{{ r.count }}</td></tr>
-              <tr v-if="!byType.length"><td colspan="2" class="sa-empty">暂无数据</td></tr>
-            </tbody></table>
+          <DataTable v-if="byType.length" :columns="typeColumns" :rows="byType" row-key="key">
+            <template #cell-label="{ row }">{{ typeLabel(row.key) }}</template>
+            <template #cell-count="{ row }">{{ row.count }}</template>
+          </DataTable>
+          <p v-else class="sa-empty">暂无数据</p>
         </AppSectionCard>
 
         <AppSectionCard title="按活动状态">
-          <table class="sa-table"><thead><tr><th>状态</th><th>活动数</th></tr></thead>
-            <tbody>
-              <tr v-for="r in byStatus" :key="r.key"><td>{{ statusLabel(r.key) }}</td><td>{{ r.count }}</td></tr>
-              <tr v-if="!byStatus.length"><td colspan="2" class="sa-empty">暂无数据</td></tr>
-            </tbody></table>
+          <DataTable v-if="byStatus.length" :columns="statusColumns" :rows="byStatus" row-key="key">
+            <template #cell-label="{ row }">{{ statusLabel(row.key) }}</template>
+            <template #cell-count="{ row }">{{ row.count }}</template>
+          </DataTable>
+          <p v-else class="sa-empty">暂无数据</p>
         </AppSectionCard>
       </div>
 
       <AppSectionCard title="第二课堂学分产出（按类型）">
-        <table class="sa-table"><thead><tr><th>学分类型</th><th>合计</th></tr></thead>
-          <tbody>
-            <tr v-for="r in creditByType" :key="r.key"><td>{{ creditTypeLabel(r.key) }}</td><td>{{ r.value }}</td></tr>
-            <tr v-if="!creditByType.length"><td colspan="2" class="sa-empty">暂无学分产出</td></tr>
-          </tbody></table>
+        <DataTable v-if="creditByType.length" :columns="creditColumns" :rows="creditByType" row-key="key">
+          <template #cell-label="{ row }">{{ creditTypeLabel(row.key) }}</template>
+          <template #cell-value="{ row }">{{ row.value }}</template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无学分产出</p>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -43,16 +43,20 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const TYPE = { ACTIVITY: '活动', VOLUNTEER: '志愿服务', LECTURE: '讲座报告', COMPETITION: '竞赛', PRACTICE: '社会实践' }
 const STATUS = { DRAFT: '草稿', PUBLISHED: '报名中', ENROLL_CLOSED: '报名截止', ONGOING: '进行中', FINISHED: '待确认', CONFIRMED: '已确认', CANCELLED: '已取消', ARCHIVED: '已归档' }
 const CTYPE = { SECOND_CLASS: '第二课堂学时', MORAL: '德育积分', VOLUNTEER_HOUR: '志愿时长' }
+const TYPE_COLUMNS = [{ key: 'label', title: '类型' }, { key: 'count', title: '活动数' }]
+const STATUS_COLUMNS = [{ key: 'label', title: '状态' }, { key: 'count', title: '活动数' }]
+const CREDIT_COLUMNS = [{ key: 'label', title: '学分类型' }, { key: 'value', title: '合计' }]
 
 export default {
   name: 'ActivityStatsView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard },
-  data() { return { loading: true, errorMessage: '', stats: {} } },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, DataTable },
+  data() { return { typeColumns: TYPE_COLUMNS, statusColumns: STATUS_COLUMNS, creditColumns: CREDIT_COLUMNS, loading: true, errorMessage: '', stats: {} } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     byType() { return this.stats.byType || [] },
@@ -90,8 +94,7 @@ export default {
 <style scoped>
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .as-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .as-cols { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

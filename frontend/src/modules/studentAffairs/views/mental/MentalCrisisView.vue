@@ -18,57 +18,49 @@
       </div>
 
       <AppSectionCard title="危机与可升级记录">
-        <table class="sa-table">
-          <thead>
-            <tr>
-              <th>学生</th>
-              <th>关注等级</th>
-              <th>状态</th>
-              <th>事由摘要</th>
-              <th>关联风险</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in items" :key="row.referralId" :class="{ 'sa-crisis': row.level === 'CRISIS' }">
-              <td>
-                <strong>{{ row.realName || '未命名学生' }}</strong>
-                <small>{{ row.studentNo || row.studentId }}</small>
-              </td>
-              <td><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></td>
-              <td><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></td>
-              <td>{{ row.reasonSummary || '—' }}</td>
-              <td>
-                <a v-if="row.riskId" class="sa-link" @click="gotoRisk(row.riskId)">风险 #{{ row.riskId }} →</a>
-                <span v-else class="sa-muted">未升级</span>
-              </td>
-              <td class="sa-actions">
-                <AppPermissionButton
-                  v-if="row.status !== 'CLOSED' && !row.riskId"
-                  code="studentAffairs.risk.psyDetail.view"
-                  size="sm"
-                  danger
-                  :loading="actioning"
-                  @click="escalate(row)"
-                >
-                  升级危机
-                </AppPermissionButton>
-                <AppPermissionButton
-                  v-if="row.riskId"
-                  code="studentAffairs.risk.view"
-                  size="sm"
-                  variant="secondary"
-                  @click="gotoRisk(row.riskId)"
-                >
-                  查看风险
-                </AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!items.length">
-              <td colspan="6" class="sa-empty">当前授权范围内暂无心理关注记录</td>
-            </tr>
-          </tbody>
-        </table>
+        <DataTable
+          v-if="items.length"
+          :columns="crisisColumns"
+          :rows="items"
+          row-key="referralId"
+          :row-class="(row) => (row.level === 'CRISIS' ? 'sa-crisis' : '')"
+        >
+          <template #cell-student="{ row }">
+            <div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div>
+            <div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div>
+          </template>
+          <template #cell-level="{ row }"><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></template>
+          <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
+          <template #cell-reason="{ row }">{{ row.reasonSummary || '—' }}</template>
+          <template #cell-risk="{ row }">
+            <a v-if="row.riskId" class="sa-link" @click="gotoRisk(row.riskId)">风险 #{{ row.riskId }} →</a>
+            <span v-else class="sa-muted">未升级</span>
+          </template>
+          <template #cell-actions="{ row }">
+            <div class="sa-actions">
+              <AppPermissionButton
+                v-if="row.status !== 'CLOSED' && !row.riskId"
+                code="studentAffairs.risk.psyDetail.view"
+                size="sm"
+                danger
+                :loading="actioning"
+                @click="escalate(row)"
+              >
+                升级危机
+              </AppPermissionButton>
+              <AppPermissionButton
+                v-if="row.riskId"
+                code="studentAffairs.risk.view"
+                size="sm"
+                variant="secondary"
+                @click="gotoRisk(row.riskId)"
+              >
+                查看风险
+              </AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前授权范围内暂无心理关注记录</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -102,8 +94,18 @@ import {
   AppStatusTag,
   AppTextarea
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+const CRISIS_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'level', title: '关注等级' },
+  { key: 'status', title: '状态' },
+  { key: 'reason', title: '事由摘要' },
+  { key: 'risk', title: '关联风险' },
+  { key: 'actions', title: '操作', align: 'right', width: '200px' }
+]
 
 export default {
   name: 'MentalCrisisView',
@@ -117,10 +119,12 @@ export default {
     AppQuickPhrases,
     AppSectionCard,
     AppStatusTag,
-    AppTextarea
+    AppTextarea,
+    DataTable
   },
   data() {
     return {
+      crisisColumns: CRISIS_COLUMNS,
       loading: true, actioning: false, errorMessage: '', items: [],
       dlg: { visible: false, row: null, who: '', content: '' }
     }
@@ -221,23 +225,8 @@ export default {
   gap: var(--space-4);
   margin-bottom: var(--space-4);
 }
-.sa-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.sa-table th,
-.sa-table td {
-  border-bottom: 1px solid var(--border-light);
-  padding: var(--space-3);
-  text-align: left;
-  vertical-align: top;
-}
-.sa-table small {
-  display: block;
-  color: var(--text-tertiary);
-  margin-top: 2px;
-}
-.sa-crisis {
+/* 危机行高亮：类由 DataTable 的 row-class 挂在子组件内部 <tr> 上，父级 scoped 样式须 :deep() 穿透 */
+:deep(.dt__tr.sa-crisis) .dt__td {
   background: var(--danger-50, var(--warning-50));
 }
 .sa-actions {
@@ -262,4 +251,5 @@ export default {
     grid-template-columns: 1fr;
   }
 }
+@import '@/styles/module-page.css';
 </style>

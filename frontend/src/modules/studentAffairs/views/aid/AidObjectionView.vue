@@ -13,17 +13,14 @@
       </div>
 
       <AppSectionCard title="公示中申请 · 可提异议">
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>拟认定等级</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="a in publicity" :key="a.applyId">
-              <td><strong>{{ a.realName || ('学生#' + a.studentId) }}</strong></td>
-              <td>{{ levelLabel(a.finalLevel || a.applyLevel) }}</td>
-              <td><AppPermissionButton code="studentAffairs.aid.view" size="sm" variant="secondary" :loading="acting===a.applyId" @click="objecte(a)">提异议</AppPermissionButton></td>
-            </tr>
-            <tr v-if="!publicity.length"><td colspan="3" class="sa-empty">当前无公示中的申请</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="publicity.length" :columns="publicityColumns" :rows="publicity" row-key="applyId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-level="{ row }">{{ levelLabel(row.finalLevel || row.applyLevel) }}</template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton code="studentAffairs.aid.view" size="sm" variant="secondary" :loading="acting===row.applyId" @click="objecte(row)">提异议</AppPermissionButton>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前无公示中的申请</p>
       </AppSectionCard>
 
       <AppSectionCard title="异议复核">
@@ -31,25 +28,20 @@
           <button v-for="f in statusFilters" :key="f.key" type="button" class="ob-chip"
                   :class="{ 'is-on': objStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>被异议学生</th><th>异议人</th><th>异议理由</th><th>状态/结论</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="o in objections" :key="o.objectionId">
-              <td>{{ o.realName || ('学生#' + o.studentId) }}</td>
-              <td>{{ o.objectorName || '匿名' }}</td>
-              <td class="ob-reason">{{ o.reason }}</td>
-              <td>
-                <StatusTag :type="objType(o)" :label="o.status === 'CLOSED' ? (o.resultLabel || '已复核') : (o.statusLabel || o.status)" dot />
-                <em v-if="o.reviewOpinion" class="ob-opinion">{{ o.reviewOpinion }}</em>
-              </td>
-              <td>
-                <AppPermissionButton v-if="o.status === 'SUBMITTED'" code="studentAffairs.aid.approve" size="sm" :loading="acting===o.objectionId" @click="review(o)">复核</AppPermissionButton>
-                <span v-else class="ob-dash">—</span>
-              </td>
-            </tr>
-            <tr v-if="!objections.length"><td colspan="5" class="sa-empty">暂无异议</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="objections.length" :columns="objectionColumns" :rows="objections" row-key="objectionId">
+          <template #cell-student="{ row }">{{ row.realName || ('学生#' + row.studentId) }}</template>
+          <template #cell-objector="{ row }">{{ row.objectorName || '匿名' }}</template>
+          <template #cell-reason="{ row }"><span class="ob-reason">{{ row.reason }}</span></template>
+          <template #cell-status="{ row }">
+            <StatusTag :type="objType(row)" :label="row.status === 'CLOSED' ? (row.resultLabel || '已复核') : (row.statusLabel || row.status)" dot />
+            <em v-if="row.reviewOpinion" class="ob-opinion">{{ row.reviewOpinion }}</em>
+          </template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton v-if="row.status === 'SUBMITTED'" code="studentAffairs.aid.approve" size="sm" :loading="acting===row.objectionId" @click="review(row)">复核</AppPermissionButton>
+            <span v-else class="ob-dash">—</span>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无异议</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -85,6 +77,7 @@ import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -98,15 +91,29 @@ const LEVELS = { SPECIAL: '特别困难', DIFFICULT: '困难', GENERAL: '一般�
 const STATUS_FILTERS = [
   { key: '', label: '全部' }, { key: 'SUBMITTED', label: '待复核' }, { key: 'CLOSED', label: '已复核' }
 ]
+const PUBLICITY_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'level', title: '拟认定等级' },
+  { key: 'actions', title: '操作', align: 'right', width: '120px' }
+]
+const OBJECTION_COLUMNS = [
+  { key: 'student', title: '被异议学生' },
+  { key: 'objector', title: '异议人' },
+  { key: 'reason', title: '异议理由' },
+  { key: 'status', title: '状态/结论' },
+  { key: 'actions', title: '操作', align: 'right', width: '100px' }
+]
 
 export default {
   name: 'AidObjectionView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag
+    AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable
   },
   data() {
     return {
+      publicityColumns: PUBLICITY_COLUMNS,
+      objectionColumns: OBJECTION_COLUMNS,
       loading: true, acting: '', errorMessage: '', publicity: [], objections: [], objStatus: '', statusFilters: STATUS_FILTERS,
       objDlg: { visible: false, applyId: '', who: '', objectorName: '' },
       revDlg: { visible: false, objectionId: '', result: 'OVERRULED' }
@@ -175,11 +182,10 @@ export default {
 .ob-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .ob-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .ob-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ob-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 240px; }
 .ob-opinion { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .ob-dash { color: var(--text-tertiary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

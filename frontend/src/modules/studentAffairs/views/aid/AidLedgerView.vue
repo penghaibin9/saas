@@ -23,19 +23,14 @@
                     :class="{ 'is-on': activeLevel === f.key }" @click="setLevel(f.key)">{{ f.label }}</button>
           </div>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>学号</th><th>申请等级</th><th>核定等级</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr v-for="it in items" :key="it.applyId">
-              <td><strong>{{ it.realName || ('学生#' + it.studentId) }}</strong></td>
-              <td>{{ it.studentNo || '—' }}</td>
-              <td>{{ levelLabel(it.applyLevel) }}</td>
-              <td>{{ it.finalLevel ? levelLabel(it.finalLevel) : '—' }}</td>
-              <td><StatusTag :type="statusType(it.status)" :label="it.statusLabel || it.status" dot /></td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="5" class="sa-empty">当前范围与筛选下暂无认定申请</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="ledgerColumns" :rows="items" row-key="applyId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
+          <template #cell-applyLevel="{ row }">{{ levelLabel(row.applyLevel) }}</template>
+          <template #cell-finalLevel="{ row }">{{ row.finalLevel ? levelLabel(row.finalLevel) : '—' }}</template>
+          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围与筛选下暂无认定申请</p>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -43,9 +38,17 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const LEVELS = { SPECIAL: '特别困难', DIFFICULT: '困难', GENERAL: '一般困难' }
+const LEDGER_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'studentNo', title: '学号' },
+  { key: 'applyLevel', title: '申请等级' },
+  { key: 'finalLevel', title: '核定等级' },
+  { key: 'status', title: '状态' }
+]
 const STATUS_FILTERS = [
   { key: '', label: '全部' },
   { key: 'CLASS_REVIEW', label: '班级评议' },
@@ -64,9 +67,9 @@ const LEVEL_FILTERS = [
 
 export default {
   name: 'AidLedgerView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
-    return { loading: true, errorMessage: '', all: [], items: [], activeStatus: '', activeLevel: '', statusFilters: STATUS_FILTERS, levelFilters: LEVEL_FILTERS }
+    return { ledgerColumns: LEDGER_COLUMNS, loading: true, errorMessage: '', all: [], items: [], activeStatus: '', activeLevel: '', statusFilters: STATUS_FILTERS, levelFilters: LEVEL_FILTERS }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -122,8 +125,7 @@ export default {
 .al-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .al-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 .al-chip--lv.is-on { background: var(--warning-500, #d97706); border-color: var(--warning-500, #d97706); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

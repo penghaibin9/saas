@@ -16,21 +16,23 @@
           <button v-for="f in typeFilters" :key="f.key" type="button" class="cl-chip"
                   :class="{ 'is-on': activeType === f.key }" @click="setType(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>学号</th><th>类型</th><th>数值</th><th>类目</th><th>来源</th><th>时间</th></tr></thead>
-          <tbody>
-            <tr v-for="c in items" :key="c.creditId" class="cl-row" @click="openReport(c)">
-              <td><strong>{{ c.realName || ('学生#' + c.studentId) }}</strong></td>
-              <td>{{ c.studentNo || '—' }}</td>
-              <td>{{ typeLabel(c.creditType) }}</td>
-              <td>{{ c.creditValue }}</td>
-              <td>{{ c.categoryCode || '—' }}</td>
-              <td class="cl-remark">{{ c.remark || sourceLabel(c.source) }}</td>
-              <td><AppDateDisplay :value="c.grantedAt" mode="date" empty-text="—" /></td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="7" class="sa-empty">当前范围与筛选下暂无二课积分记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable
+          v-if="items.length"
+          :columns="ledgerColumns"
+          :rows="items"
+          row-key="creditId"
+          row-clickable
+          @row-click="openReport"
+        >
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
+          <template #cell-type="{ row }">{{ typeLabel(row.creditType) }}</template>
+          <template #cell-value="{ row }">{{ row.creditValue }}</template>
+          <template #cell-category="{ row }">{{ row.categoryCode || '—' }}</template>
+          <template #cell-source="{ row }"><span class="cl-remark">{{ row.remark || sourceLabel(row.source) }}</span></template>
+          <template #cell-grantedAt="{ row }"><AppDateDisplay :value="row.grantedAt" mode="date" empty-text="—" /></template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围与筛选下暂无二课积分记录</p>
         <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="load" />
         <p class="cl-hint">点击任一行查看该生「加权成绩单」（按类目系数汇总）。</p>
       </AppSectionCard>
@@ -40,18 +42,13 @@
           <span>原始合计 <b>{{ report.rawTotal }}</b></span>
           <span class="cl-weighted">加权合计 <b>{{ report.weightedTotal }}</b></span>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>类目</th><th>原始合计</th><th>系数</th><th>加权后</th></tr></thead>
-          <tbody>
-            <tr v-for="row in (report.byCategoryWeighted || [])" :key="row.key">
-              <td>{{ row.key }}</td>
-              <td>{{ row.rawValue }}</td>
-              <td>×{{ row.weight }}</td>
-              <td><b>{{ row.value }}</b></td>
-            </tr>
-            <tr v-if="!(report.byCategoryWeighted || []).length"><td colspan="4" class="sa-empty">该生暂无类目积分</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="(report.byCategoryWeighted || []).length" :columns="reportColumns" :rows="report.byCategoryWeighted" row-key="key">
+          <template #cell-category="{ row }">{{ row.key }}</template>
+          <template #cell-rawValue="{ row }">{{ row.rawValue }}</template>
+          <template #cell-weight="{ row }">×{{ row.weight }}</template>
+          <template #cell-weighted="{ row }"><b>{{ row.value }}</b></template>
+        </DataTable>
+        <p v-else class="sa-empty">该生暂无类目积分</p>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -59,8 +56,24 @@
 
 <script>
 import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
+const LEDGER_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'studentNo', title: '学号' },
+  { key: 'type', title: '类型' },
+  { key: 'value', title: '数值' },
+  { key: 'category', title: '类目' },
+  { key: 'source', title: '来源' },
+  { key: 'grantedAt', title: '时间' }
+]
+const REPORT_COLUMNS = [
+  { key: 'category', title: '类目' },
+  { key: 'rawValue', title: '原始合计' },
+  { key: 'weight', title: '系数' },
+  { key: 'weighted', title: '加权后' }
+]
 const TYPE = { SECOND_CLASS: '第二课堂学时', MORAL: '德育积分', VOLUNTEER_HOUR: '志愿时长' }
 const TYPE_FILTERS = [
   { key: '', label: '全部' }, { key: 'SECOND_CLASS', label: '第二课堂学时' },
@@ -69,9 +82,10 @@ const TYPE_FILTERS = [
 
 export default {
   name: 'SecondClassLedgerView',
-  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, DataTable },
   data() {
     return {
+      ledgerColumns: LEDGER_COLUMNS, reportColumns: REPORT_COLUMNS,
       loading: true, errorMessage: '', all: [], items: [], activeType: '', typeFilters: TYPE_FILTERS, report: null,
       pagination: { page: 1, pageSize: 20, total: 0 }
     }
@@ -126,14 +140,11 @@ export default {
 .cl-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .cl-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .cl-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .cl-remark { color: var(--text-secondary); font-size: var(--font-size-sm); }
-.cl-row { cursor: pointer; }
-.cl-row:hover { background: var(--bg-hover, rgba(0,0,0,0.03)); }
 .cl-hint { color: var(--text-tertiary); font-size: var(--font-size-sm); margin-top: var(--space-2); }
 .cl-report-total { display: flex; gap: var(--space-5); margin-bottom: var(--space-3); font-size: var(--font-size-md); }
 .cl-report-total .cl-weighted b { color: var(--color-primary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

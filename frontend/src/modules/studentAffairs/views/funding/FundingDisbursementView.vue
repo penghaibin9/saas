@@ -23,27 +23,26 @@
           <button v-for="f in statusFilters" :key="f.key" type="button" class="fd-chip"
                   :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>项目</th><th>金额</th><th>卡号后4位</th><th>发放状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="d in items" :key="d.disbursementId">
-              <td><strong>{{ d.realName || ('学生#' + d.studentId) }}</strong></td>
-              <td>{{ typeLabel(d.projectType) }}</td>
-              <td>{{ amountText(d.amount) }}</td>
-              <td>{{ d.bankLast4 ? ('****' + d.bankLast4) : '—' }}</td>
-              <td><StatusTag :type="statusType(d.bankStatus)" :label="d.bankStatusLabel || d.bankStatus" dot />
-                <em v-if="d.bankStatus==='FAILED' && d.failReason" class="fd-reason">{{ d.failReason }}</em></td>
-              <td class="fd-ops">
-                <template v-if="d.bankStatus!=='ISSUED'">
-                  <AppPermissionButton code="studentAffairs.funding.disburse.manage" size="sm" :loading="acting===d.disbursementId" @click="issue(d)">标记发放</AppPermissionButton>
-                  <AppPermissionButton v-if="d.bankStatus==='PENDING'" code="studentAffairs.funding.disburse.manage" size="sm" variant="secondary" danger @click="fail(d)">置失败</AppPermissionButton>
-                </template>
-                <span v-else class="fd-dash">已发放</span>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无发放记录，选批次「生成发放台账」</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="disbursementColumns" :rows="items" row-key="disbursementId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-projectType="{ row }">{{ typeLabel(row.projectType) }}</template>
+          <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
+          <template #cell-bankLast4="{ row }">{{ row.bankLast4 ? ('****' + row.bankLast4) : '—' }}</template>
+          <template #cell-status="{ row }">
+            <StatusTag :type="statusType(row.bankStatus)" :label="row.bankStatusLabel || row.bankStatus" dot />
+            <em v-if="row.bankStatus==='FAILED' && row.failReason" class="fd-reason">{{ row.failReason }}</em>
+          </template>
+          <template #cell-actions="{ row }">
+            <div class="fd-ops">
+              <template v-if="row.bankStatus!=='ISSUED'">
+                <AppPermissionButton code="studentAffairs.funding.disburse.manage" size="sm" :loading="acting===row.disbursementId" @click="issue(row)">标记发放</AppPermissionButton>
+                <AppPermissionButton v-if="row.bankStatus==='PENDING'" code="studentAffairs.funding.disburse.manage" size="sm" variant="secondary" danger @click="fail(row)">置失败</AppPermissionButton>
+              </template>
+              <span v-else class="fd-dash">已发放</span>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无发放记录，选批次「生成发放台账」</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -78,9 +77,18 @@ import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
   AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
+const DISBURSEMENT_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'projectType', title: '项目' },
+  { key: 'amount', title: '金额' },
+  { key: 'bankLast4', title: '卡号后4位' },
+  { key: 'status', title: '发放状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '180px' }
+]
 const STATUS_FILTERS = [
   { key: '', label: '全部' }, { key: 'PENDING', label: '待发放' },
   { key: 'ISSUED', label: '已发放' }, { key: 'FAILED', label: '发放失败' }
@@ -90,10 +98,11 @@ export default {
   name: 'FundingDisbursementView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag
+    AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable
   },
   data() {
     return {
+      disbursementColumns: DISBURSEMENT_COLUMNS,
       issDlg: { visible: false, disbursementId: '', who: '', disburseNo: '', bankLast4: '', error: '' },
       failDlg: { visible: false, disbursementId: '', who: '' },
       loading: true, acting: '', errorMessage: '', items: [], batches: [], stats: {},
@@ -186,12 +195,11 @@ export default {
 .fd-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .fd-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .fd-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .fd-reason { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .fd-ops { display: flex; gap: 6px; }
 .fd-dash { color: var(--text-tertiary); font-size: var(--font-size-sm); }
 .fd-hint { margin: var(--space-1) 0 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

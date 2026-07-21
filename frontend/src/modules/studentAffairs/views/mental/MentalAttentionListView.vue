@@ -29,50 +29,32 @@
           <span class="sa-hint">共 {{ total }} 条 · 明细默认脱敏</span>
         </div>
 
-        <table class="sa-table">
-          <thead>
-            <tr>
-              <th>学生</th>
-              <th>关注等级</th>
-              <th>状态</th>
-              <th>事由摘要</th>
-              <th>转介去向</th>
-              <th>最近回访</th>
-              <th>心理明细</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in items" :key="row.referralId">
-              <td>
-                <strong>{{ row.realName || '未命名学生' }}</strong>
-                <small>{{ row.studentNo || row.studentId }}</small>
-              </td>
-              <td><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></td>
-              <td><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></td>
-              <td>{{ row.reasonSummary || '—' }}</td>
-              <td>{{ row.channel || '—' }}</td>
-              <td>{{ (row.lastFollowTime || '').slice(0, 16) || '—' }}</td>
-              <td>
-                <span :class="{ 'sa-mask': row.noteMasked }">{{ row.note }}</span>
-              </td>
-              <td class="sa-actions">
-                <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="reveal(row)">
-                  查看明细
-                </AppPermissionButton>
-                <AppPermissionButton v-if="row.status !== 'CLOSED'" code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="follow(row)">
-                  回访
-                </AppPermissionButton>
-                <AppPermissionButton v-if="row.status !== 'CLOSED'" code="studentAffairs.risk.psyDetail.view" size="sm" :loading="actioning" @click="close(row)">
-                  关闭
-                </AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!items.length">
-              <td colspan="8" class="sa-empty">当前授权范围内暂无心理关注记录</td>
-            </tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="attentionColumns" :rows="items" row-key="referralId">
+          <template #cell-student="{ row }">
+            <div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div>
+            <div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div>
+          </template>
+          <template #cell-level="{ row }"><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></template>
+          <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
+          <template #cell-reason="{ row }">{{ row.reasonSummary || '—' }}</template>
+          <template #cell-channel="{ row }">{{ row.channel || '—' }}</template>
+          <template #cell-lastFollow="{ row }">{{ (row.lastFollowTime || '').slice(0, 16) || '—' }}</template>
+          <template #cell-note="{ row }"><span :class="{ 'sa-mask': row.noteMasked }">{{ row.note }}</span></template>
+          <template #cell-actions="{ row }">
+            <div class="sa-actions">
+              <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="reveal(row)">
+                查看明细
+              </AppPermissionButton>
+              <AppPermissionButton v-if="row.status !== 'CLOSED'" code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="follow(row)">
+                回访
+              </AppPermissionButton>
+              <AppPermissionButton v-if="row.status !== 'CLOSED'" code="studentAffairs.risk.psyDetail.view" size="sm" :loading="actioning" @click="close(row)">
+                关闭
+              </AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前授权范围内暂无心理关注记录</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -143,10 +125,21 @@ import {
   AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
+import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { toast } from '@/utils/toast'
 
+const ATTENTION_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'level', title: '关注等级' },
+  { key: 'status', title: '状态' },
+  { key: 'reason', title: '事由摘要' },
+  { key: 'channel', title: '转介去向' },
+  { key: 'lastFollow', title: '最近回访' },
+  { key: 'note', title: '心理明细' },
+  { key: 'actions', title: '操作', align: 'right', width: '260px' }
+]
 /** 与后端心理关注等级取值一一对应。 */
 const LEVELS = [
   { value: 'GENERAL', label: '一般关注' },
@@ -174,10 +167,12 @@ export default {
     AppSelect,
     AppStatusTag,
     AppStudentPicker,
-    AppTextarea
+    AppTextarea,
+    DataTable
   },
   data() {
     return {
+      attentionColumns: ATTENTION_COLUMNS,
       loading: true, actioning: false, errorMessage: '', items: [], total: 0, filters: { level: '' },
       revDlg: { visible: false, row: null, who: '', error: '' },
       refDlg: { visible: false, studentId: '', level: 'FOCUS', channel: '校内咨询', reasonSummary: '', error: '' },
@@ -350,22 +345,6 @@ export default {
 .sa-hint {
   color: var(--text-tertiary);
 }
-.sa-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.sa-table th,
-.sa-table td {
-  border-bottom: 1px solid var(--border-light);
-  padding: var(--space-3);
-  text-align: left;
-  vertical-align: top;
-}
-.sa-table small {
-  display: block;
-  color: var(--text-tertiary);
-  margin-top: 2px;
-}
 .sa-mask {
   color: var(--text-tertiary);
   font-style: italic;
@@ -385,4 +364,5 @@ export default {
     grid-template-columns: 1fr;
   }
 }
+@import '@/styles/module-page.css';
 </style>

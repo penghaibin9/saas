@@ -23,19 +23,14 @@
           <button v-for="f in typeFilters" :key="f.key" type="button" class="pf-chip"
                   :class="{ 'is-on': activeType === f.key }" @click="setType(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>项目名称</th><th>类型</th><th>金额</th><th>名额</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr v-for="p in filtered" :key="p.projectId">
-              <td><strong>{{ p.projectName }}</strong></td>
-              <td>{{ typeLabel(p.projectType) }}</td>
-              <td>{{ p.amount != null ? ('¥' + p.amount) : '—' }}</td>
-              <td>{{ p.quota != null ? p.quota : '—' }}</td>
-              <td><StatusTag :type="p.status === 'ENABLED' ? 'success' : 'default'" :label="p.status === 'ENABLED' ? '启用' : '停用'" dot /></td>
-            </tr>
-            <tr v-if="!filtered.length"><td colspan="5" class="sa-empty">暂无资助项目，点右上「建项目」</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="filtered.length" :columns="projectColumns" :rows="filtered" row-key="projectId">
+          <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.projectName }}</span></template>
+          <template #cell-type="{ row }">{{ typeLabel(row.projectType) }}</template>
+          <template #cell-amount="{ row }">{{ row.amount != null ? ('¥' + row.amount) : '—' }}</template>
+          <template #cell-quota="{ row }">{{ row.quota != null ? row.quota : '—' }}</template>
+          <template #cell-status="{ row }"><StatusTag :type="row.status === 'ENABLED' ? 'success' : 'default'" :label="row.status === 'ENABLED' ? '启用' : '停用'" dot /></template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无资助项目，点右上「建项目」</p>
         <!-- 资助项目是学校级项目目录（数量级远小于申请/发放台账），后端 /funding/projects 虽支持 page/pageSize，
              但项目总数统计卡依赖一次性拉取的完整列表；实际项目数不会达到需要分页浏览的规模，暂不引入 AppPagination。 -->
       </AppSectionCard>
@@ -72,10 +67,18 @@
 import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
         AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextInput } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
 
+const PROJECT_COLUMNS = [
+  { key: 'name', title: '项目名称' },
+  { key: 'type', title: '类型' },
+  { key: 'amount', title: '金额' },
+  { key: 'quota', title: '名额' },
+  { key: 'status', title: '状态' }
+]
 const TYPES = [
   { key: '', label: '全部' },
   { key: 'SCHOLARSHIP', label: '奖学金' },
@@ -90,10 +93,11 @@ function freshForm() {
 export default {
   name: 'FundingProjectView',
   components: { AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput,
-               AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag },
+               AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      projectColumns: PROJECT_COLUMNS,
       loading: true, saving: false, errorMessage: '', projects: [], activeType: '', typeFilters: TYPES,
       projectTypeOptions: PROJECT_TYPE_OPTIONS,
       drawer: { visible: false, form: freshForm(), errorMessage: '' }
@@ -159,8 +163,6 @@ export default {
 .pf-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .pf-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .pf-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .sa-form { display: flex; flex-direction: column; gap: var(--space-1); }
 .pf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
@@ -168,4 +170,5 @@ export default {
 .pf-btn:hover { border-color: var(--border-dark); }
 .pf-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .pf-grid2 { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

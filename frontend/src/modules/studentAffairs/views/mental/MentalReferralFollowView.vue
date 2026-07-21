@@ -24,43 +24,28 @@
       </div>
 
       <AppSectionCard title="待回访转介（已转介 / 回访中）">
-        <table class="sa-table">
-          <thead>
-            <tr>
-              <th>学生</th>
-              <th>关注等级</th>
-              <th>状态</th>
-              <th>事由摘要</th>
-              <th>转介去向</th>
-              <th>最近回访</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in openItems" :key="row.referralId">
-              <td>
-                <strong>{{ row.realName || '未命名学生' }}</strong>
-                <small>{{ row.studentNo || row.studentId }}</small>
-              </td>
-              <td><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></td>
-              <td><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></td>
-              <td>{{ row.reasonSummary || '—' }}</td>
-              <td>{{ row.channel || '—' }}</td>
-              <td>{{ (row.lastFollowTime || '').slice(0, 16) || '尚未回访' }}</td>
-              <td class="sa-actions">
-                <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" @click="follow(row)">
-                  回访
-                </AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" @click="close(row)">
-                  关闭
-                </AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!openItems.length">
-              <td colspan="7" class="sa-empty">暂无待回访转介</td>
-            </tr>
-          </tbody>
-        </table>
+        <DataTable v-if="openItems.length" :columns="followColumns" :rows="openItems" row-key="referralId">
+          <template #cell-student="{ row }">
+            <div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div>
+            <div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div>
+          </template>
+          <template #cell-level="{ row }"><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></template>
+          <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
+          <template #cell-reason="{ row }">{{ row.reasonSummary || '—' }}</template>
+          <template #cell-channel="{ row }">{{ row.channel || '—' }}</template>
+          <template #cell-lastFollow="{ row }">{{ (row.lastFollowTime || '').slice(0, 16) || '尚未回访' }}</template>
+          <template #cell-actions="{ row }">
+            <div class="sa-actions">
+              <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" @click="follow(row)">
+                回访
+              </AppPermissionButton>
+              <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" @click="close(row)">
+                关闭
+              </AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无待回访转介</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -116,9 +101,19 @@ import {
   AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
+import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
+const FOLLOW_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'level', title: '关注等级' },
+  { key: 'status', title: '状态' },
+  { key: 'reason', title: '事由摘要' },
+  { key: 'channel', title: '转介去向' },
+  { key: 'lastFollow', title: '最近回访' },
+  { key: 'actions', title: '操作', align: 'right', width: '160px' }
+]
 /** 转介去向：沿用原 prompt 提示里的四个既有选项，未自行扩充。 */
 const CHANNELS = ['校内咨询', '校医院', '专业机构', '家长'].map((v) => ({ value: v, label: v }))
 
@@ -139,10 +134,12 @@ export default {
     AppSelect,
     AppStatusTag,
     AppStudentPicker,
-    AppTextarea
+    AppTextarea,
+    DataTable
   },
   data() {
     return {
+      followColumns: FOLLOW_COLUMNS,
       loading: true, actioning: false, errorMessage: '', items: [],
       refDlg: { visible: false, studentId: '', channel: '校内咨询', reasonSummary: '', error: '' },
       txtDlg: { visible: false, kind: '', row: null, title: '', type: 'primary', confirmText: '确认', reasonLabel: '', sceneKey: '' }
@@ -265,22 +262,6 @@ export default {
   gap: var(--space-4);
   margin-bottom: var(--space-4);
 }
-.sa-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.sa-table th,
-.sa-table td {
-  border-bottom: 1px solid var(--border-light);
-  padding: var(--space-3);
-  text-align: left;
-  vertical-align: top;
-}
-.sa-table small {
-  display: block;
-  color: var(--text-tertiary);
-  margin-top: 2px;
-}
 .sa-actions {
   display: flex;
   flex-wrap: wrap;
@@ -306,4 +287,5 @@ export default {
   color: var(--text-tertiary);
   font-size: var(--font-size-sm);
 }
+@import '@/styles/module-page.css';
 </style>

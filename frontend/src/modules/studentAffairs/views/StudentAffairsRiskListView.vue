@@ -43,49 +43,34 @@
           <span v-if="scanResult" class="sa-scan">{{ scanResult }}</span>
         </div>
 
-        <table class="sa-table">
-          <thead>
-            <tr>
-              <th>学生</th>
-              <th>来源</th>
-              <th>等级</th>
-              <th>状态</th>
-              <th>责任人</th>
-              <th>摘要</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="risk in risks" :key="risk.riskId">
-              <td>
-                <strong>{{ risk.realName || '未命名学生' }}</strong>
-                <small>{{ risk.studentNo || risk.studentId }}</small>
-              </td>
-              <td>{{ sourceLabel(risk.source) }}</td>
-              <td><AppRiskTag :level="risk.riskLevel" /></td>
-              <td><AppStatusTag :type="statusKind(risk.status)" :label="risk.statusLabel || risk.status" /></td>
-              <td>{{ risk.ownerId || '待分派' }}</td>
-              <td>
-                <span>{{ risk.title || '风险记录' }}</span>
-                <small v-if="risk.mentalMasked">心理来源明细已按角色脱敏</small>
-              </td>
-              <td class="sa-actions">
-                <AppPermissionButton code="studentAffairs.risk.view" size="sm" variant="secondary" @click="$router.push(`/admin/student-affairs/risk/${risk.riskId}`)">
-                  详情
-                </AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.risk.assign" size="sm" variant="secondary" :loading="actioning" @click="assign(risk)">
-                  分派
-                </AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.risk.handle" size="sm" :loading="actioning" @click="process(risk)">
-                  处置
-                </AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!risks.length">
-              <td colspan="7" class="sa-empty">当前范围内暂无风险记录</td>
-            </tr>
-          </tbody>
-        </table>
+        <DataTable v-if="risks.length" :columns="riskColumns" :rows="risks" row-key="riskId">
+          <template #cell-student="{ row }">
+            <div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div>
+            <div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div>
+          </template>
+          <template #cell-source="{ row }">{{ sourceLabel(row.source) }}</template>
+          <template #cell-riskLevel="{ row }"><AppRiskTag :level="row.riskLevel" /></template>
+          <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
+          <template #cell-owner="{ row }">{{ row.ownerId || '待分派' }}</template>
+          <template #cell-summary="{ row }">
+            <div class="mp-cell-main">{{ row.title || '风险记录' }}</div>
+            <div v-if="row.mentalMasked" class="mp-cell-sub">心理来源明细已按角色脱敏</div>
+          </template>
+          <template #cell-actions="{ row }">
+            <div class="sa-actions">
+              <AppPermissionButton code="studentAffairs.risk.view" size="sm" variant="secondary" @click="$router.push(`/admin/student-affairs/risk/${row.riskId}`)">
+                详情
+              </AppPermissionButton>
+              <AppPermissionButton code="studentAffairs.risk.assign" size="sm" variant="secondary" :loading="actioning" @click="assign(row)">
+                分派
+              </AppPermissionButton>
+              <AppPermissionButton code="studentAffairs.risk.handle" size="sm" :loading="actioning" @click="process(row)">
+                处置
+              </AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围内暂无风险记录</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -153,7 +138,18 @@ import {
   AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+const RISK_COLUMNS = [
+  { key: 'student', title: '学生', width: '160px' },
+  { key: 'source', title: '来源' },
+  { key: 'riskLevel', title: '等级' },
+  { key: 'status', title: '状态' },
+  { key: 'owner', title: '责任人' },
+  { key: 'summary', title: '摘要' },
+  { key: 'actions', title: '操作', align: 'right', width: '220px' }
+]
 
 /** 风险等级（后端 affairs_risk_service.LEVELS）——原建单写死 MEDIUM，无法选 */
 const RISK_LEVELS = [
@@ -205,10 +201,12 @@ export default {
     AppTextInput,
     AppTextarea,
     AppSectionCard,
-    AppStatusTag
+    AppStatusTag,
+    DataTable
   },
   data() {
     return {
+      riskColumns: RISK_COLUMNS,
       RISK_LEVELS,
       SOURCE_OPTIONS,
       LEVEL_FILTER_OPTIONS,
@@ -406,18 +404,6 @@ export default {
   border-radius: var(--radius-base);
   padding: var(--space-2) var(--space-3);
 }
-.sa-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.sa-table th,
-.sa-table td {
-  border-bottom: 1px solid var(--border-light);
-  padding: var(--space-3);
-  text-align: left;
-  vertical-align: top;
-}
-.sa-table small,
 .sa-rule span {
   display: block;
   color: var(--text-tertiary);
@@ -449,4 +435,5 @@ export default {
     grid-template-columns: 1fr;
   }
 }
+@import '@/styles/module-page.css';
 </style>

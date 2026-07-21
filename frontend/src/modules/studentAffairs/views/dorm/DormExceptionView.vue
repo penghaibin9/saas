@@ -15,22 +15,17 @@
         <div class="sa-toolbar">
           <AppSelect v-model="filterStatus" class="sa-filter" :options="STATUS_OPTIONS" placeholder="" @change="load" />
         </div>
-        <table class="sa-table">
-          <thead><tr><th>类型</th><th>说明</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="x in items" :key="x.exceptionId">
-              <td>{{ typeLabel(x.excType) }}</td>
-              <td>{{ x.detail || '—' }}</td>
-              <td><AppStatusTag :type="x.status === 'HANDLED' ? 'success' : 'warning'" :label="x.status === 'HANDLED' ? '已处置' : '待处置'" /></td>
-              <td>{{ (x.createdAt || '').slice(0, 16) }}</td>
-              <td class="sa-actions">
-                <AppPermissionButton v-if="x.status !== 'HANDLED'" code="studentAffairs.dorm.exception.handle" size="sm" :loading="actioning" @click="handle(x)">处置</AppPermissionButton>
-                <span v-else class="sa-muted">已闭环</span>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="5" class="sa-empty">当前范围内暂无宿舍异常</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="exceptionColumns" :rows="items" row-key="exceptionId">
+          <template #cell-type="{ row }">{{ typeLabel(row.excType) }}</template>
+          <template #cell-detail="{ row }">{{ row.detail || '—' }}</template>
+          <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'HANDLED' ? 'success' : 'warning'" :label="row.status === 'HANDLED' ? '已处置' : '待处置'" /></template>
+          <template #cell-createdAt="{ row }">{{ (row.createdAt || '').slice(0, 16) }}</template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton v-if="row.status !== 'HANDLED'" code="studentAffairs.dorm.exception.handle" size="sm" :loading="actioning" @click="handle(row)">处置</AppPermissionButton>
+            <span v-else class="sa-muted">已闭环</span>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围内暂无宿舍异常</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -50,8 +45,16 @@ import {
   AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
+const EXCEPTION_COLUMNS = [
+  { key: 'type', title: '类型' },
+  { key: 'detail', title: '说明' },
+  { key: 'status', title: '状态' },
+  { key: 'createdAt', title: '时间' },
+  { key: 'actions', title: '操作', align: 'right', width: '100px' }
+]
 const STATUS_OPTIONS = [
   { value: '', label: '全部状态' },
   { value: 'PENDING_HANDLE', label: '待处置' },
@@ -62,10 +65,11 @@ export default {
   name: 'DormExceptionView',
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
-    AppSelect, AppStatusTag
+    AppSelect, AppStatusTag, DataTable
   },
   data() {
     return {
+      exceptionColumns: EXCEPTION_COLUMNS,
       STATUS_OPTIONS,
       loading: true, actioning: false, errorMessage: '', items: [], filterStatus: '',
       dlg: { visible: false, exceptionId: '', excType: '', detail: '' }
@@ -111,10 +115,8 @@ export default {
 .sa-toolbar { margin-bottom: var(--space-4); }
 .sa-toolbar select { min-width: 160px; border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-surface); padding: var(--space-2) var(--space-3); }
 .sa-filter { width: 160px; }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
-.sa-actions { display: flex; gap: var(--space-2); }
 .sa-muted { color: var(--text-tertiary); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

@@ -7,32 +7,26 @@
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
       <AppSectionCard title="待跟进谈话">
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>主题</th><th>状态</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="t in followTalks" :key="t.talkId">
-              <td><strong>{{ t.realName || t.studentName || ('#'+t.studentId) }}</strong></td>
-              <td class="ks-topic">{{ t.topic || t.topicType || '—' }}</td>
-              <td><StatusTag type="warning" :label="t.statusLabel || t.status" dot /></td>
-              <td><button type="button" class="ks-link" @click="$router.push('/admin/student-affairs/talk')">去处理</button></td>
-            </tr>
-            <tr v-if="!followTalks.length"><td colspan="4" class="sa-empty">暂无待跟进谈话</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="followTalks.length" :columns="talkColumns" :rows="followTalks" row-key="talkId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || row.studentName || ('#'+row.studentId) }}</span></template>
+          <template #cell-topic="{ row }"><span class="ks-topic">{{ row.topic || row.topicType || '—' }}</span></template>
+          <template #cell-status="{ row }"><StatusTag type="warning" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-actions="{ row }">
+            <button type="button" class="ks-link" @click="$router.push('/admin/student-affairs/talk')">去处理</button>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无待跟进谈话</p>
       </AppSectionCard>
       <AppSectionCard title="中高风险学生">
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>来源</th><th>等级</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="r in keyRisks" :key="r.riskId">
-              <td><strong>{{ r.realName || ('#'+r.studentId) }}</strong></td>
-              <td>{{ sourceLabel(r.source) }}</td>
-              <td><StatusTag :type="r.riskLevel==='CRITICAL'?'danger':'warning'" :label="levelLabel(r.riskLevel)" dot /></td>
-              <td><button type="button" class="ks-link" @click="$router.push('/admin/student-affairs/risk/' + r.riskId)">处置</button></td>
-            </tr>
-            <tr v-if="!keyRisks.length"><td colspan="4" class="sa-empty">暂无中高风险学生</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="keyRisks.length" :columns="riskColumns" :rows="keyRisks" row-key="riskId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
+          <template #cell-source="{ row }">{{ sourceLabel(row.source) }}</template>
+          <template #cell-level="{ row }"><StatusTag :type="row.riskLevel==='CRITICAL'?'danger':'warning'" :label="levelLabel(row.riskLevel)" dot /></template>
+          <template #cell-actions="{ row }">
+            <button type="button" class="ks-link" @click="$router.push('/admin/student-affairs/risk/' + row.riskId)">处置</button>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无中高风险学生</p>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -40,17 +34,30 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const SRC = { LEAVE_OVERDUE: '请假逾期', ACADEMIC_WARNING: '学业预警', DORM: '宿舍', MENTAL: '心理', DISCIPLINE: '违纪', INTERNSHIP: '实习' }
 const LEVEL = { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }
 const KEY_LEVEL = ['HIGH', 'CRITICAL']
 const ACTIVE_RISK = ['NEW', 'ASSIGNED', 'PROCESSING', 'FOLLOWING', 'REOPENED']
+const TALK_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'topic', title: '主题' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '', align: 'right', width: '80px' }
+]
+const RISK_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'source', title: '来源' },
+  { key: 'level', title: '等级' },
+  { key: 'actions', title: '', align: 'right', width: '80px' }
+]
 
 export default {
   name: 'KeyStudentFollowView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
-  data() { return { loading: true, errorMessage: '', talks: [], risks: [] } },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  data() { return { talkColumns: TALK_COLUMNS, riskColumns: RISK_COLUMNS, loading: true, errorMessage: '', talks: [], risks: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     followTalks() { return this.talks.filter((t) => ['PLANNED', 'FOLLOW_UP'].includes(t.status)) },
@@ -81,10 +88,9 @@ export default {
 
 <style scoped>
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
 .ks-topic { color: var(--text-secondary); font-size: var(--font-size-sm); }
 .ks-link { border: none; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

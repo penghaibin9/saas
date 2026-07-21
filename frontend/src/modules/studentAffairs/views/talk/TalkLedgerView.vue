@@ -23,24 +23,19 @@
                     :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
           </div>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>学号</th><th>类型</th><th>主题</th><th>谈话时间</th><th>需跟进</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr v-for="t in items" :key="t.talkId">
-              <td><strong>{{ t.realName || ('学生#' + t.studentId) }}</strong></td>
-              <td>{{ t.studentNo || '—' }}</td>
-              <td>
-                {{ typeLabel(t.talkType) }}
-                <span v-if="t.psyMasked" class="tl-psy" title="心理谈话原文受限">🔒</span>
-              </td>
-              <td class="tl-topic">{{ t.topic || '—' }}</td>
-              <td><AppDateDisplay :value="t.talkAt" mode="datetime" empty-text="—" /></td>
-              <td>{{ t.needFollow ? '是' : '—' }}</td>
-              <td><StatusTag :type="statusType(t.status)" :label="t.statusLabel || t.status" dot /></td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="7" class="sa-empty">当前范围与筛选下暂无谈话记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="talkColumns" :rows="items" row-key="talkId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
+          <template #cell-type="{ row }">
+            {{ typeLabel(row.talkType) }}
+            <span v-if="row.psyMasked" class="tl-psy" title="心理谈话原文受限">🔒</span>
+          </template>
+          <template #cell-topic="{ row }"><span class="tl-topic">{{ row.topic || '—' }}</span></template>
+          <template #cell-talkAt="{ row }"><AppDateDisplay :value="row.talkAt" mode="datetime" empty-text="—" /></template>
+          <template #cell-needFollow="{ row }">{{ row.needFollow ? '是' : '—' }}</template>
+          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围与筛选下暂无谈话记录</p>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -48,8 +43,18 @@
 
 <script>
 import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
+const TALK_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'studentNo', title: '学号' },
+  { key: 'type', title: '类型' },
+  { key: 'topic', title: '主题' },
+  { key: 'talkAt', title: '谈话时间' },
+  { key: 'needFollow', title: '需跟进' },
+  { key: 'status', title: '状态' }
+]
 // 与真实发起入口 TalkWorkbenchView.vue 的 talkType 枚举保持一致（此前这里是一套完全不同的
 // 旧枚举 LIFE/CAREER/ECONOMIC/IDEOLOGY/SAFETY/ROUTINE/OTHER，一个都不匹配真实数据，
 // 导致台账列表"类型"列对新记录原样显示英文枚举码，见 CC-真实交互业务巡检）。
@@ -73,9 +78,9 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'TalkLedgerView',
-  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
-    return { loading: true, errorMessage: '', items: [], counts: { total: 0 }, activeType: '', activeStatus: '', typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS }
+    return { talkColumns: TALK_COLUMNS, loading: true, errorMessage: '', items: [], counts: { total: 0 }, activeType: '', activeStatus: '', typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -127,10 +132,9 @@ export default {
 .tl-fgroup { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .tl-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .tl-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .tl-topic { color: var(--text-secondary); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-psy { font-size: var(--font-size-xs); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

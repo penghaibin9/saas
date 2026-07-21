@@ -42,41 +42,40 @@
           <button v-for="f in statusFilters" :key="f.key" type="button" class="af-chip"
                   :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>活动</th><th>类型</th><th>学分</th><th>报名</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="a in items" :key="a.activityId">
-              <td><strong>{{ a.activityName }}</strong><em v-if="a.startAt" class="af-time">{{ (a.startAt||'').slice(0,16).replace('T',' ') }}</em></td>
-              <td>{{ typeLabel(a.activityType) }}</td>
-              <td>{{ a.creditValue != null ? (a.creditValue + creditUnit(a.creditType)) : '—' }}</td>
-              <td>{{ a.signupCount != null ? a.signupCount : 0 }}</td>
-              <td><StatusTag :type="statusType(a.status)" :label="a.statusLabel || a.status" dot /></td>
-              <td class="af-ops">
-                <AppPermissionButton v-if="a.status==='DRAFT'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===a.activityId" @click="act(a,'publish','PUBLISH')">发布</AppPermissionButton>
-                <AppPermissionButton v-if="a.status==='PUBLISHED'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===a.activityId" @click="act(a,'transition','ENROLL_CLOSE')">报名截止</AppPermissionButton>
-                <AppPermissionButton v-if="a.status==='ENROLL_CLOSED'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===a.activityId" @click="act(a,'transition','START')">开始</AppPermissionButton>
-                <AppPermissionButton v-if="a.status==='ONGOING'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===a.activityId" @click="act(a,'transition','FINISH')">结束</AppPermissionButton>
-                <AppPermissionButton v-if="a.status==='FINISHED'" code="studentAffairs.activity.confirm" size="sm" :loading="acting===a.activityId" @click="act(a,'confirm')">确认名单</AppPermissionButton>
-                <AppPermissionButton v-if="a.status==='CONFIRMED'" code="studentAffairs.activity.confirm" size="sm" variant="secondary" @click="act(a,'archive')">归档</AppPermissionButton>
-                <button type="button" class="af-link" @click="openParticipants(a)">名单</button>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无活动，点右上「建活动」</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="activityColumns" :rows="items" row-key="activityId">
+          <template #cell-name="{ row }">
+            <span class="mp-cell-main">{{ row.activityName }}</span>
+            <em v-if="row.startAt" class="af-time">{{ (row.startAt||'').slice(0,16).replace('T',' ') }}</em>
+          </template>
+          <template #cell-type="{ row }">{{ typeLabel(row.activityType) }}</template>
+          <template #cell-credit="{ row }">{{ row.creditValue != null ? (row.creditValue + creditUnit(row.creditType)) : '—' }}</template>
+          <template #cell-signups="{ row }">{{ row.signupCount != null ? row.signupCount : 0 }}</template>
+          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-actions="{ row }">
+            <div class="af-ops">
+              <AppPermissionButton v-if="row.status==='DRAFT'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'publish','PUBLISH')">发布</AppPermissionButton>
+              <AppPermissionButton v-if="row.status==='PUBLISHED'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','ENROLL_CLOSE')">报名截止</AppPermissionButton>
+              <AppPermissionButton v-if="row.status==='ENROLL_CLOSED'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','START')">开始</AppPermissionButton>
+              <AppPermissionButton v-if="row.status==='ONGOING'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','FINISH')">结束</AppPermissionButton>
+              <AppPermissionButton v-if="row.status==='FINISHED'" code="studentAffairs.activity.confirm" size="sm" :loading="acting===row.activityId" @click="act(row,'confirm')">确认名单</AppPermissionButton>
+              <AppPermissionButton v-if="row.status==='CONFIRMED'" code="studentAffairs.activity.confirm" size="sm" variant="secondary" @click="act(row,'archive')">归档</AppPermissionButton>
+              <button type="button" class="af-link" @click="openParticipants(row)">名单</button>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无活动，点右上「建活动」</p>
       </AppSectionCard>
 
       <div v-if="pv.visible" class="af-mask" @click.self="pv.visible=false">
         <div class="af-modal">
           <h3 class="af-modal__title">{{ pv.name }} · 名单（{{ pv.list.length }}）</h3>
-          <table class="sa-table"><thead><tr><th>学生</th><th>学号</th><th>状态</th><th>签到</th></tr></thead>
-            <tbody>
-              <tr v-for="p in pv.list" :key="p.signupId">
-                <td>{{ p.realName || ('#'+p.studentId) }}</td><td>{{ p.studentNo||'—' }}</td>
-                <td>{{ signupLabel(p.signupStatus) }}</td><td>{{ (p.checkinAt||'').slice(0,16).replace('T',' ')||'—' }}</td>
-              </tr>
-              <tr v-if="!pv.list.length"><td colspan="4" class="sa-empty">暂无报名</td></tr>
-            </tbody></table>
+          <DataTable v-if="pv.list.length" :columns="participantColumns" :rows="pv.list" row-key="signupId">
+            <template #cell-student="{ row }">{{ row.realName || ('#'+row.studentId) }}</template>
+            <template #cell-studentNo="{ row }">{{ row.studentNo||'—' }}</template>
+            <template #cell-status="{ row }">{{ signupLabel(row.signupStatus) }}</template>
+            <template #cell-checkin="{ row }">{{ (row.checkinAt||'').slice(0,16).replace('T',' ')||'—' }}</template>
+          </DataTable>
+          <p v-else class="sa-empty">暂无报名</p>
           <div class="af-actions"><button type="button" class="af-btn" @click="pv.visible=false">关闭</button></div>
         </div>
       </div>
@@ -89,9 +88,24 @@ import {
   AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
+const ACTIVITY_COLUMNS = [
+  { key: 'name', title: '活动' },
+  { key: 'type', title: '类型' },
+  { key: 'credit', title: '学分' },
+  { key: 'signups', title: '报名' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '320px' }
+]
+const PARTICIPANT_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'studentNo', title: '学号' },
+  { key: 'status', title: '状态' },
+  { key: 'checkin', title: '签到' }
+]
 const TYPE = { ACTIVITY: '活动', VOLUNTEER: '志愿服务', LECTURE: '讲座报告', COMPETITION: '竞赛', PRACTICE: '社会实践' }
 const TYPE_OPTIONS = Object.entries(TYPE).map(([value, label]) => ({ value, label }))
 const CREDIT_TYPE_OPTIONS = [
@@ -106,10 +120,12 @@ export default {
   name: 'ActivityWorkbenchView',
   components: {
     AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput, DataTable
   },
   data() {
     return {
+      activityColumns: ACTIVITY_COLUMNS,
+      participantColumns: PARTICIPANT_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], categories: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
       formVisible: false, form: this.blankForm(),
@@ -219,8 +235,6 @@ export default {
 .af-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .af-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .af-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .af-time { color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; margin-left: 8px; }
 .af-ops { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -229,4 +243,5 @@ export default {
 .af-modal { width: 560px; max-width: calc(100vw - 32px); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-5); max-height: 80vh; overflow: auto; }
 .af-modal__title { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .af-grid { grid-template-columns: 1fr; } .af-field--wide { grid-column: span 1; } }
+@import '@/styles/module-page.css';
 </style>

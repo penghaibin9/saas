@@ -14,33 +14,27 @@
 
       <div class="cw-cols">
         <AppSectionCard title="待处理风险学生">
-          <table class="sa-table">
-            <thead><tr><th>学生</th><th>来源</th><th>等级</th><th></th></tr></thead>
-            <tbody>
-              <tr v-for="r in activeRisks" :key="r.riskId">
-                <td><strong>{{ r.realName || ('学生#' + r.studentId) }}</strong></td>
-                <td>{{ sourceLabel(r.source) }}</td>
-                <td><StatusTag :type="riskType(r.riskLevel)" :label="levelLabel(r.riskLevel)" dot /></td>
-                <td><button type="button" class="cw-link" @click="$router.push('/admin/student-affairs/risk/' + r.riskId)">处置</button></td>
-              </tr>
-              <tr v-if="!activeRisks.length"><td colspan="4" class="sa-empty">暂无待处理风险</td></tr>
-            </tbody>
-          </table>
+          <DataTable v-if="activeRisks.length" :columns="riskColumns" :rows="activeRisks" row-key="riskId">
+            <template #cell-student="{ row }">{{ row.realName || ('学生#' + row.studentId) }}</template>
+            <template #cell-source="{ row }">{{ sourceLabel(row.source) }}</template>
+            <template #cell-level="{ row }"><StatusTag :type="riskType(row.riskLevel)" :label="levelLabel(row.riskLevel)" dot /></template>
+            <template #cell-actions="{ row }">
+              <button type="button" class="cw-link" @click="$router.push('/admin/student-affairs/risk/' + row.riskId)">处置</button>
+            </template>
+          </DataTable>
+          <p v-else class="sa-empty">暂无待处理风险</p>
         </AppSectionCard>
 
         <AppSectionCard title="待跟进 / 计划中谈话">
-          <table class="sa-table">
-            <thead><tr><th>学生</th><th>主题</th><th>状态</th><th></th></tr></thead>
-            <tbody>
-              <tr v-for="t in actionTalks" :key="t.talkId">
-                <td>{{ t.realName || t.studentName || ('学生#' + t.studentId) }}</td>
-                <td class="cw-topic">{{ t.topic || t.topicType || '—' }}</td>
-                <td><StatusTag :type="talkType(t.status)" :label="t.statusLabel || t.status" dot /></td>
-                <td><button type="button" class="cw-link" @click="$router.push('/admin/student-affairs/talk')">处理</button></td>
-              </tr>
-              <tr v-if="!actionTalks.length"><td colspan="4" class="sa-empty">暂无待跟进谈话</td></tr>
-            </tbody>
-          </table>
+          <DataTable v-if="actionTalks.length" :columns="talkColumns" :rows="actionTalks" row-key="talkId">
+            <template #cell-student="{ row }">{{ row.realName || row.studentName || ('学生#' + row.studentId) }}</template>
+            <template #cell-topic="{ row }"><span class="cw-topic">{{ row.topic || row.topicType || '—' }}</span></template>
+            <template #cell-status="{ row }"><StatusTag :type="talkType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+            <template #cell-actions>
+              <button type="button" class="cw-link" @click="$router.push('/admin/student-affairs/talk')">处理</button>
+            </template>
+          </DataTable>
+          <p v-else class="sa-empty">暂无待跟进谈话</p>
         </AppSectionCard>
       </div>
 
@@ -55,18 +49,33 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const SRC = { LEAVE_OVERDUE: '请假逾期', ACADEMIC_WARNING: '学业预警', DORM: '宿舍', MENTAL: '心理', DISCIPLINE: '违纪', INTERNSHIP: '实习' }
 const LEVEL = { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }
 const ACTIVE_RISK = ['NEW', 'ASSIGNED', 'PROCESSING', 'FOLLOWING', 'REOPENED']
 const ACTION_TALK = ['PLANNED', 'FOLLOW_UP']
+const RISK_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'source', title: '来源' },
+  { key: 'level', title: '等级' },
+  { key: 'actions', title: '', align: 'right', width: '80px' }
+]
+const TALK_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'topic', title: '主题' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '', align: 'right', width: '80px' }
+]
 
 export default {
   name: 'CounselorWorkbenchView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
     return {
+      riskColumns: RISK_COLUMNS,
+      talkColumns: TALK_COLUMNS,
       loading: true, errorMessage: '', risks: [], talks: [],
       quickLinks: [
         { label: '请假审批', route: '/admin/student-affairs/leave' },
@@ -115,8 +124,6 @@ export default {
 <style scoped>
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .cw-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
 .cw-topic { color: var(--text-secondary); font-size: var(--font-size-sm); }
 .cw-link { border: none; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
@@ -124,4 +131,5 @@ export default {
 .cw-quickbtn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 10px 20px; cursor: pointer; font-size: var(--font-size-sm); }
 .cw-quickbtn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .cw-cols { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

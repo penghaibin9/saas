@@ -21,25 +21,22 @@
       <p v-if="!projects.length" class="fb-hint">尚无资助项目，请先到「资助项目」建项目后再建批次。</p>
 
       <AppSectionCard title="批次列表">
-        <table class="sa-table">
-          <thead><tr><th>所属项目</th><th>学年</th><th>名额</th><th>公示天数</th><th>申请窗口</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr v-for="b in batches" :key="b.batchId">
-              <td><strong>{{ projectName(b.projectId) }}</strong> <em class="fb-type">{{ typeLabel(b.projectType) }}</em></td>
-              <td>{{ b.schoolYear || '—' }}</td>
-              <td>{{ b.quota != null ? b.quota : '—' }}</td>
-              <td>{{ b.publicityDays != null ? b.publicityDays + ' 天' : '—' }}</td>
-              <td class="fb-window">
-                <template v-if="b.applyStart || b.applyEnd">
-                  <AppDateDisplay :value="b.applyStart" mode="date" empty-text="…" /> 至 <AppDateDisplay :value="b.applyEnd" mode="date" empty-text="…" />
-                </template>
-                <span v-else>—</span>
-              </td>
-              <td><StatusTag :type="statusType(b.status)" :label="statusLabel(b.status)" dot /></td>
-            </tr>
-            <tr v-if="!batches.length"><td colspan="6" class="sa-empty">暂无资助批次</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="batches.length" :columns="batchColumns" :rows="batches" row-key="batchId">
+          <template #cell-project="{ row }"><span class="mp-cell-main">{{ projectName(row.projectId) }}</span> <em class="fb-type">{{ typeLabel(row.projectType) }}</em></template>
+          <template #cell-schoolYear="{ row }">{{ row.schoolYear || '—' }}</template>
+          <template #cell-quota="{ row }">{{ row.quota != null ? row.quota : '—' }}</template>
+          <template #cell-publicityDays="{ row }">{{ row.publicityDays != null ? row.publicityDays + ' 天' : '—' }}</template>
+          <template #cell-window="{ row }">
+            <span class="fb-window">
+              <template v-if="row.applyStart || row.applyEnd">
+                <AppDateDisplay :value="row.applyStart" mode="date" empty-text="…" /> 至 <AppDateDisplay :value="row.applyEnd" mode="date" empty-text="…" />
+              </template>
+              <span v-else>—</span>
+            </span>
+          </template>
+          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="statusLabel(row.status)" dot /></template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无资助批次</p>
         <AppPagination v-if="total > pageSize || page > 1" class="fb-pager" v-model:page="page" v-model:pageSize="pageSize"
                        :total="total" @change="load" />
       </AppSectionCard>
@@ -81,11 +78,20 @@ import { AppDateDisplay, AppDateRangePicker, AppFormItem, AppGlobalState, AppInl
         AppNumberInput, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
         AppStatusTag, AppTextInput } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
 
 const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', REVIEWING: '评审中', PUBLICITY: '公示中', ANNOUNCED: '已公布', CLOSED: '已截止', ARCHIVED: '已归档' }
+const BATCH_COLUMNS = [
+  { key: 'project', title: '所属项目' },
+  { key: 'schoolYear', title: '学年' },
+  { key: 'quota', title: '名额' },
+  { key: 'publicityDays', title: '公示天数' },
+  { key: 'window', title: '申请窗口' },
+  { key: 'status', title: '状态' }
+]
 
 function freshForm() {
   return { projectId: '', schoolYear: '', quota: null, publicityDays: 5, publish: true, applyWindow: { start: '', end: '' } }
@@ -95,10 +101,11 @@ export default {
   name: 'FundingBatchView',
   components: { AppDateDisplay, AppDateRangePicker, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert,
                AppMetricCard, AppNumberInput, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
-               AppSelect, AppTextInput, StatusTag: AppStatusTag },
+               AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      batchColumns: BATCH_COLUMNS,
       loading: true, saving: false, errorMessage: '', batches: [], projects: [],
       page: 1, pageSize: 20, total: 0,
       drawer: { visible: false, form: freshForm(), errorMessage: '' }
@@ -178,8 +185,6 @@ export default {
 <style scoped>
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .fb-hint { color: var(--text-tertiary); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .fb-type { color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .fb-window { color: var(--text-secondary); font-size: var(--font-size-sm); }
@@ -191,4 +196,5 @@ export default {
 .fb-btn:hover { border-color: var(--border-dark); }
 .fb-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .fb-grid2 { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

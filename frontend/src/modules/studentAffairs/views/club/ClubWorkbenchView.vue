@@ -62,16 +62,14 @@
               <AppSelect v-model="memberForm.role" :options="ROLE_OPTIONS" placeholder="" />
               <AppPermissionButton code="studentAffairs.club.manage" size="sm" @click="addMember">加入</AppPermissionButton>
             </div>
-            <table class="sa-table">
-              <thead><tr><th>学生</th><th>任职</th><th>操作</th></tr></thead>
-              <tbody>
-                <tr v-for="m in members" :key="m.memberId">
-                  <td>{{ m.realName || ('#'+m.studentId) }}</td><td>{{ ROLES[m.role] || m.role }}</td>
-                  <td><AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger @click="removeMember(m)">退社</AppPermissionButton></td>
-                </tr>
-                <tr v-if="!members.length"><td colspan="3" class="sa-empty">暂无成员</td></tr>
-              </tbody>
-            </table>
+            <DataTable v-if="members.length" :columns="memberColumns" :rows="members" row-key="memberId">
+              <template #cell-student="{ row }">{{ row.realName || ('#'+row.studentId) }}</template>
+              <template #cell-role="{ row }">{{ ROLES[row.role] || row.role }}</template>
+              <template #cell-actions="{ row }">
+                <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger @click="removeMember(row)">退社</AppPermissionButton>
+              </template>
+            </DataTable>
+            <p v-else class="sa-empty">暂无成员</p>
 
             <div class="cf-subhead">
               <h4>年审记录</h4>
@@ -82,16 +80,13 @@
               <AppSelect v-model="reviewForm.result" :options="REVIEW_RESULT_OPTIONS" placeholder="" />
               <AppPermissionButton code="studentAffairs.club.manage" size="sm" @click="addReview">提交</AppPermissionButton>
             </div>
-            <table class="sa-table">
-              <thead><tr><th>学年</th><th>结果</th><th>活动数</th><th>审核人</th></tr></thead>
-              <tbody>
-                <tr v-for="r in reviews" :key="r.reviewId">
-                  <td>{{ r.reviewYear }}</td><td>{{ reviewLabel(r.result) }}</td>
-                  <td>{{ r.activityCount != null ? r.activityCount : '—' }}</td><td>{{ r.reviewerName || '—' }}</td>
-                </tr>
-                <tr v-if="!reviews.length"><td colspan="4" class="sa-empty">暂无年审</td></tr>
-              </tbody>
-            </table>
+            <DataTable v-if="reviews.length" :columns="reviewColumns" :rows="reviews" row-key="reviewId">
+              <template #cell-year="{ row }">{{ row.reviewYear }}</template>
+              <template #cell-result="{ row }">{{ reviewLabel(row.result) }}</template>
+              <template #cell-activityCount="{ row }">{{ row.activityCount != null ? row.activityCount : '—' }}</template>
+              <template #cell-reviewer="{ row }">{{ row.reviewerName || '—' }}</template>
+            </DataTable>
+            <p v-else class="sa-empty">暂无年审</p>
           </template>
         </AppSectionCard>
       </div>
@@ -117,8 +112,21 @@ import {
   AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+
+const MEMBER_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'role', title: '任职' },
+  { key: 'actions', title: '操作', align: 'right', width: '100px' }
+]
+const REVIEW_COLUMNS = [
+  { key: 'year', title: '学年' },
+  { key: 'result', title: '结果' },
+  { key: 'activityCount', title: '活动数' },
+  { key: 'reviewer', title: '审核人' }
+]
 
 const TYPES = { INTEREST: '兴趣', ACADEMIC: '学术', SPORTS: '体育', ARTS: '文艺', VOLUNTEER: '公益', PRACTICE: '实践' }
 const ROLES = { MEMBER: '成员', DEPT_HEAD: '部长', VICE_PRESIDENT: '副社长', PRESIDENT: '社长' }
@@ -136,10 +144,12 @@ export default {
   name: 'ClubWorkbenchView',
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
-    AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+    AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
     return {
+      memberColumns: MEMBER_COLUMNS,
+      reviewColumns: REVIEW_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
       activeStatus: '', statusFilters: STATUS_FILTERS, TYPES, ROLES,
       rejDlg: { visible: false, clubId: '' },
@@ -269,8 +279,7 @@ export default {
 .cf-inline { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
 .cf-inline > * { flex: 1 1 180px; min-width: 180px; }
 .cf-inline > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .cf-grid, .cf-layout { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>
