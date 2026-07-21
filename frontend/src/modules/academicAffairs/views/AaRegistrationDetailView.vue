@@ -6,14 +6,14 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/registration')">返回批次列表</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/registration')">返回批次列表</AppButton>
     </template>
 
     <div class="mp-stack">
       <AppSectionCard title="注册学生">
         <div class="aa-reg-search">
           <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索在籍学生" @keyup.enter="searchStudents" />
-          <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
+          <AppButton :loading="searching" @click="searchStudents">检索</AppButton>
         </div>
         <div v-if="searched" class="aa-reg-cands">
           <EmptyState v-if="!candidates.length" title="无匹配学生" description="换个关键字，或确认学生在当前数据范围内" />
@@ -52,13 +52,14 @@
 <script>
 /** 注册名单（/admin/academic-affairs/registration/:batchId）：注册记录 + roster 检索注册。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaRegistrationDetailView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

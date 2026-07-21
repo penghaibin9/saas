@@ -19,7 +19,7 @@
           <AppQuickPhrases scene-key="aa.grade.change" @pick="onPickReason" />
         </label>
         <div class="aa-actions">
-          <button class="mp-btn mp-btn--primary" :disabled="requesting" @click="submitRequest">{{ requesting ? '提交中…' : '提交更正申请' }}</button>
+          <AppButton variant="primary" :loading="requesting" @click="submitRequest">提交更正申请</AppButton>
         </div>
         <p class="mp-note">仅已发布成绩可申请更正；已归档学期需线下特批。同一条成绩同时只能有一个在途更正申请。</p>
       </AppSectionCard>
@@ -33,8 +33,8 @@
           </label>
         </div>
         <div class="aa-review-btns">
-          <button class="mp-btn mp-btn--primary" :disabled="reviewing" @click="doReview('APPROVE')">通过</button>
-          <button class="mp-btn mp-btn--danger" :disabled="reviewing" @click="openReject">驳回</button>
+          <AppButton variant="primary" :loading="reviewing" @click="doReview('APPROVE')">通过</AppButton>
+          <AppButton variant="danger" :loading="reviewing" @click="openReject">驳回</AppButton>
         </div>
         <p class="mp-note">教务处终审通过后：新值生效、原值留痕可查、投影回写成绩台账、联动预警扫描、学生收到通知。驳回后原值不变。</p>
       </AppSectionCard>
@@ -57,6 +57,7 @@
 <script>
 /** 成绩更正（/admin/academic-affairs/grade-change）：发起+两级审核。 */
 import { ModulePageShell } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -64,7 +65,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaGradeChangeView',
-  components: { ModulePageShell, AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

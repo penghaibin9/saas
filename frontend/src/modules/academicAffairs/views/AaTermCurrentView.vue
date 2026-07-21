@@ -13,7 +13,7 @@
           title="尚未设置当前学期"
           description="请先在「学年学期」发布一个学期，发布后自动成为当前学期"
         >
-          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</button>
+          <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</AppButton>
         </EmptyState>
         <div v-else class="aa-current-card">
           <div class="aa-current-card__main">

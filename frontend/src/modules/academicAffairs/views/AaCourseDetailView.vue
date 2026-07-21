@@ -6,8 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/courses')">返回列表</button>
-      <button v-if="course && editable" class="mp-btn" @click="$router.push(`/admin/academic-affairs/courses/${courseId}/edit`)">编辑</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/courses')">返回列表</AppButton>
+      <AppButton v-if="course && editable" @click="$router.push(`/admin/academic-affairs/courses/${courseId}/edit`)">编辑</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -23,10 +23,10 @@
 
       <AppSectionCard title="审核操作">
         <div class="aa-review-btns">
-          <button v-if="canSubmit(course.status)" class="mp-btn mp-btn--primary" :disabled="acting" @click="doSubmit">提交审核</button>
+          <AppButton v-if="canSubmit(course.status)" variant="primary" :loading="acting" @click="doSubmit">提交审核</AppButton>
           <template v-if="inReview(course.status)">
-            <button class="mp-btn mp-btn--primary" @click="openReview('APPROVE')">{{ course.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</button>
-            <button class="mp-btn" @click="openReview('RETURN')">退回</button>
+            <AppButton variant="primary" @click="openReview('APPROVE')">{{ course.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</AppButton>
+            <AppButton @click="openReview('RETURN')">退回</AppButton>
           </template>
           <span v-if="course.status === 'ENABLED'" class="aa-hint">课程已启用，可被培养方案引用</span>
         </div>
@@ -35,9 +35,9 @@
 
       <AppSectionCard title="停用管理">
         <div class="aa-review-btns">
-          <button v-if="course.status === 'ENABLED'" class="mp-btn" :disabled="acting" @click="doDisable">停用课程</button>
-          <button v-if="course.status === 'DISABLED'" class="mp-btn mp-btn--primary" :disabled="acting" @click="doEnable">重新启用</button>
-          <button class="mp-btn" :disabled="loadingRefs" @click="loadReferences">{{ loadingRefs ? '查询中…' : '查看引用情况' }}</button>
+          <AppButton v-if="course.status === 'ENABLED'" :loading="acting" @click="doDisable">停用课程</AppButton>
+          <AppButton v-if="course.status === 'DISABLED'" variant="primary" :loading="acting" @click="doEnable">重新启用</AppButton>
+          <AppButton :loading="loadingRefs" @click="loadReferences">查看引用情况</AppButton>
         </div>
         <p class="mp-note">课程被在途审核中或已发布/启用/冻结的培养方案引用时，停用会被拦截（400）。</p>
         <div v-if="references" class="aa-refs">
@@ -67,6 +67,7 @@
 /** 课程详情 + 两级审核 + 停用管理（/admin/academic-affairs/courses/:id）。
  * Tier1「课程停用」续工：新增启用/停用按钮 + 被引用查询（停用被拦截时提示具体方案）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { REVIEW_STATUS, EXAM_MODE, reviewStatusColor, inReview, canSubmit } from '@/modules/academicAffairs/constants/course-program'
@@ -74,7 +75,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaCourseDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

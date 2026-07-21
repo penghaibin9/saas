@@ -6,13 +6,13 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
       <div class="aa-reg-search">
         <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-        <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
+        <AppButton :loading="searching" @click="searchStudents">检索</AppButton>
       </div>
       <ul v-if="candidates.length" class="aa-cand-list">
         <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
@@ -31,7 +31,7 @@
             周次
             <input v-model.number="week" type="number" min="1" max="30" class="aa-input aa-input--sm" placeholder="全部周次" @keyup.enter="load" />
           </label>
-          <button class="mp-btn mp-btn--primary" @click="load">查询</button>
+          <AppButton variant="primary" @click="load">查询</AppButton>
         </div>
 
         <ErrorState v-if="error" :description="error" @retry="load" />
@@ -56,6 +56,7 @@
  * 学生检索沿用「学生成绩单」页同款 getRoster 搜索惯例，不新造学生选择器接口。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppSelect } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -63,7 +64,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaStudentScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppSelect, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

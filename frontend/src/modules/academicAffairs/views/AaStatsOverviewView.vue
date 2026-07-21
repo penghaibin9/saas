@@ -40,8 +40,8 @@
         <label v-if="tab === 'graduation'" class="aa-filter__item">预审批次ID
           <input v-model="filters.batchId" class="aa-input aa-input--sm" placeholder="可空=不按批次" />
         </label>
-        <button class="mp-btn" :disabled="loading" @click="search">查询</button>
-        <button v-if="tab === 'overview'" class="mp-btn mp-btn--ghost" :disabled="loading" @click="openExport">导出 Excel</button>
+        <AppButton :loading="loading" @click="search">查询</AppButton>
+        <AppButton v-if="tab === 'overview'" variant="ghost" :disabled="loading" @click="openExport">导出 Excel</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="loadTab" />
@@ -301,7 +301,7 @@
             <label class="aa-filter__item">导出用途（必填，≥5字，写审计+水印）
               <input v-model="exp.purpose" class="aa-input" placeholder="如：教务处月度汇报" />
             </label>
-            <button class="mp-btn" :disabled="exp.downloading" @click="doExport">{{ exp.downloading ? '导出中…' : '发起导出' }}</button>
+            <AppButton :loading="exp.downloading" @click="doExport">发起导出</AppButton>
           </div>
           <p class="aa-scope-note">当前为同步下载：点击后立即生成并下载 xlsx 文件（不保留异步导出历史列表，如需"导出历史/失败重试"请登记待办）。</p>
         </template>
@@ -335,6 +335,7 @@
  * 「调停课统计」卡片是学校/学院口径的全局计数，两者互不冲突（见后端 stats_service 模块头注释）。
  */
 import { AppInlineAlert, AppMetricCard, AppG2Chart } from '@/components/common'
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -504,7 +505,7 @@ const EXPORT_DOMAINS = [
 
 export default {
   name: 'AaStatsOverviewView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppInlineAlert, AppMetricCard, AppG2Chart },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppMetricCard, AppG2Chart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

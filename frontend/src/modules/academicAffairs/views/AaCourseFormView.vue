@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="goBack">返回</button>
+      <AppButton @click="goBack">返回</AppButton>
     </template>
 
     <LoadingState v-if="loading" />
@@ -64,8 +64,8 @@
       </div>
       <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       <div class="aa-actions">
-        <button class="mp-btn" @click="goBack">取消</button>
-        <button class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">{{ submitting ? '保存中…' : '保存' }}</button>
+        <AppButton @click="goBack">取消</AppButton>
+        <AppButton variant="primary" :loading="submitting" @click="submit">保存</AppButton>
       </div>
     </AppSectionCard>
   </ModulePageShell>
@@ -76,6 +76,7 @@
  * Tier1「新增课程/课程负责人」续工：补齐开课单位/课程负责人/课程简介/适用专业(全校通用)字段，
  * 复用 AppTeacherPicker（远程搜索真实在职教师）/ AppCollegePicker/AppMajorPicker（本校启用学院专业，静态选项）。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import {
   AppSectionCard, AppFormItem, AppTextInput, AppNumberInput, AppSelect, AppTextarea,
   AppTeacherPicker, AppCollegePicker, AppMajorPicker, AppInlineAlert
@@ -94,7 +95,7 @@ const EMPTY = () => ({
 export default {
   name: 'AaCourseFormView',
   components: {
-    ModulePageShell, LoadingState, AppSectionCard, AppFormItem, AppTextInput, AppNumberInput,
+    ModulePageShell, LoadingState, AppButton, AppSectionCard, AppFormItem, AppTextInput, AppNumberInput,
     AppSelect, AppTextarea, AppTeacherPicker, AppCollegePicker, AppMajorPicker, AppInlineAlert
   },
   props: { ctx: { type: Object, required: true } },

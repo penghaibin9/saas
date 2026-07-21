@@ -6,8 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/grade-overview')">成绩总览</button>
-      <button class="mp-btn" @click="loadTasks">我的录入任务</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/grade-overview')">成绩总览</AppButton>
+      <AppButton @click="loadTasks">我的录入任务</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -24,7 +24,7 @@
           <label class="aa-field"><span>及格线</span><input v-model.number="form.passLine" type="number" min="0" max="100" class="aa-input" /></label>
         </div>
         <p class="mp-note">平时 + 期中 + 期末占比之和必须 = 100（期中占比填 0 即不启用期中，等同「平时 + 期末」）。</p>
-        <div class="aa-actions"><button class="mp-btn mp-btn--primary" :disabled="creating" @click="createTask">{{ creating ? '创建中…' : '创建任务' }}</button></div>
+        <div class="aa-actions"><AppButton variant="primary" :loading="creating" @click="createTask">创建任务</AppButton></div>
 
         <div v-if="myTasks.length" class="aa-my-tasks">
           <h4>我的录入任务</h4>
@@ -53,9 +53,9 @@
         <AppSectionCard v-if="editable" title="添加学生">
           <div class="aa-reg-search">
             <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生添加到录入表" @keyup.enter="searchStudents" />
-            <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
-            <button class="mp-btn" :disabled="loadingRoster" @click="loadRoster">按班级自动圈定名单</button>
-            <button class="mp-btn" @click="importVisible = true">导入成绩（Excel）</button>
+            <AppButton :loading="searching" @click="searchStudents">检索</AppButton>
+            <AppButton :loading="loadingRoster" @click="loadRoster">按班级自动圈定名单</AppButton>
+            <AppButton @click="importVisible = true">导入成绩（Excel）</AppButton>
           </div>
           <ul v-if="candidates.length" class="aa-cand-list">
             <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
@@ -99,7 +99,7 @@
             </tbody>
           </table>
           <div v-if="editable" class="aa-actions">
-            <button class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交进入学院审核' }}</button>
+            <AppButton variant="primary" :loading="submitting" @click="submit">提交进入学院审核</AppButton>
             <span class="mp-note">提交前所有学生须录全平时+期末分或有异常标记；提交后进入学院审核，不可再改（退回后可重新录入）。</span>
           </div>
         </AppSectionCard>
@@ -111,6 +111,7 @@
 <script>
 /** 成绩录入（/admin/academic-affairs/grade-entry）：POST /grade-tasks + /scores + /submit。 */
 import { ModulePageShell, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -125,7 +126,7 @@ const EDITABLE_STATUS = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
 
 export default {
   name: 'AaGradeEntryView',
-  components: { ModulePageShell, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer },
+  components: { ModulePageShell, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

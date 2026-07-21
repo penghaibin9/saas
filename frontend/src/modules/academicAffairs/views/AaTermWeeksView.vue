@@ -18,7 +18,7 @@
         title="还没有学年学期"
         description="学期周次依附于学期，请先到「学年学期」创建并发布一个学期"
       >
-        <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</button>
+        <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</AppButton>
       </EmptyState>
 
       <template v-else>
@@ -29,7 +29,7 @@
           title="该学期尚未配置教学周"
           description="请先到「教学周配置」设置教学周总数与开学日期"
         >
-          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/terms/teaching-weeks')">前往教学周配置</button>
+          <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms/teaching-weeks')">前往教学周配置</AppButton>
         </EmptyState>
         <DataTable v-else :columns="columns" :rows="weeks" row-key="weekNo">
           <template #cell-weekNo="{ row }">
@@ -49,6 +49,7 @@
 <script>
 /** 学期周次（/admin/academic-affairs/terms/weeks）：GET /terms/{id}/weeks（只读计算，来自学期开学日+教学周数+校历）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
@@ -57,7 +58,7 @@ const TYPE_COLOR = { TEACHING: 'default', EXAM: 'danger', HOLIDAY: 'success', IN
 
 export default {
   name: 'AaTermWeeksView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

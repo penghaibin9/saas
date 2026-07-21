@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/programs')">方案列表</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/programs')">方案列表</AppButton>
     </template>
 
     <div class="aapc-tabs">

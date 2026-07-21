@@ -19,7 +19,7 @@
         title="还没有学年学期"
         description="校历依附于学期，请先到「学年学期」创建并发布一个学期"
       >
-        <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</button>
+        <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</AppButton>
       </EmptyState>
 
       <template v-else>

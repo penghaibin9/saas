@@ -6,8 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">返回批次</button>
-      <button class="mp-btn" @click="printView">打印当前视图</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">返回批次</AppButton>
+      <AppPrintButton :handler="printView" label="打印当前视图" />
     </template>
 
     <div class="mp-stack">
@@ -20,7 +20,7 @@
           {{ currentTab.field }}
           <input v-model.trim="query" class="aa-input aa-input--sm" :placeholder="currentTab.placeholder" @keyup.enter="loadView" />
         </label>
-        <button class="mp-btn" @click="loadView">查看课表</button>
+        <AppButton @click="loadView">查看课表</AppButton>
       </div>
 
       <LoadingState v-if="loading" />
@@ -35,7 +35,8 @@
 <script>
 /** 课表三视图（/admin/academic-affairs/schedule/:batchId/views）：class/teacher/student 三视角只读。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
-import { AppSectionCard } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppPrintButton } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -48,7 +49,7 @@ const TABS = [
 
 export default {
   name: 'AaScheduleViewsView',
-  components: { ModulePageShell, LoadingState, AppSectionCard, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, AppButton, AppSectionCard, AppPrintButton, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { tabs: TABS, tab: 'class', query: '', slots: [], items: [], note: '', loading: false }

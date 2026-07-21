@@ -6,8 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/teaching-tasks')">返回批次</button>
-      <button class="mp-btn mp-btn--primary" :disabled="submitting" @click="submitBatch">提交批次审核</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/teaching-tasks')">返回批次</AppButton>
+      <AppButton variant="primary" :loading="submitting" @click="submitBatch">提交批次审核</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -55,6 +55,7 @@
 <script>
 /** 教学任务明细（/admin/academic-affairs/teaching-tasks/:batchId）：分配教师 + 教师确认 + 提交批次。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
@@ -62,7 +63,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTaskDetailView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

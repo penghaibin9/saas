@@ -7,7 +7,7 @@
   >
     <template #actions>
       <label class="aa-archive-toggle"><input type="checkbox" v-model="onlyArchived" @change="load" /> 只看已归档</label>
-      <button class="mp-btn mp-btn--primary" @click="showCreate = !showCreate">＋ 新建课表批次</button>
+      <AppButton variant="primary" @click="showCreate = !showCreate">＋ 新建课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -23,7 +23,7 @@
           <label class="aa-cal-form__item aa-cal-form__item--grow">
             批次名称<input v-model.trim="draft.batchName" class="aa-input" placeholder="选填" maxlength="50" />
           </label>
-          <button class="mp-btn mp-btn--primary" :disabled="creating || !draft.termId" @click="createBatch">{{ creating ? '创建中…' : '创建' }}</button>
+          <AppButton variant="primary" :disabled="!draft.termId" :loading="creating" @click="createBatch">创建</AppButton>
         </div>
       </AppSectionCard>
 
@@ -72,6 +72,7 @@
 <script>
 /** 课表批次列表（/admin/academic-affairs/schedule）：GET/POST /academic-affairs/schedule-batches + 发布/作废。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { SCHEDULE_BATCH_STATUS, scheduleBatchColor } from '@/modules/academicAffairs/constants/teaching'
@@ -79,7 +80,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaScheduleBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

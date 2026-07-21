@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/archive')">前往教务归档</button>
+      <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/archive')">前往教务归档</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -37,6 +37,7 @@
 <script>
 /** 学期归档（/admin/academic-affairs/terms/archive-status）：GET /terms/archive-overview（只读，联动教务归档批次状态）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
@@ -47,7 +48,7 @@ const BATCH_STATUS_TYPE = { DRAFT: 'default', CHECKING: 'processing', READY: 'pr
 
 export default {
   name: 'AaTermArchiveView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

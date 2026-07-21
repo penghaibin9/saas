@@ -2,7 +2,7 @@
   <div class="aa-print">
     <div class="aa-print__bar">
       <span>{{ printTime }}</span>
-      <button class="mp-btn mp-btn--primary" @click="doPrint">打印</button>
+      <AppPrintButton variant="primary" :handler="doPrint" />
     </div>
 
     <LoadingState v-if="loading" />
@@ -35,11 +35,12 @@
 <script>
 /** 成绩单打印页（/admin/academic-affairs/print/transcript/:studentId）：D7 独立打印路由，无导航布局。 */
 import { LoadingState } from '@/components/business'
+import { AppPrintButton } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 export default {
   name: 'AaTranscriptPrintView',
-  components: { LoadingState },
+  components: { LoadingState, AppPrintButton },
   data() {
     return { loading: true, error: '', schoolName: '职业院校', data: { items: [], gpa: null, earnedCredits: 0 }, printTime: '' }
   },

@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="showCreate = !showCreate">＋ 新建方案</button>
+      <AppButton variant="primary" @click="showCreate = !showCreate">＋ 新建方案</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -18,7 +18,7 @@
           <label class="aa-cal-form__item">专业ID<input v-model.trim="draft.majorId" class="aa-input aa-input--sm" placeholder="选填" /></label>
           <label class="aa-cal-form__item">年级<input v-model.trim="draft.gradeYear" class="aa-input aa-input--sm" placeholder="如 2026" /></label>
           <label class="aa-cal-form__item">毕业总学分<input v-model.number="draft.totalCredits" type="number" min="0" class="aa-input aa-input--sm" /></label>
-          <button class="mp-btn mp-btn--primary" :disabled="creating || !draft.programName" @click="createProgram">{{ creating ? '创建中…' : '创建' }}</button>
+          <AppButton variant="primary" :disabled="!draft.programName" :loading="creating" @click="createProgram">创建</AppButton>
         </div>
       </AppSectionCard>
 
@@ -45,6 +45,7 @@
 <script>
 /** 培养方案列表（/admin/academic-affairs/programs）：GET/POST /academic-affairs/programs。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
@@ -52,7 +53,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaProgramListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

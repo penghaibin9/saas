@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="openCreate">＋ 发起更正</button>
+      <AppButton variant="primary" @click="openCreate">＋ 发起更正</AppButton>
     </template>
 
     <div class="mp-stack">

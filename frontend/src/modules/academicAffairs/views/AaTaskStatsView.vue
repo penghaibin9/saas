@@ -13,7 +13,7 @@
             <option v-for="t in terms" :key="t.termId" :value="t.termId">{{ t.yearCode }} 第 {{ t.termNo }} 学期</option>
           </select>
         </label>
-        <button class="mp-btn" :disabled="loading" @click="load">刷新</button>
+        <AppButton :loading="loading" @click="load">刷新</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -53,13 +53,14 @@
  * GET /academic-affairs/teaching-task-batches/stats。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppMetricCard, AppG2Chart } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, TASK_STATUS } from '@/modules/academicAffairs/constants/teaching'
 
 export default {
   name: 'AaTaskStatsView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppMetricCard, AppG2Chart },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppMetricCard, AppG2Chart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="goBack">返回列表</button>
+      <AppButton @click="goBack">返回列表</AppButton>
     </template>
 
     <AppSectionCard title="异动信息">
@@ -20,7 +20,7 @@
             </div>
             <div v-else class="aa-reg-search">
               <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-              <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
+              <AppButton :loading="searching" @click="searchStudents">检索</AppButton>
             </div>
             <ul v-if="!form.studentId && candidates.length" class="aa-cand-list">
               <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
@@ -86,10 +86,10 @@
       </div>
 
       <div class="aa-form__actions">
-        <button class="mp-btn" @click="goBack">取消</button>
-        <button class="mp-btn mp-btn--primary" :disabled="submitting || !form.studentId" @click="submit">
-          {{ submitting ? '提交中…' : '提交异动' }}
-        </button>
+        <AppButton @click="goBack">取消</AppButton>
+        <AppButton variant="primary" :disabled="!form.studentId" :loading="submitting" @click="submit">
+          提交异动
+        </AppButton>
       </div>
     </AppSectionCard>
   </ModulePageShell>
@@ -103,6 +103,7 @@
  *  TRANSFER_CLASS（转班）目标班选择器：选定学生后拉取其当前专业（GET /roster/{id}），
  *  再按该专业过滤班级候选（GET /orgs/classes?majorId=），跨专业一致性由后端 submit() 强制复核。 */
 import { ModulePageShell } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppQuickPhrases, AppSelect } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { hasGroupPhrases } from '@/utils/quickPhrases'
@@ -121,7 +122,7 @@ const TYPE_HINT = {
 
 export default {
   name: 'AaStatusChangeFormView',
-  components: { ModulePageShell, AppSectionCard, AppQuickPhrases, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppQuickPhrases, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

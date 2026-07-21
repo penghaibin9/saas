@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/grade-fail')">挂科清单</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/grade-fail')">挂科清单</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -16,7 +16,7 @@
           异常类型
           <AppSelect v-model="exceptionFlag" :options="exceptionFlagOptions" placeholder="" @change="search" />
         </label>
-        <button class="mp-btn" @click="search">查询</button>
+        <AppButton @click="search">查询</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -41,6 +41,7 @@
 /** 成绩异常（/admin/academic-affairs/grade-exception）：GET /grade-views/exception-list。
  * 汇总各录入任务中 exception_flag ∈ {ABSENT/DEFERRED/EXEMPT} 的学生（跨任务读侧下钻，零写入）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { EXCEPTION_FLAG_LABEL, exceptionFlagColor } from '@/modules/academicAffairs/constants/grade-graduation'
@@ -53,7 +54,7 @@ const TASK_STATUS_LABEL = {
 
 export default {
   name: 'AaGradeExceptionView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

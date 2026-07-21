@@ -6,13 +6,13 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
       <div class="aa-reg-search">
         <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按教学班名称/课程名筛选（本页已加载列表内筛选）" />
-        <button class="mp-btn" :disabled="listLoading" @click="loadTeachingClasses">刷新列表</button>
+        <AppButton :loading="listLoading" @click="loadTeachingClasses">刷新列表</AppButton>
       </div>
       <ErrorState v-if="listError" :description="listError" @retry="loadTeachingClasses" />
       <LoadingState v-else-if="listLoading" />
@@ -38,7 +38,7 @@
             周次
             <input v-model.number="week" type="number" min="1" max="30" class="aa-input aa-input--sm" placeholder="全部周次" @keyup.enter="load" />
           </label>
-          <button class="mp-btn mp-btn--primary" @click="load">查询</button>
+          <AppButton variant="primary" @click="load">查询</AppButton>
         </div>
 
         <ErrorState v-if="error" :description="error" @retry="load" />
@@ -63,6 +63,7 @@
  * 越范围 → 403002；未知教学班代码 → 404。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppSelect } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -70,7 +71,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeachingClassScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppSelect, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

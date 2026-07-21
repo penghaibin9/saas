@@ -6,8 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/status-changes')">返回列表</button>
-      <button v-if="change" class="mp-btn" @click="print">打印审批表</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/status-changes')">返回列表</AppButton>
+      <AppPrintButton v-if="change" :handler="print" label="打印审批表" />
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -33,9 +33,9 @@
 
       <AppSectionCard v-if="canReview" title="审批操作">
         <div class="aa-review-btns">
-          <button class="mp-btn mp-btn--primary" @click="openApprove">通过</button>
-          <button class="mp-btn" @click="openReturn">退回</button>
-          <button class="mp-btn mp-btn--danger" @click="openReject">驳回</button>
+          <AppButton variant="primary" @click="openApprove">通过</AppButton>
+          <AppButton @click="openReturn">退回</AppButton>
+          <AppButton variant="danger" @click="openReject">驳回</AppButton>
         </div>
         <p class="mp-note">驳回 / 退回原因必填且不少于 5 字。终审「通过」后异动即刻生效并写入学籍主档。</p>
       </AppSectionCard>
@@ -59,14 +59,15 @@
 <script>
 /** 学籍异动详情 + 审批（/admin/academic-affairs/status-changes/:id）：GET + POST review。 */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList, AppPrintButton } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { STATUS_LABEL, NODE_LABEL, CHANGE_FLOW_NODES, statusColor, isActive } from '@/modules/academicAffairs/constants/status-change'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaStatusChangeDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList },
+  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList, AppPrintButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

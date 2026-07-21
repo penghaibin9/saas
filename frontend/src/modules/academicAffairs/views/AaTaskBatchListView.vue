@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="showGen = !showGen">＋ 生成任务批次</button>
+      <AppButton variant="primary" @click="showGen = !showGen">＋ 生成任务批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -23,7 +23,7 @@
             批次名称
             <input v-model.trim="gen.batchName" class="aa-input" placeholder="选填，如 2026秋教学任务" maxlength="50" />
           </label>
-          <button class="mp-btn mp-btn--primary" :disabled="generating || !gen.termId" @click="doGenerate">{{ generating ? '生成中…' : '生成（幂等）' }}</button>
+          <AppButton variant="primary" :disabled="!gen.termId" :loading="generating" @click="doGenerate">生成（幂等）</AppButton>
         </div>
         <p class="mp-note">生成依据：状态为「已启用」且已绑定年级的培养方案。幂等——同学期重复生成不会重复建任务。</p>
       </AppSectionCard>
@@ -46,6 +46,7 @@
 <script>
 /** 教学任务批次列表（/admin/academic-affairs/teaching-tasks）：GET/POST /academic-affairs/teaching-task-batches。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, taskBatchColor } from '@/modules/academicAffairs/constants/teaching'
@@ -53,7 +54,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTaskBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

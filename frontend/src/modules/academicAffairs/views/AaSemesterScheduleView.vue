@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -15,7 +15,7 @@
           学期
           <AppSelect v-model="termId" :options="termOptions" placeholder="" @change="load" />
         </label>
-        <button v-if="canPrint" class="mp-btn" @click="goPrint">打印本页课表</button>
+        <AppPrintButton v-if="canPrint" :handler="goPrint" label="打印本页课表" />
       </div>
 
       <nav class="aa-tabs">
@@ -38,8 +38,8 @@
             教师工号
             <input v-model.trim="teacherKey" class="aa-input" placeholder="输入教师工号/登录名" @keyup.enter="load" />
           </label>
-          <button v-if="selfKey" class="mp-btn" @click="teacherKey = selfKey; load()">查看本人课表</button>
-          <button class="mp-btn mp-btn--primary" :disabled="!teacherKey" @click="load">查询</button>
+          <AppButton v-if="selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
+          <AppButton variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
         </div>
       </div>
       <!-- 教室 -->
@@ -55,7 +55,7 @@
       <div v-else-if="dim === 'student'" class="aa-dim-body">
         <div class="aa-reg-search">
           <input v-model.trim="stuKw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-          <button class="mp-btn" :disabled="stuSearching" @click="searchStudents">检索</button>
+          <AppButton :loading="stuSearching" @click="searchStudents">检索</AppButton>
         </div>
         <ul v-if="stuCandidates.length" class="aa-cand-list">
           <li v-for="s in stuCandidates" :key="s.studentId" class="aa-cand-item">
@@ -100,7 +100,8 @@
  * 顺手改动已验收的 W4 打印页）。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect, AppPrintButton } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
@@ -113,7 +114,7 @@ const DIMS = [
 
 export default {
   name: 'AaSemesterScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect, AppPrintButton, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     const u = currentUserFromToken() || {}

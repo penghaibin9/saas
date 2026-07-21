@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="goCreate">＋ 新建学期</button>
+      <AppButton variant="primary" @click="goCreate">＋ 新建学期</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -63,6 +63,7 @@
  * 设计来源：project_rule（表单字段文档「学年名称」随学期创建表单一并录入，无独立学年实体）+
  * existing_code（聚合字段全部来自既有 t_aa_term.year_code/status/is_current）；聚合展示本身为 ai_proposal。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
@@ -73,7 +74,7 @@ const TERM_STATUS_TYPE = { DRAFT: 'default', PUBLISHED: 'success', FROZEN: 'warn
 
 export default {
   name: 'AaAcademicYearView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -26,7 +26,7 @@
             <option v-for="a in actionOptions" :key="a" :value="a">{{ actionLabel(a) }}</option>
           </select>
         </label>
-        <button class="mp-btn" @click="reload">查询</button>
+        <AppButton @click="reload">查询</AppButton>
       </div>
 
       <AppSectionCard title="调整记录">
@@ -60,6 +60,7 @@
  * 互不混入。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
@@ -73,7 +74,7 @@ const BATCH_ACTIONS = ['CREATE', 'IMPORT', 'PRE_PUBLISH', 'PUBLISH', 'VOID_REISS
 
 export default {
   name: 'AaScheduleAdjustmentLogView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

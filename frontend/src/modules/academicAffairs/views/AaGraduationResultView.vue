@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/graduation')">返回批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/graduation')">返回批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -20,7 +20,7 @@
 
       <div class="aa-filter">
         <AppSelect v-model="filters.overall" :options="overallOptions" placeholder="" @change="search" />
-        <button class="mp-btn" @click="search">查询</button>
+        <AppButton @click="search">查询</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -41,10 +41,10 @@
           </div>
           <div class="aa-result-actions">
             <template v-if="canCollegeReview(r)">
-              <button class="mp-btn mp-btn--primary" :disabled="busy" @click="collegeReview(r, 'APPROVE')">学院初审通过</button>
-              <button class="mp-btn" :disabled="busy" @click="collegeReview(r, 'REJECT')">学院驳回</button>
+              <AppButton variant="primary" :loading="busy" @click="collegeReview(r, 'APPROVE')">学院初审通过</AppButton>
+              <AppButton :loading="busy" @click="collegeReview(r, 'REJECT')">学院驳回</AppButton>
             </template>
-            <button v-if="r.status === 'ACADEMIC_REVIEW'" class="mp-btn mp-btn--primary" @click="openFinal(r)">教务终审</button>
+            <AppButton v-if="r.status === 'ACADEMIC_REVIEW'" variant="primary" @click="openFinal(r)">教务终审</AppButton>
             <span v-if="r.conclusion" class="aa-final-tag">终审结论：{{ conclusionLabel(r.conclusion) }}</span>
           </div>
         </AppSectionCard>
@@ -72,6 +72,7 @@
 <script>
 /** 毕业预审结果 + 复核（/admin/academic-affairs/graduation/:batchId/results）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { GRAD_ITEM_LABEL, GRAD_ITEM_RESULT, gradItemColor, OVERALL_LABEL, overallColor, CONCLUSION_LABEL, GRAD_STATUS_LABEL } from '@/modules/academicAffairs/constants/grade-graduation'
@@ -79,7 +80,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaGraduationResultView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

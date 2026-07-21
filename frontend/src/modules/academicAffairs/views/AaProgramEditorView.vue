@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/programs')">返回列表</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/programs')">返回列表</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -26,8 +26,8 @@
         <div class="aa-add-panel">
           <input v-model.trim="editForm.programName" class="aa-input" placeholder="方案名称" />
           <input v-model.number="editForm.totalCredits" type="number" min="0" class="aa-input aa-input--sm" placeholder="毕业总学分" />
-          <button class="mp-btn mp-btn--primary" :disabled="savingEdit || !editForm.programName" @click="saveEdit">{{ savingEdit ? '保存中…' : '保存' }}</button>
-          <button class="mp-btn" @click="showEdit = false">取消</button>
+          <AppButton variant="primary" :disabled="!editForm.programName" :loading="savingEdit" @click="saveEdit">保存</AppButton>
+          <AppButton @click="showEdit = false">取消</AppButton>
         </div>
       </AppSectionCard>
 
@@ -44,7 +44,7 @@
           </select>
           <input v-model.number="addForm.openTermNo" type="number" min="1" max="12" class="aa-input aa-input--sm" placeholder="开课学期" />
           <input v-model.trim="addForm.module" class="aa-input aa-input--sm" placeholder="课程模块" />
-          <button class="mp-btn mp-btn--primary" :disabled="adding || !addForm.courseId" @click="addCourse">{{ adding ? '添加中…' : '添加' }}</button>
+          <AppButton variant="primary" :disabled="!addForm.courseId" :loading="adding" @click="addCourse">添加</AppButton>
           <span v-if="!enabledCourses.length" class="aa-hint">课程库暂无已启用课程，请先在「课程库」启用课程</span>
         </div>
 
@@ -65,14 +65,14 @@
       <!-- 审批 / 发布 / 绑定 -->
       <AppSectionCard title="审核与发布">
         <div class="aa-review-btns">
-          <button v-if="canSubmit(program.status)" class="mp-btn mp-btn--primary" :disabled="acting" @click="doSubmit">提交审核</button>
+          <AppButton v-if="canSubmit(program.status)" variant="primary" :loading="acting" @click="doSubmit">提交审核</AppButton>
           <template v-if="inReview(program.status)">
-            <button class="mp-btn mp-btn--primary" @click="openReview('APPROVE')">{{ program.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</button>
-            <button class="mp-btn" @click="openReview('RETURN')">退回</button>
+            <AppButton variant="primary" @click="openReview('APPROVE')">{{ program.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</AppButton>
+            <AppButton @click="openReview('RETURN')">退回</AppButton>
           </template>
           <template v-if="bindable">
             <input v-model.trim="bindForm.gradeYear" class="aa-input aa-input--sm" placeholder="绑定年级 如2026" />
-            <button class="mp-btn mp-btn--primary" :disabled="acting || !bindForm.gradeYear" @click="doBind">绑定年级</button>
+            <AppButton variant="primary" :disabled="!bindForm.gradeYear" :loading="acting" @click="doBind">绑定年级</AppButton>
           </template>
         </div>
         <p class="mp-note">提交审核前后端会校验学分达标；两级审通过后发布，发布后可绑定年级（旧版本锁定）。</p>
@@ -96,6 +96,7 @@
 <script>
 /** 培养方案编制器（/admin/academic-affairs/programs/:id）：学分汇总 + 课程明细 + 两级审 + 绑定年级。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { REVIEW_STATUS, reviewStatusColor, inReview, canSubmit } from '@/modules/academicAffairs/constants/course-program'
@@ -103,7 +104,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaProgramEditorView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

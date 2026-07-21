@@ -62,9 +62,9 @@
           </div>
 
           <div class="sc-fld sc-fld--full sc-conflict">
-            <button type="button" class="mp-btn" :disabled="checkingConflict || !canCheckConflict" @click="checkConflict">
-              {{ checkingConflict ? '检测中…' : '检测冲突' }}
-            </button>
+            <AppButton :disabled="!canCheckConflict" :loading="checkingConflict" @click="checkConflict">
+              检测冲突
+            </AppButton>
             <p v-if="conflictResult === undefined" class="sc-conflict__hint">
               先检测目标课位是否冲突，提交时仍会做同一算法的强制校验（预检失败不阻止提交）
             </p>
@@ -84,7 +84,7 @@
 
         <p v-if="err" class="sc-err">{{ err }}</p>
         <div class="sc-btns">
-          <button type="button" class="mp-btn" @click="$router.back()">取消</button>
+          <AppButton @click="$router.back()">取消</AppButton>
           <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">提交申请</button>
         </div>
       </form>
@@ -95,6 +95,7 @@
 <script>
 /** 发起调停课（/admin/academic-affairs/schedule-change/apply）：提交即冲突预检，冲突后端 409 → 单据不落库。 */
 import { ModulePageShell } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppQuickPhrases } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { scheduleChangeApi, CHANGE_TYPES } from '@/modules/academicAffairs/api/academic-schedule-change.api'
@@ -108,7 +109,7 @@ const EMPTY = () => ({
 
 export default {
   name: 'AaScheduleChangeApplyView',
-  components: { ModulePageShell, AppQuickPhrases },
+  components: { ModulePageShell, AppButton, AppQuickPhrases },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {

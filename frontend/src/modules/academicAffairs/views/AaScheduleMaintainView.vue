@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">返回批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">返回批次</AppButton>
       <button class="mp-btn" @click="showImport = !showImport">批量导入</button>
     </template>
 
@@ -14,7 +14,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">班级ID<input v-model.trim="classId" class="aa-input aa-input--sm" placeholder="必填" /></label>
         <label class="aa-filter__item">班级名称<input v-model.trim="className" class="aa-input" placeholder="用于新排课项显示" /></label>
-        <button class="mp-btn" @click="loadClass">载入课表</button>
+        <AppButton @click="loadClass">载入课表</AppButton>
       </div>
 
       <AppInlineAlert v-if="lastConflict" type="error" :message="lastConflict" />
@@ -23,7 +23,7 @@
         <p class="mp-note">每行一条：<code>星期,节次,课程,教师,教室,起始周,结束周,单双周(ALL/ODD/EVEN)</code>。例：<code>1,1,高等数学,张老师,A101,1,18,ALL</code></p>
         <textarea v-model="importText" class="aa-textarea" rows="4" placeholder="1,1,高等数学,张老师,A101,1,18,ALL"></textarea>
         <div class="aa-import-actions">
-          <button class="mp-btn mp-btn--primary" :disabled="importing || !classId" @click="doImport">{{ importing ? '导入中…' : '导入到当前班级' }}</button>
+          <AppButton variant="primary" :disabled="!classId" :loading="importing" @click="doImport">导入到当前班级</AppButton>
         </div>
         <div v-if="importResult" class="aa-import-result">
           成功 {{ importResult.imported }} 条，冲突 {{ (importResult.conflicts || []).length }} 条
@@ -77,6 +77,7 @@
 <script>
 /** 课表维护（/admin/academic-affairs/schedule/:batchId/edit）：AaScheduleGrid 编辑态 + 排课 + 冲突 + 导入。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -84,7 +85,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaScheduleMaintainView',
-  components: { ModulePageShell, LoadingState, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

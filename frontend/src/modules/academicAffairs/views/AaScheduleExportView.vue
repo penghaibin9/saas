@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -48,9 +48,9 @@
             <input v-model.trim="purpose" class="aa-input" placeholder="如：教务处存档 / 班级课表打印分发" maxlength="200" />
           </label>
 
-          <button class="mp-btn mp-btn--primary" :disabled="!canExport || exporting" @click="doExport">
-            {{ exporting ? '导出中…' : '导出 Excel' }}
-          </button>
+          <AppButton variant="primary" :disabled="!canExport" :loading="exporting" @click="doExport">
+            导出 Excel
+          </AppButton>
         </div>
         <p class="mp-note">导出文件首行含导出人/时间/用途水印；单次导出写入操作审计，请勿随意外发。</p>
       </AppSectionCard>
@@ -65,13 +65,14 @@
  * 后端 xlsx 二进制流下载（水印+AffairsAuditTrail 审计），对齐 quality/reports/export 同款 requestBlob 约定。
  */
 import { ModulePageShell } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect } from '@/components/common'
 import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaScheduleExportView',
-  components: { ModulePageShell, AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

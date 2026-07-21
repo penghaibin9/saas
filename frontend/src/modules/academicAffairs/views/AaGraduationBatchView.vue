@@ -11,7 +11,7 @@
           <label class="aa-cal-form__item aa-cal-form__item--grow">批次名称<input v-model.trim="draft.batchName" class="aa-input" placeholder="如 2026届毕业资格审核" maxlength="60" /></label>
           <label class="aa-cal-form__item">年级<input v-model.trim="draft.gradeYear" class="aa-input aa-input--sm" placeholder="如 2023" /></label>
           <label class="aa-cal-form__item">专业ID<input v-model.trim="draft.majorId" class="aa-input aa-input--sm" placeholder="选填" /></label>
-          <button class="mp-btn mp-btn--primary" :disabled="creating || !draft.batchName" @click="createBatch">{{ creating ? '创建中…' : '创建' }}</button>
+          <AppButton variant="primary" :loading="creating" :disabled="!draft.batchName" @click="createBatch">创建</AppButton>
         </div>
       </AppSectionCard>
 
@@ -19,10 +19,10 @@
         <AppSectionCard :title="`批次：${batch.batchName}`">
           <div class="aa-batch-actions">
             <AppStatusTag type="primary">{{ batch.status }}</AppStatusTag>
-            <button class="mp-btn" :disabled="busy" @click="generate">圈定应届生</button>
-            <button class="mp-btn" :disabled="busy" @click="precheck">执行十项预审</button>
-            <button class="mp-btn mp-btn--primary" @click="$router.push(`/admin/academic-affairs/graduation/${batch.batchId}/results`)">查看结果 / 复核</button>
-            <button class="mp-btn" @click="resetBatch">另建批次</button>
+            <AppButton :loading="busy" @click="generate">圈定应届生</AppButton>
+            <AppButton :loading="busy" @click="precheck">执行十项预审</AppButton>
+            <AppButton variant="primary" @click="$router.push(`/admin/academic-affairs/graduation/${batch.batchId}/results`)">查看结果 / 复核</AppButton>
+            <AppButton @click="resetBatch">另建批次</AppButton>
           </div>
           <AppInlineAlert v-if="genInfo" type="success" :message="genInfo" />
           <AppInlineAlert v-if="preInfo" type="success" :message="preInfo" />
@@ -47,13 +47,14 @@
 <script>
 /** 审核批次（/admin/academic-affairs/graduation）：建批次 + 圈定 + 预审 + 历史批次列表（进审核工作台）。 */
 import { ModulePageShell, DataTable, LoadingState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaGraduationBatchView',
-  components: { ModulePageShell, DataTable, LoadingState, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert },
+  components: { ModulePageShell, DataTable, LoadingState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="load">刷新</button>
+      <AppButton @click="load">刷新</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -72,13 +72,14 @@
  * 已是其 9 数据域之一（本页不重复造归档批次/导出，只做「学籍异动」自身的在途监控视图）。
  */
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { STATUS_LABEL, NODE_LABEL, statusColor } from '@/modules/academicAffairs/constants/status-change'
 
 export default {
   name: 'AaStatusChangeArchiveView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppSectionCard },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

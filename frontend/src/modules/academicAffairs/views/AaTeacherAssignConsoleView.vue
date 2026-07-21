@@ -10,7 +10,7 @@
         <label class="aa-filter__item">状态
           <AppSelect v-model="filterStatus" :options="statusOptions" placeholder="" class="aa-select" @change="load" />
         </label>
-        <button class="mp-btn" :disabled="loading" @click="load">刷新</button>
+        <AppButton :loading="loading" @click="load">刷新</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -62,6 +62,7 @@
  * GET /academic-affairs/teaching-tasks（跨批次）+ POST /teaching-tasks/{taskId}/assign。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
@@ -69,7 +70,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeacherAssignConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

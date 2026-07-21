@@ -27,8 +27,8 @@
             <option value="college">按学院</option>
           </select>
         </label>
-        <button class="mp-btn" :disabled="loading" @click="search">查询</button>
-        <button class="mp-btn mp-btn--ghost" :disabled="loading" @click="openExport">导出 Excel</button>
+        <AppButton :loading="loading" @click="search">查询</AppButton>
+        <AppButton variant="ghost" :disabled="loading" @click="openExport">导出 Excel</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="search" />
@@ -83,6 +83,7 @@
 <script>
 /** 补考重修缓考免修 · 统计分析（三级施工卡 10）：/admin/academic-affairs/makeup/stats，独立页面（非 console tab）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -103,7 +104,7 @@ const _DETAIL_COLUMNS = {
 
 export default {
   name: 'AaMakeupStatsView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },

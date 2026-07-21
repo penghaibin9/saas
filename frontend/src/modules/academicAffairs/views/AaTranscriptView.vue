@@ -8,7 +8,7 @@
     <div class="mp-stack">
       <div class="aa-reg-search">
         <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-        <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
+        <AppButton :loading="searching" @click="searchStudents">检索</AppButton>
       </div>
       <ul v-if="candidates.length" class="aa-cand-list">
         <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
@@ -30,7 +30,7 @@
             </template>
             <div v-if="exportPanel" class="aa-export-bar">
               <input v-model.trim="exportPurpose" class="aa-input aa-input--grow" placeholder="导出用途（必填，≥5字，如：学院例会核对，将写入审计）" />
-              <button class="mp-btn mp-btn--primary" :disabled="exporting" @click="doExport">{{ exporting ? '导出中…' : '确认导出 xlsx' }}</button>
+              <AppButton variant="primary" :loading="exporting" @click="doExport">确认导出 xlsx</AppButton>
             </div>
             <p v-if="data.note" class="mp-note">{{ data.note }}</p>
             <EmptyState v-if="!data.items.length && !data.note" title="暂无成绩记录" description="学生还没有已发布的课程成绩" />
@@ -57,13 +57,14 @@
 <script>
 /** 学生成绩单（/admin/academic-affairs/transcript）：GET /students/:id/transcript。 */
 import { ModulePageShell, LoadingState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppMetricCard, AppSectionCard, AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTranscriptView',
-  components: { ModulePageShell, LoadingState, EmptyState, AppMetricCard, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, LoadingState, EmptyState, AppButton, AppMetricCard, AppSectionCard, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

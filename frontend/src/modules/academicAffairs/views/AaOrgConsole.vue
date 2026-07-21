@@ -6,8 +6,8 @@
     :data-scope-name="dataScopeName"
   >
     <template #actions>
-      <button v-if="canManage && ['college','major','class'].includes(tab)"
-              class="mp-btn mp-btn--primary" @click="openCreate">＋ 新建{{ tabLabel }}</button>
+      <AppButton v-if="canManage && ['college','major','class'].includes(tab)"
+              variant="primary" @click="openCreate">＋ 新建{{ tabLabel }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -64,13 +64,13 @@
             <span class="aa-note-inline">总开关：</span>
             <StatusTag :type="directionToggle.enabled ? 'success' : 'default'"
                        :label="directionToggle.enabled ? '已启用' : '未启用'" dot />
-            <button v-if="canManage" class="mp-btn" :disabled="directionToggle.loading" @click="toggleMajorDirection">
+            <AppButton v-if="canManage" :loading="directionToggle.loading" @click="toggleMajorDirection">
               {{ directionToggle.enabled ? '停用总开关' : '启用总开关' }}
-            </button>
+            </AppButton>
             <template v-if="directionToggle.enabled">
               <AppSelect v-model="directionMajorId" :placeholder="''" @change="reloadDirections"
                          :options="[{ value: '', label: '请选择专业' }, ...majorOptions]" />
-              <button v-if="directionMajorId && canManage" class="mp-btn mp-btn--primary" @click="openDirectionCreate">＋ 新建方向</button>
+              <AppButton v-if="directionMajorId && canManage" variant="primary" @click="openDirectionCreate">＋ 新建方向</AppButton>
             </template>
           </div>
           <EmptyState v-if="!directionToggle.enabled" title="专业方向总开关未启用"
@@ -106,7 +106,7 @@
             <AppSelect v-model="studentsFilterClassId" :placeholder="''" @change="reloadStudentsList"
                        :options="[{ value: '', label: '请选择行政班' }, ...classOptions]" />
             <input v-model="studentsKeyword" class="aa-input" placeholder="学号/姓名关键字" @keyup.enter="reloadStudentsList" />
-            <button class="mp-btn" :disabled="!studentsFilterClassId" @click="reloadStudentsList">查询</button>
+            <AppButton :disabled="!studentsFilterClassId" @click="reloadStudentsList">查询</AppButton>
           </div>
           <EmptyState v-if="!studentsFilterClassId" title="请选择行政班" description="选择上方行政班查看该班学生名册" />
           <template v-else>
@@ -135,8 +135,8 @@
                        :options="[{ value: '', label: '全部状态' }, { value: 'DRAFT', label: '草稿' }, { value: 'CHECKED', label: '已核对' }, { value: 'EXECUTED', label: '已执行' }, { value: 'CANCELLED', label: '已撤销' }]" />
             <AppSelect v-model="adjustments.filters.adjustType" :placeholder="''" @change="reloadAdjustments"
                        :options="[{ value: '', label: '全部类型' }, { value: 'MERGE', label: '合班登记' }, { value: 'SPLIT', label: '拆班登记' }, { value: 'DISBAND', label: '停用撤销' }, { value: 'GRADUATE_CLEAR', label: '毕业清班' }]" />
-            <button class="mp-btn" @click="reloadAdjustments">查询</button>
-            <button v-if="canManage" class="mp-btn mp-btn--primary" @click="openAdjustCreate">＋ 发起调整</button>
+            <AppButton @click="reloadAdjustments">查询</AppButton>
+            <AppButton v-if="canManage" variant="primary" @click="openAdjustCreate">＋ 发起调整</AppButton>
           </div>
           <ErrorState v-if="adjustments.error" :description="adjustments.error" @retry="reloadAdjustments" />
           <LoadingState v-else-if="adjustments.loading" />
@@ -177,7 +177,7 @@
           <AppSelect v-if="tab === 'class'" v-model="filters.majorId" :placeholder="''" @change="reload"
                      :options="[{ value: '', label: '全部专业' }, ...majorOptions]" />
           <input v-model="filters.keyword" class="aa-input" placeholder="关键词" @keyup.enter="reload" />
-          <button class="mp-btn" @click="reload">查询</button>
+          <AppButton @click="reload">查询</AppButton>
         </div>
 
         <ErrorState v-if="error" :description="error" @retry="reload" />
@@ -229,18 +229,15 @@
       <div class="aa-modal__panel">
         <h3 class="aa-modal__title">{{ form.mode === 'create' ? '新建' : '编辑' }}{{ tabLabel }}</h3>
         <div class="aa-form">
-          <label v-for="f in formFields" :key="f.key" class="aa-form__row">
-            <span class="aa-form__label">{{ f.label }}<i v-if="f.required" class="aa-req">*</i></span>
-            <select v-if="f.type === 'select'" v-model="form.model[f.key]">
-              <option v-for="o in f.options" :key="o.value" :value="o.value">{{ o.label }}</option>
-            </select>
-            <input v-else v-model="form.model[f.key]" :type="f.type === 'number' ? 'number' : 'text'"
-                   :placeholder="f.placeholder || ''" />
-          </label>
+          <AppFormItem v-for="f in formFields" :key="f.key" :label="f.label" :required="!!f.required">
+            <AppSelect v-if="f.type === 'select'" v-model="form.model[f.key]" :options="f.options || []" />
+            <AppNumberInput v-else-if="f.type === 'number'" v-model="form.model[f.key]" />
+            <AppTextInput v-else v-model="form.model[f.key]" :placeholder="f.placeholder || ''" />
+          </AppFormItem>
         </div>
         <div class="aa-modal__foot">
-          <button class="mp-btn" @click="form.visible = false">取消</button>
-          <button class="mp-btn mp-btn--primary" :disabled="form.submitting" @click="submitForm">保存</button>
+          <AppButton @click="form.visible = false">取消</AppButton>
+          <AppButton variant="primary" :loading="form.submitting" @click="submitForm">保存</AppButton>
         </div>
       </div>
     </div>
@@ -250,14 +247,13 @@
       <div class="aa-modal__panel">
         <h3 class="aa-modal__title">教学秘书绑定 · {{ secretary.row && secretary.row.collegeName }}</h3>
         <div class="aa-form">
-          <label class="aa-form__row">
-            <span class="aa-form__label">教学秘书 user_id</span>
-            <input v-model="secretary.secretaryId" placeholder="留空为解绑" />
-          </label>
+          <AppFormItem label="教学秘书 user_id">
+            <AppTextInput v-model="secretary.secretaryId" placeholder="留空为解绑" />
+          </AppFormItem>
         </div>
         <div class="aa-modal__foot">
-          <button class="mp-btn" @click="secretary.visible = false">取消</button>
-          <button class="mp-btn mp-btn--primary" :disabled="secretary.submitting" @click="submitSecretary">保存</button>
+          <AppButton @click="secretary.visible = false">取消</AppButton>
+          <AppButton variant="primary" :loading="secretary.submitting" @click="submitSecretary">保存</AppButton>
         </div>
       </div>
     </div>
@@ -277,7 +273,7 @@
             </tr>
           </tbody>
         </table>
-        <div class="aa-modal__foot"><button class="mp-btn" @click="students.visible = false">关闭</button></div>
+        <div class="aa-modal__foot"><AppButton @click="students.visible = false">关闭</AppButton></div>
       </div>
     </div>
 
@@ -286,18 +282,14 @@
       <div class="aa-modal__panel">
         <h3 class="aa-modal__title">班级调整 · {{ adjust.student && adjust.student.realName }}</h3>
         <div class="aa-form">
-          <label class="aa-form__row">
-            <span class="aa-form__label">目标班级<i class="aa-req">*</i></span>
-            <select v-model="adjust.targetClassId">
-              <option value="">请选择目标班级</option>
-              <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-            </select>
-          </label>
+          <AppFormItem label="目标班级" required>
+            <AppSelect v-model="adjust.targetClassId" placeholder="请选择目标班级" :options="classOptions" />
+          </AppFormItem>
         </div>
         <div class="aa-modal__foot">
-          <button class="mp-btn" @click="adjust.visible = false">取消</button>
-          <button class="mp-btn mp-btn--primary" :disabled="adjust.submitting || !adjust.targetClassId"
-                  @click="submitAdjust">确认调整</button>
+          <AppButton @click="adjust.visible = false">取消</AppButton>
+          <AppButton variant="primary" :disabled="!adjust.targetClassId" :loading="adjust.submitting"
+                  @click="submitAdjust">确认调整</AppButton>
         </div>
       </div>
     </div>
@@ -317,18 +309,16 @@
       <div class="aa-modal__panel">
         <h3 class="aa-modal__title">{{ directionForm.mode === 'create' ? '新建' : '编辑' }}专业方向</h3>
         <div class="aa-form">
-          <label class="aa-form__row">
-            <span class="aa-form__label">方向名称<i class="aa-req">*</i></span>
-            <input v-model="directionForm.model.directionName" placeholder="如 Web开发方向" />
-          </label>
-          <label class="aa-form__row">
-            <span class="aa-form__label">编码</span>
-            <input v-model="directionForm.model.code" placeholder="选填，专业内唯一" />
-          </label>
+          <AppFormItem label="方向名称" required>
+            <AppTextInput v-model="directionForm.model.directionName" placeholder="如 Web开发方向" />
+          </AppFormItem>
+          <AppFormItem label="编码">
+            <AppTextInput v-model="directionForm.model.code" placeholder="选填，专业内唯一" />
+          </AppFormItem>
         </div>
         <div class="aa-modal__foot">
-          <button class="mp-btn" @click="directionForm.visible = false">取消</button>
-          <button class="mp-btn mp-btn--primary" :disabled="directionForm.submitting" @click="submitDirectionForm">保存</button>
+          <AppButton @click="directionForm.visible = false">取消</AppButton>
+          <AppButton variant="primary" :loading="directionForm.submitting" @click="submitDirectionForm">保存</AppButton>
         </div>
       </div>
     </div>
@@ -338,35 +328,27 @@
       <div class="aa-modal__panel">
         <h3 class="aa-modal__title">发起班级调整</h3>
         <div class="aa-form">
-          <label class="aa-form__row">
-            <span class="aa-form__label">调整类型<i class="aa-req">*</i></span>
-            <select v-model="adjustCreateForm.model.adjustType">
-              <option value="MERGE">合班登记</option><option value="SPLIT">拆班登记</option>
-              <option value="DISBAND">停用撤销</option><option value="GRADUATE_CLEAR">毕业清班</option>
-            </select>
-          </label>
-          <label class="aa-form__row">
-            <span class="aa-form__label">来源班级<i class="aa-req">*</i></span>
-            <select v-model="adjustCreateForm.model.fromClassIds" multiple size="5">
+          <AppFormItem label="调整类型" required>
+            <AppSelect v-model="adjustCreateForm.model.adjustType" :options="[
+              { value: 'MERGE', label: '合班登记' }, { value: 'SPLIT', label: '拆班登记' },
+              { value: 'DISBAND', label: '停用撤销' }, { value: 'GRADUATE_CLEAR', label: '毕业清班' }]" />
+          </AppFormItem>
+          <AppFormItem label="来源班级" required hint="按住 Ctrl/Cmd 可多选">
+            <!-- 原生多选列表框：AppSelect 只支持单选，多选保留原生控件，不强行套壳 -->
+            <select v-model="adjustCreateForm.model.fromClassIds" multiple size="5" class="aa-native-multiselect">
               <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
             </select>
-            <span class="mp-note">按住 Ctrl/Cmd 可多选</span>
-          </label>
-          <label v-if="adjustCreateForm.model.adjustType === 'MERGE'" class="aa-form__row">
-            <span class="aa-form__label">目标班级<i class="aa-req">*</i></span>
-            <select v-model="adjustCreateForm.model.toClassId">
-              <option value="">请选择目标班级</option>
-              <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-            </select>
-          </label>
-          <label class="aa-form__row">
-            <span class="aa-form__label">调整理由<i class="aa-req">*</i></span>
-            <input v-model="adjustCreateForm.model.reason" placeholder="至少5个字符" />
-          </label>
+          </AppFormItem>
+          <AppFormItem v-if="adjustCreateForm.model.adjustType === 'MERGE'" label="目标班级" required>
+            <AppSelect v-model="adjustCreateForm.model.toClassId" placeholder="请选择目标班级" :options="classOptions" />
+          </AppFormItem>
+          <AppFormItem label="调整理由" required>
+            <AppTextInput v-model="adjustCreateForm.model.reason" placeholder="至少5个字符" />
+          </AppFormItem>
         </div>
         <div class="aa-modal__foot">
-          <button class="mp-btn" @click="adjustCreateForm.visible = false">取消</button>
-          <button class="mp-btn mp-btn--primary" :disabled="adjustCreateForm.submitting" @click="submitAdjustCreate">发起</button>
+          <AppButton @click="adjustCreateForm.visible = false">取消</AppButton>
+          <AppButton variant="primary" :loading="adjustCreateForm.submitting" @click="submitAdjustCreate">发起</AppButton>
         </div>
       </div>
     </div>
@@ -390,7 +372,7 @@
             </tbody>
           </table>
         </template>
-        <div class="aa-modal__foot"><button class="mp-btn" @click="adjustCheckResult.visible = false">关闭</button></div>
+        <div class="aa-modal__foot"><AppButton @click="adjustCheckResult.visible = false">关闭</AppButton></div>
       </div>
     </div>
 
@@ -412,8 +394,9 @@
  * 生产级：数据全部来自真实后端 /academic-affairs/orgs/*，无 mock；页面三态 + 二次确认 + 越权由后端裁决。
  */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppSelect } from '@/components/common'
+import { AppSelect, AppFormItem, AppTextInput, AppNumberInput } from '@/components/common'
 import { academicAffairsOrgApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
@@ -423,7 +406,7 @@ const MANAGE_ROLES = ['SCHOOL_ADMIN', 'PLATFORM_SUPER_ADMIN', 'ACADEMIC_TEACHER'
 
 export default {
   name: 'AaOrgConsole',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppSelect },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppConfirmDialog, AppSelect, AppFormItem, AppTextInput, AppNumberInput },
   data() {
     return {
       tab: 'college',
@@ -826,12 +809,7 @@ export default {
 .aa-modal__panel { background: var(--surface-100, #fff); border-radius: var(--radius-lg); padding: var(--space-4); width: 420px; max-width: 92vw; max-height: 88vh; overflow: auto; }
 .aa-modal__panel--wide { width: 640px; }
 .aa-modal__title { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
-.aa-form__row { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); }
-.aa-form__label { font-size: var(--font-size-sm); color: var(--text-500); }
-.aa-form input, .aa-form select { padding: var(--space-1) var(--space-2); border: 1px solid var(--border-300); border-radius: var(--radius-sm); }
-.aa-req { color: var(--danger-600); margin-left: 2px; }
+.aa-native-multiselect { width: 100%; box-sizing: border-box; padding: var(--space-2); border: 1px solid var(--border-300); border-radius: var(--radius-sm); font-family: inherit; }
 .aa-modal__foot { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
-.mp-btn { padding: var(--space-1) var(--space-3); border: 1px solid var(--border-300); background: transparent; border-radius: var(--radius-sm); cursor: pointer; }
-.mp-btn--primary { background: var(--primary-600); color: #fff; border-color: var(--primary-600); }
 .mp-link + .mp-link { margin-left: var(--space-2); }
 </style>

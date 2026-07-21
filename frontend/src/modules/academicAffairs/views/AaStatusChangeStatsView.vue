@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="load">刷新</button>
+      <AppButton @click="load">刷新</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -77,13 +77,14 @@
  * 范围收敛与列表/审批同一套 _scope_conds（教务处全校 / 学院教务限本院 / 辅导员限本班）。
  */
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppMetricCard, AppG2Chart } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { STATUS_LABEL, NODE_LABEL, statusColor } from '@/modules/academicAffairs/constants/status-change'
 
 export default {
   name: 'AaStatusChangeStatsView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppSectionCard, AppMetricCard, AppG2Chart },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppMetricCard, AppG2Chart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

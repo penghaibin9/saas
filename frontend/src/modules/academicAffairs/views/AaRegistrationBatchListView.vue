@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="showCreate = !showCreate">＋ 新建{{ typeLabel || '注册批次' }}</button>
+      <AppButton variant="primary" @click="showCreate = !showCreate">＋ 新建{{ typeLabel || '注册批次' }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -31,9 +31,9 @@
           <label class="aa-cal-form__item aa-cal-form__check">
             <input v-model="draft.open" type="checkbox" /> 创建后立即开放
           </label>
-          <button class="mp-btn mp-btn--primary" :disabled="creating || !draft.batchName" @click="createBatch">
-            {{ creating ? '创建中…' : '创建' }}
-          </button>
+          <AppButton variant="primary" :disabled="!draft.batchName" :loading="creating" @click="createBatch">
+            创建
+          </AppButton>
         </div>
       </AppSectionCard>
 
@@ -75,6 +75,7 @@
 <script>
 /** 注册批次列表（/admin/academic-affairs/registration）：GET/POST /academic-affairs/registration-batches。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -84,7 +85,7 @@ const TYPE_LABEL = { ENROLL: '入学注册', ANNUAL: '学年注册', SEMESTER: '
 
 export default {
   name: 'AaRegistrationBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
