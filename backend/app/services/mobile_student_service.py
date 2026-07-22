@@ -1175,17 +1175,7 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         # 退回重交：指定 leaveId / resubmitLeaveId 时走 resubmit，避免重叠请假 409
         resubmit_id = str(body.get("leaveId") or body.get("resubmitLeaveId") or "").strip()
         if resubmit_id:
-            result = leave_svc.resubmit(resubmit_id, user, self_only=True)
-            reason = content
-            if reason:
-                from app.models import CsLeave
-                with _session() as db:
-                    row = db.get(CsLeave, int(resubmit_id))
-                    if row and not row.is_deleted:
-                        row.reason = reason
-                        row.version = int(row.version or 0) + 1
-                        db.commit()
-                        result["reason"] = reason
+            result = leave_svc.resubmit(resubmit_id, user, self_only=True, reason=content or None)
             audit_log.record("MOBILE_SERVICE_APPLY", "campus-service:LEAVE_RESUBMIT",
                              {"studentNo": u.get("studentNo"), "leaveId": resubmit_id})
             return {"id": result.get("id"), "status": result.get("affairsStatus"),

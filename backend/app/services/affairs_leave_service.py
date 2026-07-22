@@ -399,12 +399,16 @@ def return_leave(leave_id, user, reason) -> dict:
         return _resolve_class_names(db, [_row(x, s)])[0]
 
 
-def resubmit(leave_id, user, *, self_only: bool = False) -> dict:
+def resubmit(leave_id, user, *, self_only: bool = False, reason: str | None = None) -> dict:
     """退回后重新提交 → 回到首个审批节点（新审批周期）。
 
     self_only=True：学生自助入口，仅允许本人对自己的 RETURNED 请假重交；
     不走教职工班级数据范围（学生无班级管理范围）。
+    reason：可选补充事由（≥5 字），与状态推进同一事务写入，避免二次开库无租户校验。
     """
+    reason_clean = str(reason or "").strip()
+    if reason_clean and len(reason_clean) < 5:
+        raise AppException("VALIDATION_ERROR", "补充事由不少于 5 字")
     with session() as db:
         from app.models import WorkflowInstance, WorkflowTask
         x, s = _load(db, leave_id)
@@ -420,6 +424,8 @@ def resubmit(leave_id, user, *, self_only: bool = False) -> dict:
         wf = _wf_code(float(x.days or 1))
         first = NODE_SEQ[wf][0]
         x.affairs_status, x.status, x.return_reason = first, _project(first), None
+        if reason_clean:
+            x.reason = reason_clean
         x.version += 1
         inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
         if inst:
@@ -428,7 +434,7 @@ def resubmit(leave_id, user, *, self_only: bool = False) -> dict:
         db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id if inst else 0, node_code=first,
                             assignee_id=assignee, status="PENDING"))
         _todo_upsert(db, x.id, assignee, x.student_id, f"请假重新提交待审批：{s.real_name if s else ''}")
-        _audit(db, x.id, "RESUBMIT")
+        _audit(db, x.id, "RESUBMIT", reason_clean or "")
         db.commit()
         db.refresh(x)
         return _resolve_class_names(db, [_row(x, s)])[0]
