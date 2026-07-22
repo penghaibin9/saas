@@ -252,6 +252,11 @@ def affairs_funding_apply(user=Depends(get_current_user), body: dict = Body(...)
     return success(affairs.funding_apply(user, body))
 
 
+@router.post("/affairs/funding/appeal", summary="公示期本人对资助结果申诉")
+def affairs_funding_appeal(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.funding_appeal(user, body), message="申诉已提交")
+
+
 @router.get("/affairs/aid/batches", summary="当前开放的困难认定批次（本人可申请）")
 def affairs_aid_batches(user=Depends(get_current_user)):
     return success(affairs.aid_batches_open(user))

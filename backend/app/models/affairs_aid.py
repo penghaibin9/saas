@@ -166,3 +166,19 @@ class FundingDisbursement(PKMixin, TenantMixin, CommonMixin, Base):
 
     __table_args__ = (UniqueConstraint("tenant_id", "application_id",
                                        name="uk_funding_disbursement_app"),)
+
+
+class FundingAppeal(PKMixin, TenantMixin, CommonMixin, Base):
+    """奖助公示申诉/异议（对齐困难认定异议）。仅 PUBLICITY 可提；
+    复核 SUSTAINED→申请 REJECTED；OVERRULED→维持公示。status SUBMITTED/CLOSED。"""
+    __tablename__ = "t_affairs_funding_appeal"
+
+    application_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="被申诉申请的学生")
+    appellant_name: Mapped[str | None] = mapped_column(String(100), comment="申诉人(可实名/匿名)")
+    reason: Mapped[str | None] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True)
+    result: Mapped[str | None] = mapped_column(String(30), comment="SUSTAINED/OVERRULED")
+    review_opinion: Mapped[str | None] = mapped_column(String(1000))
+    reviewer: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)

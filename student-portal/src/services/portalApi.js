@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 学生 PC 门户 · API 门面。只暴露门户允许调用的接口（严格边界）。
  * 查看类走 /mobile/me/* 与 /mobile/{domain}/my；PC 重活（长表单/大表格/材料/证明/打印）走 /portal/*。
  * 后端 /portal/* 由服务层 _require_student + SELF 数据范围收口，仅本人可读写。
@@ -81,6 +81,7 @@ export const portalApi = {
   affairsDisciplineAppeal: (body) => request('/portal/affairs/discipline/appeal', { method: 'POST', body }),
   affairsFundingBatches: () => request('/portal/affairs/funding/batches'),
   affairsFundingApply: (body) => request('/portal/affairs/funding/apply', { method: 'POST', body }),
+  affairsFundingAppeal: (body) => request('/portal/affairs/funding/appeal', { method: 'POST', body }),
   affairsAidBatches: () => request('/portal/affairs/aid/batches'),
   affairsAidApply: (body) => request('/portal/affairs/aid/apply', { method: 'POST', body }),
   affairsActivities: (page = 1, pageSize = 20) => request(`/portal/affairs/activities${q({ page, pageSize })}`),

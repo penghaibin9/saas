@@ -236,6 +236,7 @@ def _app_row(x, user, s=None) -> dict:
             "projectType": x.project_type, "applySource": x.apply_source,
             "amount": _amount_view(x.amount, user), "status": x.status,
             "statusLabel": L_FUND.get(x.status, x.status),
+            "returnReason": getattr(x, "return_reason", None) or "",
             "currentNode": x.status if x.status in FUND_NODES else "", "version": x.version}
 
 
@@ -677,3 +678,117 @@ def disbursement_stats(user) -> dict:
         if role in _AMOUNT_ROLES:
             out["issuedAmountTotal"] = round(issued_total, 2)
         return out
+
+
+# ═══════════ 公示申诉（对齐困难认定异议）═══════════
+
+_L_APPEAL = {"SUBMITTED": "待复核", "CLOSED": "已复核"}
+_L_APPEAL_RESULT = {"SUSTAINED": "申诉成立(驳回)", "OVERRULED": "申诉不成立(维持)"}
+
+
+def _appeal_row(o, s=None) -> dict:
+    return {
+        "appealId": str(o.id), "applicationId": str(o.application_id),
+        "studentId": str(o.student_id or ""),
+        "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
+        "appellantName": o.appellant_name or "", "reason": o.reason or "",
+        "status": o.status, "statusLabel": _L_APPEAL.get(o.status, o.status),
+        "result": o.result or "", "resultLabel": _L_APPEAL_RESULT.get(o.result or "", ""),
+        "reviewOpinion": o.review_opinion or "", "reviewer": o.reviewer or "",
+        "reviewedAt": _iso(o.reviewed_at),
+    }
+
+
+def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict:
+    """对公示中资助申请提起申诉（仅 PUBLICITY；理由≥5字；进行中唯一）。"""
+    from app.models import FundingAppeal, FundingApplication, StudentProfile
+    if isinstance(body, dict):
+        reason = str(body.get("reason") or "").strip()
+        appellant = body.get("appellantName")
+    else:
+        reason = str(getattr(body, "reason", None) or "").strip()
+        appellant = getattr(body, "appellantName", None)
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
+    with session() as db:
+        x = db.get(FundingApplication, int(app_id))
+        if not x or x.is_deleted or x.tenant_id != _tid():
+            raise not_found("资助申请不存在")
+        if x.status != "PUBLICITY":
+            raise AppException("DATA_CONFLICT", "仅公示中的资助申请可申诉")
+        if not skip_scope_check:
+            from app.services.affairs_dashboard_service import _allowed_class_ids
+            allowed, _ = _allowed_class_ids(db, user)
+            s0 = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+            if allowed is not None and (not s0 or s0.class_id not in allowed):
+                raise AppException("NO_DATA_SCOPE", "不在您的数据范围内")
+        dup = db.scalars(select(FundingAppeal).where(
+            FundingAppeal.tenant_id == _tid(), FundingAppeal.application_id == int(app_id),
+            FundingAppeal.status == "SUBMITTED", FundingAppeal.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "该申请已有进行中的申诉")
+        o = FundingAppeal(
+            tenant_id=_tid(), application_id=int(app_id), student_id=x.student_id,
+            appellant_name=appellant, reason=reason, status="SUBMITTED")
+        db.add(o)
+        db.flush()
+        _audit(db, x.id, "FUNDING_APPEAL_SUBMIT", reason[:200])
+        db.commit()
+        db.refresh(o)
+        s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+        return _appeal_row(o, s)
+
+
+def list_appeals(user, status=None, page=1, page_size=50):
+    from app.models import FundingAppeal, StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    with session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        conds = [FundingAppeal.tenant_id == _tid(), FundingAppeal.is_deleted.is_(False)]
+        if status:
+            conds.append(FundingAppeal.status == status)
+        rows = db.scalars(select(FundingAppeal).where(*conds).order_by(FundingAppeal.id.desc())).all()
+        out = []
+        for o in rows:
+            s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
+            if allowed is not None and (not s or s.class_id not in allowed):
+                continue
+            out.append(_appeal_row(o, s))
+        total = len(out)
+        start = (max(1, page) - 1) * page_size
+        return out[start:start + page_size], total
+
+
+def review_appeal(appeal_id, body, user) -> dict:
+    """申诉复核：SUSTAINED→申请 REJECTED；OVERRULED→维持 PUBLICITY。意见≥5字。"""
+    from app.models import FundingAppeal, FundingApplication, StudentProfile
+    if isinstance(body, dict):
+        result = str(body.get("result") or "").strip()
+        opinion = str(body.get("opinion") or "").strip()
+    else:
+        result = str(getattr(body, "result", None) or "").strip()
+        opinion = str(getattr(body, "opinion", None) or "").strip()
+    if result not in ("SUSTAINED", "OVERRULED"):
+        raise AppException("VALIDATION_ERROR", "复核结论非法")
+    if len(opinion) < 5:
+        raise AppException("VALIDATION_ERROR", "复核意见至少 5 字")
+    with session() as db:
+        o = db.get(FundingAppeal, int(appeal_id))
+        if not o or o.is_deleted or o.tenant_id != _tid():
+            raise not_found("申诉不存在")
+        if o.status != "SUBMITTED":
+            raise AppException("DATA_CONFLICT", "该申诉已复核")
+        o.status, o.result = "CLOSED", result
+        o.review_opinion, o.reviewer = opinion, _op()[0]
+        o.reviewed_at, o.version = datetime.utcnow(), o.version + 1
+        if result == "SUSTAINED":
+            x = db.get(FundingApplication, int(o.application_id))
+            if x and x.status == "PUBLICITY":
+                x.status, x.result_at = "REJECTED", datetime.utcnow()
+                x.return_reason = "公示申诉成立"
+                x.version += 1
+        _audit(db, o.application_id, "FUNDING_APPEAL_REVIEW", result)
+        db.commit()
+        db.refresh(o)
+        s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
+        return _appeal_row(o, s)
