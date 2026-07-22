@@ -566,6 +566,23 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
+        # 中期整改未通过不得进入成果提交
+        from app.models import GraduationMidterm
+        mid = db.scalars(select(GraduationMidterm).where(
+            GraduationMidterm.tenant_id == _tid(),
+            GraduationMidterm.gd_student_id == stu.id,
+            GraduationMidterm.is_deleted.is_(False),
+        ).order_by(GraduationMidterm.id.desc())).first()
+        if mid is not None:
+            mid_status = str(getattr(mid, "status", "") or "")
+            mid_conclusion = str(getattr(mid, "conclusion", "") or "")
+            blocked = mid_status in ("RECTIFYING", "CHECKED_FAIL") or mid_conclusion in ("RECTIFY", "FAIL")
+            passed = mid_status == "CHECKED_PASS" or mid_conclusion == "PASS"
+            if blocked and not passed:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "中期检查未通过或仍在整改中，不能提交成果",
+                )
         _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == stu.id,

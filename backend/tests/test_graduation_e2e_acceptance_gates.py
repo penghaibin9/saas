@@ -5,6 +5,8 @@
 2. 成绩权重≠100% 拒绝保存
 3. 阶段时间倒序拒绝保存
 4. 未关闭风险阻止归档提交
+5. 评阅 SoD 须同时核对题目指导教师（不依赖空白 advisor_name）
+6. 中期整改中不可提交成果
 """
 from __future__ import annotations
 
@@ -133,3 +135,102 @@ def test_open_risk_blocks_archive_submit(client, auth_headers, db_mode):
     ok = client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()
     assert ok["code"] == 0
     assert ok["data"]["status"] == "SUBMITTED"
+
+
+def test_assign_review_sod_uses_topic_advisor_when_student_advisor_blank(client, auth_headers, db_mode):
+    """SoD 不得仅依赖 student.advisor_name；题目指导教师也必须回避。"""
+    h = auth_headers
+    gid = _gd_student(client, h, "SOD-ADV-01", "SoD回避生")
+    tid = client.post(GD_TOPIC, headers=h, json={
+        "title": "SoD回避题-专名", "sourceType": "TEACHER", "advisorName": "张回避导师",
+        "capacity": 1, "submitReview": True,
+    }).json()["data"]["id"]
+    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
+        "status": "QUALIFIED", "reason": "SoD测试资格合格",
+    })
+    client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
+    db = get_sessionmaker()()
+    stu = db.get(GraduationStudent, int(gid))
+    stu.advisor_name = None
+    db.commit()
+    db.close()
+    conflict = client.post("/api/v1/graduation/gd-reviews/assign", headers=h, json={
+        "gdStudentId": gid, "reviewerName": "张回避导师",
+    }).json()
+    assert conflict["code"] != 0
+    assert "SoD" in (conflict.get("message") or "") or "指导教师" in (conflict.get("message") or "")
+    ok = client.post("/api/v1/graduation/gd-reviews/assign", headers=h, json={
+        "gdStudentId": gid, "reviewerName": "独立评阅人李",
+    }).json()
+    assert ok["code"] == 0
+
+
+def test_final_blocked_while_midterm_rectifying(client, auth_headers, db_mode):
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm
+
+    h = auth_headers
+    name = "中期整改生"
+    gid = _gd_student(client, h, "MT-FIN-01", name)
+    db = get_sessionmaker()()
+    db.add(GraduationMidterm(
+        tenant_id=1000000000000000001, gd_student_id=int(gid),
+        status="RECTIFYING", conclusion="RECTIFY",
+        check_comment="测试覆盖不足", checked_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
+    sh = {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{name}", "realName": name, "userType": "STUDENT",
+        "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "clientType": "MP",
+    })}
+    blocked = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
+        "finalType": "初稿", "attachments": [],
+    }).json()
+    assert blocked["code"] != 0
+    assert "中期" in (blocked.get("message") or "")
+
+
+def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_headers, db_mode):
+    """多批次档案时，学生端须命中最近未归档档案，否则门禁会落在旧批次。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm, GraduationStudent
+
+    h = auth_headers
+    name = "多批次命中生"
+    sno = "MT-MULTI-01"
+    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name}).json()["data"]["id"]
+    old = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    db = get_sessionmaker()()
+    # 业务接口对同生重复建档会 409；用第二行模拟历史多批次并存
+    row = GraduationStudent(
+        tenant_id=1000000000000000001, student_id=int(sid), student_no=sno, name=name,
+        stage="GUIDING",
+    )
+    db.add(row)
+    db.flush()
+    new = str(row.id)
+    assert int(new) > int(old)
+    db.add(GraduationMidterm(
+        tenant_id=1000000000000000001, gd_student_id=int(new),
+        status="RECTIFYING", conclusion="RECTIFY",
+        check_comment="新批次整改中", checked_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
+    sh = {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{name}", "realName": name, "userType": "STUDENT",
+        "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": sno,
+    })}
+    blocked = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
+        "finalType": "初稿", "attachments": [],
+    }).json()
+    assert blocked["code"] != 0
+    assert "中期" in (blocked.get("message") or "")
