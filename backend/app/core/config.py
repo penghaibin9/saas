@@ -98,7 +98,11 @@ class Settings(BaseSettings):
     SCHEDULER_MODE: str = "web"
 
     # ── CORS（逗号分隔白名单；留空开发放开）──
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5188"
+    # 5173=管理端 Vite；5188=历史兼容；5199=学生 PC 门户（student-portal）
+    CORS_ORIGINS: str = (
+        "http://localhost:5173,http://localhost:5174,http://localhost:5188,http://localhost:5189,http://localhost:5190,http://localhost:5199,"
+        "http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5188,http://127.0.0.1:5189,http://127.0.0.1:5190,http://127.0.0.1:5199"
+    )
 
     # ── 任务 BACKEND-OVERNIGHT 追加（与旧键并存，旧键继续生效）──
     # MySQL-only 收口：测试库标准 = MySQL student_lifecycle_test（utf8mb4）。
