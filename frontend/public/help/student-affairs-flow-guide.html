@@ -1,0 +1,1438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>student-affairs-flow-guide</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:.5rem;background:inherit}iframe{display:block;width:100%;max-width:none;height:calc(100vh - 1rem);margin:0;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="student-affairs-flow-guide" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;student-affairs-flow-guide&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;student-affairs-flow-guide&quot;&gt;
+  &lt;style&gt;
+    :root { --font-size-base: 18px; }
+    #student-affairs-flow-guide { color:var(--foreground); }
+    #student-affairs-flow-guide .hero { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; flex-wrap:wrap; margin-bottom:16px; }
+    #student-affairs-flow-guide .hero-main { display:flex; flex-direction:column; gap:8px; }
+    #student-affairs-flow-guide .summary { display:flex; gap:18px; flex-wrap:wrap; }
+    #student-affairs-flow-guide .summary strong { font-size:1.35em; }
+    #student-affairs-flow-guide .source-note { color:var(--muted-foreground); }
+    #student-affairs-flow-guide .role-bar,
+    #student-affairs-flow-guide .quick-path { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+    #student-affairs-flow-guide .role-label,
+    #student-affairs-flow-guide .quick-label { color:var(--muted-foreground); }
+    #student-affairs-flow-guide .quick-step { display:flex; align-items:center; gap:8px; }
+    #student-affairs-flow-guide .quick-step:not(:last-child)::after { content:&#x27;→&#x27;; color:var(--muted-foreground); }
+    #student-affairs-flow-guide .workspace { display:grid; grid-template-columns:minmax(560px,1.05fr) minmax(620px,1.35fr); gap:24px; align-items:start; }
+    #student-affairs-flow-guide .map-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:8px; }
+    #student-affairs-flow-guide .map-head h2 { margin:0; }
+    #student-affairs-flow-guide .phase-flow { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 20px; }
+    #student-affairs-flow-guide .phase { position:relative; padding:12px 0 14px; border-top:2px solid color-mix(in srgb,var(--viz-series-1) 38%,var(--border)); }
+    #student-affairs-flow-guide .phase-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:7px; }
+    #student-affairs-flow-guide .phase-title { display:flex; align-items:baseline; gap:8px; }
+    #student-affairs-flow-guide .phase-no { color:var(--muted-foreground); }
+    #student-affairs-flow-guide .phase-desc { color:var(--muted-foreground); margin-bottom:9px; font-size:.94em; }
+    #student-affairs-flow-guide .phase-modules { display:flex; flex-wrap:wrap; gap:7px; }
+    #student-affairs-flow-guide .module-btn { white-space:normal; text-align:left; }
+    #student-affairs-flow-guide .module-btn.is-dimmed { opacity:.42; }
+    #student-affairs-flow-guide .detail { min-width:0; }
+    #student-affairs-flow-guide .detail-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    #student-affairs-flow-guide .detail-title h2 { margin:0; }
+    #student-affairs-flow-guide .purpose { margin-top:8px; font-size:1.08em; }
+    #student-affairs-flow-guide .meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; margin:14px 0 0; }
+    #student-affairs-flow-guide .meta dt { color:var(--muted-foreground); margin-bottom:3px; }
+    #student-affairs-flow-guide .meta dd { margin:0; }
+    #student-affairs-flow-guide .section-title { margin:18px 0 8px; }
+    #student-affairs-flow-guide .steps { list-style:none; padding:0; margin:0; display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+    #student-affairs-flow-guide .steps li { display:flex; align-items:center; gap:7px; }
+    #student-affairs-flow-guide .steps li:not(:last-child)::after { content:&#x27;→&#x27;; color:var(--muted-foreground); }
+    #student-affairs-flow-guide .step-label { padding:6px 9px; background:color-mix(in srgb,var(--viz-series-2) 13%,transparent); }
+    #student-affairs-flow-guide .sample { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+    #student-affairs-flow-guide .sample-head { display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap; }
+    #student-affairs-flow-guide .sample-head h3 { margin:0; }
+    #student-affairs-flow-guide .sample-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 18px; margin:10px 0; }
+    #student-affairs-flow-guide .sample-row { display:grid; grid-template-columns:minmax(92px,.7fr) minmax(0,1.5fr); gap:10px; padding:7px 0; border-bottom:1px solid var(--border); }
+    #student-affairs-flow-guide .sample-key { color:var(--muted-foreground); font-weight:500; }
+    #student-affairs-flow-guide .state-chain { display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
+    #student-affairs-flow-guide .state-node { padding:5px 8px; background:var(--muted); }
+    #student-affairs-flow-guide .state-node:not(:last-child)::after { content:&#x27;&#x27;; }
+    #student-affairs-flow-guide .state-arrow { color:var(--muted-foreground); }
+    #student-affairs-flow-guide .safety { margin-top:10px; color:var(--muted-foreground); }
+    #student-affairs-flow-guide .leaf-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:18px 0 4px; }
+    #student-affairs-flow-guide .leaf-head h3 { margin:0; }
+    #student-affairs-flow-guide .leaf-list { list-style:none; padding:0; margin:8px 0 0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 20px; }
+    #student-affairs-flow-guide .leaf { padding:10px 0; border-bottom:1px solid var(--border); }
+    #student-affairs-flow-guide .leaf-name { display:flex; align-items:flex-start; gap:8px; font-weight:500; font-size:1.03em; }
+    #student-affairs-flow-guide .leaf-index { min-width:2.2em; color:var(--muted-foreground); }
+    #student-affairs-flow-guide .leaf-use { margin:5px 0 0 2.2em; color:var(--muted-foreground); }
+    #student-affairs-flow-guide .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:16px; color:var(--muted-foreground); }
+    @media (max-width:1200px) {
+      #student-affairs-flow-guide .workspace { grid-template-columns:1fr; }
+      #student-affairs-flow-guide .phase-flow { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width:680px) {
+      :root { --font-size-base:16px; }
+      #student-affairs-flow-guide .phase-flow,
+      #student-affairs-flow-guide .meta,
+      #student-affairs-flow-guide .sample-grid,
+      #student-affairs-flow-guide .leaf-list { grid-template-columns:1fr; }
+      #student-affairs-flow-guide .sample-row { grid-template-columns:1fr; gap:2px; }
+    }
+  &lt;/style&gt;
+
+  &lt;div class=&quot;hero&quot; aria-label=&quot;学工中心业务全景摘要&quot;&gt;
+    &lt;div class=&quot;hero-main&quot;&gt;
+      &lt;div class=&quot;summary&quot;&gt;
+        &lt;span&gt;&lt;strong&gt;14&lt;/strong&gt; 个二级模块&lt;/span&gt;
+        &lt;span&gt;&lt;strong&gt;88&lt;/strong&gt; 个三级入口&lt;/span&gt;
+        &lt;span&gt;&lt;strong&gt;7&lt;/strong&gt; 段业务主线&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;source-note&quot;&gt;口径：系统当前菜单、真实路由、13A 状态机与体验沙箱基线数据&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;span class=&quot;viz-badge&quot;&gt;先找角色 → 再看流程 → 最后照例填写&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;role-bar&quot; id=&quot;sa-role-bar&quot; aria-label=&quot;按岗位突出相关模块&quot;&gt;
+    &lt;span class=&quot;role-label&quot;&gt;我的岗位：&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;quick-path&quot; id=&quot;sa-quick-path&quot; aria-label=&quot;当前岗位常用业务路径&quot;&gt;&lt;/div&gt;
+
+  &lt;div class=&quot;workspace&quot;&gt;
+    &lt;section aria-label=&quot;学工中心业务流程导图&quot;&gt;
+      &lt;div class=&quot;map-head&quot;&gt;
+        &lt;h2&gt;业务流程导图&lt;/h2&gt;
+        &lt;span class=&quot;text-muted&quot;&gt;14 个二级模块全部显示，点击查看右侧操作&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;phase-flow&quot; id=&quot;sa-phase-flow&quot;&gt;&lt;/div&gt;
+    &lt;/section&gt;
+
+    &lt;section class=&quot;card detail&quot; id=&quot;sa-detail&quot; aria-live=&quot;polite&quot;&gt;
+      &lt;div class=&quot;detail-title&quot;&gt;
+        &lt;h2 id=&quot;sa-module-title&quot;&gt;&lt;/h2&gt;
+        &lt;span class=&quot;viz-badge&quot; id=&quot;sa-module-phase&quot;&gt;&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;p class=&quot;purpose&quot; id=&quot;sa-module-purpose&quot;&gt;&lt;/p&gt;
+      &lt;dl class=&quot;meta&quot;&gt;
+        &lt;div&gt;&lt;dt&gt;谁来用&lt;/dt&gt;&lt;dd id=&quot;sa-module-roles&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;什么时候用&lt;/dt&gt;&lt;dd id=&quot;sa-module-when&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;从哪里进&lt;/dt&gt;&lt;dd id=&quot;sa-module-entry&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;做完流向&lt;/dt&gt;&lt;dd id=&quot;sa-module-next&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+      &lt;/dl&gt;
+
+      &lt;h3 class=&quot;section-title&quot;&gt;主流程&lt;/h3&gt;
+      &lt;ol class=&quot;steps&quot; id=&quot;sa-module-steps&quot;&gt;&lt;/ol&gt;
+
+      &lt;div class=&quot;sample&quot;&gt;
+        &lt;div class=&quot;sample-head&quot;&gt;
+          &lt;h3&gt;可照填的沙箱示例&lt;/h3&gt;
+          &lt;span class=&quot;text-muted&quot; id=&quot;sa-sample-source&quot;&gt;&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;sample-grid&quot; id=&quot;sa-sample-grid&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;state-chain&quot; id=&quot;sa-state-chain&quot; aria-label=&quot;示例状态流转&quot;&gt;&lt;/div&gt;
+        &lt;p class=&quot;safety&quot; id=&quot;sa-safety&quot;&gt;&lt;/p&gt;
+      &lt;/div&gt;
+
+      &lt;div class=&quot;leaf-head&quot;&gt;
+        &lt;h3&gt;三级模块怎么用&lt;/h3&gt;
+        &lt;span class=&quot;text-muted&quot; id=&quot;sa-leaf-count&quot;&gt;&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;text-muted&quot;&gt;先筛选范围，再进详情；审批、发布、封存等关键动作都以页面实际权限为准。&lt;/div&gt;
+      &lt;ol class=&quot;leaf-list&quot; id=&quot;sa-leaf-list&quot;&gt;&lt;/ol&gt;
+    &lt;/section&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;legend&quot; aria-label=&quot;统一操作原则&quot;&gt;
+    &lt;span&gt;审批：从待办进入，核材料后通过 / 退回&lt;/span&gt;
+    &lt;span&gt;风险：先分派责任人，至少留一条处置记录再关闭&lt;/span&gt;
+    &lt;span&gt;敏感：心理、困难、处分信息按权限脱敏并留审计&lt;/span&gt;
+    &lt;span&gt;归档：先查缺项，再确认封存&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;script&gt;
+    (() =&gt; {
+      const root = document.getElementById(&#x27;student-affairs-flow-guide&#x27;);
+      const phaseData = [
+        { no:&#x27;01&#x27;, name:&#x27;日常入口与底账&#x27;, desc:&#x27;先看待办，再确认学生、班级和责任范围&#x27;, ids:[&#x27;sa-workbench&#x27;,&#x27;sa-profile&#x27;,&#x27;sa-classes&#x27;] },
+        { no:&#x27;02&#x27;, name:&#x27;新生入校&#x27;, desc:&#x27;从迎新批次到报到、入住宿舍和归档&#x27;, ids:[&#x27;sa-orientation&#x27;] },
+        { no:&#x27;03&#x27;, name:&#x27;在校日常服务&#x27;, desc:&#x27;处理请假销假、床位入住、调宿和宿舍异常&#x27;, ids:[&#x27;sa-leave&#x27;,&#x27;sa-dorm&#x27;] },
+        { no:&#x27;04&#x27;, name:&#x27;关注帮扶与风险&#x27;, desc:&#x27;风险分派、谈心家校、心理转介形成闭环&#x27;, ids:[&#x27;sa-risk&#x27;,&#x27;sa-talks&#x27;,&#x27;sa-mental&#x27;] },
+        { no:&#x27;05&#x27;, name:&#x27;认定与资助&#x27;, desc:&#x27;先困难认定，再进入奖助勤贷补申请与发放&#x27;, ids:[&#x27;sa-difficulty&#x27;,&#x27;sa-aid&#x27;] },
+        { no:&#x27;06&#x27;, name:&#x27;纪律与成长&#x27;, desc:&#x27;处分依法审批，活动与二课记录成长成果&#x27;, ids:[&#x27;sa-discipline&#x27;,&#x27;sa-activities&#x27;] },
+        { no:&#x27;07&#x27;, name:&#x27;统计与归档&#x27;, desc:&#x27;检查数据完整性，封存档案并做管理分析&#x27;, ids:[&#x27;sa-archive-stats&#x27;] }
+      ];
+
+      const rawModules = [
+        [&#x27;sa-workbench&#x27;,&#x27;学工工作台&#x27;,&#x27;学工总览|辅导员工作台|辅导员考评（指标/评分/申诉）&#x27;],
+        [&#x27;sa-profile&#x27;,&#x27;学生画像&#x27;,&#x27;学生列表（学生主档）|学籍状态摘要|风险标签|信息更正审核|身份核验（现有）|导入导出（现有）&#x27;],
+        [&#x27;sa-classes&#x27;,&#x27;班级与辅导员&#x27;,&#x27;班级列表|班级画像|班级材料|辅导员考评&#x27;],
+        [&#x27;sa-orientation&#x27;,&#x27;数字迎新&#x27;,&#x27;迎新看板|迎新批次|新生数据|新生信息核验|报到资格|报到流程配置|新生报到|报到进度|缴费状态|绿色通道|材料审核|宿舍预分配|宿舍入住|现场报到点|异常学生|未报到学生|迎新通知|迎新统计|迎新归档&#x27;],
+        [&#x27;sa-leave&#x27;,&#x27;请假销假&#x27;,&#x27;请假审批|销假与续假|请假台账|请假统计&#x27;],
+        [&#x27;sa-dorm&#x27;,&#x27;宿舍与公寓&#x27;,&#x27;房源管理|入住管理|调宿与退宿|宿舍检查|宿舍异常（含夜不归宿）|宿舍统计&#x27;],
+        [&#x27;sa-risk&#x27;,&#x27;风险预警与处置&#x27;,&#x27;风险预警（看板/学生/处置）&#x27;],
+        [&#x27;sa-difficulty&#x27;,&#x27;困难认定&#x27;,&#x27;认定批次|认定申请与审核（工作台）|公示待办|认定台账|困难学生库|认定统计|异议复核&#x27;],
+        [&#x27;sa-aid&#x27;,&#x27;奖助勤贷补&#x27;,&#x27;资助项目|资助批次|申请评审（工作台）|公示待办|发放台账|资助统计|助学金管理（现有·奖助资助）|勤工助学|助学贷款|减免与临时补助&#x27;],
+        [&#x27;sa-discipline&#x27;,&#x27;违纪处分&#x27;,&#x27;处分工作台（登记/审批/生效/解除）|送达与申诉复核|违纪台账（含投影对账）|处分统计|违纪登记（现有）&#x27;],
+        [&#x27;sa-talks&#x27;,&#x27;谈心家校&#x27;,&#x27;谈心谈话（计划/记录/跟进）|谈话台账|谈话统计|家校联系|重点学生跟进|家校回执&#x27;],
+        [&#x27;sa-mental&#x27;,&#x27;心理关注&#x27;,&#x27;心理关注名单|心理预警摘要|谈话转介与回访|危机升级|心理统计&#x27;],
+        [&#x27;sa-activities&#x27;,&#x27;活动二课与社团&#x27;,&#x27;学生活动（发布/报名/签到/确认）|志愿服务时长|第二课堂积分|第二课堂积分申诉|活动统计|社团管理|学生干部与组织|党团建设&#x27;],
+        [&#x27;sa-archive-stats&#x27;,&#x27;统计与档案&#x27;,&#x27;学工统计|统计驾驶舱|学工归档|学生档案包&#x27;]
+      ];
+
+      const modules = rawModules.map(([id,name,items]) =&gt; ({ id,name,items:items.split(&#x27;|&#x27;) }));
+      const byId = Object.fromEntries(modules.map(m =&gt; [m.id,m]));
+      const profiles = {
+        &#x27;sa-workbench&#x27;: { purpose:&#x27;把本岗位最急的待办、风险和进度集中到每天的第一屏。&#x27;, roles:&#x27;学工处、学院学工、辅导员&#x27;, when:&#x27;每天上班先看；交班或考评时&#x27;, steps:[&#x27;选本人数据范围&#x27;,&#x27;看红色异常和待办&#x27;,&#x27;点指标下钻&#x27;,&#x27;回到业务页办结&#x27;], next:&#x27;学生画像、请假、风险等对应业务&#x27;, sampleSource:&#x27;系统已有沙箱底账&#x27;, fields:[[&#x27;登录账号&#x27;,&#x27;teacher2（王老师）&#x27;],[&#x27;数据范围&#x27;,&#x27;体验2601班&#x27;],[&#x27;关注学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;当前待办&#x27;,&#x27;请假待辅导员审批&#x27;]], states:[&#x27;发现待办&#x27;,&#x27;进入业务&#x27;,&#x27;处理完成&#x27;,&#x27;看板数字更新&#x27;], safety:&#x27;看板数字必须点进明细核对；不能把统计卡片当成审批结果。&#x27; },
+        &#x27;sa-profile&#x27;: { purpose:&#x27;以学生主档为入口查看学籍、请假、风险、奖助、宿舍等学工摘要。&#x27;, roles:&#x27;辅导员、学院学工、学工处&#x27;, when:&#x27;了解学生情况、核对信息或发起帮扶前&#x27;, steps:[&#x27;按姓名/学号搜索&#x27;,&#x27;打开学生360&#x27;,&#x27;核对学籍与学工摘要&#x27;,&#x27;去对应模块办理&#x27;], next:&#x27;信息更正、风险、谈话或具体业务单据&#x27;, sampleSource:&#x27;系统已有沙箱学生&#x27;, fields:[[&#x27;姓名&#x27;,&#x27;李体验&#x27;],[&#x27;学号&#x27;,&#x27;2026S0001&#x27;],[&#x27;班级&#x27;,&#x27;体验2601班&#x27;],[&#x27;辅导员&#x27;,&#x27;王老师&#x27;]], states:[&#x27;搜索学生&#x27;,&#x27;查看360&#x27;,&#x27;识别问题&#x27;,&#x27;转对应业务&#x27;], safety:&#x27;主档用于核对，正式学籍变更必须走教务异动；敏感摘要按权限显示。&#x27; },
+        &#x27;sa-classes&#x27;: { purpose:&#x27;按班级查看学生结构、风险、材料和辅导员责任范围。&#x27;, roles:&#x27;辅导员、学院学工、学工处&#x27;, when:&#x27;班级日常管理、材料检查和辅导员考评时&#x27;, steps:[&#x27;选学院/年级&#x27;,&#x27;进入班级画像&#x27;,&#x27;核对学生与风险&#x27;,&#x27;补材料或进入考评&#x27;], next:&#x27;学生画像、重点学生跟进、辅导员考评&#x27;, sampleSource:&#x27;系统已有沙箱组织&#x27;, fields:[[&#x27;学院&#x27;,&#x27;体验学院&#x27;],[&#x27;专业&#x27;,&#x27;电子商务&#x27;],[&#x27;班级&#x27;,&#x27;体验2601班&#x27;],[&#x27;辅导员&#x27;,&#x27;王老师&#x27;]], states:[&#x27;选班级&#x27;,&#x27;看画像&#x27;,&#x27;处理异常&#x27;,&#x27;形成班级记录&#x27;], safety:&#x27;老师只能看到本人授权班级；跨班学生不可直接访问。&#x27; },
+        &#x27;sa-orientation&#x27;: { purpose:&#x27;把新生数据、资格、材料、缴费、宿舍和现场报到串成完整入校流程。&#x27;, roles:&#x27;学工处、迎新管理员、学院迎新人员&#x27;, when:&#x27;迎新准备期、集中报到期和迎新结束归档时&#x27;, steps:[&#x27;建迎新批次&#x27;,&#x27;导入并核验新生&#x27;,&#x27;配置报到流程&#x27;,&#x27;现场办理各环节&#x27;,&#x27;处理异常后归档&#x27;], next:&#x27;学生主档、班级、宿舍与在校服务&#x27;, sampleSource:&#x27;系统已有沙箱迎新记录&#x27;, fields:[[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;录取号&#x27;,&#x27;LQ2026S0001&#x27;],[&#x27;报到状态&#x27;,&#x27;已报到&#x27;],[&#x27;宿舍&#x27;,&#x27;沙箱1号楼 / 1-101-1&#x27;]], states:[&#x27;导入新生&#x27;,&#x27;资格核验&#x27;,&#x27;材料/缴费/宿舍&#x27;,&#x27;现场报到&#x27;,&#x27;迎新归档&#x27;], safety:&#x27;辅导员是否可见迎新菜单取决于学校授权；未授权时不应代替迎新管理员操作。&#x27; },
+        &#x27;sa-leave&#x27;: { purpose:&#x27;处理学生请假、逐级审批、续假、返校销假和逾期风险。&#x27;, roles:&#x27;学生、辅导员、学院学工、学工处&#x27;, when:&#x27;学生离校、延长假期、返校或逾期未归时&#x27;, steps:[&#x27;学生提交请假&#x27;,&#x27;辅导员审批&#x27;,&#x27;长假按规则升级审批&#x27;,&#x27;学生返校申请销假&#x27;,&#x27;老师确认关闭&#x27;], next:&#x27;考勤、学生360；逾期可联动风险与家校&#x27;, sampleSource:&#x27;系统已有可写沙箱单据&#x27;, fields:[[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;请假类型&#x27;,&#x27;事假&#x27;],[&#x27;时长&#x27;,&#x27;1 天&#x27;],[&#x27;事由&#x27;,&#x27;体验请假流程示例&#x27;]], states:[&#x27;草稿&#x27;,&#x27;待辅导员审批&#x27;,&#x27;已通过&#x27;,&#x27;待销假确认&#x27;,&#x27;已销假&#x27;], safety:&#x27;测试日期请改为当前可选时间；系统会拦截时间重叠的在途请假。&#x27; },
+        &#x27;sa-dorm&#x27;: { purpose:&#x27;维护楼栋房间床位，办理入住调宿退宿，检查并处置宿舍异常。&#x27;, roles:&#x27;宿管、学工处、学院学工&#x27;, when:&#x27;迎新入住、日常查寝、调宿退宿和异常处置时&#x27;, steps:[&#x27;维护房源床位&#x27;,&#x27;办理入住&#x27;,&#x27;发起并审批调宿/退宿&#x27;,&#x27;创建检查任务&#x27;,&#x27;处置异常&#x27;], next:&#x27;学生画像；夜不归宿等可联动风险和谈话&#x27;, sampleSource:&#x27;系统已有沙箱住宿数据&#x27;, fields:[[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;楼栋&#x27;,&#x27;沙箱1号楼&#x27;],[&#x27;房间/床位&#x27;,&#x27;1-101 / 1号床&#x27;],[&#x27;异常示例&#x27;,&#x27;夜不归宿未报备&#x27;]], states:[&#x27;空床&#x27;,&#x27;已入住&#x27;,&#x27;调宿待审&#x27;,&#x27;已执行&#x27;,&#x27;异常已处置&#x27;], safety:&#x27;夜不归宿必须绑定真实涉事学生；纯房间卫生异常不能生成无主风险。&#x27; },
+        &#x27;sa-risk&#x27;: { purpose:&#x27;把学业、心理、请假、宿舍、处分等风险统一分派给责任人并跟进关闭。&#x27;, roles:&#x27;辅导员、学院学工、学工处、心理老师、宿管&#x27;, when:&#x27;系统预警或人工发现学生风险后&#x27;, steps:[&#x27;风险产生&#x27;,&#x27;分派责任人&#x27;,&#x27;记录首次处置&#x27;,&#x27;持续跟进/转办/升级&#x27;,&#x27;填写结论后关闭&#x27;], next:&#x27;谈心、家校、心理转介；结论进入学生360&#x27;, sampleSource:&#x27;系统已有沙箱预警&#x27;, fields:[[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;来源&#x27;,&#x27;学业预警（GPA）&#x27;],[&#x27;等级&#x27;,&#x27;低风险&#x27;],[&#x27;责任人&#x27;,&#x27;王老师&#x27;]], states:[&#x27;新建&#x27;,&#x27;已分派&#x27;,&#x27;处置中&#x27;,&#x27;持续跟进&#x27;,&#x27;已关闭&#x27;], safety:&#x27;没有处置记录不能直接关闭；心理来源风险仅显示授权范围内的信息。&#x27; },
+        &#x27;sa-difficulty&#x27;: { purpose:&#x27;按批次完成家庭经济困难申请、评议、逐级审核、公示、异议和入库。&#x27;, roles:&#x27;学生、辅导员、学院学工、资助老师、学工处&#x27;, when:&#x27;年度/学期困难认定和动态调整时&#x27;, steps:[&#x27;发布认定批次&#x27;,&#x27;学生提交材料&#x27;,&#x27;班级评议与辅导员初审&#x27;,&#x27;学院/学校审核&#x27;,&#x27;脱敏公示&#x27;,&#x27;确认入困难库&#x27;], next:&#x27;奖助勤贷补资格校验与学生档案&#x27;, sampleSource:&#x27;系统已有沙箱申请&#x27;, fields:[[&#x27;批次&#x27;,&#x27;2026 春季家庭经济困难认定&#x27;],[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;申请等级&#x27;,&#x27;困难&#x27;],[&#x27;申请说明&#x27;,&#x27;家庭务农，父亲长期患病，家庭收入来源单一……&#x27;]], states:[&#x27;草稿&#x27;,&#x27;已提交&#x27;,&#x27;班级评议&#x27;,&#x27;辅导员初审&#x27;,&#x27;学院复审&#x27;,&#x27;学校终审&#x27;,&#x27;公示&#x27;,&#x27;已认定&#x27;], safety:&#x27;家庭收入和特殊情况是强敏感信息；示例仅展示脱敏摘要，完整查看必须有权限并留审计。&#x27; },
+        &#x27;sa-aid&#x27;: { purpose:&#x27;管理奖学金、助学金、勤工助学、贷款、减免和临时补助的申请评审与发放。&#x27;, roles:&#x27;学生、辅导员、学院学工、资助老师、学工处&#x27;, when:&#x27;资助项目申报、评审、公示和发放时&#x27;, steps:[&#x27;建项目与批次&#x27;,&#x27;学生申请/系统推荐&#x27;,&#x27;资格校验与逐级评审&#x27;,&#x27;公示确认&#x27;,&#x27;登记发放或上岗&#x27;,&#x27;归档统计&#x27;], next:&#x27;发放台账、学生资助档案与统计&#x27;, sampleSource:&#x27;系统已有沙箱项目&#x27;, fields:[[&#x27;项目&#x27;,&#x27;国家助学金&#x27;],[&#x27;学年&#x27;,&#x27;2025-2026&#x27;],[&#x27;申请金额&#x27;,&#x27;3300 元&#x27;],[&#x27;申请说明&#x27;,&#x27;家庭经济困难，申请国家助学金资助。&#x27;]], states:[&#x27;草稿&#x27;,&#x27;已提交&#x27;,&#x27;辅导员初审&#x27;,&#x27;学院评审&#x27;,&#x27;学校复核&#x27;,&#x27;公示&#x27;,&#x27;已通过&#x27;,&#x27;已发放&#x27;], safety:&#x27;助学金会校验困难库；奖学金会校验成绩、学籍和未解除处分，失败原因以页面提示为准。&#x27; },
+        &#x27;sa-discipline&#x27;: { purpose:&#x27;从违纪事实登记、取证和逐级审批，到处分生效、送达、申诉与解除。&#x27;, roles:&#x27;辅导员、学院学工、学工处、校级审批人&#x27;, when:&#x27;发生违纪、收到申诉或达到解除条件时&#x27;, steps:[&#x27;登记事实与材料&#x27;,&#x27;学院初审&#x27;,&#x27;学工处/校级复核&#x27;,&#x27;处分生效并送达&#x27;,&#x27;受理申诉或解除&#x27;,&#x27;归档留痕&#x27;], next:&#x27;风险、奖助资格、毕业审核与学生360&#x27;, sampleSource:&#x27;系统已有沙箱登记&#x27;, fields:[[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;处分类型&#x27;,&#x27;警告&#x27;],[&#x27;违纪事实&#x27;,&#x27;晚归违反宿舍管理规定一次（演示数据）&#x27;],[&#x27;当前状态&#x27;,&#x27;已登记&#x27;]], states:[&#x27;已登记&#x27;,&#x27;学院审核&#x27;,&#x27;学工处审核&#x27;,&#x27;学校审核（严重处分）&#x27;,&#x27;已生效&#x27;,&#x27;解除审核&#x27;,&#x27;已解除&#x27;], safety:&#x27;处分生效后不可直接编辑或删除；学生端不下发处分明细，解除后仍保留历史。&#x27; },
+        &#x27;sa-talks&#x27;: { purpose:&#x27;把谈话计划、记录、后续跟进和家校联系串成可追溯的帮扶过程。&#x27;, roles:&#x27;辅导员、学院学工、心理老师&#x27;, when:&#x27;日常关怀、风险处置、学业或纪律跟进时&#x27;, steps:[&#x27;建谈话计划&#x27;,&#x27;约定时间地点&#x27;,&#x27;填写谈话记录&#x27;,&#x27;判断是否跟进&#x27;,&#x27;转风险/家校或办结&#x27;], next:&#x27;风险处置、家校回执与学生360&#x27;, sampleSource:&#x27;基于现有字段的有效输入&#x27;, fields:[[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;谈话类型&#x27;,&#x27;学业帮扶&#x27;],[&#x27;主题&#x27;,&#x27;学业预警跟进&#x27;],[&#x27;跟进结论&#x27;,&#x27;已制定一周学习计划，7天后复访&#x27;]], states:[&#x27;已计划&#x27;,&#x27;已预约&#x27;,&#x27;已完成&#x27;,&#x27;跟进中&#x27;,&#x27;已办结&#x27;], safety:&#x27;谈话内容按敏感级别控制；学生端只展示“已谈话”等必要摘要。&#x27; },
+        &#x27;sa-mental&#x27;: { purpose:&#x27;在最小知情原则下管理心理关注、转介回访和危机升级。&#x27;, roles:&#x27;心理老师、授权辅导员；学工处仅看聚合&#x27;, when:&#x27;测评筛查、老师转介或出现危机信号时&#x27;, steps:[&#x27;进入关注名单&#x27;,&#x27;授权人员核验摘要&#x27;,&#x27;发起转介&#x27;,&#x27;记录回访&#x27;,&#x27;必要时危机升级&#x27;,&#x27;结案&#x27;], next:&#x27;风险中枢（仅必要摘要）与持续关怀&#x27;, sampleSource:&#x27;脱敏有效输入示例&#x27;, fields:[[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;关注等级&#x27;,&#x27;一般关注&#x27;],[&#x27;转介原因&#x27;,&#x27;近期连续缺勤，建议专业评估&#x27;],[&#x27;回访结果&#x27;,&#x27;已联系本人并预约复访&#x27;]], states:[&#x27;待筛查&#x27;,&#x27;关注中&#x27;,&#x27;转介中&#x27;,&#x27;持续回访&#x27;,&#x27;已结案&#x27;], safety:&#x27;学工处管理员默认无心理明细权限；查看原因、明细和导出都必须遵守专项授权与审计。&#x27; },
+        &#x27;sa-activities&#x27;: { purpose:&#x27;把活动发布、学生报名签到、结果确认、二课积分、志愿时长和申诉形成闭环。&#x27;, roles:&#x27;辅导员、活动组织者、团学老师、学生&#x27;, when:&#x27;发布校园活动、核算第二课堂或处理积分申诉时&#x27;, steps:[&#x27;创建活动&#x27;,&#x27;发布报名&#x27;,&#x27;学生签到&#x27;,&#x27;组织者确认结果&#x27;,&#x27;积分/时长入账&#x27;,&#x27;处理申诉&#x27;], next:&#x27;第二课堂台账、学生成长档案与统计&#x27;, sampleSource:&#x27;基于现有字段的有效输入&#x27;, fields:[[&#x27;活动名称&#x27;,&#x27;校园志愿服务日&#x27;],[&#x27;组织单位&#x27;,&#x27;体验学院&#x27;],[&#x27;名额&#x27;,&#x27;50 人&#x27;],[&#x27;积分/时长&#x27;,&#x27;第二课堂 2 分 / 志愿 4 小时&#x27;]], states:[&#x27;草稿&#x27;,&#x27;已发布&#x27;,&#x27;报名中&#x27;,&#x27;活动进行中&#x27;,&#x27;已结束&#x27;,&#x27;已确认入账&#x27;], safety:&#x27;只有已报名且有效签到的学生才能入账；重复确认不能重复生成积分。&#x27; },
+        &#x27;sa-archive-stats&#x27;: { purpose:&#x27;汇总学工指标并按批次检查材料完整性、生成学生档案包和封存导出。&#x27;, roles:&#x27;学工处、学院学工、校领导（统计只读）&#x27;, when:&#x27;日常分析、月报年报、学期或学年归档时&#x27;, steps:[&#x27;选择统计口径&#x27;,&#x27;下钻核对异常&#x27;,&#x27;新建归档批次&#x27;,&#x27;生成缺项清单&#x27;,&#x27;学院复核/学工确认&#x27;,&#x27;封存导出&#x27;], next:&#x27;只读档案包、审计与管理决策&#x27;, sampleSource:&#x27;基于真实归档流程的有效输入&#x27;, fields:[[&#x27;批次名称&#x27;,&#x27;2025-2026 学年学工归档&#x27;],[&#x27;归档范围&#x27;,&#x27;请假、困难认定、谈话记录&#x27;],[&#x27;学生范围&#x27;,&#x27;体验学院 / 2026级&#x27;],[&#x27;输出&#x27;,&#x27;带水印档案包 + 清单&#x27;]], states:[&#x27;草稿&#x27;,&#x27;收集中&#x27;,&#x27;学院复核&#x27;,&#x27;学工确认&#x27;,&#x27;已封存&#x27;], safety:&#x27;封存后原业务单据以查看和导出为主；先处理缺项，不能把不完整材料强行归档。&#x27; }
+      };
+
+      const roles = [&#x27;全部&#x27;,&#x27;学工处&#x27;,&#x27;学院学工&#x27;,&#x27;辅导员&#x27;,&#x27;宿管&#x27;,&#x27;心理老师&#x27;,&#x27;学生&#x27;];
+      const rolePaths = {
+        &#x27;全部&#x27;: [[&#x27;sa-workbench&#x27;,&#x27;看全局&#x27;],[&#x27;sa-profile&#x27;,&#x27;找学生&#x27;],[&#x27;sa-leave&#x27;,&#x27;办日常&#x27;],[&#x27;sa-risk&#x27;,&#x27;控风险&#x27;],[&#x27;sa-aid&#x27;,&#x27;做资助&#x27;],[&#x27;sa-archive-stats&#x27;,&#x27;归档&#x27;]],
+        &#x27;学工处&#x27;: [[&#x27;sa-workbench&#x27;,&#x27;看全校&#x27;],[&#x27;sa-difficulty&#x27;,&#x27;终审认定&#x27;],[&#x27;sa-aid&#x27;,&#x27;复核资助&#x27;],[&#x27;sa-discipline&#x27;,&#x27;审批处分&#x27;],[&#x27;sa-risk&#x27;,&#x27;督办风险&#x27;],[&#x27;sa-archive-stats&#x27;,&#x27;封存&#x27;]],
+        &#x27;学院学工&#x27;: [[&#x27;sa-workbench&#x27;,&#x27;看学院&#x27;],[&#x27;sa-classes&#x27;,&#x27;看班级&#x27;],[&#x27;sa-leave&#x27;,&#x27;审长假&#x27;],[&#x27;sa-difficulty&#x27;,&#x27;复审认定&#x27;],[&#x27;sa-risk&#x27;,&#x27;处置升级&#x27;],[&#x27;sa-archive-stats&#x27;,&#x27;复核档案&#x27;]],
+        &#x27;辅导员&#x27;: [[&#x27;sa-workbench&#x27;,&#x27;看我的待办&#x27;],[&#x27;sa-profile&#x27;,&#x27;找学生&#x27;],[&#x27;sa-leave&#x27;,&#x27;审请假&#x27;],[&#x27;sa-risk&#x27;,&#x27;做处置&#x27;],[&#x27;sa-talks&#x27;,&#x27;谈话家校&#x27;],[&#x27;sa-activities&#x27;,&#x27;记成长&#x27;]],
+        &#x27;宿管&#x27;: [[&#x27;sa-dorm&#x27;,&#x27;看房源&#x27;],[&#x27;sa-dorm&#x27;,&#x27;办入住&#x27;],[&#x27;sa-dorm&#x27;,&#x27;做检查&#x27;],[&#x27;sa-dorm&#x27;,&#x27;处异常&#x27;],[&#x27;sa-risk&#x27;,&#x27;转风险&#x27;]],
+        &#x27;心理老师&#x27;: [[&#x27;sa-mental&#x27;,&#x27;看授权名单&#x27;],[&#x27;sa-mental&#x27;,&#x27;做转介&#x27;],[&#x27;sa-mental&#x27;,&#x27;记回访&#x27;],[&#x27;sa-mental&#x27;,&#x27;危机升级&#x27;],[&#x27;sa-risk&#x27;,&#x27;协同处置&#x27;]],
+        &#x27;学生&#x27;: [[&#x27;sa-orientation&#x27;,&#x27;办报到&#x27;],[&#x27;sa-leave&#x27;,&#x27;提请假&#x27;],[&#x27;sa-difficulty&#x27;,&#x27;申请认定&#x27;],[&#x27;sa-aid&#x27;,&#x27;申请资助&#x27;],[&#x27;sa-activities&#x27;,&#x27;报名活动&#x27;]]
+      };
+      const roleModules = {
+        &#x27;学工处&#x27;:[&#x27;sa-workbench&#x27;,&#x27;sa-profile&#x27;,&#x27;sa-classes&#x27;,&#x27;sa-orientation&#x27;,&#x27;sa-leave&#x27;,&#x27;sa-dorm&#x27;,&#x27;sa-risk&#x27;,&#x27;sa-difficulty&#x27;,&#x27;sa-aid&#x27;,&#x27;sa-discipline&#x27;,&#x27;sa-talks&#x27;,&#x27;sa-activities&#x27;,&#x27;sa-archive-stats&#x27;],
+        &#x27;学院学工&#x27;:[&#x27;sa-workbench&#x27;,&#x27;sa-profile&#x27;,&#x27;sa-classes&#x27;,&#x27;sa-orientation&#x27;,&#x27;sa-leave&#x27;,&#x27;sa-dorm&#x27;,&#x27;sa-risk&#x27;,&#x27;sa-difficulty&#x27;,&#x27;sa-aid&#x27;,&#x27;sa-discipline&#x27;,&#x27;sa-talks&#x27;,&#x27;sa-activities&#x27;,&#x27;sa-archive-stats&#x27;],
+        &#x27;辅导员&#x27;:[&#x27;sa-workbench&#x27;,&#x27;sa-profile&#x27;,&#x27;sa-classes&#x27;,&#x27;sa-leave&#x27;,&#x27;sa-risk&#x27;,&#x27;sa-difficulty&#x27;,&#x27;sa-aid&#x27;,&#x27;sa-discipline&#x27;,&#x27;sa-talks&#x27;,&#x27;sa-activities&#x27;],
+        &#x27;宿管&#x27;:[&#x27;sa-dorm&#x27;,&#x27;sa-risk&#x27;],
+        &#x27;心理老师&#x27;:[&#x27;sa-mental&#x27;,&#x27;sa-risk&#x27;,&#x27;sa-talks&#x27;],
+        &#x27;学生&#x27;:[&#x27;sa-orientation&#x27;,&#x27;sa-leave&#x27;,&#x27;sa-difficulty&#x27;,&#x27;sa-aid&#x27;,&#x27;sa-activities&#x27;]
+      };
+
+      let activeRole = &#x27;辅导员&#x27;;
+      let activeModule = &#x27;sa-workbench&#x27;;
+
+      function usageFor(item, moduleName) {
+        const text = item.replace(/（.*?）|\(.*?\)/g,&#x27;&#x27;).trim();
+        if (/看板|总览|统计|驾驶舱|画像/.test(text)) return &#x27;先选学院、年级、班级或时间口径，再点异常数字下钻到明细；需要办理时进入对应业务单据。&#x27;;
+        if (/批次/.test(text)) return &#x27;先建批次并设置适用范围、起止时间和规则；核对无误后发布，发布后学生或老师端才进入办理期。&#x27;;
+        if (/申请与审核|申请评审|审批|复核|审核|公示待办/.test(text)) return &#x27;从待办筛选当前节点，打开申请核材料和前序意见；填写审核意见后通过、退回或驳回，系统自动流向下一节点。&#x27;;
+        if (/台账|名单|学生库|列表|新生数据|异常学生|未报到学生/.test(text)) return `进入“学工中心 → ${moduleName} → ${item}”，先按姓名、学号、状态和范围筛选，再点记录看详情；变更必须回到对应申请或处置入口。`;
+        if (/归档|档案包/.test(text)) return &#x27;先建归档批次并运行完整性检查，处理缺项后再复核、确认和封存；封存后以只读查看和水印导出为主。&#x27;;
+        if (/通知|回执/.test(text)) return &#x27;先核对发送对象、业务状态和送达情况；失败项要重试或转人工联系，并把回执写回原业务。&#x27;;
+        if (/房源|入住|调宿|退宿|宿舍检查|宿舍异常/.test(text)) return &#x27;先选楼栋、房间或学生核对当前床位，再发起入住/调宿/检查/处置；完成后检查床位状态和风险联动是否更新。&#x27;;
+        if (/风险预警|重点学生|危机升级/.test(text)) return &#x27;先核对来源与等级，分派责任人并记录首次处置；需要时转办、升级或持续跟进，结论填写完整后才能关闭。&#x27;;
+        if (/谈心|家校|转介|回访|心理关注/.test(text)) return &#x27;先确认授权范围和学生，再记录计划/联系/回访；只填写办理所需信息，需协同处置时转风险或家校并留痕。&#x27;;
+        if (/活动|志愿|第二课堂|社团|组织|党团/.test(text)) return &#x27;先建立活动或组织规则，发布后收集报名/签到/记录；审核确认后再把积分、时长或任职结果写入成长档案。&#x27;;
+        if (/导入导出/.test(text)) return &#x27;先下载模板并预校验，修正失败行后再导入；导出前确认数据范围和字段，敏感数据按权限脱敏并记录导出审计。&#x27;;
+        if (/考评/.test(text)) return &#x27;先配置或选择考评指标，按责任范围录入评分并复核；发布后辅导员可查看本人结果并按规则申诉。&#x27;;
+        return `进入“学工中心 → ${moduleName} → ${item}”，先核对当前学生、批次、状态和权限，再按页面主按钮办理，最后返回列表确认状态已更新。`;
+      }
+
+      function renderRoles() {
+        const host = root.querySelector(&#x27;#sa-role-bar&#x27;);
+        host.querySelectorAll(&#x27;button&#x27;).forEach(b =&gt; b.remove());
+        roles.forEach(role =&gt; {
+          const b = document.createElement(&#x27;button&#x27;);
+          b.type = &#x27;button&#x27;;
+          b.className = `btn${role === activeRole ? &#x27; btn-primary&#x27; : &#x27;&#x27;}`;
+          b.setAttribute(&#x27;aria-pressed&#x27;, String(role === activeRole));
+          b.textContent = role;
+          b.addEventListener(&#x27;click&#x27;, () =&gt; {
+            activeRole = role;
+            renderRoles();
+            renderQuickPath();
+            renderMap();
+          });
+          host.appendChild(b);
+        });
+      }
+
+      function renderQuickPath() {
+        const host = root.querySelector(&#x27;#sa-quick-path&#x27;);
+        host.innerHTML = &#x27;&lt;span class=&quot;quick-label&quot;&gt;常用路径：&lt;/span&gt;&#x27;;
+        rolePaths[activeRole].forEach(([id,label]) =&gt; {
+          const wrap = document.createElement(&#x27;span&#x27;);
+          wrap.className = &#x27;quick-step&#x27;;
+          const b = document.createElement(&#x27;button&#x27;);
+          b.type = &#x27;button&#x27;;
+          b.className = &#x27;btn btn-ghost&#x27;;
+          b.textContent = label;
+          b.addEventListener(&#x27;click&#x27;, () =&gt; selectModule(id));
+          wrap.appendChild(b);
+          host.appendChild(wrap);
+        });
+      }
+
+      function renderMap() {
+        const host = root.querySelector(&#x27;#sa-phase-flow&#x27;);
+        host.innerHTML = &#x27;&#x27;;
+        phaseData.forEach(phase =&gt; {
+          const section = document.createElement(&#x27;section&#x27;);
+          section.className = &#x27;phase&#x27;;
+          const head = document.createElement(&#x27;div&#x27;);
+          head.className = &#x27;phase-head&#x27;;
+          head.innerHTML = `&lt;div class=&quot;phase-title&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;${phase.no}&lt;/span&gt;&lt;strong&gt;${phase.name}&lt;/strong&gt;&lt;/div&gt;&lt;span class=&quot;text-muted&quot;&gt;${phase.ids.length} 个模块&lt;/span&gt;`;
+          const desc = document.createElement(&#x27;div&#x27;);
+          desc.className = &#x27;phase-desc&#x27;;
+          desc.textContent = phase.desc;
+          const group = document.createElement(&#x27;div&#x27;);
+          group.className = &#x27;phase-modules&#x27;;
+          phase.ids.forEach(id =&gt; {
+            const m = byId[id];
+            const relevant = activeRole === &#x27;全部&#x27; || (roleModules[activeRole] || []).includes(id);
+            const b = document.createElement(&#x27;button&#x27;);
+            b.type = &#x27;button&#x27;;
+            b.className = `btn module-btn${id === activeModule ? &#x27; btn-primary&#x27; : &#x27;&#x27;}${relevant ? &#x27;&#x27; : &#x27; is-dimmed&#x27;}`;
+            b.setAttribute(&#x27;aria-pressed&#x27;, String(id === activeModule));
+            b.textContent = `${m.name} · ${m.items.length}`;
+            b.addEventListener(&#x27;click&#x27;, () =&gt; selectModule(id));
+            group.appendChild(b);
+          });
+          section.append(head,desc,group);
+          host.appendChild(section);
+        });
+      }
+
+      function selectModule(id) {
+        activeModule = id;
+        renderMap();
+        renderDetail();
+        root.querySelector(&#x27;#sa-detail&#x27;).scrollIntoView({ behavior:&#x27;smooth&#x27;, block:&#x27;start&#x27; });
+      }
+
+      function renderDetail() {
+        const m = byId[activeModule];
+        const p = phaseData.find(x =&gt; x.ids.includes(activeModule));
+        const q = profiles[activeModule];
+        root.querySelector(&#x27;#sa-module-title&#x27;).textContent = m.name;
+        root.querySelector(&#x27;#sa-module-phase&#x27;).textContent = `${p.no} ${p.name}`;
+        root.querySelector(&#x27;#sa-module-purpose&#x27;).textContent = q.purpose;
+        root.querySelector(&#x27;#sa-module-roles&#x27;).textContent = q.roles;
+        root.querySelector(&#x27;#sa-module-when&#x27;).textContent = q.when;
+        root.querySelector(&#x27;#sa-module-entry&#x27;).textContent = `学工中心 → ${m.name}`;
+        root.querySelector(&#x27;#sa-module-next&#x27;).textContent = q.next;
+        root.querySelector(&#x27;#sa-sample-source&#x27;).textContent = q.sampleSource;
+        root.querySelector(&#x27;#sa-safety&#x27;).textContent = `注意：${q.safety}`;
+        root.querySelector(&#x27;#sa-leaf-count&#x27;).textContent = `共 ${m.items.length} 项`;
+
+        const steps = root.querySelector(&#x27;#sa-module-steps&#x27;);
+        steps.innerHTML = &#x27;&#x27;;
+        q.steps.forEach((step,index) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          const span = document.createElement(&#x27;span&#x27;);
+          span.className = &#x27;step-label&#x27;;
+          span.textContent = `${index + 1}. ${step}`;
+          li.appendChild(span);
+          steps.appendChild(li);
+        });
+
+        const sample = root.querySelector(&#x27;#sa-sample-grid&#x27;);
+        sample.innerHTML = &#x27;&#x27;;
+        q.fields.forEach(([key,value]) =&gt; {
+          const row = document.createElement(&#x27;div&#x27;);
+          row.className = &#x27;sample-row&#x27;;
+          const k = document.createElement(&#x27;span&#x27;);
+          k.className = &#x27;sample-key&#x27;;
+          k.textContent = key;
+          const v = document.createElement(&#x27;span&#x27;);
+          v.textContent = value;
+          row.append(k,v);
+          sample.appendChild(row);
+        });
+
+        const chain = root.querySelector(&#x27;#sa-state-chain&#x27;);
+        chain.innerHTML = &#x27;&#x27;;
+        q.states.forEach((state,index) =&gt; {
+          const node = document.createElement(&#x27;span&#x27;);
+          node.className = &#x27;state-node&#x27;;
+          node.textContent = state;
+          chain.appendChild(node);
+          if (index &lt; q.states.length - 1) {
+            const arrow = document.createElement(&#x27;span&#x27;);
+            arrow.className = &#x27;state-arrow&#x27;;
+            arrow.textContent = &#x27;→&#x27;;
+            chain.appendChild(arrow);
+          }
+        });
+
+        const list = root.querySelector(&#x27;#sa-leaf-list&#x27;);
+        list.innerHTML = &#x27;&#x27;;
+        m.items.forEach((item,index) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          li.className = &#x27;leaf&#x27;;
+          const name = document.createElement(&#x27;div&#x27;);
+          name.className = &#x27;leaf-name&#x27;;
+          name.innerHTML = `&lt;span class=&quot;leaf-index&quot;&gt;${String(index + 1).padStart(2,&#x27;0&#x27;)}&lt;/span&gt;&lt;span&gt;${item}&lt;/span&gt;`;
+          const use = document.createElement(&#x27;p&#x27;);
+          use.className = &#x27;leaf-use&#x27;;
+          use.textContent = usageFor(item,m.name);
+          li.append(name,use);
+          list.appendChild(li);
+        });
+      }
+
+      renderRoles();
+      renderQuickPath();
+      renderMap();
+      renderDetail();
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

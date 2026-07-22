@@ -613,6 +613,10 @@ export default {
     onRailSelect(item) {
       if (!item?.path) return
       const target = item.path
+      if (this.isHelpRoute(target)) {
+        this.openHelpWindow(target)
+        return
+      }
       this.clickedLeafKey = ''
       this.$emit('menu-select', { key: item.key, label: item.label, path: target })
       if (target !== this.currentNavRef) {
@@ -622,6 +626,10 @@ export default {
     onSelect(item) {
       if (item.disabled) {
         this.$emit('menu-disabled', item)
+        return
+      }
+      if (this.isHelpRoute(item.path)) {
+        this.openHelpWindow(item.path)
         return
       }
       this.$emit('menu-select', item)
@@ -636,6 +644,10 @@ export default {
       if (!r.to) return
       this.fnQuery = ''
       this.fnOpen = false
+      if (this.isHelpRoute(r.to)) {
+        this.openHelpWindow(r.to)
+        return
+      }
       if (this.$router && r.to !== this.$route.fullPath) this.$router.push(r.to)
     },
     pickFirstFn() {
@@ -658,11 +670,24 @@ export default {
         this.helpOpen = false
       }, 150)
     },
+    isHelpRoute(to) {
+      return String(to || '').split('?')[0] === '/admin/help'
+    },
+    /**
+     * 帮助中心始终独立打开，避免老师丢失当前业务页面。
+     * 当前认证令牌保存在 sessionStorage：新标签必须在有 opener 的创建瞬间继承会话，
+     * 随后立即断开 opener，兼顾免重复登录与反向标签页劫持防护。
+     */
+    openHelpWindow(to = '/admin/help') {
+      const href = this.$router.resolve(to).href
+      const helpWindow = window.open(href, '_blank')
+      if (helpWindow) helpWindow.opener = null
+    },
     /** 本页帮助：能匹配到任务卡就直达该卡，匹配不到退回帮助中心首页（不乱跳）。 */
     goPageHelp() {
       this.helpOpen = false
       const to = this.pageHelp ? `/admin/help?topic=${this.pageHelp.id}` : '/admin/help'
-      if (this.$route.fullPath !== to) router.push(to)
+      this.openHelpWindow(to)
     },
     /** 重看本页引导：由页内已挂载的 AppPageGuide 响应。 */
     replayPageGuide() {
@@ -672,7 +697,7 @@ export default {
     },
     goHelpHome() {
       this.helpOpen = false
-      if (this.$route.path !== '/admin/help') router.push('/admin/help')
+      this.openHelpWindow('/admin/help')
     },
     onGlobalKeydown(e) {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
@@ -748,6 +773,10 @@ export default {
         return
       }
       this.clickedLeafKey = ''
+      if (this.isHelpRoute(m.path)) {
+        this.openHelpWindow(m.path)
+        return
+      }
       if (m.path && m.path !== this.currentNavRef) this.$router.push(m.path)
     },
     navRefMatches,

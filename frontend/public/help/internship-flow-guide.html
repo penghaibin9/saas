@@ -1,0 +1,1427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>internship-flow-guide</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:.5rem;background:inherit}iframe{display:block;width:100%;max-width:none;height:calc(100vh - 1rem);margin:0;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="internship-flow-guide" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;internship-flow-guide&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;internship-flow-guide&quot;&gt;
+  &lt;style&gt;
+    :root { --font-size-base:18px; }
+    #internship-flow-guide { color:var(--foreground); }
+    #internship-flow-guide .hero { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; flex-wrap:wrap; margin-bottom:16px; }
+    #internship-flow-guide .hero-main { display:flex; flex-direction:column; gap:8px; }
+    #internship-flow-guide .summary { display:flex; gap:18px; flex-wrap:wrap; }
+    #internship-flow-guide .summary strong { font-size:1.35em; }
+    #internship-flow-guide .source-note { color:var(--muted-foreground); }
+    #internship-flow-guide .role-bar,
+    #internship-flow-guide .quick-path { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+    #internship-flow-guide .role-label,
+    #internship-flow-guide .quick-label { color:var(--muted-foreground); }
+    #internship-flow-guide .quick-step { display:flex; align-items:center; gap:8px; }
+    #internship-flow-guide .quick-step:not(:last-child)::after { content:&#x27;→&#x27;; color:var(--muted-foreground); }
+    #internship-flow-guide .workspace { display:grid; grid-template-columns:minmax(560px,1.05fr) minmax(620px,1.35fr); gap:24px; align-items:start; }
+    #internship-flow-guide .map-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:8px; }
+    #internship-flow-guide .map-head h2 { margin:0; }
+    #internship-flow-guide .phase-flow { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 20px; }
+    #internship-flow-guide .phase { padding:12px 0 14px; border-top:2px solid color-mix(in srgb,var(--viz-series-1) 38%,var(--border)); }
+    #internship-flow-guide .phase-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:7px; }
+    #internship-flow-guide .phase-title { display:flex; align-items:baseline; gap:8px; }
+    #internship-flow-guide .phase-no { color:var(--muted-foreground); }
+    #internship-flow-guide .phase-desc { color:var(--muted-foreground); margin-bottom:9px; font-size:.94em; }
+    #internship-flow-guide .phase-modules { display:flex; flex-wrap:wrap; gap:7px; }
+    #internship-flow-guide .module-btn { white-space:normal; text-align:left; }
+    #internship-flow-guide .module-btn.is-dimmed { opacity:.42; }
+    #internship-flow-guide .detail { min-width:0; }
+    #internship-flow-guide .detail-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    #internship-flow-guide .detail-title h2 { margin:0; }
+    #internship-flow-guide .purpose { margin-top:8px; font-size:1.08em; }
+    #internship-flow-guide .meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; margin:14px 0 0; }
+    #internship-flow-guide .meta dt { color:var(--muted-foreground); margin-bottom:3px; }
+    #internship-flow-guide .meta dd { margin:0; }
+    #internship-flow-guide .section-title { margin:18px 0 8px; }
+    #internship-flow-guide .steps { list-style:none; padding:0; margin:0; display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+    #internship-flow-guide .steps li { display:flex; align-items:center; gap:7px; }
+    #internship-flow-guide .steps li:not(:last-child)::after { content:&#x27;→&#x27;; color:var(--muted-foreground); }
+    #internship-flow-guide .step-label { padding:6px 9px; background:color-mix(in srgb,var(--viz-series-2) 13%,transparent); }
+    #internship-flow-guide .sample { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+    #internship-flow-guide .sample-head { display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap; }
+    #internship-flow-guide .sample-head h3 { margin:0; }
+    #internship-flow-guide .sample-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 18px; margin:10px 0; }
+    #internship-flow-guide .sample-row { display:grid; grid-template-columns:minmax(92px,.7fr) minmax(0,1.5fr); gap:10px; padding:7px 0; border-bottom:1px solid var(--border); }
+    #internship-flow-guide .sample-key { color:var(--muted-foreground); font-weight:500; }
+    #internship-flow-guide .state-chain { display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
+    #internship-flow-guide .state-node { padding:5px 8px; background:var(--muted); }
+    #internship-flow-guide .state-arrow { color:var(--muted-foreground); }
+    #internship-flow-guide .safety { margin-top:10px; color:var(--muted-foreground); }
+    #internship-flow-guide .leaf-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:18px 0 4px; }
+    #internship-flow-guide .leaf-head h3 { margin:0; }
+    #internship-flow-guide .leaf-list { list-style:none; padding:0; margin:8px 0 0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 20px; }
+    #internship-flow-guide .leaf { padding:10px 0; border-bottom:1px solid var(--border); }
+    #internship-flow-guide .leaf-name { display:flex; align-items:flex-start; gap:8px; font-weight:500; font-size:1.03em; }
+    #internship-flow-guide .leaf-index { min-width:2.2em; color:var(--muted-foreground); }
+    #internship-flow-guide .leaf-use { margin:5px 0 0 2.2em; color:var(--muted-foreground); }
+    #internship-flow-guide .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:16px; color:var(--muted-foreground); }
+    @media (max-width:1200px) {
+      #internship-flow-guide .workspace { grid-template-columns:1fr; }
+      #internship-flow-guide .phase-flow { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width:680px) {
+      :root { --font-size-base:16px; }
+      #internship-flow-guide .phase-flow,
+      #internship-flow-guide .meta,
+      #internship-flow-guide .sample-grid,
+      #internship-flow-guide .leaf-list { grid-template-columns:1fr; }
+      #internship-flow-guide .sample-row { grid-template-columns:1fr; gap:2px; }
+    }
+  &lt;/style&gt;
+
+  &lt;div class=&quot;hero&quot; aria-label=&quot;岗位实习中心业务全景摘要&quot;&gt;
+    &lt;div class=&quot;hero-main&quot;&gt;
+      &lt;div class=&quot;summary&quot;&gt;
+        &lt;span&gt;&lt;strong&gt;12&lt;/strong&gt; 个二级模块&lt;/span&gt;
+        &lt;span&gt;&lt;strong&gt;100&lt;/strong&gt; 个三级入口&lt;/span&gt;
+        &lt;span&gt;&lt;strong&gt;7&lt;/strong&gt; 段业务主线&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;source-note&quot;&gt;口径：系统当前菜单、真实路由、岗位实习状态机与体验沙箱全链数据&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;span class=&quot;viz-badge&quot;&gt;先定批次岗位 → 再管过程风险 → 最后评价归档&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;role-bar&quot; id=&quot;in-role-bar&quot; aria-label=&quot;按岗位突出相关模块&quot;&gt;
+    &lt;span class=&quot;role-label&quot;&gt;我的岗位：&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;quick-path&quot; id=&quot;in-quick-path&quot; aria-label=&quot;当前岗位常用业务路径&quot;&gt;&lt;/div&gt;
+
+  &lt;div class=&quot;workspace&quot;&gt;
+    &lt;section aria-label=&quot;岗位实习业务流程导图&quot;&gt;
+      &lt;div class=&quot;map-head&quot;&gt;
+        &lt;h2&gt;业务流程导图&lt;/h2&gt;
+        &lt;span class=&quot;text-muted&quot;&gt;12 个二级模块全部显示，点击查看右侧操作&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;phase-flow&quot; id=&quot;in-phase-flow&quot;&gt;&lt;/div&gt;
+    &lt;/section&gt;
+
+    &lt;section class=&quot;card detail&quot; id=&quot;in-detail&quot; aria-live=&quot;polite&quot;&gt;
+      &lt;div class=&quot;detail-title&quot;&gt;
+        &lt;h2 id=&quot;in-module-title&quot;&gt;&lt;/h2&gt;
+        &lt;span class=&quot;viz-badge&quot; id=&quot;in-module-phase&quot;&gt;&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;p class=&quot;purpose&quot; id=&quot;in-module-purpose&quot;&gt;&lt;/p&gt;
+      &lt;dl class=&quot;meta&quot;&gt;
+        &lt;div&gt;&lt;dt&gt;谁来用&lt;/dt&gt;&lt;dd id=&quot;in-module-roles&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;什么时候用&lt;/dt&gt;&lt;dd id=&quot;in-module-when&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;从哪里进&lt;/dt&gt;&lt;dd id=&quot;in-module-entry&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;做完流向&lt;/dt&gt;&lt;dd id=&quot;in-module-next&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+      &lt;/dl&gt;
+
+      &lt;h3 class=&quot;section-title&quot;&gt;主流程&lt;/h3&gt;
+      &lt;ol class=&quot;steps&quot; id=&quot;in-module-steps&quot;&gt;&lt;/ol&gt;
+
+      &lt;div class=&quot;sample&quot;&gt;
+        &lt;div class=&quot;sample-head&quot;&gt;
+          &lt;h3&gt;可照填的沙箱示例&lt;/h3&gt;
+          &lt;span class=&quot;text-muted&quot; id=&quot;in-sample-source&quot;&gt;&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;sample-grid&quot; id=&quot;in-sample-grid&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;state-chain&quot; id=&quot;in-state-chain&quot; aria-label=&quot;示例状态流转&quot;&gt;&lt;/div&gt;
+        &lt;p class=&quot;safety&quot; id=&quot;in-safety&quot;&gt;&lt;/p&gt;
+      &lt;/div&gt;
+
+      &lt;div class=&quot;leaf-head&quot;&gt;
+        &lt;h3&gt;三级模块怎么用&lt;/h3&gt;
+        &lt;span class=&quot;text-muted&quot; id=&quot;in-leaf-count&quot;&gt;&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;text-muted&quot;&gt;先确认批次、学生、企业岗位与当前状态，再执行审核、处置、发布或归档；按钮以实际权限为准。&lt;/div&gt;
+      &lt;ol class=&quot;leaf-list&quot; id=&quot;in-leaf-list&quot;&gt;&lt;/ol&gt;
+    &lt;/section&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;legend&quot; aria-label=&quot;统一操作原则&quot;&gt;
+    &lt;span&gt;打卡定位：只作风险提示，异常必须人工核验&lt;/span&gt;
+    &lt;span&gt;企业评价：代录必须标明来源，不能冒充企业直评&lt;/span&gt;
+    &lt;span&gt;风险：留处置证据后才能关闭&lt;/span&gt;
+    &lt;span&gt;归档：协议、打卡、周报、评价和成绩缺一先补&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;script&gt;
+    (() =&gt; {
+      const root = document.getElementById(&#x27;internship-flow-guide&#x27;);
+      const phaseData = [
+        { no:&#x27;01&#x27;, name:&#x27;启动与底账&#x27;, desc:&#x27;建立批次规则，确认参加实习的学生范围&#x27;, ids:[&#x27;in-workbench&#x27;,&#x27;in-batch-rules&#x27;,&#x27;in-students&#x27;] },
+        { no:&#x27;02&#x27;, name:&#x27;资源与落岗&#x27;, desc:&#x27;审核企业岗位，完成申请、匹配、导师分配和协议&#x27;, ids:[&#x27;in-enterprise-position&#x27;,&#x27;in-match-assign&#x27;,&#x27;in-apply-agreement&#x27;] },
+        { no:&#x27;03&#x27;, name:&#x27;出勤与报告&#x27;, desc:&#x27;管理打卡请假、日报周报和阶段任务&#x27;, ids:[&#x27;in-attendance-leave&#x27;,&#x27;in-weekly-task&#x27;] },
+        { no:&#x27;04&#x27;, name:&#x27;指导与巡访&#x27;, desc:&#x27;校内教师指导、企业沟通、现场巡访和整改&#x27;, ids:[&#x27;in-guidance-visit&#x27;] },
+        { no:&#x27;05&#x27;, name:&#x27;风险闭环&#x27;, desc:&#x27;识别缺岗、失联、安全、投诉等风险并跟进关闭&#x27;, ids:[&#x27;in-risk&#x27;] },
+        { no:&#x27;06&#x27;, name:&#x27;评价与成绩&#x27;, desc:&#x27;汇总企业、学生和教师评价，审核发布成绩&#x27;, ids:[&#x27;in-eval-score&#x27;] },
+        { no:&#x27;07&#x27;, name:&#x27;就业与归档&#x27;, desc:&#x27;实习结束后形成档案包、统计并衔接就业&#x27;, ids:[&#x27;in-employment-archive-stats&#x27;] }
+      ];
+
+      const rawModules = [
+        [&#x27;in-workbench&#x27;,&#x27;实习工作台&#x27;,&#x27;实习总览|当前批次进度|我的待办|风险提醒|数据趋势&#x27;],
+        [&#x27;in-batch-rules&#x27;,&#x27;批次与规则&#x27;,&#x27;批次列表|批次详情|阶段配置|打卡规则|周报规则|指导规则|评价规则|成绩规则&#x27;],
+        [&#x27;in-students&#x27;,&#x27;实习学生&#x27;,&#x27;实习名单|实习资格认定|学生实习状态|学生实习详情|学生材料|实习保险核验&#x27;],
+        [&#x27;in-enterprise-position&#x27;,&#x27;企业与岗位&#x27;,&#x27;企业列表|企业详情|企业联系人|企业导师|企业资质审核|企业黑名单|岗位列表|岗位详情|岗位发布|岗位专业匹配&#x27;],
+        [&#x27;in-match-assign&#x27;,&#x27;匹配与分配&#x27;,&#x27;学生意向|岗位推荐|手动匹配|批量匹配|匹配冲突|匹配结果|指导老师分配|调岗退岗|分配日志&#x27;],
+        [&#x27;in-apply-agreement&#x27;,&#x27;申请与协议&#x27;,&#x27;学生申请|自主实习申请|岗位申请|审核台账|协议模板|协议发起|三方确认|协议变更|协议归档&#x27;],
+        [&#x27;in-attendance-leave&#x27;,&#x27;打卡与请假&#x27;,&#x27;打卡记录|补卡申请台账|补卡审批|缺卡异常|连续未打卡|请假台账|请假审批|销假管理|超期未归&#x27;],
+        [&#x27;in-weekly-task&#x27;,&#x27;周报与任务&#x27;,&#x27;实习计划|实习任务|日报台账|周报台账|月报台账|周报批阅|周报退回|周报问题&#x27;],
+        [&#x27;in-guidance-visit&#x27;,&#x27;指导与巡访&#x27;,&#x27;指导计划|指导记录|企业沟通|指导不足预警|巡访计划|巡访记录|巡访问题|整改跟进&#x27;],
+        [&#x27;in-risk&#x27;,&#x27;风险处置&#x27;,&#x27;风险看板|未落实岗位|长期未打卡|周报逾期|离岗异常|企业投诉|安全风险|实习中断|风险处置|风险跟进|风险关闭&#x27;],
+        [&#x27;in-eval-score&#x27;,&#x27;评价与成绩&#x27;,&#x27;企业评价|学生自评台账|学生对企业评价|学生对岗位评价|指导老师评价|综合成绩|成绩审核|成绩发布|成绩复核&#x27;],
+        [&#x27;in-employment-archive-stats&#x27;,&#x27;就业转化与归档统计&#x27;,&#x27;就业跟进|未就业帮扶|实习归档|实习档案包|实习统计|企业统计|岗位统计|学生成绩统计&#x27;]
+      ];
+
+      const modules = rawModules.map(([id,name,items]) =&gt; ({ id,name,items:items.split(&#x27;|&#x27;) }));
+      const byId = Object.fromEntries(modules.map(m =&gt; [m.id,m]));
+      const profiles = {
+        &#x27;in-workbench&#x27;: { purpose:&#x27;把当前批次进度、老师待办、风险和数据趋势集中到每天第一屏。&#x27;, roles:&#x27;实习管理员、学院实习老师、指导教师&#x27;, when:&#x27;每天上班、阶段检查或汇报实习进度前&#x27;, steps:[&#x27;选择当前批次&#x27;,&#x27;查看进度和待办&#x27;,&#x27;点击风险/异常数字&#x27;,&#x27;进入对应业务处理&#x27;], next:&#x27;学生、打卡、周报、风险或成绩模块&#x27;, sampleSource:&#x27;系统已有沙箱待办&#x27;, fields:[[&#x27;当前批次&#x27;,&#x27;2026届春季实习批次&#x27;],[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;当前岗位&#x27;,&#x27;沙箱电商有限公司 / 运营实习生&#x27;],[&#x27;当前待办&#x27;,&#x27;提交本周实习周报&#x27;]], states:[&#x27;发现待办&#x27;,&#x27;进入业务&#x27;,&#x27;完成处理&#x27;,&#x27;看板数字更新&#x27;], safety:&#x27;看板数字必须下钻核对明细；不能在看板上直接判断学生违规。&#x27; },
+        &#x27;in-batch-rules&#x27;: { purpose:&#x27;定义实习时间、打卡、周报、指导、评价和成绩计算的统一口径。&#x27;, roles:&#x27;实习管理员、学院实习老师&#x27;, when:&#x27;新批次启动前；规则调整并准备生效时&#x27;, steps:[&#x27;新建批次&#x27;,&#x27;配置阶段时间&#x27;,&#x27;设置打卡/周报/指导规则&#x27;,&#x27;配置评价和成绩权重&#x27;,&#x27;审核后启用&#x27;], next:&#x27;实习学生、企业岗位和申请匹配&#x27;, sampleSource:&#x27;系统已有沙箱批次&#x27;, fields:[[&#x27;批次名称&#x27;,&#x27;2026 届春季实习批次&#x27;],[&#x27;批次编号&#x27;,&#x27;INT-2026-SPRING&#x27;],[&#x27;实习时间&#x27;,&#x27;2026-03-02 至 2026-08-28&#x27;],[&#x27;状态&#x27;,&#x27;进行中&#x27;]], states:[&#x27;草稿&#x27;,&#x27;已配置&#x27;,&#x27;已启用&#x27;,&#x27;进行中&#x27;,&#x27;已结束&#x27;], safety:&#x27;规则变更要保留版本和快照；历史成绩、考勤不能按新规则静默重算。&#x27; },
+        &#x27;in-students&#x27;: { purpose:&#x27;维护实习名单、资格、保险、岗位导师和学生全过程状态。&#x27;, roles:&#x27;实习管理员、学院实习老师、指导教师&#x27;, when:&#x27;批次启动、资格核验、学生落岗或过程跟踪时&#x27;, steps:[&#x27;导入/添加名单&#x27;,&#x27;核验资格与保险&#x27;,&#x27;确认批次与状态&#x27;,&#x27;查看学生详情&#x27;,&#x27;处理材料缺失&#x27;], next:&#x27;岗位匹配、协议、打卡与过程管理&#x27;, sampleSource:&#x27;系统已有李体验实习记录&#x27;, fields:[[&#x27;姓名/学号&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;企业/岗位&#x27;,&#x27;沙箱电商有限公司 / 运营实习生&#x27;],[&#x27;指导教师&#x27;,&#x27;王老师&#x27;],[&#x27;状态/风险&#x27;,&#x27;已到岗 / 低风险&#x27;]], states:[&#x27;待资格认定&#x27;,&#x27;资格通过&#x27;,&#x27;待分配&#x27;,&#x27;待到岗&#x27;,&#x27;已到岗&#x27;,&#x27;实习结束&#x27;,&#x27;已归档&#x27;], safety:&#x27;学生主档来自统一学生数据；保险未核验、资格未通过时不得直接进入正式到岗。&#x27; },
+        &#x27;in-enterprise-position&#x27;: { purpose:&#x27;维护企业准入、联系人和企业导师，审核并发布专业匹配的实习岗位。&#x27;, roles:&#x27;实习管理员、校企合作老师、学院实习老师&#x27;, when:&#x27;企业入库、岗位发布、资质复核或黑名单管理时&#x27;, steps:[&#x27;登记企业与联系人&#x27;,&#x27;审核企业资质&#x27;,&#x27;维护企业导师&#x27;,&#x27;创建岗位&#x27;,&#x27;核对专业和容量&#x27;,&#x27;发布岗位&#x27;], next:&#x27;学生申请、岗位匹配和协议&#x27;, sampleSource:&#x27;系统已有沙箱企业岗位&#x27;, fields:[[&#x27;企业&#x27;,&#x27;华信智能科技有限公司&#x27;],[&#x27;信用代码&#x27;,&#x27;91320594DEMO202601&#x27;],[&#x27;岗位&#x27;,&#x27;前端开发实习生&#x27;],[&#x27;地点/待遇&#x27;,&#x27;苏州市吴中区 / 3500-5000元/月&#x27;]], states:[&#x27;企业待审核&#x27;,&#x27;企业通过&#x27;,&#x27;岗位草稿&#x27;,&#x27;岗位已发布&#x27;,&#x27;岗位已下架&#x27;], safety:&#x27;企业资质和岗位合规必须人工审核；黑名单企业不能继续发布或接收学生。&#x27; },
+        &#x27;in-match-assign&#x27;: { purpose:&#x27;根据学生意向、专业、岗位容量和企业要求完成人岗匹配及指导教师分配。&#x27;, roles:&#x27;实习管理员、学院实习老师、指导教师、学生&#x27;, when:&#x27;学生资格通过、岗位发布后；调岗退岗时&#x27;, steps:[&#x27;收集学生意向&#x27;,&#x27;生成推荐/人工匹配&#x27;,&#x27;处理专业与容量冲突&#x27;,&#x27;确认匹配结果&#x27;,&#x27;分配指导教师&#x27;,&#x27;办理调岗退岗&#x27;], next:&#x27;岗位申请、三方协议和到岗&#x27;, sampleSource:&#x27;系统已有沙箱匹配冲突&#x27;, fields:[[&#x27;岗位&#x27;,&#x27;前端开发实习生&#x27;],[&#x27;匹配方式&#x27;,&#x27;专业自动匹配&#x27;],[&#x27;匹配分&#x27;,&#x27;92分&#x27;],[&#x27;冲突原因&#x27;,&#x27;岗位容量临近上限，需人工确认名额&#x27;]], states:[&#x27;待匹配&#x27;,&#x27;已推荐&#x27;,&#x27;冲突待复核&#x27;,&#x27;匹配确认&#x27;,&#x27;指导教师已分配&#x27;], safety:&#x27;推荐分只作辅助，最终分配必须检查专业、容量、学生意愿和企业要求。&#x27; },
+        &#x27;in-apply-agreement&#x27;: { purpose:&#x27;处理岗位或自主实习申请，生成三方协议并完成学生、企业、学校确认和归档。&#x27;, roles:&#x27;学生、实习管理员、学院实习老师、企业导师&#x27;, when:&#x27;岗位确定后、学生正式到岗前；协议发生变更时&#x27;, steps:[&#x27;学生提交岗位/自主申请&#x27;,&#x27;逐级审核材料&#x27;,&#x27;生成协议&#x27;,&#x27;学生确认&#x27;,&#x27;企业确认&#x27;,&#x27;学校确认并生效&#x27;,&#x27;变更或归档&#x27;], next:&#x27;到岗、打卡、保险与过程管理&#x27;, sampleSource:&#x27;系统已有沙箱申请&#x27;, fields:[[&#x27;申请类型&#x27;,&#x27;岗位申请&#x27;],[&#x27;企业/岗位&#x27;,&#x27;华信智能科技有限公司 / 前端开发实习生&#x27;],[&#x27;工作地点&#x27;,&#x27;苏州市吴中区&#x27;],[&#x27;申请说明&#x27;,&#x27;第一志愿，专业对口&#x27;]], states:[&#x27;草稿&#x27;,&#x27;待审核&#x27;,&#x27;已通过&#x27;,&#x27;待学生确认&#x27;,&#x27;待企业确认&#x27;,&#x27;待学校确认&#x27;,&#x27;已生效&#x27;,&#x27;已归档&#x27;], safety:&#x27;未接第三方CA时不能显示“已电子签”；企业确认必须来自可信企业身份或明确标注代录来源。&#x27; },
+        &#x27;in-attendance-leave&#x27;: { purpose:&#x27;查看学生主动打卡证据，处理缺卡补卡、请假销假和超期未归。&#x27;, roles:&#x27;学生、指导教师、学院实习老师&#x27;, when:&#x27;实习期间每日考勤；出现异常、请假或返岗时&#x27;, steps:[&#x27;学生主动打卡&#x27;,&#x27;系统标记疑似异常&#x27;,&#x27;老师人工核验&#x27;,&#x27;学生补卡/申诉或请假&#x27;,&#x27;老师审批&#x27;,&#x27;返岗销假&#x27;,&#x27;逾期转风险&#x27;], next:&#x27;风险处置、过程分和学生实习状态&#x27;, sampleSource:&#x27;系统已有沙箱请假与异常&#x27;, fields:[[&#x27;请假学生&#x27;,&#x27;沙箱实习学生&#x27;],[&#x27;请假类型/天数&#x27;,&#x27;病假 / 2天&#x27;],[&#x27;请假原因&#x27;,&#x27;发热就医，已上传门诊证明&#x27;],[&#x27;异常示例&#x27;,&#x27;超围栏1.2公里，待人工核实&#x27;]], states:[&#x27;已记录&#x27;,&#x27;疑似异常&#x27;,&#x27;待核实&#x27;,&#x27;合理/异常&#x27;,&#x27;请假已批&#x27;,&#x27;已销假&#x27;], safety:&#x27;定位、设备和围栏只作风险提示，不得自动定性作弊；打卡时间以服务端为准。&#x27; },
+        &#x27;in-weekly-task&#x27;: { purpose:&#x27;发布实习计划任务，收集日报、周报、月报并完成连续批阅和退回重交。&#x27;, roles:&#x27;学生、指导教师、学院实习老师&#x27;, when:&#x27;实习全过程的周期性任务与总结检查时&#x27;, steps:[&#x27;配置计划任务&#x27;,&#x27;学生提交日报/周报/月报&#x27;,&#x27;教师批阅&#x27;,&#x27;通过或退回&#x27;,&#x27;学生补充重交&#x27;,&#x27;问题联动风险&#x27;], next:&#x27;指导记录、过程评价、成绩与归档&#x27;, sampleSource:&#x27;系统已有李体验周报&#x27;, fields:[[&#x27;学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;本周工作&#x27;,&#x27;熟悉店铺后台与商品上架流程&#x27;],[&#x27;版本/状态&#x27;,&#x27;v1 / 待批阅&#x27;],[&#x27;批阅动作&#x27;,&#x27;通过或退回（退回写明原因）&#x27;]], states:[&#x27;待提交&#x27;,&#x27;待批阅&#x27;,&#x27;已通过&#x27;,&#x27;已退回&#x27;,&#x27;重新提交&#x27;,&#x27;已归档&#x27;], safety:&#x27;退回原因必须具体；相似度或字数只能提示老师复核，不能自动认定抄袭或敷衍。&#x27; },
+        &#x27;in-guidance-visit&#x27;: { purpose:&#x27;制定校内指导和企业巡访计划，记录沟通、问题与整改闭环。&#x27;, roles:&#x27;指导教师、学院实习老师、校企合作老师&#x27;, when:&#x27;日常指导、企业巡访或发现现场问题时&#x27;, steps:[&#x27;制定指导/巡访计划&#x27;,&#x27;开展线上或现场指导&#x27;,&#x27;登记记录与附件&#x27;,&#x27;发现问题下发整改&#x27;,&#x27;跟进复核&#x27;,&#x27;必要时转风险&#x27;], next:&#x27;风险处置、评价成绩与归档材料&#x27;, sampleSource:&#x27;基于现有字段的有效输入&#x27;, fields:[[&#x27;指导学生&#x27;,&#x27;李体验 / 2026S0001&#x27;],[&#x27;方式&#x27;,&#x27;到企业现场&#x27;],[&#x27;内容&#x27;,&#x27;核对岗位任务、出勤与带教情况&#x27;],[&#x27;整改要求&#x27;,&#x27;7天内补齐岗位安全培训记录&#x27;]], states:[&#x27;已计划&#x27;,&#x27;待开展&#x27;,&#x27;已记录&#x27;,&#x27;待整改&#x27;,&#x27;整改中&#x27;,&#x27;已闭环&#x27;], safety:&#x27;巡访记录要关联真实学生、企业和附件；未解决的安全问题必须转风险继续跟踪。&#x27; },
+        &#x27;in-risk&#x27;: { purpose:&#x27;统一处置未落岗、连续缺卡、周报逾期、安全、投诉和实习中断等风险。&#x27;, roles:&#x27;指导教师、学院实习老师、实习管理员&#x27;, when:&#x27;系统规则命中或老师、企业人工上报风险后&#x27;, steps:[&#x27;风险产生&#x27;,&#x27;分派责任人&#x27;,&#x27;首次核实并留证&#x27;,&#x27;持续跟进/升级&#x27;,&#x27;完成措施&#x27;,&#x27;填写结论后关闭&#x27;], next:&#x27;学生状态、指导巡访、成绩和归档&#x27;, sampleSource:&#x27;系统已有沙箱风险单&#x27;, fields:[[&#x27;风险编号&#x27;,&#x27;INT-R07&#x27;],[&#x27;风险标题&#x27;,&#x27;连续3天打卡异常&#x27;],[&#x27;等级/责任人&#x27;,&#x27;高风险 / 刘强&#x27;],[&#x27;当前状态&#x27;,&#x27;处理中&#x27;]], states:[&#x27;待处理&#x27;,&#x27;处理中&#x27;,&#x27;持续跟进&#x27;,&#x27;已升级&#x27;,&#x27;已处理&#x27;,&#x27;已关闭&#x27;], safety:&#x27;高风险必须按时响应；没有核实记录和处置证据不能直接关闭。&#x27; },
+        &#x27;in-eval-score&#x27;: { purpose:&#x27;收集企业、学生和指导教师评价，按批次权重核算、审核、发布并受理复核。&#x27;, roles:&#x27;企业导师、学生、指导教师、实习管理员&#x27;, when:&#x27;阶段评价或实习结束成绩评定时&#x27;, steps:[&#x27;企业评价&#x27;,&#x27;学生自评与反向评价&#x27;,&#x27;指导教师评价&#x27;,&#x27;汇总过程分&#x27;,&#x27;系统按权重核算&#x27;,&#x27;管理员审核&#x27;,&#x27;发布/复核&#x27;], next:&#x27;学生成绩、就业跟进和实习归档&#x27;, sampleSource:&#x27;系统规则中的有效配置&#x27;, fields:[[&#x27;成绩权重&#x27;,&#x27;打卡20 / 周报20 / 月报10&#x27;],[&#x27;评价权重&#x27;,&#x27;企业25 / 学校25&#x27;],[&#x27;及格线&#x27;,&#x27;60分&#x27;],[&#x27;发布状态&#x27;,&#x27;待审核 → 已发布&#x27;]], states:[&#x27;待评价&#x27;,&#x27;评价完成&#x27;,&#x27;成绩已核算&#x27;,&#x27;待审核&#x27;,&#x27;已审核&#x27;,&#x27;已发布&#x27;], safety:&#x27;权重合计必须为100%；教师代录企业评价必须标来源，不能计入企业真实评价率。&#x27; },
+        &#x27;in-employment-archive-stats&#x27;: { purpose:&#x27;实习结束后衔接就业跟进，核验材料、生成档案包并按多维口径统计。&#x27;, roles:&#x27;实习管理员、学院实习老师、就业老师、校领导（统计只读）&#x27;, when:&#x27;实习结束、试点验收、就业跟进或管理分析时&#x27;, steps:[&#x27;确认实习结束与成绩&#x27;,&#x27;跟进就业去向&#x27;,&#x27;运行材料完整性检查&#x27;,&#x27;补齐协议/打卡/周报/评价/成绩&#x27;,&#x27;生成档案包&#x27;,&#x27;确认归档&#x27;,&#x27;查看统计&#x27;], next:&#x27;就业中心、学生档案与验收材料&#x27;, sampleSource:&#x27;真实归档规则的有效输入&#x27;, fields:[[&#x27;归档范围&#x27;,&#x27;协议、打卡、周报、评价、成绩&#x27;],[&#x27;学生范围&#x27;,&#x27;2026届春季实习批次&#x27;],[&#x27;输出&#x27;,&#x27;学生实习档案包 + 完整性清单&#x27;],[&#x27;统计维度&#x27;,&#x27;企业 / 岗位 / 学生 / 成绩&#x27;]], states:[&#x27;待生成&#x27;,&#x27;缺项待补&#x27;,&#x27;待提交&#x27;,&#x27;已核验&#x27;,&#x27;已归档&#x27;], safety:&#x27;归档包必须包含真实可鉴权文件；就业数据属于就业中心，实习模块只做跨模块跟进入口。&#x27; }
+      };
+
+      const roles = [&#x27;全部&#x27;,&#x27;实习管理员&#x27;,&#x27;学院实习老师&#x27;,&#x27;指导教师&#x27;,&#x27;企业导师&#x27;,&#x27;学生&#x27;,&#x27;就业老师&#x27;];
+      const rolePaths = {
+        &#x27;全部&#x27;: [[&#x27;in-batch-rules&#x27;,&#x27;建批次&#x27;],[&#x27;in-enterprise-position&#x27;,&#x27;审企业岗位&#x27;],[&#x27;in-match-assign&#x27;,&#x27;做人岗匹配&#x27;],[&#x27;in-apply-agreement&#x27;,&#x27;签协议&#x27;],[&#x27;in-attendance-leave&#x27;,&#x27;管考勤&#x27;],[&#x27;in-risk&#x27;,&#x27;控风险&#x27;],[&#x27;in-eval-score&#x27;,&#x27;发成绩&#x27;],[&#x27;in-employment-archive-stats&#x27;,&#x27;归档&#x27;]],
+        &#x27;实习管理员&#x27;: [[&#x27;in-workbench&#x27;,&#x27;看全局&#x27;],[&#x27;in-batch-rules&#x27;,&#x27;定规则&#x27;],[&#x27;in-enterprise-position&#x27;,&#x27;审企业岗位&#x27;],[&#x27;in-apply-agreement&#x27;,&#x27;确认协议&#x27;],[&#x27;in-risk&#x27;,&#x27;督办风险&#x27;],[&#x27;in-eval-score&#x27;,&#x27;审核成绩&#x27;],[&#x27;in-employment-archive-stats&#x27;,&#x27;归档统计&#x27;]],
+        &#x27;学院实习老师&#x27;: [[&#x27;in-workbench&#x27;,&#x27;看学院&#x27;],[&#x27;in-students&#x27;,&#x27;核资格&#x27;],[&#x27;in-match-assign&#x27;,&#x27;分岗位老师&#x27;],[&#x27;in-attendance-leave&#x27;,&#x27;看异常请假&#x27;],[&#x27;in-guidance-visit&#x27;,&#x27;查指导巡访&#x27;],[&#x27;in-risk&#x27;,&#x27;处风险&#x27;]],
+        &#x27;指导教师&#x27;: [[&#x27;in-workbench&#x27;,&#x27;看我的待办&#x27;],[&#x27;in-attendance-leave&#x27;,&#x27;核打卡请假&#x27;],[&#x27;in-weekly-task&#x27;,&#x27;批周报&#x27;],[&#x27;in-guidance-visit&#x27;,&#x27;记指导巡访&#x27;],[&#x27;in-risk&#x27;,&#x27;跟风险&#x27;],[&#x27;in-eval-score&#x27;,&#x27;做评价&#x27;]],
+        &#x27;企业导师&#x27;: [[&#x27;in-apply-agreement&#x27;,&#x27;确认协议&#x27;],[&#x27;in-guidance-visit&#x27;,&#x27;协同带教&#x27;],[&#x27;in-weekly-task&#x27;,&#x27;查看周报&#x27;],[&#x27;in-eval-score&#x27;,&#x27;填写企业评价&#x27;]],
+        &#x27;学生&#x27;: [[&#x27;in-students&#x27;,&#x27;看资格&#x27;],[&#x27;in-match-assign&#x27;,&#x27;填意向&#x27;],[&#x27;in-apply-agreement&#x27;,&#x27;申请/确认&#x27;],[&#x27;in-attendance-leave&#x27;,&#x27;打卡请假&#x27;],[&#x27;in-weekly-task&#x27;,&#x27;交周报&#x27;],[&#x27;in-eval-score&#x27;,&#x27;自评&#x27;]],
+        &#x27;就业老师&#x27;: [[&#x27;in-employment-archive-stats&#x27;,&#x27;看实习结束名单&#x27;],[&#x27;in-employment-archive-stats&#x27;,&#x27;跟就业去向&#x27;],[&#x27;in-employment-archive-stats&#x27;,&#x27;做未就业帮扶&#x27;]]
+      };
+      const roleModules = {
+        &#x27;实习管理员&#x27;:[&#x27;in-workbench&#x27;,&#x27;in-batch-rules&#x27;,&#x27;in-students&#x27;,&#x27;in-enterprise-position&#x27;,&#x27;in-match-assign&#x27;,&#x27;in-apply-agreement&#x27;,&#x27;in-attendance-leave&#x27;,&#x27;in-weekly-task&#x27;,&#x27;in-guidance-visit&#x27;,&#x27;in-risk&#x27;,&#x27;in-eval-score&#x27;,&#x27;in-employment-archive-stats&#x27;],
+        &#x27;学院实习老师&#x27;:[&#x27;in-workbench&#x27;,&#x27;in-batch-rules&#x27;,&#x27;in-students&#x27;,&#x27;in-enterprise-position&#x27;,&#x27;in-match-assign&#x27;,&#x27;in-apply-agreement&#x27;,&#x27;in-attendance-leave&#x27;,&#x27;in-weekly-task&#x27;,&#x27;in-guidance-visit&#x27;,&#x27;in-risk&#x27;,&#x27;in-eval-score&#x27;,&#x27;in-employment-archive-stats&#x27;],
+        &#x27;指导教师&#x27;:[&#x27;in-workbench&#x27;,&#x27;in-students&#x27;,&#x27;in-attendance-leave&#x27;,&#x27;in-weekly-task&#x27;,&#x27;in-guidance-visit&#x27;,&#x27;in-risk&#x27;,&#x27;in-eval-score&#x27;],
+        &#x27;企业导师&#x27;:[&#x27;in-apply-agreement&#x27;,&#x27;in-weekly-task&#x27;,&#x27;in-guidance-visit&#x27;,&#x27;in-eval-score&#x27;],
+        &#x27;学生&#x27;:[&#x27;in-students&#x27;,&#x27;in-enterprise-position&#x27;,&#x27;in-match-assign&#x27;,&#x27;in-apply-agreement&#x27;,&#x27;in-attendance-leave&#x27;,&#x27;in-weekly-task&#x27;,&#x27;in-eval-score&#x27;],
+        &#x27;就业老师&#x27;:[&#x27;in-employment-archive-stats&#x27;]
+      };
+      let activeRole = &#x27;指导教师&#x27;;
+      let activeModule = &#x27;in-workbench&#x27;;
+
+      function usageFor(item, moduleName) {
+        const text = item.replace(/（.*?）|\(.*?\)/g,&#x27;&#x27;).trim();
+        if (/总览|进度|趋势|看板|统计/.test(text)) return &#x27;先选择批次、学院、专业或时间口径，再点异常数字下钻；需要办理时进入对应学生或业务单据。&#x27;;
+        if (/批次|阶段配置|规则|模板/.test(text)) return &#x27;先确认适用批次和生效范围，再维护日期、频次、阈值、权重或模板；保存后校验，启用后供后续业务引用。&#x27;;
+        if (/名单|资格|状态|详情|材料|保险/.test(text)) return &#x27;按批次、班级、姓名或状态筛选学生，进入详情核对资格、保险、岗位和材料；缺项回到对应审核或补交入口。&#x27;;
+        if (/企业|岗位/.test(text)) return &#x27;先核对企业资质、联系人、导师和岗位要求，再审核或发布；发布后才进入学生申请与匹配，黑名单企业不得继续使用。&#x27;;
+        if (/意向|推荐|匹配|分配|调岗|退岗|日志/.test(text)) return &#x27;先查看学生意向、专业和岗位容量，再推荐、人工或批量匹配；处理冲突并分配指导教师后，检查结果和日志。&#x27;;
+        if (/申请|协议|三方|审核台账/.test(text)) return &#x27;从待审核申请进入，核对企业岗位、材料和前序意见；通过后生成协议并依次完成学生、企业、学校确认，变更必须重新留痕。&#x27;;
+        if (/打卡|补卡|缺卡|请假|销假|超期/.test(text)) return &#x27;先按学生和日期查看原始记录，再核对定位、附件和说明；完成补卡/请假审批或异常处理后，检查考勤与风险状态。&#x27;;
+        if (/计划|任务|日报|周报|月报/.test(text)) return &#x27;先确认报告周期和任务要求，再查看学生提交内容；教师通过或退回，退回要写清原因，重交后继续批阅。&#x27;;
+        if (/指导|沟通|巡访|整改/.test(text)) return &#x27;先制定计划并关联学生、企业，再登记指导或巡访记录；发现问题下发整改，复核通过后闭环，严重问题转风险。&#x27;;
+        if (/风险|投诉|安全|中断|未落实|未打卡|逾期|离岗/.test(text)) return &#x27;先核对风险来源、等级和责任人，记录核实证据与措施；持续跟进或升级，结论完整后才能关闭。&#x27;;
+        if (/评价|成绩|自评|复核/.test(text)) return &#x27;先检查各评价来源和完成情况，再按批次权重核算；管理员审核后发布，异议走复核，禁止直接改已发布成绩。&#x27;;
+        if (/就业|帮扶|归档|档案包/.test(text)) return &#x27;先筛实习结束学生，核对就业去向和归档缺项；材料齐全后生成档案包并确认归档，未就业学生转就业帮扶。&#x27;;
+        return `进入“岗位实习中心 → ${moduleName} → ${item}”，先确认批次、学生和当前状态，再按页面主按钮办理，最后返回列表核对状态。`;
+      }
+
+      function renderRoles() {
+        const host = root.querySelector(&#x27;#in-role-bar&#x27;);
+        host.querySelectorAll(&#x27;button&#x27;).forEach(b =&gt; b.remove());
+        roles.forEach(role =&gt; {
+          const b = document.createElement(&#x27;button&#x27;);
+          b.type = &#x27;button&#x27;;
+          b.className = `btn${role === activeRole ? &#x27; btn-primary&#x27; : &#x27;&#x27;}`;
+          b.setAttribute(&#x27;aria-pressed&#x27;, String(role === activeRole));
+          b.textContent = role;
+          b.addEventListener(&#x27;click&#x27;, () =&gt; { activeRole = role; renderRoles(); renderQuickPath(); renderMap(); });
+          host.appendChild(b);
+        });
+      }
+
+      function renderQuickPath() {
+        const host = root.querySelector(&#x27;#in-quick-path&#x27;);
+        host.innerHTML = &#x27;&lt;span class=&quot;quick-label&quot;&gt;常用路径：&lt;/span&gt;&#x27;;
+        rolePaths[activeRole].forEach(([id,label]) =&gt; {
+          const wrap = document.createElement(&#x27;span&#x27;);
+          wrap.className = &#x27;quick-step&#x27;;
+          const b = document.createElement(&#x27;button&#x27;);
+          b.type = &#x27;button&#x27;;
+          b.className = &#x27;btn btn-ghost&#x27;;
+          b.textContent = label;
+          b.addEventListener(&#x27;click&#x27;, () =&gt; selectModule(id));
+          wrap.appendChild(b);
+          host.appendChild(wrap);
+        });
+      }
+
+      function renderMap() {
+        const host = root.querySelector(&#x27;#in-phase-flow&#x27;);
+        host.innerHTML = &#x27;&#x27;;
+        phaseData.forEach(phase =&gt; {
+          const section = document.createElement(&#x27;section&#x27;);
+          section.className = &#x27;phase&#x27;;
+          const head = document.createElement(&#x27;div&#x27;);
+          head.className = &#x27;phase-head&#x27;;
+          head.innerHTML = `&lt;div class=&quot;phase-title&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;${phase.no}&lt;/span&gt;&lt;strong&gt;${phase.name}&lt;/strong&gt;&lt;/div&gt;&lt;span class=&quot;text-muted&quot;&gt;${phase.ids.length} 个模块&lt;/span&gt;`;
+          const desc = document.createElement(&#x27;div&#x27;);
+          desc.className = &#x27;phase-desc&#x27;;
+          desc.textContent = phase.desc;
+          const group = document.createElement(&#x27;div&#x27;);
+          group.className = &#x27;phase-modules&#x27;;
+          phase.ids.forEach(id =&gt; {
+            const m = byId[id];
+            const relevant = activeRole === &#x27;全部&#x27; || (roleModules[activeRole] || []).includes(id);
+            const b = document.createElement(&#x27;button&#x27;);
+            b.type = &#x27;button&#x27;;
+            b.className = `btn module-btn${id === activeModule ? &#x27; btn-primary&#x27; : &#x27;&#x27;}${relevant ? &#x27;&#x27; : &#x27; is-dimmed&#x27;}`;
+            b.setAttribute(&#x27;aria-pressed&#x27;, String(id === activeModule));
+            b.textContent = `${m.name} · ${m.items.length}`;
+            b.addEventListener(&#x27;click&#x27;, () =&gt; selectModule(id));
+            group.appendChild(b);
+          });
+          section.append(head,desc,group);
+          host.appendChild(section);
+        });
+      }
+
+      function selectModule(id) {
+        activeModule = id;
+        renderMap();
+        renderDetail();
+        root.querySelector(&#x27;#in-detail&#x27;).scrollIntoView({ behavior:&#x27;smooth&#x27;, block:&#x27;start&#x27; });
+      }
+
+      function renderDetail() {
+        const m = byId[activeModule];
+        const p = phaseData.find(x =&gt; x.ids.includes(activeModule));
+        const q = profiles[activeModule];
+        root.querySelector(&#x27;#in-module-title&#x27;).textContent = m.name;
+        root.querySelector(&#x27;#in-module-phase&#x27;).textContent = `${p.no} ${p.name}`;
+        root.querySelector(&#x27;#in-module-purpose&#x27;).textContent = q.purpose;
+        root.querySelector(&#x27;#in-module-roles&#x27;).textContent = q.roles;
+        root.querySelector(&#x27;#in-module-when&#x27;).textContent = q.when;
+        root.querySelector(&#x27;#in-module-entry&#x27;).textContent = `岗位实习中心 → ${m.name}`;
+        root.querySelector(&#x27;#in-module-next&#x27;).textContent = q.next;
+        root.querySelector(&#x27;#in-sample-source&#x27;).textContent = q.sampleSource;
+        root.querySelector(&#x27;#in-safety&#x27;).textContent = `注意：${q.safety}`;
+        root.querySelector(&#x27;#in-leaf-count&#x27;).textContent = `共 ${m.items.length} 项`;
+
+        const steps = root.querySelector(&#x27;#in-module-steps&#x27;);
+        steps.innerHTML = &#x27;&#x27;;
+        q.steps.forEach((step,index) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          const span = document.createElement(&#x27;span&#x27;);
+          span.className = &#x27;step-label&#x27;;
+          span.textContent = `${index + 1}. ${step}`;
+          li.appendChild(span);
+          steps.appendChild(li);
+        });
+
+        const sample = root.querySelector(&#x27;#in-sample-grid&#x27;);
+        sample.innerHTML = &#x27;&#x27;;
+        q.fields.forEach(([key,value]) =&gt; {
+          const row = document.createElement(&#x27;div&#x27;);
+          row.className = &#x27;sample-row&#x27;;
+          const k = document.createElement(&#x27;span&#x27;);
+          k.className = &#x27;sample-key&#x27;;
+          k.textContent = key;
+          const v = document.createElement(&#x27;span&#x27;);
+          v.textContent = value;
+          row.append(k,v);
+          sample.appendChild(row);
+        });
+
+        const chain = root.querySelector(&#x27;#in-state-chain&#x27;);
+        chain.innerHTML = &#x27;&#x27;;
+        q.states.forEach((state,index) =&gt; {
+          const node = document.createElement(&#x27;span&#x27;);
+          node.className = &#x27;state-node&#x27;;
+          node.textContent = state;
+          chain.appendChild(node);
+          if (index &lt; q.states.length - 1) {
+            const arrow = document.createElement(&#x27;span&#x27;);
+            arrow.className = &#x27;state-arrow&#x27;;
+            arrow.textContent = &#x27;→&#x27;;
+            chain.appendChild(arrow);
+          }
+        });
+
+        const list = root.querySelector(&#x27;#in-leaf-list&#x27;);
+        list.innerHTML = &#x27;&#x27;;
+        m.items.forEach((item,index) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          li.className = &#x27;leaf&#x27;;
+          const name = document.createElement(&#x27;div&#x27;);
+          name.className = &#x27;leaf-name&#x27;;
+          name.innerHTML = `&lt;span class=&quot;leaf-index&quot;&gt;${String(index + 1).padStart(2,&#x27;0&#x27;)}&lt;/span&gt;&lt;span&gt;${item}&lt;/span&gt;`;
+          const use = document.createElement(&#x27;p&#x27;);
+          use.className = &#x27;leaf-use&#x27;;
+          use.textContent = usageFor(item,m.name);
+          li.append(name,use);
+          list.appendChild(li);
+        });
+      }
+
+      renderRoles();
+      renderQuickPath();
+      renderMap();
+      renderDetail();
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>
