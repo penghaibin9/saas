@@ -15,7 +15,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (GraduationArchiveRecord, GraduationAuditTrail, GraduationDefenseScore,
                         GraduationFinal, GraduationGrade, GraduationMidterm, GraduationProposal,
-                        GraduationStudent, GraduationTaskBook)
+                        GraduationRiskCase, GraduationStudent, GraduationTaskBook)
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 
@@ -203,6 +203,20 @@ def generate_archive(gd_student_id) -> dict:
         return _row(a, stu)
 
 
+def _assert_no_open_risks(db, stu: GraduationStudent) -> None:
+    open_n = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
+        GraduationRiskCase.tenant_id == _tid(),
+        GraduationRiskCase.is_deleted.is_(False),
+        GraduationRiskCase.gd_student_id == stu.id,
+        GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+    )) or 0)
+    if open_n > 0:
+        raise AppException(
+            "DATA_CONFLICT",
+            f"该生仍有 {open_n} 条未关闭风险，不能完成归档",
+        )
+
+
 def submit_archive(gd_student_id) -> dict:
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
@@ -211,6 +225,7 @@ def submit_archive(gd_student_id) -> dict:
             return _row(a, stu)
         if a.status != "PENDING_SUBMIT":
             raise AppException("DATA_CONFLICT", "仅「待提交」记录可提交")
+        _assert_no_open_risks(db, stu)
         checklist, missing = _check_completeness(db, stu)
         a.checklist_json, a.missing_items = checklist, missing
         if missing:
@@ -234,6 +249,7 @@ def verify_and_file(gd_student_id, archive_batch_no: str = None) -> dict:
             return _row(a, stu)
         if a.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅「已提交」记录可核验归档")
+        _assert_no_open_risks(db, stu)
         checklist, missing = _check_completeness(db, stu)
         if missing:
             raise AppException("DATA_CONFLICT", "Archive completeness changed; regenerate before filing")
@@ -248,6 +264,9 @@ def verify_and_file(gd_student_id, archive_batch_no: str = None) -> dict:
         if stu.stage != "ARCHIVED":
             stu.stage = "ARCHIVED"
             stu.version += 1
+        # 归档成功后联动毕业资格：材料与风险闭环后置为 PASS（不覆盖已有 FAIL）
+        if getattr(stu, "grad_qual_status", None) not in ("FAIL", "PASS"):
+            stu.grad_qual_status = "PASS"
         _audit(db, a.id, "核验归档", detail=a.archive_batch_no)
         db.commit()
         return _row(a, stu)

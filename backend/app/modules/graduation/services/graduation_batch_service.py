@@ -174,13 +174,76 @@ def update_batch(bid, body: dict) -> dict:
         if "endDate" in body:
             b.end_date = _parse_dt(body["endDate"])
         if body.get("stages"):
-            b.stage_config = body["stages"]
+            b.stage_config = _validate_stages(body["stages"])
         if body.get("rules"):
-            b.rules_config = {**(b.rules_config or DEFAULT_RULES), **body["rules"]}
+            b.rules_config = _validate_and_merge_rules(b.rules_config, body["rules"])
         b.version += 1
         _audit(db, b.id, "UPDATE")
         db.commit()
         return _row(b)
+
+
+def _validate_stages(stages: list) -> list:
+    """Validate stage date windows: each stage end>=start, and stages do not reverse chronological order."""
+    if not stages:
+        return DEFAULT_STAGES
+    cleaned = []
+    prev_end = None
+    for idx, raw in enumerate(stages):
+        if not isinstance(raw, dict):
+            raise AppException("VALIDATION_ERROR", f"第 {idx + 1} 个阶段格式无效")
+        code = str(raw.get("code") or "").strip()
+        name = str(raw.get("name") or code or f"阶段{idx + 1}").strip()
+        if not code:
+            raise AppException("VALIDATION_ERROR", f"第 {idx + 1} 个阶段缺少 code")
+        start = _parse_dt(raw.get("startDate"))
+        end = _parse_dt(raw.get("endDate"))
+        if start and end and end < start:
+            raise AppException("VALIDATION_ERROR", f"阶段「{name}」结束日期不能早于开始日期")
+        if prev_end and start and start < prev_end:
+            raise AppException(
+                "VALIDATION_ERROR",
+                f"阶段顺序错误：阶段「{name}」开始日期早于上一阶段结束日期",
+            )
+        if end:
+            prev_end = end
+        elif start:
+            prev_end = start
+        item = dict(raw)
+        item["code"], item["name"] = code, name
+        cleaned.append(item)
+    return cleaned
+
+
+def _validate_and_merge_rules(existing: dict | None, patch: dict | None) -> dict:
+    """Deep-merge rules and enforce score weights sum to 100% (±0.5pp) when score block present."""
+    base = {**(DEFAULT_RULES or {}), **(existing or {})}
+    patch = patch or {}
+    merged = dict(base)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged[key], **value}
+        else:
+            merged[key] = value
+    score = merged.get("score") or {}
+    weights = [
+        float(score.get("advisorWeight") or 0),
+        float(score.get("reviewerWeight") or 0),
+        float(score.get("defenseWeight") or 0),
+    ]
+    total = round(sum(weights) * 100, 4)
+    if abs(total - 100.0) > 0.5:
+        raise AppException(
+            "VALIDATION_ERROR",
+            f"成绩权重之和必须等于 100%（当前 {total:.1f}%："
+            f"指导教师 {weights[0] * 100:.1f}% + 评阅 {weights[1] * 100:.1f}% + 答辩 {weights[2] * 100:.1f}%）",
+        )
+    plag = merged.get("plagiarism") or {}
+    if "thresholdPercent" in plag:
+        thr = float(plag.get("thresholdPercent") or 0)
+        if thr < 0 or thr > 100:
+            raise AppException("VALIDATION_ERROR", "查重阈值须在 0–100 之间")
+    return merged
 
 
 def set_stages(bid, stages: list) -> dict:
@@ -188,7 +251,7 @@ def set_stages(bid, stages: list) -> dict:
         b = _get(db, bid)
         if b.status in ("ARCHIVED", "VOIDED"):
             raise AppException("DATA_CONFLICT", "已归档/已作废批次不可改阶段配置")
-        b.stage_config = stages or DEFAULT_STAGES
+        b.stage_config = _validate_stages(stages or DEFAULT_STAGES)
         _audit(db, b.id, "SET_STAGES")
         db.commit()
         return get_batch(b.id)
@@ -199,7 +262,7 @@ def set_rules(bid, rules: dict) -> dict:
         b = _get(db, bid)
         if b.status in ("ARCHIVED", "VOIDED"):
             raise AppException("DATA_CONFLICT", "已归档/已作废批次不可改规则配置")
-        b.rules_config = {**(b.rules_config or DEFAULT_RULES), **(rules or {})}
+        b.rules_config = _validate_and_merge_rules(b.rules_config, rules)
         _audit(db, b.id, "SET_RULES")
         db.commit()
         return get_batch(b.id)

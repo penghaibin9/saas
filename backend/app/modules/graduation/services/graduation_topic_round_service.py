@@ -199,6 +199,14 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生不存在")
         assert_student_access(db, stu, "topic.choice.submit")
+        if not admin_import:
+            elig = getattr(stu, "eligibility_status", None) or "PENDING"
+            if elig != "QUALIFIED":
+                from app.modules.graduation.services.graduation_student_service import ELIG_LABEL
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"仅「资格合格」学生可填报志愿（当前：{ELIG_LABEL.get(elig, elig)}）",
+                )
         orders = set()
         for ch in choices:
             order = int(ch.get("choiceOrder") or ch.get("choice_order") or 0)
