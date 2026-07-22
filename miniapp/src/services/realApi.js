@@ -873,6 +873,8 @@ export async function teacherApprovalsReal(mock) {
 // ── 13A 学工中心（P7 多端收口，学生自视图 + 自选床位；教师待办卡）──
 export const affairsOverview = () => realRequest('/mobile/affairs/overview')
 export const affairsLeaveMy = () => realRequest('/mobile/affairs/leave/my')
+export const affairsLeaveResubmit = (leaveId, body) =>
+  realRequest(`/mobile/affairs/leave/${leaveId}/resubmit`, { method: 'POST', data: body || {} })
 export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
 export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
 export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')

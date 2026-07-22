@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 学生 PC 门户 · API 门面。只暴露门户允许调用的接口（严格边界）。
  * 查看类走 /mobile/me/* 与 /mobile/{domain}/my；PC 重活（长表单/大表格/材料/证明/打印）走 /portal/*。
  * 后端 /portal/* 由服务层 _require_student + SELF 数据范围收口，仅本人可读写。
@@ -15,8 +15,17 @@ const q = (obj) => {
 
 export const portalApi = {
   // ── 认证 / 通用查看 ──
-  login: (loginName, password) =>
-    request('/auth/login', { method: 'POST', auth: false, body: { loginName, password } }),
+  login: (loginName, password, tenantCode) =>
+    request('/auth/login', {
+      method: 'POST',
+      auth: false,
+      body: {
+        loginName,
+        password,
+        ...(tenantCode ? { tenantCode } : {}),
+        clientType: 'PC'
+      }
+    }),
   portalConfig: () => request('/mobile/me/portal-config'),
   overview: () => request('/mobile/me/overview'),
   profile: () => request('/mobile/me/profile'),
@@ -58,6 +67,8 @@ export const portalApi = {
   // ── 学工事务（在校服务）──
   affairsOverview: () => request('/portal/affairs/overview'),
   affairsLeave: () => request('/portal/affairs/leave'),
+  affairsLeaveResubmit: (leaveId, body = {}) =>
+    request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/resubmit`, { method: 'POST', body }),
   affairsFunding: () => request('/portal/affairs/funding'),
   affairsAid: () => request('/portal/affairs/aid'),
   affairsDiscipline: () => request('/portal/affairs/discipline'),

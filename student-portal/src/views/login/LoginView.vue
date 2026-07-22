@@ -47,6 +47,10 @@
 
         <div v-if="mode==='account'" style="display:flex;flex-direction:column;gap:16px;margin-top:26px">
           <div>
+            <div class="flabel">学校编码（多校账号时必填）</div>
+            <input v-model.trim="tenantCode" class="finput" placeholder="如 sandbox-school / demo-school" @keyup.enter="doLogin" />
+          </div>
+          <div>
             <div class="flabel">账号</div>
             <input v-model.trim="loginName" class="finput" placeholder="学号 / 账号" @keyup.enter="doLogin" />
           </div>
@@ -98,6 +102,7 @@ const ui = useUiStore()
 
 const loginName = ref('')
 const password = ref('')
+const tenantCode = ref('')
 const error = ref('')
 const loading = ref(false)
 const showPwd = ref(false)
@@ -106,10 +111,15 @@ const mode = ref('account')
 const schoolName = computed(() => cfg.brand?.schoolName || '学生服务门户')
 const demoName = computed(() => '张同学')
 const demoAccounts = [
-  { label: '演示职业技术学校', loginName: 'student', password: '123456' },
-  { label: '试用职业技术学校', loginName: 'student2', password: '123456' }
+  { label: '演示职业技术学校', loginName: 'student', password: '123456', tenantCode: 'demo-school' },
+  { label: '体验沙箱学校', loginName: 'student2', password: '123456', tenantCode: 'sandbox-school' }
 ]
-function fill(a) { loginName.value = a.loginName; password.value = a.password; error.value = '' }
+function fill(a) {
+  loginName.value = a.loginName
+  password.value = a.password
+  tenantCode.value = a.tenantCode || ''
+  error.value = ''
+}
 function qrStyle(n) {
   const cols = 8
   const x = (n % cols) * 18 + 14, y = Math.floor(n / cols) * 18 + 14
@@ -122,7 +132,7 @@ async function doLogin() {
   loading.value = true
   error.value = ''
   try {
-    await session.login(loginName.value, password.value)
+    await session.login(loginName.value, password.value, tenantCode.value || undefined)
     cfg.reset()
     await cfg.load()
     const redirect = route.query.redirect

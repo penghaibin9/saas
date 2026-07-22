@@ -1313,6 +1313,25 @@ def affairs_leave_my(user=Depends(get_current_user)):
     return success(aff.leave_my(user))
 
 
+@router.post("/affairs/leave/{leave_id}/resubmit", summary="学工·退回后本人重新提交请假")
+def affairs_leave_resubmit(leave_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.services import affairs_leave_service as leave_svc
+    result = leave_svc.resubmit(leave_id, user, self_only=True)
+    # 允许学生在重交时补充事由（不覆盖审批历史审计，仅更新当前 reason）
+    reason = str((body or {}).get("reason") or "").strip()
+    if reason and len(reason) >= 5:
+        from app.services.db_service import session as _session
+        from app.models import CsLeave
+        with _session() as db:
+            row = db.get(CsLeave, int(leave_id))
+            if row and not row.is_deleted:
+                row.reason = reason
+                row.version = int(row.version or 0) + 1
+                db.commit()
+                result["reason"] = reason
+    return success(result, message="已重新提交，等待辅导员审批")
+
+
 @router.get("/affairs/aid/my", summary="学工·我的困难认定")
 def affairs_aid_my(user=Depends(get_current_user)):
     return success(aff.aid_my(user))

@@ -399,13 +399,24 @@ def return_leave(leave_id, user, reason) -> dict:
         return _resolve_class_names(db, [_row(x, s)])[0]
 
 
-def resubmit(leave_id, user) -> dict:
-    """学生退回后重新提交 → 回到首个审批节点（新审批周期）。"""
+def resubmit(leave_id, user, *, self_only: bool = False) -> dict:
+    """退回后重新提交 → 回到首个审批节点（新审批周期）。
+
+    self_only=True：学生自助入口，仅允许本人对自己的 RETURNED 请假重交；
+    不走教职工班级数据范围（学生无班级管理范围）。
+    """
     with session() as db:
         from app.models import WorkflowInstance, WorkflowTask
         x, s = _load(db, leave_id)
         if x.affairs_status != "RETURNED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅被退回的请假可重新提交")
+        if self_only:
+            from app.services.mobile_student_service import resolve_student
+            me = resolve_student(db, user or {})
+            if not me or int(me.id) != int(x.student_id or 0):
+                raise AppException("NO_DATA_SCOPE", "只能重新提交本人的请假")
+        else:
+            _scope_or_403(db, x, user)
         wf = _wf_code(float(x.days or 1))
         first = NODE_SEQ[wf][0]
         x.affairs_status, x.status, x.return_reason = first, _project(first), None

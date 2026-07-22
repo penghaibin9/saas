@@ -41,7 +41,8 @@ def leave_my(user) -> dict:
             .order_by(CsLeave.id.desc())).all()
         return {"items": [{"leaveId": str(x.id), "leaveType": x.leave_type, "days": float(x.days or 0),
                            "startTime": _iso(x.start_time), "endTime": _iso(x.end_time),
-                           "status": x.affairs_status or x.status, "reason": x.reason or ""} for x in rows]}
+                           "status": x.affairs_status or x.status, "reason": x.reason or "",
+                           "returnReason": getattr(x, "return_reason", None) or ""} for x in rows]}
 
 
 def aid_my(user) -> dict:

@@ -629,12 +629,35 @@ def graduation_my(user: dict) -> dict:
 
 
 def _resolve_gd_student(db, u: dict):
-    """解析当前登录学生对应的毕设学生档案 t_gd_student（学号优先，其次姓名）。找不到返回 None。"""
+    """解析当前登录学生对应的毕设学生档案 t_gd_student（学号优先，其次姓名）。找不到返回 None。
+
+    同一学生可能有多条毕设档案（多批次）。优先返回未归档、id 最大（最近）的一条，
+    避免学生端误命中历史批次导致门禁/提交落在旧档案上。
+    """
     from app.models import GraduationStudent
     stu = resolve_student(db, u)
     if not stu:
         return None
-    return _resolve_domain_student(db, GraduationStudent, stu)
+    tid = _tid()
+    base = [
+        GraduationStudent.tenant_id == tid,
+        GraduationStudent.is_deleted.is_(False),
+    ]
+    q = None
+    if getattr(stu, "id", None) is not None:
+        q = select(GraduationStudent).where(*base, GraduationStudent.student_id == stu.id)
+    if q is None:
+        sn = getattr(stu, "student_no", None)
+        if sn:
+            q = select(GraduationStudent).where(*base, GraduationStudent.student_no == sn)
+    if q is None:
+        return _resolve_domain_student(db, GraduationStudent, stu)
+    rows = list(db.scalars(q.order_by(GraduationStudent.id.desc())).all())
+    if not rows:
+        return _resolve_domain_student(db, GraduationStudent, stu)
+    active = [r for r in rows if str(getattr(r, "stage", "") or "") != "ARCHIVED"]
+    return (active or rows)[0]
+
 
 
 def graduation_topics(user: dict, batch_id: str | None = None) -> list:
@@ -1149,6 +1172,24 @@ def campus_service_apply(user: dict, body: dict) -> dict:
             if not stu:
                 raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法提交")
             sid = stu.id
+        # 退回重交：指定 leaveId / resubmitLeaveId 时走 resubmit，避免重叠请假 409
+        resubmit_id = str(body.get("leaveId") or body.get("resubmitLeaveId") or "").strip()
+        if resubmit_id:
+            result = leave_svc.resubmit(resubmit_id, user, self_only=True)
+            reason = content
+            if reason:
+                from app.models import CsLeave
+                with _session() as db:
+                    row = db.get(CsLeave, int(resubmit_id))
+                    if row and not row.is_deleted:
+                        row.reason = reason
+                        row.version = int(row.version or 0) + 1
+                        db.commit()
+                        result["reason"] = reason
+            audit_log.record("MOBILE_SERVICE_APPLY", "campus-service:LEAVE_RESUBMIT",
+                             {"studentNo": u.get("studentNo"), "leaveId": resubmit_id})
+            return {"id": result.get("id"), "status": result.get("affairsStatus"),
+                    "message": "已重新提交，等待辅导员审批"}
         today = _dt.utcnow().strftime("%Y-%m-%d")
         start_raw = str(body.get("startTime") or body.get("startDate") or "").strip() or today
         end_raw = str(body.get("endTime") or body.get("endDate") or "").strip() or today
