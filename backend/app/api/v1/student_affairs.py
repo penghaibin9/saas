@@ -498,6 +498,16 @@ class FundingReviewBody(BaseModel):
     reason: Optional[str] = Field("", max_length=500)
 
 
+class FundingAppealBody(BaseModel):
+    reason: str = Field(..., min_length=5, description="申诉理由≥5字")
+    appellantName: Optional[str] = None
+
+
+class FundingAppealReviewBody(BaseModel):
+    result: str = Field(..., description="SUSTAINED申诉成立/OVERRULED申诉不成立")
+    opinion: str = Field(..., min_length=5)
+
+
 @router.post("/funding/projects", summary="建资助项目（奖学金/助学金）")
 def funding_project_create(body: FundingProjectCreate, user=Depends(require_permission("studentAffairs.funding.project.manage"))):
     return success(funding_svc.create_project(body, user), message="已创建")
@@ -554,6 +564,25 @@ def funding_publicity_confirm(applicationId: int = Path(...), user=Depends(requi
 @router.post("/funding/scan-publicity", summary="资助公示扫描（定时/手动，幂等）")
 def funding_scan_publicity(user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
     return success(funding_svc.scan_publicity())
+
+
+@router.post("/funding/applications/{applicationId}/appeal", summary="对公示中资助申请提起申诉（理由≥5字）")
+def funding_appeal_submit(body: FundingAppealBody, applicationId: int = Path(...),
+                          user=Depends(require_permission("studentAffairs.funding.view"))):
+    return success(funding_svc.submit_appeal(applicationId, body, user), message="申诉已提交")
+
+
+@router.get("/funding/appeals", summary="资助公示申诉列表")
+def funding_appeals(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                    user=Depends(require_permission("studentAffairs.funding.view"))):
+    items, total = funding_svc.list_appeals(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/funding/appeals/{appealId}/review", summary="资助申诉复核（成立驳回/不成立维持）")
+def funding_appeal_review(body: FundingAppealReviewBody, appealId: int = Path(...),
+                          user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
+    return success(funding_svc.review_appeal(appealId, body, user), message="已复核")
 
 
 @router.get("/funding/stats", summary="奖助统计（按状态/项目类型聚合，计数口径不含金额明细）")

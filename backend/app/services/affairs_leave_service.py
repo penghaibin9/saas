@@ -183,6 +183,7 @@ def _row(x, s=None) -> dict:
         "leaveType": x.leave_type, "leaveTypeLabel": L_TYPE.get(x.leave_type or "", x.leave_type or ""),
         "days": float(x.days or 0),
         "startTime": _iso(x.start_time), "endTime": _iso(x.end_time), "reason": x.reason or "",
+        "returnReason": getattr(x, "return_reason", None) or "",
         "affairsStatus": x.affairs_status,
         "affairsStatusLabel": L_AFF.get(x.affairs_status or "", x.affairs_status or ""),
         "legacyStatus": x.status,  # 投影列（老端点读这个，双状态列一致性）

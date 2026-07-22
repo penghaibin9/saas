@@ -95,6 +95,9 @@ def test_l4_reject_reason_required(client, db_mode):
                     headers=hdr, json={"reason": "材料不齐请补充"}).json()
     assert r["data"]["affairsStatus"] == "REJECTED"
     assert r["data"]["legacyStatus"] == "RETURNED"
+    assert r["data"].get("returnReason") == "材料不齐请补充"
+    d = client.get(f"/api/v1/student-affairs/leave/{lid}", headers=hdr).json()["data"]
+    assert d.get("returnReason") == "材料不齐请补充"
 
 
 def test_l5_cancel_closes_and_hits_360(client, db_mode):
