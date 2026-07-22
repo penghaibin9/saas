@@ -1,3 +1,39 @@
+export const STUDENT_AFFAIRS_RELATIONSHIP_OVERVIEW_DOC = {
+  id: 'doc-sa-relationship-overview',
+  title: '学工中心业务关系全景图（14个模块）',
+  module: '学工中心 · 老师一眼通',
+  keywords: ['学工中心关系图', '学工流程图', '模块关系', '14个模块', '业务全景', '一图看懂'],
+  summary: '先看14个二级模块如何从迎新建档、在校办理、风险关怀，最后回到学生360、统计与档案；并标出请假、宿舍、困难认定、资助、处分之间的关键联动。',
+  embed: '/help/student-affairs-relationship-overview.html'
+}
+
+export const STUDENT_AFFAIRS_CAMPUS_LIFE_MAP_DOC = {
+  id: 'doc-sa-campus-life-map',
+  title: '新生入校与在校服务关系图',
+  module: '学工中心 · 老师一眼通',
+  keywords: ['数字迎新流程图', '请假流程图', '宿舍流程图', '在校服务', '学生底账', '业务关系'],
+  summary: '详细说明数字迎新如何生成学生、班级和住宿底账，以及请假销假、宿舍入住调宿、宿舍检查异常如何办理和转入风险处置。',
+  embed: '/help/student-affairs-campus-life-map.html'
+}
+
+export const STUDENT_AFFAIRS_RISK_CARE_MAP_DOC = {
+  id: 'doc-sa-risk-care-map',
+  title: '风险预警与关怀处置关系图',
+  module: '学工中心 · 老师一眼通',
+  keywords: ['风险预警流程图', '谈心谈话流程图', '心理关注', '违纪处分流程图', '风险闭环', '销号'],
+  summary: '把请假超期、宿舍异常、学业、心理、违纪等来源汇入风险闭环，并说明谈心家校、心理关注、正式处分三类协同处理方式。',
+  embed: '/help/student-affairs-risk-care-map.html'
+}
+
+export const STUDENT_AFFAIRS_GROWTH_ARCHIVE_MAP_DOC = {
+  id: 'doc-sa-growth-archive-map',
+  title: '资助成长与档案沉淀关系图',
+  module: '学工中心 · 老师一眼通',
+  keywords: ['困难认定流程图', '奖助流程图', '活动二课流程图', '学工归档', '学生档案', '成长成果'],
+  summary: '说明困难认定如何支撑资助资格、活动如何形成第二课堂成果，以及办结结果如何同步学生360、统计驾驶舱与加密档案包。',
+  embed: '/help/student-affairs-growth-archive-map.html'
+}
+
 export const STUDENT_AFFAIRS_OVERVIEW_DOC = {
   id: 'doc-sa-overview',
   title: '学工中心操作总览（老师一眼通）',
