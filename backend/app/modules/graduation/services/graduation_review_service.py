@@ -238,7 +238,21 @@ def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=No
 def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
     with session() as db:
         stu = _stu(db, gd_student_id)
-        if stu.advisor_name and reviewer_name.strip() == stu.advisor_name:
+        reviewer = reviewer_name.strip()
+        advisor_names = {str(stu.advisor_name or "").strip()}
+        # Also resolve mentor record / topic advisor — SoD must not depend only on a blank advisor_name.
+        if getattr(stu, "mentor_id", None):
+            from app.models import GraduationMentor
+            mentor = db.get(GraduationMentor, int(stu.mentor_id))
+            if mentor and not mentor.is_deleted and mentor.tenant_id == _tid():
+                advisor_names.add(str(mentor.teacher_name or "").strip())
+        if getattr(stu, "topic_id", None):
+            from app.models import GraduationTopic
+            topic = db.get(GraduationTopic, int(stu.topic_id))
+            if topic and not topic.is_deleted and topic.tenant_id == _tid():
+                advisor_names.add(str(topic.advisor_name or "").strip())
+        advisor_names.discard("")
+        if reviewer and reviewer in advisor_names:
             raise AppException("VALIDATION_ERROR", "评阅人不得是该生指导教师（SoD 冲突）")
         final_id = int(gd_final_id) if gd_final_id else None
         if final_id:
@@ -254,7 +268,7 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
             GraduationReview.tenant_id == _tid(),
             GraduationReview.gd_student_id == stu.id,
             GraduationReview.gd_final_id == final_id,
-            GraduationReview.reviewer_name == reviewer_name.strip(),
+            GraduationReview.reviewer_name == reviewer,
             GraduationReview.status.in_(("ASSIGNED", "REVIEWING", "RETURNED")),
             GraduationReview.is_deleted.is_(False),
         ).with_for_update()).first()
@@ -263,11 +277,11 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
         n, _ = _op()
         r = GraduationReview(tenant_id=_tid(), gd_student_id=stu.id,
                              gd_final_id=final_id,
-                             reviewer_name=reviewer_name.strip(), status="ASSIGNED",
+                             reviewer_name=reviewer, status="ASSIGNED",
                              assigned_by=n, assigned_at=datetime.utcnow())
         db.add(r)
         db.flush()
-        _audit(db, "REVIEW", r.id, "分配评阅任务", detail=f"{stu.name}→{reviewer_name}")
+        _audit(db, "REVIEW", r.id, "分配评阅任务", detail=f"{stu.name}→{reviewer}")
         db.commit()
         return _review_row(r, stu)
 
