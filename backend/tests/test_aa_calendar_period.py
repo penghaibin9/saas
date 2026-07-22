@@ -64,6 +64,10 @@ def test_r3_period_management_crud_and_dup(client, db_mode):
     slot_id = r1.json()["data"]["slotId"]
     dup = client.post(f"{BASE}/time-slots", headers=hdr, json={"slotNo": 21})
     assert dup.status_code == 409
+    # 时间重叠须拦截（与序号去重并列的异常门禁）
+    overlap = client.post(f"{BASE}/time-slots", headers=hdr, json={
+        "slotNo": 211, "slotName": "重叠节", "startTime": "08:10", "endTime": "08:50"})
+    assert overlap.status_code == 409, overlap.text
     upd = client.put(f"{BASE}/time-slots/{slot_id}", headers=hdr, json={"slotName": "早读", "enabled": False})
     assert upd.status_code == 200 and upd.json()["data"]["enabled"] is False and upd.json()["data"]["status"] == "DISABLED"
     visible = client.get(f"{BASE}/time-slots", headers=hdr).json()["data"]["items"]
