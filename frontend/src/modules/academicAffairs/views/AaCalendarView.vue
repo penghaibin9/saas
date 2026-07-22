@@ -10,7 +10,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
-          <AppSelect v-model="termId" :options="termOptions" @change="onTermChange" />
+          <AppTermEntityPicker v-model="termId" :options="termOptions" @change="onTermChange" />
         </label>
       </div>
 
@@ -19,7 +19,7 @@
         title="还没有学年学期"
         description="校历依附于学期，请先到「学年学期」创建并发布一个学期"
       >
-        <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</button>
+        <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</AppButton>
       </EmptyState>
 
       <template v-else>
@@ -167,8 +167,9 @@
  * 发布/归档=复用学期状态机 DRAFT→PUBLISHED→ARCHIVED，仅教务处/学校管理员可执行（后端强制，前端仅隐藏按钮）。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppSectionCard, AppSelect, AppTextInput, AppFormItem, AppDatePicker, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppSelect, AppTextInput, AppFormItem, AppDatePicker, AppTermEntityPicker, AppConfirmDialog, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { loadAcademicTermCatalog } from '@/modules/academicAffairs/pickerAdapters'
 import { toast } from '@/utils/toast'
 
 const EVENT_TYPES = { TEACHING: '教学', EXAM: '考试', INTERNSHIP: '实习', HOLIDAY: '节假日', SWAP: '补课日' }
@@ -182,7 +183,7 @@ export default {
   name: 'AaCalendarView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppSectionCard, AppSelect, AppTextInput, AppFormItem, AppDatePicker,
+    AppButton, AppDrawer, AppSectionCard, AppSelect, AppTextInput, AppFormItem, AppDatePicker, AppTermEntityPicker,
     AppConfirmDialog, AppInlineAlert
   },
   props: { ctx: { type: Object, required: true } },
@@ -287,7 +288,7 @@ export default {
     const q = this.$route && this.$route.query && this.$route.query.tab
     if (q && this.tabs.some((t) => t.key === q)) this.tab = q
     this.resetDraft()
-    this.loadTerms()
+    this.refreshTermCatalog()
   },
   methods: {
     statusLabel(s) {
@@ -310,18 +311,17 @@ export default {
       this.resetDraft()
       this.loadForTab()
     },
-    async loadTerms() {
+    async refreshTermCatalog() {
       this.termsLoading = true
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) {
-        this.terms = res.data.list
+      try {
+        this.terms = await loadAcademicTermCatalog()
         const cur = this.terms.find((t) => t.termId === this.termId) || this.terms.find((t) => t.isCurrent) || this.terms[0]
         if (cur) {
           this.termId = cur.termId
           this.loadForTab()
         }
-      } else {
-        this.error = res.message
+      } catch (error) {
+        this.error = error.message || '学期数据加载失败'
       }
       this.termsLoading = false
     },
@@ -442,7 +442,7 @@ export default {
       this.publishing = false
       if (res.code === 0) {
         toast.success('校历已发布')
-        this.loadTerms()
+        this.refreshTermCatalog()
       } else {
         toast.error(res.message || '发布失败')
       }

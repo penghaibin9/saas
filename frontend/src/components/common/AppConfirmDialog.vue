@@ -176,7 +176,9 @@ export default {
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  overflow: hidden;
+  /* 不能 overflow:hidden：body 里插槽常放 AppStudentPicker 等下拉选择器，
+     其结果面板是相对 body 内部元素绝对定位、超出弹窗自身高度展开的，
+     hidden 会把选项列表从中间截断，看起来"显示不全/太短"。 */
 }
 .app-confirm-dialog__header {
   display: flex;

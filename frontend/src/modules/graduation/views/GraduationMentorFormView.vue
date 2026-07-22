@@ -9,9 +9,7 @@
       <label class="ie-fld"><span class="ie-lbl">教师工号 <i>*</i></span><input v-model.trim="form.teacherNo" class="ie-in" :disabled="!!editing" /></label>
       <label class="ie-fld"><span class="ie-lbl">教师姓名 <i>*</i></span><input v-model.trim="form.teacherName" class="ie-in" /></label>
       <label class="ie-fld"><span class="ie-lbl">导师类型</span>
-        <select v-model="form.mentorType" class="ie-in">
-          <option v-for="o in MENTOR_TYPE" :key="o.value" :value="o.value">{{ o.label }}</option>
-        </select>
+        <AppSelect v-model="form.mentorType" :options="MENTOR_TYPE" />
       </label>
       <label class="ie-fld"><span class="ie-lbl">职称</span><input v-model.trim="form.title" class="ie-in" /></label>
       <label class="ie-fld"><span class="ie-lbl">所属学院</span><input v-model.trim="form.collegeName" class="ie-in" /></label>
@@ -33,6 +31,7 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { MENTOR_TYPE } from '@/modules/graduation/constants/graduation-mentor.constants'
+import { AppSelect } from '@/components/common'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FORM = () => ({
@@ -42,7 +41,7 @@ const EMPTY_FORM = () => ({
 
 export default {
   name: 'GraduationMentorFormView',
-  components: { GraduationFormPageShell },
+  components: { GraduationFormPageShell, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { MENTOR_TYPE, editing: null, form: EMPTY_FORM(), formError: '', submitting: false }

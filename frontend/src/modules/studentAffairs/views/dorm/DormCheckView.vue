@@ -15,38 +15,39 @@
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载检查任务..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
       <AppSectionCard title="检查任务">
-        <table class="sa-table">
-          <thead><tr><th>任务</th><th>类型</th><th>楼栋</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="t in tasks" :key="t.taskId" :class="{ 'sa-sel': t.taskId === curTask }">
-              <td><strong>{{ t.taskName }}</strong></td>
-              <td>{{ typeLabel(t.checkType) }}</td>
-              <td>{{ t.buildingName || '—' }}</td>
-              <td>{{ t.status }}</td>
-              <td class="sa-actions">
-                <AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openTask(t)">记录</AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.dorm.inspection.manage" size="sm" :loading="actioning" @click="addRecord(t)">录结果</AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!tasks.length"><td colspan="5" class="sa-empty">暂无检查任务</td></tr>
-          </tbody>
-        </table>
+        <DataTable
+          v-if="tasks.length"
+          :columns="taskColumns"
+          :rows="tasks"
+          row-key="taskId"
+          :row-class="(row) => (row.taskId === curTask ? 'sa-sel' : '')"
+        >
+          <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.taskName }}</span></template>
+          <template #cell-type="{ row }">{{ typeLabel(row.checkType) }}</template>
+          <template #cell-building="{ row }">{{ row.buildingName || '—' }}</template>
+          <template #cell-status="{ row }">{{ row.status }}</template>
+          <template #cell-actions="{ row }">
+            <div class="sa-actions">
+              <AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openTask(row)">记录</AppPermissionButton>
+              <AppPermissionButton code="studentAffairs.dorm.inspection.manage" size="sm" :loading="actioning" @click="addRecord(row)">录结果</AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无检查任务</p>
       </AppSectionCard>
 
       <AppSectionCard v-if="curTask" :title="`检查记录 · ${curTaskName}`">
-        <table class="sa-table">
-          <thead><tr><th>房间</th><th>结果</th><th>问题</th><th>说明</th><th>关联风险</th></tr></thead>
-          <tbody>
-            <tr v-for="r in records" :key="r.recordId">
-              <td>{{ r.roomNo || r.roomId || '—' }}</td>
-              <td><AppStatusTag :type="r.result === 'ABNORMAL' ? 'danger' : 'success'" :label="r.result === 'ABNORMAL' ? '异常' : '正常'" /></td>
-              <td>{{ r.issueType || '—' }}</td>
-              <td>{{ r.detail || '—' }}</td>
-              <td><a v-if="r.relatedRiskId" class="sa-link" @click="$router.push(`/admin/student-affairs/risk/${r.relatedRiskId}`)">风险 #{{ r.relatedRiskId }} →</a><span v-else class="sa-muted">—</span></td>
-            </tr>
-            <tr v-if="!records.length"><td colspan="5" class="sa-empty">暂无检查记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId">
+          <template #cell-room="{ row }">{{ row.roomNo || row.roomId || '—' }}</template>
+          <template #cell-result="{ row }"><AppStatusTag :type="row.result === 'ABNORMAL' ? 'danger' : 'success'" :label="row.result === 'ABNORMAL' ? '异常' : '正常'" /></template>
+          <template #cell-issueType="{ row }">{{ row.issueType || '—' }}</template>
+          <template #cell-detail="{ row }">{{ row.detail || '—' }}</template>
+          <template #cell-risk="{ row }">
+            <a v-if="row.relatedRiskId" class="sa-link" @click="$router.push(`/admin/student-affairs/risk/${row.relatedRiskId}`)">风险 #{{ row.relatedRiskId }} →</a>
+            <span v-else class="sa-muted">—</span>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无检查记录</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -60,7 +61,7 @@
           <AppSelect v-model="taskDlg.checkType" :options="CHECK_TYPES" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="检查楼栋">
-          <AppSelect v-model="taskDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋（全校）" clearable :disabled="actioning" />
+          <AppDormBuildingPicker v-model="taskDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋（全校）" clearable :disabled="actioning" />
         </AppFormItem>
         <p class="dr-hint">绑定楼栋后，录结果时可直接下拉选房间；不绑则录结果时再选楼栋。</p>
         <AppInlineAlert v-if="taskDlg.error" type="danger" :description="taskDlg.error" />
@@ -75,12 +76,12 @@
     <AppDrawer :visible="recDlg.visible" :title="`录检查结果 · ${recDlg.taskName}`" @close="recDlg.visible = false">
       <div class="dr-form">
         <AppFormItem label="楼栋">
-          <AppSelect v-model="recDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋"
+          <AppDormBuildingPicker v-model="recDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋"
                      clearable :disabled="actioning || recDlg.buildingLocked" @change="onRecBuildingChange" />
           <p v-if="recDlg.buildingLocked" class="dr-hint">本任务已绑定该楼栋，不可更改。</p>
         </AppFormItem>
         <AppFormItem label="房间">
-          <AppSelect v-model="recDlg.roomId" :options="roomOptions" clearable :disabled="actioning || !recDlg.buildingId"
+          <AppDormRoomPicker v-model="recDlg.roomId" :options="roomOptions" :query="{ buildingId: recDlg.buildingId }" clearable :disabled="actioning || !recDlg.buildingId"
                      :placeholder="recDlg.buildingId ? '选择房间（可空）' : '请先选楼栋'" />
         </AppFormItem>
         <AppFormItem label="检查结果" required>
@@ -93,7 +94,7 @@
             <AppQuickPhrases scene-key="sa.dorm.exception" :group="recDlg.checkType" @pick="onPickDetail" />
           </AppFormItem>
           <AppFormItem :label="needStudent ? '涉事学生（夜不归宿必填）' : '涉事学生（可空；填则自动建风险单）'" :required="needStudent">
-            <AppStudentPicker v-model="recDlg.studentId" :remote-search="searchStudents"
+            <AppStudentPicker v-model="recDlg.studentId"
                               placeholder="按姓名 / 学号搜索" :disabled="actioning" />
           </AppFormItem>
         </template>
@@ -110,11 +111,27 @@
 <script>
 import {
   AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-  AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+  AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
+import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+const TASK_COLUMNS = [
+  { key: 'name', title: '任务' },
+  { key: 'type', title: '类型' },
+  { key: 'building', title: '楼栋' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '180px' }
+]
+const RECORD_COLUMNS = [
+  { key: 'room', title: '房间' },
+  { key: 'result', title: '结果' },
+  { key: 'issueType', title: '问题' },
+  { key: 'detail', title: '说明' },
+  { key: 'risk', title: '关联风险' }
+]
 
 /** 与后端 checkType 取值一一对应；也是 sa.dorm.exception 词库的分组键。 */
 const CHECK_TYPES = [
@@ -132,10 +149,12 @@ export default {
   name: 'DormCheckView',
   components: {
     AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-    AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+    AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea, DataTable
   },
   data() {
     return {
+      taskColumns: TASK_COLUMNS,
+      recordColumns: RECORD_COLUMNS,
       loading: true, actioning: false, errorMessage: '',
       tasks: [], curTask: '', curTaskName: '', curTaskType: '', records: [],
       buildings: [], rooms: [],
@@ -180,7 +199,6 @@ export default {
       try { this.records = (await studentAffairsApi.listDormCheckRecords(t.taskId)).data.items || [] }
       catch (e) { this.errorMessage = e.message }
     },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     /* ── 新建任务 ── */
     createTask() {
       this.taskDlg = { visible: true, taskName: '', checkType: 'HYGIENE', buildingId: '', error: '' }
@@ -244,13 +262,13 @@ export default {
 </script>
 
 <style scoped>
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.sa-sel { background: var(--primary-50, var(--bg-subtle)); }
+/* 选中任务高亮：类由 DataTable 的 row-class 挂在子组件内部 <tr> 上，父级 scoped 样式须 :deep() 穿透 */
+:deep(.dt__tr.sa-sel) .dt__td { background: var(--primary-50, var(--bg-subtle)); }
 .sa-link { color: var(--primary-600); cursor: pointer; }
 .sa-muted { color: var(--text-tertiary); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .dr-form { display: flex; flex-direction: column; gap: var(--space-4); }
 .dr-hint { margin: var(--space-1) 0 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
+@import '@/styles/module-page.css';
 </style>

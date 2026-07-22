@@ -21,7 +21,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.response import success
-from app.core.security import assert_cors_safe, assert_prod_flags_safe, assert_secret_safe
+from app.core.security import assert_cors_safe, assert_prod_flags_safe, assert_scale_safe, assert_secret_safe
 from app.middleware.context import RequestContextMiddleware
 
 APP_VERSION = "0.1.0"
@@ -36,6 +36,8 @@ def create_app() -> FastAPI:
     assert_cors_safe()
     # 生产环境 DEBUG 必须关闭；mock-login 不得显式开启。
     assert_prod_flags_safe()
+    # 多实例部署（MULTI_INSTANCE=true）生产环境必须配 Redis，否则限流/锁定/黑名单跨进程失效。
+    assert_scale_safe()
     # 生产环境关闭 /docs、/redoc、/openapi.json，不把接口蓝图暴露公网。
     _is_prod = settings.is_prod
     # 启动即打印当前环境——APP_ENV 忘设时所有生产守卫按 dev 放行，必须在日志里一眼可查

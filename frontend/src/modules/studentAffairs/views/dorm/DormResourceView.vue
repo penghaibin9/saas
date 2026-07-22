@@ -19,38 +19,47 @@
       </div>
 
       <AppSectionCard title="楼栋列表">
-        <table class="sa-table">
-          <thead><tr><th>楼栋</th><th>编号</th><th>性别</th><th>层数</th><th>空床/总床</th><th>宿管</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="b in buildings" :key="b.buildingId" :class="{ 'sa-sel': b.buildingId === curBuilding }">
-              <td><strong>{{ b.buildingName }}</strong></td>
-              <td>{{ b.buildingCode || '—' }}</td>
-              <td>{{ genderLabel(b.genderLimit) }}</td>
-              <td>{{ b.floorCount || '—' }}</td>
-              <td>{{ b.vacantBeds }}/{{ b.totalBeds }}</td>
-              <td>{{ b.managerTeacherKey || '未指派' }}</td>
-              <td class="sa-actions">
-                <AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openBuilding(b)">查看房间</AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.dorm.resource.manage" size="sm" variant="secondary" :loading="actioning" @click="generate(b)">铺床</AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!buildings.length"><td colspan="7" class="sa-empty">暂无楼栋，点右上「新建楼栋」</td></tr>
-          </tbody>
-        </table>
+        <DataTable
+          v-if="buildings.length"
+          :columns="buildingColumns"
+          :rows="buildings"
+          row-key="buildingId"
+          :row-class="(row) => (row.buildingId === curBuilding ? 'sa-sel' : '')"
+        >
+          <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.buildingName }}</span></template>
+          <template #cell-code="{ row }">{{ row.buildingCode || '—' }}</template>
+          <template #cell-gender="{ row }">{{ genderLabel(row.genderLimit) }}</template>
+          <template #cell-floorCount="{ row }">{{ row.floorCount || '—' }}</template>
+          <template #cell-beds="{ row }">{{ row.vacantBeds }}/{{ row.totalBeds }}</template>
+          <template #cell-manager="{ row }">{{ row.managerTeacherKey || '未指派' }}</template>
+          <template #cell-actions="{ row }">
+            <div class="sa-actions">
+              <AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openBuilding(row)">查看房间</AppPermissionButton>
+              <AppPermissionButton code="studentAffairs.dorm.resource.manage" size="sm" variant="secondary" :loading="actioning" @click="generate(row)">铺床</AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无楼栋，点右上「新建楼栋」</p>
       </AppSectionCard>
 
       <AppSectionCard v-if="curBuilding" :title="`房间 · ${curBuildingName}`">
-        <table class="sa-table">
-          <thead><tr><th>房号</th><th>楼层</th><th>床位数</th><th>空床</th><th>状态</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="r in rooms" :key="r.roomId" :class="{ 'sa-sel': r.roomId === curRoom }">
-              <td><strong>{{ r.roomNo }}</strong></td><td>{{ r.floorNo }}</td><td>{{ r.capacity }}</td>
-              <td>{{ r.vacantBeds }}</td><td>{{ r.status }}</td>
-              <td><AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openRoom(r)">床位</AppPermissionButton></td>
-            </tr>
-            <tr v-if="!rooms.length"><td colspan="6" class="sa-empty">该楼暂无房间，点「铺床」生成</td></tr>
-          </tbody>
-        </table>
+        <DataTable
+          v-if="rooms.length"
+          :columns="roomColumns"
+          :rows="rooms"
+          row-key="roomId"
+          :row-class="(row) => (row.roomId === curRoom ? 'sa-sel' : '')"
+        >
+          <template #cell-roomNo="{ row }"><span class="mp-cell-main">{{ row.roomNo }}</span></template>
+          <template #cell-floorNo="{ row }">{{ row.floorNo }}</template>
+          <template #cell-capacity="{ row }">{{ row.capacity }}</template>
+          <template #cell-vacantBeds="{ row }">{{ row.vacantBeds }}</template>
+          <template #cell-status="{ row }">{{ row.status }}</template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openRoom(row)">床位</AppPermissionButton>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">该楼暂无房间，点「铺床」生成</p>
       </AppSectionCard>
 
       <AppSectionCard v-if="curRoom" :title="`床位 · ${curRoomNo}`">
@@ -123,6 +132,7 @@
 import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
   AppPermissionButton, AppSectionCard, AppSelect, AppTextInput } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 /** 性别限制（后端 genderLimit）——原为 window.prompt 让用户手打 MALE/FEMALE/MIXED */
@@ -132,12 +142,32 @@ const GENDER_LIMITS = [
   { value: 'FEMALE', label: '女寝' }
 ]
 
+const BUILDING_COLUMNS = [
+  { key: 'name', title: '楼栋' },
+  { key: 'code', title: '编号' },
+  { key: 'gender', title: '性别' },
+  { key: 'floorCount', title: '层数' },
+  { key: 'beds', title: '空床/总床' },
+  { key: 'manager', title: '宿管' },
+  { key: 'actions', title: '操作', align: 'right', width: '200px' }
+]
+const ROOM_COLUMNS = [
+  { key: 'roomNo', title: '房号' },
+  { key: 'floorNo', title: '楼层' },
+  { key: 'capacity', title: '床位数' },
+  { key: 'vacantBeds', title: '空床' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '', align: 'right', width: '100px' }
+]
+
 export default {
   name: 'DormResourceView',
   components: { AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-    AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput },
+    AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, DataTable },
   data() {
     return {
+      buildingColumns: BUILDING_COLUMNS,
+      roomColumns: ROOM_COLUMNS,
       GENDER_LIMITS,
       loading: true, actioning: false, errorMessage: '', buildings: [], occ: {},
       curBuilding: '', curBuildingName: '', rooms: [], curRoom: '', curRoomNo: '', beds: [],
@@ -229,14 +259,14 @@ export default {
 .dr-check { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); color: var(--text-secondary); }
 .dr-hint { margin: 0; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.sa-sel { background: var(--primary-50, var(--bg-subtle)); }
+/* 选中楼栋/房间高亮：类由 DataTable 的 row-class 挂在子组件内部 <tr> 上，父级 scoped 样式须 :deep() 穿透 */
+:deep(.dt__tr.sa-sel) .dt__td { background: var(--primary-50, var(--bg-subtle)); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .sa-beds { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sa-bed { border: 1px solid var(--border-light); border-radius: var(--radius-base); padding: var(--space-2) var(--space-3); font-size: var(--font-size-sm); }
 .sa-bed--occ { background: var(--warning-50); color: var(--warning-700); }
 .sa-bed--vac { background: var(--success-50); color: var(--success-700); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

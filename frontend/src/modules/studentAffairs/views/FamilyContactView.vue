@@ -9,7 +9,7 @@
     <div class="fc-picker">
       <span class="fc-picker__label">选择学生</span>
       <div class="fc-picker__control">
-        <AppStudentPicker v-model="studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" @change="onPick" />
+        <AppStudentPicker v-model="studentId" placeholder="按姓名 / 学号搜索学生" @change="onPick" />
       </div>
       <AppPermissionButton code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记联系</AppPermissionButton>
     </div>
@@ -115,9 +115,6 @@ export default {
   methods: {
     contactTypeLabel(t) {
       return CONTACT_TYPE[t] || t || '—'
-    },
-    searchStudents(keyword) {
-      return studentAffairsApi.searchStudents(keyword)
     },
     onPick() {
       this.page = 1

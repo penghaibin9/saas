@@ -15,7 +15,7 @@
         <label class="aa-filter__item">状态
           <AppSelect v-model="filterStatus" :options="statusOptions" :placeholder="''" @change="load" />
         </label>
-        <button class="mp-btn" :disabled="loading" @click="load">刷新</button>
+        <AppButton :loading="loading" @click="load">刷新</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -53,8 +53,7 @@
       @confirm="doAdjust"
     >
       <div class="aa-adjust-form">
-        <label>教师姓名<input v-model.trim="adjust.teacherName" class="aa-input" placeholder="不变可留空" /></label>
-        <label>教师工号/账号<input v-model.trim="adjust.teacherKey" class="aa-input" placeholder="不变可留空" /></label>
+        <label>调整任课教师<AppTeacherPicker v-model="adjust.teacherKey" placeholder="不变可留空" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="adjust.weeklyHours" type="number" min="0" class="aa-input" /></label>
         <label>总学时<input v-model.number="adjust.totalHours" type="number" min="0" class="aa-input" /></label>
         <label>起始周<input v-model.number="adjust.startWeek" type="number" min="1" class="aa-input" /></label>
@@ -76,14 +75,15 @@
  * GET /academic-affairs/teaching-tasks（跨批次，排除 MERGED）+ POST /teaching-tasks/{taskId}/adjust。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppStatusTag, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeacherPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTaskAdjustView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeacherPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -124,6 +124,10 @@ export default {
   },
   created() { this.load() },
   methods: {
+    onTeacherPicked(value, items) {
+      this.adjust.teacherKey = value || ''
+      this.adjust.teacherName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
+    },
     taskColor,
     statusLabel(s) { return TASK_STATUS[s] || s || '' },
     onPageChange(p) { this.pagination.page = p; this.load() },

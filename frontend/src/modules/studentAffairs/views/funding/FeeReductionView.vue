@@ -11,7 +11,7 @@
       </div>
       <AppSectionCard v-if="formVisible" title="申请减免/临补">
         <div class="fr-grid">
-          <div class="fr-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="fr-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="fr-field"><span>类型</span><AppSelect v-model="form.itemType" :options="ITEM_TYPE_OPTIONS" placeholder="" /></label>
           <label class="fr-field"><span>金额</span><AppNumberInput v-model="form.amount" :min="0" /></label>
           <label class="fr-field fr-wide"><span>理由 *（≥5字）</span><AppTextInput v-model="form.reason" /></label>
@@ -24,27 +24,24 @@
         <div class="fr-filters">
           <button v-for="f in typeFilters" :key="f.key" type="button" class="fr-chip" :class="{ 'is-on': activeType===f.key }" @click="setType(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>类型</th><th>金额</th><th>理由</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="x in items" :key="x.feeId">
-              <td><strong>{{ x.realName || ('#'+x.studentId) }}</strong></td>
-              <td>{{ x.itemType==='REDUCTION'?'学费减免':'临时补助' }}</td>
-              <td>{{ amountText(x.amount) }}</td>
-              <td class="fr-reason">{{ x.reason }}</td>
-              <td><StatusTag :type="frType(x.status)" :label="x.statusLabel || x.status" dot /></td>
-              <td class="fr-ops">
-                <template v-if="x.status==='SUBMITTED'">
-                  <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===x.feeId" @click="review(x,'APPROVE')">批准</AppPermissionButton>
-                  <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" variant="secondary" danger @click="review(x,'REJECT')">驳回</AppPermissionButton>
-                </template>
-                <AppPermissionButton v-else-if="x.status==='APPROVED'" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===x.feeId" @click="issue(x)">发放</AppPermissionButton>
-                <span v-else class="fr-muted">—</span>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="feeColumns" :rows="items" row-key="feeId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
+          <template #cell-itemType="{ row }">{{ row.itemType==='REDUCTION'?'学费减免':'临时补助' }}</template>
+          <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
+          <template #cell-reason="{ row }"><span class="fr-reason">{{ row.reason }}</span></template>
+          <template #cell-status="{ row }"><StatusTag :type="frType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-actions="{ row }">
+            <div class="fr-ops">
+              <template v-if="row.status==='SUBMITTED'">
+                <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="review(row,'APPROVE')">批准</AppPermissionButton>
+                <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" variant="secondary" danger @click="review(row,'REJECT')">驳回</AppPermissionButton>
+              </template>
+              <AppPermissionButton v-else-if="row.status==='APPROVED'" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="issue(row)">发放</AppPermissionButton>
+              <span v-else class="fr-muted">—</span>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无记录</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -64,20 +61,30 @@ import {
   AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPE_FILTERS = [{ key: '', label: '全部' }, { key: 'REDUCTION', label: '学费减免' }, { key: 'TEMP_AID', label: '临时补助' }]
 const ITEM_TYPE_OPTIONS = [{ value: 'REDUCTION', label: '学费减免' }, { value: 'TEMP_AID', label: '临时补助' }]
+const FEE_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'itemType', title: '类型' },
+  { key: 'amount', title: '金额' },
+  { key: 'reason', title: '理由' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '160px' }
+]
 
 export default {
   name: 'FeeReductionView',
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
     return {
+      feeColumns: FEE_COLUMNS,
       loading: true, acting: '', errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS,
       formVisible: false, form: this.blank(), rejDlg: { visible: false, feeId: '' }
     }
@@ -97,7 +104,6 @@ export default {
   mounted() { this.load() },
   methods: {
     blank() { return { studentId: '', itemType: 'REDUCTION', amount: null, reason: '', error: '' } },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getFeeReductions({ itemType: this.activeType })
@@ -154,11 +160,10 @@ export default {
 .fr-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
 .fr-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .fr-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .fr-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 220px; }
 .fr-ops { display: flex; gap: 6px; }
 .fr-muted { color: var(--text-tertiary); }
 @media (max-width: 960px) { .sa-grid--metrics, .fr-grid { grid-template-columns: 1fr; } .fr-wide { grid-column: span 1; } }
+@import '@/styles/module-page.css';
 </style>

@@ -10,7 +10,7 @@
     <div class="ad-batchbar">
       <label class="ad-batchsel">
         <span>认定批次</span>
-        <AppSelect v-model="batchId" class="ad-batchpick" :options="batchOptions" placeholder="（请选择批次）" @change="onBatchChange" />
+        <AppAidBatchPicker v-model="batchId" class="ad-batchpick" :options="batchOptions" placeholder="（请选择批次）" @change="onBatchChange" />
       </label>
       <div class="ad-batchtools">
         <AppPermissionButton code="studentAffairs.aid.batch.manage" variant="secondary" size="sm" @click="openBatch">建批次</AppPermissionButton>
@@ -196,7 +196,7 @@
       <div class="ad-modal">
         <h3 class="ad-modal__title">受理困难认定申请</h3>
         <div class="ad-field"><span>学生 <i>*</i></span>
-          <AppStudentPicker v-model="applyModal.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
+          <AppStudentPicker v-model="applyModal.studentId" placeholder="按姓名 / 学号搜索学生" />
         </div>
         <label class="ad-field"><span>申请等级 <i>*</i></span>
           <AppSelect v-model="applyModal.applyLevel" :options="levelOptions" placeholder="" />
@@ -235,7 +235,7 @@
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
   AppConfirmDialog, AppNumberInput, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
-  AppStudentPicker, AppTextInput, AppTextarea
+  AppStudentPicker, AppAidBatchPicker, AppTextInput, AppTextarea
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -254,7 +254,7 @@ export default {
   name: 'AidWorkbenchView',
   components: {
     ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppNumberInput,
-    AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+    AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppAidBatchPicker, AppTextInput, AppTextarea
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -505,9 +505,6 @@ export default {
     // ── 受理 ──
     openApply() {
       this.applyModal = { visible: true, studentId: '', applyLevel: 'DIFFICULT', statement: '', memberCount: null, annualIncome: '', debt: '', error: '' }
-    },
-    searchStudents(keyword) {
-      return studentAffairsApi.searchStudents(keyword)
     },
     async submitApply() {
       const m = this.applyModal

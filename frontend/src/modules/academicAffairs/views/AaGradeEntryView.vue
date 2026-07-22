@@ -6,25 +6,25 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/grade-overview')">成绩总览</button>
-      <button class="mp-btn" @click="loadTasks">我的录入任务</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/grade-overview')">成绩总览</AppButton>
+      <AppButton @click="loadTasks">我的录入任务</AppButton>
     </template>
 
     <div class="mp-stack">
       <!-- 建任务 -->
       <AppSectionCard v-if="!task" title="新建成绩录入任务">
         <div class="aa-grid2">
-          <label class="aa-field"><span class="req">课程名称</span><input v-model.trim="form.courseName" class="aa-input" /></label>
-          <label class="aa-field"><span>学期码</span><input v-model.trim="form.termCode" class="aa-input" placeholder="如 2026-1" /></label>
+          <label class="aa-field"><span class="req">课程</span><AppCoursePicker v-model="form.courseId" @change="onCourseChange" /></label>
+          <label class="aa-field"><span>学期</span><AppTermCodePicker v-model="form.termCode" placeholder="选择学期（可空）" /></label>
           <label class="aa-field"><span>学分</span><input v-model.number="form.credit" type="number" min="0" step="0.5" class="aa-input" /></label>
-          <label class="aa-field"><span>班级ID</span><input v-model.trim="form.classId" class="aa-input" placeholder="选填，填了可自动圈定名单" /></label>
+          <label class="aa-field"><span>班级</span><AppClassPicker v-model="form.classId" placeholder="选填，选择后可自动圈定名单" /></label>
           <label class="aa-field"><span>平时占比%</span><input v-model.number="form.usualRatio" type="number" min="0" max="100" class="aa-input" /></label>
           <label class="aa-field"><span>期中占比%</span><input v-model.number="form.midtermRatio" type="number" min="0" max="100" class="aa-input" placeholder="0=不启用期中" /></label>
           <label class="aa-field"><span>期末占比%</span><input v-model.number="form.finalRatio" type="number" min="0" max="100" class="aa-input" /></label>
           <label class="aa-field"><span>及格线</span><input v-model.number="form.passLine" type="number" min="0" max="100" class="aa-input" /></label>
         </div>
         <p class="mp-note">平时 + 期中 + 期末占比之和必须 = 100（期中占比填 0 即不启用期中，等同「平时 + 期末」）。</p>
-        <div class="aa-actions"><button class="mp-btn mp-btn--primary" :disabled="creating" @click="createTask">{{ creating ? '创建中…' : '创建任务' }}</button></div>
+        <div class="aa-actions"><AppButton variant="primary" :loading="creating" @click="createTask">创建任务</AppButton></div>
 
         <div v-if="myTasks.length" class="aa-my-tasks">
           <h4>我的录入任务</h4>
@@ -52,17 +52,10 @@
 
         <AppSectionCard v-if="editable" title="添加学生">
           <div class="aa-reg-search">
-            <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生添加到录入表" @keyup.enter="searchStudents" />
-            <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
-            <button class="mp-btn" :disabled="loadingRoster" @click="loadRoster">按班级自动圈定名单</button>
-            <button class="mp-btn" @click="importVisible = true">导入成绩（Excel）</button>
+            <AppStudentPicker v-model="candidateStudentId" class="aa-input--grow" placeholder="按姓名/学号检索并添加学生" @change="onStudentPicked" />
+            <AppButton :loading="loadingRoster" @click="loadRoster">按班级自动圈定名单</AppButton>
+            <AppButton @click="importVisible = true">导入成绩（Excel）</AppButton>
           </div>
-          <ul v-if="candidates.length" class="aa-cand-list">
-            <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
-              <span>{{ s.realName }} · 学号 {{ s.studentNo }}</span>
-              <button class="mp-link" @click="addRow(s)">加入</button>
-            </li>
-          </ul>
         </AppSectionCard>
 
         <AppExcelImportDrawer
@@ -99,7 +92,7 @@
             </tbody>
           </table>
           <div v-if="editable" class="aa-actions">
-            <button class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交进入学院审核' }}</button>
+            <AppButton variant="primary" :loading="submitting" @click="submit">提交进入学院审核</AppButton>
             <span class="mp-note">提交前所有学生须录全平时+期末分或有异常标记；提交后进入学院审核，不可再改（退回后可重新录入）。</span>
           </div>
         </AppSectionCard>
@@ -111,7 +104,8 @@
 <script>
 /** 成绩录入（/admin/academic-affairs/grade-entry）：POST /grade-tasks + /scores + /submit。 */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppCoursePicker, AppTermCodePicker, AppClassPicker, AppStudentPicker } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -125,13 +119,13 @@ const EDITABLE_STATUS = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
 
 export default {
   name: 'AaGradeEntryView',
-  components: { ModulePageShell, EmptyState, AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer },
+  components: { ModulePageShell, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer, AppCoursePicker, AppTermCodePicker, AppClassPicker, AppStudentPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      form: { courseName: '', termCode: '', credit: null, classId: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70, passLine: 60 },
+      form: { courseId: '', courseName: '', termCode: '', credit: null, classId: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70, passLine: 60 },
       creating: false, task: null, myTasks: [],
-      kw: '', searching: false, loadingRoster: false, candidates: [], rows: [], submitting: false,
+      candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
       importVisible: false
     }
   },
@@ -151,6 +145,23 @@ export default {
     this.loadTasks()
   },
   methods: {
+    onCourseChange(value, items) {
+      const item = items?.[0]
+      const course = item?.raw || item || {}
+      this.form.courseName = course.courseName || course.name || item?.label || ''
+      if (course.credit != null) this.form.credit = course.credit
+    },
+    onStudentPicked(value, items) {
+      const item = items?.[0]
+      if (!item) return
+      const student = item.raw || item
+      this.addRow({
+        ...student,
+        studentId: student.studentId || student.id || value,
+        realName: student.realName || student.studentName || student.name || item.label
+      })
+      this.candidateStudentId = ''
+    },
     statusLabel(s) { return TASK_STATUS[s] || s || '' },
     statusColor(s) {
       if (s === 'PUBLISHED') return 'success'
@@ -165,7 +176,6 @@ export default {
     async openTask(t) {
       this.task = { ...t }
       this.rows = []
-      this.candidates = []
       await this.refreshRecords()
       if (this.$route.query.action === 'import') this.importVisible = true
     },
@@ -215,17 +225,9 @@ export default {
         toast.error(res.message || '加载名单失败')
       }
     },
-    async searchStudents() {
-      if (this.searching) return
-      this.searching = true
-      const res = await academicAffairsApi.getRoster({ keyword: this.kw || undefined, page: 1, pageSize: 20 })
-      this.candidates = res.code === 0 ? res.data.list : []
-      this.searching = false
-    },
     addRow(s) {
       if (this.rows.some((r) => r.studentId === s.studentId)) return
       this.rows.push({ studentId: s.studentId, realName: s.realName, usual: null, midterm: null, final: null, total: null, passStatus: null, exceptionFlag: 'NORMAL' })
-      this.candidates = this.candidates.filter((c) => c.studentId !== s.studentId)
     },
     async saveRow(r) {
       const res = await academicAffairsApi.enterScore(this.task.gradeTaskId, {

@@ -12,13 +12,21 @@
  */
 import { INTERNSHIP_HELP_CARDS } from '@/config/help/internshipHelpCards'
 import { GRADUATION_HELP_CARDS } from '@/config/help/graduationHelpCards'
+import { GRADUATION_OVERVIEW_DOC, GRADUATION_RELATIONSHIP_MAP_DOC } from '@/config/help/graduationHelpDocs'
+import { INTERNSHIP_OVERVIEW_DOC, INTERNSHIP_RELATIONSHIP_MAP_DOC } from '@/config/help/internshipHelpDocs'
 import { STUDENT_AFFAIRS_HELP_CARDS } from '@/config/help/studentAffairsHelpCards'
 import { ACADEMIC_AFFAIRS_HELP_CARDS } from '@/config/help/academicAffairsHelpCards'
-import { STUDENT_AFFAIRS_HELP_DOCS } from '@/config/help/studentAffairsHelpDocs'
-import { ACADEMIC_AFFAIRS_HELP_DOCS } from '@/config/help/academicAffairsHelpDocs'
+import { STUDENT_AFFAIRS_HELP_DOCS, STUDENT_AFFAIRS_OVERVIEW_DOC } from '@/config/help/studentAffairsHelpDocs'
+import { ACADEMIC_AFFAIRS_HELP_DOCS, ACADEMIC_AFFAIRS_OVERVIEW_DOC } from '@/config/help/academicAffairsHelpDocs'
 
 /** 功能帮助文档：对现有模块/高频操作的使用说明 */
 export const HELP_DOCS = [
+  ACADEMIC_AFFAIRS_OVERVIEW_DOC,
+  STUDENT_AFFAIRS_OVERVIEW_DOC,
+  GRADUATION_RELATIONSHIP_MAP_DOC,
+  GRADUATION_OVERVIEW_DOC,
+  INTERNSHIP_RELATIONSHIP_MAP_DOC,
+  INTERNSHIP_OVERVIEW_DOC,
   {
     id: 'doc-workbench',
     title: '工作台与「我的常用」',
@@ -514,7 +522,11 @@ export const HELP_CARDS = [...STUDENT_AFFAIRS_HELP_CARDS, ...ACADEMIC_AFFAIRS_HE
 
 /** 分类聚合，供帮助中心页面侧栏渲染 */
 export const HELP_SECTIONS = [
-  { key: 'docs', label: '功能帮助', items: HELP_DOCS },
+  { key: 'aa-overview', label: '教务中心 · 教师一眼通', items: [ACADEMIC_AFFAIRS_OVERVIEW_DOC] },
+  { key: 'sa-overview', label: '学工中心 · 老师一眼通', items: [STUDENT_AFFAIRS_OVERVIEW_DOC] },
+  { key: 'gd-overview', label: '毕业设计中心 · 老师一眼通', items: [GRADUATION_RELATIONSHIP_MAP_DOC, GRADUATION_OVERVIEW_DOC] },
+  { key: 'in-overview', label: '岗位实习中心 · 老师一眼通', items: [INTERNSHIP_RELATIONSHIP_MAP_DOC, INTERNSHIP_OVERVIEW_DOC] },
+  { key: 'docs', label: '功能帮助', items: HELP_DOCS.filter((item) => ![ACADEMIC_AFFAIRS_OVERVIEW_DOC.id, STUDENT_AFFAIRS_OVERVIEW_DOC.id, GRADUATION_RELATIONSHIP_MAP_DOC.id, GRADUATION_OVERVIEW_DOC.id, INTERNSHIP_RELATIONSHIP_MAP_DOC.id, INTERNSHIP_OVERVIEW_DOC.id].includes(item.id)) },
   { key: 'flows', label: '业务流程图', items: HELP_FLOWS },
   { key: 'sa-cards', label: '学工中心 · 任务卡', items: STUDENT_AFFAIRS_HELP_CARDS },
   { key: 'aa-cards', label: '教务中心 · 任务卡', items: ACADEMIC_AFFAIRS_HELP_CARDS },

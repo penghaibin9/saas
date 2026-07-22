@@ -70,7 +70,7 @@
           <AppSelect v-model="form.category" :options="[{ label: '大学英语等级(CET)', value: 'CET' }, { label: '普通话水平', value: 'PUTONGHUA' }, { label: '职业技能等级证书', value: 'SKILL' }, { label: '其他', value: 'OTHER' }]" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="等级"><AppTextInput v-model="form.level" placeholder="如 四级 / 二甲 / 中级" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="考试日期"><AppTextInput v-model="form.examDate" placeholder="YYYY-MM-DD" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="考试日期"><AppDatePicker v-model="form.examDate" :disabled="saving" /></AppFormItem>
         <AppFormItem label="报名费（元）"><AppNumberInput v-model="form.fee" :min="0" :max="9999" :disabled="saving" /></AppFormItem>
         <AppFormItem label="合格线（分数制考试）"><AppNumberInput v-model="form.passLine" :min="0" :max="750" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
@@ -106,7 +106,7 @@
 /** 等级考务（/admin/academic-affairs/level-exams）：建考→报名→缴费确认→成绩录入。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppDatePicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsLevelExamApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -117,7 +117,7 @@ export default {
   name: 'AaLevelExamView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect
+    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppDatePicker
   },
   data() {
     return {

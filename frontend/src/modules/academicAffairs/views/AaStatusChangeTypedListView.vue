@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="goApply">＋ 新增{{ pageMeta.title }}</button>
+      <AppButton variant="primary" @click="goApply">＋ 新增{{ pageMeta.title }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -43,6 +43,7 @@
  * 新增申请复用既有「发起异动」表单页（?type=X 预设并锁定类型，逻辑与既有 SC1-8 全链路测试完全一致）。
  */
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { STATUS_LABEL, NODE_LABEL, TYPE_PAGE_META, statusColor } from '@/modules/academicAffairs/constants/status-change'
 
@@ -50,7 +51,7 @@ const EMPTY = () => ({ status: '' })
 
 export default {
   name: 'AaStatusChangeTypedListView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

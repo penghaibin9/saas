@@ -2,8 +2,8 @@
   <ModulePageShell title="资源冲突" subtitle="预约与已发布课表的跨源冲突台账（区别于排课批次内冲突检测）">
     <div class="mp-stack">
       <div class="aarc-bar">
-        <AppTextInput v-model="dateFrom" placeholder="起始日期 YYYY-MM-DD" style="max-width:180px" />
-        <AppTextInput v-model="dateTo" placeholder="结束日期（选填，最多31天）" style="max-width:200px" />
+        <AppDatePicker v-model="dateFrom" placeholder="起始日期" style="max-width:180px" />
+        <AppDatePicker v-model="dateTo" placeholder="结束日期（选填）" style="max-width:180px" />
         <AppButton variant="primary" @click="load">查询</AppButton>
       </div>
 
@@ -29,7 +29,7 @@
 /** 教学资源续卡 · 资源冲突（/admin/academic-affairs/resources/conflicts）：预约 vs 已发布课表跨源冲突台账。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppTextInput } from '@/components/common'
+import { AppDatePicker } from '@/components/common'
 import { academicAffairsResourceApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 function todayStr() {
@@ -40,7 +40,7 @@ function todayStr() {
 
 export default {
   name: 'AaResourceConflictView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppTextInput },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppDatePicker },
   data() {
     return {
       loading: true,

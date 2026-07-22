@@ -97,9 +97,8 @@
 
         <template v-else>
           <AppFormItem v-if="panel.mode === 'create'" label="实习学生" required>
-            <AppStudentPicker
+            <AppInternshipStudentPicker
               v-model="cForm.internshipId"
-              :remote-search="searchInternStudents"
               placeholder="输入姓名或学号搜索实习学生"
               search-placeholder="按姓名 / 学号搜索"
               data-scope-hint="指导教师仅本人指导学生；管理员全校"
@@ -130,9 +129,8 @@
 import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppNumberInput, AppFormItem, AppStudentPicker } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppNumberInput, AppFormItem, AppInternshipStudentPicker } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
-import { searchInternStudents } from './components/entityPickerAdapters'
 import { scoreApi } from '@/modules/internship/api/score.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
@@ -166,7 +164,7 @@ export default {
   name: 'ScoreView',
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DataTable, ModuleSummaryStrip, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton,
-    AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppNumberInput, AppFormItem, AppStudentPicker },
+    AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppNumberInput, AppFormItem, AppInternshipStudentPicker },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -238,7 +236,6 @@ export default {
       this.rows = res.data.list; this.total = res.data.total
     },
     // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchInternStudents,
     isMissing(v) { return v === null || v === undefined || v === '' },
     canRecalc(row) { return RECALC_STATUSES.includes(row.status) },
     closePanel() { this.panel = { visible: false, mode: 'detail', rowId: '', loading: false, data: null, submitting: false } },

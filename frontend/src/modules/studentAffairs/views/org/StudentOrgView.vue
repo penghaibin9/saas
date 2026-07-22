@@ -51,21 +51,20 @@
               <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.org.manage" size="sm" @click="openAppoint">任命</AppPermissionButton>
             </div>
             <div v-if="apForm.visible" class="og-inline">
-              <AppStudentPicker v-model="apForm.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
+              <AppStudentPicker v-model="apForm.studentId" placeholder="按姓名 / 学号搜索学生" />
               <AppTextInput v-model="apForm.position" placeholder="职务 如 主席/部长" />
               <AppTextInput v-model="apForm.termCode" placeholder="任期 如 2025-2026" />
               <AppPermissionButton code="studentAffairs.org.manage" size="sm" @click="appoint">任命</AppPermissionButton>
             </div>
-            <table class="sa-table">
-              <thead><tr><th>学生</th><th>职务</th><th>任期</th><th>操作</th></tr></thead>
-              <tbody>
-                <tr v-for="p in positions" :key="p.positionId">
-                  <td>{{ p.realName || ('#'+p.studentId) }}</td><td>{{ p.position }}</td><td>{{ p.termCode || '—' }}</td>
-                  <td><AppPermissionButton code="studentAffairs.org.manage" size="sm" variant="secondary" danger @click="dismiss(p)">卸任</AppPermissionButton></td>
-                </tr>
-                <tr v-if="!positions.length"><td colspan="4" class="sa-empty">暂无在任成员</td></tr>
-              </tbody>
-            </table>
+            <DataTable v-if="positions.length" :columns="positionColumns" :rows="positions" row-key="positionId">
+              <template #cell-student="{ row }">{{ row.realName || ('#'+row.studentId) }}</template>
+              <template #cell-position="{ row }">{{ row.position }}</template>
+              <template #cell-term="{ row }">{{ row.termCode || '—' }}</template>
+              <template #cell-actions="{ row }">
+                <AppPermissionButton code="studentAffairs.org.manage" size="sm" variant="secondary" danger @click="dismiss(row)">卸任</AppPermissionButton>
+              </template>
+            </DataTable>
+            <p v-else class="sa-empty">暂无在任成员</p>
           </template>
         </AppSectionCard>
       </div>
@@ -78,21 +77,29 @@ import {
   AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect,
   AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPES = { STUDENT_UNION: '学生会', SOCIETY_FEDERATION: '社团联合会', SELF_GOV: '自律委员会', OTHER: '其他组织' }
 const TYPE_OPTIONS = Object.entries(TYPES).map(([value, label]) => ({ value, label }))
 const LEVEL_OPTIONS = [{ value: 'SCHOOL', label: '校级' }, { value: 'COLLEGE', label: '院级' }]
+const POSITION_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'position', title: '职务' },
+  { key: 'term', title: '任期' },
+  { key: 'actions', title: '操作', align: 'right', width: '100px' }
+]
 
 export default {
   name: 'StudentOrgView',
   components: {
     AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect,
-    StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+    StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
     return {
+      positionColumns: POSITION_COLUMNS,
       loading: true, saving: false, errorMessage: '', items: [], TYPES,
       formVisible: false, form: { orgName: '', orgType: 'STUDENT_UNION', level: 'SCHOOL', advisorName: '', error: '' },
       sel: null, positions: [], apForm: { visible: false, studentId: null, position: '', termCode: '' }
@@ -122,7 +129,6 @@ export default {
       this.loading = false
     },
     openForm() { this.form = { orgName: '', orgType: 'STUDENT_UNION', level: 'SCHOOL', advisorName: '', error: '' }; this.formVisible = true },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async save() {
       const m = this.form
       const orgName = (m.orgName || '').trim()
@@ -175,8 +181,7 @@ export default {
 .og-inline { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
 .og-inline > * { flex: 1 1 180px; min-width: 180px; }
 .og-inline > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .og-grid, .og-layout { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

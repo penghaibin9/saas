@@ -13,6 +13,7 @@ from app.models.message import UnifiedMessage  # noqa: F401
 from app.models.notification_preference import NotificationPreference  # noqa: F401
 from app.models.user_preference import UserPreference  # noqa: F401
 from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401
+from app.models.system_config import DataScopeRule, MenuNode, SysConfig  # noqa: F401  (系统管理·可编辑配置)
 from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAgreement,  # noqa: F401

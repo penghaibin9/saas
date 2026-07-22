@@ -32,7 +32,7 @@
       </template>
       <template v-else-if="action === 'guidance'">
         <label class="ie-fld"><span class="ie-lbl">指导方式</span>
-          <select v-model="guidanceForm.method" class="ie-in"><option value="ONLINE">线上</option><option value="OFFLINE">线下</option></select>
+          <AppSelect v-model="guidanceForm.method" :options="guidanceMethodOptions" />
         </label>
         <AppDateTimePicker v-model="guidanceForm.guidanceDate" class="ie-fld" label="指导时间" hint="默认当前时间" />
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">指导内容 <i>*</i></span>
@@ -43,9 +43,7 @@
       </template>
       <template v-else-if="action === 'midterm'">
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">结论 <i>*</i></span>
-          <select v-model="mtForm.conclusion" class="ie-in">
-            <option value="PASS">通过</option><option value="RECTIFY">限期整改</option><option value="FAIL">不通过</option>
-          </select>
+          <AppSelect v-model="mtForm.conclusion" :options="midtermConclusionOptions" />
         </label>
         <AppDeadlinePicker v-if="mtForm.conclusion === 'RECTIFY'" v-model="mtForm.rectifyDeadline" class="ie-fld ie-fld--full" label="整改截止日期" hint="限期整改默认 23:59" />
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">检查意见</span>
@@ -72,7 +70,7 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import { AppDateTimePicker, AppDeadlinePicker } from '@/components/common/date'
-import { AppTemplateChips } from '@/components/common'
+import { AppSelect, AppTemplateChips } from '@/components/common'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
@@ -124,12 +122,14 @@ const RECTIFY_CONTENT_CHIPS = [
 
 export default {
   name: 'GraduationProcessActionView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, AppDateTimePicker, AppDeadlinePicker, AppTemplateChips },
+  components: { GraduationFormPageShell, LoadingState, ErrorState, AppDateTimePicker, AppDeadlinePicker, AppSelect, AppTemplateChips },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       TASKBOOK_OBJECTIVE_CHIPS, TASKBOOK_CONTENT_CHIPS, TASKBOOK_REQUIREMENT_CHIPS, TASKBOOK_PROGRESS_CHIPS, GUIDANCE_CONTENT_CHIPS,
       TASKBOOK_REASON_CHIPS, MIDTERM_COMMENT_CHIPS, RECTIFY_CONTENT_CHIPS,
+      guidanceMethodOptions: [{ value: 'ONLINE', label: '线上' }, { value: 'OFFLINE', label: '线下' }],
+      midtermConclusionOptions: [{ value: 'PASS', label: '通过' }, { value: 'RECTIFY', label: '限期整改' }, { value: 'FAIL', label: '不通过' }],
       loading: true, error: '', student: null, action: 'taskbook', tbMode: 'issue',
       tbForm: { objective: '', content: '', progressPlan: '', outcomeRequirement: '', reason: '' },
       guidanceForm: { method: 'ONLINE', guidanceDate: '', content: '', issues: '' },

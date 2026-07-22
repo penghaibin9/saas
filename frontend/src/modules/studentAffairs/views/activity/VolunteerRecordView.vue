@@ -17,7 +17,7 @@
 
       <AppSectionCard v-if="formVisible" title="补录志愿时长">
         <div class="vf-grid">
-          <div class="vf-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="vf-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="vf-field"><span>服务名称 *</span><AppTextInput v-model="form.serviceName" placeholder="如：社区图书整理" /></label>
           <label class="vf-field"><span>时长(小时) *</span><AppNumberInput v-model="form.hours" :min="0" :step="0.5" /></label>
           <label class="vf-field"><span>服务单位</span><AppTextInput v-model="form.orgName" placeholder="如：社区服务中心" /></label>
@@ -35,27 +35,26 @@
           <button v-for="f in statusFilters" :key="f.key" type="button" class="vf-chip"
                   :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>服务名称</th><th>单位</th><th>时长</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="r in items" :key="r.recordId">
-              <td><strong>{{ r.realName || ('学生#' + r.studentId) }}</strong></td>
-              <td>{{ r.serviceName }}</td>
-              <td class="vf-org">{{ r.orgName || '—' }}</td>
-              <td>{{ r.hours }} h</td>
-              <td><StatusTag :type="statusType(r.status)" :label="r.statusLabel || r.status" dot />
-                <em v-if="r.status==='REJECTED' && r.rejectReason" class="vf-reason">{{ r.rejectReason }}</em></td>
-              <td class="vf-ops">
-                <template v-if="r.status==='PENDING'">
-                  <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" :loading="acting===r.recordId" @click="confirm(r)">认定</AppPermissionButton>
-                  <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" variant="secondary" danger :loading="acting===r.recordId" @click="reject(r)">驳回</AppPermissionButton>
-                </template>
-                <span v-else class="vf-dash">—</span>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="6" class="sa-empty">当前范围与筛选下暂无志愿记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="recordColumns" :rows="items" row-key="recordId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-serviceName="{ row }">{{ row.serviceName }}</template>
+          <template #cell-org="{ row }"><span class="vf-org">{{ row.orgName || '—' }}</span></template>
+          <template #cell-hours="{ row }">{{ row.hours }} h</template>
+          <template #cell-status="{ row }">
+            <StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot />
+            <em v-if="row.status==='REJECTED' && row.rejectReason" class="vf-reason">{{ row.rejectReason }}</em>
+          </template>
+          <template #cell-actions="{ row }">
+            <div class="vf-ops">
+              <template v-if="row.status==='PENDING'">
+                <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" :loading="acting===row.recordId" @click="confirm(row)">认定</AppPermissionButton>
+                <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" variant="secondary" danger :loading="acting===row.recordId" @click="reject(row)">驳回</AppPermissionButton>
+              </template>
+              <span v-else class="vf-dash">—</span>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围与筛选下暂无志愿记录</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -73,9 +72,18 @@ import {
   AppConfirmDialog, AppDatePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell,
   AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
+const RECORD_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'serviceName', title: '服务名称' },
+  { key: 'org', title: '单位' },
+  { key: 'hours', title: '时长' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '160px' }
+]
 const STATUS_FILTERS = [
   { key: '', label: '全部' }, { key: 'PENDING', label: '待认定' },
   { key: 'CONFIRMED', label: '已认定' }, { key: 'REJECTED', label: '已驳回' }
@@ -85,10 +93,11 @@ export default {
   name: 'VolunteerRecordView',
   components: {
     AppConfirmDialog, AppDatePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell,
-    AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+    AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
     return {
+      recordColumns: RECORD_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
       formVisible: false, form: this.blankForm(),
@@ -110,7 +119,6 @@ export default {
   mounted() { this.load() },
   methods: {
     blankForm() { return { studentId: '', serviceName: '', hours: null, orgName: '', serviceDate: '', error: '' } },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getVolunteerRecords({ pageSize: 300 })
@@ -169,12 +177,11 @@ export default {
 .vf-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .vf-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .vf-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .vf-org { color: var(--text-secondary); font-size: var(--font-size-sm); }
 .vf-reason { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .vf-ops { display: flex; gap: 6px; }
 .vf-dash { color: var(--text-tertiary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .vf-grid { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

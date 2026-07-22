@@ -3,10 +3,19 @@
     <p v-if="note" class="afd-note">{{ note }}</p>
     <div v-for="f in fields" :key="f.key" class="afd-field">
       <label class="afd-label">{{ f.label }}<span v-if="f.required" class="afd-req">*</span></label>
-      <select v-if="f.type === 'select'" class="afd-control" :value="modelValue[f.key] ?? ''" @change="update(f.key, $event.target.value)">
-        <option value="" disabled>请选择</option>
-        <option v-for="o in f.options || []" :key="o.value" :value="o.value">{{ o.label }}</option>
-      </select>
+      <AppSelect
+        v-if="f.type === 'select'"
+        :model-value="modelValue[f.key] ?? ''"
+        :options="f.options || []"
+        :placeholder="f.placeholder || '请选择'"
+        @update:model-value="update(f.key, $event)"
+      />
+      <AppDatePicker
+        v-else-if="f.type === 'date'"
+        :model-value="modelValue[f.key] ?? ''"
+        :placeholder="f.placeholder || '请选择日期'"
+        @update:model-value="update(f.key, $event)"
+      />
       <textarea
         v-else-if="f.type === 'textarea'"
         class="afd-control afd-control--area"
@@ -17,7 +26,7 @@
       />
       <input
         v-else
-        :type="f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'"
+        :type="f.type === 'number' ? 'number' : 'text'"
         class="afd-control"
         :placeholder="f.placeholder || '请输入'"
         :value="modelValue[f.key] ?? ''"
@@ -39,10 +48,11 @@
  */
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { AppButton } from '@/components/ui'
+import { AppSelect, AppDatePicker } from '@/components/common'
 
 export default {
   name: 'AcademicFormDrawer',
-  components: { AppDrawer, AppButton },
+  components: { AppDrawer, AppButton, AppSelect, AppDatePicker },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },

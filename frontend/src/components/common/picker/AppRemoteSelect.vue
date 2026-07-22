@@ -58,7 +58,14 @@
           :key="opt.value"
           class="app-remote-select__option"
           :class="{ 'is-checked': isChecked(opt.value), 'is-disabled': opt.disabled || isMaxed(opt.value) }"
-          @click="pick(opt)"
+          role="option"
+          :aria-selected="isChecked(opt.value)"
+          :aria-disabled="opt.disabled || isMaxed(opt.value)"
+          :tabindex="opt.disabled || isMaxed(opt.value) ? -1 : 0"
+          @mousedown.prevent
+          @click.prevent.stop="pick(opt)"
+          @keydown.enter.prevent.stop="pick(opt)"
+          @keydown.space.prevent.stop="pick(opt)"
         >
           <span v-if="multiple" class="app-remote-select__box">
             <span v-if="isChecked(opt.value)" class="app-remote-select__tick">✓</span>
@@ -83,15 +90,15 @@
 /**
  * AppRemoteSelect — 业务选择器通用基座（学生/教师/组织/批次等所有业务 Picker 的底座）。
  *
- * ⚠️ 现状（partial 部分完成）：本组件只做通用 UI 与调用规范。是否接真实后端，取决于调用方是否传
- *    remoteSearch。未接后端（只传 options）时，属于 UI 就绪、数据未接，各业务 Picker 一律标 partial，
- *    不得当作“已接真实师生/组织数据”对外宣称。数据范围过滤必须由后端按数据范围返回，前端不自行放大。
+ * 数据源可由页面显式传入，也可由上层布局注入统一业务适配器。组件负责查询、并发结果保护和编辑态
+ * value 回显；数据范围过滤始终由后端完成，前端不自行放大。
  *
  * Props:
  *  - modelValue: 单选=值；多选=值数组
  *  - multiple: 是否多选
  *  - options: 本地选项 [{ label, value, desc?, disabled? }]
- *  - remoteSearch: (keyword) => Promise<options>  远程搜索（预留，业务方注入真实接口）
+ *  - remoteSearch: (keyword) => Promise<options>  远程搜索
+ *  - resolveByValue: (value|values) => Promise<option|options>  编辑态回显
  *  - minKeyword: 触发远程搜索的最小字数（默认 1）
  *  - placeholder / searchPlaceholder / emptyText
  *  - clearable / disabled / disabledReason / size / status / max(多选上限)
@@ -105,6 +112,10 @@ export default {
     multiple: { type: Boolean, default: false },
     options: { type: Array, default: () => [] },
     remoteSearch: { type: Function, default: null },
+    /** 编辑态按已选 value 补齐展示标签，避免选择器回显数据库 ID。 */
+    resolveByValue: { type: Function, default: null },
+    /** 打开面板时用空关键词预加载最近/常用项。 */
+    loadOnOpen: { type: Boolean, default: true },
     minKeyword: { type: Number, default: 1 },
     placeholder: { type: String, default: '请选择' },
     searchPlaceholder: { type: String, default: '输入关键词搜索…' },
@@ -119,14 +130,31 @@ export default {
   },
   emits: ['update:modelValue', 'change', 'search'],
   data() {
-    return { open: false, keyword: '', remoteOptions: null, remoteLoading: false, panelError: '', labelCache: {} }
+    return {
+      open: false,
+      keyword: '',
+      remoteOptions: null,
+      remoteLoading: false,
+      resolving: false,
+      panelError: '',
+      labelCache: {},
+      resolvedOptions: [],
+      requestSeq: 0,
+      resolveSeq: 0
+    }
   },
   computed: {
     localNormalized() {
       return this.options.map((o) => (typeof o === 'object' ? o : { label: o, value: o }))
     },
     displayOptions() {
-      const src = this.remoteSearch && this.remoteOptions !== null ? this.remoteOptions : this.localNormalized
+      const base = this.remoteSearch && this.remoteOptions !== null ? this.remoteOptions : this.localNormalized
+      const seen = new Set()
+      const src = [...this.resolvedOptions, ...base].filter((item) => {
+        if (seen.has(item.value)) return false
+        seen.add(item.value)
+        return true
+      })
       if (!this.remoteSearch && this.keyword) {
         const k = this.keyword.toLowerCase()
         return src.filter((o) => String(o.label).toLowerCase().includes(k))
@@ -142,12 +170,12 @@ export default {
       return this.modelValue !== '' && this.modelValue !== null && this.modelValue !== undefined
     },
     selectedItems() {
-      return this.valueArray.map((v) => ({ value: v, label: this.labelOf(v) }))
+      return this.valueArray.map((v) => this.itemOf(v))
     },
     singleLabel() {
       return this.hasValue ? this.labelOf(this.modelValue) : ''
     },
-    panelLoading() { return this.remoteLoading },
+    panelLoading() { return this.remoteLoading || this.resolving },
     emptyHint() {
       if (this.remoteSearch && !this.keyword) return '输入关键词开始搜索'
       return this.emptyText
@@ -155,10 +183,15 @@ export default {
   },
   watch: {
     options: { handler() { this.cacheLabels(this.localNormalized) }, immediate: true },
-    displayOptions(v) { this.cacheLabels(v) }
+    displayOptions(v) { this.cacheLabels(v) },
+    modelValue: { handler() { this.hydrateSelected() }, immediate: true, deep: true },
+    resolveByValue() { this.hydrateSelected() }
   },
   methods: {
     labelOf(v) { return this.labelCache[v] != null ? this.labelCache[v] : v },
+    itemOf(v) {
+      return this.displayOptions.find((item) => String(item.value) === String(v)) || { value: v, label: this.labelOf(v) }
+    },
     cacheLabels(list) {
       if (!list) return
       const next = { ...this.labelCache }
@@ -168,7 +201,7 @@ export default {
     toggleOpen() {
       if (this.disabled) return
       this.open = !this.open
-      if (this.open && this.remoteSearch && this.remoteOptions === null && !this.keyword) {
+      if (this.open && this.loadOnOpen && this.remoteSearch && this.remoteOptions === null && !this.keyword) {
         // 打开即触发一次空搜索，业务方可返回默认列表
         this.doRemote()
       }
@@ -182,25 +215,49 @@ export default {
     },
     async doRemote() {
       if (!this.remoteSearch) return
+      const seq = ++this.requestSeq
       this.remoteLoading = true
       this.panelError = ''
       try {
         const res = await this.remoteSearch(this.keyword)
+        if (seq !== this.requestSeq) return
         this.remoteOptions = (res || []).map((o) => (typeof o === 'object' ? o : { label: o, value: o }))
         this.cacheLabels(this.remoteOptions)
       } catch (e) {
+        if (seq !== this.requestSeq) return
         this.panelError = (e && e.message) || '搜索失败'
       } finally {
-        this.remoteLoading = false
+        if (seq === this.requestSeq) this.remoteLoading = false
       }
     },
-    isChecked(v) { return this.valueArray.includes(v) },
+    async hydrateSelected() {
+      if (!this.resolveByValue || !this.hasValue) return
+      const missing = this.valueArray.filter((v) => this.labelCache[v] == null)
+      if (!missing.length) return
+      const seq = ++this.resolveSeq
+      this.resolving = true
+      try {
+        const res = await this.resolveByValue(this.multiple ? missing : missing[0])
+        if (seq !== this.resolveSeq) return
+        const list = (Array.isArray(res) ? res : [res]).filter(Boolean)
+          .map((o) => (typeof o === 'object' ? o : { label: o, value: o }))
+        const byValue = new Map(this.resolvedOptions.map((o) => [o.value, o]))
+        list.forEach((o) => byValue.set(o.value, o))
+        this.resolvedOptions = [...byValue.values()]
+        this.cacheLabels(list)
+      } catch {
+        // 回显失败不阻断表单；保留原值，打开面板后仍可重新搜索。
+      } finally {
+        if (seq === this.resolveSeq) this.resolving = false
+      }
+    },
+    isChecked(v) { return this.valueArray.some((current) => String(current) === String(v)) },
     isMaxed(v) { return this.multiple && this.max > 0 && this.valueArray.length >= this.max && !this.isChecked(v) },
     pick(opt) {
       if (opt.disabled) return
       if (this.multiple) {
         let next
-        if (this.isChecked(opt.value)) next = this.valueArray.filter((v) => v !== opt.value)
+        if (this.isChecked(opt.value)) next = this.valueArray.filter((v) => String(v) !== String(opt.value))
         else { if (this.isMaxed(opt.value)) return; next = [...this.valueArray, opt.value] }
         this.emit(next)
       } else {
@@ -208,12 +265,12 @@ export default {
         this.open = false
       }
     },
-    removeValue(v) { this.emit(this.valueArray.filter((x) => x !== v)) },
+    removeValue(v) { this.emit(this.valueArray.filter((x) => String(x) !== String(v))) },
     clearAll() { this.emit(this.multiple ? [] : '') },
     emit(val) {
       this.$emit('update:modelValue', val)
       const items = (this.multiple ? val : [val]).filter((v) => v !== '' && v != null)
-        .map((v) => ({ value: v, label: this.labelOf(v) }))
+        .map((v) => this.itemOf(v))
       this.$emit('change', val, items)
     },
     onOutside(e) { if (!this.$el.contains(e.target)) this.open = false }
@@ -225,6 +282,9 @@ export default {
 
 <style scoped>
 .app-remote-select { position: relative; width: 100%; }
+/* Picker 常被放在 label / CSS Grid 中；打开时必须把整个根节点提升到相邻表单项之上，
+   只给下拉面板 z-index 会在部分浏览器中被后绘制的 grid item 截获点击。 */
+.app-remote-select.is-open { z-index: 100; }
 .app-remote-select__control {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1);
   min-height: 34px; padding: 3px var(--space-6) 3px var(--space-2);

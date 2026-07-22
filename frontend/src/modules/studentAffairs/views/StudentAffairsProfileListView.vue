@@ -14,9 +14,9 @@
 
     <AppSectionCard title="筛选">
       <div class="sa-filter">
-        <AppSearchBox v-model="filters.keyword" placeholder="搜索姓名、学号" @search="load" />
-        <AppSelect v-model="filters.riskLevel" class="sa-select" :options="RISK_FILTER_OPTIONS" placeholder="" @change="load" />
-        <AppPermissionButton code="studentAffairs.student.view" variant="secondary" @click="load">
+        <AppSearchBox v-model="filters.keyword" placeholder="搜索姓名、学号" @search="onSearch" />
+        <AppSelect v-model="filters.riskLevel" class="sa-select" :options="RISK_FILTER_OPTIONS" placeholder="" @change="onSearch" />
+        <AppPermissionButton code="studentAffairs.student.view" variant="secondary" @click="onSearch">
           查询
         </AppPermissionButton>
       </div>
@@ -29,52 +29,43 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
-      <AppSectionCard title="学生列表">
-        <div class="sa-table">
-          <table>
-            <thead>
-              <tr>
-                <th>学生</th>
-                <th>班级</th>
-                <th>学籍状态</th>
-                <th>风险</th>
-                <th>联系方式</th>
-                <th>更新时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in students" :key="row.studentId">
-                <td>
-                  <strong>{{ row.realName }}</strong>
-                  <small>{{ row.studentNo }}</small>
-                </td>
-                <td>{{ row.className }}</td>
-                <td><AppStatusTag :status="row.studentStatus" /></td>
-                <td><AppRiskTag :level="row.riskLevel || 'LOW'" size="sm" /></td>
-                <td><AppSensitiveText :value="row.phoneMasked || '未设置'" /></td>
-                <td><AppDateDisplay :value="row.updatedAt" mode="datetime" empty-text="未设置" /></td>
-                <td>
-                  <AppPermissionButton
-                    code="studentAffairs.student.view"
-                    size="sm"
-                    variant="secondary"
-                    @click="$router.push(`/admin/student-affairs/profile/${row.studentId}`)"
-                  >
-                    查看画像
-                  </AppPermissionButton>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <AppPagination
-          :page="pagination.page"
-          :page-size="pagination.pageSize"
-          :total="pagination.total"
-          @change="onPageChange"
-        />
-      </AppSectionCard>
+      <DataTable
+        :columns="columns"
+        :rows="students"
+        row-key="studentId"
+        :pagination="pagination"
+        @page-change="onPageChange"
+      >
+        <template #cell-student="{ row }">
+          <div class="mp-cell-main">{{ row.realName }}</div>
+          <div class="mp-cell-sub">{{ row.studentNo }}</div>
+        </template>
+        <template #cell-className="{ row }">
+          {{ row.className || '—' }}
+        </template>
+        <template #cell-studentStatus="{ row }">
+          <AppStatusTag :status="row.studentStatus" />
+        </template>
+        <template #cell-riskLevel="{ row }">
+          <AppRiskTag :level="row.riskLevel || 'LOW'" size="sm" />
+        </template>
+        <template #cell-phone="{ row }">
+          <AppSensitiveText :value="row.phoneMasked || '未设置'" />
+        </template>
+        <template #cell-updatedAt="{ row }">
+          <AppDateDisplay :value="row.updatedAt" mode="datetime" empty-text="未设置" />
+        </template>
+        <template #cell-actions="{ row }">
+          <AppPermissionButton
+            code="studentAffairs.student.view"
+            size="sm"
+            variant="secondary"
+            @click="$router.push(`/admin/student-affairs/profile/${row.studentId}`)"
+          >
+            查看画像
+          </AppPermissionButton>
+        </template>
+      </DataTable>
     </AppGlobalState>
   </AppPageShell>
 </template>
@@ -85,7 +76,6 @@ import {
   AppExportButton,
   AppGlobalState,
   AppPageShell,
-  AppPagination,
   AppPermissionButton,
   AppRiskTag,
   AppSearchBox,
@@ -94,6 +84,7 @@ import {
   AppSensitiveText,
   AppStatusTag
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
 
 const RISK_FILTER_OPTIONS = [
@@ -104,6 +95,17 @@ const RISK_FILTER_OPTIONS = [
   { value: 'CRITICAL', label: '严重风险' }
 ]
 
+// 列定义（key='actions' 的列点击不冒泡行点击，见 business/DataTable 约定）
+const COLUMNS = [
+  { key: 'student', title: '学生', width: '180px' },
+  { key: 'className', title: '班级' },
+  { key: 'studentStatus', title: '学籍状态' },
+  { key: 'riskLevel', title: '风险' },
+  { key: 'phone', title: '联系方式' },
+  { key: 'updatedAt', title: '更新时间' },
+  { key: 'actions', title: '操作', align: 'right', width: '120px' }
+]
+
 export default {
   name: 'StudentAffairsProfileListView',
   components: {
@@ -111,18 +113,19 @@ export default {
     AppExportButton,
     AppGlobalState,
     AppPageShell,
-    AppPagination,
     AppPermissionButton,
     AppRiskTag,
     AppSearchBox,
     AppSectionCard,
     AppSelect,
     AppSensitiveText,
-    AppStatusTag
+    AppStatusTag,
+    DataTable
   },
   data() {
     return {
       RISK_FILTER_OPTIONS,
+      columns: COLUMNS,
       loading: true,
       errorMessage: '',
       filters: { keyword: '', riskLevel: '' },
@@ -154,9 +157,13 @@ export default {
         this.loading = false
       }
     },
-    onPageChange(next) {
-      this.pagination.page = next.page || next
-      if (next.pageSize) this.pagination.pageSize = next.pageSize
+    // 筛选变更回到第一页再查，避免停留在越界页码
+    onSearch() {
+      this.pagination.page = 1
+      this.load()
+    },
+    onPageChange(page) {
+      this.pagination.page = page
       this.load()
     },
     exportLedger() {
@@ -176,29 +183,16 @@ export default {
 .sa-select {
   width: 150px;
 }
-.sa-table {
-  overflow-x: auto;
+/* 两行单元格（主名 + 学号）：与教务房屋风格统一（mp-cell-main / mp-cell-sub） */
+.mp-cell-main {
+  font-weight: var(--font-weight-semibold);
+  color: var(--t1);
+  font-size: 14.5px;
 }
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-th,
-td {
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border-light);
-  text-align: left;
-  font-size: var(--font-size-sm);
-  vertical-align: middle;
-}
-th {
-  color: var(--text-tertiary);
-  font-weight: var(--font-weight-medium);
-}
-td small {
-  display: block;
-  color: var(--text-tertiary);
+.mp-cell-sub {
   margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
 }
 </style>
-

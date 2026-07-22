@@ -11,6 +11,8 @@
       :size="size"
       @update:model-value="onSelect(i, $event)"
     />
+    <span v-if="loading" class="app-org-cascader__state">组织数据加载中…</span>
+    <button v-else-if="loadError" type="button" class="app-org-cascader__retry" @click="loadRemote">加载失败，重试</button>
   </div>
 </template>
 
@@ -33,21 +35,45 @@ import AppSelect from '../form/AppSelect.vue'
 export default {
   name: 'AppOrgCascader',
   components: { AppSelect },
+  inject: {
+    appPickerAdapters: { default: () => ({}) }
+  },
   props: {
     modelValue: { type: Array, default: () => [] },
     data: { type: Array, default: () => [] },
+    remoteLoad: { type: Function, default: null },
     levels: { type: Array, default: () => ['学院', '专业', '班级'] },
     disabled: { type: Boolean, default: false },
     size: { type: String, default: 'normal' }
   },
   emits: ['update:modelValue', 'change'],
+  data() {
+    return { remoteData: [], loading: false, loadError: '' }
+  },
   computed: {
     levelCount() { return this.levels.length },
-    values() { return Array.isArray(this.modelValue) ? this.modelValue : [] }
+    values() { return Array.isArray(this.modelValue) ? this.modelValue : [] },
+    treeData() { return this.data.length ? this.data : this.remoteData }
+  },
+  created() {
+    if (!this.data.length) this.loadRemote()
   },
   methods: {
+    async loadRemote() {
+      const loader = this.remoteLoad || this.appPickerAdapters?.orgCascade?.load
+      if (!loader) return
+      this.loading = true
+      this.loadError = ''
+      try {
+        this.remoteData = (await loader()) || []
+      } catch (e) {
+        this.loadError = e?.message || '组织数据加载失败'
+      } finally {
+        this.loading = false
+      }
+    },
     optionsAt(level) {
-      let nodes = this.data
+      let nodes = this.treeData
       for (let i = 0; i < level; i++) {
         const cur = nodes.find((n) => n.value === this.values[i])
         nodes = cur && cur.children ? cur.children : []
@@ -64,7 +90,7 @@ export default {
     },
     itemsOf(vals) {
       const items = []
-      let nodes = this.data
+      let nodes = this.treeData
       for (const v of vals) {
         const cur = nodes.find((n) => n.value === v)
         if (!cur) break
@@ -84,4 +110,6 @@ export default {
   flex-wrap: wrap;
 }
 .app-org-cascader__col { flex: 1; min-width: 120px; }
+.app-org-cascader__state { align-self: center; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.app-org-cascader__retry { border: 0; background: transparent; color: var(--text-link); cursor: pointer; }
 </style>

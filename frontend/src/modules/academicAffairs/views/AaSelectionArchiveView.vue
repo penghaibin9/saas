@@ -10,7 +10,7 @@
     </template>
 
     <div class="aasar-toolbar">
-      <AppTextInput v-model="termId" placeholder="按学期 ID 筛选（选填）" />
+      <AppTermEntityPicker v-model="termId" placeholder="全部学期" />
       <AppButton size="small" variant="ghost" @click="load">查询</AppButton>
     </div>
 
@@ -52,13 +52,13 @@
 /** 选课归档（/admin/academic-affairs/selection/archive）：ARCHIVED 批次历史查询 + 导出（12号卡）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppTextInput } from '@/components/common'
+import { AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsSelectionApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaSelectionArchiveView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppTextInput },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppTermEntityPicker },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },

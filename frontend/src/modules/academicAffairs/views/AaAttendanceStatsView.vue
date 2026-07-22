@@ -7,10 +7,10 @@
   >
     <div class="mp-stack">
       <div class="aa-filter">
-        <span class="aa-filter__label">行政班ID</span>
-        <AppTextInput v-model="classId" placeholder="选填，空=范围内全部" size="compact" style="max-width:190px" />
+        <span class="aa-filter__label">行政班</span>
+        <AppClassPicker v-model="classId" placeholder="全部班级" style="max-width:220px" />
         <span class="aa-filter__label">学期</span>
-        <AppTextInput v-model="termCode" placeholder="学期码，选填" size="compact" style="max-width:160px" />
+        <AppTermCodePicker v-model="termCode" placeholder="全部学期" style="max-width:220px" />
         <span class="aa-filter__label">点名类别</span>
         <AppSelect v-model="sessionType" :options="typeOptions" style="min-width:120px" @change="load" />
         <AppButton variant="ghost" @click="load">查询</AppButton>
@@ -41,14 +41,14 @@
 /** 课堂考勤统计（/admin/academic-affairs/attendance-stats）：GET /attendance/stats（跨堂次按学生汇总）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput } from '@/components/common'
+import { AppMetricCard, AppSectionCard, AppSelect, AppClassPicker, AppTermCodePicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 export default {
   name: 'AaAttendanceStatsView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-    AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput
+    AppButton, AppMetricCard, AppSectionCard, AppSelect, AppClassPicker, AppTermCodePicker
   },
   props: { ctx: { type: Object, required: true } },
   data() {

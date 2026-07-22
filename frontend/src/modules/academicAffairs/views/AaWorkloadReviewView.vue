@@ -10,7 +10,7 @@
         <span class="aa-filter__label">状态</span>
         <AppSelect v-model="status" :options="statusOptions" style="min-width:140px" @change="load" />
         <span class="aa-filter__label">学期</span>
-        <AppTextInput v-model="termCode" placeholder="学期码，选填" size="compact" style="max-width:160px" />
+        <AppTermCodePicker v-model="termCode" placeholder="全部学期" style="max-width:220px" />
         <AppButton variant="ghost" @click="load">查询</AppButton>
       </div>
 
@@ -54,7 +54,7 @@
 /** 工作量申报审核（/admin/academic-affairs/workload-review）：GET /workload-declarations + review。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppFormItem, AppSelect, AppTextInput, AppTextarea } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppFormItem, AppSelect, AppTextarea, AppTermCodePicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -64,7 +64,7 @@ export default {
   name: 'AaWorkloadReviewView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-    AppButton, AppSectionCard, AppStatusTag, AppFormItem, AppSelect, AppTextInput, AppTextarea
+      AppButton, AppSectionCard, AppStatusTag, AppFormItem, AppSelect, AppTextarea, AppTermCodePicker
   },
   props: { ctx: { type: Object, required: true } },
   data() {

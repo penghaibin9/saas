@@ -2,7 +2,7 @@
   <div class="aa-print">
     <div class="aa-print__bar">
       <span>{{ printTime }}</span>
-      <button v-if="!loading && !error" class="mp-btn mp-btn--primary" @click="doPrint">打印</button>
+      <AppPrintButton v-if="!loading && !error" variant="primary" :handler="doPrint" />
     </div>
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" />
@@ -36,11 +36,12 @@
 <script>
 /** 补考安排表打印页（三级施工卡 11-材料归档 D7）：/admin/academic-affairs/makeup/batches/:id/print，独立打印路由。 */
 import { LoadingState, ErrorState } from '@/components/business'
+import { AppPrintButton } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 export default {
   name: 'AaMakeupPrintView',
-  components: { LoadingState, ErrorState },
+  components: { LoadingState, ErrorState, AppPrintButton },
   data() {
     return { loading: true, error: '', schoolName: '职业院校', printTime: '', data: { students: [] } }
   },

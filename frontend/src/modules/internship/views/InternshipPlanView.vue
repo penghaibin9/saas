@@ -2,7 +2,7 @@
   <ModulePageShell title="实习计划书" subtitle="批次计划编制 · 任务清单 · 发布下发 · 学生确认台账"
     role-name="实习管理员 / 指导教师" :data-scope-name="scopeHint">
     <div class="bar">
-      <AppSelect v-model="batchId" :options="batchOptions" placeholder="选择实习批次" @change="onBatchChange" />
+      <AppInternshipBatchPicker v-model="batchId" placeholder="选择实习批次" @change="onBatchChange" />
       <AppButton v-if="batchId && canEdit" variant="primary" :loading="publishing" @click="publish">发布并下发</AppButton>
     </div>
 
@@ -125,12 +125,12 @@
 import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
-  AppFormItem, AppTextInput, AppTextarea, AppSelect, AppQuickFilterChips,
+  AppFormItem, AppTextInput, AppTextarea, AppSelect, AppQuickFilterChips, AppInternshipBatchPicker,
   AppDeadlinePicker, AppDateDisplay, AppConfirmDialog, AppInlineAlert,
   AppStatusTag, AppSearchBox, AppMetricCard
 } from '@/components/common'
 import { planApi } from '@/modules/internship/api/plan-insurance.api'
-import { internshipApi } from '@/modules/internship/api/internship.api'
+import { loadInitialInternshipBatch } from '@/modules/internship/pickerAdapters'
 import { toast } from '@/utils/toast'
 
 let _taskKey = 0
@@ -148,13 +148,13 @@ export default {
   name: 'InternshipPlanView',
   components: {
     ModulePageShell, DataTable, AppButton, AppFormItem, AppTextInput, AppTextarea,
-    AppSelect, AppQuickFilterChips, AppDeadlinePicker, AppDateDisplay, AppConfirmDialog,
+    AppSelect, AppQuickFilterChips, AppInternshipBatchPicker, AppDeadlinePicker, AppDateDisplay, AppConfirmDialog,
     AppInlineAlert, AppStatusTag, AppSearchBox, AppMetricCard
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      batchId: '', batchOptions: [], plan: null, loading: false, saving: false, publishing: false,
+      batchId: '', plan: null, loading: false, saving: false, publishing: false,
       form: { title: '', objectives: '', content: '' },
       tasks: [],
       acks: [], ackLoading: false, ackStatus: '', ackPagination: { page: 1, pageSize: 10, total: 0 },
@@ -219,7 +219,7 @@ export default {
       }
     }
   },
-  created() { this.loadBatches() },
+  created() { this.loadInitialBatch() },
   methods: {
     focusTaskPanel() {
       this.taskPanelFocus = true
@@ -239,12 +239,11 @@ export default {
         ? arr.map((t, i) => newTask({ ...t, sortOrder: t.sortOrder || i + 1 }))
         : []
     },
-    async loadBatches() {
-      const res = await internshipApi.getBatches({ page: 1, pageSize: 100 })
-      if (res.code === 0) {
-        this.batchOptions = (res.data.list || []).map((b) => ({ label: b.batchName, value: b.id }))
-        if (this.batchOptions.length) { this.batchId = this.batchOptions[0].value; this.onBatchChange() }
-      }
+    async loadInitialBatch() {
+      const batch = await loadInitialInternshipBatch()
+      if (!batch) return
+      this.batchId = batch.id
+      this.onBatchChange()
     },
     async onBatchChange() {
       if (!this.batchId) return

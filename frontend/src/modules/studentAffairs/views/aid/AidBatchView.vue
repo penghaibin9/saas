@@ -36,26 +36,23 @@
       </AppSectionCard>
 
       <AppSectionCard title="批次列表">
-        <table class="sa-table">
-          <thead><tr><th>批次名称</th><th>学年</th><th>状态</th><th>公示天数</th><th>申请窗口</th></tr></thead>
-          <tbody>
-            <tr v-for="b in batches" :key="b.batchId">
-              <td><strong>{{ b.batchName }}</strong></td>
-              <td>{{ b.schoolYear || '—' }}</td>
-              <td><StatusTag :type="statusType(b.status)" :label="statusLabel(b.status)" dot /></td>
-              <td>{{ b.publicityDays != null ? b.publicityDays + ' 天' : '—' }}</td>
-              <td class="bf-window">
-                <template v-if="b.applyStart || b.applyEnd">
-                  <AppDateDisplay :value="b.applyStart" mode="date" empty-text="…" />
-                  至
-                  <AppDateDisplay :value="b.applyEnd" mode="date" empty-text="…" />
-                </template>
-                <span v-else>—</span>
-              </td>
-            </tr>
-            <tr v-if="!batches.length"><td colspan="5" class="sa-empty">暂无认定批次，点右上「建批次」</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="batches.length" :columns="batchColumns" :rows="batches" row-key="batchId">
+          <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.batchName }}</span></template>
+          <template #cell-schoolYear="{ row }">{{ row.schoolYear || '—' }}</template>
+          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="statusLabel(row.status)" dot /></template>
+          <template #cell-publicityDays="{ row }">{{ row.publicityDays != null ? row.publicityDays + ' 天' : '—' }}</template>
+          <template #cell-window="{ row }">
+            <span class="bf-window">
+              <template v-if="row.applyStart || row.applyEnd">
+                <AppDateDisplay :value="row.applyStart" mode="date" empty-text="…" />
+                至
+                <AppDateDisplay :value="row.applyEnd" mode="date" empty-text="…" />
+              </template>
+              <span v-else>—</span>
+            </span>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无认定批次，点右上「建批次」</p>
         <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
                        :total="pagination.total" @change="load" />
       </AppSectionCard>
@@ -65,16 +62,25 @@
 
 <script>
 import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', REVIEWING: '评审中', PUBLICITY: '公示中', CLOSED: '已截止', ARCHIVED: '已归档' }
+const BATCH_COLUMNS = [
+  { key: 'name', title: '批次名称' },
+  { key: 'schoolYear', title: '学年' },
+  { key: 'status', title: '状态' },
+  { key: 'publicityDays', title: '公示天数' },
+  { key: 'window', title: '申请窗口' }
+]
 
 export default {
   name: 'AidBatchView',
-  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
     return {
+      batchColumns: BATCH_COLUMNS,
       loading: true, saving: false, errorMessage: '', batches: [], statsBatches: [],
       pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: { batchName: '', schoolYear: '', publicityDays: 5, publish: true, error: '' }
@@ -154,9 +160,8 @@ export default {
 .bf-error { color: var(--danger-500, #dc2626); font-size: var(--font-size-sm); margin: 4px 0; }
 .bf-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
 .bf-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 8px 18px; cursor: pointer; }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .bf-window { color: var(--text-secondary); font-size: var(--font-size-sm); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .bf-grid { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

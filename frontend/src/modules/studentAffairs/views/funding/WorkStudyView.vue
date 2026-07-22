@@ -21,50 +21,43 @@
         </AppSectionCard>
 
         <AppSectionCard :title="selPost ? '上岗记录（本岗位）' : '上岗记录（全部）'" class="ws-recs">
-          <table class="sa-table">
-            <thead><tr><th>学生</th><th>状态</th><th>累计补贴</th><th>操作</th></tr></thead>
-            <tbody>
-              <tr v-for="r in records" :key="r.recordId">
-                <td><strong>{{ r.realName || ('#'+r.studentId) }}</strong></td>
-                <td><StatusTag :type="wsType(r.status)" :label="r.statusLabel || r.status" dot /></td>
-                <td>{{ amountText(r.subsidyTotal) }}</td>
-                <td class="ws-ops">
-                  <AppPermissionButton v-if="r.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting===r.recordId" @click="act(r,'APPROVE')">录用</AppPermissionButton>
-                  <AppPermissionButton v-if="r.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(r,'REJECT')">拒绝</AppPermissionButton>
-                  <AppPermissionButton v-if="r.status==='APPROVED'" code="studentAffairs.funding.workstudy.manage" size="sm" @click="act(r,'ONBOARD')">上岗</AppPermissionButton>
-                  <AppPermissionButton v-if="r.status==='ONBOARD'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(r)">月度考核</AppPermissionButton>
-                  <AppPermissionButton v-if="['APPROVED','ONBOARD'].includes(r.status)" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(r,'TERMINATE')">终止</AppPermissionButton>
-                </td>
-              </tr>
-              <tr v-if="!records.length"><td colspan="4" class="sa-empty">暂无记录</td></tr>
-            </tbody>
-          </table>
+          <DataTable v-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId">
+            <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
+            <template #cell-status="{ row }"><StatusTag :type="wsType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+            <template #cell-subsidyTotal="{ row }">{{ amountText(row.subsidyTotal) }}</template>
+            <template #cell-actions="{ row }">
+              <div class="ws-ops">
+                <AppPermissionButton v-if="row.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting===row.recordId" @click="act(row,'APPROVE')">录用</AppPermissionButton>
+                <AppPermissionButton v-if="row.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(row,'REJECT')">拒绝</AppPermissionButton>
+                <AppPermissionButton v-if="row.status==='APPROVED'" code="studentAffairs.funding.workstudy.manage" size="sm" @click="act(row,'ONBOARD')">上岗</AppPermissionButton>
+                <AppPermissionButton v-if="row.status==='ONBOARD'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(row)">月度考核</AppPermissionButton>
+                <AppPermissionButton v-if="['APPROVED','ONBOARD'].includes(row.status)" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(row,'TERMINATE')">终止</AppPermissionButton>
+              </div>
+            </template>
+          </DataTable>
+          <p v-else class="sa-empty">暂无记录</p>
         </AppSectionCard>
       </div>
 
-      <div v-if="mm.visible" class="ws-mask" @click.self="mm.visible=false">
-        <div class="ws-modal">
-          <h3 class="ws-modal__title">{{ mm.name }} · 月度考核（累计补贴 {{ amountText(mm.subsidyTotal) }}）</h3>
-          <div class="ws-madd">
-            <AppTextInput v-model="mm.form.monthCode" placeholder="考核月 2025-10" />
-            <AppSelect v-model="mm.form.rating" :options="RATING_OPTIONS" placeholder="" />
-            <AppNumberInput v-model="mm.form.workHours" class="ws-sm" :min="0" placeholder="工时" />
-            <AppNumberInput v-model="mm.form.subsidyAmount" class="ws-sm" :min="0" placeholder="补贴" />
-            <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
-          </div>
-          <table class="sa-table">
-            <thead><tr><th>月份</th><th>等级</th><th>工时</th><th>补贴</th></tr></thead>
-            <tbody>
-              <tr v-for="m in mm.list" :key="m.monthlyId">
-                <td>{{ m.monthCode }}</td><td>{{ m.ratingLabel || m.rating }}</td>
-                <td>{{ m.workHours != null ? m.workHours : '—' }}</td><td>{{ amountText(m.subsidyAmount) }}</td>
-              </tr>
-              <tr v-if="!mm.list.length"><td colspan="4" class="sa-empty">暂无月度考核</td></tr>
-            </tbody>
-          </table>
-          <div class="ws-mfoot"><button type="button" class="ws-btn" @click="mm.visible=false">关闭</button></div>
+      <AppDrawer :visible="mm.visible" :title="mm.name + ' · 月度考核（累计补贴 ' + amountText(mm.subsidyTotal) + '）'" @update:visible="mm.visible = $event">
+        <div class="ws-madd">
+          <AppTextInput v-model="mm.form.monthCode" placeholder="考核月 2025-10" />
+          <AppSelect v-model="mm.form.rating" :options="RATING_OPTIONS" placeholder="" />
+          <AppNumberInput v-model="mm.form.workHours" class="ws-sm" :min="0" placeholder="工时" />
+          <AppNumberInput v-model="mm.form.subsidyAmount" class="ws-sm" :min="0" placeholder="补贴" />
+          <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
         </div>
-      </div>
+        <DataTable v-if="mm.list.length" :columns="monthlyColumns" :rows="mm.list" row-key="monthlyId">
+          <template #cell-month="{ row }">{{ row.monthCode }}</template>
+          <template #cell-rating="{ row }">{{ row.ratingLabel || row.rating }}</template>
+          <template #cell-workHours="{ row }">{{ row.workHours != null ? row.workHours : '—' }}</template>
+          <template #cell-subsidy="{ row }">{{ amountText(row.subsidyAmount) }}</template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无月度考核</p>
+        <template #footer>
+          <AppButton @click="mm.visible = false">关闭</AppButton>
+        </template>
+      </AppDrawer>
     </AppGlobalState>
 
     <!-- 岗位申请：原为「学生主档ID」原生弹窗，要老师手打内部 ID -->
@@ -73,7 +66,7 @@
       confirm-text="提交申请" :submitting="!!acting" @confirm="submitApply"
     >
       <AppFormItem label="申请学生" required>
-        <AppStudentPicker v-model="appDlg.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索" />
+        <AppStudentPicker v-model="appDlg.studentId" placeholder="按姓名 / 学号搜索" />
       </AppFormItem>
       <AppInlineAlert v-if="appDlg.error" type="danger" :description="appDlg.error" />
     </AppConfirmDialog>
@@ -93,19 +86,34 @@ import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
   AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const RATING_OPTIONS = [{ value: 'GOOD', label: '优' }, { value: 'PASS', label: '合格' }, { value: 'FAIL', label: '不合格' }]
+const RECORD_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'status', title: '状态' },
+  { key: 'subsidyTotal', title: '累计补贴' },
+  { key: 'actions', title: '操作', align: 'right', width: '260px' }
+]
+const MONTHLY_COLUMNS = [
+  { key: 'month', title: '月份' },
+  { key: 'rating', title: '等级' },
+  { key: 'workHours', title: '工时' },
+  { key: 'subsidy', title: '补贴' }
+]
 
 export default {
   name: 'WorkStudyView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppSelect, AppStudentPicker, StatusTag: AppStatusTag, AppTextInput
+    AppPermissionButton, AppSectionCard, AppSelect, AppStudentPicker, StatusTag: AppStatusTag, AppTextInput, DataTable,
+    AppButton, AppDrawer
   },
   data() {
-    return { loading: true, acting: '', errorMessage: '', posts: [], records: [], selPost: '', postForm: { deptName: '', postName: '', salary: null },
+    return { recordColumns: RECORD_COLUMNS, monthlyColumns: MONTHLY_COLUMNS, loading: true, acting: '', errorMessage: '', posts: [], records: [], selPost: '', postForm: { deptName: '', postName: '', salary: null },
       appDlg: { visible: false, postId: '', postName: '', studentId: '', error: '' },
       terDlg: { visible: false, recordId: '' },
       mm: { visible: false, recordId: '', name: '', subsidyTotal: null, list: [], form: this.blankMonthly() } }
@@ -135,7 +143,6 @@ export default {
       if (res.code === 0) { toast.success('已发岗'); this.postForm = { deptName: '', postName: '', salary: null }; this.load() } else toast.error(res.message || '发岗失败')
     },
     selectPost(p) { this.selPost = this.selPost === p.postId ? '' : p.postId; this.load() },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     applyTo(p) {
       this.appDlg = { visible: true, postId: p.postId, postName: p.postName || '该岗位', studentId: '', error: '' }
     },
@@ -202,14 +209,8 @@ export default {
 .ws-post.is-on { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
 .ws-post span { font-size: var(--font-size-sm); color: var(--text-secondary); }
 .ws-empty, .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .ws-ops { display: flex; gap: 6px; flex-wrap: wrap; }
-.ws-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.ws-modal { width: 560px; max-width: calc(100vw - 32px); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-5); max-height: 80vh; overflow: auto; }
-.ws-modal__title { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
 .ws-madd { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
-.ws-mfoot { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
-.ws-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 18px; cursor: pointer; }
 @media (max-width: 960px) { .ws-cols { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

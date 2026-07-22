@@ -8,27 +8,16 @@
     <div class="mp-stack">
       <div class="aamk-filter">
         <label class="aamk-filter__item">学期
-          <select v-model="filters.term" class="aa-input aa-input--sm">
-            <option value="">全部学期</option>
-            <option v-for="t in opts.terms" :key="t.id" :value="t.code || t.label">{{ t.label }}</option>
-          </select>
+          <AppTermCodePicker v-model="filters.term" placeholder="全部学期" />
         </label>
         <label class="aamk-filter__item">学院
-          <select v-model="filters.collegeId" class="aa-input aa-input--sm">
-            <option value="">全部学院</option>
-            <option v-for="c in opts.colleges" :key="c.id" :value="c.id">{{ c.label }}</option>
-          </select>
+          <AppCollegePicker v-model="filters.collegeId" :options="collegeOptions" placeholder="全部学院" />
         </label>
         <label class="aamk-filter__item">下钻维度
-          <select v-model="filters.dimension" class="aa-input aa-input--sm">
-            <option value="">不分组</option>
-            <option value="course">按课程</option>
-            <option value="term">按学期</option>
-            <option value="college">按学院</option>
-          </select>
+          <AppSelect v-model="filters.dimension" :options="dimensionOptions" />
         </label>
-        <button class="mp-btn" :disabled="loading" @click="search">查询</button>
-        <button class="mp-btn mp-btn--ghost" :disabled="loading" @click="openExport">导出 Excel</button>
+        <AppButton :loading="loading" @click="search">查询</AppButton>
+        <AppButton variant="ghost" :disabled="loading" @click="openExport">导出 Excel</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="search" />
@@ -83,7 +72,8 @@
 <script>
 /** 补考重修缓考免修 · 统计分析（三级施工卡 10）：/admin/academic-affairs/makeup/stats，独立页面（非 console tab）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart, AppTermCodePicker, AppCollegePicker, AppSelect } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -103,7 +93,7 @@ const _DETAIL_COLUMNS = {
 
 export default {
   name: 'AaMakeupStatsView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart, AppTermCodePicker, AppCollegePicker, AppSelect },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -116,6 +106,15 @@ export default {
     }
   },
   computed: {
+    collegeOptions() {
+      return [{ label: '全部学院', value: '' }, ...this.opts.colleges.map((c) => ({ label: c.label, value: c.id }))]
+    },
+    dimensionOptions() {
+      return [
+        { label: '不分组', value: '' }, { label: '按课程', value: 'course' },
+        { label: '按学期', value: 'term' }, { label: '按学院', value: 'college' }
+      ]
+    },
     cards() {
       if (!this.stats) return _LINES.map((l) => ({ ...l, count: 0, rateText: '暂无数据' }))
       return _LINES.map((l) => {

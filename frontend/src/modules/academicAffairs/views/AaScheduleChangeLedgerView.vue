@@ -7,8 +7,8 @@
   >
     <template #actions>
       <div class="sc-actions">
-        <button class="mp-btn mp-btn--primary" @click="goApply">＋ 发起调停课</button>
-        <button class="mp-btn" @click="goApproval">审批工作台</button>
+        <AppButton variant="primary" @click="goApply">＋ 发起调停课</AppButton>
+        <AppButton @click="goApproval">审批工作台</AppButton>
       </div>
     </template>
 
@@ -61,6 +61,7 @@
 <script>
 /** 调停课台账（/admin/academic-affairs/schedule-change）：范围过滤 + 统计 + 撤销 + 通知单入口。生产级只走真实后端。 */
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { scheduleChangeApi, CHANGE_TYPES, CHANGE_STATUS } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 import { toast } from '@/utils/toast'
@@ -69,7 +70,7 @@ const EMPTY = () => ({ changeType: '', status: '', termId: '' })
 
 export default {
   name: 'AaScheduleChangeLedgerView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppConfirmDialog },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {

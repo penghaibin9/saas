@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="goBack">返回列表</button>
+      <AppButton @click="goBack">返回列表</AppButton>
     </template>
 
     <AppSectionCard title="学期信息">
@@ -67,10 +67,10 @@
       </div>
 
       <div class="aa-form__actions">
-        <button class="mp-btn" @click="goBack">取消</button>
-        <button class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">
-          {{ submitting ? '创建中…' : '创建学期' }}
-        </button>
+        <AppButton @click="goBack">取消</AppButton>
+        <AppButton variant="primary" :loading="submitting" @click="submit">
+          创建学期
+        </AppButton>
       </div>
     </AppSectionCard>
   </ModulePageShell>
@@ -80,6 +80,7 @@
 /** 新建学年学期（/admin/academic-affairs/terms/new）：POST /academic-affairs/terms。
  *  以代码为准：后端无学期更新端点，本页仅「新建」，编辑功能后续波次补。 */
 import { ModulePageShell } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -88,7 +89,7 @@ const YEAR_RE = /^(\d{4})-(\d{4})$/
 
 export default {
   name: 'AaTermFormView',
-  components: { ModulePageShell, AppSectionCard, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

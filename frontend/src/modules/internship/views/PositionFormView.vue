@@ -44,9 +44,8 @@
                 :required="!isEdit"
                 :hint="isEdit ? '编辑岗位时不可更换所属企业' : ''"
               >
-                <AppCompanyPicker
+                <AppInternshipEnterprisePicker
                   v-model="form.companyId"
-                  :remote-search="isEdit ? undefined : searchEnterprises"
                   :options="companyPresetOpts"
                   :disabled="isEdit || readonly"
                   disabled-reason="编辑岗位时不可更换所属企业"
@@ -114,9 +113,9 @@
           </div>
           <div class="mp-card__body">
             <AppFormItem label="企业导师" prop="mentorContactId">
-              <AppMentorPicker
+              <AppEnterpriseMentorPicker
                 v-model="form.mentorContactId"
-                :options="mentorOpts"
+                :query="{ companyId: form.companyId }"
                 placeholder="选择企业导师（可不指定）"
                 search-placeholder="按导师姓名过滤"
                 data-scope-hint="先选择所属企业，再选择该企业的导师"
@@ -156,15 +155,14 @@
  *   /admin/internship/positions/:id/edit  → 编辑（getPositionDetail 回填；ARCHIVED 只读预览）
  * 提交走真实 positionApi.createPosition / updatePosition。
  * 口径（沿用原抽屉）：编辑态所属企业只读展示不可换（:options 预置当前企业回显）、导师字段隐藏不提交；
- * 新建态企业选择走 searchEnterprises 远程搜索，企业联动 getEnterpriseMentors 加载该企业导师。
+ * 新建态企业与企业导师均由布局注入的业务 Picker 查询；企业导师以 companyId 为联动条件。
  */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
   AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-  AppSubmitBar, AppCompanyPicker, AppMentorPicker, AppTemplateChips
+  AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips
 } from '@/components/common'
-import { searchEnterprises } from './components/entityPickerAdapters'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { positionApi } from '@/modules/internship/api/position.api'
 import { toast } from '@/utils/toast'
@@ -185,7 +183,7 @@ export default {
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
     AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-    AppSubmitBar, AppCompanyPicker, AppMentorPicker, AppTemplateChips
+    AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips
   },
   data() {
     return {
@@ -194,7 +192,6 @@ export default {
       error: '',
       submitting: false,
       detail: null,
-      mentorOpts: [],
       form: blankForm()
     }
   },
@@ -256,8 +253,6 @@ export default {
     this.init()
   },
   methods: {
-    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchEnterprises,
     onHeadcountClamp({ from, to }) {
       // BUG-003：容量填 -5 原来被静默改成 1，用户毫无感知
       toast.warning(`容量最少 ${to} 人，已把输入的 ${from} 修正为 ${to}`)
@@ -279,7 +274,6 @@ export default {
       if (!this.isEdit) {
         this.detail = null
         this.form = blankForm()
-        this.mentorOpts = []
         this.loading = false
         return
       }
@@ -308,13 +302,9 @@ export default {
       }
     },
     async onCompanyChange() {
-      // 企业变更：清空导师选择并联动加载该企业导师小列表（本地过滤即可，非一次性全量预载）
+      // 企业变更后清空导师；企业导师由统一 Picker 按 companyId 查询。
       if (this.isEdit) return
       this.form.mentorContactId = ''
-      this.mentorOpts = []
-      if (!this.form.companyId) return
-      const res = await positionApi.getEnterpriseMentors(this.form.companyId)
-      if (res.code === 0) this.mentorOpts = (res.data || []).map((m) => ({ label: m.name, value: m.id }))
     },
     async onSubmit() {
       if (this.readonly || this.submitting) return

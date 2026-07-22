@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="goBack">返回列表</button>
+      <AppButton @click="goBack">返回列表</AppButton>
     </template>
 
     <AppSectionCard title="异动信息">
@@ -14,20 +14,7 @@
         <div class="aa-form__row">
           <label class="aa-form__label required">学生</label>
           <div class="aa-form__field">
-            <div v-if="form.studentId" class="aa-picked">
-              {{ form.name || '学生' }} · ID {{ form.studentId }}
-              <button class="mp-link" @click="clearStudent">重选</button>
-            </div>
-            <div v-else class="aa-reg-search">
-              <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-              <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
-            </div>
-            <ul v-if="!form.studentId && candidates.length" class="aa-cand-list">
-              <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
-                <span>{{ s.realName }} · 学号 {{ s.studentNo }} · {{ s.studentStatus }}</span>
-                <button class="mp-link" @click="pickStudent(s)">选择</button>
-              </li>
-            </ul>
+            <AppStudentPicker v-model="form.studentId" placeholder="选择发起异动的学生" @change="onStudentChange" />
           </div>
         </div>
 
@@ -42,18 +29,10 @@
 
         <template v-if="form.changeType === 'TRANSFER_MAJOR'">
           <div class="aa-form__row">
-            <label class="aa-form__label">转入学院ID</label>
-            <div class="aa-form__field"><input v-model.trim="form.toCollegeId" class="aa-input aa-input--num" placeholder="目标学院ID" /></div>
-          </div>
-          <div class="aa-form__row">
-            <label class="aa-form__label">转入专业ID</label>
-            <div class="aa-form__field"><input v-model.trim="form.toMajorId" class="aa-input aa-input--num" placeholder="目标专业ID" /></div>
-          </div>
-          <div class="aa-form__row">
-            <label class="aa-form__label">转入班级ID</label>
+            <label class="aa-form__label">目标组织</label>
             <div class="aa-form__field">
-              <input v-model.trim="form.toClassId" class="aa-input aa-input--num" placeholder="目标班级ID（选填）" />
-              <div class="aa-form__hint">组织选择器待 R3「学院专业班级」上线后接入，当前先填目标 ID。</div>
+              <AppOrgCascader v-model="targetOrg" @change="onTargetOrgChange" />
+              <div class="aa-form__hint">按学院 → 专业 → 班级逐级选择；班级可不选。</div>
             </div>
           </div>
         </template>
@@ -66,10 +45,12 @@
           <div class="aa-form__row">
             <label class="aa-form__label required">转入班级</label>
             <div class="aa-form__field">
-              <select v-model="form.toClassId" class="aa-input" :disabled="!form.studentId || loadingClasses">
-                <option value="">{{ classSelectPlaceholder }}</option>
-                <option v-for="c in targetClassOptions" :key="c.id" :value="c.id">{{ c.className }}（{{ c.grade || '—' }}）</option>
-              </select>
+              <AppClassPicker
+                v-model="form.toClassId"
+                :options="targetClassPickerOptions"
+                :placeholder="classSelectPlaceholder"
+                :disabled="!form.studentId || loadingClasses"
+              />
               <div class="aa-form__hint">仅同专业在读班级可选，跨专业请改用「转专业申请」；已在班级不出现在候选内。</div>
             </div>
           </div>
@@ -86,10 +67,10 @@
       </div>
 
       <div class="aa-form__actions">
-        <button class="mp-btn" @click="goBack">取消</button>
-        <button class="mp-btn mp-btn--primary" :disabled="submitting || !form.studentId" @click="submit">
-          {{ submitting ? '提交中…' : '提交异动' }}
-        </button>
+        <AppButton @click="goBack">取消</AppButton>
+        <AppButton variant="primary" :disabled="!form.studentId" :loading="submitting" @click="submit">
+          提交异动
+        </AppButton>
       </div>
     </AppSectionCard>
   </ModulePageShell>
@@ -103,7 +84,8 @@
  *  TRANSFER_CLASS（转班）目标班选择器：选定学生后拉取其当前专业（GET /roster/{id}），
  *  再按该专业过滤班级候选（GET /orgs/classes?majorId=），跨专业一致性由后端 submit() 强制复核。 */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard, AppQuickPhrases, AppSelect } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppQuickPhrases, AppSelect, AppStudentPicker, AppClassPicker, AppOrgCascader } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { hasGroupPhrases } from '@/utils/quickPhrases'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -121,17 +103,15 @@ const TYPE_HINT = {
 
 export default {
   name: 'AaStatusChangeFormView',
-  components: { ModulePageShell, AppSectionCard, AppQuickPhrases, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppQuickPhrases, AppSelect, AppStudentPicker, AppClassPicker, AppOrgCascader },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       TYPE_LABEL,
       submitting: false,
-      kw: '',
-      searching: false,
-      candidates: [],
       loadingClasses: false,
       targetClassOptions: [],
+      targetOrg: [],
       form: {
         studentId: this.$route.query.studentId || '',
         name: this.$route.query.name || '',
@@ -166,6 +146,13 @@ export default {
       if (this.loadingClasses) return '加载班级中…'
       if (!this.targetClassOptions.length) return '该专业下暂无其它可选班级'
       return '请选择目标班级'
+    },
+    targetClassPickerOptions() {
+      return this.targetClassOptions.map((c) => ({
+        value: c.id,
+        label: `${c.className}（${c.grade || '—'}）`,
+        raw: c
+      }))
     }
   },
   watch: {
@@ -177,6 +164,18 @@ export default {
     if (this.form.changeType === 'TRANSFER_CLASS' && this.form.studentId) this.loadStudentOrgInfo()
   },
   methods: {
+    onStudentChange(_value, items) {
+      const selected = items?.[0]
+      this.form.name = selected?.raw?.realName || selected?.label || ''
+      this.form.studentMajorId = ''
+      this.form.currentClassId = ''
+      if (this.form.changeType === 'TRANSFER_CLASS' && this.form.studentId) this.loadStudentOrgInfo()
+    },
+    onTargetOrgChange(values) {
+      this.form.toCollegeId = values?.[0] || ''
+      this.form.toMajorId = values?.[1] || ''
+      this.form.toClassId = values?.[2] || ''
+    },
     onPickReason(text) {
       const el = this.$refs.reasonInput
       const { value, selStart, selEnd } = insertAtCursor(el, this.form.reason, text)
@@ -196,19 +195,6 @@ export default {
       this.form.currentClassName = ''
       this.form.toClassId = ''
       this.targetClassOptions = []
-    },
-    pickStudent(s) {
-      this.form.studentId = s.studentId
-      this.form.name = s.realName
-      this.candidates = []
-      if (this.form.changeType === 'TRANSFER_CLASS') this.loadStudentOrgInfo()
-    },
-    async searchStudents() {
-      if (this.searching) return
-      this.searching = true
-      const res = await academicAffairsApi.getRoster({ keyword: this.kw || undefined, page: 1, pageSize: 20 })
-      this.candidates = res.code === 0 ? res.data.list : []
-      this.searching = false
     },
     /** 转班专用：拉取学生当前专业/班级，再按专业过滤目标班候选（不含学生当前班）。 */
     async loadStudentOrgInfo() {

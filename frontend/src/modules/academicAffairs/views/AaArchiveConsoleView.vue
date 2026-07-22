@@ -50,7 +50,7 @@
 
     <AppDrawer :visible="createVisible" title="新建归档批次" @close="createVisible = false">
       <div class="aaar-form">
-        <AppFormItem label="学期 ID" required><AppTextInput v-model="form.termId" placeholder="要归档的学期 ID（一学期一批次）" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="学期" required><AppTermEntityPicker v-model="form.termId" placeholder="选择要归档的学期（一学期一批次）" :disabled="saving" /></AppFormItem>
         <AppInlineAlert type="warning" description="确认归档后该学期将被封存（status→ARCHIVED），此后该学期教务写操作应被拦截；如需修改须走特批解冻。" />
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
@@ -73,7 +73,7 @@
 /** 教务归档 · 控制台（/admin/academic-affairs/archive）：批次+9数据域完整性检查+确认归档封存。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -81,7 +81,7 @@ const _SL = { DRAFT: '草稿', CHECKING: '检查中', READY: '完整可归档', 
 
 export default {
   name: 'AaArchiveConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -113,7 +113,7 @@ export default {
     },
     openCreate() { this.form = { termId: '' }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
-      if (!this.form.termId) { this.formError = '学期 ID 必填'; return }
+      if (!this.form.termId) { this.formError = '请选择学期'; return }
       this.saving = true
       const res = await api.createBatch({ termId: this.form.termId })
       this.saving = false

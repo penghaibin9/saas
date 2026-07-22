@@ -1,7 +1,6 @@
 /**
- * 高校业务选择器（第三阶段·第三组）
- * 基座 AppRemoteSelect + 12 个实体 Picker（预设包装）+ 组织级联 + 学年/学期。
- * 全部 partial：UI 与调用规范就绪，真实后端由业务方注入 remoteSearch / data。
+ * 高校业务选择器：AppRemoteSelect 基座 + 语义实体 Picker + 组织级联 + 学年/学期。
+ * 支持布局级统一适配器、页面显式 remoteSearch 和本地 options 三种数据来源。
  */
 export { default as AppRemoteSelect } from './AppRemoteSelect.vue'
 export { default as AppOrgCascader } from './AppOrgCascader.vue'
@@ -19,5 +18,47 @@ export {
   AppTenantPicker,
   AppCompanyPicker,
   AppPositionPicker,
-  AppBatchPicker
+  AppBatchPicker,
+  AppTermEntityPicker,
+  AppTermCodePicker,
+  AppTeachingTaskPicker,
+  AppTeachingClassPicker,
+  AppClassroomPicker,
+  AppLabPicker,
+  AppEquipmentPicker,
+  AppTimeSlotPicker,
+  AppScheduleBatchPicker,
+  AppGradeTaskPicker,
+  AppGradeRecordPicker,
+  AppGraduationBatchPicker,
+  AppRegistrationBatchPicker,
+  AppExamBatchPicker,
+  AppProgramPicker,
+  AppSelectionBatchPicker,
+  AppMakeupBatchPicker,
+  AppArchiveBatchPicker,
+  AppRiskOwnerPicker,
+  AppAidBatchPicker,
+  AppFundingProjectPicker,
+  AppFundingBatchPicker,
+  AppStudentArchiveBatchPicker,
+  AppCounselorAssessmentPeriodPicker,
+  AppDormBuildingPicker,
+  AppDormRoomPicker,
+  AppDormBedPicker,
+  AppGraduationCandidateStudentPicker,
+  AppGraduationStudentPicker,
+  AppGraduationMentorPicker,
+  AppAvailableGraduationMentorPicker,
+  AppGraduationDesignBatchPicker,
+  AppGraduationTopicPicker,
+  AppDefenseGroupPicker,
+  AppInternshipCandidateStudentPicker,
+  AppInternshipStudentPicker,
+  AppUnassignedInternshipStudentPicker,
+  AppInternshipPositionPicker,
+  AppInternshipEnterprisePicker,
+  AppInternshipAdvisorPicker,
+  AppInternshipBatchPicker,
+  AppEnterpriseMentorPicker
 } from './entityPickers'

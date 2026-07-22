@@ -69,7 +69,7 @@ export {
   AppRichTextEditor
 } from './form'
 
-// —— 第三阶段·第三组 高校业务选择器（见 ./picker/，全部 partial）——
+// —— 高校业务选择器（见 ./picker/；教务中心已接统一数据适配器）——
 export {
   AppRemoteSelect,
   AppOrgCascader,
@@ -86,7 +86,49 @@ export {
   AppTenantPicker,
   AppCompanyPicker,
   AppPositionPicker,
-  AppBatchPicker
+  AppBatchPicker,
+  AppTermEntityPicker,
+  AppTermCodePicker,
+  AppTeachingTaskPicker,
+  AppTeachingClassPicker,
+  AppClassroomPicker,
+  AppLabPicker,
+  AppEquipmentPicker,
+  AppTimeSlotPicker,
+  AppScheduleBatchPicker,
+  AppGradeTaskPicker,
+  AppGradeRecordPicker,
+  AppGraduationBatchPicker,
+  AppRegistrationBatchPicker,
+  AppExamBatchPicker,
+  AppProgramPicker,
+  AppSelectionBatchPicker,
+  AppMakeupBatchPicker,
+  AppArchiveBatchPicker,
+  AppRiskOwnerPicker,
+  AppAidBatchPicker,
+  AppFundingProjectPicker,
+  AppFundingBatchPicker,
+  AppStudentArchiveBatchPicker,
+  AppCounselorAssessmentPeriodPicker,
+  AppDormBuildingPicker,
+  AppDormRoomPicker,
+  AppDormBedPicker,
+  AppGraduationCandidateStudentPicker,
+  AppGraduationStudentPicker,
+  AppGraduationMentorPicker,
+  AppAvailableGraduationMentorPicker,
+  AppGraduationDesignBatchPicker,
+  AppGraduationTopicPicker,
+  AppDefenseGroupPicker,
+  AppInternshipCandidateStudentPicker,
+  AppInternshipStudentPicker,
+  AppUnassignedInternshipStudentPicker,
+  AppInternshipPositionPicker,
+  AppInternshipEnterprisePicker,
+  AppInternshipAdvisorPicker,
+  AppInternshipBatchPicker,
+  AppEnterpriseMentorPicker
 } from './picker'
 
 // —— 第三阶段·第四组 数据展示增强（见 ./display/）——
@@ -125,6 +167,7 @@ export {
 // 公共日期底座（见 ./date/）
 export {
   AppDatePicker,
+  AppTimePicker,
   AppDateTimePicker,
   AppDateRangePicker,
   AppDeadlinePicker,

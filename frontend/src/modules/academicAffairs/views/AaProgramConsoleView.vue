@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/programs')">方案列表</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/programs')">方案列表</AppButton>
     </template>
 
     <div class="aapc-tabs">
@@ -16,7 +16,7 @@
     <!-- 方案选择器：课程模块 / 学分要求 / 毕业要求 需先选定一个方案 -->
     <div v-if="needsProgramPicker" class="aapc-picker">
       <span class="aapc-picker__label">当前方案</span>
-      <AppSelect v-model="selectedProgramId" :options="programOptions" placeholder="选择要维护的培养方案…" @change="onProgramPicked" />
+      <AppProgramPicker v-model="selectedProgramId" :options="programOptions" placeholder="选择要维护的培养方案…" @change="onProgramPicked" />
       <span v-if="selectedProgram" class="aapc-picker__hint">
         状态：<AppStatusTag :type="reviewStatusColor(selectedProgram.status)" dot>{{ statusLabel(selectedProgram.status) }}</AppStatusTag>
         <template v-if="!isEditable">（非编制态，仅可查看）</template>
@@ -136,7 +136,7 @@
     <AppDrawer :visible="createVisible" title="新建培养方案" @update:visible="createVisible = $event">
       <div class="aapc-form">
         <AppFormItem label="方案名称" required><AppTextInput v-model="createForm.programName" :disabled="saving" placeholder="如 软件技术2026级培养方案" /></AppFormItem>
-        <AppFormItem label="专业ID"><AppTextInput v-model="createForm.majorId" :disabled="saving" placeholder="选填" /></AppFormItem>
+        <AppFormItem label="专业"><AppMajorPicker v-model="createForm.majorId" :disabled="saving" placeholder="选择专业（选填）" /></AppFormItem>
         <AppFormItem label="年级"><AppTextInput v-model="createForm.gradeYear" :disabled="saving" placeholder="如 2026" /></AppFormItem>
         <AppFormItem label="毕业总学分"><AppNumberInput v-model="createForm.totalCredits" :min="0" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
@@ -197,7 +197,7 @@
       <div class="aapc-form" v-if="bindRow">
         <AppFormItem label="方案"><span>{{ bindRow.programName }}</span></AppFormItem>
         <AppFormItem label="绑定年级" required><AppTextInput v-model="bindForm.gradeYear" placeholder="如 2026" /></AppFormItem>
-        <AppFormItem label="行政班ID"><AppTextInput v-model="bindForm.classId" placeholder="选填，留空=全专业该年级" /></AppFormItem>
+        <AppFormItem label="行政班"><AppClassPicker v-model="bindForm.classId" :query="{ majorId: selectedProgram?.majorId || undefined }" placeholder="选填，留空=全专业该年级" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -307,7 +307,7 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppButton, AppDrawer } from '@/components/ui'
 import {
   AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem,
-  AppStatusTag, AppConfirmDialog, AppInlineAlert
+  AppStatusTag, AppConfirmDialog, AppInlineAlert, AppMajorPicker, AppClassPicker, AppProgramPicker
 } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import {
@@ -327,7 +327,7 @@ export default {
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem,
-    AppStatusTag, AppConfirmDialog, AppInlineAlert
+    AppStatusTag, AppConfirmDialog, AppInlineAlert, AppMajorPicker, AppClassPicker, AppProgramPicker
   },
   props: { ctx: { type: Object, required: true } },
   data() {

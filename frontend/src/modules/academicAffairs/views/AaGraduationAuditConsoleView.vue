@@ -6,14 +6,14 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/graduation')">返回审核批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/graduation')">返回审核批次</AppButton>
     </template>
 
     <div class="mp-stack">
       <AppSectionCard title="当前批次">
         <div class="agc-batch-bar">
           <div class="agc-batch-select">
-            <AppSelect
+            <AppGraduationBatchPicker
               v-model="batchId"
               :options="batchOptions"
               :disabled="loadingBatches"
@@ -139,7 +139,7 @@
       <template v-else-if="tab === 'archive'">
         <AppSectionCard title="归档操作">
           <p class="mp-note">收敛该批次已终审的「毕业/结业」结果为已归档（ARCHIVED）；延毕滚入下一批次、退回待重初审的结果不在本次归档范围内，需重新走完流程后再归档。</p>
-          <button class="mp-btn mp-btn--primary" :disabled="archiving || !batchId" @click="confirmArchive">执行归档</button>
+          <AppButton variant="primary" :disabled="!batchId" :loading="archiving" @click="confirmArchive">执行归档</AppButton>
         </AppSectionCard>
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
@@ -168,8 +168,8 @@
 
         <div v-if="canCollegeReview(detail.row)" class="agc-actions">
           <div class="agc-actions__title">学院初审</div>
-          <button class="mp-btn mp-btn--primary" :disabled="detailBusy" @click="doCollegeReview('APPROVE')">通过</button>
-          <button class="mp-btn" :disabled="detailBusy" @click="openCollegeReject">退回学院（需≥5字原因）</button>
+          <AppButton variant="primary" :loading="detailBusy" @click="doCollegeReview('APPROVE')">通过</AppButton>
+          <AppButton :loading="detailBusy" @click="openCollegeReject">退回学院（需≥5字原因）</AppButton>
         </div>
 
         <div v-if="detail.row.status === 'ACADEMIC_REVIEW'" class="agc-actions">
@@ -177,7 +177,7 @@
           <label v-for="(l, v) in CONCLUSION_LABEL" :key="v" class="agc-radio">
             <input v-model="finalConclusion" type="radio" :value="v" /> {{ l }}
           </label>
-          <button class="mp-btn mp-btn--primary" :disabled="detailBusy" @click="confirmFinal">确认终审并写学籍</button>
+          <AppButton variant="primary" :loading="detailBusy" @click="confirmFinal">确认终审并写学籍</AppButton>
         </div>
         <p v-if="detail.row.conclusion" class="mp-note">终审结论：{{ conclusionLabel(detail.row.conclusion) }}（涉学籍终态，不可在本页撤销）</p>
       </template>
@@ -222,8 +222,8 @@
  * 「审核批次」（建批次/圈定/预审）仍在既有 AaGraduationBatchView.vue（/graduation），本页不重复。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
-import { AppDrawer } from '@/components/ui'
+import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppGraduationBatchPicker } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import AppStatusTag from '@/components/common/AppStatusTag.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import {
@@ -259,7 +259,7 @@ const LINK_ITEM = {
 
 export default {
   name: 'AaGraduationAuditConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag, AppGraduationBatchPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

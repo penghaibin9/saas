@@ -5,22 +5,19 @@
                     @back="$router.push('/admin/student-affairs/archive')">
       <div class="ap-bar">
         <label class="ap-label">归档批次
-          <AppSelect v-model="selBatch" class="ap-pick" :options="batchOptions" placeholder="（选择批次）" @change="loadBatch" />
+          <AppStudentArchiveBatchPicker v-model="selBatch" class="ap-pick" :options="batchOptions" placeholder="（选择批次）" @change="loadBatch" />
         </label>
       </div>
       <!-- 档案包清单：后端 getArchiveBatch 一次性返回该批次全部档案包，无 page/total 字段，暂不加分页控件 -->
       <AppSectionCard :title="selBatch ? '档案包清单' : '请选择批次'">
-        <table v-if="selBatch" class="sa-table">
-          <thead><tr><th>学生</th><th>状态</th><th>缺项</th></tr></thead>
-          <tbody>
-            <tr v-for="p in packages" :key="p.packageId">
-              <td><strong>{{ p.realName || ('学生#'+p.studentId) }}</strong></td>
-              <td><StatusTag :type="pkgType(p.status)" :label="pkgLabel(p.status)" dot /></td>
-              <td class="ap-miss">{{ missText(p) }}</td>
-            </tr>
-            <tr v-if="!packages.length"><td colspan="3" class="sa-empty">该批次暂无档案包（可在归档批次页圈定学生生成）</td></tr>
-          </tbody>
-        </table>
+        <template v-if="selBatch">
+          <DataTable v-if="packages.length" :columns="packageColumns" :rows="packages" row-key="packageId">
+            <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#'+row.studentId) }}</span></template>
+            <template #cell-status="{ row }"><StatusTag :type="pkgType(row.status)" :label="pkgLabel(row.status)" dot /></template>
+            <template #cell-missing="{ row }"><span class="ap-miss">{{ missText(row) }}</span></template>
+          </DataTable>
+          <p v-else class="sa-empty">该批次暂无档案包（可在归档批次页圈定学生生成）</p>
+        </template>
         <p v-else class="ap-hint">从上方选择一个归档批次查看其学生档案包。</p>
       </AppSectionCard>
     </AppGlobalState>
@@ -28,15 +25,21 @@
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppSectionCard, AppSelect, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppPageShell, AppSectionCard, AppStudentArchiveBatchPicker, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const PKG = { PENDING: '待收集', READY: '完整', MISSING: '有缺项', ARCHIVED: '已归档', COLLECTING: '收集中' }
+const PACKAGE_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'status', title: '状态' },
+  { key: 'missing', title: '缺项' }
+]
 
 export default {
   name: 'StudentArchivePackageView',
-  components: { AppGlobalState, AppPageShell, AppSectionCard, AppSelect, StatusTag: AppStatusTag },
-  data() { return { loading: true, errorMessage: '', batches: [], selBatch: '', packages: [] } },
+  components: { AppGlobalState, AppPageShell, AppSectionCard, AppStudentArchiveBatchPicker, StatusTag: AppStatusTag, DataTable },
+  data() { return { packageColumns: PACKAGE_COLUMNS, loading: true, errorMessage: '', batches: [], selBatch: '', packages: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     batchOptions() {
@@ -76,8 +79,7 @@ export default {
 .ap-bar { margin-bottom: var(--space-4); }
 .ap-label { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); }
 .ap-pick { width: 320px; }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty, .ap-hint { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ap-miss { color: var(--text-secondary); font-size: var(--font-size-sm); }
+@import '@/styles/module-page.css';
 </style>

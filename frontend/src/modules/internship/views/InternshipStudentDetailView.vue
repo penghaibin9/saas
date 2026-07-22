@@ -78,9 +78,8 @@
         <p class="ie-hint">仅「已上架」且企业非黑名单、未满员的岗位可选。</p>
         <!-- Picker 不能包在 <label> 里：label 激活会把点击转发给选择器内部按钮 -->
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
-          <AppPositionPicker
+          <AppInternshipPositionPicker
             v-model="assignPositionId"
-            :remote-search="searchPublishedPositions"
             placeholder="输入岗位或企业名称搜索"
             search-placeholder="按岗位名称 / 企业搜索"
             data-scope-hint="仅已上架、未满员岗位可选"
@@ -105,8 +104,7 @@
 <script>
 /** 实习学生详情（/admin/internship/students/:id）：生产级；企业/岗位/导师真实关联 + 分配/退岗/状态机/资格/去向 + 审计。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSensitiveText, AppStatusTag, AppAuditTrail, AppPositionPicker } from '@/components/common'
-import { searchPublishedPositions } from './components/entityPickerAdapters'
+import { AppSensitiveText, AppStatusTag, AppAuditTrail, AppInternshipPositionPicker } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
@@ -121,7 +119,7 @@ const STATUS_NEXT = {
 
 export default {
   name: 'InternshipStudentDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppAuditTrail, AppDrawer, AppConfirmDialog, AppPositionPicker },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppAuditTrail, AppDrawer, AppConfirmDialog, AppInternshipPositionPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -157,7 +155,6 @@ export default {
       this.loading = false
     },
     // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchPublishedPositions,
     openAssign() {
       // 岗位候选改为选择器内按关键字远程搜索，不再一次性预载
       this.assignPositionId = ''; this.assignError = ''

@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.back()">返回</button>
+      <AppButton @click="$router.back()">返回</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -34,10 +34,10 @@
 
         <AppSectionCard title="快捷入口">
           <div class="aa-quick-actions">
-            <button class="mp-btn" :disabled="!detail.enrolled" @click="goChange">发起学籍异动</button>
-            <button class="mp-btn" @click="goCorrection">发起学籍信息更正</button>
-            <button class="mp-btn" @click="goTranscript">查看成绩单</button>
-            <button class="mp-btn" @click="goChanges">查看该生全部异动记录</button>
+            <AppButton :disabled="!detail.enrolled" @click="goChange">发起学籍异动</AppButton>
+            <AppButton @click="goCorrection">发起学籍信息更正</AppButton>
+            <AppButton @click="goTranscript">查看成绩单</AppButton>
+            <AppButton @click="goChanges">查看该生全部异动记录</AppButton>
           </div>
         </AppSectionCard>
       </template>
@@ -62,6 +62,7 @@
 /** 学籍档案详情（/admin/academic-affairs/roster/:studentId）：GET /academic-affairs/roster/{id}（数据范围收敛，越权 403）。
  * 证件号查看走 POST /roster/{id}/reveal（理由必填≥5字，服务层二次鉴权+SUCCESS/DENY 双向审计）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppTimeline, AppConfirmDialog } from '@/components/common'
 import AppDescriptionList from '@/components/common/display/AppDescriptionList.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -80,7 +81,7 @@ const CHANGE_TYPE_LABEL = {
 export default {
   name: 'AaRosterDetailView',
   components: {
-    ModulePageShell, AppSectionCard, LoadingState, ErrorState, EmptyState,
+    ModulePageShell, AppButton, AppSectionCard, LoadingState, ErrorState, EmptyState,
     AppTimeline, AppDescriptionList, AppConfirmDialog
   },
   props: { ctx: { type: Object, required: true } },

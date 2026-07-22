@@ -19,7 +19,10 @@
     </template>
 
     <!-- 右侧：选中条目内容 -->
-    <div class="help-body">
+    <div
+      class="help-body"
+      :class="{ 'help-body--wide': current && current.type === 'doc' && current.item.embed }"
+    >
       <template v-if="current">
         <span class="help-kind">{{ kindLabel }}</span>
         <h1 class="help-title">{{ current.item.title }}</h1>
@@ -74,6 +77,17 @@
               >{{ rel.label }} ↗</a>
             </div>
           </template>
+        </template>
+
+        <template v-else-if="current.type === 'doc' && current.item.embed">
+          <p class="help-summary">{{ current.item.summary }}</p>
+          <iframe
+            class="help-embed"
+            :src="current.item.embed"
+            sandbox="allow-scripts"
+            referrerpolicy="no-referrer"
+            :title="current.item.title"
+          ></iframe>
         </template>
 
         <template v-else>
@@ -220,6 +234,17 @@ export default {
 /* 右侧内容 */
 .help-body {
   max-width: 780px;
+}
+.help-body--wide {
+  width: 100%;
+  max-width: none;
+}
+.help-body--wide .help-title {
+  font-size: 28px;
+}
+.help-body--wide .help-summary {
+  max-width: 1120px;
+  font-size: 17px;
 }
 .help-kind {
   display: inline-block;
@@ -478,5 +503,14 @@ export default {
   text-align: center;
   color: var(--t3);
   font-size: 14px;
+}
+.help-embed {
+  display: block;
+  width: 100%;
+  min-height: 760px;
+  height: calc(100vh - 190px);
+  border: 1px solid var(--card-b);
+  border-radius: 14px;
+  background: var(--card);
 }
 </style>

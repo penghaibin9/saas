@@ -2,7 +2,7 @@
   <ModulePageShell title="资源占用" subtitle="按日期查看教室 + 实训室的预约占用与课表占用（统一只读视图）">
     <div class="mp-stack">
       <div class="aaro-bar">
-        <AppTextInput v-model="queryDate" placeholder="YYYY-MM-DD" style="max-width:180px" />
+        <AppDatePicker v-model="queryDate" style="max-width:180px" />
         <AppSelect v-model="resourceKind" :options="kindOptions" placeholder="全部资源类型" />
         <AppButton variant="primary" @click="load">查询</AppButton>
       </div>
@@ -30,7 +30,7 @@
 /** 教学资源续卡 · 资源占用（/admin/academic-affairs/resources/occupancy）：教室+实训室预约与课表统一只读聚合。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppTextInput, AppSelect } from '@/components/common'
+import { AppSelect, AppDatePicker } from '@/components/common'
 import { academicAffairsResourceApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 function todayStr() {
@@ -41,7 +41,7 @@ function todayStr() {
 
 export default {
   name: 'AaResourceOccupancyView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppTextInput, AppSelect },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppSelect, AppDatePicker },
   data() {
     return {
       loading: true,

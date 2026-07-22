@@ -1,8 +1,8 @@
 <template>
   <div class="scn-wrap">
     <div class="scn-bar no-print">
-      <button class="mp-btn" @click="$router.back()">返回</button>
-      <button class="mp-btn mp-btn--primary" @click="printNotice" :disabled="!canPrint">打印通知单</button>
+      <AppButton @click="$router.back()">返回</AppButton>
+      <AppPrintButton variant="primary" :handler="printNotice" :disabled="!canPrint" label="打印通知单" />
     </div>
 
     <LoadingState v-if="loading" />
@@ -43,12 +43,14 @@
  * 校名抬头复用 academicAffairsApi.getContext()（对齐 AaStatusChangePrintView.vue 既有范式，D-14）；
  * 打印动作仅在 status=APPLIED 时可用（三级施工卡 05 §5.2/§6：非生效态隐藏/禁用打印，显示提示文案）。 */
 import { LoadingState, ErrorState } from '@/components/business'
+import { AppButton } from '@/components/ui'
+import { AppPrintButton } from '@/components/common'
 import { scheduleChangeApi, CHANGE_STATUS } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 export default {
   name: 'AaScheduleChangeNoticePrintView',
-  components: { LoadingState, ErrorState },
+  components: { LoadingState, ErrorState, AppButton, AppPrintButton },
   data() { return { loading: true, error: '', data: null, schoolName: '职业院校' } },
   computed: {
     canPrint() { return !!this.data && this.data.status === 'APPLIED' }

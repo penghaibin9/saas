@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="goCreate">＋ 新建学期</button>
+      <AppButton variant="primary" @click="goCreate">＋ 新建学期</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -84,6 +84,7 @@
 <script>
 /** 学年学期列表（/admin/academic-affairs/terms）：GET /academic-affairs/terms + POST /terms/{id}/publish。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -92,7 +93,7 @@ const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中' }
 
 export default {
   name: 'AaTermListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppButton, AppStatusTag, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

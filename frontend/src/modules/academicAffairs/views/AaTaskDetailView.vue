@@ -6,8 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/teaching-tasks')">返回批次</button>
-      <button class="mp-btn mp-btn--primary" :disabled="submitting" @click="submitBatch">提交批次审核</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/teaching-tasks')">返回批次</AppButton>
+      <AppButton variant="primary" :loading="submitting" @click="submitBatch">提交批次审核</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -43,8 +43,7 @@
       @confirm="doAssign"
     >
       <div class="aa-assign-form">
-        <label>教师姓名<input v-model.trim="assign.teacherName" class="aa-input" placeholder="必填" /></label>
-        <label>教师工号<input v-model.trim="assign.teacherKey" class="aa-input" placeholder="选填" /></label>
+        <label>任课教师<AppTeacherPicker v-model="assign.teacherKey" placeholder="选择任课教师" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="assign.weeklyHours" type="number" min="0" class="aa-input" /></label>
         <label>预计人数<input v-model.number="assign.expectedStudents" type="number" min="0" class="aa-input" /></label>
       </div>
@@ -55,14 +54,15 @@
 <script>
 /** 教学任务明细（/admin/academic-affairs/teaching-tasks/:batchId）：分配教师 + 教师确认 + 提交批次。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppStatusTag, AppConfirmDialog, AppTeacherPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTaskDetailView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppTeacherPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -83,6 +83,10 @@ export default {
   },
   created() { this.load() },
   methods: {
+    onTeacherPicked(value, items) {
+      this.assign.teacherKey = value || ''
+      this.assign.teacherName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
+    },
     taskColor,
     statusLabel(s) { return TASK_STATUS[s] || s || '' },
     onPageChange(p) { this.pagination.page = p; this.load() },

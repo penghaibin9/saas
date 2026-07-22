@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -19,20 +19,20 @@
 
           <label v-if="scope === 'CLASS'" class="aa-form__item aa-form__item--grow">
             班级
-            <AppClassPicker v-model="identifier" :remote-search="searchClasses" placeholder="搜索班级名称" />
+            <AppClassPicker v-model="identifier" placeholder="搜索班级名称" />
           </label>
           <label v-else-if="scope === 'TEACHER'" class="aa-form__item">
-            教师工号
-            <input v-model.trim="identifier" class="aa-input" placeholder="输入教师工号" />
+            教师
+            <AppTeacherPicker v-model="identifier" placeholder="搜索教师姓名/工号" />
           </label>
           <label v-else class="aa-form__item aa-form__item--grow">
             教室
-            <AppRemoteSelect v-model="identifier" :remote-search="searchRooms" placeholder="搜索楼栋/教室编号" />
+            <AppClassroomPicker v-model="identifier" placeholder="搜索楼栋/教室编号" />
           </label>
 
           <label class="aa-form__item">
             学期（可选）
-            <AppSelect v-model="termId" :options="termOptions" placeholder="" />
+            <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
           </label>
           <label class="aa-form__item">
             起始周（可选）
@@ -48,9 +48,9 @@
             <input v-model.trim="purpose" class="aa-input" placeholder="如：教务处存档 / 班级课表打印分发" maxlength="200" />
           </label>
 
-          <button class="mp-btn mp-btn--primary" :disabled="!canExport || exporting" @click="doExport">
-            {{ exporting ? '导出中…' : '导出 Excel' }}
-          </button>
+          <AppButton variant="primary" :disabled="!canExport" :loading="exporting" @click="doExport">
+            导出 Excel
+          </AppButton>
         </div>
         <p class="mp-note">导出文件首行含导出人/时间/用途水印；单次导出写入操作审计，请勿随意外发。</p>
       </AppSectionCard>
@@ -65,18 +65,19 @@
  * 后端 xlsx 二进制流下载（水印+AffairsAuditTrail 审计），对齐 quality/reports/export 同款 requestBlob 约定。
  */
 import { ModulePageShell } from '@/components/business'
-import { AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect } from '@/components/common'
-import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppTermEntityPicker, AppSelect } from '@/components/common'
+import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaScheduleExportView',
-  components: { ModulePageShell, AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppTermEntityPicker, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       scope: 'CLASS', identifier: '', termId: '', weekStart: null, weekEnd: null, purpose: '',
-      terms: [], exporting: false
+      exporting: false
     }
   },
   computed: {
@@ -87,30 +88,9 @@ export default {
         { value: 'TEACHER', label: '教师课表' },
         { value: 'ROOM', label: '教室课表' }
       ]
-    },
-    termOptions() {
-      return [
-        { value: '', label: '当前已发布批次' },
-        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
-      ]
     }
   },
-  created() { this.loadTerms() },
   methods: {
-    async searchClasses(keyword) {
-      const res = await academicAffairsOrgApi.listClasses({ keyword, pageSize: 20 })
-      if (res.code !== 0) return []
-      return (res.data.list || []).map((c) => ({ label: c.className, value: c.id }))
-    },
-    async searchRooms(keyword) {
-      const res = await academicAffairsApi.getClassroomOptions(keyword)
-      if (res.code !== 0) return []
-      return (res.data || []).map((c) => ({ label: c.label || `${c.buildingName || ''}${c.roomCode || ''}`, value: c.classroomId }))
-    },
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
-    },
     async doExport() {
       if (!this.canExport) { toast.error('请选择导出对象并填写用途（≥5字）'); return }
       this.exporting = true

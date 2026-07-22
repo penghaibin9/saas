@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/courses/new')">＋ 新建课程</button>
+      <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/courses/new')">＋ 新建课程</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -37,13 +37,14 @@
 <script>
 /** 课程库列表（/admin/academic-affairs/courses）：GET /academic-affairs/courses。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { COURSE_CATEGORY, COURSE_NATURE, REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
 
 export default {
   name: 'AaCourseListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AdvancedFilter },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AdvancedFilter },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

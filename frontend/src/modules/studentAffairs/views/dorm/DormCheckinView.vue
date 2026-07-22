@@ -20,25 +20,24 @@
 
       <AppSectionCard title="选床入住">
         <div class="sa-toolbar">
-          <AppSelect v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
-          <AppSelect v-model="curRoom" :options="roomOptions" placeholder="选择房间" class="sa-pick"
+          <AppDormBuildingPicker v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
+          <AppDormRoomPicker v-model="curRoom" :options="roomOptions" :query="{ buildingId: curBuilding }" placeholder="选择房间" class="sa-pick"
                      :disabled="!curBuilding" @change="loadBeds" />
         </div>
-        <table class="sa-table" v-if="curRoom">
-          <thead><tr><th>床号</th><th>状态</th><th>入住学生</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="bd in beds" :key="bd.bedId">
-              <td><strong>{{ bd.bedNo }}</strong></td>
-              <td><AppStatusTag :type="bd.status === 'OCCUPIED' ? 'warning' : 'success'" :label="bd.status === 'OCCUPIED' ? '已住' : '空床'" /></td>
-              <td>{{ bd.occupantName || '—' }}</td>
-              <td class="sa-actions">
-                <AppPermissionButton v-if="bd.status !== 'OCCUPIED'" code="studentAffairs.dorm.allocation.manage" size="sm" :loading="actioning" @click="checkin(bd)">入住</AppPermissionButton>
-                <AppPermissionButton v-else code="studentAffairs.dorm.allocation.manage" size="sm" variant="secondary" :loading="actioning" @click="checkout(bd)">退宿</AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!beds.length"><td colspan="4" class="sa-empty">该房暂无床位</td></tr>
-          </tbody>
-        </table>
+        <template v-if="curRoom">
+          <DataTable v-if="beds.length" :columns="bedColumns" :rows="beds" row-key="bedId">
+            <template #cell-bedNo="{ row }"><span class="mp-cell-main">{{ row.bedNo }}</span></template>
+            <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'OCCUPIED' ? 'warning' : 'success'" :label="row.status === 'OCCUPIED' ? '已住' : '空床'" /></template>
+            <template #cell-occupant="{ row }">{{ row.occupantName || '—' }}</template>
+            <template #cell-actions="{ row }">
+              <div class="sa-actions">
+                <AppPermissionButton v-if="row.status !== 'OCCUPIED'" code="studentAffairs.dorm.allocation.manage" size="sm" :loading="actioning" @click="checkin(row)">入住</AppPermissionButton>
+                <AppPermissionButton v-else code="studentAffairs.dorm.allocation.manage" size="sm" variant="secondary" :loading="actioning" @click="checkout(row)">退宿</AppPermissionButton>
+              </div>
+            </template>
+          </DataTable>
+          <p v-else class="sa-empty">该房暂无床位</p>
+        </template>
         <p v-else class="sa-empty">请先选择楼栋与房间</p>
       </AppSectionCard>
     </AppGlobalState>
@@ -49,7 +48,7 @@
       confirm-text="确认入住" :submitting="actioning" @confirm="submitCheckin"
     >
       <AppFormItem label="入住学生" required>
-        <AppStudentPicker v-model="inDlg.studentId" :remote-search="searchStudents"
+        <AppStudentPicker v-model="inDlg.studentId"
                           placeholder="按姓名 / 学号搜索" :disabled="actioning" />
       </AppFormItem>
       <AppInlineAlert v-if="inDlg.error" type="danger" :description="inDlg.error" />
@@ -79,18 +78,27 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-  AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker
+  AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+
+const BED_COLUMNS = [
+  { key: 'bedNo', title: '床号' },
+  { key: 'status', title: '状态' },
+  { key: 'occupant', title: '入住学生' },
+  { key: 'actions', title: '操作', align: 'right', width: '140px' }
+]
 
 export default {
   name: 'DormCheckinView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker
+    AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, DataTable
   },
   data() {
     return {
+      bedColumns: BED_COLUMNS,
       loading: true, actioning: false, errorMessage: '', config: {}, buildings: [], curBuilding: '',
       rooms: [], curRoom: '', beds: [],
       inDlg: { visible: false, bedId: '', bedLabel: '', studentId: '', error: '' },
@@ -133,7 +141,6 @@ export default {
       try { this.beds = (await studentAffairsApi.listDormBeds(this.curRoom)).data.items || [] }
       catch (e) { this.errorMessage = e.message }
     },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     checkin(bd) {
       this.inDlg = { visible: true, bedId: bd.bedId, bedLabel: `${bd.bedNo} 号床`, studentId: '', error: '' }
     },
@@ -183,8 +190,7 @@ export default {
 .sa-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
 .sa-toolbar select { min-width: 200px; border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-surface); padding: var(--space-2) var(--space-3); }
 .sa-mode { margin: 0; color: var(--text-secondary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-actions { display: flex; gap: var(--space-2); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
+@import '@/styles/module-page.css';
 </style>

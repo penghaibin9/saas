@@ -123,11 +123,11 @@
     <!-- 加课程 -->
     <AppDrawer :visible="courseVisible" title="添加可选课程" @close="courseVisible = false">
       <div class="aasel-form">
-        <AppFormItem label="课程 ID" required>
-          <AppTextInput v-model="courseForm.courseId" placeholder="课程库中的课程 ID" :disabled="saving" />
+        <AppFormItem label="课程" required>
+          <AppCoursePicker v-model="courseForm.courseId" :disabled="saving" />
         </AppFormItem>
-        <AppFormItem label="教学任务 ID">
-          <AppTextInput v-model="courseForm.teachingTaskId" placeholder="选填（关联任课教师/教学班）" :disabled="saving" />
+        <AppFormItem label="教学任务">
+          <AppTeachingTaskPicker v-model="courseForm.teachingTaskId" :query="{ courseId: courseForm.courseId || undefined }" placeholder="选填（关联任课教师/教学班）" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="容量上限" required>
           <AppNumberInput v-model="courseForm.capacity" :min="1" :max="1000" :disabled="saving" />
@@ -179,7 +179,7 @@
 /** 选课管理 · 教务处控制台（/admin/academic-affairs/selection）：批次生命周期 + 课程供给 + 名单 + 统计。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppCoursePicker, AppTeachingTaskPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsSelectionApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -189,7 +189,7 @@ export default {
   name: 'AaSelectionConsoleView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect },
+    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppCoursePicker, AppTeachingTaskPicker },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -314,7 +314,7 @@ export default {
     },
     openAddCourse() { this.courseForm = { courseId: '', teachingTaskId: '', capacity: 30, minCapacity: 1 }; this.courseError = ''; this.courseVisible = true },
     async submitCourse() {
-      if (!this.courseForm.courseId) { this.courseError = '课程 ID 必填'; return }
+      if (!this.courseForm.courseId) { this.courseError = '请选择课程'; return }
       this.saving = true
       const res = await api.addCourse(this.current.batchId, {
         courseId: this.courseForm.courseId,

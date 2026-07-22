@@ -38,7 +38,7 @@
           title="尚未设置当前学期"
           description="到「学年学期」新建学期并发布，即可成为当前学期"
         >
-          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</button>
+          <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</AppButton>
         </EmptyState>
       </AppSectionCard>
 
@@ -300,6 +300,7 @@
  * 续工五卡（今日教学运行/今日课程/调停课提醒/教学资源占用/教务数据趋势，2026-07-16 第三轮）。
  * ?panel= 深链接滚动定位到对应分栏（对齐岗位实习看板 InternshipDashboardView 同款 PANEL_ANCHORS 模式）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag, AppG2Chart } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
@@ -324,7 +325,7 @@ export default {
   name: 'AaDashboardView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-    AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag, AppG2Chart
+    AppButton, AppMetricCard, AppSectionCard, AppStatusTag, AppRiskTag, AppG2Chart
   },
   props: { ctx: { type: Object, required: true } },
   data() {

@@ -11,7 +11,7 @@
       </div>
       <AppSectionCard v-if="formVisible" title="登记助学贷款">
         <div class="ln-grid">
-          <div class="ln-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="ln-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="ln-field"><span>类型</span><AppSelect v-model="form.loanType" :options="LOAN_TYPE_OPTIONS" placeholder="" /></label>
           <label class="ln-field"><span>银行</span><AppTextInput v-model="form.bankName" /></label>
           <label class="ln-field"><span>银行卡号（仅存后4位）</span><AppTextInput v-model="form.bankLast4" :maxlength="4" /></label>
@@ -22,21 +22,19 @@
           <AppPermissionButton code="studentAffairs.funding.loan.manage" :loading="acting==='reg'" @click="register">登记</AppPermissionButton></div>
       </AppSectionCard>
       <AppSectionCard title="贷款台账">
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>类型</th><th>银行/卡</th><th>学年</th><th>金额</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="l in loans" :key="l.loanId">
-              <td><strong>{{ l.realName || ('#'+l.studentId) }}</strong></td>
-              <td>{{ l.loanType==='ORIGIN'?'生源地':'校园地' }}</td>
-              <td>{{ l.bankName || '—' }} {{ l.bankLast4 ? ('****'+l.bankLast4) : '' }}</td>
-              <td>{{ l.yearCode || '—' }}</td>
-              <td>{{ amountText(l.amount) }}</td>
-              <td><StatusTag :type="lnType(l.status)" :label="l.statusLabel || l.status" dot /></td>
-              <td><AppPermissionButton v-if="l.status!=='CONFIRMED'" code="studentAffairs.funding.loan.manage" size="sm" :loading="acting===l.loanId" @click="advance(l)">{{ nextLabel(l.status) }}</AppPermissionButton><span v-else class="ln-muted">已确认</span></td>
-            </tr>
-            <tr v-if="!loans.length"><td colspan="7" class="sa-empty">暂无贷款记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="loans.length" :columns="loanColumns" :rows="loans" row-key="loanId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
+          <template #cell-loanType="{ row }">{{ row.loanType==='ORIGIN'?'生源地':'校园地' }}</template>
+          <template #cell-bank="{ row }">{{ row.bankName || '—' }} {{ row.bankLast4 ? ('****'+row.bankLast4) : '' }}</template>
+          <template #cell-yearCode="{ row }">{{ row.yearCode || '—' }}</template>
+          <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
+          <template #cell-status="{ row }"><StatusTag :type="lnType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton v-if="row.status!=='CONFIRMED'" code="studentAffairs.funding.loan.manage" size="sm" :loading="acting===row.loanId" @click="advance(row)">{{ nextLabel(row.status) }}</AppPermissionButton>
+            <span v-else class="ln-muted">已确认</span>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无贷款记录</p>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -47,19 +45,29 @@ import {
   AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const NEXT = { REGISTERED: '上传回执', RECEIPT: '核对', VERIFIED: '确认' }
 const LOAN_TYPE_OPTIONS = [{ value: 'ORIGIN', label: '生源地' }, { value: 'CAMPUS', label: '校园地' }]
+const LOAN_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'loanType', title: '类型' },
+  { key: 'bank', title: '银行/卡' },
+  { key: 'yearCode', title: '学年' },
+  { key: 'amount', title: '金额' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '120px' }
+]
 
 export default {
   name: 'StudentLoanView',
   components: {
     AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
-    AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+    AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
-  data() { return { loading: true, acting: '', errorMessage: '', loans: [], formVisible: false, form: this.blank() } },
+  data() { return { loanColumns: LOAN_COLUMNS, loading: true, acting: '', errorMessage: '', loans: [], formVisible: false, form: this.blank() } },
   computed: {
     LOAN_TYPE_OPTIONS: () => LOAN_TYPE_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -75,7 +83,6 @@ export default {
   mounted() { this.load() },
   methods: {
     blank() { return { studentId: '', loanType: 'ORIGIN', bankName: '', bankLast4: '', yearCode: '', amount: null } },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getLoans()
@@ -112,9 +119,8 @@ export default {
 .ln-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
 .ln-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
 .ln-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ln-muted { color: var(--text-tertiary); }
 @media (max-width: 960px) { .sa-grid--metrics, .ln-grid { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

@@ -43,31 +43,28 @@
       </AppSectionCard>
 
       <AppSectionCard title="考评记录（按总分排名）">
-        <table class="sa-table">
-          <thead><tr><th>#</th><th>周期</th><th>辅导员</th><th>总分</th><th>加权总分</th><th>状态</th><th>申诉</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="(e, idx) in evals" :key="e.evalId">
-              <td>{{ idx + 1 }}</td>
-              <td>{{ e.periodCode }}</td>
-              <td><strong>{{ e.counselorName || e.counselorKey }}</strong></td>
-              <td>{{ e.totalScore != null ? e.totalScore : '—' }}</td>
-              <td>
-                <b v-if="e.weightedTotalScore != null" title="按指标权重加权平均 Σ得分×权重/Σ权重">{{ e.weightedTotalScore }}</b>
-                <span v-else class="ce-muted" title="指标未配权重，回退原始总分">—</span>
-              </td>
-              <td><StatusTag :type="e.status === 'PUBLISHED' ? 'success' : 'default'" :label="e.statusLabel || e.status" dot /></td>
-              <td>
-                <StatusTag v-if="e.appealStatus !== 'NONE'" :type="e.appealStatus === 'SUBMITTED' ? 'warning' : 'processing'" :label="e.appealStatusLabel" dot />
-                <span v-else class="ce-muted">—</span>
-              </td>
-              <td class="ce-ops">
-                <AppPermissionButton v-if="e.status === 'DRAFT'" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting===e.evalId" @click="publish(e)">发布</AppPermissionButton>
-                <AppPermissionButton v-if="e.appealStatus === 'SUBMITTED'" code="studentAffairs.counselorEval.manage" size="sm" variant="secondary" :loading="acting===e.evalId" @click="reviewAppeal(e)">申诉复核</AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!evals.length"><td colspan="7" class="sa-empty">暂无考评记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="evalRows.length" :columns="evalColumns" :rows="evalRows" row-key="evalId">
+          <template #cell-idx="{ row }">{{ row.rowIndex }}</template>
+          <template #cell-period="{ row }">{{ row.periodCode }}</template>
+          <template #cell-counselor="{ row }"><span class="mp-cell-main">{{ row.counselorName || row.counselorKey }}</span></template>
+          <template #cell-total="{ row }">{{ row.totalScore != null ? row.totalScore : '—' }}</template>
+          <template #cell-weighted="{ row }">
+            <b v-if="row.weightedTotalScore != null" title="按指标权重加权平均 Σ得分×权重/Σ权重">{{ row.weightedTotalScore }}</b>
+            <span v-else class="ce-muted" title="指标未配权重，回退原始总分">—</span>
+          </template>
+          <template #cell-status="{ row }"><StatusTag :type="row.status === 'PUBLISHED' ? 'success' : 'default'" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-appeal="{ row }">
+            <StatusTag v-if="row.appealStatus !== 'NONE'" :type="row.appealStatus === 'SUBMITTED' ? 'warning' : 'processing'" :label="row.appealStatusLabel" dot />
+            <span v-else class="ce-muted">—</span>
+          </template>
+          <template #cell-actions="{ row }">
+            <div class="ce-ops">
+              <AppPermissionButton v-if="row.status === 'DRAFT'" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting===row.evalId" @click="publish(row)">发布</AppPermissionButton>
+              <AppPermissionButton v-if="row.appealStatus === 'SUBMITTED'" code="studentAffairs.counselorEval.manage" size="sm" variant="secondary" :loading="acting===row.evalId" @click="reviewAppeal(row)">申诉复核</AppPermissionButton>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无考评记录</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -86,6 +83,7 @@
 <script>
 import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag,
   AppConfirmDialog, AppFormItem, AppNumberInput, AppSelect, AppTextInput } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
@@ -94,14 +92,25 @@ const APPEAL_RESULTS = [
   { value: 'UPHELD', label: '维持原考评结果' },
   { value: 'ADJUSTED', label: '调整考评结果' }
 ]
+const EVAL_COLUMNS = [
+  { key: 'idx', title: '#', width: '48px' },
+  { key: 'period', title: '周期' },
+  { key: 'counselor', title: '辅导员' },
+  { key: 'total', title: '总分' },
+  { key: 'weighted', title: '加权总分' },
+  { key: 'status', title: '状态' },
+  { key: 'appeal', title: '申诉' },
+  { key: 'actions', title: '操作', align: 'right', width: '160px' }
+]
 
 export default {
   name: 'CounselorEvalView',
   components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag,
-    AppConfirmDialog, AppFormItem, AppNumberInput, AppSelect, AppTextInput },
+    AppConfirmDialog, AppFormItem, AppNumberInput, AppSelect, AppTextInput, DataTable },
   data() {
     return {
       APPEAL_RESULTS,
+      evalColumns: EVAL_COLUMNS,
       loading: true, acting: '', errorMessage: '', indicators: [], evals: [],
       indForm: { name: '', weight: null },
       scoreForm: { periodCode: '', counselorKey: '', counselorName: '', scores: {} },
@@ -112,6 +121,9 @@ export default {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     liveTotal() {
       return Math.round(Object.values(this.scoreForm.scores).reduce((a, v) => a + (Number(v) || 0), 0) * 100) / 100
+    },
+    evalRows() {
+      return this.evals.map((e, i) => ({ ...e, rowIndex: i + 1 }))
     }
   },
   mounted() { this.load() },
@@ -188,10 +200,9 @@ export default {
 .ce-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-4); }
 .ce-total { color: var(--text-secondary); }
 .ce-total b { font-size: var(--font-size-lg); color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ce-muted { color: var(--text-tertiary); }
 .ce-ops { display: flex; gap: 6px; }
 @media (max-width: 960px) { .ce-scoreform, .ce-scores { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

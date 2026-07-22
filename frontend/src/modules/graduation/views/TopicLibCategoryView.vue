@@ -10,10 +10,7 @@
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <form v-else-if="topic" class="ie-form" @submit.prevent="submit">
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">分类 <i>*</i></span>
-        <select v-model="category" class="ie-in">
-          <option value="">请选择</option>
-          <option v-for="c in GD_TOPIC_CATEGORY" :key="c" :value="c">{{ c }}</option>
-        </select>
+        <AppSelect v-model="category" :options="categoryOptions" />
       </label>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -29,16 +26,18 @@ import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { GD_TOPIC_CATEGORY } from '@/modules/graduation/constants/graduation-topic.constants'
+import { AppSelect } from '@/components/common'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'TopicLibCategoryView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState },
+  components: { GraduationFormPageShell, LoadingState, ErrorState, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { GD_TOPIC_CATEGORY, loading: true, error: '', topic: null, category: '', formError: '', submitting: false }
   },
   computed: {
+    categoryOptions() { return this.GD_TOPIC_CATEGORY.map((value) => ({ value, label: value })) },
     backTo() {
       const panel = this.$route.query.returnPanel || 'category'
       return `/admin/graduation/topic-lib?panel=${panel}`

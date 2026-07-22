@@ -107,7 +107,7 @@
     <AppDrawer v-model:visible="registerModal.visible" title="登记违纪处分">
       <div class="dp-form">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="registerModal.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
+          <AppStudentPicker v-model="registerModal.studentId" placeholder="按姓名 / 学号搜索学生" />
         </AppFormItem>
         <AppFormItem label="处分类型" required>
           <AppSelect v-model="registerModal.discType" :options="discTypes" :disabled="acting" />
@@ -311,9 +311,6 @@ export default {
       const { value, selStart, selEnd } = insertAtCursor(el, this.registerModal.reason, text)
       this.registerModal.reason = value
       this.$nextTick(() => applyInsertion(el, selStart, selEnd))
-    },
-    searchStudents(keyword) {
-      return studentAffairsApi.searchStudents(keyword)
     },
     async submitRegister() {
       const m = this.registerModal

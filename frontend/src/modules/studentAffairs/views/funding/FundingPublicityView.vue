@@ -19,24 +19,19 @@
 
       <AppSectionCard title="公示中的资助申请">
         <p class="fp-note">金额按当前角色脱敏由后端裁定；公示仅展示允许字段。</p>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>学号</th><th>项目类型</th><th>金额</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="it in items" :key="it.applicationId">
-              <td><strong>{{ it.realName || ('学生#' + it.studentId) }}</strong></td>
-              <td>{{ it.studentNo || '—' }}</td>
-              <td>{{ typeLabel(it.projectType) }}</td>
-              <td>{{ amountText(it.amount) }}</td>
-              <td>
-                <AppPermissionButton code="studentAffairs.funding.publicity.manage" size="sm" variant="secondary"
-                                     :loading="actingId === it.applicationId" @click="confirm(it)">
-                  确认公示期满 → 获资助
-                </AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="5" class="sa-empty">当前无公示中的资助申请</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="publicityColumns" :rows="items" row-key="applicationId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
+          <template #cell-projectType="{ row }">{{ typeLabel(row.projectType) }}</template>
+          <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton code="studentAffairs.funding.publicity.manage" size="sm" variant="secondary"
+                                 :loading="actingId === row.applicationId" @click="confirm(row)">
+              确认公示期满 → 获资助
+            </AppPermissionButton>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前无公示中的资助申请</p>
         <!-- 本页仅展示 status=PUBLICITY 的待办队列，属于随时清空的工作队列而非历史台账，
              规模受限于当前同时在公示期内的申请数，暂不引入 AppPagination。 -->
       </AppSectionCard>
@@ -46,13 +41,22 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
+const PUBLICITY_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'studentNo', title: '学号' },
+  { key: 'projectType', title: '项目类型' },
+  { key: 'amount', title: '金额' },
+  { key: 'actions', title: '操作', align: 'right', width: '220px' }
+]
+
 export default {
   name: 'FundingPublicityView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard },
-  data() { return { loading: true, scanning: false, actingId: '', errorMessage: '', items: [] } },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, DataTable },
+  data() { return { publicityColumns: PUBLICITY_COLUMNS, loading: true, scanning: false, actingId: '', errorMessage: '', items: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
@@ -110,8 +114,7 @@ export default {
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
 .fp-note { color: var(--text-tertiary); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

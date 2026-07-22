@@ -10,24 +10,21 @@
         <div class="fr-filters">
           <button v-for="f in statusFilters" :key="f.key" type="button" class="fr-chip" :class="{ 'is-on': activeStatus===f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>方式</th><th>事由</th><th>时间</th><th>回执</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="c in items" :key="c.contactId">
-              <td><strong>{{ c.realName || ('#'+c.studentId) }}</strong></td>
-              <td>{{ typeLabel(c.contactType) }}</td>
-              <td class="fr-reason">{{ c.reason || '—' }}</td>
-              <td>{{ (c.occurredAt||'').slice(0,10) || '—' }}</td>
-              <td><StatusTag :type="c.receiptStatus==='RECEIVED'?'success':'warning'" :label="c.receiptStatusLabel || c.receiptStatus" dot />
-                <em v-if="c.receiptNote" class="fr-note">{{ c.receiptNote }}</em></td>
-              <td>
-                <AppPermissionButton v-if="c.receiptStatus!=='RECEIVED'" code="studentAffairs.homeSchool.record.create" size="sm" :loading="acting===c.contactId" @click="markReceipt(c)">登记回执</AppPermissionButton>
-                <span v-else class="fr-muted">—</span>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无家校联系记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="contactColumns" :rows="items" row-key="contactId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
+          <template #cell-contactType="{ row }">{{ typeLabel(row.contactType) }}</template>
+          <template #cell-reason="{ row }"><span class="fr-reason">{{ row.reason || '—' }}</span></template>
+          <template #cell-occurredAt="{ row }">{{ (row.occurredAt||'').slice(0,10) || '—' }}</template>
+          <template #cell-receipt="{ row }">
+            <StatusTag :type="row.receiptStatus==='RECEIVED'?'success':'warning'" :label="row.receiptStatusLabel || row.receiptStatus" dot />
+            <em v-if="row.receiptNote" class="fr-note">{{ row.receiptNote }}</em>
+          </template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton v-if="row.receiptStatus!=='RECEIVED'" code="studentAffairs.homeSchool.record.create" size="sm" :loading="acting===row.contactId" @click="markReceipt(row)">登记回执</AppPermissionButton>
+            <span v-else class="fr-muted">—</span>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无家校联系记录</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -51,21 +48,31 @@ import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
   AppQuickPhrases, AppSectionCard, AppStatusTag, AppTextarea
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const TYPE = { PHONE: '电话', WECHAT: '微信', VISIT: '家访', MESSAGE: '短信' }
 const STATUS_FILTERS = [{ key: '', label: '全部' }, { key: 'PENDING', label: '待回执' }, { key: 'RECEIVED', label: '已回执' }]
+const CONTACT_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'contactType', title: '方式' },
+  { key: 'reason', title: '事由' },
+  { key: 'occurredAt', title: '时间' },
+  { key: 'receipt', title: '回执' },
+  { key: 'actions', title: '操作', align: 'right', width: '140px' }
+]
 
 export default {
   name: 'FamilyReceiptView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
-    AppQuickPhrases, AppSectionCard, AppTextarea, StatusTag: AppStatusTag
+    AppQuickPhrases, AppSectionCard, AppTextarea, StatusTag: AppStatusTag, DataTable
   },
   data() {
     return {
+      contactColumns: CONTACT_COLUMNS,
       loading: true, acting: '', errorMessage: '', all: [], items: [], activeStatus: '', statusFilters: STATUS_FILTERS,
       recDlg: { visible: false, contactId: '', who: '', note: '' }
     }
@@ -125,11 +132,10 @@ export default {
 .fr-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
 .fr-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .fr-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-2) var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .fr-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 220px; }
 .fr-note { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .fr-muted { color: var(--text-tertiary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

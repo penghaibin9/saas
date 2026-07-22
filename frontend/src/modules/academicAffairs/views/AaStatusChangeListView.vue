@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/academic-affairs/status-changes/new')">＋ 发起异动</button>
+      <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/status-changes/new')">＋ 发起异动</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -52,13 +52,14 @@
 <script>
 /** 学籍异动列表（/admin/academic-affairs/status-changes）：GET /academic-affairs/status-changes。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TYPE_LABEL, STATUS_LABEL, NODE_LABEL, statusColor } from '@/modules/academicAffairs/constants/status-change'
 
 export default {
   name: 'AaStatusChangeListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AdvancedFilter },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AdvancedFilter },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

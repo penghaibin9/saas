@@ -67,7 +67,8 @@ export default {
       loading: true, error: '', rows: [], stats: null,
       filters: {
         changeType: '', status: '',
-        studentId: this.$route.query.studentId || ''
+        studentId: this.$route.query.studentId || '',
+        dateStart: '', dateEnd: ''
       },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
@@ -87,7 +88,10 @@ export default {
           options: Object.entries(CHANGE_TYPE_LABEL).map(([value, label]) => ({ value, label })) },
         { key: 'status', label: '状态', type: 'select', placeholder: '全部',
           options: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })) },
-        { key: 'studentId', label: '学生 ID', type: 'text', placeholder: '按学生 ID 过滤（可选）' }
+        { key: 'studentId', label: '学生 ID', type: 'text', placeholder: '按学生 ID 过滤（可选）' },
+        { key: 'date', label: '生效时间', type: 'daterange',
+          startKey: 'dateStart', endKey: 'dateEnd',
+          memoryKey: 'academicAffairs.rosterChanges.dateRange', emptyLabel: '全部时间' }
       ]
     }
   },
@@ -117,7 +121,7 @@ export default {
       this.load()
     },
     reset() {
-      this.filters = { changeType: '', status: '', studentId: '' }
+      this.filters = { changeType: '', status: '', studentId: '', dateStart: '', dateEnd: '' }
       this.pagination.page = 1
       this.load()
     },
@@ -128,6 +132,8 @@ export default {
         changeType: this.filters.changeType || undefined,
         status: this.filters.status || undefined,
         studentId: this.filters.studentId || undefined,
+        dateFrom: this.filters.dateStart || undefined,
+        dateTo: this.filters.dateEnd || undefined,
         page: this.pagination.page,
         pageSize: this.pagination.pageSize
       })

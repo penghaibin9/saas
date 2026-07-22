@@ -6,8 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" :disabled="scanning" @click="scan">{{ scanning ? '扫描中…' : '执行预警扫描' }}</button>
-      <button class="mp-btn" @click="goHandle">前往处置页</button>
+      <AppButton variant="primary" :loading="scanning" @click="scan">执行预警扫描</AppButton>
+      <AppButton @click="goHandle">前往处置页</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -15,7 +15,7 @@
 
       <div class="aa-filter">
         <AppSelect v-model="filters.level" :options="levelOptions" @change="search" />
-        <button class="mp-btn" @click="search">查询</button>
+        <AppButton @click="search">查询</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -34,6 +34,7 @@
 <script>
 /** 学业预警（/admin/academic-affairs/warnings）：POST /warnings/scan + GET /warnings。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppInlineAlert, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { WARNING_LEVEL, warningColor } from '@/modules/academicAffairs/constants/grade-graduation'
@@ -41,7 +42,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaWarningView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppInlineAlert, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppInlineAlert, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

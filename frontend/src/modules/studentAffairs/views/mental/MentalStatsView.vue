@@ -19,29 +19,19 @@
 
       <div class="sa-grid sa-grid--two">
         <AppSectionCard title="按状态分布">
-          <table class="sa-table">
-            <thead><tr><th>状态</th><th>数量</th></tr></thead>
-            <tbody>
-              <tr v-for="row in statusRows" :key="row.key">
-                <td><AppStatusTag :type="row.kind" :label="row.label" /></td>
-                <td>{{ row.value }}</td>
-              </tr>
-              <tr v-if="!statusRows.length"><td colspan="2" class="sa-empty">暂无数据</td></tr>
-            </tbody>
-          </table>
+          <DataTable v-if="statusRows.length" :columns="statusColumns" :rows="statusRows" row-key="key">
+            <template #cell-label="{ row }"><AppStatusTag :type="row.kind" :label="row.label" /></template>
+            <template #cell-value="{ row }">{{ row.value }}</template>
+          </DataTable>
+          <p v-else class="sa-empty">暂无数据</p>
         </AppSectionCard>
 
         <AppSectionCard title="按关注等级分布">
-          <table class="sa-table">
-            <thead><tr><th>等级</th><th>数量</th></tr></thead>
-            <tbody>
-              <tr v-for="row in levelRows" :key="row.key">
-                <td><AppStatusTag :type="row.kind" :label="row.label" /></td>
-                <td>{{ row.value }}</td>
-              </tr>
-              <tr v-if="!levelRows.length"><td colspan="2" class="sa-empty">暂无数据</td></tr>
-            </tbody>
-          </table>
+          <DataTable v-if="levelRows.length" :columns="levelColumns" :rows="levelRows" row-key="key">
+            <template #cell-label="{ row }"><AppStatusTag :type="row.kind" :label="row.label" /></template>
+            <template #cell-value="{ row }">{{ row.value }}</template>
+          </DataTable>
+          <p v-else class="sa-empty">暂无数据</p>
         </AppSectionCard>
       </div>
       <p class="sa-note">本页仅呈现聚合数量，不含任何学生姓名、咨询记录或诊断信息。</p>
@@ -57,8 +47,11 @@ import {
   AppSectionCard,
   AppStatusTag
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
+const STATUS_COLUMNS = [{ key: 'label', title: '状态' }, { key: 'value', title: '数量' }]
+const LEVEL_COLUMNS = [{ key: 'label', title: '等级' }, { key: 'value', title: '数量' }]
 const STATUS = [
   { key: 'REFERRED', label: '已转介', kind: 'info' },
   { key: 'FOLLOWING', label: '回访中', kind: 'warning' },
@@ -73,9 +66,9 @@ const LEVEL = [
 
 export default {
   name: 'MentalStatsView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag, DataTable },
   data() {
-    return { loading: true, errorMessage: '', stats: null }
+    return { statusColumns: STATUS_COLUMNS, levelColumns: LEVEL_COLUMNS, loading: true, errorMessage: '', stats: null }
   },
   computed: {
     pageState() {
@@ -134,16 +127,6 @@ export default {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
 }
-.sa-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.sa-table th,
-.sa-table td {
-  border-bottom: 1px solid var(--border-light);
-  padding: var(--space-3);
-  text-align: left;
-}
 .sa-note {
   color: var(--text-tertiary);
   margin-top: var(--space-4);
@@ -159,4 +142,5 @@ export default {
     grid-template-columns: 1fr;
   }
 }
+@import '@/styles/module-page.css';
 </style>

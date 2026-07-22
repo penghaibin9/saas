@@ -47,6 +47,18 @@ def assert_cors_safe() -> None:
             raise RuntimeError("生产环境必须显式配置 CORS_ORIGINS 白名单，禁止使用通配符")
 
 
+def assert_scale_safe() -> None:
+    """多实例/多 worker 部署必须配 Redis（P1 加固）。
+    限流（token_store.rate_limit）、登录失败锁定、accessToken jti 黑名单在 Redis 不可用时
+    退回「进程内内存」——单进程语义正确，但一旦横向扩到多台服务器或多 uvicorn worker，
+    各进程各算一份桶/计数，攻击者轮询打不同进程即可绕过，等于形同虚设。
+    默认 MULTI_INSTANCE=false（单进程）不受影响；扩容时显式置 true 即由本守卫强制 Redis。"""
+    if settings.is_prod and settings.MULTI_INSTANCE and not settings.REDIS_URL.strip():
+        raise RuntimeError(
+            "多实例部署（MULTI_INSTANCE=true）必须配置 REDIS_URL：否则限流/登录锁定/"
+            "令牌黑名单在各进程间不共享，无法生效。请配置 Redis，或单进程部署时置 MULTI_INSTANCE=false")
+
+
 def create_access_token(payload: dict, *, expires_in: int | None = None) -> str:
     now = int(time.time())
     import uuid as _uuid
@@ -115,11 +127,21 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     return user
 
 
+# 教职工/管理端 userType 白名单（全仓 userType 词表核验：教职工侧仅以下五类，
+# 非教职工为 STUDENT/GUARDIAN）。改用白名单而非「排除 STUDENT/GUARDIAN」黑名单：
+# 空值、拼写错误、未来新增的非教职工类型一律拒绝，避免黑名单漏项而放行（P2-1 加固）。
+# ★ 新增教职工 userType 必须同步登记此集合，否则该类账号访问 PC 管理端会被 403。
+STAFF_USER_TYPES = frozenset({
+    "TEACHER", "ADMIN", "STAFF", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN",
+})
+
+
 def require_staff(user: dict = Depends(get_current_user)) -> dict:
     """FastAPI 依赖：仅教职工/管理员可访问的 PC 管理端接口。
-    学生/家长令牌一律 403，防止越权访问全校学生主档/审批/待办/导入导出/审计等 PC 接口。
+    白名单模式：userType 必须落在 STAFF_USER_TYPES 内，否则一律 403，
+    防止越权访问全校学生主档/审批/待办/导入导出/审计等 PC 接口。
     学生合法入口是 /mobile/* 与 /portal/*（严格本人 + 脱敏）；家长合法入口是 /portal/guardian/*（只读）。"""
-    if (user.get("userType") or "").strip().upper() in ("STUDENT", "GUARDIAN"):
+    if (user.get("userType") or "").strip().upper() not in STAFF_USER_TYPES:
         raise no_permission("该接口仅教职工可用，请使用个人/家长门户")
     return user
 

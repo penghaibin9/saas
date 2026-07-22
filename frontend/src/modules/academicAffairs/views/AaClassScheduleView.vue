@@ -6,24 +6,24 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
           班级
-          <AppClassPicker v-model="classId" :remote-search="searchClasses" placeholder="搜索班级名称" @change="onClassChange" />
+          <AppClassPicker v-model="classId" placeholder="搜索班级名称" @change="onClassChange" />
         </label>
         <label class="aa-filter__item">
           学期
-          <AppSelect v-model="termId" :options="termOptions" placeholder="" />
+          <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
         </label>
         <label class="aa-filter__item">
           周次
           <input v-model.number="week" type="number" min="1" max="30" class="aa-input aa-input--sm" placeholder="全部周次" />
         </label>
-        <button class="mp-btn mp-btn--primary" :disabled="!classId" @click="load">查询</button>
+        <AppButton variant="primary" :disabled="!classId" @click="load">查询</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -47,41 +47,28 @@
  * GET /academic-affairs/schedule/class/{classId}?termId=&week=；越范围 → 403002。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppClassPicker, AppSelect } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppClassPicker, AppTermEntityPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
-import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaClassScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppClassPicker, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassPicker, AppTermEntityPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       classId: this.$route.params.classId || '',
       className: '', termId: '', week: null,
-      terms: [], slots: [], items: [], note: '', loading: false, error: ''
-    }
-  },
-  computed: {
-    termOptions() {
-      return [
-        { value: '', label: '当前已发布批次' },
-        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
-      ]
+      slots: [], items: [], note: '', loading: false, error: ''
     }
   },
   created() {
-    this.loadTerms()
     this.loadSlots()
     if (this.classId) this.load()
   },
   methods: {
-    async searchClasses(keyword) {
-      const res = await academicAffairsOrgApi.listClasses({ keyword, pageSize: 20 })
-      if (res.code !== 0) return []
-      return (res.data.list || []).map((c) => ({ label: c.className, value: c.id }))
-    },
     onClassChange(_v, items) {
       this.className = (items && items[0] && items[0].label) || ''
       this.$router.replace(`/admin/academic-affairs/schedule/class/${this.classId}`).catch(() => {})
@@ -89,10 +76,6 @@ export default {
     },
     onItemClick(it) {
       toast.success(`${it.courseName || ''} · ${it.teacherName || ''} · ${it.classroom || ''} · ${it.startWeek}-${it.endWeek}周`)
-    },
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
     },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()

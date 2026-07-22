@@ -10,7 +10,7 @@
     <form v-else class="ie-form" @submit.prevent="submit">
       <p class="ie-hint">仅「已确认」且未满员的选题可选（来自选题库真实数据）。</p>
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">选题 <i>*</i></span>
-        <AppRemoteSelect v-model="assignTopicId" :options="topicOptions" placeholder="按题目名 / 导师搜索选题" />
+        <AppGraduationTopicPicker v-model="assignTopicId" placeholder="按题目名 / 导师搜索选题" />
       </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -24,24 +24,21 @@
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
-import { AppRemoteSelect } from '@/components/common'
+import { AppGraduationTopicPicker } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationStudentAssignTopicView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, AppRemoteSelect },
+  components: { GraduationFormPageShell, LoadingState, ErrorState, AppGraduationTopicPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', student: null,
-      assignTopicId: '', topicOpts: [], formError: '', submitting: false
+      assignTopicId: '', formError: '', submitting: false
     }
   },
   computed: {
-    topicOptions() {
-      return this.topicOpts.map((x) => ({ label: `${x.title} · ${x.advisorName}（余 ${x.remaining}）`, value: x.id, disabled: x.remaining <= 0 }))
-    },
     backTo() {
       const panel = this.$route.query.returnPanel || 'topic'
       return `/admin/graduation/students?panel=${panel}`
@@ -57,9 +54,6 @@ export default {
       if (s.code !== 0) { this.error = s.message; this.loading = false; return }
       this.student = s.data
       this.assignTopicId = s.data.topicId || ''
-      const t = await gdStudentApi.getConfirmedTopics()
-      if (t.code === 0) this.topicOpts = t.data
-      else this.topicOpts = []
       this.loading = false
     },
     async submit() {

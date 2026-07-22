@@ -17,7 +17,7 @@
 
       <AppSectionCard v-if="formVisible" title="提交积分申诉">
         <div class="ca-grid">
-          <div class="ca-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="ca-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="ca-field"><span>类型</span>
             <AppSelect v-model="form.appealType" :options="APPEAL_TYPE_OPTIONS" placeholder="" /></label>
           <label class="ca-field"><span>学分类型</span>
@@ -37,27 +37,26 @@
           <button v-for="f in statusFilters" :key="f.key" type="button" class="ca-chip"
                   :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>类型</th><th>主张</th><th>理由</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="a in items" :key="a.appealId">
-              <td><strong>{{ a.realName || ('学生#' + a.studentId) }}</strong></td>
-              <td>{{ a.appealType === 'MISSING' ? '缺记' : '记错' }}</td>
-              <td>{{ ctypeLabel(a.claimCreditType) }} {{ a.claimValue != null ? a.claimValue : '—' }}</td>
-              <td class="ca-reason">{{ a.reason }}</td>
-              <td><StatusTag :type="statusType(a.status)" :label="a.statusLabel || a.status" dot />
-                <em v-if="a.reviewOpinion" class="ca-opinion">{{ a.reviewOpinion }}</em></td>
-              <td class="ca-ops">
-                <template v-if="a.status === 'SUBMITTED'">
-                  <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" :loading="acting===a.appealId" @click="review(a,'APPROVE')">通过</AppPermissionButton>
-                  <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" variant="secondary" danger :loading="acting===a.appealId" @click="review(a,'REJECT')">驳回</AppPermissionButton>
-                </template>
-                <span v-else class="ca-dash">—</span>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="6" class="sa-empty">暂无积分申诉</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="appealColumns" :rows="items" row-key="appealId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-appealType="{ row }">{{ row.appealType === 'MISSING' ? '缺记' : '记错' }}</template>
+          <template #cell-claim="{ row }">{{ ctypeLabel(row.claimCreditType) }} {{ row.claimValue != null ? row.claimValue : '—' }}</template>
+          <template #cell-reason="{ row }"><span class="ca-reason">{{ row.reason }}</span></template>
+          <template #cell-status="{ row }">
+            <StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot />
+            <em v-if="row.reviewOpinion" class="ca-opinion">{{ row.reviewOpinion }}</em>
+          </template>
+          <template #cell-actions="{ row }">
+            <div class="ca-ops">
+              <template v-if="row.status === 'SUBMITTED'">
+                <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" :loading="acting===row.appealId" @click="review(row,'APPROVE')">通过</AppPermissionButton>
+                <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" variant="secondary" danger :loading="acting===row.appealId" @click="review(row,'REJECT')">驳回</AppPermissionButton>
+              </template>
+              <span v-else class="ca-dash">—</span>
+            </div>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">暂无积分申诉</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -76,9 +75,18 @@ import {
   AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
+const APPEAL_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'appealType', title: '类型' },
+  { key: 'claim', title: '主张' },
+  { key: 'reason', title: '理由' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '160px' }
+]
 const CTYPE = { SECOND_CLASS: '二课学时', MORAL: '德育积分', VOLUNTEER_HOUR: '志愿时长' }
 const CTYPE_OPTIONS = Object.entries(CTYPE).map(([value, label]) => ({ value, label }))
 const APPEAL_TYPE_OPTIONS = [{ value: 'MISSING', label: '缺记' }, { value: 'WRONG', label: '记错' }]
@@ -91,10 +99,11 @@ export default {
   name: 'CreditAppealView',
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
+    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
     return {
+      appealColumns: APPEAL_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
       formVisible: false, form: this.blankForm(),
@@ -117,7 +126,6 @@ export default {
   mounted() { this.load() },
   methods: {
     blankForm() { return { studentId: '', appealType: 'MISSING', claimCreditType: 'SECOND_CLASS', claimValue: null, reason: '', error: '' } },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getCreditAppeals({ pageSize: 300 })
@@ -173,12 +181,11 @@ export default {
 .ca-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .ca-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .ca-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ca-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 220px; }
 .ca-opinion { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .ca-ops { display: flex; gap: 6px; }
 .ca-dash { color: var(--text-tertiary); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .ca-grid { grid-template-columns: 1fr; } .ca-field--wide { grid-column: span 1; } }
+@import '@/styles/module-page.css';
 </style>

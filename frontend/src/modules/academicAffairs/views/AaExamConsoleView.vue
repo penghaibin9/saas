@@ -112,7 +112,7 @@
 
     <AppDrawer :visible="courseVisible" title="从教学任务圈定考试课程" @close="courseVisible = false">
       <div class="aaexam-form">
-        <AppFormItem label="教学任务 ID" required><AppTextInput v-model="courseTaskId" placeholder="教学任务 ID" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="courseTaskId" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="courseError" type="danger" :description="courseError" />
       </div>
       <template #footer>
@@ -123,9 +123,9 @@
 
     <AppDrawer :visible="schedVisible" title="设置考试时间" @close="schedVisible = false">
       <div class="aaexam-form">
-        <AppFormItem label="考试日期"><AppTextInput v-model="sched.examDate" placeholder="YYYY-MM-DD" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="开始时间"><AppTextInput v-model="sched.startTime" placeholder="HH:MM" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="结束时间"><AppTextInput v-model="sched.endTime" placeholder="HH:MM" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="考试日期"><AppDatePicker v-model="sched.examDate" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="开始时间"><AppTimePicker v-model="sched.startTime" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="结束时间"><AppTimePicker v-model="sched.endTime" :disabled="saving" /></AppFormItem>
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="saving" @click="schedVisible = false">取消</AppButton>
@@ -143,7 +143,7 @@
             <button class="mp-link" @click="printSeating(r.examRoomId)">座位表/准考证/门贴</button>
           </li>
         </ul>
-        <AppFormItem label="新增考场"><AppTextInput v-model="roomForm.classroomText" placeholder="考场名 如 A101" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="新增考场"><AppClassroomPicker v-model="roomForm.classroomId" :disabled="saving" @change="onExamRoomPicked" /></AppFormItem>
         <AppFormItem label="容量"><AppNumberInput v-model="roomForm.capacity" :min="1" :max="500" :disabled="saving" /></AppFormItem>
         <AppButton size="small" variant="ghost" :loading="saving" @click="submitRoom">添加考场</AppButton>
       </div>
@@ -158,11 +158,10 @@
             <span>{{ p.teacherName || p.teacherKey }} · {{ p.patrolDate || '—' }} {{ p.startTime || '' }}-{{ p.endTime || '' }} · {{ p.areaScope || '全场' }}</span>
           </li>
         </ul>
-        <AppFormItem label="巡考教师工号" required><AppTextInput v-model="patrolForm.teacherKey" placeholder="教师 key/工号" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="教师姓名"><AppTextInput v-model="patrolForm.teacherName" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="巡考日期"><AppTextInput v-model="patrolForm.patrolDate" placeholder="YYYY-MM-DD" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="开始时间"><AppTextInput v-model="patrolForm.startTime" placeholder="HH:MM" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="结束时间"><AppTextInput v-model="patrolForm.endTime" placeholder="HH:MM" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="巡考教师" required><AppTeacherPicker v-model="patrolForm.teacherKey" :disabled="saving" @change="onPatrolTeacherPicked" /></AppFormItem>
+        <AppFormItem label="巡考日期"><AppDatePicker v-model="patrolForm.patrolDate" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="开始时间"><AppTimePicker v-model="patrolForm.startTime" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="结束时间"><AppTimePicker v-model="patrolForm.endTime" :disabled="saving" /></AppFormItem>
         <AppFormItem label="巡考区域"><AppTextInput v-model="patrolForm.areaScope" placeholder="如 教学楼A/全场" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="patrolError" type="danger" :description="patrolError" />
         <AppButton size="small" variant="primary" :loading="saving" @click="submitPatrol">排巡考</AppButton>
@@ -177,7 +176,7 @@
 /** 考务管理 · 教务处控制台（/admin/academic-affairs/exam）：批次生命周期+考试课程+考场编排+异常+统计。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTeachingTaskPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsExamApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -187,7 +186,8 @@ export default {
   name: 'AaExamConsoleView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert
+    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert,
+    AppTeachingTaskPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker
   },
   data() {
     return {
@@ -197,7 +197,7 @@ export default {
       createVisible: false, form: { batchName: '' }, formError: '',
       courseVisible: false, courseTaskId: '', courseError: '',
       schedVisible: false, schedCourse: null, sched: { examDate: '', startTime: '', endTime: '' },
-      arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomText: '', capacity: 50 },
+      arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomId: '', classroomText: '', capacity: 50 },
       patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '',
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
       autoArranging: false, autoResult: null,
@@ -213,6 +213,16 @@ export default {
     this.load()
   },
   methods: {
+    onExamRoomPicked(value, items) {
+      this.roomForm.classroomId = value || ''
+      this.roomForm.classroomText = items?.[0]?.label || ''
+      const capacity = items?.[0]?.raw?.capacity
+      if (capacity) this.roomForm.capacity = capacity
+    },
+    onPatrolTeacherPicked(value, items) {
+      this.patrolForm.teacherKey = value || ''
+      this.patrolForm.teacherName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
+    },
     statusLabel(s) { return _L[s] || s },
     statusType(s) {
       if (s === 'PUBLISHED') return 'success'
@@ -276,7 +286,7 @@ export default {
       if (res.code === 0) { toast.success('已保存'); this.schedVisible = false; await this.refresh() } else toast.error(res.message)
     },
     async openArrange(row) {
-      this.arrangeCourse = row; this.roomForm = { classroomText: '', capacity: 50 }; this.arrangeVisible = true
+      this.arrangeCourse = row; this.roomForm = { classroomId: '', classroomText: '', capacity: 50 }; this.arrangeVisible = true
       const res = await api.listRooms(row.examCourseId)
       this.arrangeRooms = res.code === 0 ? (res.data.items || []) : []
     },

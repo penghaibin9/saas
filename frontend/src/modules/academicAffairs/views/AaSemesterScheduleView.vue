@@ -6,16 +6,16 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
           学期
-          <AppSelect v-model="termId" :options="termOptions" placeholder="" @change="load" />
+          <AppTermEntityPicker v-model="termId" placeholder="选择学期" @change="load" />
         </label>
-        <button v-if="canPrint" class="mp-btn" @click="goPrint">打印本页课表</button>
+        <AppPrintButton v-if="canPrint" :handler="goPrint" label="打印本页课表" />
       </div>
 
       <nav class="aa-tabs">
@@ -27,7 +27,7 @@
         <div class="aa-filter">
           <label class="aa-filter__item aa-filter__item--grow">
             班级
-            <AppClassPicker v-model="classId" :remote-search="searchClasses" placeholder="搜索班级名称" @change="onClassChange" />
+            <AppClassPicker v-model="classId" placeholder="搜索班级名称" @change="onClassChange" />
           </label>
         </div>
       </div>
@@ -35,11 +35,11 @@
       <div v-else-if="dim === 'teacher'" class="aa-dim-body">
         <div class="aa-filter">
           <label class="aa-filter__item">
-            教师工号
-            <input v-model.trim="teacherKey" class="aa-input" placeholder="输入教师工号/登录名" @keyup.enter="load" />
+            教师
+            <AppTeacherPicker v-model="teacherKey" placeholder="搜索教师姓名/工号" @change="load" />
           </label>
-          <button v-if="selfKey" class="mp-btn" @click="teacherKey = selfKey; load()">查看本人课表</button>
-          <button class="mp-btn mp-btn--primary" :disabled="!teacherKey" @click="load">查询</button>
+          <AppButton v-if="selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
+          <AppButton variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
         </div>
       </div>
       <!-- 教室 -->
@@ -47,34 +47,21 @@
         <div class="aa-filter">
           <label class="aa-filter__item aa-filter__item--grow">
             教室
-            <AppRemoteSelect v-model="classroomId" :remote-search="searchRooms" placeholder="搜索楼栋/教室编号" @change="onRoomChange" />
+            <AppClassroomPicker v-model="classroomId" placeholder="搜索楼栋/教室编号" @change="onRoomChange" />
           </label>
         </div>
       </div>
       <!-- 学生 -->
       <div v-else-if="dim === 'student'" class="aa-dim-body">
         <div class="aa-reg-search">
-          <input v-model.trim="stuKw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-          <button class="mp-btn" :disabled="stuSearching" @click="searchStudents">检索</button>
+          <AppStudentPicker v-model="studentId" class="aa-input--grow" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
         </div>
-        <ul v-if="stuCandidates.length" class="aa-cand-list">
-          <li v-for="s in stuCandidates" :key="s.studentId" class="aa-cand-item">
-            <span>{{ s.realName }} · 学号 {{ s.studentNo }}</span>
-            <button class="mp-link" @click="pickStudent(s)">查看课表</button>
-          </li>
-        </ul>
       </div>
       <!-- 教学班 -->
       <div v-else-if="dim === 'teachingClass'" class="aa-dim-body">
         <div class="aa-reg-search">
-          <input v-model.trim="tcKw" class="aa-input aa-input--grow" placeholder="按教学班名称/课程名筛选（本页已加载列表内筛选）" />
+          <AppTeachingClassPicker v-model="teachingClassCode" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
         </div>
-        <ul v-if="filteredTeachingClasses.length" class="aa-cand-list">
-          <li v-for="c in filteredTeachingClasses" :key="c.teachingClassCode" class="aa-cand-item">
-            <span>{{ c.teachingClassName || c.teachingClassCode }}</span>
-            <button class="mp-link" @click="pickTeachingClass(c)">查看课表</button>
-          </li>
-        </ul>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -100,9 +87,11 @@
  * 顺手改动已验收的 W4 打印页）。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppStudentPicker, AppTeachingClassPicker, AppTermEntityPicker, AppPrintButton } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
-import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { loadCurrentAcademicTerm } from '@/modules/academicAffairs/pickerAdapters'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
 
@@ -113,28 +102,22 @@ const DIMS = [
 
 export default {
   name: 'AaSemesterScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppClassPicker, AppRemoteSelect, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppStudentPicker, AppTeachingClassPicker, AppTermEntityPicker, AppPrintButton, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     const u = currentUserFromToken() || {}
     return {
       DIMS, dim: 'class',
-      terms: [], termId: '', batchId: '',
+      termId: '', batchId: '',
       slots: [], items: [], note: '', loading: false, error: '',
       classId: '', className: '',
       teacherKey: '', selfKey: String(u.userId || u.loginName || ''),
       classroomId: '', classroomText: '',
-      stuKw: '', stuSearching: false, stuCandidates: [], studentId: '', studentName: '',
-      tcKw: '', teachingClasses: [], teachingClassCode: '', teachingClassName: ''
+      studentId: '', studentName: '',
+      teachingClassCode: '', teachingClassName: ''
     }
   },
   computed: {
-    termOptions() {
-      return [
-        { value: '', label: '当前已发布批次' },
-        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
-      ]
-    },
     hasSelection() {
       if (this.dim === 'class') return !!this.classId
       if (this.dim === 'teacher') return !!this.teacherKey
@@ -152,74 +135,51 @@ export default {
                     student: this.studentName, teachingClass: this.teachingClassName }[this.dim]
       return (name ? `${name} · ` : '') + '本学期课表'
     },
-    filteredTeachingClasses() {
-      const kw = this.tcKw.trim().toLowerCase()
-      if (!kw) return this.teachingClasses
-      return this.teachingClasses.filter((c) =>
-        (c.teachingClassName || '').toLowerCase().includes(kw) || (c.teachingClassCode || '').toLowerCase().includes(kw))
-    },
     canPrint() {
       return this.batchId && (this.dim === 'class' || this.dim === 'teacher') && this.hasSelection
     }
   },
   created() {
     this.loadSlots()
-    this.loadTerms()
+    this.initializeCurrentTerm()
   },
   methods: {
     switchDim(key) {
       this.dim = key
       this.items = []; this.note = ''; this.error = ''; this.batchId = ''
-      if (key === 'teachingClass' && !this.teachingClasses.length) this.loadTeachingClasses()
     },
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
-      const curRes = await academicAffairsApi.getCurrentTerm()
-      if (curRes.code === 0 && curRes.data && curRes.data.termId) this.termId = String(curRes.data.termId)
+    async initializeCurrentTerm() {
+      try {
+        const current = await loadCurrentAcademicTerm()
+        if (current && current.termId) this.termId = String(current.termId)
+      } catch (error) {
+        this.error = error.message || '当前学期加载失败'
+      }
     },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()
       if (res.code === 0) this.slots = res.data
     },
-    async searchClasses(keyword) {
-      const res = await academicAffairsOrgApi.listClasses({ keyword, pageSize: 20 })
-      if (res.code !== 0) return []
-      return (res.data.list || []).map((c) => ({ label: c.className, value: c.id }))
-    },
     onClassChange(_v, items) {
       this.className = (items && items[0] && items[0].label) || ''
       this.load()
-    },
-    async searchRooms(keyword) {
-      const res = await academicAffairsApi.getClassroomOptions(keyword)
-      if (res.code !== 0) return []
-      return (res.data || []).map((c) => ({ label: c.label || `${c.buildingName || ''}${c.roomCode || ''}`, value: c.classroomId }))
     },
     onRoomChange(_v, items) {
       this.classroomText = (items && items[0] && items[0].label) || ''
       this.load()
     },
-    async searchStudents() {
-      if (this.stuSearching) return
-      this.stuSearching = true
-      const res = await academicAffairsApi.getRoster({ keyword: this.stuKw || undefined, page: 1, pageSize: 20 })
-      this.stuCandidates = res.code === 0 ? res.data.list : []
-      this.stuSearching = false
-    },
-    pickStudent(s) {
-      this.studentId = s.studentId
-      this.studentName = s.realName
-      this.stuCandidates = []
+    onStudentChange(value, items) {
+      const item = items?.[0]
+      const student = item?.raw || item || {}
+      this.studentName = student.realName || student.studentName || item?.label || ''
+      if (!value) return
       this.load()
     },
-    async loadTeachingClasses() {
-      const res = await academicAffairsOrgApi.listTeachingClasses({ page: 1, pageSize: 200 })
-      if (res.code === 0) this.teachingClasses = res.data.list || []
-    },
-    pickTeachingClass(c) {
-      this.teachingClassCode = c.teachingClassCode
-      this.teachingClassName = c.teachingClassName
+    onTeachingClassChange(value, items) {
+      const item = items?.[0]
+      const row = item?.raw || item || {}
+      this.teachingClassName = row.teachingClassName || row.className || item?.label || ''
+      if (!value) return
       this.load()
     },
     onItemClick(it) {

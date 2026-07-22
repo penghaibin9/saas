@@ -685,9 +685,10 @@ def status_change_submit(body: StatusChangeSubmit, user=Depends(require_permissi
 
 @router.get("/status-changes", summary="学籍异动列表（台账/分类申请记录/异动生效均复用，范围过滤）")
 def status_changes(changeType: Optional[str] = None, status: Optional[str] = None,
-                   studentId: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                   studentId: Optional[str] = None, dateFrom: Optional[str] = None,
+                   dateTo: Optional[str] = None, page: int = 1, pageSize: int = 20,
                    user=Depends(_SC_LIST_VIEW)):
-    items, total = change_svc.list_changes(user, changeType, status, studentId, page, pageSize)
+    items, total = change_svc.list_changes(user, changeType, status, studentId, dateFrom, dateTo, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 

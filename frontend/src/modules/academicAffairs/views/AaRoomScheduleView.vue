@@ -6,24 +6,24 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
           教室
-          <AppRemoteSelect v-model="classroomId" :remote-search="searchRooms" placeholder="搜索楼栋/教室编号" @change="onRoomChange" />
+          <AppClassroomPicker v-model="classroomId" placeholder="搜索楼栋/教室编号" @change="onRoomChange" />
         </label>
         <label class="aa-filter__item">
           学期
-          <AppSelect v-model="termId" :options="termOptions" placeholder="" />
+          <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
         </label>
         <label class="aa-filter__item">
           周次
           <input v-model.number="week" type="number" min="1" max="30" class="aa-input aa-input--sm" placeholder="全部周次" />
         </label>
-        <button class="mp-btn mp-btn--primary" :disabled="!classroomId" @click="load">查询</button>
+        <AppButton variant="primary" :disabled="!classroomId" @click="load">查询</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -47,41 +47,28 @@
  * academicAffairs.classroom.view，不新增教室专属 key。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppRemoteSelect, AppSelect } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppClassroomPicker, AppTermEntityPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaRoomScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSectionCard, AppRemoteSelect, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassroomPicker, AppTermEntityPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       classroomId: this.$route.params.classroomId || '',
       classroomText: '', termId: '', week: null,
-      terms: [], slots: [], items: [], note: '', loading: false, error: ''
-    }
-  },
-  computed: {
-    termOptions() {
-      return [
-        { value: '', label: '当前已发布批次' },
-        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
-      ]
+      slots: [], items: [], note: '', loading: false, error: ''
     }
   },
   created() {
-    this.loadTerms()
     this.loadSlots()
     if (this.classroomId) this.load()
   },
   methods: {
-    async searchRooms(keyword) {
-      const res = await academicAffairsApi.getClassroomOptions(keyword)
-      if (res.code !== 0) return []
-      return (res.data || []).map((c) => ({ label: c.label || `${c.buildingName || ''}${c.roomCode || ''}`, value: c.classroomId }))
-    },
     onRoomChange(_v, items) {
       this.classroomText = (items && items[0] && items[0].label) || ''
       this.$router.replace(`/admin/academic-affairs/schedule/room/${this.classroomId}`).catch(() => {})
@@ -89,10 +76,6 @@ export default {
     },
     onItemClick(it) {
       toast.success(`${it.courseName || ''} · ${it.className || ''} · ${it.teacherName || ''} · ${it.startWeek}-${it.endWeek}周`)
-    },
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
     },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()

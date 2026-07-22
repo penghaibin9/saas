@@ -6,27 +6,20 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
       <div class="aa-filter">
         <label class="aa-filter__item">
           记录类型
-          <select v-model="bizType" class="aa-select" @change="reload">
-            <option value="">全部（条目 + 批次）</option>
-            <option value="AA_SCHEDULE">条目变更（手工排课/导入/改排/教师异议）</option>
-            <option value="AA_SCHEDULE_BATCH">批次变更（新建/整批导入/预发布/发布/作废重发/归档）</option>
-          </select>
+          <AppSelect v-model="bizType" :options="bizTypeOptions" @change="reload" />
         </label>
         <label class="aa-filter__item">
           动作
-          <select v-model="action" class="aa-select" @change="reload">
-            <option value="">全部动作</option>
-            <option v-for="a in actionOptions" :key="a" :value="a">{{ actionLabel(a) }}</option>
-          </select>
+          <AppSelect v-model="action" :options="actionSelectOptions" @change="reload" />
         </label>
-        <button class="mp-btn" @click="reload">查询</button>
+        <AppButton @click="reload">查询</AppButton>
       </div>
 
       <AppSectionCard title="调整记录">
@@ -60,7 +53,8 @@
  * 互不混入。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppStatusTag, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 const ACTION_LABELS = {
@@ -73,7 +67,7 @@ const BATCH_ACTIONS = ['CREATE', 'IMPORT', 'PRE_PUBLISH', 'PUBLISH', 'VOID_REISS
 
 export default {
   name: 'AaScheduleAdjustmentLogView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -91,10 +85,20 @@ export default {
   },
   computed: {
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
+    bizTypeOptions() {
+      return [
+        { value: '', label: '全部（条目 + 批次）' },
+        { value: 'AA_SCHEDULE', label: '条目变更（手工排课/导入/改排/教师异议）' },
+        { value: 'AA_SCHEDULE_BATCH', label: '批次变更（新建/整批导入/预发布/发布/作废重发/归档）' }
+      ]
+    },
     actionOptions() {
       if (this.bizType === 'AA_SCHEDULE') return ITEM_ACTIONS
       if (this.bizType === 'AA_SCHEDULE_BATCH') return BATCH_ACTIONS
       return [...ITEM_ACTIONS, ...BATCH_ACTIONS]
+    },
+    actionSelectOptions() {
+      return [{ value: '', label: '全部动作' }, ...this.actionOptions.map((value) => ({ value, label: this.actionLabel(value) }))]
     }
   },
   created() { this.load() },

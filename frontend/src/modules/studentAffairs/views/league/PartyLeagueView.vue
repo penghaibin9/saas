@@ -17,7 +17,7 @@
 
       <AppSectionCard v-if="formVisible" title="建党团发展台账">
         <div class="lg-grid">
-          <div class="lg-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="lg-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="lg-field"><span>类型</span>
             <AppSelect v-model="form.devType" :options="DEV_TYPE_OPTIONS" placeholder="" /></label>
           <label class="lg-field"><span>党/团支部</span><AppTextInput v-model="form.branchName" /></label>
@@ -161,7 +161,6 @@ export default {
     },
     setStage(k) { if (this.activeStage === k) return; this.activeStage = k; this.load() },
     openForm() { this.form = { studentId: '', devType: 'PARTY', branchName: '', error: '' }; this.formVisible = true },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async save() {
       const m = this.form
       if (!m.studentId) { m.error = '请选择学生'; return }

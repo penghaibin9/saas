@@ -20,11 +20,15 @@
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsPickerAdapters } from '@/modules/academicAffairs/pickerAdapters'
 import router from '@/router'
 
 export default {
   name: 'AdminAcademicAffairsLayout',
   components: { BasePortalLayout, LoadingState },
+  provide() {
+    return { appPickerAdapters: academicAffairsPickerAdapters }
+  },
   data() {
     return { ctx: null }
   },

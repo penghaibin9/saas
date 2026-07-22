@@ -12,7 +12,7 @@
           行政班（按名称精确匹配）；初始学籍状态仅允许 待注册/正常/在籍注册。导入全流程：下载模板 → 上传解析 →
           预校验（失败行不导入）→ 确认导入，写入审计与导入作业记录。
         </p>
-        <button class="mp-btn mp-btn--primary" @click="importVisible = true">打开批量导入</button>
+        <AppButton variant="primary" @click="importVisible = true">打开批量导入</AppButton>
       </AppSectionCard>
 
       <AppSectionCard title="学籍导出" subtitle="导出当前学籍名册台账（脱敏 + 水印 + 审计）">
@@ -25,7 +25,7 @@
             学籍状态
             <AppSelect v-model="exportFilters.status" :options="statusOptions" placeholder="全部" />
           </label>
-          <button class="mp-btn" :disabled="exporting" @click="doExport">{{ exporting ? '导出中…' : '导出 Excel' }}</button>
+          <AppButton :disabled="exporting" @click="doExport">导出 Excel</AppButton>
         </div>
         <p class="mp-note">导出需填写用途（不少于 5 个字），文件首行带水印，身份证等敏感字段仍按脱敏规则导出。</p>
       </AppSectionCard>
@@ -60,6 +60,7 @@
  * 待注册/正常/在籍注册三态，休学/退学等仍须导入建档后走学籍异动办理）。
  * 导出：与本模块既有 export_unregistered_xlsx 同款 xlsx_util 直出 + 用途必填≥5字口径一致。 */
 import { ModulePageShell } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppConfirmDialog, AppSelect } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -73,7 +74,7 @@ const STATUS_LABEL = {
 
 export default {
   name: 'AaRosterImportExportView',
-  components: { ModulePageShell, AppSectionCard, AppExcelImportDrawer, AppConfirmDialog, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppExcelImportDrawer, AppConfirmDialog, AppSelect },
   props: { ctx: { type: Object, required: true } },
   computed: {
     statusOptions() {

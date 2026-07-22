@@ -86,54 +86,51 @@
       :danger="confirm.danger" :confirm-text="confirm.confirmText" :submitting="confirm.submitting" @confirm="onConfirm" />
 
     <!-- 表单弹窗（新增材料 / 任命班干部） -->
-    <div v-if="fm.visible" class="fm-mask" @click.self="closeForm">
-      <div class="fm-dialog">
-        <div class="fm-title">{{ fm.title }}</div>
-        <div class="fm-body">
-          <template v-if="fm.kind === 'material'">
-            <div class="fm-item">
-              <label class="fm-label">材料类型<i>*</i></label>
-              <AppSelect v-model="fm.values.materialType" :options="materialTypeOptions" placeholder="请选择类型" />
-            </div>
-            <div class="fm-item">
-              <label class="fm-label">材料标题<i>*</i></label>
-              <AppQuickPhrases scene-key="sa.class.material" @pick="onPickMaterialTitle" />
-              <AppTextInput ref="matTitleTa" v-model="fm.values.title" placeholder="如：第3周主题班会记录" :maxlength="200" />
-            </div>
-            <div class="fm-item">
-              <label class="fm-label">材料日期</label>
-              <AppDatePicker v-model="fm.values.materialAt" />
-            </div>
-            <div class="fm-item">
-              <label class="fm-label">附件（可选，走文件中心）</label>
-              <input type="file" @change="onFilePick" />
-              <span v-if="fm.uploading" class="mp-note">上传中…</span>
-              <span v-else-if="fm.values.fileName" class="mp-note">已上传：{{ fm.values.fileName }}</span>
-            </div>
-            <div class="fm-item">
-              <label class="fm-label">备注</label>
-              <AppQuickPhrases scene-key="sa.class.material" @pick="onPickMaterialRemark" />
-              <AppTextarea ref="matRemarkTa" v-model="fm.values.remark" placeholder="选填" :rows="2" :maxlength="500" show-count />
-            </div>
-          </template>
-          <template v-else>
-            <div class="fm-item">
-              <label class="fm-label">职务<i>*</i></label>
-              <AppSelect v-model="fm.values.position" :options="positionOptions" placeholder="请选择职务" />
-            </div>
-            <div class="fm-item">
-              <label class="fm-label">学生<i>*</i></label>
-              <AppSelect v-model="fm.values.studentId" :options="studentOptions" placeholder="从本班学生选择" />
-            </div>
-          </template>
-          <p v-if="fm.err" class="fm-err">{{ fm.err }}</p>
-        </div>
-        <div class="fm-foot">
-          <AppButton variant="ghost" @click="closeForm">取消</AppButton>
-          <AppButton variant="primary" :loading="fm.submitting" :disabled="fm.uploading" @click="submitForm">确定</AppButton>
-        </div>
+    <AppDrawer :visible="fm.visible" :title="fm.title" @update:visible="closeForm">
+      <div class="fm-body">
+        <template v-if="fm.kind === 'material'">
+          <div class="fm-item">
+            <label class="fm-label">材料类型<i>*</i></label>
+            <AppSelect v-model="fm.values.materialType" :options="materialTypeOptions" placeholder="请选择类型" />
+          </div>
+          <div class="fm-item">
+            <label class="fm-label">材料标题<i>*</i></label>
+            <AppQuickPhrases scene-key="sa.class.material" @pick="onPickMaterialTitle" />
+            <AppTextInput ref="matTitleTa" v-model="fm.values.title" placeholder="如：第3周主题班会记录" :maxlength="200" />
+          </div>
+          <div class="fm-item">
+            <label class="fm-label">材料日期</label>
+            <AppDatePicker v-model="fm.values.materialAt" />
+          </div>
+          <div class="fm-item">
+            <label class="fm-label">附件（可选，走文件中心）</label>
+            <input type="file" @change="onFilePick" />
+            <span v-if="fm.uploading" class="mp-note">上传中…</span>
+            <span v-else-if="fm.values.fileName" class="mp-note">已上传：{{ fm.values.fileName }}</span>
+          </div>
+          <div class="fm-item">
+            <label class="fm-label">备注</label>
+            <AppQuickPhrases scene-key="sa.class.material" @pick="onPickMaterialRemark" />
+            <AppTextarea ref="matRemarkTa" v-model="fm.values.remark" placeholder="选填" :rows="2" :maxlength="500" show-count />
+          </div>
+        </template>
+        <template v-else>
+          <div class="fm-item">
+            <label class="fm-label">职务<i>*</i></label>
+            <AppSelect v-model="fm.values.position" :options="positionOptions" placeholder="请选择职务" />
+          </div>
+          <div class="fm-item">
+            <label class="fm-label">学生<i>*</i></label>
+            <AppStudentPicker v-model="fm.values.studentId" :options="studentOptions" placeholder="从本班学生选择" />
+          </div>
+        </template>
+        <p v-if="fm.err" class="fm-err">{{ fm.err }}</p>
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="closeForm">取消</AppButton>
+        <AppButton variant="primary" :loading="fm.submitting" :disabled="fm.uploading" @click="submitForm">确定</AppButton>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
@@ -143,8 +140,8 @@
  * 聚合指标 + 学生名单(脱敏) + 班级材料(附件走文件中心) + 班干部任免。真实对接 /student-affairs/classes/*。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppConfirmDialog, AppPermissionButton, AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppQuickPhrases } from '@/components/common'
-import { AppButton } from '@/components/ui'
+import { AppMetricCard, AppConfirmDialog, AppPermissionButton, AppSelect, AppStudentPicker, AppTextInput, AppTextarea, AppDatePicker, AppQuickPhrases } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { classApi } from '@/modules/studentAffairs/api/class.api'
 import { requestUpload, requestBlob } from '@/services/http/client'
 import { toast } from '@/utils/toast'
@@ -175,7 +172,7 @@ export default {
   name: 'ClassProfileView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppConfirmDialog,
-    AppPermissionButton, AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppButton, AppQuickPhrases
+    AppPermissionButton, AppSelect, AppStudentPicker, AppTextInput, AppTextarea, AppDatePicker, AppButton, AppDrawer, AppQuickPhrases
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -370,13 +367,9 @@ export default {
 .cadre-list li { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-light); font-size: var(--font-size-sm); }
 .cadre-pos { min-width: 72px; font-weight: var(--font-weight-medium); }
 .lav-danger { color: var(--danger-600); }
-.fm-mask { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.fm-dialog { width: 460px; max-width: calc(100vw - 32px); background: var(--bg-card, #fff); border-radius: 12px; box-shadow: var(--shadow-lg, 0 12px 40px rgba(0,0,0,0.18)); overflow: hidden; }
-.fm-title { padding: 14px 18px; font-weight: 600; font-size: 15px; border-bottom: 1px solid var(--border-light); }
-.fm-body { padding: 16px 18px; display: flex; flex-direction: column; gap: var(--space-3); }
+.fm-body { display: flex; flex-direction: column; gap: var(--space-3); }
 .fm-item { display: flex; flex-direction: column; gap: 6px; }
 .fm-label { font-size: var(--font-size-sm); color: var(--text-secondary); }
 .fm-label i { color: var(--danger-600); font-style: normal; margin-left: 2px; }
 .fm-err { color: var(--danger-600); font-size: var(--font-size-sm); margin: 0; }
-.fm-foot { padding: 12px 18px; display: flex; justify-content: flex-end; gap: var(--space-2); border-top: 1px solid var(--border-light); }
 </style>

@@ -91,7 +91,7 @@
     <AppDrawer :visible="batchVisible" title="新建补考批次" @close="batchVisible = false">
       <div class="aamk-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="batchForm.batchName" placeholder="如 2024秋补考" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="学期"><AppTextInput v-model="batchForm.termCode" placeholder="如 2024-1" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="学期"><AppTermCodePicker v-model="batchForm.termCode" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -102,7 +102,7 @@
 
     <AppDrawer :visible="mergeVisible" title="并入补考批次" @close="mergeVisible = false">
       <div class="aamk-form">
-        <AppFormItem label="目标补考批次 ID" required><AppTextInput v-model="mergeBatchId" placeholder="补考批次 ID" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="目标补考批次" required><AppMakeupBatchPicker v-model="mergeBatchId" :disabled="saving" /></AppFormItem>
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="saving" @click="mergeVisible = false">取消</AppButton>
@@ -115,7 +115,7 @@
       <div class="aamk-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="clearanceForm.batchName" placeholder="如 2022届毕业清考" :disabled="saving" /></AppFormItem>
         <AppFormItem label="限定毕业年级" required><AppTextInput v-model="clearanceForm.grades" placeholder="逗号分隔，如 2022 或 2021,2022" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="学期"><AppTextInput v-model="clearanceForm.termCode" placeholder="如 2024-2" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="学期"><AppTermCodePicker v-model="clearanceForm.termCode" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="clearanceError" type="danger" :description="clearanceError" />
       </div>
       <template #footer>
@@ -156,7 +156,7 @@
 /** 补考重修缓考免修 · 教务处控制台（/admin/academic-affairs/makeup）：四条线 tab 管理。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermCodePicker, AppMakeupBatchPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -166,7 +166,7 @@ export default {
   name: 'AaMakeupConsoleView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert
+      AppButton, AppDrawer, AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermCodePicker, AppMakeupBatchPicker
   },
   data() {
     return {

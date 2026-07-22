@@ -11,7 +11,7 @@
 
     <div class="aapc-toolbar">
       <AppFormItem label="学期">
-        <AppSelect v-model="termId" :options="termOptions" placeholder="默认当前学期" @change="load" />
+        <AppTermEntityPicker v-model="termId" placeholder="默认当前学期" @change="load" />
       </AppFormItem>
       <AppButton size="small" variant="ghost" :loading="loading" @click="load">立即检查</AppButton>
     </div>
@@ -39,7 +39,7 @@
  * 归档批次创建前的实时预检看板；不落库、不写审计、不产生正式缺项清单（那是「批量归档」的职责）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSelect, AppFormItem, AppInlineAlert } from '@/components/common'
+import { AppTermEntityPicker, AppFormItem, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi, academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 // 域码 → 补录入口路由（跳转对应源模块处理缺项）
@@ -57,28 +57,19 @@ const _JUMP = {
 
 export default {
   name: 'ArchivePrecheckView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag, AppButton, AppSelect, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag, AppButton, AppTermEntityPicker, AppFormItem, AppInlineAlert },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
-      loading: true, error: '', domains: [], scopeNote: '', termId: '', termOptions: []
+      loading: true, error: '', domains: [], scopeNote: '', termId: ''
     }
   },
   async created() {
     const c = await academicAffairsApi.getContext()
     if (c.code === 0) this.ctx = c.data
-    await this.loadTerms()
     this.load()
   },
   methods: {
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ pageSize: 100 })
-      if (res.code === 0) {
-        this.termOptions = res.data.list.map(t => ({ label: `${t.yearCode} 第${t.termNo}学期${t.isCurrent ? '（当前）' : ''}`, value: t.termId }))
-        const cur = res.data.list.find(t => t.isCurrent)
-        if (cur) this.termId = cur.termId
-      }
-    },
     async load() {
       this.loading = true; this.error = ''
       const res = await api.precheck(this.termId || undefined)

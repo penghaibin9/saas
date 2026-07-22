@@ -50,41 +50,33 @@
     </DataTable>
 
     <!-- 生成 -->
-    <div v-if="genDlg.visible" class="modal" @click.self="genDlg.visible = false">
-      <div class="modal__card">
-        <div class="modal__head">生成三方协议</div>
-        <div class="modal__body">
-          <AppFormItem label="实习学生" required>
-            <AppStudentPicker
-              v-model="genForm.internshipId"
-              :remote-search="searchInternStudents"
-              placeholder="输入姓名或学号搜索实习学生"
-              search-placeholder="按姓名 / 学号搜索"
-              data-scope-hint="指导教师仅本人指导学生；管理员全校"
-            />
-          </AppFormItem>
-          <AppFormItem label="协议模板">
-            <AppSelect v-model="genForm.templateId" :options="templateSelectOptions" placeholder="不选则自动使用默认启用模板" />
-          </AppFormItem>
-          <p v-if="previewText" class="preview">{{ previewText }}</p>
-          <p class="hint">生成后为草稿，需依次「下发→学生确认→企业签署(上传扫描件)→学校确认」方可生效。仅可对本人指导学生生成。</p>
-        </div>
-        <div class="modal__foot">
-          <AppButton variant="ghost" @click="genDlg.visible = false">取消</AppButton>
-          <AppButton variant="primary" :loading="genDlg.submitting" @click="submitGenerate">生成</AppButton>
-        </div>
-      </div>
-    </div>
-
+    <AppDrawer :visible="genDlg.visible" title="生成三方协议" @update:visible="genDlg.visible = $event">
+      <AppFormItem label="实习学生" required>
+        <AppInternshipStudentPicker
+          v-model="genForm.internshipId"
+          placeholder="输入姓名或学号搜索实习学生"
+          search-placeholder="按姓名 / 学号搜索"
+          data-scope-hint="指导教师仅本人指导学生；管理员全校"
+        />
+      </AppFormItem>
+      <AppFormItem label="协议模板">
+        <AppSelect v-model="genForm.templateId" :options="templateSelectOptions" placeholder="不选则自动使用默认启用模板" />
+      </AppFormItem>
+      <p v-if="previewText" class="preview">{{ previewText }}</p>
+      <p class="hint">生成后为草稿，需依次「下发→学生确认→企业签署(上传扫描件)→学校确认」方可生效。仅可对本人指导学生生成。</p>
+      <template #footer>
+        <AppButton variant="ghost" @click="genDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="genDlg.submitting" @click="submitGenerate">生成</AppButton>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
 import { ModulePageShell, DataTable, ErrorState } from '@/components/business'
-import { AppButton } from '@/components/ui'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { AppStatusTag, AppExportButton, AppPermissionButton, AppSearchBox, AppSelect, AppFormItem,
-  AppStudentPicker } from '@/components/common'
-import { searchInternStudents } from './components/entityPickerAdapters'
+  AppInternshipStudentPicker } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { agreementApi } from '@/modules/internship/api/agreement.api'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
@@ -118,8 +110,8 @@ const PANEL_PRESETS = {
 export default {
   name: 'AgreementView',
   props: { ctx: { type: Object, default: () => ({}) } },
-  components: { ModulePageShell, DataTable, ErrorState, AppButton, AppStatusTag, AppExportButton,
-    AppPermissionButton, AppSearchBox, AppSelect, AppFormItem, AppStudentPicker, ModuleSummaryStrip },
+  components: { ModulePageShell, DataTable, ErrorState, AppButton, AppDrawer, AppStatusTag, AppExportButton,
+    AppPermissionButton, AppSearchBox, AppSelect, AppFormItem, AppInternshipStudentPicker, ModuleSummaryStrip },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -192,7 +184,6 @@ export default {
       this.rows = res.data.list; this.total = res.data.total
     },
     // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchInternStudents,
     async openGenerate() {
       // 学生候选改为选择器内按关键字远程搜索，不再一次性预载 200 条
       this.genForm = { internshipId: '', templateId: '' }
@@ -245,9 +236,4 @@ export default {
 .ag-body { white-space: pre-wrap; word-break: break-word; background: var(--bg-subtle, #f8fafc); border: 1px solid var(--border-light); border-radius: 8px; padding: 10px; font-size: 12px; max-height: 240px; overflow: auto; margin: 0; }
 .file { font-size: var(--font-size-xs); }
 .att { font-size: var(--font-size-xs); color: var(--success-700); margin-left: var(--space-2); }
-.modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal, 1000); padding: var(--space-4); }
-.modal__card { background: var(--bg-card); border: 1px solid var(--card-b); border-radius: var(--radius-xl); width: min(560px, 100%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
-.modal__head { padding: var(--space-4); font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--border-light); background: linear-gradient(100deg, var(--pri-bg), transparent); }
-.modal__body { padding: var(--space-4); overflow-y: auto; }
-.modal__foot { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; gap: var(--space-2); }
 </style>

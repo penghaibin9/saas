@@ -8,8 +8,15 @@
         :class="{ 'af__field--range': f.type === 'daterange' || f.type === 'date-range' }"
       >
         <span class="af__label">{{ f.label }}</span>
+        <AppGraduationDesignBatchPicker
+          v-if="f.type === 'graduation-batch'"
+          :model-value="modelValue[f.key] ?? ''"
+          :placeholder="f.placeholder || '全部批次'"
+          clearable
+          @update:model-value="update(f.key, $event)"
+        />
         <select
-          v-if="f.type === 'select'"
+          v-else-if="f.type === 'select'"
           class="af__control"
           :value="modelValue[f.key] ?? ''"
           @change="update(f.key, $event.target.value)"
@@ -65,10 +72,11 @@
  */
 import { AppButton } from '@/components/ui'
 import { AppDatePicker, AppDateRangePicker } from '@/components/common/date'
+import { AppGraduationDesignBatchPicker } from '@/components/common'
 
 export default {
   name: 'AdvancedFilter',
-  components: { AppButton, AppDatePicker, AppDateRangePicker },
+  components: { AppButton, AppDatePicker, AppDateRangePicker, AppGraduationDesignBatchPicker },
   props: {
     modelValue: { type: Object, required: true },
     fields: { type: Array, default: () => [] }

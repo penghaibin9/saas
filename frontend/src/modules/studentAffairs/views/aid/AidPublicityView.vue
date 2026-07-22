@@ -19,23 +19,18 @@
 
       <AppSectionCard title="公示中的认定申请">
         <p class="ap-note">公示信息仅展示允许字段（姓名 / 学号 / 拟认定等级）；家庭经济明细在公示页不呈现。</p>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>学号</th><th>拟认定等级</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="it in items" :key="it.applyId">
-              <td><strong>{{ it.realName || ('学生#' + it.studentId) }}</strong></td>
-              <td>{{ it.studentNo || '—' }}</td>
-              <td><StatusTag type="processing" :label="levelLabel(it.finalLevel || it.applyLevel)" dot /></td>
-              <td>
-                <AppPermissionButton code="studentAffairs.aid.approve" size="sm" variant="secondary"
-                                     :loading="actingId === it.applyId" @click="confirm(it)">
-                  确认公示期满 → 通过
-                </AppPermissionButton>
-              </td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="4" class="sa-empty">当前无公示中的认定申请</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="publicityColumns" :rows="items" row-key="applyId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
+          <template #cell-level="{ row }"><StatusTag type="processing" :label="levelLabel(row.finalLevel || row.applyLevel)" dot /></template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton code="studentAffairs.aid.approve" size="sm" variant="secondary"
+                                 :loading="actingId === row.applyId" @click="confirm(row)">
+              确认公示期满 → 通过
+            </AppPermissionButton>
+          </template>
+        </DataTable>
+        <p v-else class="sa-empty">当前无公示中的认定申请</p>
         <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
                        :total="pagination.total" @change="load" />
       </AppSectionCard>
@@ -45,16 +40,24 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 
 const LEVELS = { SPECIAL: '特别困难', DIFFICULT: '困难', GENERAL: '一般困难' }
+const PUBLICITY_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'studentNo', title: '学号' },
+  { key: 'level', title: '拟认定等级' },
+  { key: 'actions', title: '操作', align: 'right', width: '200px' }
+]
 
 export default {
   name: 'AidPublicityView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
     return {
+      publicityColumns: PUBLICITY_COLUMNS,
       loading: true, scanning: false, actingId: '', errorMessage: '', items: [], statsItems: [],
       pagination: { page: 1, pageSize: 20, total: 0 }
     }
@@ -122,8 +125,7 @@ export default {
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
 .ap-note { color: var(--text-tertiary); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

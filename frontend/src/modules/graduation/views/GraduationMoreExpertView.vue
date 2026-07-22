@@ -10,7 +10,7 @@
       <label class="ie-fld"><span class="ie-lbl">职称</span><input v-model.trim="form.title" class="ie-in" placeholder="如 教授/副教授" /></label>
       <label class="ie-fld"><span class="ie-lbl">所属学院</span><input v-model.trim="form.collegeName" class="ie-in" /></label>
       <label class="ie-fld"><span class="ie-lbl">是否校外</span>
-        <select v-model="form.isExternal" class="ie-in"><option :value="false">校内</option><option :value="true">校外</option></select>
+        <AppSelect v-model="form.isExternal" :options="externalOptions" />
       </label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">回避说明</span><input v-model.trim="form.avoidNote" class="ie-in" placeholder="如 不评本院学生 / 回避亲属" /></label>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
@@ -25,14 +25,16 @@
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
+import { AppSelect } from '@/components/common'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMoreExpertView',
-  components: { GraduationFormPageShell },
+  components: { GraduationFormPageShell, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      externalOptions: [{ value: false, label: '校内' }, { value: true, label: '校外' }],
       form: { expertName: '', title: '', collegeName: '', isExternal: false, avoidNote: '' },
       formError: '', submitting: false
     }
@@ -42,7 +44,7 @@ export default {
       this.formError = ''
       if (!this.form.expertName) { this.formError = '专家姓名必填'; return }
       this.submitting = true
-      const res = await graduationMoreApi.createExpert(this.form)
+      const res = await graduationMoreApi.createExpert({ ...this.form, isExternal: this.form.isExternal === true || this.form.isExternal === 'true' })
       this.submitting = false
       if (res.code === 0) { toast.success('已新增专家'); this.$router.push('/admin/graduation/more?panel=experts') }
       else this.formError = res.message

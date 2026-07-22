@@ -27,21 +27,16 @@
           <button v-for="f in statusFilters" :key="f.key" type="button" class="dl-chip"
                   :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>学号</th><th>处分类型</th><th>文号</th><th>状态</th><th>生效</th><th>解除</th></tr></thead>
-          <tbody>
-            <tr v-for="c in items" :key="c.caseId || c.id">
-              <td><strong>{{ c.realName || ('学生#' + c.studentId) }}</strong></td>
-              <td>{{ c.studentNo || '—' }}</td>
-              <td>{{ discTypeLabel(c.discType) }}</td>
-              <td class="dl-doc">{{ c.docNo || '—' }}</td>
-              <td><StatusTag :type="statusType(c.status)" :label="c.statusLabel || c.status" dot /></td>
-              <td><AppDateDisplay :value="c.effectiveAt" mode="date" empty-text="—" /></td>
-              <td><AppDateDisplay :value="c.removedAt" mode="date" empty-text="—" /></td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="7" class="sa-empty">当前范围与筛选下暂无处分记录</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="caseColumns" :rows="items" row-key="rowKey">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
+          <template #cell-discType="{ row }">{{ discTypeLabel(row.discType) }}</template>
+          <template #cell-docNo="{ row }"><span class="dl-doc">{{ row.docNo || '—' }}</span></template>
+          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-effectiveAt="{ row }"><AppDateDisplay :value="row.effectiveAt" mode="date" empty-text="—" /></template>
+          <template #cell-removedAt="{ row }"><AppDateDisplay :value="row.removedAt" mode="date" empty-text="—" /></template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围与筛选下暂无处分记录</p>
         <AppPagination v-if="items.length" v-model:page="paging.page" v-model:pageSize="paging.pageSize"
                        :total="paging.total" @change="loadPage" />
       </AppSectionCard>
@@ -51,6 +46,7 @@
 
 <script>
 import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const DISC_TYPES = { WARNING: '警告', SERIOUS_WARNING: '严重警告', DEMERIT: '记过', PROBATION: '留校察看', EXPEL: '开除' }
@@ -60,12 +56,22 @@ const STATUS_FILTERS = [
   { key: 'EFFECTIVE', label: '生效中' },
   { key: 'REMOVED', label: '已解除' }
 ]
+const CASE_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'studentNo', title: '学号' },
+  { key: 'discType', title: '处分类型' },
+  { key: 'docNo', title: '文号' },
+  { key: 'status', title: '状态' },
+  { key: 'effectiveAt', title: '生效' },
+  { key: 'removedAt', title: '解除' }
+]
 
 export default {
   name: 'DisciplineLedgerView',
-  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
     return {
+      caseColumns: CASE_COLUMNS,
       loading: true, errorMessage: '', items: [],
       // 三项全局统计只取后端 total（pageSize=1 的轻量请求），与「处分记录」表的真实分页互相独立，
       // 避免表格翻页时头部统计卡跟着变化。
@@ -113,7 +119,8 @@ export default {
         status: this.activeStatus, page: this.paging.page, pageSize: this.paging.pageSize
       })
       if (res.code === 0 && res.data) {
-        this.items = res.data.items || []
+        // rowKey：DataTable 需要具体字段名，caseId 缺失时回退 id（兼容历史数据）
+        this.items = (res.data.items || []).map((c) => ({ ...c, rowKey: c.caseId || c.id }))
         this.paging.total = res.data.total || 0
       } else {
         this.errorMessage = res.message || '处分记录加载失败'
@@ -148,10 +155,9 @@ export default {
 .dl-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .dl-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .dl-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .dl-doc { color: var(--text-secondary); font-size: var(--font-size-sm); }
-.sa-table + .app-pagination { margin-top: var(--space-3); }
+:deep(.dt) + .app-pagination { margin-top: var(--space-3); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@import '@/styles/module-page.css';
 </style>

@@ -23,20 +23,15 @@
                     :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
           </div>
         </div>
-        <table class="sa-table">
-          <thead><tr><th>学生</th><th>学号</th><th>项目类型</th><th>来源</th><th>金额</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr v-for="it in items" :key="it.applicationId">
-              <td><strong>{{ it.realName || ('学生#' + it.studentId) }}</strong></td>
-              <td>{{ it.studentNo || '—' }}</td>
-              <td>{{ typeLabel(it.projectType) }}</td>
-              <td>{{ sourceLabel(it.applySource) }}</td>
-              <td>{{ amountText(it.amount) }}</td>
-              <td><StatusTag :type="statusType(it.status)" :label="it.statusLabel || it.status" dot /></td>
-            </tr>
-            <tr v-if="!items.length"><td colspan="6" class="sa-empty">当前范围与筛选下暂无资助申请</td></tr>
-          </tbody>
-        </table>
+        <DataTable v-if="items.length" :columns="ledgerColumns" :rows="items" row-key="applicationId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
+          <template #cell-projectType="{ row }">{{ typeLabel(row.projectType) }}</template>
+          <template #cell-source="{ row }">{{ sourceLabel(row.applySource) }}</template>
+          <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
+          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围与筛选下暂无资助申请</p>
         <AppPagination v-if="total > pageSize || page > 1" class="fl-pager" v-model:page="page" v-model:pageSize="pageSize"
                        :total="total" @change="load" />
       </AppSectionCard>
@@ -46,8 +41,17 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, AppStatusTag } from '@/components/common'
+import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
+const LEDGER_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'studentNo', title: '学号' },
+  { key: 'projectType', title: '项目类型' },
+  { key: 'source', title: '来源' },
+  { key: 'amount', title: '金额' },
+  { key: 'status', title: '状态' }
+]
 const TYPE_FILTERS = [
   { key: '', label: '全部类型' },
   { key: 'SCHOLARSHIP', label: '奖学金' },
@@ -64,9 +68,10 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'FundingLedgerView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
     return {
+      ledgerColumns: LEDGER_COLUMNS,
       loading: true, errorMessage: '', items: [], activeType: '', activeStatus: '',
       typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS,
       page: 1, pageSize: 20, total: 0
@@ -124,9 +129,8 @@ export default {
 .fl-fgroup { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .fl-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .fl-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-table { width: 100%; border-collapse: collapse; }
-.sa-table th, .sa-table td { border-bottom: 1px solid var(--border-light); padding: var(--space-3); text-align: left; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .fl-pager { margin-top: var(--space-4); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@import '@/styles/module-page.css';
 </style>

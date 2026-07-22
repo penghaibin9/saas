@@ -23,8 +23,8 @@
 
     <AppDrawer :visible="applyVisible" :title="tab === 'retake' ? '申请重修' : '申请免修'" @close="applyVisible = false">
       <div class="aamks-form">
-        <AppFormItem label="课程名称" required><AppTextInput v-model="form.courseName" placeholder="课程名" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="学期"><AppTextInput v-model="form.termCode" placeholder="如 2024-2" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="课程" required><AppCoursePicker v-model="selectedCourseId" :disabled="saving" @change="onCoursePicked" /></AppFormItem>
+        <AppFormItem label="学期"><AppTermCodePicker v-model="form.termCode" :disabled="saving" /></AppFormItem>
         <!-- 未挂快捷用语：aa.makeup.reason 全部是「缓考」申请理由（缓考页在 AaExamConsoleView），
              与本页的重修/免修业务不符；配置方案未给重修/免修理由词条，不硬套 -->
         <AppFormItem label="理由">
@@ -45,21 +45,26 @@
 /** 重修/免修学生自助（/admin/academic-affairs/my-makeup）：报名+申请+我的申请列表。 */
 import { ModulePageShell, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppTextarea, AppFormItem, AppInlineAlert } from '@/components/common'
+import { AppTextarea, AppFormItem, AppInlineAlert, AppCoursePicker, AppTermCodePicker } from '@/components/common'
 import { academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaMakeupStudentView',
-  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextarea, AppFormItem, AppInlineAlert, AppCoursePicker, AppTermCodePicker },
   data() {
     return {
       tab: 'retake', loading: true, rows: [],
-      applyVisible: false, form: { courseName: '', termCode: '', reason: '' }, formError: '', saving: false
+      applyVisible: false, selectedCourseId: '', form: { courseName: '', termCode: '', reason: '' }, formError: '', saving: false
     }
   },
   created() { this.reload() },
   methods: {
+    onCoursePicked(value, items) {
+      const item = items?.[0]
+      const course = item?.raw || item || {}
+      this.form.courseName = course.courseName || course.name || item?.label || ''
+    },
     stType(s) { return ['APPROVED', 'ENROLLED', 'FINISHED'].includes(s) ? 'success' : s === 'REJECTED' ? 'danger' : 'primary' },
     switchTab(k) { this.tab = k; this.reload() },
     async reload() {
@@ -68,7 +73,7 @@ export default {
       this.rows = res.code === 0 ? (res.data.items || []) : []
       this.loading = false
     },
-    openApply() { this.form = { courseName: '', termCode: '', reason: '' }; this.formError = ''; this.applyVisible = true },
+    openApply() { this.selectedCourseId = ''; this.form = { courseName: '', termCode: '', reason: '' }; this.formError = ''; this.applyVisible = true },
     async submitApply() {
       if (!this.form.courseName) { this.formError = '课程名必填'; return }
       this.saving = true

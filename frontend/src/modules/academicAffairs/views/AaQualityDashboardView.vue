@@ -78,7 +78,7 @@
     <!-- 09质量归档：读侧聚合 + 导出 -->
     <div v-else-if="tab === 'archive'" class="mp-stack">
       <div class="aaql-bar">
-        <AppTextInput v-model="archiveTermId" placeholder="学期ID（可空=不限）" style="max-width:200px" @change="loadArchive" />
+        <AppTermEntityPicker v-model="archiveTermId" placeholder="全部学期" style="max-width:220px" @change="loadArchive" />
         <AppButton size="small" variant="ghost" :loading="archiveExporting" @click="doArchiveExport('records')">导出问题记录 xlsx</AppButton>
         <AppButton size="small" variant="ghost" :loading="archiveExporting" @click="doArchiveExport('rectifications')">导出整改任务 xlsx</AppButton>
       </div>
@@ -211,7 +211,7 @@
  *  R3 续工：docs/03-业务模块设计/教务中心/施工包/教学质量/三级施工卡/{01..06,09}-*.md。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert, AppTimeline, AppDateTimePicker, AppQuickPhrases, AppDescriptionList } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert, AppTimeline, AppDateTimePicker, AppQuickPhrases, AppDescriptionList, AppTermEntityPicker } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi, academicAffairsQualityApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -241,7 +241,7 @@ export default {
   name: 'AaQualityDashboardView',
   components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer,
                AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppRadioGroup, AppFormItem, AppInlineAlert,
-               AppTimeline, AppDateTimePicker, AppQuickPhrases, AppDescriptionList },
+               AppTimeline, AppDateTimePicker, AppQuickPhrases, AppDescriptionList, AppTermEntityPicker },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },

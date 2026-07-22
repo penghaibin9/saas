@@ -7,15 +7,12 @@
   >
     <form class="ie-form" @submit.prevent="submit">
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
-        <AppStudentPicker v-model="form.studentId" :options="studentOptions" :remote-search="searchStudents" placeholder="按学号 / 姓名搜索学生" />
+        <AppGraduationCandidateStudentPicker v-model="form.studentId" placeholder="按学号 / 姓名搜索学生" />
       </div>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">毕设批次</span>
-        <select v-model="form.batchId" class="ie-in">
-          <option value="">不关联批次</option>
-          <option v-for="b in batchOpts" :key="b.id" :value="b.id">{{ b.batchName }}（{{ b.batchNo }}）</option>
-        </select>
+        <AppGraduationDesignBatchPicker v-model="form.batchId" clearable placeholder="不关联批次" />
       </label>
-      <label class="ie-fld"><span class="ie-lbl">指导教师</span><input v-model.trim="form.advisorName" class="ie-in" /></label>
+      <div class="ie-fld"><span class="ie-lbl">指导教师</span><AppGraduationMentorPicker v-model="form.advisorName" clearable /></div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template #footer>
@@ -27,43 +24,26 @@
 
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
-import { AppStudentPicker } from '@/components/common'
+import { AppGraduationCandidateStudentPicker, AppGraduationDesignBatchPicker, AppGraduationMentorPicker } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
-const mapStu = (s) => ({ label: `${s.name}（${s.studentNo}）`, value: s.id })
-
 export default {
   name: 'GraduationStudentFormView',
-  components: { GraduationFormPageShell, AppStudentPicker },
+  components: { GraduationFormPageShell, AppGraduationCandidateStudentPicker, AppGraduationDesignBatchPicker, AppGraduationMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      form: { studentId: '', batchId: '', advisorName: '' },
-      studentOpts: [], batchOpts: [], formError: '', submitting: false
+      form: { studentId: '', batchId: '', advisorName: '' }, formError: '', submitting: false
     }
   },
   computed: {
     backTo() {
       const panel = this.$route.query.returnPanel || 'roster'
       return `/admin/graduation/students?panel=${panel}`
-    },
-    studentOptions() {
-      return this.studentOpts.map(mapStu)
     }
   },
-  async created() {
-    const [s, b] = await Promise.all([gdStudentApi.getStudentOptions(), gdStudentApi.getBatchOptions()])
-    if (s.code === 0) this.studentOpts = s.data
-    if (b.code === 0) this.batchOpts = b.data
-  },
   methods: {
-    /** 学生远程搜索（学籍库真实接口，按姓名/学号，数据范围由后端裁定） */
-    async searchStudents(keyword) {
-      const res = await gdStudentApi.getStudentOptions(keyword)
-      if (res.code !== 0) throw new Error(res.message || '搜索失败')
-      return res.data.map(mapStu)
-    },
     async submit() {
       this.formError = ''
       if (!this.form.studentId) { this.formError = '请选择学生'; return }

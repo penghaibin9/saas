@@ -12,7 +12,7 @@
     <!-- 排课规则 -->
     <div v-if="tab === 'rules'" class="mp-stack">
       <div class="aasg-bar">
-        <AppTextInput v-model="termId" placeholder="学期 ID（可空=全部）" style="max-width:200px" @change="loadRules" />
+        <AppTermEntityPicker v-model="termId" placeholder="全部学期" style="max-width:240px" @change="loadRules" />
         <AppButton variant="primary" size="small" @click="openRule">新增规则</AppButton>
       </div>
       <EmptyState v-if="!rules.length" title="暂无排课规则" description="配置教师可用时间要求/教室类型/周学时约束" />
@@ -38,7 +38,7 @@
     <!-- 自动排课 -->
     <div v-else-if="tab === 'auto'" class="mp-stack">
       <div class="aasg-bar">
-        <AppTextInput v-model="autoBatchId" placeholder="课表批次 ID" style="max-width:180px" />
+        <AppScheduleBatchPicker v-model="autoBatchId" style="max-width:260px" />
         <AppButton variant="ghost" size="small" :loading="autoLoading" @click="runAuto(true)">试排预览</AppButton>
         <AppButton variant="primary" size="small" :loading="autoLoading" @click="doAuto">一键自动排课</AppButton>
         <AppButton variant="ghost" size="small" @click="doClearAuto">清除自动排课结果</AppButton>
@@ -71,7 +71,7 @@
     <!-- 冲突报告 -->
     <div v-else class="mp-stack">
       <div class="aasg-bar">
-        <AppTextInput v-model="conflictBatchId" placeholder="课表批次 ID" style="max-width:200px" />
+        <AppScheduleBatchPicker v-model="conflictBatchId" style="max-width:260px" />
         <AppButton variant="primary" size="small" @click="loadConflict">生成冲突报告</AppButton>
       </div>
       <template v-if="conflict">
@@ -105,7 +105,7 @@
     <AppDrawer :visible="ruleVisible" title="新增排课规则" @close="ruleVisible = false">
       <div class="aasg-form">
         <AppFormItem label="规则键" required><AppTextInput v-model="ruleForm.ruleKey" placeholder="如 maxDailySlots / avoidEvening" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="学期 ID"><AppTextInput v-model="ruleForm.termId" placeholder="可空" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="学期"><AppTermEntityPicker v-model="ruleForm.termId" placeholder="选择学期（可空）" :disabled="saving" /></AppFormItem>
         <AppFormItem label="规则值(JSON)"><AppTextInput v-model="ruleForm.ruleValueRaw" placeholder='如 {"max":8}' :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
@@ -124,13 +124,13 @@
 /** 排课管理增强（/admin/academic-affairs/scheduling）：规则中心 + 教师可用时间采纳 + 全量冲突报告。 */
 import { ModulePageShell, DataTable, StatusTag, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppFormItem, AppInlineAlert, AppConfirmDialog } from '@/components/common'
+import { AppTextInput, AppFormItem, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsSchedulingApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaSchedulingConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppInlineAlert, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -205,13 +205,13 @@ export default {
       this.confirmVisible = true
     },
     async loadConflict() {
-      if (!this.conflictBatchId) { toast.error('请填课表批次 ID'); return }
+      if (!this.conflictBatchId) { toast.error('请选择课表批次'); return }
       const res = await api.conflictReport(this.conflictBatchId)
       if (res.code === 0) this.conflict = res.data
       else toast.error(res.message)
     },
     async runAuto(dryRun) {
-      if (!this.autoBatchId) { toast.error('请填课表批次 ID'); return }
+      if (!this.autoBatchId) { toast.error('请选择课表批次'); return }
       this.autoLoading = true
       const res = await api.autoSchedule(this.autoBatchId, dryRun)
       this.autoLoading = false
@@ -219,7 +219,7 @@ export default {
       else toast.error(res.message)
     },
     doAuto() {
-      if (!this.autoBatchId) { toast.error('请填课表批次 ID'); return }
+      if (!this.autoBatchId) { toast.error('请选择课表批次'); return }
       this.confirmRequireReason = false
       this.confirmTitle = '自动排课'
       this.confirmMessage = '确定要对该批次执行自动排课并落库吗？只新增自动排课结果，教务员手工排的课不受影响。'
@@ -227,7 +227,7 @@ export default {
       this.confirmVisible = true
     },
     doClearAuto() {
-      if (!this.autoBatchId) { toast.error('请填课表批次 ID'); return }
+      if (!this.autoBatchId) { toast.error('请选择课表批次'); return }
       this.confirmRequireReason = false
       this.confirmTitle = '清除自动排课结果'
       this.confirmMessage = '确定清除该批次的全部自动排课结果吗？手工/导入排的课会保留。'

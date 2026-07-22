@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn mp-btn--primary" @click="showCreate = !showCreate">＋ 新建{{ typeLabel || '注册批次' }}</button>
+      <AppButton variant="primary" @click="showCreate = !showCreate">＋ 新建{{ typeLabel || '注册批次' }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -18,26 +18,18 @@
           </label>
           <label class="aa-cal-form__item">
             类型
-            <select v-model="draft.registerType" class="aa-select" :disabled="!!fixedType">
-              <option value="ENROLL">入学注册</option>
-              <option value="ANNUAL">学年注册</option>
-              <option value="SEMESTER">学期注册</option>
-            </select>
+            <AppSelect v-model="draft.registerType" :options="registerTypeOptions" :disabled="!!fixedType" />
           </label>
           <label class="aa-cal-form__item">
             注册窗口
-            <div class="aa-inline">
-              <input v-model="draft.windowStart" type="date" class="aa-input aa-input--date" />
-              <span>~</span>
-              <input v-model="draft.windowEnd" type="date" class="aa-input aa-input--date" />
-            </div>
+            <AppDateRangePicker v-model="windowRange" mode="form" />
           </label>
           <label class="aa-cal-form__item aa-cal-form__check">
             <input v-model="draft.open" type="checkbox" /> 创建后立即开放
           </label>
-          <button class="mp-btn mp-btn--primary" :disabled="creating || !draft.batchName" @click="createBatch">
-            {{ creating ? '创建中…' : '创建' }}
-          </button>
+          <AppButton variant="primary" :disabled="!draft.batchName" :loading="creating" @click="createBatch">
+            创建
+          </AppButton>
         </div>
       </AppSectionCard>
 
@@ -79,7 +71,8 @@
 <script>
 /** 注册批次列表（/admin/academic-affairs/registration）：GET/POST /academic-affairs/registration-batches。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -88,7 +81,7 @@ const TYPE_LABEL = { ENROLL: '入学注册', ANNUAL: '学年注册', SEMESTER: '
 
 export default {
   name: 'AaRegistrationBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -111,6 +104,9 @@ export default {
     }
   },
   computed: {
+    registerTypeOptions() {
+      return Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))
+    },
     /** ?type=ENROLL/ANNUAL/SEMESTER 收窄为对应三级叶子视图；无 type 为原「注册批次」通栏视图。 */
     fixedType() {
       const t = this.$route && this.$route.query && this.$route.query.type
@@ -127,6 +123,11 @@ export default {
       if (this.fixedType === 'ANNUAL') return '在籍学生学年注册批次：核对上学年状态/缴费后完成续注册'
       if (this.fixedType === 'SEMESTER') return '在籍学生按学期开的续注册批次：核对本学期在籍/缴费状态后完成注册'
       return '按入学 / 学年 / 学期建立注册批次；批次开放后逐个学生注册（经学籍单一入口写主档）'
+    },
+    /** AppDateRangePicker（mode=form）v-model 代理：对内仍是 draft.windowStart/windowEnd 两个字段，创建提交逻辑不用改。 */
+    windowRange: {
+      get() { return { start: this.draft.windowStart, end: this.draft.windowEnd } },
+      set(v) { this.draft.windowStart = (v && v.start) || ''; this.draft.windowEnd = (v && v.end) || '' }
     }
   },
   watch: {
@@ -225,11 +226,9 @@ export default {
 .aa-cal-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-cal-form__item--grow { flex: 1; min-width: 220px; }
 .aa-cal-form__check { flex-direction: row; align-items: center; gap: 6px; }
-.aa-inline { display: flex; align-items: center; gap: 8px; }
 .aa-input, .aa-select {
   height: 34px; padding: 0 10px;
   border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px;
   background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box;
 }
-.aa-input--date { width: 150px; }
 </style>

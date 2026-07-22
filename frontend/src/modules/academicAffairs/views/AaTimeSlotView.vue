@@ -26,11 +26,11 @@
             </label>
             <label class="aa-slot-form__item">
               开始时间
-              <AppTextInput v-model="draft.startTime" placeholder="08:00" :maxlength="5" />
+              <AppTimePicker v-model="draft.startTime" />
             </label>
             <label class="aa-slot-form__item">
               结束时间
-              <AppTextInput v-model="draft.endTime" placeholder="08:45" :maxlength="5" />
+              <AppTimePicker v-model="draft.endTime" />
             </label>
             <AppButton variant="primary" :loading="adding" @click="addSlot">添加节次</AppButton>
           </div>
@@ -69,7 +69,7 @@
           <div class="aa-slot-form">
             <label class="aa-slot-form__item aa-slot-form__item--grow">
               节次
-              <AppSelect v-model="bandSlotId" :options="slotOptions" placeholder="请选择节次" @change="loadBands" />
+              <AppTimeSlotPicker v-model="bandSlotId" :options="slotOptions" :query="{ includeDisabled: true }" placeholder="请选择节次" @change="loadBands" />
             </label>
           </div>
         </AppSectionCard>
@@ -96,11 +96,11 @@
               </label>
               <label class="aa-slot-form__item">
                 开始时间
-                <AppTextInput v-model="bandDraft.startTime" placeholder="08:00" :maxlength="5" />
+                <AppTimePicker v-model="bandDraft.startTime" />
               </label>
               <label class="aa-slot-form__item">
                 结束时间
-                <AppTextInput v-model="bandDraft.endTime" placeholder="08:45" :maxlength="5" />
+                <AppTimePicker v-model="bandDraft.endTime" />
               </label>
               <AppButton variant="primary" :loading="bandAdding" @click="addBand">添加时间段</AppButton>
             </div>
@@ -136,8 +136,8 @@
           <input v-model.number="editForm.slotNo" type="number" min="1" class="aa-input" />
         </AppFormItem>
         <AppFormItem label="名称"><AppTextInput v-model="editForm.slotName" :maxlength="30" /></AppFormItem>
-        <AppFormItem label="开始时间"><AppTextInput v-model="editForm.startTime" :maxlength="5" placeholder="08:00" /></AppFormItem>
-        <AppFormItem label="结束时间"><AppTextInput v-model="editForm.endTime" :maxlength="5" placeholder="08:45" /></AppFormItem>
+        <AppFormItem label="开始时间"><AppTimePicker v-model="editForm.startTime" /></AppFormItem>
+        <AppFormItem label="结束时间"><AppTimePicker v-model="editForm.endTime" /></AppFormItem>
         <AppInlineAlert v-if="editError" type="danger" :description="editError" />
       </div>
       <template #footer>
@@ -153,8 +153,8 @@
         <AppFormItem label="校区"><AppTextInput v-model="editBandForm.campusCode" :maxlength="50" /></AppFormItem>
         <AppFormItem label="生效开始"><AppDatePicker v-model="editBandForm.effectiveStart" /></AppFormItem>
         <AppFormItem label="生效结束"><AppDatePicker v-model="editBandForm.effectiveEnd" /></AppFormItem>
-        <AppFormItem label="开始时间" required><AppTextInput v-model="editBandForm.startTime" :maxlength="5" /></AppFormItem>
-        <AppFormItem label="结束时间" required><AppTextInput v-model="editBandForm.endTime" :maxlength="5" /></AppFormItem>
+        <AppFormItem label="开始时间" required><AppTimePicker v-model="editBandForm.startTime" /></AppFormItem>
+        <AppFormItem label="结束时间" required><AppTimePicker v-model="editBandForm.endTime" /></AppFormItem>
         <AppInlineAlert v-if="editBandError" type="danger" :description="editBandError" />
       </div>
       <template #footer>
@@ -176,7 +176,7 @@
  * 按校区/生效日期区间可配多套，如夏令/冬令作息）。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppSectionCard, AppSelect, AppTextInput, AppFormItem, AppDatePicker, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppTextInput, AppFormItem, AppDatePicker, AppTimePicker, AppConfirmDialog, AppInlineAlert, AppTimeSlotPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -186,7 +186,7 @@ export default {
   name: 'AaTimeSlotView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppSectionCard, AppSelect, AppTextInput, AppFormItem, AppDatePicker,
+    AppButton, AppDrawer, AppSectionCard, AppTextInput, AppFormItem, AppDatePicker, AppTimePicker, AppTimeSlotPicker,
     AppConfirmDialog, AppInlineAlert
   },
   props: { ctx: { type: Object, required: true } },

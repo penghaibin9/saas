@@ -6,8 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/academic-affairs/schedule')">返回批次</button>
-      <button class="mp-btn" @click="printView">打印当前视图</button>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">返回批次</AppButton>
+      <AppPrintButton :handler="printView" label="打印当前视图" />
     </template>
 
     <div class="mp-stack">
@@ -18,9 +18,11 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           {{ currentTab.field }}
-          <input v-model.trim="query" class="aa-input aa-input--sm" :placeholder="currentTab.placeholder" @keyup.enter="loadView" />
+          <AppClassPicker v-if="tab === 'class'" v-model="query" placeholder="选择班级" />
+          <AppTeacherPicker v-else-if="tab === 'teacher'" v-model="query" placeholder="选择教师" />
+          <AppStudentPicker v-else v-model="query" placeholder="选择学生" />
         </label>
-        <button class="mp-btn" @click="loadView">查看课表</button>
+        <AppButton @click="loadView">查看课表</AppButton>
       </div>
 
       <LoadingState v-if="loading" />
@@ -35,20 +37,21 @@
 <script>
 /** 课表三视图（/admin/academic-affairs/schedule/:batchId/views）：class/teacher/student 三视角只读。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
-import { AppSectionCard } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppSectionCard, AppPrintButton, AppClassPicker, AppTeacherPicker, AppStudentPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 const TABS = [
-  { key: 'class', label: '班级课表', field: '班级ID', placeholder: 'classId' },
-  { key: 'teacher', label: '教师课表', field: '教师工号', placeholder: 'teacherKey' },
-  { key: 'student', label: '学生课表', field: '学生ID', placeholder: 'studentId' }
+  { key: 'class', label: '班级课表', field: '班级' },
+  { key: 'teacher', label: '教师课表', field: '教师' },
+  { key: 'student', label: '学生课表', field: '学生' }
 ]
 
 export default {
   name: 'AaScheduleViewsView',
-  components: { ModulePageShell, LoadingState, AppSectionCard, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, AppButton, AppSectionCard, AppPrintButton, AppClassPicker, AppTeacherPicker, AppStudentPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { tabs: TABS, tab: 'class', query: '', slots: [], items: [], note: '', loading: false }
@@ -68,7 +71,7 @@ export default {
       if (res.code === 0) this.slots = res.data
     },
     async loadView() {
-      if (!this.query) { toast.error(`请填写${this.currentTab.field}`); return }
+      if (!this.query) { toast.error(`请选择${this.currentTab.field}`); return }
       this.loading = true
       this.note = ''
       let res

@@ -12,9 +12,7 @@
         <label class="ie-fld"><span class="ie-lbl">评价周期</span><input v-model.trim="evalForm.period" class="ie-in" placeholder="如 2026春" /></label>
         <label class="ie-fld"><span class="ie-lbl">评分（0-100）<i>*</i></span><input v-model.number="evalForm.score" type="number" min="0" max="100" class="ie-in" /></label>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">评价等级 <i>*</i></span>
-          <select v-model="evalForm.level" class="ie-in">
-            <option v-for="l in ['优秀','良好','合格','不合格']" :key="l" :value="l">{{ l }}</option>
-          </select>
+          <AppSelect v-model="evalForm.level" :options="levelOptions" />
         </label>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">评价意见</span><textarea v-model.trim="evalForm.note" class="ie-in" rows="3" /></label>
         <p v-if="evalError" class="ie-err">{{ evalError }}</p>
@@ -39,15 +37,17 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
+import { AppSelect } from '@/components/common'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMentorEvalView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, EmptyState },
+  components: { GraduationFormPageShell, LoadingState, ErrorState, EmptyState, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', mentor: null,
+      levelOptions: ['优秀', '良好', '合格', '不合格'].map((value) => ({ value, label: value })),
       evalForm: { period: '', score: 90, level: '良好', note: '' },
       evalError: '', evalHistory: [], submitting: false
     }

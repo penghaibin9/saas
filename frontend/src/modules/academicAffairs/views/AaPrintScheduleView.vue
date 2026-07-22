@@ -2,7 +2,7 @@
   <div class="aa-print">
     <div class="aa-print__bar">
       <span>{{ printTime }}</span>
-      <button class="mp-btn mp-btn--primary" @click="doPrint">打印</button>
+      <AppPrintButton variant="primary" :handler="doPrint" />
     </div>
     <LoadingState v-if="loading" />
     <div v-else class="aa-print__sheet">
@@ -16,12 +16,13 @@
 <script>
 /** 课表打印页（/admin/academic-affairs/print/schedule/:batchId?type=class|teacher&key=）：D7 独立打印路由。 */
 import { LoadingState } from '@/components/business'
+import { AppPrintButton } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 
 export default {
   name: 'AaPrintScheduleView',
-  components: { LoadingState, AaScheduleGrid },
+  components: { LoadingState, AppPrintButton, AaScheduleGrid },
   data() {
     return { loading: true, schoolName: '职业院校', slots: [], items: [], printTime: '' }
   },

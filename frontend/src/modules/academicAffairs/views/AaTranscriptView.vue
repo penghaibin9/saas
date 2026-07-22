@@ -7,15 +7,8 @@
   >
     <div class="mp-stack">
       <div class="aa-reg-search">
-        <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-        <button class="mp-btn" :disabled="searching" @click="searchStudents">检索</button>
+        <AppStudentPicker v-model="studentId" class="aa-input--grow" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
       </div>
-      <ul v-if="candidates.length" class="aa-cand-list">
-        <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
-          <span>{{ s.realName }} · 学号 {{ s.studentNo }}</span>
-          <button class="mp-link" @click="pick(s)">查看成绩单</button>
-        </li>
-      </ul>
 
       <template v-if="studentId">
         <LoadingState v-if="loading" />
@@ -30,7 +23,7 @@
             </template>
             <div v-if="exportPanel" class="aa-export-bar">
               <input v-model.trim="exportPurpose" class="aa-input aa-input--grow" placeholder="导出用途（必填，≥5字，如：学院例会核对，将写入审计）" />
-              <button class="mp-btn mp-btn--primary" :disabled="exporting" @click="doExport">{{ exporting ? '导出中…' : '确认导出 xlsx' }}</button>
+              <AppButton variant="primary" :loading="exporting" @click="doExport">确认导出 xlsx</AppButton>
             </div>
             <p v-if="data.note" class="mp-note">{{ data.note }}</p>
             <EmptyState v-if="!data.items.length && !data.note" title="暂无成绩记录" description="学生还没有已发布的课程成绩" />
@@ -49,7 +42,7 @@
           </AppSectionCard>
         </template>
       </template>
-      <EmptyState v-else-if="!candidates.length" title="选择学生查看成绩单" description="用上方检索找到学生" />
+      <EmptyState v-else title="选择学生查看成绩单" description="用上方选择器搜索学生" />
     </div>
   </ModulePageShell>
 </template>
@@ -57,17 +50,17 @@
 <script>
 /** 学生成绩单（/admin/academic-affairs/transcript）：GET /students/:id/transcript。 */
 import { ModulePageShell, LoadingState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppMetricCard, AppSectionCard, AppStatusTag, AppStudentPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTranscriptView',
-  components: { ModulePageShell, LoadingState, EmptyState, AppMetricCard, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, LoadingState, EmptyState, AppButton, AppMetricCard, AppSectionCard, AppStatusTag, AppStudentPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      kw: '', searching: false, candidates: [],
       studentId: this.$route.query.studentId || '', name: this.$route.query.name || '',
       loading: false, data: null,
       exportPanel: this.$route.query.action === 'export', exportPurpose: '', exporting: false
@@ -77,17 +70,11 @@ export default {
     if (this.studentId) this.load()
   },
   methods: {
-    async searchStudents() {
-      if (this.searching) return
-      this.searching = true
-      const res = await academicAffairsApi.getRoster({ keyword: this.kw || undefined, page: 1, pageSize: 20 })
-      this.candidates = res.code === 0 ? res.data.list : []
-      this.searching = false
-    },
-    pick(s) {
-      this.studentId = s.studentId
-      this.name = s.realName
-      this.candidates = []
+    onStudentChange(value, items) {
+      const item = items?.[0]
+      const student = item?.raw || item || {}
+      this.name = student.realName || student.studentName || item?.label || ''
+      if (!value) return
       this.load()
     },
     async load() {

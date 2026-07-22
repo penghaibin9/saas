@@ -10,6 +10,15 @@
  *
  * 数据结构（每条）：id / title / module / keywords / summary / points
  */
+export const ACADEMIC_AFFAIRS_OVERVIEW_DOC = {
+  id: 'doc-aa-overview',
+  title: '教务中心操作总览（教师一眼通）',
+  module: '教务中心',
+  keywords: ['教务中心', '操作总览', '教师一眼通', '业务流程', '三级模块', '怎么操作', '帮助中心'],
+  summary: '先按教师、学院教务、教务处或学生身份查看常用路径，再从8个业务阶段进入29个二级模块；点击模块即可查看全部三级入口的具体操作方法。',
+  embed: '/help/academic-affairs-flow-guide.html'
+}
+
 export const ACADEMIC_AFFAIRS_HELP_DOCS = [
   {
     id: 'doc-aa-terms',

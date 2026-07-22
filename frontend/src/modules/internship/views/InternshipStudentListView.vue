@@ -57,17 +57,14 @@
       <form class="ie-form" @submit.prevent="submitCreate">
         <!-- 注意：Picker 不能包在 <label> 里，label 激活会把点击转发给选择器内部按钮（清空/搜索） -->
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
-          <AppStudentPicker
+          <AppInternshipCandidateStudentPicker
             v-model="cform.studentId"
-            :remote-search="searchMasterStudents"
             placeholder="输入姓名或学号搜索学生"
             search-placeholder="按姓名 / 学号搜索"
             data-scope-hint="仅显示你数据范围内的学生 · 已建档学生提交时由后端拦截重复"
           />
         </div>
-        <label class="ie-fld"><span class="ie-lbl">校内指导教师</span>
-          <select v-model="cform.advisorUserId" class="ie-in"><option value="">暂不分配</option><option v-for="a in advisorOptions" :key="a.id" :value="a.id">{{ a.name }}（{{ a.loginName }}）</option></select>
-        </label>
+        <div class="ie-fld"><span class="ie-lbl">校内指导教师</span><AppInternshipAdvisorPicker v-model="cform.advisorUserId" clearable placeholder="暂不分配" /></div>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="cform.remark" class="ie-in" rows="2" /></label>
         <p v-if="cError" class="ie-err">{{ cError }}</p>
         <div class="ie-actions">
@@ -82,9 +79,8 @@
       <div class="ie-form">
         <p class="ie-hint">仅「已上架」且企业非黑名单、未满员的岗位可选（来自岗位库真实数据）。</p>
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
-          <AppPositionPicker
+          <AppInternshipPositionPicker
             v-model="assignPositionId"
-            :remote-search="searchPublishedPositions"
             placeholder="输入岗位或企业名称搜索"
             search-placeholder="按岗位名称 / 企业搜索"
             data-scope-hint="仅已上架、未满员岗位可选"
@@ -101,12 +97,7 @@
     <AppDrawer v-model:visible="advisorVisible" :title="advisorRow ? `分配指导老师 · ${advisorRow.name}` : '分配指导老师'">
       <div class="ie-form">
         <p class="ie-hint">选择当前租户内启用的教职工账号。变更会写入学生实习档案和审计留痕。</p>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">校内指导教师 <i>*</i></span>
-          <select v-model="advisorAssignmentUserId" class="ie-in">
-            <option value="">请选择指导教师</option>
-            <option v-for="advisor in advisorOptions" :key="advisor.id" :value="advisor.id">{{ advisor.name }}（{{ advisor.loginName }}）</option>
-          </select>
-        </label>
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">校内指导教师 <i>*</i></span><AppInternshipAdvisorPicker v-model="advisorAssignmentUserId" /></div>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">分配说明</span><textarea v-model.trim="advisorAssignmentReason" class="ie-in" rows="2" placeholder="例如：按专业方向调整指导关系" /></label>
         <p v-if="advisorError" class="ie-err">{{ advisorError }}</p>
         <div class="ie-actions">
@@ -144,8 +135,7 @@
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppSensitiveText, AppStatusTag, AppExportButton, AppStudentPicker, AppPositionPicker } from '@/components/common'
-import { searchMasterStudents, searchPublishedPositions } from './components/entityPickerAdapters'
+import { AppSensitiveText, AppStatusTag, AppExportButton, AppInternshipCandidateStudentPicker, AppInternshipPositionPicker, AppInternshipAdvisorPicker } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { TableActionColumn } from '@/modules/internship/components'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
@@ -180,13 +170,13 @@ export default {
   name: 'InternshipStudentListView',
   components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState,
     AppDrawer, AppConfirmDialog, AppSensitiveText, AppStatusTag, AppExportButton, AppExcelImportDrawer, TableActionColumn, ModuleSummaryStrip,
-    AppStudentPicker, AppPositionPicker },
+    AppInternshipCandidateStudentPicker, AppInternshipPositionPicker, AppInternshipAdvisorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', submitting: false, activePanel: 'roster',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      createVisible: false, cform: { studentId: '', advisorUserId: '', remark: '' }, advisorOptions: [], cError: '',
+      createVisible: false, cform: { studentId: '', advisorUserId: '', remark: '' }, cError: '',
       assignVisible: false, assignRow: null, assignPositionId: '', assignError: '',
       advisorVisible: false, advisorRow: null, advisorAssignmentUserId: '', advisorAssignmentReason: '', advisorError: '',
       importVisible: false,
@@ -250,9 +240,6 @@ export default {
     }
   },
   methods: {
-    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchMasterStudents,
-    searchPublishedPositions,
     applyPanel(panel) {
       const key = PANEL_PRESETS[panel] ? panel : 'roster'
       this.activePanel = key
@@ -289,7 +276,6 @@ export default {
       if (key === 'create') {
         // 学生候选改为选择器内按关键字远程搜索（后端裁定数据范围），不再一次性预载
         this.cform = { studentId: '', advisorUserId: '', remark: '' }; this.cError = ''
-        await this.loadAdvisors()
         this.createVisible = true
       }
       if (key === 'import') { this.importVisible = true }
@@ -302,11 +288,6 @@ export default {
         const res = await internStudentApi.createStudent({ studentId: this.cform.studentId, advisorUserId: this.cform.advisorUserId || null, remark: this.cform.remark })
         if (res.code === 0) { toast.success('已建档'); this.createVisible = false; this.load() } else this.cError = res.message
       } finally { this.submitting = false }
-    },
-    async loadAdvisors() {
-      const res = await internStudentApi.getAdvisors()
-      if (res.code === 0) this.advisorOptions = res.data || []
-      else { this.advisorOptions = []; this.cError = res.message }
     },
     openAssign(row) {
       if (!this.canStudentManage) return toast.error('无学生管理权限')
@@ -328,7 +309,6 @@ export default {
       this.advisorAssignmentUserId = row.advisorUserId || ''
       this.advisorAssignmentReason = ''
       this.advisorError = ''
-      await this.loadAdvisors()
       this.advisorVisible = true
     },
     async submitAssignAdvisor() {

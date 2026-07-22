@@ -215,21 +215,26 @@ def login_locked(key: str) -> int:
     return max(0, remain)
 
 
-def record_login_failure(key: str) -> tuple[int, int]:
-    """记一次失败。返回 (累计次数, 锁定剩余秒数)。达到阈值即锁定 15 分钟。"""
+def record_login_failure(key: str, threshold: int | None = None,
+                         lock_seconds: int | None = None) -> tuple[int, int]:
+    """记一次失败。返回 (累计次数, 锁定剩余秒数)。达到阈值即锁定。
+    threshold/lock_seconds 缺省用模块常量；调用方（auth 登录流）按租户 t_sys_config 传入，
+    实现「系统配置·登录失败锁定阈值/时长」真实生效。"""
     from app.core.redis_client import cache_set, increment_with_ttl
-    shared_count = increment_with_ttl(f"auth:login-fail:{key}", LOCK_SECONDS)
+    limit = int(threshold) if threshold else LOCK_THRESHOLD
+    lock_for = int(lock_seconds) if lock_seconds else LOCK_SECONDS
+    shared_count = increment_with_ttl(f"auth:login-fail:{key}", lock_for)
     if shared_count is not None:
-        if shared_count >= LOCK_THRESHOLD:
-            until = _now() + LOCK_SECONDS
-            cache_set(f"auth:login-lock:{key}", str(until), LOCK_SECONDS)
-            return shared_count, LOCK_SECONDS
+        if shared_count >= limit:
+            until = _now() + lock_for
+            cache_set(f"auth:login-lock:{key}", str(until), lock_for)
+            return shared_count, lock_for
         return shared_count, 0
     rec = _fail.setdefault(key, [0, _now(), 0.0])
     rec[0] += 1
-    if rec[0] >= LOCK_THRESHOLD:
-        rec[2] = _now() + LOCK_SECONDS
-        return rec[0], LOCK_SECONDS
+    if rec[0] >= limit:
+        rec[2] = _now() + lock_for
+        return rec[0], lock_for
     return rec[0], 0
 
 
